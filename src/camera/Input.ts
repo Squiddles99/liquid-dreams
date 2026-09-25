@@ -76,10 +76,17 @@ export class Input {
 
   private onBlur = (): void => {
     this.down.clear();
+    this.pressed.clear();
   };
 
   private onMouseDown = (): void => {
-    if (document.pointerLockElement !== this.element) void this.element.requestPointerLock();
+    if (document.pointerLockElement !== this.element) {
+      // Chrome makes you wait a moment before re-locking after Escape, and rejects the request in the
+      // meantime (and in other cases, e.g. this element's document not being the active top-level one);
+      // swallow that so it doesn't surface as an unhandled rejection.
+      const lock = this.element.requestPointerLock() as Promise<void> | undefined;
+      lock?.catch(() => {});
+    }
   };
 
   private onMouseMove = (e: MouseEvent): void => {
