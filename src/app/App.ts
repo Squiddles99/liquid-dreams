@@ -1,9 +1,11 @@
 import * as THREE from 'three/webgpu';
+import { sunForConditions } from '../astro/sunForConditions';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { cloneConditions } from '../conditions/defaults';
 import type { Conditions } from '../conditions/types';
 import { type Moment, momentFromHash } from '../dev/momentLink';
+import { Sky } from '../sky/Sky';
 import { SimClock, clampFrameDt, viewportSize } from './clock';
 
 export class App {
@@ -11,8 +13,10 @@ export class App {
   readonly clock = new SimClock();
   readonly rig = new CameraRig();
   readonly input: Input;
+  readonly sky = new Sky();
   conditions: Conditions;
   private lastMs = performance.now();
+  private readonly sunDir = new THREE.Vector3();
   /** Temporary visual reference until the ocean exists (removed in Task 12). */
   private readonly devGrid = new THREE.GridHelper(200, 40, 0x88aacc, 0x335577);
 
@@ -22,7 +26,9 @@ export class App {
     initial: Moment,
   ) {
     this.input = new Input(renderer.domElement);
-    this.scene.background = new THREE.Color(0x0b2a4a);
+    this.scene.add(this.sky.dome);
+    this.renderer.toneMapping = THREE.AgXToneMapping;
+    this.renderer.toneMappingExposure = 0.35;
     this.scene.add(this.devGrid);
     this.conditions = cloneConditions(initial.conditions);
     this.applyMoment(initial);
@@ -73,6 +79,10 @@ export class App {
     this.lastMs = now;
     this.clock.tick(realDt);
     this.rig.update(realDt, this.input, this.waterHeightAtCamera());
+    const sun = sunForConditions(this.conditions);
+    this.sunDir.set(...sun.direction);
+    this.sky.update(this.renderer, this.sunDir, this.camera.position.y);
+    this.sky.followCamera(this.camera.position);
     this.renderer.render(this.scene, this.camera);
   };
 }
