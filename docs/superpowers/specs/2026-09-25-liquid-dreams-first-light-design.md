@@ -25,6 +25,7 @@ Liquid Dreams is a personal passion project: a surfing game made together for th
 | Platform | Browser, WebGPU + TypeScript, so Claude can see and screenshot the output and iterate |
 | Visual style | **Cinematic realism**: physically based light and water, with a subtle filmic grade |
 | Primary experience | Floating in the lineup at water level; free-fly camera as a dev tool |
+| Hero time of day | **Morning**, early to late: glassy or light easterly offshore, before the Fremantle Doctor arrives |
 | Wave technology | Physics-guided wave shaping (layered ocean + reef-driven parametric breaker), built so the approach-to-reef layer can later be swapped for a shallow-water simulation |
 | Engine | Three.js `WebGPURenderer` + TSL, with custom compute and shaders where the craft matters |
 
@@ -53,8 +54,8 @@ Liquid Dreams is a personal passion project: a surfing game made together for th
 **Look and feel (from Andrew and the reference images):**
 - Deep-blue, crystal-clear water; the reef visible beneath you.
 - The lip throws and turns brilliant **turquoise**: clear water lit from behind, becoming milky turquoise where air mixes in.
-- **Morning:** the sun rises behind the dunes while offshore wind blows spray back off the lip, lit gold against a deep-blue sea.
-- **Afternoon and sunset:** the sun sinks into the Indian Ocean behind the waves, under big cumulus clouds with orange-lit undersides.
+- **Morning is the heart of it (Andrew's fondest memories).** From early to late morning the sun rises and climbs behind the dunes while the easterly offshore wind grooms the lineup and blows spray back off the lip, lit gold against a deep-blue sea. On the best days the Fremantle Doctor (the SW sea breeze) arrives late, and the session stretches on.
+- **Afternoon and sunset** are secondary moods: once the Doctor is in, the surface gets choppier; the sun sinks into the Indian Ocean behind the waves, under big cumulus clouds with orange-lit undersides.
 - **Overcast days** mute everything to green-grey, a valid mood of their own.
 - Inside the barrel: a backlit, glowing lip; a rippled texture running up the inner wall; foam chunks sliding up the face; the tube opening framing the dunes behind a haze of sea spray.
 - **The land:** a long straight sandy beach, high dunes, and low coastal heath (silver-grey daisy-bush, succulent pigface turning orange at the tips, pink rice-flower) over sandy limestone soil. Rust-brown rocks at the waterline.
@@ -75,7 +76,7 @@ Each phase ends with something beautiful you can sit in, and each gets its own s
 | 2 | The wave | Swell sets and groups; shoaling and refraction over the reef; breaking onset; the Womb barrel peeling left into the opposing section; surfer-feet dial calibrated; every wave unique; turquoise lip transmission |
 | 3 | Whitewater | Lip impact, whitewater explosion, spit, offshore spray off the crest, lingering and dissolving foam |
 | 4 | Sound | Spatial audio: thunder-clap impacts, whitewater roar and hiss, wind in the scrub, water lapping close by |
-| 5 | Life & conditions | Day rhythm (glassy mornings, easterly offshores, the arrival of the SW sea breeze, the "Fremantle Doctor"); clouds and overcast moods; dolphins, whales, seabirds |
+| 5 | Life & conditions | Day rhythm (glassy mornings, easterly offshores, then the SW sea breeze, the "Fremantle Doctor", whose arrival time varies from day to day; on the best days it comes in late); clouds and overcast moods; dolphins, whales, seabirds |
 
 ---
 
@@ -131,7 +132,7 @@ Each module has one purpose and a small, explicit interface. Pure maths is kept 
 
 ### 5.1 Experience
 
-You float at the Womb's lineup position in open Indian Ocean water. Long SW groundswell lifts and lowers you, with wind chop on top. You can scrub time from pre-dawn to after sunset, and the sky, sun, reflections and water colour all respond believably. There is no land, seabed or breaking wave yet.
+You float at the Womb's lineup position in open Indian Ocean water on a winter morning. Long SW groundswell lifts and lowers you under a light easterly offshore breeze. You can scrub time from pre-dawn to after sunset, and the sky, sun, reflections and water colour all respond believably. There is no land, seabed or breaking wave yet.
 
 ### 5.2 Conditions (Phase 0 subset)
 
@@ -153,7 +154,7 @@ interface Conditions {
 }
 ```
 
-**Defaults:** date `2026-07-15` (winter, the SW groundswell season); time `16:50` (golden hour, sun over the ocean); swell `4ft`, `15s`, from `225°`; wind `3 m/s` from `80°` (light offshore); tide `0`; seed `2002` (a nod to KS:PS).
+**Defaults:** date `2026-07-15` (winter, the SW groundswell season); time `08:15` (morning session: sun low in the east over the land, behind you as you look out to sea); swell `4ft`, `15s`, from `225°`; wind `3 m/s` from `80°` (light offshore); tide `0`; seed `2002` (a nod to KS:PS).
 
 **Surfer feet in Phase 0:** without shoaling there is no real breaking wave height yet. The swell dial therefore maps surfer feet to the open-ocean **significant wave height** with a provisional factor, `Hs = 0.4 m × sizeFt`, kept in one function in `conditions/`. Phase 2 recalibrates this mapping against the breaking wave's face height at the reef, tuned by eye with Andrew.
 
@@ -264,13 +265,15 @@ Unit tests sit beside the code they test (`*.test.ts`).
 | Moment | Setup | Checks |
 |---|---|---|
 | `pre-dawn` | 06:30, looking east then west | Twilight gradient, dark sea, no sun artefacts |
-| `morning-offshore` | 07:40, light E wind, facing west | Low sun behind the camera, clear blue water |
+| `first-sun` | 07:35, facing east then west | Sunrise colour over the land, first light on the swell |
+| `morning-offshore` (default) | 08:15, light E wind, facing west | Low sun behind the camera, clear deep-blue water, groomed surface |
+| `late-morning` | 10:30, light E wind, facing west | Higher sun, water clarity, colour holding up before the Doctor |
 | `noon-deep-blue` | 12:30, looking down at about 45° | Body colour and clarity, small glitter |
-| `golden-hour` | 16:50, facing the sun | Glitter path, crest transmission, haze on the horizon |
+| `golden-hour` | 16:50, 6 m/s SW wind, facing the sun | Glitter path, crest transmission, choppier post-Doctor surface, haze on the horizon |
 | `sunset` | 17:25, facing the sun | Sky colour, exposure, horizon |
 | `overview` | Free camera 40m up, noon | No tiling, LOD transitions, horizon curvature |
 
-**Phase 0 is done when:** you can sit in the lineup, scrub from dawn to dusk, and it already feels like the Indian Ocean off the Capes; all reference moments look right to Andrew; the automated tests pass; and the performance budget is met.
+**Phase 0 is done when:** you can sit in the lineup on a winter morning, scrub from dawn to dusk, and it already feels like the Indian Ocean off the Capes; all reference moments look right to Andrew; the automated tests pass; and the performance budget is met.
 
 ### 5.13 Out of scope for Phase 0
 
