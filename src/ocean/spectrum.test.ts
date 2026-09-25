@@ -76,7 +76,7 @@ describe('buildOceanSpectra', () => {
     c.wind.speedMs = 0;
     const s = buildOceanSpectra(c);
     expect(s.hsTotal).toBeCloseTo(1.6, 2);
-    for (const a of s.h0) for (const v of a) expect(Number.isFinite(v)).toBe(true);
+    for (const a of s.h0) expect(a.every(Number.isFinite)).toBe(true);
   });
   it('flat calm gives all-zero spectra', () => {
     const c = cloneConditions(DEFAULT_CONDITIONS);
@@ -92,8 +92,8 @@ describe('buildOceanSpectra', () => {
     c.wind = { speedMs: 30, directionDeg: 225 };
     const s = buildOceanSpectra(c);
     expect(Number.isFinite(s.hsTotal)).toBe(true);
-    for (const a of s.h0) for (const v of a) expect(Number.isFinite(v)).toBe(true);
-    for (const v of s.slopeVariance) expect(Number.isFinite(v)).toBe(true);
+    for (const a of s.h0) expect(a.every(Number.isFinite)).toBe(true);
+    expect(s.slopeVariance.every(Number.isFinite)).toBe(true);
   });
   it('is deterministic per seed', () => {
     const a = buildOceanSpectra(DEFAULT_CONDITIONS);
