@@ -1,3 +1,5 @@
+import { bearingToWorldXZ } from '../conditions/directions';
+
 const DEG = Math.PI / 180;
 const RAD = 180 / Math.PI;
 
@@ -51,7 +53,7 @@ export function sunPosition(latDeg: number, lonDeg: number, utc: Date): SunAngle
 
 /** World-space unit vector toward the sun (+X east, +Y up, +Z south). */
 export function sunDirectionWorld(azimuthDeg: number, elevationDeg: number): [number, number, number] {
-  const az = azimuthDeg * DEG;
+  const h = bearingToWorldXZ(azimuthDeg);
   const el = elevationDeg * DEG;
-  return [Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)];
+  return [h.x * Math.cos(el), Math.sin(el), h.z * Math.cos(el)];
 }
