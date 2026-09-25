@@ -77,6 +77,12 @@ export function decodeMoment(hash: string): Moment | null {
 
 /** `#m=<link>` or `#ref=<reference-moment-name>`; anything else → null. */
 export function momentFromHash(hash: string): Moment | null {
-  if (hash.startsWith('#ref=')) return findReferenceMoment(decodeURIComponent(hash.slice(5)));
+  if (hash.startsWith('#ref=')) {
+    try {
+      return findReferenceMoment(decodeURIComponent(hash.slice(5)));
+    } catch {
+      return null;
+    }
+  }
   return decodeMoment(hash);
 }

@@ -54,4 +54,8 @@ describe('momentFromHash', () => {
   it('returns null for empty hashes', () => {
     expect(momentFromHash('')).toBeNull();
   });
+  it('returns null on malformed #ref= escapes', () => {
+    expect(momentFromHash('#ref=%')).toBeNull();
+    expect(momentFromHash('#ref=%E0%A4%A')).toBeNull();
+  });
 });
