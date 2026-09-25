@@ -2,6 +2,8 @@ import './style.css';
 import { App } from './app/App';
 import { showOverlay } from './app/overlay';
 import { WEBGPU_HELP, checkWebGpuSupport } from './app/webgpuSupport';
+import { momentFromHash } from './dev/momentLink';
+import { defaultMoment } from './dev/referenceMoments';
 import { createRenderer } from './render/createRenderer';
 
 async function main(): Promise<void> {
@@ -22,7 +24,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  new App(renderer, container).start();
+  new App(renderer, container, momentFromHash(location.hash) ?? defaultMoment()).start();
 }
 
 void main();

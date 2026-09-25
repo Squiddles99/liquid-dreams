@@ -1,25 +1,64 @@
 import * as THREE from 'three/webgpu';
+import { CameraRig } from '../camera/CameraRig';
+import { Input } from '../camera/Input';
+import { cloneConditions } from '../conditions/defaults';
+import type { Conditions } from '../conditions/types';
+import { type Moment, momentFromHash } from '../dev/momentLink';
 import { SimClock, clampFrameDt, viewportSize } from './clock';
 
 export class App {
   readonly scene = new THREE.Scene();
-  readonly camera: THREE.PerspectiveCamera;
   readonly clock = new SimClock();
+  readonly rig = new CameraRig();
+  readonly input: Input;
+  conditions: Conditions;
   private lastMs = performance.now();
+  /** Temporary visual reference until the ocean exists (removed in Task 12). */
+  private readonly devGrid = new THREE.GridHelper(200, 40, 0x88aacc, 0x335577);
 
   constructor(
     private readonly renderer: THREE.WebGPURenderer,
     private readonly container: HTMLElement,
+    initial: Moment,
   ) {
-    this.camera = new THREE.PerspectiveCamera(60, 1, 0.05, 60000);
+    this.input = new Input(renderer.domElement);
     this.scene.background = new THREE.Color(0x0b2a4a);
+    this.scene.add(this.devGrid);
+    this.conditions = cloneConditions(initial.conditions);
+    this.applyMoment(initial);
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('hashchange', this.onHashChange);
     this.onResize();
+  }
+
+  get camera(): THREE.PerspectiveCamera {
+    return this.rig.camera;
   }
 
   start(): void {
     this.renderer.setAnimationLoop(this.frame);
   }
+
+  applyMoment(m: Moment): void {
+    this.conditions = cloneConditions(m.conditions);
+    this.clock.setTime(m.simTime);
+    this.clock.paused = m.paused;
+    this.rig.setPose(m.camera, this.waterHeightAtCamera());
+  }
+
+  currentMoment(): Moment {
+    return { conditions: cloneConditions(this.conditions), camera: this.rig.getPose(), simTime: this.clock.simTime, paused: this.clock.paused };
+  }
+
+  /** Replaced by the GPU height probe in Task 14. */
+  protected waterHeightAtCamera(): number {
+    return 0;
+  }
+
+  private onHashChange = (): void => {
+    const m = momentFromHash(location.hash);
+    if (m) this.applyMoment(m);
+  };
 
   private onResize = (): void => {
     const { width, height } = viewportSize(this.container.clientWidth, this.container.clientHeight);
@@ -33,6 +72,7 @@ export class App {
     const realDt = clampFrameDt((now - this.lastMs) / 1000);
     this.lastMs = now;
     this.clock.tick(realDt);
+    this.rig.update(realDt, this.input, this.waterHeightAtCamera());
     this.renderer.render(this.scene, this.camera);
   };
 }
