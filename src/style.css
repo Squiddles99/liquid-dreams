@@ -1,0 +1,12 @@
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: system-ui, sans-serif; }
+#app { width: 100vw; height: 100vh; }
+#app canvas { display: block; }
+.overlay {
+  position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 24px; background: rgba(4, 18, 32, 0.92); color: #e8f1f8; text-align: center; z-index: 10;
+}
+.overlay h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.overlay p { margin: 0; max-width: 640px; line-height: 1.5; white-space: pre-line; }
+.overlay button { padding: 8px 16px; border-radius: 6px; border: 1px solid #7fb3d5; background: transparent; color: inherit; cursor: pointer; }
+.banner { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 8px 14px; border-radius: 6px;
+  background: rgba(120, 60, 0, 0.9); color: #fff; font-size: 13px; z-index: 9; max-width: 80vw; }
