@@ -56,6 +56,7 @@ Liquid Dreams is a personal passion project: a surfing game made together for th
 - The lip throws and turns brilliant **turquoise**: clear water lit from behind, becoming milky turquoise where air mixes in.
 - **Morning is the heart of it (Andrew's fondest memories).** From early to late morning the sun rises and climbs behind the dunes while the easterly offshore wind grooms the lineup and blows spray back off the lip, lit gold against a deep-blue sea. On the best days the Fremantle Doctor (the SW sea breeze) arrives late, and the session stretches on.
 - **Afternoon and sunset** are secondary moods: once the Doctor is in, the surface gets choppier; the sun sinks into the Indian Ocean behind the waves, under big cumulus clouds with orange-lit undersides.
+- **Autumn glass-offs** (rare and treasured): days with no wind at all, all day long. The ocean turns to glass, the swell lines arrive as smooth, mirror-like corduroy reflecting the sky, and the session never has to end.
 - **Overcast days** mute everything to green-grey, a valid mood of their own.
 - Inside the barrel: a backlit, glowing lip; a rippled texture running up the inner wall; foam chunks sliding up the face; the tube opening framing the dunes behind a haze of sea spray.
 - **The land:** a long straight sandy beach, high dunes, and low coastal heath (silver-grey daisy-bush, succulent pigface turning orange at the tips, pink rice-flower) over sandy limestone soil. Rust-brown rocks at the waterline.
@@ -76,7 +77,7 @@ Each phase ends with something beautiful you can sit in, and each gets its own s
 | 2 | The wave | Swell sets and groups; shoaling and refraction over the reef; breaking onset; the Womb barrel peeling left into the opposing section; surfer-feet dial calibrated; every wave unique; turquoise lip transmission |
 | 3 | Whitewater | Lip impact, whitewater explosion, spit, offshore spray off the crest, lingering and dissolving foam |
 | 4 | Sound | Spatial audio: thunder-clap impacts, whitewater roar and hiss, wind in the scrub, water lapping close by |
-| 5 | Life & conditions | Day rhythm (glassy mornings, easterly offshores, then the SW sea breeze, the "Fremantle Doctor", whose arrival time varies from day to day; on the best days it comes in late); clouds and overcast moods; dolphins, whales, seabirds |
+| 5 | Life & conditions | Day rhythm (glassy mornings, easterly offshores, then the SW sea breeze, the "Fremantle Doctor", whose arrival time varies from day to day; on the best days it comes in late); rare autumn glass-off days with no wind at all; clouds and overcast moods; dolphins, whales, seabirds |
 
 ---
 
@@ -255,7 +256,7 @@ Unit tests sit beside the code they test (`*.test.ts`).
 
 **Automated (Vitest), for pure logic:**
 - `sunPosition` against NOAA reference values for The Womb's coordinates (sunrise/sunset times and noon elevation on several dates, within tolerance).
-- Spectrum maths: the deep-water dispersion relation; the JONSWAP peak at the expected frequency; Hs normalisation (the integrated spectrum reproduces the requested Hs within tolerance); directional spreading integrates to 1.
+- Spectrum maths: the deep-water dispersion relation; zero wind produces a valid (finite, non-NaN) swell-only spectrum; the JONSWAP peak at the expected frequency; Hs normalisation (the integrated spectrum reproduces the requested Hs within tolerance); directional spreading integrates to 1.
 - `Conditions`: defaults are valid; the surfer-feet conversion; the seeded RNG is deterministic.
 - Moment link: the encode/decode round trip is lossless; malformed input is rejected safely.
 - Coordinate conventions: compass direction to world vector (for example "from 225°" yields travel toward the NE, i.e. +X and -Z).
@@ -269,6 +270,7 @@ Unit tests sit beside the code they test (`*.test.ts`).
 | `morning-offshore` (default) | 08:15, light E wind, facing west | Low sun behind the camera, clear deep-blue water, groomed surface |
 | `late-morning` | 10:30, light E wind, facing west | Higher sun, water clarity, colour holding up before the Doctor |
 | `noon-deep-blue` | 12:30, looking down at about 45° | Body colour and clarity, small glitter |
+| `autumn-glass` | 2026-04-20, 09:30, wind 0 m/s, facing west | Mirror-smooth swell lines, crisp sky reflection, tight sun highlight, no whitecaps |
 | `golden-hour` | 16:50, 6 m/s SW wind, facing the sun | Glitter path, crest transmission, choppier post-Doctor surface, haze on the horizon |
 | `sunset` | 17:25, facing the sun | Sky colour, exposure, horizon |
 | `overview` | Free camera 40m up, noon | No tiling, LOD transitions, horizon curvature |
