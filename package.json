@@ -1,0 +1,26 @@
+{
+  "name": "liquid-dreams",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "stats-gl": "4.2.3",
+    "three": "0.186.1",
+    "tweakpane": "4.0.5"
+  },
+  "devDependencies": {
+    "@tweakpane/core": "2.0.5",
+    "@types/three": "0.186.0",
+    "@webgpu/types": "0.1.74",
+    "typescript": "7.0.2",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
+  }
+}
