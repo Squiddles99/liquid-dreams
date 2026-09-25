@@ -11,3 +11,6 @@ reference/
 .DS_Store
 Thumbs.db
 .env*
+
+# Browser-automation scratch output
+.playwright-mcp/
