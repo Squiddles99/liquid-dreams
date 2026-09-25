@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Liquid Dreams concept</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: grab; }
+  #tag { position: fixed; left: 14px; bottom: 12px; color: rgba(255,255,255,.75); font: 12px system-ui, sans-serif; letter-spacing: .04em; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="tag"></div>
+<script>
+// Throwaway concept mockup for Liquid Dreams Phase 0: a single fragment shader, not the real engine.
+const params = new URLSearchParams(location.search);
+const VIEWS = {
+  // 08:15 AWST, 15 July: sun az 56.7°, el 8.5° (NE, over the land); looking out to sea (west).
+  morning: { label: 'The Womb lineup · 08:15 winter morning · 4ft SW groundswell · light easterly', sunAz: 56.7, sunEl: 8.5, yaw: 262, pitch: -1.0, wind: 0.6, exposure: 0.55 },
+  // 16:50 AWST: sun az 301°, el 6.3°, Doctor in; looking into the sun.
+  golden: { label: 'The Womb lineup · 16:50 · looking into the sun · the Doctor is in', sunAz: 301, sunEl: 6.3, yaw: 298, pitch: 1.2, wind: 1.6, exposure: 0.42 },
+  // Autumn glass-off: 20 April 09:30, sun az 49°, el 29°, no wind.
+  glass: { label: 'Autumn glass-off · 09:30 · no wind at all', sunAz: 49.2, sunEl: 29.4, yaw: 225, pitch: -1.5, wind: 0.1, exposure: 0.45 },
+};
+let view = VIEWS[params.get('view')] ?? VIEWS.morning;
+let yaw = view.yaw, pitch = view.pitch;
+const DEG = Math.PI / 180;
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+
+const vs = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID<<1)&2, gl_VertexID&2); gl_Position = vec4(p*2.-1., 0., 1.); }`;
+
+const fs = `#version 300 es
+precision highp float;
+uniform vec2 uRes; uniform float uTime; uniform vec3 uSun; uniform float uYaw; uniform float uPitch;
+uniform float uWind; uniform float uExposure;
+out vec4 frag;
+const float PI = 3.14159265;
+const float RG = 6360e3, RT = 6420e3, EARTH = 6.371e6;
+const vec3 BETA_R = vec3(5.8e-6, 13.5e-6, 33.1e-6);
+const float BETA_M = 8.9e-6; // hazy coastal aerosol
+const float HR = 8000., HM = 1200.;
+const float SUN_I = 20.;
+
+vec2 sphere(vec3 ro, vec3 rd, float r){ float b = dot(ro, rd), c = dot(ro, ro) - r*r, d = b*b - c; if (d < 0.) return vec2(-1.); d = sqrt(d); return vec2(-b - d, -b + d); }
+
+const vec3 BETA_O = vec3(0.65e-6, 1.881e-6, 0.085e-6);
+float ozone(float h){ return max(0., 1. - abs(h - 25000.)/15000.); }
+
+vec3 sunTransmittance(vec3 ro){
+  float t = sphere(ro, uSun, RT).y, s = t / 12., r = 0., m = 0., o = 0.;
+  for (int j = 0; j < 12; j++){ vec3 q = ro + uSun*(s*(float(j)+.5)); float h = length(q) - RG; if (h < 0.) return vec3(0.); r += exp(-h/HR)*s; m += exp(-h/HM)*s; o += ozone(h)*s; }
+  return exp(-(BETA_R*r + BETA_M*1.1*m + BETA_O*o));
+}
+
+vec3 sky(vec3 rd){
+  rd = normalize(vec3(rd.x, max(rd.y, .0005), rd.z)); // the sea covers everything below the horizon
+  vec3 ro = vec3(0., RG + 2., 0.);
+  float tMax = sphere(ro, rd, RT).y;
+  vec2 g = sphere(ro, rd, RG); if (g.x > 0.) tMax = g.x;
+  const int N = 24; float odR = 0., odM = 0., odO = 0.; vec3 sR = vec3(0.), sM = vec3(0.);
+  float mu = dot(rd, uSun), gg = .78;
+  float phR = 3./(16.*PI)*(1. + mu*mu);
+  float phM = 3./(8.*PI)*((1. - gg*gg)*(1. + mu*mu))/((2. + gg*gg)*pow(1. + gg*gg - 2.*gg*mu, 1.5));
+  for (int i = 0; i < N; i++){
+    // quadratic sample spacing: dense near the eye, where the air is thickest along horizontal rays
+    float x = (float(i) + .5)/float(N);
+    float tt = tMax*x*x, seg = tMax*2.*x/float(N);
+    vec3 p = ro + rd*tt; float h = max(length(p) - RG, 0.);
+    float hr = exp(-h/HR)*seg, hm = exp(-h/HM)*seg; odR += hr; odM += hm; odO += ozone(h)*seg;
+    float tl = sphere(p, uSun, RT).y, sl = tl/8., lR = 0., lM = 0., lO = 0.; bool lit = true;
+    for (int j = 0; j < 8; j++){ vec3 q = p + uSun*(sl*(float(j)+.5)); float hl = length(q) - RG; if (hl < 0.) { lit = false; break; } lR += exp(-hl/HR)*sl; lM += exp(-hl/HM)*sl; lO += ozone(hl)*sl; }
+    if (lit){ vec3 att = exp(-(BETA_R*(odR + lR) + BETA_M*1.1*(odM + lM) + BETA_O*(odO + lO))); sR += att*hr; sM += att*hm; }
+  }
+  return SUN_I*(sR*BETA_R*phR + sM*BETA_M*phM) + vec3(.0006, .0009, .0016);
+}
+
+float hash(float n){ return fract(sin(n*127.1)*43758.5453); }
+
+// Long SW groundswell (travels NE) as a small group of components: their beating makes sets and lulls.
+float swell(vec2 p, float t){
+  vec2 dir0 = normalize(vec2(.7071, -.7071));
+  float h = 0.;
+  float amp[5] = float[5](.30, .24, .17, .12, .09);
+  float lam[5] = float[5](351., 318., 390., 280., 430.);
+  float ang[5] = float[5](0., .07, -.06, .12, -.10);
+  for (int i = 0; i < 5; i++){
+    float a = ang[i]; vec2 d = mat2(cos(a), -sin(a), sin(a), cos(a))*dir0;
+    float k = 2.*PI/lam[i], w = sqrt(9.81*k);
+    float s = sin(dot(d, p)*k - w*t + float(i)*1.7);
+    h += amp[i]*(s + .18*s*s*sign(s)); // slightly peaked crests
+  }
+  return h;
+}
+
+// Wind chop: short waves spread around the wind's travel direction; faded with distance.
+float chop(vec2 p, float t, float fade){
+  if (fade < .01 || uWind < .01) return 0.;
+  vec2 windDir = normalize(vec2(-.98, -.17)); // easterly offshore blows out to sea
+  float h = 0.;
+  for (int i = 0; i < 14; i++){
+    float fi = float(i);
+    float lam = 9.*pow(.78, fi);
+    float a = (hash(fi) - .5)*1.6; vec2 d = mat2(cos(a), -sin(a), sin(a), cos(a))*windDir;
+    float k = 2.*PI/lam, w = sqrt(9.81*k);
+    h += lam*.011*sin(dot(d, p)*k - w*t + hash(fi + 9.)*6.28);
+  }
+  return h*uWind*fade;
+}
+
+float height(vec2 p, float t, float dist){ return swell(p, t) + chop(p, t, exp(-dist/220.)); }
+
+float mapSea(vec3 p, vec3 cam, float t){
+  vec2 d = p.xz - cam.xz; float dist = length(d);
+  return p.y + dot(d, d)/(2.*EARTH) - height(p.xz, t, dist);
+}
+
+bool trace(vec3 ro, vec3 rd, float t, out float hitT){
+  float tm = 0., tx = 40000.;
+  float hx = mapSea(ro + rd*tx, ro, t);
+  if (hx > 0.) return false; // grazes past the curved horizon: sky
+  float hm = mapSea(ro, ro, t);
+  float tmid = 0.;
+  for (int i = 0; i < 24; i++){
+    tmid = mix(tm, tx, hm/(hm - hx));
+    float h = mapSea(ro + rd*tmid, ro, t);
+    if (h < 0.) { tx = tmid; hx = h; } else { tm = tmid; hm = h; }
+    if (abs(h) < .002) break;
+  }
+  hitT = tmid; return true;
+}
+
+vec3 seaNormal(vec3 p, float t, float dist){
+  float e = max(.02, dist*.0015);
+  float h = height(p.xz, t, dist);
+  return normalize(vec3(h - height(p.xz + vec2(e, 0.), t, dist), e, h - height(p.xz + vec2(0., e), t, dist)));
+}
+
+vec3 aces(vec3 x){ return clamp((x*(2.51*x + .03))/(x*(2.43*x + .59) + .14), 0., 1.); }
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy - .5*uRes)/uRes.y;
+  float t = uTime;
+  vec3 cam = vec3(-15., 0., 0.);
+  cam.y = swell(cam.xz, t) + .85; // sitting on the board, riding the swell
+  float yaw = uYaw, pitch = uPitch;
+  vec3 fwd = normalize(vec3(sin(yaw)*cos(pitch), sin(pitch), -cos(yaw)*cos(pitch)));
+  vec3 right = normalize(cross(fwd, vec3(0., 1., 0.)));
+  vec3 up = cross(right, fwd);
+  vec3 rd = normalize(fwd + (uv.x*right + uv.y*up)*1.15);
+
+  vec3 sunLight = sunTransmittance(vec3(0., RG + 2., 0.))*SUN_I;
+  vec3 col;
+  float hitT;
+  if (rd.y < .08 && trace(cam, rd, t, hitT)){
+    vec3 p = cam + rd*hitT;
+    vec3 n = seaNormal(p, t, hitT);
+    vec3 v = -rd;
+    float nv = max(dot(n, v), 1e-3);
+    float F = .02 + .98*pow(1. - nv, 5.);
+    vec3 r = reflect(rd, n); r.y = max(r.y, .01); r = normalize(r);
+    vec3 refl = sky(r);
+    vec3 skyIrr = sky(normalize(vec3(.2, 1., .1)))*2.4;
+    // sun glitter (GGX), roughness widening with distance
+    vec3 hv = normalize(uSun + v);
+    float a2 = max(.0015 + uWind*.007 + hitT*.00002, .0012);
+    float nh = max(dot(n, hv), 0.), dd = nh*nh*(a2 - 1.) + 1.;
+    float ggx = a2/(PI*dd*dd);
+    vec3 spec = min(sunLight*ggx*(.02 + .98*pow(1. - max(dot(v, hv), 0.), 5.))/(4.*nv)*step(0., dot(n, uSun)), vec3(4000.));
+    vec3 albedo = vec3(.0009, .0141, .107);
+    vec3 body = albedo*(skyIrr + sunLight*max(uSun.y, 0.))/PI*1.6;
+    float crest = clamp((p.y - cam.y + .85 - .45)/.5, 0., 1.)*clamp(1. - hitT/400., 0., 1.);
+    vec3 trans = vec3(.41, .87, .96)*sunLight*pow(clamp(dot(rd, uSun), 0., 1.), 8.)*crest*.3/PI;
+    col = (body + trans)*(1. - F) + refl*F + spec;
+    // sea-level aerial perspective
+    vec3 ext = BETA_R*1000. + BETA_M*1000.;
+    vec3 T = exp(-ext*hitT/1000.);
+    col = col*T + sky(normalize(vec3(rd.x, .004, rd.z)))*(1. - T);
+  } else {
+    col = sky(rd);
+    float cs = dot(rd, uSun), r0 = .0047;
+    float ang = acos(clamp(cs, -1., 1.));
+    float disk = 1. - smoothstep(r0*.9, r0*1.1, ang);
+    col += sunLight*disk*2500.*(1. - .6*(1. - sqrt(max(0., 1. - pow(ang/r0, 2.)))));
+  }
+  col *= uExposure;
+  col = aces(col);
+  col = pow(col, vec3(1./2.2));
+  // soft vignette
+  vec2 q = gl_FragCoord.xy/uRes; col *= .82 + .18*pow(16.*q.x*q.y*(1. - q.x)*(1. - q.y), .25);
+  frag = vec4(col, 1.);
+}`;
+
+function shader(type, src){ const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { throw new Error(gl.getShaderInfoLog(s)); } return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, shader(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const U = n => gl.getUniformLocation(prog, n);
+const scale = Math.min(1, Number(params.get('scale') ?? 0.75));
+
+function resize(){
+  canvas.width = Math.floor(innerWidth*devicePixelRatio*scale);
+  canvas.height = Math.floor(innerHeight*devicePixelRatio*scale);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+addEventListener('resize', resize); resize();
+
+let drag = null;
+canvas.addEventListener('mousedown', e => { drag = { x: e.clientX, y: e.clientY, yaw, pitch }; canvas.style.cursor = 'grabbing'; });
+addEventListener('mouseup', () => { drag = null; canvas.style.cursor = 'grab'; });
+addEventListener('mousemove', e => { if (!drag) return; yaw = drag.yaw - (e.clientX - drag.x)*.12; pitch = Math.max(-40, Math.min(40, drag.pitch + (e.clientY - drag.y)*.08)); });
+addEventListener('keydown', e => { const v = { '1': 'morning', '2': 'golden', '3': 'glass' }[e.key]; if (v) { view = VIEWS[v]; yaw = view.yaw; pitch = view.pitch; } });
+
+const fixedTime = params.has('t') ? Number(params.get('t')) : null;
+const start = performance.now();
+function frame(){
+  const t = fixedTime ?? 30 + (performance.now() - start)/1000;
+  const az = view.sunAz*DEG, el = view.sunEl*DEG;
+  gl.uniform2f(U('uRes'), canvas.width, canvas.height);
+  gl.uniform1f(U('uTime'), t);
+  gl.uniform3f(U('uSun'), Math.sin(az)*Math.cos(el), Math.sin(el), -Math.cos(az)*Math.cos(el));
+  gl.uniform1f(U('uYaw'), yaw*DEG);
+  gl.uniform1f(U('uPitch'), pitch*DEG);
+  gl.uniform1f(U('uWind'), view.wind);
+  gl.uniform1f(U('uExposure'), view.exposure*Math.pow(2, Number(params.get('ev') ?? 0)));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  if (params.has('clean')) document.getElementById('tag').style.display = 'none';
+  document.getElementById('tag').textContent = `LIQUID DREAMS · concept mockup · ${view.label} · drag to look, 1/2/3 to switch`;
+  if (fixedTime === null) requestAnimationFrame(frame); else document.title = 'rendered';
+}
+frame();
+</script>
+</body>
+</html>
