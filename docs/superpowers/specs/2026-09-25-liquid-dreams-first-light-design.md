@@ -162,9 +162,9 @@ interface Conditions {
 ### 5.3 Sun and sky
 
 - **Solar position:** a pure function `sunPosition(latDeg, lonDeg, utcDate) → { azimuthDeg, elevationDeg }` using the NOAA solar position algorithm. Converted to a world-space direction using the axis conventions above.
-- **Atmosphere:** a physically based sky using the precomputed lookup-table approach (transmittance, multiple scattering, sky-view and aerial-perspective tables, after Hillaire 2020), computed on the GPU and refreshed when the sun moves. Rayleigh plus Mie scattering, with Mie (aerosol) settings raised slightly to give the **coastal sea haze** seen in the reference frames. The sun disk has limb darkening. Below the horizon the sky transitions through twilight to night; a dark night sky is acceptable (stars are out of scope).
-- **Environment lighting:** a sky environment map (for reflections) and a low-resolution irradiance term, regenerated when the sun direction changes by more than 0.25°.
-- **Aerial perspective:** distant ocean fades into the atmosphere's in-scattered light, so the horizon sits naturally in the haze.
+- **Atmosphere:** a physically based sky using the precomputed lookup-table approach (transmittance, multiple-scattering and sky-view tables, after Hillaire 2020), computed on the GPU and refreshed when the sun moves. Rayleigh plus Mie scattering, with Mie (aerosol) settings raised slightly to give the **coastal sea haze** seen in the reference frames. The sun disk has limb darkening. Below the horizon the sky transitions through twilight to night; a dark night sky is acceptable (stars are out of scope).
+- **Environment lighting:** reflections sample the sky-view table directly along the reflected ray (no cubemap needed). A small GPU pass integrates that table into a sky irradiance term and computes the sun's illuminance at the surface. Both are regenerated when the sun direction changes by more than 0.25°.
+- **Aerial perspective:** distant ocean fades into the atmosphere's in-scattered light, so the horizon sits naturally in the haze. Everything in the scene is within about 20m of sea level, so this uses a sea-level approximation (transmittance `exp(−σₜ(0)·d)`, with the horizon sky radiance as in-scatter) instead of a 3D table.
 - **Clouds:** out of scope until Phase 5.
 
 ### 5.4 The ocean surface
@@ -174,7 +174,7 @@ interface Conditions {
   - **Wind sea:** JONSWAP, driven by `wind.speedMs` and a fixed fetch, spread around the downwind direction.
   - **Groundswell:** a narrow-band JONSWAP (high peak enhancement) at `swell.periodS`, scaled to `Hs` from `swell.sizeFt`, with tight directional spreading around `swell.directionDeg`.
 - Spectrum maths (dispersion relation, JONSWAP, directional spreading, Hs normalisation) lives in pure TypeScript so it can be unit tested; the initial spectrum is generated from the seeded RNG.
-- **Cascades:** three FFT cascades at 256×256 with patch sizes around **600m / 90m / 14m** (tunable), blended so no tiling is visible.
+- **Cascades:** three FFT cascades at 256×256 with patch sizes of **3000m / 250m / 35m** (tunable), splitting wavenumber space into contiguous bands so no energy is counted twice and no tiling is visible. The largest patch must span many wavelengths of the ~350m, 15s groundswell to resolve its peak and direction. Each spectrum component is renormalised so the discrete grids reproduce its requested Hs exactly.
 - **Geometry:** a camera-centred, concentric level-of-detail grid that displaces vertices from the cascades. The grid extends to the horizon, and beyond about 3km only normals are applied. Earth curvature drop (`y -= d² / 2R`) is applied so the horizon sits at a physically sensible distance for the eye height.
 - **Height readback:** a small compute pass samples the displacement at the lineup camera's position each frame into a storage buffer, which is read back asynchronously (1–3 frames of latency, then smoothed). The last good value is held if a readback is late.
 
@@ -212,6 +212,8 @@ interface Conditions {
 - **Moment link:** a URL hash encoding a schema version, `Conditions`, camera mode and pose, and simulation time. Opening the link restores that exact moment. A hotkey (`L`) copies the current moment link to the clipboard.
 - **Pause:** `P` freezes simulation time (the camera can still move), so a moment can be inspected closely.
 - **Screenshot:** `K` saves a PNG of the current frame.
+- **Dev UI toggle:** `H` hides or shows the panel and performance readout (for clean screenshots).
+- **Reference links:** `#ref=<name>` opens a named reference moment; `?selftest` runs the GPU self-tests instead of the app.
 
 ### 5.9 Tech stack and project layout
 
