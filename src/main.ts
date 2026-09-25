@@ -24,6 +24,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (new URLSearchParams(location.search).has('selftest')) {
+    const { runSelfTests, renderSelfTestReport } = await import('./dev/selfTests');
+    renderSelfTestReport(await runSelfTests(renderer));
+    return;
+  }
+
   new App(renderer, container, momentFromHash(location.hash) ?? defaultMoment()).start();
 }
 
