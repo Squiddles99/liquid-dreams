@@ -26,6 +26,8 @@ export class CameraRig {
   setPose(p: CameraPose, waterHeight = 0): void {
     this.mode = p.mode;
     const look = { yawDeg: p.yawDeg, pitchDeg: p.pitchDeg };
+    // The lineup camera floats: its height always comes from the water surface plus the eye height,
+    // never from a saved pose, so p.position[1] is informational only and intentionally ignored here.
     if (p.mode === 'lineup') this.lineup = initialLineupState(p.position[0], p.position[2], look, waterHeight);
     else this.free = { ...this.free, position: [...p.position], look };
     this.apply();
