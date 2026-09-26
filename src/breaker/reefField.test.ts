@@ -3,6 +3,7 @@ import { type Bathymetry, buildBathymetry, downsample } from '../seabed/bathymet
 import { depthBg } from '../seabed/coastProfile';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
+import type { FieldSample } from './fieldSample';
 import { computeReefField, sampleField } from './reefField';
 
 const reef05 = buildBathymetry();
@@ -70,6 +71,26 @@ describe('reef wave field', () => {
     for (const tideM of [-1.5, 1.5]) for (const periodS of [4, 25]) {
       const f = computeReefField({ bed: reef2, periodS, fromDeg: 225, tideM });
       for (const a of [f.tau, f.amp, f.hmin, f.k]) expect(allFinite(a)).toBe(true);
+    }
+  });
+  it('the field joins the outside smoothly at every edge (real reef)', () => {
+    for (const f of [f225, computeReefField({ bed: reef2, periodS: 15, fromDeg: 205, tideM: 0 })]) {
+      const g = f.grid;
+      const x0 = g.x0, z0 = g.z0, x1 = g.x0 + (g.nx - 1) * g.cellM, z1 = g.z0 + (g.nz - 1) * g.cellM;
+      const check = (a: FieldSample, b: FieldSample, dx: number, dz: number) => {
+        const predicted = a.tau + (a.k / f.omega) * (a.dirX * dx + a.dirZ * dz);
+        expect(Math.abs(b.tau - predicted)).toBeLessThan(0.05);
+        expect(Math.abs(b.amp - a.amp)).toBeLessThan(0.1 * a.amp + 0.02);
+        expect(a.dirX * b.dirX + a.dirZ * b.dirZ).toBeGreaterThan(0.97);
+      };
+      for (let x = x0; x <= x1 + 1e-9; x += 25) {
+        check(sampleField(f, x, z0 + 0.5), sampleField(f, x, z0 - 0.5), 0, -1);
+        check(sampleField(f, x, z1 - 0.5), sampleField(f, x, z1 + 0.5), 0, 1);
+      }
+      for (let z = z0; z <= z1 + 1e-9; z += 25) {
+        check(sampleField(f, x0 + 0.5, z), sampleField(f, x0 - 0.5, z), -1, 0);
+        check(sampleField(f, x1 - 0.5, z), sampleField(f, x1 + 0.5, z), 1, 0);
+      }
     }
   });
 });
