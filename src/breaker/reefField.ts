@@ -88,17 +88,38 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
     const i = order[o];
     const col = i % nx, row = (i - col) / nx;
     let wx = 0, wz = 0, fx = 0, fz = 0, hx = 0, hz = 0;
+    let xDone = false, zDone = false;
     if (!fixed[i]) {
       const ux = dirX[i] > 0 ? col - 1 : col + 1;
       const uz = dirZ[i] > 0 ? row - 1 : row + 1;
-      if (ux >= 0 && ux < nx && done[row * nx + ux]) { const j = row * nx + ux; wx = Math.abs(dirX[j]); fx = flux[j]; hx = hmin[j]; }
-      if (uz >= 0 && uz < nz && done[uz * nx + col]) { const j = uz * nx + col; wz = Math.abs(dirZ[j]); fz = flux[j]; hz = hmin[j]; }
+      // Weight is only the part of the neighbour's direction that actually points into this cell (matching sign
+      // against this cell's own direction) — a neighbour whose ray has turned away contributes nothing.
+      if (ux >= 0 && ux < nx && done[row * nx + ux]) {
+        const j = row * nx + ux;
+        wx = Math.max(0, Math.sign(dirX[i]) * dirX[j]); fx = flux[j]; hx = hmin[j]; xDone = true;
+      }
+      if (uz >= 0 && uz < nz && done[uz * nx + col]) {
+        const j = uz * nx + col;
+        wz = Math.max(0, Math.sign(dirZ[i]) * dirZ[j]); fz = flux[j]; hz = hmin[j]; zDone = true;
+      }
     }
     const denom = Math.abs(dirX[i]) + Math.abs(dirZ[i]);
-    if (fixed[i] || wx + wz < 1e-9 || denom < 1e-9) {
+    if (fixed[i] || denom < 1e-9) {
       const f = farAt(col, row);
       flux[i] = f.amp * f.amp * cg[i];
       hmin[i] = Math.min(depth[i], f.hmin);
+    } else if (wx + wz < 1e-9) {
+      if (xDone || zDone) {
+        // Both upwind neighbours' weights vanished (e.g. a direction reversal at a shadow/caustic edge), but we do
+        // have real upwind information here — use its plain mean rather than reverting to the far field.
+        const count = (xDone ? 1 : 0) + (zDone ? 1 : 0);
+        flux[i] = ((xDone ? fx : 0) + (zDone ? fz : 0)) / count;
+        hmin[i] = Math.min(depth[i], ((xDone ? hx : 0) + (zDone ? hz : 0)) / count);
+      } else {
+        const f = farAt(col, row);
+        flux[i] = f.amp * f.amp * cg[i];
+        hmin[i] = Math.min(depth[i], f.hmin);
+      }
     } else {
       flux[i] = (wx * fx + wz * fz) / denom;
       hmin[i] = Math.min(depth[i], (wx * hx + wz * hz) / (wx + wz));
@@ -123,15 +144,32 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   return { grid, tau: tau32, amp, hmin, k, dirX, dirZ, depth, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
 }
 
-/** Bilinear inside the field grid; the exact coast solution outside it. */
-export function sampleField(f: ReefField, x: number, z: number): FieldSample {
+function sampleInside(f: ReefField, x: number, z: number): FieldSample {
   const g = f.grid;
-  const inside = x >= g.x0 && z >= g.z0 && x <= g.x0 + (g.nx - 1) * g.cellM && z <= g.z0 + (g.nz - 1) * g.cellM;
-  if (!inside) return farSample(f.far, x, z);
   const dirX = bilinear(f.dirX, g, x, z), dirZ = bilinear(f.dirZ, g, x, z);
   const len = Math.hypot(dirX, dirZ) || 1;
   return {
     tau: bilinear(f.tau, g, x, z), amp: bilinear(f.amp, g, x, z), hmin: bilinear(f.hmin, g, x, z),
     k: bilinear(f.k, g, x, z), dirX: dirX / len, dirZ: dirZ / len, depth: bilinear(f.depth, g, x, z),
   };
+}
+
+/**
+ * Bilinear inside the field grid. Outside it: on the inflow side (the wave is entering the map there), the exact
+ * coast solution — seamless by construction, since the map's boundary cells were sourced from it. On the outflow
+ * side, the reef has already shaped the wave (delayed it, grown or shrunk it, cast a shadow); reverting to the
+ * reef-free far field there would erase that shape the instant the wave crosses the edge. Instead we keep the edge
+ * sample and only advance τ along the local ray direction from the edge to the query point, so the reef's delay and
+ * shadow continue past the map.
+ */
+export function sampleField(f: ReefField, x: number, z: number): FieldSample {
+  const g = f.grid;
+  const x1 = g.x0 + (g.nx - 1) * g.cellM, z1 = g.z0 + (g.nz - 1) * g.cellM;
+  const inside = x >= g.x0 && z >= g.z0 && x <= x1 && z <= z1;
+  if (inside) return sampleInside(f, x, z);
+  const xc = Math.min(x1, Math.max(g.x0, x)), zc = Math.min(z1, Math.max(g.z0, z));
+  const far = farSample(f.far, x, z);
+  if (far.dirX * (x - xc) + far.dirZ * (z - zc) <= 0) return far;
+  const e = sampleInside(f, xc, zc);
+  return { ...e, tau: e.tau + (e.k / f.omega) * (e.dirX * (x - xc) + e.dirZ * (z - zc)) };
 }
