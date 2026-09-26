@@ -1,6 +1,6 @@
 import { abs, cos, exp, float, max, min, select, sin, smoothstep, uniform } from 'three/tsl';
 import {
-  type BreakParams, FOAM_LIP_TOLERANCE, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, LIP_BACK_REACH, MIN_STAGE_SPAN, normalizeBreakParams,
+  type BreakParams, FOAM_LIP_TOLERANCE, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, MIN_STAGE_SPAN, normalizeBreakParams,
 } from './breaking';
 
 type N = any;
@@ -14,7 +14,7 @@ type N = any;
 export function createBreakUniforms(p: BreakParams) {
   const u = {
     enabled: uniform(0), gamma: uniform(0), delta: uniform(0), hFloorM: uniform(0), stageSpan: uniform(1), thetaMax: uniform(0),
-    pivotDrop: uniform(0), pivotAhead: uniform(0), lipZone: uniform(0), troughDrain: uniform(0), beta: uniform(0),
+    pivotDrop: uniform(0), pivotAhead: uniform(0), lipZone: uniform(0), lipBackReach: uniform(0), troughDrain: uniform(0), beta: uniform(0),
     faceWidth: uniform(0), backWidth: uniform(0), drainEnd: uniform(0), steepEnd: uniform(0), curlStart: uniform(0),
     curlEnd: uniform(0), collapseStart: uniform(0),
   };
@@ -34,7 +34,7 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.gamma.value = p.gamma; u.delta.value = p.delta; u.hFloorM.value = p.hFloorM;
   u.stageSpan.value = Math.max(p.stageSpan, MIN_STAGE_SPAN);
   u.thetaMax.value = (p.thetaMaxDeg * Math.PI) / 180;
-  u.pivotDrop.value = p.pivotDrop; u.pivotAhead.value = p.pivotAhead; u.lipZone.value = p.lipZone;
+  u.pivotDrop.value = p.pivotDrop; u.pivotAhead.value = p.pivotAhead; u.lipZone.value = p.lipZone; u.lipBackReach.value = p.lipBackReach;
   u.troughDrain.value = p.troughDrain; u.beta.value = p.beta; u.faceWidth.value = p.faceWidth; u.backWidth.value = p.backWidth;
   u.drainEnd.value = p.drainEnd; u.steepEnd.value = p.steepEnd; u.curlStart.value = p.curlStart; u.curlEnd.value = p.curlEnd;
   u.collapseStart.value = p.collapseStart;
@@ -89,7 +89,7 @@ export function breakPointNode(
   eta = eta.sub(u.troughDrain.mul(u.delta).mul(i.H).mul(drain).mul(drainShape).mul(i.env));
   // lipWeight (both paths: the foam reads it too)
   const fw = u.faceWidth.mul(i.H);
-  const near = float(1.0).sub(smoothstep(fw, fw.mul(2.0), ahead)).mul(float(1.0).sub(smoothstep(0.0, i.H.mul(LIP_BACK_REACH), ahead.negate())));
+  const near = float(1.0).sub(smoothstep(fw, fw.mul(2.0), ahead)).mul(float(1.0).sub(smoothstep(0.0, i.H.mul(u.lipBackReach), ahead.negate())));
   const w = smoothstep(i.etaCrest.sub(u.lipZone.mul(i.H)), i.etaCrest, eta).mul(near);
   const unlanded = curl.mul(w).mul(float(1.0).sub(collapse)); // φ / Θmax
   let du: N = float(0.0), dy: N = float(0.0), lip: N = float(0.0);
