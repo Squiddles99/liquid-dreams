@@ -2,6 +2,16 @@
 
 A surfing game built for the love of it. The first (and only) break is **The Womb**, Ellensbrook, WA.
 
+## Just want to play? (Windows)
+
+1. Get the folder onto your computer. Either use **GitHub Desktop** (File → Clone repository → `Squiddles99/liquid-dreams`), which lets the game update itself; or, on the GitHub page, click **Code → Download ZIP** and unzip it.
+2. Double-click **`Start Liquid Dreams`** in the folder.
+   - The first time, it installs Node.js if needed (Windows asks for permission: click Yes, then double-click Start again) and downloads the game's building blocks (a minute or two).
+   - Your browser opens the game. Use **Chrome or Edge**. On a laptop with two graphics chips, set the browser to "High performance" in Windows Settings → System → Display → Graphics.
+3. Keep the black window open while you play; close it to stop.
+
+## Developers
+
 ```bash
 npm install
 npm run dev        # http://localhost:5173
