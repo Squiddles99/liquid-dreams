@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26
 **Authors:** Andrew Justice & Claude
-**Status:** Draft for review
+**Status:** Phase 1 complete (2026-09-27)
 **Builds on:** `docs/superpowers/specs/2026-09-25-liquid-dreams-first-light-design.md` (the vision and architecture spec; its world conventions, "one source of truth for water height" and deterministic-moments principles apply unchanged)
 
 > **Review note for Andrew:** sections 1–7 were discussed and agreed in conversation. Sections **8 (seeing the reef)** and **9 (dev tools, reference moments)** were drafted while you were away, following the direction we'd agreed — please read those two closely.
