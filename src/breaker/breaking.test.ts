@@ -2,19 +2,23 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingRatio, breakingStage,
-  drainDepth, faceHeight, foamWeight, normalizeBreakParams, stageCurves,
+  FOAM_LIP_TOLERANCE, LIP_BACK_REACH, drainDepth, drainShape, faceHeight, foamWeight, lipWeight, normalizeBreakParams, sharpenDrop, stageCurves,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
 const P = DEFAULT_BREAK_PARAMS;
 type Pt = [number, number];
 
+/** Per point of a section: its foam, its unbroken distance ahead of the crest (m), its phase θ, and how far it is still
+ * turned (φ / Θmax: 0 on the water, up to 1 on the thrown lip). */
+interface PointInfo { foam: number; ahead: number; theta: number; unlanded: number }
+
 /**
  * One wave's cross-section along its travel, built from the Phase 1 formulas (setWaveModel.waveAt with lateral = 1)
  * plus breakPoint at stage s. Returns (along-travel position, height) points from behind the crest to ahead of it,
- * and the index of the crest point (the lip tip once it curls).
+ * the index of the crest point (the lip tip once it curls), and each point's PointInfo.
  */
-function section(s: number, H: number, hmin: number, periodS: number, includeCurl = true, p: BreakParams = P): { pts: Pt[]; tip: number } {
+function section(s: number, H: number, hmin: number, periodS: number, includeCurl = true, p: BreakParams = P): { pts: Pt[]; tip: number; info: PointInfo[] } {
   const omega = (2 * Math.PI) / periodS, k = waveNumber(omega, hmin), c = omega / k;
   const A = H / 2, sigma = Math.max(Math.tanh(k * hmin), 0.05);
   const B = Math.min(0.35, (k * A * (3 - sigma * sigma)) / (4 * sigma ** 3));
@@ -24,6 +28,8 @@ function section(s: number, H: number, hmin: number, periodS: number, includeCur
   const etaCrest = A * (1 + B), uCrest = pitchOf(A) * etaCrest;
   const quarter = Math.PI / (2 * k), dv = quarter / 200;
   const pts: Pt[] = [];
+  const info: PointInfo[] = [];
+  const cv = stageCurves(s, p);
   let tip = 0;
   for (let v0 = -3 * quarter; v0 <= 3 * quarter + 1e-9; v0 += dv) {
     const xi = -v0 / c, theta = omega * xi, env = Math.exp(-((xi / width) ** 2));
@@ -32,8 +38,26 @@ function section(s: number, H: number, hmin: number, periodS: number, includeCur
     const b = breakPoint({ theta, env, uUnbroken: v0 + dh, eta, uCrest, etaCrest, H, k, hmin }, s, p, includeCurl);
     if (Math.abs(v0) < dv / 2) tip = pts.length;
     pts.push([v0 + dh + b.du, b.eta]);
+    // breakPoint's own lip weight for the point (the height it curls from: sharpened and drained, as breakPoint does).
+    const ahead = v0 + dh - uCrest;
+    const sharpened = includeCurl ? eta - sharpenDrop(ahead, eta, etaCrest, H, k, cv.steep, p) : eta;
+    const drained = sharpened - drainDepth(H, cv.drain, p) * drainShape(theta) * env;
+    info.push({ foam: b.foam, ahead, theta, unlanded: cv.curl * lipWeight(ahead, drained, etaCrest, H, p) * (1 - cv.collapse) });
   }
-  return { pts, tip };
+  return { pts, tip, info };
+}
+
+/** For each point, whether the vertical line through it crosses the curve 3 or more times: under the lip, the lip
+ * itself, and the tube's inside (the face and trough the lip overhangs). */
+function inOverhang(pts: Pt[]): boolean[] {
+  return pts.map(([u]) => {
+    let n = 0;
+    for (let j = 0; j + 1 < pts.length; j++) {
+      const [u1] = pts[j], [u2] = pts[j + 1];
+      if (u1 !== u2 && (u1 - u) * (u2 - u) <= 0) n++;
+    }
+    return n >= 3;
+  });
 }
 
 /** True if two non-adjacent segments of the polyline properly cross. */
@@ -134,6 +158,32 @@ describe('breaking shape (sampled cross-sections)', () => {
       expect(range).toBeLessThanOrEqual(Math.min(H, boreHeight(hmin, P)) * (1 + P.troughDrain * P.delta));
     }
   });
+  it('no foam on the curled lip (top or underside) or inside the tube; foam behind the crest once collapsed', { timeout: 60_000 }, () => {
+    for (const [H, hmin, T] of CASES) {
+      const label = `H ${H} hmin ${hmin} T ${T}`;
+      // Until the lip lands (s ≤ 0.8), nothing at all: the curled lip at s = 0.6 included.
+      for (const s of STAGES.filter((x) => x <= 0.8)) for (const q of section(s, H, hmin, T).info) expect(q.foam, `${label} s ${s}`).toBe(0);
+      // Landing and unrolling (the tube still there): none on any point still turned, none in the overhang (the lip, its
+      // underside and the tube's inside) and none ahead of the crest.
+      for (const s of [0.83, 0.85, 0.88, 0.9]) {
+        const { pts, info } = section(s, H, hmin, T);
+        const over = inOverhang(pts);
+        info.forEach((q, i) => {
+          if (q.unlanded >= FOAM_LIP_TOLERANCE || over[i] || q.ahead >= 0) expect(q.foam, `${label} s ${s} point ${i}`).toBe(0);
+        });
+        expect(Math.max(...info.map((q) => q.foam)), `${label} s ${s}: foam has begun behind the crest`).toBeGreaterThan(0);
+      }
+      // Collapsed: white from the crest back over the bore (within the envelope), clear half a wavelength behind.
+      const done = section(1, H, hmin, T).info;
+      for (const q of done.filter((x) => x.theta >= 0 && x.theta <= Math.PI / 2 && x.ahead <= 0)) expect(q.foam, label).toBeGreaterThan(0.5);
+      for (const q of done.filter((x) => x.theta >= Math.PI)) expect(q.foam, label).toBe(0);
+    }
+  });
+  it("the lip is the crest's front: points more than LIP_BACK_REACH·H behind the crest never turn", () => {
+    for (const [H, hmin, T] of CASES) for (const s of [0.45, 0.6, 0.75]) {
+      for (const q of section(s, H, hmin, T).info) if (q.ahead <= -LIP_BACK_REACH * H) expect(q.unlanded).toBe(0);
+    }
+  });
   it('the probe variant (no curl) stays single-valued at every stage', () => {
     for (const [H, hmin, T] of CASES) for (const s of STAGES) expect(overhang(section(s, H, hmin, T, false).pts)).toBe(0);
   });
@@ -151,11 +201,16 @@ describe('drain, bore, foam and face height', () => {
     expect(boreScale(3, 4, 0, P)).toBe(1);
     expect(boreScale(3, -1, 1, P)).toBe(0);
   });
-  it('foam rises with the collapse, at and behind the crest, not far ahead of it', () => {
-    expect(foamWeight(0.5, 0, 1)).toBe(0);
-    expect(foamWeight(0.5, 1, 1)).toBe(1);
-    expect(foamWeight(-1, 1, 1)).toBe(0);
-    expect(foamWeight(4, 1, 1)).toBe(0);
+  it('foam waits for the lip to land, then covers the collapsed crest and trails behind it, not far ahead', () => {
+    const H = 3;
+    const at = (s: number, theta: number, ahead: number, w = 0) => foamWeight(theta, ahead, H, 1, w, stageCurves(s, P), P);
+    for (const s of [0, 0.3, 0.6, 0.75, 0.8]) expect(at(s, 0.5, -2)).toBe(0); // the lip is still in the air or landing
+    expect(at(1, 0.5, -2)).toBe(1); // collapsed, behind the crest
+    expect(at(1, 0, 0)).toBe(1); // collapsed, at the crest
+    expect(at(1, -0.1, P.faceWidth * H)).toBe(0); // down the bore's face, past its front edge
+    expect(at(1, 4, -40)).toBe(0); // more than half a wavelength behind
+    expect(at(0.88, -0.02, 0.3)).toBe(0); // the tube still open: nothing ahead of the crest (the tube's inside)
+    expect(at(0.88, 0.2, -2, 1)).toBe(0); // the curled lip itself
   });
   it('face height is H unbroken and H·(1 + troughDrain·δ) once drained', () => {
     expect(faceHeight(3, 0, P)).toBe(3);
