@@ -7,19 +7,46 @@ cd /d "%~dp0"
 where node >nul 2>nul
 if errorlevel 1 (
   echo Liquid Dreams needs Node.js, a free program that runs the game on your computer.
+  where winget >nul 2>nul
+  if errorlevel 1 (
+    echo This computer doesn't have winget, the tool this installer needs.
+    echo Please install Node.js yourself: go to https://nodejs.org, download the LTS installer, and run it.
+    pause
+    exit /b 1
+  )
   echo Installing it now. Windows may ask for permission: click Yes.
   echo.
   winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements
   echo.
-  echo Node.js is installed. Please double-click "Start Liquid Dreams" again.
+  rem Windows needs a new window to pick up the updated PATH, so this window won't see "node" yet even on
+  rem success: check the LTS installer's default location too before concluding the install failed.
+  set "NODE_NOW_INSTALLED="
+  where node >nul 2>nul && set "NODE_NOW_INSTALLED=1"
+  if exist "%ProgramFiles%\nodejs\node.exe" set "NODE_NOW_INSTALLED=1"
+  if defined NODE_NOW_INSTALLED (
+    echo Node.js is installed. Please double-click "Start Liquid Dreams" again.
+    pause
+    exit /b 0
+  )
+  echo Installing Node.js didn't work, or the install was declined.
+  echo Please install it yourself: go to https://nodejs.org, download the LTS installer, and run it.
   pause
-  exit /b
+  exit /b 1
+)
+
+rem Vite needs Node 20.19+ (see node_modules/vite's package.json "engines" after npm install).
+node -e "const [maj,min]=process.versions.node.split('.').map(Number);process.exit((maj<20||(maj===20&&min<19))?1:0)"
+if errorlevel 1 (
+  echo Your Node.js is too old; install the LTS version from https://nodejs.org
+  pause
+  exit /b 1
 )
 
 if exist ".git" (
   where git >nul 2>nul && (
     echo Checking for updates...
     git pull --ff-only
+    if errorlevel 1 echo Couldn't download the latest update ^(the game will start with the version you have^). If this keeps happening, ask Andrew.
   )
 )
 
