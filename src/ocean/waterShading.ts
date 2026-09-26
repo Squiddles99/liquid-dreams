@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, dot, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
+import { Fn, If, PI, dot, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
 import { extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
 import { type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
@@ -97,8 +97,8 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL))).mul(u.foamAlbedo).div(PI);
   const colour = mix(water, foamLight, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
-  // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN, and
-  // NaN × a 0 switch is still NaN, so the edge is floored and a flat field draws no line.
+  // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
+  // would paint the whole flat field NaN, so the edge is floored and a flat field draws no line.
   const line = (value: N, spacing: number): N => {
     const f = fract(value.div(spacing));
     const dist = min(f, float(1.0).sub(f));
@@ -109,8 +109,17 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
     const spacingPx = float(spacing).div(max(fwidth(value), 1e-6));
     return weight.mul(smoothstep(3.0, 6.0, spacingPx));
   };
-  const withOverlay = i.overlay
-    ? mix(mix(colour, foamLight, line(i.overlay.depth, 1.0).mul(i.overlay.depthOn)), foamLight.mul(vec3(1.0, 0.8, 0.25)), line(i.overlay.tau, 2.0).mul(i.overlay.crestOn))
+  // The overlay inputs (a seabed fetch, a set-wave field fetch, the line maths) are evaluated only inside their
+  // switch's branch, so overlays off cost nothing and leave colour untouched. Each switch is a uniform, so the
+  // branches are uniform control flow and fwidth stays valid inside them.
+  const o = i.overlay;
+  const withOverlay = o
+    ? Fn(() => {
+      const c = colour.toVar();
+      If(o.depthOn.greaterThan(0.5), () => { c.assign(mix(c, foamLight, line(o.depth, 1.0))); });
+      If(o.crestOn.greaterThan(0.5), () => { c.assign(mix(c, foamLight.mul(vec3(1.0, 0.8, 0.25)), line(o.tau, 2.0))); });
+      return c;
+    })()
     : colour;
   return sky.applyAerialPerspective(withOverlay, i.distance, v.negate());
 }
