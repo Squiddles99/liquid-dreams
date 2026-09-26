@@ -7,7 +7,7 @@ import { sanitizeConditions } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
 import { DevPanel } from '../dev/DevPanel';
 import { captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
-import { type Moment, encodeMoment, momentFromHash } from '../dev/momentLink';
+import { type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
 import { PerfOverlay } from '../dev/perf';
 import { HeightProbe } from '../ocean/HeightProbe';
 import { DEFAULT_OCEAN_SIM, type OceanSimParams, OceanSimulation } from '../ocean/OceanSimulation';
@@ -173,6 +173,10 @@ export class App {
   private onHashChange = (): void => {
     const m = momentFromHash(location.hash);
     if (m) this.applyMoment(m);
+    else {
+      const problem = momentHashProblem(location.hash);
+      if (problem) console.warn(`Moment link ignored (${problem}); keeping the current moment.`);
+    }
   };
 
   private onResize = (): void => {

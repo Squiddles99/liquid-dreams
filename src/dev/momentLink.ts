@@ -54,19 +54,21 @@ export function encodeMoment(m: Moment): string {
   return `#m=${toBase64Url(JSON.stringify({ v: MOMENT_VERSION, ...m }))}`;
 }
 
-export function decodeMoment(hash: string): Moment | null {
-  if (!hash.startsWith('#m=') || hash.length <= 3) return null;
+/** A `#m=` link's moment, or why it was rejected. */
+function parseMomentLink(hash: string): Moment | string {
+  if (!hash.startsWith('#m=')) return 'not a #m= link';
+  if (hash.length <= 3) return 'the #m= link is empty';
   let raw: unknown;
   try {
     raw = JSON.parse(fromBase64Url(hash.slice(3)));
   } catch {
-    return null;
+    return 'the #m= link is not valid base64url JSON';
   }
-  if (typeof raw !== 'object' || raw === null) return null;
+  if (typeof raw !== 'object' || raw === null) return 'the #m= link does not hold an object';
   const o = raw as Record<string, unknown>;
-  if (o.v !== MOMENT_VERSION) return null;
+  if (o.v !== MOMENT_VERSION) return `the #m= link is version ${String(o.v)}, this build reads version ${MOMENT_VERSION}`;
   const camera = parseCamera(o.camera);
-  if (!camera) return null;
+  if (!camera) return 'the #m= link has a missing or invalid camera pose';
   return {
     conditions: sanitizeConditions(o.conditions),
     camera,
@@ -75,14 +77,36 @@ export function decodeMoment(hash: string): Moment | null {
   };
 }
 
+export function decodeMoment(hash: string): Moment | null {
+  const m = parseMomentLink(hash);
+  return typeof m === 'string' ? null : m;
+}
+
+/** A `#ref=` hash's reference moment, or why there is none. */
+function parseReferenceHash(hash: string): Moment | string {
+  let name: string;
+  try {
+    name = decodeURIComponent(hash.slice(5));
+  } catch {
+    return 'the #ref= reference moment name is not valid URI encoding';
+  }
+  return findReferenceMoment(name) ?? `unknown reference moment "${name}"`;
+}
+
 /** `#m=<link>` or `#ref=<reference-moment-name>`; anything else → null. */
 export function momentFromHash(hash: string): Moment | null {
+  const m = hash.startsWith('#ref=') ? parseReferenceHash(hash) : parseMomentLink(hash);
+  return typeof m === 'string' ? null : m;
+}
+
+/** Why a non-empty hash opened no moment (for a console warning); null when it is empty or resolves. */
+export function momentHashProblem(hash: string): string | null {
+  if (hash === '' || hash === '#') return null;
   if (hash.startsWith('#ref=')) {
-    try {
-      return findReferenceMoment(decodeURIComponent(hash.slice(5)));
-    } catch {
-      return null;
-    }
+    const m = parseReferenceHash(hash);
+    return typeof m === 'string' ? m : null;
   }
-  return decodeMoment(hash);
+  if (!hash.startsWith('#m=')) return 'expected #m=<moment link> or #ref=<reference moment name>';
+  const m = parseMomentLink(hash);
+  return typeof m === 'string' ? m : null;
 }

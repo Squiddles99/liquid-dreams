@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
-import { type Moment, decodeMoment, encodeMoment, momentFromHash } from './momentLink';
+import { type Moment, decodeMoment, encodeMoment, momentFromHash, momentHashProblem } from './momentLink';
 import { findReferenceMoment } from './referenceMoments';
 
 const sample: Moment = {
@@ -57,5 +57,25 @@ describe('momentFromHash', () => {
   it('returns null on malformed #ref= escapes', () => {
     expect(momentFromHash('#ref=%')).toBeNull();
     expect(momentFromHash('#ref=%E0%A4%A')).toBeNull();
+  });
+});
+
+describe('momentHashProblem (why a non-empty hash opened nothing)', () => {
+  it('is null for empty hashes and for hashes that resolve', () => {
+    for (const h of ['', '#', '#ref=golden-hour', encodeMoment(sample)]) expect(momentHashProblem(h)).toBeNull();
+  });
+  it('names an unknown reference moment', () => {
+    expect(momentHashProblem('#ref=nope')).toMatch(/unknown reference moment "nope"/);
+    expect(momentHashProblem('#ref=%')).toMatch(/reference/);
+  });
+  it('explains why a #m= link was rejected', () => {
+    expect(momentHashProblem('#m=%%%not-base64')).toMatch(/not valid/);
+    expect(momentHashProblem('#m=')).toMatch(/empty/);
+    expect(momentHashProblem(`#m=${btoa(JSON.stringify({ ...sample, v: 2 })).replace(/=+$/, '')}`)).toMatch(/version 2/);
+    const badCamera = btoa(JSON.stringify({ v: 1, ...sample, camera: { mode: 'drone' } })).replace(/=+$/, '');
+    expect(momentHashProblem(`#m=${badCamera}`)).toMatch(/camera/);
+  });
+  it('flags hashes that are neither #m= nor #ref=', () => {
+    expect(momentHashProblem('#something-else')).toMatch(/#m=.*#ref=/);
   });
 });
