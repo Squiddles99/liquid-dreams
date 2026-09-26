@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  cameraPosition, clamp, dot, faceDirection, float, length, max, positionLocal, positionWorld, select, uniform, varying, varyingProperty, vec3,
+  cameraPosition, clamp, cross, dot, faceDirection, float, length, max, positionLocal, positionWorld, select, uniform, varying, varyingProperty, vec3,
 } from 'three/tsl';
 import { seabedTerms } from '../seabed/seabedShading';
 import type { Sky } from '../sky/Sky';
@@ -42,8 +42,10 @@ export class OceanSurface {
     geometry.setIndex(new THREE.BufferAttribute(grid.indices, 1));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    // Double-sided: a curling lip folds the surface over, so parts of the tube (the thrown lip's top, seen from behind or
-    // above) show the surface's back face; culled, they would leave holes in the barrel.
+    // Double-sided. With consistent winding the thrown lip's top and the tube's inside are both front faces: at the fold
+    // the finite-difference normal and the triangle winding reverse together. Back faces show only where the surface
+    // self-intersects (a lip landing through the face), along the fold line itself, and at FFT folds (choppiness can
+    // drive the FFT Jacobian below 0); culled, those would be holes.
     material.side = THREE.DoubleSide;
 
     // Vertex: world-anchored sampling, distance-faded cascades, the tide, Earth curvature. The set waves are summed
@@ -71,19 +73,26 @@ export class OceanSurface {
     // FFT slopes, Jacobian-corrected (the Jxz cross term is knowingly dropped: the derivatives texture has no channel for it).
     const fsx = fft.sx.div(max(float(1.0).add(fft.jxx), 0.1));
     const fsz = fft.sz.div(max(float(1.0).add(fft.jzz), 0.1));
-    // The FFT detail tilts the set-wave normal in its own tangent plane: on a flat set wave this is exactly Phase 0's
-    // (−fsx, 1, −fsz), and under the lip it follows the overhang. World x and z projected into that tangent plane are
-    // the directions the FFT slopes tilt along.
+    // The FFT detail tilts the set-wave normal in its own tangent plane, in an orthonormal frame seeded from the
+    // along-crest axis (horizontal, perpendicular to the mean swell's travel). A breaking profile curls in the travel
+    // plane, so that axis stays tangent to it everywhere, under the lip included; the second tangent, nSet × crest,
+    // follows the curl. The FFT slopes are rotated into (crest, travel) to match. On flat water the frame is the world's
+    // (crest, travel) pair and the normal is exactly Phase 0's (−fsx, 1, −fsz). The frame degenerates only where nSet
+    // points horizontally along the mean crest, which a set wave curling in (nearly) its travel plane never does.
     const nSet = safeNormalize(setNormal);
-    const tx = safeNormalize(vec3(1.0, 0.0, 0.0).sub(nSet.mul(nSet.x)));
-    const tz = safeNormalize(vec3(0.0, 0.0, 1.0).sub(nSet.mul(nSet.z)));
-    // faceDirection flips the normal on back faces where the set wave itself has turned over (the top of a thrown lip,
-    // seen from behind or above; there nSet, like the triangle, faces away from the camera), so they shade as the side
-    // you see. A back face whose set normal still faces the camera is an FFT fold (choppy crests, culled before this
-    // material went double-sided): it keeps the unflipped normal and shades like the water around it.
+    const travel = model.sets.meanTravel;
+    const crestAxis = vec3(travel.y.negate(), 0.0, travel.x);
+    const tCrest = safeNormalize(crestAxis.sub(nSet.mul(dot(crestAxis, nSet))));
+    const tTravel = cross(nSet, tCrest);
+    const slopeCrest = fsx.mul(crestAxis.x).add(fsz.mul(crestAxis.z));
+    const slopeTravel = fsx.mul(travel.x).add(fsz.mul(travel.y));
+    // Back faces (see the material note above): where the set normal also faces away from the camera (a lip landing
+    // through the face, the fold line) the normal is flipped to the side you see. An FFT-fold back face keeps its set
+    // normal, which still faces the camera, and shades like the water around it. The tube's inside is a front face and
+    // is found from the set normal (the underside weight below), never from the face direction.
     const setTurnedOver = faceDirection.lessThan(0.0).and(dot(nSet, viewDir).lessThan(0.0));
     // safeNormalize: across the lip's fold the interpolated normal and the FFT tilt can all but cancel.
-    const normal = safeNormalize(nSet.sub(tx.mul(fsx)).sub(tz.mul(fsz))).mul(select(setTurnedOver, float(-1.0), float(1.0)));
+    const normal = safeNormalize(nSet.sub(tCrest.mul(slopeCrest)).sub(tTravel.mul(slopeTravel))).mul(select(setTurnedOver, float(-1.0), float(1.0)));
     const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
 
     material.colorNode = shadeWater(
