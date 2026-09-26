@@ -79,12 +79,15 @@ export const CONDITION_BINDINGS = {
   swellSizeFt: { label: 'size (surfer ft)', ...CONDITION_RANGES.swellSizeFt, format: fixed(1) },
   swellPeriodS: { label: 'period (s between waves)', ...CONDITION_RANGES.swellPeriodS, format: fixed(1) },
   swellDirectionDeg: { label: 'from', ...CONDITION_RANGES.swellDirectionDeg, format: withCompass },
-  // Edited through the windSpeedProxy (km/h) below instead; kept here so every sanitised condition still has a
-  // range descriptor (DevPanel.test.ts checks that) even though nothing binds this one directly.
-  windSpeedMs: { label: 'speed (m/s)', ...CONDITION_RANGES.windSpeedMs, format: fixed(1) },
   windDirectionDeg: { label: 'from', ...CONDITION_RANGES.windDirectionDeg, format: withCompass },
   tideM: { label: 'tide (m)', ...CONDITION_RANGES.tideM, format: fixed(2) },
 };
+
+/**
+ * The live wind-speed widget (bound to windSpeedProxy below, not to conditions.wind.speedMs directly): edited
+ * in km/h, no step, so a loaded moment's m/s value round-trips exactly (same rule as CONDITION_BINDINGS above).
+ */
+export const WIND_SPEED_KMH_BINDING = { label: 'speed (km/h)', min: 0, max: msToKmh(CONDITION_RANGES.windSpeedMs.max), format: fixed(0) };
 
 export class DevPanel {
   private readonly pane = new Pane({ title: 'Liquid Dreams', expanded: true });
@@ -135,7 +138,7 @@ export class DevPanel {
 
     const wind = this.pane.addFolder({ title: 'Wind' });
     this.syncWindSpeedProxy();
-    wind.addBinding(this.windSpeedProxy, 'kmh', { label: 'speed (km/h)', min: 0, max: CONDITION_RANGES.windSpeedMs.max * 3.6, format: fixed(0) })
+    wind.addBinding(this.windSpeedProxy, 'kmh', WIND_SPEED_KMH_BINDING)
       .on('change', (e) => {
         // A refresh shows a wind speed set elsewhere (a moment load, reset); only editing the field writes it back.
         if (this.refreshing) return;

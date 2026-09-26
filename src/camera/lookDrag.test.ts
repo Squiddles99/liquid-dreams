@@ -56,4 +56,32 @@ describe('LookDrag', () => {
     d.consume();
     expect(d.consume()).toEqual({ dx: 0, dy: 0 });
   });
+
+  describe('onLockChange', () => {
+    it('release before the lock is granted: unlock once it lands', () => {
+      const d = new LookDrag();
+      d.press(0);
+      d.release(0); // beats requestPointerLock()'s promise settling
+      expect(d.onLockChange(true)).toBe('unlock');
+    });
+
+    it('losing the lock while still dragging ends the drag', () => {
+      const d = new LookDrag();
+      d.press(0);
+      expect(d.onLockChange(false)).toBe('end');
+      expect(d.dragging).toBe(false);
+    });
+
+    it('gaining the lock during an active drag needs no action', () => {
+      const d = new LookDrag();
+      d.press(0);
+      expect(d.onLockChange(true)).toBe('none');
+      expect(d.dragging).toBe(true);
+    });
+
+    it('losing a lock that was never held needs no action', () => {
+      const d = new LookDrag();
+      expect(d.onLockChange(false)).toBe('none');
+    });
+  });
 });

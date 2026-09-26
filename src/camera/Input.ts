@@ -102,9 +102,13 @@ export class Input {
     if (document.pointerLockElement === this.element) document.exitPointerLock();
   };
 
-  /** Esc (or anything else) taking the lock away mid-drag ends the drag, same as releasing the button. */
+  /**
+   * Esc (or anything else) taking the lock away mid-drag ends the drag, same as releasing the button. Also
+   * covers the reverse race (see LookDrag): a release that beat requestPointerLock()'s promise settling would
+   * otherwise leave the lock granted with no drag active, stuck until Esc.
+   */
   private onPointerLockChange = (): void => {
-    if (document.pointerLockElement !== this.element) this.lookDrag.end();
+    if (this.lookDrag.onLockChange(document.pointerLockElement === this.element) === 'unlock') document.exitPointerLock();
   };
 
   private onMouseMove = (e: MouseEvent): void => {
