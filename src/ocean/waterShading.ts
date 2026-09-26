@@ -32,6 +32,7 @@ export function createWaterOpticsUniforms(p: WaterOpticsParams) {
     extinction: uniform(new THREE.Vector3(...extinction(p.absorptionPerM, p.backscatterPerM))),
     bodyScale: uniform(p.bodyScale),
     transmissionIntensity: uniform(p.transmissionIntensity),
+    lipSkyTransmission: uniform(p.lipSkyTransmission),
     baseRoughness: uniform(p.baseRoughness),
     foamAlbedo: uniform(p.foamAlbedo),
   };
@@ -45,15 +46,13 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
   u.extinction.value.set(...extinction(p.absorptionPerM, p.backscatterPerM));
   u.bodyScale.value = p.bodyScale;
   u.transmissionIntensity.value = p.transmissionIntensity;
+  u.lipSkyTransmission.value = p.lipSkyTransmission;
   u.baseRoughness.value = p.baseRoughness;
   u.foamAlbedo.value = p.foamAlbedo;
 }
 
 // saturate(): at the anti-solar point v·h rounds to a hair above 1, and pow() of a negative base is NaN on the GPU (it showed as a fake sun).
 export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(saturate(float(1.0).sub(cosTheta)), 5.0)));
-
-/** Diffuse skylight through a thin lip, seen from beneath it, as a fraction of the sun-backlit transmission's scale. */
-export const LIP_SKY_TRANSMISSION = 0.5;
 
 /**
  * Water = Fresnel-weighted sky reflection (the water itself where a turned-over surface reflects downward) + GGX sun
@@ -102,7 +101,7 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // Lip transmission: the sun behind a thin, curling lip shines through it toward the viewer (turquoise, spec §3.5, P11);
   // from beneath the lip (the tube's ceiling) the skylight through it adds a blue-green glow as well.
   const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
-  const lipLight = sky.sunIlluminance.mul(backlight).add(sky.skyIrradiance.mul(underside).mul(LIP_SKY_TRANSMISSION));
+  const lipLight = sky.sunIlluminance.mul(backlight).add(sky.skyIrradiance.mul(underside).mul(u.lipSkyTransmission));
   const transmitted = u.transmission.mul(lipLight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI);
 
   // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.

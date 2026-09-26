@@ -10,6 +10,9 @@ export interface WaterOpticsParams {
   /** Path length through a crest for the transmission tint. */
   transmissionThicknessM: number;
   transmissionIntensity: number;
+  /** Diffuse skylight through a thin lip, seen from beneath it (the tube's ceiling), as a fraction of the transmission's
+   * scale (the sun-backlit part is 1). */
+  lipSkyTransmission: number;
   baseRoughness: number;
   foamAlbedo: number;
 }
@@ -20,6 +23,7 @@ export const DEFAULT_WATER_OPTICS: WaterOpticsParams = {
   bodyScale: 1,
   transmissionThicknessM: 2,
   transmissionIntensity: 0.6,
+  lipSkyTransmission: 0.5,
   baseRoughness: 0.02,
   foamAlbedo: 0.85,
 };
