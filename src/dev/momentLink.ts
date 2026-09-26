@@ -21,6 +21,10 @@ export interface Moment {
 
 export const MOMENT_VERSION = 1;
 
+/** A link's simTime cannot exceed this (11.6 days): unbounded, an absurd value (e.g. a hand-edited link) sends
+ * sets.ts's slot search hunting indefinitely and freezes the tab. */
+export const MAX_LINK_SIM_TIME_S = 1e6;
+
 function toBase64Url(s: string): string {
   const bytes = new TextEncoder().encode(s);
   let bin = '';
@@ -36,7 +40,8 @@ function fromBase64Url(s: string): string {
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-function parseCamera(v: unknown): CameraPose | null {
+/** A valid camera pose from untrusted input (links, stored settings), or null. */
+export function parseCameraPose(v: unknown): CameraPose | null {
   if (typeof v !== 'object' || v === null) return null;
   const c = v as Record<string, unknown>;
   if (c.mode !== 'lineup' && c.mode !== 'free') return null;
@@ -67,12 +72,12 @@ function parseMomentLink(hash: string): Moment | string {
   if (typeof raw !== 'object' || raw === null) return 'the #m= link does not hold an object';
   const o = raw as Record<string, unknown>;
   if (o.v !== MOMENT_VERSION) return `the #m= link is version ${String(o.v)}, this build reads version ${MOMENT_VERSION}`;
-  const camera = parseCamera(o.camera);
+  const camera = parseCameraPose(o.camera);
   if (!camera) return 'the #m= link has a missing or invalid camera pose';
   return {
     conditions: sanitizeConditions(o.conditions),
     camera,
-    simTime: finite(o.simTime) && o.simTime >= 0 ? o.simTime : 0,
+    simTime: finite(o.simTime) ? Math.min(Math.max(o.simTime, 0), MAX_LINK_SIM_TIME_S) : 0,
     paused: o.paused === true,
   };
 }

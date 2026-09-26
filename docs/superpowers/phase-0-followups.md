@@ -28,3 +28,28 @@ Known issues and design items deliberately carried past Phase 0 (First Light, co
 
 - **One WebGPU copy at a time.** The laptop hard-hung (black screen, audio buzz, no dump) while the app ran in Chrome on the RTX and in a second browser on the Intel iGPU, with a 2024 Intel driver. After updating both drivers (Intel 32.0.101.7092, NVIDIA 32.0.16.1714) and adding the 60 fps cap, it has been stable.
 - **Chrome and the RTX.** Chrome ignores WebGPU's `powerPreference` here. Use the Windows per-app "High performance" setting and fully restart Chrome; the stats overlay names the adapter. The measured RTX budget: 0.68 ms GPU per frame at 240 fps uncapped.
+
+# Phase 1 follow-ups
+
+Carried past Phase 1 (Reef & Sets, completed 2026-09-27, approved by Andrew as "good enough to move on").
+
+## Water and sky look (Andrew: "we'll fix the reflection properly later")
+
+- **Sun glitter reads as a smooth, clipped white patch** (noon, facing the sun, big swell). Sub-pixel glitter is averaged into roughness and tone-mapped to white. Wants a sparkle model (glint distribution) plus a gentler highlight roll-off. Consider Beckmann (Cox–Munk Gaussian slopes) instead of GGX's long tail.
+- **No Earth shadow or belt of Venus**: at sunrise/sunset the anti-solar horizon glows orange-gold, reflected in the water, so the west reads like a sunset. Should be a blue-grey shadow band under a pink band.
+- **Reef look**: a bright aqua halo on the sand slope just outside the ledge, and a thin dark rim along the reef edge (weed face) from overhead; `looking-down` is soft, with little bed detail at 0.5 m resolution.
+
+## Waves and the break (Phase 2)
+
+- **Perf pass first**: GPU is 2.35 ms (pane) to 3.36 ms (Andrew's Chrome) at 2560×1600 on `reef-overhead`, against a 3 ms budget. Breaking will cost more.
+- **The right closes out over only its first ~40 m**, then would peel where the south ledge bends east (full-ledge arrival spread 7.4 s at 225°). Andrew's drone reference shows a longer closeout.
+- **Set waves read as gentle humps** (≈3 m trough to crest, steepness ≈0.017 at 4 ft): steepening and pitching are Phase 2. Re-time the set moments once waves stand up.
+- Peel speed along the north ledge: 14.3 m/s at 225°, 12.6 m/s at 205°, 18.1 m/s at 245° (15 s).
+
+## Performance and code
+
+- **`buildBathymetry` takes ~0.55 s** on the main thread (363 ms before the reef warp; the plan's 300 ms target was already exceeded). Move it into the field worker or cache it; reef-slider edits hitch meanwhile.
+- **No App-level tests** for the settings wiring (custom/default, visits, pagehide saves); the pure helpers are tested.
+- `displacementWithSlopeNode` must never run in a compute shader; only a comment enforces it.
+- A link opened in default mode leaves the visit flag set; a later default→custom time pick then carries over from the stored camera (no data loss).
+
