@@ -51,7 +51,7 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
 
 type Pt = readonly [number, number];
 
-/** Seaward edge the left peels along: the first 120 m from the tip runs at bearing 20° (north-north-east) — that angle to the refracted swell sets the peel speed (≈14 m/s at the default 225° swell) — then continues north-north-west to the map edge, landing about 90 m east of the originally traced shelf edge (tunable with Andrew in Task 13). */
+/** Seaward edge the left peels along: the first 120 m from the tip runs at bearing 20° (north-north-east) — that angle to the refracted swell sets the peel speed (≈14 m/s at the default 225° swell) — then continues north-north-west to the map edge, landing about 36 m east of the originally traced shelf edge at the map edge (90–110 m east of it mid-shelf) (tunable with Andrew in Task 13). */
 export const NORTH_LEDGE: readonly Pt[] = [[0, 0], [41.04, -112.76], [-19.8, -280], [-81.6, -450]];
 /** Short edge running south-east from the tip (the right closes out along it). */
 export const SOUTH_LEDGE: readonly Pt[] = [[0, 0], [25, 28], [60, 38], [110, 45]];
