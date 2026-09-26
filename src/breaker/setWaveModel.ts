@@ -49,7 +49,8 @@ export interface SetWaveResult {
   foam: number;
   /** Turquoise-lip mask [0, 1] (max over waves). */
   lip: number;
-  /** Largest crest stage among the waves here [0, 1]. */
+  /** Largest crest stage among the waves here [0, 1], each weighted by its crest lookup's confidence (a readout only:
+   * a wave far past its crest reads 0 instead of whatever stage its unconverged lookup landed on). */
   stage: number;
 }
 
@@ -85,6 +86,12 @@ export function phaseXi(x: number, z: number, t: number, f: FieldSample, w: Acti
 
 /** Steps taken to find a wave's crest from a point (each is one field sample). */
 export const CREST_STEPS = 2;
+/**
+ * The crest lookup steps along the wave's own travel direction; where that line crosses the crest obliquely, ξ changes
+ * more slowly along it and the step lengthens. This floors the crossing's obliqueness, so a line nearly parallel to the
+ * crest takes at most twice the plain step (then the half-wavelength cap).
+ */
+export const CREST_MIN_CROSSING = 0.5;
 
 /** A wave's crest nearest a point: the field where the crest is now, and its breaking stage there. */
 export interface Crest {
@@ -92,27 +99,36 @@ export interface Crest {
   x: number;
   z: number;
   f: FieldSample;
+  /** The crest's breaking stage: it shapes the wave. */
   s: number;
+  /** How much to trust s as a readout, [0, 1]: 1 when the lookup landed on the crest, falling to 0 as the ξ left
+   * after the steps grows from an eighth to a quarter period (a wave far past its crest). Only the reported stage uses it. */
+  confidence: number;
 }
 
 /**
- * w's crest nearest (x, z): the field is read where the crest is now, found by stepping ξ·c along the local ray (at
- * most half a wavelength a step), so every point of one cross-section shares its crest's stage and shape frame. Null
- * when breaking is off.
+ * w's crest nearest (x, z): the field is read where the crest is now, found by Newton steps toward ξ = 0 along the line
+ * through (x, z) in w's own travel direction (at most half a wavelength a step). That direction is the same at every
+ * point, so the lookup is smooth across the crest as well as along the ray, and every point of one cross-section shares
+ * its crest's stage and shape frame. Null when breaking is off.
  */
 export function crestAt(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, o: BreakOptions | undefined): Crest | null {
   if (!o || !o.params.enabled || !(w.heightM > 0)) return null;
-  // Two steps along the ray toward where ξ = 0: the first uses this point's wave speed, the second the speed where it
-  // landed, so every point of one cross-section finds (nearly) the same crest and so the same stage.
+  // Along w's direction ξ falls at (k/ω)·(dir·w + (w − mean)·w) per metre: the field's τ gradient plus phaseXi's
+  // direction term. The first step uses this point's field, the second the field where it landed.
+  const wm = 1 - (ctx.travelX * w.travelX + ctx.travelZ * w.travelZ);
   let cx = x, cz = z, fc = f;
   for (let i = 0; i < CREST_STEPS; i++) {
     const reach = Math.PI / fc.k;
-    const d = Math.max(-reach, Math.min(reach, phaseXi(cx, cz, t, fc, w, ctx) * (ctx.omega / fc.k)));
-    cx += fc.dirX * d;
-    cz += fc.dirZ * d;
+    const crossing = Math.max(CREST_MIN_CROSSING, fc.dirX * w.travelX + fc.dirZ * w.travelZ + wm);
+    const d = Math.max(-reach, Math.min(reach, (phaseXi(cx, cz, t, fc, w, ctx) * (ctx.omega / fc.k)) / crossing));
+    cx += w.travelX * d;
+    cz += w.travelZ * d;
     fc = o.sample(cx, cz);
   }
-  return { x: cx, z: cz, f: fc, s: breakingStage(breakingRatio(w.heightM * fc.amp, fc.hmin, o.params), o.params) };
+  const quarterPeriod = Math.PI / (2 * w.omega);
+  const confidence = 1 - smoothstep(quarterPeriod / 2, quarterPeriod, Math.abs(phaseXi(cx, cz, t, fc, w, ctx)));
+  return { x: cx, z: cz, f: fc, s: breakingStage(breakingRatio(w.heightM * fc.amp, fc.hmin, o.params), o.params), confidence };
 }
 
 /** The breaking stage of w's crest nearest (x, z) (0 when breaking is off). */
@@ -146,7 +162,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const dXiDs = -f.k / ctx.omega;
   const jacobian = Math.max(0.2, 1 + (hAmp * w.omega * Math.cos(theta) + pitch * dEtaDXi) * dXiDs);
   const slopeAlong = (dEtaDXi * dXiDs) / jacobian;
-  const out: SetWaveResult = { eta, dx: f.dirX * dh, dz: f.dirZ * dh, slopeX: f.dirX * slopeAlong, slopeZ: f.dirZ * slopeAlong, foam: 0, lip: 0, stage: crest ? crest.s : 0 };
+  const out: SetWaveResult = { eta, dx: f.dirX * dh, dz: f.dirZ * dh, slopeX: f.dirX * slopeAlong, slopeZ: f.dirZ * slopeAlong, foam: 0, lip: 0, stage: crest ? crest.s * crest.confidence : 0 };
   if (!o || !crest || !(crest.s > 0)) return out;
   // The crest's frame (height, Stokes ratio, wavenumber, lean, bore depth) sets the shape's scale and pivot for the whole
   // cross-section; this point's own unbroken position and height are what get steepened, drained, curled and settled.
