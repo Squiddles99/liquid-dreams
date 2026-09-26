@@ -49,6 +49,7 @@ export const CONDITION_BINDINGS = {
   swellDirectionDeg: { label: 'from (°)', ...CONDITION_RANGES.swellDirectionDeg, format: fixed(0) },
   windSpeedMs: { label: 'speed (m/s)', ...CONDITION_RANGES.windSpeedMs, format: fixed(1) },
   windDirectionDeg: { label: 'from (°)', ...CONDITION_RANGES.windDirectionDeg, format: fixed(0) },
+  tideM: { label: 'tide (m)', ...CONDITION_RANGES.tideM, format: fixed(2) },
 };
 
 export class DevPanel {
@@ -65,6 +66,7 @@ export class DevPanel {
     ref.on('change', (e) => h.onReferenceMoment(e.value));
     moment.addBinding(m.conditions, 'date').on('change', h.onConditions);
     moment.addBinding(m.conditions, 'timeOfDay', CONDITION_BINDINGS.timeOfDay).on('change', h.onConditions);
+    moment.addBinding(m.conditions, 'tideM', CONDITION_BINDINGS.tideM).on('change', h.onConditions);
     moment.addBinding(m.conditions, 'seed', { min: 0, step: 1 }).on('change', h.onConditions);
     moment.addButton({ title: 'Copy moment link (L)' }).on('click', h.onCopyLink);
     moment.addButton({ title: 'Pause / resume (P)' }).on('click', h.onTogglePause);

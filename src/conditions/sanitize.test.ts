@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS } from './defaults';
-import { sanitizeConditions, wrapDegrees } from './sanitize';
+import { CONDITION_RANGES, sanitizeConditions, wrapDegrees } from './sanitize';
 
 describe('sanitizeConditions', () => {
   it('returns defaults for non-objects', () => {
@@ -48,5 +48,14 @@ describe('sanitizeConditions', () => {
     const c = sanitizeConditions({});
     c.swell.sizeFt = 9;
     expect(DEFAULT_CONDITIONS.swell.sizeFt).toBe(4);
+  });
+});
+
+describe('tide', () => {
+  it('is clamped to the published tide range', () => {
+    expect(CONDITION_RANGES.tideM).toEqual({ min: -1.5, max: 1.5 });
+    expect(sanitizeConditions({ ...DEFAULT_CONDITIONS, tideM: 9 }).tideM).toBe(1.5);
+    expect(sanitizeConditions({ ...DEFAULT_CONDITIONS, tideM: -9 }).tideM).toBe(-1.5);
+    expect(sanitizeConditions({ ...DEFAULT_CONDITIONS, tideM: 0.37 }).tideM).toBe(0.37);
   });
 });
