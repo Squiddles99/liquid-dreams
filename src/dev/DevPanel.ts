@@ -32,6 +32,8 @@ export interface DevPanelModel {
 
 export interface DevPanelHandlers {
   onConditions(): void;
+  /** A condition binding changed because the user edited it (not a refresh showing a moment applied elsewhere). */
+  onUserConditionEdit(): void;
   onSpectrum(): void;
   onSim(): void;
   onWater(): void;
@@ -78,8 +80,16 @@ export class DevPanel {
   private readonly nightFloorProxy = { log10: 0 };
   /** True inside refresh(): the proxy's slider snaps to its step there, which must not overwrite nightFloor. */
   private refreshing = false;
+  /** True while setReference() moves the reference list, which is not a pick. */
+  private settingReference = false;
+  private readonly reference: ListBladeApi<string>;
 
   constructor(private readonly m: DevPanelModel, h: DevPanelHandlers) {
+    // Every condition binding: refresh() also fires these, for a moment applied by a link, pick or reset.
+    const onConditions = (): void => {
+      if (!this.refreshing) h.onUserConditionEdit();
+      h.onConditions();
+    };
     const moment = this.pane.addFolder({ title: 'Moment' });
     const settings = moment.addBlade({
       view: 'list', label: 'settings',
@@ -92,24 +102,27 @@ export class DevPanel {
       options: REFERENCE_MOMENTS.map((r) => ({ text: r.name, value: r.name })),
       value: DEFAULT_MOMENT_NAME,
     }) as ListBladeApi<string>;
-    ref.on('change', (e) => h.onReferenceMoment(e.value));
-    moment.addBinding(m.conditions, 'date').on('change', h.onConditions);
-    moment.addBinding(m.conditions, 'timeOfDay', CONDITION_BINDINGS.timeOfDay).on('change', h.onConditions);
-    moment.addBinding(m.conditions, 'tideM', CONDITION_BINDINGS.tideM).on('change', h.onConditions);
-    moment.addBinding(m.conditions, 'seed', { min: 0, step: 1 }).on('change', h.onConditions);
+    ref.on('change', (e) => {
+      if (!this.settingReference) h.onReferenceMoment(e.value);
+    });
+    this.reference = ref;
+    moment.addBinding(m.conditions, 'date').on('change', onConditions);
+    moment.addBinding(m.conditions, 'timeOfDay', CONDITION_BINDINGS.timeOfDay).on('change', onConditions);
+    moment.addBinding(m.conditions, 'tideM', CONDITION_BINDINGS.tideM).on('change', onConditions);
+    moment.addBinding(m.conditions, 'seed', { min: 0, step: 1 }).on('change', onConditions);
     moment.addButton({ title: 'Copy moment link (L)' }).on('click', h.onCopyLink);
     moment.addButton({ title: 'Pause / resume (P)' }).on('click', h.onTogglePause);
     moment.addButton({ title: 'Screenshot (K)' }).on('click', h.onScreenshot);
     moment.addButton({ title: 'Reset settings' }).on('click', h.onResetSettings);
 
     const swell = this.pane.addFolder({ title: 'Swell' });
-    swell.addBinding(m.conditions.swell, 'sizeFt', CONDITION_BINDINGS.swellSizeFt).on('change', h.onConditions);
-    swell.addBinding(m.conditions.swell, 'periodS', CONDITION_BINDINGS.swellPeriodS).on('change', h.onConditions);
-    swell.addBinding(m.conditions.swell, 'directionDeg', CONDITION_BINDINGS.swellDirectionDeg).on('change', h.onConditions);
+    swell.addBinding(m.conditions.swell, 'sizeFt', CONDITION_BINDINGS.swellSizeFt).on('change', onConditions);
+    swell.addBinding(m.conditions.swell, 'periodS', CONDITION_BINDINGS.swellPeriodS).on('change', onConditions);
+    swell.addBinding(m.conditions.swell, 'directionDeg', CONDITION_BINDINGS.swellDirectionDeg).on('change', onConditions);
 
     const wind = this.pane.addFolder({ title: 'Wind' });
-    wind.addBinding(m.conditions.wind, 'speedMs', CONDITION_BINDINGS.windSpeedMs).on('change', h.onConditions);
-    wind.addBinding(m.conditions.wind, 'directionDeg', CONDITION_BINDINGS.windDirectionDeg).on('change', h.onConditions);
+    wind.addBinding(m.conditions.wind, 'speedMs', CONDITION_BINDINGS.windSpeedMs).on('change', onConditions);
+    wind.addBinding(m.conditions.wind, 'directionDeg', CONDITION_BINDINGS.windDirectionDeg).on('change', onConditions);
 
     const sets = this.pane.addFolder({ title: 'Sets' });
     const readouts = new Set<BladeApi>([
@@ -189,7 +202,7 @@ export class DevPanel {
     // Every binding and list reports here (refresh() too, when it changes a value). The readouts tick every 250 ms
     // and would otherwise look like edits.
     this.pane.on('change', (e) => {
-      if (!readouts.has(e.target)) h.onAnySettingChanged();
+      if (!readouts.has(e.target) && !this.settingReference) h.onAnySettingChanged();
     });
   }
 
@@ -201,6 +214,17 @@ export class DevPanel {
       this.pane.refresh();
     } finally {
       this.refreshing = outer;
+    }
+  }
+
+  /** Show which reference moment is on screen (a #ref= link, a reset) without it counting as a pick. */
+  setReference(name: string): void {
+    if (this.reference.value === name) return;
+    this.settingReference = true;
+    try {
+      this.reference.value = name;
+    } finally {
+      this.settingReference = false;
     }
   }
 

@@ -9,8 +9,8 @@ import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { DEFAULT_SET_PARAMS } from '../swell/sets';
 import {
-  DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
-  loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
+  CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
+  loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
 } from './devSettings';
 import type { CameraPose, Moment } from './momentLink';
 import { findReferenceMoment } from './referenceMoments';
@@ -226,5 +226,65 @@ describe('reference picks', () => {
     expect(referenceNameFromHash('#ref=%E0%A4%A')).toBeNull();
     expect(referenceNameFromHash('#m=abc')).toBeNull();
     expect(referenceNameFromHash('')).toBeNull();
+  });
+});
+
+describe('a link is a visit, not an edit', () => {
+  /** What the app shows after opening the sunset link over a stored custom profile, with one look edit on top. */
+  const linkSnapshot = (): DevSettings => {
+    const s = defaults();
+    s.conditions = findReferenceMoment('sunset')!.conditions;
+    s.camera = findReferenceMoment('sunset')!.camera;
+    s.atmosphere.hazeFactor = 5;
+    return s;
+  };
+
+  it('mergeProfile keeps the stored conditions and camera for a link, and takes everything otherwise', () => {
+    const stored = tweaked();
+    const snap = linkSnapshot();
+    expect(mergeProfile(snap, stored, true)).toEqual({ ...snap, conditions: stored.conditions, camera: stored.camera });
+    expect(mergeProfile(snap, stored, false)).toEqual(snap);
+    expect(mergeProfile(snap, stored, true).conditions).not.toBe(stored.conditions);
+  });
+
+  it('a hash visit leaves the stored conditions and camera intact while look edits still save', () => {
+    const stored = tweaked();
+    const p = new CustomProfile(cloneDevSettings(stored));
+    p.visitLink();
+    const saved = p.capture(linkSnapshot());
+    expect(saved.conditions).toEqual(stored.conditions);
+    expect(saved.camera).toEqual(stored.camera);
+    expect(saved.atmosphere.hazeFactor).toBe(5);
+    // Still a visit on the next save (pagehide), and a later look edit saves too.
+    const again = linkSnapshot();
+    again.picture.evOffset = 2;
+    expect(p.capture(again)).toMatchObject({ conditions: stored.conditions, camera: stored.camera, picture: { evOffset: 2 } });
+  });
+
+  it('a condition edit after the visit saves the new conditions', () => {
+    const p = new CustomProfile(tweaked());
+    p.visitLink();
+    p.capture(linkSnapshot());
+    p.own(); // the user edited a condition
+    const edited = linkSnapshot();
+    edited.conditions.swell.sizeFt = 9;
+    expect(p.capture(edited)).toEqual(edited);
+    expect(p.profile.conditions.swell.sizeFt).toBe(9);
+  });
+
+  it('a pick after the visit saves normally', () => {
+    const p = new CustomProfile(tweaked());
+    p.visitLink();
+    p.own(); // picked a reference
+    const snap = linkSnapshot();
+    const m = pickMoment('custom', snap.conditions, snap.camera, findReferenceMoment('first-sun')!);
+    const afterPick = { ...snap, conditions: m.conditions, camera: m.camera };
+    expect(p.capture(afterPick)).toEqual(afterPick);
+  });
+
+  it('without a visit, capture takes the whole snapshot', () => {
+    const p = new CustomProfile(tweaked());
+    expect(p.visiting).toBe(false);
+    expect(p.capture(linkSnapshot())).toEqual(linkSnapshot());
   });
 });
