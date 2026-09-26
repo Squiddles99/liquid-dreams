@@ -11,7 +11,7 @@ import type { ReefParams } from '../seabed/wombReef';
 import type { AtmosphereParams } from '../sky/atmosphereParams';
 import type { SetParams } from '../swell/sets';
 import { type CameraPose, type Moment, parseCameraPose } from './momentLink';
-import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, findReferenceMoment } from './referenceMoments';
+import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, findReferenceMoment, type MomentKind } from './referenceMoments';
 
 /**
  * Dev settings that survive a reload and a reference pick (Andrew: "my tweaks carry over").
@@ -194,9 +194,15 @@ export function carryOverPick(current: Conditions, camera: CameraPose, picked: M
   return { conditions, camera: deepClone(camera), simTime: picked.simTime, paused: picked.paused };
 }
 
-/** What picking a reference moment in the panel applies: the carry-over in custom mode, the moment as designed in default mode. */
-export function pickMoment(mode: SettingsMode, current: Conditions, camera: CameraPose, picked: Moment): Moment {
-  return mode === 'custom' ? carryOverPick(current, camera, picked) : deepClone(picked);
+/**
+ * What picking a reference moment in the panel applies. Default mode always shows the moment as designed.
+ * Custom mode carries over by kind: 'time' keeps the current camera; 'view' takes the moment's own camera, so a
+ * camera-specific moment still shows its view; 'set' takes the full moment, since a set's timeline only lands
+ * on cue with its own conditions.
+ */
+export function pickMoment(mode: SettingsMode, kind: MomentKind, current: Conditions, camera: CameraPose, picked: Moment): Moment {
+  if (mode === 'default' || kind === 'set') return deepClone(picked);
+  return carryOverPick(current, kind === 'view' ? picked.camera : camera, picked);
 }
 
 /** The reference moment a `#ref=` hash names, if it names one. */

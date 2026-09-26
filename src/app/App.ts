@@ -15,7 +15,7 @@ import {
 import { captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
 import { type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
 import { PerfOverlay } from '../dev/perf';
-import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment } from '../dev/referenceMoments';
+import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
 import { HeightProbe } from '../ocean/HeightProbe';
 import { DEFAULT_OCEAN_SIM, type OceanSimParams, OceanSimulation } from '../ocean/OceanSimulation';
 import { type DebugOverlays, OceanSurface } from '../ocean/OceanSurface';
@@ -268,9 +268,9 @@ export class App {
   }
 
   /**
-   * A reference picked in the panel. Custom mode carries the current swell, wind, tide, seed, camera and look over
-   * and takes only the moment's date, time, sim time and pause; default mode shows the moment as designed.
-   * Hash links still apply the full moment (onHashChange).
+   * A reference picked in the panel. Default mode shows the moment as designed; custom mode carries it over by
+   * kind (see pickMoment): a time moment keeps the current camera, a view moment switches to the moment's
+   * camera, and a set moment takes the full moment. Hash links still apply the full moment (onHashChange).
    */
   private goToReferenceMoment(name: string): void {
     const picked = findReferenceMoment(name);
@@ -278,7 +278,7 @@ export class App {
     this.currentReference = name;
     this.profile.own();
     if (this.settingsMode === 'default') this.restoreLook(this.lookDefaults);
-    this.applyMoment(pickMoment(this.settingsMode, this.conditions, this.rig.getPose(), picked));
+    this.applyMoment(pickMoment(this.settingsMode, referenceKind(name), this.conditions, this.rig.getPose(), picked));
     // No hash: a reload would re-apply the full reference moment over the carried-over conditions.
     history.replaceState(null, '', location.pathname + location.search);
     this.saveSettings();
@@ -383,7 +383,7 @@ export class App {
       this.profile.own();
       this.settingsMode = 'custom';
       this.restoreLook(this.profile.profile);
-      this.applyMoment(pickMoment('custom', this.profile.profile.conditions, this.rig.getPose(), reference));
+      this.applyMoment(pickMoment('custom', referenceKind(this.currentReference), this.profile.profile.conditions, this.rig.getPose(), reference));
     }
     this.saveSettings();
   }
