@@ -127,6 +127,46 @@ export function clearDevSettings(storage: SettingsStorage): void {
   }
 }
 
+/**
+ * The profile a save stores. After a #m= / #ref= link opened a moment, the link's conditions and camera are a visit,
+ * not an edit: the stored profile keeps its own until the user takes the moment over; the look is saved either way.
+ */
+export function mergeProfile(snapshot: DevSettings, stored: DevSettings, conditionsFromLink: boolean): DevSettings {
+  const out = cloneDevSettings(snapshot);
+  if (conditionsFromLink) {
+    out.conditions = cloneConditions(stored.conditions);
+    out.camera = deepClone(stored.camera);
+  }
+  return out;
+}
+
+/** The custom profile and whether the moment on screen came from a link (see mergeProfile). */
+export class CustomProfile {
+  private linkVisit = false;
+
+  constructor(public profile: DevSettings) {}
+
+  get visiting(): boolean {
+    return this.linkVisit;
+  }
+
+  /** A link applied its moment. */
+  visitLink(): void {
+    this.linkVisit = true;
+  }
+
+  /** The user took the moment over: edited a condition, picked a reference, reset, or switched mode. */
+  own(): void {
+    this.linkVisit = false;
+  }
+
+  /** Fold the app's current state into the profile and return it. */
+  capture(snapshot: DevSettings): DevSettings {
+    this.profile = mergeProfile(snapshot, this.profile, this.linkVisit);
+    return this.profile;
+  }
+}
+
 /** Copy `source` into `target` in place (the panel binds `target`); arrays are copied element-wise, keeping their identity. */
 export function assignParams<T extends object>(target: T, source: T): void {
   const t = target as Plain, s = source as Plain;

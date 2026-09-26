@@ -9,8 +9,8 @@ import { sanitizeConditions } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
 import { DevPanel } from '../dev/DevPanel';
 import {
-  type DevLookParams, type DevSettings, type SettingsMode, type SettingsStorage, assignParams, clearDevSettings, cloneDevSettings,
-  cloneLook, loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
+  CustomProfile, type DevLookParams, type DevSettings, type SettingsMode, type SettingsStorage, assignParams, clearDevSettings,
+  cloneDevSettings, cloneLook, loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
 } from '../dev/devSettings';
 import { captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
 import { type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
@@ -76,8 +76,11 @@ export class App {
   private settingsMode: SettingsMode = 'custom';
   /** `?fresh` starts from the defaults and leaves the stored profile untouched (no load, no save). */
   private readonly persist = !new URLSearchParams(location.search).has('fresh');
-  /** The custom profile. Restoring it assigns the stored look into the params objects above, before the subsystems below are built from them. */
-  private customProfile: DevSettings = this.restoreSettings();
+  /**
+   * The custom profile (and whether the moment on screen is a link's visit). Restoring it assigns the stored look
+   * into the params objects above, before the subsystems below are built from them.
+   */
+  private readonly profile = new CustomProfile(this.restoreSettings());
   readonly sky = new Sky(this.atmosphereParams);
   readonly ocean = new OceanSimulation(this.simParams);
   readonly seabed = new Seabed(buildBathymetry(this.reefParams));
@@ -125,6 +128,7 @@ export class App {
       },
       {
         onConditions: () => this.onConditionsEdited(),
+        onUserConditionEdit: () => this.profile.own(),
         onSpectrum: () => this.scheduleSpectrumRebuild(),
         onSim: () => this.ocean.setParams(this.simParams),
         onWater: () => updateWaterOpticsUniforms(this.waterOptics, this.waterParams),
@@ -150,8 +154,8 @@ export class App {
     renderer.onDeviceLost = (info) => this.onDeviceLost(info);
     this.fieldClient.onField = (f) => this.setWaves.setField(f);
     this.applyAllParams();
-    if (hashMoment) this.currentReference = referenceNameFromHash(location.hash) ?? DEFAULT_MOMENT_NAME;
-    this.applyMoment(hashMoment ?? this.startupMoment());
+    if (hashMoment) this.visitLink(hashMoment);
+    else this.applyMoment(this.startupMoment());
     window.addEventListener('resize', this.onResize);
     window.addEventListener('hashchange', this.onHashChange);
     window.addEventListener('pagehide', this.onPageHide);
@@ -263,6 +267,7 @@ export class App {
     const picked = findReferenceMoment(name);
     if (!picked) return;
     this.currentReference = name;
+    this.profile.own();
     if (this.settingsMode === 'default') this.restoreLook(this.lookDefaults);
     this.applyMoment(pickMoment(this.settingsMode, this.conditions, this.rig.getPose(), picked));
     // No hash: a reload would re-apply the full reference moment over the carried-over conditions.
@@ -334,7 +339,7 @@ export class App {
   private startupMoment(): Moment {
     const m = defaultMoment();
     if (this.settingsMode === 'default') return m;
-    const p = cloneDevSettings(this.customProfile);
+    const p = cloneDevSettings(this.profile.profile);
     return { ...m, conditions: p.conditions, camera: p.camera };
   }
 
@@ -343,27 +348,32 @@ export class App {
     this.saveTimer = window.setTimeout(() => this.saveSettings(), SETTINGS_SAVE_DEBOUNCE_MS);
   }
 
-  /** Custom mode captures the current state as the profile; default mode leaves the profile alone and records only the mode. */
+  /**
+   * Custom mode folds the current state into the profile (keeping the stored conditions and camera during a link
+   * visit); default mode leaves the profile alone and records only the mode.
+   */
   private saveSettings(): void {
     clearTimeout(this.saveTimer);
-    if (this.settingsMode === 'custom') this.customProfile = this.snapshotSettings();
-    if (this.persist) saveDevSettings(browserStorage, { ...this.customProfile, mode: this.settingsMode });
+    if (this.settingsMode === 'custom') this.profile.capture(this.snapshotSettings());
+    if (this.persist) saveDevSettings(browserStorage, { ...this.profile.profile, mode: this.settingsMode });
   }
 
   private setSettingsMode(mode: SettingsMode): void {
     if (mode === this.settingsMode) return;
     const reference = findReferenceMoment(this.currentReference) ?? defaultMoment();
     if (mode === 'default') {
-      this.saveSettings(); // still custom: store the profile before the look goes back to defaults
+      this.saveSettings(); // still custom: store the profile (a link visit still kept out of it) before the look goes back to defaults
+      this.profile.own();
       this.settingsMode = 'default';
       this.restoreLook(this.lookDefaults);
       this.applyMoment(reference);
     } else {
       const stored = this.persist ? loadDevSettings(browserStorage, this.defaultSettings()) : null;
-      if (stored) this.customProfile = { ...stored, mode: 'custom' };
+      if (stored) this.profile.profile = { ...stored, mode: 'custom' };
+      this.profile.own();
       this.settingsMode = 'custom';
-      this.restoreLook(this.customProfile);
-      this.applyMoment(pickMoment('custom', this.customProfile.conditions, this.rig.getPose(), reference));
+      this.restoreLook(this.profile.profile);
+      this.applyMoment(pickMoment('custom', this.profile.profile.conditions, this.rig.getPose(), reference));
     }
     this.saveSettings();
   }
@@ -371,14 +381,16 @@ export class App {
   /** The custom profile back to defaults, in either mode (the mode itself is kept). */
   private resetSettings(): void {
     clearDevSettings(browserStorage);
-    this.customProfile = this.defaultSettings();
+    this.profile.profile = this.defaultSettings();
+    this.profile.own();
     this.restoreLook(this.lookDefaults);
     this.currentReference = DEFAULT_MOMENT_NAME;
+    this.panel.setReference(DEFAULT_MOMENT_NAME);
     this.applyMoment(defaultMoment());
     history.replaceState(null, '', location.pathname + location.search);
     // The refresh above reported the restored values as edits; storage stays clear (default mode keeps its mode).
     clearTimeout(this.saveTimer);
-    if (this.settingsMode === 'default' && this.persist) saveDevSettings(browserStorage, { ...this.customProfile, mode: 'default' });
+    if (this.settingsMode === 'default' && this.persist) saveDevSettings(browserStorage, { ...this.profile.profile, mode: 'default' });
     this.perf.flash('Settings reset to defaults');
   }
 
@@ -419,13 +431,25 @@ export class App {
     ]);
   }
 
-  /** A #m= / #ref= link applies its full moment, conditions and camera included, in either settings mode. */
+  /**
+   * A #m= / #ref= link applies its full moment, conditions and camera included, in either settings mode. It is a
+   * visit, not an edit: saves keep the stored profile's conditions and camera until the user takes the moment over.
+   * A #ref= link also shows its name in the reference list; a #m= link leaves the list as it is.
+   */
+  private visitLink(m: Moment): void {
+    const name = referenceNameFromHash(location.hash);
+    if (name) {
+      this.currentReference = name;
+      this.panel.setReference(name);
+    }
+    this.profile.visitLink();
+    this.applyMoment(m);
+  }
+
   private onHashChange = (): void => {
     const m = momentFromHash(location.hash);
-    if (m) {
-      this.currentReference = referenceNameFromHash(location.hash) ?? this.currentReference;
-      this.applyMoment(m);
-    } else {
+    if (m) this.visitLink(m);
+    else {
       const problem = momentHashProblem(location.hash);
       if (problem) console.warn(`Moment link ignored (${problem}); keeping the current moment.`);
     }

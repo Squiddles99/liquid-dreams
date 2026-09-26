@@ -99,10 +99,10 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN, and
   // NaN × a 0 switch is still NaN, so the edge is floored and a flat field draws no line.
-  const line = (v: N, spacing: number): N => {
-    const f = fract(v.div(spacing));
+  const line = (value: N, spacing: number): N => {
+    const f = fract(value.div(spacing));
     const dist = min(f, float(1.0).sub(f));
-    const w = fwidth(v.div(spacing));
+    const w = fwidth(value.div(spacing));
     return float(1.0).sub(smoothstep(0.0, max(w.mul(1.5), 1e-6), dist)).mul(step(1e-6, w));
   };
   const withOverlay = i.overlay
