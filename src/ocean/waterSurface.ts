@@ -69,14 +69,17 @@ export class WaterSurfaceModel {
     let sx: N = float(0.0), sz: N = float(0.0), jxx: N = float(0.0), jzz: N = float(0.0);
     let foam: N = float(0.0), lostSlopeVariance: N = float(0.0);
     this.sim.sizes.forEach((size, c) => {
-      const w = fadeWeightNode(distance, CASCADE_FADES[c].normals).mul(this.cascadeWeight(xz, c));
+      const distanceFade = fadeWeightNode(distance, CASCADE_FADES[c].normals);
+      const cascadeWeight = this.cascadeWeight(xz, c);
+      const w = distanceFade.mul(cascadeWeight);
       const d = texture(this.sim.derivatives[c], xz.div(size));
       sx = sx.add(d.x.mul(w));
       sz = sz.add(d.y.mul(w));
       jxx = jxx.add(d.z.mul(w));
       jzz = jzz.add(d.w.mul(w));
       foam = max(foam, texture(this.sim.displacement[c], xz.div(size)).w.mul(w));
-      lostSlopeVariance = lostSlopeVariance.add(float(1.0).sub(w).mul(slopeVariance[c]));
+      // Only detail faded out by distance is unresolved roughness; swell removed over shallow water is gone, not rough.
+      lostSlopeVariance = lostSlopeVariance.add(float(1.0).sub(distanceFade).mul(cascadeWeight).mul(slopeVariance[c]));
     });
     return { sx, sz, jxx, jzz, foam, lostSlopeVariance };
   }
