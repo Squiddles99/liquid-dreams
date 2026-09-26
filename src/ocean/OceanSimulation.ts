@@ -42,6 +42,8 @@ export class OceanSimulation {
   readonly derivatives: THREE.StorageTexture[];
   readonly fftAAttr: THREE.StorageBufferAttribute;
   readonly fftBAttr: THREE.StorageBufferAttribute;
+  /** Per-texel foam history, one float per cell of every cascade. */
+  readonly foamAttr: THREE.StorageBufferAttribute;
   slopeVariance: number[] = CASCADE_SIZES_M.map(() => 0);
   hsTotal = 0;
   readonly time = uniform(0);
@@ -51,7 +53,6 @@ export class OceanSimulation {
   readonly foamGain = uniform(DEFAULT_OCEAN_SIM.foamGain);
   readonly foamDecay = uniform(DEFAULT_OCEAN_SIM.foamDecayS);
   private readonly h0Attr: THREE.StorageBufferAttribute;
-  private readonly foamAttr: THREE.StorageBufferAttribute;
   private readonly passes: THREE.ComputeNode[];
 
   constructor(params: OceanSimParams = DEFAULT_OCEAN_SIM) {
@@ -92,6 +93,17 @@ export class OceanSimulation {
     this.h0Attr.needsUpdate = true;
     this.slopeVariance = s.slopeVariance;
     this.hsTotal = s.hsTotal;
+    this.resetFoam();
+  }
+
+  /**
+   * Forget every whitecap: foam decays with dt, so after a jump to another sea or moment (often paused, dt = 0)
+   * the old foam would otherwise sit frozen on the new waves. The CPU copy is never written by the GPU, so
+   * zeroing it and re-uploading clears the storage buffer before the next pass.
+   */
+  resetFoam(): void {
+    (this.foamAttr.array as Float32Array).fill(0);
+    this.foamAttr.needsUpdate = true;
   }
 
   update(renderer: THREE.WebGPURenderer, timeS: number, dtS: number): void {
