@@ -1,5 +1,7 @@
 import { abs, cos, exp, float, max, min, select, sin, smoothstep, uniform } from 'three/tsl';
-import { type BreakParams, MIN_STAGE_SPAN, normalizeBreakParams } from './breaking';
+import {
+  type BreakParams, FOAM_LIP_TOLERANCE, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, LIP_BACK_REACH, MIN_STAGE_SPAN, normalizeBreakParams,
+} from './breaking';
 
 type N = any;
 
@@ -85,13 +87,15 @@ export function breakPointNode(
   // drainDepth × drainShape
   const drainShape = smoothstepDown(0.0, -Math.PI / 4, i.theta).mul(smoothstep(-Math.PI, -Math.PI / 2, i.theta));
   eta = eta.sub(u.troughDrain.mul(u.delta).mul(i.H).mul(drain).mul(drainShape).mul(i.env));
+  // lipWeight (both paths: the foam reads it too)
+  const fw = u.faceWidth.mul(i.H);
+  const near = float(1.0).sub(smoothstep(fw, fw.mul(2.0), ahead)).mul(float(1.0).sub(smoothstep(0.0, i.H.mul(LIP_BACK_REACH), ahead.negate())));
+  const w = smoothstep(i.etaCrest.sub(u.lipZone.mul(i.H)), i.etaCrest, eta).mul(near);
+  const unlanded = curl.mul(w).mul(float(1.0).sub(collapse)); // φ / Θmax
   let du: N = float(0.0), dy: N = float(0.0), lip: N = float(0.0);
   if (includeCurl) {
     // curlDisplacement
-    const fw = u.faceWidth.mul(i.H), bw = u.backWidth.mul(i.H);
-    const near = float(1.0).sub(smoothstep(fw, fw.mul(2.0), ahead)).mul(float(1.0).sub(smoothstep(bw, bw.mul(2.0), ahead.negate())));
-    const w = smoothstep(i.etaCrest.sub(u.lipZone.mul(i.H)), i.etaCrest, eta).mul(near);
-    const phi = u.thetaMax.mul(curl).mul(w).mul(float(1.0).sub(collapse));
+    const phi = u.thetaMax.mul(unlanded);
     const ru = i.uUnbroken.sub(i.uCrest.add(u.pivotAhead.mul(i.H)));
     const re = eta.sub(i.etaCrest.sub(u.pivotDrop.mul(i.H)));
     const cs = cos(phi), sn = sin(phi);
@@ -99,8 +103,15 @@ export function breakPointNode(
     dy = sn.negate().mul(ru).add(cs.mul(re)).sub(re);
     lip = max(sn, 0.0).mul(w);
   }
-  // boreScale, foamWeight
+  // boreScale
   const scale = float(1.0).add(min(float(1.0), u.beta.mul(max(i.hmin, 0.0)).div(i.H)).sub(1.0).mul(collapse));
-  const foam = collapse.mul(i.env).mul(smoothstep(-Math.PI / 8, 0.0, i.theta)).mul(float(1.0).sub(smoothstep(Math.PI / 2, Math.PI, i.theta)));
+  // foamWeight: the H > MIN_BREAKING_HEIGHT_M gate keeps the front edge's smoothstep edges apart.
+  const land = smoothstep(FOAM_ONSET_COLLAPSE, 1.0, collapse);
+  const edge = fw.mul(0.5);
+  const reach = fw.mul(smoothstep(FOAM_SETTLE_COLLAPSE, 1.0, collapse));
+  const front = float(1.0).sub(smoothstep(reach.sub(edge), reach, ahead));
+  const trail = float(1.0).sub(smoothstep(Math.PI / 2, Math.PI, i.theta));
+  const notLip = float(1.0).sub(smoothstep(0.0, FOAM_LIP_TOLERANCE, unlanded));
+  const foam = land.mul(i.env).mul(front).mul(trail).mul(notLip);
   return { du: du.mul(scale), eta: eta.add(dy).mul(scale), foam, lip };
 }

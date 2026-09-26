@@ -62,6 +62,20 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   collapseStart: 0.75,
 };
 
+/**
+ * The lip's rotation fades out over this distance behind the crest (× H). The thrown lip is the crest's front, not its
+ * whole cap: rotating the broad back of the crest with it lifts it up to 1.3·H over the still water and makes the lip as
+ * thick as the tube is tall. With 0.3·H the lip is about 40% thinner (mean 0.68·H → 0.42·H at s = 0.6) and the back of
+ * the wave keeps its shape. Not a BreakParams field (no panel slider yet).
+ */
+export const LIP_BACK_REACH = 0.3;
+/** Foam starts once the collapse has run this far (s ≈ 0.82 at the defaults): the lip has landed. */
+export const FOAM_ONSET_COLLAPSE = 0.2;
+/** From this collapse on the foam's front edge moves off the crest and down the bore's face (the tube is gone). */
+export const FOAM_SETTLE_COLLAPSE = 0.6;
+/** A point still turned by this fraction of Θmax or more is lip in the air: it carries no foam. */
+export const FOAM_LIP_TOLERANCE = 0.1;
+
 /** smoothstep(1, 1, r) is undefined, so the stage span never goes below this. */
 export const MIN_STAGE_SPAN = 0.05;
 /** Waves lower than this (m) never break (the shape's H-scaled smoothsteps would divide by ~0). */
@@ -158,16 +172,22 @@ export interface CurlResult {
 const NO_CURL: CurlResult = { du: 0, dy: 0, lip: 0 };
 
 /**
- * The throw and the curl (spec §3.2): the point (u, η) rotates forward and down (clockwise, travel to the right) about
- * the pivot, by φ = Θmax·curl(s)·w(η)·(1 − collapse(s)). u and uCrest are along-travel positions, η and etaCrest heights
- * (m); H is the local height.
+ * The lip weight w ∈ [0, 1]: the top lipZone of the wave (by height η), and only near the crest: out to the steepened
+ * face width ahead (fading by twice it) and LIP_BACK_REACH·H behind, so a high point elsewhere on a long wave never
+ * swings about the pivot and the back of the crest stays behind the lip. `ahead` is the along-travel distance from the
+ * crest (m), η and etaCrest heights (m), H the local height.
  */
-export function curlDisplacement(u: number, eta: number, uCrest: number, etaCrest: number, H: number, c: StageCurves, p: BreakParams): CurlResult {
-  // The lip: the top lipZone of the wave, and only near the crest (within the steepened face and back widths, fading
-  // out by twice them), so a high point elsewhere on a long wave never swings about the pivot.
-  const ahead = u - uCrest;
-  const near = (1 - smoothstep(p.faceWidth * H, 2 * p.faceWidth * H, ahead)) * (1 - smoothstep(p.backWidth * H, 2 * p.backWidth * H, -ahead));
-  const w = smoothstep(etaCrest - p.lipZone * H, etaCrest, eta) * near;
+export function lipWeight(ahead: number, eta: number, etaCrest: number, H: number, p: BreakParams): number {
+  const near = (1 - smoothstep(p.faceWidth * H, 2 * p.faceWidth * H, ahead)) * (1 - smoothstep(0, LIP_BACK_REACH * H, -ahead));
+  return smoothstep(etaCrest - p.lipZone * H, etaCrest, eta) * near;
+}
+
+/**
+ * The throw and the curl (spec §3.2): the point (u, η) rotates forward and down (clockwise, travel to the right) about
+ * the pivot, by φ = Θmax·curl(s)·w·(1 − collapse(s)), w its lipWeight. u and uCrest are along-travel positions, η and
+ * etaCrest heights (m); H is the local height.
+ */
+export function curlDisplacement(u: number, eta: number, uCrest: number, etaCrest: number, H: number, w: number, c: StageCurves, p: BreakParams): CurlResult {
   const phi = ((p.thetaMaxDeg * Math.PI) / 180) * c.curl * w * (1 - c.collapse);
   if (phi === 0) return NO_CURL;
   const ru = u - (uCrest + p.pivotAhead * H), re = eta - (etaCrest - p.pivotDrop * H);
@@ -186,9 +206,23 @@ export function boreScale(H: number, hmin: number, collapse: number, p: BreakPar
   return 1 + (Math.min(1, boreHeight(hmin, p) / H) - 1) * collapse;
 }
 
-/** Whitewater placeholder: rises over the collapse, from just ahead of the crest to half a wavelength behind it (θ > 0 is behind). */
-export function foamWeight(theta: number, collapse: number, env: number): number {
-  return collapse * env * smoothstep(-Math.PI / 8, 0, theta) * (1 - smoothstep(Math.PI / 2, Math.PI, theta));
+/**
+ * Whitewater placeholder (spec §3.6): only once the lip has landed, and only on the collapsed surface at and behind the
+ * crest. It rises over the collapse from FOAM_ONSET_COLLAPSE and trails to half a wavelength behind the crest (θ > 0 is
+ * behind). Its front edge sits just behind the crest while the tube is still open, so the tube's inside (the face ahead
+ * of the crest) stays clear, and moves down the bore's face once the lip lies flat (FOAM_SETTLE_COLLAPSE on). A point
+ * still turned by FOAM_LIP_TOLERANCE·Θmax or more (the curled lip, top and underside) carries none. `ahead` is the
+ * along-travel distance from the crest (m), H the local height, env the envelope × lateral taper and w the lipWeight.
+ */
+export function foamWeight(theta: number, ahead: number, H: number, env: number, w: number, c: StageCurves, p: BreakParams): number {
+  const land = smoothstep(FOAM_ONSET_COLLAPSE, 1, c.collapse);
+  if (!(land > 0) || !(H > 0)) return 0;
+  const edge = 0.5 * p.faceWidth * H;
+  const reach = 2 * edge * smoothstep(FOAM_SETTLE_COLLAPSE, 1, c.collapse);
+  const front = 1 - smoothstep(reach - edge, reach, ahead);
+  const trail = 1 - smoothstep(Math.PI / 2, Math.PI, theta);
+  const notLip = 1 - smoothstep(0, FOAM_LIP_TOLERANCE, c.curl * w * (1 - c.collapse));
+  return land * env * front * trail * notLip;
 }
 
 /** Crest to drained trough (m) of a wave of local height H at stage s: the calibration readout (spec §3.7). */
@@ -234,9 +268,11 @@ export interface BreakPointResult {
 export function breakPoint(i: BreakPointInput, s: number, p: BreakParams, includeCurl: boolean): BreakPointResult {
   if (!(s > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { du: 0, eta: i.eta, foam: 0, lip: 0 };
   const c = stageCurves(s, p);
-  const sharpened = includeCurl ? i.eta - sharpenDrop(i.uUnbroken - i.uCrest, i.eta, i.etaCrest, i.H, i.k, c.steep, p) : i.eta;
+  const ahead = i.uUnbroken - i.uCrest;
+  const sharpened = includeCurl ? i.eta - sharpenDrop(ahead, i.eta, i.etaCrest, i.H, i.k, c.steep, p) : i.eta;
   const eta = sharpened - drainDepth(i.H, c.drain, p) * drainShape(i.theta) * i.env;
-  const curl = includeCurl ? curlDisplacement(i.uUnbroken, eta, i.uCrest, i.etaCrest, i.H, c, p) : NO_CURL;
+  const w = lipWeight(ahead, eta, i.etaCrest, i.H, p);
+  const curl = includeCurl ? curlDisplacement(i.uUnbroken, eta, i.uCrest, i.etaCrest, i.H, w, c, p) : NO_CURL;
   const scale = boreScale(i.H, i.hmin, c.collapse, p);
-  return { du: curl.du * scale, eta: (eta + curl.dy) * scale, foam: foamWeight(i.theta, c.collapse, i.env), lip: curl.lip };
+  return { du: curl.du * scale, eta: (eta + curl.dy) * scale, foam: foamWeight(i.theta, ahead, i.H, i.env, w, c, p), lip: curl.lip };
 }
