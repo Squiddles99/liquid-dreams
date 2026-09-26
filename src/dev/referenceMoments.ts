@@ -22,8 +22,8 @@ export const DEFAULT_LINEUP_POSITION: [number, number, number] = [-25, 0.8, 45];
 export const DEFAULT_MOMENT_NAME = 'morning-offshore';
 const REFERENCE_SIM_TIME = 30;
 
-const lineup = (yawDeg: number, pitchDeg: number): CameraPose => ({
-  mode: 'lineup', position: [...DEFAULT_LINEUP_POSITION], yawDeg, pitchDeg,
+const lineup = (yawDeg: number, pitchDeg: number, position: [number, number, number] = DEFAULT_LINEUP_POSITION): CameraPose => ({
+  mode: 'lineup', position: [...position], yawDeg, pitchDeg,
 });
 
 /** Drone-like free camera inshore of the peak, looking out to sea over it (Andrew's reference shot). */
@@ -74,6 +74,12 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
     conditions({ timeOfDay: 10.5 }), { mode: 'lineup', position: [12, 0.8, -28], yawDeg: 200, pitchDeg: -60 }, 'view'),
   ref('reef-overhead', 'Free camera 60 m above the reef at noon: the wedge, the shelf and the sand pockets from above.',
     conditions({ timeOfDay: 12.5 }), { mode: 'free', position: [0, 60, 40], yawDeg: 0, pitchDeg: -70 }, 'view'),
+  setMoment('barrel-peeling', "08:15, 5 ft: from the shoulder, low over the shelf north-east of the peak, looking back at the lip throwing over the tube.",
+    conditions({ swell: { sizeFt: 5 } }), { mode: 'free', position: [12, 3.5, -32], yawDeg: 200, pitchDeg: -6 }, REF_BIGGEST.arrivalS + 2),
+  setMoment('closeout-right', "08:15 from a drone over the shelf, looking south-west at the south ledge as the biggest wave's right closes out along it.",
+    conditions({}), { mode: 'free', position: [60, 12, 0], yawDeg: 231, pitchDeg: -12 }, REF_BIGGEST.arrivalS + 0.5),
+  setMoment('the-drain', "08:15, low in the water in the channel north of the peak, looking at the biggest wave's face as the ledge drains in front of it.",
+    conditions({}), lineup(173, 2, [-5, 0.8, -40]), REF_BIGGEST.arrivalS),
 ];
 
 const cloneMoment = (m: Moment): Moment => ({

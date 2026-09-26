@@ -36,7 +36,7 @@ Open `http://localhost:5173/#ref=<name>`. All are at The Womb's lineup on 15 Jul
 | `late-morning` | 10:30 facing west. Higher sun, water clarity, colour holding up before the Doctor. |
 | `noon-deep-blue` | 12:30 looking down at ~45°. Body colour and clarity, small glitter. |
 | `autumn-glass` | 2026-04-20 09:30 facing west, no wind. Mirror-smooth swell lines, crisp sky reflection. |
-| `golden-hour` | 16:50 facing the sun, Doctor in. Glitter path, crest transmission, choppier surface, horizon haze. |
+| `golden-hour` | 16:50 facing the sun, Doctor in. Glitter path, choppier surface, horizon haze (turquoise shows only in a breaking lip, not on unbroken crests). |
 | `sunset` | 17:25 facing the sun. Sky colour, exposure, horizon. |
 | `overview` | Free camera 40 m up at noon. No tiling, LOD transitions, horizon curvature. |
 | `set-arriving` | 08:15 facing south-west: the set's first wave lifting on its approach to the reef, 20 s out. |
@@ -45,8 +45,11 @@ Open `http://localhost:5173/#ref=<name>`. All are at The Womb's lineup on 15 Jul
 | `high-tide-set` | The same wave at +0.5 m tide: deeper water, softer. |
 | `looking-down` | 10:30 floating over the shelf, looking down: dark limestone and weed, a sand pocket, through clear water. |
 | `reef-overhead` | Free camera 60 m above the reef at noon: the wedge, the shelf and the sand pockets from above. |
+| `barrel-peeling` | 08:15, 5 ft: from the shoulder, low over the shelf north-east of the peak, looking back at the lip throwing over the tube. |
+| `closeout-right` | 08:15 from a drone over the shelf, looking south-west at the south ledge as the biggest wave's right closes out along it. |
+| `the-drain` | 08:15, low in the water in the channel north of the peak, looking at the biggest wave's face as the ledge drains in front of it. |
 
-Pick these with settings: default (or open `#ref=<name>`) to see them exactly as designed. In custom mode a pick carries over by kind: `pre-dawn` through `sunset` are time-of-day moments and keep your own swell, tide and camera; `overview`, `looking-down` and `reef-overhead` are view moments and switch to the moment's camera; `set-arriving` through `high-tide-set` are set moments and apply in full, since a set's timeline only lands on cue with its own conditions. View and set picks are visits: your saved swell, tide and camera stay untouched, and the next time-of-day pick puts you back on them. Set moments land on cue with the default Sets settings, though — a tuned mean interval or jitter of your own can throw the timing off. Sets arrive every 10–20 minutes. Use `N` or the Sets folder's button to call one, and the Reef folder for depths and the crest-line overlay.
+Pick these with settings: default (or open `#ref=<name>`) to see them exactly as designed. In custom mode a pick carries over by kind: `pre-dawn` through `sunset` are time-of-day moments and keep your own swell, tide and camera; `overview`, `looking-down` and `reef-overhead` are view moments and switch to the moment's camera; `set-arriving` through `high-tide-set` and `barrel-peeling` through `the-drain` are set moments and apply in full, since a set's timeline only lands on cue with its own conditions. View and set picks are visits: your saved swell, tide and camera stay untouched, and the next time-of-day pick puts you back on them. Set moments land on cue with the default Sets settings, though — a tuned mean interval or jitter of your own can throw the timing off. Sets arrive every 10–20 minutes. Use `N` or the Sets folder's button to call one, and the Reef folder for depths and the crest-line overlay.
 
 ## Controls
 
@@ -58,5 +61,7 @@ Pick these with settings: default (or open `#ref=<name>`) to see them exactly as
 - `N` calls a set.
 - Settings panel: custom/default switch and Reset settings button; settings are remembered between visits.
 - Wind speed is shown and edited in km/h; swell and wind directions show compass points (e.g. `225° SW`), the direction they come from.
+- Break folder: the breaking toggle (compare with Phase 1), the breaker index γ, the drain δ, the stage span Δ, the curl angle Θmax, the bore height β and the trough drain; remembered with your other settings.
+- Sets folder: "face at the peak" reads the face height (crest to drained trough) of the wave passing the peak, in metres and feet, and whether it is breaking. Use it to calibrate the surfer-feet dial.
 
 Design: `docs/superpowers/specs/`. Plans: `docs/superpowers/plans/`.
