@@ -33,11 +33,23 @@ export function jonswapShape(omega: number, omegaP: number, gamma: number): numb
   return ((GRAVITY * GRAVITY) / omega ** 5) * Math.exp(-1.25 * (omegaP / omega) ** 4) * gamma ** r;
 }
 
-export function alphaForHs(hs: number, omegaP: number, gamma: number): number {
+/**
+ * Smooth high-frequency cut at `cutoff`·ωp. A groundswell that has crossed an ocean has lost its short waves
+ * (dispersion and whitecapping strip them), so it arrives as clean lines rather than a young sea's f⁻⁵ tail.
+ */
+export function spectralTaper(omega: number, omegaP: number, cutoff: number): number {
+  if (!Number.isFinite(cutoff)) return 1;
+  return Math.exp(-((omega / (cutoff * omegaP)) ** 8));
+}
+
+export function alphaForHs(hs: number, omegaP: number, gamma: number, tailCutoff = Infinity): number {
   if (hs <= 0) return 0;
   const lo = 0.3 * omegaP, hi = 8 * omegaP, steps = 4000, dw = (hi - lo) / steps;
   let m0 = 0;
-  for (let i = 0; i < steps; i++) m0 += jonswapShape(lo + (i + 0.5) * dw, omegaP, gamma) * dw;
+  for (let i = 0; i < steps; i++) {
+    const w = lo + (i + 0.5) * dw;
+    m0 += jonswapShape(w, omegaP, gamma) * spectralTaper(w, omegaP, tailCutoff) * dw;
+  }
   return (hs / 4) ** 2 / m0;
 }
 
@@ -72,6 +84,8 @@ export interface OceanSpectrumParams {
   swellSpread: number;
   windGamma: number;
   swellGamma: number;
+  /** Swell energy fades out above this multiple of its peak frequency (Infinity keeps the full JONSWAP tail). */
+  swellTailCutoff: number;
 }
 
 export const DEFAULT_SPECTRUM_PARAMS: OceanSpectrumParams = {
@@ -81,6 +95,7 @@ export const DEFAULT_SPECTRUM_PARAMS: OceanSpectrumParams = {
   swellSpread: 40,
   windGamma: 3.3,
   swellGamma: 7,
+  swellTailCutoff: 2,
 };
 
 export interface SpectrumComponent {
@@ -90,6 +105,8 @@ export interface SpectrumComponent {
   alpha: number;
   travel: Vec2XZ;
   spread: number;
+  /** See spectralTaper. */
+  tailCutoff: number;
 }
 
 /** Compass bearing from The Womb toward the land: the coast runs roughly north–south with the land to the east. */
@@ -109,17 +126,21 @@ export function windFetchM(fromDeg: number, p: OceanSpectrumParams): number {
 /** Fetch-limited JONSWAP wind sea, capped at a fully developed sea. */
 export function windSeaComponent(speedMs: number, fromDeg: number, p: OceanSpectrumParams): SpectrumComponent {
   const travel = travelDirectionXZ(fromDeg);
-  if (speedMs < 0.05) return { hs: 0, omegaP: 1, gamma: p.windGamma, alpha: 0, travel, spread: p.windSpread };
+  if (speedMs < 0.05) return { hs: 0, omegaP: 1, gamma: p.windGamma, alpha: 0, travel, spread: p.windSpread, tailCutoff: Infinity };
   const u = speedMs, f = windFetchM(fromDeg, p);
   const hs = Math.min(0.0016 * Math.sqrt((GRAVITY * f) / (u * u)) * ((u * u) / GRAVITY), (0.21 * u * u) / GRAVITY);
   const omegaP = Math.max(22 * Math.cbrt((GRAVITY * GRAVITY) / (u * f)), (0.855 * GRAVITY) / u);
-  return { hs, omegaP, gamma: p.windGamma, alpha: alphaForHs(hs, omegaP, p.windGamma), travel, spread: p.windSpread };
+  return { hs, omegaP, gamma: p.windGamma, alpha: alphaForHs(hs, omegaP, p.windGamma), travel, spread: p.windSpread, tailCutoff: Infinity };
 }
 
 export function swellComponent(sizeFt: number, periodS: number, fromDeg: number, p: OceanSpectrumParams): SpectrumComponent {
   const hs = surferFeetToHs(sizeFt);
   const omegaP = (2 * Math.PI) / periodS;
-  return { hs, omegaP, gamma: p.swellGamma, alpha: alphaForHs(hs, omegaP, p.swellGamma), travel: travelDirectionXZ(fromDeg), spread: p.swellSpread };
+  const tailCutoff = p.swellTailCutoff;
+  return {
+    hs, omegaP, gamma: p.swellGamma, alpha: alphaForHs(hs, omegaP, p.swellGamma, tailCutoff),
+    travel: travelDirectionXZ(fromDeg), spread: p.swellSpread, tailCutoff,
+  };
 }
 
 export function buildSpectrumComponents(c: Conditions, p: OceanSpectrumParams): SpectrumComponent[] {
@@ -136,7 +157,7 @@ export function directionalSpectrumK(kx: number, kz: number, comps: readonly Spe
   for (const c of comps) {
     if (c.alpha === 0) continue;
     const cosDelta = (kx * c.travel.x + kz * c.travel.z) / k;
-    e += c.alpha * jonswapShape(omega, c.omegaP, c.gamma) * spreading(cosDelta, c.spread);
+    e += c.alpha * jonswapShape(omega, c.omegaP, c.gamma) * spectralTaper(omega, c.omegaP, c.tailCutoff) * spreading(cosDelta, c.spread);
   }
   return (e * dOmegaDk) / k;
 }
