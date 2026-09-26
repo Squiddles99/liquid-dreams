@@ -64,7 +64,10 @@ export function spreading(cosDelta: number, s: number): number {
 }
 
 export interface OceanSpectrumParams {
-  windFetchM: number;
+  /** Open water a wind blowing off the land has crossed before reaching the lineup (the cliffs are a few hundred metres away). */
+  offshoreFetchM: number;
+  /** Open water a wind blowing in from the sea has crossed. */
+  onshoreFetchM: number;
   windSpread: number;
   swellSpread: number;
   windGamma: number;
@@ -72,7 +75,8 @@ export interface OceanSpectrumParams {
 }
 
 export const DEFAULT_SPECTRUM_PARAMS: OceanSpectrumParams = {
-  windFetchM: 5000,
+  offshoreFetchM: 400,
+  onshoreFetchM: 5000,
   windSpread: 6,
   swellSpread: 40,
   windGamma: 3.3,
@@ -88,11 +92,25 @@ export interface SpectrumComponent {
   spread: number;
 }
 
+/** Compass bearing from The Womb toward the land: the coast runs roughly north–south with the land to the east. */
+export const LAND_BEARING_DEG = 90;
+
+/**
+ * Fetch for a wind coming FROM `fromDeg`: short when it blows off the land, long when it blows in from the sea,
+ * interpolated geometrically through the alongshore directions.
+ */
+export function windFetchM(fromDeg: number, p: OceanSpectrumParams): number {
+  const cosToLand = Math.cos((fromDeg - LAND_BEARING_DEG) * (Math.PI / 180));
+  const x = Math.min(1, Math.max(0, cosToLand + 0.5));
+  const offshore = x * x * (3 - 2 * x);
+  return Math.exp(Math.log(p.onshoreFetchM) + offshore * (Math.log(p.offshoreFetchM) - Math.log(p.onshoreFetchM)));
+}
+
 /** Fetch-limited JONSWAP wind sea, capped at a fully developed sea. */
 export function windSeaComponent(speedMs: number, fromDeg: number, p: OceanSpectrumParams): SpectrumComponent {
   const travel = travelDirectionXZ(fromDeg);
   if (speedMs < 0.05) return { hs: 0, omegaP: 1, gamma: p.windGamma, alpha: 0, travel, spread: p.windSpread };
-  const u = speedMs, f = p.windFetchM;
+  const u = speedMs, f = windFetchM(fromDeg, p);
   const hs = Math.min(0.0016 * Math.sqrt((GRAVITY * f) / (u * u)) * ((u * u) / GRAVITY), (0.21 * u * u) / GRAVITY);
   const omegaP = Math.max(22 * Math.cbrt((GRAVITY * GRAVITY) / (u * f)), (0.855 * GRAVITY) / u);
   return { hs, omegaP, gamma: p.windGamma, alpha: alphaForHs(hs, omegaP, p.windGamma), travel, spread: p.windSpread };

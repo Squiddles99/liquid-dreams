@@ -62,7 +62,8 @@ export class DevPanel {
     wind.addBinding(m.conditions.wind, 'directionDeg', { label: 'from (°)', min: 0, max: 359, step: 1 }).on('change', h.onConditions);
 
     const ocean = this.pane.addFolder({ title: 'Ocean', expanded: false });
-    ocean.addBinding(m.spectrum, 'windFetchM', { label: 'fetch (m)', min: 500, max: 50000, step: 100 }).on('change', h.onSpectrum);
+    ocean.addBinding(m.spectrum, 'offshoreFetchM', { label: 'offshore fetch (m)', min: 50, max: 5000, step: 10 }).on('change', h.onSpectrum);
+    ocean.addBinding(m.spectrum, 'onshoreFetchM', { label: 'onshore fetch (m)', min: 500, max: 50000, step: 100 }).on('change', h.onSpectrum);
     ocean.addBinding(m.spectrum, 'windSpread', { min: 1, max: 20, step: 0.5 }).on('change', h.onSpectrum);
     ocean.addBinding(m.spectrum, 'swellSpread', { min: 5, max: 100, step: 1 }).on('change', h.onSpectrum);
     ocean.addBinding(m.spectrum, 'windGamma', { min: 1, max: 7, step: 0.1 }).on('change', h.onSpectrum);
