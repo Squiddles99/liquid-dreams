@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, Loop, clamp, cos, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, storage, tanh,
+  Fn, If, Loop, abs, clamp, cos, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, storage, tanh,
   textureLoad, uniform, vec2, vec3,
 } from 'three/tsl';
 import { REEF_GRID } from '../seabed/wombReef';
@@ -17,6 +17,8 @@ type N = any;
 const FIELD_NX = REEF_GRID.nx / 2;
 const FIELD_NZ = REEF_GRID.nz / 2;
 const FAR_COUNT = Math.round((FAR_X1 - FAR_X0) / FAR_DX) + 1;
+/** Envelope widths |ξ|/width beyond which a wave contributes nothing visible (exp(−3.5²) ≈ 5e-6). */
+const ENVELOPE_CUTOFF = 3.5;
 
 function floatTexture(width: number, height: number): THREE.DataTexture {
   const data = new Float32Array(width * height * 4);
@@ -156,26 +158,29 @@ export class SetWaves {
       const xi = this.time.sub(a.x).sub(f.tau).sub(dTau);
       const width = float(ENVELOPE_WIDTH * 2 * Math.PI).div(a.z);
       const r = xi.div(width);
-      const env = exp(r.mul(r).negate());
-      const dEnv = xi.mul(-2.0).div(width.mul(width)).mul(env);
-      const B = min(float(STOKES_CAP), stokesPerA.mul(A));
-      const q = xz.x.negate().mul(b.y).add(xz.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
-      const q2 = q.mul(q);
-      const lateral = mix(float(1.0), exp(q2.mul(q2).negate()), wFar);
-      const theta = a.z.mul(xi);
-      const aE = A.mul(env).mul(lateral);
-      const shape = cos(theta).add(B.mul(cos(theta.mul(2.0))));
-      const e = aE.mul(shape);
-      const hAmp = min(aE, float(FOLD_LIMIT).div(f.k));
-      const nearBreaking = smoothstep(0.3, BREAKING_RATIO, H.div(max(f.hmin, MIN_DEPTH_M)));
-      const pitch = min(nearBreaking.mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(f.k.mul(aE), 1e-4)));
-      const d = hAmp.mul(sin(theta)).add(pitch.mul(e));
-      const dEtaDXi = A.mul(lateral).mul(dEnv.mul(shape).sub(env.mul(a.z).mul(sin(theta).add(B.mul(2.0).mul(sin(theta.mul(2.0)))))));
-      const jacobian = max(float(1.0).add(hAmp.mul(a.z).mul(cos(theta)).add(pitch.mul(dEtaDXi)).mul(dXiDs)), 0.2);
-      const along = dEtaDXi.mul(dXiDs).div(jacobian);
-      eta.addAssign(e);
-      dh.addAssign(f.dir.mul(d));
-      slope.addAssign(f.dir.mul(along));
+      // Empty slots, and waves beyond ENVELOPE_CUTOFF widths (envelope < 5e-6), are skipped: most pixels are near one or two.
+      If(a.y.greaterThan(0.0).and(abs(r).lessThan(ENVELOPE_CUTOFF)), () => {
+        const env = exp(r.mul(r).negate());
+        const dEnv = xi.mul(-2.0).div(width.mul(width)).mul(env);
+        const B = min(float(STOKES_CAP), stokesPerA.mul(A));
+        const q = xz.x.negate().mul(b.y).add(xz.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
+        const q2 = q.mul(q);
+        const lateral = mix(float(1.0), exp(q2.mul(q2).negate()), wFar);
+        const theta = a.z.mul(xi);
+        const aE = A.mul(env).mul(lateral);
+        const shape = cos(theta).add(B.mul(cos(theta.mul(2.0))));
+        const e = aE.mul(shape);
+        const hAmp = min(aE, float(FOLD_LIMIT).div(f.k));
+        const nearBreaking = smoothstep(0.3, BREAKING_RATIO, H.div(max(f.hmin, MIN_DEPTH_M)));
+        const pitch = min(nearBreaking.mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(f.k.mul(aE), 1e-4)));
+        const d = hAmp.mul(sin(theta)).add(pitch.mul(e));
+        const dEtaDXi = A.mul(lateral).mul(dEnv.mul(shape).sub(env.mul(a.z).mul(sin(theta).add(B.mul(2.0).mul(sin(theta.mul(2.0)))))));
+        const jacobian = max(float(1.0).add(hAmp.mul(a.z).mul(cos(theta)).add(pitch.mul(dEtaDXi)).mul(dXiDs)), 0.2);
+        const along = dEtaDXi.mul(dXiDs).div(jacobian);
+        eta.addAssign(e);
+        dh.addAssign(f.dir.mul(d));
+        slope.addAssign(f.dir.mul(along));
+      });
     });
     return { eta, dh, slope };
   }
