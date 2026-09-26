@@ -150,7 +150,7 @@ export function cascadeSlopeVariance(band: CascadeBand, comps: readonly Spectrum
 
 /**
  * Random initial spectrum h0 for one cascade. h0 = (g1 + i g2)·sqrt(E Δk²)/2 so that the
- * evolved field h = h0 e^{iωt} + conj(h0(-k)) e^{-iωt} has variance Σ E Δk².
+ * evolved field h = h0 e^{-iωt} + conj(h0(-k)) e^{iωt} has variance Σ E Δk².
  * Gaussians are drawn for every cell so the stream does not depend on the band limits.
  */
 export function buildInitialSpectrum(band: CascadeBand, comps: readonly SpectrumComponent[], rng: Rng, n = FFT_SIZE): Float32Array {
