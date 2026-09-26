@@ -8,8 +8,6 @@ import { buildPolarGrid } from './polarGrid';
 import { type WaterOpticsUniforms, shadeWater } from './waterShading';
 import type { WaterSurfaceModel } from './waterSurface';
 
-type N = any;
-
 export const EARTH_RADIUS_M = 6_371_000;
 
 /** Dev-panel debug lines drawn on the water. */

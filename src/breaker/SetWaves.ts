@@ -63,7 +63,7 @@ export class SetWaves {
   private readonly origin = uniform(new THREE.Vector2(REEF_GRID.x0 + REEF_GRID.cellM / 2, REEF_GRID.z0 + REEF_GRID.cellM / 2));
   private readonly cell = uniform(REEF_GRID.cellM * 2);
   private readonly fieldMax = uniform(new THREE.Vector2(FIELD_NX - 1, FIELD_NZ - 1));
-  private readonly farMax = uniform(new THREE.Vector2(FAR_COUNT - 1, 0));
+  private readonly farMax = uniform(FAR_COUNT - 1);
   private readonly farP = uniform(0);
   private readonly meanOmega = uniform(1);
   private readonly meanTravel = uniform(new THREE.Vector2(1, 0));
@@ -120,9 +120,9 @@ export class SetWaves {
     // bilinearLoad clamps g, so outside the grid a and b are already the edge sample at the clamped point.
     const a = bilinearLoad(this.fieldA, g, this.fieldMax);
     const b = bilinearLoad(this.fieldB, g, this.fieldMax);
-    const fg = clamp(xz.x.sub(FAR_X0).div(FAR_DX), 0.0, this.farMax.x.sub(0.001));
-    const fa = linearLoad1D(this.farA, fg, this.farMax.x);
-    const fb = linearLoad1D(this.farB, fg, this.farMax.x);
+    const fg = clamp(xz.x.sub(FAR_X0).div(FAR_DX), 0.0, this.farMax.sub(0.001));
+    const fa = linearLoad1D(this.farA, fg, this.farMax);
+    const fb = linearLoad1D(this.farB, fg, this.farMax);
     const xc = fg.mul(FAR_DX).add(FAR_X0);
     const farTau = fa.x.add(xz.x.sub(xc).mul(fb.x)).add(this.farP.mul(xz.y));
     const farDir = safeNormalize(vec2(fb.x, this.farP));
