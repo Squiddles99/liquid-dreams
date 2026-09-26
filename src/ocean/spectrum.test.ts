@@ -3,8 +3,8 @@ import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { createRng } from '../conditions/rng';
 import {
   CASCADE_SIZES_M, DEFAULT_SPECTRUM_PARAMS, FFT_SIZE, GRAVITY,
-  alphaForHs, buildInitialSpectrum, directionalSpectrumK, buildOceanSpectra, buildSpectrumComponents, cascadeBands,
-  jonswapShape, omegaForK, spectralTaper, spreading, swellComponent, windFetchM, windSeaComponent,
+  alphaForHs, buildInitialSpectrum, buildOceanSpectra, buildSpectrumComponents, cascadeBands,
+  jonswapShape, omegaForK, spreading, windFetchM, windSeaComponent,
 } from './spectrum';
 
 describe('dispersion and JONSWAP', () => {
@@ -54,37 +54,6 @@ describe('components', () => {
     const peakWavelengthM = (2 * Math.PI * GRAVITY) / (w.omegaP * w.omegaP);
     expect(w.hs).toBeLessThan(0.04);
     expect(peakWavelengthM).toBeLessThan(1);
-  });
-});
-
-describe('groundswell has lost its short-wave tail', () => {
-  const p = DEFAULT_SPECTRUM_PARAMS;
-  it('the taper leaves the peak alone and removes energy well above it', () => {
-    expect(spectralTaper(1, 1, 2)).toBeGreaterThan(0.99);
-    expect(spectralTaper(3, 1, 2)).toBeLessThan(0.001);
-    expect(spectralTaper(3, 1, Infinity)).toBe(1);
-  });
-  it('the swell carries the taper and the wind sea does not', () => {
-    expect(swellComponent(4, 15, 225, p).tailCutoff).toBe(p.swellTailCutoff);
-    expect(windSeaComponent(6, 225, p).tailCutoff).toBe(Infinity);
-    expect(windSeaComponent(0, 225, p).tailCutoff).toBe(Infinity);
-  });
-  it('the tapered swell still has the requested Hs', () => {
-    const c = swellComponent(5, 15, 225, p);
-    const lo = 0.3 * c.omegaP, hi = 8 * c.omegaP, steps = 8000, dw = (hi - lo) / steps;
-    let m0 = 0;
-    for (let i = 0; i < steps; i++) {
-      const w = lo + (i + 0.5) * dw;
-      m0 += c.alpha * jonswapShape(w, c.omegaP, c.gamma) * spectralTaper(w, c.omegaP, c.tailCutoff) * dw;
-    }
-    expect(4 * Math.sqrt(m0)).toBeCloseTo(c.hs, 2);
-  });
-  it('short waves (a few metres long) get almost none of the swell energy', () => {
-    const c = swellComponent(5, 15, 225, p);
-    const k = (2 * Math.PI) / 6, kx = k * c.travel.x, kz = k * c.travel.z;
-    const tapered = directionalSpectrumK(kx, kz, [c]);
-    const untapered = directionalSpectrumK(kx, kz, [{ ...c, tailCutoff: Infinity }]);
-    expect(tapered).toBeLessThan(untapered * 1e-6);
   });
 });
 
