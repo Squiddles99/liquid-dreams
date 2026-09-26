@@ -93,6 +93,7 @@ export class DevPanel {
     sky.addBinding(m.atmosphere, 'groundAlbedo', { min: 0, max: 1, step: 0.01 }).on('change', h.onAtmosphere);
 
     const picture = this.pane.addFolder({ title: 'Picture', expanded: false });
+    picture.addBinding(m.picture, 'agx', { label: 'AgX (vs Neutral)' }).on('change', h.onPicture);
     picture.addBinding(m.picture, 'autoExposure').on('change', h.onPicture);
     picture.addBinding(m.picture, 'baseExposure', { min: 0.01, max: 5, step: 0.01 }).on('change', h.onPicture);
     picture.addBinding(m.picture, 'evOffset', { label: 'EV offset', min: -5, max: 5, step: 0.1 }).on('change', h.onPicture);
