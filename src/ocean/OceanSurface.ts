@@ -12,12 +12,22 @@ type N = any;
 
 export const EARTH_RADIUS_M = 6_371_000;
 
+/** Dev-panel debug lines drawn on the water. */
+export interface DebugOverlays {
+  /** White lines every 1 m of still-water depth. */
+  depthContours: boolean;
+  /** Gold set-wave crest lines, every 2 s of arrival time τ. */
+  crestLines: boolean;
+}
+
 export class OceanSurface {
   readonly mesh: THREE.Mesh;
   /** The grid is centred here each frame; waves are sampled in world space so they never slide. */
   readonly cameraXZ = uniform(new THREE.Vector2());
   private readonly slopeVariance: THREE.UniformNode<'float', number>[];
   private readonly hsTotal = uniform(0);
+  private readonly overlayDepth = uniform(0);
+  private readonly overlayCrest = uniform(0);
 
   constructor(readonly model: WaterSurfaceModel, sky: Sky, optics: WaterOpticsUniforms) {
     const sim = model.sim;
@@ -53,13 +63,19 @@ export class OceanSurface {
     const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
 
     material.colorNode = shadeWater(
-      { normal, viewDir, distance, foam: fft.foam, crestHeight: vHeight, unresolvedSlopeVariance: fft.lostSlopeVariance, hsTotal: this.hsTotal, seabed },
+      { normal, viewDir, distance, foam: fft.foam, crestHeight: vHeight, unresolvedSlopeVariance: fft.lostSlopeVariance, hsTotal: this.hsTotal, seabed,
+        overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest } },
       sky,
       optics,
     );
 
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.frustumCulled = false;
+  }
+
+  setOverlays(o: DebugOverlays): void {
+    this.overlayDepth.value = o.depthContours ? 1 : 0;
+    this.overlayCrest.value = o.crestLines ? 1 : 0;
   }
 
   update(cameraPos: THREE.Vector3, sim: OceanSimulation): void {
