@@ -7,7 +7,9 @@ import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, computeReefField, sampleField } from './reefField';
-import { type ActiveWave, type BreakOptions, type WaveContext, crestStage, sumWaves, sumWavesWithNormal, toActiveWave, waveAt } from './setWaveModel';
+import {
+  type ActiveWave, type BreakOptions, type WaveContext, crestStage, localHeight, sumWaves, sumWavesWithNormal, toActiveWave, waveAt,
+} from './setWaveModel';
 
 // The app's field: 1 m cells, default swell and tide (~1 s to solve), shared by every test here.
 const reef05 = buildBathymetry();
@@ -74,9 +76,13 @@ describe('breaking reduces to Phase 1', () => {
 });
 
 describe('where and when the A-frame breaks (default swell, mid tide)', () => {
-  it('a 1.1·Hs wave does not break at the ledge; 1.3·Hs and 1.8·Hs waves do, at the peak', () => {
-    const seaward = ray(0, 0, 40, 0);
-    expect(Math.max(...seaward.map((p) => stageWhenCrestAt(p.x, p.z, testWave(1.1 * HS))))).toBe(0);
+  it('a 1.1·Hs wave does not break at the ledge (peak, north and south ledges); 1.3·Hs and 1.8·Hs waves do, at the peak', () => {
+    const ledgePoints: [number, number][] = [[0, 0], ...along(NORTH_LEDGE, 100, 10), ...along(SOUTH_LEDGE, 40, 5)];
+    for (const [px, pz] of ledgePoints) {
+      const seaward = ray(px, pz, 40, 0);
+      const worst = Math.max(...seaward.map((p) => stageWhenCrestAt(p.x, p.z, testWave(1.1 * HS))));
+      expect(worst, `seaward of ledge point (${px.toFixed(1)}, ${pz.toFixed(1)})`).toBe(0);
+    }
     expect(stageWhenCrestAt(0, 0, testWave(1.3 * HS))).toBeGreaterThan(0);
     expect(stageWhenCrestAt(0, 0, testWave(1.8 * HS))).toBeGreaterThan(0);
   });
@@ -115,8 +121,9 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
       return Infinity;
     };
     const low = onsetAtPeak(-1.5), mid = onsetAtPeak(0), high = onsetAtPeak(1.5);
-    expect(low).toBeLessThan(mid);
-    expect(mid).toBeLessThan(high);
+    // Measured: −0.72, −0.32 and +0.59 s. At least 0.2 s apart, so a tide that barely moved the break would fail.
+    expect(mid - low).toBeGreaterThanOrEqual(0.2);
+    expect(high - mid).toBeGreaterThanOrEqual(0.2);
   });
   it('a section does not un-break in the barrel zone (40 m seaward to 20 m inside the ledges)', () => {
     const starts = [...along(NORTH_LEDGE, 100, 5), ...along(SOUTH_LEDGE, 40, 5)];
@@ -194,6 +201,32 @@ describe('the breaking surface on the real reef', () => {
   });
 });
 
+describe('the breaking surface has no seams across the crest', () => {
+  // Each wave's crest is looked up along the wave's own travel direction (the same at every point), so neighbouring
+  // points find neighbouring crests. Along each point's field ray instead, the lookup fanned out where the rays turn
+  // just shoreward of the peak and cut ~1 m trenches along the crest (x 18–30, z −5…−9). A seam is a jump: it does not
+  // shrink as the points close in. The breaking shape itself is steep there (the collapse front and the curl add
+  // 0.4–3.5 m to a 0.5 m step, but only 2–8 cm to a 1 cm one), so the check is at 1 cm, where the old lookup's seams
+  // stepped 0.19–0.38 m.
+  it('1 cm apart, breaking adds at most 0.15 m to Phase 1’s height step (0.5 m grid, x 0…40, z −15…5; probe and render)', { timeout: 60_000 }, () => {
+    const waves = REF_SET.map(toActiveWave);
+    const h = 0.01;
+    for (const dt of [0, 1]) for (const o of [probe, render]) {
+      const t = REF_BIGGEST.arrivalS + dt;
+      let worst = 0, where = '';
+      for (let x = 0; x <= 40 + 1e-9; x += 0.5) for (let z = -15; z <= 5 + 1e-9; z += 0.5) {
+        const f = at(x, z), a = sumWaves(x, z, t, f, waves, ctx, o).eta, a1 = sumWaves(x, z, t, f, waves, ctx).eta;
+        for (const [qx, qz] of [[x + h, z], [x, z + h]]) {
+          const fq = at(qx, qz), b = sumWaves(qx, qz, t, fq, waves, ctx, o).eta, b1 = sumWaves(qx, qz, t, fq, waves, ctx).eta;
+          const excess = Math.abs(a - b) - Math.abs(a1 - b1);
+          if (excess > worst) { worst = excess; where = `(${x}, ${z}) to (${qx}, ${qz})`; }
+        }
+      }
+      expect(worst, `${o.includeCurl ? 'render' : 'probe'} at arrival + ${dt} s, worst ${where}`).toBeLessThanOrEqual(0.15);
+    }
+  });
+});
+
 describe('breaking stays finite and bounded', () => {
   it('extremes: 12 ft / 25 s at −1.5 m tide, and 0.5 ft', { timeout: 60_000 }, () => {
     for (const [sizeFt, periodS, tideM] of [[12, 25, -1.5], [0.5, 15, 0]] as const) {
@@ -203,11 +236,16 @@ describe('breaking stays finite and bounded', () => {
       const o = optsFor(f), cx = ctxOf(f);
       const set = wavesOfSet(1, c, DEFAULT_SET_PARAMS).map(toActiveWave);
       const peakT = set.reduce((a, b) => (b.heightM > a.heightM ? b : a)).arrivalS;
-      const maxH = Math.max(...set.map((w) => w.heightM)) * 4;
+      // No point strays from still water by more than 1.2 × the tallest local wave anywhere on the grid (measured: 0.83
+      // and 0.81 of it), so a surface counted twice (about 1.6×) fails.
+      let tallest = 0;
+      for (let x = -60; x <= 110; x += 10) for (let z = -150; z <= 60; z += 10) {
+        for (const w of set) tallest = Math.max(tallest, localHeight(w, sampleField(f, x, z)));
+      }
       for (let x = -60; x <= 110; x += 10) for (let z = -150; z <= 60; z += 10) for (let dt = -10; dt <= 10; dt += 2.5) {
         const r = sumWavesWithNormal(x, z, peakT + dt, sampleField(f, x, z), set, cx, o, 0.25);
         for (const v of [r.eta, r.dx, r.dz, r.foam, r.lip, r.stage, ...r.normal]) expect(Number.isFinite(v)).toBe(true);
-        expect(Math.abs(r.eta)).toBeLessThanOrEqual(maxH);
+        expect(Math.abs(r.eta)).toBeLessThanOrEqual(1.2 * tallest);
         for (const v of [r.foam, r.lip, r.stage]) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(1); }
       }
     }
