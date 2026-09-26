@@ -2,7 +2,7 @@ import { smoothstep } from '../math/smoothstep';
 import type { Rgb } from '../sky/atmosphereParams';
 
 export const WATER_IOR = 1.333;
-export const MARCH_STEPS = 20;
+export const MARCH_STEPS = 14;
 export const MARCH_REFINE = 4;
 /** Deeper than this below the surface point, don't march; the seabed is already faded out before it (reachFade). */
 export const MAX_MARCH_DEPTH_M = 25;
