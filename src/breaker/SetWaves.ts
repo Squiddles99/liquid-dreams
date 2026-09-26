@@ -69,6 +69,8 @@ export class SetWaves {
   private readonly meanTravel = uniform(new THREE.Vector2(1, 0));
   private readonly wavesAttr = new THREE.StorageBufferAttribute(new Float32Array(MAX_ACTIVE_WAVES * 8), 4);
   private readonly waves = storage(this.wavesAttr, 'vec4', MAX_ACTIVE_WAVES * 2).toReadOnly();
+  /** How many wave slots are filled; 0 in a lull, when sum() skips the field fetches and the loop entirely. */
+  readonly activeCount = uniform(0);
 
   constructor(private readonly time: N) {
     this.setEvents([]);
@@ -103,6 +105,7 @@ export class SetWaves {
       d.set(w ? [w.arrivalS, w.heightM, w.omega, w.crestLengthM] : [0, 0, 1, 1], i * 8);
       d.set(w ? [w.travelX, w.travelZ, w.crestOffsetM, 0] : [1, 0, 0, 0], i * 8 + 4);
     }
+    this.activeCount.value = Math.min(events.length, MAX_ACTIVE_WAVES);
     this.wavesAttr.needsUpdate = true;
   }
 
@@ -140,46 +143,54 @@ export class SetWaves {
     };
   }
 
-  /** Σ over the active waves of the setWaveModel formulas. Must be called inside an Fn. */
+  /**
+   * Σ over the active waves of the setWaveModel formulas. Must be called inside an Fn. With no active wave the field
+   * is not even sampled: zero waves sum to zero, as on the CPU.
+   */
   private sum(xz: N): { eta: N; dh: N; slope: N } {
-    const f = this.sample(xz);
     const eta = float(0.0).toVar(), dh = vec2(0.0).toVar(), slope = vec2(0.0).toVar();
-    const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(xz));
-    const sigma = max(tanh(f.k.mul(f.depth)), 0.05);
-    const stokesPerA = f.k.mul(float(3.0).sub(sigma.mul(sigma))).div(sigma.mul(sigma).mul(sigma).mul(4.0));
-    const cLocal = this.meanOmega.div(f.k);
-    const dXiDs = f.k.negate().div(this.meanOmega);
-    Loop(MAX_ACTIVE_WAVES, ({ i }: N) => {
-      const a = this.waves.element(i.mul(2));
-      const b = this.waves.element(i.mul(2).add(1));
-      const H = min(a.y.mul(f.amp), f.hmin.mul(BREAKING_RATIO));
-      const A = H.mul(0.5);
-      const dTau = b.x.sub(this.meanTravel.x).mul(xz.x).add(b.y.sub(this.meanTravel.y).mul(xz.y)).div(cLocal);
-      const xi = this.time.sub(a.x).sub(f.tau).sub(dTau);
-      const width = float(ENVELOPE_WIDTH * 2 * Math.PI).div(a.z);
-      const r = xi.div(width);
-      // Empty slots, and waves beyond ENVELOPE_CUTOFF widths (envelope < 5e-6), are skipped: most pixels are near one or two.
-      If(a.y.greaterThan(0.0).and(abs(r).lessThan(ENVELOPE_CUTOFF)), () => {
-        const env = exp(r.mul(r).negate());
-        const dEnv = xi.mul(-2.0).div(width.mul(width)).mul(env);
-        const B = min(float(STOKES_CAP), stokesPerA.mul(A));
-        const q = xz.x.negate().mul(b.y).add(xz.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
-        const q2 = q.mul(q);
-        const lateral = mix(float(1.0), exp(q2.mul(q2).negate()), wFar);
-        const theta = a.z.mul(xi);
-        const aE = A.mul(env).mul(lateral);
-        const shape = cos(theta).add(B.mul(cos(theta.mul(2.0))));
-        const e = aE.mul(shape);
-        const hAmp = min(aE, float(FOLD_LIMIT).div(f.k));
-        const nearBreaking = smoothstep(0.3, BREAKING_RATIO, H.div(max(f.hmin, MIN_DEPTH_M)));
-        const pitch = min(nearBreaking.mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(f.k.mul(aE), 1e-4)));
-        const d = hAmp.mul(sin(theta)).add(pitch.mul(e));
-        const dEtaDXi = A.mul(lateral).mul(dEnv.mul(shape).sub(env.mul(a.z).mul(sin(theta).add(B.mul(2.0).mul(sin(theta.mul(2.0)))))));
-        const jacobian = max(float(1.0).add(hAmp.mul(a.z).mul(cos(theta)).add(pitch.mul(dEtaDXi)).mul(dXiDs)), 0.2);
-        const along = dEtaDXi.mul(dXiDs).div(jacobian);
-        eta.addAssign(e);
-        dh.addAssign(f.dir.mul(d));
-        slope.addAssign(f.dir.mul(along));
+    If(this.activeCount.greaterThan(0.5), () => {
+      // Everything that does not depend on the wave is made a var here, before the loop. Left as expressions, TSL
+      // emits them where they are first used, inside the loop body, and the field would be fetched once per slot.
+      const s = this.sample(xz);
+      const f = { tau: s.tau.toVar(), amp: s.amp.toVar(), hmin: s.hmin.toVar(), k: s.k.toVar(), dir: s.dir.toVar(), depth: s.depth.toVar() };
+      const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(xz)).toVar();
+      const sigma = max(tanh(f.k.mul(f.depth)), 0.05);
+      const stokesPerA = f.k.mul(float(3.0).sub(sigma.mul(sigma))).div(sigma.mul(sigma).mul(sigma).mul(4.0)).toVar();
+      const cLocal = this.meanOmega.div(f.k).toVar();
+      const dXiDs = f.k.negate().div(this.meanOmega).toVar();
+      Loop(MAX_ACTIVE_WAVES, ({ i }: N) => {
+        const a = this.waves.element(i.mul(2));
+        const b = this.waves.element(i.mul(2).add(1));
+        const H = min(a.y.mul(f.amp), f.hmin.mul(BREAKING_RATIO));
+        const A = H.mul(0.5);
+        const dTau = b.x.sub(this.meanTravel.x).mul(xz.x).add(b.y.sub(this.meanTravel.y).mul(xz.y)).div(cLocal);
+        const xi = this.time.sub(a.x).sub(f.tau).sub(dTau);
+        const width = float(ENVELOPE_WIDTH * 2 * Math.PI).div(a.z);
+        const r = xi.div(width);
+        // Empty slots, and waves beyond ENVELOPE_CUTOFF widths (envelope < 5e-6), are skipped: most pixels are near one or two.
+        If(a.y.greaterThan(0.0).and(abs(r).lessThan(ENVELOPE_CUTOFF)), () => {
+          const env = exp(r.mul(r).negate());
+          const dEnv = xi.mul(-2.0).div(width.mul(width)).mul(env);
+          const B = min(float(STOKES_CAP), stokesPerA.mul(A));
+          const q = xz.x.negate().mul(b.y).add(xz.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
+          const q2 = q.mul(q);
+          const lateral = mix(float(1.0), exp(q2.mul(q2).negate()), wFar);
+          const theta = a.z.mul(xi);
+          const aE = A.mul(env).mul(lateral);
+          const shape = cos(theta).add(B.mul(cos(theta.mul(2.0))));
+          const e = aE.mul(shape);
+          const hAmp = min(aE, float(FOLD_LIMIT).div(f.k));
+          const nearBreaking = smoothstep(0.3, BREAKING_RATIO, H.div(max(f.hmin, MIN_DEPTH_M)));
+          const pitch = min(nearBreaking.mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(f.k.mul(aE), 1e-4)));
+          const d = hAmp.mul(sin(theta)).add(pitch.mul(e));
+          const dEtaDXi = A.mul(lateral).mul(dEnv.mul(shape).sub(env.mul(a.z).mul(sin(theta).add(B.mul(2.0).mul(sin(theta.mul(2.0)))))));
+          const jacobian = max(float(1.0).add(hAmp.mul(a.z).mul(cos(theta)).add(pitch.mul(dEtaDXi)).mul(dXiDs)), 0.2);
+          const along = dEtaDXi.mul(dXiDs).div(jacobian);
+          eta.addAssign(e);
+          dh.addAssign(f.dir.mul(d));
+          slope.addAssign(f.dir.mul(along));
+        });
       });
     });
     return { eta, dh, slope };
@@ -189,6 +200,20 @@ export class SetWaves {
   displacementNode(xz: N): N {
     return Fn(() => {
       const s = this.sum(xz);
+      return vec3(s.dh.x, s.eta, s.dh.y);
+    })();
+  }
+
+  /**
+   * Render path only, vertex stage: displacementNode's vec3 and slopeNode's slope from ONE sum(). The slope is
+   * assigned to `slopeOut`, a varyingProperty the fragment stage reads interpolated (set waves are 100 m+ long, the
+   * grid cells a few metres). Never use this in a compute shader: there is no varying to write. The probe and the
+   * self-tests keep using displacementNode and slopeNode.
+   */
+  displacementWithSlopeNode(xz: N, slopeOut: N): N {
+    return Fn(() => {
+      const s = this.sum(xz);
+      slopeOut.assign(s.slope);
       return vec3(s.dh.x, s.eta, s.dh.y);
     })();
   }

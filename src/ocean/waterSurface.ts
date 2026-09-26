@@ -44,12 +44,24 @@ export class WaterSurfaceModel {
 
   /** vec3 displacement at undisplaced world xz, relative to the tide level. `lod` adds the render's distance fades. */
   displacement(xz: N, lod: (cascade: number) => N = () => float(1.0)): N {
+    return this.fftDisplacement(xz, lod).add(this.sets.displacementNode(xz));
+  }
+
+  /**
+   * Render path only, vertex stage: the same displacement as displacement(), plus the set waves' slope from the same
+   * set-wave sum, assigned to `setSlopeOut` (a vec2 varyingProperty). The probe's compute shader uses displacement().
+   */
+  displacementWithSetSlope(xz: N, lod: (cascade: number) => N, setSlopeOut: N): N {
+    return this.fftDisplacement(xz, lod).add(this.sets.displacementWithSlopeNode(xz, setSlopeOut));
+  }
+
+  private fftDisplacement(xz: N, lod: (cascade: number) => N): N {
     let d: N = vec3(0.0);
     this.sim.sizes.forEach((size, c) => {
       const s = texture(this.sim.displacement[c], xz.div(size)).level(float(0)).xyz; // three typings gap: level() wants a node
       d = d.add(s.mul(this.cascadeWeight(xz, c)).mul(lod(c)));
     });
-    return d.add(this.sets.displacementNode(xz));
+    return d;
   }
 
   /** FFT slopes/Jacobian terms and foam at xz, with the render's normal fades by distance; set waves added separately. */
