@@ -78,7 +78,7 @@ Each phase ends with something beautiful you can sit in, and each gets its own s
 | 3 | Whitewater | Lip impact, whitewater explosion, spit, offshore spray off the crest, lingering and dissolving foam |
 | 4 | The land | Beach, dunes, heath, rocks; Ellensbrook Bombie in the distance |
 | 5 | Sound | Spatial audio: thunder-clap impacts, whitewater roar and hiss, wind in the scrub, water lapping close by |
-| 6 | Life & conditions | Day rhythm (glassy mornings, easterly offshores, then the SW sea breeze, the "Fremantle Doctor", whose arrival time varies from day to day; on the best days it comes in late); rare autumn glass-off days with no wind at all; clouds and overcast moods; dolphins, whales, seabirds |
+| 6 | Life & conditions | Day rhythm (glassy mornings, easterly offshores, then the SW sea breeze, the "Fremantle Doctor", whose arrival time varies from day to day; on the best days it comes in late); rare autumn glass-off days with no wind at all; clouds and overcast moods, set by a weather dial (clear / cloudy / overcast / stormy) that drives the sky, the light and the colour of the sea; dolphins, whales, seabirds |
 
 ---
 
