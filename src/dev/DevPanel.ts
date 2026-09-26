@@ -1,4 +1,5 @@
 import { type BladeApi, type ListBladeApi, Pane } from 'tweakpane';
+import type { BreakParams } from '../breaker/breaking';
 import { compassPoint } from '../conditions/compass';
 import { CONDITION_RANGES } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
@@ -27,7 +28,8 @@ export interface DevPanelModel {
   reef: ReefParams;
   shallow: ShallowSwellParams;
   overlays: DebugOverlays;
-  setStatus: { nextSet: string; wave: string };
+  breaking: BreakParams;
+  setStatus: { nextSet: string; wave: string; face: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
 }
@@ -50,6 +52,7 @@ export interface DevPanelHandlers {
   onShallow(): void;
   onOverlays(): void;
   onCallSet(): void;
+  onBreak(): void;
   onSettingsMode(mode: SettingsMode): void;
   onResetSettings(): void;
   /** Any user-editable value changed (every binding and list; not the read-only readouts). */
@@ -88,6 +91,30 @@ export const CONDITION_BINDINGS = {
  * in km/h, no step, so a loaded moment's m/s value round-trips exactly (same rule as CONDITION_BINDINGS above).
  */
 export const WIND_SPEED_KMH_BINDING = { label: 'speed (km/h)', min: 0, max: msToKmh(CONDITION_RANGES.windSpeedMs.max), format: fixed(0) };
+
+/**
+ * Break folder sliders. Each range sits inside what normalizeBreakParams keeps, so a slider can never fight it.
+ * Every numeric BreakParams field (everything but the `enabled` toggle) has one here, checked by DevPanel.test.ts.
+ */
+export const BREAK_BINDINGS = {
+  gamma: { label: 'breaker index γ', min: 0.5, max: 1.2, step: 0.01 },
+  delta: { label: 'drain δ (criterion)', min: 0, max: 2, step: 0.05 },
+  stageSpan: { label: 'stage span Δ', min: 0.2, max: 4, step: 0.05 },
+  thetaMaxDeg: { label: 'curl Θmax (°)', min: 0, max: 180, step: 1 },
+  beta: { label: 'bore height β', min: 0.1, max: 0.8, step: 0.01 },
+  troughDrain: { label: 'trough drain', min: 0, max: 1, step: 0.01 },
+  hFloorM: { label: 'depth floor h₀ (m)', min: 0.05, max: 2, step: 0.05 },
+  pivotDrop: { label: 'pivot drop (×H)', min: 0.1, max: 1, step: 0.05 },
+  pivotAhead: { label: 'pivot ahead (×H)', min: 0, max: 1, step: 0.05 },
+  lipZone: { label: 'lip zone (×H)', min: 0.05, max: 1, step: 0.05 },
+  faceWidth: { label: 'face width (×H)', min: 0.1, max: 3, step: 0.05 },
+  backWidth: { label: 'back width (×H)', min: 0.1, max: 3, step: 0.05 },
+  drainEnd: { label: 'drain end (stage)', min: 0.01, max: 1, step: 0.01 },
+  steepEnd: { label: 'steepen end (stage)', min: 0.01, max: 1, step: 0.01 },
+  curlStart: { label: 'curl start (stage)', min: 0, max: 0.9, step: 0.01 },
+  curlEnd: { label: 'curl end (stage)', min: 0.2, max: 1, step: 0.01 },
+  collapseStart: { label: 'collapse start (stage)', min: 0, max: 0.95, step: 0.01 },
+} as const;
 
 export class DevPanel {
   private readonly pane = new Pane({ title: 'Liquid Dreams', expanded: true });
@@ -151,6 +178,7 @@ export class DevPanel {
     const readouts = new Set<BladeApi>([
       sets.addBinding(m.setStatus, 'nextSet', { label: 'next set', readonly: true, interval: 250 }),
       sets.addBinding(m.setStatus, 'wave', { label: 'at the peak', readonly: true, interval: 250 }),
+      sets.addBinding(m.setStatus, 'face', { label: 'face at the peak', readonly: true, interval: 250 }),
     ]);
     sets.addButton({ title: 'Call a set now (N)' }).on('click', h.onCallSet);
     sets.addBinding(m.sets, 'meanIntervalS', { label: 'mean interval (s)', min: 120, max: 3600, step: 10 }).on('change', h.onSets);
@@ -162,6 +190,12 @@ export class DevPanel {
     sets.addBinding(m.sets, 'waveHeightJitter', { label: 'wave height jitter', min: 0, max: 0.5, step: 0.01 }).on('change', h.onSets);
     sets.addBinding(m.sets, 'straysPerLull', { label: 'strays per lull', min: 0, max: 5, step: 0.1 }).on('change', h.onSets);
     sets.addBinding(m.spectrum, 'backgroundSwellFactor', { label: 'background swell', min: 0, max: 1, step: 0.01 }).on('change', h.onSpectrum);
+
+    const brk = this.pane.addFolder({ title: 'Break' });
+    brk.addBinding(m.breaking, 'enabled', { label: 'breaking' }).on('change', h.onBreak);
+    for (const [key, opts] of Object.entries(BREAK_BINDINGS) as [keyof typeof BREAK_BINDINGS, (typeof BREAK_BINDINGS)[keyof typeof BREAK_BINDINGS]][]) {
+      brk.addBinding(m.breaking, key, opts).on('change', h.onBreak);
+    }
 
     const reef = this.pane.addFolder({ title: 'Reef', expanded: false });
     reef.addBinding(m.reef, 'ledgeDepthM', { label: 'ledge depth (m)', min: 2, max: 12, step: 0.1 }).on('change', h.onReef);

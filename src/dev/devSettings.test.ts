@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { DEFAULT_OCEAN_SIM } from '../ocean/OceanSimulation';
 import { DEFAULT_SPECTRUM_PARAMS } from '../ocean/spectrum';
@@ -52,6 +53,7 @@ function defaults(): DevSettings {
     reef: DEFAULT_REEF_PARAMS,
     shallow: DEFAULT_SHALLOW_SWELL,
     overlays: { depthContours: false, crestLines: false },
+    breaking: DEFAULT_BREAK_PARAMS,
   });
 }
 
@@ -77,6 +79,9 @@ function tweaked(): DevSettings {
   s.reef.ledgeDepthM = 7.5;
   s.shallow.fadeToM = 18;
   s.overlays.crestLines = true;
+  s.breaking.enabled = false;
+  s.breaking.stageSpan = 2.2;
+  s.breaking.thetaMaxDeg = 120;
   return s;
 }
 
@@ -192,6 +197,21 @@ describe('dev settings persistence', () => {
     for (const reference of ['not-a-moment', '', 42, null, undefined]) {
       expect(loadDevSettings(store({ ...raw, reference }), defaults())!.reference).toBe(DEFAULT_MOMENT_NAME);
     }
+  });
+
+  it('loads a Phase 1 profile with the default break params', () => {
+    const phase1 = JSON.parse(JSON.stringify(tweaked())) as Record<string, unknown>;
+    delete phase1.breaking;
+    const loaded = loadDevSettings(store(phase1), defaults())!;
+    expect(loaded.breaking).toEqual(DEFAULT_BREAK_PARAMS);
+    expect(loaded.sets.meanIntervalS).toBe(300); // the rest of the stored look still loads
+  });
+  it('repairs a bad break value from the default and keeps the others', () => {
+    const s = tweaked() as unknown as Record<string, Record<string, unknown>>;
+    s.breaking.gamma = 'lots';
+    const loaded = loadDevSettings(store(s), defaults())!;
+    expect(loaded.breaking.gamma).toBe(DEFAULT_BREAK_PARAMS.gamma);
+    expect(loaded.breaking.stageSpan).toBe(2.2);
   });
 });
 

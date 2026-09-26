@@ -1,5 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
+import { formatPeakFace, peakFace } from '../breaker/peakFace';
+import type { ReefField } from '../breaker/reefField';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
 import { CameraRig } from '../camera/CameraRig';
@@ -70,7 +73,8 @@ export class App {
   readonly setParams: SetParams = { ...DEFAULT_SET_PARAMS };
   readonly shallowParams: ShallowSwellParams = { ...DEFAULT_SHALLOW_SWELL };
   readonly overlays: DebugOverlays = { depthContours: false, crestLines: false };
-  readonly setStatus = { nextSet: '', wave: '' };
+  readonly breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
+  readonly setStatus = { nextSet: '', wave: '', face: '' };
   /** The look as constructed (deep clones): what "Reset settings" and default mode restore. */
   private readonly lookDefaults: DevLookParams = cloneLook(this.lookParams());
   private settingsMode: SettingsMode = 'custom';
@@ -96,6 +100,8 @@ export class App {
   readonly probe = new HeightProbe(this.surfaceModel);
   private readonly fieldClient = new ReefFieldClient();
   private fieldKey = '';
+  /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
+  private field: ReefField | null = null;
   readonly waterOptics = createWaterOpticsUniforms(this.waterParams);
   readonly oceanSurface: OceanSurface;
   readonly picture: PicturePipeline;
@@ -128,7 +134,7 @@ export class App {
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
         picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
-        overlays: this.overlays, setStatus: this.setStatus, settingsMode: this.settingsMode,
+        overlays: this.overlays, breaking: this.breakParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
         onConditions: () => this.onConditionsEdited(),
@@ -150,13 +156,18 @@ export class App {
         onShallow: () => this.surfaceModel.setParams(this.shallowParams),
         onOverlays: () => this.oceanSurface.setOverlays(this.overlays),
         onCallSet: () => this.callSetNow(),
+        onBreak: () => {
+          normalizeBreakParams(this.breakParams);
+          this.setWaves.setBreakParams(this.breakParams);
+          this.panel.refresh();
+        },
         onSettingsMode: (mode) => this.setSettingsMode(mode),
         onResetSettings: () => this.resetSettings(),
         onAnySettingChanged: () => this.scheduleSave(),
       },
     );
     renderer.onDeviceLost = (info) => this.onDeviceLost(info);
-    this.fieldClient.onField = (f) => this.setWaves.setField(f);
+    this.fieldClient.onField = (f) => { this.field = f; this.setWaves.setField(f); };
     this.applyAllParams();
     if (hashMoment) this.visitLink(hashMoment);
     else {
@@ -298,6 +309,7 @@ export class App {
     return {
       spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams,
       maxFps: this.frameLimiter.maxFps, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams, overlays: this.overlays,
+      breaking: this.breakParams,
     };
   }
 
@@ -313,6 +325,7 @@ export class App {
     assignParams(this.reefParams, look.reef);
     assignParams(this.shallowParams, look.shallow);
     assignParams(this.overlays, look.overlays);
+    assignParams(this.breakParams, look.breaking);
   }
 
   /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
@@ -330,6 +343,8 @@ export class App {
     this.picture.setParams(this.pictureParams);
     this.surfaceModel.setParams(this.shallowParams);
     this.oceanSurface.setOverlays(this.overlays);
+    normalizeBreakParams(this.breakParams);
+    this.setWaves.setBreakParams(this.breakParams);
     clearTimeout(this.reefTimer);
     this.rebuildReefIfChanged();
   }
@@ -516,6 +531,7 @@ export class App {
       this.statusAge = 0;
       this.setStatus.nextSet = formatNextSet(nextSetArrivalS(this.clock.simTime, this.conditions, this.setParams), this.clock.simTime);
       this.setStatus.wave = waveStatus(this.clock.simTime, events);
+      this.setStatus.face = formatPeakFace(peakFace(this.field, events, this.clock.simTime, this.breakParams), this.field !== null);
     }
     const probeXZ = this.rig.probeXZ;
     this.probe.setProbe(0, probeXZ.x, probeXZ.z);
