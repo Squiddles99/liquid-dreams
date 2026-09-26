@@ -24,7 +24,7 @@ export const DEFAULT_PICTURE: PictureParams = {
   autoExposure: true,
   baseExposure: 0.5,
   evOffset: 0,
-  bloomStrength: 0.12,
+  bloomStrength: 0.04,
   bloomRadius: 0.35,
   bloomThreshold: 1.0,
   lift: 0,
@@ -50,6 +50,7 @@ export class PicturePipeline {
   // three typings gap: BloomNode's uniform members are not typed.
   private readonly bloomNode: any;
   private sunElevationDeg = 45;
+  private forwardDotSun = -1;
 
   constructor(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, params: PictureParams = DEFAULT_PICTURE) {
     this.params = { ...params };
@@ -83,8 +84,10 @@ export class PicturePipeline {
     this.updateExposure();
   }
 
-  setSunElevation(elevationDeg: number): void {
+  /** Sun elevation and the cosine between the camera's view direction and the sun, for auto-exposure. */
+  setSun(elevationDeg: number, forwardDotSun: number): void {
     this.sunElevationDeg = elevationDeg;
+    this.forwardDotSun = forwardDotSun;
     this.updateExposure();
   }
 
@@ -93,6 +96,8 @@ export class PicturePipeline {
   }
 
   private updateExposure(): void {
-    this.exposure.value = computeExposure(this.sunElevationDeg, this.params.baseExposure, this.params.evOffset, this.params.autoExposure);
+    this.exposure.value = computeExposure(
+      this.sunElevationDeg, this.params.baseExposure, this.params.evOffset, this.params.autoExposure, this.forwardDotSun,
+    );
   }
 }

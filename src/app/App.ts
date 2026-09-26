@@ -49,6 +49,7 @@ export class App {
   private readonly perf: PerfOverlay;
   private readonly panel: DevPanel;
   private readonly sunDir = new THREE.Vector3();
+  private readonly viewDir = new THREE.Vector3();
   private lastMs = performance.now();
   private spectrumKey = '';
   private spectrumTimer: number | undefined;
@@ -205,7 +206,7 @@ export class App {
     this.probe.update(this.renderer);
     this.oceanSurface.update(this.camera.position, this.ocean);
 
-    this.picture.setSunElevation(sun.elevationDeg);
+    this.picture.setSun(sun.elevationDeg, this.camera.getWorldDirection(this.viewDir).dot(this.sunDir));
     this.picture.render();
     if (this.screenshotRequested) {
       this.screenshotRequested = false;
