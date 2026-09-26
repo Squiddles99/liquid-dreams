@@ -14,6 +14,7 @@ export interface DevPanelModel {
   water: WaterOpticsParams;
   atmosphere: AtmosphereParams;
   picture: PictureParams;
+  frameLimiter: { maxFps: number };
 }
 
 export interface DevPanelHandlers {
@@ -102,6 +103,7 @@ export class DevPanel {
     picture.addBinding(m.picture, 'gamma', { min: 0.5, max: 2, step: 0.01 }).on('change', h.onPicture);
     picture.addBinding(m.picture, 'gain', { min: 0.5, max: 2, step: 0.01 }).on('change', h.onPicture);
     picture.addBinding(m.picture, 'saturation', { min: 0, max: 2, step: 0.01 }).on('change', h.onPicture);
+    picture.addBinding(m.frameLimiter, 'maxFps', { label: 'max fps (0 = display)', min: 0, max: 240, step: 1 });
   }
 
   refresh(): void {
