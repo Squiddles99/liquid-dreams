@@ -3,7 +3,6 @@ import { App } from './app/App';
 import { showOverlay } from './app/overlay';
 import { WEBGPU_HELP, checkWebGpuSupport } from './app/webgpuSupport';
 import { momentFromHash, momentHashProblem } from './dev/momentLink';
-import { defaultMoment } from './dev/referenceMoments';
 import { createRenderer } from './render/createRenderer';
 
 async function main(): Promise<void> {
@@ -31,8 +30,9 @@ async function main(): Promise<void> {
   }
 
   const problem = momentHashProblem(location.hash);
-  if (problem) console.warn(`Moment link ignored (${problem}); opening the default moment.`);
-  new App(renderer, container, momentFromHash(location.hash) ?? defaultMoment()).start();
+  if (problem) console.warn(`Moment link ignored (${problem}); opening the saved or default moment.`);
+  // No link: the App opens the saved settings' moment (or the default one).
+  new App(renderer, container, momentFromHash(location.hash)).start();
 }
 
 void main();

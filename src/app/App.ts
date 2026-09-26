@@ -8,12 +8,17 @@ import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../condit
 import { sanitizeConditions } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
 import { DevPanel } from '../dev/DevPanel';
+import {
+  type DevLookParams, type DevSettings, type SettingsMode, type SettingsStorage, assignParams, clearDevSettings, cloneDevSettings,
+  cloneLook, loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
+} from '../dev/devSettings';
 import { captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
 import { type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
 import { PerfOverlay } from '../dev/perf';
+import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment } from '../dev/referenceMoments';
 import { HeightProbe } from '../ocean/HeightProbe';
 import { DEFAULT_OCEAN_SIM, type OceanSimParams, OceanSimulation } from '../ocean/OceanSimulation';
-import { OceanSurface } from '../ocean/OceanSurface';
+import { type DebugOverlays, OceanSurface } from '../ocean/OceanSurface';
 import { DEFAULT_SPECTRUM_PARAMS, type OceanSpectrumParams, spectrumInputsKey } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS, type WaterOpticsParams } from '../ocean/waterOptics';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
@@ -24,11 +29,21 @@ import { Seabed } from '../seabed/Seabed';
 import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
-import { DEFAULT_SET_PARAMS, type SetParams, wavesNear } from '../swell/sets';
+import { DEFAULT_SET_PARAMS, type SetParams, callSetTime, nextSetArrivalS, wavesNear } from '../swell/sets';
+import { formatCountdown, waveStatus } from '../swell/setStatus';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { showOverlay } from './overlay';
 
 const SPECTRUM_REBUILD_DEBOUNCE_MS = 150;
+const REEF_REBUILD_DEBOUNCE_MS = 300;
+const SETTINGS_SAVE_DEBOUNCE_MS = 500;
+
+/** localStorage, reached lazily: the getter itself can throw (blocked site data), and the devSettings functions catch that. */
+const browserStorage: SettingsStorage = {
+  getItem: (k) => window.localStorage.getItem(k),
+  setItem: (k, v) => window.localStorage.setItem(k, v),
+  removeItem: (k) => window.localStorage.removeItem(k),
+};
 
 export class App {
   readonly scene = new THREE.Scene();
@@ -45,14 +60,28 @@ export class App {
     absorptionPerM: [...DEFAULT_WATER_OPTICS.absorptionPerM] as Rgb,
     backscatterPerM: [...DEFAULT_WATER_OPTICS.backscatterPerM] as Rgb,
   };
-  readonly atmosphereParams: AtmosphereParams = { ...DEFAULT_ATMOSPHERE };
+  readonly atmosphereParams: AtmosphereParams = {
+    ...DEFAULT_ATMOSPHERE,
+    rayleighScatteringPerKm: [...DEFAULT_ATMOSPHERE.rayleighScatteringPerKm] as Rgb,
+    ozoneAbsorptionPerKm: [...DEFAULT_ATMOSPHERE.ozoneAbsorptionPerKm] as Rgb,
+  };
   readonly pictureParams: PictureParams = { ...DEFAULT_PICTURE };
-  readonly sky = new Sky(this.atmosphereParams);
-  readonly ocean = new OceanSimulation(this.simParams);
   readonly reefParams: ReefParams = { ...DEFAULT_REEF_PARAMS };
   readonly setParams: SetParams = { ...DEFAULT_SET_PARAMS };
   readonly shallowParams: ShallowSwellParams = { ...DEFAULT_SHALLOW_SWELL };
+  readonly overlays: DebugOverlays = { depthContours: false, crestLines: false };
+  readonly setStatus = { nextSet: '', wave: '' };
+  /** The look as constructed (deep clones): what "Reset settings" and default mode restore. */
+  private readonly lookDefaults: DevLookParams = cloneLook(this.lookParams());
+  private settingsMode: SettingsMode = 'custom';
+  /** `?fresh` starts from the defaults and leaves the stored profile untouched (no load, no save). */
+  private readonly persist = !new URLSearchParams(location.search).has('fresh');
+  /** The custom profile. Restoring it assigns the stored look into the params objects above, before the subsystems below are built from them. */
+  private customProfile: DevSettings = this.restoreSettings();
+  readonly sky = new Sky(this.atmosphereParams);
+  readonly ocean = new OceanSimulation(this.simParams);
   readonly seabed = new Seabed(buildBathymetry(this.reefParams));
+  private builtReefKey = JSON.stringify(this.reefParams);
   readonly setWaves = new SetWaves(this.ocean.time);
   readonly surfaceModel = new WaterSurfaceModel(this.ocean, this.seabed, this.setWaves);
   readonly probe = new HeightProbe(this.surfaceModel);
@@ -68,13 +97,19 @@ export class App {
   private lastMs = performance.now();
   private spectrumKey = '';
   private spectrumTimer: number | undefined;
+  private reefTimer: number | undefined;
+  private saveTimer: number | undefined;
+  private statusAge = 0;
+  /** The reference moment last picked (or opened by a #ref= link): what a settings-mode switch re-applies. */
+  private currentReference = DEFAULT_MOMENT_NAME;
   private screenshotRequested = false;
   private devUiVisible = true;
 
+  /** `hashMoment` is the moment a #m= / #ref= link opened, or null to open the saved (or default) moment. */
   constructor(
     private readonly renderer: THREE.WebGPURenderer,
     private readonly container: HTMLElement,
-    initial: Moment,
+    hashMoment: Moment | null,
   ) {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
@@ -83,7 +118,11 @@ export class App {
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
     this.perf = new PerfOverlay(renderer);
     this.panel = new DevPanel(
-      { conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams, frameLimiter: this.frameLimiter },
+      {
+        conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
+        picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
+        overlays: this.overlays, setStatus: this.setStatus, settingsMode: this.settingsMode,
+      },
       {
         onConditions: () => this.onConditionsEdited(),
         onSpectrum: () => this.scheduleSpectrumRebuild(),
@@ -95,13 +134,27 @@ export class App {
         onCopyLink: () => void this.copyLink(),
         onScreenshot: () => { this.screenshotRequested = true; },
         onTogglePause: () => this.setPaused(!this.clock.paused),
+        onSets: () => {
+          this.normalizeSetParams();
+          this.panel.refresh();
+        },
+        onReef: () => this.scheduleReefRebuild(),
+        onShallow: () => this.surfaceModel.setParams(this.shallowParams),
+        onOverlays: () => this.oceanSurface.setOverlays(this.overlays),
+        onCallSet: () => this.callSetNow(),
+        onSettingsMode: (mode) => this.setSettingsMode(mode),
+        onResetSettings: () => this.resetSettings(),
+        onAnySettingChanged: () => this.scheduleSave(),
       },
     );
     renderer.onDeviceLost = (info) => this.onDeviceLost(info);
     this.fieldClient.onField = (f) => this.setWaves.setField(f);
-    this.applyMoment(initial);
+    this.applyAllParams();
+    if (hashMoment) this.currentReference = referenceNameFromHash(location.hash) ?? DEFAULT_MOMENT_NAME;
+    this.applyMoment(hashMoment ?? this.startupMoment());
     window.addEventListener('resize', this.onResize);
     window.addEventListener('hashchange', this.onHashChange);
+    window.addEventListener('pagehide', this.onPageHide);
     this.onResize();
   }
 
@@ -171,12 +224,169 @@ export class App {
     this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM });
   }
 
-  /** Re-selecting the reference already in the hash fires no hashchange, so apply it directly then. */
-  private goToReferenceMoment(name: string): void {
-    const hash = `#ref=${encodeURIComponent(name)}`;
-    if (location.hash === hash) this.onHashChange();
-    else location.hash = hash;
+  /** Reef sliders rebuild the bathymetry (~2M cells) once you stop dragging, then re-solve the field on it. */
+  private scheduleReefRebuild(): void {
+    clearTimeout(this.reefTimer);
+    this.reefTimer = window.setTimeout(() => {
+      if (this.rebuildReefIfChanged()) this.requestFieldIfNeeded(true);
+    }, REEF_REBUILD_DEBOUNCE_MS);
   }
+
+  /** Rebuild the seabed if the reef params differ from the ones it was built from. The caller re-solves the field. */
+  private rebuildReefIfChanged(): boolean {
+    const key = JSON.stringify(this.reefParams);
+    if (key === this.builtReefKey) return false;
+    this.builtReefKey = key;
+    this.seabed.setBathymetry(buildBathymetry(this.reefParams));
+    return true;
+  }
+
+  /** The panel keeps min ≤ max for the set size and height factor (a stored profile goes through here too). */
+  private normalizeSetParams(): void {
+    if (this.setParams.minWaves > this.setParams.maxWaves) this.setParams.maxWaves = this.setParams.minWaves;
+    if (this.setParams.heightFactorMin > this.setParams.heightFactorMax) this.setParams.heightFactorMax = this.setParams.heightFactorMin;
+  }
+
+  /** Jump sim time to just before the next set reaches the peak (reproducible: a moment link records the time). */
+  private callSetNow(): void {
+    this.clock.setTime(callSetTime(this.clock.simTime, this.conditions, this.setParams));
+    this.ocean.resetFoam();
+    this.perf.flash('Set incoming');
+  }
+
+  /**
+   * A reference picked in the panel. Custom mode carries the current swell, wind, tide, seed, camera and look over
+   * and takes only the moment's date, time, sim time and pause; default mode shows the moment as designed.
+   * Hash links still apply the full moment (onHashChange).
+   */
+  private goToReferenceMoment(name: string): void {
+    const picked = findReferenceMoment(name);
+    if (!picked) return;
+    this.currentReference = name;
+    if (this.settingsMode === 'default') this.restoreLook(this.lookDefaults);
+    this.applyMoment(pickMoment(this.settingsMode, this.conditions, this.rig.getPose(), picked));
+    // No hash: a reload would re-apply the full reference moment over the carried-over conditions.
+    history.replaceState(null, '', location.pathname + location.search);
+    this.saveSettings();
+  }
+
+  // ----- Dev settings: the custom profile, the custom/default switch, persistence -----
+
+  /** Live references to the look params objects (maxFps by value). */
+  private lookParams(): DevLookParams {
+    return {
+      spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams,
+      maxFps: this.frameLimiter.maxFps, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams, overlays: this.overlays,
+    };
+  }
+
+  /** Copy a look into the params objects in place (the panel binds them). */
+  private assignLook(look: DevLookParams): void {
+    assignParams(this.spectrumParams, look.spectrum);
+    assignParams(this.simParams, look.sim);
+    assignParams(this.waterParams, look.water);
+    assignParams(this.atmosphereParams, look.atmosphere);
+    assignParams(this.pictureParams, look.picture);
+    this.frameLimiter.maxFps = look.maxFps;
+    assignParams(this.setParams, look.sets);
+    assignParams(this.reefParams, look.reef);
+    assignParams(this.shallowParams, look.shallow);
+    assignParams(this.overlays, look.overlays);
+  }
+
+  /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
+  private restoreLook(look: DevLookParams): void {
+    this.assignLook(look);
+    this.applyAllParams();
+  }
+
+  /** Every subsystem update handler, once, from the current params objects. */
+  private applyAllParams(): void {
+    this.normalizeSetParams();
+    this.ocean.setParams(this.simParams);
+    updateWaterOpticsUniforms(this.waterOptics, this.waterParams);
+    this.sky.setParams(this.atmosphereParams);
+    this.picture.setParams(this.pictureParams);
+    this.surfaceModel.setParams(this.shallowParams);
+    this.oceanSurface.setOverlays(this.overlays);
+    clearTimeout(this.reefTimer);
+    this.rebuildReefIfChanged();
+  }
+
+  private defaultSettings(): DevSettings {
+    return cloneDevSettings({ mode: 'custom', conditions: cloneConditions(DEFAULT_CONDITIONS), camera: defaultMoment().camera, ...this.lookDefaults });
+  }
+
+  private snapshotSettings(): DevSettings {
+    return cloneDevSettings({ mode: 'custom', conditions: this.conditions, camera: this.rig.getPose(), ...this.lookParams() });
+  }
+
+  /** Runs during field initialisation: loads the stored profile and, in custom mode, assigns its look in place. */
+  private restoreSettings(): DevSettings {
+    const stored = this.persist ? loadDevSettings(browserStorage, this.defaultSettings()) : null;
+    if (!stored) return this.defaultSettings();
+    this.settingsMode = stored.mode;
+    if (stored.mode === 'custom') this.assignLook(stored);
+    return { ...stored, mode: 'custom' };
+  }
+
+  /** With no link: custom mode reopens the stored conditions and camera (running from t = 0); default mode opens the default moment. */
+  private startupMoment(): Moment {
+    const m = defaultMoment();
+    if (this.settingsMode === 'default') return m;
+    const p = cloneDevSettings(this.customProfile);
+    return { ...m, conditions: p.conditions, camera: p.camera };
+  }
+
+  private scheduleSave(): void {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => this.saveSettings(), SETTINGS_SAVE_DEBOUNCE_MS);
+  }
+
+  /** Custom mode captures the current state as the profile; default mode leaves the profile alone and records only the mode. */
+  private saveSettings(): void {
+    clearTimeout(this.saveTimer);
+    if (this.settingsMode === 'custom') this.customProfile = this.snapshotSettings();
+    if (this.persist) saveDevSettings(browserStorage, { ...this.customProfile, mode: this.settingsMode });
+  }
+
+  private setSettingsMode(mode: SettingsMode): void {
+    if (mode === this.settingsMode) return;
+    const reference = findReferenceMoment(this.currentReference) ?? defaultMoment();
+    if (mode === 'default') {
+      this.saveSettings(); // still custom: store the profile before the look goes back to defaults
+      this.settingsMode = 'default';
+      this.restoreLook(this.lookDefaults);
+      this.applyMoment(reference);
+    } else {
+      const stored = this.persist ? loadDevSettings(browserStorage, this.defaultSettings()) : null;
+      if (stored) this.customProfile = { ...stored, mode: 'custom' };
+      this.settingsMode = 'custom';
+      this.restoreLook(this.customProfile);
+      this.applyMoment(pickMoment('custom', this.customProfile.conditions, this.rig.getPose(), reference));
+    }
+    this.saveSettings();
+  }
+
+  /** The custom profile back to defaults, in either mode (the mode itself is kept). */
+  private resetSettings(): void {
+    clearDevSettings(browserStorage);
+    this.customProfile = this.defaultSettings();
+    this.restoreLook(this.lookDefaults);
+    this.currentReference = DEFAULT_MOMENT_NAME;
+    this.applyMoment(defaultMoment());
+    history.replaceState(null, '', location.pathname + location.search);
+    // The refresh above reported the restored values as edits; storage stays clear (default mode keeps its mode).
+    clearTimeout(this.saveTimer);
+    if (this.settingsMode === 'default' && this.persist) saveDevSettings(browserStorage, { ...this.customProfile, mode: 'default' });
+    this.perf.flash('Settings reset to defaults');
+  }
+
+  private onPageHide = (): void => {
+    this.saveSettings();
+  };
+
+  // ----- Links, pause, UI -----
 
   private async copyLink(): Promise<void> {
     history.replaceState(null, '', encodeMoment(this.currentMoment()));
@@ -209,10 +419,13 @@ export class App {
     ]);
   }
 
+  /** A #m= / #ref= link applies its full moment, conditions and camera included, in either settings mode. */
   private onHashChange = (): void => {
     const m = momentFromHash(location.hash);
-    if (m) this.applyMoment(m);
-    else {
+    if (m) {
+      this.currentReference = referenceNameFromHash(location.hash) ?? this.currentReference;
+      this.applyMoment(m);
+    } else {
       const problem = momentHashProblem(location.hash);
       if (problem) console.warn(`Moment link ignored (${problem}); keeping the current moment.`);
     }
@@ -237,6 +450,7 @@ export class App {
       togglePause: () => this.setPaused(!this.clock.paused),
       screenshot: () => { this.screenshotRequested = true; },
       toggleDevUi: () => this.toggleDevUi(),
+      callSet: () => this.callSetNow(),
     });
     this.rig.update(realDt, this.input, this.waterHeightAtCamera());
 
@@ -246,7 +460,14 @@ export class App {
     this.sky.followCamera(this.camera.position);
 
     this.ocean.update(this.renderer, this.clock.simTime, simDt);
-    this.setWaves.setEvents(wavesNear(this.clock.simTime, this.conditions, this.setParams));
+    const events = wavesNear(this.clock.simTime, this.conditions, this.setParams);
+    this.setWaves.setEvents(events);
+    this.statusAge += realDt;
+    if (this.statusAge > 0.25) {
+      this.statusAge = 0;
+      this.setStatus.nextSet = formatCountdown(nextSetArrivalS(this.clock.simTime, this.conditions, this.setParams) - this.clock.simTime);
+      this.setStatus.wave = waveStatus(this.clock.simTime, events);
+    }
     const probeXZ = this.rig.probeXZ;
     this.probe.setProbe(0, probeXZ.x, probeXZ.z);
     this.probe.update(this.renderer);

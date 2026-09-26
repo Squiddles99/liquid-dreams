@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, dot, float, length, max, min, mix, normalize, pow, reflect, saturate, sqrt, step, uniform, vec3 } from 'three/tsl';
+import { PI, dot, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
 import { extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
 import { type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
@@ -18,6 +18,8 @@ export interface WaterSurfaceInputs {
   hsTotal: N;
   /** The seabed seen through the water (Phase 1); absent means infinitely deep water (Phase 0). */
   seabed?: { radiance: N; transmittance: N };
+  /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
+  overlay?: { depth: N; tau: N; depthOn: N; crestOn: N };
 }
 
 export function createWaterOpticsUniforms(p: WaterOpticsParams) {
@@ -94,5 +96,17 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const water = column.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
   const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL))).mul(u.foamAlbedo).div(PI);
   const colour = mix(water, foamLight, saturate(i.foam));
-  return sky.applyAerialPerspective(colour, i.distance, v.negate());
+  // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
+  // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN, and
+  // NaN × a 0 switch is still NaN, so the edge is floored and a flat field draws no line.
+  const line = (v: N, spacing: number): N => {
+    const f = fract(v.div(spacing));
+    const dist = min(f, float(1.0).sub(f));
+    const w = fwidth(v.div(spacing));
+    return float(1.0).sub(smoothstep(0.0, max(w.mul(1.5), 1e-6), dist)).mul(step(1e-6, w));
+  };
+  const withOverlay = i.overlay
+    ? mix(mix(colour, foamLight, line(i.overlay.depth, 1.0).mul(i.overlay.depthOn)), foamLight.mul(vec3(1.0, 0.8, 0.25)), line(i.overlay.tau, 2.0).mul(i.overlay.crestOn))
+    : colour;
+  return sky.applyAerialPerspective(withOverlay, i.distance, v.negate());
 }
