@@ -45,6 +45,17 @@ export const DEFAULT_SET_PARAMS: SetParams = {
   crestLengthMaxM: 600,
 };
 
+/**
+ * Keeps a SetParams internally consistent: min ≤ max for wave count and height factor, and the jitter no more than
+ * half the mean interval, so a set can never start after the next one's (nextSetArrivalS assumes sets are in slot
+ * order). Applied to panel edits and to a stored profile loaded from settings alike.
+ */
+export function normalizeSetParams(p: SetParams): void {
+  if (p.minWaves > p.maxWaves) p.maxWaves = p.minWaves;
+  if (p.heightFactorMin > p.heightFactorMax) p.heightFactorMax = p.heightFactorMin;
+  p.intervalJitterS = Math.min(p.intervalJitterS, p.meanIntervalS / 2);
+}
+
 export interface WaveEvent {
   /** Stable per (slot, index): slot·64 + index; strays use 32 + n. */
   id: number;
@@ -72,6 +83,9 @@ export const WAVE_WINDOW_AFTER_S = 60;
 export const MAX_ACTIVE_WAVES = 12;
 /** "Call a set now" lands this long before the set's first wave reaches the peak. */
 export const CALL_SET_LEAD_S = 45;
+/** Second guard against a runaway slot search (e.g. a corrupted SetParams with a near-zero meanIntervalS): the
+ * clamp on a moment link's simTime keeps normal use far under this, but the search itself must never spin forever. */
+const MAX_SLOT_SEARCH_ITERATIONS = 10_000;
 
 const SET_SALT = 7000;
 const STRAY_SALT = 9000;
@@ -153,7 +167,7 @@ export function wavesNear(t: number, c: Conditions, p: SetParams): WaveEvent[] {
   const k0 = Math.floor((t - WAVE_WINDOW_AFTER_S - setSpan - p.intervalJitterS - p.meanIntervalS) / p.meanIntervalS);
   const k1 = Math.ceil((t + WAVE_WINDOW_BEFORE_S + p.intervalJitterS) / p.meanIntervalS);
   const out: WaveEvent[] = [];
-  for (let k = k0; k <= k1; k++) {
+  for (let k = k0, tries = 0; k <= k1 && tries < MAX_SLOT_SEARCH_ITERATIONS; k++, tries++) {
     for (const w of [...wavesOfSet(k, c, p), ...straysAfterSet(k, c, p)]) {
       if (w.arrivalS >= t - WAVE_WINDOW_AFTER_S && w.arrivalS <= t + WAVE_WINDOW_BEFORE_S) out.push(w);
     }
@@ -163,14 +177,16 @@ export function wavesNear(t: number, c: Conditions, p: SetParams): WaveEvent[] {
   return [...out].sort((a, b) => Math.abs(a.arrivalS - t) - Math.abs(b.arrivalS - t)).slice(0, MAX_ACTIVE_WAVES).sort((a, b) => a.arrivalS - b.arrivalS);
 }
 
-/** When the first wave of the next set (starting after t) reaches the peak. */
-export function nextSetArrivalS(t: number, c: Conditions, p: SetParams): number {
+/** When the first wave of the next set (starting after t) reaches the peak; null when the swell is flat (no sets). */
+export function nextSetArrivalS(t: number, c: Conditions, p: SetParams): number | null {
+  if (surferFeetToHs(c.swell.sizeFt) <= 0) return null;
   let k = Math.floor(t / p.meanIntervalS) - 1;
-  while (setStartS(k, c, p) <= t) k++;
+  for (let tries = 0; setStartS(k, c, p) <= t && tries < MAX_SLOT_SEARCH_ITERATIONS; tries++) k++;
   return setStartS(k, c, p);
 }
 
-/** The sim time "call a set now" jumps to. */
-export function callSetTime(t: number, c: Conditions, p: SetParams): number {
-  return nextSetArrivalS(t, c, p) - CALL_SET_LEAD_S;
+/** The sim time "call a set now" jumps to; null when the swell is flat (no sets to call). */
+export function callSetTime(t: number, c: Conditions, p: SetParams): number | null {
+  const next = nextSetArrivalS(t, c, p);
+  return next === null ? null : next - CALL_SET_LEAD_S;
 }

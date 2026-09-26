@@ -21,6 +21,10 @@ export interface Moment {
 
 export const MOMENT_VERSION = 1;
 
+/** A link's simTime cannot exceed this (11.6 days): unbounded, an absurd value (e.g. a hand-edited link) sends
+ * sets.ts's slot search hunting indefinitely and freezes the tab. */
+export const MAX_LINK_SIM_TIME_S = 1e6;
+
 function toBase64Url(s: string): string {
   const bytes = new TextEncoder().encode(s);
   let bin = '';
@@ -73,7 +77,7 @@ function parseMomentLink(hash: string): Moment | string {
   return {
     conditions: sanitizeConditions(o.conditions),
     camera,
-    simTime: finite(o.simTime) && o.simTime >= 0 ? o.simTime : 0,
+    simTime: finite(o.simTime) ? Math.min(Math.max(o.simTime, 0), MAX_LINK_SIM_TIME_S) : 0,
     paused: o.paused === true,
   };
 }

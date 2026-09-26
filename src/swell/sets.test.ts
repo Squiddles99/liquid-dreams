@@ -3,7 +3,7 @@ import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import {
   CALL_SET_LEAD_S, DEFAULT_SET_PARAMS, MAX_ACTIVE_WAVES, WAVE_WINDOW_AFTER_S, WAVE_WINDOW_BEFORE_S,
-  callSetTime, nextSetArrivalS, setStartS, straysAfterSet, wavesNear, wavesOfSet,
+  callSetTime, nextSetArrivalS, normalizeSetParams, setStartS, straysAfterSet, wavesNear, wavesOfSet,
 } from './sets';
 
 const c = DEFAULT_CONDITIONS, p = DEFAULT_SET_PARAMS;
@@ -84,19 +84,36 @@ describe('set timeline', () => {
     for (let i = 1; i < near.length; i++) expect(near[i].arrivalS).toBeGreaterThanOrEqual(near[i - 1].arrivalS);
     expect(near.some((w) => w.id === wavesOfSet(4, c, p)[2].id)).toBe(true);
   });
-  it('answers instantly at huge times (moment links)', () => {
-    const start = performance.now();
-    const near = wavesNear(1e7, c, p);
-    const next = nextSetArrivalS(1e7, c, p);
-    expect(performance.now() - start).toBeLessThan(50);
-    expect(Number.isFinite(next)).toBe(true);
-    near.forEach((w) => expect(Number.isFinite(w.arrivalS)).toBe(true));
+  it('answers instantly at huge times (moment links), even far past the link clamp', () => {
+    for (const t of [1e6, 1e7, 1e12]) {
+      const start = performance.now();
+      const near = wavesNear(t, c, p);
+      const next = nextSetArrivalS(t, c, p);
+      expect(performance.now() - start).toBeLessThan(50);
+      expect(Number.isFinite(next)).toBe(true);
+      near.forEach((w) => expect(Number.isFinite(w.arrivalS)).toBe(true));
+    }
   });
   it('finds the next set and the call-a-set jump time', () => {
     const t = 100;
     const next = nextSetArrivalS(t, c, p);
-    expect(next).toBeGreaterThan(t);
-    expect(callSetTime(t, c, p)).toBeCloseTo(next - CALL_SET_LEAD_S, 9);
-    expect(nextSetArrivalS(next + 1, c, p)).toBeGreaterThan(next + 500);
+    expect(next).not.toBeNull();
+    expect(next!).toBeGreaterThan(t);
+    expect(callSetTime(t, c, p)).toBeCloseTo(next! - CALL_SET_LEAD_S, 9);
+    expect(nextSetArrivalS(next! + 1, c, p)).toBeGreaterThan(next! + 500);
+  });
+  it('has no next set, and no call-a-set jump, for a flat swell', () => {
+    const flat = cloneConditions(c);
+    flat.swell.sizeFt = 0;
+    expect(nextSetArrivalS(1000, flat, p)).toBeNull();
+    expect(callSetTime(1000, flat, p)).toBeNull();
+  });
+  it('clamps interval jitter to at most half the mean interval, so sets stay in slot order', () => {
+    const wild = { ...p, meanIntervalS: 200, intervalJitterS: 500 };
+    normalizeSetParams(wild);
+    expect(wild.intervalJitterS).toBe(100);
+    const fine = { ...p, meanIntervalS: 900, intervalJitterS: 150 };
+    normalizeSetParams(fine);
+    expect(fine.intervalJitterS).toBe(150); // already within bounds: untouched
   });
 });
