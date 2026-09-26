@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { PI, abs, clamp, dot, exp, float, fract, max, pow, select, sign, sqrt, uniform, vec2 } from 'three/tsl';
-import type { AtmosphereParams } from './atmosphereParams';
+import { PI, abs, clamp, dot, exp, float, fract, max, pow, select, sign, sqrt, uniform, vec2, vec3 } from 'three/tsl';
+import { type AtmosphereParams, NIGHT_FLOOR_TINT } from './atmosphereParams';
 
 // TSL graphs are dynamically typed; N keeps signatures readable without fighting @types/three generics.
 type N = any;
@@ -41,6 +41,11 @@ export function updateAtmosphereUniforms(u: AtmosphereUniforms, p: AtmospherePar
   u.groundAlbedo.value = p.groundAlbedo;
   u.sunIlluminance.value = p.sunIlluminance;
   u.nightFloor.value = p.nightFloor;
+}
+
+/** Navy night-sky radiance floor (RGB), shared by the sky view and the sky-light irradiance. */
+export function nightFloorRadiance(u: AtmosphereUniforms): N {
+  return vec3(...NIGHT_FLOOR_TINT).mul(u.nightFloor.mul(u.sunIlluminance));
 }
 
 /** Nearest positive distance along rd from ro to a sphere centred at the origin; -1 if missed. */

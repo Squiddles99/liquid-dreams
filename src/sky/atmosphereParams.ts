@@ -17,9 +17,18 @@ export interface AtmosphereParams {
   groundAlbedo: number;
   /** Sun illuminance at the top of the atmosphere, in scene units (exposure handles absolute scale). */
   sunIlluminance: number;
-  /** Faint night-sky radiance as a fraction of sun illuminance, so night isn't pure black. */
+  /** Faint night-sky radiance (luminance) as a fraction of sun illuminance, tinted by NIGHT_FLOOR_TINT, so night isn't pure black. */
   nightFloor: number;
 }
+
+const NIGHT_FLOOR_NAVY: Rgb = [0.35, 0.5, 1.0];
+const navyLuminance = 0.2126 * NIGHT_FLOOR_NAVY[0] + 0.7152 * NIGHT_FLOOR_NAVY[1] + 0.0722 * NIGHT_FLOOR_NAVY[2];
+/** Navy tint for the night floor, scaled to unit (Rec. 709) luminance so `nightFloor` sets its brightness. */
+export const NIGHT_FLOOR_TINT: Rgb = [
+  NIGHT_FLOOR_NAVY[0] / navyLuminance,
+  NIGHT_FLOOR_NAVY[1] / navyLuminance,
+  NIGHT_FLOOR_NAVY[2] / navyLuminance,
+];
 
 /** Earth-like values from Hillaire 2020, with Mie raised for the Capes' sea haze. */
 export const DEFAULT_ATMOSPHERE: AtmosphereParams = {
@@ -37,7 +46,7 @@ export const DEFAULT_ATMOSPHERE: AtmosphereParams = {
   hazeFactor: 2,
   groundAlbedo: 0.1,
   sunIlluminance: 20,
-  nightFloor: 0.0004,
+  nightFloor: 7e-7,
 };
 
 export function ozoneDensity(hKm: number, p: AtmosphereParams): number {

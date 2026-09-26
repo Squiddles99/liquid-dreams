@@ -4,7 +4,7 @@ import {
   smoothstep, sqrt, storage, texture, textureStore, uint, uniform, uvec2, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-  type AtmosphereUniforms, anglesFromSkyViewUv, medium, miePhase, multiScatteringUv, raySphere, rayleighPhase,
+  type AtmosphereUniforms, anglesFromSkyViewUv, medium, miePhase, multiScatteringUv, nightFloorRadiance, raySphere, rayleighPhase,
   rMuFromTransmittanceUv, skyViewUvFromAngles, transmittanceUvFromRMu,
 } from './atmosphereNodes';
 import { MULTI_SCATTERING_LUT, SKY_VIEW_LUT, TRANSMITTANCE_LUT } from './lutMapping';
@@ -196,7 +196,7 @@ export class AtmosphereLuts {
         const radiance = texture(this.skyView, skyViewUvFromAngles(e, a)).level(float(0)).rgb;
         irradiance.addAssign(radiance.mul(sin(e)).mul(cos(e)).mul(dEl * dAz));
       });
-      irradiance.addAssign(vec3(u.nightFloor.mul(u.sunIlluminance).mul(PI)));
+      irradiance.addAssign(nightFloorRadiance(u).mul(PI));
       const muSun = sin(this.sunElevation);
       const visible = smoothstep(-0.0093, 0.0093, muSun); // sun disk crossing the horizon (±0.53°)
       const sun = this.transmittanceAt(u.groundRadius.add(this.cameraHeightKm), muSun).mul(u.sunIlluminance).mul(visible);
