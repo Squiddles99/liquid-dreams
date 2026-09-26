@@ -25,13 +25,18 @@ export function isLikelyIntegratedGpu(a: AdapterSummary): boolean {
   return /intel/.test(text) && !/\barc\b|alchemist|battlemage/.test(text);
 }
 
-/** stats-gl (FPS / CPU / GPU ms) + adapter name + integrated-GPU warning + transient messages. */
+const PAUSED_BADGE_TEXT = 'Paused — P to resume';
+
+/** stats-gl (FPS / CPU / GPU ms) + adapter name + paused badge + integrated-GPU warning + transient messages. */
 export class PerfOverlay {
   private readonly stats: Stats;
   private readonly label = document.createElement('div');
+  private readonly pausedBadge = document.createElement('div');
   private readonly toast = document.createElement('div');
   private banner: HTMLElement | null = null;
   private toastTimer: number | undefined;
+  private visible = true;
+  private paused = false;
 
   constructor(private readonly renderer: THREE.WebGPURenderer) {
     this.stats = new Stats({ trackGPU: true, trackCPT: true });
@@ -43,6 +48,12 @@ export class PerfOverlay {
     Object.assign(this.label.style, { position: 'fixed', left: '8px', top: '56px', color: '#cfe3f2', font: '11px monospace', zIndex: '9' });
     this.label.textContent = describeAdapter(adapter);
     document.body.append(this.label);
+
+    // Reference moments open paused; without a cue a frozen sea reads as a hang.
+    Object.assign(this.pausedBadge.style, { position: 'fixed', left: '8px', top: '74px', padding: '2px 6px', borderRadius: '4px',
+      background: 'rgba(4,18,32,0.7)', color: '#e8f1f8', font: '11px system-ui', zIndex: '9', display: 'none' });
+    this.pausedBadge.textContent = PAUSED_BADGE_TEXT;
+    document.body.append(this.pausedBadge);
 
     Object.assign(this.toast.style, { position: 'fixed', left: '50%', top: '16px', transform: 'translateX(-50%)', padding: '6px 12px',
       background: 'rgba(4,18,32,0.85)', color: '#e8f1f8', borderRadius: '6px', font: '13px system-ui', zIndex: '9', display: 'none' });
@@ -65,9 +76,20 @@ export class PerfOverlay {
   }
 
   setVisible(visible: boolean): void {
+    this.visible = visible;
     const display = visible ? '' : 'none';
     this.stats.dom.style.display = display;
     this.label.style.display = display;
+    this.syncPausedBadge();
+  }
+
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+    this.syncPausedBadge();
+  }
+
+  private syncPausedBadge(): void {
+    this.pausedBadge.style.display = this.visible && this.paused ? '' : 'none';
   }
 
   flash(message: string): void {

@@ -79,7 +79,7 @@ export class App {
         onReferenceMoment: (name) => this.goToReferenceMoment(name),
         onCopyLink: () => void this.copyLink(),
         onScreenshot: () => { this.screenshotRequested = true; },
-        onTogglePause: () => { this.clock.paused = !this.clock.paused; },
+        onTogglePause: () => this.setPaused(!this.clock.paused),
       },
     );
     renderer.onDeviceLost = (info) => this.onDeviceLost(info);
@@ -100,7 +100,7 @@ export class App {
   applyMoment(m: Moment): void {
     assignConditions(this.conditions, m.conditions);
     this.clock.setTime(m.simTime);
-    this.clock.paused = m.paused;
+    this.setPaused(m.paused);
     this.rig.setPose(m.camera, this.waterHeightAtCamera());
     this.rebuildSpectrumIfNeeded(true);
     // The rebuild clears foam too, but a moment is a jump in sim time even when the sea is unchanged.
@@ -155,6 +155,12 @@ export class App {
     }
   }
 
+  /** Every pause change goes through here so the paused badge always matches the clock. */
+  private setPaused(paused: boolean): void {
+    this.clock.paused = paused;
+    this.perf.setPaused(paused);
+  }
+
   private toggleDevUi(): void {
     this.devUiVisible = !this.devUiVisible;
     this.panel.setVisible(this.devUiVisible);
@@ -195,7 +201,7 @@ export class App {
 
     handleHotkeys(this.input, {
       copyLink: () => void this.copyLink(),
-      togglePause: () => { this.clock.paused = !this.clock.paused; },
+      togglePause: () => this.setPaused(!this.clock.paused),
       screenshot: () => { this.screenshotRequested = true; },
       toggleDevUi: () => this.toggleDevUi(),
     });
