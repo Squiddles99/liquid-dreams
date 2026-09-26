@@ -153,12 +153,12 @@ export class CustomProfile {
     return this.linkVisit;
   }
 
-  /** A link applied its moment. */
+  /** A link, or a view/set reference pick in custom mode, applied its moment: a visit that leaves the profile's conditions and camera alone. */
   visitLink(): void {
     this.linkVisit = true;
   }
 
-  /** The user took the moment over: edited a condition, picked a reference, reset, or switched mode. */
+  /** The user took the moment over: edited a condition, picked a time moment, reset, or switched mode. */
   own(): void {
     this.linkVisit = false;
   }

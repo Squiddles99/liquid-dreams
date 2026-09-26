@@ -277,6 +277,8 @@ export class App {
     const picked = findReferenceMoment(name);
     if (!picked) return;
     this.currentReference = name;
+    // Flush a pending debounced save first, so a condition edit made just before the pick is in the stored profile.
+    if (this.settingsMode === 'custom') this.saveSettings();
     if (this.settingsMode === 'default') this.restoreLook(this.lookDefaults);
     const { moment, visit } = pickMoment(
       this.settingsMode, referenceKind(name), this.profile.visiting,
