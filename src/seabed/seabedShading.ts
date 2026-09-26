@@ -2,7 +2,7 @@ import { Fn, If, Loop, PI, dot, exp, float, max, min, mix, mx_noise_float, norma
 import { type WaterOpticsUniforms, schlickWater } from '../ocean/waterShading';
 import type { Sky } from '../sky/Sky';
 import type { Seabed } from './Seabed';
-import { MARCH_REFINE, MARCH_STEPS, MAX_MARCH_DEPTH_M, MAX_MARCH_DIST_M, REACH_FADE_DEPTH_M, REACH_FADE_DIST_M, WATER_IOR } from './waterColumn';
+import { MARCH_DEPTH_ALLOWANCE_M, MARCH_REFINE, MARCH_STEPS, MAX_MARCH_DEPTH_M, MAX_MARCH_DIST_M, REACH_FADE_DEPTH_M, REACH_FADE_DIST_M, WATER_IOR } from './waterColumn';
 
 type N = any;
 
@@ -20,7 +20,7 @@ export function marchSeabedNode(p: N, d: N, seabed: Seabed): N {
       If(depthHere.lessThanEqual(0.0), () => {
         result.assign(vec2(0.0, 1.0));
       }).Else(() => {
-        const maxDist = min(float(MAX_MARCH_DIST_M), depthHere.mul(1.5).div(max(down, 0.05)));
+        const maxDist = min(float(MAX_MARCH_DIST_M), depthHere.add(MARCH_DEPTH_ALLOWANCE_M).mul(1.5).div(max(down, 0.05)));
         const prev = float(0.0).toVar(), lo = float(0.0).toVar(), hi = float(0.0).toVar(), found = float(0.0).toVar();
         Loop(MARCH_STEPS, ({ i }: N) => {
           If(found.lessThan(0.5), () => {

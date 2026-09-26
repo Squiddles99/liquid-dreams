@@ -12,6 +12,8 @@ export const MAX_MARCH_DIST_M = 80;
 export const REACH_FADE_DEPTH_M = 18;
 /** The seabed starts fading out at this march distance, reaching zero at MAX_MARCH_DIST_M. */
 export const REACH_FADE_DIST_M = 56;
+/** The bed ahead may be up to this much deeper than under the surface point (the ledge drops 6 → 13 m). */
+export const MARCH_DEPTH_ALLOWANCE_M = 8;
 
 export const extinction = (a: Rgb, bb: Rgb): Rgb => [a[0] + bb[0], a[1] + bb[1], a[2] + bb[2]];
 
@@ -40,7 +42,7 @@ export function marchSeabed(
   const down = -d[1];
   if (!(down > 0.02) || depthHere >= MAX_MARCH_DEPTH_M) return { hit: false, distance: 0 };
   if (depthHere <= 0) return { hit: true, distance: 0 };
-  const maxDist = Math.min(MAX_MARCH_DIST_M, (depthHere * 1.5) / Math.max(down, 0.05));
+  const maxDist = Math.min(MAX_MARCH_DIST_M, ((depthHere + MARCH_DEPTH_ALLOWANCE_M) * 1.5) / Math.max(down, 0.05));
   const below = (s: number) => p[1] + d[1] * s <= bedAt(p[0] + d[0] * s, p[2] + d[2] * s);
   let prev = 0;
   for (let i = 1; i <= MARCH_STEPS; i++) {

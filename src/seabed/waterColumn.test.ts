@@ -35,6 +35,14 @@ describe('seabed ray-march (CPU mirror of the shader)', () => {
     expect(r.distance).toBeCloseTo(2 / -d[1], 0); // where the ray reaches y = −2 over the shelf
     expect(d[0] * r.distance).toBeCloseTo(8, 0);
   });
+  it('crosses a crest into deeper water instead of running out of march distance', () => {
+    // Bed steps down from 2 m to 6 m depth 1 m ahead of the surface point along x.
+    const bedAt = (x: number) => (x < 1 ? -2 : -6);
+    const d = norm([0.7, -0.7, 0]);
+    const r = marchSeabed([0, 0, 0], d, bedAt);
+    expect(r.hit).toBe(true);
+    expect(0 + d[1] * r.distance).toBeCloseTo(-6, 0); // p.y + d.y·dist ≈ −6, within the bisection tolerance
+  });
   it('gives up in deep water, looking up, and hits immediately where the reef is dry', () => {
     expect(marchSeabed([0, 0, 0], [0, -1, 0], flat(-30)).hit).toBe(false);
     expect(marchSeabed([0, 0, 0], norm([1, 0.2, 0]), flat(-5)).hit).toBe(false);
