@@ -55,6 +55,7 @@ export class OceanSurface {
       foam = max(foam, texture(sim.displacement[c], vBaseXZ.div(size)).w.mul(w));
       lostSlopeVariance = lostSlopeVariance.add(float(1.0).sub(w).mul(this.slopeVariance[c]));
     });
+    // The Jxz cross term is knowingly dropped: the derivatives texture has no channel for it.
     const normal = normalize(vec3(
       sx.negate().div(max(float(1.0).add(jxx), 0.1)),
       1.0,
