@@ -1,3 +1,4 @@
+import { LookDrag } from './lookDrag';
 import type { MoveKeys } from './movement';
 
 /** Keys typed into form fields (the dev panel) must not drive the camera or hotkeys. */
@@ -10,16 +11,20 @@ export function shouldIgnoreKeyTarget(target: EventTarget | null): boolean {
 export class Input {
   private readonly down = new Set<string>();
   private readonly pressed = new Set<string>();
-  private mouseDx = 0;
-  private mouseDy = 0;
+  /** Hold-to-look: press-drag-release, independent of whether the pointer lock it requested ever lands. */
+  private readonly lookDrag = new LookDrag();
   private wheel = 0;
 
   constructor(private readonly element: HTMLElement) {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
+    // Press is scoped to the canvas so the dev panel stays clickable; release and the lock's own
+    // change event are on the document so a drag still ends when the mouse is over the panel or off-window.
     element.addEventListener('mousedown', this.onMouseDown);
+    document.addEventListener('mouseup', this.onMouseUp);
     document.addEventListener('mousemove', this.onMouseMove);
+    document.addEventListener('pointerlockchange', this.onPointerLockChange);
     element.addEventListener('wheel', this.onWheel, { passive: true });
   }
 
@@ -33,10 +38,7 @@ export class Input {
   }
 
   consumeMouse(): { dx: number; dy: number } {
-    const d = { dx: this.mouseDx, dy: this.mouseDy };
-    this.mouseDx = 0;
-    this.mouseDy = 0;
-    return d;
+    return this.lookDrag.consume();
   }
 
   consumeWheel(): number {
@@ -59,7 +61,9 @@ export class Input {
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
     this.element.removeEventListener('mousedown', this.onMouseDown);
+    document.removeEventListener('mouseup', this.onMouseUp);
     document.removeEventListener('mousemove', this.onMouseMove);
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     this.element.removeEventListener('wheel', this.onWheel);
   }
 
@@ -77,22 +81,35 @@ export class Input {
   private onBlur = (): void => {
     this.down.clear();
     this.pressed.clear();
+    this.lookDrag.end();
   };
 
-  private onMouseDown = (): void => {
+  private onMouseDown = (e: MouseEvent): void => {
+    if (!this.lookDrag.press(e.button)) return;
     if (document.pointerLockElement !== this.element) {
       // Chrome makes you wait a moment before re-locking after Escape, and rejects the request in the
       // meantime (and in other cases, e.g. this element's document not being the active top-level one);
-      // swallow that so it doesn't surface as an unhandled rejection.
+      // swallow that so it doesn't surface as an unhandled rejection. The look keeps working regardless
+      // (see LookDrag), so a rejected or slow lock is never visible as a dead drag.
       const lock = this.element.requestPointerLock() as Promise<void> | undefined;
       lock?.catch(() => {});
     }
   };
 
+  /** Left-button-up anywhere ends the drag and frees the cursor immediately: no Esc needed. */
+  private onMouseUp = (e: MouseEvent): void => {
+    if (!this.lookDrag.release(e.button)) return;
+    if (document.pointerLockElement === this.element) document.exitPointerLock();
+  };
+
+  /** Esc (or anything else) taking the lock away mid-drag ends the drag, same as releasing the button. */
+  private onPointerLockChange = (): void => {
+    if (document.pointerLockElement !== this.element) this.lookDrag.end();
+  };
+
   private onMouseMove = (e: MouseEvent): void => {
-    if (document.pointerLockElement !== this.element) return;
-    this.mouseDx += e.movementX;
-    this.mouseDy += e.movementY;
+    // Accumulates while the drag is held whether or not the pointer lock landed (see LookDrag).
+    this.lookDrag.move(e.movementX, e.movementY);
   };
 
   private onWheel = (e: WheelEvent): void => {
