@@ -1,6 +1,8 @@
 import { type BladeApi, type ListBladeApi, Pane } from 'tweakpane';
+import { compassPoint } from '../conditions/compass';
 import { CONDITION_RANGES } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
+import { kmhToMs, msToKmh } from '../conditions/units';
 import type { OceanSimParams } from '../ocean/OceanSimulation';
 import type { DebugOverlays } from '../ocean/OceanSurface';
 import type { OceanSpectrumParams } from '../ocean/spectrum';
@@ -61,6 +63,13 @@ const NIGHT_FLOOR_LOG10_MAX = -4;
 const fixed = (digits: number) => (v: number): string => v.toFixed(digits);
 
 /**
+ * A direction reads as "225° SW": tweakpane's number-text controller only ever parses a *typed* edit back into
+ * the value (the ECMA-expression parser it runs on blur rejects any text with trailing non-numeric characters,
+ * so "225° SW" itself never round-trips through it); `format` is display-only, same as everywhere else here.
+ */
+const withCompass = (v: number): string => `${fixed(0)(v)}° ${compassPoint(v)}`;
+
+/**
  * Conditions bindings. Tweakpane clamps to min/max and snaps to `step` on every refresh and writes the result back,
  * so each range contains everything sanitize allows and none has a step: a loaded moment (07:35 is 7.58333 h) must
  * come back exactly. `format` only rounds the display.
@@ -68,17 +77,21 @@ const fixed = (digits: number) => (v: number): string => v.toFixed(digits);
 export const CONDITION_BINDINGS = {
   timeOfDay: { label: 'time (h)', ...CONDITION_RANGES.timeOfDay, format: fixed(2) },
   swellSizeFt: { label: 'size (surfer ft)', ...CONDITION_RANGES.swellSizeFt, format: fixed(1) },
-  swellPeriodS: { label: 'period (s)', ...CONDITION_RANGES.swellPeriodS, format: fixed(1) },
-  swellDirectionDeg: { label: 'from (°)', ...CONDITION_RANGES.swellDirectionDeg, format: fixed(0) },
+  swellPeriodS: { label: 'period (s between waves)', ...CONDITION_RANGES.swellPeriodS, format: fixed(1) },
+  swellDirectionDeg: { label: 'from', ...CONDITION_RANGES.swellDirectionDeg, format: withCompass },
+  // Edited through the windSpeedProxy (km/h) below instead; kept here so every sanitised condition still has a
+  // range descriptor (DevPanel.test.ts checks that) even though nothing binds this one directly.
   windSpeedMs: { label: 'speed (m/s)', ...CONDITION_RANGES.windSpeedMs, format: fixed(1) },
-  windDirectionDeg: { label: 'from (°)', ...CONDITION_RANGES.windDirectionDeg, format: fixed(0) },
+  windDirectionDeg: { label: 'from', ...CONDITION_RANGES.windDirectionDeg, format: withCompass },
   tideM: { label: 'tide (m)', ...CONDITION_RANGES.tideM, format: fixed(2) },
 };
 
 export class DevPanel {
   private readonly pane = new Pane({ title: 'Liquid Dreams', expanded: true });
   private readonly nightFloorProxy = { log10: 0 };
-  /** True inside refresh(): the proxy's slider snaps to its step there, which must not overwrite nightFloor. */
+  /** Wind speed is stored in m/s; the panel edits it in km/h through this proxy (same pattern as nightFloorProxy). */
+  private readonly windSpeedProxy = { kmh: 0 };
+  /** True inside refresh(): the proxies' bindings snap to their steps (or just get set) there, which must not write back. */
   private refreshing = false;
   /** True while setReference() moves the reference list, which is not a pick. */
   private settingReference = false;
@@ -121,7 +134,14 @@ export class DevPanel {
     swell.addBinding(m.conditions.swell, 'directionDeg', CONDITION_BINDINGS.swellDirectionDeg).on('change', onConditions);
 
     const wind = this.pane.addFolder({ title: 'Wind' });
-    wind.addBinding(m.conditions.wind, 'speedMs', CONDITION_BINDINGS.windSpeedMs).on('change', onConditions);
+    this.syncWindSpeedProxy();
+    wind.addBinding(this.windSpeedProxy, 'kmh', { label: 'speed (km/h)', min: 0, max: CONDITION_RANGES.windSpeedMs.max * 3.6, format: fixed(0) })
+      .on('change', (e) => {
+        // A refresh shows a wind speed set elsewhere (a moment load, reset); only editing the field writes it back.
+        if (this.refreshing) return;
+        m.conditions.wind.speedMs = kmhToMs(e.value);
+        onConditions();
+      });
     wind.addBinding(m.conditions.wind, 'directionDeg', CONDITION_BINDINGS.windDirectionDeg).on('change', onConditions);
 
     const sets = this.pane.addFolder({ title: 'Sets' });
@@ -208,6 +228,7 @@ export class DevPanel {
 
   refresh(): void {
     this.syncNightFloorProxy();
+    this.syncWindSpeedProxy();
     const outer = this.refreshing; // handlers may refresh again from inside a refresh
     this.refreshing = true;
     try {
@@ -234,5 +255,9 @@ export class DevPanel {
 
   private syncNightFloorProxy(): void {
     this.nightFloorProxy.log10 = Math.log10(Math.max(this.m.atmosphere.nightFloor, 10 ** NIGHT_FLOOR_LOG10_MIN));
+  }
+
+  private syncWindSpeedProxy(): void {
+    this.windSpeedProxy.kmh = msToKmh(this.m.conditions.wind.speedMs);
   }
 }
