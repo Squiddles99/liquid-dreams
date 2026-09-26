@@ -80,6 +80,7 @@ export class PerfOverlay {
     const display = visible ? '' : 'none';
     this.stats.dom.style.display = display;
     this.label.style.display = display;
+    if (this.banner) this.banner.style.display = display;
     this.syncPausedBadge();
   }
 
