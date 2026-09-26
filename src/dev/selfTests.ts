@@ -4,6 +4,7 @@ import '../ocean/fft.selftest';
 import '../ocean/ocean.selftest';
 import '../ocean/probe.selftest';
 import '../seabed/seabed.selftest';
+import '../seabed/seabedShading.selftest';
 import '../breaker/breaker.selftest';
 
 export { renderSelfTestReport, runSelfTests } from './selfTest';

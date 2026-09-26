@@ -1,0 +1,82 @@
+import { Fn, If, Loop, PI, dot, exp, float, max, min, mix, mx_noise_float, normalize, pow, refract, step, vec2, vec3 } from 'three/tsl';
+import { type WaterOpticsUniforms, schlickWater } from '../ocean/waterShading';
+import type { Sky } from '../sky/Sky';
+import type { Seabed } from './Seabed';
+import { MARCH_REFINE, MARCH_STEPS, MAX_MARCH_DEPTH_M, MAX_MARCH_DIST_M, WATER_IOR } from './waterColumn';
+
+type N = any;
+
+const REEF_ALBEDO = vec3(0.2, 0.18, 0.14);
+const SAND_ALBEDO = vec3(0.62, 0.56, 0.44);
+const WEED_ALBEDO = vec3(0.06, 0.08, 0.035);
+
+/** vec2(distance along d, hit 0/1): TSL mirror of marchSeabed(). */
+export function marchSeabedNode(p: N, d: N, seabed: Seabed): N {
+  return Fn(() => {
+    const result = vec2(0.0, 0.0).toVar();
+    const depthHere = p.y.sub(seabed.bedHeightNode(p.xz));
+    const down = d.y.negate();
+    If(down.greaterThan(0.02).and(depthHere.lessThan(MAX_MARCH_DEPTH_M)), () => {
+      If(depthHere.lessThanEqual(0.0), () => {
+        result.assign(vec2(0.0, 1.0));
+      }).Else(() => {
+        const maxDist = min(float(MAX_MARCH_DIST_M), depthHere.mul(1.5).div(max(down, 0.05)));
+        const prev = float(0.0).toVar(), lo = float(0.0).toVar(), hi = float(0.0).toVar(), found = float(0.0).toVar();
+        Loop(MARCH_STEPS, ({ i }: N) => {
+          If(found.lessThan(0.5), () => {
+            const s = maxDist.mul(pow(float(i).add(1.0).div(MARCH_STEPS), 1.6));
+            const q = p.add(d.mul(s));
+            If(q.y.lessThanEqual(seabed.bedHeightNode(q.xz)), () => {
+              found.assign(1.0);
+              lo.assign(prev);
+              hi.assign(s);
+            });
+            prev.assign(s);
+          });
+        });
+        If(found.greaterThan(0.5), () => {
+          Loop(MARCH_REFINE, () => {
+            const mid = lo.add(hi).mul(0.5);
+            const q = p.add(d.mul(mid));
+            If(q.y.lessThanEqual(seabed.bedHeightNode(q.xz)), () => { hi.assign(mid); }).Else(() => { lo.assign(mid); });
+          });
+          result.assign(vec2(lo.add(hi).mul(0.5), 1.0));
+        });
+      });
+    });
+    return result;
+  })();
+}
+
+export interface SeabedShadingInputs {
+  /** Displaced surface point in world space (includes the tide). */
+  surfacePos: N;
+  normal: N;
+  /** Unit vector from the surface point toward the camera. */
+  viewDir: N;
+}
+
+/** The seabed seen through the water: its radiance at the hit and the view-path transmittance (0 on a miss). */
+export function seabedTerms(i: SeabedShadingInputs, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms): { radiance: N; transmittance: N } {
+  const t = normalize(refract(i.viewDir.negate(), i.normal, float(1 / WATER_IOR)));
+  const march = marchSeabedNode(i.surfacePos, t, seabed);
+  const hitPos = i.surfacePos.add(t.mul(march.x));
+  const T = exp(u.extinction.mul(march.x).negate()).mul(march.y);
+
+  const e = 0.5;
+  const hx = seabed.bedHeightNode(hitPos.xz.add(vec2(e, 0.0))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(e, 0.0))));
+  const hz = seabed.bedHeightNode(hitPos.xz.add(vec2(0.0, e))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(0.0, e))));
+  const nBed = normalize(vec3(hx.negate().div(2 * e), 1.0, hz.negate().div(2 * e)));
+  const mat = seabed.materialNode(hitPos.xz);
+  const detail = mx_noise_float(vec3(hitPos.x.mul(1.7), hitPos.z.mul(1.7), 0.0)).mul(0.5).add(0.5);
+  const albedo = mix(mix(REEF_ALBEDO, WEED_ALBEDO, mat.y), SAND_ALBEDO, mat.x).mul(detail.mul(0.4).add(0.8));
+
+  const l = sky.sunDirection;
+  const lw = normalize(refract(l.negate(), vec3(0.0, 1.0, 0.0), float(1 / WATER_IOR)));
+  const cosW = max(lw.y.negate(), 0.2);
+  const depthHit = max(seabed.tide.sub(hitPos.y), 0.0);
+  const sunIn = sky.sunIlluminance.mul(float(1.0).sub(schlickWater(max(l.y, 0.0)))).mul(step(0.0, l.y));
+  const eSun = sunIn.mul(exp(u.extinction.mul(depthHit.div(cosW)).negate())).mul(max(dot(nBed, lw.negate()), 0.0));
+  const eSky = sky.skyIrradiance.mul(exp(u.extinction.mul(depthHit.mul(1.2)).negate()));
+  return { radiance: albedo.mul(eSun.add(eSky)).div(PI), transmittance: T };
+}
