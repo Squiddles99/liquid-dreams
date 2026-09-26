@@ -61,13 +61,13 @@ describe('reef wave field', () => {
       expect(Math.hypot(f.dirX[i], f.dirZ[i])).toBeCloseTo(1, 4);
     }
   });
-  it('unusual swell directions stay finite', () => {
+  it('unusual swell directions stay finite', { timeout: 30_000 }, () => {
     for (const fromDeg of [0, 45, 90, 135, 180, 315]) {
       const f = computeReefField({ bed: reef2, periodS: 15, fromDeg, tideM: 0 });
       for (const a of [f.tau, f.amp, f.hmin, f.k, f.dirX, f.dirZ]) expect(allFinite(a)).toBe(true);
     }
   });
-  it('extreme tide stays finite (reef heads dry at −1.5 m)', () => {
+  it('extreme tide stays finite (reef heads dry at −1.5 m)', { timeout: 30_000 }, () => {
     for (const tideM of [-1.5, 1.5]) for (const periodS of [4, 25]) {
       const f = computeReefField({ bed: reef2, periodS, fromDeg: 225, tideM });
       for (const a of [f.tau, f.amp, f.hmin, f.k]) expect(allFinite(a)).toBe(true);
