@@ -5,6 +5,7 @@ A surfing game built for the love of it. The first (and only) break is **The Wom
 ## Just want to play? (Windows)
 
 1. Get the folder onto your computer. Either use **GitHub Desktop** (File → Clone repository → `Squiddles99/liquid-dreams`), which lets the game update itself; or, on the GitHub page, click **Code → Download ZIP** and unzip it.
+   - GitHub Desktop users: to update, click **Fetch origin**, then **Pull origin**, before starting the game. (The launcher's own auto-update only works when Git for Windows is installed.)
 2. Double-click **`Start Liquid Dreams`** in the folder.
    - The first time, it installs Node.js if needed (Windows asks for permission: click Yes, then double-click Start again) and downloads the game's building blocks (a minute or two).
    - Your browser opens the game. Use **Chrome or Edge**. On a laptop with two graphics chips, set the browser to "High performance" in Windows Settings → System → Display → Graphics.
@@ -45,7 +46,7 @@ Open `http://localhost:5173/#ref=<name>`. All are at The Womb's lineup on 15 Jul
 | `looking-down` | 10:30 floating over the shelf, looking down: dark limestone and weed, a sand pocket, through clear water. |
 | `reef-overhead` | Free camera 60 m above the reef at noon: the wedge, the shelf and the sand pockets from above. |
 
-Pick these with settings: default (or open `#ref=<name>`) to see them exactly as designed. In custom mode a pick carries over by kind: `pre-dawn` through `sunset` are time-of-day moments and keep your own swell, tide and camera; `overview`, `looking-down` and `reef-overhead` are view moments and switch to the moment's camera; `set-arriving` through `high-tide-set` are set moments and apply in full, since a set's timeline only lands on cue with its own conditions. View and set picks are visits: your saved swell, tide and camera stay untouched, and the next time-of-day pick puts you back on them. Sets arrive every 10–20 minutes. Use `N` or the Sets folder's button to call one, and the Reef folder for depths and the crest-line overlay.
+Pick these with settings: default (or open `#ref=<name>`) to see them exactly as designed. In custom mode a pick carries over by kind: `pre-dawn` through `sunset` are time-of-day moments and keep your own swell, tide and camera; `overview`, `looking-down` and `reef-overhead` are view moments and switch to the moment's camera; `set-arriving` through `high-tide-set` are set moments and apply in full, since a set's timeline only lands on cue with its own conditions. View and set picks are visits: your saved swell, tide and camera stay untouched, and the next time-of-day pick puts you back on them. Set moments land on cue with the default Sets settings, though — a tuned mean interval or jitter of your own can throw the timing off. Sets arrive every 10–20 minutes. Use `N` or the Sets folder's button to call one, and the Reef folder for depths and the crest-line overlay.
 
 ## Controls
 
