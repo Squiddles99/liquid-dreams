@@ -43,15 +43,13 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
 
 type Pt = readonly [number, number];
 
-/** Seaward edge running north-north-west from the tip (the left peels along it). World x, z (m). */
-export const NORTH_LEDGE: readonly Pt[] = [[0, 0], [-30, -60], [-70, -130], [-100, -200], [-110, -260], [-118, -450]];
+/** Seaward edge the left peels along: 120 m from the tip at bearing 20° (north-north-east), then back north-north-west along the traced shelf edge. The first segment's angle to the refracted swell sets the peel speed (≈14 m/s at the default 225° swell). */
+export const NORTH_LEDGE: readonly Pt[] = [[0, 0], [41.04, -112.76], [-19.8, -280], [-81.6, -450]];
 /** Short edge running south-east from the tip (the right closes out along it). */
 export const SOUTH_LEDGE: readonly Pt[] = [[0, 0], [25, 28], [60, 38], [110, 45]];
 /** Shelf polygon (clockwise in plan view): tip → south ledge → inner-platform edge → north map edge → north ledge. */
-export const SHELF_POLYGON: readonly Pt[] = [
-  [0, 0], [25, 28], [60, 38], [110, 45], [110, -450], [-118, -450], [-110, -260], [-100, -200], [-70, -130], [-30, -60],
-];
+export const SHELF_POLYGON: readonly Pt[] = [[0, 0], [25, 28], [60, 38], [110, 45], [110, -450], [-81.6, -450], [-19.8, -280], [41.04, -112.76]];
 /** Major turquoise sand pockets traced from the corrected satellite images: [cx, cz, rx, rz]. */
 export const SAND_POCKETS: readonly (readonly [number, number, number, number])[] = [
-  [20, -40, 18, 10], [-40, -150, 22, 12], [50, -110, 26, 14], [70, -200, 24, 12], [-60, -230, 17, 10], [62, 17, 17, 8],
+  [20, -40, 18, 10], [45, -160, 22, 12], [50, -110, 26, 14], [70, -200, 24, 12], [20, -250, 17, 10], [62, 17, 17, 8],
 ];

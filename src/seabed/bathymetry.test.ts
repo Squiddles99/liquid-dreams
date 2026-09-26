@@ -28,7 +28,7 @@ describe('the Womb reef', () => {
   });
   it('is shallower on the shelf than at the ledge, never shallower than the minimum', () => {
     let sum = 0, n = 0;
-    for (let x = 0; x <= 80; x += 5) for (let z = -200; z <= -40; z += 5) {
+    for (let x = 45; x <= 105; x += 5) for (let z = -200; z <= -40; z += 5) {
       const d = depth(x, z);
       expect(d).toBeGreaterThanOrEqual(DEFAULT_REEF_PARAMS.minDepthM - 1e-6);
       sum += d; n++;
@@ -37,7 +37,7 @@ describe('the Womb reef', () => {
   });
   it('has sand pockets and reef on the shelf, sand in the deep', () => {
     let sandy = 0, rocky = 0;
-    for (let x = 0; x <= 80; x += 2) for (let z = -200; z <= -20; z += 2) {
+    for (let x = 45; x <= 105; x += 2) for (let z = -200; z <= -20; z += 2) {
       const i = Math.round((z - REEF_GRID.z0) / REEF_GRID.cellM) * REEF_GRID.nx + Math.round((x - REEF_GRID.x0) / REEF_GRID.cellM);
       if (bathy.sand[i] > 0.5) sandy++; else rocky++;
     }
