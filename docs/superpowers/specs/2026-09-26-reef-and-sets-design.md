@@ -69,7 +69,7 @@ Conditions (tide, swell, seed) + tuning params
   │
   ├─► seabed/  ── depth + material textures ─────────────┐
   │       └─► breaker/ field worker ── field textures ───┤
-  ├─► swell/  ── active wave events (≤ 8, per frame) ────┤
+  ├─► swell/  ── active wave events (≤ 12, per frame) ───┤
   │                                                      ▼
   └─► ocean/ (FFT, long swell faded over shallow water) ─► water surface = FFT + Σ set waves
                                                           ├─► renderer (water + seabed seen through it)
@@ -82,7 +82,7 @@ Conditions (tide, swell, seed) + tuning params
 
 ## 6. The reef (`seabed/`)
 
-**Extent and resolution.** A depth map covering x ∈ [−400, +250] m, z ∈ [−450, +300] m around the peak (650 × 750 m; +X east, +Z south). Resolution: **0.5 m** (1300 × 1500 texels, half-float) plus a material mask (reef, weed, sand) at the same resolution. Within 50 m of the map's edges the seabed blends smoothly to a uniform **30 m**, and everything beyond the map is treated as uniform 30 m water, so the open ocean elsewhere behaves as in Phase 0 and the wave field's boundary matches the analytic waves outside it.
+**Extent and resolution.** A depth map covering x ∈ [−400, +250] m, z ∈ [−450, +300] m around the peak (650 × 750 m; +X east, +Z south). Resolution: **0.5 m** (1300 × 1500 texels, half-float) plus a material mask (reef, weed, sand) at the same resolution. Around the reef the seabed sits on a continuous 1D coast profile that deepens to **30 m** at the map's west edge; near the map's edges the reef fades back to that profile, and outside the map the profile continues (30 m to the west, a 0.5 m flat landward of the waterline). The far-field waves use the exact 1D Snell solution over that profile, so they match the wave field at every edge.
 
 **Built from named features, not painted pixels.** One data file (`seabed/wombReef.ts`) describes:
 
@@ -112,7 +112,7 @@ The builder is deterministic and runs once at startup (target under 300 ms), pro
 
 ### 7.1 The set timeline (`swell/`)
 
-- **Slots.** Time is divided into slots of the mean set interval (default 15 min). Slot *k* holds one set whose start is seeded within the slot (default ±5 min), giving 10–20 min between sets. Any set is computable directly from the seed and its slot index: no history, O(1) random access, and exact replay from moment links.
+- **Slots.** Time is divided into slots of the mean set interval (default 15 min). Slot *k* holds one set whose start is seeded within ±150 s of the slot's centre, giving 10–20 min between sets. Any set is computable directly from the seed and its slot index: no history, O(1) random access, and exact replay from moment links.
 - **Waves in a set.** 4–8 waves (seeded), spaced one swell period apart with ±10% jitter. Heights follow a mid-set-peaked envelope with ±15% per-wave variation; each wave also varies by a few degrees in direction and a few percent in period.
 - **Strays.** Between sets, an occasional smaller stray wave (tunable rate and size, default 1–2 per lull at 50–70% of set height).
 - **Heights.** Set waves are the biggest waves of the swell: deep-water height ≈ **1.3–1.8 × Hs**, where Hs comes from the swell dial through the existing provisional mapping (Hs = 0.4 m × surfer feet). At 4 ft that is about 2–3 m. Phase 2 recalibrates surfer feet against the breaking face.
@@ -121,7 +121,7 @@ The builder is deterministic and runs once at startup (target under 300 ms), pro
 
 ### 7.2 The reef wave field (`breaker/`, Web Worker)
 
-Computed on a 1 m grid over the reef map for the current swell direction, period and tide; recomputed in the background (debounced) when they change, cross-fading from the old field over about a second.
+Computed on a 1 m grid over the reef map for the current swell direction, period and tide; recomputed in the background (debounced) when they change; the new field replaces the old one immediately (it only changes on dev edits, since tide is static within a moment in Phase 1).
 
 - **Local wave speed** from the linear dispersion relation ω² = g·k·tanh(k·h) at each cell (h = tide-adjusted depth).
 - **Arrival time** τ(x) from the eikonal equation |∇τ| = 1/c(x), solved by fast sweeping from a deep-water plane wave arriving from the swell direction. Lines of equal τ are the crest lines; refraction around the wedge falls out of it.
@@ -132,10 +132,10 @@ Computed on a 1 m grid over the reef map for the current swell direction, period
 
 ### 7.3 Rendering set waves
 
-- Each active wave's crest sits where τ(x) = t − (its arrival time), so it slows, bends and wraps around the wedge exactly as the field dictates. Beyond the field the water is uniform (30 m) and waves are evaluated analytically with the same dispersion, so sets are visible all the way to the horizon with no seam at the field's edge.
+- Each active wave's crest sits where τ(x) = t − (its arrival time), so it slows, bends and wraps around the wedge exactly as the field dictates. Beyond the field, waves are evaluated from the exact 1D coast solution (30 m water to the west), so sets are visible all the way to the horizon with no seam at the field's edge.
 - **Profile:** a single crest with a long, flat trough. Crest sharpness and forward pitch grow with local steepness and shallowness (Ursell-number driven), with horizontal displacement bounded so the surface never folds (Jacobian kept above a safe minimum). The exact profile is fixed in the plan, with tests for continuity and no self-intersection.
 - **Crest length:** seeded between 300 and 600 m, with a smooth taper at the ends in deep water; near the reef the crest spans the whole break.
-- **Water surface = FFT background + Σ set waves**, at most 8 active at once.
+- **Water surface = FFT background + Σ set waves**, at most 12 active at once (a whole 8-wave set is in flight together, plus strays).
 - **Background over shallow water:** the FFT's long-swell cascade (3000 m) is weighted by `smoothstep(6 m, 14 m, depth)`: full over the deep water outside the ledge, gone over the shelf. The 250 m and 35 m cascades (chop and ripples) remain everywhere. Both thresholds are tunable.
 - **Height probe and camera:** the shared set-wave function is added to the probe, so the lineup camera rises and falls with the sets.
 
