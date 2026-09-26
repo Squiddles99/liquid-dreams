@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { float, max, select, smoothstep, texture, uniform, vec2 } from 'three/tsl';
-import { type Bathymetry, bedHeightAt } from './bathymetry';
+import type { Bathymetry } from './bathymetry';
 import { FAR_DEPTH_M, REEF_SURROUND_DEPTH_M, SHORE_FLAT_DEPTH_M, SHORE_X } from './coastProfile';
 
 type N = any;
@@ -59,11 +59,6 @@ export class Seabed {
 
   setTide(m: number): void {
     this.tide.value = m;
-  }
-
-  /** Still-water depth (m) at world x, z, including the tide; ≥ 0. */
-  depthAt(x: number, z: number): number {
-    return Math.max(0, this.tide.value - bedHeightAt(this.bathymetry, x, z));
   }
 
   private syncGrid(): void {
