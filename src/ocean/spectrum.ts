@@ -204,17 +204,30 @@ export interface OceanSpectra {
   components: SpectrumComponent[];
 }
 
+/** Below this share of its continuum variance the grid resolves a component, it is dropped rather than rescaled. */
+export const MIN_RESOLVED_FRACTION = 1e-6;
+
+/**
+ * Rescale a component so the grid reproduces its Hs. A component the grid barely resolves (light airs put the
+ * wind-sea peak far above kMax; the resolved variance can be subnormal) is dropped: its rescaled alpha would
+ * overflow to Infinity, and Infinity × 0 is NaN.
+ */
+export function renormaliseComponent(comp: SpectrumComponent, discreteVariance: number): SpectrumComponent {
+  if (comp.alpha === 0) return comp;
+  const continuum = (comp.hs / 4) ** 2;
+  const alpha = (comp.alpha * continuum) / discreteVariance;
+  const resolved = discreteVariance / continuum;
+  return resolved >= MIN_RESOLVED_FRACTION && Number.isFinite(alpha) ? { ...comp, alpha } : { ...comp, alpha: 0 };
+}
+
 export function buildOceanSpectra(
   c: Conditions,
   p: OceanSpectrumParams = DEFAULT_SPECTRUM_PARAMS,
   bands: CascadeBand[] = cascadeBands(),
   n = FFT_SIZE,
 ): OceanSpectra {
-  const normalised = buildSpectrumComponents(c, p).map((comp) => {
-    if (comp.alpha === 0) return comp;
-    const discrete = bands.reduce((s, b) => s + expectedCascadeVariance(b, [comp], n), 0);
-    return discrete > 0 ? { ...comp, alpha: (comp.alpha * (comp.hs / 4) ** 2) / discrete } : { ...comp, alpha: 0 };
-  });
+  const normalised = buildSpectrumComponents(c, p).map((comp) =>
+    comp.alpha === 0 ? comp : renormaliseComponent(comp, bands.reduce((s, b) => s + expectedCascadeVariance(b, [comp], n), 0)));
   const h0 = bands.map((b, i) => buildInitialSpectrum(b, normalised, createRng(deriveSeed(c.seed, i)), n));
   const slopeVariance = bands.map((b) => cascadeSlopeVariance(b, normalised, n));
   const variance = bands.reduce((s, b) => s + expectedCascadeVariance(b, normalised, n), 0);

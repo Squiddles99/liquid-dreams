@@ -4,7 +4,7 @@ import { createRng } from '../conditions/rng';
 import {
   CASCADE_SIZES_M, DEFAULT_SPECTRUM_PARAMS, FFT_SIZE, GRAVITY,
   alphaForHs, buildInitialSpectrum, buildOceanSpectra, buildSpectrumComponents, cascadeBands,
-  jonswapShape, omegaForK, spreading, windFetchM, windSeaComponent,
+  jonswapShape, omegaForK, renormaliseComponent, spreading, windFetchM, windSeaComponent,
 } from './spectrum';
 
 describe('dispersion and JONSWAP', () => {
@@ -148,6 +148,40 @@ describe('buildOceanSpectra', () => {
     c.wind.speedMs = 0; c.swell.sizeFt = 0;
     expect(buildOceanSpectra(c).slopeVariance.every((v) => v === 0)).toBe(true);
   });
+});
+
+describe('renormalisation never emits non-finite spectra', () => {
+  // A coarse grid keeps the sweep fast; the unresolved-wind-sea regime (peak far above the grid's kMax) still
+  // appears, just at a slightly higher wind speed than on the full 256² grid.
+  const n = 16, bands = cascadeBands(CASCADE_SIZES_M, n);
+  const allFinite = (speedMs: number, directionDeg: number, cells = bands, size = n): boolean => {
+    const c = cloneConditions(DEFAULT_CONDITIONS);
+    c.wind = { speedMs, directionDeg };
+    const s = buildOceanSpectra(c, DEFAULT_SPECTRUM_PARAMS, cells, size);
+    return Number.isFinite(s.hsTotal) && s.slopeVariance.every(Number.isFinite) && s.h0.every((a) => a.every(Number.isFinite));
+  };
+  it('drops a component whose resolved variance is subnormal or zero, rescales a resolved one', () => {
+    const comp = windSeaComponent(0.114, 80, DEFAULT_SPECTRUM_PARAMS);
+    expect(renormaliseComponent(comp, 1e-322).alpha).toBe(0);
+    expect(renormaliseComponent(comp, 0).alpha).toBe(0);
+    const resolved = renormaliseComponent(comp, 0.5 * (comp.hs / 4) ** 2);
+    expect(resolved.alpha).toBeCloseTo(2 * comp.alpha, 10);
+  });
+  for (const directionDeg of [80, 225]) {
+    it(`light airs 0–1 m/s from ${directionDeg}° in 0.001 m/s steps`, () => {
+      const bad: number[] = [];
+      for (let i = 0; i <= 1000; i++) if (!allFinite(i / 1000, directionDeg)) bad.push(i / 1000);
+      expect(bad).toEqual([]);
+    });
+    it(`0–30 m/s from ${directionDeg}° in 0.1 m/s steps`, () => {
+      const bad: number[] = [];
+      for (let i = 0; i <= 300; i++) if (!allFinite(i / 10, directionDeg)) bad.push(i / 10);
+      expect(bad).toEqual([]);
+    });
+    it(`the full grid at 0.114 m/s from ${directionDeg}° (subnormal resolved variance)`, () => {
+      expect(allFinite(0.114, directionDeg, cascadeBands(), FFT_SIZE)).toBe(true);
+    });
+  }
 });
 
 describe('buildInitialSpectrum', () => {
