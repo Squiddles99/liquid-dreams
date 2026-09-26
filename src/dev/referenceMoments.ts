@@ -59,7 +59,7 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
   ref('late-morning', '10:30 facing west. Higher sun, water clarity, colour holding up before the Doctor.', conditions({ timeOfDay: 10.5 }), lineup(270, -3)),
   ref('noon-deep-blue', '12:30 looking down at ~45°. Body colour and clarity, small glitter.', conditions({ timeOfDay: 12.5 }), lineup(270, -45)),
   ref('autumn-glass', '2026-04-20 09:30 facing west, no wind. Mirror-smooth swell lines, crisp sky reflection.', conditions({ date: '2026-04-20', timeOfDay: 9.5, wind: { speedMs: 0 } }), lineup(270, -3)),
-  ref('golden-hour', '16:50 facing the sun, Doctor in. Glitter path, crest transmission, choppier surface, horizon haze.', conditions({ timeOfDay: 16 + 50 / 60, wind: doctor }), lineup(301, 2)),
+  ref('golden-hour', '16:50 facing the sun, Doctor in. Glitter path, choppier surface, horizon haze (turquoise shows only in a breaking lip, not on unbroken crests).', conditions({ timeOfDay: 16 + 50 / 60, wind: doctor }), lineup(301, 2)),
   ref('sunset', '17:25 facing the sun. Sky colour, exposure, horizon.', conditions({ timeOfDay: 17 + 25 / 60, wind: doctor }), lineup(297, 1)),
   ref('overview', 'Free camera 40 m up at noon. No tiling, LOD transitions, horizon curvature.', conditions({ timeOfDay: 12.5 }), { mode: 'free', position: [60, 40, 0], yawDeg: 270, pitchDeg: -20 }, 'view'),
   setMoment('set-arriving', "08:15 facing south-west: the set's first wave lifting on its approach to the reef, 20 s out.",

@@ -12,10 +12,9 @@ export interface WaterSurfaceInputs {
   viewDir: N;
   distance: N;
   foam: N;
-  /** Vertical displacement above mean sea level (m). */
-  crestHeight: N;
+  /** The set waves' lip mask (0..1): the thin, curling lip (spec R5). Keys the turquoise transmission. */
+  lip: N;
   unresolvedSlopeVariance: N;
-  hsTotal: N;
   /** The seabed seen through the water (Phase 1); absent means infinitely deep water (Phase 0). */
   seabed?: { radiance: N; transmittance: N };
   /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
@@ -51,7 +50,7 @@ export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(
 
 /**
  * Water = Fresnel-weighted sky reflection + GGX sun glitter + light from the water column
- * (deep upwelling + crest transmission), mixed with lit foam, then aerial perspective.
+ * (deep upwelling + lip transmission), mixed with lit foam, then aerial perspective.
  */
 export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUniforms): N {
   const n = i.normal;
@@ -87,10 +86,9 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // Light scattered back up out of the deep, clear water column.
   const upwelling = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(max(l.y, 0.0)))).div(PI).mul(u.bodyScale);
 
-  // Crest transmission: sun behind a raised crest shines through thin water toward the viewer.
-  const crest = saturate(i.crestHeight.div(max(i.hsTotal.mul(0.5), 0.05)));
+  // Lip transmission: the sun behind a thin, curling lip shines through it toward the viewer (turquoise, spec §3.5, P11).
   const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
-  const transmitted = u.transmission.mul(sky.sunIlluminance).mul(backlight).mul(crest).mul(u.transmissionIntensity).div(PI);
+  const transmitted = u.transmission.mul(sky.sunIlluminance).mul(backlight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI);
 
   // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.
   const column = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;

@@ -320,18 +320,6 @@ export class SetWaves {
   }
 
   /**
-   * Render path only, vertex stage: the curled displacement and the Phase 1 slope (assigned to the vec2 varyingProperty
-   * `slopeOut`). Kept for one task so the app renders until Task 5 moves OceanSurface to displacementWithBreakNode.
-   */
-  displacementWithSlopeNode(xz: N, slopeOut: N): N {
-    return Fn(() => {
-      const s = this.sumBreaking(xz, { curl: true, eps: null });
-      slopeOut.assign(s.slope);
-      return vec3(s.dh.x, s.eta, s.dh.y);
-    })();
-  }
-
-  /**
    * Render path only, vertex stage: the rendered surface's vec3 displacement (with the curl), and into `out` (vec3/float
    * varyingProperty nodes) the unit set-wave normal from finite differences over `eps` metres, the foam weight and the
    * lip mask. Never use this in a compute shader: there are no varyings to write. Tests use breakSampleNode.

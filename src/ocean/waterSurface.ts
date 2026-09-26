@@ -51,12 +51,12 @@ export class WaterSurfaceModel {
   }
 
   /**
-   * Render path only, vertex stage: displacement() with the set waves' curl added (spec R2), plus the set waves' Phase 1
-   * slope from the same set-wave sum, assigned to `setSlopeOut` (a vec2 varyingProperty). The probe's compute shader
-   * uses displacement(). Task 5 replaces this with the finite-difference normal path.
+   * Render path only, vertex stage: the same surface as displacement() but with the curl (spec R2), plus the set waves'
+   * finite-difference normal (over `eps` metres), foam weight and lip mask assigned to `out`'s varyings (vec3, float,
+   * float varyingProperty nodes). The probe uses displacement(). Never call this from a compute shader.
    */
-  displacementWithSetSlope(xz: N, lod: (cascade: number) => N, setSlopeOut: N): N {
-    return this.fftDisplacement(xz, lod).add(this.sets.displacementWithSlopeNode(xz, setSlopeOut));
+  displacementWithSetBreak(xz: N, lod: (cascade: number) => N, eps: N, out: { normal: N; foam: N; lip: N }): N {
+    return this.fftDisplacement(xz, lod).add(this.sets.displacementWithBreakNode(xz, eps, out));
   }
 
   private fftDisplacement(xz: N, lod: (cascade: number) => N): N {
