@@ -29,8 +29,8 @@ import { Seabed } from '../seabed/Seabed';
 import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
-import { DEFAULT_SET_PARAMS, type SetParams, callSetTime, nextSetArrivalS, wavesNear } from '../swell/sets';
-import { formatCountdown, waveStatus } from '../swell/setStatus';
+import { DEFAULT_SET_PARAMS, type SetParams, callSetTime, nextSetArrivalS, normalizeSetParams, wavesNear } from '../swell/sets';
+import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { showOverlay } from './overlay';
 
@@ -143,7 +143,7 @@ export class App {
         onScreenshot: () => { this.screenshotRequested = true; },
         onTogglePause: () => this.setPaused(!this.clock.paused),
         onSets: () => {
-          this.normalizeSetParams();
+          normalizeSetParams(this.setParams);
           this.panel.refresh();
         },
         onReef: () => this.scheduleReefRebuild(),
@@ -254,15 +254,14 @@ export class App {
     return true;
   }
 
-  /** The panel keeps min ≤ max for the set size and height factor (a stored profile goes through here too). */
-  private normalizeSetParams(): void {
-    if (this.setParams.minWaves > this.setParams.maxWaves) this.setParams.maxWaves = this.setParams.minWaves;
-    if (this.setParams.heightFactorMin > this.setParams.heightFactorMax) this.setParams.heightFactorMax = this.setParams.heightFactorMin;
-  }
-
   /** Jump sim time to just before the next set reaches the peak (reproducible: a moment link records the time). */
   private callSetNow(): void {
-    this.clock.setTime(callSetTime(this.clock.simTime, this.conditions, this.setParams));
+    const t = callSetTime(this.clock.simTime, this.conditions, this.setParams);
+    if (t === null) {
+      this.perf.flash('Flat: no sets to call');
+      return;
+    }
+    this.clock.setTime(t);
     this.ocean.resetFoam();
     this.perf.flash('Set incoming');
   }
@@ -323,7 +322,7 @@ export class App {
 
   /** Every subsystem update handler, once, from the current params objects. */
   private applyAllParams(): void {
-    this.normalizeSetParams();
+    normalizeSetParams(this.setParams);
     this.ocean.setParams(this.simParams);
     updateWaterOpticsUniforms(this.waterOptics, this.waterParams);
     this.sky.setParams(this.atmosphereParams);
@@ -512,7 +511,7 @@ export class App {
     this.statusAge += realDt;
     if (this.statusAge > 0.25) {
       this.statusAge = 0;
-      this.setStatus.nextSet = formatCountdown(nextSetArrivalS(this.clock.simTime, this.conditions, this.setParams) - this.clock.simTime);
+      this.setStatus.nextSet = formatNextSet(nextSetArrivalS(this.clock.simTime, this.conditions, this.setParams), this.clock.simTime);
       this.setStatus.wave = waveStatus(this.clock.simTime, events);
     }
     const probeXZ = this.rig.probeXZ;

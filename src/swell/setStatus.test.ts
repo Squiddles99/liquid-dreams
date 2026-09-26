@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WaveEvent } from './sets';
-import { formatCountdown, waveStatus } from './setStatus';
+import { formatCountdown, formatNextSet, waveStatus } from './setStatus';
 
 const ev = (arrivalS: number, indexInSet: number, waveCount: number): WaveEvent => ({
   id: 0, slot: 0, indexInSet, waveCount, arrivalS, heightM: 2, periodS: 15, fromDeg: 225, crestLengthM: 400, crestOffsetM: 0,
@@ -20,5 +20,9 @@ describe('set readout', () => {
     expect(waveStatus(113, events)).toBe('wave 2 of 6');
     expect(waveStatus(302, events)).toBe('stray wave');
     expect(waveStatus(200, events)).toBe('lull');
+  });
+  it('shows "flat" with no next set, else the countdown to it', () => {
+    expect(formatNextSet(null, 100)).toBe('flat');
+    expect(formatNextSet(160, 100)).toBe('1:00');
   });
 });
