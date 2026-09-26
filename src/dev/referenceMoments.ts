@@ -1,6 +1,7 @@
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import type { Conditions } from '../conditions/types';
 import type { CameraPose, Moment } from './momentLink';
+import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 
 export interface ReferenceMoment {
   name: string;
@@ -33,6 +34,13 @@ const ref = (name: string, description: string, c: Conditions, camera: CameraPos
 
 const doctor = { speedMs: 6, directionDeg: 225 };
 
+/** The reference set: slot 1's set with the default conditions (the first full set of a session). */
+const REF_SET = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+const REF_BIGGEST = REF_SET.reduce((a, b) => (b.heightM > a.heightM ? b : a));
+const setMoment = (name: string, description: string, c: Conditions, camera: CameraPose, simTime: number): ReferenceMoment => ({
+  name, description, moment: { conditions: c, camera, simTime, paused: true },
+});
+
 export const REFERENCE_MOMENTS: ReferenceMoment[] = [
   ref('pre-dawn', '06:30 facing the land (east). Twilight glow where the sun will rise, dark sea, no sun artefacts.', conditions({ timeOfDay: 6.5 }), lineup(90, 4)),
   ref('first-sun', '07:35 facing out to sea (west), sun just up behind you over the land. First light on the swell lines.', conditions({ timeOfDay: 7 + 35 / 60 }), lineup(270, 3)),
@@ -43,6 +51,18 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
   ref('golden-hour', '16:50 facing the sun, Doctor in. Glitter path, crest transmission, choppier surface, horizon haze.', conditions({ timeOfDay: 16 + 50 / 60, wind: doctor }), lineup(301, 2)),
   ref('sunset', '17:25 facing the sun. Sky colour, exposure, horizon.', conditions({ timeOfDay: 17 + 25 / 60, wind: doctor }), lineup(297, 1)),
   ref('overview', 'Free camera 40 m up at noon. No tiling, LOD transitions, horizon curvature.', conditions({ timeOfDay: 12.5 }), { mode: 'free', position: [60, 40, 0], yawDeg: 270, pitchDeg: -20 }),
+  setMoment('set-arriving', '08:15 facing south-west as a set appears: lines darkening on the horizon, 60 s out.',
+    conditions({}), lineup(225, 1), REF_SET[0].arrivalS - 60),
+  setMoment('set-on-the-reef', "08:15 looking north-north-east across the peak as the set's biggest wave stands up on the ledge.",
+    conditions({}), lineup(15, 2), REF_BIGGEST.arrivalS - 1),
+  setMoment('low-tide-set', 'The same wave at −0.5 m tide: shallower water, standing up harder and earlier.',
+    conditions({ tideM: -0.5 }), lineup(15, 2), REF_BIGGEST.arrivalS - 1),
+  setMoment('high-tide-set', 'The same wave at +0.5 m tide: deeper water, softer.',
+    conditions({ tideM: 0.5 }), lineup(15, 2), REF_BIGGEST.arrivalS - 1),
+  ref('looking-down', '10:30 looking down from the lineup: limestone, weed and turquoise sand pockets through clear water.',
+    conditions({ timeOfDay: 10.5 }), lineup(30, -60)),
+  ref('reef-overhead', 'Free camera 60 m above the reef at noon: the wedge, the shelf and the sand pockets from above.',
+    conditions({ timeOfDay: 12.5 }), { mode: 'free', position: [0, 60, 40], yawDeg: 0, pitchDeg: -70 }),
 ];
 
 const cloneMoment = (m: Moment): Moment => ({

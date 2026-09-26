@@ -12,6 +12,7 @@ describe('reference moments', () => {
     expect(REFERENCE_MOMENTS.map((r) => r.name)).toEqual([
       'pre-dawn', 'first-sun', 'morning-offshore', 'late-morning', 'noon-deep-blue',
       'autumn-glass', 'golden-hour', 'sunset', 'overview',
+      'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'looking-down', 'reef-overhead',
     ]);
   });
   it('round-trip through moment links', () => {
@@ -32,5 +33,26 @@ describe('reference moments', () => {
     const a = findReferenceMoment('sunset');
     a!.conditions.swell.sizeFt = 11;
     expect(findReferenceMoment('sunset')!.conditions.swell.sizeFt).toBe(4);
+  });
+});
+
+describe('set and reef moments', () => {
+  it('lands on a real set: arriving before the biggest wave reaches the ledge', () => {
+    const arriving = findReferenceMoment('set-arriving')!, onReef = findReferenceMoment('set-on-the-reef')!;
+    expect(arriving.simTime).toBeGreaterThan(0);
+    expect(onReef.simTime).toBeGreaterThan(arriving.simTime);
+    expect(onReef.paused).toBe(true);
+  });
+  it('compares the same wave at low and high tide', () => {
+    const low = findReferenceMoment('low-tide-set')!, high = findReferenceMoment('high-tide-set')!;
+    expect(low.conditions.tideM).toBe(-0.5);
+    expect(high.conditions.tideM).toBe(0.5);
+    expect(low.simTime).toBe(high.simTime);
+    expect(low.simTime).toBe(findReferenceMoment('set-on-the-reef')!.simTime);
+  });
+  it('puts the overhead view in free flight above the reef', () => {
+    const m = findReferenceMoment('reef-overhead')!;
+    expect(m.camera.mode).toBe('free');
+    expect(m.camera.position[1]).toBeGreaterThan(40);
   });
 });
