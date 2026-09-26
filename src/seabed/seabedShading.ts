@@ -1,8 +1,8 @@
-import { Fn, If, Loop, PI, dot, exp, float, max, min, mix, mx_noise_float, normalize, pow, refract, step, vec2, vec3 } from 'three/tsl';
+import { Fn, If, Loop, PI, dot, exp, float, max, min, mix, mx_noise_float, normalize, pow, refract, smoothstep, step, vec2, vec3 } from 'three/tsl';
 import { type WaterOpticsUniforms, schlickWater } from '../ocean/waterShading';
 import type { Sky } from '../sky/Sky';
 import type { Seabed } from './Seabed';
-import { MARCH_REFINE, MARCH_STEPS, MAX_MARCH_DEPTH_M, MAX_MARCH_DIST_M, WATER_IOR } from './waterColumn';
+import { MARCH_REFINE, MARCH_STEPS, MAX_MARCH_DEPTH_M, MAX_MARCH_DIST_M, REACH_FADE_DEPTH_M, REACH_FADE_DIST_M, WATER_IOR } from './waterColumn';
 
 type N = any;
 
@@ -61,7 +61,11 @@ export function seabedTerms(i: SeabedShadingInputs, seabed: Seabed, sky: Sky, u:
   const t = normalize(refract(i.viewDir.negate(), i.normal, float(1 / WATER_IOR)));
   const march = marchSeabedNode(i.surfacePos, t, seabed);
   const hitPos = i.surfacePos.add(t.mul(march.x));
-  const T = exp(u.extinction.mul(march.x).negate()).mul(march.y);
+  // reachFade() mirror: fade the seabed out before the march's depth and distance cutoffs so there is no seam.
+  const depthHere = i.surfacePos.y.sub(seabed.bedHeightNode(i.surfacePos.xz));
+  const fade = float(1.0).sub(smoothstep(REACH_FADE_DEPTH_M, MAX_MARCH_DEPTH_M, depthHere))
+    .mul(float(1.0).sub(smoothstep(REACH_FADE_DIST_M, MAX_MARCH_DIST_M, march.x)));
+  const T = exp(u.extinction.mul(march.x).negate()).mul(march.y).mul(fade);
 
   const e = 0.5;
   const hx = seabed.bedHeightNode(hitPos.xz.add(vec2(e, 0.0))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(e, 0.0))));
