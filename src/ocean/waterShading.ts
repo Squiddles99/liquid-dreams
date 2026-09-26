@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, dot, float, max, mix, normalize, pow, reflect, uniform, vec3 } from 'three/tsl';
+import { PI, dot, float, length, max, min, mix, normalize, pow, reflect, saturate, step, uniform, vec3 } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
 import { type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
 
@@ -41,11 +41,44 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
 
 export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(float(1.0).sub(cosTheta), 5.0)));
 
-/** First pass: sky reflection + deep-water body colour + aerial perspective. Task 14 replaces this with the full model. */
+/**
+ * Water = Fresnel-weighted sky reflection + GGX sun glitter + light from the water column
+ * (deep upwelling + crest transmission), mixed with lit foam, then aerial perspective.
+ */
 export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUniforms): N {
-  const fresnel = schlickWater(max(dot(i.normal, i.viewDir), 1e-3));
-  const r: N = reflect(i.viewDir.negate(), i.normal); // three typings gap: reflect() is typed as returning vec2
+  const n = i.normal;
+  const v = i.viewDir;
+  const l = sky.sunDirection;
+  const nDotV = max(dot(n, v), 1e-3);
+  const nDotL = dot(n, l);
+  const fresnel = schlickWater(nDotV);
+
+  const r: N = reflect(v.negate(), n); // three typings gap: reflect() is typed as returning vec2
   const reflection = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z)));
-  const body = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(max(sky.sunDirection.y, 0.0)))).div(PI).mul(u.bodyScale);
-  return sky.applyAerialPerspective(mix(body, reflection, fresnel), i.distance, i.viewDir.negate());
+
+  // GGX sun glitter. Slopes too small to resolve at this distance widen the lobe (α² ≈ 2σ²).
+  // Guarded normalize: l + v = 0 (view ray straight at a below-horizon sun) would make normalize() NaN.
+  const lPlusV = l.add(v);
+  const h = lPlusV.div(max(length(lPlusV), 1e-6));
+  const nDotH = max(dot(n, h), 0.0);
+  const alpha2 = u.baseRoughness.mul(u.baseRoughness).add(i.unresolvedSlopeVariance.mul(2.0));
+  const denom = nDotH.mul(nDotH).mul(alpha2.sub(1.0)).add(1.0);
+  const ggx = alpha2.div(PI.mul(denom).mul(denom));
+  const specular = min(
+    sky.sunIlluminance.mul(ggx).mul(schlickWater(max(dot(v, h), 0.0))).div(nDotV.mul(4.0)).mul(step(0.0, nDotL)),
+    vec3(30000.0),
+  );
+
+  // Light scattered back up out of the deep, clear water column.
+  const upwelling = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(max(l.y, 0.0)))).div(PI).mul(u.bodyScale);
+
+  // Crest transmission: sun behind a raised crest shines through thin water toward the viewer.
+  const crest = saturate(i.crestHeight.div(max(i.hsTotal.mul(0.5), 0.05)));
+  const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
+  const transmitted = u.transmission.mul(sky.sunIlluminance).mul(backlight).mul(crest).mul(u.transmissionIntensity).div(PI);
+
+  const water = upwelling.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
+  const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL))).mul(u.foamAlbedo).div(PI);
+  const colour = mix(water, foamLight, saturate(i.foam));
+  return sky.applyAerialPerspective(colour, i.distance, v.negate());
 }
