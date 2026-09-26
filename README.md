@@ -11,7 +11,7 @@ npm test           # unit tests
 - `#ref=<name>` loads a named reference moment (see `src/dev/referenceMoments.ts`).
 - `?selftest` runs the GPU self-tests instead of the app.
 - Needs a WebGPU browser (current Chrome or Edge). On hybrid-GPU laptops, set the browser to "High performance" in Windows Graphics settings and fully quit the browser (including background processes) before relaunching; the stats overlay names the GPU in use. Keep both GPU drivers current.
-- Rendering is capped at 60 fps (dev panel: Picture → "max fps", 0 = display rate). `H` hides the dev UI, `L` copies a moment link, `K` saves a screenshot, `P` pauses.
+- Rendering is capped at 60 fps (dev panel: Picture → "max fps", 0 = display rate). `H` hides the dev UI, `L` copies a moment link, `K` saves a screenshot, `P` pauses and resumes (reference moments open paused; a "Paused — P to resume" badge shows under the stats).
 
 ## Reference moments
 
