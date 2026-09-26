@@ -284,28 +284,33 @@ describe('reference picks', () => {
 describe('a view or set pick is a visit', () => {
   const profileWithStored = (): CustomProfile => new CustomProfile(cloneDevSettings({ ...defaults(), conditions: findReferenceMoment('sunset')!.conditions, camera: findReferenceMoment('sunset')!.camera }));
 
-  it('a set pick leaves the stored profile intact across a save', () => {
-    const profile = profileWithStored();
+  it('a set pick leaves the stored profile, and the reference name, intact across a save', () => {
+    const profile = profileWithStored(); // reference: DEFAULT_MOMENT_NAME
+    const referenceBefore = profile.profile.reference;
     const picked = findReferenceMoment('set-arriving')!;
     const { moment, visit } = pickMoment('custom', 'set', profile.visiting, profile.profile.conditions, profile.profile, profile.profile.camera, picked);
     expect(visit).toBe(true);
     profile.visitLink();
-    // The app now shows the set moment's own (very different) conditions and camera; a save must not adopt them.
-    const saved = profile.capture({ ...profile.profile, conditions: moment.conditions, camera: moment.camera });
+    // The app now shows the set moment's own (very different) conditions and camera, and the list shows its name;
+    // a save must not adopt any of that into the stored profile.
+    const saved = profile.capture({ ...profile.profile, conditions: moment.conditions, camera: moment.camera, reference: 'set-arriving' });
     expect(saved.conditions).toEqual(profile.profile.conditions);
     expect(saved.camera).toEqual(profile.profile.camera);
+    expect(saved.reference).toBe(referenceBefore);
   });
 
-  it('a view pick keeps the stored camera across a save', () => {
+  it('a view pick keeps the stored camera and reference name across a save', () => {
     const profile = profileWithStored();
     const storedCameraBefore = profile.profile.camera;
+    const referenceBefore = profile.profile.reference;
     const picked = findReferenceMoment('reef-overhead')!;
     const { moment, visit } = pickMoment('custom', 'view', profile.visiting, profile.profile.conditions, profile.profile, profile.profile.camera, picked);
     expect(visit).toBe(true);
     expect(moment.camera).toEqual(picked.camera); // the view is shown...
     profile.visitLink();
-    const saved = profile.capture({ ...profile.profile, conditions: moment.conditions, camera: moment.camera });
-    expect(saved.camera).toEqual(storedCameraBefore); // ...but the save keeps Andrew's own camera.
+    const saved = profile.capture({ ...profile.profile, conditions: moment.conditions, camera: moment.camera, reference: 'reef-overhead' });
+    expect(saved.camera).toEqual(storedCameraBefore); // ...but the save keeps Andrew's own camera...
+    expect(saved.reference).toBe(referenceBefore); // ...and the reference list still shows what he actually picked.
   });
 });
 
@@ -319,10 +324,10 @@ describe('a link is a visit, not an edit', () => {
     return s;
   };
 
-  it('mergeProfile keeps the stored conditions and camera for a link, and takes everything otherwise', () => {
-    const stored = tweaked();
-    const snap = linkSnapshot();
-    expect(mergeProfile(snap, stored, true)).toEqual({ ...snap, conditions: stored.conditions, camera: stored.camera });
+  it('mergeProfile keeps the stored conditions, camera and reference name for a link, and takes everything otherwise', () => {
+    const stored = tweaked(); // reference: 'golden-hour'
+    const snap = linkSnapshot(); // reference: DEFAULT_MOMENT_NAME, from defaults()
+    expect(mergeProfile(snap, stored, true)).toEqual({ ...snap, conditions: stored.conditions, camera: stored.camera, reference: stored.reference });
     expect(mergeProfile(snap, stored, false)).toEqual(snap);
     expect(mergeProfile(snap, stored, true).conditions).not.toBe(stored.conditions);
   });

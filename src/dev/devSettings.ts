@@ -133,12 +133,15 @@ export function clearDevSettings(storage: SettingsStorage): void {
 /**
  * The profile a save stores. After a #m= / #ref= link opened a moment, the link's conditions and camera are a visit,
  * not an edit: the stored profile keeps its own until the user takes the moment over; the look is saved either way.
+ * The reference name goes with them: a visit doesn't overwrite the reference list either, so a reload shows the
+ * last one Andrew actually picked (own or a time moment), not a view or set he only passed through.
  */
 export function mergeProfile(snapshot: DevSettings, stored: DevSettings, conditionsFromLink: boolean): DevSettings {
   const out = cloneDevSettings(snapshot);
   if (conditionsFromLink) {
     out.conditions = cloneConditions(stored.conditions);
     out.camera = deepClone(stored.camera);
+    out.reference = stored.reference;
   }
   return out;
 }

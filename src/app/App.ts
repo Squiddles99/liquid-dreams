@@ -275,9 +275,10 @@ export class App {
   private goToReferenceMoment(name: string): void {
     const picked = findReferenceMoment(name);
     if (!picked) return;
-    this.currentReference = name;
-    // Flush a pending debounced save first, so a condition edit made just before the pick is in the stored profile.
+    // Flush a pending debounced save first (with the reference as it stood before this pick), so a condition edit
+    // made just before the pick is in the stored profile, and this pick's own name isn't attributed to it early.
     if (this.settingsMode === 'custom') this.saveSettings();
+    this.currentReference = name;
     if (this.settingsMode === 'default') this.restoreLook(this.lookDefaults);
     const { moment, visit } = pickMoment(
       this.settingsMode, referenceKind(name), this.profile.visiting,
@@ -371,6 +372,8 @@ export class App {
   private saveSettings(): void {
     clearTimeout(this.saveTimer);
     if (this.settingsMode === 'custom') this.profile.capture(this.snapshotSettings());
+    // Default mode never visits: every pick there is shown in full, so its name always belongs in the reference list.
+    else this.profile.profile.reference = this.currentReference;
     if (this.persist) saveDevSettings(browserStorage, { ...this.profile.profile, mode: this.settingsMode });
   }
 
