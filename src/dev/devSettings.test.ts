@@ -210,8 +210,13 @@ describe('assignParams', () => {
 });
 
 describe('reference picks', () => {
+  // "current": the live conditions/camera on screen. "stored": Andrew's own profile, distinct from current so a
+  // test can tell which basis a pick actually used.
   const current = { date: '2026-01-02', timeOfDay: 14, swell: { sizeFt: 7, periodS: 18, directionDeg: 250 }, wind: { speedMs: 9, directionDeg: 190 }, tideM: -0.8, seed: 5 };
   const here: CameraPose = { mode: 'free', position: [12, 40, -8], yawDeg: 45, pitchDeg: -25 };
+  const storedConditions = { date: '2026-02-03', timeOfDay: 9, swell: { sizeFt: 8.2, periodS: 16, directionDeg: 230 }, wind: { speedMs: 4, directionDeg: 180 }, tideM: 0.2, seed: 11 };
+  const storedCamera: CameraPose = { mode: 'lineup', position: [-25, 0.8, 45], yawDeg: 270, pitchDeg: -2 };
+  const stored = { conditions: storedConditions, camera: storedCamera };
   const picked = (): Moment => findReferenceMoment('golden-hour')!; // a 'time' moment
   const pickedView = (): Moment => findReferenceMoment('reef-overhead')!; // a 'view' moment
   const pickedSet = (): Moment => findReferenceMoment('set-arriving')!; // a 'set' moment
@@ -224,31 +229,45 @@ describe('reference picks', () => {
     expect(m.paused).toBe(picked().paused);
   });
 
-  it('custom + time: carries over as today, keeping the current camera pose unchanged', () => {
-    const m = pickMoment('custom', 'time', current, here, picked());
-    expect(m.camera).toEqual(here);
-    expect(m.camera).not.toBe(here);
-    expect(m.conditions).toEqual(carryOverPick(current, here, picked()).conditions);
+  it('custom + time, no visit: carries over as today, from the current conditions and camera, and is not a visit', () => {
+    const { moment, visit } = pickMoment('custom', 'time', false, current, stored, here, picked());
+    expect(visit).toBe(false);
+    expect(moment.camera).toEqual(here);
+    expect(moment.camera).not.toBe(here);
+    expect(moment.conditions).toEqual(carryOverPick(current, here, picked()).conditions);
   });
 
-  it('custom + view: carries over conditions but switches to the moment\'s own camera', () => {
-    const m = pickMoment('custom', 'view', current, here, pickedView());
-    expect(m.camera).toEqual(pickedView().camera);
-    expect(m.camera).not.toBe(pickedView().camera);
-    expect(m.conditions).toEqual(carryOverPick(current, here, pickedView()).conditions);
+  it("custom + time, after a visit: restores the stored conditions and camera, with the moment's date and time, and ends the visit", () => {
+    const { moment, visit } = pickMoment('custom', 'time', true, current, stored, here, picked());
+    expect(visit).toBe(false);
+    expect(moment.camera).toEqual(storedCamera);
+    expect(moment.camera).not.toBe(storedCamera);
+    expect(moment.conditions).toEqual({ ...storedConditions, date: picked().conditions.date, timeOfDay: picked().conditions.timeOfDay });
   });
 
-  it('custom + set: applies the full moment, conditions and camera included', () => {
-    const m = pickMoment('custom', 'set', current, here, pickedSet());
-    expect(m).toEqual(pickedSet());
-    expect(m.conditions).not.toBe(pickedSet().conditions);
-    expect(m.camera).not.toBe(pickedSet().camera);
+  it("custom + view: carries over conditions but switches to the moment's own camera, and counts as a visit", () => {
+    const { moment, visit } = pickMoment('custom', 'view', false, current, stored, here, pickedView());
+    expect(visit).toBe(true);
+    expect(moment.camera).toEqual(pickedView().camera);
+    expect(moment.camera).not.toBe(pickedView().camera);
+    expect(moment.conditions).toEqual(carryOverPick(current, here, pickedView()).conditions);
   });
 
-  it('default mode applies the picked moment in full regardless of kind, camera included', () => {
+  it('custom + set: applies the full moment, conditions and camera included, and counts as a visit', () => {
+    const { moment, visit } = pickMoment('custom', 'set', false, current, stored, here, pickedSet());
+    expect(visit).toBe(true);
+    expect(moment).toEqual(pickedSet());
+    expect(moment.conditions).not.toBe(pickedSet().conditions);
+    expect(moment.camera).not.toBe(pickedSet().camera);
+  });
+
+  it('default mode applies the picked moment in full regardless of kind or an active visit, and is never a visit', () => {
     for (const kind of ['time', 'view', 'set'] as const) {
-      expect(pickMoment('default', kind, current, here, picked())).toEqual(picked());
-      expect(pickMoment('default', kind, current, here, picked()).camera).toEqual(picked().camera);
+      for (const visiting of [false, true]) {
+        const { moment, visit } = pickMoment('default', kind, visiting, current, stored, here, picked());
+        expect(visit).toBe(false);
+        expect(moment).toEqual(picked());
+      }
     }
   });
 
@@ -259,6 +278,34 @@ describe('reference picks', () => {
     expect(referenceNameFromHash('#ref=%E0%A4%A')).toBeNull();
     expect(referenceNameFromHash('#m=abc')).toBeNull();
     expect(referenceNameFromHash('')).toBeNull();
+  });
+});
+
+describe('a view or set pick is a visit', () => {
+  const profileWithStored = (): CustomProfile => new CustomProfile(cloneDevSettings({ ...defaults(), conditions: findReferenceMoment('sunset')!.conditions, camera: findReferenceMoment('sunset')!.camera }));
+
+  it('a set pick leaves the stored profile intact across a save', () => {
+    const profile = profileWithStored();
+    const picked = findReferenceMoment('set-arriving')!;
+    const { moment, visit } = pickMoment('custom', 'set', profile.visiting, profile.profile.conditions, profile.profile, profile.profile.camera, picked);
+    expect(visit).toBe(true);
+    profile.visitLink();
+    // The app now shows the set moment's own (very different) conditions and camera; a save must not adopt them.
+    const saved = profile.capture({ ...profile.profile, conditions: moment.conditions, camera: moment.camera });
+    expect(saved.conditions).toEqual(profile.profile.conditions);
+    expect(saved.camera).toEqual(profile.profile.camera);
+  });
+
+  it('a view pick keeps the stored camera across a save', () => {
+    const profile = profileWithStored();
+    const storedCameraBefore = profile.profile.camera;
+    const picked = findReferenceMoment('reef-overhead')!;
+    const { moment, visit } = pickMoment('custom', 'view', profile.visiting, profile.profile.conditions, profile.profile, profile.profile.camera, picked);
+    expect(visit).toBe(true);
+    expect(moment.camera).toEqual(picked.camera); // the view is shown...
+    profile.visitLink();
+    const saved = profile.capture({ ...profile.profile, conditions: moment.conditions, camera: moment.camera });
+    expect(saved.camera).toEqual(storedCameraBefore); // ...but the save keeps Andrew's own camera.
   });
 });
 
@@ -305,13 +352,16 @@ describe('a link is a visit, not an edit', () => {
     expect(p.profile.conditions.swell.sizeFt).toBe(9);
   });
 
-  it('a pick after the visit saves normally', () => {
+  it('a time pick after a visit restores the stored profile (not the visited state) and ends the visit', () => {
     const p = new CustomProfile(tweaked());
     p.visitLink();
-    p.own(); // picked a reference
-    const snap = linkSnapshot();
-    const m = pickMoment('custom', 'time', snap.conditions, snap.camera, findReferenceMoment('first-sun')!);
-    const afterPick = { ...snap, conditions: m.conditions, camera: m.camera };
+    const snap = linkSnapshot(); // still showing the sunset link's moment live
+    const { moment, visit } = pickMoment('custom', 'time', p.visiting, snap.conditions, p.profile, snap.camera, findReferenceMoment('first-sun')!);
+    expect(visit).toBe(false);
+    p.own(); // the time pick ends the visit
+    expect(moment.conditions).toEqual({ ...tweaked().conditions, date: findReferenceMoment('first-sun')!.conditions.date, timeOfDay: findReferenceMoment('first-sun')!.conditions.timeOfDay });
+    expect(moment.camera).toEqual(tweaked().camera);
+    const afterPick = { ...snap, conditions: moment.conditions, camera: moment.camera };
     expect(p.capture(afterPick)).toEqual(afterPick);
   });
 

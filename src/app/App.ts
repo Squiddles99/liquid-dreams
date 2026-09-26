@@ -269,16 +269,21 @@ export class App {
 
   /**
    * A reference picked in the panel. Default mode shows the moment as designed; custom mode carries it over by
-   * kind (see pickMoment): a time moment keeps the current camera, a view moment switches to the moment's
-   * camera, and a set moment takes the full moment. Hash links still apply the full moment (onHashChange).
+   * kind (see pickMoment): a time moment keeps (or, after a visit, restores) Andrew's own conditions and camera;
+   * a view or set moment is a visit, so it doesn't overwrite his own profile. Hash links still apply the full
+   * moment (onHashChange).
    */
   private goToReferenceMoment(name: string): void {
     const picked = findReferenceMoment(name);
     if (!picked) return;
     this.currentReference = name;
-    this.profile.own();
     if (this.settingsMode === 'default') this.restoreLook(this.lookDefaults);
-    this.applyMoment(pickMoment(this.settingsMode, referenceKind(name), this.conditions, this.rig.getPose(), picked));
+    const { moment, visit } = pickMoment(
+      this.settingsMode, referenceKind(name), this.profile.visiting,
+      this.conditions, this.profile.profile, this.rig.getPose(), picked,
+    );
+    if (visit) this.profile.visitLink(); else this.profile.own();
+    this.applyMoment(moment);
     // No hash: a reload would re-apply the full reference moment over the carried-over conditions.
     history.replaceState(null, '', location.pathname + location.search);
     this.saveSettings();
@@ -380,10 +385,16 @@ export class App {
     } else {
       const stored = this.persist ? loadDevSettings(browserStorage, this.defaultSettings()) : null;
       if (stored) this.profile.profile = { ...stored, mode: 'custom' };
-      this.profile.own();
+      const wasVisiting = this.profile.visiting;
       this.settingsMode = 'custom';
       this.restoreLook(this.profile.profile);
-      this.applyMoment(pickMoment('custom', referenceKind(this.currentReference), this.profile.profile.conditions, this.rig.getPose(), reference));
+      // A view or set reference is a visit here too, so it doesn't immediately overwrite the profile just loaded.
+      const { moment, visit } = pickMoment(
+        'custom', referenceKind(this.currentReference), wasVisiting,
+        this.profile.profile.conditions, this.profile.profile, this.rig.getPose(), reference,
+      );
+      if (visit) this.profile.visitLink(); else this.profile.own();
+      this.applyMoment(moment);
     }
     this.saveSettings();
   }

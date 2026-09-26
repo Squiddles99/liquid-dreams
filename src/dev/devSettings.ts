@@ -194,15 +194,30 @@ export function carryOverPick(current: Conditions, camera: CameraPose, picked: M
   return { conditions, camera: deepClone(camera), simTime: picked.simTime, paused: picked.paused };
 }
 
+export interface ReferencePick {
+  moment: Moment;
+  /** Whether this pick counts as a visit (see CustomProfile): a save leaves the stored profile's conditions and camera untouched, as for a hash link. */
+  visit: boolean;
+}
+
 /**
- * What picking a reference moment in the panel applies. Default mode always shows the moment as designed.
- * Custom mode carries over by kind: 'time' keeps the current camera; 'view' takes the moment's own camera, so a
- * camera-specific moment still shows its view; 'set' takes the full moment, since a set's timeline only lands
- * on cue with its own conditions.
+ * What picking a reference moment in the panel applies, and whether the pick counts as a visit. Default mode
+ * always shows the moment exactly as designed and is never a visit. Custom mode carries over by kind:
+ *  - 'time': carryOverPick from Andrew's own conditions and camera - the live ones, or, while a visit is already
+ *    active, the ones in his stored profile (a time pick always returns to his own profile and ends the visit,
+ *    rather than carrying over the visited state it's leaving).
+ *  - 'view': the same carry-over, but the moment's own camera; a visit, since that camera isn't his own.
+ *  - 'set': the full moment; a visit, since a set's timeline only lands on cue with its own conditions.
  */
-export function pickMoment(mode: SettingsMode, kind: MomentKind, current: Conditions, camera: CameraPose, picked: Moment): Moment {
-  if (mode === 'default' || kind === 'set') return deepClone(picked);
-  return carryOverPick(current, kind === 'view' ? picked.camera : camera, picked);
+export function pickMoment(
+  mode: SettingsMode, kind: MomentKind, visiting: boolean,
+  current: Conditions, stored: Pick<DevSettings, 'conditions' | 'camera'>, camera: CameraPose, picked: Moment,
+): ReferencePick {
+  if (mode === 'default') return { moment: deepClone(picked), visit: false };
+  if (kind === 'set') return { moment: deepClone(picked), visit: true };
+  const base = visiting ? stored : { conditions: current, camera };
+  const pickedCamera = kind === 'view' ? picked.camera : base.camera;
+  return { moment: carryOverPick(base.conditions, pickedCamera, picked), visit: kind === 'view' };
 }
 
 /** The reference moment a `#ref=` hash names, if it names one. */
