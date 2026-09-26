@@ -1,5 +1,6 @@
 import { float, max, smoothstep, texture, uniform, vec3 } from 'three/tsl';
 import type { SetWaves } from '../breaker/SetWaves';
+import { SEABED_CLEARANCE_M } from '../breaker/setWaveModel';
 import type { Seabed } from '../seabed/Seabed';
 import { CASCADE_FADES, fadeWeightNode } from './cascadeFades';
 import type { OceanSimulation } from './OceanSimulation';
@@ -45,9 +46,10 @@ export class WaterSurfaceModel {
   /**
    * vec3 displacement at undisplaced world xz, relative to the tide level. `lod` adds the render's distance fades. The
    * set waves here are the uncurled surface: Phase 1 plus the drain and the bore (spec R4), which the height probe reads.
+   * The total height is clamped above the seabed (clampToSeabed).
    */
   displacement(xz: N, lod: (cascade: number) => N = () => float(1.0)): N {
-    return this.fftDisplacement(xz, lod).add(this.sets.displacementNode(xz));
+    return this.clampToSeabed(xz, this.fftDisplacement(xz, lod).add(this.sets.displacementNode(xz)));
   }
 
   /**
@@ -56,7 +58,18 @@ export class WaterSurfaceModel {
    * float varyingProperty nodes). The probe uses displacement(). Never call this from a compute shader.
    */
   displacementWithSetBreak(xz: N, lod: (cascade: number) => N, eps: N, out: { normal: N; foam: N; lip: N }): N {
-    return this.fftDisplacement(xz, lod).add(this.sets.displacementWithBreakNode(xz, eps, out));
+    return this.clampToSeabed(xz, this.fftDisplacement(xz, lod).add(this.sets.displacementWithBreakNode(xz, eps, out)));
+  }
+
+  /**
+   * The total surface (FFT chop + set waves) never goes below SEABED_CLEARANCE_M over the bed: η ≥ 0.05 − still-water
+   * depth at the undisplaced xz, on the probe and the render alike. SetWaves already clamps the set-wave sum (the CPU
+   * model's clamp, which its finite-difference normal sees); this second clamp stops the FFT chop, which only loses its
+   * long-swell cascade over the reef, from poking the mesh through a reef flat where the set-wave clamp engages. There is
+   * no CPU mirror: the CPU model has no FFT. Compute-safe (the seabed samples at an explicit LOD).
+   */
+  private clampToSeabed(xz: N, d: N): N {
+    return vec3(d.x, max(d.y, float(SEABED_CLEARANCE_M).sub(this.seabed.waterDepthNode(xz))), d.z);
   }
 
   private fftDisplacement(xz: N, lod: (cascade: number) => N): N {

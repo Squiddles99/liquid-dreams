@@ -69,7 +69,8 @@ export class SetWaves {
   private readonly farMax = uniform(FAR_COUNT - 1);
   private readonly farP = uniform(0);
   private readonly meanOmega = uniform(1);
-  private readonly meanTravel = uniform(new THREE.Vector2(1, 0));
+  /** The field's mean swell travel direction (xz); the render seeds its tangent frame from the crest axis across it. */
+  readonly meanTravel = uniform(new THREE.Vector2(1, 0));
   private readonly wavesAttr = new THREE.StorageBufferAttribute(new Float32Array(MAX_ACTIVE_WAVES * 8), 4);
   private readonly waves = storage(this.wavesAttr, 'vec4', MAX_ACTIVE_WAVES * 2).toReadOnly();
   /** How many wave slots are filled; 0 in a lull, when sum() skips the field fetches and the loop entirely. */

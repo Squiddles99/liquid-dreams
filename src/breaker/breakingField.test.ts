@@ -261,21 +261,31 @@ describe('breaking stays finite and bounded', () => {
     // (90, −140): 0.07 m of water beside a big crest, where the unclamped drain read η −2.87 m.
     const points: [number, number][] = [[90, -140]];
     for (let x = -60; x <= 110; x += 10) for (let z = -150; z <= 60; z += 10) points.push([x, z]);
-    let clamped = 0;
+    // Per variant: Phase 1 (breaking off), the probe, the render.
+    const clamped = [0, 0, 0];
+    let flat = 0;
     for (const [x, z] of points) for (let dt = -4; dt <= 6; dt += 0.5) {
       const fs = sampleField(f, x, z), floor = -(fs.depth - SEABED_CLEARANCE_M), t = peakT + dt;
-      const variants = [
-        sumWaves(x, z, t, fs, set, cx), // Phase 1 (breaking off)
-        sumWaves(x, z, t, fs, set, cx, optsFor(f, false)), // the probe
-        sumWavesWithNormal(x, z, t, fs, set, cx, optsFor(f), 0.25), // the render
-      ];
-      for (const r of variants) {
-        expect(r.eta, `(${x}, ${z}) at peak + ${dt} s, depth ${fs.depth.toFixed(3)}`).toBeGreaterThanOrEqual(floor - 1e-9);
-        if (r.eta <= floor + 1e-9) clamped++;
+      const render = sumWavesWithNormal(x, z, t, fs, set, cx, optsFor(f), 0.25);
+      const variants = [sumWaves(x, z, t, fs, set, cx), sumWaves(x, z, t, fs, set, cx, optsFor(f, false)), render];
+      variants.forEach((r, i) => {
+        expect(r.eta, `variant ${i} at (${x}, ${z}), peak + ${dt} s, depth ${fs.depth.toFixed(3)}`).toBeGreaterThanOrEqual(floor - 1e-9);
+        if (r.eta <= floor + 1e-9) clamped[i]++;
+      });
+      if (render.eta <= floor + 1e-9) {
+        // A clamped point's normal is finite, unit and faces up; where its neighbours are clamped too it is exactly flat.
+        const [nx, ny, nz] = render.normal;
+        expect(Number.isFinite(nx) && Number.isFinite(ny) && Number.isFinite(nz)).toBe(true);
+        expect(Math.hypot(nx, ny, nz)).toBeCloseTo(1, 9);
+        expect(ny, `normal at clamped (${x}, ${z}), peak + ${dt} s`).toBeGreaterThan(0);
+        if (ny > 1 - 1e-9) flat++;
       }
     }
-    // The extreme does reach the bed somewhere: the clamp is exercised, not vacuous.
-    expect(clamped).toBeGreaterThan(0);
+    // The breaking variants reach the bed at this extreme: their clamps are exercised, not vacuous. Phase 1 does not (it
+    // reads 0 here): its height is capped at 0.78·hmin, so its trough stays above the bed and the clamp there is a guard.
+    expect(clamped[1]).toBeGreaterThan(0);
+    expect(clamped[2]).toBeGreaterThan(0);
+    expect(flat).toBeGreaterThan(0);
   });
   it('unusual swell directions (from the land, along the coast) stay finite with breaking on', { timeout: 60_000 }, () => {
     for (const fromDeg of [0, 90, 180, 270]) {
