@@ -1,7 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { REEF_SURROUND_DEPTH_M, depthBg } from './coastProfile';
-import { fbm2 } from './noise';
-import { DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE } from './wombReef';
+import { fbm2, valueNoise2 } from './noise';
+import { DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE } from './wombReef';
 
 export interface Bathymetry {
   grid: GridSpec;
@@ -51,6 +51,27 @@ function pocketWeight(x: number, z: number): number {
 const SDF_CELL_M = 2;
 
 /**
+ * Domain warp for the whole reef: nudges a query point by up to REEF_WARP.ampM + REEF_WARP.detailAmpM
+ * metres through two-octave value noise (a broad wander plus finer detail), so the ledges, the shelf
+ * polygon, the reef heads and the sand pockets all read as natural, uneven edges instead of the
+ * ruler-straight originals. Tapers to zero within 15 m of the peak (0, 0) so the take-off corner keeps
+ * its exact 6 m ledge depth. Seeded from REEF_SEED plus fixed offsets, never Conditions.seed.
+ */
+export function reefWarp(x: number, z: number): [number, number] {
+  const cap = REEF_WARP.ampM + REEF_WARP.detailAmpM;
+  let dx = REEF_WARP.ampM * valueNoise2(x / REEF_WARP.featureM, z / REEF_WARP.featureM, REEF_SEED + 401)
+    + REEF_WARP.detailAmpM * valueNoise2(x / REEF_WARP.detailFeatureM, z / REEF_WARP.detailFeatureM, REEF_SEED + 402);
+  let dz = REEF_WARP.ampM * valueNoise2(x / REEF_WARP.featureM, z / REEF_WARP.featureM, REEF_SEED + 403)
+    + REEF_WARP.detailAmpM * valueNoise2(x / REEF_WARP.detailFeatureM, z / REEF_WARP.detailFeatureM, REEF_SEED + 404);
+  // Clamp the vector magnitude (not just each axis) so the warp never moves a point more than the
+  // stated amplitude, however the two independent noise fields happen to line up.
+  const mag = Math.hypot(dx, dz);
+  if (mag > cap) { const s = cap / mag; dx *= s; dz *= s; }
+  const taper = smoothstep(0, 15, Math.hypot(x, z));
+  return [dx * taper, dz * taper];
+}
+
+/**
  * Build the Womb's seabed. The signed distance to the ledges is computed on a coarse 2 m lattice and
  * interpolated (it is smooth), which keeps the full 0.5 m build well under a second.
  */
@@ -68,8 +89,9 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   }
   const lattice = (field: Float32Array, x: number, z: number): number => {
     const fx = (x - grid.x0) / SDF_CELL_M, fz = (z - grid.z0) / SDF_CELL_M;
-    const c = Math.min(sx - 2, Math.floor(fx)), r = Math.min(sz - 2, Math.floor(fz));
-    const tx = fx - c, tz = fz - r;
+    // Clamp both ends: the warp below can nudge a query point a few metres past the raw grid's edge.
+    const c = Math.min(sx - 2, Math.max(0, Math.floor(fx))), r = Math.min(sz - 2, Math.max(0, Math.floor(fz)));
+    const tx = Math.min(1, Math.max(0, fx - c)), tz = Math.min(1, Math.max(0, fz - r));
     const a = field[r * sx + c], b = field[r * sx + c + 1], d = field[(r + 1) * sx + c], e = field[(r + 1) * sx + c + 1];
     return (a + (b - a) * tx) * (1 - tz) + (d + (e - d) * tx) * tz;
   };
@@ -84,7 +106,13 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       // Around the reef the surrounding deep water can be tuned; it eases back to the coast profile by 280 m out.
       const nearReef = 1 - smoothstep(150, 280, Math.hypot(x, z));
       const background = Math.max(0, depthBg(x) + (p.deepDepthM - REEF_SURROUND_DEPTH_M) * nearReef);
-      const sd = lattice(sdf, x, z);
+      // Domain-warp the query point: the ledges, the shelf polygon, the reef heads and the sand pockets
+      // are all read at p' = p + w(p), so their edges wander naturally instead of following dead-straight
+      // lines. depthBg/background above stay on the unwarped coast profile, and reefWarp() itself tapers
+      // to zero within 15 m of the peak, so the take-off corner is untouched.
+      const [warpDx, warpDz] = reefWarp(x, z);
+      const xw = x + warpDx, zw = z + warpDz;
+      const sd = lattice(sdf, xw, zw);
       let d: number, s: number, w = 0;
       if (sd < 0) {
         // Outside the shelf: rise from the surrounding deep water to the ledge depth over ledgeWidthM.
@@ -94,16 +122,16 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       } else {
         // Inside: reef heads and sand pockets on the shelf, also fading out at its inshore (x ≈ 110 m) boundary.
         const reefness = edgeFade * smoothstep(125, 100, x);
-        const warpX = x + 6 * fbm2(x / 23, z / 23, REEF_SEED + 7);
-        const warpZ = z + 6 * fbm2(x / 23 + 9.1, z / 23 - 3.7, REEF_SEED + 8);
+        const warpX = xw + 6 * fbm2(xw / 23, zw / 23, REEF_SEED + 7);
+        const warpZ = zw + 6 * fbm2(xw / 23 + 9.1, zw / 23 - 3.7, REEF_SEED + 8);
         const relief = fbm2(warpX / 11, warpZ / 11, REEF_SEED);
         const heads = smoothstep(0.05, 0.55, relief);
         let interior = Math.max(p.minDepthM, p.shelfDepthM - p.headReliefM * heads);
-        const pocket = Math.max(lattice(pockets, x, z), smoothstep(-0.25, -0.55, relief));
+        const pocket = Math.max(lattice(pockets, xw, zw), smoothstep(-0.25, -0.55, relief));
         interior = interior + (p.pocketDepthM - interior) * pocket;
         const dShelf = p.ledgeDepthM + (interior - p.ledgeDepthM) * smoothstep(0, 20, sd);
         const sShelf = pocket * smoothstep(0, 3, sd) + (1 - smoothstep(0, 3, sd)) * 0.3;
-        const wShelf = (1 - pocket) * smoothstep(0.2, 0.6, fbm2(x / 5, z / 5, REEF_SEED + 3)) * smoothstep(0, 6, sd);
+        const wShelf = (1 - pocket) * smoothstep(0.2, 0.6, fbm2(xw / 5, zw / 5, REEF_SEED + 3)) * smoothstep(0, 6, sd);
         d = background + (dShelf - background) * reefness;
         s = 1 + (sShelf - 1) * reefness;
         w = wShelf * reefness;
