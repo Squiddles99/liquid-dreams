@@ -7,6 +7,11 @@ import type { FieldSample } from './fieldSample';
 
 /** A wave breaks when its height reaches about 0.78 × depth; Phase 1 caps it there (the "fade"). */
 export const BREAKING_RATIO = 0.78;
+/**
+ * The set-wave surface stays this far above the seabed: η ≥ −(still-water depth − this). The drain and the sharpening are
+ * sized from the crest's height, so on a reef flat beside a big crest they would otherwise draw the water below the bed.
+ */
+export const SEABED_CLEARANCE_M = 0.05;
 /** Envelope width in periods: one crest with flanking troughs, not an endless train. */
 export const ENVELOPE_WIDTH = 0.8;
 /** Largest second-harmonic ratio (Stokes breaks down in very shallow water). */
@@ -198,9 +203,16 @@ function accumulate(out: SetWaveResult, r: SetWaveResult): void {
   out.foam = Math.max(out.foam, r.foam); out.lip = Math.max(out.lip, r.lip); out.stage = Math.max(out.stage, r.stage);
 }
 
+/** The lowest the summed set-wave η may go at a point with this field sample: SEABED_CLEARANCE_M above the bed. */
+export function seabedFloor(f: FieldSample): number {
+  return SEABED_CLEARANCE_M - f.depth;
+}
+
+/** Σ of the waves at (x, z), with the summed η clamped to seabedFloor (the same clamp on every path, GPU included). */
 export function sumWaves(x: number, z: number, t: number, f: FieldSample, waves: readonly ActiveWave[], ctx: WaveContext, o?: BreakOptions): SetWaveResult {
   const out = { ...ZERO };
   for (const w of waves) accumulate(out, waveAt(x, z, t, f, w, ctx, o));
+  out.eta = Math.max(out.eta, seabedFloor(f));
   return out;
 }
 
@@ -211,7 +223,8 @@ export function shiftField(f: FieldSample, dx: number, dz: number, ctx: WaveCont
 
 /**
  * sumWaves at (x, z) plus the displaced surface's unit normal from finite differences (spec §3.3): each wave is also
- * evaluated at (x + ε, z) and (x, z + ε) with the field shifted to first order and the same crest. This is the render's
+ * evaluated at (x + ε, z) and (x, z + ε) with the field shifted to first order and the same crest, and each sum's η is
+ * clamped to this point's seabedFloor. This is the render's
  * normal, and the GPU mirrors it exactly. Handles overhangs (the normal faces down under the lip).
  */
 export function sumWavesWithNormal(
@@ -225,6 +238,9 @@ export function sumWavesWithNormal(
     accumulate(px, waveAtCrest(x + eps, z, t, fx, w, ctx, crest, o));
     accumulate(pz, waveAtCrest(x, z + eps, t, fz, w, ctx, crest, o));
   }
+  // The seabed clamp, with this point's depth for the neighbours too (they share its field sample, P10).
+  const floor = seabedFloor(f);
+  for (const r of [c, px, pz]) r.eta = Math.max(r.eta, floor);
   const ax = eps + px.dx - c.dx, ay = px.eta - c.eta, az = px.dz - c.dz; // P(x + ε) − P
   const bx = pz.dx - c.dx, by = pz.eta - c.eta, bz = eps + pz.dz - c.dz; // P(z + ε) − P
   const nx = by * az - bz * ay, ny = bz * ax - bx * az, nz = bx * ay - by * ax; // (P(z + ε) − P) × (P(x + ε) − P)

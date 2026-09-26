@@ -11,8 +11,8 @@ import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import type { ReefField } from './reefField';
 import {
-  BREAKING_RATIO, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_WIDTH, FOLD_LIMIT, PITCH_KA_CAP, PITCH_MAX, STOKES_CAP, TAPER_FAR_M,
-  TAPER_NEAR_M, toActiveWave,
+  BREAKING_RATIO, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_WIDTH, FOLD_LIMIT, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
+  TAPER_FAR_M, TAPER_NEAR_M, toActiveWave,
 } from './setWaveModel';
 
 type N = any;
@@ -160,7 +160,8 @@ export class SetWaves {
    * called inside an Fn. With no active wave the field is not even sampled: zero waves sum to zero, as on the CPU.
    * `curl` false is the probe's surface (the drain and the bore, no crest sharpening or curl). With `eps`, each wave is
    * also evaluated at xz + (ε, 0) and xz + (0, ε) with the field shifted to first order (only τ) and the same crest, as
-   * sumWavesWithNormal does, for the render's finite-difference normal. foam, lip and stage are the centre's.
+   * sumWavesWithNormal does, for the render's finite-difference normal. foam, lip and stage are the centre's. Every η sum
+   * is clamped to the seabed floor (setWaveModel.seabedFloor) with the centre's depth.
    */
   private sumBreaking(xz: N, mode: { curl: boolean; eps: N | null }): {
     eta: N; dh: N; slope: N; foam: N; lip: N; stage: N; etaX: N; dhX: N; etaZ: N; dhZ: N;
@@ -296,6 +297,13 @@ export class SetWaves {
           });
         });
       });
+      // setWaveModel.seabedFloor: the summed η stays SEABED_CLEARANCE_M above the bed, the neighbours with this depth.
+      const floor = float(SEABED_CLEARANCE_M).sub(f.depth).toVar();
+      eta.assign(max(eta, floor));
+      if (nb !== null) {
+        nb.etaX.assign(max(nb.etaX, floor));
+        nb.etaZ.assign(max(nb.etaZ, floor));
+      }
     });
     return { eta, dh, slope, foam, lip, stage, etaX: nb?.etaX, dhX: nb?.dhX, etaZ: nb?.etaZ, dhZ: nb?.dhZ };
   }

@@ -8,7 +8,8 @@ import { DEFAULT_BREAK_PARAMS } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import {
-  type ActiveWave, type BreakOptions, type WaveContext, crestStage, localHeight, sumWaves, sumWavesWithNormal, toActiveWave, waveAt,
+  type ActiveWave, type BreakOptions, SEABED_CLEARANCE_M, type WaveContext, crestStage, localHeight, sumWaves, sumWavesWithNormal, toActiveWave,
+  waveAt,
 } from './setWaveModel';
 
 // The app's field: 1 m cells, default swell and tide (~1 s to solve), shared by every test here.
@@ -249,6 +250,32 @@ describe('breaking stays finite and bounded', () => {
         for (const v of [r.foam, r.lip, r.stage]) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(1); }
       }
     }
+  });
+  it('the surface never goes below the seabed: η ≥ −(depth − 0.05) at 12 ft / 25 s / −1.5 m tide', { timeout: 60_000 }, () => {
+    const c = cloneConditions(DEFAULT_CONDITIONS);
+    c.swell.sizeFt = 12; c.swell.periodS = 25; c.tideM = -1.5;
+    const f = computeReefField({ bed: downsample(reef05, 4), periodS: 25, fromDeg: 225, tideM: -1.5 });
+    const cx = ctxOf(f);
+    const set = wavesOfSet(1, c, DEFAULT_SET_PARAMS).map(toActiveWave);
+    const peakT = set.reduce((a, b) => (b.heightM > a.heightM ? b : a)).arrivalS;
+    // (90, −140): 0.07 m of water beside a big crest, where the unclamped drain read η −2.87 m.
+    const points: [number, number][] = [[90, -140]];
+    for (let x = -60; x <= 110; x += 10) for (let z = -150; z <= 60; z += 10) points.push([x, z]);
+    let clamped = 0;
+    for (const [x, z] of points) for (let dt = -4; dt <= 6; dt += 0.5) {
+      const fs = sampleField(f, x, z), floor = -(fs.depth - SEABED_CLEARANCE_M), t = peakT + dt;
+      const variants = [
+        sumWaves(x, z, t, fs, set, cx), // Phase 1 (breaking off)
+        sumWaves(x, z, t, fs, set, cx, optsFor(f, false)), // the probe
+        sumWavesWithNormal(x, z, t, fs, set, cx, optsFor(f), 0.25), // the render
+      ];
+      for (const r of variants) {
+        expect(r.eta, `(${x}, ${z}) at peak + ${dt} s, depth ${fs.depth.toFixed(3)}`).toBeGreaterThanOrEqual(floor - 1e-9);
+        if (r.eta <= floor + 1e-9) clamped++;
+      }
+    }
+    // The extreme does reach the bed somewhere: the clamp is exercised, not vacuous.
+    expect(clamped).toBeGreaterThan(0);
   });
   it('unusual swell directions (from the land, along the coast) stay finite with breaking on', { timeout: 60_000 }, () => {
     for (const fromDeg of [0, 90, 180, 270]) {
