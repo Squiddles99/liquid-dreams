@@ -1,6 +1,7 @@
 import type { Conditions } from './types';
 
-export const WOMB_LOCATION = { latDeg: -33.8972366, lonDeg: 114.9832508 } as const;
+/** The Womb's peak (corrected by Andrew on 2026-09-26 from satellite references; ~190 m off the beach). */
+export const WOMB_LOCATION = { latDeg: -33.895216, lonDeg: 114.983359 } as const;
 export const AWST_UTC_OFFSET_HOURS = 8;
 
 /** A winter morning session: sun low behind the dunes, light easterly offshore. */

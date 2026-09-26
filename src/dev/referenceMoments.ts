@@ -8,8 +8,8 @@ export interface ReferenceMoment {
   moment: Moment;
 }
 
-/** Just seaward (west) of the peak, where you'd sit waiting for sets. */
-export const DEFAULT_LINEUP_POSITION: [number, number, number] = [-15, 0.8, 0];
+/** In the deep water just south-west of the peak, where Andrew waits for sets (outside the right's closeout). */
+export const DEFAULT_LINEUP_POSITION: [number, number, number] = [-25, 0.8, 45];
 export const DEFAULT_MOMENT_NAME = 'morning-offshore';
 const REFERENCE_SIM_TIME = 30;
 

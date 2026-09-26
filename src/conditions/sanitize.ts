@@ -9,6 +9,7 @@ export const CONDITION_RANGES = {
   swellDirectionDeg: { min: 0, max: 360 },
   windSpeedMs: { min: 0, max: 30 },
   windDirectionDeg: { min: 0, max: 360 },
+  tideM: { min: -1.5, max: 1.5 },
 } as const;
 
 const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
@@ -45,7 +46,7 @@ export function sanitizeConditions(input: unknown): Conditions {
       speedMs: clampTo(num(wind.speedMs, d.wind.speedMs), R.windSpeedMs),
       directionDeg: wrapDegrees(num(wind.directionDeg, d.wind.directionDeg)),
     },
-    tideM: clamp(num(o.tideM, d.tideM), -1.5, 1.5),
+    tideM: clampTo(num(o.tideM, d.tideM), R.tideM),
     seed: typeof seed === 'number' && Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff ? seed : d.seed,
   };
 }

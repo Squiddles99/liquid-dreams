@@ -18,10 +18,11 @@ describe('dev panel condition bindings never rewrite a loaded moment', () => {
   }
   it('whatever a link carries, the sanitised values sit inside the slider ranges', () => {
     for (const v of [-1e9, -359.5, -0.001, 0, 7 + 35 / 60, 22.5, 359.5, 1e9]) {
-      const c = sanitizeConditions({ ...DEFAULT_CONDITIONS, timeOfDay: v, swell: { sizeFt: v, periodS: v, directionDeg: v }, wind: { speedMs: v, directionDeg: v } });
+      const c = sanitizeConditions({ ...DEFAULT_CONDITIONS, timeOfDay: v, tideM: v, swell: { sizeFt: v, periodS: v, directionDeg: v }, wind: { speedMs: v, directionDeg: v } });
       const values: Record<keyof typeof CONDITION_RANGES, number> = {
         timeOfDay: c.timeOfDay, swellSizeFt: c.swell.sizeFt, swellPeriodS: c.swell.periodS,
         swellDirectionDeg: c.swell.directionDeg, windSpeedMs: c.wind.speedMs, windDirectionDeg: c.wind.directionDeg,
+        tideM: c.tideM,
       };
       for (const key of keys) {
         expect(values[key]).toBeGreaterThanOrEqual(CONDITION_BINDINGS[key].min);
