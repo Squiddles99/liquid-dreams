@@ -1,4 +1,5 @@
 import { type ListBladeApi, Pane } from 'tweakpane';
+import { CONDITION_RANGES } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
 import type { OceanSimParams } from '../ocean/OceanSimulation';
 import type { OceanSpectrumParams } from '../ocean/spectrum';
@@ -34,6 +35,22 @@ export interface DevPanelHandlers {
 const NIGHT_FLOOR_LOG10_MIN = -8;
 const NIGHT_FLOOR_LOG10_MAX = -4;
 
+const fixed = (digits: number) => (v: number): string => v.toFixed(digits);
+
+/**
+ * Conditions bindings. Tweakpane clamps to min/max and snaps to `step` on every refresh and writes the result back,
+ * so each range contains everything sanitize allows and none has a step: a loaded moment (07:35 is 7.58333 h) must
+ * come back exactly. `format` only rounds the display.
+ */
+export const CONDITION_BINDINGS = {
+  timeOfDay: { label: 'time (h)', ...CONDITION_RANGES.timeOfDay, format: fixed(2) },
+  swellSizeFt: { label: 'size (surfer ft)', ...CONDITION_RANGES.swellSizeFt, format: fixed(1) },
+  swellPeriodS: { label: 'period (s)', ...CONDITION_RANGES.swellPeriodS, format: fixed(1) },
+  swellDirectionDeg: { label: 'from (°)', ...CONDITION_RANGES.swellDirectionDeg, format: fixed(0) },
+  windSpeedMs: { label: 'speed (m/s)', ...CONDITION_RANGES.windSpeedMs, format: fixed(1) },
+  windDirectionDeg: { label: 'from (°)', ...CONDITION_RANGES.windDirectionDeg, format: fixed(0) },
+};
+
 export class DevPanel {
   private readonly pane = new Pane({ title: 'Liquid Dreams', expanded: true });
   private readonly nightFloorProxy = { log10: 0 };
@@ -47,20 +64,20 @@ export class DevPanel {
     }) as ListBladeApi<string>;
     ref.on('change', (e) => h.onReferenceMoment(e.value));
     moment.addBinding(m.conditions, 'date').on('change', h.onConditions);
-    moment.addBinding(m.conditions, 'timeOfDay', { label: 'time (h)', min: 0, max: 23.999, step: 0.01 }).on('change', h.onConditions);
+    moment.addBinding(m.conditions, 'timeOfDay', CONDITION_BINDINGS.timeOfDay).on('change', h.onConditions);
     moment.addBinding(m.conditions, 'seed', { min: 0, step: 1 }).on('change', h.onConditions);
     moment.addButton({ title: 'Copy moment link (L)' }).on('click', h.onCopyLink);
     moment.addButton({ title: 'Pause / resume (P)' }).on('click', h.onTogglePause);
     moment.addButton({ title: 'Screenshot (K)' }).on('click', h.onScreenshot);
 
     const swell = this.pane.addFolder({ title: 'Swell' });
-    swell.addBinding(m.conditions.swell, 'sizeFt', { label: 'size (surfer ft)', min: 0, max: 12, step: 0.1 }).on('change', h.onConditions);
-    swell.addBinding(m.conditions.swell, 'periodS', { label: 'period (s)', min: 4, max: 25, step: 0.5 }).on('change', h.onConditions);
-    swell.addBinding(m.conditions.swell, 'directionDeg', { label: 'from (°)', min: 150, max: 300, step: 1 }).on('change', h.onConditions);
+    swell.addBinding(m.conditions.swell, 'sizeFt', CONDITION_BINDINGS.swellSizeFt).on('change', h.onConditions);
+    swell.addBinding(m.conditions.swell, 'periodS', CONDITION_BINDINGS.swellPeriodS).on('change', h.onConditions);
+    swell.addBinding(m.conditions.swell, 'directionDeg', CONDITION_BINDINGS.swellDirectionDeg).on('change', h.onConditions);
 
     const wind = this.pane.addFolder({ title: 'Wind' });
-    wind.addBinding(m.conditions.wind, 'speedMs', { label: 'speed (m/s)', min: 0, max: 20, step: 0.1 }).on('change', h.onConditions);
-    wind.addBinding(m.conditions.wind, 'directionDeg', { label: 'from (°)', min: 0, max: 359, step: 1 }).on('change', h.onConditions);
+    wind.addBinding(m.conditions.wind, 'speedMs', CONDITION_BINDINGS.windSpeedMs).on('change', h.onConditions);
+    wind.addBinding(m.conditions.wind, 'directionDeg', CONDITION_BINDINGS.windDirectionDeg).on('change', h.onConditions);
 
     const ocean = this.pane.addFolder({ title: 'Ocean', expanded: false });
     ocean.addBinding(m.spectrum, 'offshoreFetchM', { label: 'offshore fetch (m)', min: 50, max: 5000, step: 10 }).on('change', h.onSpectrum);
