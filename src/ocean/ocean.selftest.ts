@@ -119,3 +119,27 @@ registerSelfTest({
     };
   },
 });
+
+registerSelfTest({
+  name: 'ocean: new conditions start with no foam (whitecap history is cleared)',
+  async run(renderer) {
+    const storm = cloneConditions(DEFAULT_CONDITIONS);
+    storm.swell = { sizeFt: 12, periodS: 14, directionDeg: 225 };
+    storm.wind = { speedMs: 25, directionDeg: 225 };
+    const sim = new OceanSimulation();
+    sim.setConditions(storm);
+    for (let i = 0; i < 6; i++) sim.update(renderer, 10 + i / 60, 1 / 60);
+    const before = new Float32Array(await renderer.getArrayBufferAsync(sim.foamAttr));
+    const built = before.reduce((m, v) => Math.max(m, v), 0);
+    if (!(built > 0)) return { pass: false, detail: `the storm raised no foam to clear (max ${built})` };
+    // A flat, windless sea injects nothing, so any foam left after a paused (dt = 0) step is stale history.
+    const calm = cloneConditions(DEFAULT_CONDITIONS);
+    calm.swell.sizeFt = 0;
+    calm.wind.speedMs = 0;
+    sim.setConditions(calm);
+    sim.update(renderer, 10, 0);
+    const after = new Float32Array(await renderer.getArrayBufferAsync(sim.foamAttr));
+    const left = after.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+    return { pass: left === 0, detail: `storm foam max ${built.toFixed(3)}, after new conditions max ${left}` };
+  },
+});

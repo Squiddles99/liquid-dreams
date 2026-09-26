@@ -103,6 +103,8 @@ export class App {
     this.clock.paused = m.paused;
     this.rig.setPose(m.camera, this.waterHeightAtCamera());
     this.rebuildSpectrumIfNeeded(true);
+    // The rebuild clears foam too, but a moment is a jump in sim time even when the sea is unchanged.
+    this.ocean.resetFoam();
     this.panel.refresh();
   }
 
@@ -110,7 +112,7 @@ export class App {
     return { conditions: cloneConditions(this.conditions), camera: this.rig.getPose(), simTime: this.clock.simTime, paused: this.clock.paused };
   }
 
-  /** Latest GPU-sampled water height under the lineup camera (holds while a readback is in flight). */
+  /** Latest GPU-sampled water height under the camera (holds while a readback is in flight). */
   protected waterHeightAtCamera(): number {
     return this.probe.heightAt(0) ?? 0;
   }
