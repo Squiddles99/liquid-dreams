@@ -60,27 +60,37 @@ export interface SeabedShadingInputs {
 export function seabedTerms(i: SeabedShadingInputs, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms): { radiance: N; transmittance: N } {
   const t = normalize(refract(i.viewDir.negate(), i.normal, float(1 / WATER_IOR)));
   const march = marchSeabedNode(i.surfacePos, t, seabed);
-  const hitPos = i.surfacePos.add(t.mul(march.x));
   // reachFade() mirror: fade the seabed out before the march's depth and distance cutoffs so there is no seam.
   const depthHere = i.surfacePos.y.sub(seabed.bedHeightNode(i.surfacePos.xz));
   const fade = float(1.0).sub(smoothstep(REACH_FADE_DEPTH_M, MAX_MARCH_DEPTH_M, depthHere))
     .mul(float(1.0).sub(smoothstep(REACH_FADE_DIST_M, MAX_MARCH_DIST_M, march.x)));
   const T = exp(u.extinction.mul(march.x).negate()).mul(march.y).mul(fade);
 
-  const e = 0.5;
-  const hx = seabed.bedHeightNode(hitPos.xz.add(vec2(e, 0.0))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(e, 0.0))));
-  const hz = seabed.bedHeightNode(hitPos.xz.add(vec2(0.0, e))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(0.0, e))));
-  const nBed = normalize(vec3(hx.negate().div(2 * e), 1.0, hz.negate().div(2 * e)));
-  const mat = seabed.materialNode(hitPos.xz);
-  const detail = mx_noise_float(vec3(hitPos.x.mul(1.7), hitPos.z.mul(1.7), 0.0)).mul(0.5).add(0.5);
-  const albedo = mix(mix(REEF_ALBEDO, WEED_ALBEDO, mat.y), SAND_ALBEDO, mat.x).mul(detail.mul(0.4).add(0.8));
+  // Lighting only where the march hit and the reach fade left something: on a miss (most distant water) T is 0 anyway,
+  // and the bed normal's four fetches, the material fetch, the noise and the lighting are skipped.
+  // Non-uniform control flow is fine here: Seabed samples with an explicit LOD (texture().level(0)).
+  const radiance = Fn(() => {
+    const out = vec3(0.0).toVar();
+    If(march.y.greaterThan(0.5).and(fade.greaterThan(0.0)), () => {
+      const hitPos = i.surfacePos.add(t.mul(march.x));
+      const e = 0.5;
+      const hx = seabed.bedHeightNode(hitPos.xz.add(vec2(e, 0.0))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(e, 0.0))));
+      const hz = seabed.bedHeightNode(hitPos.xz.add(vec2(0.0, e))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(0.0, e))));
+      const nBed = normalize(vec3(hx.negate().div(2 * e), 1.0, hz.negate().div(2 * e)));
+      const mat = seabed.materialNode(hitPos.xz);
+      const detail = mx_noise_float(vec3(hitPos.x.mul(1.7), hitPos.z.mul(1.7), 0.0)).mul(0.5).add(0.5);
+      const albedo = mix(mix(REEF_ALBEDO, WEED_ALBEDO, mat.y), SAND_ALBEDO, mat.x).mul(detail.mul(0.4).add(0.8));
 
-  const l = sky.sunDirection;
-  const lw = normalize(refract(l.negate(), vec3(0.0, 1.0, 0.0), float(1 / WATER_IOR)));
-  const cosW = max(lw.y.negate(), 0.2);
-  const depthHit = max(seabed.tide.sub(hitPos.y), 0.0);
-  const sunIn = sky.sunIlluminance.mul(float(1.0).sub(schlickWater(max(l.y, 0.0)))).mul(step(0.0, l.y));
-  const eSun = sunIn.mul(exp(u.extinction.mul(depthHit.div(cosW)).negate())).mul(max(dot(nBed, lw.negate()), 0.0));
-  const eSky = sky.skyIrradiance.mul(exp(u.extinction.mul(depthHit.mul(1.2)).negate()));
-  return { radiance: albedo.mul(eSun.add(eSky)).div(PI), transmittance: T };
+      const l = sky.sunDirection;
+      const lw = normalize(refract(l.negate(), vec3(0.0, 1.0, 0.0), float(1 / WATER_IOR)));
+      const cosW = max(lw.y.negate(), 0.2);
+      const depthHit = max(seabed.tide.sub(hitPos.y), 0.0);
+      const sunIn = sky.sunIlluminance.mul(float(1.0).sub(schlickWater(max(l.y, 0.0)))).mul(step(0.0, l.y));
+      const eSun = sunIn.mul(exp(u.extinction.mul(depthHit.div(cosW)).negate())).mul(max(dot(nBed, lw.negate()), 0.0));
+      const eSky = sky.skyIrradiance.mul(exp(u.extinction.mul(depthHit.mul(1.2)).negate()));
+      out.assign(albedo.mul(eSun.add(eSky)).div(PI));
+    });
+    return out;
+  })();
+  return { radiance, transmittance: T };
 }
