@@ -61,7 +61,10 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   for (let row = 0; row < nz; row++) { edges.push([0, row, -1, 0]); edges.push([nx - 1, row, 1, 0]); }
   for (const [col, row, ox, oz] of edges) {
     const f = farAt(col, row);
-    if (f.dirX * ox + f.dirZ * oz < 0) {
+    // A tolerance, not a bare < 0: a grazing direction (e.g. fromDeg exactly 270°, where dirZ is float residue of
+    // cos(90°)) must not flip an entire edge to "inflow" on residue alone, which sources it from the far field and
+    // reads back as a numerical caustic once the eikonal solve marches off it.
+    if (f.dirX * ox + f.dirZ * oz < -1e-6) {
       tau[row * nx + col] = f.tau;
       fixed[row * nx + col] = 1;
     }
