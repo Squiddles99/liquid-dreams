@@ -202,3 +202,8 @@ export function buildOceanSpectra(
   const variance = bands.reduce((s, b) => s + expectedCascadeVariance(b, normalised, n), 0);
   return { h0, slopeVariance, hsTotal: 4 * Math.sqrt(variance), components: normalised };
 }
+
+/** Changes only when the initial spectrum must be rebuilt (not for time of day, date or tide). */
+export function spectrumInputsKey(c: Conditions, p: OceanSpectrumParams): string {
+  return JSON.stringify([c.swell.sizeFt, c.swell.periodS, c.swell.directionDeg, c.wind.speedMs, c.wind.directionDeg, c.seed, p]);
+}

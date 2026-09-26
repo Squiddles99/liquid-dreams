@@ -16,3 +16,13 @@ export const DEFAULT_CONDITIONS: Readonly<Conditions> = Object.freeze({
 export function cloneConditions(c: Readonly<Conditions>): Conditions {
   return { ...c, swell: { ...c.swell }, wind: { ...c.wind } };
 }
+
+/** Copy values in place, keeping target/target.swell/target.wind identities (UI bindings hold them). */
+export function assignConditions(target: Conditions, source: Readonly<Conditions>): void {
+  target.date = source.date;
+  target.timeOfDay = source.timeOfDay;
+  target.tideM = source.tideM;
+  target.seed = source.seed;
+  Object.assign(target.swell, source.swell);
+  Object.assign(target.wind, source.wind);
+}
