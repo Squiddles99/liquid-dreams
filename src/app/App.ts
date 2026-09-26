@@ -18,7 +18,7 @@ import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/w
 import { DEFAULT_PICTURE, type PictureParams, PicturePipeline } from '../render/PicturePipeline';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
-import { SimClock, clampFrameDt, viewportSize } from './clock';
+import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { showOverlay } from './overlay';
 
 const SPECTRUM_REBUILD_DEBOUNCE_MS = 150;
@@ -26,6 +26,7 @@ const SPECTRUM_REBUILD_DEBOUNCE_MS = 150;
 export class App {
   readonly scene = new THREE.Scene();
   readonly clock = new SimClock();
+  private readonly frameLimiter = new FrameLimiter();
   readonly rig = new CameraRig();
   readonly input: Input;
   /** Stable objects: the dev panel binds to them, so values are copied in, never swapped. */
@@ -66,7 +67,7 @@ export class App {
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
     this.perf = new PerfOverlay(renderer);
     this.panel = new DevPanel(
-      { conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams },
+      { conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams, frameLimiter: this.frameLimiter },
       {
         onConditions: () => this.onConditionsEdited(),
         onSpectrum: () => this.scheduleSpectrumRebuild(),
@@ -180,6 +181,7 @@ export class App {
 
   private frame = (): void => {
     const now = performance.now();
+    if (!this.frameLimiter.shouldRender(now)) return;
     const realDt = clampFrameDt((now - this.lastMs) / 1000);
     this.lastMs = now;
     const simDt = this.clock.tick(realDt);
@@ -209,6 +211,7 @@ export class App {
       this.screenshotRequested = false;
       captureScreenshot(this.renderer.domElement, screenshotFilename(this.conditions));
     }
-    this.perf.update();
+    // GPU timestamp readback only matters while the stats are on screen.
+    if (this.devUiVisible) this.perf.update();
   };
 }
