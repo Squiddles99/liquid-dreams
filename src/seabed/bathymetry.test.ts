@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { depthBg } from './coastProfile';
-import { bedHeightAt, buildBathymetry, downsample } from './bathymetry';
-import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, REEF_GRID, SOUTH_LEDGE } from './wombReef';
+import { bedHeightAt, buildBathymetry, downsample, reefWarp } from './bathymetry';
+import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, REEF_GRID, REEF_WARP, SOUTH_LEDGE } from './wombReef';
 
 const bathy = buildBathymetry();
 const depth = (x: number, z: number) => -bedHeightAt(bathy, x, z);
@@ -59,5 +59,28 @@ describe('the Womb reef', () => {
     const i = 300 * d.grid.nx + 400;
     const src = (r: number, c: number) => bathy.bed[r * REEF_GRID.nx + c];
     expect(d.bed[i]).toBeCloseTo((src(600, 800) + src(600, 801) + src(601, 800) + src(601, 801)) / 4, 5);
+  });
+});
+
+describe('reef domain warp', () => {
+  it('is deterministic', () => {
+    expect(reefWarp(37.2, -164.8)).toEqual(reefWarp(37.2, -164.8));
+  });
+  it('is zero at the peak (0, 0), so the take-off corner is untouched', () => {
+    const [dx, dz] = reefWarp(0, 0);
+    expect(dx).toBeCloseTo(0, 9);
+    expect(dz).toBeCloseTo(0, 9);
+  });
+  it('never moves a ledge crossing by more than ampM + detailAmpM', () => {
+    const cap = REEF_WARP.ampM + REEF_WARP.detailAmpM;
+    for (const [x, z] of [...NORTH_LEDGE, ...SOUTH_LEDGE]) {
+      const [dx, dz] = reefWarp(x, z);
+      expect(Math.hypot(dx, dz)).toBeLessThanOrEqual(cap + 1e-9);
+    }
+    // And broadly, off the ledges too.
+    for (let x = -300; x <= 200; x += 37) for (let z = -400; z <= 250; z += 41) {
+      const [dx, dz] = reefWarp(x, z);
+      expect(Math.hypot(dx, dz)).toBeLessThanOrEqual(cap + 1e-9);
+    }
   });
 });

@@ -14,6 +14,14 @@ export const REEF_GRID: GridSpec = { x0: -400, z0: -450, cellM: 0.5, nx: 1300, n
 /** The reef is the place, not a random process: a fixed seed, never Conditions.seed. */
 export const REEF_SEED = 1905;
 
+/**
+ * Domain warp applied to every reef query point before the ledges, the shelf polygon, the reef heads
+ * and the sand pockets are evaluated, so their edges read as natural and uneven rather than the ruler-
+ * straight originals. Two frequencies: a broad wander plus finer detail. Tapered to zero within 15 m of
+ * the peak (see reefWarp() in bathymetry.ts) so the take-off corner keeps its exact 6 m ledge depth.
+ */
+export const REEF_WARP = { ampM: 5, featureM: 35, detailAmpM: 2, detailFeatureM: 12 };
+
 export interface ReefParams {
   /** Depth just outside the ledges (the coast profile is 13 m there; this can deepen it locally). */
   deepDepthM: number;
