@@ -34,10 +34,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem Vite needs Node 20.19+ (see node_modules/vite's package.json "engines" after npm install).
-node -e "const [maj,min]=process.versions.node.split('.').map(Number);process.exit((maj<20||(maj===20&&min<19))?1:0)"
+rem Vite needs Node ^20.19 or >=22.12 (node_modules/vite's package.json "engines").
+node -e "const [maj,min]=process.versions.node.split('.').map(Number);process.exit((maj===20&&min>=19)||(maj===22&&min>=12)||maj>=23?0:1)"
 if errorlevel 1 (
-  echo Your Node.js is too old; install the LTS version from https://nodejs.org
+  echo This version of Node.js won't run the game; install the LTS version from https://nodejs.org
   pause
   exit /b 1
 )
