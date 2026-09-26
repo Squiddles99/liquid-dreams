@@ -7,6 +7,18 @@ type N = any;
 export const MAX_PROBES = 16;
 const FIXED_POINT_ITERATIONS = 4;
 
+/**
+ * Merge a readback into the held values: a probe that read back NaN or Infinity keeps its last good height, so a
+ * bad frame can never reach (and permanently poison) the camera spring. With no last good value it stays non-finite.
+ */
+export function holdFiniteHeights(held: Float32Array | null, readback: Float32Array): Float32Array {
+  const next = readback.slice();
+  for (let i = 0; i < next.length; i += 4) {
+    if (!Number.isFinite(next[i])) next[i] = held ? held[i] : Number.NaN;
+  }
+  return next;
+}
+
 /** Samples the ocean's height at up to 16 world XZ points on the GPU and reads them back asynchronously. */
 export class HeightProbe {
   readonly outputAttr = new THREE.StorageBufferAttribute(new Float32Array(MAX_PROBES * 4), 4);
@@ -51,13 +63,15 @@ export class HeightProbe {
     this.pending = true;
     renderer
       .getArrayBufferAsync(this.outputAttr)
-      .then((buffer) => { this.latest = new Float32Array(buffer); })
+      .then((buffer) => { this.latest = holdFiniteHeights(this.latest, new Float32Array(buffer)); })
       .catch((e) => console.warn('HeightProbe readback failed; holding last value', e))
       .finally(() => { this.pending = false; });
   }
 
+  /** Null until the probe has read back a finite height. */
   heightAt(index: number): number | null {
-    return this.latest ? this.latest[index * 4] : null;
+    const h = this.latest ? this.latest[index * 4] : Number.NaN;
+    return Number.isFinite(h) ? h : null;
   }
 
   /** Synchronous-style read for self-tests. */
