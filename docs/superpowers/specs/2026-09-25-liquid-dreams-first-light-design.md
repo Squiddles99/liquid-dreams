@@ -200,9 +200,9 @@ interface Conditions {
 ### 5.7 Picture pipeline
 
 - HDR half-float rendering.
-- **Exposure:** physically motivated, derived from the sun and sky brightness, with a manual EV offset in the dev panel.
-- **Tone mapping:** AgX.
-- **Bloom:** gentle, mainly for the sun and glitter.
+- **Exposure:** physically motivated, derived from the sun and sky brightness, with a manual EV offset in the dev panel. Auto-exposure opens up as the sun drops (a sun-elevation table) and stops down by up to one stop when the camera looks toward a risen sun, like a meter reading the brighter frame.
+- **Tone mapping:** Khronos PBR Neutral by default (keeps mid-tone hue and saturation, so a clear sky stays blue, and only compresses highlights); AgX is kept as a dev-panel toggle for comparison.
+- **Bloom:** gentle (strength 0.04), mainly for the sun and glitter.
 - **Grade:** a simple lift/gamma/gain and saturation control for the "dream" feel, restrained by default.
 
 ### 5.8 Dev tools
@@ -267,12 +267,12 @@ Unit tests sit beside the code they test (`*.test.ts`).
 
 | Moment | Setup | Checks |
 |---|---|---|
-| `pre-dawn` | 06:30, looking east then west | Twilight gradient, dark sea, no sun artefacts |
+| `pre-dawn` | 06:30, facing the land (east) | Twilight glow where the sun will rise, dark sea, no sun artefacts |
 | `first-sun` | 07:35, facing out to sea (west) | First light on the swell, sunrise glow opposite |
 | `morning-offshore` (default) | 08:15, light E wind, facing west | Low sun behind the camera, clear deep-blue water, groomed surface |
 | `late-morning` | 10:30, light E wind, facing west | Higher sun, water clarity, colour holding up before the Doctor |
 | `noon-deep-blue` | 12:30, looking down at about 45° | Body colour and clarity, small glitter |
-| `autumn-glass` | 2026-04-20, 09:30, wind 0 m/s, facing west | Mirror-smooth swell lines, crisp sky reflection, tight sun highlight, no whitecaps |
+| `autumn-glass` | 2026-04-20, 09:30, wind 0 m/s, facing west | Mirror-smooth swell lines, crisp sky reflection, no whitecaps |
 | `golden-hour` | 16:50, 6 m/s SW wind, facing the sun | Glitter path, crest transmission, choppier post-Doctor surface, haze on the horizon |
 | `sunset` | 17:25, facing the sun | Sky colour, exposure, horizon |
 | `overview` | Free camera 40m up, noon | No tiling, LOD transitions, horizon curvature |
