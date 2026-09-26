@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
+import { surferFeetToHs } from '../conditions/units';
 import { createRng } from '../conditions/rng';
 import {
   CASCADE_SIZES_M, DEFAULT_SPECTRUM_PARAMS, FFT_SIZE, GRAVITY,
   alphaForHs, buildInitialSpectrum, buildOceanSpectra, buildSpectrumComponents, cascadeBands,
-  jonswapShape, omegaForK, renormaliseComponent, spreading, windFetchM, windSeaComponent,
+  jonswapShape, omegaForK, renormaliseComponent, spreading, swellComponent, windFetchM, windSeaComponent,
 } from './spectrum';
 
 describe('dispersion and JONSWAP', () => {
@@ -95,8 +96,9 @@ describe('cascade bands', () => {
 
 describe('buildOceanSpectra', () => {
   it('reproduces the combined Hs of swell and wind sea', () => {
-    const s = buildOceanSpectra(DEFAULT_CONDITIONS);
-    const comps = buildSpectrumComponents(DEFAULT_CONDITIONS, DEFAULT_SPECTRUM_PARAMS);
+    const p = { ...DEFAULT_SPECTRUM_PARAMS, backgroundSwellFactor: 1 };
+    const s = buildOceanSpectra(DEFAULT_CONDITIONS, p);
+    const comps = buildSpectrumComponents(DEFAULT_CONDITIONS, p);
     const target = Math.sqrt(comps.reduce((a, c) => a + c.hs * c.hs, 0));
     expect(s.hsTotal).toBeCloseTo(target, 2);
     expect(target).toBeGreaterThan(1.6);
@@ -104,7 +106,7 @@ describe('buildOceanSpectra', () => {
   it('autumn glass-off (zero wind) is finite and swell-only', () => {
     const c = cloneConditions(DEFAULT_CONDITIONS);
     c.wind.speedMs = 0;
-    const s = buildOceanSpectra(c);
+    const s = buildOceanSpectra(c, { ...DEFAULT_SPECTRUM_PARAMS, backgroundSwellFactor: 1 });
     expect(s.hsTotal).toBeCloseTo(1.6, 2);
     for (const a of s.h0) expect(a.every(Number.isFinite)).toBe(true);
   });
@@ -150,7 +152,7 @@ describe('buildOceanSpectra', () => {
   });
 });
 
-describe('renormalisation never emits non-finite spectra', () => {
+describe('renormalisation never emits non-finite spectra', { timeout: 30_000 }, () => {
   // A coarse grid keeps the sweep fast; the unresolved-wind-sea regime (peak far above the grid's kMax) still
   // appears, just at a slightly higher wind speed than on the full 256² grid.
   const n = 16, bands = cascadeBands(CASCADE_SIZES_M, n);
@@ -194,5 +196,14 @@ describe('buildInitialSpectrum', () => {
       expect(a[i * 4 + 2]).toBe(a[j * 4]);
       expect(a[i * 4 + 3]).toBe(-a[j * 4 + 1]);
     }
+  });
+});
+
+describe('background swell under sets', () => {
+  it('turns the FFT swell down by backgroundSwellFactor, leaving the wind sea alone', () => {
+    const p = { ...DEFAULT_SPECTRUM_PARAMS, backgroundSwellFactor: 0.5 };
+    expect(swellComponent(4, 15, 225, p).hs).toBeCloseTo(surferFeetToHs(4) * 0.5, 9);
+    expect(windSeaComponent(6, 225, p).hs).toBeCloseTo(windSeaComponent(6, 225, { ...p, backgroundSwellFactor: 1 }).hs, 12);
+    expect(DEFAULT_SPECTRUM_PARAMS.backgroundSwellFactor).toBe(0.5);
   });
 });

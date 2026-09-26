@@ -1,12 +1,13 @@
 import type { Conditions } from '../conditions/types';
 
-export const HOTKEYS = { copyLink: 'KeyL', togglePause: 'KeyP', screenshot: 'KeyK', toggleDevUi: 'KeyH' } as const;
+export const HOTKEYS = { copyLink: 'KeyL', togglePause: 'KeyP', screenshot: 'KeyK', toggleDevUi: 'KeyH', callSet: 'KeyN' } as const;
 
 export interface HotkeyHandlers {
   copyLink(): void;
   togglePause(): void;
   screenshot(): void;
   toggleDevUi(): void;
+  callSet(): void;
 }
 
 export function handleHotkeys(input: { consumePressed(code: string): boolean }, h: HotkeyHandlers): void {

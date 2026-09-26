@@ -5,13 +5,22 @@ describe('handleHotkeys', () => {
   it('fires each action once per press', () => {
     const pressed = new Set(['KeyP', 'KeyL']);
     const input = { consumePressed: (code: string) => pressed.delete(code) };
-    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn() };
+    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn() };
     handleHotkeys(input, h);
     handleHotkeys(input, h);
     expect(h.togglePause).toHaveBeenCalledTimes(1);
     expect(h.copyLink).toHaveBeenCalledTimes(1);
     expect(h.screenshot).not.toHaveBeenCalled();
     expect(h.toggleDevUi).not.toHaveBeenCalled();
+    expect(h.callSet).not.toHaveBeenCalled();
+  });
+  it('N calls a set', () => {
+    const pressed = new Set(['KeyN']);
+    const input = { consumePressed: (code: string) => pressed.delete(code) };
+    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn() };
+    handleHotkeys(input, h);
+    expect(h.callSet).toHaveBeenCalledTimes(1);
+    expect(h.togglePause).not.toHaveBeenCalled();
   });
 });
 

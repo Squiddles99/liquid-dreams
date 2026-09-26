@@ -72,6 +72,8 @@ export interface OceanSpectrumParams {
   swellSpread: number;
   windGamma: number;
   swellGamma: number;
+  /** Fraction of the dial's swell Hs left in the FFT background once sets carry the big waves (Phase 1). */
+  backgroundSwellFactor: number;
 }
 
 export const DEFAULT_SPECTRUM_PARAMS: OceanSpectrumParams = {
@@ -81,6 +83,7 @@ export const DEFAULT_SPECTRUM_PARAMS: OceanSpectrumParams = {
   swellSpread: 40,
   windGamma: 3.3,
   swellGamma: 7,
+  backgroundSwellFactor: 0.5,
 };
 
 export interface SpectrumComponent {
@@ -117,7 +120,7 @@ export function windSeaComponent(speedMs: number, fromDeg: number, p: OceanSpect
 }
 
 export function swellComponent(sizeFt: number, periodS: number, fromDeg: number, p: OceanSpectrumParams): SpectrumComponent {
-  const hs = surferFeetToHs(sizeFt);
+  const hs = surferFeetToHs(sizeFt) * p.backgroundSwellFactor;
   const omegaP = (2 * Math.PI) / periodS;
   return { hs, omegaP, gamma: p.swellGamma, alpha: alphaForHs(hs, omegaP, p.swellGamma), travel: travelDirectionXZ(fromDeg), spread: p.swellSpread };
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { PI, dot, float, length, max, min, mix, normalize, pow, reflect, saturate, sqrt, step, uniform, vec3 } from 'three/tsl';
+import { Fn, If, PI, dot, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
+import { extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
 import { type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
 
@@ -15,12 +16,17 @@ export interface WaterSurfaceInputs {
   crestHeight: N;
   unresolvedSlopeVariance: N;
   hsTotal: N;
+  /** The seabed seen through the water (Phase 1); absent means infinitely deep water (Phase 0). */
+  seabed?: { radiance: N; transmittance: N };
+  /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
+  overlay?: { depth: N; tau: N; depthOn: N; crestOn: N };
 }
 
 export function createWaterOpticsUniforms(p: WaterOpticsParams) {
   return {
     albedo: uniform(new THREE.Vector3(...waterAlbedo(p))),
     transmission: uniform(new THREE.Vector3(...transmissionColour(p))),
+    extinction: uniform(new THREE.Vector3(...extinction(p.absorptionPerM, p.backscatterPerM))),
     bodyScale: uniform(p.bodyScale),
     transmissionIntensity: uniform(p.transmissionIntensity),
     baseRoughness: uniform(p.baseRoughness),
@@ -33,13 +39,15 @@ export type WaterOpticsUniforms = ReturnType<typeof createWaterOpticsUniforms>;
 export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOpticsParams): void {
   u.albedo.value.set(...waterAlbedo(p));
   u.transmission.value.set(...transmissionColour(p));
+  u.extinction.value.set(...extinction(p.absorptionPerM, p.backscatterPerM));
   u.bodyScale.value = p.bodyScale;
   u.transmissionIntensity.value = p.transmissionIntensity;
   u.baseRoughness.value = p.baseRoughness;
   u.foamAlbedo.value = p.foamAlbedo;
 }
 
-export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(float(1.0).sub(cosTheta), 5.0)));
+// saturate(): at the anti-solar point v·h rounds to a hair above 1, and pow() of a negative base is NaN on the GPU (it showed as a fake sun).
+export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(saturate(float(1.0).sub(cosTheta)), 5.0)));
 
 /**
  * Water = Fresnel-weighted sky reflection + GGX sun glitter + light from the water column
@@ -84,8 +92,35 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
   const transmitted = u.transmission.mul(sky.sunIlluminance).mul(backlight).mul(crest).mul(u.transmissionIntensity).div(PI);
 
-  const water = upwelling.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
+  // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.
+  const column = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;
+  const water = column.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
   const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL))).mul(u.foamAlbedo).div(PI);
   const colour = mix(water, foamLight, saturate(i.foam));
-  return sky.applyAerialPerspective(colour, i.distance, v.negate());
+  // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
+  // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
+  // would paint the whole flat field NaN, so the edge is floored and a flat field draws no line.
+  const line = (value: N, spacing: number): N => {
+    const f = fract(value.div(spacing));
+    const dist = min(f, float(1.0).sub(f));
+    const w = fwidth(value.div(spacing));
+    const weight = float(1.0).sub(smoothstep(0.0, max(w.mul(1.5), 1e-6), dist)).mul(step(1e-6, w));
+    // Toward the horizon, consecutive lines land under a pixel apart and moiré into a solid band. Fade the
+    // weight out below ~4 px of screen-space spacing (a flat field is already zeroed above regardless).
+    const spacingPx = float(spacing).div(max(fwidth(value), 1e-6));
+    return weight.mul(smoothstep(3.0, 6.0, spacingPx));
+  };
+  // The overlay inputs (a seabed fetch, a set-wave field fetch, the line maths) are evaluated only inside their
+  // switch's branch, so overlays off cost nothing and leave colour untouched. Each switch is a uniform, so the
+  // branches are uniform control flow and fwidth stays valid inside them.
+  const o = i.overlay;
+  const withOverlay = o
+    ? Fn(() => {
+      const c = colour.toVar();
+      If(o.depthOn.greaterThan(0.5), () => { c.assign(mix(c, foamLight, line(o.depth, 1.0))); });
+      If(o.crestOn.greaterThan(0.5), () => { c.assign(mix(c, foamLight.mul(vec3(1.0, 0.8, 0.25)), line(o.tau, 2.0))); });
+      return c;
+    })()
+    : colour;
+  return sky.applyAerialPerspective(withOverlay, i.distance, v.negate());
 }

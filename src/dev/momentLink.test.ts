@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
-import { type Moment, decodeMoment, encodeMoment, momentFromHash, momentHashProblem } from './momentLink';
+import { MAX_LINK_SIM_TIME_S, type Moment, decodeMoment, encodeMoment, momentFromHash, momentHashProblem } from './momentLink';
+import { DEFAULT_SET_PARAMS, nextSetArrivalS, wavesNear } from '../swell/sets';
 import { findReferenceMoment } from './referenceMoments';
 
 const sample: Moment = {
@@ -38,6 +39,14 @@ describe('encode/decode', () => {
     const m = decodeMoment(`#m=${edited}`);
     expect(m?.conditions.swell.sizeFt).toBe(12);
     expect(m?.conditions.date).toBe(DEFAULT_CONDITIONS.date);
+  });
+  it('clamps an absurd simTime instead of accepting it verbatim (unbounded, it can freeze the tab)', () => {
+    const huge = btoa(JSON.stringify({ v: 1, ...sample, simTime: 1e19 })).replace(/=+$/, '');
+    const m = decodeMoment(`#m=${huge}`);
+    expect(m?.simTime).toBe(MAX_LINK_SIM_TIME_S);
+    // And the clamped time itself is still safe to hand to the set timeline.
+    expect(nextSetArrivalS(m!.simTime, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS)).not.toBeNull();
+    expect(wavesNear(m!.simTime, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS)).toEqual(expect.any(Array));
   });
 });
 

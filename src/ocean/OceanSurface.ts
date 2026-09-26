@@ -1,14 +1,22 @@
 import * as THREE from 'three/webgpu';
-import { cameraPosition, float, length, max, normalize, positionLocal, positionWorld, texture, uniform, varying, vec3 } from 'three/tsl';
+import { cameraPosition, float, length, max, normalize, positionLocal, positionWorld, uniform, varying, varyingProperty, vec3 } from 'three/tsl';
+import { seabedTerms } from '../seabed/seabedShading';
 import type { Sky } from '../sky/Sky';
 import { CASCADE_FADES, fadeWeightNode } from './cascadeFades';
 import type { OceanSimulation } from './OceanSimulation';
 import { buildPolarGrid } from './polarGrid';
 import { type WaterOpticsUniforms, shadeWater } from './waterShading';
-
-type N = any;
+import type { WaterSurfaceModel } from './waterSurface';
 
 export const EARTH_RADIUS_M = 6_371_000;
+
+/** Dev-panel debug lines drawn on the water. */
+export interface DebugOverlays {
+  /** White lines every 1 m of still-water depth. */
+  depthContours: boolean;
+  /** Gold set-wave crest lines, every 2 s of arrival time τ. */
+  crestLines: boolean;
+}
 
 export class OceanSurface {
   readonly mesh: THREE.Mesh;
@@ -16,8 +24,11 @@ export class OceanSurface {
   readonly cameraXZ = uniform(new THREE.Vector2());
   private readonly slopeVariance: THREE.UniformNode<'float', number>[];
   private readonly hsTotal = uniform(0);
+  private readonly overlayDepth = uniform(0);
+  private readonly overlayCrest = uniform(0);
 
-  constructor(sim: OceanSimulation, sky: Sky, optics: WaterOpticsUniforms) {
+  constructor(readonly model: WaterSurfaceModel, sky: Sky, optics: WaterOpticsUniforms) {
+    const sim = model.sim;
     this.slopeVariance = sim.sizes.map(() => uniform(0));
     const grid = buildPolarGrid();
     const geometry = new THREE.BufferGeometry();
@@ -26,50 +37,44 @@ export class OceanSurface {
 
     const material = new THREE.MeshBasicNodeMaterial();
 
-    // Vertex: world-anchored sampling, distance-faded cascades, Earth curvature.
+    // Vertex: world-anchored sampling, distance-faded cascades, the tide, Earth curvature. The set waves are summed
+    // once per vertex, for both the displacement and their slope; the slope reaches the fragment as a varying.
     const baseXZ = positionLocal.xz.add(this.cameraXZ);
     const radial = length(positionLocal.xz);
-    let displacement: N = vec3(0.0);
-    sim.sizes.forEach((size, c) => {
-      const d = texture(sim.displacement[c], baseXZ.div(size)).level(float(0)).xyz; // three typings gap: level() wants a node
-      displacement = displacement.add(d.mul(fadeWeightNode(radial, CASCADE_FADES[c].geometry)));
-    });
+    const setSlope = varyingProperty('vec2', 'vSetSlope');
+    const displacement = model.displacementWithSetSlope(baseXZ, (c) => fadeWeightNode(radial, CASCADE_FADES[c].geometry), setSlope);
     const curvatureDrop = radial.mul(radial).div(2 * EARTH_RADIUS_M);
-    material.positionNode = vec3(baseXZ.x.add(displacement.x), displacement.y.sub(curvatureDrop), baseXZ.y.add(displacement.z));
+    material.positionNode = vec3(baseXZ.x.add(displacement.x), model.seabed.tide.add(displacement.y).sub(curvatureDrop), baseXZ.y.add(displacement.z));
     const vBaseXZ = varying(baseXZ);
     const vHeight = varying(displacement.y);
 
-    // Fragment: normals and foam from the derivative/displacement textures at the undisplaced position.
+    // Fragment: FFT normals and foam (long swell faded over shallow water) plus the set waves' slopes (interpolated).
     const toCamera = cameraPosition.sub(positionWorld);
     const distance = length(toCamera);
     const viewDir = toCamera.div(max(distance, 1e-4));
-    let sx: N = float(0.0), sz: N = float(0.0), jxx: N = float(0.0), jzz: N = float(0.0);
-    let foam: N = float(0.0), lostSlopeVariance: N = float(0.0);
-    sim.sizes.forEach((size, c) => {
-      const w = fadeWeightNode(distance, CASCADE_FADES[c].normals);
-      const d = texture(sim.derivatives[c], vBaseXZ.div(size));
-      sx = sx.add(d.x.mul(w));
-      sz = sz.add(d.y.mul(w));
-      jxx = jxx.add(d.z.mul(w));
-      jzz = jzz.add(d.w.mul(w));
-      foam = max(foam, texture(sim.displacement[c], vBaseXZ.div(size)).w.mul(w));
-      lostSlopeVariance = lostSlopeVariance.add(float(1.0).sub(w).mul(this.slopeVariance[c]));
-    });
+    const fft = model.fftSlopes(vBaseXZ, distance, this.slopeVariance);
     // The Jxz cross term is knowingly dropped: the derivatives texture has no channel for it.
     const normal = normalize(vec3(
-      sx.negate().div(max(float(1.0).add(jxx), 0.1)),
+      fft.sx.negate().div(max(float(1.0).add(fft.jxx), 0.1)).sub(setSlope.x),
       1.0,
-      sz.negate().div(max(float(1.0).add(jzz), 0.1)),
+      fft.sz.negate().div(max(float(1.0).add(fft.jzz), 0.1)).sub(setSlope.y),
     ));
+    const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
 
     material.colorNode = shadeWater(
-      { normal, viewDir, distance, foam, crestHeight: vHeight, unresolvedSlopeVariance: lostSlopeVariance, hsTotal: this.hsTotal },
+      { normal, viewDir, distance, foam: fft.foam, crestHeight: vHeight, unresolvedSlopeVariance: fft.lostSlopeVariance, hsTotal: this.hsTotal, seabed,
+        overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest } },
       sky,
       optics,
     );
 
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.frustumCulled = false;
+  }
+
+  setOverlays(o: DebugOverlays): void {
+    this.overlayDepth.value = o.depthContours ? 1 : 0;
+    this.overlayCrest.value = o.crestLines ? 1 : 0;
   }
 
   update(cameraPos: THREE.Vector3, sim: OceanSimulation): void {
