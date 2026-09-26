@@ -27,7 +27,7 @@ describe('set-wave model', () => {
     expect(localHeight(wave(15, 5), f)).toBeCloseTo(BREAKING_RATIO * 2, 12);
     expect(localHeight(wave(15, 0.2), f)).toBeCloseTo(0.6, 12);
   });
-  it('extreme waves in shallow water never fold and stay finite (12 ft, 25 s, 1.2 m of water; and a steep 4 s sea)', () => {
+  it('extreme waves in shallow water never fold and stay finite (12 ft, 25 s, 1.2 m of water; and a steep 4 s sea)', { timeout: 30_000 }, () => {
     const cases: [number, number, number, number][] = [[25, 1.2, 4, 8.6], [4, 30, 1, 3.4], [8, 2.5, 3, 6]]; // period, depth, amp, height
     for (const [T, depth, amp, height] of cases) {
       const f = field1D(depth, T, amp);

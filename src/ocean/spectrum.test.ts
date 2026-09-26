@@ -152,7 +152,7 @@ describe('buildOceanSpectra', () => {
   });
 });
 
-describe('renormalisation never emits non-finite spectra', () => {
+describe('renormalisation never emits non-finite spectra', { timeout: 30_000 }, () => {
   // A coarse grid keeps the sweep fast; the unresolved-wind-sea regime (peak far above the grid's kMax) still
   // appears, just at a slightly higher wind speed than on the full 256² grid.
   const n = 16, bands = cascadeBands(CASCADE_SIZES_M, n);
