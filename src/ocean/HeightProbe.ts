@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { Fn, Loop, float, instanceIndex, storage, texture, vec3, vec4 } from 'three/tsl';
-import type { OceanSimulation } from './OceanSimulation';
+import { Fn, Loop, instanceIndex, storage, vec4 } from 'three/tsl';
+import type { WaterSurfaceModel } from './waterSurface';
 
 type N = any;
 
@@ -27,16 +27,12 @@ export class HeightProbe {
   private latest: Float32Array | null = null;
   private pending = false;
 
-  constructor(sim: OceanSimulation) {
+  constructor(model: WaterSurfaceModel) {
     const input = storage(this.inputAttr, 'vec4', MAX_PROBES).toReadOnly();
     const output = storage(this.outputAttr, 'vec4', MAX_PROBES);
-    // Same sampling as OceanSurface (uv = worldXZ / size, repeat wrap). Near the camera every cascade's
-    // geometry fade weight is 1, so the unweighted sum matches the rendered surface there.
-    const displacementAt = (xz: N): N =>
-      sim.sizes.reduce(
-        (acc: N, size, c) => acc.add(texture(sim.displacement[c], xz.div(size)).level(float(0)).xyz), // three typings gap: level() wants a node
-        vec3(0.0),
-      );
+    // The same surface the mesh renders (WaterSurfaceModel), without the render's distance fades: every probe is
+    // near the camera, where those fades are 1.
+    const displacementAt = (xz: N): N => model.displacement(xz);
     this.pass = Fn(() => {
       const target = input.element(instanceIndex).xy;
       const origin = target.toVar();
@@ -45,7 +41,7 @@ export class HeightProbe {
       Loop({ start: 0, end: FIXED_POINT_ITERATIONS, name: 'it' } as N, () => {
         origin.assign(target.sub(displacementAt(origin).xz));
       });
-      output.element(instanceIndex).assign(vec4(displacementAt(origin).y, 0.0, 0.0, 1.0));
+      output.element(instanceIndex).assign(vec4(model.seabed.tide.add(displacementAt(origin).y), 0.0, 0.0, 1.0));
     })().compute(MAX_PROBES) as THREE.ComputeNode;
   }
 
