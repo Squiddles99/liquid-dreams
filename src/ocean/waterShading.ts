@@ -12,8 +12,12 @@ export interface WaterSurfaceInputs {
   viewDir: N;
   distance: N;
   foam: N;
+  /** Brightness of the foam colour (1 when absent): the set foam's pattern darkens its hollows a little. */
+  foamShade?: N;
   /** The set waves' lip mask (0..1): the thin, curling lip (spec R5). Keys the turquoise transmission. */
   lip: N;
+  /** How far the set wave has turned over (0..1, 1 where it faces down: the tube's ceiling). Absent means 0. */
+  underside?: N;
   unresolvedSlopeVariance: N;
   /** The seabed seen through the water (Phase 1); absent means infinitely deep water (Phase 0). */
   seabed?: { radiance: N; transmittance: N };
@@ -48,9 +52,13 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
 // saturate(): at the anti-solar point v·h rounds to a hair above 1, and pow() of a negative base is NaN on the GPU (it showed as a fake sun).
 export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(saturate(float(1.0).sub(cosTheta)), 5.0)));
 
+/** Diffuse skylight through a thin lip, seen from beneath it, as a fraction of the sun-backlit transmission's scale. */
+export const LIP_SKY_TRANSMISSION = 0.5;
+
 /**
- * Water = Fresnel-weighted sky reflection + GGX sun glitter + light from the water column
- * (deep upwelling + lip transmission), mixed with lit foam, then aerial perspective.
+ * Water = Fresnel-weighted sky reflection (the water itself where a turned-over surface reflects downward) + GGX sun
+ * glitter + light from the water column (deep upwelling + lip transmission of sun and skylight), mixed with lit foam,
+ * then aerial perspective.
  */
 export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUniforms): N {
   const n = i.normal;
@@ -61,7 +69,7 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const fresnel = schlickWater(nDotV);
 
   const r: N = reflect(v.negate(), n); // three typings gap: reflect() is typed as returning vec2
-  const reflection = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z)));
+  const skyReflection = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z)));
 
   // GGX sun glitter. Slopes too small to resolve at this distance widen the lobe. unresolvedSlopeVariance
   // is the total two-axis mean-square slope, and for GGX/Beckmann E[px² + pz²] = α², so it adds to α² directly.
@@ -86,15 +94,22 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // Light scattered back up out of the deep, clear water column.
   const upwelling = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(max(l.y, 0.0)))).div(PI).mul(u.bodyScale);
 
-  // Lip transmission: the sun behind a thin, curling lip shines through it toward the viewer (turquoise, spec §3.5, P11).
+  // Where the set wave has turned over (the tube's ceiling), a reflection that heads down sees the water under the lip
+  // (the face and the trough), not the horizon sky the clamp above would give: the tube stays water-dark, never white.
+  const underside = i.underside ? saturate(i.underside) : float(0.0);
+  const reflection = mix(skyReflection, upwelling, underside.mul(float(1.0).sub(smoothstep(-0.2, 0.05, r.y))));
+
+  // Lip transmission: the sun behind a thin, curling lip shines through it toward the viewer (turquoise, spec §3.5, P11);
+  // from beneath the lip (the tube's ceiling) the skylight through it adds a blue-green glow as well.
   const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
-  const transmitted = u.transmission.mul(sky.sunIlluminance).mul(backlight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI);
+  const lipLight = sky.sunIlluminance.mul(backlight).add(sky.skyIrradiance.mul(underside).mul(LIP_SKY_TRANSMISSION));
+  const transmitted = u.transmission.mul(lipLight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI);
 
   // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.
   const column = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;
   const water = column.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
   const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL))).mul(u.foamAlbedo).div(PI);
-  const colour = mix(water, foamLight, saturate(i.foam));
+  const colour = mix(water, i.foamShade ? foamLight.mul(i.foamShade) : foamLight, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
   // would paint the whole flat field NaN, so the edge is floored and a flat field draws no line.

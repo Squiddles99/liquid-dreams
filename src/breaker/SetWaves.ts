@@ -162,13 +162,17 @@ export class SetWaves {
    * `curl` false is the probe's surface (the drain and the bore, no crest sharpening or curl). With `eps`, each wave is
    * also evaluated at xz + (ε, 0) and xz + (0, ε) with the field shifted to first order (only τ) and the same crest, as
    * sumWavesWithNormal does, for the render's finite-difference normal. foam, lip and stage are the centre's. Every η sum
-   * is clamped to the seabed floor (setWaveModel.seabedFloor) with the centre's depth.
+   * is clamped to the seabed floor (setWaveModel.seabedFloor) with the centre's depth. With `eps` (the render) it also
+   * returns foamFrame: the centre's coordinates in the frame of the wave with the largest envelope there, vec2(metres
+   * behind its crest, ξ·c; metres along its crest). It moves with the crest, so noise read in it is advected with the
+   * wave; the foam's noise uses it (render only, not part of the CPU model).
    */
   private sumBreaking(xz: N, mode: { curl: boolean; eps: N | null }): {
-    eta: N; dh: N; slope: N; foam: N; lip: N; stage: N; etaX: N; dhX: N; etaZ: N; dhZ: N;
+    eta: N; dh: N; slope: N; foam: N; lip: N; stage: N; etaX: N; dhX: N; etaZ: N; dhZ: N; foamFrame: N;
   } {
     const eta = float(0.0).toVar(), dh = vec2(0.0).toVar(), slope = vec2(0.0).toVar();
     const foam = float(0.0).toVar(), lip = float(0.0).toVar(), stage = float(0.0).toVar();
+    const foamFrame = vec2(0.0).toVar(), frameEnv = float(0.0).toVar();
     const eps = mode.eps;
     const nb = eps === null ? null : { etaX: float(0.0).toVar(), dhX: vec2(0.0).toVar(), etaZ: float(0.0).toVar(), dhZ: vec2(0.0).toVar() };
     If(this.activeCount.greaterThan(0.5), () => {
@@ -226,7 +230,7 @@ export class SetWaves {
           const dEtaDXi = A.mul(lateral).mul(dEnv.mul(shape).sub(env.mul(a.z).mul(sin(theta).add(B.mul(2.0).mul(sin(theta.mul(2.0)))))));
           const jacobian = max(float(1.0).add(hAmp.mul(a.z).mul(cos(theta)).add(pitch.mul(dEtaDXi)).mul(dXiDs)), 0.2);
           const along = dEtaDXi.mul(dXiDs).div(jacobian);
-          return { r, env, lateral, theta, eta: e, dh: d, along };
+          return { xi, r, env, lateral, theta, eta: e, dh: d, along };
         };
         const centre = phase1(points[0]);
         // Empty slots, and waves beyond ENVELOPE_CUTOFF widths (envelope < 5e-6), are skipped: most pixels are near one or two.
@@ -241,6 +245,13 @@ export class SetWaves {
             if (k === 0) slope.addAssign(f.dir.mul(ph.along));
             return v;
           });
+          if (eps !== null) {
+            const e = unbroken[0].env.mul(unbroken[0].lateral);
+            If(e.greaterThan(frameEnv), () => {
+              frameEnv.assign(e);
+              foamFrame.assign(vec2(centre.xi.mul(cLocal), dot(xz, vec2(b.y.negate(), b.x))));
+            });
+          }
           If(brk.enabled.greaterThan(0.5), () => {
             // crestAt: CREST_STEPS Newton steps toward ξ = 0 along the wave's own travel direction b.xy (the same at
             // every point, so the lookup has no seams), each at most half a wavelength, reading the field where the
@@ -306,7 +317,7 @@ export class SetWaves {
         nb.etaZ.assign(max(nb.etaZ, floor));
       }
     });
-    return { eta, dh, slope, foam, lip, stage, etaX: nb?.etaX, dhX: nb?.dhX, etaZ: nb?.etaZ, dhZ: nb?.dhZ };
+    return { eta, dh, slope, foam, lip, stage, etaX: nb?.etaX, dhX: nb?.dhX, etaZ: nb?.etaZ, dhZ: nb?.dhZ, foamFrame };
   }
 
   /**
@@ -322,31 +333,33 @@ export class SetWaves {
 
   /**
    * Render path only, vertex stage: the rendered surface's vec3 displacement (with the curl), and into `out` (vec3/float
-   * varyingProperty nodes) the unit set-wave normal from finite differences over `eps` metres, the foam weight and the
-   * lip mask. Never use this in a compute shader: there are no varyings to write. Tests use breakSampleNode.
+   * varyingProperty nodes) the unit set-wave normal from finite differences over `eps` metres, the foam weight, the
+   * lip mask and the foam's wave frame (vec2, see sumBreaking). Never use this in a compute shader: there are no
+   * varyings to write. Tests use breakSampleNode.
    */
-  displacementWithBreakNode(xz: N, eps: N, out: { normal: N; foam: N; lip: N }): N {
+  displacementWithBreakNode(xz: N, eps: N, out: { normal: N; foam: N; lip: N; foamFrame: N }): N {
     return Fn(() => {
       const r = this.breakValues(xz, eps);
       out.normal.assign(r.normal);
       out.foam.assign(r.foam);
       out.lip.assign(r.lip);
+      out.foamFrame.assign(r.foamFrame);
       return r.disp;
     })();
   }
 
   /** The render path's values as nodes, for self-tests and diagnostics. Compute-safe; must be called inside an Fn. */
-  breakSampleNode(xz: N, eps: N): { disp: N; normal: N; foam: N; lip: N; stage: N } {
+  breakSampleNode(xz: N, eps: N): { disp: N; normal: N; foam: N; lip: N; stage: N; foamFrame: N } {
     return this.breakValues(xz, eps);
   }
 
-  private breakValues(xz: N, eps: N): { disp: N; normal: N; foam: N; lip: N; stage: N } {
+  private breakValues(xz: N, eps: N): { disp: N; normal: N; foam: N; lip: N; stage: N; foamFrame: N } {
     const s = this.sumBreaking(xz, { curl: true, eps });
     // P(x + ε) − P and P(z + ε) − P, as differences (the world xz cancels, so no f32 loss far from the origin).
     const ax = vec3(eps.add(s.dhX.x).sub(s.dh.x), s.etaX.sub(s.eta), s.dhX.y.sub(s.dh.y));
     const az = vec3(s.dhZ.x.sub(s.dh.x), s.etaZ.sub(s.eta), eps.add(s.dhZ.y).sub(s.dh.y));
     const normal = safeNormalize(cross(az, ax)); // (P(z + ε) − P) × (P(x + ε) − P), as sumWavesWithNormal
-    return { disp: vec3(s.dh.x, s.eta, s.dh.y), normal, foam: s.foam, lip: s.lip, stage: s.stage };
+    return { disp: vec3(s.dh.x, s.eta, s.dh.y), normal, foam: s.foam, lip: s.lip, stage: s.stage, foamFrame: s.foamFrame };
   }
 
   /** vec2(∂η/∂x, ∂η/∂z) of the set waves (Eulerian, Jacobian-corrected): the Phase 1 slope, without the breaking shape. */

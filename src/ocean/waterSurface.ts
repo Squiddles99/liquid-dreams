@@ -54,10 +54,10 @@ export class WaterSurfaceModel {
 
   /**
    * Render path only, vertex stage: the same surface as displacement() but with the curl (spec R2), plus the set waves'
-   * finite-difference normal (over `eps` metres), foam weight and lip mask assigned to `out`'s varyings (vec3, float,
-   * float varyingProperty nodes). The probe uses displacement(). Never call this from a compute shader.
+   * finite-difference normal (over `eps` metres), foam weight, lip mask and foam wave frame assigned to `out`'s varyings
+   * (vec3, float, float, vec2 varyingProperty nodes). The probe uses displacement(). Never call this from a compute shader.
    */
-  displacementWithSetBreak(xz: N, lod: (cascade: number) => N, eps: N, out: { normal: N; foam: N; lip: N }): N {
+  displacementWithSetBreak(xz: N, lod: (cascade: number) => N, eps: N, out: { normal: N; foam: N; lip: N; foamFrame: N }): N {
     return this.clampToSeabed(xz, this.fftDisplacement(xz, lod).add(this.sets.displacementWithBreakNode(xz, eps, out)));
   }
 
