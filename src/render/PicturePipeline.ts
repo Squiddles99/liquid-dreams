@@ -28,7 +28,7 @@ export const DEFAULT_PICTURE: PictureParams = {
   lift: 0,
   gamma: 1,
   gain: 1,
-  saturation: 1.05,
+  saturation: 1.25,
 };
 
 /** HDR scene → exposure → bloom → AgX → lift/gamma/gain/saturation → sRGB. */
