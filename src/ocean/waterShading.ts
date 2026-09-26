@@ -46,7 +46,8 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
   u.foamAlbedo.value = p.foamAlbedo;
 }
 
-export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(float(1.0).sub(cosTheta), 5.0)));
+// saturate(): at the anti-solar point v·h rounds to a hair above 1, and pow() of a negative base is NaN on the GPU (it showed as a fake sun).
+export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(saturate(float(1.0).sub(cosTheta)), 5.0)));
 
 /**
  * Water = Fresnel-weighted sky reflection + GGX sun glitter + light from the water column
