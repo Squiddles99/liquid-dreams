@@ -5,6 +5,7 @@ import { Input } from '../camera/Input';
 import { cloneConditions } from '../conditions/defaults';
 import type { Conditions } from '../conditions/types';
 import { type Moment, momentFromHash } from '../dev/momentLink';
+import { PicturePipeline } from '../render/PicturePipeline';
 import { Sky } from '../sky/Sky';
 import { SimClock, clampFrameDt, viewportSize } from './clock';
 
@@ -14,6 +15,7 @@ export class App {
   readonly rig = new CameraRig();
   readonly input: Input;
   readonly sky = new Sky();
+  readonly picture: PicturePipeline;
   conditions: Conditions;
   private lastMs = performance.now();
   private readonly sunDir = new THREE.Vector3();
@@ -27,8 +29,7 @@ export class App {
   ) {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
-    this.renderer.toneMapping = THREE.AgXToneMapping;
-    this.renderer.toneMappingExposure = 0.35;
+    this.picture = new PicturePipeline(renderer, this.scene, this.camera);
     this.scene.add(this.devGrid);
     this.conditions = cloneConditions(initial.conditions);
     this.applyMoment(initial);
@@ -83,6 +84,7 @@ export class App {
     this.sunDir.set(...sun.direction);
     this.sky.update(this.renderer, this.sunDir, this.camera.position.y);
     this.sky.followCamera(this.camera.position);
-    this.renderer.render(this.scene, this.camera);
+    this.picture.setSunElevation(sun.elevationDeg);
+    this.picture.render();
   };
 }
