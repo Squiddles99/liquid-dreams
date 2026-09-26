@@ -112,11 +112,13 @@ export class OceanSimulation {
       const kx = float(int(local.mod(uint(n))).sub(n / 2)).mul(dk);
       const kz = float(int(local.div(uint(n))).sub(n / 2)).mul(dk);
       const k = sqrt(kx.mul(kx).add(kz.mul(kz)));
-      const phase = sqrt(k.mul(GRAVITY)).mul(this.time);
+      // Negative phase: with the inverse FFT's e^{+ik·x}, h0(k)·e^{i(k·x − ωt)} travels along +k (the spectrum's
+      // travel direction). Tessendorf's literal e^{+iωt} would send every wave the opposite way.
+      const phase = sqrt(k.mul(GRAVITY)).mul(this.time).negate();
       const c = cos(phase);
       const s = sin(phase);
       const s0 = h0.element(idx);
-      // h = h0·e^{iωt} + conj(h0(-k))·e^{-iωt}
+      // h = h0·e^{-iωt} + conj(h0(-k))·e^{+iωt}  (c, s = cos, sin of −ωt)
       const h = vec2(
         s0.x.mul(c).sub(s0.y.mul(s)).add(s0.z.mul(c)).add(s0.w.mul(s)),
         s0.x.mul(s).add(s0.y.mul(c)).sub(s0.z.mul(s)).add(s0.w.mul(c)),
