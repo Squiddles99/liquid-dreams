@@ -49,8 +49,21 @@ describe('reef wave field', () => {
     const spread = (a: number[]) => Math.max(...a) - Math.min(...a);
     expect(spread(south)).toBeLessThan(spread(north));
     const peelSpeed = 40 / (north[north.length - 1] - north[0]);
-    console.log(`[reef] north-ledge peel speed ${peelSpeed.toFixed(1)} m/s; south-ledge arrival spread ${spread(south).toFixed(2)} s over 40 m`);
     expect(peelSpeed).toBeGreaterThan(3);
+  });
+  it('a grazing swell (exactly 270°) does not source the whole south edge as a numerical caustic', () => {
+    // dirZ is float residue of cos(90°) at exactly 270°; a bare `< 0` edge-source test used to treat that residue's
+    // sign as real inflow and source the whole south edge from the far field, capping a line of cells at AMP_CAP.
+    const cappedCount = (fromDeg: number) => {
+      const f = computeReefField({ bed: reef1, periodS: 15, fromDeg, tideM: 0 });
+      let count = 0;
+      for (const v of f.amp) if (v >= AMP_CAP - 1e-6) count++;
+      return count;
+    };
+    // 269.9° is a real, non-grazing direction: the reef genuinely focuses a cluster of cells to AMP_CAP near the
+    // south edge, so a low count at 270° isn't just "nothing ever gets capped there".
+    expect(cappedCount(269.9)).toBeGreaterThan(100);
+    expect(cappedCount(270)).toBe(0);
   });
   it('is finite, capped, and never records a shallower hmin than the water it has crossed allows', () => {
     const f = f225;
