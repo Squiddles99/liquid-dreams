@@ -18,8 +18,12 @@ export class CameraRig {
     this.apply();
   }
 
-  /** Where the lineup camera needs to know the water height. */
+  /**
+   * Where to sample the water height: under the lineup camera, or under the free-fly camera so that switching
+   * back to lineup (C) seeds the float height from the water where it lands.
+   */
   get probeXZ(): { x: number; z: number } {
+    if (this.mode === 'free') return { x: this.free.position[0], z: this.free.position[2] };
     return { x: this.lineup.x, z: this.lineup.z };
   }
 
