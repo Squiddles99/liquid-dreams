@@ -11,7 +11,7 @@ npm test           # unit tests
 - `#ref=<name>` loads a named reference moment (see `src/dev/referenceMoments.ts`).
 - `?selftest` runs the GPU self-tests instead of the app.
 - Needs a WebGPU browser (current Chrome or Edge). On hybrid-GPU laptops, set the browser to "High performance" in Windows Graphics settings and fully quit the browser (including background processes) before relaunching; the stats overlay names the GPU in use. Keep both GPU drivers current.
-- Rendering is capped at 60 fps (dev panel: Picture → "max fps", 0 = display rate). `H` hides the dev UI, `L` copies a moment link, `K` saves a screenshot, `P` pauses and resumes (reference moments open paused; a "Paused — P to resume" badge shows under the stats).
+- Rendering is capped at 60 fps (dev panel: Picture → "max fps", 0 = display rate). Hotkeys and mouse look: see Controls below.
 
 ## Reference moments
 
@@ -46,5 +46,6 @@ Pick these with settings: default (or open `#ref=<name>`) to see them exactly as
 - `P` pauses and resumes (reference moments open paused; a "Paused — P to resume" badge shows under the stats).
 - `N` calls a set.
 - Settings panel: custom/default switch and Reset settings button; settings are remembered between visits.
+- Wind speed is shown and edited in km/h; swell and wind directions show compass points (e.g. `225° SW`), the direction they come from.
 
 Design: `docs/superpowers/specs/`. Plans: `docs/superpowers/plans/`.
