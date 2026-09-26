@@ -3,6 +3,15 @@ import { REEF_SURROUND_DEPTH_M, depthBg } from './coastProfile';
 import { fbm2, valueNoise2 } from './noise';
 import { DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE } from './wombReef';
 
+/** Weed dominates rock across most of the shelf; baseline coverage before the patchy noise carves gaps. */
+const SHELF_WEED_BASE = 0.78;
+/** Extra weed riding the reef heads themselves, on top of the shelf baseline. */
+const HEAD_WEED_BOOST = 0.18;
+/** Weed coverage right on the exposed ledge face, fading out with distance from the ledge (see LEDGE_FACE_WEED_FADE_M). */
+const LEDGE_FACE_WEED = 0.55;
+/** Distance outside the ledge over which the ledge-face weed fades to bare sand. */
+const LEDGE_FACE_WEED_FADE_M = 4;
+
 export interface Bathymetry {
   grid: GridSpec;
   /** Seabed height y (m); negative below mean sea level. Row-major: index = row·nx + col, row ↔ z. */
@@ -118,7 +127,11 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
         // Outside the shelf: rise from the surrounding deep water to the ledge depth over ledgeWidthM.
         const dLedge = p.ledgeDepthM + (background - p.ledgeDepthM) * smoothstep(0, p.ledgeWidthM, -sd);
         d = background + (dLedge - background) * edgeFade;
-        s = 1 + (smoothstep(0, 4, -sd) - 1) * edgeFade;
+        const faceSand = smoothstep(0, LEDGE_FACE_WEED_FADE_M, -sd);
+        s = 1 + (faceSand - 1) * edgeFade;
+        // The ledge face itself carries weed: (1 - faceSand) is already 1 at the ledge and 0 by
+        // LEDGE_FACE_WEED_FADE_M out, so it doubles as the face's weed-coverage falloff.
+        w = (1 - faceSand) * LEDGE_FACE_WEED * edgeFade;
       } else {
         // Inside: reef heads and sand pockets on the shelf, also fading out at its inshore (x ≈ 110 m) boundary.
         const reefness = edgeFade * smoothstep(125, 100, x);
@@ -131,7 +144,10 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
         interior = interior + (p.pocketDepthM - interior) * pocket;
         const dShelf = p.ledgeDepthM + (interior - p.ledgeDepthM) * smoothstep(0, 20, sd);
         const sShelf = pocket * smoothstep(0, 3, sd) + (1 - smoothstep(0, 3, sd)) * 0.3;
-        const wShelf = (1 - pocket) * smoothstep(0.2, 0.6, fbm2(xw / 5, zw / 5, REEF_SEED + 3)) * smoothstep(0, 6, sd);
+        // Weed dominates rock over most of the shelf; the noise only carves occasional bare-rock gaps,
+        // and reef heads carry extra weed of their own.
+        const patch = smoothstep(-0.5, 0.05, fbm2(xw / 5, zw / 5, REEF_SEED + 3));
+        const wShelf = (1 - pocket) * Math.min(1, SHELF_WEED_BASE + HEAD_WEED_BOOST * heads) * patch * smoothstep(0, 6, sd);
         d = background + (dShelf - background) * reefness;
         s = 1 + (sShelf - 1) * reefness;
         w = wShelf * reefness;
