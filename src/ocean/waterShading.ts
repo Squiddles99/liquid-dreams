@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, dot, float, length, max, min, mix, normalize, pow, reflect, saturate, step, uniform, vec3 } from 'three/tsl';
+import { PI, dot, float, length, max, min, mix, normalize, pow, reflect, saturate, sqrt, step, uniform, vec3 } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
 import { type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
 
@@ -56,16 +56,23 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const r: N = reflect(v.negate(), n); // three typings gap: reflect() is typed as returning vec2
   const reflection = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z)));
 
-  // GGX sun glitter. Slopes too small to resolve at this distance widen the lobe (α² ≈ 2σ²).
+  // GGX sun glitter. Slopes too small to resolve at this distance widen the lobe. unresolvedSlopeVariance
+  // is the total two-axis mean-square slope, and for GGX/Beckmann E[px² + pz²] = α², so it adds to α² directly.
   // Guarded normalize: l + v = 0 (view ray straight at a below-horizon sun) would make normalize() NaN.
   const lPlusV = l.add(v);
   const h = lPlusV.div(max(length(lPlusV), 1e-6));
   const nDotH = max(dot(n, h), 0.0);
-  const alpha2 = u.baseRoughness.mul(u.baseRoughness).add(i.unresolvedSlopeVariance.mul(2.0));
+  const alpha2 = u.baseRoughness.mul(u.baseRoughness).add(i.unresolvedSlopeVariance);
   const denom = nDotH.mul(nDotH).mul(alpha2.sub(1.0)).add(1.0);
   const ggx = alpha2.div(PI.mul(denom).mul(denom));
+  // Height-correlated Smith-GGX visibility V = G / (4·n·l·n·v), guarded so grazing angles stay finite.
+  const nDotLSat = saturate(nDotL);
+  const oneMinusAlpha2 = float(1.0).sub(alpha2);
+  const smithDenom = nDotLSat.mul(sqrt(nDotV.mul(nDotV).mul(oneMinusAlpha2).add(alpha2)))
+    .add(nDotV.mul(sqrt(nDotLSat.mul(nDotLSat).mul(oneMinusAlpha2).add(alpha2))));
+  const visibility = float(0.5).div(max(smithDenom, 1e-6));
   const specular = min(
-    sky.sunIlluminance.mul(ggx).mul(schlickWater(max(dot(v, h), 0.0))).div(nDotV.mul(4.0)).mul(step(0.0, nDotL)),
+    sky.sunIlluminance.mul(ggx).mul(schlickWater(max(dot(v, h), 0.0))).mul(visibility).mul(nDotLSat).mul(step(0.0, nDotL)),
     vec3(30000.0),
   );
 
