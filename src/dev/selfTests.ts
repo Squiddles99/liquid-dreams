@@ -2,5 +2,6 @@
 import '../sky/sky.selftest';
 import '../ocean/fft.selftest';
 import '../ocean/ocean.selftest';
+import '../ocean/probe.selftest';
 
 export { renderSelfTestReport, runSelfTests } from './selfTest';
