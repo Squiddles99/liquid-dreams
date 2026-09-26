@@ -24,13 +24,18 @@ export interface BreakParams {
   pivotAhead: number;
   /** The top fraction of H that curls: w(η) ramps from 0 to 1 over it. */
   lipZone: number;
+  /** The lip's rotation fades out over this distance behind the crest (× H): the thrown lip is the crest's front, not
+   * its whole cap. Rotating the broad back of the crest with it lifts it up to 1.3·H over the still water and makes the
+   * lip as thick as the tube is tall; much below 0.6 the fade is narrower than two polar-grid cells at 60 m and the lip's
+   * edge aliases into a sawtooth along the crest. */
+  lipBackReach: number;
   /** The visible drain: the trough ahead of the face drops by troughDrain·δ·H. */
   troughDrain: number;
   /** β: a collapsed wave settles to a bore of height β·hmin. */
   beta: number;
   /** The steepened front face spans this much, crest to foot (× H)… */
   faceWidth: number;
-  /** …and the back of the crest this much (× H). */
+  /** …and the back of the crest this much (× H). Shapes the sharpening only (the lip's reach behind is lipBackReach). */
   backWidth: number;
   /** Stage windows: the drain ramps over [0, drainEnd], the face steepens over [0, steepEnd], the lip curls over
    * [curlStart, curlEnd] and the wave collapses over [collapseStart, 1]. */
@@ -51,6 +56,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   pivotDrop: 0.65,
   pivotAhead: 0.65,
   lipZone: 0.4,
+  lipBackReach: 0.6,
   troughDrain: 0.35,
   beta: 0.4,
   faceWidth: 0.5,
@@ -62,13 +68,6 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   collapseStart: 0.75,
 };
 
-/**
- * The lip's rotation fades out over this distance behind the crest (× H). The thrown lip is the crest's front, not its
- * whole cap: rotating the broad back of the crest with it lifts it up to 1.3·H over the still water and makes the lip as
- * thick as the tube is tall. With 0.3·H the lip is about 40% thinner (mean 0.68·H → 0.42·H at s = 0.6) and the back of
- * the wave keeps its shape. Not a BreakParams field (no panel slider yet).
- */
-export const LIP_BACK_REACH = 0.3;
 /** Foam starts once the collapse has run this far (s ≈ 0.82 at the defaults): the lip has landed. */
 export const FOAM_ONSET_COLLAPSE = 0.2;
 /** From this collapse on the foam's front edge moves off the crest and down the bore's face (the tube is gone). */
@@ -95,6 +94,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.pivotDrop = clampTo(p.pivotDrop, 0.1, 1, d.pivotDrop);
   p.pivotAhead = clampTo(p.pivotAhead, 0, 1, d.pivotAhead);
   p.lipZone = clampTo(p.lipZone, 0.05, 1, d.lipZone);
+  p.lipBackReach = clampTo(p.lipBackReach, 0.05, 3, d.lipBackReach);
   p.troughDrain = clampTo(p.troughDrain, 0, 1, d.troughDrain);
   p.beta = clampTo(p.beta, 0.05, 1, d.beta);
   p.faceWidth = clampTo(p.faceWidth, 0.1, 3, d.faceWidth);
@@ -173,12 +173,12 @@ const NO_CURL: CurlResult = { du: 0, dy: 0, lip: 0 };
 
 /**
  * The lip weight w ∈ [0, 1]: the top lipZone of the wave (by height η), and only near the crest: out to the steepened
- * face width ahead (fading by twice it) and LIP_BACK_REACH·H behind, so a high point elsewhere on a long wave never
+ * face width ahead (fading by twice it) and lipBackReach·H behind, so a high point elsewhere on a long wave never
  * swings about the pivot and the back of the crest stays behind the lip. `ahead` is the along-travel distance from the
  * crest (m), η and etaCrest heights (m), H the local height.
  */
 export function lipWeight(ahead: number, eta: number, etaCrest: number, H: number, p: BreakParams): number {
-  const near = (1 - smoothstep(p.faceWidth * H, 2 * p.faceWidth * H, ahead)) * (1 - smoothstep(0, LIP_BACK_REACH * H, -ahead));
+  const near = (1 - smoothstep(p.faceWidth * H, 2 * p.faceWidth * H, ahead)) * (1 - smoothstep(0, p.lipBackReach * H, -ahead));
   return smoothstep(etaCrest - p.lipZone * H, etaCrest, eta) * near;
 }
 

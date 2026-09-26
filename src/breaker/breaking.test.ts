@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingRatio, breakingStage,
-  FOAM_LIP_TOLERANCE, LIP_BACK_REACH, drainDepth, drainShape, faceHeight, foamWeight, lipWeight, normalizeBreakParams, sharpenDrop, stageCurves,
+  FOAM_LIP_TOLERANCE, drainDepth, drainShape, faceHeight, foamWeight, lipWeight, normalizeBreakParams, sharpenDrop, stageCurves,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -179,9 +179,9 @@ describe('breaking shape (sampled cross-sections)', () => {
       for (const q of done.filter((x) => x.theta >= Math.PI)) expect(q.foam, label).toBe(0);
     }
   });
-  it("the lip is the crest's front: points more than LIP_BACK_REACH·H behind the crest never turn", () => {
+  it("the lip is the crest's front: points more than lipBackReach·H behind the crest never turn", () => {
     for (const [H, hmin, T] of CASES) for (const s of [0.45, 0.6, 0.75]) {
-      for (const q of section(s, H, hmin, T).info) if (q.ahead <= -LIP_BACK_REACH * H) expect(q.unlanded).toBe(0);
+      for (const q of section(s, H, hmin, T).info) if (q.ahead <= -P.lipBackReach * H) expect(q.unlanded).toBe(0);
     }
   });
   it('the probe variant (no curl) stays single-valued at every stage', () => {
