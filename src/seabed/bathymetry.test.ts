@@ -16,6 +16,13 @@ describe('the Womb reef', () => {
   it('is 6 m deep at the take-off corner (Andrew)', () => {
     expect(depth(0, 0)).toBeCloseTo(DEFAULT_REEF_PARAMS.ledgeDepthM, 1);
   });
+  it('the warp actually used by buildBathymetry (coarse lattice, interpolated) is still exactly zero at the peak', () => {
+    // (0, 0) sits exactly on the SDF_CELL_M coarse lattice, so ledgeSignedDistance(0, 0) = 0 is read back
+    // without interpolation error. If the warp lookup inside buildBathymetry were not exactly [0, 0] here,
+    // the take-off corner would sit at a nonzero signed distance from the ledge vertex and this would miss.
+    const i = Math.round((0 - REEF_GRID.z0) / REEF_GRID.cellM) * REEF_GRID.nx + Math.round((0 - REEF_GRID.x0) / REEF_GRID.cellM);
+    expect(bathy.bed[i]).toBe(-DEFAULT_REEF_PARAMS.ledgeDepthM);
+  });
   it('holds ledge depth along both ledges', () => {
     for (const [x, z] of [...NORTH_LEDGE.slice(0, 3), ...SOUTH_LEDGE.slice(0, 2)]) {
       expect(depth(x, z)).toBeGreaterThan(DEFAULT_REEF_PARAMS.ledgeDepthM - 1.5);

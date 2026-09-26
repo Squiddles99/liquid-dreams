@@ -81,8 +81,9 @@ export function reefWarp(x: number, z: number): [number, number] {
 }
 
 /**
- * Build the Womb's seabed. The signed distance to the ledges is computed on a coarse 2 m lattice and
- * interpolated (it is smooth), which keeps the full 0.5 m build well under a second.
+ * Build the Womb's seabed. The signed distance to the ledges, the sand-pocket weight and the reef domain
+ * warp are all computed on a coarse 2 m lattice and interpolated (they are all smooth), which keeps the
+ * full 0.5 m build well under a second.
  */
 export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridSpec = REEF_GRID): Bathymetry {
   const n = grid.nx * grid.nz;
@@ -91,10 +92,17 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   const x1 = grid.x0 + (grid.nx - 1) * grid.cellM, z1 = grid.z0 + (grid.nz - 1) * grid.cellM;
   const sx = Math.ceil((x1 - grid.x0) / SDF_CELL_M) + 2, sz = Math.ceil((z1 - grid.z0) / SDF_CELL_M) + 2;
   const sdf = new Float32Array(sx * sz), pockets = new Float32Array(sx * sz);
+  // reefWarp() is too costly to call at every 0.5 m output cell (four valueNoise2 calls each, ~1.95 M
+  // cells): sample it on the same coarse 2 m lattice as sdf/pockets instead and bilinearly interpolate
+  // below. Its smallest feature (12 m) is far coarser than 2 m, so this is visually identical.
+  const warpDxField = new Float32Array(sx * sz), warpDzField = new Float32Array(sx * sz);
   for (let r = 0; r < sz; r++) for (let c = 0; c < sx; c++) {
     const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M;
     sdf[r * sx + c] = ledgeSignedDistance(x, z);
     pockets[r * sx + c] = pocketWeight(x, z);
+    const [dx, dz] = reefWarp(x, z);
+    warpDxField[r * sx + c] = dx;
+    warpDzField[r * sx + c] = dz;
   }
   const lattice = (field: Float32Array, x: number, z: number): number => {
     const fx = (x - grid.x0) / SDF_CELL_M, fz = (z - grid.z0) / SDF_CELL_M;
@@ -117,10 +125,13 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       const background = Math.max(0, depthBg(x) + (p.deepDepthM - REEF_SURROUND_DEPTH_M) * nearReef);
       // Domain-warp the query point: the ledges, the shelf polygon, the reef heads and the sand pockets
       // are all read at p' = p + w(p), so their edges wander naturally instead of following dead-straight
-      // lines. depthBg/background above stay on the unwarped coast profile, and reefWarp() itself tapers
-      // to zero within 15 m of the peak, so the take-off corner is untouched.
-      const [warpDx, warpDz] = reefWarp(x, z);
-      const xw = x + warpDx, zw = z + warpDz;
+      // lines. depthBg/background above stay on the unwarped coast profile. w is interpolated from the
+      // coarse warpDxField/warpDzField lattice (bilinear interpolation of already amplitude-clamped
+      // vectors is a convex combination of them, so it stays within the same cap); the 15 m peak taper
+      // is re-applied here at the exact query point so the take-off corner is untouched exactly, not just
+      // approximately, regardless of how (0, 0) happens to sit relative to the coarse lattice.
+      const warpTaper = smoothstep(0, 15, Math.hypot(x, z));
+      const xw = x + lattice(warpDxField, x, z) * warpTaper, zw = z + lattice(warpDzField, x, z) * warpTaper;
       const sd = lattice(sdf, xw, zw);
       let d: number, s: number, w = 0;
       if (sd < 0) {
