@@ -171,7 +171,7 @@ interface Conditions {
 
 - **Method:** GPU FFT ocean (Tessendorf) implemented as TSL compute passes. It produces horizontal and vertical displacement, slopes/normals, and a Jacobian-based foam term.
 - **Spectrum:** the sum of two directional components, both evaluated for deep water in Phase 0:
-  - **Wind sea:** JONSWAP, driven by `wind.speedMs` and a fixed fetch, spread around the downwind direction.
+  - **Wind sea:** JONSWAP, driven by `wind.speedMs` and a fetch that depends on wind direction (short, about 400 m, for offshore wind off the land to the east; long, about 5 km, for onshore wind from the sea), spread around the downwind direction.
   - **Groundswell:** a narrow-band JONSWAP (high peak enhancement) at `swell.periodS`, scaled to `Hs` from `swell.sizeFt`, with tight directional spreading around `swell.directionDeg`.
 - Spectrum maths (dispersion relation, JONSWAP, directional spreading, Hs normalisation) lives in pure TypeScript so it can be unit tested; the initial spectrum is generated from the seeded RNG.
 - **Cascades:** three FFT cascades at 256×256 with patch sizes of **3000m / 250m / 35m** (tunable), splitting wavenumber space into contiguous bands so no energy is counted twice and no tiling is visible. The largest patch must span many wavelengths of the ~350m, 15s groundswell to resolve its peak and direction. Each spectrum component is renormalised so the discrete grids reproduce its requested Hs exactly.
@@ -268,7 +268,7 @@ Unit tests sit beside the code they test (`*.test.ts`).
 | Moment | Setup | Checks |
 |---|---|---|
 | `pre-dawn` | 06:30, looking east then west | Twilight gradient, dark sea, no sun artefacts |
-| `first-sun` | 07:35, facing east then west | Sunrise colour over the land, first light on the swell |
+| `first-sun` | 07:35, facing out to sea (west) | First light on the swell, sunrise glow opposite |
 | `morning-offshore` (default) | 08:15, light E wind, facing west | Low sun behind the camera, clear deep-blue water, groomed surface |
 | `late-morning` | 10:30, light E wind, facing west | Higher sun, water clarity, colour holding up before the Doctor |
 | `noon-deep-blue` | 12:30, looking down at about 45° | Body colour and clarity, small glitter |

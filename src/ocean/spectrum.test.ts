@@ -4,7 +4,7 @@ import { createRng } from '../conditions/rng';
 import {
   CASCADE_SIZES_M, DEFAULT_SPECTRUM_PARAMS, FFT_SIZE, GRAVITY,
   alphaForHs, buildInitialSpectrum, buildOceanSpectra, buildSpectrumComponents, cascadeBands,
-  jonswapShape, omegaForK, spreading, windSeaComponent,
+  jonswapShape, omegaForK, spreading, windFetchM, windSeaComponent,
 } from './spectrum';
 
 describe('dispersion and JONSWAP', () => {
@@ -44,10 +44,40 @@ describe('components', () => {
     expect(w.hs).toBe(0);
     expect(Number.isFinite(w.omegaP)).toBe(true);
   });
-  it('3 m/s over 5 km of fetch gives roughly 10 cm of chop', () => {
-    const w = windSeaComponent(3, 80, DEFAULT_SPECTRUM_PARAMS);
+  it('3 m/s onshore over 5 km of fetch gives roughly 10 cm of chop', () => {
+    const w = windSeaComponent(3, 270, DEFAULT_SPECTRUM_PARAMS);
     expect(w.hs).toBeGreaterThan(0.08);
     expect(w.hs).toBeLessThan(0.14);
+  });
+  it('the morning easterly offshore only raises short, low ripples (fetch from the cliffs)', () => {
+    const w = windSeaComponent(3, 80, DEFAULT_SPECTRUM_PARAMS);
+    const peakWavelengthM = (2 * Math.PI * GRAVITY) / (w.omegaP * w.omegaP);
+    expect(w.hs).toBeLessThan(0.04);
+    expect(peakWavelengthM).toBeLessThan(1);
+  });
+});
+
+describe('wind fetch by direction (land to the east of The Womb)', () => {
+  const p = DEFAULT_SPECTRUM_PARAMS;
+  it('offshore wind (from the land) has the short fetch', () => {
+    expect(windFetchM(90, p)).toBeCloseTo(p.offshoreFetchM, 6);
+    expect(windFetchM(80, p)).toBeCloseTo(p.offshoreFetchM, 6);
+  });
+  it('onshore wind (from the sea, e.g. the Doctor) has the long fetch', () => {
+    expect(windFetchM(270, p)).toBeCloseTo(p.onshoreFetchM, 6);
+    expect(windFetchM(225, p)).toBeCloseTo(p.onshoreFetchM, 6);
+  });
+  it('alongshore wind sits between them (geometric mean)', () => {
+    expect(windFetchM(0, p)).toBeCloseTo(Math.sqrt(p.offshoreFetchM * p.onshoreFetchM), 6);
+    expect(windFetchM(180, p)).toBeCloseTo(Math.sqrt(p.offshoreFetchM * p.onshoreFetchM), 6);
+  });
+  it('grows monotonically as the wind swings from offshore to onshore', () => {
+    let prev = 0;
+    for (let d = 90; d <= 270; d += 5) {
+      const f = windFetchM(d, p);
+      expect(f).toBeGreaterThanOrEqual(prev);
+      prev = f;
+    }
   });
 });
 
