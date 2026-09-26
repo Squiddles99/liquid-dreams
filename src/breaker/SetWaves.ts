@@ -1,15 +1,18 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, abs, clamp, cos, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, storage, tanh,
-  textureLoad, uniform, vec2, vec3,
+  Fn, If, Loop, abs, clamp, cos, cross, dot, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, storage,
+  tanh, textureLoad, uniform, vec2, vec3,
 } from 'three/tsl';
 import { REEF_GRID } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M } from './breaking';
+import { breakPointNode, breakingStageNode, createBreakUniforms, stageCurvesNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import type { ReefField } from './reefField';
 import {
-  BREAKING_RATIO, ENVELOPE_WIDTH, FOLD_LIMIT, PITCH_KA_CAP, PITCH_MAX, STOKES_CAP, TAPER_FAR_M, TAPER_NEAR_M, toActiveWave,
+  BREAKING_RATIO, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_WIDTH, FOLD_LIMIT, PITCH_KA_CAP, PITCH_MAX, STOKES_CAP, TAPER_FAR_M,
+  TAPER_NEAR_M, toActiveWave,
 } from './setWaveModel';
 
 type N = any;
@@ -71,9 +74,15 @@ export class SetWaves {
   private readonly waves = storage(this.wavesAttr, 'vec4', MAX_ACTIVE_WAVES * 2).toReadOnly();
   /** How many wave slots are filled; 0 in a lull, when sum() skips the field fetches and the loop entirely. */
   readonly activeCount = uniform(0);
+  /** The breaking shape's parameters (breakingNodes.ts), uploaded normalized. */
+  private readonly brk = createBreakUniforms(DEFAULT_BREAK_PARAMS);
 
   constructor(private readonly time: N) {
     this.setEvents([]);
+  }
+
+  setBreakParams(p: BreakParams): void {
+    updateBreakUniforms(this.brk, p);
   }
 
   setField(f: ReefField): void {
@@ -113,16 +122,19 @@ export class SetWaves {
    * The field at world xz (TSL mirror of sampleField): bilinear inside the reef grid. Outside it, with c the point
    * clamped to the grid: on the inflow side the exact coast solution; on the outflow side the grid's edge sample at c,
    * with τ advanced along the edge's ray direction from c to xz, so the reef's delay and shadow continue past the map.
+   * `hoist` (only inside an Fn) makes the texture reads vars first: each select() below becomes an if/else, and TSL
+   * would otherwise emit the reads inside every branch that uses them (44 loads per sample instead of 12).
    */
-  sample(xz: N): { tau: N; amp: N; hmin: N; k: N; dir: N; depth: N } {
-    const g = xz.sub(this.origin).div(this.cell);
+  sample(xz: N, hoist = false): { tau: N; amp: N; hmin: N; k: N; dir: N; depth: N } {
+    const v = (n: N): N => (hoist ? n.toVar() : n);
+    const g = v(xz.sub(this.origin).div(this.cell));
     const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThanEqual(this.fieldMax.x)).and(g.y.lessThanEqual(this.fieldMax.y));
     // bilinearLoad clamps g, so outside the grid a and b are already the edge sample at the clamped point.
-    const a = bilinearLoad(this.fieldA, g, this.fieldMax);
-    const b = bilinearLoad(this.fieldB, g, this.fieldMax);
-    const fg = clamp(xz.x.sub(FAR_X0).div(FAR_DX), 0.0, this.farMax.sub(0.001));
-    const fa = linearLoad1D(this.farA, fg, this.farMax);
-    const fb = linearLoad1D(this.farB, fg, this.farMax);
+    const a = v(bilinearLoad(this.fieldA, g, this.fieldMax));
+    const b = v(bilinearLoad(this.fieldB, g, this.fieldMax));
+    const fg = v(clamp(xz.x.sub(FAR_X0).div(FAR_DX), 0.0, this.farMax.sub(0.001)));
+    const fa = v(linearLoad1D(this.farA, fg, this.farMax));
+    const fb = v(linearLoad1D(this.farB, fg, this.farMax));
     const xc = fg.mul(FAR_DX).add(FAR_X0);
     const farTau = fa.x.add(xz.x.sub(xc).mul(fb.x)).add(this.farP.mul(xz.y));
     const farDir = safeNormalize(vec2(fb.x, this.farP));
@@ -144,38 +156,63 @@ export class SetWaves {
   }
 
   /**
-   * Σ over the active waves of the setWaveModel formulas. Must be called inside an Fn. With no active wave the field
-   * is not even sampled: zero waves sum to zero, as on the CPU.
+   * Σ over the active waves of the setWaveModel formulas, with breaking (setWaveModel.waveAtCrest, term by term). Must be
+   * called inside an Fn. With no active wave the field is not even sampled: zero waves sum to zero, as on the CPU.
+   * `curl` false is the probe's surface (the drain and the bore, no crest sharpening or curl). With `eps`, each wave is
+   * also evaluated at xz + (ε, 0) and xz + (0, ε) with the field shifted to first order (only τ) and the same crest, as
+   * sumWavesWithNormal does, for the render's finite-difference normal. foam, lip and stage are the centre's.
    */
-  private sum(xz: N): { eta: N; dh: N; slope: N } {
+  private sumBreaking(xz: N, mode: { curl: boolean; eps: N | null }): {
+    eta: N; dh: N; slope: N; foam: N; lip: N; stage: N; etaX: N; dhX: N; etaZ: N; dhZ: N;
+  } {
     const eta = float(0.0).toVar(), dh = vec2(0.0).toVar(), slope = vec2(0.0).toVar();
+    const foam = float(0.0).toVar(), lip = float(0.0).toVar(), stage = float(0.0).toVar();
+    const eps = mode.eps;
+    const nb = eps === null ? null : { etaX: float(0.0).toVar(), dhX: vec2(0.0).toVar(), etaZ: float(0.0).toVar(), dhZ: vec2(0.0).toVar() };
     If(this.activeCount.greaterThan(0.5), () => {
-      // Everything that does not depend on the wave is made a var here, before the loop. Left as expressions, TSL
-      // emits them where they are first used, inside the loop body, and the field would be fetched once per slot.
-      const s = this.sample(xz);
+      // Everything that does not depend on the wave is made a var here, before the loop: the field sample, wFar, the
+      // Stokes ratio per metre of amplitude, the local wave speed, dξ/ds and the neighbours' points and τ shifts. Left
+      // as expressions, TSL emits them where they are first used, inside the loop body, and the field would be fetched
+      // once per slot.
+      const s = this.sample(xz, true);
       const f = { tau: s.tau.toVar(), amp: s.amp.toVar(), hmin: s.hmin.toVar(), k: s.k.toVar(), dir: s.dir.toVar(), depth: s.depth.toVar() };
-      const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(xz)).toVar();
       const sigma = max(tanh(f.k.mul(f.depth)), 0.05);
       const stokesPerA = f.k.mul(float(3.0).sub(sigma.mul(sigma))).div(sigma.mul(sigma).mul(sigma).mul(4.0)).toVar();
       const cLocal = this.meanOmega.div(f.k).toVar();
       const dXiDs = f.k.negate().div(this.meanOmega).toVar();
+      /** One evaluation point: where it is, its arrival time, its crest-end taper weight, and the sums it adds into. */
+      interface Point { p: N; tau: N; wFar: N; eta: N; dh: N }
+      const points: Point[] = [{ p: xz, tau: f.tau, wFar: smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(xz)).toVar(), eta, dh }];
+      if (eps !== null && nb !== null) {
+        const tauPerM = f.k.div(this.meanOmega); // shiftField: τ + (k/ω)·(dir · offset)
+        const pX = xz.add(vec2(eps, 0.0)).toVar(), pZ = xz.add(vec2(0.0, eps)).toVar();
+        points.push(
+          { p: pX, tau: f.tau.add(tauPerM.mul(f.dir.x).mul(eps)).toVar(), wFar: smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(pX)).toVar(), eta: nb.etaX, dh: nb.dhX },
+          { p: pZ, tau: f.tau.add(tauPerM.mul(f.dir.y).mul(eps)).toVar(), wFar: smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(pZ)).toVar(), eta: nb.etaZ, dh: nb.dhZ },
+        );
+      }
+      const brk = this.brk;
       Loop(MAX_ACTIVE_WAVES, ({ i }: N) => {
         const a = this.waves.element(i.mul(2));
         const b = this.waves.element(i.mul(2).add(1));
-        const H = min(a.y.mul(f.amp), f.hmin.mul(BREAKING_RATIO));
+        const H: N = min(a.y.mul(f.amp), f.hmin.mul(BREAKING_RATIO));
         const A = H.mul(0.5);
-        const dTau = b.x.sub(this.meanTravel.x).mul(xz.x).add(b.y.sub(this.meanTravel.y).mul(xz.y)).div(cLocal);
-        const xi = this.time.sub(a.x).sub(f.tau).sub(dTau);
         const width = float(ENVELOPE_WIDTH * 2 * Math.PI).div(a.z);
-        const r = xi.div(width);
-        // Empty slots, and waves beyond ENVELOPE_CUTOFF widths (envelope < 5e-6), are skipped: most pixels are near one or two.
-        If(a.y.greaterThan(0.0).and(abs(r).lessThan(ENVELOPE_CUTOFF)), () => {
+        const B = min(float(STOKES_CAP), stokesPerA.mul(A));
+        /** Time since this wave's crest passed a point (negative: still to come), for field speed `cLoc` and arrival time `tau`. */
+        const phaseXi = (p: N, tau: N, cLoc: N): N => {
+          const dTau = b.x.sub(this.meanTravel.x).mul(p.x).add(b.y.sub(this.meanTravel.y).mul(p.y)).div(cLoc);
+          return this.time.sub(a.x).sub(tau).sub(dTau);
+        };
+        /** The Phase 1 wave at point p with arrival time tau (the field otherwise shared): waveAtCrest's first half. */
+        const phase1 = (pt: Point) => {
+          const xi = phaseXi(pt.p, pt.tau, cLocal);
+          const r = xi.div(width);
           const env = exp(r.mul(r).negate());
           const dEnv = xi.mul(-2.0).div(width.mul(width)).mul(env);
-          const B = min(float(STOKES_CAP), stokesPerA.mul(A));
-          const q = xz.x.negate().mul(b.y).add(xz.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
+          const q = pt.p.x.negate().mul(b.y).add(pt.p.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
           const q2 = q.mul(q);
-          const lateral = mix(float(1.0), exp(q2.mul(q2).negate()), wFar);
+          const lateral = mix(float(1.0), exp(q2.mul(q2).negate()), pt.wFar);
           const theta = a.z.mul(xi);
           const aE = A.mul(env).mul(lateral);
           const shape = cos(theta).add(B.mul(cos(theta.mul(2.0))));
@@ -187,40 +224,137 @@ export class SetWaves {
           const dEtaDXi = A.mul(lateral).mul(dEnv.mul(shape).sub(env.mul(a.z).mul(sin(theta).add(B.mul(2.0).mul(sin(theta.mul(2.0)))))));
           const jacobian = max(float(1.0).add(hAmp.mul(a.z).mul(cos(theta)).add(pitch.mul(dEtaDXi)).mul(dXiDs)), 0.2);
           const along = dEtaDXi.mul(dXiDs).div(jacobian);
-          eta.addAssign(e);
-          dh.addAssign(f.dir.mul(d));
-          slope.addAssign(f.dir.mul(along));
+          return { r, env, lateral, theta, eta: e, dh: d, along };
+        };
+        const centre = phase1(points[0]);
+        // Empty slots, and waves beyond ENVELOPE_CUTOFF widths (envelope < 5e-6), are skipped: most pixels are near one or two.
+        If(a.y.greaterThan(0.0).and(abs(centre.r).lessThan(ENVELOPE_CUTOFF)), () => {
+          // Each point's unbroken wave, as vars: the breaking below reads them inside nested Ifs, and a TSL temp first
+          // assigned inside one If is stale in the next. The Phase 1 sums are added now; breaking adds its difference.
+          const unbroken = points.map((pt, k) => {
+            const ph = k === 0 ? centre : phase1(pt);
+            const v = { theta: ph.theta.toVar(), env: ph.env.toVar(), lateral: ph.lateral.toVar(), eta: ph.eta.toVar(), dh: ph.dh.toVar() };
+            pt.eta.addAssign(v.eta);
+            pt.dh.addAssign(f.dir.mul(v.dh));
+            if (k === 0) slope.addAssign(f.dir.mul(ph.along));
+            return v;
+          });
+          If(brk.enabled.greaterThan(0.5), () => {
+            // crestAt: CREST_STEPS Newton steps toward ξ = 0 along the wave's own travel direction b.xy (the same at
+            // every point, so the lookup has no seams), each at most half a wavelength, reading the field where the
+            // crest lands, so every point of one cross-section shares its crest's stage and frame.
+            const wm = float(1.0).sub(dot(this.meanTravel, b.xy)).toVar();
+            const cPos = xz.toVar();
+            const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
+            for (let step = 0; step < CREST_STEPS; step++) {
+              const xiC = phaseXi(cPos, fc.tau, this.meanOmega.div(fc.k));
+              const reach = float(Math.PI).div(fc.k);
+              const crossing = max(dot(fc.dir, b.xy).add(wm), CREST_MIN_CROSSING);
+              cPos.addAssign(b.xy.mul(clamp(xiC.mul(this.meanOmega).div(fc.k).div(crossing), reach.negate(), reach)));
+              const sc = this.sample(cPos, true);
+              fc.tau.assign(sc.tau); fc.amp.assign(sc.amp); fc.hmin.assign(sc.hmin);
+              fc.k.assign(sc.k); fc.dir.assign(sc.dir); fc.depth.assign(sc.depth);
+            }
+            const sC = breakingStageNode(a.y.mul(fc.amp), fc.hmin, brk).toVar();
+            // The readout's confidence in sC: 1 − smoothstep(T/8, T/4, |ξ left at the crest|).
+            const quarterPeriod = float(Math.PI / 2).div(a.z);
+            const confidence = float(1.0).sub(smoothstep(quarterPeriod.mul(0.5), quarterPeriod, abs(phaseXi(cPos, fc.tau, this.meanOmega.div(fc.k)))));
+            // waveAtCrest returns nothing (no stage, no breaking) where the point's own height is 0.
+            const here = H.greaterThan(0.0);
+            stage.assign(max(stage, select(here, sC.mul(confidence), float(0.0))));
+            If(sC.greaterThan(0.0).and(here), () => {
+              // The crest's frame (height, Stokes ratio, lean, wavenumber, bore depth), shared by the three points.
+              const c = stageCurvesNode(sC, brk);
+              const curves = { steep: c.steep.toVar(), drain: c.drain.toVar(), curl: c.curl.toVar(), collapse: c.collapse.toVar() };
+              const Hc = min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)).toVar();
+              const sigmaC = max(tanh(fc.k.mul(fc.depth)), 0.05);
+              const Bc = min(float(STOKES_CAP), fc.k.mul(Hc.mul(0.5)).mul(float(3.0).sub(sigmaC.mul(sigmaC))).div(sigmaC.mul(sigmaC).mul(sigmaC).mul(4.0))).toVar();
+              const nearBreakingC = smoothstep(0.3, BREAKING_RATIO, Hc.div(max(fc.hmin, MIN_DEPTH_M))).toVar();
+              points.forEach((pt, k) => {
+                const v = unbroken[k];
+                const Hl = Hc.mul(v.lateral).toVar();
+                // breakPoint's gate, before any H-scaled smoothstep is evaluated.
+                If(Hl.greaterThan(MIN_BREAKING_HEIGHT_M), () => {
+                  const ac = Hc.mul(0.5).mul(v.lateral);
+                  const pitchC = min(nearBreakingC.mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(fc.k.mul(ac), 1e-4)));
+                  const etaCrest = ac.mul(Bc.add(1.0));
+                  // Measured, not inferred from ξ: every point of the cross-section must agree on where its crest is.
+                  const v0 = dot(pt.p.sub(cPos), f.dir);
+                  const br = breakPointNode({
+                    theta: v.theta, env: v.env.mul(v.lateral), uUnbroken: v0.add(v.dh), eta: v.eta, uCrest: pitchC.mul(etaCrest), etaCrest,
+                    H: Hl, k: fc.k, hmin: fc.hmin,
+                  }, sC, brk, mode.curl, curves);
+                  pt.eta.addAssign(br.eta.sub(v.eta));
+                  pt.dh.addAssign(f.dir.mul(br.du));
+                  if (k === 0) {
+                    foam.assign(max(foam, br.foam));
+                    lip.assign(max(lip, br.lip));
+                  }
+                });
+              });
+            });
+          });
         });
       });
     });
-    return { eta, dh, slope };
+    return { eta, dh, slope, foam, lip, stage, etaX: nb?.etaX, dhX: nb?.dhX, etaZ: nb?.etaZ, dhZ: nb?.dhZ };
   }
 
-  /** vec3(dx, η, dz): the set waves' displacement at undisplaced world xz. */
+  /**
+   * vec3(dx, η, dz) at undisplaced world xz: the probe's surface, the uncurled one: Phase 1 plus the drain and the bore
+   * (spec R4). Compute-safe; WaterSurfaceModel.displacement() and so HeightProbe read this.
+   */
   displacementNode(xz: N): N {
     return Fn(() => {
-      const s = this.sum(xz);
+      const s = this.sumBreaking(xz, { curl: false, eps: null });
       return vec3(s.dh.x, s.eta, s.dh.y);
     })();
   }
 
   /**
-   * Render path only, vertex stage: displacementNode's vec3 and slopeNode's slope from ONE sum(). The slope is
-   * assigned to `slopeOut`, a varyingProperty the fragment stage reads interpolated (set waves are 100 m+ long, the
-   * grid cells a few metres). Never use this in a compute shader: there is no varying to write. The probe and the
-   * self-tests keep using displacementNode and slopeNode.
+   * Render path only, vertex stage: the curled displacement and the Phase 1 slope (assigned to the vec2 varyingProperty
+   * `slopeOut`). Kept for one task so the app renders until Task 5 moves OceanSurface to displacementWithBreakNode.
    */
   displacementWithSlopeNode(xz: N, slopeOut: N): N {
     return Fn(() => {
-      const s = this.sum(xz);
+      const s = this.sumBreaking(xz, { curl: true, eps: null });
       slopeOut.assign(s.slope);
       return vec3(s.dh.x, s.eta, s.dh.y);
     })();
   }
 
-  /** vec2(∂η/∂x, ∂η/∂z) of the set waves (Eulerian, Jacobian-corrected). */
+  /**
+   * Render path only, vertex stage: the rendered surface's vec3 displacement (with the curl), and into `out` (vec3/float
+   * varyingProperty nodes) the unit set-wave normal from finite differences over `eps` metres, the foam weight and the
+   * lip mask. Never use this in a compute shader: there are no varyings to write. Tests use breakSampleNode.
+   */
+  displacementWithBreakNode(xz: N, eps: N, out: { normal: N; foam: N; lip: N }): N {
+    return Fn(() => {
+      const r = this.breakValues(xz, eps);
+      out.normal.assign(r.normal);
+      out.foam.assign(r.foam);
+      out.lip.assign(r.lip);
+      return r.disp;
+    })();
+  }
+
+  /** The render path's values as nodes, for self-tests and diagnostics. Compute-safe; must be called inside an Fn. */
+  breakSampleNode(xz: N, eps: N): { disp: N; normal: N; foam: N; lip: N; stage: N } {
+    return this.breakValues(xz, eps);
+  }
+
+  private breakValues(xz: N, eps: N): { disp: N; normal: N; foam: N; lip: N; stage: N } {
+    const s = this.sumBreaking(xz, { curl: true, eps });
+    // P(x + ε) − P and P(z + ε) − P, as differences (the world xz cancels, so no f32 loss far from the origin).
+    const ax = vec3(eps.add(s.dhX.x).sub(s.dh.x), s.etaX.sub(s.eta), s.dhX.y.sub(s.dh.y));
+    const az = vec3(s.dhZ.x.sub(s.dh.x), s.etaZ.sub(s.eta), eps.add(s.dhZ.y).sub(s.dh.y));
+    const normal = safeNormalize(cross(az, ax)); // (P(z + ε) − P) × (P(x + ε) − P), as sumWavesWithNormal
+    return { disp: vec3(s.dh.x, s.eta, s.dh.y), normal, foam: s.foam, lip: s.lip, stage: s.stage };
+  }
+
+  /** vec2(∂η/∂x, ∂η/∂z) of the set waves (Eulerian, Jacobian-corrected): the Phase 1 slope, without the breaking shape. */
   slopeNode(xz: N): N {
-    return Fn(() => this.sum(xz).slope)();
+    return Fn(() => this.sumBreaking(xz, { curl: false, eps: null }).slope)();
   }
 
   tauNode(xz: N): N {

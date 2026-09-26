@@ -42,14 +42,18 @@ export class WaterSurfaceModel {
     return c === LONG_SWELL_CASCADE ? this.swellWeight(xz) : float(1.0);
   }
 
-  /** vec3 displacement at undisplaced world xz, relative to the tide level. `lod` adds the render's distance fades. */
+  /**
+   * vec3 displacement at undisplaced world xz, relative to the tide level. `lod` adds the render's distance fades. The
+   * set waves here are the uncurled surface: Phase 1 plus the drain and the bore (spec R4), which the height probe reads.
+   */
   displacement(xz: N, lod: (cascade: number) => N = () => float(1.0)): N {
     return this.fftDisplacement(xz, lod).add(this.sets.displacementNode(xz));
   }
 
   /**
-   * Render path only, vertex stage: the same displacement as displacement(), plus the set waves' slope from the same
-   * set-wave sum, assigned to `setSlopeOut` (a vec2 varyingProperty). The probe's compute shader uses displacement().
+   * Render path only, vertex stage: displacement() with the set waves' curl added (spec R2), plus the set waves' Phase 1
+   * slope from the same set-wave sum, assigned to `setSlopeOut` (a vec2 varyingProperty). The probe's compute shader
+   * uses displacement(). Task 5 replaces this with the finite-difference normal path.
    */
   displacementWithSetSlope(xz: N, lod: (cascade: number) => N, setSlopeOut: N): N {
     return this.fftDisplacement(xz, lod).add(this.sets.displacementWithSlopeNode(xz, setSlopeOut));
