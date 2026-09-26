@@ -103,7 +103,11 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
     const f = fract(value.div(spacing));
     const dist = min(f, float(1.0).sub(f));
     const w = fwidth(value.div(spacing));
-    return float(1.0).sub(smoothstep(0.0, max(w.mul(1.5), 1e-6), dist)).mul(step(1e-6, w));
+    const weight = float(1.0).sub(smoothstep(0.0, max(w.mul(1.5), 1e-6), dist)).mul(step(1e-6, w));
+    // Toward the horizon, consecutive lines land under a pixel apart and moiré into a solid band. Fade the
+    // weight out below ~4 px of screen-space spacing (a flat field is already zeroed above regardless).
+    const spacingPx = float(spacing).div(max(fwidth(value), 1e-6));
+    return weight.mul(smoothstep(3.0, 6.0, spacingPx));
   };
   const withOverlay = i.overlay
     ? mix(mix(colour, foamLight, line(i.overlay.depth, 1.0).mul(i.overlay.depthOn)), foamLight.mul(vec3(1.0, 0.8, 0.25)), line(i.overlay.tau, 2.0).mul(i.overlay.crestOn))
