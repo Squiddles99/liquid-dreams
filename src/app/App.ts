@@ -502,6 +502,19 @@ export class App {
     this.camera.updateProjectionMatrix();
   };
 
+  /**
+   * Dev automation (gallery captures): render one frame now, even when the page isn't animating (a hidden or
+   * occluded window pauses requestAnimationFrame), and return it as a PNG. toBlob runs in the same task as the
+   * render, so the WebGPU canvas still holds the frame.
+   */
+  captureFrame(): Promise<Blob | null> {
+    const maxFps = this.frameLimiter.maxFps;
+    this.frameLimiter.maxFps = 0;
+    this.frame();
+    this.frameLimiter.maxFps = maxFps;
+    return new Promise((resolve) => this.renderer.domElement.toBlob(resolve, 'image/png'));
+  }
+
   private frame = (): void => {
     const now = performance.now();
     if (!this.frameLimiter.shouldRender(now)) return;
