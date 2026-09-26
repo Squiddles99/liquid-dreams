@@ -1,6 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
+import { type BreakParams, breakPoint, breakingRatio, breakingStage } from './breaking';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
 
@@ -41,11 +42,27 @@ export interface SetWaveResult {
   eta: number;
   dx: number;
   dz: number;
+  /** Phase 1's analytic slope of the unbroken surface (the breaking shape is not in it; the render uses finite differences). */
   slopeX: number;
   slopeZ: number;
+  /** Whitewater placeholder weight [0, 1] (max over waves). */
+  foam: number;
+  /** Turquoise-lip mask [0, 1] (max over waves). */
+  lip: number;
+  /** Largest crest stage among the waves here [0, 1]. */
+  stage: number;
 }
 
-const ZERO: SetWaveResult = { eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0 };
+/** Breaking switched on: how to read the field at the crest, the shape's parameters, and whether to curl. */
+export interface BreakOptions {
+  /** The field at any world point (sampleField on the CPU). The crest's stage is read where the crest is. */
+  sample: (x: number, z: number) => FieldSample;
+  params: BreakParams;
+  /** true for the rendered surface; false for the height probe (drain and bore, no crest sharpening or curl). */
+  includeCurl: boolean;
+}
+
+const ZERO: SetWaveResult = { eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, lip: 0, stage: 0 };
 
 export function toActiveWave(e: WaveEvent): ActiveWave {
   const d = travelDirectionXZ(e.fromDeg);
@@ -59,13 +76,56 @@ export function localHeight(w: ActiveWave, f: FieldSample): number {
   return Math.min(w.heightM * f.amp, BREAKING_RATIO * f.hmin);
 }
 
-export function waveAt(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext): SetWaveResult {
+/** ξ: time since w's crest passed (x, z) (negative: still to come). */
+export function phaseXi(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext): number {
+  const cLocal = ctx.omega / f.k;
+  const dTau = ((w.travelX - ctx.travelX) * x + (w.travelZ - ctx.travelZ) * z) / cLocal;
+  return t - w.arrivalS - f.tau - dTau;
+}
+
+/** Steps taken to find a wave's crest from a point (each is one field sample). */
+export const CREST_STEPS = 2;
+
+/** A wave's crest nearest a point: the field where the crest is now, and its breaking stage there. */
+export interface Crest {
+  /** Where the crest is now (undisplaced world xz). */
+  x: number;
+  z: number;
+  f: FieldSample;
+  s: number;
+}
+
+/**
+ * w's crest nearest (x, z): the field is read where the crest is now, found by stepping ξ·c along the local ray (at
+ * most half a wavelength a step), so every point of one cross-section shares its crest's stage and shape frame. Null
+ * when breaking is off.
+ */
+export function crestAt(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, o: BreakOptions | undefined): Crest | null {
+  if (!o || !o.params.enabled || !(w.heightM > 0)) return null;
+  // Two steps along the ray toward where ξ = 0: the first uses this point's wave speed, the second the speed where it
+  // landed, so every point of one cross-section finds (nearly) the same crest and so the same stage.
+  let cx = x, cz = z, fc = f;
+  for (let i = 0; i < CREST_STEPS; i++) {
+    const reach = Math.PI / fc.k;
+    const d = Math.max(-reach, Math.min(reach, phaseXi(cx, cz, t, fc, w, ctx) * (ctx.omega / fc.k)));
+    cx += fc.dirX * d;
+    cz += fc.dirZ * d;
+    fc = o.sample(cx, cz);
+  }
+  return { x: cx, z: cz, f: fc, s: breakingStage(breakingRatio(w.heightM * fc.amp, fc.hmin, o.params), o.params) };
+}
+
+/** The breaking stage of w's crest nearest (x, z) (0 when breaking is off). */
+export function crestStage(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, o: BreakOptions): number {
+  return crestAt(x, z, t, f, w, ctx, o)?.s ?? 0;
+}
+
+/** One wave at one point, given its crest (null or stage 0: the Phase 1 wave exactly). */
+export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, crest: Crest | null, o?: BreakOptions): SetWaveResult {
   const H = localHeight(w, f);
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;
-  const cLocal = ctx.omega / f.k;
-  const dTau = ((w.travelX - ctx.travelX) * x + (w.travelZ - ctx.travelZ) * z) / cLocal;
-  const xi = t - w.arrivalS - f.tau - dTau;
+  const xi = phaseXi(x, z, t, f, w, ctx);
   const width = (ENVELOPE_WIDTH * 2 * Math.PI) / w.omega;
   const env = Math.exp(-((xi / width) ** 2));
   const dEnv = ((-2 * xi) / (width * width)) * env;
@@ -86,14 +146,72 @@ export function waveAt(x: number, z: number, t: number, f: FieldSample, w: Activ
   const dXiDs = -f.k / ctx.omega;
   const jacobian = Math.max(0.2, 1 + (hAmp * w.omega * Math.cos(theta) + pitch * dEtaDXi) * dXiDs);
   const slopeAlong = (dEtaDXi * dXiDs) / jacobian;
-  return { eta, dx: f.dirX * dh, dz: f.dirZ * dh, slopeX: f.dirX * slopeAlong, slopeZ: f.dirZ * slopeAlong };
+  const out: SetWaveResult = { eta, dx: f.dirX * dh, dz: f.dirZ * dh, slopeX: f.dirX * slopeAlong, slopeZ: f.dirZ * slopeAlong, foam: 0, lip: 0, stage: crest ? crest.s : 0 };
+  if (!o || !crest || !(crest.s > 0)) return out;
+  // The crest's frame (height, Stokes ratio, wavenumber, lean, bore depth) sets the shape's scale and pivot for the whole
+  // cross-section; this point's own unbroken position and height are what get steepened, drained, curled and settled.
+  const fc = crest.f;
+  const Hc = localHeight(w, fc);
+  const ac = (Hc / 2) * lateral;
+  const sigmaC = Math.max(Math.tanh(fc.k * fc.depth), 0.05);
+  const Bc = Math.min(STOKES_CAP, (fc.k * (Hc / 2) * (3 - sigmaC * sigmaC)) / (4 * sigmaC * sigmaC * sigmaC));
+  const nearBreakingC = smoothstep(0.3, BREAKING_RATIO, Hc / Math.max(fc.hmin, MIN_DEPTH_M));
+  const pitchC = Math.min(PITCH_MAX * nearBreakingC, PITCH_KA_CAP / Math.max(fc.k * ac, 1e-4));
+  const etaCrest = ac * (1 + Bc);
+  // Measured, not inferred from ξ: the wave speed changes across the ledge, and every point of one cross-section must
+  // agree on where its crest is.
+  const v0 = (x - crest.x) * f.dirX + (z - crest.z) * f.dirZ;
+  const b = breakPoint({
+    theta, env: env * lateral, uUnbroken: v0 + dh, eta, uCrest: pitchC * etaCrest, etaCrest, H: Hc * lateral, k: fc.k, hmin: fc.hmin,
+  }, crest.s, o.params, o.includeCurl);
+  out.eta = b.eta;
+  out.dx += f.dirX * b.du;
+  out.dz += f.dirZ * b.du;
+  out.foam = b.foam;
+  out.lip = b.lip;
+  return out;
 }
 
-export function sumWaves(x: number, z: number, t: number, f: FieldSample, waves: readonly ActiveWave[], ctx: WaveContext): SetWaveResult {
+/** One wave at one point. Without `o` (or with breaking disabled) this is the Phase 1 wave. */
+export function waveAt(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, o?: BreakOptions): SetWaveResult {
+  return waveAtCrest(x, z, t, f, w, ctx, crestAt(x, z, t, f, w, ctx, o), o);
+}
+
+function accumulate(out: SetWaveResult, r: SetWaveResult): void {
+  out.eta += r.eta; out.dx += r.dx; out.dz += r.dz; out.slopeX += r.slopeX; out.slopeZ += r.slopeZ;
+  out.foam = Math.max(out.foam, r.foam); out.lip = Math.max(out.lip, r.lip); out.stage = Math.max(out.stage, r.stage);
+}
+
+export function sumWaves(x: number, z: number, t: number, f: FieldSample, waves: readonly ActiveWave[], ctx: WaveContext, o?: BreakOptions): SetWaveResult {
   const out = { ...ZERO };
-  for (const w of waves) {
-    const r = waveAt(x, z, t, f, w, ctx);
-    out.eta += r.eta; out.dx += r.dx; out.dz += r.dz; out.slopeX += r.slopeX; out.slopeZ += r.slopeZ;
-  }
+  for (const w of waves) accumulate(out, waveAt(x, z, t, f, w, ctx, o));
   return out;
+}
+
+/** The field at a point `dx, dz` away, to first order: only τ changes (the render's finite-difference neighbours). */
+export function shiftField(f: FieldSample, dx: number, dz: number, ctx: WaveContext): FieldSample {
+  return { ...f, tau: f.tau + (f.k / ctx.omega) * (f.dirX * dx + f.dirZ * dz) };
+}
+
+/**
+ * sumWaves at (x, z) plus the displaced surface's unit normal from finite differences (spec §3.3): each wave is also
+ * evaluated at (x + ε, z) and (x, z + ε) with the field shifted to first order and the same crest. This is the render's
+ * normal, and the GPU mirrors it exactly. Handles overhangs (the normal faces down under the lip).
+ */
+export function sumWavesWithNormal(
+  x: number, z: number, t: number, f: FieldSample, waves: readonly ActiveWave[], ctx: WaveContext, o: BreakOptions | undefined, eps: number,
+): SetWaveResult & { normal: [number, number, number] } {
+  const c = { ...ZERO }, px = { ...ZERO }, pz = { ...ZERO };
+  const fx = shiftField(f, eps, 0, ctx), fz = shiftField(f, 0, eps, ctx);
+  for (const w of waves) {
+    const crest = crestAt(x, z, t, f, w, ctx, o);
+    accumulate(c, waveAtCrest(x, z, t, f, w, ctx, crest, o));
+    accumulate(px, waveAtCrest(x + eps, z, t, fx, w, ctx, crest, o));
+    accumulate(pz, waveAtCrest(x, z + eps, t, fz, w, ctx, crest, o));
+  }
+  const ax = eps + px.dx - c.dx, ay = px.eta - c.eta, az = px.dz - c.dz; // P(x + ε) − P
+  const bx = pz.dx - c.dx, by = pz.eta - c.eta, bz = eps + pz.dz - c.dz; // P(z + ε) − P
+  const nx = by * az - bz * ay, ny = bz * ax - bx * az, nz = bx * ay - by * ax; // (P(z + ε) − P) × (P(x + ε) − P)
+  const len = Math.hypot(nx, ny, nz) || 1;
+  return { ...c, normal: [nx / len, ny / len, nz / len] };
 }
