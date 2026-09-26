@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { asin, atan, clamp, exp, max, normalize, texture, uniform, vec3 } from 'three/tsl';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, extinctionPerKm } from './atmosphereParams';
-import { type AtmosphereUniforms, createAtmosphereUniforms, skyViewUvFromAngles, updateAtmosphereUniforms } from './atmosphereNodes';
+import { type AtmosphereUniforms, createAtmosphereUniforms, nightFloorRadiance, skyViewUvFromAngles, updateAtmosphereUniforms } from './atmosphereNodes';
 import { AtmosphereLuts } from './AtmosphereLuts';
 import { createSkyDome } from './SkyDome';
 
@@ -73,7 +73,7 @@ export class Sky {
     const elevation = asin(clamp(dir.y, -1.0, 1.0));
     const azimuth = atan(dir.z, dir.x).sub(this.sunAzimuthAngle);
     return texture(this.luts.skyView, skyViewUvFromAngles(elevation, azimuth)).rgb
-      .add(this.uniforms.nightFloor.mul(this.uniforms.sunIlluminance));
+      .add(nightFloorRadiance(this.uniforms));
   }
 
   /** Near-sea-level aerial perspective along a ray from the camera. */
