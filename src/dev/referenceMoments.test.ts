@@ -43,12 +43,19 @@ describe('set and reef moments', () => {
     expect(onReef.simTime).toBeGreaterThan(arriving.simTime);
     expect(onReef.paused).toBe(true);
   });
-  it('compares the same wave at low and high tide', () => {
+  it('compares the same wave at low and high tide, from the same drone camera as set-on-the-reef', () => {
+    const onReef = findReferenceMoment('set-on-the-reef')!;
     const low = findReferenceMoment('low-tide-set')!, high = findReferenceMoment('high-tide-set')!;
     expect(low.conditions.tideM).toBe(-0.5);
     expect(high.conditions.tideM).toBe(0.5);
     expect(low.simTime).toBe(high.simTime);
-    expect(low.simTime).toBe(findReferenceMoment('set-on-the-reef')!.simTime);
+    expect(low.simTime).toBe(onReef.simTime);
+    // set-on-the-reef, low-tide-set and high-tide-set all share one free, drone-height camera.
+    for (const m of [onReef, low, high]) {
+      expect(m.camera.mode).toBe('free');
+      expect(m.camera.position[1]).toBeGreaterThan(10);
+      expect(m.camera).toEqual(onReef.camera);
+    }
   });
   it('puts the overhead view in free flight above the reef', () => {
     const m = findReferenceMoment('reef-overhead')!;

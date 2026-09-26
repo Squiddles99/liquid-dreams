@@ -18,6 +18,9 @@ const lineup = (yawDeg: number, pitchDeg: number): CameraPose => ({
   mode: 'lineup', position: [...DEFAULT_LINEUP_POSITION], yawDeg, pitchDeg,
 });
 
+/** Drone-like free camera inshore of the peak, looking out to sea over it (Andrew's reference shot). */
+const droneOverPeak = (): CameraPose => ({ mode: 'free', position: [45, 14, -25], yawDeg: 225, pitchDeg: -14 });
+
 type ConditionsPatch = Partial<Omit<Conditions, 'swell' | 'wind'>> & {
   swell?: Partial<Conditions['swell']>;
   wind?: Partial<Conditions['wind']>;
@@ -51,16 +54,16 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
   ref('golden-hour', '16:50 facing the sun, Doctor in. Glitter path, crest transmission, choppier surface, horizon haze.', conditions({ timeOfDay: 16 + 50 / 60, wind: doctor }), lineup(301, 2)),
   ref('sunset', '17:25 facing the sun. Sky colour, exposure, horizon.', conditions({ timeOfDay: 17 + 25 / 60, wind: doctor }), lineup(297, 1)),
   ref('overview', 'Free camera 40 m up at noon. No tiling, LOD transitions, horizon curvature.', conditions({ timeOfDay: 12.5 }), { mode: 'free', position: [60, 40, 0], yawDeg: 270, pitchDeg: -20 }),
-  setMoment('set-arriving', '08:15 facing south-west as a set appears: lines darkening on the horizon, 60 s out.',
-    conditions({}), lineup(225, 1), REF_SET[0].arrivalS - 60),
-  setMoment('set-on-the-reef', "08:15 looking north-north-east across the peak as the set's biggest wave stands up on the ledge.",
-    conditions({}), lineup(15, 2), REF_BIGGEST.arrivalS - 1),
+  setMoment('set-arriving', "08:15 facing south-west: the set's first wave lifting on its approach to the reef, 20 s out.",
+    conditions({}), lineup(225, 1), REF_SET[0].arrivalS - 20),
+  setMoment('set-on-the-reef', "08:15 from a drone inshore of the peak, looking out to sea as the set's biggest wave stands up on the ledge.",
+    conditions({}), droneOverPeak(), REF_BIGGEST.arrivalS - 2),
   setMoment('low-tide-set', 'The same wave at −0.5 m tide: shallower water, standing up harder and earlier.',
-    conditions({ tideM: -0.5 }), lineup(15, 2), REF_BIGGEST.arrivalS - 1),
+    conditions({ tideM: -0.5 }), droneOverPeak(), REF_BIGGEST.arrivalS - 2),
   setMoment('high-tide-set', 'The same wave at +0.5 m tide: deeper water, softer.',
-    conditions({ tideM: 0.5 }), lineup(15, 2), REF_BIGGEST.arrivalS - 1),
-  ref('looking-down', '10:30 looking down from the lineup: limestone, weed and turquoise sand pockets through clear water.',
-    conditions({ timeOfDay: 10.5 }), lineup(30, -60)),
+    conditions({ tideM: 0.5 }), droneOverPeak(), REF_BIGGEST.arrivalS - 2),
+  ref('looking-down', '10:30 floating over the shelf, looking down: dark limestone and weed, a sand pocket, through clear water.',
+    conditions({ timeOfDay: 10.5 }), { mode: 'lineup', position: [12, 0.8, -28], yawDeg: 200, pitchDeg: -60 }),
   ref('reef-overhead', 'Free camera 60 m above the reef at noon: the wedge, the shelf and the sand pockets from above.',
     conditions({ timeOfDay: 12.5 }), { mode: 'free', position: [0, 60, 40], yawDeg: 0, pitchDeg: -70 }),
 ];
