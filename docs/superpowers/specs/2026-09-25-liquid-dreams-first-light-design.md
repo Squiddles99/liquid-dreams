@@ -33,11 +33,11 @@ Liquid Dreams is a personal passion project: a surfing game made together for th
 
 ## 2. The Womb: the break we are building
 
-**Location:** peak at approximately **-33.8972366, 114.9832508**, about 232m offshore; about 400m north of Ellensbrook Bombie; about 2km south of Lefthanders; between Margaret River and Gracetown, in the South West of Western Australia. Reached by a 15-minute walk through dune scrub from the Ellensbrook Road car park. Isolated, few people.
+**Location:** peak at approximately **-33.895216, 114.983359**, about 190 m off the beach (corrected by Andrew on 2026-09-26; the original -33.8972366, 114.9832508 was about 225 m too far south); about 2km south of Lefthanders; between Margaret River and Gracetown, in the South West of Western Australia. Reached by a 15-minute walk through dune scrub from the Ellensbrook Road car park. Isolated, few people.
 
-**Seabed:** very shallow **limestone** reef (pitted ledges, weed and kelp), with turquoise **sand pockets** that create the odd extra-hollow section. The reef forms a wedge: the left collides with a short section breaking the opposite way at the end of the ride.
+**Seabed:** very shallow **limestone** reef (pitted ledges, weed and kelp), with turquoise **sand pockets** that create the odd extra-hollow section. The reef forms a **wedge pointing out to sea** with the peak at its tip, about 6 m deep at still water: the wave is an **A-frame** whose **left peels north** along the reef edge (the ride) while an **unridable right runs south from the same peak and closes out**. A patchy reef and sand shelf spreads north and inshore; an inner rock platform lies near the beach. (Corrected 2026-09-26; see the Phase 1 spec.)
 
-**Character:** a short (<50m), fast, ledgy, powerful left. The take-off pitches straight into the barrel. From about 4ft the shape resembles Teahupo'o: the water in front of the wave drains off the reef, so the face drops below sea level with a step in it. It produces a 4–5 second barrel, a thunder-clap as the lip lands, and a blast of spit out of the tube. The ride ends in a spit-out or in the collision with the opposing section.
+**Character:** a short (<50m), fast, ledgy, powerful left. The take-off pitches straight into the barrel. From about 4ft the shape resembles Teahupo'o: the water in front of the wave drains off the reef (from about 6 m of still water to about 1.2 m in the trough), so the face drops below sea level with a step in it. It produces a 4–5 second barrel, a thunder-clap as the lip lands, and a blast of spit out of the tube. The ride ends in a spit-out as the wave backs off along the reef edge.
 
 **Size scale (surfer feet, measured from the back of the wave; this is the project's canonical unit):**
 
@@ -68,16 +68,17 @@ Liquid Dreams is a personal passion project: a surfing game made together for th
 
 ## 3. Roadmap
 
-Each phase ends with something beautiful you can sit in, and each gets its own spec, plan and build cycle. This document covers the overall architecture and **Phase 0** in full. Phases 1–5 are summarised so that Phase 0 is built to accommodate them.
+Each phase ends with something beautiful you can sit in, and each gets its own spec, plan and build cycle. This document covers the overall architecture and **Phase 0** in full. Phases 1–6 are summarised so that Phase 0 is built to accommodate them.
 
 | Phase | Name | What you experience at the end |
 |---|---|---|
 | **0** | **First light** | Floating in open Indian Ocean water at the Womb lineup; physically based sky and sun; time-of-day dial; FFT ocean; lineup and free cameras; dev tools |
-| 1 | The place | Seabed (limestone reef, wedge, ledge, sand pockets, tide depth), beach, dunes, heath, rocks; clear water showing the reef; depth-driven colour; Ellensbrook Bombie in the distance |
-| 2 | The wave | Swell sets and groups; shoaling and refraction over the reef; breaking onset; the Womb barrel peeling left into the opposing section; surfer-feet dial calibrated; every wave unique; turquoise lip transmission |
+| 1 | Reef & sets | The Womb's reef (wedge, ledge, shelf, sand pockets) and tide; the seabed visible through clear water; swell arriving in seeded sets; set waves slowing, bending and standing up on the reef (not yet breaking). Spec: `2026-09-26-reef-and-sets-design.md` |
+| 2 | The break | Breaking onset; the A-frame: the Womb barrel peeling left and the right closing out; the drain and step; surfer-feet dial calibrated; every wave unique; turquoise lip transmission |
 | 3 | Whitewater | Lip impact, whitewater explosion, spit, offshore spray off the crest, lingering and dissolving foam |
-| 4 | Sound | Spatial audio: thunder-clap impacts, whitewater roar and hiss, wind in the scrub, water lapping close by |
-| 5 | Life & conditions | Day rhythm (glassy mornings, easterly offshores, then the SW sea breeze, the "Fremantle Doctor", whose arrival time varies from day to day; on the best days it comes in late); rare autumn glass-off days with no wind at all; clouds and overcast moods; dolphins, whales, seabirds |
+| 4 | The land | Beach, dunes, heath, rocks; Ellensbrook Bombie in the distance |
+| 5 | Sound | Spatial audio: thunder-clap impacts, whitewater roar and hiss, wind in the scrub, water lapping close by |
+| 6 | Life & conditions | Day rhythm (glassy mornings, easterly offshores, then the SW sea breeze, the "Fremantle Doctor", whose arrival time varies from day to day; on the best days it comes in late); rare autumn glass-off days with no wind at all; clouds and overcast moods; dolphins, whales, seabirds |
 
 ---
 
@@ -107,11 +108,11 @@ Each module has one purpose and a small, explicit interface. Pure maths is kept 
 | `render/` | Renderer creation, frame loop, HDR, exposure, tone mapping, bloom, grade | 0 |
 | `dev/` | Tuning panel, performance/GPU readout, moment links, screenshot key, pause | 0 |
 | `seabed/` | Bathymetry and material masks; tide-adjusted depth queries | 1 |
-| `land/` | Beach, dunes, heath, rocks | 1 |
-| `swell/` | Seeded set/group generator producing individual wave events | 2 |
-| `breaker/` | Per-wave shoaling, refraction and breaking; barrel surface; emits impact events | 2 |
+| `land/` | Beach, dunes, heath, rocks | 4 |
+| `swell/` | Seeded set/group generator producing individual wave events | 1 |
+| `breaker/` | Per-wave shoaling and refraction (1); breaking, barrel surface, impact events (2) | 1–2 |
 | `whitewater/` | GPU particles and foam field, driven by breaker events | 3 |
-| `audio/` | Web Audio spatial sound, driven by breaker events and conditions | 4 |
+| `audio/` | Web Audio spatial sound, driven by breaker events and conditions | 5 |
 
 ### Shared principles
 
@@ -122,7 +123,7 @@ Each module has one purpose and a small, explicit interface. Pure maths is kept 
 ### World conventions
 
 - Units: **metres**, **seconds**, angles in **degrees** at the interfaces (radians internally).
-- Origin: **the Womb's peak** (-33.8972366, 114.9832508), at **y = 0 = mean sea level**. Tide raises or lowers the water surface relative to y = 0 (from Phase 1).
+- Origin: **the Womb's peak** (-33.895216, 114.983359; corrected in Phase 1), at **y = 0 = mean sea level**. Tide raises or lowers the water surface relative to y = 0 (from Phase 1).
 - Axes (right-handed): **+X = east, +Y = up, +Z = south** (so north is -Z).
 - Directions in `Conditions` follow meteorological/surf convention: the direction the swell or wind **comes from**, in degrees true (for example swell 225° = from the SW; wind 80° = from the east, which is offshore here).
 - Time: `Conditions` stores local time in **AWST (UTC+8, no daylight saving)**, converted to UTC for astronomy.
