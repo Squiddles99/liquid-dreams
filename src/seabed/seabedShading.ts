@@ -6,7 +6,7 @@ import { MARCH_REFINE, MARCH_STEPS, MAX_MARCH_DEPTH_M, MAX_MARCH_DIST_M, REACH_F
 
 type N = any;
 
-const REEF_ALBEDO = vec3(0.2, 0.18, 0.14);
+const REEF_ALBEDO = vec3(0.09, 0.09, 0.07);
 const SAND_ALBEDO = vec3(0.62, 0.56, 0.44);
 const WEED_ALBEDO = vec3(0.06, 0.08, 0.035);
 
