@@ -29,6 +29,26 @@ export function exposureStopsForSun(elevationDeg: number): number {
   return last[1];
 }
 
-export function computeExposure(elevationDeg: number, baseExposure: number, evOffset: number, auto: boolean): number {
-  return baseExposure * 2 ** ((auto ? exposureStopsForSun(elevationDeg) : 0) + evOffset);
+/** Most a sun in the middle of the view stops the exposure down (a meter reading the brighter frame). */
+export const SUN_IN_VIEW_MAX_STOPS = 1;
+const COS_SUN_CENTRED = Math.cos((10 * Math.PI) / 180);
+const COS_SUN_OUT_OF_VIEW = Math.cos((50 * Math.PI) / 180);
+
+const smoothstep = (e0: number, e1: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * Stops to take off when the camera looks toward a risen sun. The elevation table alone meters golden hour for
+ * the dimmer sky away from the sun, which overexposes the aureole into a hard-edged ring when facing it.
+ */
+export function sunInViewStops(forwardDotSun: number, elevationDeg: number): number {
+  return SUN_IN_VIEW_MAX_STOPS * smoothstep(COS_SUN_OUT_OF_VIEW, COS_SUN_CENTRED, forwardDotSun) * smoothstep(-2, 2, elevationDeg);
+}
+
+/** `forwardDotSun`: cosine between the view direction and the sun (default: facing away). */
+export function computeExposure(elevationDeg: number, baseExposure: number, evOffset: number, auto: boolean, forwardDotSun = -1): number {
+  const autoStops = auto ? exposureStopsForSun(elevationDeg) - sunInViewStops(forwardDotSun, elevationDeg) : 0;
+  return baseExposure * 2 ** (autoStops + evOffset);
 }

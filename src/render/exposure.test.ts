@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXPOSURE_KNOTS, computeExposure, exposureStopsForSun } from './exposure';
+import { EXPOSURE_KNOTS, SUN_IN_VIEW_MAX_STOPS, computeExposure, exposureStopsForSun, sunInViewStops } from './exposure';
 
 describe('exposure', () => {
   it('daylight uses the base exposure', () => {
@@ -34,5 +34,33 @@ describe('exposure', () => {
   it('EV offset doubles per stop; manual mode ignores the sun', () => {
     expect(computeExposure(45, 0.35, 1, true)).toBeCloseTo(0.7);
     expect(computeExposure(-20, 0.35, 0, false)).toBeCloseTo(0.35);
+  });
+});
+
+describe('sun-in-view metering', () => {
+  const cosDeg = (d: number) => Math.cos((d * Math.PI) / 180);
+  it('looking straight at a low sun stops down by the full amount', () => {
+    expect(sunInViewStops(1, 6)).toBeCloseTo(SUN_IN_VIEW_MAX_STOPS);
+  });
+  it('facing away from the sun (the morning moments) changes nothing', () => {
+    expect(sunInViewStops(cosDeg(90), 8.5)).toBe(0);
+    expect(sunInViewStops(-1, 8.5)).toBe(0);
+  });
+  it('fades smoothly as the sun leaves the middle of the view', () => {
+    const near = sunInViewStops(cosDeg(20), 6), far = sunInViewStops(cosDeg(40), 6);
+    expect(near).toBeLessThan(SUN_IN_VIEW_MAX_STOPS);
+    expect(far).toBeLessThan(near);
+    expect(far).toBeGreaterThan(0);
+    expect(sunInViewStops(cosDeg(60), 6)).toBe(0);
+  });
+  it('fades out as the sun sets, so twilight exposure is untouched', () => {
+    expect(sunInViewStops(1, -3)).toBe(0);
+    expect(sunInViewStops(1, 0)).toBeGreaterThan(0);
+    expect(sunInViewStops(1, 0)).toBeLessThan(SUN_IN_VIEW_MAX_STOPS);
+  });
+  it('computeExposure subtracts it in auto mode only', () => {
+    expect(computeExposure(6, 1, 0, true, 1)).toBeCloseTo(2 ** (exposureStopsForSun(6) - SUN_IN_VIEW_MAX_STOPS));
+    expect(computeExposure(6, 1, 0, false, 1)).toBeCloseTo(1);
+    expect(computeExposure(6, 1, 0, true)).toBeCloseTo(2 ** exposureStopsForSun(6));
   });
 });
