@@ -10,7 +10,8 @@ export function createSkyDome(sky: Sky): THREE.Mesh {
   const x = clamp(angle.div(r), 0.0, 1.0);
   const limbDarkening = float(1.0).sub(float(0.6).mul(float(1.0).sub(sqrt(float(1.0).sub(x.mul(x))))));
   const disk = float(1.0).sub(smoothstep(r.mul(0.92), r.mul(1.08), angle));
-  // Clamp keeps the disk below half-float range so bloom never sees infinities.
+  // Keeps the disk well inside half-float range (max 65504) in the scene target. Exposure can still scale it past
+  // that; what keeps bloom and tone mapping finite is PicturePipeline's clamp on the exposed colour (HDR_MAX).
   const sunRadiance = min(sky.sunIlluminance.div(PI.mul(r).mul(r)).mul(limbDarkening), vec3(30000.0));
   material.colorNode = sky.radiance(dir).add(sunRadiance.mul(disk));
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32), material);

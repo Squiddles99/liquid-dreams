@@ -1,9 +1,12 @@
 import * as THREE from 'three/webgpu';
-import { agxToneMapping, dot, float, max, mix, neutralToneMapping, pass, pow, renderOutput, uniform, vec3, vec4 } from 'three/tsl';
+import { agxToneMapping, dot, float, max, min, mix, neutralToneMapping, pass, pow, renderOutput, uniform, vec3, vec4 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { computeExposure } from './exposure';
 
 type N = any;
+
+/** Ceiling on exposed scene radiance: finite in half float (max 65504) so bloom and tone mapping never see Infinity. */
+export const HDR_MAX = 60000.0;
 
 export interface PictureParams {
   autoExposure: boolean;
@@ -55,7 +58,9 @@ export class PicturePipeline {
   constructor(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, params: PictureParams = DEFAULT_PICTURE) {
     this.params = { ...params };
     const scenePass = pass(scene, camera);
-    const exposed = scenePass.getTextureNode('output').rgb.mul(this.exposure);
+    // Clamped below the half-float maximum (65504): the scene is finite, but exposure > ~2 could push the sun
+    // disk past it, overflowing bloom's HalfFloat targets, and PBR Neutral turns Infinity into NaN.
+    const exposed = min(scenePass.getTextureNode('output').rgb.mul(this.exposure), vec3(HDR_MAX));
     this.bloomNode = bloom(vec4(exposed, 1.0), params.bloomStrength, params.bloomRadius, params.bloomThreshold);
     const hdr: N = exposed.add(this.bloomNode.rgb);
     // three typings gap: the tone-mapping Fns return an untyped Node, which mix() rejects.
@@ -65,7 +70,8 @@ export class PicturePipeline {
     const lifted = mapped.add(this.lift.mul(vec3(1.0).sub(mapped))).mul(this.gain);
     const gammaed = pow(max(lifted, vec3(0.0)), vec3(float(1.0).div(this.gamma)));
     const luma = dot(gammaed, vec3(0.2126, 0.7152, 0.0722));
-    const graded = mix(vec3(luma), gammaed, this.saturation);
+    // Saturation > 1 extrapolates away from grey and can push a channel negative, which the sRGB OETF's pow turns into NaN.
+    const graded = max(mix(vec3(luma), gammaed, this.saturation), vec3(0.0));
     this.pipeline = new THREE.RenderPipeline(renderer, renderOutput(vec4(graded, 1.0), THREE.NoToneMapping, THREE.SRGBColorSpace));
     this.pipeline.outputColorTransform = false;
     this.setParams(this.params);
