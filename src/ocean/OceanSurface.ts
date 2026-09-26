@@ -21,20 +21,25 @@ const safeNormalize = (v: N): N => v.div(max(length(v), 1e-6));
 /**
  * The set-wave foam placeholder broken into whitewater (fragment stage, math only: no texture fetch). `foam` is the
  * model's weight, `frame` the wave-attached coordinates (m behind the crest, m along it) from SetWaves, so the pattern
- * rides with the wave; `time` churns it slowly. Two octaves of gradient noise, stretched a little along the crest,
- * threshold the weight with a soft edge: dense foam is nearly solid with a few holes, thin foam is patchy, and the
- * edge fades over the weight's lower half instead of stopping at a line. Returns vec2(coverage, brightness) where
- * brightness (0.75–1.05) darkens the foam's hollows a little. Skipped (coverage 0) where there is no set foam.
+ * rides with the wave; `time` churns it slowly. Two octaves of gradient noise (the first stretched along travel into
+ * streaks), renormalised to fill 0–1, are thresholded against the weight: t = 1 − 0.8·foam, coverage =
+ * smoothstep(t − 0.1, t + 0.1, n). Dense foam (weight 1) covers where n > 0.3, so it keeps holes where the noise is
+ * low (about a fifth of it); thin foam is scattered patches, and the foam's edge is ragged rather than a line.
+ * Returns vec2(coverage, brightness): brightness 0.55–1.1 shades streaks and hollows within the foam. Skipped
+ * (coverage 0) where there is no set foam.
  */
 export function setFoamPattern(foam: N, frame: N, time: N): N {
   return Fn(() => {
     const out = vec2(0.0, 1.0).toVar();
     If(foam.greaterThan(1e-3), () => {
-      const n1 = mx_noise_float(vec3(frame.x.mul(0.3), frame.y.mul(0.2), time.mul(0.12)));
-      const n2 = mx_noise_float(vec3(frame.x.mul(0.95).add(19.7), frame.y.mul(0.7), time.mul(0.3)));
-      const n = saturate(n1.mul(0.65).add(n2.mul(0.35)).mul(0.8).add(0.5));
-      const cover = smoothstep(0.25, 0.85, saturate(foam).mul(n.mul(0.95).add(0.35)));
-      out.assign(vec2(cover, n.mul(0.3).add(0.75)));
+      const n1 = mx_noise_float(vec3(frame.x.mul(0.15), frame.y.mul(0.35), time.mul(0.12)));
+      const n2 = mx_noise_float(vec3(frame.x.mul(0.9).add(19.7), frame.y.mul(0.9), time.mul(0.3)));
+      // The blend's typical swing is about ±0.3: × 1.7 spreads it over the whole 0–1 range.
+      const n = saturate(n1.mul(0.65).add(n2.mul(0.35)).mul(1.7).add(0.5));
+      const t = float(1.0).sub(saturate(foam).mul(0.8));
+      const cover = smoothstep(t.sub(0.1), t.add(0.1), n);
+      const shade = saturate(n2.mul(1.7).add(0.5)).mul(0.25).add(n.mul(0.3)).add(0.55);
+      out.assign(vec2(cover, shade));
     });
     return out;
   })();
