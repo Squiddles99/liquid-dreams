@@ -74,6 +74,12 @@ export class App {
   /** The look as constructed (deep clones): what "Reset settings" and default mode restore. */
   private readonly lookDefaults: DevLookParams = cloneLook(this.lookParams());
   private settingsMode: SettingsMode = 'custom';
+  /**
+   * The reference moment last picked (or opened by a #ref= link): what a settings-mode switch re-applies, and
+   * what the reference list displays on a reload. Declared before `profile` below: restoreSettings() (which runs
+   * as part of building it) may overwrite this from the stored settings, and nothing after it touches this field.
+   */
+  private currentReference = DEFAULT_MOMENT_NAME;
   /** `?fresh` starts from the defaults and leaves the stored profile untouched (no load, no save). */
   private readonly persist = !new URLSearchParams(location.search).has('fresh');
   /**
@@ -103,8 +109,6 @@ export class App {
   private reefTimer: number | undefined;
   private saveTimer: number | undefined;
   private statusAge = 0;
-  /** The reference moment last picked (or opened by a #ref= link): what a settings-mode switch re-applies. */
-  private currentReference = DEFAULT_MOMENT_NAME;
   private screenshotRequested = false;
   private devUiVisible = true;
 
@@ -155,7 +159,12 @@ export class App {
     this.fieldClient.onField = (f) => this.setWaves.setField(f);
     this.applyAllParams();
     if (hashMoment) this.visitLink(hashMoment);
-    else this.applyMoment(this.startupMoment());
+    else {
+      // Display only: show the stored reference name without re-applying its moment (startupMoment already
+      // carries the stored conditions and camera in custom mode; a #ref=/#m= link is handled by visitLink above).
+      this.panel.setReference(this.currentReference);
+      this.applyMoment(this.startupMoment());
+    }
     window.addEventListener('resize', this.onResize);
     window.addEventListener('hashchange', this.onHashChange);
     window.addEventListener('pagehide', this.onPageHide);
@@ -319,11 +328,11 @@ export class App {
   }
 
   private defaultSettings(): DevSettings {
-    return cloneDevSettings({ mode: 'custom', conditions: cloneConditions(DEFAULT_CONDITIONS), camera: defaultMoment().camera, ...this.lookDefaults });
+    return cloneDevSettings({ mode: 'custom', conditions: cloneConditions(DEFAULT_CONDITIONS), camera: defaultMoment().camera, reference: DEFAULT_MOMENT_NAME, ...this.lookDefaults });
   }
 
   private snapshotSettings(): DevSettings {
-    return cloneDevSettings({ mode: 'custom', conditions: this.conditions, camera: this.rig.getPose(), ...this.lookParams() });
+    return cloneDevSettings({ mode: 'custom', conditions: this.conditions, camera: this.rig.getPose(), reference: this.currentReference, ...this.lookParams() });
   }
 
   /** Runs during field initialisation: loads the stored profile and, in custom mode, assigns its look in place. */
@@ -331,6 +340,7 @@ export class App {
     const stored = this.persist ? loadDevSettings(browserStorage, this.defaultSettings()) : null;
     if (!stored) return this.defaultSettings();
     this.settingsMode = stored.mode;
+    this.currentReference = stored.reference;
     if (stored.mode === 'custom') this.assignLook(stored);
     return { ...stored, mode: 'custom' };
   }
