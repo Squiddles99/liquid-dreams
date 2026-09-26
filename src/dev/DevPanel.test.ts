@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { CONDITION_RANGES, sanitizeConditions } from '../conditions/sanitize';
 import { msToKmh } from '../conditions/units';
-import { CONDITION_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
+import { BREAK_BINDINGS, CONDITION_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
 
 describe('dev panel condition bindings never rewrite a loaded moment', () => {
   // windSpeedMs has no widget of its own: it's edited in km/h through WIND_SPEED_KMH_BINDING instead, checked below.
@@ -39,6 +40,26 @@ describe('dev panel condition bindings never rewrite a loaded moment', () => {
       const kmh = msToKmh(c.wind.speedMs);
       expect(kmh).toBeGreaterThanOrEqual(WIND_SPEED_KMH_BINDING.min);
       expect(kmh).toBeLessThanOrEqual(WIND_SPEED_KMH_BINDING.max);
+    }
+  });
+});
+
+describe('Break folder sliders', () => {
+  // Every BreakParams field normalizeBreakParams clamps to a numeric range gets a slider here (only the `enabled`
+  // toggle is excluded); a slider missing from BREAK_BINDINGS would let a field go untuned from the panel with no
+  // test failure to say so.
+  const clampedKeys = (Object.keys(DEFAULT_BREAK_PARAMS) as (keyof BreakParams)[]).filter((k) => k !== 'enabled');
+  it('has a slider for every BreakParams field normalizeBreakParams clamps', () => {
+    expect(Object.keys(BREAK_BINDINGS).sort()).toEqual([...clampedKeys].sort());
+  });
+  it('every Break slider range survives normalizeBreakParams (no fight between the panel and the model)', () => {
+    for (const [key, b] of Object.entries(BREAK_BINDINGS) as [keyof typeof BREAK_BINDINGS, { min: number; max: number }][]) {
+      for (const v of [b.min, b.max]) {
+        const p: BreakParams = { ...DEFAULT_BREAK_PARAMS };
+        p[key] = v;
+        normalizeBreakParams(p);
+        expect(p[key]).toBe(v);
+      }
     }
   });
 });

@@ -1,3 +1,4 @@
+import type { BreakParams } from '../breaker/breaking';
 import { cloneConditions } from '../conditions/defaults';
 import { sanitizeConditions } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
@@ -42,6 +43,7 @@ export interface DevLookParams {
   reef: ReefParams;
   shallow: ShallowSwellParams;
   overlays: DebugOverlays;
+  breaking: BreakParams;
 }
 
 export interface DevSettings extends DevLookParams {
@@ -52,7 +54,7 @@ export interface DevSettings extends DevLookParams {
   reference: string;
 }
 
-export const LOOK_KEYS = ['spectrum', 'sim', 'water', 'atmosphere', 'picture', 'maxFps', 'sets', 'reef', 'shallow', 'overlays'] as const satisfies readonly (keyof DevLookParams)[];
+export const LOOK_KEYS = ['spectrum', 'sim', 'water', 'atmosphere', 'picture', 'maxFps', 'sets', 'reef', 'shallow', 'overlays', 'breaking'] as const satisfies readonly (keyof DevLookParams)[];
 
 type Plain = Record<string, unknown>;
 
