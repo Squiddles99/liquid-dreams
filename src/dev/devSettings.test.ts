@@ -13,7 +13,7 @@ import {
   loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
 } from './devSettings';
 import type { CameraPose, Moment } from './momentLink';
-import { findReferenceMoment } from './referenceMoments';
+import { DEFAULT_MOMENT_NAME, findReferenceMoment } from './referenceMoments';
 
 class FakeStorage implements SettingsStorage {
   readonly items = new Map<string, string>();
@@ -41,6 +41,7 @@ function defaults(): DevSettings {
     mode: 'custom',
     conditions: cloneConditions(DEFAULT_CONDITIONS),
     camera: DEFAULT_CAMERA,
+    reference: DEFAULT_MOMENT_NAME,
     spectrum: DEFAULT_SPECTRUM_PARAMS,
     sim: DEFAULT_OCEAN_SIM,
     water: DEFAULT_WATER_OPTICS,
@@ -58,6 +59,7 @@ function defaults(): DevSettings {
 function tweaked(): DevSettings {
   const s = defaults();
   s.mode = 'default';
+  s.reference = 'golden-hour';
   s.conditions = { date: '2026-04-20', timeOfDay: 16.5, swell: { sizeFt: 6, periodS: 17, directionDeg: 240 }, wind: { speedMs: 7, directionDeg: 200 }, tideM: 0.6, seed: 77 };
   s.camera = { mode: 'free', position: [10, 30, -5], yawDeg: 123, pitchDeg: -30 };
   s.spectrum.windSpread = 9;
@@ -177,6 +179,19 @@ describe('dev settings persistence', () => {
     expect(loadDevSettings(s, defaults())!.mode).toBe('default');
     const raw = JSON.parse(JSON.stringify(tweaked()));
     for (const mode of ['stock', 3, null]) expect(loadDevSettings(store({ ...raw, mode }), defaults())!.mode).toBe('custom');
+  });
+
+  it('round-trips the last picked or linked reference name', () => {
+    const s = new FakeStorage();
+    saveDevSettings(s, tweaked());
+    expect(loadDevSettings(s, defaults())!.reference).toBe('golden-hour');
+  });
+
+  it('falls back to the default moment name for an unknown reference', () => {
+    const raw = JSON.parse(JSON.stringify(tweaked()));
+    for (const reference of ['not-a-moment', '', 42, null, undefined]) {
+      expect(loadDevSettings(store({ ...raw, reference }), defaults())!.reference).toBe(DEFAULT_MOMENT_NAME);
+    }
   });
 });
 

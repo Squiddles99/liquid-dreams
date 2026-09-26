@@ -11,7 +11,7 @@ import type { ReefParams } from '../seabed/wombReef';
 import type { AtmosphereParams } from '../sky/atmosphereParams';
 import type { SetParams } from '../swell/sets';
 import { type CameraPose, type Moment, parseCameraPose } from './momentLink';
-import { findReferenceMoment } from './referenceMoments';
+import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, findReferenceMoment } from './referenceMoments';
 
 /**
  * Dev settings that survive a reload and a reference pick (Andrew: "my tweaks carry over").
@@ -48,6 +48,8 @@ export interface DevSettings extends DevLookParams {
   mode: SettingsMode;
   conditions: Conditions;
   camera: CameraPose;
+  /** The reference list's display, e.g. after a pick or a #ref= link visit. Display state only: loading it never re-applies the moment. */
+  reference: string;
 }
 
 export const LOOK_KEYS = ['spectrum', 'sim', 'water', 'atmosphere', 'picture', 'maxFps', 'sets', 'reef', 'shallow', 'overlays'] as const satisfies readonly (keyof DevLookParams)[];
@@ -115,6 +117,7 @@ export function loadDevSettings(storage: SettingsStorage, defaults: DevSettings)
     mode: raw.mode === 'default' || raw.mode === 'custom' ? raw.mode : 'custom',
     conditions: isPlainObject(raw.conditions) ? sanitizeConditions(raw.conditions) : cloneConditions(defaults.conditions),
     camera: parseCameraPose(raw.camera) ?? deepClone(defaults.camera),
+    reference: typeof raw.reference === 'string' && REFERENCE_MOMENTS.some((r) => r.name === raw.reference) ? raw.reference : DEFAULT_MOMENT_NAME,
   };
 }
 
