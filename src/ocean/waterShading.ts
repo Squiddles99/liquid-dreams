@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { PI, dot, float, length, max, min, mix, normalize, pow, reflect, saturate, sqrt, step, uniform, vec3 } from 'three/tsl';
+import { extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
 import { type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
 
@@ -15,12 +16,15 @@ export interface WaterSurfaceInputs {
   crestHeight: N;
   unresolvedSlopeVariance: N;
   hsTotal: N;
+  /** The seabed seen through the water (Phase 1); absent means infinitely deep water (Phase 0). */
+  seabed?: { radiance: N; transmittance: N };
 }
 
 export function createWaterOpticsUniforms(p: WaterOpticsParams) {
   return {
     albedo: uniform(new THREE.Vector3(...waterAlbedo(p))),
     transmission: uniform(new THREE.Vector3(...transmissionColour(p))),
+    extinction: uniform(new THREE.Vector3(...extinction(p.absorptionPerM, p.backscatterPerM))),
     bodyScale: uniform(p.bodyScale),
     transmissionIntensity: uniform(p.transmissionIntensity),
     baseRoughness: uniform(p.baseRoughness),
@@ -33,6 +37,7 @@ export type WaterOpticsUniforms = ReturnType<typeof createWaterOpticsUniforms>;
 export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOpticsParams): void {
   u.albedo.value.set(...waterAlbedo(p));
   u.transmission.value.set(...transmissionColour(p));
+  u.extinction.value.set(...extinction(p.absorptionPerM, p.backscatterPerM));
   u.bodyScale.value = p.bodyScale;
   u.transmissionIntensity.value = p.transmissionIntensity;
   u.baseRoughness.value = p.baseRoughness;
@@ -84,7 +89,9 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
   const transmitted = u.transmission.mul(sky.sunIlluminance).mul(backlight).mul(crest).mul(u.transmissionIntensity).div(PI);
 
-  const water = upwelling.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
+  // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.
+  const column = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;
+  const water = column.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
   const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL))).mul(u.foamAlbedo).div(PI);
   const colour = mix(water, foamLight, saturate(i.foam));
   return sky.applyAerialPerspective(colour, i.distance, v.negate());

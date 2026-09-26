@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { cameraPosition, float, length, max, normalize, positionLocal, positionWorld, uniform, varying, vec3 } from 'three/tsl';
+import { seabedTerms } from '../seabed/seabedShading';
 import type { Sky } from '../sky/Sky';
 import { CASCADE_FADES, fadeWeightNode } from './cascadeFades';
 import type { OceanSimulation } from './OceanSimulation';
@@ -49,9 +50,10 @@ export class OceanSurface {
       1.0,
       fft.sz.negate().div(max(float(1.0).add(fft.jzz), 0.1)).sub(setSlope.y),
     ));
+    const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
 
     material.colorNode = shadeWater(
-      { normal, viewDir, distance, foam: fft.foam, crestHeight: vHeight, unresolvedSlopeVariance: fft.lostSlopeVariance, hsTotal: this.hsTotal },
+      { normal, viewDir, distance, foam: fft.foam, crestHeight: vHeight, unresolvedSlopeVariance: fft.lostSlopeVariance, hsTotal: this.hsTotal, seabed },
       sky,
       optics,
     );
