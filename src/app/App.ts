@@ -1,5 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
+import { ReefFieldClient } from '../breaker/ReefFieldClient';
+import { SetWaves } from '../breaker/SetWaves';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -15,9 +17,14 @@ import { OceanSurface } from '../ocean/OceanSurface';
 import { DEFAULT_SPECTRUM_PARAMS, type OceanSpectrumParams, spectrumInputsKey } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS, type WaterOpticsParams } from '../ocean/waterOptics';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
+import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
 import { DEFAULT_PICTURE, type PictureParams, PicturePipeline } from '../render/PicturePipeline';
+import { buildBathymetry, downsample } from '../seabed/bathymetry';
+import { Seabed } from '../seabed/Seabed';
+import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
+import { DEFAULT_SET_PARAMS, type SetParams, wavesNear } from '../swell/sets';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { showOverlay } from './overlay';
 
@@ -42,7 +49,15 @@ export class App {
   readonly pictureParams: PictureParams = { ...DEFAULT_PICTURE };
   readonly sky = new Sky(this.atmosphereParams);
   readonly ocean = new OceanSimulation(this.simParams);
-  readonly probe = new HeightProbe(this.ocean);
+  readonly reefParams: ReefParams = { ...DEFAULT_REEF_PARAMS };
+  readonly setParams: SetParams = { ...DEFAULT_SET_PARAMS };
+  readonly shallowParams: ShallowSwellParams = { ...DEFAULT_SHALLOW_SWELL };
+  readonly seabed = new Seabed(buildBathymetry(this.reefParams));
+  readonly setWaves = new SetWaves(this.ocean.time);
+  readonly surfaceModel = new WaterSurfaceModel(this.ocean, this.seabed, this.setWaves);
+  readonly probe = new HeightProbe(this.surfaceModel);
+  private readonly fieldClient = new ReefFieldClient();
+  private fieldKey = '';
   readonly waterOptics = createWaterOpticsUniforms(this.waterParams);
   readonly oceanSurface: OceanSurface;
   readonly picture: PicturePipeline;
@@ -63,7 +78,7 @@ export class App {
   ) {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
-    this.oceanSurface = new OceanSurface(this.ocean, this.sky, this.waterOptics);
+    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics);
     this.scene.add(this.oceanSurface.mesh);
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
     this.perf = new PerfOverlay(renderer);
@@ -83,6 +98,7 @@ export class App {
       },
     );
     renderer.onDeviceLost = (info) => this.onDeviceLost(info);
+    this.fieldClient.onField = (f) => this.setWaves.setField(f);
     this.applyMoment(initial);
     window.addEventListener('resize', this.onResize);
     window.addEventListener('hashchange', this.onHashChange);
@@ -99,10 +115,12 @@ export class App {
 
   applyMoment(m: Moment): void {
     assignConditions(this.conditions, m.conditions);
+    this.seabed.setTide(this.conditions.tideM);
     this.clock.setTime(m.simTime);
     this.setPaused(m.paused);
     this.rig.setPose(m.camera, this.waterHeightAtCamera());
     this.rebuildSpectrumIfNeeded(true);
+    this.requestFieldIfNeeded(true);
     // The rebuild clears foam too, but a moment is a jump in sim time even when the sea is unchanged.
     this.ocean.resetFoam();
     this.panel.refresh();
@@ -123,12 +141,18 @@ export class App {
       assignConditions(this.conditions, clean);
       this.panel.refresh();
     }
+    this.seabed.setTide(this.conditions.tideM);
     this.scheduleSpectrumRebuild();
   }
 
   private scheduleSpectrumRebuild(): void {
     clearTimeout(this.spectrumTimer);
-    this.spectrumTimer = window.setTimeout(() => this.rebuildSpectrumIfNeeded(false), SPECTRUM_REBUILD_DEBOUNCE_MS);
+    // The field shares the spectrum's debounce, so dragging a slider solves once when you stop. It is checked
+    // separately because the spectrum key has no tide in it (a tide-only edit must still re-solve the field).
+    this.spectrumTimer = window.setTimeout(() => {
+      this.rebuildSpectrumIfNeeded(false);
+      this.requestFieldIfNeeded(false);
+    }, SPECTRUM_REBUILD_DEBOUNCE_MS);
   }
 
   private rebuildSpectrumIfNeeded(force: boolean): void {
@@ -136,6 +160,15 @@ export class App {
     if (!force && key === this.spectrumKey) return;
     this.spectrumKey = key;
     this.ocean.setConditions(this.conditions, this.spectrumParams);
+  }
+
+  /** Re-solve the reef wave field (off-thread) when the swell period or direction, the tide or the reef changes. */
+  private requestFieldIfNeeded(force: boolean): void {
+    const c = this.conditions;
+    const key = JSON.stringify([c.swell.periodS, c.swell.directionDeg, c.tideM, this.reefParams]);
+    if (!force && key === this.fieldKey) return;
+    this.fieldKey = key;
+    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM });
   }
 
   /** Re-selecting the reference already in the hash fires no hashchange, so apply it directly then. */
@@ -213,6 +246,7 @@ export class App {
     this.sky.followCamera(this.camera.position);
 
     this.ocean.update(this.renderer, this.clock.simTime, simDt);
+    this.setWaves.setEvents(wavesNear(this.clock.simTime, this.conditions, this.setParams));
     const probeXZ = this.rig.probeXZ;
     this.probe.setProbe(0, probeXZ.x, probeXZ.z);
     this.probe.update(this.renderer);
