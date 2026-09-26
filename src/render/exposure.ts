@@ -4,8 +4,10 @@
  * knot's stops below it). Stops must never decrease as the sun drops. Tune here.
  */
 export const EXPOSURE_KNOTS: ReadonlyArray<readonly [elevationDeg: number, stops: number]> = [
-  [10, 0],
-  [0, 2],
+  [35, 0],
+  // Sky light falls steeply below ~30° of sun; open up like a meter would so a low morning sun isn't slate-dark.
+  [10, 1],
+  [0, 2.2],
   [-6, 7],
   [-12, 11],
 ];
