@@ -4,6 +4,7 @@ import '../ocean/fft.selftest';
 import '../ocean/ocean.selftest';
 import '../ocean/probe.selftest';
 import '../seabed/seabed.selftest';
+import '../breaker/breaker.selftest';
 // Ensure fieldWorker is bundled as a separate chunk
 void import('../breaker/ReefFieldClient');
 
