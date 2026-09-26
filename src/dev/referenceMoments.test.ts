@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { decodeMoment, encodeMoment } from './momentLink';
-import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, defaultMoment, findReferenceMoment } from './referenceMoments';
+import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, defaultMoment, findReferenceMoment, referenceKind } from './referenceMoments';
 
 describe('reference moments', () => {
   it('have unique names', () => {
@@ -33,6 +33,34 @@ describe('reference moments', () => {
     const a = findReferenceMoment('sunset');
     a!.conditions.swell.sizeFt = 11;
     expect(findReferenceMoment('sunset')!.conditions.swell.sizeFt).toBe(4);
+  });
+});
+
+describe('reference moment kinds', () => {
+  it('every moment has a kind', () => {
+    for (const r of REFERENCE_MOMENTS) expect(['time', 'view', 'set']).toContain(r.kind);
+  });
+  it('the set and tide moments are set-kind', () => {
+    for (const name of ['set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set']) {
+      expect(REFERENCE_MOMENTS.find((r) => r.name === name)!.kind).toBe('set');
+      expect(referenceKind(name)).toBe('set');
+    }
+  });
+  it('overview, reef-overhead and looking-down are view-kind', () => {
+    for (const name of ['overview', 'reef-overhead', 'looking-down']) {
+      expect(REFERENCE_MOMENTS.find((r) => r.name === name)!.kind).toBe('view');
+      expect(referenceKind(name)).toBe('view');
+    }
+  });
+  it('the rest are time-kind', () => {
+    const viewOrSet = new Set(['set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'overview', 'reef-overhead', 'looking-down']);
+    for (const r of REFERENCE_MOMENTS.filter((m) => !viewOrSet.has(m.name))) {
+      expect(r.kind).toBe('time');
+      expect(referenceKind(r.name)).toBe('time');
+    }
+  });
+  it('falls back to time for an unrecognised name', () => {
+    expect(referenceKind('not-a-moment')).toBe('time');
   });
 });
 

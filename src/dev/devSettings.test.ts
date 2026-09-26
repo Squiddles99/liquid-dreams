@@ -212,7 +212,9 @@ describe('assignParams', () => {
 describe('reference picks', () => {
   const current = { date: '2026-01-02', timeOfDay: 14, swell: { sizeFt: 7, periodS: 18, directionDeg: 250 }, wind: { speedMs: 9, directionDeg: 190 }, tideM: -0.8, seed: 5 };
   const here: CameraPose = { mode: 'free', position: [12, 40, -8], yawDeg: 45, pitchDeg: -25 };
-  const picked = (): Moment => findReferenceMoment('golden-hour')!;
+  const picked = (): Moment => findReferenceMoment('golden-hour')!; // a 'time' moment
+  const pickedView = (): Moment => findReferenceMoment('reef-overhead')!; // a 'view' moment
+  const pickedSet = (): Moment => findReferenceMoment('set-arriving')!; // a 'set' moment
 
   it('carry over: date and time from the pick, swell, wind, tide and seed from the current conditions', () => {
     const m = carryOverPick(current, here, picked());
@@ -222,16 +224,32 @@ describe('reference picks', () => {
     expect(m.paused).toBe(picked().paused);
   });
 
-  it('custom mode keeps the current camera pose unchanged', () => {
-    const m = pickMoment('custom', current, here, picked());
+  it('custom + time: carries over as today, keeping the current camera pose unchanged', () => {
+    const m = pickMoment('custom', 'time', current, here, picked());
     expect(m.camera).toEqual(here);
     expect(m.camera).not.toBe(here);
     expect(m.conditions).toEqual(carryOverPick(current, here, picked()).conditions);
   });
 
-  it("default mode applies the picked moment in full, camera included", () => {
-    expect(pickMoment('default', current, here, picked())).toEqual(picked());
-    expect(pickMoment('default', current, here, picked()).camera).toEqual(picked().camera);
+  it('custom + view: carries over conditions but switches to the moment\'s own camera', () => {
+    const m = pickMoment('custom', 'view', current, here, pickedView());
+    expect(m.camera).toEqual(pickedView().camera);
+    expect(m.camera).not.toBe(pickedView().camera);
+    expect(m.conditions).toEqual(carryOverPick(current, here, pickedView()).conditions);
+  });
+
+  it('custom + set: applies the full moment, conditions and camera included', () => {
+    const m = pickMoment('custom', 'set', current, here, pickedSet());
+    expect(m).toEqual(pickedSet());
+    expect(m.conditions).not.toBe(pickedSet().conditions);
+    expect(m.camera).not.toBe(pickedSet().camera);
+  });
+
+  it('default mode applies the picked moment in full regardless of kind, camera included', () => {
+    for (const kind of ['time', 'view', 'set'] as const) {
+      expect(pickMoment('default', kind, current, here, picked())).toEqual(picked());
+      expect(pickMoment('default', kind, current, here, picked()).camera).toEqual(picked().camera);
+    }
   });
 
   it('reads the reference name from a #ref= hash', () => {
@@ -292,7 +310,7 @@ describe('a link is a visit, not an edit', () => {
     p.visitLink();
     p.own(); // picked a reference
     const snap = linkSnapshot();
-    const m = pickMoment('custom', snap.conditions, snap.camera, findReferenceMoment('first-sun')!);
+    const m = pickMoment('custom', 'time', snap.conditions, snap.camera, findReferenceMoment('first-sun')!);
     const afterPick = { ...snap, conditions: m.conditions, camera: m.camera };
     expect(p.capture(afterPick)).toEqual(afterPick);
   });
