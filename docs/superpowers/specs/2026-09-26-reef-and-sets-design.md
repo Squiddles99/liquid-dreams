@@ -104,7 +104,7 @@ The builder is deterministic and runs once at startup (target under 300 ms), pro
 | Sand pockets | 4–7 m |
 | Inner rock platform | 0–2 m |
 
-**Tide.** `Conditions.tideM` (already stored since Phase 0) now takes effect: the mean water surface sits at y = tideM and depth = tideM − seabed height. Default mid tide (0 m). The dev slider covers ±0.6 m (assumption: Margaret River's range is about a metre; the sanitizer keeps its existing ±1.5 m guard). The FFT ocean and set waves ride on the tide level.
+**Tide.** `Conditions.tideM` (already stored since Phase 0) now takes effect: the mean water surface sits at y = tideM and depth = tideM − seabed height. Default mid tide (0 m). The dev slider covers ±1.5 m, matching the sanitizer's guard (assumption: Margaret River's actual tidal range is about a metre). The FFT ocean and set waves ride on the tide level.
 
 **Origin.** `WOMB_LOCATION` becomes the corrected peak coordinates.
 
@@ -156,7 +156,7 @@ Computed on a 1 m grid over the reef map for the current swell direction, period
 - **Sets** panel folder: mean interval, jitter, waves per set, height factor, stray rate and size, lull factor.
 - **Call a set now** button (and hotkey `N`): jumps simulation time to 45 s before the next set's first wave reaches the peak.
 - **Readout:** "next set in m:ss", "wave *i* of *n*".
-- **Tide** slider (±0.6 m) and **reef depth** controls (deep, ledge, shelf offsets).
+- **Tide** slider (±1.5 m) and **reef depth** controls (deep, ledge, shelf offsets).
 - **Debug overlays:** depth contours and arrival-time lines (crest lines) drawn on the water, for tuning the peel and the closeout.
 
 ### 9.2 Reference moments
@@ -196,7 +196,7 @@ Computed on a 1 m grid over the reef map for the current swell direction, period
 ## 11. Assumptions to confirm on screen
 
 - Deep water 12–15 m outside the ledge; shelf, sand-pocket and platform depths (§6).
-- Tide range ±0.6 m.
+- Tide range ±1.5 m.
 - Lineup spot about 25 m west and 45 m south of the peak.
 - Set-wave height 1.3–1.8 × Hs; background lull factor 0.5.
 - The left's ride length (~40–50 m along the north ledge before it backs off).
