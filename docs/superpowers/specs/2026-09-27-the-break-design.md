@@ -175,3 +175,17 @@ Measure after the break lands. The levers, in order:
 ## 8. Rulings made without Andrew
 
 R1 the breaking criterion and constants (including δ = 1.0 for the drain); R2 the curl rotation; R3 finite-difference normals; R4 the probe reading the unbroken surface; R5 the lip mask for transmission; R6 foam as a placeholder; R7 the calibration readout instead of changing the surfer-ft mapping; R8 the performance pass first. The plan may be less prescriptive than Phase 1's, with interfaces, formulas and tests instead of complete code, so that opus implementers can handle the open-ended shader work.
+
+**Plan-level corrections P1–P11** (found by prototyping the formulas on the real Phase 1 field while writing the plan; recorded in `docs/superpowers/plans/2026-09-27-the-break.md` and binding over the sections above where they differ):
+- **P1:** the stage is read at the crest.
+- **P2:** H in the criterion is uncapped.
+- **P3:** steepening sharpens the heights, and the pivot is 0.65·H below and 0.65·H ahead of the crest.
+- **P4:** the lip is windowed to the crest.
+- **P5:** the visible drain is 0.35·δ·H. The biggest default wave's face is about 4.1–4.3 m, not 2.5–3.5 m.
+- **P6:** Δ = 1.0 (tube closes in 0.78 s).
+- **P7:** a 1.1·Hs wave doesn't break at the ledge; 1.3·Hs and 1.8·Hs waves do.
+- **P8:** the peel test uses a 1.8·Hs wave, and `barrel-peeling` is shot at 5 ft.
+- **P9:** "never un-breaks" holds in the barrel zone only.
+- **P10:** the normal's neighbours reuse the vertex's field sample; the probe variant leaves out the sharpening and the curl.
+- **P11:** crest transmission is replaced by the lip mask, and the material is double-sided.
+
