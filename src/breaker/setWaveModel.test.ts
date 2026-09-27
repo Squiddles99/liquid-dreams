@@ -78,10 +78,11 @@ describe('set-wave model', () => {
     expect(waveAt(0, 0, 100, f, wave(15, 0), ctxFor(15))).toEqual({ eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0 });
   });
   it('converts set events into active waves', () => {
-    const w = toActiveWave({ id: 1, slot: 0, indexInSet: 0, waveCount: 5, arrivalS: 42, heightM: 2.5, periodS: 14, fromDeg: 225, crestLengthM: 350, crestOffsetM: 10 });
+    const w = toActiveWave({ id: 1, slot: 0, indexInSet: 0, waveCount: 5, arrivalS: 42, heightM: 2.5, periodS: 14, fromDeg: 225, crestLengthM: 350, crestOffsetM: 10, longTail: true });
     expect(w.omega).toBeCloseTo((2 * Math.PI) / 14, 12);
     expect(w.travelX).toBeCloseTo(Math.SQRT1_2, 9);
     expect(w.travelZ).toBeCloseTo(-Math.SQRT1_2, 9);
+    expect(w.longTail).toBe(true);
   });
   it('the crest carries its breaking ratio, and is found before the wave breaks (the sheet steepens from r = ribbonOnset + 0.2)', () => {
     const f = field1D(8, 15, 1.2, 6);

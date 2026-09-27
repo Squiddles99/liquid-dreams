@@ -522,3 +522,32 @@ describe('breaking stays finite and bounded', () => {
     }
   });
 });
+
+describe('set waves do not stack on the wave ahead (Andrew)', () => {
+  it('100 m seaward of the peak each crest is its own height (≤ 1.08×), and the wave behind a long tail steps on it', { timeout: 60_000 }, () => {
+    // The Phase 1 surface of whole sets against each wave alone, at its crest: the old Gaussian envelope left 21% of a
+    // wave a period behind it, and the next wave's crest stood 1.13–1.50× its own height on it.
+    const p0 = ray(0, 0, 100, 0)[0];
+    const f = at(p0.x, p0.z);
+    const crestOf = (waves: ActiveWave[], w: ActiveWave): number => {
+      let best = -Infinity;
+      for (let dt = -2; dt <= 2; dt += 0.05) best = Math.max(best, sumWaves(p0.x, p0.z, w.arrivalS + f.tau + dt, f, waves, ctx).eta);
+      return best;
+    };
+    let clean = 0, worstClean = 0, stepped = 0, bestStep = 0;
+    for (let k = 0; k < 120; k++) {
+      const events = wavesOfSet(k, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+      const waves = events.map(toActiveWave);
+      waves.forEach((w, i) => {
+        const ratio = crestOf(waves, w) / crestOf([w], w);
+        if (i > 0 && events[i - 1].longTail) { stepped++; bestStep = Math.max(bestStep, ratio); return; }
+        clean++;
+        worstClean = Math.max(worstClean, ratio);
+      });
+    }
+    expect(clean).toBeGreaterThan(400);
+    expect(worstClean, 'the tallest crest over its own height, behind a tight wave').toBeLessThanOrEqual(1.08);
+    expect(stepped, 'long tails happen').toBeGreaterThan(10);
+    expect(bestStep, 'a wave behind a long tail stands on its leftover').toBeGreaterThan(1.15);
+  });
+});
