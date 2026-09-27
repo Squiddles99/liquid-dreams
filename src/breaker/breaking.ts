@@ -112,6 +112,20 @@ export function breakingRatio(H: number, hmin: number, p: BreakParams): number {
   return H / (p.gamma * Math.max(hmin - p.delta * H, p.hFloorM));
 }
 
+/**
+ * The wave height (m) above which a point with amplification `amp` and minimum depth `hmin` breaks: r(height·amp, hmin)
+ * > 1 exactly when height > this (P2: the criterion's H is uncapped). Infinity where amp ≤ 0. r grows with the height
+ * and with amp and falls as hmin grows, so the threshold of a region's largest amp and smallest hmin bounds every point
+ * interpolated from it from below.
+ */
+export function breakingHeightThreshold(amp: number, hmin: number, p: BreakParams): number {
+  if (!(amp > 0)) return Infinity;
+  const gd = 1 + p.gamma * p.delta;
+  // Where the drained depth hmin − δ·H is still above the floor at the root, r = 1 at H = γ·hmin / (1 + γδ); else the
+  // floor holds there and r = 1 at H = γ·h_floor.
+  return (hmin / gd >= p.hFloorM ? (p.gamma * hmin) / gd : p.gamma * p.hFloorM) / amp;
+}
+
 /** The breaking stage s ∈ [0, 1]: 0 until r = 1, 1 from r = 1 + Δ. */
 export function breakingStage(r: number, p: BreakParams): number {
   if (!(r > 1)) return 0;

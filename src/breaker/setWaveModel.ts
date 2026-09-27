@@ -1,9 +1,10 @@
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { type BreakParams, breakPoint, breakingRatio, breakingStage } from './breaking';
+import { type BreakParams, breakPoint, breakingHeightThreshold, breakingRatio, breakingStage } from './breaking';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
+import type { ReefField } from './reefField';
 
 /** A wave breaks when its height reaches about 0.78 × depth; Phase 1 caps it there (the "fade"). */
 export const BREAKING_RATIO = 0.78;
@@ -134,6 +135,28 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   const quarterPeriod = Math.PI / (2 * w.omega);
   const confidence = 1 - smoothstep(quarterPeriod / 2, quarterPeriod, Math.abs(phaseXi(cx, cz, t, fc, w, ctx)));
   return { x: cx, z: cz, f: fc, s: breakingStage(breakingRatio(w.heightM * fc.amp, fc.hmin, o.params), o.params), confidence };
+}
+
+/**
+ * The smallest wave height (m) that can break anywhere the field is sampled: min over the reef grid's cells (bilinear
+ * between four nodes) and the far field's segments (linear between two) of breakingHeightThreshold at the cell's largest
+ * amp and smallest hmin. Conservative: a wave no taller than this has stage 0 at every crest, so its surface is Phase 1
+ * exactly. SetWaves uses it per wave to skip the GPU's crest search and breaking (a pure optimisation; the CPU model
+ * does not need it and its results are the same either way).
+ */
+export function fieldBreakingHeight(f: ReefField, p: BreakParams): number {
+  const { nx, nz } = f.grid;
+  let best = Infinity;
+  for (let r = 0; r + 1 < nz; r++) for (let c = 0; c + 1 < nx; c++) {
+    const i = r * nx + c, j = i + nx;
+    const amp = Math.max(f.amp[i], f.amp[i + 1], f.amp[j], f.amp[j + 1]);
+    const hmin = Math.min(f.hmin[i], f.hmin[i + 1], f.hmin[j], f.hmin[j + 1]);
+    best = Math.min(best, breakingHeightThreshold(amp, hmin, p));
+  }
+  for (let i = 0; i + 1 < f.far.count; i++) {
+    best = Math.min(best, breakingHeightThreshold(Math.max(f.far.amp[i], f.far.amp[i + 1]), Math.min(f.far.hmin[i], f.far.hmin[i + 1]), p));
+  }
+  return best;
 }
 
 /** The breaking stage of w's crest nearest (x, z) (0 when breaking is off). */

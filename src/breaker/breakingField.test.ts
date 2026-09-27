@@ -4,12 +4,12 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS } from './breaking';
+import { DEFAULT_BREAK_PARAMS, breakingHeightThreshold } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import {
-  type ActiveWave, type BreakOptions, SEABED_CLEARANCE_M, type WaveContext, crestStage, localHeight, sumWaves, sumWavesWithNormal, toActiveWave,
-  waveAt,
+  type ActiveWave, type BreakOptions, SEABED_CLEARANCE_M, type WaveContext, crestStage, fieldBreakingHeight, localHeight, sumWaves, sumWavesWithNormal,
+  toActiveWave, waveAt,
 } from './setWaveModel';
 
 // The app's field: 1 m cells, default swell and tide (~1 s to solve), shared by every test here.
@@ -74,6 +74,35 @@ describe('breaking reduces to Phase 1', () => {
       expect(sumWaves(x, z, t, at(x, z), waves, ctx, off)).toEqual(sumWaves(x, z, t, at(x, z), waves, ctx));
     }
   });
+});
+
+describe('the field breaking height (SetWaves skips the GPU breaking below it)', () => {
+  const nodeMin = (p = DEFAULT_BREAK_PARAMS) => {
+    let best = { T: Infinity, x: 0, z: 0 };
+    const g = field.grid;
+    for (let r = 0; r < g.nz; r++) for (let c = 0; c < g.nx; c++) {
+      const i = r * g.nx + c, T = breakingHeightThreshold(field.amp[i], field.hmin[i], p);
+      if (T < best.T) best = { T, x: g.x0 + c * g.cellM, z: g.z0 + r * g.cellM };
+    }
+    return best;
+  };
+  for (const [name, p] of [['default params', DEFAULT_BREAK_PARAMS], ['γ 0.6, δ 0.5', { ...DEFAULT_BREAK_PARAMS, gamma: 0.6, delta: 0.5 }]] as const) {
+    it(`is a lower bound that is nearly attained (${name})`, () => {
+      const hb = fieldBreakingHeight(field, p), n = nodeMin(p);
+      expect(hb).toBeGreaterThan(0);
+      expect(hb).toBeLessThanOrEqual(n.T);
+      expect(hb).toBeGreaterThan(0.8 * n.T);
+      // Just above the best node's threshold, a crest there breaks.
+      const w = testWave(1.01 * n.T), o = optsFor(field, true, p);
+      expect(crestStage(n.x, n.z, at(n.x, n.z).tau, at(n.x, n.z), w, ctx, o)).toBeGreaterThan(0);
+    });
+    it(`a wave no taller than it is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
+      const w = [testWave(fieldBreakingHeight(field, p))], o = optsFor(field, true, p);
+      for (let x = -400; x <= 300; x += 12.5) for (let z = -600; z <= 300; z += 12.5) for (const t of [-20, -5, 0, 4, 12]) {
+        expect(sumWaves(x, z, t, at(x, z), w, ctx, o)).toEqual(sumWaves(x, z, t, at(x, z), w, ctx));
+      }
+    });
+  }
 });
 
 describe('where and when the A-frame breaks (default swell, mid tide)', () => {

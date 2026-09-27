@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
-  type BreakParams, DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingRatio, breakingStage,
+  type BreakParams, DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold, breakingRatio, breakingStage,
   FOAM_LIP_TOLERANCE, drainDepth, drainShape, faceHeight, foamWeight, lipWeight, normalizeBreakParams, sharpenDrop, stageCurves,
 } from './breaking';
 import { waveNumber } from './dispersion';
@@ -106,6 +106,14 @@ describe('breaking criterion and stage', () => {
   it('breaks once H ≥ 0.44·hmin (γ = 0.78, δ = 1): about 2.6 m over the 6 m ledge', () => {
     expect(breakingRatio(0.43 * 6, 6, P)).toBeLessThan(1);
     expect(breakingRatio(0.45 * 6, 6, P)).toBeGreaterThan(1);
+  });
+  it('breakingHeightThreshold: r > 1 exactly above it, on both sides of the depth floor', () => {
+    for (const p of [P, { ...P, gamma: 0.6, delta: 0.3, hFloorM: 1 }]) for (const amp of [0.3, 1, 2.2]) for (const hmin of [0.05, 0.3, 0.6, 1.5, 6, 30]) {
+      const T = breakingHeightThreshold(amp, hmin, p);
+      expect(breakingRatio(T * amp * (1 - 1e-9), hmin, p), `amp ${amp} hmin ${hmin}`).toBeLessThanOrEqual(1);
+      expect(breakingRatio(T * amp * (1 + 1e-6), hmin, p), `amp ${amp} hmin ${hmin}`).toBeGreaterThan(1);
+    }
+    expect(breakingHeightThreshold(0, 6, P)).toBe(Infinity);
   });
   it('floors the drained depth, so a wave taller than the water stays finite', () => {
     expect(breakingRatio(5, 2, P)).toBeCloseTo(5 / (0.78 * 0.3), 9);
