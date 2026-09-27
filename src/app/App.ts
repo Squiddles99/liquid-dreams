@@ -118,6 +118,8 @@ export class App {
     dirNode: (xz) => this.setWaves.sample(xz, true).dir,
   });
   private foamTimer: number | undefined;
+  private sprayTimer: number | undefined;
+  private foamOnlyTimer: number | undefined;
   /** Offshore spray off the throwing lips (spec 2026-09-27-offshore-spray-design.md). */
   readonly spray = new SprayParticles(this.sky);
   private readonly fieldClient = new ReefFieldClient();
@@ -206,7 +208,7 @@ export class App {
         onSets: () => {
           normalizeSetParams(this.setParams);
           this.panel.refresh();
-          this.scheduleFoamReplay();
+          this.scheduleParticleReplay();
         },
         onReef: () => this.scheduleReefRebuild(),
         onShallow: () => this.surfaceModel.setParams(this.shallowParams),
@@ -221,19 +223,19 @@ export class App {
           this.setWaves.setBreakParams(this.breakParams);
           this.onRibbonInputs();
           this.panel.refresh();
-          this.scheduleFoamReplay();
+          this.scheduleParticleReplay();
         },
         onSpray: () => {
           normalizeSprayParams(this.sprayParams);
           this.spray.setParams(this.sprayParams);
           this.panel.refresh();
-          this.scheduleFoamReplay();
+          this.scheduleSprayReplay();
         },
         onFoam: () => {
           normalizeFoamParams(this.foamParams);
           this.foamField.setParams(this.foamParams);
           this.panel.refresh();
-          this.scheduleFoamReplay();
+          this.scheduleFoamOnlyReplay();
         },
         onSettingsMode: (mode) => this.setSettingsMode(mode),
         onResetSettings: () => this.resetSettings(),
@@ -452,9 +454,21 @@ export class App {
   }
 
   /** Slider edits change the foam the map would hold: replay once the drag stops (Review Focus 3), not on every event. */
-  private scheduleFoamReplay(): void {
+  private scheduleParticleReplay(): void {
     clearTimeout(this.foamTimer);
     this.foamTimer = window.setTimeout(() => this.invalidateParticles(), SPECTRUM_REBUILD_DEBOUNCE_MS);
+  }
+
+  /** Foam slider edits replay only the foam map (final review I2). */
+  private scheduleFoamOnlyReplay(): void {
+    clearTimeout(this.foamOnlyTimer);
+    this.foamOnlyTimer = window.setTimeout(() => this.foamField.invalidate(), SPECTRUM_REBUILD_DEBOUNCE_MS);
+  }
+
+  /** Spray slider edits replay only the spray (final review I2: they also replayed the foam map, +41 ms). */
+  private scheduleSprayReplay(): void {
+    clearTimeout(this.sprayTimer);
+    this.sprayTimer = window.setTimeout(() => this.spray.invalidate(), SPECTRUM_REBUILD_DEBOUNCE_MS);
   }
 
   private rebuildSpectrumIfNeeded(force: boolean): void {

@@ -7,7 +7,7 @@ import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import {
-  DEFAULT_SPRAY_PARAMS, type EmitterInput, SPRAY_BIRTH_CAP, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
+  DEFAULT_SPRAY_PARAMS, type EmitterInput, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
   sprayEmitters, sprayReplayTicks, windToVector,
 } from './sprayEmitters';
 
@@ -44,7 +44,7 @@ describe('the offshore wind factor', () => {
 });
 
 describe('the emitters', () => {
-  it('while a wave throws, emitters sit on its lip: mid-throw stations only, 1.5 m apart, between the trough and the crest', () => {
+  it('while a wave throws, emitters sit on its lip: mid-throw stations only, one per spacing, between the trough and the crest', () => {
     const e = sprayEmitters(input(T_THROW));
     expect(e.length).toBeGreaterThan(3);
     for (const x of e) {
@@ -110,14 +110,26 @@ describe('the births', () => {
   });
   it('emitters are 3 m apart (the cost lever) and births scatter half a spacing either side, so the veil stays continuous', () => {
     expect(SPRAY_SPACING_M).toBe(3);
-    const one = [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 1, waveId: 1, arc: 0 }];
+    const one = [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 1, lip: 1, waveId: 1, arc: 0 }];
     let widest = 0;
     for (let k = 0; k < 200; k++) for (const b of sprayBirths(one, k, DEFAULT_SPRAY_PARAMS)) widest = Math.max(widest, Math.abs(b.z));
     expect(widest).toBeGreaterThan(0.8 * SPRAY_SPACING_M / 2);
     expect(widest).toBeLessThanOrEqual(SPRAY_SPACING_M / 2 + 1e-9);
   });
+  it('the wind and the amount set how many puffs are born, not how opaque each is (strength applied once; final review I1)', () => {
+    const at = (strength: number, lip: number) => [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength, lip, waveId: 1, arc: 0 }];
+    let weak = 0, strong = 0;
+    for (let k = 0; k < 400; k++) {
+      const w = sprayBirths(at(0.3, 1), k, DEFAULT_SPRAY_PARAMS), s = sprayBirths(at(1, 1), k, DEFAULT_SPRAY_PARAMS);
+      weak += w.length; strong += s.length;
+      for (const b of [...w, ...s]) expect(b.strength).toBe(1); // opacity follows the lip only
+    }
+    expect(weak / strong).toBeGreaterThan(0.25);
+    expect(weak / strong).toBeLessThan(0.35);
+    for (let k = 0; k < 50; k++) for (const b of sprayBirths(at(2, 0.4), k, DEFAULT_SPRAY_PARAMS)) expect(b.strength).toBeCloseTo(0.4, 12);
+  });
   it('births never exceed the per-tick cap (amount 3 on a long section)', () => {
-    const many = Array.from({ length: 400 }, (_, i) => ({ x: i, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 3, waveId: 1, arc: i }));
+    const many = Array.from({ length: 400 }, (_, i) => ({ x: i, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 3, lip: 1, waveId: 1, arc: i }));
     const b = sprayBirths(many, 7, DEFAULT_SPRAY_PARAMS);
     expect(b.length).toBe(SPRAY_BIRTH_CAP);
     expect(sprayBirths(many, 7, DEFAULT_SPRAY_PARAMS)).toEqual(b);
@@ -132,6 +144,6 @@ describe('the births', () => {
     normalizeSprayParams(p);
     expect(p).toEqual({ amount: 3, lifeS: 0.8 });
     expect(sprayReplayTicks(2)).toBe(58);
-    expect(sprayReplayTicks(4)).toBe(106);
+    expect(sprayReplayTicks(4)).toBe(SPRAY_HISTORY_TICKS); // capped at the pool's history (final review I2)
   });
 });
