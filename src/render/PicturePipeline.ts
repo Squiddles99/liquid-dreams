@@ -60,7 +60,7 @@ export class PicturePipeline {
   /** Water on the lens as the camera breaks the surface (LensWater, via setLensWater). */
   private readonly lens = createLensWaterUniforms();
 
-  constructor(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, params: PictureParams = DEFAULT_PICTURE) {
+  constructor(private readonly renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, params: PictureParams = DEFAULT_PICTURE) {
     this.params = { ...params };
     const scenePass = pass(scene, camera);
     // Clamped below the half-float maximum (65504): the scene is finite, but exposure > ~2 could push the sun
@@ -115,8 +115,16 @@ export class PicturePipeline {
     updateLensWaterUniforms(this.lens, s, timeS);
   }
 
-  render(): void {
+  /** Renders the frame to the canvas, or into `target` (dev captures: a hidden window never presents the canvas). */
+  render(target: THREE.RenderTarget | null = null): void {
+    if (!target) {
+      this.pipeline.render();
+      return;
+    }
+    const previous = this.renderer.getRenderTarget();
+    this.renderer.setRenderTarget(target);
     this.pipeline.render();
+    this.renderer.setRenderTarget(previous);
   }
 
   /** The exposure applied to the scene's radiance this frame (debug overlays that must read the same at any exposure). */

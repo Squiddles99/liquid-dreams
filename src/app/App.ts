@@ -161,6 +161,8 @@ export class App {
   private saveTimer: number | undefined;
   private statusAge = 0;
   private screenshotRequested = false;
+  /** Set only inside captureFrame: this frame renders there instead of to the canvas. */
+  private captureTarget: THREE.RenderTarget | null = null;
   private devUiVisible = true;
 
   /** `hashMoment` is the moment a #m= / #ref= link opened, or null to open the saved (or default) moment. */
@@ -683,15 +685,31 @@ export class App {
 
   /**
    * Dev automation (gallery captures): render one frame now, even when the page isn't animating (a hidden or
-   * occluded window pauses requestAnimationFrame), and return it as a PNG. toBlob runs in the same task as the
-   * render, so the WebGPU canvas still holds the frame.
+   * occluded window pauses requestAnimationFrame), and return it as a PNG, read back from an offscreen target.
    */
-  captureFrame(): Promise<Blob | null> {
+  async captureFrame(): Promise<Blob | null> {
+    // Rendered into an offscreen target and read back: a hidden or covered window never presents the canvas, so a
+    // canvas toBlob there returns the last frame it did present (captures were silently stale).
+    const { width, height } = this.renderer.domElement;
+    const target = new THREE.RenderTarget(width, height, { type: THREE.UnsignedByteType, depthBuffer: false });
     const maxFps = this.frameLimiter.maxFps;
     this.frameLimiter.maxFps = 0;
-    this.frame();
-    this.frameLimiter.maxFps = maxFps;
-    return new Promise((resolve) => this.renderer.domElement.toBlob(resolve, 'image/png'));
+    this.captureTarget = target;
+    try {
+      this.frame();
+    } finally {
+      this.captureTarget = null;
+      this.frameLimiter.maxFps = maxFps;
+    }
+    const padded = (await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, width, height)) as Uint8Array;
+    target.dispose();
+    // The readback's rows are padded to 256 bytes.
+    const rowBytes = Math.ceil((width * 4) / 256) * 256;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y++) pixels.set(padded.subarray(y * rowBytes, y * rowBytes + width * 4), y * width * 4);
+    const canvas = new OffscreenCanvas(width, height);
+    canvas.getContext('2d')?.putImageData(new ImageData(pixels, width, height), 0, 0);
+    return canvas.convertToBlob({ type: 'image/png' });
   }
 
   private frame = (): void => {
@@ -747,7 +765,7 @@ export class App {
     this.lensClockS += realDt;
     this.picture.setLensWater(this.lensWater.state(), this.lensClockS);
     this.ribbon.setDisplayExposure(this.picture.exposureValue);
-    this.picture.render();
+    this.picture.render(this.captureTarget);
     if (this.screenshotRequested) {
       this.screenshotRequested = false;
       captureScreenshot(this.renderer.domElement, screenshotFilename(this.conditions));
