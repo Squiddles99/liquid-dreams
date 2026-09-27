@@ -39,3 +39,7 @@ Andrew's moment at 12 ft (camera [60, 12, 0], yaw 231°, pitch −12°), 3 s bef
 
 - `16-bore-lines-before.png`: before the fix. A V of bent ripples runs from the incoming crest toward the camera over a trench up to 1.3 m deep, and the incoming crest carries small bumps.
 - `16b-bore-lines-after.png`: the same frame after the fix. The water behind the broken wave is continuous, and the incoming crest is level.
+
+## Waves no longer stack (Andrew)
+
+- `17-set-trace.svg`: the water height 100 m seaward of the peak as one 5 ft set passes, before and after. With the old Gaussian envelope, every wave rode on the one ahead: crests stood 1.27–1.44× the wave's own crest, and small bumps led and trailed the set. Now each wave has one crest at its own height (1.00–1.01×) with deeper troughs either side. The wave behind a long-tail wave (about 1 in 12) steps on its leftover, at 1.18×.
