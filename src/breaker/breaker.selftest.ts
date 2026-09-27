@@ -241,7 +241,8 @@ registerSelfTest({
       tables.push(`dt ${dt}: ${rows.join('; ')}`);
     }
     for (const line of tables) console.log(`[selftest]   probe ${line}`);
-    const ok = disp.value < 0.05 && cpuLip === 0;
+    // The drain and the bore must actually be there (the probe reads them): at least 5 cm off Phase 1 somewhere.
+    const ok = disp.value < 0.05 && cpuLip === 0 && drained > 0.05;
     return {
       pass: ok,
       detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s; worst |Δdisp| ${disp} m; CPU probe max lip ${cpuLip}; ` +
