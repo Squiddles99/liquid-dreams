@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-27
 **Authors:** Claude, with Andrew Justice
-**Status:** Design approved section by section by Andrew (2026-09-27); written spec awaiting his review.
+**Status:** Approved by Andrew 2026-09-27. Implemented on `phase-3a-foam-field` (plan `docs/superpowers/plans/2026-09-27-foam-field.md`); awaiting Andrew's review.
 **Builds on:**
 - the vision spec (`2026-09-25-liquid-dreams-first-light-design.md`): Phase 3, the `whitewater/` module, deterministic moments;
 - Phase 2 (`2026-09-27-the-break-design.md`) and the breaking ribbon (`2026-09-27-breaking-ribbon-design.md` §8, D4);
@@ -57,6 +57,7 @@ Andrew's answers about the Womb:
   They all sample the map at the same base xz. So the lip and the sheet agree at the hand-back, and from below the foam still blocks Snell's window. Each takes `foam = max(FFT foam, map foam)`. The ribbon also keeps its own curl foam, as `max(map foam at home, curlFoam·ρ)`.
 - **Outside the box:** Phase 2's per-vertex breaking foam is used as today. A 10 m band inside the box's edge blends the two, so there is no seam.
 - **The pattern:** `setFoamPattern` keeps its two noise octaves, coverage curve and brightness range. The change is its coordinates: the moving crest frame (`foamFrame`) becomes the water-anchored base xz, with the existing time term for slow churning. Dense foam reads solid white with soft brightness variation, and thinning foam breaks into shrinking patches. The foam colour and `foamAlbedo` are unchanged.
+- **As built:** the pattern's coverage also fades with the weight below 0.25 (`× saturate(4·foam)`). Clearing foam spends a long time at small weights, and the old cut-off at 0.001 drew a hard edge there.
 - **The visible change (Andrew's eye is the test):** the bore's front now moves across water-fixed foam that boils as it forms, where today the pattern slides with the crest. If that reads worse, the fallback is the crest frame on the active bore only, blending to base xz as the foam is left behind.
 - **Debug:** a `foam map` overlay tints the box and shows its density.
 
@@ -88,6 +89,7 @@ Andrew's answers about the Womb:
   3. replay at 10 Hz (this gives up exact replay/live agreement).
   The measured numbers go to Andrew whichever lever is used.
 - **Bindings:** the sheet's fragment stage samples about 13 of its 16 textures today, so the map makes 14. `BreakingRibbon.limits.test.ts` is extended to count sampled textures and storage buffers on the sheet's two materials. The step pass binds one storage buffer (the waves) plus textures.
+- **As built (measured, pane visible, RTX 4060 Laptop):** a replay of 240 ticks takes 41 ms (CPU 5 ms), and one tick 0.17 ms. None of the three levers was needed. The first measurements (160–600 ms) came from sending each tick's passes as separate GPU submissions; each tick is now one submission. Fix 2 (a 2 m source) was tried on Andrew's pick and measured slower, so it was withdrawn.
 
 ## 4. Files
 
