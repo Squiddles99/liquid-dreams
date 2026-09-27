@@ -6,7 +6,7 @@ import { SetWaves } from '../breaker/SetWaves';
 import { sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
-import { SET_FOAM_MAX_COVER, setFoamPattern, waterFoamFrame, waterFoamFrameCpu } from '../ocean/OceanSurface';
+import { SET_FOAM_MAX_COVER, setFoamPattern, sheetFoamWeight, waterFoamFrame, waterFoamFrameCpu } from '../ocean/OceanSurface';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { FoamField } from './FoamField';
@@ -164,5 +164,30 @@ registerSelfTest({
     // weight. Before the fade, a weight of 0.002 still covered 0.43 wherever the noise saturates.
     const ok = worst.every((v, k) => v <= 4 * weights[k] * SET_FOAM_MAX_COVER + 1e-6);
     return { pass: ok, detail: `largest coverage at weight ${weights.map((w, k) => `${w}: ${worst[k].toFixed(4)}`).join(', ')}` };
+  },
+});
+
+registerSelfTest({
+  name: "foam: inside the box the live breaking foam still shows at frame time (the map adds what lingers, never delays the bore's front)",
+  async run(renderer) {
+    // [placeholder (the frame's breaking foam), map density, inside] → the weight a surface point uses.
+    const cases: [number, number, number, number][] = [
+      [0.9, 0.2, 1, 0.9], // the bore's front has moved on since the last tick: the frame's foam wins
+      [0.1, 0.7, 1, 0.7], // lingering foam behind the bore: the map wins
+      [0.9, 0.2, 0, 0.9], // outside the box: the placeholder
+      [0.0, 0.6, 0.5, 0.3], // in the edge band: half the map
+    ];
+    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(cases.length * 4), 4);
+    const out = storage(outAttr, 'vec4', cases.length);
+    const pass = Fn(() => {
+      cases.forEach(([p, d, inside], i) => {
+        out.element(i).assign(vec4(sheetFoamWeight(float(p), { density: float(d), inside: float(inside) }), 0.0, 0.0, 0.0));
+      });
+    })().compute(1) as THREE.ComputeNode;
+    renderer.compute(pass);
+    const g = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    const got = cases.map((_, i) => g[i * 4]);
+    const worst = cases.reduce((m, c, i) => Math.max(m, Math.abs(got[i] - c[3])), 0);
+    return { pass: worst < 1e-5, detail: `got ${got.map((v) => v.toFixed(3)).join(', ')}; expected ${cases.map((c) => c[3]).join(', ')}` };
   },
 });
