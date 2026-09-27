@@ -146,7 +146,7 @@ describe('behind-the-wave and lip-close-up', () => {
   it('lip-close-up is shot at 5 ft, free camera close to the lip', () => {
     const m = findReferenceMoment('lip-close-up')!;
     expect(m.conditions.swell.sizeFt).toBe(5);
-    expect(m.camera).toEqual({ mode: 'free', position: [9.5, 2.9, -26], yawDeg: 193, pitchDeg: -3 });
+    expect(m.camera).toEqual({ mode: 'free', position: [16, 2.9, -41], yawDeg: 196, pitchDeg: -3 });
   });
   it('both are timed off the reference set’s biggest wave', () => {
     const refSet = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
