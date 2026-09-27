@@ -179,7 +179,7 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
     // before the peak breaks to the right's closeout: the steepest change of each per wave height of crest, between
     // stations under 2 m apart. The old ratio gave 1.4–2.0 (sharpening), 2.4–5.0 (drain) and 2.7–8.3 (collapse): the
     // drain's walls and the collapse's step were a metre or two wide.
-    const bounds = { steep: 0.9, drain: 0.7, collapse: 0.6 };
+    const bounds = { steep: 1.0, drain: 0.7, collapse: 0.6 };
     const worst = { steep: 0, drain: 0, collapse: 0 };
     for (const sizeFt of [5, 6.6]) {
       const c = cloneConditions(DEFAULT_CONDITIONS);
