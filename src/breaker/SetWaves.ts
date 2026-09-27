@@ -108,7 +108,7 @@ export class SetWaves {
     const a = this.fieldA.image.data as Float32Array, b = this.fieldB.image.data as Float32Array;
     for (let i = 0; i < f.tau.length; i++) {
       a[i * 4] = f.tau[i]; a[i * 4 + 1] = f.amp[i]; a[i * 4 + 2] = f.hmin[i]; a[i * 4 + 3] = f.k[i];
-      b[i * 4] = f.dirX[i]; b[i * 4 + 1] = f.dirZ[i]; b[i * 4 + 2] = f.depth[i]; b[i * 4 + 3] = 0;
+      b[i * 4] = f.dirX[i]; b[i * 4 + 1] = f.dirZ[i]; b[i * 4 + 2] = f.depth[i]; b[i * 4 + 3] = f.hminBreak[i];
     }
     const fa = this.farA.image.data as Float32Array, fb = this.farB.image.data as Float32Array;
     for (let i = 0; i < f.far.count; i++) {
@@ -159,7 +159,7 @@ export class SetWaves {
    * would otherwise emit the reads inside every branch that uses them (44 loads per sample instead of 12), and it loads
    * the far field only outside the grid (8 loads per sample inside it).
    */
-  sample(xz: N, hoist = false): { tau: N; amp: N; hmin: N; k: N; dir: N; depth: N } {
+  sample(xz: N, hoist = false): { tau: N; amp: N; hmin: N; hminBreak: N; k: N; dir: N; depth: N } {
     const v = (n: N): N => (hoist ? n.toVar() : n);
     const g = v(xz.sub(this.origin).div(this.cell));
     const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThanEqual(this.fieldMax.x)).and(g.y.lessThanEqual(this.fieldMax.y));
@@ -195,6 +195,8 @@ export class SetWaves {
       tau: select(inside, a.x, select(outflow, edgeTau, farTau)),
       amp: select(useGrid, a.y, fa.y),
       hmin: select(useGrid, a.z, fa.z),
+      // The coast (far field) has no reef edges to smooth: its breaking depth is its hmin (coastFarField.farSample).
+      hminBreak: select(useGrid, b.w, fa.z),
       k: max(select(useGrid, a.w, fa.w), 1e-4),
       dir: select(useGrid, edgeDir, farDir),
       depth: select(useGrid, b.z, fb.y),
@@ -219,7 +221,7 @@ export class SetWaves {
       // Stokes ratio per metre of amplitude, the local wave speed and dξ/ds. Left as expressions, TSL emits them where
       // they are first used, inside the loop body, and the field would be fetched once per slot.
       const s = this.sample(xz, true);
-      const f = { tau: s.tau.toVar(), amp: s.amp.toVar(), hmin: s.hmin.toVar(), k: s.k.toVar(), dir: s.dir.toVar(), depth: s.depth.toVar() };
+      const f = { tau: s.tau.toVar(), amp: s.amp.toVar(), hmin: s.hmin.toVar(), hminBreak: s.hminBreak.toVar(), k: s.k.toVar(), dir: s.dir.toVar(), depth: s.depth.toVar() };
       const sigma = max(tanh(f.k.mul(f.depth)), 0.05);
       const stokesPerA = f.k.mul(float(3.0).sub(sigma.mul(sigma))).div(sigma.mul(sigma).mul(sigma).mul(4.0)).toVar();
       const cLocal = this.meanOmega.div(f.k).toVar();
@@ -280,17 +282,17 @@ export class SetWaves {
             // crest lands, so every point of one cross-section shares its crest's ratio, stage and frame.
             const wm = float(1.0).sub(dot(this.meanTravel, b.xy)).toVar();
             const cPos = xz.toVar();
-            const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
+            const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), hminBreak: f.hminBreak.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
             for (let step = 0; step < CREST_STEPS; step++) {
               const xiC = phaseXi(cPos, fc.tau, this.meanOmega.div(fc.k));
               const reach = float(Math.PI).div(fc.k);
               const crossing = max(dot(fc.dir, b.xy).add(wm), CREST_MIN_CROSSING);
               cPos.addAssign(b.xy.mul(clamp(xiC.mul(this.meanOmega).div(fc.k).div(crossing), reach.negate(), reach)));
               const sc = this.sample(cPos, true);
-              fc.tau.assign(sc.tau); fc.amp.assign(sc.amp); fc.hmin.assign(sc.hmin);
+              fc.tau.assign(sc.tau); fc.amp.assign(sc.amp); fc.hmin.assign(sc.hmin); fc.hminBreak.assign(sc.hminBreak);
               fc.k.assign(sc.k); fc.dir.assign(sc.dir); fc.depth.assign(sc.depth);
             }
-            const rC = breakingRatioNode(a.y.mul(fc.amp), fc.hmin, brk).toVar();
+            const rC = breakingRatioNode(a.y.mul(fc.amp), fc.hminBreak, brk).toVar();
             const sC = breakingStageNode(rC, brk).toVar();
             const steep = steepeningNode(rC, brk).toVar();
             // The lookup's confidence: 1 − smoothstep(T/8, T/4, |ξ left at the crest|). It weights the reported stage and
@@ -315,9 +317,9 @@ export class SetWaves {
                 // Measured, not inferred from ξ: every point of the cross-section must agree on where its crest is.
                 const v0 = dot(xz.sub(cPos), f.dir);
                 const br = breakPointNode({
-                  theta, env: env.mul(lateral), uUnbroken: v0.add(d), eta: e, uCrest: pitchC.mul(etaCrest), etaCrest, H: Hl, k: fc.k, hmin: fc.hmin,
+                  theta, env: env.mul(lateral), uUnbroken: v0.add(d), eta: e, uCrest: pitchC.mul(etaCrest), etaCrest, H: Hl, k: fc.k, hmin: fc.hminBreak,
                   slope: along, dThetaDAhead: a.z.mul(perAhead), dEnvDAhead: dEnv.mul(lateral).mul(perAhead), crestConfidence: confidence,
-                }, steep, brk, stageCurvesNode(sC, brk));
+                }, steep, brk, stageCurvesNode(rC, brk));
                 eta.addAssign(br.eta.sub(e));
                 slope.addAssign(f.dir.mul(br.dEtaDAhead));
                 foam.assign(max(foam, br.foam));

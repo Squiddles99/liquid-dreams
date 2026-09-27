@@ -86,5 +86,7 @@ export function farSample(f: FarField, x: number, z: number): FieldSample {
   const len = Math.hypot(dTauDx, f.p);
   const dirX = len > 0 ? dTauDx / len : f.dirX;
   const dirZ = len > 0 ? f.p / len : f.dirZ;
-  return { tau, amp: lerp(f.amp), hmin: lerp(f.hmin), k: lerp(f.k), dirX, dirZ, depth: lerp(f.depth) };
+  const hmin = lerp(f.hmin);
+  // The coast has no reef edges to smooth (and runs along the crest): the breaking depth is hmin.
+  return { tau, amp: lerp(f.amp), hmin, hminBreak: hmin, k: lerp(f.k), dirX, dirZ, depth: lerp(f.depth) };
 }

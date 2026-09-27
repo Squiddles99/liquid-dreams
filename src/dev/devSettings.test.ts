@@ -11,7 +11,7 @@ import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { DEFAULT_SET_PARAMS } from '../swell/sets';
 import {
-  CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
+  BREAKING_MODEL, CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
   loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
 } from './devSettings';
 import type { CameraPose, Moment } from './momentLink';
@@ -87,9 +87,11 @@ function tweaked(): DevSettings {
   return s;
 }
 
-const store = (value: unknown): FakeStorage => {
+/** A store holding `value` as saved by this build (breakingModel stamped on objects), or by an older one (model null). */
+const store = (value: unknown, model: number | null = BREAKING_MODEL): FakeStorage => {
   const s = new FakeStorage();
-  s.setItem(DEV_SETTINGS_KEY, JSON.stringify(value));
+  const stamped = model !== null && typeof value === 'object' && value !== null && !Array.isArray(value) ? { breakingModel: model, ...value } : value;
+  s.setItem(DEV_SETTINGS_KEY, JSON.stringify(stamped));
   return s;
 };
 
@@ -225,7 +227,7 @@ describe('dev settings persistence', () => {
     expect(loaded.breaking).toEqual(DEFAULT_BREAK_PARAMS);
     expect(loaded.sets.meanIntervalS).toBe(300); // the rest of the stored look still loads
   });
-  it('loads an overnight profile: removed break fields dropped, new ones defaulted', () => {
+  it('loads an overnight profile (breaking model 1): its breaking falls back to the defaults, removed fields gone', () => {
     // Andrew's stored overnight Phase 2 settings: every field BreakParams had then, none of the new ones.
     const overnight = {
       enabled: true, gamma: 0.83, delta: 1.0, hFloorM: 0.3, stageSpan: 1.0, thetaMaxDeg: 120, pivotDrop: 0.65, pivotAhead: 0.65, lipZone: 0.4,
@@ -233,11 +235,21 @@ describe('dev settings persistence', () => {
       collapseStart: 0.75,
     };
     const stored = { ...(JSON.parse(JSON.stringify(tweaked())) as Record<string, unknown>), breaking: overnight };
-    const loaded = loadDevSettings(store(stored), defaults())!;
-    expect(loaded.breaking).toEqual({ ...DEFAULT_BREAK_PARAMS, gamma: 0.83 });
+    const loaded = loadDevSettings(store(stored, null), defaults())!;
+    expect(loaded.breaking).toEqual(DEFAULT_BREAK_PARAMS);
     for (const removed of ['thetaMaxDeg', 'pivotDrop', 'pivotAhead', 'lipZone', 'lipBackReach', 'backWidth', 'steepEnd', 'curlStart', 'curlEnd']) {
       expect(removed in loaded.breaking, removed).toBe(false);
     }
+  });
+  it('drops a stored breaking saved under another breaking model (its numbers meant something else) and keeps the rest', () => {
+    const loaded = loadDevSettings(store(JSON.parse(JSON.stringify(tweaked())), null), defaults())!;
+    expect(loaded.breaking).toEqual(DEFAULT_BREAK_PARAMS);
+    expect(loaded.sets.meanIntervalS).toBe(300);
+    expect(loadDevSettings(store(JSON.parse(JSON.stringify(tweaked())), 1), defaults())!.breaking).toEqual(DEFAULT_BREAK_PARAMS);
+    // A save from this build stamps the model, so its breaking loads.
+    const s = new FakeStorage();
+    saveDevSettings(s, tweaked());
+    expect(loadDevSettings(s, defaults())!.breaking).toEqual(tweaked().breaking);
   });
   it('repairs a bad break value from the default and keeps the others', () => {
     const s = tweaked() as unknown as Record<string, Record<string, unknown>>;

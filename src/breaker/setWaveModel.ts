@@ -134,14 +134,14 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   }
   const quarterPeriod = Math.PI / (2 * w.omega);
   const confidence = 1 - smoothstep(quarterPeriod / 2, quarterPeriod, Math.abs(phaseXi(cx, cz, t, fc, w, ctx)));
-  const r = breakingRatio(w.heightM * fc.amp, fc.hmin, o.params);
+  const r = breakingRatio(w.heightM * fc.amp, fc.hminBreak, o.params);
   return { x: cx, z: cz, f: fc, r, s: breakingStage(r, o.params), confidence };
 }
 
 /**
  * The smallest wave height (m) that can break anywhere the field is sampled: min over the reef grid's cells (bilinear
  * between four nodes) and the far field's segments (linear between two) of breakingHeightThreshold at the cell's largest
- * amp and smallest hmin. Conservative: a wave no taller than this has stage 0 at every crest, so its surface is Phase 1
+ * amp and smallest breaking depth. Conservative: a wave no taller than this has stage 0 at every crest, so its surface is Phase 1
  * exactly. SetWaves uses it per wave to skip the GPU's crest search and breaking (a pure optimisation; the CPU model
  * does not need it and its results are the same either way).
  */
@@ -151,7 +151,7 @@ export function fieldBreakingHeight(f: ReefField, p: BreakParams): number {
   for (let r = 0; r + 1 < nz; r++) for (let c = 0; c + 1 < nx; c++) {
     const i = r * nx + c, j = i + nx;
     const amp = Math.max(f.amp[i], f.amp[i + 1], f.amp[j], f.amp[j + 1]);
-    const hmin = Math.min(f.hmin[i], f.hmin[i + 1], f.hmin[j], f.hmin[j + 1]);
+    const hmin = Math.min(f.hminBreak[i], f.hminBreak[i + 1], f.hminBreak[j], f.hminBreak[j + 1]);
     best = Math.min(best, breakingHeightThreshold(amp, hmin, p));
   }
   for (let i = 0; i + 1 < f.far.count; i++) {
@@ -163,9 +163,8 @@ export function fieldBreakingHeight(f: ReefField, p: BreakParams): number {
 /**
  * The smallest wave height (m) that can shape the sheet anywhere the field is sampled: steepeningStart(p) (ribbonOnset +
  * RIBBON_FULL_OFFSET) × fieldBreakingHeight. The front sharpening acts from that breaking ratio on, before the wave
- * breaks. It is a lower bound because r grows faster than linearly with the height: r(λH) = λH / (γ·max(hmin − δλH, h₀))
- * ≤ λ·r(H) for λ ≤ 1, since the drained depth only grows as H shrinks. A wave no taller than λ × fieldBreakingHeight
- * (so no taller than λ × every point's own breaking height, where r = 1) has r ≤ λ at every crest: with λ =
+ * breaks. ρ is proportional to the height (ρ(λH) = λ·ρ(H)), so a wave no taller than λ × fieldBreakingHeight (so no
+ * taller than λ × every point's own breaking height, where ρ = 1) has ρ ≤ λ at every crest: with λ =
  * steepeningStart it has no sharpening and no stage anywhere, so its surface is Phase 1 exactly. SetWaves flags waves
  * against it (see fieldBreakingHeight).
  */
@@ -222,7 +221,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   // Per metre of the displaced surface along travel (ahead): Phase 1's derivatives along s, over its Jacobian.
   const perAhead = dXiDs / jacobian;
   const b = breakPoint({
-    theta, env: env * lateral, uUnbroken: v0 + dh, eta, uCrest: pitchC * etaCrest, etaCrest, H: Hc * lateral, k: fc.k, hmin: fc.hmin,
+    theta, env: env * lateral, uUnbroken: v0 + dh, eta, uCrest: pitchC * etaCrest, etaCrest, H: Hc * lateral, k: fc.k, hmin: fc.hminBreak,
     slope: slopeAlong, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead, crestConfidence: crest.confidence,
   }, crest.s, crest.r, o.params);
   out.eta = b.eta;

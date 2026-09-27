@@ -19,6 +19,8 @@ export interface ReefField {
   tau: Float32Array;
   amp: Float32Array;
   hmin: Float32Array;
+  /** The breaking depth: amp / (amp/hmin smoothed along the crest) (FieldSample.hminBreak). */
+  hminBreak: Float32Array;
   k: Float32Array;
   dirX: Float32Array;
   dirZ: Float32Array;
@@ -36,6 +38,69 @@ function bilinear(a: ArrayLike<number>, g: GridSpec, x: number, z: number): numb
   const tx = fx - c, tz = fz - r, i = r * g.nx + c;
   const top = a[i] + (a[i + 1] - a[i]) * tx, bottom = a[i + g.nx] + (a[i + g.nx + 1] - a[i + g.nx]) * tx;
   return top + (bottom - top) * tz;
+}
+
+/**
+ * The breaking depth (FieldSample.hminBreak) comes from amp/hmin taken to its largest within BREAK_REACH_M along the
+ * crest, then smoothed along the crest by a Gaussian of σ = BREAK_SMOOTHING_M. The reef's edges change hmin by metres
+ * within a few metres of crest: unsmoothed, a section went from unbroken to fully collapsed in ~6 m of crest (1.3 H at
+ * 6.6 ft), with the drain switching on over 1–2 m, which drew square-walled channels in front of the break. The largest
+ * first keeps the peak: the wedge's tip is only ~10 m wide, and smoothing alone (σ 10 m) lifted the height a wave needs
+ * to break there from 1.22 to 1.6 × Hs. It also lengthens each breaking section a little, toward a long, straight
+ * Pipeline line rather than a tight bowl. Only along the crest: across it (along travel) hmin keeps its full sharpness,
+ * so the right still closes out all at once along the south ledge and every section breaks when it reaches the reef.
+ */
+export const BREAK_REACH_M = 6;
+export const BREAK_SMOOTHING_M = 6;
+
+/** The largest of `a` within radiusM along the crest line through each node (sampled as smoothAlongCrest samples). */
+export function maxAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, radiusM: number): Float32Array {
+  const { nx, cellM } = grid;
+  const out = new Float32Array(a.length);
+  const R = Math.round(radiusM / cellM);
+  const at = bilinearCells(a, grid);
+  for (let i = 0; i < a.length; i++) {
+    const col = i % nx, row = (i - col) / nx, tx = -dirZ[i], tz = dirX[i];
+    let m = a[i];
+    for (let j = -R; j <= R; j++) m = Math.max(m, at(col + j * tx, row + j * tz));
+    out[i] = m;
+  }
+  return out;
+}
+
+/** Bilinear lookup of a node array at fractional cell coordinates, clamped to the grid. */
+function bilinearCells(a: Float32Array, grid: GridSpec): (fx: number, fz: number) => number {
+  const { nx, nz } = grid;
+  return (fx, fz) => {
+    fx = Math.min(nx - 1, Math.max(0, fx)); fz = Math.min(nz - 1, Math.max(0, fz));
+    const c = Math.min(nx - 2, Math.floor(fx)), r = Math.min(nz - 2, Math.floor(fz));
+    const tx = fx - c, tz = fz - r, i = r * nx + c;
+    const top = a[i] + (a[i + 1] - a[i]) * tx, bottom = a[i + nx] + (a[i + nx + 1] - a[i + nx]) * tx;
+    return top + (bottom - top) * tz;
+  };
+}
+
+/**
+ * `a` smoothed along the crest line through each node: a Gaussian of σ = sigmaM sampled every σ/3 (at least a cell)
+ * along the local crest tangent (perpendicular to the travel direction), bilinear between nodes and clamped to the grid.
+ * A straight tangent is close enough: the crest turns ~10° over ±3σ around the wedge.
+ */
+export function smoothAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, sigmaM: number): Float32Array {
+  const { nx, nz, cellM } = grid;
+  const out = new Float32Array(a.length);
+  const sigma = sigmaM / cellM, step = Math.max(1, sigma / 3);
+  const R = Math.ceil((3 * sigma) / step);
+  const w = new Float64Array(2 * R + 1);
+  for (let j = -R; j <= R; j++) w[j + R] = Math.exp(-((j * step) ** 2) / (2 * sigma * sigma));
+  const at = bilinearCells(a, grid);
+  for (let row = 0; row < nz; row++) for (let col = 0; col < nx; col++) {
+    const i = row * nx + col;
+    const tx = -dirZ[i], tz = dirX[i];
+    let sum = 0, ws = 0;
+    for (let j = -R; j <= R; j++) { sum += w[j + R] * at(col + j * step * tx, row + j * step * tz); ws += w[j + R]; }
+    out[i] = sum / ws;
+  }
+  return out;
 }
 
 export function computeReefField(req: ReefFieldRequest): ReefField {
@@ -144,7 +209,13 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const tau32 = new Float32Array(n);
   for (let i = 0; i < n; i++) tau32[i] = tau[i] - tauPeak;
   far.tauOffset = tauPeak;
-  return { grid, tau: tau32, amp, hmin, k, dirX, dirZ, depth, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
+  // The breaking ratio is ∝ amp/hmin (above its floor): smoothing that, not hmin, smooths the ratio itself.
+  const gain = new Float32Array(n);
+  for (let i = 0; i < n; i++) gain[i] = amp[i] / hmin[i];
+  const smoothGain = smoothAlongCrest(maxAlongCrest(gain, dirX, dirZ, grid, BREAK_REACH_M), dirX, dirZ, grid, BREAK_SMOOTHING_M);
+  const hminBreak = new Float32Array(n);
+  for (let i = 0; i < n; i++) hminBreak[i] = smoothGain[i] > 0 ? amp[i] / smoothGain[i] : hmin[i];
+  return { grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, depth, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
 }
 
 function sampleInside(f: ReefField, x: number, z: number): FieldSample {
@@ -152,7 +223,7 @@ function sampleInside(f: ReefField, x: number, z: number): FieldSample {
   const dirX = bilinear(f.dirX, g, x, z), dirZ = bilinear(f.dirZ, g, x, z);
   const len = Math.hypot(dirX, dirZ) || 1;
   return {
-    tau: bilinear(f.tau, g, x, z), amp: bilinear(f.amp, g, x, z), hmin: bilinear(f.hmin, g, x, z),
+    tau: bilinear(f.tau, g, x, z), amp: bilinear(f.amp, g, x, z), hmin: bilinear(f.hmin, g, x, z), hminBreak: bilinear(f.hminBreak, g, x, z),
     k: bilinear(f.k, g, x, z), dirX: dirX / len, dirZ: dirZ / len, depth: bilinear(f.depth, g, x, z),
   };
 }

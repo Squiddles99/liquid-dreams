@@ -4,7 +4,8 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, boreScale, breakingHeightThreshold, stageCurves } from './breaking';
+import { DEFAULT_BREAK_PARAMS, RIBBON_FULL_OFFSET, boreScale, breakingHeightThreshold, stageCurves, steepening } from './breaking';
+import { type Station, traceStations } from './crestTrace';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, computeReefField, sampleField } from './reefField';
@@ -82,7 +83,7 @@ describe('the field breaking height (SetWaves skips the GPU breaking below its s
     let best = { T: Infinity, x: 0, z: 0 };
     const g = field.grid;
     for (let r = 0; r < g.nz; r++) for (let c = 0; c < g.nx; c++) {
-      const i = r * g.nx + c, T = breakingHeightThreshold(field.amp[i], field.hmin[i], p);
+      const i = r * g.nx + c, T = breakingHeightThreshold(field.amp[i], field.hminBreak[i], p);
       if (T < best.T) best = { T, x: g.x0 + c * g.cellM, z: g.z0 + r * g.cellM };
     }
     return best;
@@ -92,14 +93,16 @@ describe('the field breaking height (SetWaves skips the GPU breaking below its s
       const hb = fieldBreakingHeight(field, p), n = nodeMin(p);
       expect(hb).toBeGreaterThan(0);
       expect(hb).toBeLessThanOrEqual(n.T);
-      expect(hb).toBeGreaterThan(0.8 * n.T);
+      // Loose by up to ~30%: a cell's bound pairs its largest amp with its smallest breaking depth, and the breaking
+      // depth grows with amp (it is amp over the smoothed amp/hmin), so no node has both.
+      expect(hb).toBeGreaterThan(0.6 * n.T);
       // Just above the best node's threshold, a crest there breaks.
       const w = testWave(1.01 * n.T), o = optsFor(field, p);
       expect(crestStage(n.x, n.z, at(n.x, n.z).tau, at(n.x, n.z), w, ctx, o)).toBeGreaterThan(0);
     });
-    it(`its steepening share (ribbonOnset + 0.2 of it) bounds the sheet: a wave no taller is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
+    it(`its steepening share (ribbonOnset + RIBBON_FULL_OFFSET of it) bounds the sheet: a wave no taller is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
       const hs = fieldSteepeningHeight(field, p);
-      expect(hs).toBeCloseTo((p.ribbonOnset + 0.2) * fieldBreakingHeight(field, p), 12);
+      expect(hs).toBeCloseTo((p.ribbonOnset + RIBBON_FULL_OFFSET) * fieldBreakingHeight(field, p), 12);
       const w = [testWave(hs)], o = optsFor(field, p);
       for (let x = -400; x <= 300; x += 12.5) for (let z = -600; z <= 300; z += 12.5) for (const t of [-20, -5, 0, 4, 12]) {
         expect(sumWaves(x, z, t, at(x, z), w, ctx, o)).toEqual(sumWaves(x, z, t, at(x, z), w, ctx));
@@ -171,6 +174,33 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
       expect(total).toBeLessThanOrEqual(0.1);
     }
   });
+  it('the breaking fades in and out along the crest over wave heights, not metres (no square channels, no right-angled bowl)', { timeout: 30_000 }, () => {
+    // The sheet's three breaking weights along the crest of the biggest set wave, at 5 and 6.6 ft (Andrew's review), from
+    // before the peak breaks to the right's closeout: the steepest change of each per wave height of crest, between
+    // stations under 2 m apart. The old ratio gave 1.4–2.0 (sharpening), 2.4–5.0 (drain) and 2.7–8.3 (collapse): the
+    // drain's walls and the collapse's step were a metre or two wide.
+    const bounds = { steep: 0.9, drain: 0.7, collapse: 0.6 };
+    const worst = { steep: 0, drain: 0, collapse: 0 };
+    for (const sizeFt of [5, 6.6]) {
+      const c = cloneConditions(DEFAULT_CONDITIONS);
+      c.swell.sizeFt = sizeFt;
+      const w = testWave(wavesOfSet(1, c, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a)).heightM);
+      for (const t of [-0.5, 0, 0.75, 1.5, 3]) {
+        const st = traceStations(field, [w], t, ctx, { cameraX: 12, cameraZ: -32, params: DEFAULT_BREAK_PARAMS, minHeightM: 0 })
+          .filter((s): s is Station => !s.gap).sort((a, b) => a.arc - b.arc);
+        const weights = st.map((s) => ({ steep: steepening(s.r, DEFAULT_BREAK_PARAMS), ...stageCurves(s.r, DEFAULT_BREAK_PARAMS) }));
+        for (let i = 1; i < st.length; i++) {
+          const d = st[i].arc - st[i - 1].arc;
+          if (!(d > 0 && d < 2)) continue;
+          for (const k of ['steep', 'drain', 'collapse'] as const) {
+            worst[k] = Math.max(worst[k], (Math.abs(weights[i][k] - weights[i - 1][k]) / d) * st[i].H);
+          }
+        }
+      }
+    }
+    for (const k of ['steep', 'drain', 'collapse'] as const) expect(worst[k], k).toBeLessThanOrEqual(bounds[k]);
+    expect(worst.drain, 'the drain changes somewhere').toBeGreaterThan(0.1);
+  });
 });
 
 describe('the breaking sheet on the real reef', () => {
@@ -189,7 +219,7 @@ describe('the breaking sheet on the real reef', () => {
       if (behind < 0.5 || behind > 20) return;
       const f = at(p.x, p.z), c = crestAt(p.x, p.z, t, f, w, ctx, sheet)!;
       // η = (Phase 1 η − drain × drainShape) × boreScale, and drainShape is 0 behind the crest: no sinking.
-      const scale = boreScale(localHeight(w, c.f), c.f.hmin, stageCurves(c.s, P).collapse, P);
+      const scale = boreScale(localHeight(w, c.f), c.f.hminBreak, stageCurves(c.r, P).collapse, P);
       const broken = sumWaves(p.x, p.z, t, f, [w], ctx, sheet).eta, unbroken = sumWaves(p.x, p.z, t, f, [w], ctx).eta;
       expect(Math.abs(broken - unbroken * scale), `${behind.toFixed(1)} m behind the crest`).toBeLessThan(1e-3);
       checked++;
@@ -247,14 +277,14 @@ describe('the breaking sheet on the real reef', () => {
     return [(aE * bZ - aZ * bE) / det, (aX * bE - aE * bX) / det];
   };
   it("the sheet's slope matches central differences of its height (uniform field)", () => {
-    // Steepening (r 0.80), breaking (r 1.28, 1.51, 1.68) and collapsed (r 2.99), on a field uniform in everything but τ.
-    const cases: [number, number, number, number][] = [[15, 7, 6, 2.3], [15, 7, 6, 3.0], [15, 7, 6, 3.4], [12, 5, 4, 1.5], [15, 7, 6, 4.2]]; // period, depth, hmin, height
+    // Steepening (ρ 0.87), breaking (ρ 1.14, 1.29, 1.25) and collapsed (ρ 1.75), on a field uniform in everything but τ.
+    const cases: [number, number, number, number][] = [[15, 7, 6, 2.3], [15, 7, 6, 3.0], [15, 7, 6, 3.4], [12, 5, 4, 2.2], [15, 7, 6, 4.6]]; // period, depth, hmin, height
     let worstJ = 0;
     const ratios: number[] = [];
     for (const [T, depth, hmin, height] of cases) {
       const omega = (2 * Math.PI) / T, k = waveNumber(omega, depth), c = omega / k;
       const dirX = Math.cos(0.4), dirZ = Math.sin(0.4);
-      const fAt = (x: number, z: number): FieldSample => ({ tau: (x * dirX + z * dirZ) / c, amp: 1, hmin, k, dirX, dirZ, depth });
+      const fAt = (x: number, z: number): FieldSample => ({ tau: (x * dirX + z * dirZ) / c, amp: 1, hmin, hminBreak: hmin, k, dirX, dirZ, depth });
       const w: ActiveWave = { arrivalS: 0, heightM: height, omega, travelX: dirX, travelZ: dirZ, crestLengthM: 400, crestOffsetM: 0 };
       const cx: WaveContext = { omega, travelX: dirX, travelZ: dirZ };
       const o: BreakOptions = { sample: fAt, params: DEFAULT_BREAK_PARAMS };
@@ -280,7 +310,7 @@ describe('the breaking sheet on the real reef', () => {
       }
     }
     expect(Math.min(...ratios), 'a steepening case').toBeLessThan(1);
-    expect(Math.max(...ratios), 'a collapsed case').toBeGreaterThan(2);
+    expect(Math.max(...ratios), 'a collapsed case').toBeGreaterThan(1 + DEFAULT_BREAK_PARAMS.stageSpan);
     expect(worstJ, 'J ≠ 1 somewhere').toBeGreaterThan(0.1);
   });
   it("the sheet's slope matches its own model's derivative on the real reef (field frozen, crests fixed)", () => {

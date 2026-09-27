@@ -8,7 +8,7 @@ const omega = (T: number) => (2 * Math.PI) / T;
 
 function field1D(depth: number, T: number, amp = 1, hmin = depth): (x: number) => FieldSample {
   const k = waveNumber(omega(T), depth), c = omega(T) / k;
-  return (x) => ({ tau: x / c, amp, hmin, k, dirX: 1, dirZ: 0, depth });
+  return (x) => ({ tau: x / c, amp, hmin, hminBreak: hmin, k, dirX: 1, dirZ: 0, depth });
 }
 const ctxFor = (T: number): WaveContext => ({ omega: omega(T), travelX: 1, travelZ: 0 });
 const wave = (T: number, heightM: number, arrivalS = 100): ActiveWave => ({
@@ -24,7 +24,7 @@ describe('set-wave model', () => {
     expect(crest).toBeGreaterThan(0.99);
   });
   it('caps the height at 0.78 × the shallowest depth crossed', () => {
-    const f: FieldSample = { tau: 0, amp: 3, hmin: 2, k: 0.2, dirX: 1, dirZ: 0, depth: 5 };
+    const f: FieldSample = { tau: 0, amp: 3, hmin: 2, hminBreak: 2, k: 0.2, dirX: 1, dirZ: 0, depth: 5 };
     expect(localHeight(wave(15, 5), f)).toBeCloseTo(BREAKING_RATIO * 2, 12);
     expect(localHeight(wave(15, 0.2), f)).toBeCloseTo(0.6, 12);
   });
@@ -52,7 +52,7 @@ describe('set-wave model', () => {
   });
   it('tapers the crest ends far out, not near the reef', () => {
     const T = 15, k = waveNumber(omega(T), 30);
-    const at = (x: number, z: number) => ({ tau: x * (k / omega(T)), amp: 1, hmin: 30, k, dirX: 1, dirZ: 0, depth: 30 });
+    const at = (x: number, z: number) => ({ tau: x * (k / omega(T)), amp: 1, hmin: 30, hminBreak: 30, k, dirX: 1, dirZ: 0, depth: 30 });
     const w = wave(T, 2, 0);
     const onAxisFar = waveAt(-800, 0, -800 * (k / omega(T)), at(-800, 0), w, ctxFor(T)).eta;
     const offAxisFar = waveAt(-800, 400, -800 * (k / omega(T)), at(-800, 400), w, ctxFor(T)).eta;

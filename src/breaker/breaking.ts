@@ -14,7 +14,7 @@ export interface BreakParams {
   delta: number;
   /** Floor on that drained depth (m). */
   hFloorM: number;
-  /** Δ, the stage span: s = smoothstep(1, 1 + Δ, r). */
+  /** Δ, the stage span: s = smoothstep(1, 1 + Δ, ρ), the wave Δ × its breaking height taller than it. */
   stageSpan: number;
   /** The visible drain: the trough ahead of the face drops by troughDrain·δ·H. */
   troughDrain: number;
@@ -22,7 +22,8 @@ export interface BreakParams {
   beta: number;
   /** The sheet's steepened front face spans this much, crest to foot (× H). */
   faceWidth: number;
-  /** Stage windows: the drain ramps over [0, drainEnd] and the wave collapses over [collapseStart, 1]. */
+  /** The drain ramps from the front sharpening's start to ρ = 1 + drainEnd·Δ (it begins as the wave stands up, before
+   * it breaks); the wave settles to its bore from ρ = 1 + collapseStart·Δ to 1 + COLLAPSE_END·Δ. */
   drainEnd: number;
   collapseStart: number;
   /** The lip leaves the crest at throwStrength × crest speed (relative to the wave), floored so it lands clear of the face. */
@@ -32,7 +33,7 @@ export interface BreakParams {
   /** The curl collapses over collapseTime × τ_land after the lip lands. */
   collapseTime: number;
   /** The ribbon fades in from this breaking ratio, full at ribbonOnset + RIBBON_FULL_OFFSET; the sheet's front sharpening
-   * ramps from there to r = 1. */
+   * ramps from there to ρ = 1. */
   ribbonOnset: number;
 }
 
@@ -41,19 +42,19 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   gamma: 0.78,
   delta: 1.0,
   hFloorM: 0.3,
-  stageSpan: 1.0,
+  stageSpan: 0.7,
   troughDrain: 0.35,
   beta: 0.4,
   faceWidth: 0.5,
-  drainEnd: 0.25,
-  collapseStart: 0.75,
+  drainEnd: 0.4,
+  collapseStart: 0.5,
   throwStrength: 0.55,
   lipThickness: 0.12,
   collapseTime: 1.0,
-  ribbonOnset: 0.5,
+  ribbonOnset: 0.55,
 };
 
-/** Foam starts once the collapse has run this far (s ≈ 0.82 at the defaults): the lip has landed. */
+/** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
 export const FOAM_ONSET_COLLAPSE = 0.2;
 /** From this collapse on the foam's front edge moves off the crest and down the bore's face (the tube is gone). */
 export const FOAM_SETTLE_COLLAPSE = 0.6;
@@ -68,10 +69,10 @@ export const MIN_STAGE_SPAN = 0.05;
 /** Waves lower than this (m) never break (the shape's H-scaled smoothsteps would divide by ~0). */
 export const MIN_BREAKING_HEIGHT_M = 1e-3;
 /** The ribbon is full this far (in breaking ratio) above its onset, and the sheet's front sharpening starts there. */
-export const RIBBON_FULL_OFFSET = 0.2;
+export const RIBBON_FULL_OFFSET = 0.15;
 /**
- * The front sharpening always ramps over at least this much breaking ratio below r = 1. The ribbon onset's slider top
- * (0.9) puts ribbonOnset + RIBBON_FULL_OFFSET at 1.1, past r = 1: the ramp would run backwards (and on the GPU,
+ * The front sharpening always ramps over at least this much breaking ratio below ρ = 1. The ribbon onset's slider top
+ * (0.9) puts ribbonOnset + RIBBON_FULL_OFFSET at 1.05, past ρ = 1: the ramp would run backwards (and on the GPU,
  * smoothstep with its edges reversed is undefined), so its start is floored at 1 − this.
  */
 export const MIN_STEEPENING_SPAN = 0.05;
@@ -97,27 +98,40 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.ribbonOnset = clampTo(p.ribbonOnset, 0.3, 0.9, d.ribbonOnset);
 }
 
-/** r = H / (γ·max(hmin − δ·H, h_floor)): the wave breaks where r ≥ 1. H is the uncapped crest height (m). */
-export function breakingRatio(H: number, hmin: number, p: BreakParams): number {
-  if (!(H > 0)) return 0;
-  return H / (p.gamma * Math.max(hmin - p.delta * H, p.hFloorM));
+/**
+ * The height (m) at which a wave breaks over minimum depth hmin: the root of H = γ·max(hmin − δ·H, h_floor), the crest
+ * feeling the depth drained by δ·H. Where the drained depth is still above the floor there, H_b = γ·hmin / (1 + γδ);
+ * else the floor holds and H_b = γ·h_floor. Together: γ·max(hmin / (1 + γδ), h_floor).
+ */
+export function breakingHeight(hmin: number, p: BreakParams): number {
+  return p.gamma * Math.max(hmin / (1 + p.gamma * p.delta), p.hFloorM);
 }
 
 /**
- * The wave height (m) above which a point with amplification `amp` and minimum depth `hmin` breaks: r(height·amp, hmin)
- * > 1 exactly when height > this (P2: the criterion's H is uncapped). Infinity where amp ≤ 0. r grows with the height
- * and with amp and falls as hmin grows, so the threshold of a region's largest amp and smallest hmin bounds every point
- * interpolated from it from below.
+ * ρ = H / breakingHeight(hmin): how many times its breaking height the crest is; it breaks where ρ ≥ 1. H is the
+ * uncapped crest height (m). Linear in H and in amp/hmin (above the floor), so the windows it drives (the front
+ * sharpening, the stage, the drain and the collapse) keep their widths along the crest. The old ratio
+ * H / (γ·max(hmin − δ·H, h_floor)) crossed 1 at the same place but grew without bound as hmin − δ·H neared the floor,
+ * squeezing the drain into 1–2 m of crest and the collapse into under a metre (square-walled channels, a right-angled
+ * break).
+ */
+export function breakingRatio(H: number, hmin: number, p: BreakParams): number {
+  if (!(H > 0)) return 0;
+  return H / breakingHeight(hmin, p);
+}
+
+/**
+ * The wave height (m) above which a point with amplification `amp` and minimum depth `hmin` breaks: ρ(height·amp, hmin)
+ * > 1 exactly when height > this (P2: the criterion's H is uncapped). Infinity where amp ≤ 0. ρ is proportional to the
+ * height (ρ(λ·height) = λ·ρ(height)), grows with amp and falls as hmin grows, so the threshold of a region's largest amp
+ * and smallest hmin bounds every point interpolated from it from below.
  */
 export function breakingHeightThreshold(amp: number, hmin: number, p: BreakParams): number {
   if (!(amp > 0)) return Infinity;
-  const gd = 1 + p.gamma * p.delta;
-  // Where the drained depth hmin − δ·H is still above the floor at the root, r = 1 at H = γ·hmin / (1 + γδ); else the
-  // floor holds there and r = 1 at H = γ·h_floor.
-  return (hmin / gd >= p.hFloorM ? (p.gamma * hmin) / gd : p.gamma * p.hFloorM) / amp;
+  return breakingHeight(hmin, p) / amp;
 }
 
-/** The breaking stage s ∈ [0, 1]: 0 until r = 1, 1 from r = 1 + Δ. */
+/** The breaking stage s ∈ [0, 1]: 0 until ρ = 1, 1 from ρ = 1 + Δ. */
 export function breakingStage(r: number, p: BreakParams): number {
   if (!(r > 1)) return 0;
   return smoothstep(1, 1 + Math.max(p.stageSpan, MIN_STAGE_SPAN), r);
@@ -128,7 +142,7 @@ export function steepeningStart(p: Pick<BreakParams, 'ribbonOnset'>): number {
   return Math.min(p.ribbonOnset + RIBBON_FULL_OFFSET, 1 - MIN_STEEPENING_SPAN);
 }
 
-/** The front sharpening's weight: 0 below ribbonOnset + RIBBON_FULL_OFFSET, 1 from r = 1. */
+/** The front sharpening's weight: 0 below ribbonOnset + RIBBON_FULL_OFFSET, 1 from ρ = 1. */
 export function steepening(r: number, p: Pick<BreakParams, 'ribbonOnset'>): number {
   return smoothstep(steepeningStart(p), 1, r);
 }
@@ -138,10 +152,30 @@ export interface StageCurves {
   collapse: number;
 }
 
-export function stageCurves(s: number, p: BreakParams): StageCurves {
+/**
+ * The collapse (the wave settling to its bore) is complete at ρ = 1 + COLLAPSE_END·Δ: well after the tube has closed
+ * (s = 0.75 at ρ ≈ 1 + 0.66·Δ), as the whitewater runs on over the shallower reef. Settling by the stage's end (ρ = 1 +
+ * Δ) dropped a broken section to its bore within half a second of breaking, lower than the unbroken wave either side of
+ * it: a sunken, square-sided bowl. Whitewater stays nearly as tall as the wave that made it and settles over the reef.
+ */
+export const COLLAPSE_END = 2.5;
+
+/** Where the drain is full: ρ = 1 + drainEnd·Δ (Δ floored as breakingStage floors it). */
+export function drainFullRatio(p: BreakParams): number {
+  return 1 + p.drainEnd * Math.max(p.stageSpan, MIN_STAGE_SPAN);
+}
+
+/**
+ * The drain and the collapse for a crest at breaking ratio r. The drain ramps from the front sharpening's start
+ * (steepeningStart) to drainFullRatio: the reef starts draining as the wave stands up, so the drained hollow fades in
+ * along the crest over the whole steepening, not over the few metres where the stage first rises. The collapse runs from
+ * ρ = 1 + collapseStart·Δ to 1 + COLLAPSE_END·Δ (see COLLAPSE_END).
+ */
+export function stageCurves(r: number, p: BreakParams): StageCurves {
+  const span = Math.max(p.stageSpan, MIN_STAGE_SPAN);
   return {
-    drain: smoothstep(0, p.drainEnd, s),
-    collapse: smoothstep(p.collapseStart, 1, s),
+    drain: smoothstep(steepeningStart(p), drainFullRatio(p), r),
+    collapse: smoothstep(1 + p.collapseStart * span, 1 + COLLAPSE_END * span, r),
   };
 }
 
@@ -188,15 +222,30 @@ export function drainDepth(H: number, drain: number, p: BreakParams): number {
   return p.troughDrain * p.delta * H * drain;
 }
 
-/** Where the drain acts: 1 just ahead of the face (phase −π/2 … −π/4), 0 at the crest and half a wavelength ahead. θ < 0 is ahead. */
-export function drainShape(theta: number): number {
-  return smoothstep(0, -Math.PI / 4, theta) * smoothstep(-Math.PI, -Math.PI / 2, theta);
+/** The drain's hollow fades ahead over a Gaussian this many quarter wavelengths wide. */
+export const HOLLOW_REACH_Q = 0.5;
+
+/**
+ * Where the drain acts: a hollow at the foot of the face. 0 at the crest, full from about two face widths ahead (the
+ * front sharpening's sink), fading back over HOLLOW_REACH_Q quarter wavelengths, and gone by half a wavelength ahead
+ * (θ ≤ −π; θ < 0 is ahead), so a point far ahead whose crest lookup landed on another crest is never drained. It used
+ * to be a plateau a quarter wavelength across (θ ∈ [−π/2, −π/4], 15–31 m ahead at 15 s): a flat-bottomed channel.
+ * `ahead` is metres ahead of the crest, H the local height and k the crest's wavenumber.
+ */
+export function drainShape(ahead: number, theta: number, H: number, k: number, p: BreakParams): number {
+  if (!(ahead > 0) || !(H > 0)) return 0;
+  const width = p.faceWidth * H, reach = (HOLLOW_REACH_Q * Math.PI) / (2 * k);
+  return (1 - Math.exp(-((ahead / width) ** 2))) * Math.exp(-((ahead / reach) ** 2)) * smoothstep(-Math.PI, -Math.PI / 2, theta);
 }
 
-/** d drainShape / dθ. */
-export function drainShapeSlope(theta: number): number {
-  return smoothstepSlope(0, -Math.PI / 4, theta) * smoothstep(-Math.PI, -Math.PI / 2, theta)
-    + smoothstep(0, -Math.PI / 4, theta) * smoothstepSlope(-Math.PI, -Math.PI / 2, theta);
+/** ∂drainShape/∂ahead at a fixed crest, where dThetaDAhead is ∂θ/∂ahead. 0 behind the crest, continuous at it. */
+export function drainShapeSlope(ahead: number, theta: number, dThetaDAhead: number, H: number, k: number, p: BreakParams): number {
+  if (!(ahead > 0) || !(H > 0)) return 0;
+  const width = p.faceWidth * H, reach = (HOLLOW_REACH_Q * Math.PI) / (2 * k);
+  const g = Math.exp(-((ahead / width) ** 2)), sink = 1 - g, dSink = (2 * ahead * g) / (width * width);
+  const decay = Math.exp(-((ahead / reach) ** 2)), dDecay = ((-2 * ahead) / (reach * reach)) * decay;
+  const past = smoothstep(-Math.PI, -Math.PI / 2, theta), dPast = smoothstepSlope(-Math.PI, -Math.PI / 2, theta) * dThetaDAhead;
+  return (dSink * decay + sink * dDecay) * past + sink * decay * dPast;
 }
 
 /** The bore a collapsed wave settles to (m). */
@@ -230,9 +279,9 @@ export function foamWeight(theta: number, ahead: number, H: number, env: number,
   return land * env * front * trail;
 }
 
-/** Crest to drained trough (m) of a wave of local height H at stage s: the calibration readout (spec §3.7). */
-export function faceHeight(H: number, s: number, p: BreakParams): number {
-  return H + drainDepth(H, stageCurves(s, p).drain, p);
+/** Crest to drained trough (m) of a wave of local height H at breaking ratio r: the calibration readout (spec §3.7). */
+export function faceHeight(H: number, r: number, p: BreakParams): number {
+  return H + drainDepth(H, stageCurves(r, p).drain, p);
 }
 
 /**
@@ -291,14 +340,15 @@ export interface BreakPointResult {
 export function breakPoint(i: BreakPointInput, s: number, r: number, p: BreakParams): BreakPointResult {
   const steep = steepening(r, p);
   if (!(steep > 0 || s > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { eta: i.eta, foam: 0, dEtaDAhead: 0 };
-  const c = stageCurves(s, p);
+  const c = stageCurves(r, p);
   const ahead = i.uUnbroken - i.uCrest;
   const sharpen = steep * i.crestConfidence;
   const drop = sharpenDrop(ahead, i.eta, i.etaCrest, i.H, i.k, sharpen, p);
   const dDrop = sharpenDropSlope(ahead, i.eta, i.slope, i.etaCrest, i.H, i.k, sharpen, p);
   const depth = drainDepth(i.H, c.drain, p);
-  const drain = depth * drainShape(i.theta) * i.env;
-  const dDrain = depth * (drainShapeSlope(i.theta) * i.dThetaDAhead * i.env + drainShape(i.theta) * i.dEnvDAhead);
+  const shape = drainShape(ahead, i.theta, i.H, i.k, p);
+  const drain = depth * shape * i.env;
+  const dDrain = depth * (drainShapeSlope(ahead, i.theta, i.dThetaDAhead, i.H, i.k, p) * i.env + shape * i.dEnvDAhead);
   const scale = boreScale(i.H, i.hmin, c.collapse, p);
   return {
     eta: (i.eta - drop - drain) * scale,

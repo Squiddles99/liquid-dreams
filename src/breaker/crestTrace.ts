@@ -96,7 +96,7 @@ export function landingEstimate(H: number, p: BreakParams): number {
 
 /**
  * How long ago (s) the crest at (x, z) first broke: march back along the ray (against the field direction) over the
- * look-back window; the onset is the farthest-back point in the window with r ≥ 1, and the time is the distance from
+ * look-back window; the onset is the farthest-back point in the window with ρ ≥ 1, and the time is the distance from
  * there to the crest over the mean crest speed along it. null if nothing in the window has broken; Infinity if even the
  * window's far end had (the section is past its hand-back).
  */
@@ -108,7 +108,7 @@ export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: nu
   let px = x, pz = z;
   for (let d = 0; d <= windowM; d += LOOK_BACK_STEP_M) {
     const f = sampleField(field, px, pz);
-    rs.push(breakingRatio(w.heightM * f.amp, f.hmin, p));
+    rs.push(breakingRatio(w.heightM * f.amp, f.hminBreak, p));
     cs.push(ctx.omega / f.k);
     px -= f.dirX * LOOK_BACK_STEP_M;
     pz -= f.dirZ * LOOK_BACK_STEP_M;
@@ -119,7 +119,7 @@ export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: nu
   if (onset === rs.length - 1 && rs.length > 1) return Infinity;
   let cSum = 0;
   for (let i = 0; i <= onset; i++) cSum += cs[i];
-  // The onset lies between the march's last sample with r ≥ 1 and the next one back (r < 1): r interpolated to 1
+  // The onset lies between the march's last sample with ρ ≥ 1 and the next one back (ρ < 1): ρ interpolated to 1
   // there, so tb is continuous along the crest (whole march steps would quantise it into 1 m / c ≈ 0.13 s steps, which
   // the lip's reach turned into a staircase of lips half a metre apart; and it tends to 0 as the crest's own r → 1).
   const frac = onset + 1 < rs.length ? (rs[onset] - 1) / Math.max(rs[onset] - rs[onset + 1], 1e-9) : 0;
@@ -145,14 +145,14 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
     for (let n = 0; n < 20000; n++) {
       const nrm = crestNormal(w, f, ctx);
       if (sign > 0 || n > 0) {
-        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hmin, p), tb: null });
+        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null });
       }
       const ds = factor * Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ)));
       const next = project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS);
       if (!(Math.abs(next.xi) < CREST_TOLERANCE_S) || !inGrid(field, next.x, next.z) || Math.hypot(next.x, next.z) > TAPER_NEAR_M) break;
       arc += sign * Math.hypot(next.x - x, next.z - z);
       ({ x, z, f } = next);
-      below = breakingRatio(w.heightM * f.amp, f.hmin, p) < p.ribbonOnset ? below + ds : 0;
+      below = breakingRatio(w.heightM * f.amp, f.hminBreak, p) < p.ribbonOnset ? below + ds : 0;
       if (below > BELOW_ONSET_RUN_M) break;
     }
     sides.push(side);
@@ -211,8 +211,8 @@ export function traceStations(field: ReefField, waves: readonly ActiveWave[], t:
 
 /**
  * The height (m) below which a wave never reaches the ribbon's onset ratio anywhere: ribbonOnset × the field's breaking
- * height (setWaveModel.fieldBreakingHeight). Conservative: r grows faster than linearly with height, so a wave of this
- * height has r < ribbonOnset wherever the full-height wave would have r < 1.
+ * height (setWaveModel.fieldBreakingHeight). ρ is proportional to the height, so a wave of this height has ρ <
+ * ribbonOnset wherever a wave of the field's breaking height has ρ < 1, which is everywhere.
  */
 export function minRibbonHeight(fieldBreakingHeightM: number, p: BreakParams): number {
   return p.ribbonOnset * fieldBreakingHeightM;
