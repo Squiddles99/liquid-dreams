@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  Break, Fn, If, Loop, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, min, mix, positionWorld, saturate, select, smoothstep,
+  Break, Fn, If, Loop, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
   storage, uniform, varying, varyingProperty, vec2, vec3, vec4,
 } from 'three/tsl';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
@@ -522,9 +522,13 @@ export class BreakingRibbon {
     const lip = float(1.0).sub(smoothstep(0.05, 0.6, thickness)).mul(lipness);
     // The curl's landing foam fades with ρ, so by the hand-back (and at the along-crest ends) the foam is the sheet's.
     const foamLook = setFoamPattern(max(vSetFoam.x, curlFoam.mul(rho)), vSetFoam.yz, model.sim.time);
-    const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
+    // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
+    // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
+    const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
+    const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, underside,
+        bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed },
       sky,
       optics,

@@ -18,6 +18,12 @@ export interface WaterSurfaceInputs {
   lip?: N;
   /** How far the set wave has turned over (0..1, 1 where it faces down: the tube's ceiling). Absent means 0. */
   underside?: N;
+  /**
+   * The normal the water body's sunlight enters through. Absent means straight up, the ocean sheet's (its slopes are
+   * gentle). The breaking ribbon passes its own where its face stands up: a steep face turned to the sun is lit through
+   * that face, and lit only from above it read as dark water under a reflected sunrise horizon (the lip's brown).
+   */
+  bodyLightNormal?: N;
   unresolvedSlopeVariance: N;
   /** The seabed seen through the water (Phase 1); absent means infinitely deep water (Phase 0). */
   seabed?: { radiance: N; transmittance: N };
@@ -91,7 +97,8 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   );
 
   // Light scattered back up out of the deep, clear water column.
-  const upwelling = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(max(l.y, 0.0)))).div(PI).mul(u.bodyScale);
+  const sunIntoBody = i.bodyLightNormal ? max(dot(i.bodyLightNormal, l), 0.0).mul(step(0.0, l.y)) : max(l.y, 0.0);
+  const upwelling = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(sunIntoBody))).div(PI).mul(u.bodyScale);
 
   // Where the set wave has turned over (the tube's ceiling), a reflection that heads down sees the water under the lip
   // (the face and the trough), not the horizon sky the clamp above would give: the tube stays water-dark, never white.
