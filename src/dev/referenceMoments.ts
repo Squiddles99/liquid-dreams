@@ -89,9 +89,12 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
     "(Andrew's own wave wasn't the reference set's biggest, so this reuses REF_BIGGEST + 7.2 s in its place.)",
     conditions({ swell: { sizeFt: 4.65 }, wind: { speedMs: 6.09, directionDeg: 57 } }),
     { mode: 'free', position: [12, 3.5, -32], yawDeg: 73.5, pitchDeg: -13 }, REF_BIGGEST.arrivalS + 7.2),
-  setMoment('lip-close-up', "08:15, 5 ft: about 6 m from the lip at the peak as it throws over the tube.",
+  // Placed by eye from the ribbon's stations at this time (crest along x ≈ 4–6, breaking from z ≈ −16.6, the lip
+  // mid-throw near (5, −10.5)): on the unbroken shoulder, a little ahead of the face. Closer than ~12 m the camera
+  // ends up inside the face.
+  setMoment('lip-close-up', "08:15, 5 ft: from the unbroken shoulder, about 15 m down the line from the lip as it throws over the tube.",
     conditions({ swell: { sizeFt: 5 } }),
-    { mode: 'free', position: [4, 2.0, -8], yawDeg: 200, pitchDeg: 5 }, REF_BIGGEST.arrivalS + 1.0),
+    { mode: 'free', position: [9.5, 2.9, -26], yawDeg: 193, pitchDeg: -3 }, REF_BIGGEST.arrivalS + 1.0),
 ];
 
 const cloneMoment = (m: Moment): Moment => ({
