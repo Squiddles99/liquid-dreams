@@ -90,13 +90,17 @@ export class WaterSurfaceModel {
     return d;
   }
 
-  /** FFT slopes/Jacobian terms and foam at xz, with the render's normal fades by distance; set waves added separately. */
-  fftSlopes(xz: N, distance: N, slopeVariance: readonly N[]): { sx: N; sz: N; jxx: N; jzz: N; foam: N; lostSlopeVariance: N } {
+  /**
+   * FFT slopes/Jacobian terms and foam at xz, with the render's normal fades by distance; set waves added separately.
+   * `scale` (optional) weights a cascade further, like the long swell's fade: the breaking ribbon removes the chop over
+   * its lip, and a cascade scaled out is gone, not unresolved roughness.
+   */
+  fftSlopes(xz: N, distance: N, slopeVariance: readonly N[], scale?: (cascade: number) => N): { sx: N; sz: N; jxx: N; jzz: N; foam: N; lostSlopeVariance: N } {
     let sx: N = float(0.0), sz: N = float(0.0), jxx: N = float(0.0), jzz: N = float(0.0);
     let foam: N = float(0.0), lostSlopeVariance: N = float(0.0);
     this.sim.sizes.forEach((size, c) => {
       const distanceFade = fadeWeightNode(distance, CASCADE_FADES[c].normals);
-      const cascadeWeight = this.cascadeWeight(xz, c);
+      const cascadeWeight = scale ? this.cascadeWeight(xz, c).mul(scale(c)) : this.cascadeWeight(xz, c);
       const w = distanceFade.mul(cascadeWeight);
       const d = texture(this.sim.derivatives[c], xz.div(size));
       sx = sx.add(d.x.mul(w));

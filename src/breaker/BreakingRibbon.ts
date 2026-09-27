@@ -1,7 +1,15 @@
 import * as THREE from 'three/webgpu';
-import { Break, Fn, If, Loop, cross, dot, float, instanceIndex, int, length, max, select, storage, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import {
+  Break, Fn, If, Loop, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, mix, positionWorld, saturate, select, smoothstep,
+  storage, uniform, varying, vec2, vec3, vec4,
+} from 'three/tsl';
 import { CASCADE_FADES, fadeWeightNode } from '../ocean/cascadeFades';
+import { type DebugOverlays, EARTH_RADIUS_M, type SheetFootprint, setFoamPattern } from '../ocean/OceanSurface';
+import { type WaterOpticsUniforms, shadeWater } from '../ocean/waterShading';
 import type { WaterSurfaceModel } from '../ocean/waterSurface';
+import { seabedTerms } from '../seabed/seabedShading';
+import { REEF_GRID } from '../seabed/wombReef';
+import type { Sky } from '../sky/Sky';
 import type { BreakParams } from './breaking';
 import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
 import { PROFILE_SAMPLES } from './lipProfile';
@@ -15,7 +23,8 @@ type N = any;
  * The breaking ribbon on the GPU (breaking-ribbon spec §5–6): the breaking part of each set wave as its own fine mesh,
  * one row of VERTS_PER_STATION vertices per crest station (crestTrace), each row the station's cross-section
  * (lipProfile, mirrored in lipProfileNodes) placed in the world. Three compute passes per frame: the frame (one
- * invocation per station), the vertices and the normals (one per vertex). Task 6 draws the buffers.
+ * invocation per station), the vertices and the normals (one per vertex). The mesh draws the buffers with the water
+ * shading (spec §7.3), and the footprint pass marks where the sheet steps aside (spec §7.2).
  */
 
 /** A TSL function of undisplaced world xz (vec2) → the sheet's vec3 displacement there (relative to the tide). */
@@ -49,8 +58,56 @@ export const NORMAL_SEARCH = 8;
 /** The FFT cascade that is the chop (35 m patch): it fades out over the lip (spec R6). */
 export const CHOP_CASCADE = 2;
 
+/** A vertex whose interpolated dead flag exceeds this is discarded: gap rows and the triangles touching them (Q10). */
+export const DEAD_EPSILON = 1e-4;
+/** The footprint marks only stations at least this far into the ribbon (ρ): where ρ → 0 the ribbon is the sheet. */
+export const FOOTPRINT_MIN_RHO = 0.01;
+/**
+ * The footprint mask's grid (spec §7.2): 0.5 m texels over the reef grid (the reef field's extent), texel centres on
+ * the grid's points; texel row = z. `origin` is texel (0, 0)'s corner.
+ */
+export const FOOTPRINT_GRID: Readonly<Omit<SheetFootprint, 'texture'>> = {
+  origin: new THREE.Vector2(REEF_GRID.x0 - REEF_GRID.cellM / 2, REEF_GRID.z0 - REEF_GRID.cellM / 2),
+  cellM: REEF_GRID.cellM,
+  size: new THREE.Vector2(REEF_GRID.nx, REEF_GRID.nz),
+};
+/** The `ribbon tint` overlay mixes this much magenta (at the colour's own luminance) into the ribbon. */
+export const TINT_MIX = 0.4;
+
 const V = VERTS_PER_STATION;
 const LAST = PROFILE_SAMPLES - 1;
+
+/**
+ * The ribbon's fixed index buffer over MAX_STATIONS × VERTS_PER_STATION vertices (vertex i·V + l: station row i, local
+ * sample l, skirts included): the quad of rows i, i + 1 and samples l, l + 1 is triangles (a, a + 1, a + V) and
+ * (a + 1, a + V + 1, a + V), a = i·V + l, quads row by row. Their face normal is ∂P/∂l × ∂P/∂station: crestTrace orders
+ * the stations along +t̂ and the profile runs front → back, so that is the side the normal pass orients the normals to
+ * (its back-edge flip), out of the water: the front faces are the water's outside (the tube's inside under the lip).
+ */
+export function ribbonIndices(): Uint32Array {
+  const out = new Uint32Array((MAX_STATIONS - 1) * (V - 1) * 6);
+  let k = 0;
+  for (let i = 0; i + 1 < MAX_STATIONS; i++) {
+    for (let l = 0; l + 1 < V; l++) {
+      const a = i * V + l;
+      out[k++] = a; out[k++] = a + 1; out[k++] = a + V;
+      out[k++] = a + 1; out[k++] = a + V + 1; out[k++] = a + V;
+    }
+  }
+  return out;
+}
+
+/** The indices drawn for `stationCount` live rows: every quad between consecutive rows (none below two rows). */
+export function ribbonDrawCount(stationCount: number): number {
+  return stationCount < 2 ? 0 : (stationCount - 1) * (V - 1) * 6;
+}
+
+/** What the ribbon's material shades with: the water model (FFT detail, set foam, seabed, tide), the sky and the optics. */
+export interface RibbonShading {
+  model: WaterSurfaceModel;
+  sky: Sky;
+  optics: WaterOpticsUniforms;
+}
 
 /**
  * Packs the stations for the GPU (STATION_VEC4S × 4 floats each) into `out`, and returns how many rows are in use (at
@@ -130,8 +187,29 @@ export class BreakingRibbon {
   private readonly framePass: THREE.ComputeNode;
   private readonly vertexPass: THREE.ComputeNode;
   private readonly normalPass: THREE.ComputeNode;
+  /**
+   * The ribbon drawn with the water shading (a plain magenta placeholder without RibbonShading: the self-tests never
+   * draw it). It reads the vertex buffers as geometry attributes; the draw range covers the live rows.
+   */
+  readonly mesh: THREE.Mesh;
+  /** The footprint mask (R8, FOOTPRINT_GRID): 1 where the sheet steps aside. renderFootprint fills it each frame. */
+  readonly footprint: THREE.Texture;
+  private readonly geometry: THREE.BufferGeometry;
+  /** The footprint's render target (its texture is `footprint`); public for the self-tests' readback. */
+  readonly footprintTarget: THREE.RenderTarget;
+  private readonly footprintScene = new THREE.Scene();
+  /** renderer.render needs a camera; the footprint material writes its clip position itself (buildFootprintMaterial). */
+  private readonly footprintCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  /** Whether the mask may hold marks (so an empty frame must clear it once). */
+  private footprintDirty = true;
+  private readonly savedClearColor = new THREE.Color();
+  /** The camera's xz (setStations): the Earth-curvature drop is measured from it, as the sheet's. */
+  private readonly cameraXZ = uniform(new THREE.Vector2());
+  private readonly tint = uniform(0);
+  /** The FFT cascades' slope variances (the unresolved roughness), copied from the simulation each frame. */
+  private readonly slopeVariance: THREE.UniformNode<'float', number>[];
 
-  constructor(private readonly surface: RibbonSurface, params: BreakParams) {
+  constructor(private readonly surface: RibbonSurface, params: BreakParams, private readonly shading?: RibbonShading) {
     const vertexCount = MAX_STATIONS * V;
     this.positions = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
     this.normals = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
@@ -142,19 +220,52 @@ export class BreakingRibbon {
     this.framePass = this.buildFramePass();
     this.vertexPass = this.buildVertexPass();
     this.normalPass = this.buildNormalPass();
+    this.slopeVariance = (shading?.model.sim.sizes ?? []).map(() => uniform(0));
+
+    // One geometry for both draws: the compute buffers are its attributes (a StorageBufferAttribute used as a geometry
+    // attribute is created as a storage and vertex buffer), so nothing is copied. 'position' is the positions buffer
+    // itself (vec4: xyz + the dead flag).
+    this.geometry = new THREE.BufferGeometry();
+    this.geometry.setAttribute('position', this.positions);
+    this.geometry.setAttribute('ribbonNormal', this.normals);
+    this.geometry.setAttribute('ribbonExtra', this.extras);
+    this.geometry.setAttribute('ribbonHome', this.homes);
+    this.geometry.setIndex(new THREE.BufferAttribute(ribbonIndices(), 1));
+    this.geometry.setDrawRange(0, 0);
+    this.mesh = new THREE.Mesh(this.geometry, this.buildMaterial());
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+
+    const { size } = FOOTPRINT_GRID;
+    this.footprintTarget = new THREE.RenderTarget(size.x, size.y, {
+      format: THREE.RedFormat, type: THREE.UnsignedByteType, depthBuffer: false, generateMipmaps: false,
+      minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+    });
+    this.footprint = this.footprintTarget.texture;
+    const footprintMesh = new THREE.Mesh(this.geometry, this.buildFootprintMaterial());
+    footprintMesh.frustumCulled = false;
+    this.footprintScene.add(footprintMesh);
   }
 
   setParams(p: BreakParams): void {
     updateLipUniforms(this.lip, p);
   }
 
+  setOverlays(o: DebugOverlays): void {
+    this.tint.value = o.ribbonTint ? 1 : 0;
+  }
+
   /** Uploads this frame's stations (≤ MAX_STATIONS; gaps included) and the camera position. */
   setStations(entries: readonly StationEntry[], camera: THREE.Vector3): void {
     this.camera.copy(camera);
+    this.cameraXZ.value.set(camera.x, camera.z);
     this.surface.setCamera?.(camera);
+    this.shading?.model.sim.slopeVariance.forEach((v, c) => { this.slopeVariance[c].value = v; });
     const n = packStations(entries, this.stationsAttr.array as Float32Array);
     this.stationCount = n;
     this.rows.value = n;
+    this.geometry.setDrawRange(0, ribbonDrawCount(n));
+    this.mesh.visible = n >= 2;
     if (n > 0) {
       this.stationsAttr.clearUpdateRanges();
       this.stationsAttr.addUpdateRange(0, n * STATION_VEC4S * 4);
@@ -169,6 +280,123 @@ export class BreakingRibbon {
     this.vertexPass.count = this.stationCount * V;
     this.normalPass.count = this.stationCount * V;
     renderer.compute([this.framePass, this.vertexPass, this.normalPass]);
+  }
+
+  /**
+   * Renders the footprint mask: cleared to 0, then the live rows' inner strip (samples more than INNER_MARGIN_M inside
+   * both edges, ρ ≥ FOOTPRINT_MIN_RHO, not dead) marked 1. With fewer than two rows nothing is drawn and the mask is left
+   * cleared (the clear itself is skipped once it is clear). Call after compute(), before the frame's render.
+   */
+  renderFootprint(renderer: THREE.WebGPURenderer): void {
+    const draw = this.stationCount >= 2;
+    if (!draw && !this.footprintDirty) return;
+    const target = renderer.getRenderTarget(), autoClear = renderer.autoClear, alpha = renderer.getClearAlpha();
+    renderer.getClearColor(this.savedClearColor);
+    renderer.setClearColor(0x000000, 0);
+    renderer.setRenderTarget(this.footprintTarget);
+    renderer.clear(true, false, false);
+    if (draw) {
+      renderer.autoClear = false;
+      renderer.render(this.footprintScene, this.footprintCamera);
+    }
+    renderer.setRenderTarget(target);
+    renderer.autoClear = autoClear;
+    renderer.setClearColor(this.savedClearColor, alpha);
+    this.footprintDirty = draw;
+  }
+
+  /**
+   * The ribbon's material (spec §7.3): the sheet's water shading (shadeWater, seabedTerms, setFoamPattern) on the
+   * ribbon's own normal, tilted by the FFT detail (cascades 0–1 whole, the chop × (1 − lipness)) read at the vertex's
+   * undisplaced home; the turquoise lip keyed by the real thickness; the sheet's foam at the home (vertex stage) with
+   * the curl's foam. Gap rows are discarded (Q10).
+   */
+  private buildMaterial(): THREE.MeshBasicNodeMaterial {
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.side = THREE.FrontSide;
+    const pos: N = attribute('position', 'vec4');
+    const dead: N = varying(pos.w);
+    material.maskNode = dead.lessThanEqual(DEAD_EPSILON);
+    const shading = this.shading;
+    if (!shading) {
+      material.positionNode = pos.xyz;
+      material.colorNode = vec3(1.0, 0.0, 1.0);
+      return material;
+    }
+    const { model, sky, optics } = shading;
+    // Vertex: y is relative to the tide; the Earth's curvature drops it as it drops the sheet (measured at the home,
+    // the undisplaced point, as the sheet measures its undisplaced grid).
+    const home: N = attribute('ribbonHome', 'vec4');
+    const radial = length(home.xy.sub(this.cameraXZ));
+    material.positionNode = vec3(pos.x, model.seabed.tide.add(pos.y).sub(radial.mul(radial).div(2 * EARTH_RADIUS_M)), pos.z);
+    const vNormal: N = varying(attribute('ribbonNormal', 'vec4').xyz);
+    const vExtra: N = varying(attribute('ribbonExtra', 'vec4'));
+    const vHome: N = varying(home);
+    // The sheet's set-wave foam weight and foam frame at the home, once per vertex (the sheet's own vertex-stage sum).
+    const vSetFoam: N = varying(Fn(() => {
+      const b = model.sets.breakSampleNode(home.xy);
+      return vec3(b.foam, b.foamFrame);
+    })());
+
+    const toCamera = cameraPosition.sub(positionWorld);
+    const distance = length(toCamera);
+    const viewDir = toCamera.div(max(distance, 1e-4));
+    const n0 = safeNormalize3(vNormal).toVar();
+    const thickness = vExtra.x, lipness = saturate(vExtra.y), curlFoam = vExtra.z;
+    const fft = model.fftSlopes(vHome.xy, distance, this.slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness) : float(1.0)));
+    // FFT slopes, Jacobian-corrected as the sheet's, split along the crest (t̂) and across it (d = (t̂.z, −t̂.x), the
+    // travel direction), then applied in the ribbon normal's tangent frame: T = t̂ made perpendicular to n, B = n × T
+    // (= d where n is up, so there this is the sheet's normalize(−sx, 1, −sz) exactly).
+    const fsx = fft.sx.div(max(float(1.0).add(fft.jxx), 0.1));
+    const fsz = fft.sz.div(max(float(1.0).add(fft.jzz), 0.1));
+    const tHat = vec3(vHome.z, 0.0, vHome.w).toVar();
+    const tAlong = tHat.sub(n0.mul(dot(n0, tHat))).toVar();
+    const tLen = length(tAlong);
+    const T = select(tLen.greaterThan(1e-4), tAlong.div(max(tLen, 1e-8)), tHat).toVar();
+    const B = cross(n0, T);
+    const sT = fsx.mul(tHat.x).add(fsz.mul(tHat.z));
+    const sD = fsx.mul(tHat.z).sub(fsz.mul(tHat.x));
+    const normal = safeNormalize3(n0.sub(T.mul(sT)).sub(B.mul(sD))).toVar();
+    const underside = float(1.0).sub(smoothstep(-0.3, 0.3, n0.y));
+    const lip = float(1.0).sub(smoothstep(0.05, 0.6, thickness)).mul(lipness);
+    const foamLook = setFoamPattern(max(vSetFoam.x, curlFoam), vSetFoam.yz, model.sim.time);
+    const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
+    const colour = shadeWater(
+      { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, underside,
+        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed },
+      sky,
+      optics,
+    ).toVar();
+    // The ribbon tint: magenta at the colour's own luminance (the colour is HDR radiance, so a plain magenta would read black).
+    const magenta = vec3(1.0, 0.0, 1.0).mul(dot(colour, vec3(0.2126, 0.7152, 0.0722)).div(0.2848));
+    material.colorNode = mix(colour, magenta, this.tint.mul(TINT_MIX));
+    return material;
+  }
+
+  /**
+   * The footprint pass's material: each vertex goes straight to clip space over FOOTPRINT_GRID (x → NDC x, z → NDC −y;
+   * WebGPU's framebuffer rows and texture rows both start at NDC +y, so texel row r holds z = origin.z + (r + ½)·cellM),
+   * so no camera convention is involved. Writes 1 on the live inner strip and discards elsewhere, leaving the clear's
+   * 0: order-independent where the curl overlaps itself in plan view.
+   */
+  private buildFootprintMaterial(): THREE.MeshBasicNodeMaterial {
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.side = THREE.DoubleSide;
+    material.depthTest = false;
+    material.depthWrite = false;
+    material.toneMapped = false;
+    material.fog = false;
+    const { origin, cellM, size } = FOOTPRINT_GRID;
+    const pos: N = attribute('position', 'vec4');
+    const u = pos.x.sub(origin.x).div(size.x * cellM);
+    const v = pos.z.sub(origin.y).div(size.y * cellM);
+    material.vertexNode = vec4(u.mul(2.0).sub(1.0), float(1.0).sub(v.mul(2.0)), 0.5, 1.0);
+    const inner: N = varying(attribute('ribbonNormal', 'vec4').w);
+    const rho: N = varying(attribute('ribbonExtra', 'vec4').w);
+    const dead: N = varying(pos.w);
+    material.maskNode = dead.lessThanEqual(DEAD_EPSILON).and(rho.greaterThanEqual(FOOTPRINT_MIN_RHO)).and(inner.greaterThan(0.5));
+    material.colorNode = vec4(1.0);
+    return material;
   }
 
   private stationsNode(): N {

@@ -1,10 +1,13 @@
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
+import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
+import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, peakFace } from '../breaker/peakFace';
 import type { ReefField } from '../breaker/reefField';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
+import { fieldBreakingHeight, toActiveWave } from '../breaker/setWaveModel';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -21,7 +24,7 @@ import { PerfOverlay } from '../dev/perf';
 import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
 import { HeightProbe } from '../ocean/HeightProbe';
 import { DEFAULT_OCEAN_SIM, type OceanSimParams, OceanSimulation } from '../ocean/OceanSimulation';
-import { type DebugOverlays, OceanSurface } from '../ocean/OceanSurface';
+import { DEFAULT_DEBUG_OVERLAYS, type DebugOverlays, OceanSurface } from '../ocean/OceanSurface';
 import { DEFAULT_SPECTRUM_PARAMS, type OceanSpectrumParams, spectrumInputsKey } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS, type WaterOpticsParams } from '../ocean/waterOptics';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
@@ -32,7 +35,7 @@ import { Seabed } from '../seabed/Seabed';
 import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
-import { DEFAULT_SET_PARAMS, type SetParams, callSetTime, nextSetArrivalS, normalizeSetParams, wavesNear } from '../swell/sets';
+import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesNear } from '../swell/sets';
 import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { showOverlay } from './overlay';
@@ -40,6 +43,8 @@ import { showOverlay } from './overlay';
 const SPECTRUM_REBUILD_DEBOUNCE_MS = 150;
 const REEF_REBUILD_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 500;
+/** The crest trace's timing readout is an exponential moving average with this weight on each new frame. */
+const TRACE_MS_ALPHA = 0.1;
 
 /** localStorage, reached lazily: the getter itself can throw (blocked site data), and the devSettings functions catch that. */
 const browserStorage: SettingsStorage = {
@@ -72,7 +77,7 @@ export class App {
   readonly reefParams: ReefParams = { ...DEFAULT_REEF_PARAMS };
   readonly setParams: SetParams = { ...DEFAULT_SET_PARAMS };
   readonly shallowParams: ShallowSwellParams = { ...DEFAULT_SHALLOW_SWELL };
-  readonly overlays: DebugOverlays = { depthContours: false, crestLines: false };
+  readonly overlays: DebugOverlays = { ...DEFAULT_DEBUG_OVERLAYS };
   readonly breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
   readonly setStatus = { nextSet: '', wave: '', face: '' };
   /** The look as constructed (deep clones): what "Reset settings" and default mode restore. */
@@ -103,6 +108,15 @@ export class App {
   /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
   private field: ReefField | null = null;
   readonly waterOptics = createWaterOpticsUniforms(this.waterParams);
+  /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
+  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics });
+  /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
+  private ribbonMinHeightM = Infinity;
+  /**
+   * Dev readout (window.liquidDreams.traceMs in dev builds): the crest trace's CPU time per frame (ms), an exponential
+   * moving average over the frames that trace (plan Q7's 2 ms target is measured here).
+   */
+  traceMs = 0;
   readonly oceanSurface: OceanSurface;
   readonly picture: PicturePipeline;
   private readonly perf: PerfOverlay;
@@ -126,8 +140,9 @@ export class App {
   ) {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
-    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics);
+    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID } });
     this.scene.add(this.oceanSurface.mesh);
+    this.scene.add(this.ribbon.mesh);
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
     this.perf = new PerfOverlay(renderer);
     this.panel = new DevPanel(
@@ -154,11 +169,15 @@ export class App {
         },
         onReef: () => this.scheduleReefRebuild(),
         onShallow: () => this.surfaceModel.setParams(this.shallowParams),
-        onOverlays: () => this.oceanSurface.setOverlays(this.overlays),
+        onOverlays: () => {
+          this.oceanSurface.setOverlays(this.overlays);
+          this.ribbon.setOverlays(this.overlays);
+        },
         onCallSet: () => this.callSetNow(),
         onBreak: () => {
           normalizeBreakParams(this.breakParams);
           this.setWaves.setBreakParams(this.breakParams);
+          this.onRibbonInputs();
           this.panel.refresh();
         },
         onSettingsMode: (mode) => this.setSettingsMode(mode),
@@ -167,7 +186,11 @@ export class App {
       },
     );
     renderer.onDeviceLost = (info) => this.onDeviceLost(info);
-    this.fieldClient.onField = (f) => { this.field = f; this.setWaves.setField(f); };
+    this.fieldClient.onField = (f) => {
+      this.field = f;
+      this.setWaves.setField(f);
+      this.onRibbonInputs();
+    };
     this.applyAllParams();
     if (hashMoment) this.visitLink(hashMoment);
     else {
@@ -210,6 +233,31 @@ export class App {
   /** Latest GPU-sampled water height under the camera (holds while a readback is in flight). */
   protected waterHeightAtCamera(): number {
     return this.probe.heightAt(0) ?? 0;
+  }
+
+  /** The field or the break params changed: the ribbon's params and the trace's height cut-off follow. */
+  private onRibbonInputs(): void {
+    this.ribbon.setParams(this.breakParams);
+    this.ribbonMinHeightM = this.field ? minRibbonHeight(fieldBreakingHeight(this.field, this.breakParams), this.breakParams) : Infinity;
+  }
+
+  /**
+   * This frame's crest stations (crestTrace), timed into traceMs; none with no field yet or breaking off. The ribbon
+   * then uploads them, computes its vertices and renders the footprint the sheet reads, all before the frame renders.
+   */
+  private updateRibbon(events: readonly WaveEvent[]): void {
+    let entries: StationEntry[] = [];
+    const field = this.field;
+    if (field && this.breakParams.enabled) {
+      const start = performance.now();
+      entries = traceStations(field, events.map(toActiveWave), this.clock.simTime, { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ }, {
+        cameraX: this.camera.position.x, cameraZ: this.camera.position.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM,
+      });
+      this.traceMs += TRACE_MS_ALPHA * (performance.now() - start - this.traceMs);
+    }
+    this.ribbon.setStations(entries, this.camera.position);
+    this.ribbon.compute(this.renderer);
+    this.ribbon.renderFootprint(this.renderer);
   }
 
   private onConditionsEdited(): void {
@@ -343,8 +391,10 @@ export class App {
     this.picture.setParams(this.pictureParams);
     this.surfaceModel.setParams(this.shallowParams);
     this.oceanSurface.setOverlays(this.overlays);
+    this.ribbon.setOverlays(this.overlays);
     normalizeBreakParams(this.breakParams);
     this.setWaves.setBreakParams(this.breakParams);
+    this.onRibbonInputs();
     clearTimeout(this.reefTimer);
     this.rebuildReefIfChanged();
   }
@@ -539,6 +589,7 @@ export class App {
     this.ocean.update(this.renderer, this.clock.simTime, simDt);
     const events = wavesNear(this.clock.simTime, this.conditions, this.setParams);
     this.setWaves.setEvents(events);
+    this.updateRibbon(events);
     this.statusAge += realDt;
     if (this.statusAge > 0.25) {
       this.statusAge = 0;

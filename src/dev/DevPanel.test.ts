@@ -3,7 +3,8 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '..
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { CONDITION_RANGES, sanitizeConditions } from '../conditions/sanitize';
 import { msToKmh } from '../conditions/units';
-import { BREAK_BINDINGS, CONDITION_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
+import { DEFAULT_DEBUG_OVERLAYS } from '../ocean/OceanSurface';
+import { BREAK_BINDINGS, CONDITION_BINDINGS, OVERLAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
 
 describe('dev panel condition bindings never rewrite a loaded moment', () => {
   // windSpeedMs has no widget of its own: it's edited in km/h through WIND_SPEED_KMH_BINDING instead, checked below.
@@ -61,5 +62,12 @@ describe('Break folder sliders', () => {
         expect(p[key]).toBe(v);
       }
     }
+  });
+});
+
+describe('debug overlay toggles', () => {
+  it('has a toggle for every DebugOverlays field, the ribbon tint among them', () => {
+    expect(Object.keys(OVERLAY_BINDINGS).sort()).toEqual(Object.keys(DEFAULT_DEBUG_OVERLAYS).sort());
+    expect(OVERLAY_BINDINGS.ribbonTint.label).toBe('ribbon tint');
   });
 });

@@ -363,10 +363,13 @@ export class SetWaves {
     })();
   }
 
-  /** The render path's values as nodes, for self-tests and diagnostics. Compute-safe; must be called inside an Fn. */
-  breakSampleNode(xz: N): { disp: N; slope: N; foam: N; stage: N } {
+  /**
+   * The render path's values as nodes, for self-tests, diagnostics and the breaking ribbon's vertex stage (the sheet's
+   * foam and foam frame at a ribbon vertex's home). Compute-safe; must be called inside an Fn.
+   */
+  breakSampleNode(xz: N): { disp: N; slope: N; foam: N; stage: N; foamFrame: N } {
     const s = this.sumBreaking(xz, true);
-    return { disp: vec3(s.dh.x, s.eta, s.dh.y), slope: s.slope, foam: s.foam, stage: s.stage };
+    return { disp: vec3(s.dh.x, s.eta, s.dh.y), slope: s.slope, foam: s.foam, stage: s.stage, foamFrame: s.foamFrame };
   }
 
   /** vec2(∂η/∂x, ∂η/∂z) of the set waves (Eulerian, Jacobian-corrected), breaking included. Self-test only. */

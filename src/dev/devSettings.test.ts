@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { DEFAULT_OCEAN_SIM } from '../ocean/OceanSimulation';
+import { DEFAULT_DEBUG_OVERLAYS } from '../ocean/OceanSurface';
 import { DEFAULT_SPECTRUM_PARAMS } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS } from '../ocean/waterOptics';
 import { DEFAULT_SHALLOW_SWELL } from '../ocean/waterSurface';
@@ -52,7 +53,7 @@ function defaults(): DevSettings {
     sets: DEFAULT_SET_PARAMS,
     reef: DEFAULT_REEF_PARAMS,
     shallow: DEFAULT_SHALLOW_SWELL,
-    overlays: { depthContours: false, crestLines: false },
+    overlays: DEFAULT_DEBUG_OVERLAYS,
     breaking: DEFAULT_BREAK_PARAMS,
   });
 }
@@ -79,6 +80,7 @@ function tweaked(): DevSettings {
   s.reef.ledgeDepthM = 7.5;
   s.shallow.fadeToM = 18;
   s.overlays.crestLines = true;
+  s.overlays.ribbonTint = true;
   s.breaking.enabled = false;
   s.breaking.stageSpan = 2.2;
   s.breaking.ribbonOnset = 0.62;
@@ -98,6 +100,23 @@ describe('dev settings persistence', () => {
     saveDevSettings(s, saved);
     expect(s.items.has(DEV_SETTINGS_KEY)).toBe(true);
     expect(loadDevSettings(s, defaults())).toEqual(saved);
+  });
+
+  it('overlays.ribbonTint persists and defaults to false', () => {
+    expect(DEFAULT_DEBUG_OVERLAYS.ribbonTint).toBe(false);
+    expect(defaults().overlays.ribbonTint).toBe(false);
+    const s = new FakeStorage();
+    const saved = defaults();
+    saved.overlays.ribbonTint = true;
+    saveDevSettings(s, saved);
+    expect(loadDevSettings(s, defaults())?.overlays.ribbonTint).toBe(true);
+    // A profile stored before the toggle existed loads with it off and keeps its other overlays.
+    const raw = JSON.parse(JSON.stringify(defaults()));
+    delete raw.overlays.ribbonTint;
+    raw.overlays.crestLines = true;
+    const got = loadDevSettings(store(raw), defaults());
+    expect(got?.overlays.ribbonTint).toBe(false);
+    expect(got?.overlays.crestLines).toBe(true);
   });
 
   it('returns null for an empty store', () => {

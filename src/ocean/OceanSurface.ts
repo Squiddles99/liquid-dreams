@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, cameraPosition, float, length, max, mx_noise_float, normalize, positionLocal, positionWorld, saturate, smoothstep, uniform, varying,
-  varyingProperty, vec2, vec3,
+  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, mx_noise_float, normalize, positionLocal, positionWorld, saturate, smoothstep,
+  textureLoad, uniform, varying, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { seabedTerms } from '../seabed/seabedShading';
 import type { Sky } from '../sky/Sky';
@@ -48,6 +48,34 @@ export interface DebugOverlays {
   depthContours: boolean;
   /** Gold set-wave crest lines, every 2 s of arrival time τ. */
   crestLines: boolean;
+  /** The breaking ribbon mixed 40% with magenta, to see where it starts and ends. */
+  ribbonTint: boolean;
+}
+
+export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false };
+
+/**
+ * The breaking ribbon's footprint mask (BreakingRibbon.footprint): an R8 texture of `size` texels, `cellM` m each,
+ * texel (0, 0)'s corner at world xz `origin`, texel row = z. The sheet discards its pixels where the mask is set.
+ */
+export interface SheetFootprint {
+  texture: THREE.Texture;
+  origin: THREE.Vector2;
+  cellM: number;
+  size: THREE.Vector2;
+}
+
+export interface OceanSurfaceOptions {
+  footprint?: SheetFootprint;
+}
+
+/** True where the sheet draws: outside the footprint grid, or on a texel the mask leaves clear (≤ 0.5). */
+function footprintClear(fp: SheetFootprint, xz: N): N {
+  const origin = uniform(fp.origin), size = uniform(fp.size);
+  const g = xz.sub(origin).div(fp.cellM).toVar();
+  const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThan(size.x)).and(g.y.lessThan(size.y));
+  const texel = ivec2(clamp(floor(g), vec2(0.0), size.sub(1.0)));
+  return inside.not().or(textureLoad(fp.texture, texel, int(0)).x.lessThanEqual(0.5));
 }
 
 export class OceanSurface {
@@ -58,7 +86,7 @@ export class OceanSurface {
   private readonly overlayDepth = uniform(0);
   private readonly overlayCrest = uniform(0);
 
-  constructor(readonly model: WaterSurfaceModel, sky: Sky, optics: WaterOpticsUniforms) {
+  constructor(readonly model: WaterSurfaceModel, sky: Sky, optics: WaterOpticsUniforms, options: OceanSurfaceOptions = {}) {
     const sim = model.sim;
     this.slopeVariance = sim.sizes.map(() => uniform(0));
     const grid = buildPolarGrid();
@@ -105,6 +133,10 @@ export class OceanSurface {
       sky,
       optics,
     );
+
+    // The ribbon's footprint (spec §7.2): the sheet steps aside where the breaking ribbon draws the wave, sampled at the
+    // displaced position as the footprint pass rasterises the ribbon's. Outside the mask's grid it never discards.
+    if (options.footprint) material.maskNode = footprintClear(options.footprint, positionWorld.xz);
 
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.frustumCulled = false;
