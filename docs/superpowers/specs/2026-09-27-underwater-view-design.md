@@ -95,3 +95,12 @@ Auto-exposure is set by the sun for a scene with the bright sky in it. At the sa
 - No sun shafts, caustics or bubbles; the reef is lit by the same smooth sunlight as from above.
 - The lip seen from below is fogged, not specially shaded.
 - The probe is one frame behind, so a fast plunge switches a frame late.
+
+## 7. Addendum (Andrew, same day): the lineup camera, and water on the lens
+
+- **The lineup camera shows the underwater view when a wave buries it.** A steep face outruns its float (up to 1.3 m at the drain as a set passes). The final review's fix had held it above water, and those moments rendered black. The flash that fix was stopping came from seeding the lineup from a stale probe reading. Now a moment jump or a new field invalidates the probe (`HeightProbe.invalidate`, a generation guard drops readbacks dispatched before), and the lineup is set on the water at the first fresh reading.
+- **Water on the lens as the camera breaks the surface** (`src/render/lensWater.ts`, `lensWaterNode.ts`):
+  - a sheet over the whole lens drains down the screen (by 1.2 s), with a ragged bright edge and a streaming surface that bends, blurs and hazes the view;
+  - the drops left behind act as small lenses and fade out by 2.5 s;
+  - only on surfacing, never on a moment jump; going under wipes it;
+  - the dry lens is the scene exactly (pixel-identical capture), behind a uniform branch.
