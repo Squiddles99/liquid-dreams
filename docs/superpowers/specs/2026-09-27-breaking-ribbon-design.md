@@ -304,3 +304,20 @@ A test pins the new bounds at 1.0 / 0.7 / 0.6. vitest 421/421; GPU self-tests 29
 **Not done here:**
 - The GPU budget: 4.10 ms measured by Andrew, target 3 ms. The pane's timestamps are too coarse to measure it, so the station cut is the one lever taken; Andrew's reading decides whether more is needed.
 - The wave-stacking follow-up.
+
+**Addendum (same day, Andrew's 9.9 ft and 7.4 ft tests; supersedes B2 and B5's sharpening start):**
+- **B7 The breaking depth.** `breakingDepth(hmin) = max(hmin, 3)·max(1, hmin/7)^0.8`. It equals hmin on the reef, and the 13 m shelf reads 21 m.
+  - The criterion's δ drain belongs to the reef top. Applied over the shelf, a 9.9 ft set wave broke at ρ 1.04 and every big crest stood up out there.
+  - The 3 m floor stops the reef flat (0.6 m) from dominating the smoothing.
+- **B8 The field.** amp/depth goes through four steps:
+  1. take its maximum within 6 m along the crest;
+  2. smooth along the crest, σ 6 m;
+  3. take the larger of that and a 20 m along-crest smoothing (this spreads the low side only);
+  4. smooth along travel, σ 8 m.
+
+  The last step makes a wave stand up over about 1 s as it nears the reef, instead of a 0.4 s trap door. The closeout is untouched.
+  - **Calibration ruling:** the first water to break is on the north ledge 10 m from the tip (~1.05 Hs), and the tip needs ~1.35 Hs. The smallest set wave (1.3 Hs) breaks within 12 m of the tip, and 0.95 Hs breaks nowhere at the ledges.
+- **B9 Sharpening and collapse.**
+  - The sheet's sharpening starts 0.1 before the ribbon is full (at 0.65), and the sheet draws that mild start itself. Below the ribbon, the profile's constructed weight is gated by the ribbon's fade-in.
+  - The curl collapses over 1.8 × τ_land (BREAKING_MODEL 4).
+- **Measured** (5 / 6.6 / 9.9 ft): steepest change per wave height of crest is ≤ 1.0 / 0.85 / 0.9. At 9.9 ft the ribbon traces 144–243 stations.
