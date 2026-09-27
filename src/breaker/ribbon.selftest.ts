@@ -1,15 +1,16 @@
 import * as THREE from 'three/webgpu';
-import { Fn, instanceIndex, int, storage, uniform, vec3, vec4 } from 'three/tsl';
+import { Fn, float, instanceIndex, int, length, max, storage, uniform, vec2, vec3, vec4 } from 'three/tsl';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { OceanSimulation } from '../ocean/OceanSimulation';
+import { sheetNormal } from '../ocean/OceanSurface';
 import { WaterSurfaceModel } from '../ocean/waterSurface';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { Seabed } from '../seabed/Seabed';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import {
-  BreakingRibbon, FOOTPRINT_END_MARGIN_M, FOOTPRINT_GRID, MIN_PROFILE_STEP_M, NORMAL_SEARCH, type RibbonSurface, SKIRT_DEPTH_M, VERTS_PER_STATION,
-  developedU, modelRibbonSurface,
+  BreakingRibbon, CHOP_CASCADE, FOOTPRINT_END_MARGIN_M, FOOTPRINT_GRID, MIN_PROFILE_STEP_M, NORMAL_SEARCH, type RibbonSurface, SKIRT_DEPTH_M,
+  VERTS_PER_STATION, developedU, modelRibbonSurface, ribbonShadingNormal,
 } from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
@@ -177,13 +178,17 @@ registerSelfTest({
       });
     }
     // Positions are what the ribbon draws; the frame passes when the mirror is exact (B) and every A failure is explained by B.
-    const ok = stations > 0 && deadLive === 0 && Math.max(edge.value, constructed.value, skirt.value) < 5e-3 && frameB.value <= 0 && unexplained === 0 && extras.value < 1e-3;
+    // Bounds (controller ruling): the constructed samples are the mirror (5 mm). The edge samples and the skirts are pure
+    // sheet evaluations, so they measure the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest), not the mirror:
+    // 1 cm. Extras 2e-3: rho and curlFoam amplify the same gap through the frame's timings.
+    const ok = stations > 0 && deadLive === 0 && constructed.value < 5e-3 && Math.max(edge.value, skirt.value) < 1e-2 &&
+      frameB.value <= 0 && unexplained === 0 && extras.value < 2e-3;
     const fields = FRAME_LAYOUT.map((n, m) => `${n} ${perField[m].toExponential(1)}`).join(', ');
     return {
       pass: ok,
-      detail: `${stations} live stations × dt ${PROFILE_DTS.join('/')} s; worst |Δpos| (m, < 5e-3) constructed ${constructed}, edge samples (the sheet's own GPU/CPU gap) ${edge}, ` +
-        `skirts ${skirt}; frame A (vs the CPU base; excess over 1e-3·max(1, |v|), geometry-only fields where drawn) worst ${frameA}, ` +
-        `frame B (the mirror on the GPU's base samples) worst ${frameB} (≤ 0), A failures not explained by B ${unexplained}; worst |Δextras| (thickness, lipness, curlFoam, rho; < 1e-3) ${extras}; live rows flagged dead ${deadLive}. ` +
+      detail: `${stations} live stations × dt ${PROFILE_DTS.join('/')} s; worst |Δpos| (m) constructed ${constructed} (< 5e-3, the mirror), ` +
+        `edge samples ${edge} and skirts ${skirt} (< 1e-2: pure sheet evaluations, so the sheet's own GPU/CPU gap, which breaker.selftest pins); frame A (vs the CPU base; excess over 1e-3·max(1, |v|), geometry-only fields where drawn) worst ${frameA}, ` +
+        `frame B (the mirror on the GPU's base samples) worst ${frameB} (≤ 0), A failures not explained by B ${unexplained}; worst |Δextras| (thickness, lipness, curlFoam, rho; < 2e-3: rho and curlFoam carry the sheet's gap through the frame's timings) ${extras}; live rows flagged dead ${deadLive}. ` +
         `Per frame field |Δ| (all stations): ${fields}. A failures: ${failuresA.join(' | ') || 'none'}. Near the peak: ${peaks.slice(0, 8).join('; ')}`,
     };
   },
@@ -210,28 +215,73 @@ registerSelfTest({
     entries.forEach((e, i) => { if (!e.gap) idx.push(i * V + 1, i * V + PROFILE_SAMPLES); });
     const n = idx.length;
     const inAttr = new THREE.StorageBufferAttribute(new Float32Array(idx.flatMap((k) => [k, 0, 0, 0])), 4);
-    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 8), 4);
+    const W = 4; // vec4s out per vertex: sheet position, chop, ribbon shading normal + constructed, sheet normal + |detail − home|
+    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(n * W * 4), 4);
     const input = storage(inAttr, 'vec4', n).toReadOnly();
-    const output = storage(outAttr, 'vec4', n * 2);
+    const output = storage(outAttr, 'vec4', n * W);
     const homes = storage(ribbon.homes, 'vec4', ribbon.homes.count).toReadOnly();
+    const positions = storage(ribbon.positions, 'vec4', ribbon.positions.count).toReadOnly();
+    const normals = storage(ribbon.normals, 'vec4', ribbon.normals.count).toReadOnly();
+    const extras = storage(ribbon.extras, 'vec4', ribbon.extras.count).toReadOnly();
+    const details = storage(ribbon.details, 'vec4', ribbon.details.count).toReadOnly();
+    const camera = uniform(LINEUP.clone());
+    const slopeVariance = sim.sizes.map(() => uniform(0));
     const pass = Fn(() => {
-      const xz = homes.element(int(input.element(instanceIndex).x)).xy.toVar();
+      const k = int(input.element(instanceIndex).x).toVar();
+      const h = homes.element(k).toVar();
+      const xz = h.xy.toVar();
       const d = vec3(model.displacement(xz, surface.lod(xz))).toVar();
-      output.element(instanceIndex.mul(2)).assign(vec4(xz.x.add(d.x), d.y, xz.y.add(d.z), 0.0));
-      output.element(instanceIndex.mul(2).add(1)).assign(vec4(surface.chop(xz), 0.0));
+      const o = instanceIndex.mul(W);
+      output.element(o).assign(vec4(xz.x.add(d.x), d.y, xz.y.add(d.z), 0.0));
+      output.element(o.add(1)).assign(vec4(surface.chop(xz), 0.0));
+      // The ribbon's shading normal as its material composes it, and the sheet's as OceanSurface does, at this vertex.
+      const det = details.element(k).toVar();
+      const lipness = extras.element(k).y.toVar();
+      const toCamera = camera.sub(positions.element(k).xyz).toVar();
+      const distance = length(toCamera).toVar();
+      const viewDir = toCamera.div(max(distance, 1e-4));
+      const slope = vec2(sets.breakSampleNode(xz).slope).toVar();
+      const fftRibbon = model.fftSlopes(det.xy, distance, slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness) : float(1.0)));
+      const ribbonNormal = ribbonShadingNormal({
+        geometric: normals.element(k).xyz, tangent: vec3(h.z, 0.0, h.w), fft: fftRibbon, setSlope: slope, constructed: det.w, viewDir,
+      }).normal;
+      output.element(o.add(2)).assign(vec4(ribbonNormal, det.w));
+      output.element(o.add(3)).assign(vec4(sheetNormal(model.fftSlopes(xz, distance, slopeVariance), slope), length(det.xy.sub(xz))));
     })().compute(n) as THREE.ComputeNode;
     renderer.compute(pass);
     const gp = await read(renderer, ribbon.positions), out = await read(renderer, outAttr);
-    const gap = new Worst();
-    let chop = 0;
+    const gd = await read(renderer, ribbon.details), gf = await read(renderer, ribbon.frames);
+    const gap = new Worst(), shade = new Worst(), constructedAtEdge = new Worst(), detailAtEdge = new Worst();
+    let chop = 0, tilt = 0;
     idx.forEach((k, m) => {
-      gap.see(dist3(gp, k * 4, Array.from(out.slice(m * 8, m * 8 + 3))), `vertex ${k} (station ${Math.floor(k / V)}, ${k % V === 1 ? 'front' : 'back'})`);
-      chop = Math.max(chop, Math.hypot(out[m * 8 + 4], out[m * 8 + 5], out[m * 8 + 6]));
+      const where = `vertex ${k} (station ${Math.floor(k / V)}, ${k % V === 1 ? 'front' : 'back'})`;
+      const q = m * W * 4;
+      gap.see(dist3(gp, k * 4, Array.from(out.slice(q, q + 3))), where);
+      chop = Math.max(chop, Math.hypot(out[q + 4], out[q + 5], out[q + 6]));
+      shade.see(Math.max(...[0, 1, 2].map((c) => Math.abs(out[q + 8 + c] - out[q + 12 + c]))), where);
+      constructedAtEdge.see(out[q + 11], where);
+      detailAtEdge.see(out[q + 15], where);
+      tilt = Math.max(tilt, Math.hypot(out[q + 12], out[q + 14]));
+    });
+    // Where the lip is thrown the blend must engage: the most constructed face or lip sample of those stations.
+    const frameAt = (i: number, name: (typeof FRAME_LAYOUT)[number]): number => gf[i * FRAME_FLOATS + FRAME_LAYOUT.indexOf(name)];
+    let lipConstructed = 0, peaks = 0;
+    entries.forEach((e, i) => {
+      if (e.gap || !(frameAt(i, 'weight') > 0.9 && frameAt(i, 'prog') > 0.3)) return;
+      peaks++;
+      for (let j = PROFILE_SEGMENTS.front; j < PROFILE_SAMPLES - PROFILE_SEGMENTS.back; j++) lipConstructed = Math.max(lipConstructed, gd[(i * V + j + 1) * 4 + 3]);
     });
     // The chop must be there (FFT on) or the comparison proves nothing about it. The default sea's 35 m cascade is only
     // millimetres high at the lineup (6 mm measured), so the bound is 1 mm; the equality itself holds to ~1e-5 m.
-    const ok = n > 0 && gap.value < 1e-3 && chop > 1e-3;
-    return { pass: ok, detail: `${n / 2} live stations at dt 0.6 s; worst |ribbon edge − sheet| ${gap} m (< 1e-3); largest |cascade-2 chop| at the edges ${chop.toFixed(4)} m (> 1e-3)` };
+    const ok = n > 0 && gap.value < 1e-3 && chop > 1e-3 && shade.value < 1e-3 && constructedAtEdge.value === 0 && detailAtEdge.value <= 1e-5 &&
+      tilt > 1e-3 && peaks > 0 && lipConstructed > 0.9;
+    return {
+      pass: ok,
+      detail: `${n / 2} live stations at dt 0.6 s; worst |ribbon edge − sheet| ${gap} m (< 1e-3); largest |cascade-2 chop| at the edges ${chop.toFixed(4)} m (> 1e-3). ` +
+        `Shading at the edges: worst |ribbon shading normal − the sheet's normal| ${shade} (< 1e-3), constructed weight there ${constructedAtEdge} (0), ` +
+        `|detail coordinate − home| ${detailAtEdge} m (≤ 1e-5); largest sheet-normal tilt there ${tilt.toFixed(4)} (> 1e-3, or the comparison proves nothing); ` +
+        `${peaks} stations with a thrown lip, most constructed face/lip sample ${lipConstructed.toFixed(3)} (> 0.9: the ribbon's own normal takes over there)`,
+    };
   },
 });
 
