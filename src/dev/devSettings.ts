@@ -24,9 +24,10 @@ export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
 /**
  * Saved with the settings. A stored `breaking` from another model is dropped for the defaults: its numbers meant
  * something else there (model 2: the breaking ratio became ρ = H / breakingHeight, so the stage span, the drain end,
- * the collapse start and the ribbon onset all moved).
+ * the collapse start and the ribbon onset all moved; model 3: the ribbon onset rose to 0.7, above the deep water's ρ at
+ * 6.6 ft, so the ribbon no longer redraws the plain sheet along every crest in the set).
  */
-export const BREAKING_MODEL = 2;
+export const BREAKING_MODEL = 3;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;

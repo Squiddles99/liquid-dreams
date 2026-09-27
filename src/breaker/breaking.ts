@@ -51,7 +51,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   throwStrength: 0.55,
   lipThickness: 0.12,
   collapseTime: 1.0,
-  ribbonOnset: 0.55,
+  ribbonOnset: 0.7,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
@@ -68,8 +68,13 @@ export const FOAM_TRAIL_H = 3;
 export const MIN_STAGE_SPAN = 0.05;
 /** Waves lower than this (m) never break (the shape's H-scaled smoothsteps would divide by ~0). */
 export const MIN_BREAKING_HEIGHT_M = 1e-3;
-/** The ribbon is full this far (in breaking ratio) above its onset, and the sheet's front sharpening starts there. */
-export const RIBBON_FULL_OFFSET = 0.15;
+/**
+ * The ribbon is full this far (in breaking ratio) above its onset, and the sheet's front sharpening starts there. Below
+ * the sharpening the ribbon draws the sheet itself, so its fade-in only needs to be short; and the onset (0.7) sits
+ * above the deep water's ρ at 6.6 ft (~0.68), so the ribbon covers the reef's sections, not every crest in the set
+ * (110 stations instead of 421 at 6.6 ft; each is a 160-sample cross-section through five compute passes).
+ */
+export const RIBBON_FULL_OFFSET = 0.05;
 /**
  * The front sharpening always ramps over at least this much breaking ratio below ρ = 1. The ribbon onset's slider top
  * (0.9) puts ribbonOnset + RIBBON_FULL_OFFSET at 1.05, past ρ = 1: the ramp would run backwards (and on the GPU,
