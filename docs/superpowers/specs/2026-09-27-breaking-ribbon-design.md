@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-27
 **Authors:** Claude with Andrew Justice
-**Status:** Design agreed with Andrew in conversation (2026-09-27); this written spec is awaiting his review. No code yet.
+**Status:** Approved by Andrew (2026-09-27). Plan: `docs/superpowers/plans/2026-09-27-breaking-ribbon.md`, whose plan-level rulings Q1–Q12 (from prototyping on the real field) refine this spec where they differ; see §14.
 **Revises:** the Phase 2 spec (`2026-09-27-the-break-design.md`). This document **supersedes its §3.2 (the shape), §3.3 (normals), §3.5 (the turquoise lip) and §3.6 (foam)**, and plan corrections P3, P4, P10 (sharpening/curl part) and P11. Everything else in it stands: the breaking criterion and stage (§3.1, P1, P2, P5–P9), the probe (§3.4), the calibration readout (§3.7), the Break panel, the reference moments, persistence, the GPU budget, and the CPU-model/GPU-mirror testing rule.
 **Branch:** `phase-2-the-break` (Phase 2 is not merged; the rework lands on the same branch).
 
@@ -177,7 +177,7 @@ Andrew's point (D4) sets a Phase 3 requirement: **foam must persist and drift wi
 
 Andrew's `behind-the-wave` view shows hard-edged bright turquoise patches on the sheet between waves.
 
-- **Leading hypothesis:** the drain pulls the surface below the reef, and the 5 cm seabed clamp pins the water to a skin, so the bright bed shows through with sharp edges. That would also run against the reference, where the reef at the peak reads dark navy.
+- **Refuted on the CPU (plan Q9):** in this moment the set-wave clamp engages at 0 of 17,161 sampled points, so the plan's Task 1 diagnoses on the GPU with pre-registered experiments. The original hypothesis, kept for the record: the drain pulls the surface below the reef, and the 5 cm seabed clamp pins the water to a skin, so the bright bed shows through with sharp edges. That would also run against the reference, where the reef at the peak reads dark navy.
 - **The first plan task** confirms or refutes this with the dev overlays before the ribbon work.
 - **If confirmed,** the hard clamp is replaced by a smooth, depth-limited drain: the drain's depth tapers as the local still-water depth runs out, so the surface can't approach the bed with a hard edge.
 - **Acceptance:** in `behind-the-wave`, there are no hard-edged turquoise patches.
@@ -252,3 +252,17 @@ The Phase 2 GPU self-tests that tested the curl are replaced.
 - **R8:** the sheet draws the probe variant (no sharpening, no curl), so the sheet and the probe are one surface.
 - **R9:** a footprint mask (0.5 m texels, shrunk 1 m) plus a skirt joins the ribbon and the sheet.
 - **R10:** the turquoise patches are investigated before the ribbon work, with a smooth depth-limited drain as the fix if the clamp is the cause.
+
+**Plan-level rulings Q1–Q12** (prototyped on the real reef field while writing the plan; binding over the sections above where they differ; details in the plan):
+- **Q1:** the sheet keeps a **front-only** crest sharpening (heights only), driven by the crest's breaking ratio, and the probe reads it too (sheet = probe). The back sinking is removed: it made the tabletop and the cliff Andrew saw from behind.
+- **Q2:** the sheet's normal is analytic (sharpening, drain and bore derivatives), with no finite differences.
+- **Q3:** the face's foot is at 1.9·faceWidth·H; the lip always lands 0.3 m clear of it; the default throw strength is 0.55 (the spec's 0.35 would be overridden by that floor). The biggest default wave's lip lands in 0.79 s, 3.1 m out.
+- **Q4:** a broken section that backs off into deeper water relaxes to the sheet.
+- **Q5:** the ribbon's edges are the sheet's own points (the 2 m blend is at least 2 m of pure-sheet samples).
+- **Q6:** `backWidth` and `steepEnd` go; `faceWidth` stays.
+- **Q7:** stations within 2 ms of the crest; CPU target 2 ms per frame (measured 1.4 ms).
+- **Q8:** t_b = Infinity past the look-back window.
+- **Q9:** §10's clamp hypothesis is refuted (the clamp engaged at 0 of 17,161 points), so Task 1 diagnoses on the GPU.
+- **Q10:** gap rows are dead and discarded.
+- **Q11:** ribbon normals come from central differences on its own grid.
+- **Q12:** the peel is measured on one instant's crest: 11.8 m/s; closeout spread 0.4–0.6 s.
