@@ -127,6 +127,13 @@ export const IMPACT_RATE = 40;
 export const IMPACT_G = 7;
 /** The full kick throws a puff this many wave heights above the landing (before drag). */
 export const IMPACT_RISE_H = 1.5;
+/** An impact puff lives U(1.3, 2.4) s: long enough to fall back below its launch after the tuned throw (final review I1). */
+export const IMPACT_MAX_LIFE_S = 2.4;
+
+/** Whether the spray can emit at all: a spray amount and more than a calm wind (a replay skips its ticks otherwise). */
+export function sprayCanEmit(amount: number, windSpeedMs: number): boolean {
+  return amount > 0 && windSpeedMs > WIND_CALM_MS;
+}
 
 export interface ImpactParams {
   /** Scales how much the explosion throws (× the emission rate). */
@@ -171,7 +178,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
   const spray: SprayEmitter[] = [], impact: ImpactEmitter[] = [];
   if (!field || !ctx || !params.enabled || i.events.length === 0) return { spray, impact };
   // A calm wind makes no spray anywhere (final review I2); the explosion doesn't care about the wind.
-  const wantSpray = i.amount > 0 && i.wind.speedMs > WIND_CALM_MS;
+  const wantSpray = sprayCanEmit(i.amount, i.wind.speedMs);
   const impactAmount = i.impactAmount ?? 0;
   const wantImpact = impactAmount > 0;
   if (!wantSpray && !wantImpact) return { spray, impact };
@@ -268,7 +275,7 @@ export function sprayBirths(emitters: readonly SprayEmitter[], tick: number, p: 
  * Tick k's impact births (3c spec §3.2): floor(strength × IMPACT_RATE × spacing × Δ + a hashed fraction) per emitter, at
  * most SPRAY_BIRTH_CAP, hashed apart from the spray's draws. Each is scattered half a spacing along the crest and 0–0.4 m
  * up, thrown with 0.6 × the lip's throw, an upward kick of U(0.6, 1.2)·√(2·IMPACT_G·IMPACT_RISE_H·max(H, 0.5)) and ±1.5 m/s per axis, for
- * U(0.8, 1.6) s; its opacity follows the lip.
+ * U(1.3, IMPACT_MAX_LIFE_S) s (long enough to fall back, final review I1); its opacity follows the lip.
  */
 export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): SprayBirth[] {
   const out: SprayBirth[] = [];
@@ -284,7 +291,7 @@ export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): 
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.4, z: e.z + e.nx * along,
         vx: 0.6 * e.vx + (r(2) * 2 - 1) * 1.5, vy: (0.6 + 0.6 * r(3)) * kick + (r(4) * 2 - 1) * 1.5, vz: 0.6 * e.vz + (r(5) * 2 - 1) * 1.5,
-        life: 0.8 + 0.8 * r(6), strength: Math.min(1, e.lip),
+        life: 1.3 + (IMPACT_MAX_LIFE_S - 1.3) * r(6), strength: Math.min(1, e.lip),
       });
     }
   }

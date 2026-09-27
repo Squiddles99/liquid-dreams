@@ -6,8 +6,10 @@ import { fieldBreakingHeight } from '../breaker/setWaveModel';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
+import { IMPACT_KIND } from './particleKinds';
+import { SprayPool, birthInto, stepPool } from './sprayStep';
 import {
-  DEFAULT_SPRAY_PARAMS, type EmitterInput, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
+  DEFAULT_SPRAY_PARAMS, type EmitterInput, IMPACT_MAX_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, sprayCanEmit, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
   sprayEmitters, sprayReplayTicks, windToVector,
 } from './sprayEmitters';
 
@@ -177,10 +179,36 @@ describe('the impact explosion', () => {
     expect(impactBirths(many, 9)).toEqual(a);
     const s = sprayBirths(many, 9, DEFAULT_SPRAY_PARAMS);
     expect(a[0].z).not.toBeCloseTo(s[0].z, 9); // the scatter runs along (−nz, nx) = z here
-    for (const b of a) { expect(b.life).toBeGreaterThanOrEqual(0.8); expect(b.life).toBeLessThanOrEqual(1.6); }
+    for (const b of a) { expect(b.life).toBeGreaterThanOrEqual(1.3); expect(b.life).toBeLessThanOrEqual(IMPACT_MAX_LIFE_S); }
   });
   it('the spray is what it was when impact is off (sprayEmitters unchanged)', () => {
     expect(breakEmitters(input(BIGGEST.arrivalS + 0.6)).spray).toEqual(sprayEmitters(input(BIGGEST.arrivalS + 0.6)));
     expect(breakEmitters(input(BIGGEST.arrivalS + 0.6)).impact).toEqual([]);
+  });
+});
+
+describe('the impact explosion falls back (final review I1)', () => {
+  it('most puffs are back below their launch height before they die, not fading out at the top of the throw', () => {
+    const e = [{ x: 0, y: 0, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, H: 2, strength: 1, lip: 1, waveId: 1, arc: 0 }];
+    let below = 0, n = 0;
+    for (let k = 0; k < 400; k++) for (const b of impactBirths(e, k)) {
+      const pool = new SprayPool(SPRAY_BIRTH_CAP);
+      birthInto(pool, 0, [b]);
+      while (pool.posAge[3] < pool.velLife[3]) stepPool(pool, 0, 0, IMPACT_KIND);
+      n++;
+      if (pool.posAge[1] < b.y) below++;
+      expect(b.life).toBeLessThanOrEqual(IMPACT_MAX_LIFE_S);
+    }
+    expect(n).toBeGreaterThan(200);
+    expect(below / n).toBeGreaterThan(0.85);
+  });
+});
+
+describe('the spray can emit (final review: calm-day replays)', () => {
+  it('only with a spray amount and more than a calm wind', () => {
+    expect(sprayCanEmit(1, 6)).toBe(true);
+    expect(sprayCanEmit(0, 6)).toBe(false);
+    expect(sprayCanEmit(1, 0.5)).toBe(false);
+    expect(sprayCanEmit(1, 1)).toBe(false);
   });
 });

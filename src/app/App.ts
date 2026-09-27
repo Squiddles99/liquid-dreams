@@ -43,8 +43,8 @@ import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FoamField } from '../whitewater/FoamField';
 import { SprayParticles } from '../whitewater/SprayParticles';
 import {
-  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters, impactBirths,
-  normalizeImpactParams, normalizeSprayParams, sprayBirths, windToVector,
+  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
+  impactBirths, normalizeImpactParams, normalizeSprayParams, sprayBirths, sprayCanEmit, windToVector,
 } from '../whitewater/sprayEmitters';
 import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime } from '../whitewater/foamStep';
@@ -195,7 +195,7 @@ export class App {
     this.scene.add(this.oceanSurface.mesh);
     this.scene.add(this.ribbon.mesh);
     this.scene.add(this.spray.mesh);
-    this.impact.setMaxLifeS(1.6);
+    this.impact.setMaxLifeS(IMPACT_MAX_LIFE_S);
     this.scene.add(this.impact.mesh);
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
     this.perf = new PerfOverlay(renderer);
@@ -421,6 +421,9 @@ export class App {
   }
 
   private sprayBirthsAt(k: number) {
+    // When the spray can't emit, don't compute the tick's emitters for it: on a calm day its replay would run the
+    // shared trace for all its ticks just for the explosion's sake (final review).
+    if (!sprayCanEmit(this.sprayParams.amount, this.conditions.wind.speedMs)) return [];
     return sprayBirths(this.emittersAt(k).spray, k, this.sprayParams);
   }
 
