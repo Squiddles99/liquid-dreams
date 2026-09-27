@@ -8,18 +8,24 @@ import { FOAM_TICK_S, FoamSchedule, tickIndex, tickTime } from './foamStep';
 import {
   DEFAULT_SPRAY_PARAMS, SPRAY_BIRTH_CAP, SPRAY_OPACITY, SPRAY_POOL, type SprayBirth, type SprayParams, normalizeSprayParams, sprayReplayTicks,
 } from './sprayEmitters';
+import { NEAR_FADE_M, SPRAY_PHASE_G, SPRAY_PHASE_ISOTROPIC, SPRAY_SKY_SCALE } from './sprayLook';
 import { SPRAY_DRAG_TAU_S, SPRAY_SETTLE_MS2, slotBase } from './sprayStep';
 
 type N = any;
 
-/** The mist's forward-scattering anisotropy (Henyey–Greenstein g): backlit spray glows. */
-const PHASE_G = 0.75;
 /** A puff's size (m) at birth and at death. */
 const SIZE_BIRTH_M = 0.3;
 const SIZE_DEATH_M = 2;
 /** Screen-space stretch along the velocity: 1 + this × |v_view| (m/s), at most MAX_STRETCH. */
 const STRETCH_PER_MS = 0.4;
 const MAX_STRETCH = 3;
+
+/** sprayLook.sprayPhase in TSL: the forward-peaked HG mixed with an isotropic part (multiple scattering). */
+export function sprayPhaseNode(cosT: N): N {
+  const g = SPRAY_PHASE_G, g2 = g * g;
+  const hg = float((1 - g2) / (4 * Math.PI)).div(pow(max(float(1 + g2).sub(cosT.mul(2 * g)), 1e-4), 1.5));
+  return hg.mul(1 - SPRAY_PHASE_ISOTROPIC).add(SPRAY_PHASE_ISOTROPIC / (4 * Math.PI));
+}
 
 /**
  * Offshore spray on the GPU (spec 2026-09-27-offshore-spray-design.md §3.2–3.3; CPU reference sprayStep.ts): a pool of
@@ -105,20 +111,19 @@ export class SprayParticles {
     const q = uv().sub(0.5);
     const shape = float(1.0).sub(smoothstep(0.3, 1.0, length(q).mul(2.0))).mul(mx_noise_float(vec3(uv().mul(3.0), vSeed.mul(0.137))).mul(0.5).add(0.75));
     const fades = smoothstep(0.0, 0.1, vAgeS).mul(float(1.0).sub(smoothstep(0.6, 1.0, vAgeFrac)));
-    m.opacityNode = clamp(shape.mul(fades).mul(vStrength).mul(SPRAY_OPACITY), 0.0, 1.0);
     // Single scattering: the sun through a forward-peaked phase function, the sky isotropically; then the haze. All of it
     // depends only on the puff's centre, so it runs once per vertex (a varying), not per pixel: per pixel it cost ~5 ms
     // for a close veil (sky LUT reads under heavy overdraw).
     const toP = centre.sub(cameraPosition);
     const dist = length(toP);
     const viewDir = toP.div(max(dist, 1e-3));
-    const cosT = dot(viewDir, sky.sunDirection);
-    const g2 = PHASE_G * PHASE_G;
-    const hg = float((1 - g2) / (4 * Math.PI)).div(pow(max(float(1 + g2).sub(cosT.mul(2 * PHASE_G)), 1e-4), 1.5));
-    const radiance = sky.sunIlluminance.mul(hg).add(sky.skyIrradiance.mul(1 / (4 * Math.PI)));
+    const radiance = sky.sunIlluminance.mul(sprayPhaseNode(dot(viewDir, sky.sunDirection))).add(sky.skyIrradiance.mul(SPRAY_SKY_SCALE));
+    // sprayLook.nearCameraFade: puffs within a few metres of the eye fade out.
+    const vNear: N = varying(smoothstep(NEAR_FADE_M[0], NEAR_FADE_M[1], dist));
     const colour: N = varying(sky.applyAerialPerspective(radiance, dist, viewDir));
     const ageColour = mix(vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vAgeFrac).mul(this.inverseExposure.mul(0.5));
     m.colorNode = mix(colour, ageColour, this.tint.mul(0.8));
+    m.opacityNode = clamp(shape.mul(fades).mul(vStrength).mul(vNear).mul(SPRAY_OPACITY), 0.0, 1.0);
     return m;
   }
 
