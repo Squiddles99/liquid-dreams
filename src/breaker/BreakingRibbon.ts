@@ -63,6 +63,19 @@ export const NORMAL_SEARCH = PROFILE_SAMPLES - 1;
 /** The FFT cascade that is the chop (35 m patch): it fades out over the lip (spec R6). */
 export const CHOP_CASCADE = 2;
 
+/**
+ * WebGPU's baseline maxStorageBuffersPerShaderStage (the game asks the device for no more: it runs on unknown hardware).
+ * Every compute pass here stays within it; BreakingRibbon.limits.test.ts builds each pass's WGSL and counts. Inventory
+ * (buffers each pass binds):
+ * - frame: stations, frames, SetWaves' waves (in the smooth base) = 3;
+ * - vertex: stations, frames, lipProfileNodes' sample table, waves, positions, normals, extras, details = 8 (at the limit:
+ *   it writes the home xz into details, and the develop pass moves it into homes);
+ * - develop: stations, frames, positions, details, homes = 5;
+ * - chop: positions, extras, details = 3 (+ nothing from the FFT: textures);
+ * - normal: stations, positions, normals = 3.
+ */
+export const MAX_STORAGE_BUFFERS_PER_STAGE = 8;
+
 /** A vertex whose interpolated dead flag exceeds this is discarded: gap rows and the triangles touching them (Q10). */
 export const DEAD_EPSILON = 1e-4;
 /** The footprint marks only stations at least this far into the ribbon (ρ): where ρ → 0 the ribbon is the sheet. */
@@ -576,7 +589,7 @@ export class BreakingRibbon {
     const positions = storage(this.positions, 'vec4', MAX_STATIONS * V);
     const normals = storage(this.normals, 'vec4', MAX_STATIONS * V);
     const extras = storage(this.extras, 'vec4', MAX_STATIONS * V);
-    const homes = storage(this.homes, 'vec4', MAX_STATIONS * V);
+    // No homes buffer here (it would be the 9th): the home xz goes into details, and the develop pass moves it.
     const details = storage(this.details, 'vec4', MAX_STATIONS * V);
     return Fn(() => {
       const idx: N = int(instanceIndex).toVar();
@@ -608,8 +621,8 @@ export class BreakingRibbon {
       // The normal pass fills xyz.
       normals.element(idx).assign(vec4(0.0, 1.0, 0.0, inner));
       extras.element(idx).assign(vec4(p.thickness, lipness, p.curlFoam, f.rho));
-      homes.element(idx).assign(vec4(xzHome, tHat));
-      // How far the curve departs from the sheet here (the develop pass fills the detail coordinate, keeping w).
+      // The home xz, and how far the curve departs from the sheet here: the develop pass moves the home into homes and
+      // writes the detail coordinate over it, keeping w.
       const constructed = smoothstep(SHEET_BLEND_M[0], SHEET_BLEND_M[1], length(pos.sub(baseHome)));
       details.element(idx).assign(vec4(xzHome, home, constructed));
     })().compute(MAX_STATIONS * V) as THREE.ComputeNode;
@@ -617,17 +630,20 @@ export class BreakingRibbon {
 
   /**
    * One invocation per station: the developed u of each profile sample (developedU, in f32) from the chop-free
-   * positions' (u along n, y), written as the detail coordinate S + n·(developed u); the skirts take their edge's.
+   * positions' (u along n, y), written as the detail coordinate S + n·(developed u); the skirts take their edge's. It
+   * also writes homes (the home xz the vertex pass left in details, and t̂).
    */
   private buildDevelopPass(): THREE.ComputeNode {
     const stations = this.stationsNode();
     const frames = storage(this.frames, 'vec4', MAX_STATIONS * FRAME_VEC4S).toReadOnly();
     const positions = storage(this.positions, 'vec4', MAX_STATIONS * V).toReadOnly();
     const details = storage(this.details, 'vec4', MAX_STATIONS * V);
+    const homes = storage(this.homes, 'vec4', MAX_STATIONS * V);
     return Fn(() => {
       const i: N = int(instanceIndex).toVar();
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const S = a.xy, n = a.zw;
+      const tHat = vec2(n.y.negate(), n.x).toVar();
       const f = unpackFrameNodes(Array.from({ length: FRAME_PROFILE_VEC4S }, (_, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).toVar()));
       const uFront = float(f.uFront).toVar(), uBack = float(f.uBack).toVar();
       /** Profile sample jj's (u along n, y), chop-free. */
@@ -653,10 +669,20 @@ export class BreakingRibbon {
         const wFront = float(1.0).sub(smoothstep(DEVELOP_BLEND[0], DEVELOP_BLEND[1], float(j)));
         // Exactly the home at the edges: uFront at the first sample, uBack at the last.
         const dev = select(j.equal(int(0)), uFront, select(j.equal(int(LAST)), uBack, fromBack.add(fromFront.sub(fromBack).mul(wFront)))).toVar();
-        const v = vec4(S.add(n.mul(dev)), dev, details.element(i.mul(V).add(j).add(1)).w).toVar();
-        details.element(i.mul(V).add(j).add(1)).assign(v);
-        If(j.equal(int(0)), () => { details.element(i.mul(V)).assign(v); });
-        If(j.equal(int(LAST)), () => { details.element(i.mul(V).add(V - 1)).assign(v); });
+        const k = i.mul(V).add(j).add(1).toVar();
+        const left = details.element(k).toVar(); // (home xz, home u, constructed) from the vertex pass
+        const h = vec4(left.xy, tHat).toVar();
+        const v = vec4(S.add(n.mul(dev)), dev, left.w).toVar();
+        homes.element(k).assign(h);
+        details.element(k).assign(v);
+        If(j.equal(int(0)), () => {
+          homes.element(i.mul(V)).assign(h);
+          details.element(i.mul(V)).assign(v);
+        });
+        If(j.equal(int(LAST)), () => {
+          homes.element(i.mul(V).add(V - 1)).assign(h);
+          details.element(i.mul(V).add(V - 1)).assign(v);
+        });
       });
     })().compute(MAX_STATIONS) as THREE.ComputeNode;
   }
