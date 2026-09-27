@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { context, vec3 } from 'three/tsl';
 import { describe, expect, it } from 'vitest';
 import { OceanSimulation } from '../ocean/OceanSimulation';
+import { OceanSurface } from '../ocean/OceanSurface';
 import { DEFAULT_WATER_OPTICS } from '../ocean/waterOptics';
 import { createWaterOpticsUniforms } from '../ocean/waterShading';
 import { WaterSurfaceModel } from '../ocean/waterSurface';
@@ -11,6 +12,7 @@ import { Sky } from '../sky/Sky';
 import { BreakingRibbon, MAX_STORAGE_BUFFERS_PER_STAGE, modelRibbonSurface } from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { SetWaves } from './SetWaves';
+import { FoamField } from '../whitewater/FoamField';
 
 type N = any;
 
@@ -52,6 +54,8 @@ function stubRenderer(): N {
 }
 
 const storageBindings = (wgsl: string): number => (wgsl.match(/var<storage/g) ?? []).length;
+/** Sampled (non-storage) texture bindings in a WGSL stage: the baseline allows 16 per stage. */
+const sampledTextures = (wgsl: string): number => (wgsl.match(/var\s+\w+\s*:\s*texture_(?!storage)/g) ?? []).length;
 
 function computeWgsl(node: THREE.ComputeNode): string {
   const b: N = new (THREE as N).WGSLNodeBuilder(null, stubRenderer());
@@ -100,5 +104,38 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
       expect(storageBindings(w.vertex), `${label} vertex`).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
       expect(storageBindings(w.fragment), `${label} fragment`).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
     }
+  });
+
+  describe("the sheet's materials", () => {
+    const sky = new Sky(DEFAULT_ATMOSPHERE);
+    const optics = createWaterOpticsUniforms(DEFAULT_WATER_OPTICS);
+    const foam = new FoamField({ foamNode: (xz) => sets.breakingFoamNode(xz), dirNode: (xz) => sets.sample(xz, true).dir });
+    const plain = new OceanSurface(model, sky, optics);
+    const withFoam = new OceanSurface(model, sky, optics, { foamMap: foam });
+    for (const which of ['aboveMaterial', 'belowMaterial'] as const) {
+      const wgsl = (s: OceanSurface): { vertex: string; fragment: string } => renderWgsl(new THREE.Mesh(s.mesh.geometry, s[which]));
+      it(`${which}: at most ${MAX_STORAGE_BUFFERS_PER_STAGE} storage buffers and 16 sampled textures per stage, with the foam map`, () => {
+        const w = wgsl(withFoam);
+        console.log(`sheet ${which} sampled textures: vertex ${sampledTextures(w.vertex)}, fragment ${sampledTextures(w.fragment)}`);
+        for (const stage of [w.vertex, w.fragment]) {
+          expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+          expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
+        }
+      });
+      it(`${which}: the foam map adds exactly one sampled texture to the fragment stage`, () => {
+        expect(sampledTextures(wgsl(withFoam).fragment) - sampledTextures(wgsl(plain).fragment)).toBe(1);
+      });
+    }
+    it('the ribbon with the foam map stays within the limits and samples the map in its vertex stage', () => {
+      const shading = { model, sky, optics };
+      const r0 = new BreakingRibbon(modelRibbonSurface(model), DEFAULT_BREAK_PARAMS, shading);
+      const r1 = new BreakingRibbon(modelRibbonSurface(model), DEFAULT_BREAK_PARAMS, { ...shading, foamMap: foam });
+      const w0 = renderWgsl(r0.mesh), w1 = renderWgsl(r1.mesh);
+      expect(sampledTextures(w1.vertex) - sampledTextures(w0.vertex)).toBe(1);
+      for (const stage of [w1.vertex, w1.fragment]) {
+        expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+        expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
+      }
+    });
   });
 });

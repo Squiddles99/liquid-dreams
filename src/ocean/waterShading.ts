@@ -29,7 +29,7 @@ export interface WaterSurfaceInputs {
   /** The seabed seen through the water (Phase 1); absent means infinitely deep water (Phase 0). */
   seabed?: { radiance: N; transmittance: N };
   /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
-  overlay?: { depth: N; tau: N; depthOn: N; crestOn: N };
+  overlay?: { depth: N; tau: N; depthOn: N; crestOn: N; foamMap?: N; foamOn?: N };
 }
 
 export function createWaterOpticsUniforms(p: WaterOpticsParams) {
@@ -144,6 +144,10 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
       const c = colour.toVar();
       If(o.depthOn.greaterThan(0.5), () => { c.assign(mix(c, foamLight, line(o.depth, 1.0))); });
       If(o.crestOn.greaterThan(0.5), () => { c.assign(mix(c, foamLight.mul(vec3(1.0, 0.8, 0.25)), line(o.tau, 2.0))); });
+      if (o.foamMap && o.foamOn) {
+        const map = o.foamMap;
+        If(o.foamOn.greaterThan(0.5), () => { c.assign(mix(c, foamLight.mul(vec3(0.25, 0.9, 1.0)), saturate(map).mul(0.8))); });
+      }
       return c;
     })()
     : colour;
