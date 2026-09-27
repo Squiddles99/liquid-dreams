@@ -4,7 +4,7 @@ import { depthBg } from '../seabed/coastProfile';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
-import { computeReefField, sampleField } from './reefField';
+import { computeReefField, maxAlongCrest, sampleField, smoothAlongCrest, smoothAlongTravel } from './reefField';
 
 const reef05 = buildBathymetry();
 const reef1 = downsample(reef05, 2);
@@ -105,5 +105,44 @@ describe('reef wave field', () => {
         check(sampleField(f, x1 - 0.5, z), sampleField(f, x1 + 0.5, z), 1, 0);
       }
     }
+  });
+});
+
+describe('the breaking depth smoothing (along the crest and along travel)', () => {
+  // A 61×61 grid of 1 m cells, travel along +x everywhere (the crest runs along z).
+  const grid = { x0: 0, z0: 0, cellM: 1, nx: 61, nz: 61 };
+  const n = grid.nx * grid.nz;
+  const dirX = new Float32Array(n).fill(1), dirZ = new Float32Array(n);
+  const field = (f: (col: number, row: number) => number) => {
+    const a = new Float32Array(n);
+    for (let row = 0; row < grid.nz; row++) for (let col = 0; col < grid.nx; col++) a[row * grid.nx + col] = f(col, row);
+    return a;
+  };
+  const at = (a: Float32Array, col: number, row: number) => a[row * grid.nx + col];
+  const stepAlongCrest = field((_, row) => (row < 30 ? 1 : 2)); // changes along z: along the crest
+  const stepAlongTravel = field((col) => (col < 30 ? 1 : 2)); // changes along x: along travel
+
+  it('a constant stays constant, edges included', () => {
+    const c = field(() => 3);
+    for (const out of [smoothAlongCrest(c, dirX, dirZ, grid, 6), smoothAlongTravel(c, dirX, dirZ, grid, 8), maxAlongCrest(c, dirX, dirZ, grid, 6)]) {
+      for (const v of out) expect(v).toBeCloseTo(3, 5);
+    }
+  });
+  it('along the crest smooths a change along the crest and leaves one along travel sharp (and the reverse)', () => {
+    const crest = smoothAlongCrest(stepAlongCrest, dirX, dirZ, grid, 6);
+    expect(at(crest, 30, 24)).toBeGreaterThan(1.1); // spread 6 m before the step…
+    expect(at(crest, 30, 36)).toBeLessThan(1.9); // …and after it
+    const untouched = smoothAlongCrest(stepAlongTravel, dirX, dirZ, grid, 6);
+    for (const col of [28, 29, 31, 32]) expect(at(untouched, col, 30)).toBeCloseTo(at(stepAlongTravel, col, 30), 5);
+    const travel = smoothAlongTravel(stepAlongTravel, dirX, dirZ, grid, 8);
+    expect(at(travel, 22, 30)).toBeGreaterThan(1.1);
+    for (const row of [28, 29, 31, 32]) expect(at(smoothAlongTravel(stepAlongCrest, dirX, dirZ, grid, 8), 30, row)).toBeCloseTo(at(stepAlongCrest, 30, row), 5);
+  });
+  it('the largest along the crest widens a peak by its reach and never lowers anything', () => {
+    const spike = field((_, row) => (row === 30 ? 5 : 1));
+    const m = maxAlongCrest(spike, dirX, dirZ, grid, 6);
+    for (let row = 24; row <= 36; row++) expect(at(m, 30, row)).toBeCloseTo(5, 5);
+    expect(at(m, 30, 38)).toBeCloseTo(1, 5);
+    for (let i = 0; i < n; i++) expect(m[i]).toBeGreaterThanOrEqual(spike[i]);
   });
 });

@@ -50,7 +50,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   collapseStart: 0.5,
   throwStrength: 0.55,
   lipThickness: 0.12,
-  collapseTime: 1.0,
+  collapseTime: 1.8,
   ribbonOnset: 0.7,
 };
 
@@ -104,6 +104,28 @@ export function normalizeBreakParams(p: BreakParams): void {
 }
 
 /**
+ * The criterion's depth is hmin up to REEF_TOP_DEPTH_M and deepens beyond it as hmin·(hmin/REEF_TOP_DEPTH_M)^
+ * DEEP_WATER_EXPONENT (breakingDepth). The δ drain in the criterion is water sucked off the reef top in front of the
+ * wave: over the reef (6 m) a wave breaks at 0.44 × depth, but over the 13 m shelf there is no drain, and with the same
+ * rule a 9.9 ft set wave (~6 m) broke across the whole shelf (ρ 1.04) before it reached the reef, and every big crest
+ * stood up out there. Deepened, the shelf reads 21 m: a wave breaks there at ~0.72 × depth (9.3 m), so nothing short of
+ * the slider's top stands up on it. It is a pure function of hmin (no sliders), so the field bakes it in before its
+ * along-crest smoothing, and the reef-to-shelf change reaches the crest as smoothly as the rest of the breaking.
+ */
+export const REEF_TOP_DEPTH_M = 7;
+export const DEEP_WATER_EXPONENT = 0.8;
+/**
+ * Water shallower than this (m) counts as this deep: a wave is long broken there, and the reef flat's ratio (hmin
+ * 0.6 m, ten times the ledge's) otherwise dominates the field's smoothing around it and drags the break seaward.
+ */
+export const SHALLOW_BREAKING_DEPTH_M = 3;
+
+/** The depth the breaking criterion reads for minimum depth hmin (m): hmin on the reef (at least 3 m), deeper over deep water. */
+export function breakingDepth(hmin: number): number {
+  return Math.max(hmin, SHALLOW_BREAKING_DEPTH_M) * Math.max(1, hmin / REEF_TOP_DEPTH_M) ** DEEP_WATER_EXPONENT;
+}
+
+/**
  * The height (m) at which a wave breaks over minimum depth hmin: the root of H = γ·max(hmin − δ·H, h_floor), the crest
  * feeling the depth drained by δ·H. Where the drained depth is still above the floor there, H_b = γ·hmin / (1 + γδ);
  * else the floor holds and H_b = γ·h_floor. Together: γ·max(hmin / (1 + γδ), h_floor).
@@ -142,12 +164,20 @@ export function breakingStage(r: number, p: BreakParams): number {
   return smoothstep(1, 1 + Math.max(p.stageSpan, MIN_STAGE_SPAN), r);
 }
 
-/** The breaking ratio from which the sheet's front sharpening ramps up: ribbonOnset + RIBBON_FULL_OFFSET, kept below 1. */
+/**
+ * The sheet's front sharpening starts this much breaking ratio before the ribbon is full (at ρ 0.65 by default, the
+ * ribbon fading in over 0.7–0.75). Up to there the sharpening is mild (a fifth of full at the ribbon's full ratio), and
+ * the sheet draws it itself; the wider window keeps its ramp along the crest over about a wave height at 9.9 ft, where
+ * the reef-to-shelf change in ρ is largest, without the ribbon redrawing the shelf's crests.
+ */
+export const SHEET_SHARPENING_LEAD = 0.1;
+
+/** The breaking ratio from which the sheet's front sharpening ramps up: ribbonOnset + RIBBON_FULL_OFFSET − SHEET_SHARPENING_LEAD, kept below 1. */
 export function steepeningStart(p: Pick<BreakParams, 'ribbonOnset'>): number {
-  return Math.min(p.ribbonOnset + RIBBON_FULL_OFFSET, 1 - MIN_STEEPENING_SPAN);
+  return Math.min(p.ribbonOnset + RIBBON_FULL_OFFSET - SHEET_SHARPENING_LEAD, 1 - MIN_STEEPENING_SPAN);
 }
 
-/** The front sharpening's weight: 0 below ribbonOnset + RIBBON_FULL_OFFSET, 1 from ρ = 1. */
+/** The front sharpening's weight: 0 below steepeningStart, 1 from ρ = 1. */
 export function steepening(r: number, p: Pick<BreakParams, 'ribbonOnset'>): number {
   return smoothstep(steepeningStart(p), 1, r);
 }

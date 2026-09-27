@@ -5,7 +5,7 @@ import {
 } from 'three/tsl';
 import { REEF_GRID } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, normalizeBreakParams } from './breaking';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, breakingDepth, normalizeBreakParams } from './breaking';
 import { breakPointNode, breakingRatioNode, breakingStageNode, createBreakUniforms, stageCurvesNode, steepeningNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
@@ -113,7 +113,7 @@ export class SetWaves {
     const fa = this.farA.image.data as Float32Array, fb = this.farB.image.data as Float32Array;
     for (let i = 0; i < f.far.count; i++) {
       fa[i * 4] = f.far.tau[i] - f.far.tauOffset; fa[i * 4 + 1] = f.far.amp[i]; fa[i * 4 + 2] = f.far.hmin[i]; fa[i * 4 + 3] = f.far.k[i];
-      fb[i * 4] = f.far.dTauDx[i]; fb[i * 4 + 1] = f.far.depth[i]; fb[i * 4 + 2] = 0; fb[i * 4 + 3] = 0;
+      fb[i * 4] = f.far.dTauDx[i]; fb[i * 4 + 1] = f.far.depth[i]; fb[i * 4 + 2] = breakingDepth(f.far.hmin[i]); fb[i * 4 + 3] = 0;
     }
     for (const t of [this.fieldA, this.fieldB, this.farA, this.farB]) t.needsUpdate = true;
     this.origin.value.set(f.grid.x0, f.grid.z0);
@@ -195,8 +195,9 @@ export class SetWaves {
       tau: select(inside, a.x, select(outflow, edgeTau, farTau)),
       amp: select(useGrid, a.y, fa.y),
       hmin: select(useGrid, a.z, fa.z),
-      // The coast (far field) has no reef edges to smooth: its breaking depth is its hmin (coastFarField.farSample).
-      hminBreak: select(useGrid, b.w, fa.z),
+      // The coast (far field) has no reef edges to smooth: its breaking depth is breakingDepth(hmin), baked into farB.z
+      // (coastFarField.farSample; linear between nodes there as here).
+      hminBreak: select(useGrid, b.w, fb.z),
       k: max(select(useGrid, a.w, fa.w), 1e-4),
       dir: select(useGrid, edgeDir, farDir),
       depth: select(useGrid, b.z, fb.y),

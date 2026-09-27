@@ -1,7 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { type BreakParams, breakPoint, breakingHeightThreshold, breakingRatio, breakingStage, steepening, steepeningStart } from './breaking';
+import { type BreakParams, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, breakingStage, steepening, steepeningStart } from './breaking';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import type { ReefField } from './reefField';
@@ -147,15 +147,20 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
  */
 export function fieldBreakingHeight(f: ReefField, p: BreakParams): number {
   const { nx, nz } = f.grid;
+  // Between nodes the sample's amp/depth is a ratio of two interpolations of positive amp_i and amp_i/q_i, a weighted mean
+  // of the q_i = amp_i/depth_i: at most their largest. (Pairing the largest amp with the smallest depth, which grows with
+  // amp, left the bound three to four times too low.) The floor's term needs the largest amp itself.
+  const bound = (maxQ: number, maxAmp: number): number =>
+    maxQ > 0 && maxAmp > 0 ? p.gamma * Math.max(1 / ((1 + p.gamma * p.delta) * maxQ), p.hFloorM / maxAmp) : Infinity;
   let best = Infinity;
   for (let r = 0; r + 1 < nz; r++) for (let c = 0; c + 1 < nx; c++) {
     const i = r * nx + c, j = i + nx;
-    const amp = Math.max(f.amp[i], f.amp[i + 1], f.amp[j], f.amp[j + 1]);
-    const hmin = Math.min(f.hminBreak[i], f.hminBreak[i + 1], f.hminBreak[j], f.hminBreak[j + 1]);
-    best = Math.min(best, breakingHeightThreshold(amp, hmin, p));
+    const q = (k: number): number => f.amp[k] / f.hminBreak[k];
+    best = Math.min(best, bound(Math.max(q(i), q(i + 1), q(j), q(j + 1)), Math.max(f.amp[i], f.amp[i + 1], f.amp[j], f.amp[j + 1])));
   }
   for (let i = 0; i + 1 < f.far.count; i++) {
-    best = Math.min(best, breakingHeightThreshold(Math.max(f.far.amp[i], f.far.amp[i + 1]), Math.min(f.far.hmin[i], f.far.hmin[i + 1]), p));
+    const q = (k: number): number => f.far.amp[k] / breakingDepth(f.far.hmin[k]);
+    best = Math.min(best, bound(Math.max(q(i), q(i + 1)), Math.max(f.far.amp[i], f.far.amp[i + 1])));
   }
   return best;
 }

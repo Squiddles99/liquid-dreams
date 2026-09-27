@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, RIBBON_FULL_OFFSET, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, normalizeBreakParams, sharpenDrop, stageCurves, steepening,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, normalizeBreakParams, sharpenDrop, stageCurves, steepening, steepeningStart,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -87,6 +87,14 @@ describe('breaking criterion and stage', () => {
     }
     expect(breakingHeightThreshold(0, 6, P)).toBe(Infinity);
   });
+  it('the breaking depth is hmin on the reef and deeper over deep water (a 6 m wave does not break over the 13 m shelf)', () => {
+    for (const h of [3, 4, 6, 7]) expect(breakingDepth(h)).toBeCloseTo(h, 12);
+    expect(breakingDepth(0.6)).toBe(3); // the reef flat: long broken either way
+    expect(breakingDepth(13)).toBeGreaterThan(20);
+    expect(breakingRatio(6, breakingDepth(13), P)).toBeLessThan(0.65);
+    let prev = 0;
+    for (let h = 0.5; h <= 60; h += 0.25) { const d = breakingDepth(h); expect(d).toBeGreaterThanOrEqual(prev); prev = d; }
+  });
   it('floors the drained depth, so a wave taller than the water stays finite', () => {
     expect(breakingRatio(5, 0.4, P)).toBeCloseTo(5 / (0.78 * 0.3), 9);
     expect(breakingRatio(0, 6, P)).toBe(0);
@@ -112,7 +120,7 @@ describe('breaking criterion and stage', () => {
   });
   it('stage curves run in order: the drain first (from the steepening, before the break), then the collapse', () => {
     const at = (r: number) => stageCurves(r, P);
-    const from = P.ribbonOnset + RIBBON_FULL_OFFSET;
+    const from = steepeningStart(P);
     expect(at(from)).toEqual({ drain: 0, collapse: 0 });
     expect(at(0.95).drain).toBeGreaterThan(0); // draining before it breaks…
     expect(at(0.95).collapse).toBe(0);
@@ -128,15 +136,16 @@ describe('breaking criterion and stage', () => {
       prev = c;
     }
   });
-  it('steepening ramps from ribbonOnset + RIBBON_FULL_OFFSET to ρ = 1', () => {
-    const from = P.ribbonOnset + RIBBON_FULL_OFFSET;
+  it('steepening ramps from steepeningStart (0.65 at the defaults) to ρ = 1', () => {
+    const from = steepeningStart(P);
+    expect(from).toBeCloseTo(0.65, 12);
     expect(steepening(from - 0.01, P)).toBe(0);
     expect(steepening(1, P)).toBe(1);
     expect(steepening((from + 1) / 2, P)).toBeCloseTo(0.5, 12);
     expect(steepening(3, P)).toBe(1);
     // An onset dragged to the slider's top still ramps up (0 below, 1 from r = 1), never inverted.
     const late = { ribbonOnset: 0.9 };
-    expect(steepening(0.9, late)).toBe(0);
+    expect(steepening(steepeningStart(late), late)).toBe(0);
     expect(steepening(1, late)).toBe(1);
     let prev = 0;
     for (let r = 0; r <= 1.2; r += 0.01) { const v = steepening(r, late); expect(v).toBeGreaterThanOrEqual(prev); prev = v; }
@@ -275,12 +284,12 @@ describe('normalizeBreakParams', () => {
     expect([low.throwStrength, low.lipThickness, low.collapseTime, low.ribbonOnset]).toEqual([0.1, 0.03, 0.3, 0.3]);
     const bad = { ...P, throwStrength: Number.NaN, lipThickness: Infinity, collapseTime: -Infinity, ribbonOnset: Number.NaN };
     normalizeBreakParams(bad);
-    expect([bad.throwStrength, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([0.55, 0.12, 1.0, 0.7]);
+    expect([bad.throwStrength, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([0.55, 0.12, 1.8, 0.7]);
   });
   it('leaves the defaults unchanged', () => {
     const p = { ...P };
     normalizeBreakParams(p);
     expect(p).toEqual(P);
-    expect([P.throwStrength, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.55, 0.12, 1.0, 0.7]);
+    expect([P.throwStrength, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.55, 0.12, 1.8, 0.7]);
   });
 });

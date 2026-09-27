@@ -4,7 +4,7 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, RIBBON_FULL_OFFSET, boreScale, breakingHeightThreshold, stageCurves, steepening } from './breaking';
+import { DEFAULT_BREAK_PARAMS, boreScale, breakingHeightThreshold, stageCurves, steepening, steepeningStart } from './breaking';
 import { type Station, traceStations } from './crestTrace';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
@@ -88,21 +88,19 @@ describe('the field breaking height (SetWaves skips the GPU breaking below its s
     }
     return best;
   };
-  for (const [name, p] of [['default params', DEFAULT_BREAK_PARAMS], ['γ 0.6, δ 0.5', { ...DEFAULT_BREAK_PARAMS, gamma: 0.6, delta: 0.5 }]] as const) {
+  for (const [name, p] of [['default params', DEFAULT_BREAK_PARAMS], ['γ 0.6, δ 0.5', { ...DEFAULT_BREAK_PARAMS, gamma: 0.6, delta: 0.5 }]] as [string, typeof DEFAULT_BREAK_PARAMS][]) {
     it(`is a lower bound that is nearly attained (${name})`, () => {
       const hb = fieldBreakingHeight(field, p), n = nodeMin(p);
       expect(hb).toBeGreaterThan(0);
       expect(hb).toBeLessThanOrEqual(n.T);
-      // Loose by up to ~30%: a cell's bound pairs its largest amp with its smallest breaking depth, and the breaking
-      // depth grows with amp (it is amp over the smoothed amp/hmin), so no node has both.
-      expect(hb).toBeGreaterThan(0.6 * n.T);
+      expect(hb).toBeGreaterThan(0.8 * n.T);
       // Just above the best node's threshold, a crest there breaks.
       const w = testWave(1.01 * n.T), o = optsFor(field, p);
       expect(crestStage(n.x, n.z, at(n.x, n.z).tau, at(n.x, n.z), w, ctx, o)).toBeGreaterThan(0);
     });
-    it(`its steepening share (ribbonOnset + RIBBON_FULL_OFFSET of it) bounds the sheet: a wave no taller is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
+    it(`its steepening share (steepeningStart of it) bounds the sheet: a wave no taller is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
       const hs = fieldSteepeningHeight(field, p);
-      expect(hs).toBeCloseTo((p.ribbonOnset + RIBBON_FULL_OFFSET) * fieldBreakingHeight(field, p), 12);
+      expect(hs).toBeCloseTo(steepeningStart(p) * fieldBreakingHeight(field, p), 12);
       const w = [testWave(hs)], o = optsFor(field, p);
       for (let x = -400; x <= 300; x += 12.5) for (let z = -600; z <= 300; z += 12.5) for (const t of [-20, -5, 0, 4, 12]) {
         expect(sumWaves(x, z, t, at(x, z), w, ctx, o)).toEqual(sumWaves(x, z, t, at(x, z), w, ctx));
@@ -112,14 +110,19 @@ describe('the field breaking height (SetWaves skips the GPU breaking below its s
 });
 
 describe('where and when the A-frame breaks (default swell, mid tide)', () => {
-  it('a 1.1·Hs wave does not break at the ledge (peak, north and south ledges); 1.3·Hs and 1.8·Hs waves do, at the peak', () => {
+  it('a 0.95·Hs wave does not break at the ledge (peak, north and south ledges); the smallest set wave (1.3·Hs) and the biggest (1.8·Hs) break at the peak', () => {
+    // Set waves start at 1.3·Hs (DEFAULT_SET_PARAMS). The breaking depth's smoothing along travel (a wave feels the reef
+    // coming, so it stands up over seconds, not a trap door) lowers the wedge's very tip a little and lifts the ledge
+    // beside it: the first water to break is on the north ledge 10 m from the tip (~1.05·Hs), and the tip itself needs
+    // ~1.35·Hs. So the smallest set wave breaks at the peak's ledge within 12 m of the tip rather than on it.
     const ledgePoints: [number, number][] = [[0, 0], ...along(NORTH_LEDGE, 100, 10), ...along(SOUTH_LEDGE, 40, 5)];
     for (const [px, pz] of ledgePoints) {
       const seaward = ray(px, pz, 40, 0);
-      const worst = Math.max(...seaward.map((p) => stageWhenCrestAt(p.x, p.z, testWave(1.1 * HS))));
+      const worst = Math.max(...seaward.map((p) => stageWhenCrestAt(p.x, p.z, testWave(0.95 * HS))));
       expect(worst, `seaward of ledge point (${px.toFixed(1)}, ${pz.toFixed(1)})`).toBe(0);
     }
-    expect(stageWhenCrestAt(0, 0, testWave(1.3 * HS))).toBeGreaterThan(0);
+    const nearPeak = along(NORTH_LEDGE, 12, 1).concat(along(SOUTH_LEDGE, 12, 1));
+    expect(Math.max(...nearPeak.map(([x, z]) => stageWhenCrestAt(x, z, testWave(1.3 * HS))))).toBeGreaterThan(0);
     expect(stageWhenCrestAt(0, 0, testWave(1.8 * HS))).toBeGreaterThan(0);
   });
   it('the left peels north along the ledge at the field rate, 8–20 m/s (the biggest set factor, 1.8·Hs)', () => {
@@ -175,13 +178,13 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
     }
   });
   it('the breaking fades in and out along the crest over wave heights, not metres (no square channels, no right-angled bowl)', { timeout: 30_000 }, () => {
-    // The sheet's three breaking weights along the crest of the biggest set wave, at 5 and 6.6 ft (Andrew's review), from
-    // before the peak breaks to the right's closeout: the steepest change of each per wave height of crest, between
-    // stations under 2 m apart. The old ratio gave 1.4–2.0 (sharpening), 2.4–5.0 (drain) and 2.7–8.3 (collapse): the
-    // drain's walls and the collapse's step were a metre or two wide.
-    const bounds = { steep: 1.0, drain: 0.7, collapse: 0.6 };
+    // The sheet's three breaking weights along the crest of the biggest set wave, at 5, 6.6 and 9.9 ft (Andrew's
+    // reviews), from before the peak breaks to the right's closeout: the steepest change of each per wave height of crest,
+    // between stations under 2 m apart. The old ratio gave 1.4–2.0 (sharpening), 2.4–5.0 (drain) and 2.7–8.3 (collapse)
+    // at 5–6.6 ft: the drain's walls and the collapse's step were a metre or two wide.
+    const bounds = { steep: 1.0, drain: 0.85, collapse: 0.9 };
     const worst = { steep: 0, drain: 0, collapse: 0 };
-    for (const sizeFt of [5, 6.6]) {
+    for (const sizeFt of [5, 6.6, 9.9]) {
       const c = cloneConditions(DEFAULT_CONDITIONS);
       c.swell.sizeFt = sizeFt;
       const w = testWave(wavesOfSet(1, c, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a)).heightM);

@@ -138,8 +138,10 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: 
   const t = tb === null ? 0 : Math.min(Math.max(tb, 0), tauLand);
   const prog = t / tauLand;
   const reach = vj * t;
+  // Before the break the constructed curve follows the sheet's sharpening, but only inside the ribbon: the sharpening
+  // starts before the ribbon fades in (SHEET_SHARPENING_LEAD), and there the sheet draws it itself.
   const steep = tb === null
-    ? steepening(r, p)
+    ? steepening(r, p) * smoothstep(p.ribbonOnset, p.ribbonOnset + RIBBON_FULL_OFFSET, r)
     : smoothstep(BACK_OFF_DROP_H[0] * H, BACK_OFF_DROP_H[1] * H, K[1] - F[1]);
   const collapse = tb === null ? 0 : smoothstep(tauLand, tauLand * (1 + p.collapseTime), tb);
   const landing = tb === null ? 0 : smoothstep(tauLand, tauLand * (1 + LANDING_FOAM_RISE * p.collapseTime), tb);
