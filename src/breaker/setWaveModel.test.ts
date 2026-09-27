@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_BREAK_PARAMS, breakingRatio } from './breaking';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
-import { type ActiveWave, BREAKING_RATIO, type WaveContext, localHeight, sumWaves, toActiveWave, waveAt } from './setWaveModel';
+import { type ActiveWave, BREAKING_RATIO, type WaveContext, crestAt, localHeight, sumWaves, toActiveWave, waveAt } from './setWaveModel';
 
 const omega = (T: number) => (2 * Math.PI) / T;
 
@@ -74,12 +75,22 @@ describe('set-wave model', () => {
     const a = waveAt(0, 0, 100, f, wave(15, 1, 100), ctxFor(15));
     const b = waveAt(0, 0, 100, f, wave(15, 1, 115), ctxFor(15));
     expect(sumWaves(0, 0, 100, f, [wave(15, 1, 100), wave(15, 1, 115)], ctxFor(15)).eta).toBeCloseTo(a.eta + b.eta, 12);
-    expect(waveAt(0, 0, 100, f, wave(15, 0), ctxFor(15))).toEqual({ eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, lip: 0, stage: 0 });
+    expect(waveAt(0, 0, 100, f, wave(15, 0), ctxFor(15))).toEqual({ eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0 });
   });
   it('converts set events into active waves', () => {
     const w = toActiveWave({ id: 1, slot: 0, indexInSet: 0, waveCount: 5, arrivalS: 42, heightM: 2.5, periodS: 14, fromDeg: 225, crestLengthM: 350, crestOffsetM: 10 });
     expect(w.omega).toBeCloseTo((2 * Math.PI) / 14, 12);
     expect(w.travelX).toBeCloseTo(Math.SQRT1_2, 9);
     expect(w.travelZ).toBeCloseTo(-Math.SQRT1_2, 9);
+  });
+  it('the crest carries its breaking ratio, and is found before the wave breaks (the sheet steepens from r = ribbonOnset + 0.2)', () => {
+    const f = field1D(8, 15, 1.2, 6);
+    const w = wave(15, 2), o = { sample: (x: number) => f(x), params: DEFAULT_BREAK_PARAMS };
+    const crest = crestAt(3, 0, 100, f(3), w, ctxFor(15), o)!;
+    expect(crest).not.toBeNull();
+    expect(crest.r).toBeCloseTo(breakingRatio(2 * 1.2, 6, DEFAULT_BREAK_PARAMS), 12);
+    expect(crest.r).toBeLessThan(1);
+    expect(crest.s).toBe(0);
+    expect(crestAt(3, 0, 100, f(3), w, ctxFor(15), { ...o, params: { ...DEFAULT_BREAK_PARAMS, enabled: false } })).toBeNull();
   });
 });
