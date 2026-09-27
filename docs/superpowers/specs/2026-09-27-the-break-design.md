@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-27
 **Authors:** Claude, delegated by Andrew Justice
-**Status:** Draft, written and self-approved overnight under Andrew's delegation ("I fully trust your judgement to diligently work away"). Every decision Andrew hasn't seen is marked **Ruling** so he can overturn it.
+**Status:** Implemented overnight on the `phase-2-the-break` branch (2026-09-27); awaiting Andrew's review. Plan-level rulings P1–P11 are in the plan. Not merged.
 **Builds on:** the vision spec (`2026-09-25-liquid-dreams-first-light-design.md`) and Phase 1 (`2026-09-26-reef-and-sets-design.md`). Their world conventions, "one source of truth for water height", deterministic moments, CPU-model/GPU-mirror testing and GPU budget all still apply.
 
 ---

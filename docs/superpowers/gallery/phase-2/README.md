@@ -7,4 +7,8 @@ Rendered on the RTX in the browser pane. Default morning (08:15), with the swell
 - `03-the-line-lips-throwing.png`: looking down the line, with two sections throwing and the collapsed section between them.
 - `04-aftermath-foam.png`: a few seconds later, the broken wave's foam (the Phase 3 whitewater stand-in).
 
-Frames could only be captured while the app window was visible. More shots, and an animated sequence, will come after Andrew's review.
+- `05-barrel-after-fix-round.png`: after fix round 1. The lip's back edge is wider (no sawtooth up close) and the foam contrast is stronger.
+- `06-two-sections-throwing.png`: two sections throwing. The right one curls over a tube, and the foam between them now has holes and streaks. The far-left lip, about 100 m away, still looks spiky; the Break folder's "lip back reach" slider controls that.
+- `07-lip-peeling-past.png`: the lip peeling past the camera, with broken foam behind.
+
+Frames were captured by pressing the screenshot key and then forcing a frame, because the app window was hidden overnight. More shots, and an animated sequence, will come after Andrew's review.
