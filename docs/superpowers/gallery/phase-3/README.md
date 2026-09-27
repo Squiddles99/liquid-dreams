@@ -25,3 +25,10 @@ Measured in the Browser pane with the app rendering (RTX 4060 Laptop, 1236 × 13
 - **One tick:** 0.17 ms. The target is ≤ 0.5 ms. At 60 fps one frame in three runs a tick.
 
 The first measurements, at 160–600 ms, came from two things. Each tick sent its passes to the GPU as separate submissions, which is now one submission per tick. And the pane was hidden, which throttles the GPU.
+
+## The active bore (camera 3 m up on the shelf at x 75, z −15, looking out towards the break)
+
+- `10-bore-minus-3s-leftovers.png`: the next bore on the horizon, with the last wave's leftover foam fading on the water near us. The bore rolls through what is left of it.
+- `11-bore-plus-2s.png`: the bore coming at the camera. Its white is the frame's own breaking foam on the water-anchored pattern, which boils rather than sliding with the crest (spec §3.2, for Andrew's eye), with the lingering foam band behind it.
+
+About close pairs (spec §6): at the default 15 s swell, set waves arrive 13.5–16.5 s apart, so no wave breaks at the peak into the previous wave's foam. What happens is frame 10: each bore rolls through the thinning foam the last one left over the shelf. On a 10–12 s swell, or with a longer clear time, pairs break straight into leftovers.
