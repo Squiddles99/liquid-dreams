@@ -5,14 +5,14 @@ import {
 } from 'three/tsl';
 import { REEF_GRID } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M } from './breaking';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, normalizeBreakParams } from './breaking';
 import { breakPointNode, breakingStageNode, createBreakUniforms, stageCurvesNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import type { ReefField } from './reefField';
 import {
   BREAKING_RATIO, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_WIDTH, FOLD_LIMIT, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
-  TAPER_FAR_M, TAPER_NEAR_M, toActiveWave,
+  TAPER_FAR_M, TAPER_NEAR_M, fieldBreakingHeight, toActiveWave,
 } from './setWaveModel';
 
 type N = any;
@@ -22,6 +22,9 @@ const FIELD_NZ = REEF_GRID.nz / 2;
 const FAR_COUNT = Math.round((FAR_X1 - FAR_X0) / FAR_DX) + 1;
 /** Envelope widths |ξ|/width beyond which a wave contributes nothing visible (exp(−3.5²) ≈ 5e-6). */
 const ENVELOPE_CUTOFF = 3.5;
+/** A wave is flagged "can break" once it is taller than this fraction of the field's breaking height: a 2% margin over
+ * the exact bound, for the GPU's f32 field interpolation. */
+const CAN_BREAK_MARGIN = 0.98;
 
 function floatTexture(width: number, height: number): THREE.DataTexture {
   const data = new Float32Array(width * height * 4);
@@ -77,6 +80,11 @@ export class SetWaves {
   readonly activeCount = uniform(0);
   /** The breaking shape's parameters (breakingNodes.ts), uploaded normalized. */
   private readonly brk = createBreakUniforms(DEFAULT_BREAK_PARAMS);
+  private breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
+  private field: ReefField | null = null;
+  /** setWaveModel.fieldBreakingHeight for the current field and params (Infinity with no field: nothing breaks). */
+  private breakingHeight = Infinity;
+  private events: readonly WaveEvent[] = [];
 
   constructor(private readonly time: N) {
     this.setEvents([]);
@@ -84,6 +92,15 @@ export class SetWaves {
 
   setBreakParams(p: BreakParams): void {
     updateBreakUniforms(this.brk, p);
+    this.breakParams = { ...p };
+    normalizeBreakParams(this.breakParams);
+    this.updateBreakingHeight();
+  }
+
+  /** Recomputes the field's breaking height and rewrites the waves' "can break" flags (field or params changed). */
+  private updateBreakingHeight(): void {
+    this.breakingHeight = this.field ? fieldBreakingHeight(this.field, this.breakParams) : Infinity;
+    this.setEvents(this.events);
   }
 
   setField(f: ReefField): void {
@@ -105,18 +122,32 @@ export class SetWaves {
     this.meanOmega.value = f.omega;
     this.meanTravel.value.set(f.far.dirX, f.far.dirZ);
     this.hasField = true;
+    this.field = f;
+    this.updateBreakingHeight();
   }
 
+  /**
+   * Uploads the active waves. Each slot's second vec4 carries, in w, a "can break" flag: 1 when the wave is taller than
+   * CAN_BREAK_MARGIN × the field's breaking height, so it may break somewhere. The GPU skips the crest search and
+   * breaking for a flagged-0 wave; the model gives such a wave stage 0 everywhere, so the result is Phase 1 either way.
+   */
   setEvents(events: readonly WaveEvent[]): void {
+    this.events = events;
     const d = this.wavesAttr.array as Float32Array;
     for (let i = 0; i < MAX_ACTIVE_WAVES; i++) {
       const e = events[i];
       const w = e ? toActiveWave(e) : null;
+      const canBreak = w && w.heightM > CAN_BREAK_MARGIN * this.breakingHeight ? 1 : 0;
       d.set(w ? [w.arrivalS, w.heightM, w.omega, w.crestLengthM] : [0, 0, 1, 1], i * 8);
-      d.set(w ? [w.travelX, w.travelZ, w.crestOffsetM, 0] : [1, 0, 0, 0], i * 8 + 4);
+      d.set(w ? [w.travelX, w.travelZ, w.crestOffsetM, canBreak] : [1, 0, 0, 0], i * 8 + 4);
     }
     this.activeCount.value = Math.min(events.length, MAX_ACTIVE_WAVES);
     this.wavesAttr.needsUpdate = true;
+  }
+
+  /** The "can break" flag uploaded for a wave slot (0 or 1; see setEvents). */
+  canBreakFlag(slot: number): number {
+    return (this.wavesAttr.array as Float32Array)[slot * 8 + 7];
   }
 
   /**
@@ -252,7 +283,8 @@ export class SetWaves {
               foamFrame.assign(vec2(centre.xi.mul(cLocal), dot(xz, vec2(b.y.negate(), b.x))));
             });
           }
-          If(brk.enabled.greaterThan(0.5), () => {
+          // Breaking on, and this wave flagged as able to break somewhere (setEvents): else it is Phase 1 exactly.
+          If(brk.enabled.greaterThan(0.5).and(b.w.greaterThan(0.5)), () => {
             // crestAt: CREST_STEPS Newton steps toward ξ = 0 along the wave's own travel direction b.xy (the same at
             // every point, so the lookup has no seams), each at most half a wavelength, reading the field where the
             // crest lands, so every point of one cross-section shares its crest's stage and frame.
