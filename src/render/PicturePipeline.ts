@@ -101,6 +101,11 @@ export class PicturePipeline {
     this.pipeline.render();
   }
 
+  /** The exposure applied to the scene's radiance this frame (debug overlays that must read the same at any exposure). */
+  get exposureValue(): number {
+    return this.exposure.value;
+  }
+
   private updateExposure(): void {
     this.exposure.value = computeExposure(
       this.sunElevationDeg, this.params.baseExposure, this.params.evOffset, this.params.autoExposure, this.forwardDotSun,

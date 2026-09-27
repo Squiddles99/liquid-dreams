@@ -1,8 +1,9 @@
 import * as THREE from 'three/webgpu';
 import {
-  Break, Fn, If, Loop, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, mix, positionWorld, saturate, select, smoothstep,
+  Break, Fn, If, Loop, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, min, mix, positionWorld, saturate, select, smoothstep,
   storage, uniform, varying, vec2, vec3, vec4,
 } from 'three/tsl';
+import { smoothstep as smoothstepCpu } from '../math/smoothstep';
 import { CASCADE_FADES, fadeWeightNode } from '../ocean/cascadeFades';
 import { type DebugOverlays, EARTH_RADIUS_M, type SheetFootprint, setFoamPattern } from '../ocean/OceanSurface';
 import { type WaterOpticsUniforms, shadeWater } from '../ocean/waterShading';
@@ -12,7 +13,7 @@ import { REEF_GRID } from '../seabed/wombReef';
 import type { Sky } from '../sky/Sky';
 import type { BreakParams } from './breaking';
 import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
-import { PROFILE_SAMPLES } from './lipProfile';
+import { PROFILE_SAMPLES, PROFILE_SEGMENTS } from './lipProfile';
 import {
   FRAME_PROFILE_VEC4S, FRAME_VEC4S, createLipUniforms, encodeTb, packFrameNodes, profileFrameNode, profilePointNode, sampleHomeNode, unpackFrameNodes, updateLipUniforms,
 } from './lipProfileNodes';
@@ -42,7 +43,7 @@ export interface RibbonSurface {
 export const SKIRT_DEPTH_M = 0.3;
 /** PROFILE_SAMPLES plus one skirt vertex at each end (index 0: under the front edge; last: under the back edge). */
 export const VERTS_PER_STATION = PROFILE_SAMPLES + 2;
-/** vec4s per station in the stations buffer: [x, z, nx, nz], [H, c, r, tb], [gap, 0, 0, 0]. */
+/** vec4s per station in the stations buffer: [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, 0, 0] (packStations). */
 export const STATION_VEC4S = 3;
 /** A sample whose home is more than this inside both edges is `inner` (the footprint's 1 m shrink, spec R9). */
 export const INNER_MARGIN_M = 1;
@@ -53,8 +54,12 @@ export const INNER_MARGIN_M = 1;
  * f32 position noise (≈ 1e-5 m at 100 m) to ~1% of any live difference, so the GPU and a CPU mirror agree on it…
  */
 export const MIN_PROFILE_STEP_M = 1e-3;
-/** …and the vertex takes the normal of the nearest live sample within this many along the profile (else straight up). */
-export const NORMAL_SEARCH = 8;
+/**
+ * …and the vertex takes the normal of the nearest live sample within this many along the profile: the whole profile,
+ * so a dead vertex always takes a normal oriented as its own surface (the face's winding side), never a guess. Only a
+ * station with no live difference at all (no area anywhere) falls back to straight up.
+ */
+export const NORMAL_SEARCH = PROFILE_SAMPLES - 1;
 /** The FFT cascade that is the chop (35 m patch): it fades out over the lip (spec R6). */
 export const CHOP_CASCADE = 2;
 
@@ -71,8 +76,66 @@ export const FOOTPRINT_GRID: Readonly<Omit<SheetFootprint, 'texture'>> = {
   cellM: REEF_GRID.cellM,
   size: new THREE.Vector2(REEF_GRID.nx, REEF_GRID.nz),
 };
-/** The `ribbon tint` overlay mixes this much magenta (at the colour's own luminance) into the ribbon. */
+/** A station within this much crest (m, of arc) of its run's first or last station marks no footprint (packStations'
+ * runEnd): the texels round the ribbon's along-crest end can never discard sheet beyond it. */
+export const FOOTPRINT_END_MARGIN_M = 1;
+/** The `ribbon tint` overlay mixes this much magenta into the ribbon… */
 export const TINT_MIX = 0.4;
+/** …a magenta this bright after the picture's exposure (so it reads the same at any exposure, before tone mapping). */
+export const TINT_EXPOSED = 0.8;
+/**
+ * The ribbon's depth bias toward the camera (reversed-Z Depth32Float: +1 unit = one float step at the triangle's
+ * depth, ≈ distance × 1.2e-7 m), so it wins over the sheet where the two draw the same surface (the footprint's overlap
+ * strip and the along-crest ends): about distance × 2.4e-4 (1.2 cm at 50 m), plus two slope units at grazing angles.
+ */
+export const RIBBON_DEPTH_BIAS_UNITS = 2000;
+export const RIBBON_DEPTH_BIAS_SLOPE = 2;
+
+/**
+ * The detail coordinate's blend between its two ends (sample indices): measured from the front edge up to the lip's
+ * first sample (the underside's start), from the back edge from its last (the outer arc's root at the crest) on, and a
+ * smoothstep in between, across the lip, where the chop is faded out whenever the lip is drawn.
+ */
+export const DEVELOP_BLEND: readonly [number, number] = [
+  PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall,
+  PROFILE_SAMPLES - PROFILE_SEGMENTS.back - 1,
+];
+
+/**
+ * The developed u of each profile sample (spec R6, controller ruling): where the ribbon reads its FFT detail and chop,
+ * so a steep or overhanging stretch gets detail in proportion to its own length rather than one column of the sheet's.
+ * From the front edge, uFront − (the curve's arc length from the front edge); from the back edge, uBack + (its arc
+ * length from the back edge); blended by DEVELOP_BLEND. Exactly uFront and uBack at the edges (the sheet's own homes
+ * there), continuous along the profile. `points` are the chop-free profile samples (u along n, y), front to back.
+ * The GPU's develop pass mirrors this in f32.
+ */
+export function developedU(points: readonly (readonly [number, number])[], uFront: number, uBack: number): number[] {
+  const arc = [0];
+  for (let j = 1; j < points.length; j++) arc.push(arc[j - 1] + Math.hypot(points[j][0] - points[j - 1][0], points[j][1] - points[j - 1][1]));
+  const total = arc[arc.length - 1];
+  return arc.map((a, j) => {
+    const fromFront = uFront - a, fromBack = uBack + (total - a);
+    return fromBack + (fromFront - fromBack) * (1 - smoothstepCpu(DEVELOP_BLEND[0], DEVELOP_BLEND[1], j));
+  });
+}
+
+/** Per entry: whether it is a live station within FOOTPRINT_END_MARGIN_M of arc of its run's first or last station (a run:
+ * consecutive live stations between gaps or the ends of the (≤ MAX_STATIONS) rows). */
+export function runEndFlags(entries: readonly StationEntry[], n = Math.min(entries.length, MAX_STATIONS)): boolean[] {
+  const flags = new Array<boolean>(n).fill(false);
+  for (let a = 0; a < n;) {
+    if (entries[a].gap) { a++; continue; }
+    let b = a;
+    while (b + 1 < n && !entries[b + 1].gap) b++;
+    const first = (entries[a] as Station).arc, last = (entries[b] as Station).arc;
+    for (let i = a; i <= b; i++) {
+      const arc = (entries[i] as Station).arc;
+      flags[i] = Math.abs(arc - first) < FOOTPRINT_END_MARGIN_M || Math.abs(last - arc) < FOOTPRINT_END_MARGIN_M;
+    }
+    a = b + 1;
+  }
+  return flags;
+}
 
 const V = VERTS_PER_STATION;
 const LAST = PROFILE_SAMPLES - 1;
@@ -113,17 +176,19 @@ export interface RibbonShading {
  * Packs the stations for the GPU (STATION_VEC4S × 4 floats each) into `out`, and returns how many rows are in use (at
  * most MAX_STATIONS). tb is encoded (encodeTb). A gap entry is a copy of the previous live station with gap = 1 (Q10),
  * so its vertices land on that station's and its triangles have zero width; a gap before any live station copies the
- * first live one. With no live station at all, nothing is in use (0).
+ * first live one. With no live station at all, nothing is in use (0). runEnd is 1 on a live station near its run's
+ * end (runEndFlags), 0 otherwise (gap rows too: they are dead anyway).
  */
 export function packStations(entries: readonly StationEntry[], out: Float32Array): number {
   const n = Math.min(entries.length, MAX_STATIONS);
   let prev = entries.slice(0, n).find((e): e is Station => !e.gap);
   if (!prev) return 0;
+  const ends = runEndFlags(entries, n);
   for (let i = 0; i < n; i++) {
     const e = entries[i];
     if (!e.gap) prev = e;
     const s: Station = prev;
-    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, 0, 0, 0], i * STATION_VEC4S * 4);
+    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, 0, 0], i * STATION_VEC4S * 4);
   }
   return n;
 }
@@ -164,6 +229,9 @@ const safeNormalize3 = (v: N): N => {
   return select(l.greaterThan(1e-12), v.div(max(l, 1e-30)), vec3(0.0, 1.0, 0.0));
 };
 
+/** Unit n reflected into the hemisphere facing the unit view direction v: n − 2·min(n·v, 0)·v (n where it already faces v). */
+const towardViewer = (n: N, v: N): N => safeNormalize3(n.sub(v.mul(min(dot(n, v), 0.0).mul(2.0))));
+
 export class BreakingRibbon {
   /** Per vertex (MAX_STATIONS × VERTS_PER_STATION): position.xyz (world xz; y relative to the tide) + dead flag (the station's gap). */
   readonly positions: THREE.StorageBufferAttribute;
@@ -173,6 +241,11 @@ export class BreakingRibbon {
   readonly extras: THREE.StorageBufferAttribute;
   /** Per vertex: vec4(home world x, home world z, along-crest tangent x, tangent z) (the tangent is t̂ = (−n.z, n.x)). */
   readonly homes: THREE.StorageBufferAttribute;
+  /**
+   * Per vertex: vec4(detail world x, detail world z, developed u, 0): where the vertex reads its FFT detail and chop,
+   * S + n·(developed u) (developedU). The home exactly at both edges; skirts take their edge's.
+   */
+  readonly details: THREE.StorageBufferAttribute;
   /** Per station: the frame as FRAME_VEC4S vec4s, lipProfileNodes.FRAME_LAYOUT order then the base samples Fb and the
    * landing guess (FRAME_BASE_OFFSET) (self-tests and diagnostics). */
   readonly frames: THREE.StorageBufferAttribute;
@@ -186,6 +259,8 @@ export class BreakingRibbon {
   private readonly lip;
   private readonly framePass: THREE.ComputeNode;
   private readonly vertexPass: THREE.ComputeNode;
+  private readonly developPass: THREE.ComputeNode;
+  private readonly chopPass: THREE.ComputeNode;
   private readonly normalPass: THREE.ComputeNode;
   /**
    * The ribbon drawn with the water shading (a plain magenta placeholder without RibbonShading: the self-tests never
@@ -205,7 +280,10 @@ export class BreakingRibbon {
   private readonly savedClearColor = new THREE.Color();
   /** The camera's xz (setStations): the Earth-curvature drop is measured from it, as the sheet's. */
   private readonly cameraXZ = uniform(new THREE.Vector2());
-  private readonly tint = uniform(0);
+  /** The `ribbon tint` overlay's switch (0/1; setOverlays), public for inspection. */
+  readonly tint = uniform(0);
+  /** 1 / the picture's exposure (setDisplayExposure): the tint's magenta is TINT_EXPOSED after exposure. */
+  private readonly inverseExposure = uniform(1);
   /** The FFT cascades' slope variances (the unresolved roughness), copied from the simulation each frame. */
   private readonly slopeVariance: THREE.UniformNode<'float', number>[];
 
@@ -215,10 +293,13 @@ export class BreakingRibbon {
     this.normals = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
     this.extras = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
     this.homes = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
+    this.details = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
     this.frames = new THREE.StorageBufferAttribute(new Float32Array(MAX_STATIONS * FRAME_VEC4S * 4), 4);
     this.lip = createLipUniforms(params);
     this.framePass = this.buildFramePass();
     this.vertexPass = this.buildVertexPass();
+    this.developPass = this.buildDevelopPass();
+    this.chopPass = this.buildChopPass();
     this.normalPass = this.buildNormalPass();
     this.slopeVariance = (shading?.model.sim.sizes ?? []).map(() => uniform(0));
 
@@ -230,6 +311,7 @@ export class BreakingRibbon {
     this.geometry.setAttribute('ribbonNormal', this.normals);
     this.geometry.setAttribute('ribbonExtra', this.extras);
     this.geometry.setAttribute('ribbonHome', this.homes);
+    this.geometry.setAttribute('ribbonDetail', this.details);
     this.geometry.setIndex(new THREE.BufferAttribute(ribbonIndices(), 1));
     this.geometry.setDrawRange(0, 0);
     this.mesh = new THREE.Mesh(this.geometry, this.buildMaterial());
@@ -255,6 +337,11 @@ export class BreakingRibbon {
     this.tint.value = o.ribbonTint ? 1 : 0;
   }
 
+  /** The picture's current exposure (PicturePipeline.exposureValue), so the tint reads the same at any exposure. */
+  setDisplayExposure(exposure: number): void {
+    this.inverseExposure.value = 1 / Math.max(exposure, 1e-12);
+  }
+
   /** Uploads this frame's stations (≤ MAX_STATIONS; gaps included) and the camera position. */
   setStations(entries: readonly StationEntry[], camera: THREE.Vector3): void {
     this.camera.copy(camera);
@@ -273,13 +360,15 @@ export class BreakingRibbon {
     }
   }
 
-  /** Runs the frame, vertex and normal compute passes (no-op with no stations). */
+  /** Runs the frame, vertex, develop, chop and normal compute passes (no-op with no stations). */
   compute(renderer: THREE.WebGPURenderer): void {
     if (this.stationCount === 0) return;
     this.framePass.count = this.stationCount;
     this.vertexPass.count = this.stationCount * V;
+    this.developPass.count = this.stationCount;
+    this.chopPass.count = this.stationCount * V;
     this.normalPass.count = this.stationCount * V;
-    renderer.compute([this.framePass, this.vertexPass, this.normalPass]);
+    renderer.compute([this.framePass, this.vertexPass, this.developPass, this.chopPass, this.normalPass]);
   }
 
   /**
@@ -308,19 +397,25 @@ export class BreakingRibbon {
   /**
    * The ribbon's material (spec §7.3): the sheet's water shading (shadeWater, seabedTerms, setFoamPattern) on the
    * ribbon's own normal, tilted by the FFT detail (cascades 0–1 whole, the chop × (1 − lipness)) read at the vertex's
-   * undisplaced home; the turquoise lip keyed by the real thickness; the sheet's foam at the home (vertex stage) with
-   * the curl's foam. Gap rows are discarded (Q10).
+   * detail coordinate (the developed profile: `details`); the turquoise lip keyed by the real thickness; the sheet's
+   * foam at the home (vertex stage) with the curl's foam. The shading normal is bent into the viewer's hemisphere (a
+   * normal facing away, as where a triangle spans the lip's tip and interpolates opposite normals, would otherwise read
+   * as a mirror: Fresnel → 1 and sun glitter at its cap). Gap rows are discarded (Q10). A depth bias toward the camera
+   * makes the ribbon win where it and the sheet draw the same surface.
    */
   private buildMaterial(): THREE.MeshBasicNodeMaterial {
     const material = new THREE.MeshBasicNodeMaterial();
     material.side = THREE.FrontSide;
+    material.polygonOffset = true;
+    material.polygonOffsetUnits = RIBBON_DEPTH_BIAS_UNITS;
+    material.polygonOffsetFactor = RIBBON_DEPTH_BIAS_SLOPE;
     const pos: N = attribute('position', 'vec4');
     const dead: N = varying(pos.w);
     material.maskNode = dead.lessThanEqual(DEAD_EPSILON);
     const shading = this.shading;
     if (!shading) {
       material.positionNode = pos.xyz;
-      material.colorNode = vec3(1.0, 0.0, 1.0);
+      material.colorNode = this.tinted(vec3(0.5));
       return material;
     }
     const { model, sky, optics } = shading;
@@ -332,6 +427,7 @@ export class BreakingRibbon {
     const vNormal: N = varying(attribute('ribbonNormal', 'vec4').xyz);
     const vExtra: N = varying(attribute('ribbonExtra', 'vec4'));
     const vHome: N = varying(home);
+    const vDetail: N = varying(attribute('ribbonDetail', 'vec4').xy);
     // The sheet's set-wave foam weight and foam frame at the home, once per vertex (the sheet's own vertex-stage sum).
     const vSetFoam: N = varying(Fn(() => {
       const b = model.sets.breakSampleNode(home.xy);
@@ -341,9 +437,9 @@ export class BreakingRibbon {
     const toCamera = cameraPosition.sub(positionWorld);
     const distance = length(toCamera);
     const viewDir = toCamera.div(max(distance, 1e-4));
-    const n0 = safeNormalize3(vNormal).toVar();
+    const n0 = towardViewer(safeNormalize3(vNormal), viewDir).toVar();
     const thickness = vExtra.x, lipness = saturate(vExtra.y), curlFoam = vExtra.z;
-    const fft = model.fftSlopes(vHome.xy, distance, this.slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness) : float(1.0)));
+    const fft = model.fftSlopes(vDetail, distance, this.slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness) : float(1.0)));
     // FFT slopes, Jacobian-corrected as the sheet's, split along the crest (t̂) and across it (d = (t̂.z, −t̂.x), the
     // travel direction), then applied in the ribbon normal's tangent frame: T = t̂ made perpendicular to n, B = n × T
     // (= d where n is up, so there this is the sheet's normalize(−sx, 1, −sz) exactly).
@@ -356,7 +452,7 @@ export class BreakingRibbon {
     const B = cross(n0, T);
     const sT = fsx.mul(tHat.x).add(fsz.mul(tHat.z));
     const sD = fsx.mul(tHat.z).sub(fsz.mul(tHat.x));
-    const normal = safeNormalize3(n0.sub(T.mul(sT)).sub(B.mul(sD))).toVar();
+    const normal = towardViewer(safeNormalize3(n0.sub(T.mul(sT)).sub(B.mul(sD))), viewDir).toVar();
     const underside = float(1.0).sub(smoothstep(-0.3, 0.3, n0.y));
     const lip = float(1.0).sub(smoothstep(0.05, 0.6, thickness)).mul(lipness);
     const foamLook = setFoamPattern(max(vSetFoam.x, curlFoam), vSetFoam.yz, model.sim.time);
@@ -367,10 +463,15 @@ export class BreakingRibbon {
       sky,
       optics,
     ).toVar();
-    // The ribbon tint: magenta at the colour's own luminance (the colour is HDR radiance, so a plain magenta would read black).
-    const magenta = vec3(1.0, 0.0, 1.0).mul(dot(colour, vec3(0.2126, 0.7152, 0.0722)).div(0.2848));
-    material.colorNode = mix(colour, magenta, this.tint.mul(TINT_MIX));
+    material.colorNode = this.tinted(colour);
     return material;
+  }
+
+  /** The `ribbon tint` overlay: `colour` mixed TINT_MIX with a saturated magenta that is TINT_EXPOSED after the picture's
+   * exposure (the colour is HDR radiance), so it is unmistakable at any exposure. */
+  private tinted(colour: N): N {
+    const magenta = vec3(1.0, 0.0, 1.0).mul(this.inverseExposure.mul(TINT_EXPOSED));
+    return mix(colour, magenta, this.tint.mul(TINT_MIX));
   }
 
   /**
@@ -424,7 +525,8 @@ export class BreakingRibbon {
     })().compute(MAX_STATIONS) as THREE.ComputeNode;
   }
 
-  /** Each vertex: its home, the smooth base there, the profile point, placed in the world, plus the chop off the lip. */
+  /** Each vertex: its home, the smooth base there, the profile point, placed in the world (the chop comes later, at the
+   * developed coordinate: buildChopPass). */
   private buildVertexPass(): THREE.ComputeNode {
     const stations = this.stationsNode();
     const frames = storage(this.frames, 'vec4', MAX_STATIONS * FRAME_VEC4S).toReadOnly();
@@ -453,10 +555,12 @@ export class BreakingRibbon {
       const lipness = float(p.lipness).toVar();
       // The profile's u along n; the lateral displacement at home carried unchanged along t̂.
       const xz = S.add(n.mul(pos.x)).add(tHat.mul(dot(d.xz, tHat)));
-      const chop = vec3(this.surface.chop(xzHome)).mul(float(1.0).sub(lipness)).toVar();
       const skirt = select(local.equal(int(0)).or(local.equal(int(V - 1))), float(SKIRT_DEPTH_M), float(0.0));
-      positions.element(idx).assign(vec4(xz.x.add(chop.x), pos.y.add(chop.y).sub(skirt), xz.y.add(chop.z), gap));
-      const inner = select(f.uFront.sub(home).greaterThan(INNER_MARGIN_M).and(home.sub(f.uBack).greaterThan(INNER_MARGIN_M)), float(1.0), float(0.0));
+      positions.element(idx).assign(vec4(xz.x, pos.y.sub(skirt), xz.y, gap));
+      // Inner: more than INNER_MARGIN_M inside both edges, and the station not within FOOTPRINT_END_MARGIN_M of its run's end.
+      const runEnd = stations.element(i.mul(STATION_VEC4S).add(2)).y;
+      const inside = f.uFront.sub(home).greaterThan(INNER_MARGIN_M).and(home.sub(f.uBack).greaterThan(INNER_MARGIN_M));
+      const inner = select(inside.and(runEnd.lessThan(0.5)), float(1.0), float(0.0));
       // The normal pass fills xyz.
       normals.element(idx).assign(vec4(0.0, 1.0, 0.0, inner));
       extras.element(idx).assign(vec4(p.thickness, lipness, p.curlFoam, f.rho));
@@ -465,11 +569,72 @@ export class BreakingRibbon {
   }
 
   /**
+   * One invocation per station: the developed u of each profile sample (developedU, in f32) from the chop-free
+   * positions' (u along n, y), written as the detail coordinate S + n·(developed u); the skirts take their edge's.
+   */
+  private buildDevelopPass(): THREE.ComputeNode {
+    const stations = this.stationsNode();
+    const frames = storage(this.frames, 'vec4', MAX_STATIONS * FRAME_VEC4S).toReadOnly();
+    const positions = storage(this.positions, 'vec4', MAX_STATIONS * V).toReadOnly();
+    const details = storage(this.details, 'vec4', MAX_STATIONS * V);
+    return Fn(() => {
+      const i: N = int(instanceIndex).toVar();
+      const a = stations.element(i.mul(STATION_VEC4S)).toVar();
+      const S = a.xy, n = a.zw;
+      const f = unpackFrameNodes(Array.from({ length: FRAME_PROFILE_VEC4S }, (_, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).toVar()));
+      const uFront = float(f.uFront).toVar(), uBack = float(f.uBack).toVar();
+      /** Profile sample jj's (u along n, y), chop-free. */
+      const UY = (jj: N): N => {
+        const p = positions.element(i.mul(V).add(jj).add(1));
+        return vec2(dot(p.xz.sub(S), n), p.y);
+      };
+      // The total arc length, then each sample's arc from the front edge, accumulated in the same order both times.
+      const total = float(0.0).toVar();
+      const prev = vec2(UY(int(0))).toVar();
+      Loop({ start: 1, end: PROFILE_SAMPLES, name: 'j' } as N, ({ j }: N) => {
+        const q = vec2(UY(j)).toVar();
+        total.addAssign(length(q.sub(prev)));
+        prev.assign(q);
+      });
+      const arc = float(0.0).toVar();
+      prev.assign(UY(int(0)));
+      Loop({ start: 0, end: PROFILE_SAMPLES, name: 'j' } as N, ({ j }: N) => {
+        const q = vec2(UY(j)).toVar();
+        If(j.greaterThan(int(0)), () => { arc.addAssign(length(q.sub(prev))); });
+        prev.assign(q);
+        const fromFront = uFront.sub(arc), fromBack = uBack.add(total.sub(arc));
+        const wFront = float(1.0).sub(smoothstep(DEVELOP_BLEND[0], DEVELOP_BLEND[1], float(j)));
+        // Exactly the home at the edges: uFront at the first sample, uBack at the last.
+        const dev = select(j.equal(int(0)), uFront, select(j.equal(int(LAST)), uBack, fromBack.add(fromFront.sub(fromBack).mul(wFront)))).toVar();
+        const v = vec4(S.add(n.mul(dev)), dev, 0.0).toVar();
+        details.element(i.mul(V).add(j).add(1)).assign(v);
+        If(j.equal(int(0)), () => { details.element(i.mul(V)).assign(v); });
+        If(j.equal(int(LAST)), () => { details.element(i.mul(V).add(V - 1)).assign(v); });
+      });
+    })().compute(MAX_STATIONS) as THREE.ComputeNode;
+  }
+
+  /** Each vertex: the chop (the FFT's cascade 2) read at its detail coordinate, faded out over the lip, added to its position. */
+  private buildChopPass(): THREE.ComputeNode {
+    const positions = storage(this.positions, 'vec4', MAX_STATIONS * V);
+    const extras = storage(this.extras, 'vec4', MAX_STATIONS * V).toReadOnly();
+    const details = storage(this.details, 'vec4', MAX_STATIONS * V).toReadOnly();
+    return Fn(() => {
+      const idx: N = int(instanceIndex).toVar();
+      const xz = details.element(idx).xy.toVar();
+      const chop = vec3(this.surface.chop(xz)).mul(float(1.0).sub(extras.element(idx).y)).toVar();
+      const p = positions.element(idx).toVar();
+      positions.element(idx).assign(vec4(p.xyz.add(chop), p.w));
+    })().compute(MAX_STATIONS * V) as THREE.ComputeNode;
+  }
+
+  /**
    * Each vertex's normal: cross(∂P/∂station, ∂P/∂j) from central differences (one-sided at the profile's ends, and
    * along the stations next to a gap or the end of the rows; a station alone in its run uses its tangent t̂), flipped
    * for the whole station if it points down at the back edge (the water is below and behind). A vertex whose profile
-   * difference is dead (MIN_PROFILE_STEP_M across the crest) takes the normal of the nearest live sample within
-   * NORMAL_SEARCH (else straight up). Skirts take their edge vertex's normal.
+   * difference is dead (MIN_PROFILE_STEP_M across the crest) takes the normal of the nearest live sample anywhere along
+   * the profile (NORMAL_SEARCH), so it is oriented as the surface around it (up only where the whole station has no
+   * area). Skirts take their edge vertex's normal.
    */
   private buildNormalPass(): THREE.ComputeNode {
     const stations = this.stationsNode();
