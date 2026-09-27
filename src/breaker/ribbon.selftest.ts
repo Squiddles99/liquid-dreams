@@ -184,9 +184,10 @@ registerSelfTest({
       gap.see(dist3(gp, k * 4, Array.from(out.slice(m * 8, m * 8 + 3))), `vertex ${k} (station ${Math.floor(k / V)}, ${k % V === 1 ? 'front' : 'back'})`);
       chop = Math.max(chop, Math.hypot(out[m * 8 + 4], out[m * 8 + 5], out[m * 8 + 6]));
     });
-    // The chop must be there (FFT on) or the comparison proves nothing about it.
-    const ok = n > 0 && gap.value < 1e-3 && chop > 0.01;
-    return { pass: ok, detail: `${n / 2} live stations at dt 0.6 s; worst |ribbon edge − sheet| ${gap} m (< 1e-3); largest |cascade-2 chop| at the edges ${chop.toFixed(3)} m (> 0.01)` };
+    // The chop must be there (FFT on) or the comparison proves nothing about it. The default sea's 35 m cascade is only
+    // millimetres high at the lineup (6 mm measured), so the bound is 1 mm; the equality itself holds to ~1e-5 m.
+    const ok = n > 0 && gap.value < 1e-3 && chop > 1e-3;
+    return { pass: ok, detail: `${n / 2} live stations at dt 0.6 s; worst |ribbon edge − sheet| ${gap} m (< 1e-3); largest |cascade-2 chop| at the edges ${chop.toFixed(4)} m (> 1e-3)` };
   },
 });
 
@@ -220,37 +221,79 @@ registerSelfTest({
   },
 });
 
+/**
+ * The normal pass on the CPU (BreakingRibbon.buildNormalPass): cross(∂P/∂station, ∂P/∂j) from central differences of
+ * the rows' positions (one-sided next to a gap or the ends; t̂ for a lone station), the nearest live profile difference
+ * within ±8 (else up), oriented so the station's back-edge normal points up.
+ */
+function cpuNormal(rows: readonly (readonly (readonly number[])[] | null)[], entries: readonly StationEntry[], i: number, j: number): number[] {
+  const r = rows[i] as (readonly number[])[], e = entries[i] as Station;
+  const sub = (a: readonly number[], b: readonly number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const prev = i > 0 ? rows[i - 1] : null, next = i + 1 < rows.length ? rows[i + 1] : null;
+  const dS = (jj: number) => (prev && next ? sub(next[jj], prev[jj]) : next ? sub(next[jj], r[jj]) : prev ? sub(r[jj], prev[jj]) : [-e.nz, 0, e.nx]);
+  const dJ = (jj: number) => (jj === 0 ? sub(r[1], r[0]) : jj === LAST ? sub(r[LAST], r[LAST - 1]) : sub(r[jj + 1], r[jj - 1]));
+  const live = (jj: number) => Math.hypot(...dJ(jj)) >= 1e-6;
+  let jn = j;
+  if (!live(j)) {
+    for (let k = 1; k <= 8; k++) {
+      if (j - k >= 0 && live(j - k)) { jn = j - k; break; }
+      if (j + k <= LAST && live(j + k)) { jn = j + k; break; }
+    }
+    if (!live(jn)) return [0, 1, 0];
+  }
+  let n = cross(dS(jn), dJ(jn));
+  if (cross(dS(LAST), dJ(LAST))[1] < 0) n = n.map((c) => -c);
+  const l = Math.hypot(...n);
+  return l > 1e-12 ? n.map((c) => c / l) : [0, 1, 0];
+}
+
 registerSelfTest({
   name: 'ribbon: normals face up out of the water on the back slope and down under the lip',
   async run(renderer) {
     const { time, sets, ribbon } = setsRig();
     const t = REF_BIGGEST.arrivalS + 0.6;
     time.value = t;
-    const { entries } = traceAt(t, sets);
+    const { waves, entries } = traceAt(t, sets);
     ribbon.setStations(entries, LINEUP);
     ribbon.compute(renderer);
     const gn = await read(renderer, ribbon.normals), gf = await read(renderer, ribbon.frames);
-    const field = (i: number, name: (typeof FRAME_LAYOUT)[number]): number => gf[i * FRAME_FLOATS + FRAME_LAYOUT.indexOf(name)];
-    let backMin = Infinity, backAt = '', underMax = -Infinity, underAt = '', peakStations = 0, live = 0;
+    const field = getField(), ctx = ctxOf(field);
+    const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: P };
+    const frameAt = (i: number, name: (typeof FRAME_LAYOUT)[number]): number => gf[i * FRAME_FLOATS + FRAME_LAYOUT.indexOf(name)];
+    const rows = entries.map((e) => (e.gap ? null : cpuRow(e, t, waves).world));
+    /** The sheet's own normal y at a station's back edge, from central differences of sumWaves 0.25 m apart (the true
+     * surface: the analytic slope omits the field's gradients, which are steep over reef heads). */
+    const sheetNormalY = (e: Station): number => {
+      const uB = -(0.5 * e.H + 2), x = e.x + e.nx * uB, z = e.z + e.nz * uB, d = 0.25;
+      const h = (xx: number, zz: number) => sumWaves(xx, zz, t, sampleField(field, xx, zz), waves, ctx, o).eta;
+      return 1 / Math.hypot((h(x + d, z) - h(x - d, z)) / (2 * d), (h(x, z + d) - h(x, z - d)) / (2 * d), 1);
+    };
+    const mirror = new Worst();
+    let backMin = Infinity, backAt = '', gentleMin = Infinity, gentleAt = '', gentle = 0, underMax = -Infinity, underAt = '', peakStations = 0, live = 0;
     entries.forEach((e, i) => {
       if (e.gap) return;
       live++;
+      const peak = Math.hypot(e.x, e.z) < 15 && frameAt(i, 'weight') > 0.9 && frameAt(i, 'prog') > 0.3;
+      if (peak) peakStations++;
+      for (let j = 0; j < PROFILE_SAMPLES; j++) {
+        const k = (i * V + j + 1) * 4;
+        mirror.see(dist3(gn, k, cpuNormal(rows, entries, i, j)), `#${i} j ${j}`);
+        if (peak && SEGMENT_OF_SAMPLE[j] === SEGMENT_ID.under && !(gn[k + 1] <= underMax)) { underMax = gn[k + 1]; underAt = `#${i} j ${j}`; }
+      }
       const by = gn[(i * V + LAST + 1) * 4 + 1];
-      if (!(by >= backMin)) { backMin = by; backAt = `#${i}`; }
-      // At the peak, with the lip thrown and the constructed curve at (nearly) full weight.
-      if (Math.hypot(e.x, e.z) < 15 && field(i, 'weight') > 0.9 && field(i, 'prog') > 0.3) {
-        peakStations++;
-        for (let j = 0; j < PROFILE_SAMPLES; j++) {
-          if (SEGMENT_OF_SAMPLE[j] !== SEGMENT_ID.under) continue;
-          const y = gn[(i * V + j + 1) * 4 + 1];
-          if (!(y <= underMax)) { underMax = y; underAt = `#${i} j ${j}`; }
-        }
+      if (!(by >= backMin)) { backMin = by; backAt = `#${i} (sheet's own normal y there ${sheetNormalY(e).toFixed(3)})`; }
+      // Where the sheet's back slope is gentle (its own normal y > 0.95), the ribbon's must face up (> 0.8).
+      if (sheetNormalY(e) > 0.95) {
+        gentle++;
+        if (!(by >= gentleMin)) { gentleMin = by; gentleAt = `#${i}`; }
       }
     });
-    const ok = live > 0 && backMin > 0.8 && peakStations > 0 && underMax < 0;
+    const ok = live > 0 && mirror.value < 0.05 && backMin > 0 && gentle > live / 2 && gentleMin > 0.8 && peakStations > 0 && underMax < 0;
     return {
       pass: ok,
-      detail: `${live} live stations at dt 0.6 s; lowest back-edge normal y ${backMin.toFixed(3)} (${backAt}; > 0.8); ` +
+      detail: `${live} live stations at dt 0.6 s; worst |GPU normal − CPU mirror of the normal pass| ${mirror} (< 0.05); ` +
+        `lowest back-edge normal y ${backMin.toFixed(3)} (${backAt}; > 0); on the ${gentle} gentle back slopes (sheet normal y > 0.95) lowest ${gentleMin.toFixed(3)} (${gentleAt}; > 0.8); ` +
         `${peakStations} peak stations with a thrown lip (|xz| < 15 m, weight > 0.9, prog > 0.3); highest underside normal y ${underMax.toFixed(3)} (${underAt}; < 0)`,
     };
   },
