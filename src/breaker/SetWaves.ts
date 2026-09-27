@@ -11,7 +11,7 @@ import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import type { ReefField } from './reefField';
 import {
-  BREAKING_RATIO, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_WIDTH, FOLD_LIMIT, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
+  BREAKING_RATIO, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_WIDTH, FOLD_LIMIT, LONG_TAIL_WIDTH, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
   TAPER_FAR_M, TAPER_NEAR_M, fieldSteepeningHeight, toActiveWave,
 } from './setWaveModel';
 
@@ -20,8 +20,10 @@ type N = any;
 const FIELD_NX = REEF_GRID.nx / 2;
 const FIELD_NZ = REEF_GRID.nz / 2;
 const FAR_COUNT = Math.round((FAR_X1 - FAR_X0) / FAR_DX) + 1;
-/** Envelope widths |ξ|/width beyond which a wave contributes nothing visible (exp(−3.5²) ≈ 5e-6). */
-const ENVELOPE_CUTOFF = 3.5;
+/** Envelope widths |ξ|/width beyond which a wave contributes nothing visible: exp(−1.52⁶) ≈ 5e-6 for the tight envelope… */
+const ENVELOPE_CUTOFF = 1.52;
+/** …and exp(−3.5²) ≈ 5e-6 for a long tail's Gaussian. */
+const LONG_TAIL_CUTOFF = 3.5;
 /** A wave is flagged "can break" once it is taller than this fraction of the field's steepening height: a 2% margin over
  * the exact bound, for the GPU's f32 field interpolation. */
 const CAN_BREAK_MARGIN = 0.98;
@@ -127,10 +129,11 @@ export class SetWaves {
   }
 
   /**
-   * Uploads the active waves. Each slot's second vec4 carries, in w, a "can break" flag: 1 when the wave is taller than
-   * CAN_BREAK_MARGIN × the field's steepening height (setWaveModel.fieldSteepeningHeight), so it may steepen or break
-   * somewhere. The GPU skips the crest search and breaking for a flagged-0 wave; the model gives such a wave no
-   * sharpening and stage 0 everywhere, so the result is Phase 1 either way.
+   * Uploads the active waves. Each slot's second vec4 carries, in w, two flags: canBreak + 2·longTail. "Can break" is 1
+   * when the wave is taller than CAN_BREAK_MARGIN × the field's steepening height (setWaveModel.fieldSteepeningHeight),
+   * so it may steepen or break somewhere. The GPU skips the crest search and breaking for a flagged-0 wave; the model
+   * gives such a wave no sharpening and stage 0 everywhere, so the result is Phase 1 either way. "Long tail" picks the
+   * Gaussian envelope (setWaveModel.waveEnvelope).
    */
   setEvents(events: readonly WaveEvent[]): void {
     this.events = events;
@@ -140,7 +143,7 @@ export class SetWaves {
       const w = e ? toActiveWave(e) : null;
       const canBreak = w && w.heightM > CAN_BREAK_MARGIN * this.steepeningHeight ? 1 : 0;
       d.set(w ? [w.arrivalS, w.heightM, w.omega, w.crestLengthM] : [0, 0, 1, 1], i * 8);
-      d.set(w ? [w.travelX, w.travelZ, w.crestOffsetM, canBreak] : [1, 0, 0, 0], i * 8 + 4);
+      d.set(w ? [w.travelX, w.travelZ, w.crestOffsetM, canBreak + (w.longTail ? 2 : 0)] : [1, 0, 0, 0], i * 8 + 4);
     }
     this.activeCount.value = Math.min(events.length, MAX_ACTIVE_WAVES);
     this.wavesAttr.needsUpdate = true;
@@ -148,7 +151,12 @@ export class SetWaves {
 
   /** The "can break" flag uploaded for a wave slot (0 or 1; see setEvents). */
   canBreakFlag(slot: number): number {
-    return (this.wavesAttr.array as Float32Array)[slot * 8 + 7];
+    return (this.wavesAttr.array as Float32Array)[slot * 8 + 7] % 2;
+  }
+
+  /** The "long tail" flag uploaded for a wave slot (0 or 1; see setEvents). */
+  longTailFlag(slot: number): number {
+    return (this.wavesAttr.array as Float32Array)[slot * 8 + 7] >= 2 ? 1 : 0;
   }
 
   /**
@@ -234,7 +242,9 @@ export class SetWaves {
         const b = this.waves.element(i.mul(2).add(1));
         const H: N = min(a.y.mul(f.amp), f.hmin.mul(BREAKING_RATIO));
         const A = H.mul(0.5);
-        const width = float(ENVELOPE_WIDTH * 2 * Math.PI).div(a.z);
+        // b.w = canBreak + 2·longTail (setEvents).
+        const longTailFlag = b.w.greaterThan(1.5);
+        const canBreak = b.w.sub(select(longTailFlag, float(2.0), float(0.0))).greaterThan(0.5).toVar();
         const B = min(float(STOKES_CAP), stokesPerA.mul(A));
         /** Time since this wave's crest passed a point (negative: still to come), for field speed `cLoc` and arrival time `tau`. */
         const phaseXi = (p: N, tau: N, cLoc: N): N => {
@@ -243,13 +253,19 @@ export class SetWaves {
         };
         // The Phase 1 wave here: waveAtCrest's first half.
         const xi = phaseXi(xz, f.tau, cLocal);
+        // setWaveModel.waveEnvelope: a long tail is Gaussian only behind its crest (ξ > 0).
+        const longTail = longTailFlag.and(xi.greaterThan(0.0)).toVar();
+        const width = select(longTail, float(LONG_TAIL_WIDTH * 2 * Math.PI), float(ENVELOPE_WIDTH * 2 * Math.PI)).div(a.z);
         const rEnv = xi.div(width);
-        // Empty slots, and waves beyond ENVELOPE_CUTOFF widths (envelope < 5e-6), are skipped: most pixels are near one or two.
-        If(a.y.greaterThan(0.0).and(abs(rEnv).lessThan(ENVELOPE_CUTOFF)), () => {
+        // Empty slots, and waves beyond the cutoff (envelope < 5e-6), are skipped: most pixels are near one or two.
+        If(a.y.greaterThan(0.0).and(abs(rEnv).lessThan(select(longTail, float(LONG_TAIL_CUTOFF), float(ENVELOPE_CUTOFF)))), () => {
           // As vars: the breaking below reads them inside nested Ifs, and a TSL temp first assigned inside one If is
           // stale in the next. The Phase 1 sums are added now; breaking adds its difference.
-          const env = exp(rEnv.mul(rEnv).negate()).toVar();
-          const dEnv = xi.mul(-2.0).div(width.mul(width)).mul(env).toVar();
+          // setWaveModel.waveEnvelope: exp(−r²) behind a long tail's crest, else exp(−r⁶); dEnv = d/dξ.
+          const r2 = rEnv.mul(rEnv);
+          const r4 = r2.mul(r2);
+          const env = exp(select(longTail, r2, r4.mul(r2)).negate()).toVar();
+          const dEnv = select(longTail, rEnv.mul(-2.0), r4.mul(rEnv).mul(-6.0)).div(width).mul(env).toVar();
           const q = xz.x.negate().mul(b.y).add(xz.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
           const q2 = q.mul(q);
           const lateral = mix(float(1.0), exp(q2.mul(q2).negate()), wFar).toVar();
@@ -277,7 +293,7 @@ export class SetWaves {
             });
           }
           // Breaking on, and this wave flagged as able to steepen somewhere (setEvents): else it is Phase 1 exactly.
-          If(brk.enabled.greaterThan(0.5).and(b.w.greaterThan(0.5)), () => {
+          If(brk.enabled.greaterThan(0.5).and(canBreak), () => {
             // crestAt: CREST_STEPS Newton steps toward ξ = 0 along the wave's own travel direction b.xy (the same at
             // every point, so the lookup has no seams), each at most half a wavelength, reading the field where the
             // crest lands, so every point of one cross-section shares its crest's ratio, stage and frame.

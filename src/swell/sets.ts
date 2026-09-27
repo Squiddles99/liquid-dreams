@@ -74,6 +74,8 @@ export interface WaveEvent {
   crestLengthM: number;
   /** Sideways offset (m) of the crest's centre from the ray through the peak (matters in deep water only). */
   crestOffsetM: number;
+  /** This wave leaves water a period behind it for the next to step on (setWaveModel.LONG_TAIL_WIDTH). */
+  longTail: boolean;
 }
 
 /** A wave is in flight from this long before it reaches the peak (on the horizon)… */
@@ -89,6 +91,9 @@ const MAX_SLOT_SEARCH_ITERATIONS = 10_000;
 
 const SET_SALT = 7000;
 const STRAY_SALT = 9000;
+const TAIL_SALT = 11000;
+/** The share of set waves (all but each set's last, which has no wave behind it) that leave a long tail. */
+export const LONG_TAIL_CHANCE = 1 / 12;
 const uniformIn = (u: number, lo: number, hi: number): number => lo + u * (hi - lo);
 const signed = (u: number): number => u * 2 - 1;
 
@@ -126,6 +131,8 @@ export function wavesOfSet(slot: number, c: Conditions, p: SetParams): WaveEvent
       fromDeg: c.swell.directionDeg + signed(rng.next()) * p.directionJitterDeg,
       crestLengthM: uniformIn(rng.next(), p.crestLengthMinM, p.crestLengthMaxM),
       crestOffsetM: signed(rng.next()) * 60,
+      // Its own stream, so the draw leaves every other value of the set as it was.
+      longTail: i < count - 1 && createRng(deriveSeed(c.seed, TAIL_SALT + slot * 64 + i)).next() < LONG_TAIL_CHANCE,
     });
     t += c.swell.periodS * (1 + signed(rng.next()) * p.spacingJitter);
   }
@@ -155,6 +162,7 @@ export function straysAfterSet(slot: number, c: Conditions, p: SetParams): WaveE
       fromDeg: c.swell.directionDeg + signed(rng.next()) * p.directionJitterDeg,
       crestLengthM: uniformIn(rng.next(), p.crestLengthMinM, p.crestLengthMaxM),
       crestOffsetM: signed(rng.next()) * 60,
+      longTail: false,
     });
   }
   return strays.sort((a, b) => a.arrivalS - b.arrivalS);

@@ -13,8 +13,22 @@ export const BREAKING_RATIO = 0.78;
  * sized from the crest's height, so on a reef flat beside a big crest they would otherwise draw the water below the bed.
  */
 export const SEABED_CLEARANCE_M = 0.05;
-/** Envelope width in periods: one crest with flanking troughs, not an endless train. */
-export const ENVELOPE_WIDTH = 0.8;
+/**
+ * Envelope width in periods: env = exp(−(ξ / (ENVELOPE_WIDTH·T))⁶), one crest with its two troughs (88% deep) and
+ * nothing a period away (1% at 0.9 T, the closest set spacing). The Gaussian it replaced, exp(−(ξ/0.8T)²), left a 21%
+ * crest one period either side of every wave, and set waves come a period apart: each rode on the one before (crests up
+ * to 1.77× their height, no drain between them; Andrew). Over 300 sets the tallest crest is now 1.035× its own height,
+ * and the faces (crest to the trough ahead) average 1.30× the wave's height, as before (1.31×): the deeper troughs make
+ * up for the crest the leftovers used to add, so waves look as big as they did.
+ */
+export const ENVELOPE_WIDTH = 0.7;
+/**
+ * A long-tail wave (WaveEvent.longTail, about one in twelve) keeps that Gaussian behind its crest (ξ > 0), exp(−(ξ /
+ * (LONG_TAIL_WIDTH·T))²): the water it leaves a period behind is what the next wave steps on (the occasional
+ * Shipsterns-style step). Ahead of its crest it is tight, so it leaves the wave in front alone. Both halves are 1 with
+ * zero slope at the crest.
+ */
+export const LONG_TAIL_WIDTH = 0.8;
 /** Largest second-harmonic ratio (Stokes breaks down in very shallow water). */
 export const STOKES_CAP = 0.35;
 /** k × horizontal amplitude never exceeds this (keeps the along-ray Jacobian positive). */
@@ -35,6 +49,8 @@ export interface ActiveWave {
   travelZ: number;
   crestLengthM: number;
   crestOffsetM: number;
+  /** The Gaussian envelope (LONG_TAIL_WIDTH) instead of the tight one: this wave leaves water for the next to step on. */
+  longTail?: boolean;
 }
 
 /** The field's mean swell (the field was computed for this frequency and direction). */
@@ -72,8 +88,19 @@ export function toActiveWave(e: WaveEvent): ActiveWave {
   const d = travelDirectionXZ(e.fromDeg);
   return {
     arrivalS: e.arrivalS, heightM: e.heightM, omega: (2 * Math.PI) / e.periodS,
-    travelX: d.x, travelZ: d.z, crestLengthM: e.crestLengthM, crestOffsetM: e.crestOffsetM,
+    travelX: d.x, travelZ: d.z, crestLengthM: e.crestLengthM, crestOffsetM: e.crestOffsetM, longTail: e.longTail,
   };
+}
+
+/** A wave's envelope at ξ (s since its crest passed) and d/dξ: tight (ENVELOPE_WIDTH), Gaussian behind a long tail's crest. */
+export function waveEnvelope(xi: number, w: ActiveWave): { env: number; dEnv: number } {
+  const T = (2 * Math.PI) / w.omega;
+  if (w.longTail && xi > 0) {
+    const width = LONG_TAIL_WIDTH * T, env = Math.exp(-((xi / width) ** 2));
+    return { env, dEnv: ((-2 * xi) / (width * width)) * env };
+  }
+  const width = ENVELOPE_WIDTH * T, r = xi / width, env = Math.exp(-(r ** 6));
+  return { env, dEnv: ((-6 * r ** 5) / width) * env };
 }
 
 export function localHeight(w: ActiveWave, f: FieldSample): number {
@@ -188,9 +215,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;
   const xi = phaseXi(x, z, t, f, w, ctx);
-  const width = (ENVELOPE_WIDTH * 2 * Math.PI) / w.omega;
-  const env = Math.exp(-((xi / width) ** 2));
-  const dEnv = ((-2 * xi) / (width * width)) * env;
+  const { env, dEnv } = waveEnvelope(xi, w);
   const sigma = Math.max(Math.tanh(f.k * f.depth), 0.05);
   const B = Math.min(STOKES_CAP, (f.k * A * (3 - sigma * sigma)) / (4 * sigma * sigma * sigma));
   const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, Math.hypot(x, z));
