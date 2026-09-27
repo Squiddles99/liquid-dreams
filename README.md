@@ -49,7 +49,7 @@ Open `http://localhost:5173/#ref=<name>`. All are at The Womb's lineup on 15 Jul
 | `closeout-right` | 08:15 from a drone over the shelf, looking south-west at the south ledge as the biggest wave's right closes out along it. |
 | `the-drain` | 08:15, low in the water in the channel north of the peak, looking at the biggest wave's face as the ledge drains in front of it. |
 | `behind-the-wave` | 08:15, 4.65 ft, from behind the wave line (Andrew's view): the back of the breaking wave, the sheet in the trough behind it. |
-| `lip-close-up` | 08:15, 5 ft: about 6 m from the lip at the peak as it throws over the tube. |
+| `lip-close-up` | 08:15, 5 ft: from the unbroken shoulder, about 15 m down the line from the lip as it throws over the tube. |
 
 Pick these with settings: default (or open `#ref=<name>`) to see them exactly as designed. In custom mode a pick carries over by kind: `pre-dawn` through `sunset` are time-of-day moments and keep your own swell, tide and camera; `overview`, `looking-down` and `reef-overhead` are view moments and switch to the moment's camera; `set-arriving` through `high-tide-set` and `barrel-peeling` through `lip-close-up` are set moments and apply in full, since a set's timeline only lands on cue with its own conditions. View and set picks are visits: your saved swell, tide and camera stay untouched, and the next time-of-day pick puts you back on them. Set moments land on cue with the default Sets settings, though — a tuned mean interval or jitter of your own can throw the timing off. Sets arrive every 10–20 minutes. Use `N` or the Sets folder's button to call one, and the Reef folder for depths and the crest-line overlay.
 
