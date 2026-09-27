@@ -28,6 +28,7 @@ import { DEFAULT_DEBUG_OVERLAYS, type DebugOverlays, OceanSurface } from '../oce
 import { DEFAULT_SPECTRUM_PARAMS, type OceanSpectrumParams, spectrumInputsKey } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS, type WaterOpticsParams } from '../ocean/waterOptics';
 import { nextUnderwater } from '../ocean/underwaterOptics';
+import { LensWater } from '../render/lensWater';
 import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
@@ -116,6 +117,11 @@ export class App {
   private underwater = false;
   /** After a moment jump: set the lineup camera on the water at the probe's first reading of the new spot. */
   private reseedLineup = false;
+  /** Water on the lens as the camera breaks the surface. */
+  private readonly lensWater = new LensWater();
+  /** After a moment jump, the first crossing is the jump itself, not the camera breaking the surface: no water on the lens. */
+  private lensQuiet = false;
+  private lensClockS = 0;
   /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
   readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
@@ -248,6 +254,8 @@ export class App {
     this.rig.setPose(m.camera, this.conditions.tideM);
     this.probe.invalidate();
     this.reseedLineup = true;
+    this.lensQuiet = true;
+    this.lensWater.submerged();
     this.rebuildSpectrumIfNeeded(true);
     this.requestFieldIfNeeded(true);
     // The rebuild clears foam too, but a moment is a jump in sim time even when the sea is unchanged.
@@ -287,8 +295,12 @@ export class App {
     const water = this.probe.heightAt(0);
     // The lineup camera too: a steep face can outrun its float and bury it for a second or two as a set passes.
     const under = water === null ? this.underwater : nextUnderwater(this.underwater, this.camera.position.y, water);
+    const quiet = this.lensQuiet;
+    if (water !== null) this.lensQuiet = false;
     if (under === this.underwater) return;
     this.underwater = under;
+    if (under) this.lensWater.submerged();
+    else if (!quiet) this.lensWater.surfaced();
     this.oceanSurface.setUnderwater(under);
     this.sky.dome.visible = !under;
     this.waterVolume.mesh.visible = under;
@@ -670,6 +682,9 @@ export class App {
     this.oceanSurface.update(this.camera.position, this.ocean);
 
     this.picture.setSun(sun.elevationDeg, this.camera.getWorldDirection(this.viewDir).dot(this.sunDir));
+    this.lensWater.step(realDt);
+    this.lensClockS += realDt;
+    this.picture.setLensWater(this.lensWater.state(), this.lensClockS);
     this.ribbon.setDisplayExposure(this.picture.exposureValue);
     this.picture.render();
     if (this.screenshotRequested) {
