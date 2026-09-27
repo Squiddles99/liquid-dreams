@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, normalizeBreakParams, sharpenDrop, stageCurves, steepening,
+  FOAM_DENSE_BEHIND_H, FOAM_TRAIL_H, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, normalizeBreakParams, sharpenDrop, stageCurves, steepening,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -182,9 +182,13 @@ describe('the sheet shape (sampled cross-sections)', () => {
         for (const q of info) if (q.ahead >= 0) expect(q.foam, `${label} s ${s}`).toBe(0);
         expect(Math.max(...info.map((q) => q.foam)), `${label} s ${s}: foam has begun behind the crest`).toBeGreaterThan(0);
       }
+      // Collapsed: dense at the crest and just behind it, gone FOAM_TRAIL_H·H behind (and beyond half a wavelength).
       const done = section(1, ratioFor(1), H, hmin, T).info;
-      for (const q of done.filter((x) => x.theta >= 0 && x.theta <= Math.PI / 2 && x.ahead <= 0)) expect(q.foam, label).toBeGreaterThan(0.5);
-      for (const q of done.filter((x) => x.theta >= Math.PI)) expect(q.foam, label).toBe(0);
+      const Hb = Math.min(H, boreHeight(hmin, P));
+      const dense = done.filter((x) => x.theta >= 0 && x.theta <= Math.PI / 2 && x.ahead <= 0 && -x.ahead <= FOAM_DENSE_BEHIND_H * Hb);
+      expect(dense.length, label).toBeGreaterThan(0);
+      for (const q of dense) expect(q.foam, label).toBeGreaterThan(0.5);
+      for (const q of done.filter((x) => x.theta >= Math.PI || -x.ahead >= FOAM_TRAIL_H * H)) expect(q.foam, label).toBe(0);
     }
   });
 });
@@ -209,6 +213,10 @@ describe('drain, bore, foam and face height', () => {
     expect(at(1, 0, 0)).toBe(1); // collapsed, at the crest
     expect(at(1, -0.1, P.faceWidth * H)).toBe(0); // down the bore's face, past its front edge
     expect(at(1, 4, -40)).toBe(0); // more than half a wavelength behind
+    expect(at(1, 0.3, -FOAM_DENSE_BEHIND_H * H)).toBe(1); // dense to FOAM_DENSE_BEHIND_H·H behind the crest…
+    expect(at(1, 0.4, -2 * H)).toBeGreaterThan(0); // …thinning…
+    expect(at(1, 0.4, -2 * H)).toBeLessThan(1);
+    expect(at(1, 0.6, -FOAM_TRAIL_H * H)).toBe(0); // …and gone FOAM_TRAIL_H·H behind (not half a wavelength)
     expect(at(0.88, -0.02, 0.3)).toBe(0); // the tube still open: nothing ahead of the crest (the tube's inside)
   });
   it('face height is H unbroken and H·(1 + troughDrain·δ) once drained', () => {

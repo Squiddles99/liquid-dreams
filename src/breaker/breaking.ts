@@ -58,6 +58,11 @@ export const FOAM_ONSET_COLLAPSE = 0.2;
 /** From this collapse on the foam's front edge moves off the crest and down the bore's face (the tube is gone). */
 export const FOAM_SETTLE_COLLAPSE = 0.6;
 
+/** The collapsed wave's foam is dense to this many H behind the crest… */
+export const FOAM_DENSE_BEHIND_H = 1;
+/** …and gone this many H behind it (foamWeight). */
+export const FOAM_TRAIL_H = 3;
+
 /** smoothstep(1, 1, r) is undefined, so the stage span never goes below this. */
 export const MIN_STAGE_SPAN = 0.05;
 /** Waves lower than this (m) never break (the shape's H-scaled smoothsteps would divide by ~0). */
@@ -207,10 +212,13 @@ export function boreScale(H: number, hmin: number, collapse: number, p: BreakPar
 
 /**
  * Whitewater placeholder: only once the lip has landed, and only on the collapsed surface at and behind the crest. It
- * rises over the collapse from FOAM_ONSET_COLLAPSE and trails to half a wavelength behind the crest (θ > 0 is behind).
+ * rises over the collapse from FOAM_ONSET_COLLAPSE, is dense at the bore's front and down to FOAM_DENSE_BEHIND_H·H
+ * behind the crest, and has faded out by FOAM_TRAIL_H·H behind it (and never beyond half a wavelength, θ > 0 behind).
  * Its front edge sits just behind the crest while the tube is still open, so the tube's inside (the face ahead of the
  * crest) stays clear, and moves down the bore's face once the lip lies flat (FOAM_SETTLE_COLLAPSE on). `ahead` is the
- * along-travel distance from the crest (m), H the local height and env the envelope × lateral taper.
+ * along-travel distance from the crest (m), H the local height and env the envelope × lateral taper. (It used to trail
+ * half a wavelength, ≈ 55 m at 15 s, at weight ~1: seen from behind, its thresholded gaps were the hard-edged
+ * turquoise patches.)
  */
 export function foamWeight(theta: number, ahead: number, H: number, env: number, c: StageCurves, p: BreakParams): number {
   const land = smoothstep(FOAM_ONSET_COLLAPSE, 1, c.collapse);
@@ -218,7 +226,7 @@ export function foamWeight(theta: number, ahead: number, H: number, env: number,
   const edge = 0.5 * p.faceWidth * H;
   const reach = 2 * edge * smoothstep(FOAM_SETTLE_COLLAPSE, 1, c.collapse);
   const front = 1 - smoothstep(reach - edge, reach, ahead);
-  const trail = 1 - smoothstep(Math.PI / 2, Math.PI, theta);
+  const trail = (1 - smoothstep(Math.PI / 2, Math.PI, theta)) * (1 - smoothstep(FOAM_DENSE_BEHIND_H * H, FOAM_TRAIL_H * H, -ahead));
   return land * env * front * trail;
 }
 
