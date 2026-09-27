@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
-  type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
+  type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
   FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, normalizeBreakParams, sharpenDrop, stageCurves, steepening, steepeningStart,
 } from './breaking';
 import { waveNumber } from './dispersion';
@@ -158,7 +158,7 @@ describe('the sheet shape (sampled cross-sections)', () => {
     for (const ahead of [-10, -1, -0.01]) expect(sharpenDrop(ahead, eta, etaCrest, H, k, steep, P)).toBe(0);
     const w = P.faceWidth * H, quarter = Math.PI / (2 * k);
     for (const ahead of [0.5, 2]) {
-      const expected = steep * (1 - Math.exp(-((ahead / w) ** 2))) * smoothstep(2 * quarter, quarter, ahead) * Math.max(eta - (etaCrest - H), 0);
+      const expected = steep * (1 - Math.exp(-((ahead / w) ** 2))) * smoothstep(2 * quarter, quarter, ahead) * Math.max(eta - (etaCrest - SHARPEN_DEPTH * H), 0);
       expect(sharpenDrop(ahead, eta, etaCrest, H, k, steep, P)).toBeCloseTo(expected, 12);
     }
   });

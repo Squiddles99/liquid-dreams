@@ -1,5 +1,5 @@
 import { clamp, exp, float, max, min, select, smoothstep, uniform } from 'three/tsl';
-import { type BreakParams, COLLAPSE_END, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, HOLLOW_REACH_Q, MIN_STAGE_SPAN, normalizeBreakParams, steepeningStart } from './breaking';
+import { type BreakParams, COLLAPSE_END, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, HOLLOW_REACH_Q, MIN_STAGE_SPAN, normalizeBreakParams, steepeningStart } from './breaking';
 
 type N = any;
 
@@ -99,7 +99,7 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const dSink = a.mul(g).mul(2.0).div(width.mul(width));
   const fade = smoothstepDown(quarter.mul(2.0), quarter, a);
   const dFade = smoothstepSlope(quarter, quarter.mul(2.0), a).negate();
-  const above = i.eta.sub(i.etaCrest.sub(i.H));
+  const above = i.eta.sub(i.etaCrest.sub(i.H.mul(SHARPEN_DEPTH)));
   const m = max(above, 0.0);
   const dM = select(above.greaterThan(0.0), i.slope, float(0.0));
   const sharpen = steep.mul(i.crestConfidence);
