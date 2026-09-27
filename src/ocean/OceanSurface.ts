@@ -98,9 +98,11 @@ export interface DebugOverlays {
   ribbonTint: boolean;
   /** The foam map: its box tinted faintly and its density in cyan, to see foam build up and clear. */
   foamMap: boolean;
+  /** The spray puffs coloured by age (green at birth, red at death). */
+  sprayTint: boolean;
 }
 
-export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false, foamMap: false };
+export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false, foamMap: false, sprayTint: false };
 
 /**
  * The breaking ribbon's footprint mask (BreakingRibbon.footprint): an R8 texture of `size` texels, `cellM` m each,

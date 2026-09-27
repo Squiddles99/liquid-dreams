@@ -32,3 +32,29 @@ The first measurements, at 160–600 ms, came from two things. Each tick sent it
 - `11-bore-plus-2s.png`: the bore coming at the camera. Its white is the frame's own breaking foam on the water-anchored pattern, which boils rather than sliding with the crest (spec §3.2, for Andrew's eye), with the lingering foam band behind it.
 
 About close pairs (spec §6): at the default 15 s swell, set waves arrive 13.5–16.5 s apart, so no wave breaks at the peak into the previous wave's foam. What happens is frame 10: each bore rolls through the thinning foam the last one left over the shelf. On a 10–12 s swell, or with a longer clear time, pairs break straight into leftovers.
+
+## Offshore spray (Phase 3b, `spray/`)
+
+All frames use the `behind-the-wave` conditions (wind 22 km/h from 57°, offshore; 08:15), paused, 6.4 s before that moment unless noted. At that point the reference set's biggest wave has just thrown at the peak. They use the default settings: `spray amount` 1 and `spray life` 2 s.
+
+- `00-sheet.png`: the frames below on one sheet.
+- `01-backlit-from-lineup.png`: from the lineup seaward of the peak (camera [-22, 1.8, 2], looking east into the morning sun). The veil rises gold off the back of the breaking wave and drifts toward us on the offshore wind.
+- `02-side-on.png`: along the crest from the north (camera [5, 3, -60], looking south). A faint haze trails behind the lip, side-lit.
+- `03-from-behind.png`: the `behind-the-wave` camera 3 s before that moment. We are inside the spray field; puffs within 3–10 m fade out so they don't cover the eye.
+- `04-front-lit.png`: frame 01 at 16:30, with the sun behind the camera. The veil is a faint white haze.
+- `05-glassy-none.png`: frame 01 with no wind. No spray.
+- `06-onshore-none.png`: frame 01 with 30 km/h from 250° (onshore). No spray.
+- `07-spray-tint.png`: frame 01 with the `spray tint` overlay (puff age, green to red).
+
+**Cost** (Browser pane visible, RTX 4060 Laptop, 1236 × 1351):
+- a replay after a jump: 58 ticks in 87 ms (CPU 80 ms);
+- per tick: 1.38 ms CPU and 0.13 ms GPU;
+- drawing a close full veil: within measurement noise, about 0 ms.
+
+The first measurements were over target (a 181 ms replay, 2.96 ms of CPU per tick, 5.2 ms to draw a close veil). They came down after three changes:
+- emitters 3 m apart (the spec's lever 1);
+- the lip maths from the station's own wave;
+- lighting computed per puff, not per pixel.
+- `08-default-morning.png`: the default moment's conditions (4 ft; wind 3 m/s from 80°, a light offshore; 08:15), 0.8 s after set 1's biggest wave reaches the peak, from the lineup camera of frame 01. A faint veil. The light wind gives a wind factor of about 0.3, and since the final review that sets only how many puffs are born (before, it also dimmed each puff, so a light wind showed about a tenth of a veil).
+
+**At the slider maximum** (12 ft, spray life 4 s): a replay takes 100 ticks in 367 ms, and each tick 3.5 ms of CPU. That is over the targets, which are met at the Womb's usual sizes. It is left for Andrew to decide; the options are replaying at 10 Hz, or moving the emitter work to a worker.

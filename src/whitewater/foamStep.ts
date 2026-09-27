@@ -78,11 +78,16 @@ export class FoamSchedule {
   }
 
   plan(simTime: number, clearTimeS: number): FoamPlan {
+    return this.planTicks(simTime, replayTickCount(clearTimeS));
+  }
+
+  /** As plan(), with the replay's length given in ticks (the spray's window is its longest life, not a clear time). */
+  planTicks(simTime: number, replayTicks: number): FoamPlan {
     const k = tickIndex(simTime);
     const last = this.last;
     this.last = k;
     if (last === null || k < last || k - last > FOAM_JUMP_S * FOAM_TICKS_PER_S) {
-      return { clear: true, ticks: ticksFrom(k - replayTickCount(clearTimeS) + 1, k) };
+      return { clear: true, ticks: ticksFrom(k - replayTicks + 1, k) };
     }
     return { clear: false, ticks: ticksFrom(last + 1, k) };
   }
