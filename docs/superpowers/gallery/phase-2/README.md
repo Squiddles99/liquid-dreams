@@ -52,3 +52,11 @@ The camera below the surface, at the `the-drain` moment's time. The surface is s
 - `19-underwater-reef.png`: 3 m deep over the north ledge, looking along it. The ledge fades into the blue, and the rippled surface overhead mirrors the reef below.
 - `20-underwater-wall.png`: 9 m deep over the 13 m shelf, 20 m west of the ledge, looking east. The reef wall rises above eye level, and above it Snell's window is a bright ellipse with the low sun in it. (The reviewer caught that level and rising rays saw through the reef; the march now runs in any direction.)
 - `21-underwater-drain.png`: the `the-drain` camera moved 1.5 m under the surface. The reef edge runs off into the channel, under the mirror of the surface.
+
+## Water on the lens (Andrew)
+
+As the camera breaks the surface, a sheet of water covers the lens and drains down the screen, leaving drops that fade by 2.5 s. It shows only when the camera surfaces, including the lineup camera coming out from under a wave; going under wipes it. Captured 1.2 m above the water over the north ledge, with the lens set to each time (the pane's frame rate is too low to catch these moments live).
+
+- `22-lens-surfacing.png`: 0.05 s after surfacing. The whole view is under the film, warped, blurred and hazed, and its draining edge has just left the top of the screen.
+- `23-lens-draining.png`: 0.5 s. The sheet has drained to mid-screen, and the drops it left above bend the view like small lenses, with a glint each.
+- `24-lens-drops.png`: 1.8 s. The sheet is gone and the last drops are fading.
