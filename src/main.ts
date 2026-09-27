@@ -32,7 +32,11 @@ async function main(): Promise<void> {
   const problem = momentHashProblem(location.hash);
   if (problem) console.warn(`Moment link ignored (${problem}); opening the saved or default moment.`);
   // No link: the App opens the saved settings' moment (or the default one).
-  new App(renderer, container, momentFromHash(location.hash)).start();
+  const app = new App(renderer, container, momentFromHash(location.hash));
+  app.start();
+  // Dev builds only: scripted gallery captures (window.liquidDreams.captureFrame()) and the crest trace's timing
+  // readout (window.liquidDreams.traceMs, ms per frame, a moving average).
+  if (import.meta.env.DEV) (window as unknown as { liquidDreams?: App }).liquidDreams = app;
 }
 
 void main();

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { EXPOSURE_KNOTS, SUN_IN_VIEW_MAX_STOPS, computeExposure, exposureStopsForSun, sunInViewStops } from './exposure';
+import { EXPOSURE_KNOTS, SUN_IN_VIEW_MAX_STOPS, UNDERWATER_EXPOSURE_GAIN, computeExposure, exposureStopsForSun, sunInViewStops, withUnderwater } from './exposure';
 
 describe('exposure', () => {
+  it('underwater the eye opens up by a fixed gain (the water is far darker than the sky the auto-exposure is set for); above water it is unchanged', () => {
+    expect(withUnderwater(0.35, false)).toBe(0.35);
+    expect(UNDERWATER_EXPOSURE_GAIN).toBeGreaterThan(1);
+    expect(withUnderwater(0.35, true)).toBeCloseTo(0.35 * UNDERWATER_EXPOSURE_GAIN, 12);
+  });
   it('daylight uses the base exposure', () => {
     expect(computeExposure(45, 0.35, 0, true)).toBeCloseTo(0.35);
     expect(exposureStopsForSun(35)).toBe(0);

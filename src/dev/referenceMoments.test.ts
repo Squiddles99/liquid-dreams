@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
+import { msToKmh, surferFeetToHs } from '../conditions/units';
+import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { decodeMoment, encodeMoment } from './momentLink';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, defaultMoment, findReferenceMoment, referenceKind } from './referenceMoments';
 
@@ -13,6 +15,7 @@ describe('reference moments', () => {
       'pre-dawn', 'first-sun', 'morning-offshore', 'late-morning', 'noon-deep-blue',
       'autumn-glass', 'golden-hour', 'sunset', 'overview',
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'looking-down', 'reef-overhead',
+      'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
     ]);
   });
   it('round-trip through moment links', () => {
@@ -53,7 +56,10 @@ describe('reference moment kinds', () => {
     }
   });
   it('the rest are time-kind', () => {
-    const viewOrSet = new Set(['set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'overview', 'reef-overhead', 'looking-down']);
+    const viewOrSet = new Set([
+      'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'overview', 'reef-overhead', 'looking-down',
+      'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
+    ]);
     for (const r of REFERENCE_MOMENTS.filter((m) => !viewOrSet.has(m.name))) {
       expect(r.kind).toBe('time');
       expect(referenceKind(r.name)).toBe('time');
@@ -89,5 +95,63 @@ describe('set and reef moments', () => {
     const m = findReferenceMoment('reef-overhead')!;
     expect(m.camera.mode).toBe('free');
     expect(m.camera.position[1]).toBeGreaterThan(40);
+  });
+});
+
+describe('breaking moments', () => {
+  const refSet = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+  const biggest = refSet.reduce((a, b) => (b.heightM > a.heightM ? b : a));
+  it('are set moments timed from the reference set’s biggest wave', () => {
+    for (const name of ['barrel-peeling', 'closeout-right', 'the-drain']) expect(referenceKind(name)).toBe('set');
+    expect(findReferenceMoment('the-drain')!.simTime).toBeCloseTo(biggest.arrivalS, 9);
+    expect(findReferenceMoment('closeout-right')!.simTime).toBeCloseTo(biggest.arrivalS + 0.5, 9);
+    expect(findReferenceMoment('barrel-peeling')!.simTime).toBeCloseTo(biggest.arrivalS + 2, 9);
+  });
+  it('barrel-peeling is shot at 5 ft: the same set on the same timeline, its biggest wave at the top set factor for 4 ft', () => {
+    const m = findReferenceMoment('barrel-peeling')!;
+    expect(m.conditions.swell.sizeFt).toBe(5);
+    const at5 = wavesOfSet(1, m.conditions, DEFAULT_SET_PARAMS);
+    expect(at5.map((w) => w.arrivalS)).toEqual(refSet.map((w) => w.arrivalS));
+    expect(Math.max(...at5.map((w) => w.heightM))).toBeGreaterThanOrEqual(1.8 * surferFeetToHs(4));
+  });
+  it('the drone shots fly; the drain is seen from the water', () => {
+    expect(findReferenceMoment('barrel-peeling')!.camera.mode).toBe('free');
+    expect(findReferenceMoment('closeout-right')!.camera.mode).toBe('free');
+    expect(findReferenceMoment('the-drain')!.camera.mode).toBe('lineup');
+  });
+});
+
+describe('behind-the-wave and lip-close-up', () => {
+  it('exist, are set moments, and are paused', () => {
+    for (const name of ['behind-the-wave', 'lip-close-up']) {
+      expect(referenceKind(name)).toBe('set');
+      const m = findReferenceMoment(name);
+      expect(m).not.toBeNull();
+      expect(m!.paused).toBe(true);
+    }
+  });
+  it('behind-the-wave is Andrew’s saved view, rebased onto the reference set', () => {
+    const m = findReferenceMoment('behind-the-wave')!;
+    expect(m.conditions.swell.sizeFt).toBeCloseTo(4.65, 2);
+    expect(m.conditions.swell.periodS).toBe(15);
+    expect(m.conditions.swell.directionDeg).toBe(225);
+    expect(msToKmh(m.conditions.wind.speedMs)).toBeCloseTo(22, 0);
+    expect(m.conditions.wind.speedMs).toBeCloseTo(6.09, 2);
+    expect(m.conditions.wind.directionDeg).toBe(57);
+    expect(m.conditions.seed).toBe(2002);
+    expect(m.conditions.timeOfDay).toBe(8.25);
+    expect(m.conditions.tideM).toBe(0);
+    expect(m.camera).toEqual({ mode: 'free', position: [12, 3.5, -32], yawDeg: 73.5, pitchDeg: -13 });
+  });
+  it('lip-close-up is shot at 5 ft, free camera close to the lip', () => {
+    const m = findReferenceMoment('lip-close-up')!;
+    expect(m.conditions.swell.sizeFt).toBe(5);
+    expect(m.camera).toEqual({ mode: 'free', position: [16, 2.9, -41], yawDeg: 196, pitchDeg: -3 });
+  });
+  it('both are timed off the reference set’s biggest wave', () => {
+    const refSet = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+    const biggest = refSet.reduce((a, b) => (b.heightM > a.heightM ? b : a));
+    expect(findReferenceMoment('behind-the-wave')!.simTime).toBeCloseTo(biggest.arrivalS + 7.2, 9);
+    expect(findReferenceMoment('lip-close-up')!.simTime).toBeCloseTo(biggest.arrivalS + 1.0, 9);
   });
 });

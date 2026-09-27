@@ -3,8 +3,10 @@ import '../sky/sky.selftest';
 import '../ocean/fft.selftest';
 import '../ocean/ocean.selftest';
 import '../ocean/probe.selftest';
+import '../ocean/underwater.selftest';
 import '../seabed/seabed.selftest';
 import '../seabed/seabedShading.selftest';
 import '../breaker/breaker.selftest';
+import '../breaker/ribbon.selftest';
 
 export { renderSelfTestReport, runSelfTests } from './selfTest';

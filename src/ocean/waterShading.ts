@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
-import { Fn, If, PI, dot, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
-import { extinction } from '../seabed/waterColumn';
+import { Fn, If, PI, dot, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, refract, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
+import { WATER_IOR, extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
+import { alongPathNode, cameraDepthNode, fresnelFromInsideNode, sunThroughWindowNode, waterColourAtDepthNode } from './underwaterNodes';
 import { type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
 
 type N = any;
@@ -12,10 +13,19 @@ export interface WaterSurfaceInputs {
   viewDir: N;
   distance: N;
   foam: N;
-  /** Vertical displacement above mean sea level (m). */
-  crestHeight: N;
+  /** Brightness of the foam colour (1 when absent): the set foam's pattern darkens its hollows a little. */
+  foamShade?: N;
+  /** The lip mask (0..1): the thin, curling lip. Keys the turquoise transmission. Absent means 0 (the ocean sheet). */
+  lip?: N;
+  /** How far the set wave has turned over (0..1, 1 where it faces down: the tube's ceiling). Absent means 0. */
+  underside?: N;
+  /**
+   * The normal the water body's sunlight enters through. Absent means straight up, the ocean sheet's (its slopes are
+   * gentle). The breaking ribbon passes its own where its face stands up: a steep face turned to the sun is lit through
+   * that face, and lit only from above it read as dark water under a reflected sunrise horizon (the lip's brown).
+   */
+  bodyLightNormal?: N;
   unresolvedSlopeVariance: N;
-  hsTotal: N;
   /** The seabed seen through the water (Phase 1); absent means infinitely deep water (Phase 0). */
   seabed?: { radiance: N; transmittance: N };
   /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
@@ -29,6 +39,7 @@ export function createWaterOpticsUniforms(p: WaterOpticsParams) {
     extinction: uniform(new THREE.Vector3(...extinction(p.absorptionPerM, p.backscatterPerM))),
     bodyScale: uniform(p.bodyScale),
     transmissionIntensity: uniform(p.transmissionIntensity),
+    lipSkyTransmission: uniform(p.lipSkyTransmission),
     baseRoughness: uniform(p.baseRoughness),
     foamAlbedo: uniform(p.foamAlbedo),
   };
@@ -42,6 +53,7 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
   u.extinction.value.set(...extinction(p.absorptionPerM, p.backscatterPerM));
   u.bodyScale.value = p.bodyScale;
   u.transmissionIntensity.value = p.transmissionIntensity;
+  u.lipSkyTransmission.value = p.lipSkyTransmission;
   u.baseRoughness.value = p.baseRoughness;
   u.foamAlbedo.value = p.foamAlbedo;
 }
@@ -49,9 +61,15 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
 // saturate(): at the anti-solar point v·h rounds to a hair above 1, and pow() of a negative base is NaN on the GPU (it showed as a fake sun).
 export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(saturate(float(1.0).sub(cosTheta)), 5.0)));
 
+/** The deep water's own light, as the surface shows it from above with its body lit from straight up (shadeWater's upwelling). */
+export function deepWaterUpwelling(sky: Sky, u: WaterOpticsUniforms): N {
+  return u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(max(sky.sunDirection.y, 0.0)))).div(PI).mul(u.bodyScale);
+}
+
 /**
- * Water = Fresnel-weighted sky reflection + GGX sun glitter + light from the water column
- * (deep upwelling + crest transmission), mixed with lit foam, then aerial perspective.
+ * Water = Fresnel-weighted sky reflection (the water itself where a turned-over surface reflects downward) + GGX sun
+ * glitter + light from the water column (deep upwelling + lip transmission of sun and skylight), mixed with lit foam,
+ * then aerial perspective.
  */
 export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUniforms): N {
   const n = i.normal;
@@ -62,7 +80,7 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const fresnel = schlickWater(nDotV);
 
   const r: N = reflect(v.negate(), n); // three typings gap: reflect() is typed as returning vec2
-  const reflection = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z)));
+  const skyReflection = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z)));
 
   // GGX sun glitter. Slopes too small to resolve at this distance widen the lobe. unresolvedSlopeVariance
   // is the total two-axis mean-square slope, and for GGX/Beckmann E[px² + pz²] = α², so it adds to α² directly.
@@ -85,18 +103,25 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   );
 
   // Light scattered back up out of the deep, clear water column.
-  const upwelling = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(max(l.y, 0.0)))).div(PI).mul(u.bodyScale);
+  const sunIntoBody = i.bodyLightNormal ? max(dot(i.bodyLightNormal, l), 0.0).mul(step(0.0, l.y)) : max(l.y, 0.0);
+  const upwelling = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(sunIntoBody))).div(PI).mul(u.bodyScale);
 
-  // Crest transmission: sun behind a raised crest shines through thin water toward the viewer.
-  const crest = saturate(i.crestHeight.div(max(i.hsTotal.mul(0.5), 0.05)));
+  // Where the set wave has turned over (the tube's ceiling), a reflection that heads down sees the water under the lip
+  // (the face and the trough), not the horizon sky the clamp above would give: the tube stays water-dark, never white.
+  const underside = i.underside ? saturate(i.underside) : float(0.0);
+  const reflection = mix(skyReflection, upwelling, underside.mul(float(1.0).sub(smoothstep(-0.2, 0.05, r.y))));
+
+  // Lip transmission: the sun behind a thin, curling lip shines through it toward the viewer (turquoise, spec §3.5, P11);
+  // from beneath the lip (the tube's ceiling) the skylight through it adds a blue-green glow as well.
   const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
-  const transmitted = u.transmission.mul(sky.sunIlluminance).mul(backlight).mul(crest).mul(u.transmissionIntensity).div(PI);
+  const lipLight = sky.sunIlluminance.mul(backlight).add(sky.skyIrradiance.mul(underside).mul(u.lipSkyTransmission));
+  const transmitted = i.lip ? u.transmission.mul(lipLight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI) : vec3(0.0);
 
   // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.
   const column = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;
   const water = column.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
   const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL))).mul(u.foamAlbedo).div(PI);
-  const colour = mix(water, foamLight, saturate(i.foam));
+  const colour = mix(water, i.foamShade ? foamLight.mul(i.foamShade) : foamLight, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
   // would paint the whole flat field NaN, so the edge is floored and a flat field draws no line.
@@ -123,4 +148,29 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
     })()
     : colour;
   return sky.applyAerialPerspective(withOverlay, i.distance, v.negate());
+}
+
+/**
+ * The water's surface seen from below: Snell's window (the sky, and the sun, along the ray refracted out of the water) and,
+ * by the Fresnel from inside (1 beyond the 48.6° rim), the water below reflected in it; foam blocks the window. Then the
+ * path from the eye up to the surface point. No aerial perspective: the sky through the window already has it.
+ * `reflected(dir)` is what the reflected ray sees (WaterVolume's seabed march from the surface point), so beyond the rim
+ * the surface mirrors the reef and sand below, not only the deep water's colour.
+ */
+export function shadeWaterFromBelow(
+  i: { normal: N; viewDir: N; distance: N; foam: N; surfaceY: N; tide: N; reflected: (dir: N) => N }, sky: Sky, u: WaterOpticsUniforms,
+): N {
+  const nDown = i.normal.negate();
+  const cosI = max(dot(nDown, i.viewDir), 0.0);
+  const R = fresnelFromInsideNode(cosI);
+  const t: N = refract(i.viewDir.negate(), nDown, float(WATER_IOR)); // zero beyond the rim, where R = 1
+  const tDir = normalize(vec3(t.x, max(t.y, 1e-3), t.z));
+  const skyThrough = sky.radiance(tDir).add(sunThroughWindowNode(tDir, sky));
+  const upwelling = deepWaterUpwelling(sky, u);
+  const below = i.reflected(reflect(i.viewDir.negate(), nDown));
+  const surface = skyThrough.mul(float(1.0).sub(R)).add(below.mul(R));
+  const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(max(sky.sunDirection.y, 0.0))).mul(u.foamAlbedo).div(PI);
+  const seen = mix(surface, foamLight.mul(0.6), saturate(i.foam));
+  const inf = waterColourAtDepthNode(upwelling, u.extinction, cameraDepthNode(i.tide));
+  return alongPathNode(seen, inf, u.extinction, i.distance);
 }

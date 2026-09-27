@@ -1,4 +1,5 @@
 import { type BladeApi, type ListBladeApi, Pane } from 'tweakpane';
+import type { BreakParams } from '../breaker/breaking';
 import { compassPoint } from '../conditions/compass';
 import { CONDITION_RANGES } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
@@ -27,7 +28,8 @@ export interface DevPanelModel {
   reef: ReefParams;
   shallow: ShallowSwellParams;
   overlays: DebugOverlays;
-  setStatus: { nextSet: string; wave: string };
+  breaking: BreakParams;
+  setStatus: { nextSet: string; wave: string; face: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
 }
@@ -50,6 +52,7 @@ export interface DevPanelHandlers {
   onShallow(): void;
   onOverlays(): void;
   onCallSet(): void;
+  onBreak(): void;
   onSettingsMode(mode: SettingsMode): void;
   onResetSettings(): void;
   /** Any user-editable value changed (every binding and list; not the read-only readouts). */
@@ -88,6 +91,33 @@ export const CONDITION_BINDINGS = {
  * in km/h, no step, so a loaded moment's m/s value round-trips exactly (same rule as CONDITION_BINDINGS above).
  */
 export const WIND_SPEED_KMH_BINDING = { label: 'speed (km/h)', min: 0, max: msToKmh(CONDITION_RANGES.windSpeedMs.max), format: fixed(0) };
+
+/**
+ * Break folder sliders. Each range sits inside what normalizeBreakParams keeps, so a slider can never fight it.
+ * Every numeric BreakParams field (everything but the `enabled` toggle) has one here, checked by DevPanel.test.ts.
+ */
+export const BREAK_BINDINGS = {
+  gamma: { label: 'breaker index γ', min: 0.5, max: 1.2, step: 0.01 },
+  delta: { label: 'drain δ (criterion)', min: 0, max: 2, step: 0.05 },
+  stageSpan: { label: 'stage span Δ', min: 0.2, max: 4, step: 0.05 },
+  beta: { label: 'bore height β', min: 0.1, max: 0.8, step: 0.01 },
+  troughDrain: { label: 'trough drain', min: 0, max: 1, step: 0.01 },
+  hFloorM: { label: 'depth floor h₀ (m)', min: 0.05, max: 2, step: 0.05 },
+  faceWidth: { label: 'face width (×H)', min: 0.1, max: 3, step: 0.05 },
+  drainEnd: { label: 'drain full (× Δ past ρ 1)', min: 0.01, max: 1, step: 0.01 },
+  collapseStart: { label: 'collapse from (× Δ past ρ 1)', min: 0, max: 0.95, step: 0.01 },
+  throwStrength: { label: 'throw strength (×c)', min: 0.1, max: 1.5, step: 0.01 },
+  lipThickness: { label: 'lip thickness (×H)', min: 0.03, max: 0.3, step: 0.005 },
+  collapseTime: { label: 'collapse time (×τ land)', min: 0.3, max: 3, step: 0.05 },
+  ribbonOnset: { label: 'ribbon onset ρ', min: 0.3, max: 0.9, step: 0.01 },
+} as const;
+
+/** Debug overlay toggles (Reef folder), one per DebugOverlays field, checked by DevPanel.test.ts. */
+export const OVERLAY_BINDINGS: Record<keyof DebugOverlays, { label: string }> = {
+  depthContours: { label: 'depth contours' },
+  crestLines: { label: 'crest lines' },
+  ribbonTint: { label: 'ribbon tint' },
+};
 
 export class DevPanel {
   private readonly pane = new Pane({ title: 'Liquid Dreams', expanded: true });
@@ -151,6 +181,7 @@ export class DevPanel {
     const readouts = new Set<BladeApi>([
       sets.addBinding(m.setStatus, 'nextSet', { label: 'next set', readonly: true, interval: 250 }),
       sets.addBinding(m.setStatus, 'wave', { label: 'at the peak', readonly: true, interval: 250 }),
+      sets.addBinding(m.setStatus, 'face', { label: 'face at the peak', readonly: true, interval: 250 }),
     ]);
     sets.addButton({ title: 'Call a set now (N)' }).on('click', h.onCallSet);
     sets.addBinding(m.sets, 'meanIntervalS', { label: 'mean interval (s)', min: 120, max: 3600, step: 10 }).on('change', h.onSets);
@@ -163,6 +194,12 @@ export class DevPanel {
     sets.addBinding(m.sets, 'straysPerLull', { label: 'strays per lull', min: 0, max: 5, step: 0.1 }).on('change', h.onSets);
     sets.addBinding(m.spectrum, 'backgroundSwellFactor', { label: 'background swell', min: 0, max: 1, step: 0.01 }).on('change', h.onSpectrum);
 
+    const brk = this.pane.addFolder({ title: 'Break' });
+    brk.addBinding(m.breaking, 'enabled', { label: 'breaking' }).on('change', h.onBreak);
+    for (const [key, opts] of Object.entries(BREAK_BINDINGS) as [keyof typeof BREAK_BINDINGS, (typeof BREAK_BINDINGS)[keyof typeof BREAK_BINDINGS]][]) {
+      brk.addBinding(m.breaking, key, opts).on('change', h.onBreak);
+    }
+
     const reef = this.pane.addFolder({ title: 'Reef', expanded: false });
     reef.addBinding(m.reef, 'ledgeDepthM', { label: 'ledge depth (m)', min: 2, max: 12, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'deepDepthM', { label: 'deep water (m)', min: 8, max: 25, step: 0.5 }).on('change', h.onReef);
@@ -173,8 +210,9 @@ export class DevPanel {
     reef.addBinding(m.reef, 'pocketDepthM', { label: 'sand pockets (m)', min: 2, max: 10, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.shallow, 'fadeFromM', { label: 'swell fade from (m)', min: 0, max: 20, step: 0.5 }).on('change', h.onShallow);
     reef.addBinding(m.shallow, 'fadeToM', { label: 'swell fade to (m)', min: 1, max: 30, step: 0.5 }).on('change', h.onShallow);
-    reef.addBinding(m.overlays, 'depthContours', { label: 'depth contours' }).on('change', h.onOverlays);
-    reef.addBinding(m.overlays, 'crestLines', { label: 'crest lines' }).on('change', h.onOverlays);
+    for (const [key, opts] of Object.entries(OVERLAY_BINDINGS) as [keyof DebugOverlays, { label: string }][]) {
+      reef.addBinding(m.overlays, key, opts).on('change', h.onOverlays);
+    }
 
     const ocean = this.pane.addFolder({ title: 'Ocean', expanded: false });
     ocean.addBinding(m.spectrum, 'offshoreFetchM', { label: 'offshore fetch (m)', min: 50, max: 5000, step: 10 }).on('change', h.onSpectrum);
@@ -192,6 +230,7 @@ export class DevPanel {
     water.addBinding(m.water, 'bodyScale', { min: 0, max: 4, step: 0.01 }).on('change', h.onWater);
     water.addBinding(m.water, 'transmissionThicknessM', { min: 0.2, max: 6, step: 0.1 }).on('change', h.onWater);
     water.addBinding(m.water, 'transmissionIntensity', { min: 0, max: 3, step: 0.01 }).on('change', h.onWater);
+    water.addBinding(m.water, 'lipSkyTransmission', { label: 'lip skylight', min: 0, max: 2, step: 0.01 }).on('change', h.onWater);
     water.addBinding(m.water, 'baseRoughness', { min: 0.005, max: 0.2, step: 0.001 }).on('change', h.onWater);
     water.addBinding(m.water, 'foamAlbedo', { min: 0, max: 1, step: 0.01 }).on('change', h.onWater);
 
