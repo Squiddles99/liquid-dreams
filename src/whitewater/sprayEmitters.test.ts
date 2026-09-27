@@ -7,7 +7,7 @@ import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import {
-  DEFAULT_SPRAY_PARAMS, type EmitterInput, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
+  DEFAULT_SPRAY_PARAMS, type EmitterInput, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
   sprayEmitters, sprayReplayTicks, windToVector,
 } from './sprayEmitters';
 
@@ -145,5 +145,42 @@ describe('the births', () => {
     expect(p).toEqual({ amount: 3, lifeS: 0.8 });
     expect(sprayReplayTicks(2)).toBe(58);
     expect(sprayReplayTicks(4)).toBe(SPRAY_HISTORY_TICKS); // capped at the pool's history (final review I2)
+  });
+});
+
+describe('the impact explosion', () => {
+  const imp = (t: number, over: Partial<EmitterInput> = {}) => breakEmitters(input(t, { impactAmount: 1, ...over })).impact.filter((e) => e.waveId === BIGGEST.id);
+  it('impact emitters only in the landing window: none before the lip lands, none long after', () => {
+    const counts = [-1, 0, 0.3, 0.6, 0.9, 1.2, 1.6, 2, 3, 5].map((dt) => imp(BIGGEST.arrivalS + dt).length);
+    expect(Math.max(...counts)).toBeGreaterThan(3);
+    expect(counts[0]).toBe(0);
+    expect(imp(BIGGEST.arrivalS + 12).length).toBe(0);
+  });
+  it('impact happens with no wind (a glassy day still explodes) while the spray does not', () => {
+    let any = 0;
+    for (const dt of [0.3, 0.6, 0.9, 1.2, 1.6, 2, 3]) {
+      const r = breakEmitters(input(BIGGEST.arrivalS + dt, { impactAmount: 1, wind: { speedMs: 0, fromDeg: 57 } }));
+      expect(r.spray).toEqual([]);
+      any += r.impact.length;
+    }
+    expect(any).toBeGreaterThan(0);
+  });
+  it('an explosion throws higher for a bigger wave', () => {
+    const one = (H: number) => ({ x: 0, y: 0, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, H, strength: 1, lip: 1, waveId: 1, arc: 0 });
+    const meanVy = (H: number) => { let s = 0, n = 0; for (let k = 0; k < 200; k++) for (const b of impactBirths([one(H)], k)) { s += b.vy; n++; } return s / n; };
+    expect(meanVy(3)).toBeGreaterThan(meanVy(1) * 1.4);
+  });
+  it('impact births are capped, deterministic and salted apart from the spray', () => {
+    const many = Array.from({ length: 300 }, (_, i) => ({ x: i, y: 0, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, H: 2, strength: 3, lip: 1, waveId: 1, arc: i }));
+    const a = impactBirths(many, 9);
+    expect(a.length).toBe(SPRAY_BIRTH_CAP);
+    expect(impactBirths(many, 9)).toEqual(a);
+    const s = sprayBirths(many, 9, DEFAULT_SPRAY_PARAMS);
+    expect(a[0].z).not.toBeCloseTo(s[0].z, 9); // the scatter runs along (−nz, nx) = z here
+    for (const b of a) { expect(b.life).toBeGreaterThanOrEqual(0.8); expect(b.life).toBeLessThanOrEqual(1.6); }
+  });
+  it('the spray is what it was when impact is off (sprayEmitters unchanged)', () => {
+    expect(breakEmitters(input(BIGGEST.arrivalS + 0.6)).spray).toEqual(sprayEmitters(input(BIGGEST.arrivalS + 0.6)));
+    expect(breakEmitters(input(BIGGEST.arrivalS + 0.6)).impact).toEqual([]);
   });
 });

@@ -115,21 +115,71 @@ export interface EmitterInput {
   wind: Wind;
   tideM: number;
   amount: number;
+  /** The impact explosion's amount (0, the default, emits no explosion). */
+  impactAmount?: number;
 }
 
-/** The emitters at sim time t: the lip tip of every station mid-throw (spec §3.1). */
-export function sprayEmitters(i: EmitterInput): SprayEmitter[] {
+/** A lip landing emits the impact explosion for this long after τ_land (s) (spec 2026-09-28-impact-explosion §3.2). */
+export const IMPACT_WINDOW_S = 0.35;
+/** Impact particles per metre of landing lip per second at strength 1 (Ruling I3: denser than the mist). */
+export const IMPACT_RATE = 40;
+/** The explosion's kick is sized against this gravity (m/s², IMPACT_KIND's): it rises about 0.25–1 H. */
+export const IMPACT_G = 7;
+
+export interface ImpactParams {
+  /** Scales how much the explosion throws (× the emission rate). */
+  amount: number;
+}
+
+export const DEFAULT_IMPACT_PARAMS: Readonly<ImpactParams> = { amount: 1 };
+export const IMPACT_PARAM_RANGES = { amount: { min: 0, max: 3 } } as const;
+
+export function normalizeImpactParams(p: ImpactParams): void {
+  const r = IMPACT_PARAM_RANGES.amount;
+  p.amount = Number.isFinite(p.amount) ? Math.min(r.max, Math.max(r.min, p.amount)) : DEFAULT_IMPACT_PARAMS.amount;
+}
+
+export interface ImpactEmitter {
+  /** Where the lip lands (world m; y includes the tide). */
+  x: number;
+  y: number;
+  z: number;
+  /** The lip's throw velocity (m/s, horizontal, along the crest normal). */
+  vx: number;
+  vz: number;
+  nx: number;
+  nz: number;
+  /** The station's wave height (m): bigger waves explode higher. */
+  H: number;
+  /** min(1, H / 2 m) · ρ · impact amount: how many puffs are born. */
+  strength: number;
+  /** min(1, ρ): each puff's opacity. */
+  lip: number;
+  waveId: number;
+  arc: number;
+}
+
+/**
+ * The emitters at sim time t (spec §3.1; 3c §3.2): one camera-independent crest trace and one profile frame per breaking
+ * station feed both the spray (the lip tip mid-throw, off an offshore wind) and the impact explosion (the landing point,
+ * for IMPACT_WINDOW_S after the lip lands, with or without wind).
+ */
+export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact: ImpactEmitter[] } {
   const { field, ctx, params } = i;
-  // A calm wind makes no spray anywhere: skip the trace (final review I2; it ran every tick on glassy days for nothing).
-  if (!field || !ctx || !params.enabled || !(i.amount > 0) || i.events.length === 0 || !(i.wind.speedMs > WIND_CALM_MS)) return [];
+  const spray: SprayEmitter[] = [], impact: ImpactEmitter[] = [];
+  if (!field || !ctx || !params.enabled || i.events.length === 0) return { spray, impact };
+  // A calm wind makes no spray anywhere (final review I2); the explosion doesn't care about the wind.
+  const wantSpray = i.amount > 0 && i.wind.speedMs > WIND_CALM_MS;
+  const impactAmount = i.impactAmount ?? 0;
+  const wantImpact = impactAmount > 0;
+  if (!wantSpray && !wantImpact) return { spray, impact };
   const waves = i.events.map(toActiveWave);
   const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M });
   const opts: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params };
-  const out: SprayEmitter[] = [];
   for (const s of stations) {
     if (s.gap || s.tb === null || !Number.isFinite(s.tb)) continue;
-    const wind = offshoreFactor(i.wind, s.nx, s.nz);
-    if (!(wind > 0)) continue;
+    const wind = wantSpray ? offshoreFactor(i.wind, s.nx, s.nz) : 0;
+    if (!(wind > 0) && !wantImpact) continue;
     // The station's own wave only: a set wave's envelope is tight (exp(−(ξ/0.7T)⁶)), so the others add nothing at its
     // crest, and summing all of them was most of the lip maths' cost (measured, final cost pass).
     const own = [waves[s.wave]];
@@ -139,15 +189,30 @@ export function sprayEmitters(i: EmitterInput): SprayEmitter[] {
       return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
     };
     const f = profileFrame(base, { H: s.H, c: s.c, r: s.r, tb: s.tb }, params);
-    if (!(f.prog > 0 && f.prog < 1) || !(f.weight * f.rho > MIN_EMIT_WEIGHT)) continue;
-    const tp = f.reach / f.vj;
-    const u = f.K[0] + f.reach, y = f.K[1] - 0.5 * GRAVITY_MS2 * tp * tp;
-    out.push({
-      x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz,
-      strength: f.weight * f.rho * wind * i.amount, lip: Math.min(1, f.weight * f.rho), waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M),
-    });
+    const waveId = i.events[s.wave].id, arc = Math.round(s.arc / SPRAY_SPACING_M);
+    if (wind > 0 && f.prog > 0 && f.prog < 1 && f.weight * f.rho > MIN_EMIT_WEIGHT) {
+      const tp = f.reach / f.vj;
+      const u = f.K[0] + f.reach, y = f.K[1] - 0.5 * GRAVITY_MS2 * tp * tp;
+      spray.push({
+        x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz,
+        strength: f.weight * f.rho * wind * i.amount, lip: Math.min(1, f.weight * f.rho), waveId, arc,
+      });
+    }
+    if (wantImpact && f.tauLand <= s.tb && s.tb < f.tauLand + IMPACT_WINDOW_S && f.rho > MIN_EMIT_WEIGHT) {
+      // Where the lip lands: its tip at τ_land (the landing criterion defines τ_land by the tip reaching the water).
+      const u = f.K[0] + f.vj * f.tauLand, y = f.K[1] - 0.5 * GRAVITY_MS2 * f.tauLand * f.tauLand;
+      impact.push({
+        x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz, H: s.H,
+        strength: Math.min(1, s.H / 2) * f.rho * impactAmount, lip: Math.min(1, f.rho), waveId, arc,
+      });
+    }
   }
-  return out;
+  return { spray, impact };
+}
+
+/** The spray's emitters at sim time t (breakEmitters' spray). */
+export function sprayEmitters(i: EmitterInput): SprayEmitter[] {
+  return breakEmitters(i).spray;
 }
 
 /** PCG hash (O'Neill), uint32 → uint32. */
@@ -191,6 +256,31 @@ export function sprayBirths(emitters: readonly SprayEmitter[], tick: number, p: 
         x: e.x - e.nz * along, y: e.y + r(1) * 0.3, z: e.z + e.nx * along,
         vx: 0.5 * e.vx + (r(2) * 2 - 1), vy: 2 + 2 * r(3) + (r(4) * 2 - 1), vz: 0.5 * e.vz + (r(5) * 2 - 1),
         life: p.lifeS * (0.6 + 0.6 * r(6)), strength: Math.min(1, e.lip),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Tick k's impact births (3c spec §3.2): floor(strength × IMPACT_RATE × spacing × Δ + a hashed fraction) per emitter, at
+ * most SPRAY_BIRTH_CAP, hashed apart from the spray's draws. Each is scattered half a spacing along the crest and 0–0.4 m
+ * up, thrown with 0.6 × the lip's throw, an upward kick of U(0.5, 1)·√(2·IMPACT_G·max(H, 0.5)) and ±1.5 m/s per axis, for
+ * U(0.8, 1.6) s; its opacity follows the lip.
+ */
+export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): SprayBirth[] {
+  const out: SprayBirth[] = [];
+  for (const e of emitters) {
+    const n = Math.floor(e.strength * IMPACT_RATE * SPRAY_SPACING_M * FOAM_TICK_S + rand01(tick, e.waveId, e.arc, 0x7f4a7c15));
+    const kick = Math.sqrt(2 * IMPACT_G * Math.max(e.H, 0.5));
+    for (let j = 0; j < n; j++) {
+      if (out.length >= SPRAY_BIRTH_CAP) return out;
+      const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x40000000 + j * 8 + q);
+      const along = (r(0) * 2 - 1) * (SPRAY_SPACING_M / 2);
+      out.push({
+        x: e.x - e.nz * along, y: e.y + r(1) * 0.4, z: e.z + e.nx * along,
+        vx: 0.6 * e.vx + (r(2) * 2 - 1) * 1.5, vy: (0.5 + 0.5 * r(3)) * kick + (r(4) * 2 - 1) * 1.5, vz: 0.6 * e.vz + (r(5) * 2 - 1) * 1.5,
+        life: 0.8 + 0.8 * r(6), strength: Math.min(1, e.lip),
       });
     }
   }
