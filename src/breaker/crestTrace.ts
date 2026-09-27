@@ -61,6 +61,8 @@ export interface TraceInput {
   params: BreakParams;
   /** Waves no taller than this (m) are skipped (they never reach the ribbon's onset ratio); see minRibbonHeight. */
   minHeightM: number;
+  /** A fixed station spacing (m), in place of the camera-distance rule: the same stations wherever the camera is (the spray's emitters, offshore-spray plan S1). */
+  spacingM?: number;
 }
 
 const inGrid = (f: ReefField, x: number, z: number): boolean => {
@@ -147,7 +149,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
       if (sign > 0 || n > 0) {
         side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null });
       }
-      const ds = factor * Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ)));
+      const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS);
       if (!(Math.abs(next.xi) < CREST_TOLERANCE_S) || !inGrid(field, next.x, next.z) || Math.hypot(next.x, next.z) > TAPER_NEAR_M) break;
       arc += sign * Math.hypot(next.x - x, next.z - z);
