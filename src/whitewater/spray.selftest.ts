@@ -1,9 +1,12 @@
 import type * as THREE from 'three/webgpu';
+import { type ComputeNode, StorageBufferAttribute } from 'three/webgpu';
+import { Fn, float, storage, vec4 } from 'three/tsl';
 import { registerSelfTest } from '../dev/selfTest';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
 import { FoamSchedule } from './foamStep';
-import { SprayParticles } from './SprayParticles';
+import { SprayParticles, sprayPhaseNode } from './SprayParticles';
+import { sprayPhase } from './sprayLook';
 import { SPRAY_POOL, type SprayBirth, sprayReplayTicks } from './sprayEmitters';
 import { SprayPool, birthInto, liveSlots, stepPool } from './sprayStep';
 
@@ -58,5 +61,21 @@ registerSelfTest({
       for (let c = 0; c < 4; c++) worst = Math.max(worst, Math.abs(a.pos[s * 4 + c] - b.pos[s * 4 + c]), Math.abs(a.vel[s * 4 + c] - b.vel[s * 4 + c]));
     }
     return { pass: worst === 0 && n > 50, detail: `${n} live; worst |live − replay| ${worst}` };
+  },
+});
+
+registerSelfTest({
+  name: 'spray: the TSL phase function matches sprayLook.sprayPhase (backlit glow, white side-on)',
+  async run(renderer) {
+    const cs = [-1, -0.5, 0, 0.5, 0.9, 0.99, 1];
+    const outAttr = new StorageBufferAttribute(new Float32Array(cs.length * 4), 4);
+    const out = storage(outAttr, 'vec4', cs.length);
+    const pass = Fn(() => {
+      cs.forEach((c, i) => out.element(i).assign(vec4(sprayPhaseNode(float(c)), 0.0, 0.0, 0.0)));
+    })().compute(1) as ComputeNode;
+    renderer.compute(pass);
+    const g = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    const worst = cs.reduce((m, c, i) => Math.max(m, Math.abs(g[i * 4] - sprayPhase(c)) / sprayPhase(c)), 0);
+    return { pass: worst < 1e-4, detail: `worst relative error ${worst.toExponential(2)}` };
   },
 });
