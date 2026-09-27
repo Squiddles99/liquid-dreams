@@ -695,6 +695,12 @@ export class App {
     const maxFps = this.frameLimiter.maxFps;
     this.frameLimiter.maxFps = 0;
     this.captureTarget = target;
+    // Start a new node frame, as the renderer's animation loop does before each frame (Animation.update): passes that
+    // render once per frame (the scene pass) otherwise re-use the last frame's render, so a capture showed the frame
+    // before it (one capture late), or the same frame over and over while the window was hidden.
+    const r = this.renderer as unknown as { _nodes: { nodeFrame: { update(): void; frameId: number } }; info: { frame: number } };
+    r._nodes.nodeFrame.update();
+    r.info.frame = r._nodes.nodeFrame.frameId;
     try {
       this.frame();
     } finally {
