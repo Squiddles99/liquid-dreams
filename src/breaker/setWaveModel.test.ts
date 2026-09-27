@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_BREAK_PARAMS, breakingRatio } from './breaking';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
-import { type ActiveWave, BREAKING_RATIO, type WaveContext, localHeight, sumWaves, toActiveWave, waveAt } from './setWaveModel';
+import { type ActiveWave, BREAKING_RATIO, type WaveContext, crestAt, localHeight, sumWaves, toActiveWave, waveAt } from './setWaveModel';
 
 const omega = (T: number) => (2 * Math.PI) / T;
 
 function field1D(depth: number, T: number, amp = 1, hmin = depth): (x: number) => FieldSample {
   const k = waveNumber(omega(T), depth), c = omega(T) / k;
-  return (x) => ({ tau: x / c, amp, hmin, k, dirX: 1, dirZ: 0, depth });
+  return (x) => ({ tau: x / c, amp, hmin, hminBreak: hmin, k, dirX: 1, dirZ: 0, depth });
 }
 const ctxFor = (T: number): WaveContext => ({ omega: omega(T), travelX: 1, travelZ: 0 });
 const wave = (T: number, heightM: number, arrivalS = 100): ActiveWave => ({
@@ -23,7 +24,7 @@ describe('set-wave model', () => {
     expect(crest).toBeGreaterThan(0.99);
   });
   it('caps the height at 0.78 × the shallowest depth crossed', () => {
-    const f: FieldSample = { tau: 0, amp: 3, hmin: 2, k: 0.2, dirX: 1, dirZ: 0, depth: 5 };
+    const f: FieldSample = { tau: 0, amp: 3, hmin: 2, hminBreak: 2, k: 0.2, dirX: 1, dirZ: 0, depth: 5 };
     expect(localHeight(wave(15, 5), f)).toBeCloseTo(BREAKING_RATIO * 2, 12);
     expect(localHeight(wave(15, 0.2), f)).toBeCloseTo(0.6, 12);
   });
@@ -51,7 +52,7 @@ describe('set-wave model', () => {
   });
   it('tapers the crest ends far out, not near the reef', () => {
     const T = 15, k = waveNumber(omega(T), 30);
-    const at = (x: number, z: number) => ({ tau: x * (k / omega(T)), amp: 1, hmin: 30, k, dirX: 1, dirZ: 0, depth: 30 });
+    const at = (x: number, z: number) => ({ tau: x * (k / omega(T)), amp: 1, hmin: 30, hminBreak: 30, k, dirX: 1, dirZ: 0, depth: 30 });
     const w = wave(T, 2, 0);
     const onAxisFar = waveAt(-800, 0, -800 * (k / omega(T)), at(-800, 0), w, ctxFor(T)).eta;
     const offAxisFar = waveAt(-800, 400, -800 * (k / omega(T)), at(-800, 400), w, ctxFor(T)).eta;
@@ -74,12 +75,23 @@ describe('set-wave model', () => {
     const a = waveAt(0, 0, 100, f, wave(15, 1, 100), ctxFor(15));
     const b = waveAt(0, 0, 100, f, wave(15, 1, 115), ctxFor(15));
     expect(sumWaves(0, 0, 100, f, [wave(15, 1, 100), wave(15, 1, 115)], ctxFor(15)).eta).toBeCloseTo(a.eta + b.eta, 12);
-    expect(waveAt(0, 0, 100, f, wave(15, 0), ctxFor(15))).toEqual({ eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0 });
+    expect(waveAt(0, 0, 100, f, wave(15, 0), ctxFor(15))).toEqual({ eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0 });
   });
   it('converts set events into active waves', () => {
-    const w = toActiveWave({ id: 1, slot: 0, indexInSet: 0, waveCount: 5, arrivalS: 42, heightM: 2.5, periodS: 14, fromDeg: 225, crestLengthM: 350, crestOffsetM: 10 });
+    const w = toActiveWave({ id: 1, slot: 0, indexInSet: 0, waveCount: 5, arrivalS: 42, heightM: 2.5, periodS: 14, fromDeg: 225, crestLengthM: 350, crestOffsetM: 10, longTail: true });
     expect(w.omega).toBeCloseTo((2 * Math.PI) / 14, 12);
     expect(w.travelX).toBeCloseTo(Math.SQRT1_2, 9);
     expect(w.travelZ).toBeCloseTo(-Math.SQRT1_2, 9);
+    expect(w.longTail).toBe(true);
+  });
+  it('the crest carries its breaking ratio, and is found before the wave breaks (the sheet steepens from r = ribbonOnset + 0.2)', () => {
+    const f = field1D(8, 15, 1.2, 6);
+    const w = wave(15, 2), o = { sample: (x: number) => f(x), params: DEFAULT_BREAK_PARAMS };
+    const crest = crestAt(3, 0, 100, f(3), w, ctxFor(15), o)!;
+    expect(crest).not.toBeNull();
+    expect(crest.r).toBeCloseTo(breakingRatio(2 * 1.2, 6, DEFAULT_BREAK_PARAMS), 12);
+    expect(crest.r).toBeLessThan(1);
+    expect(crest.s).toBe(0);
+    expect(crestAt(3, 0, 100, f(3), w, ctxFor(15), { ...o, params: { ...DEFAULT_BREAK_PARAMS, enabled: false } })).toBeNull();
   });
 });

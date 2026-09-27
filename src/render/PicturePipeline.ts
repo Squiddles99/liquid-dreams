@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { agxToneMapping, dot, float, max, min, mix, neutralToneMapping, pass, pow, renderOutput, uniform, vec3, vec4 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { computeExposure } from './exposure';
+import { computeExposure, withUnderwater } from './exposure';
 
 type N = any;
 
@@ -54,6 +54,7 @@ export class PicturePipeline {
   private readonly bloomNode: any;
   private sunElevationDeg = 45;
   private forwardDotSun = -1;
+  private underwater = false;
 
   constructor(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, params: PictureParams = DEFAULT_PICTURE) {
     this.params = { ...params };
@@ -97,13 +98,24 @@ export class PicturePipeline {
     this.updateExposure();
   }
 
+  /** The eye is below the water surface: the exposure opens up (exposure.withUnderwater). */
+  setUnderwater(on: boolean): void {
+    this.underwater = on;
+    this.updateExposure();
+  }
+
   render(): void {
     this.pipeline.render();
   }
 
+  /** The exposure applied to the scene's radiance this frame (debug overlays that must read the same at any exposure). */
+  get exposureValue(): number {
+    return this.exposure.value;
+  }
+
   private updateExposure(): void {
-    this.exposure.value = computeExposure(
+    this.exposure.value = withUnderwater(computeExposure(
       this.sunElevationDeg, this.params.baseExposure, this.params.evOffset, this.params.autoExposure, this.forwardDotSun,
-    );
+    ), this.underwater);
   }
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { DEFAULT_OCEAN_SIM } from '../ocean/OceanSimulation';
+import { DEFAULT_DEBUG_OVERLAYS } from '../ocean/OceanSurface';
 import { DEFAULT_SPECTRUM_PARAMS } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS } from '../ocean/waterOptics';
 import { DEFAULT_SHALLOW_SWELL } from '../ocean/waterSurface';
@@ -9,7 +11,7 @@ import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { DEFAULT_SET_PARAMS } from '../swell/sets';
 import {
-  CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
+  BREAKING_MODEL, CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
   loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
 } from './devSettings';
 import type { CameraPose, Moment } from './momentLink';
@@ -51,7 +53,8 @@ function defaults(): DevSettings {
     sets: DEFAULT_SET_PARAMS,
     reef: DEFAULT_REEF_PARAMS,
     shallow: DEFAULT_SHALLOW_SWELL,
-    overlays: { depthContours: false, crestLines: false },
+    overlays: DEFAULT_DEBUG_OVERLAYS,
+    breaking: DEFAULT_BREAK_PARAMS,
   });
 }
 
@@ -77,12 +80,18 @@ function tweaked(): DevSettings {
   s.reef.ledgeDepthM = 7.5;
   s.shallow.fadeToM = 18;
   s.overlays.crestLines = true;
+  s.overlays.ribbonTint = true;
+  s.breaking.enabled = false;
+  s.breaking.stageSpan = 2.2;
+  s.breaking.ribbonOnset = 0.62;
   return s;
 }
 
-const store = (value: unknown): FakeStorage => {
+/** A store holding `value` as saved by this build (breakingModel stamped on objects), or by an older one (model null). */
+const store = (value: unknown, model: number | null = BREAKING_MODEL): FakeStorage => {
   const s = new FakeStorage();
-  s.setItem(DEV_SETTINGS_KEY, JSON.stringify(value));
+  const stamped = model !== null && typeof value === 'object' && value !== null && !Array.isArray(value) ? { breakingModel: model, ...value } : value;
+  s.setItem(DEV_SETTINGS_KEY, JSON.stringify(stamped));
   return s;
 };
 
@@ -93,6 +102,23 @@ describe('dev settings persistence', () => {
     saveDevSettings(s, saved);
     expect(s.items.has(DEV_SETTINGS_KEY)).toBe(true);
     expect(loadDevSettings(s, defaults())).toEqual(saved);
+  });
+
+  it('overlays.ribbonTint persists and defaults to false', () => {
+    expect(DEFAULT_DEBUG_OVERLAYS.ribbonTint).toBe(false);
+    expect(defaults().overlays.ribbonTint).toBe(false);
+    const s = new FakeStorage();
+    const saved = defaults();
+    saved.overlays.ribbonTint = true;
+    saveDevSettings(s, saved);
+    expect(loadDevSettings(s, defaults())?.overlays.ribbonTint).toBe(true);
+    // A profile stored before the toggle existed loads with it off and keeps its other overlays.
+    const raw = JSON.parse(JSON.stringify(defaults()));
+    delete raw.overlays.ribbonTint;
+    raw.overlays.crestLines = true;
+    const got = loadDevSettings(store(raw), defaults());
+    expect(got?.overlays.ribbonTint).toBe(false);
+    expect(got?.overlays.crestLines).toBe(true);
   });
 
   it('returns null for an empty store', () => {
@@ -192,6 +218,45 @@ describe('dev settings persistence', () => {
     for (const reference of ['not-a-moment', '', 42, null, undefined]) {
       expect(loadDevSettings(store({ ...raw, reference }), defaults())!.reference).toBe(DEFAULT_MOMENT_NAME);
     }
+  });
+
+  it('loads a Phase 1 profile with the default break params', () => {
+    const phase1 = JSON.parse(JSON.stringify(tweaked())) as Record<string, unknown>;
+    delete phase1.breaking;
+    const loaded = loadDevSettings(store(phase1), defaults())!;
+    expect(loaded.breaking).toEqual(DEFAULT_BREAK_PARAMS);
+    expect(loaded.sets.meanIntervalS).toBe(300); // the rest of the stored look still loads
+  });
+  it('loads an overnight profile (breaking model 1): its breaking falls back to the defaults, removed fields gone', () => {
+    // Andrew's stored overnight Phase 2 settings: every field BreakParams had then, none of the new ones.
+    const overnight = {
+      enabled: true, gamma: 0.83, delta: 1.0, hFloorM: 0.3, stageSpan: 1.0, thetaMaxDeg: 120, pivotDrop: 0.65, pivotAhead: 0.65, lipZone: 0.4,
+      lipBackReach: 0.6, troughDrain: 0.35, beta: 0.4, faceWidth: 0.5, backWidth: 2, drainEnd: 0.25, steepEnd: 0.3, curlStart: 0.15, curlEnd: 0.8,
+      collapseStart: 0.75,
+    };
+    const stored = { ...(JSON.parse(JSON.stringify(tweaked())) as Record<string, unknown>), breaking: overnight };
+    const loaded = loadDevSettings(store(stored, null), defaults())!;
+    expect(loaded.breaking).toEqual(DEFAULT_BREAK_PARAMS);
+    for (const removed of ['thetaMaxDeg', 'pivotDrop', 'pivotAhead', 'lipZone', 'lipBackReach', 'backWidth', 'steepEnd', 'curlStart', 'curlEnd']) {
+      expect(removed in loaded.breaking, removed).toBe(false);
+    }
+  });
+  it('drops a stored breaking saved under another breaking model (its numbers meant something else) and keeps the rest', () => {
+    const loaded = loadDevSettings(store(JSON.parse(JSON.stringify(tweaked())), null), defaults())!;
+    expect(loaded.breaking).toEqual(DEFAULT_BREAK_PARAMS);
+    expect(loaded.sets.meanIntervalS).toBe(300);
+    expect(loadDevSettings(store(JSON.parse(JSON.stringify(tweaked())), 1), defaults())!.breaking).toEqual(DEFAULT_BREAK_PARAMS);
+    // A save from this build stamps the model, so its breaking loads.
+    const s = new FakeStorage();
+    saveDevSettings(s, tweaked());
+    expect(loadDevSettings(s, defaults())!.breaking).toEqual(tweaked().breaking);
+  });
+  it('repairs a bad break value from the default and keeps the others', () => {
+    const s = tweaked() as unknown as Record<string, Record<string, unknown>>;
+    s.breaking.gamma = 'lots';
+    const loaded = loadDevSettings(store(s), defaults())!;
+    expect(loaded.breaking.gamma).toBe(DEFAULT_BREAK_PARAMS.gamma);
+    expect(loaded.breaking.stageSpan).toBe(2.2);
   });
 });
 

@@ -1,6 +1,8 @@
 html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: system-ui, sans-serif; }
 #app { width: 100vw; height: 100vh; }
 #app canvas { display: block; }
+/* The dev panel (Tweakpane's default container) scrolls inside the window instead of running off the bottom. */
+.tp-dfwv { max-height: calc(100vh - 16px); overflow-y: auto; scrollbar-width: thin; }
 .overlay {
   position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; padding: 24px; background: rgba(4, 18, 32, 0.92); color: #e8f1f8; text-align: center; z-index: 10;
