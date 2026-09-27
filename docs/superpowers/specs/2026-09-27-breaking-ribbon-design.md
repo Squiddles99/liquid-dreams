@@ -267,3 +267,40 @@ The Phase 2 GPU self-tests that tested the curl are replaced.
 - **Q10:** gap rows are dead and discarded.
 - **Q11:** ribbon normals come from central differences on its own grid.
 - **Q12:** the peel is measured on one instant's crest: 11.8 m/s; closeout spread 0.4–0.6 s.
+
+## 15. Andrew's second review: the break along the crest (2026-09-27)
+
+**What he saw** (6.6 ft, barrel-peeling): square-edged channels running forward from the breaking section where the reef drains; the broken section sunk into a bowl with near-vertical walls either side of the peak; the Womb breaks like Pipeline (a long, fairly straight throwing lip), not a tight Teahupo'o bowl. GPU 4.10 ms, CPU 2.93 ms.
+
+**Cause.** The sheet's three breaking weights switched within 1–3 m of crest: the sharpening over ~3.5 m, the drain over 1–2 m, the bore collapse in under a metre. Two things did it. First, the old ratio `H / (γ·max(hmin − δ·H, h_floor))` grows without bound as the drained depth nears its floor, which squeezes every window above r = 1 into a sliver of crest. Second, hmin jumps where one ray passed the reef's edge and its neighbour didn't. The drain's plateau (15–31 m ahead) and the sharpening's flat trough, extruded forward from each end of a section, drew the channels. The collapse dropping a broken section to its bore within half a second drew the bowl.
+
+**Design (approved as a bounded change: "go ahead"; binding over §3.1's r and the stage windows where they differ):**
+- **B1 The ratio.** `ρ = H / breakingHeight(hmin)`, where `breakingHeight = γ·max(hmin/(1+γδ), h_floor)`. It crosses 1 exactly where r did, and it is linear in H and in amp/hmin. So the thresholds stay put and the windows keep their widths along the crest.
+- **B2 The breaking depth.** The field carries `hminBreak`: amp divided by amp/hmin, where amp/hmin is taken to its maximum within 6 m along the crest and then smoothed along the crest (Gaussian σ 6 m).
+  - The ratio, stage and bore read it; the Phase 1 height cap still reads hmin.
+  - It is along the crest only, so the right still closes out at once along the south ledge.
+  - Taking the maximum first keeps the narrow wedge tip breaking at 1.29 × Hs. Smoothing alone (σ 10 m) lifted that to 1.6 × Hs.
+  - It lengthens each section by 5–8 m: the longer, straighter line.
+  - It rides in fieldB.w, so it costs no new texture or load.
+- **B3 The drain** runs from the sharpening's start to ρ = 1 + drainEnd·Δ, beginning as the wave stands up. It is shaped as a hollow at the foot: sink(a) × a Gaussian over half a quarter wavelength, gone by half a wavelength (θ gate).
+- **B4 The collapse** runs over ρ ∈ [1 + collapseStart·Δ, 1 + 2.5·Δ]. Whitewater stays nearly as tall as the wave and settles as it runs over the reef. The tube still closes on the stage (s ≥ 0.75 within 0.6–1.5 s of onset, §3.1).
+- **B5 Defaults:** Δ 0.7, drainEnd 0.4, collapseStart 0.5, ribbon onset 0.7 with a 0.05 fade (sharpening from 0.75).
+  - The onset sits above the deep-water ρ at 6.6 ft (~0.68). The ribbon then traces the reef's sections (110 stations) rather than every crest in the set (421).
+  - A stored breaking from an older model is dropped for the defaults (BREAKING_MODEL 3).
+- **B6 The lip's colour.**
+  - No seabed shows through the thrown lip.
+  - The ribbon's steep faces take the body's sunlight through their own normal, blended by the constructed weight, so where the ribbon is the sheet it shades as the sheet. They had read brown: dim flat-water light under a reflected sunrise horizon.
+
+**Measured:** steepest change per wave height of crest, biggest set wave at 5 and 6.6 ft.
+
+| Weight | Old | New |
+|---|---|---|
+| Sharpening | 1.4–2.0 | ≤ 0.94 |
+| Drain | 2.4–5.0 | ≤ 0.6 |
+| Collapse | 2.7–8.3 | ≤ 0.4 |
+
+A test pins the new bounds at 1.0 / 0.7 / 0.6. vitest 421/421; GPU self-tests 29/29. The barrel-peeling and lip-close-up cameras moved down the shoulder for the longer sections.
+
+**Not done here:**
+- The GPU budget: 4.10 ms measured by Andrew, target 3 ms. The pane's timestamps are too coarse to measure it, so the station cut is the one lever taken; Andrew's reading decides whether more is needed.
+- The wave-stacking follow-up.
