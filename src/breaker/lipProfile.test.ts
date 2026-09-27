@@ -1,0 +1,139 @@
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_CONDITIONS } from '../conditions/defaults';
+import { surferFeetToHs } from '../conditions/units';
+import { buildBathymetry, downsample } from '../seabed/bathymetry';
+import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
+import { DEFAULT_BREAK_PARAMS, breakingRatio } from './breaking';
+import {
+  GRAVITY_MS2, type LipParams, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings,
+  landingTime, profileFrame, sampleHome,
+} from './lipProfile';
+import { computeReefField, sampleField } from './reefField';
+import { type ActiveWave, type BreakOptions, type WaveContext, localHeight, sumWaves } from './setWaveModel';
+
+// The app's field (1 m cells, default swell and tide) and the Task 2 sheet: Phase 1 + front sharpening + drain + bore.
+const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
+const ctx: WaveContext = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+const SHEET: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: DEFAULT_BREAK_PARAMS };
+const LIP: LipParams = DEFAULT_BREAK_PARAMS;
+const HS = surferFeetToHs(DEFAULT_CONDITIONS.swell.sizeFt);
+const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+const testWave = (heightM: number): ActiveWave => ({ arrivalS: 0, heightM, omega: ctx.omega, travelX: ctx.travelX, travelZ: ctx.travelZ, crestLengthM: 400, crestOffsetM: 0 });
+
+/** The sheet's cross-section through the crest station at (x0, z0) when w's crest is there, along the field's ray. */
+function stationAt(x0: number, z0: number, w: ActiveWave, tb: number | null, faceWidth = LIP.faceWidth) {
+  const sheet: BreakOptions = { ...SHEET, params: { ...SHEET.params, faceWidth } };
+  const f0 = sampleField(field, x0, z0);
+  const t = f0.tau + w.arrivalS;
+  const base = (u: number): Vec2 => {
+    const x = x0 + f0.dirX * u, z = z0 + f0.dirZ * u;
+    const s = sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, sheet);
+    return [u + s.dx * f0.dirX + s.dz * f0.dirZ, s.eta];
+  };
+  const input: ProfileInput = { H: localHeight(w, f0), c: ctx.omega / f0.k, r: breakingRatio(w.heightM * f0.amp, f0.hmin, DEFAULT_BREAK_PARAMS), tb };
+  return { base, input };
+}
+const near = (a: Vec2, b: Vec2, tol = 1e-9) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol;
+
+describe('lipProfile', () => {
+  const big = testWave(REF_BIGGEST.heightM);
+  it('has PROFILE_SAMPLES samples whose homes run monotonically from the front edge to the back edge', () => {
+    const { base, input } = stationAt(0, 0, big, 0.3);
+    const f = profileFrame(base, input, LIP);
+    expect(PROFILE_SAMPLES).toBe(160);
+    const homes = Array.from({ length: PROFILE_SAMPLES }, (_, j) => sampleHome(j, f));
+    for (let j = 1; j < homes.length; j++) expect(homes[j]).toBeLessThan(homes[j - 1]);
+    expect(homes[0]).toBeCloseTo(f.uFront, 9);
+    expect(homes.at(-1)).toBeCloseTo(f.uBack, 9);
+  });
+
+  it('the biggest default wave at the peak lands its lip 0.6–1.5 s after onset, ahead of the face', () => {
+    const { base, input } = stationAt(0, 0, big, 0);
+    const f = profileFrame(base, input, LIP);
+    expect(f.tauLand).toBeGreaterThan(0.6);
+    expect(f.tauLand).toBeLessThan(1.5);
+    expect(f.K[0] + f.vj * f.tauLand).toBeGreaterThanOrEqual(f.F[0] + 0.3 - 1e-9);
+    console.log(`peak: H ${input.H.toFixed(2)} τ_land ${f.tauLand.toFixed(3)} s, vj ${f.vj.toFixed(2)} m/s (c ${input.c.toFixed(2)}), reach ${(f.vj * f.tauLand).toFixed(2)} m, foot ${f.uFoot.toFixed(2)} m, drop ${(f.K[1] - f.F[1]).toFixed(2)} m`);
+  });
+
+  it('the tip follows the ballistic arc from the crest', () => {
+    for (const tb of [0.1, 0.3, 0.6]) {
+      const { base, input } = stationAt(0, 0, big, tb);
+      const p = buildProfile(base, input, LIP);
+      const f = p.frame;
+      const tip = p.points[PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall + PROFILE_SEGMENTS.under + PROFILE_SEGMENTS.cap];
+      expect(near(tip, [f.K[0] + f.vj * tb, f.K[1] - 0.5 * GRAVITY_MS2 * tb * tb], 1e-9)).toBe(true);
+    }
+  });
+
+  it('never crosses itself before the lip lands (peak, ledge points, bigger waves, slider ends)', () => {
+    const cases: { x: number; z: number; h: number; p: LipParams }[] = [];
+    // Only where the crest has broken (r ≥ 1): a time since onset means the section broke.
+    for (const [x, z] of [[0, 0], [20, -40], [35, -90], [15, 16], [50, 36]] as const) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 3 * HS]) {
+      const f = sampleField(field, x, z);
+      if (breakingRatio(h * f.amp, f.hmin, DEFAULT_BREAK_PARAMS) >= 1) cases.push({ x, z, h, p: LIP });
+    }
+    expect(cases.length).toBeGreaterThanOrEqual(10);
+    for (const p of [{ ...LIP, throwStrength: 0.1 }, { ...LIP, throwStrength: 1 }, { ...LIP, lipThickness: 0.03 }, { ...LIP, lipThickness: 0.3 }, { ...LIP, faceWidth: 0.1 }, { ...LIP, faceWidth: 3 }]) {
+      cases.push({ x: 0, z: 0, h: REF_BIGGEST.heightM, p });
+    }
+    let worst = 0;
+    for (const c of cases) {
+      const w = testWave(c.h);
+      const probe = stationAt(c.x, c.z, w, 0, c.p.faceWidth);
+      const tau = profileFrame(probe.base, probe.input, c.p).tauLand;
+      for (const frac of [0, 0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 0.95, 0.999]) {
+        const { base, input } = stationAt(c.x, c.z, w, frac * tau, c.p.faceWidth);
+        const n = crossings(buildProfile(base, input, c.p).points);
+        worst = Math.max(worst, n);
+        if (n) console.log(`crossing at (${c.x},${c.z}) h ${c.h.toFixed(2)} frac ${frac} ${JSON.stringify(c.p)}`);
+      }
+      for (const r of [0.55, 0.7, 0.85, 0.99]) {
+        const { base, input } = stationAt(c.x, c.z, w, null, c.p.faceWidth);
+        expect(crossings(buildProfile(base, { ...input, r }, c.p).points)).toBe(0);
+      }
+    }
+    expect(worst).toBe(0);
+  });
+
+  it('is exactly the sheet before it steepens and after it collapses', () => {
+    for (const [r, tb] of [[0.6, null], [0.69, null], [2, Infinity], [2, 10]] as const) {
+      const { base, input } = stationAt(0, 0, big, tb);
+      const p = buildProfile(base, { ...input, r }, LIP);
+      p.points.forEach((pt, j) => expect(near(pt, base(p.homes[j]), 1e-9)).toBe(true));
+    }
+  });
+
+  it('its edges are the sheet at every stage', () => {
+    for (const tb of [null, 0, 0.4, 0.9, 1.4, 3]) {
+      const { base, input } = stationAt(0, 0, big, tb);
+      const p = buildProfile(base, { ...input, r: tb === null ? 0.9 : input.r }, LIP);
+      expect(near(p.points[0], base(p.frame.uFront))).toBe(true);
+      expect(near(p.points.at(-1) as Vec2, base(p.frame.uBack))).toBe(true);
+      for (let j = 0; j < PROFILE_SEGMENTS.front; j++) expect(near(p.points[j], base(p.homes[j]))).toBe(true);
+    }
+  });
+
+  it('the lip is never thinner than 2 cm once it has grown, and has no foam before it lands', () => {
+    const thin = { ...LIP, lipThickness: 0.03 };
+    const probe = stationAt(0, 0, big, 0);
+    const tau = profileFrame(probe.base, probe.input, thin).tauLand;
+    for (const frac of [0.35, 0.6, 0.95]) {
+      const { base, input } = stationAt(0, 0, big, frac * tau);
+      const p = buildProfile(base, input, thin);
+      p.lipness.forEach((l, j) => { if (l > 0.99) expect(p.thickness[j]).toBeGreaterThanOrEqual(MIN_LIP_THICKNESS_M - 1e-12); });
+      expect(Math.max(...p.curlFoam)).toBe(0);
+    }
+    const after = stationAt(0, 0, big, 1.5);
+    expect(Math.max(...buildProfile(after.base, after.input, LIP).curlFoam)).toBeGreaterThan(0.5);
+  });
+
+  it('stays finite at the extremes (12 ft, 0.5 ft, huge and tiny times)', () => {
+    for (const h of [0.05, surferFeetToHs(12) * 1.8]) for (const tb of [null, 0, 0.5, 5, 1e6, Infinity]) {
+      const { base, input } = stationAt(0, 0, testWave(h), tb);
+      const p = buildProfile(base, { ...input, r: tb === null ? 0.95 : input.r }, LIP);
+      for (const pt of p.points) { expect(Number.isFinite(pt[0])).toBe(true); expect(Number.isFinite(pt[1])).toBe(true); }
+    }
+    expect(landingTime(-3)).toBeGreaterThan(0);
+  });
+});
