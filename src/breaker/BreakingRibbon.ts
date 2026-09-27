@@ -5,7 +5,7 @@ import {
 } from 'three/tsl';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
 import { CASCADE_FADES, fadeWeightNode } from '../ocean/cascadeFades';
-import { type DebugOverlays, EARTH_RADIUS_M, type SheetFootprint, setFoamPattern, sheetNormal } from '../ocean/OceanSurface';
+import { type DebugOverlays, EARTH_RADIUS_M, type SheetFoamMap, type SheetFootprint, setFoamPattern, sheetFoamWeight, sheetNormal, waterFoamFrame } from '../ocean/OceanSurface';
 import { type WaterOpticsUniforms, shadeWater } from '../ocean/waterShading';
 import type { WaterSurfaceModel } from '../ocean/waterSurface';
 import { seabedTerms } from '../seabed/seabedShading';
@@ -199,6 +199,8 @@ export interface RibbonShading {
   model: WaterSurfaceModel;
   sky: Sky;
   optics: WaterOpticsUniforms;
+  /** The breaking foam map (spec 2026-09-27-foam-field-design.md), read at each vertex's home; absent: the placeholder. */
+  foamMap?: SheetFoamMap;
 }
 
 /**
@@ -488,7 +490,7 @@ export class BreakingRibbon {
       material.colorNode = this.tinted(vec3(0.5));
       return material;
     }
-    const { model, sky, optics } = shading;
+    const { model, sky, optics, foamMap } = shading;
     // Vertex: y is relative to the tide; the Earth's curvature drops it as it drops the sheet (measured at the home,
     // the undisplaced point, as the sheet measures its undisplaced grid).
     const home: N = attribute('ribbonHome', 'vec4');
@@ -505,7 +507,7 @@ export class BreakingRibbon {
     const vSetFoam: N = varying(Fn(() => {
       const b = model.sets.breakSampleNode(home.xy);
       vSetSlope.assign(b.slope);
-      return vec3(b.foam, b.foamFrame);
+      return sheetFoamWeight(b.foam, foamMap ? foamMap.sampleNode(home.xy) : null);
     })());
 
     const toCamera = cameraPosition.sub(positionWorld);
@@ -521,7 +523,7 @@ export class BreakingRibbon {
     const underside = float(1.0).sub(smoothstep(-0.3, 0.3, shadingNormal.geometric.y)).mul(saturate(vConstructed));
     const lip = float(1.0).sub(smoothstep(0.05, 0.6, thickness)).mul(lipness);
     // The curl's landing foam fades with ρ, so by the hand-back (and at the along-crest ends) the foam is the sheet's.
-    const foamLook = setFoamPattern(max(vSetFoam.x, curlFoam.mul(rho)), vSetFoam.yz, model.sim.time);
+    const foamLook = setFoamPattern(max(vSetFoam, curlFoam.mul(rho)), waterFoamFrame(vHome.xy, model.sets.meanTravel), model.sim.time);
     // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
     // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
     const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);

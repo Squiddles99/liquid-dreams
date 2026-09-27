@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
-import { Fn, abs, float, instanceIndex, int, ivec2, select, storage, textureLoad, uniform, vec2 } from 'three/tsl';
+import { Fn, abs, float, instanceIndex, int, ivec2, select, storage, textureLoad, uniform, vec2, vec4 } from 'three/tsl';
 import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
 import { computeReefField, sampleField } from '../breaker/reefField';
 import { SetWaves } from '../breaker/SetWaves';
 import { sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
+import { waterFoamFrame, waterFoamFrameCpu } from '../ocean/OceanSurface';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { FoamField } from './FoamField';
@@ -118,5 +119,27 @@ registerSelfTest({
     const covered = ref.filter((v) => v > 0.5).length;
     // Phase 2's GPU/CPU foam agree to 0.05 (breaker self-test), plus rgba16float's rounding (≤ 0.02, the step test).
     return { pass: d < 0.07 && covered > 10, detail: `max |GPU − CPU| ${d.toFixed(4)} over ${ticks.length} ticks; ${covered} texels over 0.5` };
+  },
+});
+
+registerSelfTest({
+  name: 'foam: the water-anchored pattern frame node matches the CPU',
+  async run(renderer) {
+    const pts: [number, number, number, number][] = [[3, 4, 1, 0], [1, 0, Math.SQRT1_2, Math.SQRT1_2], [-120, 35, 0.8, -0.6]];
+    const inAttr = new THREE.StorageBufferAttribute(new Float32Array(pts.flat()), 4);
+    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(pts.length * 4), 4);
+    const input = storage(inAttr, 'vec4', pts.length).toReadOnly();
+    const out = storage(outAttr, 'vec4', pts.length);
+    const pass = Fn(() => {
+      const v = input.element(instanceIndex);
+      out.element(instanceIndex).assign(vec4(waterFoamFrame(v.xy, v.zw), 0.0, 0.0));
+    })().compute(pts.length) as THREE.ComputeNode;
+    renderer.compute(pass);
+    const g = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    const worst = pts.reduce((m, [x, z, tx, tz], i) => {
+      const [a, b] = waterFoamFrameCpu(x, z, tx, tz);
+      return Math.max(m, Math.abs(g[i * 4] - a), Math.abs(g[i * 4 + 1] - b));
+    }, 0);
+    return { pass: worst < 1e-4, detail: `worst ${worst.toExponential(2)}` };
   },
 });
