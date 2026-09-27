@@ -80,6 +80,18 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
     conditions({}), { mode: 'free', position: [60, 12, 0], yawDeg: 231, pitchDeg: -12 }, REF_BIGGEST.arrivalS + 0.5),
   setMoment('the-drain', "08:15, low in the water in the channel north of the peak, looking at the biggest wave's face as the ledge drains in front of it.",
     conditions({}), lineup(173, 2, [-5, 0.8, -40]), REF_BIGGEST.arrivalS),
+  // Andrew's saved view (link: swell 4.652168605638587 ft, wind 6.086943253226902 m/s from 57.39114512567937°,
+  // simTime 4163.5516). The wave he was 7.2 s past there is the first (smallest) of a six-wave set in a later slot,
+  // not that set's biggest — so it has no equivalent in the reference set. Rebased onto REF_BIGGEST + 7.2 s instead
+  // (values rounded to match the panel's own precision).
+  setMoment('behind-the-wave',
+    "08:15, 4.65 ft, from behind the wave line (Andrew's view): the back of the breaking wave, the sheet in the trough behind it. " +
+    "(Andrew's own wave wasn't the reference set's biggest, so this reuses REF_BIGGEST + 7.2 s in its place.)",
+    conditions({ swell: { sizeFt: 4.65 }, wind: { speedMs: 6.09, directionDeg: 57 } }),
+    { mode: 'free', position: [12, 3.5, -32], yawDeg: 73.5, pitchDeg: -13 }, REF_BIGGEST.arrivalS + 7.2),
+  setMoment('lip-close-up', "08:15, 5 ft: about 6 m from the lip at the peak as it throws over the tube.",
+    conditions({ swell: { sizeFt: 5 } }),
+    { mode: 'free', position: [4, 2.0, -8], yawDeg: 200, pitchDeg: 5 }, REF_BIGGEST.arrivalS + 1.0),
 ];
 
 const cloneMoment = (m: Moment): Moment => ({
