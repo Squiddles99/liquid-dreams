@@ -1,3 +1,4 @@
+import type { BreakParams } from '../breaker/breaking';
 import { cloneConditions } from '../conditions/defaults';
 import { sanitizeConditions } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
@@ -20,6 +21,14 @@ import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, findReferenceMoment, type Momen
  */
 
 export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
+/**
+ * Saved with the settings. A stored `breaking` from another model is dropped for the defaults: its numbers meant
+ * something else there (model 2: the breaking ratio became ρ = H / breakingHeight, so the stage span, the drain end,
+ * the collapse start and the ribbon onset all moved; model 3: the ribbon onset rose to 0.7, above the deep water's ρ at
+ * 6.6 ft, so the ribbon no longer redraws the plain sheet along every crest in the set; model 4: the curl collapses over
+ * 1.8 × its landing time, not 1 ×, so a barrel no longer drops like a trap door once the lip lands).
+ */
+export const BREAKING_MODEL = 4;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;
@@ -42,6 +51,7 @@ export interface DevLookParams {
   reef: ReefParams;
   shallow: ShallowSwellParams;
   overlays: DebugOverlays;
+  breaking: BreakParams;
 }
 
 export interface DevSettings extends DevLookParams {
@@ -52,7 +62,7 @@ export interface DevSettings extends DevLookParams {
   reference: string;
 }
 
-export const LOOK_KEYS = ['spectrum', 'sim', 'water', 'atmosphere', 'picture', 'maxFps', 'sets', 'reef', 'shallow', 'overlays'] as const satisfies readonly (keyof DevLookParams)[];
+export const LOOK_KEYS = ['spectrum', 'sim', 'water', 'atmosphere', 'picture', 'maxFps', 'sets', 'reef', 'shallow', 'overlays', 'breaking'] as const satisfies readonly (keyof DevLookParams)[];
 
 type Plain = Record<string, unknown>;
 
@@ -90,7 +100,7 @@ function mergeValue(def: unknown, stored: unknown): unknown {
 /** Writes the settings as JSON. Never throws (a full or blocked store just keeps the old value). */
 export function saveDevSettings(storage: SettingsStorage, settings: DevSettings): void {
   try {
-    storage.setItem(DEV_SETTINGS_KEY, JSON.stringify(settings));
+    storage.setItem(DEV_SETTINGS_KEY, JSON.stringify({ ...settings, breakingModel: BREAKING_MODEL }));
   } catch {
     // Storage unavailable or full: the app behaves as it did before settings were persisted.
   }
@@ -112,6 +122,7 @@ export function loadDevSettings(storage: SettingsStorage, defaults: DevSettings)
   if (!isPlainObject(raw)) return null;
   const look = {} as Record<string, unknown>;
   for (const k of LOOK_KEYS) look[k] = mergeValue(defaults[k], raw[k]);
+  if (raw.breakingModel !== BREAKING_MODEL) look.breaking = deepClone(defaults.breaking);
   return {
     ...(look as unknown as DevLookParams),
     mode: raw.mode === 'default' || raw.mode === 'custom' ? raw.mode : 'custom',

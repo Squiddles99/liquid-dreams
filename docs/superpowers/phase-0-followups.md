@@ -53,3 +53,23 @@ Carried past Phase 1 (Reef & Sets, completed 2026-09-27, approved by Andrew as "
 - `displacementWithSlopeNode` must never run in a compute shader; only a comment enforces it.
 - A link opened in default mode leaves the visit flag set; a later default→custom time pick then carries over from the stored camera (no data loss).
 
+# Phase 2 follow-ups (work in progress, written overnight 2026-09-27)
+
+- **Done 2026-09-27:** each set wave's envelope is now exp(−(ξ/0.7T)⁶), so each wave has one crest and nothing left a period away (the tallest crest in 300 sets is 1.035× its own). About 1 in 12 set waves keeps a Gaussian tail behind its crest, so the next wave steps. Faces keep today's size (1.30× vs 1.31× the wave's height), so heights are unchanged. Gallery 17.
+  - **Waves stack on the previous wave's back (Andrew, 2026-09-27; next after the breaking-ribbon review).** The next wave in a set arrives before the reef has drained, so it rides on what's left of the previous wave instead of drawing the water off the ledge that gives it height and power. Suspected cause: the set-wave envelope (ENVELOPE_WIDTH 0.8 periods) still leaves a crest of about 21% one period behind each wave. Measure the water ahead of each wave first; then make each wave's leftovers die away within a period, and bring back the stacked "step" (Shipsterns-style) as an occasional event (an unusually close pair, or a big wave leaving water behind), not every wave.
+
+- **Timings not measured.** GPU ms haven't been measured since Phase 1: the app window was hidden overnight, so frames were paused. Measure `barrel-peeling` at 2560×1600 with max fps 0. The levers are:
+  - finite-difference normals only near breaking waves;
+  - a per-vertex spatial "can break" bound. The per-wave flag (B8) saves nothing at the Womb: the field's breaking height is about 6 cm, because some shallow cell breaks almost anything;
+  - hardware-filtered field textures;
+  - `MARCH_STEPS` 14 → 12.
+- **Distant lips alias.** A lip about 100 m away still looks spiky, because the lip's back window spans only about 1.2 grid cells there. The Break folder's "lip back reach" slider trades lip thickness against aliasing. A proper fix is a denser grid near waves, or filtering the lip weight by distance.
+- **Whitewater is a placeholder.** The foam is noise-textured colour only. Phase 3 brings lip impact, spray and lingering foam.
+- **Phase 3 foam must persist and drift (Andrew, 2026-09-27).** Foam is made where the break turns the wave inside out (the plunge and landing zone), then lingers, spreads and decays over tens of seconds, carried by the water. As a set rolls through, the foam a surfer sees on their wave is mostly what the previous waves left. That needs a persistent, advected foam field, not a per-wave weight (breaking-ribbon spec §8).
+- **Where the dominant wave switches at a vertex,** the foam pattern can jump.
+- **A section can "back off" over the shelf's deep pockets** (P9). The fix: a monotone running-min `depth/amp` field channel, already prototyped.
+- **The biggest default wave at 4 ft barely peels** (about 15 m, P8). `barrel-peeling` is shot at 5 ft. Andrew's calibration: δ (drain), γ, and the ledge depth.
+- **Face heights run above Andrew's feel.** The biggest default wave's face reads about 4.1–4.3 m (≈14 ft) at the peak. Check it with the face readout.
+- **The GPU seabed clamp has no self-test** (the CPU test covers it). The total-surface clamp reads the bed at the undisplaced xz.
+- **Lip faceting.** The lip's outer arc is stretched from a short strip of surface, so it can look faceted from 60 m.
+
