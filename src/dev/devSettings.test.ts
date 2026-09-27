@@ -81,6 +81,7 @@ function tweaked(): DevSettings {
   s.shallow.fadeToM = 18;
   s.overlays.crestLines = true;
   s.overlays.ribbonTint = true;
+  s.overlays.foamMap = true;
   s.breaking.enabled = false;
   s.breaking.stageSpan = 2.2;
   s.breaking.ribbonOnset = 0.62;

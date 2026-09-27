@@ -117,6 +117,7 @@ export const OVERLAY_BINDINGS: Record<keyof DebugOverlays, { label: string }> = 
   depthContours: { label: 'depth contours' },
   crestLines: { label: 'crest lines' },
   ribbonTint: { label: 'ribbon tint' },
+  foamMap: { label: 'foam map' },
 };
 
 export class DevPanel {
