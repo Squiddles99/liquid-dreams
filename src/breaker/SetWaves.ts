@@ -211,12 +211,13 @@ export class SetWaves {
    * behind its crest, ξ·c; metres along its crest). It moves with the crest, so noise read in it is advected with the
    * wave; the foam's noise uses it (render only, not part of the CPU model).
    */
-  private sumBreaking(xz: N, mode: { curl: boolean; eps: N | null }): {
+  private sumBreaking(xz: N, mode: { curl: boolean; eps: N | null; breaking?: boolean }): {
     eta: N; dh: N; slope: N; foam: N; lip: N; stage: N; etaX: N; dhX: N; etaZ: N; dhZ: N; foamFrame: N;
   } {
     const eta = float(0.0).toVar(), dh = vec2(0.0).toVar(), slope = vec2(0.0).toVar();
     const foam = float(0.0).toVar(), lip = float(0.0).toVar(), stage = float(0.0).toVar();
     const foamFrame = vec2(0.0).toVar(), frameEnv = float(0.0).toVar();
+    const whenBreaking = mode.breaking === false ? (): void => {} : (cond: N, body: () => void): void => { If(cond, body); };
     const eps = mode.eps;
     const nb = eps === null ? null : { etaX: float(0.0).toVar(), dhX: vec2(0.0).toVar(), etaZ: float(0.0).toVar(), dhZ: vec2(0.0).toVar() };
     If(this.activeCount.greaterThan(0.5), () => {
@@ -297,7 +298,8 @@ export class SetWaves {
             });
           }
           // Breaking on, and this wave flagged as able to break somewhere (setEvents): else it is Phase 1 exactly.
-          If(brk.enabled.greaterThan(0.5).and(b.w.greaterThan(0.5)), () => {
+          // (Not built at all for the slope, which is Phase 1's: mode.breaking false.)
+          whenBreaking(brk.enabled.greaterThan(0.5).and(b.w.greaterThan(0.5)), () => {
             // crestAt: CREST_STEPS Newton steps toward ξ = 0 along the wave's own travel direction b.xy (the same at
             // every point, so the lookup has no seams), each at most half a wavelength, reading the field where the
             // crest lands, so every point of one cross-section shares its crest's stage and frame.
@@ -407,9 +409,10 @@ export class SetWaves {
     return { disp: vec3(s.dh.x, s.eta, s.dh.y), normal, foam: s.foam, lip: s.lip, stage: s.stage, foamFrame: s.foamFrame };
   }
 
-  /** vec2(∂η/∂x, ∂η/∂z) of the set waves (Eulerian, Jacobian-corrected): the Phase 1 slope, without the breaking shape. */
+  /** vec2(∂η/∂x, ∂η/∂z) of the set waves (Eulerian, Jacobian-corrected): the Phase 1 slope, without the breaking shape.
+   * The breaking block (crest search, stage, shape) is not built at all: the slope never reads it. Self-test only. */
   slopeNode(xz: N): N {
-    return Fn(() => this.sumBreaking(xz, { curl: false, eps: null }).slope)();
+    return Fn(() => this.sumBreaking(xz, { curl: false, eps: null, breaking: false }).slope)();
   }
 
   tauNode(xz: N): N {
