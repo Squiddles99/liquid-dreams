@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Fn, float, instanceIndex, storage, vec3, vec4 } from 'three/tsl';
+import { Fn, float, instanceIndex, select, storage, vec3, vec4 } from 'three/tsl';
 import { registerSelfTest } from '../dev/selfTest';
 import { CRITICAL_ANGLE_RAD, alongPath, fresnelFromInside, waterColourAtDepth } from './underwaterOptics';
 import { alongPathNode, fresnelFromInsideNode, waterColourAtDepthNode } from './underwaterNodes';
@@ -9,7 +9,7 @@ import { Seabed } from '../seabed/Seabed';
 import { Sky } from '../sky/Sky';
 import { createWaterOpticsUniforms } from './waterShading';
 import { DEFAULT_WATER_OPTICS } from './waterOptics';
-import { waterVolumeColourNode } from './WaterVolume';
+import { reefInFrontNode, waterVolumeColourNode } from './WaterVolume';
 import { sunForConditions } from '../astro/sunForConditions';
 
 registerSelfTest({
@@ -61,6 +61,9 @@ registerSelfTest({
       { o: [0, -3, 0], d: [0, 1, 0], tag: 'up' },
       { o: [0, -40, 0], d: [0, -1, 0], tag: 'inside the reef' },
       { o: [0, -3, -900], d: [0, -1, 0], tag: 'deep water' },
+      // The mirror's reflected ray starts at the surface point, which on a crest is above the still water.
+      { o: [0, 0.8, 0], d: [0.3, -0.954, 0], tag: 'from a crest, down' },
+      { o: [0, 0.8, 0], d: [0, 1, 0], tag: 'from a crest, up (water)' },
     ];
     const n = cases.length;
     const inAttr = new THREE.StorageBufferAttribute(new Float32Array(cases.flatMap((c) => [...c.o, 0, ...c.d, 0])), 4);
@@ -76,6 +79,48 @@ registerSelfTest({
     const rows = cases.map((c, i) => ({ tag: c.tag, rgb: [out[i * 4], out[i * 4 + 1], out[i * 4 + 2]] }));
     const finite = rows.every((r) => r.rgb.every((v) => Number.isFinite(v) && v >= 0));
     const differs = rows[0].rgb.some((v, k) => Math.abs(v - rows[3].rgb[k]) > 1e-4 * Math.max(rows[3].rgb[k], 1e-3));
-    return { pass: finite && differs, detail: rows.map((r) => `${r.tag} ${r.rgb.map((v) => v.toExponential(2)).join(',')}`).join('; ') };
+    // From a crest the reef below still shows (it read as flat water when the march's reach was capped by a negative distance to the still surface).
+    const fromCrest = rows[6].rgb[1] > 2 * rows[7].rgb[1];
+    return { pass: finite && differs && fromCrest, detail: rows.map((r) => `${r.tag} ${r.rgb.map((v) => v.toExponential(2)).join(',')}`).join('; ') };
+  },
+});
+
+registerSelfTest({
+  name: 'underwater: a reef wall at or above eye level shows (level and rising rays), and hides the surface behind it',
+  async run(renderer) {
+    const sky = new Sky();
+    const sun = sunForConditions(DEFAULT_CONDITIONS);
+    sky.update(renderer, new THREE.Vector3(...sun.direction), 1);
+    const seabed = new Seabed(buildBathymetry());
+    const u = createWaterOpticsUniforms(DEFAULT_WATER_OPTICS);
+    // 9 m deep over the 13 m shelf, 20 m west of the ledge, which rises to about 6 m deep: level and rising rays east meet
+    // the wall; straight up meets only water (the reference). The last row asks whether the reef hides a surface point
+    // 30 m away along a ray rising 8° east (sentinel colour 100 in, the reef's colour out when it does).
+    const eye: [number, number, number] = [-20, -9, 0];
+    const dirs: [number, number, number][] = [[1, 0, 0], [0.99, 0.14, 0], [0, 1, 0], [0.99, 0.14, 0]];
+    const n = dirs.length;
+    const inAttr = new THREE.StorageBufferAttribute(new Float32Array(dirs.flatMap((d) => [...d, 0])), 4);
+    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 4), 4);
+    const input = storage(inAttr, 'vec4', n).toReadOnly();
+    const output = storage(outAttr, 'vec4', n);
+    const o = vec3(...eye);
+    const pass = Fn(() => {
+      const d = input.element(instanceIndex).xyz;
+      const volume = waterVolumeColourNode(o, d, seabed, sky, u);
+      const hidden = reefInFrontNode(o, d, float(30.0), vec3(100.0), seabed, sky, u);
+      const chosen: any = select(instanceIndex.equal(3), hidden, volume); // three typings gap: select() is typed narrower than its result
+      output.element(instanceIndex).assign(vec4(chosen, 1.0));
+    })().compute(n) as THREE.ComputeNode;
+    renderer.compute(pass);
+    const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    const rgb = (i: number): number[] => [out[i * 4], out[i * 4 + 1], out[i * 4 + 2]];
+    const water = rgb(2);
+    const differs = (c: number[]): boolean => c.some((v, k) => Math.abs(v - water[k]) > 0.05 * Math.max(water[k], 1e-3));
+    const finite = [0, 1, 2, 3].every((i) => rgb(i).every((v) => Number.isFinite(v) && v >= 0));
+    const level = differs(rgb(0)), rising = differs(rgb(1)), hides = rgb(3).every((v) => v < 50);
+    return {
+      pass: finite && level && rising && hides,
+      detail: `level ${rgb(0).map((v) => v.toExponential(2))} (wall ${level}); rising ${rgb(1).map((v) => v.toExponential(2))} (wall ${rising}); up (water) ${water.map((v) => v.toExponential(2))}; surface behind the reef ${rgb(3).map((v) => v.toExponential(2))} (hidden ${hides})`,
+    };
   },
 });

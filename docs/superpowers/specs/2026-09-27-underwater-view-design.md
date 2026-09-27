@@ -53,8 +53,8 @@ There is no split view: the whole frame switches as the eye crosses the surface.
 
 - A sphere around the camera like the sky dome (`BackSide`, no depth write, drawn first), visible only underwater. Every pixel the sheet and ribbon don't cover shows it.
 - For a view direction d:
-  - rising (d.y > 0): L∞ at the camera's depth (the sheet covers almost all of these pixels anyway);
-  - otherwise the existing `marchSeabedNode` from the camera along d. On a hit, the seabed's radiance (§3.4.1) through the path; on a miss, L∞. The march's reach fade (`REACH_FADE_*`) fades the bed into L∞ before the cutoffs, as it does from above.
+  - a march along d in any direction (`marchBedAlongNode`; rising rays stop at the still surface). On a hit, the seabed's radiance (§3.4.1) through the path; on a miss, L∞. The reach fade (`REACH_FADE_DIST_M`) fades the bed into L∞ before the cutoff, as it does from above.
+  - **As built (final review):** the draft marched downward rays only (the look-through's `marchSeabedNode`), so a reef wall at or above eye level was invisible from a diver's eye. The sheet from below also checks the same march between the eye and the surface point (`reefInFrontNode`), so the reef hides the surface behind it.
 - **§3.4.1 The seabed's lighting** moves out of `seabedTerms` into `seabedRadianceNode(hitPos, seabed, sky, u)`, shared by the view from above and from below, so the reef is lit the same either way. `seabedTerms` calls it unchanged, so the view from above is the same code.
 
 ### 3.5 The ribbon

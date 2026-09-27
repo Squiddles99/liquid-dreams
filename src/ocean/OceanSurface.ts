@@ -8,7 +8,7 @@ import type { Sky } from '../sky/Sky';
 import { CASCADE_FADES, fadeWeightNode } from './cascadeFades';
 import type { OceanSimulation } from './OceanSimulation';
 import { buildPolarGrid } from './polarGrid';
-import { waterVolumeColourNode } from './WaterVolume';
+import { reefInFrontNode, waterVolumeColourNode } from './WaterVolume';
 import { type WaterOpticsUniforms, shadeWater, shadeWaterFromBelow } from './waterShading';
 import type { WaterSurfaceModel } from './waterSurface';
 
@@ -167,13 +167,15 @@ export class OceanSurface {
     const below = new THREE.MeshBasicNodeMaterial();
     below.side = THREE.BackSide;
     below.positionNode = material.positionNode;
-    below.colorNode = shadeWaterFromBelow(
+    // A reef between the eye and the surface point hides it (the sheet is drawn over everything the dome shows).
+    const fromBelow = shadeWaterFromBelow(
       {
         normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), surfaceY: positionWorld.y, tide: model.seabed.tide,
         reflected: (dir: N) => waterVolumeColourNode(positionWorld, dir, model.seabed, sky, optics),
       },
       sky, optics,
     );
+    below.colorNode = reefInFrontNode(cameraPosition, viewDir.negate(), distance, fromBelow, model.seabed, sky, optics);
     this.aboveMaterial = material;
     this.belowMaterial = below;
 

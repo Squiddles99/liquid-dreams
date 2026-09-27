@@ -50,5 +50,5 @@ The camera below the surface, at the `the-drain` moment's time. The surface is s
 
 - `18-underwater-window.png`: 3 m under the channel north of the peak, looking straight up. The sky fills Snell's window, brightening toward its rim where the horizon sky is squeezed in, and the low morning sun sits at the top left. At the right edge, the ripples tip the surface past the 48.6° rim into total internal reflection.
 - `19-underwater-reef.png`: 3 m deep over the north ledge, looking along it. The ledge fades into the blue, and the rippled surface overhead mirrors the reef below.
-- `20-underwater-down.png`: 4 m deep over the peak, looking down at the reef close below. Its detail is soft because the seabed data is 1 m resolution.
+- `20-underwater-wall.png`: 9 m deep over the 13 m shelf, 20 m west of the ledge, looking east. The reef wall rises above eye level, and above it Snell's window is a bright ellipse with the low sun in it. (The reviewer caught that level and rising rays saw through the reef; the march now runs in any direction.)
 - `21-underwater-drain.png`: the `the-drain` camera moved 1.5 m under the surface. The reef edge runs off into the channel, under the mirror of the surface.
