@@ -62,6 +62,7 @@ Carried past Phase 1 (Reef & Sets, completed 2026-09-27, approved by Andrew as "
   - `MARCH_STEPS` 14 → 12.
 - **Distant lips alias.** A lip about 100 m away still looks spiky, because the lip's back window spans only about 1.2 grid cells there. The Break folder's "lip back reach" slider trades lip thickness against aliasing. A proper fix is a denser grid near waves, or filtering the lip weight by distance.
 - **Whitewater is a placeholder.** The foam is noise-textured colour only. Phase 3 brings lip impact, spray and lingering foam.
+- **Phase 3 foam must persist and drift (Andrew, 2026-09-27).** Foam is made where the break turns the wave inside out (the plunge and landing zone), then lingers, spreads and decays over tens of seconds, carried by the water. As a set rolls through, the foam a surfer sees on their wave is mostly what the previous waves left. That needs a persistent, advected foam field, not a per-wave weight (breaking-ribbon spec §8).
 - **Where the dominant wave switches at a vertex,** the foam pattern can jump.
 - **A section can "back off" over the shelf's deep pockets** (P9). The fix: a monotone running-min `depth/amp` field channel, already prototyped.
 - **The biggest default wave at 4 ft barely peels** (about 15 m, P8). `barrel-peeling` is shot at 5 ft. Andrew's calibration: δ (drain), γ, and the ledge depth.

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-27
 **Authors:** Claude, delegated by Andrew Justice
-**Status:** Implemented overnight on the `phase-2-the-break` branch (2026-09-27); awaiting Andrew's review. Plan-level rulings P1–P11 are in the plan. Not merged.
+**Status:** Implemented overnight on the `phase-2-the-break` branch (2026-09-27); awaiting Andrew's review.  **Rework:** after Andrew's review, the shape, normals, lip and foam (§3.2, §3.3, §3.5, §3.6) are superseded by `2026-09-27-breaking-ribbon-design.md` (the breaking ribbon). Plan-level rulings P1–P11 are in the plan. Not merged.
 **Builds on:** the vision spec (`2026-09-25-liquid-dreams-first-light-design.md`) and Phase 1 (`2026-09-26-reef-and-sets-design.md`). Their world conventions, "one source of truth for water height", deterministic moments, CPU-model/GPU-mirror testing and GPU budget all still apply.
 
 ---
