@@ -208,22 +208,34 @@ describe('the breaking surface has no seams across the crest', () => {
   // just shoreward of the peak and cut ~1 m trenches along the crest (x 18–30, z −5…−9). A seam is a jump: it does not
   // shrink as the points close in. The breaking shape itself is steep there (the collapse front and the curl add
   // 0.4–3.5 m to a 0.5 m step, but only 2–8 cm to a 1 cm one), so the check is at 1 cm, where the old lookup's seams
-  // stepped 0.19–0.38 m.
-  it('1 cm apart, breaking adds at most 0.15 m to Phase 1’s height step (0.5 m grid, x 0…40, z −15…5; probe and render)', { timeout: 60_000 }, () => {
+  // stepped 0.19–0.38 m. The distance is the displaced surface's (dx, η, dz), so a seam in the horizontal displacement
+  // (the curl moves points along travel) counts too. And the power: a steep but continuous surface's excess shrinks
+  // with the spacing, a seam's does not, so the worst pairs are re-measured a quarter as far apart and must shrink by
+  // at least 2× (the old lookup's 0.18 m at 4 mm would fail this).
+  it('1 cm apart, breaking adds at most 0.15 m to Phase 1’s 3D step (probe and render), and the worst pairs shrink ≥ 2× at 2.5 mm', { timeout: 120_000 }, () => {
     const waves = REF_SET.map(toActiveWave);
     const h = 0.01;
+    const pos = (x: number, z: number, t: number, o?: BreakOptions): [number, number, number] => {
+      const r = sumWaves(x, z, t, at(x, z), waves, ctx, o);
+      return [x + r.dx, r.eta, z + r.dz];
+    };
+    const gap = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    /** Breaking's addition to the distance between the surface points of (x, z) and (x, z) + d. */
+    const excessAt = (x: number, z: number, dx: number, dz: number, t: number, o: BreakOptions): number =>
+      gap(pos(x, z, t, o), pos(x + dx, z + dz, t, o)) - gap(pos(x, z, t), pos(x + dx, z + dz, t));
     for (const dt of [0, 1]) for (const o of [probe, render]) {
-      const t = REF_BIGGEST.arrivalS + dt;
-      let worst = 0, where = '';
+      const t = REF_BIGGEST.arrivalS + dt, name = o.includeCurl ? 'render' : 'probe';
+      const pairs: { x: number; z: number; dx: number; dz: number; e: number }[] = [];
       for (let x = 0; x <= 40 + 1e-9; x += 0.5) for (let z = -15; z <= 5 + 1e-9; z += 0.5) {
-        const f = at(x, z), a = sumWaves(x, z, t, f, waves, ctx, o).eta, a1 = sumWaves(x, z, t, f, waves, ctx).eta;
-        for (const [qx, qz] of [[x + h, z], [x, z + h]]) {
-          const fq = at(qx, qz), b = sumWaves(qx, qz, t, fq, waves, ctx, o).eta, b1 = sumWaves(qx, qz, t, fq, waves, ctx).eta;
-          const excess = Math.abs(a - b) - Math.abs(a1 - b1);
-          if (excess > worst) { worst = excess; where = `(${x}, ${z}) to (${qx}, ${qz})`; }
-        }
+        for (const [dx, dz] of [[h, 0], [0, h]]) pairs.push({ x, z, dx, dz, e: excessAt(x, z, dx, dz, t, o) });
       }
-      expect(worst, `${o.includeCurl ? 'render' : 'probe'} at arrival + ${dt} s, worst ${where}`).toBeLessThanOrEqual(0.15);
+      pairs.sort((p, q) => q.e - p.e);
+      const w = pairs[0];
+      expect(w.e, `${name} at arrival + ${dt} s, worst (${w.x}, ${w.z}) + (${w.dx}, ${w.dz})`).toBeLessThanOrEqual(0.15);
+      for (const p of pairs.slice(0, 20).filter((q) => q.e > 0.005)) {
+        const quarter = excessAt(p.x, p.z, p.dx / 4, p.dz / 4, t, o);
+        expect(quarter, `${name} at arrival + ${dt} s, (${p.x}, ${p.z}): ${p.e.toFixed(4)} m at 1 cm`).toBeLessThanOrEqual(p.e / 2);
+      }
     }
   });
 });
