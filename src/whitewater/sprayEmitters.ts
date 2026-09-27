@@ -52,9 +52,12 @@ export function normalizeSprayParams(p: SprayParams): void {
   }
 }
 
-/** Ticks a replay covers: the longest life (1.2 × lifeS) plus 0.5 s. */
+/**
+ * Ticks a replay covers: the longest life (1.2 × lifeS) plus 0.5 s, at most the pool's history (final review I2: beyond it
+ * the replay only rewrote slots of puffs long dead).
+ */
 export function sprayReplayTicks(lifeS: number): number {
-  return Math.ceil((1.2 * lifeS + 0.5) / FOAM_TICK_S - 1e-9);
+  return Math.min(SPRAY_HISTORY_TICKS, Math.ceil((1.2 * lifeS + 0.5) / FOAM_TICK_S - 1e-9));
 }
 
 export interface Wind {
@@ -86,8 +89,10 @@ export interface SprayEmitter {
   /** The crest normal (the wave's travel). */
   nx: number;
   nz: number;
-  /** weight · ρ · wind factor · amount (may exceed 1 above amount 1). */
+  /** weight · ρ · wind factor · amount (may exceed 1 above amount 1): how many puffs are born. */
   strength: number;
+  /** weight · ρ (≤ 1): how strongly the lip is drawn there, which sets each puff's opacity (final review I1). */
+  lip: number;
   /** The wave's event id and the station's arc index (arc / spacing): the hash keys of its births. */
   waveId: number;
   arc: number;
@@ -109,7 +114,8 @@ export interface EmitterInput {
 /** The emitters at sim time t: the lip tip of every station mid-throw (spec §3.1). */
 export function sprayEmitters(i: EmitterInput): SprayEmitter[] {
   const { field, ctx, params } = i;
-  if (!field || !ctx || !params.enabled || !(i.amount > 0) || i.events.length === 0) return [];
+  // A calm wind makes no spray anywhere: skip the trace (final review I2; it ran every tick on glassy days for nothing).
+  if (!field || !ctx || !params.enabled || !(i.amount > 0) || i.events.length === 0 || !(i.wind.speedMs > WIND_CALM_MS)) return [];
   const waves = i.events.map(toActiveWave);
   const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M });
   const opts: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params };
@@ -132,7 +138,7 @@ export function sprayEmitters(i: EmitterInput): SprayEmitter[] {
     const u = f.K[0] + f.reach, y = f.K[1] - 0.5 * GRAVITY_MS2 * tp * tp;
     out.push({
       x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz,
-      strength: f.weight * f.rho * wind * i.amount, waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M),
+      strength: f.weight * f.rho * wind * i.amount, lip: Math.min(1, f.weight * f.rho), waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M),
     });
   }
   return out;
@@ -158,7 +164,7 @@ export interface SprayBirth {
   vy: number;
   vz: number;
   life: number;
-  /** min(1, the emitter's strength): scales the puff's opacity. */
+  /** The emitter's lip weight (≤ 1): scales the puff's opacity. The wind and the amount set only how many are born. */
   strength: number;
 }
 
@@ -178,7 +184,7 @@ export function sprayBirths(emitters: readonly SprayEmitter[], tick: number, p: 
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.3, z: e.z + e.nx * along,
         vx: 0.5 * e.vx + (r(2) * 2 - 1), vy: 2 + 2 * r(3) + (r(4) * 2 - 1), vz: 0.5 * e.vz + (r(5) * 2 - 1),
-        life: p.lifeS * (0.6 + 0.6 * r(6)), strength: Math.min(1, e.strength),
+        life: p.lifeS * (0.6 + 0.6 * r(6)), strength: Math.min(1, e.lip),
       });
     }
   }

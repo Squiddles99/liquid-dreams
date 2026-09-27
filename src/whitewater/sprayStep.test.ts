@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FOAM_TICK_S, FoamSchedule } from './foamStep';
-import { SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, SPRAY_POOL, type SprayBirth } from './sprayEmitters';
+import { SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, SPRAY_POOL, type SprayBirth, sprayReplayTicks } from './sprayEmitters';
 import { SPRAY_DRAG_TAU_S, SPRAY_SETTLE_MS2, SprayPool, birthInto, liveSlots, slotBase, stepPool } from './sprayStep';
 
 const puff = (over: Partial<SprayBirth> = {}): SprayBirth => ({ x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: 0, life: 2, strength: 1, ...over });
@@ -64,6 +64,19 @@ describe('the spray pool (CPU reference)', () => {
       expect(replay.posAge[s * 4 + c]).toBe(live.posAge[s * 4 + c]);
       expect(replay.velLife[s * 4 + c]).toBe(live.velLife[s * 4 + c]);
     }
+  });
+  it('at the longest life (spray life 4 → 4.8 s) a replay of the capped window still equals live play', () => {
+    const births = (k: number): SprayBirth[] => Array.from({ length: 3 }, (_, i) => puff({ x: k + i, vy: 1 + i, life: 4.8 - i * 0.7 }));
+    const run = (from: number, to: number): SprayPool => {
+      const pool = new SprayPool();
+      for (let k = from; k <= to; k++) { birthInto(pool, k, births(k)); stepPool(pool, 3, -1); }
+      return pool;
+    };
+    const live = run(0, 400), replay = run(400 - sprayReplayTicks(4) + 1, 400);
+    const a = liveSlots(live);
+    expect(a.length).toBeGreaterThan(200);
+    expect(liveSlots(replay)).toEqual(a);
+    for (const s of a) for (let c = 0; c < 4; c++) expect(replay.posAge[s * 4 + c]).toBe(live.posAge[s * 4 + c]);
   });
   it('planTicks replays exactly the requested count', () => {
     const s = new FoamSchedule();
