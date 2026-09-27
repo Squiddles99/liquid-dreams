@@ -71,7 +71,7 @@ These use the `behind-the-wave` conditions, 5.4 s before that moment, when the r
 
 **Cost** (pane visible, RTX 4060 Laptop):
 - drawing: 0.3 ms;
-- the explosion's replay: 42 ticks, 57 ms alone, about 1.2 ms of CPU per tick;
+- the explosion's replay: 58 ticks, 76 ms alone (after the final review lengthened the lives so the burst falls back), about 1.2 ms of CPU per tick;
 - sharing the tick's emitters with the spray, both replay together in about 75 ms.
 
 **Tuned overnight** (Andrew's eye is the test): at the spec's values the burst topped out at crest height and hid against the wave's white face. The kick now aims 1.5 × H above the landing, and the puffs are 0.8–3.5 m at opacity 0.32.
