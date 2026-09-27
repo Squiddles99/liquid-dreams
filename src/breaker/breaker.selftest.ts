@@ -125,14 +125,14 @@ const OFF_RAY: [number, number][] = [[20, -6], [27, -6.5], [30, -9], [10.3, -28.
 /** 64 points around the peak: an 8 × 8 grid 4 m apart, from −14 to +14 m in x and z. */
 const AROUND_PEAK: [number, number][] = Array.from({ length: 64 }, (_, i) => [-14 + 4 * (i % 8), -14 + 4 * Math.floor(i / 8)]);
 
-/** The biggest wave of the default set 1, and the times after its arrival at the peak that the break tests read (0.6
- * and 0.9 s catch the lip landing: foam between 0 and 1). */
+/** The biggest wave of the default set 1, and the times after its arrival at the peak that the break tests read (1.8
+ * and 2.4 s catch the whitewater rising as the section settles: foam between 0 and 1). */
 const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
-const BREAK_DTS = [0, 0.3, 0.6, 0.9, 1.2, 4];
+const BREAK_DTS = [0, 0.3, 0.6, 0.9, 1.2, 1.8, 2.4, 4];
 
 /** A non-default shape, so every break uniform the sheet reads is exercised away from its default (normalized, as the GPU uploads). */
 const ALT_BREAK_PARAMS: BreakParams = (() => {
-  const p = { ...DEFAULT_BREAK_PARAMS, gamma: 0.7, stageSpan: 1.4, beta: 0.5, collapseStart: 0.7, faceWidth: 0.7, ribbonOnset: 0.45, troughDrain: 0.5, drainEnd: 0.3 };
+  const p = { ...DEFAULT_BREAK_PARAMS, gamma: 0.7, stageSpan: 0.6, beta: 0.5, collapseStart: 0.2, faceWidth: 0.7, ribbonOnset: 0.45, troughDrain: 0.5, drainEnd: 0.3 };
   normalizeBreakParams(p);
   return p;
 })();

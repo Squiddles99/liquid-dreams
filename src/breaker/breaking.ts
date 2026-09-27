@@ -188,12 +188,13 @@ export interface StageCurves {
 }
 
 /**
- * The collapse (the wave settling to its bore) is complete at ρ = 1 + COLLAPSE_END·Δ: well after the tube has closed
+ * The collapse (the wave settling to its bore) is complete at ρ = 1 + COLLAPSE_END·Δ (4.2 at the defaults; at 2.5 the
+ * peak's crest halved within ~1 s of the lip landing, and the ribbon collapsed onto it): well after the tube has closed
  * (s = 0.75 at ρ ≈ 1 + 0.66·Δ), as the whitewater runs on over the shallower reef. Settling by the stage's end (ρ = 1 +
  * Δ) dropped a broken section to its bore within half a second of breaking, lower than the unbroken wave either side of
  * it: a sunken, square-sided bowl. Whitewater stays nearly as tall as the wave that made it and settles over the reef.
  */
-export const COLLAPSE_END = 2.5;
+export const COLLAPSE_END = 4.5;
 
 /** Where the drain is full: ρ = 1 + drainEnd·Δ (Δ floored as breakingStage floors it). */
 export function drainFullRatio(p: BreakParams): number {

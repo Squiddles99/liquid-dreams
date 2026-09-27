@@ -77,6 +77,7 @@ function sampleTable(): N {
 export function createLipUniforms(p: BreakParams) {
   const u = {
     throwStrength: uniform(0), lipThickness: uniform(0), collapseTime: uniform(1), ribbonOnset: uniform(0), faceWidth: uniform(1), steepFrom: uniform(0),
+    drainGrowth: uniform(1),
   };
   updateLipUniforms(u, p);
   return u;
@@ -93,6 +94,7 @@ export function updateLipUniforms(u: LipUniforms, params: BreakParams): void {
   u.ribbonOnset.value = p.ribbonOnset;
   u.faceWidth.value = p.faceWidth;
   u.steepFrom.value = steepeningStart(p);
+  u.drainGrowth.value = 1 + p.troughDrain * p.delta;
 }
 
 /** The time since onset as the GPU stores it: TB_NULL before breaking, TB_INFINITY past the hand-back. */
@@ -196,8 +198,10 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   // The back-off edges scale with H: floored so a zero-height row (never drawn) can't give smoothstep equal edges.
   const Hs = max(H, 1e-6);
   const steep = select(pre, smoothstep(u.steepFrom, 1.0, r).mul(smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r)), smoothstep(Hs.mul(BACK_OFF_DROP_H[0]), Hs.mul(BACK_OFF_DROP_H[1]), K.y.sub(F.y)));
-  const collapse = select(pre, float(0.0), smoothstep(tauLand, tauLand.mul(u.collapseTime.add(1.0)), tb)).toVar();
-  const landing = select(pre, float(0.0), smoothstep(tauLand, tauLand.mul(u.collapseTime.mul(LANDING_FOAM_RISE).add(1.0)), tb)).toVar();
+  // lipProfile.settleSpan: collapseTime × landingTime(H·(1 + troughDrain·δ)), the fall floored at 0.05 m as landingTime floors it.
+  const span = u.collapseTime.mul(max(H.mul(u.drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt()).toVar();
+  const collapse = select(pre, float(0.0), smoothstep(tauLand, tauLand.add(span), tb)).toVar();
+  const landing = select(pre, float(0.0), smoothstep(tauLand, tauLand.add(span.mul(LANDING_FOAM_RISE)), tb)).toVar();
   const grow = smoothstep(0.0, LIP_GROW_PROGRESS, prog);
   const eRoot = max(MIN_LIP_THICKNESS_M, min(u.lipThickness.mul(H), vj.mul(vj).mul(MAX_THICKNESS_OF_RADIUS / GRAVITY_MS2))).mul(grow).toVar();
   const R = vec2(K.x, K.y.sub(eRoot)).toVar();
@@ -205,7 +209,7 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   const uFront = max(uFoot, K.x.add(vj.mul(tauLand))).add(LAND_CLEARANCE_M + EDGE_MARGIN_M).toVar();
   const uBack = H.mul(BACK_EDGE_H).add(EDGE_MARGIN_M).negate().toVar();
   // ribbonWeight
-  const end = tauLand.mul(u.collapseTime.add(1.0));
+  const end = tauLand.add(span);
   const rho = select(pre, smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r), float(1.0).sub(smoothstep(end, end.add(HAND_BACK_S), tb))).toVar();
   const weight = steep.mul(float(1.0).sub(collapse)).toVar();
   return { K, F, tF, W, R, uFoot, uFront, uBack, tauLand, vj, prog, reach, eRoot, weight, collapse, landing, rho, Fb, landing0 };
