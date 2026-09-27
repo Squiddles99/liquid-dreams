@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
-import { Fn, If, PI, dot, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
-import { extinction } from '../seabed/waterColumn';
+import { Fn, If, PI, dot, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, refract, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
+import { WATER_IOR, extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
+import { alongPathNode, cameraDepthNode, fresnelFromInsideNode, sunThroughWindowNode, waterColourAtDepthNode } from './underwaterNodes';
 import { type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
 
 type N = any;
@@ -147,4 +148,27 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
     })()
     : colour;
   return sky.applyAerialPerspective(withOverlay, i.distance, v.negate());
+}
+
+/**
+ * The water's surface seen from below: Snell's window (the sky, and the sun, along the ray refracted out of the water) and,
+ * by the Fresnel from inside (1 beyond the 48.6° rim), the water below reflected in it; foam blocks the window. Then the
+ * path from the eye up to the surface point. No aerial perspective: the sky through the window already has it.
+ */
+export function shadeWaterFromBelow(
+  i: { normal: N; viewDir: N; distance: N; foam: N; surfaceY: N; tide: N }, sky: Sky, u: WaterOpticsUniforms,
+): N {
+  const nDown = i.normal.negate();
+  const cosI = max(dot(nDown, i.viewDir), 0.0);
+  const R = fresnelFromInsideNode(cosI);
+  const t: N = refract(i.viewDir.negate(), nDown, float(WATER_IOR)); // zero beyond the rim, where R = 1
+  const tDir = normalize(vec3(t.x, max(t.y, 1e-3), t.z));
+  const skyThrough = sky.radiance(tDir).add(sunThroughWindowNode(tDir, sky));
+  const upwelling = deepWaterUpwelling(sky, u);
+  const below = waterColourAtDepthNode(upwelling, u.extinction, max(i.tide.sub(i.surfaceY), 0.0));
+  const surface = skyThrough.mul(float(1.0).sub(R)).add(below.mul(R));
+  const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(max(sky.sunDirection.y, 0.0))).mul(u.foamAlbedo).div(PI);
+  const seen = mix(surface, foamLight.mul(0.6), saturate(i.foam));
+  const inf = waterColourAtDepthNode(upwelling, u.extinction, cameraDepthNode(i.tide));
+  return alongPathNode(seen, inf, u.extinction, i.distance);
 }

@@ -8,7 +8,7 @@ import type { Sky } from '../sky/Sky';
 import { CASCADE_FADES, fadeWeightNode } from './cascadeFades';
 import type { OceanSimulation } from './OceanSimulation';
 import { buildPolarGrid } from './polarGrid';
-import { type WaterOpticsUniforms, shadeWater } from './waterShading';
+import { type WaterOpticsUniforms, shadeWater, shadeWaterFromBelow } from './waterShading';
 import type { WaterSurfaceModel } from './waterSurface';
 
 type N = any;
@@ -93,8 +93,20 @@ function footprintClear(fp: SheetFootprint, xz: N): N {
   return inside.not().or(textureLoad(fp.texture, texel, int(0)).x.lessThanEqual(0.5));
 }
 
+/** The sheet's material for the eye's side of the surface (two built once; crossing the surface only swaps them). */
+export function pickSheetMaterial<M>(underwater: boolean, above: M, below: M): M {
+  return underwater ? below : above;
+}
+
 export class OceanSurface {
   readonly mesh: THREE.Mesh;
+  /** Seen from above: today's sheet, never touched by the underwater view. */
+  readonly aboveMaterial: THREE.MeshBasicNodeMaterial;
+  /**
+   * Seen from below (underwater): the same surface, back faces, shaded by shadeWaterFromBelow. No footprint mask: the
+   * ribbon is hidden underwater (it is single-sided), and a cut-out sheet would show a hole from below.
+   */
+  readonly belowMaterial: THREE.MeshBasicNodeMaterial;
   /** The grid is centred here each frame; waves are sampled in world space so they never slide. */
   readonly cameraXZ = uniform(new THREE.Vector2());
   private readonly slopeVariance: THREE.UniformNode<'float', number>[];
@@ -150,8 +162,24 @@ export class OceanSurface {
     // displaced position as the footprint pass rasterises the ribbon's. Outside the mask's grid it never discards.
     if (options.footprint) material.maskNode = footprintClear(options.footprint, positionWorld.xz);
 
+    // The view from below shares the vertex stage and the fragment's normal, foam and distance.
+    const below = new THREE.MeshBasicNodeMaterial();
+    below.side = THREE.BackSide;
+    below.positionNode = material.positionNode;
+    below.colorNode = shadeWaterFromBelow(
+      { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), surfaceY: positionWorld.y, tide: model.seabed.tide },
+      sky, optics,
+    );
+    this.aboveMaterial = material;
+    this.belowMaterial = below;
+
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.frustumCulled = false;
+  }
+
+  /** Swaps in the sheet's material for the eye's side of the surface. */
+  setUnderwater(on: boolean): void {
+    this.mesh.material = pickSheetMaterial(on, this.aboveMaterial, this.belowMaterial);
   }
 
   setOverlays(o: DebugOverlays): void {
