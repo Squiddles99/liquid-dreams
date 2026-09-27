@@ -127,15 +127,24 @@ export const DEVELOP_BLEND: readonly [number, number] = [
  * From the front edge, uFront − (the curve's arc length from the front edge); from the back edge, uBack + (its arc
  * length from the back edge); blended by DEVELOP_BLEND. Exactly uFront and uBack at the edges (the sheet's own homes
  * there), continuous along the profile. `points` are the chop-free profile samples (u along n, y), front to back.
- * The GPU's develop pass mirrors this in f32.
+ * With `blend` (the ribbon's detail coordinate): mix(home, developed u, frame weight) per sample, so a station whose
+ * profile is the sheet's own (weight → 0, the hand-back and before steepening) reads its detail at the sheet's home
+ * exactly, continuous across stations; the home itself at both edges. The GPU's develop pass mirrors this in f32.
  */
-export function developedU(points: readonly (readonly [number, number])[], uFront: number, uBack: number): number[] {
+export function developedU(
+  points: readonly (readonly [number, number])[], uFront: number, uBack: number,
+  blend?: { readonly homes: readonly number[]; readonly weight: number },
+): number[] {
   const arc = [0];
   for (let j = 1; j < points.length; j++) arc.push(arc[j - 1] + Math.hypot(points[j][0] - points[j - 1][0], points[j][1] - points[j - 1][1]));
   const total = arc[arc.length - 1];
+  const last = arc.length - 1;
   return arc.map((a, j) => {
     const fromFront = uFront - a, fromBack = uBack + (total - a);
-    return fromBack + (fromFront - fromBack) * (1 - smoothstepCpu(DEVELOP_BLEND[0], DEVELOP_BLEND[1], j));
+    const dev = fromBack + (fromFront - fromBack) * (1 - smoothstepCpu(DEVELOP_BLEND[0], DEVELOP_BLEND[1], j));
+    if (!blend) return dev;
+    const home = blend.homes[j];
+    return j === 0 || j === last ? home : home * (1 - blend.weight) + dev * blend.weight;
   });
 }
 
@@ -299,8 +308,9 @@ export class BreakingRibbon {
   /** Per vertex: vec4(home world x, home world z, along-crest tangent x, tangent z) (the tangent is t̂ = (−n.z, n.x)). */
   readonly homes: THREE.StorageBufferAttribute;
   /**
-   * Per vertex: vec4(detail world x, detail world z, developed u, constructed): where the vertex reads its FFT detail and
-   * chop, S + n·(developed u) (developedU), the home exactly at both edges; and the SHEET_BLEND_M weight of its departure
+   * Per vertex: vec4(detail world x, detail world z, detail u, constructed): where the vertex reads its FFT detail and
+   * chop, S + n·mix(home u, developed u, frame weight) (developedU with its blend), the home exactly at both edges and
+   * wherever the frame's weight is 0; and the SHEET_BLEND_M weight of its departure
    * from the sheet (0 on the front and back segments). Skirts take their edge's.
    */
   readonly details: THREE.StorageBufferAttribute;
@@ -630,7 +640,8 @@ export class BreakingRibbon {
 
   /**
    * One invocation per station: the developed u of each profile sample (developedU, in f32) from the chop-free
-   * positions' (u along n, y), written as the detail coordinate S + n·(developed u); the skirts take their edge's. It
+   * positions' (u along n, y), blended toward the home u by the frame's weight, written as the detail coordinate
+   * S + n·mix(home u, developed u, weight) (the home itself at the edges); the skirts take their edge's. It
    * also writes homes (the home xz the vertex pass left in details, and t̂).
    */
   private buildDevelopPass(): THREE.ComputeNode {
@@ -645,7 +656,7 @@ export class BreakingRibbon {
       const S = a.xy, n = a.zw;
       const tHat = vec2(n.y.negate(), n.x).toVar();
       const f = unpackFrameNodes(Array.from({ length: FRAME_PROFILE_VEC4S }, (_, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).toVar()));
-      const uFront = float(f.uFront).toVar(), uBack = float(f.uBack).toVar();
+      const uFront = float(f.uFront).toVar(), uBack = float(f.uBack).toVar(), weight = float(f.weight).toVar();
       /** Profile sample jj's (u along n, y), chop-free. */
       const UY = (jj: N): N => {
         const p = positions.element(i.mul(V).add(jj).add(1));
@@ -667,10 +678,13 @@ export class BreakingRibbon {
         prev.assign(q);
         const fromFront = uFront.sub(arc), fromBack = uBack.add(total.sub(arc));
         const wFront = float(1.0).sub(smoothstep(DEVELOP_BLEND[0], DEVELOP_BLEND[1], float(j)));
-        // Exactly the home at the edges: uFront at the first sample, uBack at the last.
-        const dev = select(j.equal(int(0)), uFront, select(j.equal(int(LAST)), uBack, fromBack.add(fromFront.sub(fromBack).mul(wFront)))).toVar();
+        const developed = fromBack.add(fromFront.sub(fromBack).mul(wFront));
         const k = i.mul(V).add(j).add(1).toVar();
         const left = details.element(k).toVar(); // (home xz, home u, constructed) from the vertex pass
+        // Blended toward the home by the frame's weight (the sheet's own coordinate where the profile is the sheet's);
+        // exactly the home at the edges.
+        const edge = j.equal(int(0)).or(j.equal(int(LAST)));
+        const dev = select(edge, left.z, mix(left.z, developed, weight)).toVar();
         const h = vec4(left.xy, tHat).toVar();
         const v = vec4(S.add(n.mul(dev)), dev, left.w).toVar();
         homes.element(k).assign(h);
