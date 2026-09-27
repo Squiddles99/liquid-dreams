@@ -39,7 +39,9 @@ export function setFoamPattern(foam: N, frame: N, time: N): N {
       // The blend's typical swing is about ±0.3: × 1.7 spreads it over the whole 0–1 range.
       const n = saturate(n1.mul(0.65).add(n2.mul(0.35)).mul(1.7).add(0.5));
       const t = float(1.0).sub(saturate(foam).mul(0.8));
-      const cover = smoothstep(t.sub(SET_FOAM_BAND), t.add(SET_FOAM_BAND), n).mul(SET_FOAM_MAX_COVER);
+      // × saturate(4·foam): thin foam's coverage goes to 0 with its weight. Without it, where the noise saturates the
+      // coverage stayed ~0.43 down to the 1e-3 cut-off, a hard edge wherever clearing foam ends (foam field, 3a).
+      const cover = smoothstep(t.sub(SET_FOAM_BAND), t.add(SET_FOAM_BAND), n).mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0)));
       const shade = saturate(n2.mul(1.7).add(0.5)).mul(0.25).add(n.mul(0.3)).add(0.55);
       out.assign(vec2(cover, shade));
     });

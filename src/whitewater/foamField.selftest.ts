@@ -6,7 +6,7 @@ import { SetWaves } from '../breaker/SetWaves';
 import { sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
-import { waterFoamFrame, waterFoamFrameCpu } from '../ocean/OceanSurface';
+import { SET_FOAM_MAX_COVER, setFoamPattern, waterFoamFrame, waterFoamFrameCpu } from '../ocean/OceanSurface';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { FoamField } from './FoamField';
@@ -141,5 +141,28 @@ registerSelfTest({
       return Math.max(m, Math.abs(g[i * 4] - a), Math.abs(g[i * 4 + 1] - b));
     }, 0);
     return { pass: worst < 1e-4, detail: `worst ${worst.toExponential(2)}` };
+  },
+});
+
+registerSelfTest({
+  name: 'foam: the pattern fades out continuously as the foam weight goes to 0 (no hard edge where clearing foam ends)',
+  async run(renderer) {
+    // 400 pattern positions × foam weights near 0: the coverage must go to 0 with the weight, not jump at a cut-off.
+    const n = 400, weights = [0, 0.002, 0.01, 0.05];
+    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 4), 4);
+    const out = storage(outAttr, 'vec4', n);
+    const pass = Fn(() => {
+      const i = float(instanceIndex);
+      const frame = vec2(i.mod(20.0).mul(3.7), i.div(20.0).floor().mul(2.9));
+      const c = weights.map((w) => setFoamPattern(float(w), frame, float(7.0)).x);
+      out.element(instanceIndex).assign(vec4(c[0], c[1], c[2], c[3]));
+    })().compute(n) as THREE.ComputeNode;
+    renderer.compute(pass);
+    const g = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    const worst = weights.map((_, k) => Array.from({ length: n }, (_, i) => g[i * 4 + k]).reduce((m, v) => Math.max(m, v), 0));
+    // Coverage at a weight w is at most 4·w × the pattern's largest coverage (SET_FOAM_MAX_COVER): it vanishes with the
+    // weight. Before the fade, a weight of 0.002 still covered 0.43 wherever the noise saturates.
+    const ok = worst.every((v, k) => v <= 4 * weights[k] * SET_FOAM_MAX_COVER + 1e-6);
+    return { pass: ok, detail: `largest coverage at weight ${weights.map((w, k) => `${w}: ${worst[k].toFixed(4)}`).join(', ')}` };
   },
 });
