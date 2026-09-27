@@ -94,10 +94,12 @@ export class FoamField {
   advance(renderer: THREE.WebGPURenderer, simTime: number, prepare: (t: number) => void): number {
     const plan = this.schedule.plan(simTime, this.params.clearTimeS);
     if (plan.clear) renderer.compute(this.clearPass);
+    // One submission per tick (the step and the copy together). Measured: a replay's cost was the number of submissions,
+    // not the passes' GPU work (~0.03 ms a tick): two per tick took 160–1900 ms in the pane, one per tick ~57 ms.
+    const tick = [this.stepPass, this.copyPass];
     for (const k of plan.ticks) {
       prepare(tickTime(k));
-      renderer.compute(this.stepPass);
-      renderer.compute(this.copyPass);
+      renderer.compute(tick);
     }
     return plan.ticks.length;
   }
