@@ -48,6 +48,29 @@ export function marchSeabedNode(p: N, d: N, seabed: Seabed): N {
   })();
 }
 
+/**
+ * The lit seabed at a world point: its normal (four height fetches), its material, and the sun and sky reaching it through
+ * the water above. Shared by the look-through from above (seabedTerms) and the underwater view (WaterVolume).
+ */
+export function seabedRadianceNode(hitPos: N, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms): N {
+  const e = 0.5;
+  const hx = seabed.bedHeightNode(hitPos.xz.add(vec2(e, 0.0))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(e, 0.0))));
+  const hz = seabed.bedHeightNode(hitPos.xz.add(vec2(0.0, e))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(0.0, e))));
+  const nBed = normalize(vec3(hx.negate().div(2 * e), 1.0, hz.negate().div(2 * e)));
+  const mat = seabed.materialNode(hitPos.xz);
+  const detail = mx_noise_float(vec3(hitPos.x.mul(1.7), hitPos.z.mul(1.7), 0.0)).mul(0.5).add(0.5);
+  const albedo = mix(mix(REEF_ALBEDO, WEED_ALBEDO, mat.y), SAND_ALBEDO, mat.x).mul(detail.mul(0.4).add(0.8));
+
+  const l = sky.sunDirection;
+  const lw = normalize(refract(l.negate(), vec3(0.0, 1.0, 0.0), float(1 / WATER_IOR)));
+  const cosW = max(lw.y.negate(), 0.2);
+  const depthHit = max(seabed.tide.sub(hitPos.y), 0.0);
+  const sunIn = sky.sunIlluminance.mul(float(1.0).sub(schlickWater(max(l.y, 0.0)))).mul(step(0.0, l.y));
+  const eSun = sunIn.mul(exp(u.extinction.mul(depthHit.div(cosW)).negate())).mul(max(dot(nBed, lw.negate()), 0.0));
+  const eSky = sky.skyIrradiance.mul(exp(u.extinction.mul(depthHit.mul(1.2)).negate()));
+  return albedo.mul(eSun.add(eSky)).div(PI);
+}
+
 export interface SeabedShadingInputs {
   /** Displaced surface point in world space (includes the tide). */
   surfacePos: N;
@@ -72,23 +95,7 @@ export function seabedTerms(i: SeabedShadingInputs, seabed: Seabed, sky: Sky, u:
   const radiance = Fn(() => {
     const out = vec3(0.0).toVar();
     If(march.y.greaterThan(0.5).and(fade.greaterThan(0.0)), () => {
-      const hitPos = i.surfacePos.add(t.mul(march.x));
-      const e = 0.5;
-      const hx = seabed.bedHeightNode(hitPos.xz.add(vec2(e, 0.0))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(e, 0.0))));
-      const hz = seabed.bedHeightNode(hitPos.xz.add(vec2(0.0, e))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(0.0, e))));
-      const nBed = normalize(vec3(hx.negate().div(2 * e), 1.0, hz.negate().div(2 * e)));
-      const mat = seabed.materialNode(hitPos.xz);
-      const detail = mx_noise_float(vec3(hitPos.x.mul(1.7), hitPos.z.mul(1.7), 0.0)).mul(0.5).add(0.5);
-      const albedo = mix(mix(REEF_ALBEDO, WEED_ALBEDO, mat.y), SAND_ALBEDO, mat.x).mul(detail.mul(0.4).add(0.8));
-
-      const l = sky.sunDirection;
-      const lw = normalize(refract(l.negate(), vec3(0.0, 1.0, 0.0), float(1 / WATER_IOR)));
-      const cosW = max(lw.y.negate(), 0.2);
-      const depthHit = max(seabed.tide.sub(hitPos.y), 0.0);
-      const sunIn = sky.sunIlluminance.mul(float(1.0).sub(schlickWater(max(l.y, 0.0)))).mul(step(0.0, l.y));
-      const eSun = sunIn.mul(exp(u.extinction.mul(depthHit.div(cosW)).negate())).mul(max(dot(nBed, lw.negate()), 0.0));
-      const eSky = sky.skyIrradiance.mul(exp(u.extinction.mul(depthHit.mul(1.2)).negate()));
-      out.assign(albedo.mul(eSun.add(eSky)).div(PI));
+      out.assign(seabedRadianceNode(i.surfacePos.add(t.mul(march.x)), seabed, sky, u));
     });
     return out;
   })();
