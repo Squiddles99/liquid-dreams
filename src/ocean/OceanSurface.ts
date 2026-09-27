@@ -46,6 +46,17 @@ export function setFoamPattern(foam: N, frame: N, time: N): N {
   })();
 }
 
+/**
+ * The sheet's shading normal: the FFT slopes, Jacobian-corrected (the Jxz cross term is knowingly dropped: the
+ * derivatives texture has no channel for it), plus the set waves' analytic slope. The breaking ribbon shades with this
+ * wherever it is the sheet's own shape, so the two meshes match there.
+ */
+export function sheetNormal(fft: { sx: N; sz: N; jxx: N; jzz: N }, setSlope: N): N {
+  const fsx = fft.sx.div(max(float(1.0).add(fft.jxx), 0.1));
+  const fsz = fft.sz.div(max(float(1.0).add(fft.jzz), 0.1));
+  return normalize(vec3(fsx.negate().sub(setSlope.x), 1.0, fsz.negate().sub(setSlope.y)));
+}
+
 /** Dev-panel debug lines drawn on the water. */
 export interface DebugOverlays {
   /** White lines every 1 m of still-water depth. */
@@ -123,10 +134,7 @@ export class OceanSurface {
     const distance = length(toCamera);
     const viewDir = toCamera.div(max(distance, 1e-4));
     const fft = model.fftSlopes(vBaseXZ, distance, this.slopeVariance);
-    // FFT slopes, Jacobian-corrected (the Jxz cross term is knowingly dropped: the derivatives texture has no channel for it).
-    const fsx = fft.sx.div(max(float(1.0).add(fft.jxx), 0.1));
-    const fsz = fft.sz.div(max(float(1.0).add(fft.jzz), 0.1));
-    const normal = normalize(vec3(fsx.negate().sub(setSlope.x), 1.0, fsz.negate().sub(setSlope.y)));
+    const normal = sheetNormal(fft, setSlope);
     const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
     const setFoamLook = setFoamPattern(setFoam, setFoamFrame, model.sim.time);
 

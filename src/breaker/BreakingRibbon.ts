@@ -1,11 +1,11 @@
 import * as THREE from 'three/webgpu';
 import {
   Break, Fn, If, Loop, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, min, mix, positionWorld, saturate, select, smoothstep,
-  storage, uniform, varying, vec2, vec3, vec4,
+  storage, uniform, varying, varyingProperty, vec2, vec3, vec4,
 } from 'three/tsl';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
 import { CASCADE_FADES, fadeWeightNode } from '../ocean/cascadeFades';
-import { type DebugOverlays, EARTH_RADIUS_M, type SheetFootprint, setFoamPattern } from '../ocean/OceanSurface';
+import { type DebugOverlays, EARTH_RADIUS_M, type SheetFootprint, setFoamPattern, sheetNormal } from '../ocean/OceanSurface';
 import { type WaterOpticsUniforms, shadeWater } from '../ocean/waterShading';
 import type { WaterSurfaceModel } from '../ocean/waterSurface';
 import { seabedTerms } from '../seabed/seabedShading';
@@ -79,6 +79,13 @@ export const FOOTPRINT_GRID: Readonly<Omit<SheetFootprint, 'texture'>> = {
 /** A station within this much crest (m, of arc) of its run's first or last station marks no footprint (packStations'
  * runEnd): the texels round the ribbon's along-crest end can never discard sheet beyond it. */
 export const FOOTPRINT_END_MARGIN_M = 1;
+/**
+ * The ribbon shades as the sheet where its shape is the sheet's (the front and back segments, and wherever the
+ * constructed curve's weight → 0: before it steepens, and from the collapse's end on), and with its own normal where it
+ * departs: the per-vertex `constructed` weight is smoothstep(SHEET_BLEND_M) of the profile point's distance from the
+ * sheet's point at its home (m, in the station's plane, before the chop).
+ */
+export const SHEET_BLEND_M: readonly [number, number] = [0.01, 0.05];
 /** The `ribbon tint` overlay mixes this much magenta into the ribbon… */
 export const TINT_MIX = 0.4;
 /** …a magenta this bright after the picture's exposure (so it reads the same at any exposure, before tone mapping). */
@@ -232,6 +239,43 @@ const safeNormalize3 = (v: N): N => {
 /** Unit n reflected into the hemisphere facing the unit view direction v: n − 2·min(n·v, 0)·v (n where it already faces v). */
 const towardViewer = (n: N, v: N): N => safeNormalize3(n.sub(v.mul(min(dot(n, v), 0.0).mul(2.0))));
 
+/**
+ * The ribbon's shading normal (the material, and ribbon.selftest.ts in a compute pass). `geometric` is the ribbon's own
+ * (interpolated) normal, `tangent` t̂ (vec3), `fft` the FFT slopes read at the detail coordinate (WaterSurfaceModel.
+ * fftSlopes), `setSlope` the sheet's analytic set-wave slope at the home, `constructed` the SHEET_BLEND_M weight, `viewDir`
+ * toward the camera.
+ * - The sheet's normal: sheetNormal(fft, setSlope), exactly as OceanSurface shades.
+ * - The ribbon's own: the geometric normal bent into the viewer's hemisphere, tilted by the same FFT slopes in its
+ *   tangent frame (T = t̂ made perpendicular to n, B = n × T: = the travel direction where n is up, so there it is the
+ *   sheet's FFT tilt), bent again.
+ * - The result is the sheet's normal exactly where constructed is 0 (the edges, the hand-back), the ribbon's where it is
+ *   1, and their normalised blend, bent into view, between. `geometric` is the bent geometric normal (for `underside`).
+ */
+export function ribbonShadingNormal(i: { geometric: N; tangent: N; fft: { sx: N; sz: N; jxx: N; jzz: N }; setSlope: N; constructed: N; viewDir: N }): { normal: N; geometric: N } {
+  // In an Fn, so every input (the FFT fetches above all) is evaluated once, in order, before the final select: outside
+  // one, TSL would emit each var at its first use, inside the select's branches.
+  const normal = Fn(() => ribbonNormalBody(i))();
+  return { normal, geometric: towardViewer(safeNormalize3(i.geometric), i.viewDir) };
+}
+
+function ribbonNormalBody(i: { geometric: N; tangent: N; fft: { sx: N; sz: N; jxx: N; jzz: N }; setSlope: N; constructed: N; viewDir: N }): N {
+  const sheet = sheetNormal(i.fft, i.setSlope).toVar();
+  const n0 = towardViewer(safeNormalize3(i.geometric), i.viewDir).toVar();
+  const fsx = i.fft.sx.div(max(float(1.0).add(i.fft.jxx), 0.1));
+  const fsz = i.fft.sz.div(max(float(1.0).add(i.fft.jzz), 0.1));
+  const tHat = vec3(i.tangent).toVar();
+  const tAlong = tHat.sub(n0.mul(dot(n0, tHat))).toVar();
+  const tLen = length(tAlong);
+  const T = select(tLen.greaterThan(1e-4), tAlong.div(max(tLen, 1e-8)), tHat).toVar();
+  const B = cross(n0, T);
+  const sT = fsx.mul(tHat.x).add(fsz.mul(tHat.z));
+  const sD = fsx.mul(tHat.z).sub(fsz.mul(tHat.x));
+  const own = towardViewer(safeNormalize3(n0.sub(T.mul(sT)).sub(B.mul(sD))), i.viewDir).toVar();
+  const w = saturate(i.constructed).toVar();
+  const blended = towardViewer(safeNormalize3(mix(sheet, own, w)), i.viewDir).toVar();
+  return select(w.greaterThan(0.0), blended, sheet);
+}
+
 export class BreakingRibbon {
   /** Per vertex (MAX_STATIONS × VERTS_PER_STATION): position.xyz (world xz; y relative to the tide) + dead flag (the station's gap). */
   readonly positions: THREE.StorageBufferAttribute;
@@ -242,8 +286,9 @@ export class BreakingRibbon {
   /** Per vertex: vec4(home world x, home world z, along-crest tangent x, tangent z) (the tangent is t̂ = (−n.z, n.x)). */
   readonly homes: THREE.StorageBufferAttribute;
   /**
-   * Per vertex: vec4(detail world x, detail world z, developed u, 0): where the vertex reads its FFT detail and chop,
-   * S + n·(developed u) (developedU). The home exactly at both edges; skirts take their edge's.
+   * Per vertex: vec4(detail world x, detail world z, developed u, constructed): where the vertex reads its FFT detail and
+   * chop, S + n·(developed u) (developedU), the home exactly at both edges; and the SHEET_BLEND_M weight of its departure
+   * from the sheet (0 on the front and back segments). Skirts take their edge's.
    */
   readonly details: THREE.StorageBufferAttribute;
   /** Per station: the frame as FRAME_VEC4S vec4s, lipProfileNodes.FRAME_LAYOUT order then the base samples Fb and the
@@ -396,12 +441,14 @@ export class BreakingRibbon {
 
   /**
    * The ribbon's material (spec §7.3): the sheet's water shading (shadeWater, seabedTerms, setFoamPattern) on the
-   * ribbon's own normal, tilted by the FFT detail (cascades 0–1 whole, the chop × (1 − lipness)) read at the vertex's
-   * detail coordinate (the developed profile: `details`); the turquoise lip keyed by the real thickness; the sheet's
-   * foam at the home (vertex stage) with the curl's foam. The shading normal is bent into the viewer's hemisphere (a
-   * normal facing away, as where a triangle spans the lip's tip and interpolates opposite normals, would otherwise read
-   * as a mirror: Fresnel → 1 and sun glitter at its cap). Gap rows are discarded (Q10). A depth bias toward the camera
-   * makes the ribbon win where it and the sheet draw the same surface.
+   * ribbonShadingNormal: the sheet's own normal (its analytic set-wave slope at the home + the FFT detail) where the
+   * ribbon is the sheet's shape, the ribbon's own normal tilted by the FFT detail where it departs, blended by the
+   * per-vertex constructed weight; the FFT detail (cascades 0–1 whole, the chop × (1 − lipness)) is read at the detail
+   * coordinate (the developed profile: `details`, the home at the edges). The turquoise lip keyed by the real thickness;
+   * the sheet's foam at the home (vertex stage) with the curl's foam × ρ. The ribbon's own normal is bent into the
+   * viewer's hemisphere (a normal facing away, as where a triangle spans the lip's tip and interpolates opposite normals,
+   * would otherwise read as a mirror: Fresnel → 1 and sun glitter at its cap). Gap rows are discarded (Q10). A depth bias
+   * toward the camera makes the ribbon win where it and the sheet draw the same surface.
    */
   private buildMaterial(): THREE.MeshBasicNodeMaterial {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -428,34 +475,30 @@ export class BreakingRibbon {
     const vExtra: N = varying(attribute('ribbonExtra', 'vec4'));
     const vHome: N = varying(home);
     const vDetail: N = varying(attribute('ribbonDetail', 'vec4').xy);
-    // The sheet's set-wave foam weight and foam frame at the home, once per vertex (the sheet's own vertex-stage sum).
+    const vConstructed: N = varying(attribute('ribbonDetail', 'vec4').w);
+    // The sheet's set-wave foam weight, foam frame and analytic slope at the home, from one set-wave sum per vertex (the
+    // sheet's own vertex-stage sum); the slope reaches the fragment through a varying property, as the sheet's does.
+    const vSetSlope: N = varyingProperty('vec2', 'vRibbonSetSlope');
     const vSetFoam: N = varying(Fn(() => {
       const b = model.sets.breakSampleNode(home.xy);
+      vSetSlope.assign(b.slope);
       return vec3(b.foam, b.foamFrame);
     })());
 
     const toCamera = cameraPosition.sub(positionWorld);
     const distance = length(toCamera);
     const viewDir = toCamera.div(max(distance, 1e-4));
-    const n0 = towardViewer(safeNormalize3(vNormal), viewDir).toVar();
-    const thickness = vExtra.x, lipness = saturate(vExtra.y), curlFoam = vExtra.z;
+    const thickness = vExtra.x, lipness = saturate(vExtra.y), curlFoam = vExtra.z, rho = vExtra.w;
     const fft = model.fftSlopes(vDetail, distance, this.slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness) : float(1.0)));
-    // FFT slopes, Jacobian-corrected as the sheet's, split along the crest (t̂) and across it (d = (t̂.z, −t̂.x), the
-    // travel direction), then applied in the ribbon normal's tangent frame: T = t̂ made perpendicular to n, B = n × T
-    // (= d where n is up, so there this is the sheet's normalize(−sx, 1, −sz) exactly).
-    const fsx = fft.sx.div(max(float(1.0).add(fft.jxx), 0.1));
-    const fsz = fft.sz.div(max(float(1.0).add(fft.jzz), 0.1));
-    const tHat = vec3(vHome.z, 0.0, vHome.w).toVar();
-    const tAlong = tHat.sub(n0.mul(dot(n0, tHat))).toVar();
-    const tLen = length(tAlong);
-    const T = select(tLen.greaterThan(1e-4), tAlong.div(max(tLen, 1e-8)), tHat).toVar();
-    const B = cross(n0, T);
-    const sT = fsx.mul(tHat.x).add(fsz.mul(tHat.z));
-    const sD = fsx.mul(tHat.z).sub(fsz.mul(tHat.x));
-    const normal = towardViewer(safeNormalize3(n0.sub(T.mul(sT)).sub(B.mul(sD))), viewDir).toVar();
-    const underside = float(1.0).sub(smoothstep(-0.3, 0.3, n0.y));
+    const shadingNormal = ribbonShadingNormal({
+      geometric: vNormal, tangent: vec3(vHome.z, 0.0, vHome.w), fft, setSlope: vSetSlope, constructed: vConstructed, viewDir,
+    });
+    const normal = shadingNormal.normal.toVar();
+    // The tube's ceiling only where the curve departs from the sheet (the sheet has none).
+    const underside = float(1.0).sub(smoothstep(-0.3, 0.3, shadingNormal.geometric.y)).mul(saturate(vConstructed));
     const lip = float(1.0).sub(smoothstep(0.05, 0.6, thickness)).mul(lipness);
-    const foamLook = setFoamPattern(max(vSetFoam.x, curlFoam), vSetFoam.yz, model.sim.time);
+    // The curl's landing foam fades with ρ, so by the hand-back (and at the along-crest ends) the foam is the sheet's.
+    const foamLook = setFoamPattern(max(vSetFoam.x, curlFoam.mul(rho)), vSetFoam.yz, model.sim.time);
     const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
     const colour = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, underside,
@@ -534,6 +577,7 @@ export class BreakingRibbon {
     const normals = storage(this.normals, 'vec4', MAX_STATIONS * V);
     const extras = storage(this.extras, 'vec4', MAX_STATIONS * V);
     const homes = storage(this.homes, 'vec4', MAX_STATIONS * V);
+    const details = storage(this.details, 'vec4', MAX_STATIONS * V);
     return Fn(() => {
       const idx: N = int(instanceIndex).toVar();
       const i: N = idx.div(V).toVar();
@@ -565,6 +609,9 @@ export class BreakingRibbon {
       normals.element(idx).assign(vec4(0.0, 1.0, 0.0, inner));
       extras.element(idx).assign(vec4(p.thickness, lipness, p.curlFoam, f.rho));
       homes.element(idx).assign(vec4(xzHome, tHat));
+      // How far the curve departs from the sheet here (the develop pass fills the detail coordinate, keeping w).
+      const constructed = smoothstep(SHEET_BLEND_M[0], SHEET_BLEND_M[1], length(pos.sub(baseHome)));
+      details.element(idx).assign(vec4(xzHome, home, constructed));
     })().compute(MAX_STATIONS * V) as THREE.ComputeNode;
   }
 
@@ -606,7 +653,7 @@ export class BreakingRibbon {
         const wFront = float(1.0).sub(smoothstep(DEVELOP_BLEND[0], DEVELOP_BLEND[1], float(j)));
         // Exactly the home at the edges: uFront at the first sample, uBack at the last.
         const dev = select(j.equal(int(0)), uFront, select(j.equal(int(LAST)), uBack, fromBack.add(fromFront.sub(fromBack).mul(wFront)))).toVar();
-        const v = vec4(S.add(n.mul(dev)), dev, 0.0).toVar();
+        const v = vec4(S.add(n.mul(dev)), dev, details.element(i.mul(V).add(j).add(1)).w).toVar();
         details.element(i.mul(V).add(j).add(1)).assign(v);
         If(j.equal(int(0)), () => { details.element(i.mul(V)).assign(v); });
         If(j.equal(int(LAST)), () => { details.element(i.mul(V).add(V - 1)).assign(v); });
