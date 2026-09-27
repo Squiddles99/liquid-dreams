@@ -7,7 +7,9 @@ import { WaterSurfaceModel } from '../ocean/waterSurface';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { Seabed } from '../seabed/Seabed';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
-import { BreakingRibbon, MIN_PROFILE_STEP_M, NORMAL_SEARCH, type RibbonSurface, SKIRT_DEPTH_M, VERTS_PER_STATION, modelRibbonSurface } from './BreakingRibbon';
+import {
+  BreakingRibbon, FOOTPRINT_GRID, MIN_PROFILE_STEP_M, NORMAL_SEARCH, type RibbonSurface, SKIRT_DEPTH_M, VERTS_PER_STATION, modelRibbonSurface,
+} from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
 import { PROFILE_SAMPLES, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame } from './lipProfile';
@@ -350,6 +352,120 @@ registerSelfTest({
       detail: `${live} live stations at dt 0.6 s; worst |GPU normal − CPU mirror of the normal pass| ${mirror} (< 0.05) [${mirrorNote}]; ` +
         `lowest back-edge normal y ${backMin.toFixed(3)} (${backAt}; > 0); on the ${gentle} gentle back slopes (sheet normal y > 0.95) lowest ${gentleMin.toFixed(3)} (${gentleAt}; > 0.8); ` +
         `${peakStations} peak stations with a thrown lip (|xz| < 15 m, weight > 0.9, prog > 0.3); highest underside normal y ${underMax.toFixed(3)} (${underAt}; < 0)`,
+    };
+  },
+});
+
+/** The footprint mask read back: texel (col, row) → 0/1, rows padded to WebGPU's 256-byte copy alignment. */
+async function readFootprint(renderer: THREE.WebGPURenderer, ribbon: BreakingRibbon) {
+  const w = FOOTPRINT_GRID.size.x, h = FOOTPRINT_GRID.size.y;
+  const data = await renderer.readRenderTargetPixelsAsync(ribbon.footprintTarget, 0, 0, w, h);
+  const stride = Math.ceil(w / 256) * 256;
+  const at = (col: number, row: number): number => (data[row * stride + col] > 127 ? 1 : 0);
+  let marked = 0;
+  for (let row = 0; row < h; row++) for (let col = 0; col < w; col++) marked += at(col, row);
+  return { at, marked, lengthOk: data.length >= (h - 1) * stride + w, w, h };
+}
+
+/** The footprint texel (col, row) under world xz (row = z), or null outside the grid. `flip` mirrors the rows (diagnostic). */
+function texelOf(x: number, z: number, flip = false): [number, number] | null {
+  const { origin, cellM, size } = FOOTPRINT_GRID;
+  const col = Math.floor((x - origin.x) / cellM), row = Math.floor((z - origin.y) / cellM);
+  if (col < 0 || row < 0 || col >= size.x || row >= size.y) return null;
+  return [col, flip ? size.y - 1 - row : row];
+}
+
+registerSelfTest({
+  name: "ribbon: the footprint covers the stations' inner strip and nothing else",
+  async run(renderer) {
+    const { time, sets, ribbon } = setsRig();
+    const t = REF_BIGGEST.arrivalS + 0.6;
+    time.value = t;
+    const { waves, entries } = traceAt(t, sets);
+    ribbon.setStations(entries, LINEUP);
+    ribbon.compute(renderer);
+    ribbon.renderFootprint(renderer);
+    const mask = await readFootprint(renderer, ribbon);
+    const gp = await read(renderer, ribbon.positions), ge = await read(renderer, ribbon.extras);
+    const field = getField(), ctx = ctxOf(field);
+    const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: P };
+    const rhoAt = (i: number): number => ge[(i * V + 1) * 4 + 3];
+    const liveAt = (i: number): boolean => i >= 0 && i < entries.length && !entries[i].gap && rhoAt(i) >= 0.02;
+    /** Whether the stations within 1 m of arc on both sides of i are live and in the ribbon (ρ ≥ 0.02): away from a run's end. */
+    const interior = (i: number): boolean => {
+      const e = entries[i] as Station;
+      for (const step of [-1, 1]) {
+        let k = i + step;
+        for (;;) {
+          if (!liveAt(k)) return false;
+          if (Math.abs((entries[k] as Station).arc - e.arc) >= 1) break;
+          k += step;
+        }
+      }
+      return liveAt(i);
+    };
+    let covered = 0, coveredChecks = 0, clear = 0, clearChecks = 0, coveredFlipped = 0, clearFlipped = 0;
+    const missed: string[] = [], stray: string[] = [];
+    entries.forEach((e, i) => {
+      if (e.gap) return;
+      // The u = 0 point as the ribbon places it: the crest S, carried along t̂ by the sheet's lateral displacement there.
+      if (interior(i)) {
+        const d = sumWaves(e.x, e.z, t, sampleField(field, e.x, e.z), waves, ctx, o);
+        const lat = d.dx * -e.nz + d.dz * e.nx;
+        const x = e.x - e.nz * lat, z = e.z + e.nx * lat;
+        const q = texelOf(x, z), qf = texelOf(x, z, true);
+        if (q && qf) {
+          coveredChecks++;
+          if (mask.at(...q)) covered++;
+          else if (missed.length < 5) missed.push(`#${i} (${x.toFixed(2)}, ${z.toFixed(2)}) ρ ${rhoAt(i).toFixed(3)}`);
+          coveredFlipped += mask.at(...qf);
+        }
+      }
+      // 3 m beyond the front edge (profile sample 0, as drawn), along the station's normal.
+      const k = (i * V + 1) * 4;
+      const fx = gp[k] + e.nx * 3, fz = gp[k + 2] + e.nz * 3;
+      const q = texelOf(fx, fz), qf = texelOf(fx, fz, true);
+      if (q && qf) {
+        clearChecks++;
+        if (!mask.at(...q)) clear++;
+        else if (stray.length < 5) stray.push(`#${i} (${fx.toFixed(2)}, ${fz.toFixed(2)})`);
+        clearFlipped += 1 - mask.at(...qf);
+      }
+    });
+    const live = entries.filter((e) => !e.gap).length;
+    const ok = mask.lengthOk && coveredChecks >= 10 && covered === coveredChecks && clearChecks === live && clear === clearChecks;
+    return {
+      pass: ok,
+      detail: `${live} live stations at dt 0.6 s, ${mask.marked} texels marked; under the u = 0 point of ${coveredChecks} interior stations (ρ ≥ 0.02 within 1 m of arc each side; ≥ 10): ` +
+        `${covered} marked (all) [missed: ${missed.join('; ') || 'none'}]; 3 m beyond the front edge of ${clearChecks} stations (all ${live} in the grid): ${clear} clear (all) ` +
+        `[marked: ${stray.join('; ') || 'none'}]. Diagnostic, rows mirrored: ${coveredFlipped} marked under u = 0, ${clearFlipped} clear ahead (a row-order mistake would pass this way).` +
+        `${mask.lengthOk ? '' : ' Readback shorter than the padded rows expect.'}`,
+    };
+  },
+});
+
+registerSelfTest({
+  name: 'ribbon: an empty trace draws nothing and keeps the sheet whole',
+  async run(renderer) {
+    const { time, sets, ribbon } = setsRig();
+    // Mark the footprint first (the trace at +0.6 s), so a stale mask would show.
+    const t = REF_BIGGEST.arrivalS + 0.6;
+    time.value = t;
+    const { entries } = traceAt(t, sets);
+    ribbon.setStations(entries, LINEUP);
+    ribbon.compute(renderer);
+    ribbon.renderFootprint(renderer);
+    const before = (await readFootprint(renderer, ribbon)).marked;
+    ribbon.setStations([], LINEUP);
+    ribbon.compute(renderer);
+    ribbon.renderFootprint(renderer);
+    const after = await readFootprint(renderer, ribbon);
+    const drawn = ribbon.mesh.geometry.drawRange.count;
+    const ok = before > 0 && ribbon.stationCount === 0 && after.marked === 0 && after.lengthOk && drawn === 0 && !ribbon.mesh.visible;
+    return {
+      pass: ok,
+      detail: `with the trace at dt 0.6 s ${before} texels marked (> 0); after setStations([]): stationCount ${ribbon.stationCount} (0), ${after.marked} texels marked (0), ` +
+        `draw range ${drawn} indices (0), mesh ${ribbon.mesh.visible ? 'visible' : 'hidden'} (hidden)`,
     };
   },
 });

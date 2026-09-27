@@ -112,6 +112,13 @@ export const BREAK_BINDINGS = {
   ribbonOnset: { label: 'ribbon onset r', min: 0.3, max: 0.9, step: 0.01 },
 } as const;
 
+/** Debug overlay toggles (Reef folder), one per DebugOverlays field, checked by DevPanel.test.ts. */
+export const OVERLAY_BINDINGS: Record<keyof DebugOverlays, { label: string }> = {
+  depthContours: { label: 'depth contours' },
+  crestLines: { label: 'crest lines' },
+  ribbonTint: { label: 'ribbon tint' },
+};
+
 export class DevPanel {
   private readonly pane = new Pane({ title: 'Liquid Dreams', expanded: true });
   private readonly nightFloorProxy = { log10: 0 };
@@ -203,8 +210,9 @@ export class DevPanel {
     reef.addBinding(m.reef, 'pocketDepthM', { label: 'sand pockets (m)', min: 2, max: 10, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.shallow, 'fadeFromM', { label: 'swell fade from (m)', min: 0, max: 20, step: 0.5 }).on('change', h.onShallow);
     reef.addBinding(m.shallow, 'fadeToM', { label: 'swell fade to (m)', min: 1, max: 30, step: 0.5 }).on('change', h.onShallow);
-    reef.addBinding(m.overlays, 'depthContours', { label: 'depth contours' }).on('change', h.onOverlays);
-    reef.addBinding(m.overlays, 'crestLines', { label: 'crest lines' }).on('change', h.onOverlays);
+    for (const [key, opts] of Object.entries(OVERLAY_BINDINGS) as [keyof DebugOverlays, { label: string }][]) {
+      reef.addBinding(m.overlays, key, opts).on('change', h.onOverlays);
+    }
 
     const ocean = this.pane.addFolder({ title: 'Ocean', expanded: false });
     ocean.addBinding(m.spectrum, 'offshoreFetchM', { label: 'offshore fetch (m)', min: 50, max: 5000, step: 10 }).on('change', h.onSpectrum);
