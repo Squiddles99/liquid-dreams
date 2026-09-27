@@ -75,7 +75,7 @@ export function stageCurvesNode(r: N, u: BreakUniforms): StageCurveNodes {
 
 /** One wave at one point (see breaking.ts BreakPointInput): the derivatives are per metre ahead. */
 export interface BreakPointNodes {
-  theta: N; env: N; uUnbroken: N; eta: N; uCrest: N; etaCrest: N; H: N; k: N; hmin: N; slope: N; dThetaDAhead: N; dEnvDAhead: N;
+  theta: N; env: N; uUnbroken: N; eta: N; uCrest: N; etaCrest: N; H: N; k: N; hmin: N; boreH: N; slope: N; dThetaDAhead: N; dEnvDAhead: N;
   /** The crest lookup's confidence (breaking.BreakPointInput.crestConfidence): the front sharpening scales with it. */
   crestConfidence: N;
 }
@@ -119,7 +119,7 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const drained = depth.mul(shape).mul(i.env);
   const dDrained = depth.mul(dShape.mul(i.env).add(shape.mul(i.dEnvDAhead)));
   // boreScale
-  const scale = float(1.0).add(min(float(1.0), u.beta.mul(max(i.hmin, 0.0)).div(i.H)).sub(1.0).mul(collapse));
+  const scale = float(1.0).add(min(float(1.0), u.beta.mul(max(i.hmin, 0.0)).div(i.boreH)).sub(1.0).mul(collapse));
   // foamWeight: the H > MIN_BREAKING_HEIGHT_M gate keeps the front edge's smoothstep edges apart.
   const fw = u.faceWidth.mul(i.H);
   const land = smoothstep(FOAM_ONSET_COLLAPSE, 1.0, collapse);

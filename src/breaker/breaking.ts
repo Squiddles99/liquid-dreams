@@ -352,7 +352,15 @@ export interface BreakPointInput {
   /** Local wave height including the lateral taper: 2·A·lateral. */
   H: number;
   k: number;
+  /** The breaking depth (m): the collapse settles to a bore of β·hmin. */
   hmin: number;
+  /**
+   * The height (m) the bore is a share of: the crest's uncapped height capped at BREAKING_RATIO·hmin (not at the Phase 1
+   * cap's raw hmin), with the lateral taper. hmin carries the uncapped height's focusing spikes (it is amp over the
+   * smoothed amp/depth), so the share β·hmin / boreH is smooth along the crest; over the capped height it was not, and
+   * every point behind the crest shares its bore: each spike drew a trench along the travel (Andrew, 12 ft).
+   */
+  boreH: number;
   /** ∂eta/∂ahead: the Phase 1 slope along travel. */
   slope: number;
   /** ∂theta/∂ahead. */
@@ -395,7 +403,7 @@ export function breakPoint(i: BreakPointInput, s: number, r: number, p: BreakPar
   const shape = drainShape(ahead, i.theta, i.H, i.k, p);
   const drain = depth * shape * i.env;
   const dDrain = depth * (drainShapeSlope(ahead, i.theta, i.dThetaDAhead, i.H, i.k, p) * i.env + shape * i.dEnvDAhead);
-  const scale = boreScale(i.H, i.hmin, c.collapse, p);
+  const scale = boreScale(i.boreH, i.hmin, c.collapse, p);
   return {
     eta: (i.eta - drop - drain) * scale,
     foam: foamWeight(i.theta, ahead, i.H, i.env, c, p),

@@ -31,7 +31,7 @@ function wavePoint(v0: number, H: number, hmin: number, periodS: number, rigid =
   const dXiDs = -1 / c;
   const dh = rigid ? 0 : Math.min(aE, 0.6 / k) * Math.sin(theta) + pitchOf(aE) * eta;
   return {
-    theta, env, uUnbroken: (rigid ? uCrest : 0) + v0 + dh, eta, uCrest, etaCrest, H, k, hmin,
+    theta, env, uUnbroken: (rigid ? uCrest : 0) + v0 + dh, eta, uCrest, etaCrest, H, k, hmin, boreH: H,
     slope: dEtaDXi * dXiDs, dThetaDAhead: omega * dXiDs, dEnvDAhead: dEnvDXi * dXiDs, crestConfidence: 1,
   };
 }
