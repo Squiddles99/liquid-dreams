@@ -34,7 +34,7 @@ Andrew's answers about the Womb:
 
 ### 3.1 The foam map (new `src/whitewater/`)
 
-- **Extent:** a fixed world-space box over the break, at 1 m per texel. The draft box runs roughly from x = −200 to the beach (x ≈ 190) and from z = −300 (north) to z = +200. The plan's first task checks it against the reef field: every cell where the biggest wave the sliders allow can break must lie inside the box with at least a 20 m margin, and the box grows if needed. The box is a constant, not a slider.
+- **Extent:** a fixed world-space box over the break, at 1 m per texel: **x −245…210, z −450…300** (455 × 750 texels). This was measured at plan time (plan ruling R1). The reef and shelf break along the reef grid's whole z range. The slider extreme (12 ft × 3 × 1.3 at low tide) breaks as far out as x = −222. So the box covers every breaking cell in the water with 20 m of seaward margin. North and south it ends with the reef grid; beyond that the field is the straight coast solution, and the placeholder foam stays there. The box is a constant, not a slider.
 - **Storage:** two `rgba16float` textures, ping-ponged. The format is both storage-writable and filterable in core WebGPU. Only `.r` (the foam density, 0–1) is used; the other channels are free for 3b. The map is attached to the water rather than the ground: it is indexed by the sheet's **undisplaced** (base) xz, exactly as the FFT foam is sampled.
 - **One step** at sim time tₖ, for each texel at base point x:
   1. **Drift:** `F_adv = bilinear(F_prev, x − u·Δ)`, with Δ = 0.05 s. Here u = `foamDrift` × the local wave direction (the reef field's ray direction). The bilinear sample also softens the map slightly, so foam spreads a little as it ages.
@@ -72,7 +72,7 @@ Andrew's answers about the Womb:
 
 **What a replay does:** it clears the map, then runs every step for tₖ in (t − clearTime − 2 s, t], in a single frame. At the default setting that is 240 steps.
 
-**Why replay and live play agree:** by §3.1, any texel's value depends only on sources within the last `clearTime`. So a replay gives the same map as live play that reached the same tₖ, up to floating-point differences.
+**Why replay and live play agree:** by §3.1, any texel's value depends only on sources within the last `clearTime`. So with no drift, a replay gives exactly the map live play reached at the same tₖ. With drift, the bilinear blend carries a trace of older foam, and the two agree to within 0.02 foam density (plan ruling R2). A replay is itself deterministic, so the same moment always gives the same picture.
 
 **Constraints on moments:** a moment captured while paused needs no extra waiting beyond the replay frame. Moments stay seeded and O(1). No history is stored anywhere except the map itself.
 
