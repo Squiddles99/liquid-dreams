@@ -47,14 +47,8 @@ export function alongPath(end: Rgb, inf: Rgb, ext: Rgb, s: number): Rgb {
   return [0, 1, 2].map((i) => { const T = Math.exp(-ext[i] * s); return end[i] * T + inf[i] * (1 - T); }) as Rgb;
 }
 
-/**
- * Whether the eye is underwater, with a ±UNDERWATER_BAND_M band around the water height so riding the surface can't
- * flicker. A floating camera (the lineup camera, which rides the surface at eye height) is never underwater: its height
- * is seeded from the probe, which is empty on load and holds the last spot's height after a moment jump, so for a moment
- * the water can read above it, and the underwater view would flash.
- */
-export function nextUnderwater(prev: boolean, cameraY: number, waterY: number, floating = false): boolean {
-  if (floating) return false;
+/** Whether the eye is underwater, with a ±UNDERWATER_BAND_M band around the water height so riding the surface can't flicker. */
+export function nextUnderwater(prev: boolean, cameraY: number, waterY: number): boolean {
   if (prev) return cameraY < waterY + UNDERWATER_BAND_M;
   return cameraY < waterY - UNDERWATER_BAND_M;
 }

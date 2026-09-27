@@ -28,6 +28,7 @@ import { DEFAULT_DEBUG_OVERLAYS, type DebugOverlays, OceanSurface } from '../oce
 import { DEFAULT_SPECTRUM_PARAMS, type OceanSpectrumParams, spectrumInputsKey } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS, type WaterOpticsParams } from '../ocean/waterOptics';
 import { nextUnderwater } from '../ocean/underwaterOptics';
+import { LensWater } from '../render/lensWater';
 import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
@@ -114,6 +115,13 @@ export class App {
   readonly waterVolume = new WaterVolume(this.seabed, this.sky, this.waterOptics);
   /** The eye is below the water surface (with hysteresis: underwaterOptics.nextUnderwater). */
   private underwater = false;
+  /** After a moment jump: set the lineup camera on the water at the probe's first reading of the new spot. */
+  private reseedLineup = false;
+  /** Water on the lens as the camera breaks the surface. */
+  private readonly lensWater = new LensWater();
+  /** After a moment jump, the first crossing is the jump itself, not the camera breaking the surface: no water on the lens. */
+  private lensQuiet = false;
+  private lensClockS = 0;
   /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
   readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
@@ -208,6 +216,10 @@ export class App {
       this.field = f;
       this.setWaves.setField(f);
       this.onRibbonInputs();
+      // The set waves appear (or change) with the field, so the water under the camera jumps: read it afresh and set
+      // the lineup camera back on it (on load the probe read flat water until now, and the lineup sat a crest's height low).
+      this.probe.invalidate();
+      this.reseedLineup = true;
     };
     this.applyAllParams();
     if (hashMoment) this.visitLink(hashMoment);
@@ -236,7 +248,14 @@ export class App {
     this.seabed.setTide(this.conditions.tideM);
     this.clock.setTime(m.simTime);
     this.setPaused(m.paused);
-    this.rig.setPose(m.camera, this.waterHeightAtCamera());
+    // The probe still holds the old spot's water: seed the lineup at the still-water level, forget the old readings, and
+    // snap the lineup onto the water at the first reading of the new spot (reseedLineup). Seeded from the stale reading,
+    // the lineup camera could start a metre under a crest or the tide and flash the underwater view.
+    this.rig.setPose(m.camera, this.conditions.tideM);
+    this.probe.invalidate();
+    this.reseedLineup = true;
+    this.lensQuiet = true;
+    this.lensWater.submerged();
     this.rebuildSpectrumIfNeeded(true);
     this.requestFieldIfNeeded(true);
     // The rebuild clears foam too, but a moment is a jump in sim time even when the sea is unchanged.
@@ -274,10 +293,14 @@ export class App {
   private updateUnderwater(): void {
     this.waterVolume.followCamera(this.camera.position);
     const water = this.probe.heightAt(0);
-    const floating = this.rig.mode === 'lineup';
-    const under = water === null ? this.underwater && !floating : nextUnderwater(this.underwater, this.camera.position.y, water, floating);
+    // The lineup camera too: a steep face can outrun its float and bury it for a second or two as a set passes.
+    const under = water === null ? this.underwater : nextUnderwater(this.underwater, this.camera.position.y, water);
+    const quiet = this.lensQuiet;
+    if (water !== null) this.lensQuiet = false;
     if (under === this.underwater) return;
     this.underwater = under;
+    if (under) this.lensWater.submerged();
+    else if (!quiet) this.lensWater.surfaced();
     this.oceanSurface.setUnderwater(under);
     this.sky.dome.visible = !under;
     this.waterVolume.mesh.visible = under;
@@ -625,6 +648,13 @@ export class App {
       toggleDevUi: () => this.toggleDevUi(),
       callSet: () => this.callSetNow(),
     });
+    if (this.reseedLineup) {
+      const water = this.probe.heightAt(0);
+      if (water !== null) {
+        if (this.rig.mode === 'lineup') this.rig.setPose(this.rig.getPose(), water);
+        this.reseedLineup = false;
+      }
+    }
     this.rig.update(realDt, this.input, this.waterHeightAtCamera());
 
     const sun = sunForConditions(this.conditions);
@@ -652,6 +682,9 @@ export class App {
     this.oceanSurface.update(this.camera.position, this.ocean);
 
     this.picture.setSun(sun.elevationDeg, this.camera.getWorldDirection(this.viewDir).dot(this.sunDir));
+    this.lensWater.step(realDt);
+    this.lensClockS += realDt;
+    this.picture.setLensWater(this.lensWater.state(), this.lensClockS);
     this.ribbon.setDisplayExposure(this.picture.exposureValue);
     this.picture.render();
     if (this.screenshotRequested) {
