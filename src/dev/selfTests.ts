@@ -6,5 +6,6 @@ import '../ocean/probe.selftest';
 import '../seabed/seabed.selftest';
 import '../seabed/seabedShading.selftest';
 import '../breaker/breaker.selftest';
+import '../breaker/ribbon.selftest';
 
 export { renderSelfTestReport, runSelfTests } from './selfTest';
