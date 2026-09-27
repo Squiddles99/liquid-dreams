@@ -274,7 +274,8 @@ export class App {
   private updateUnderwater(): void {
     this.waterVolume.followCamera(this.camera.position);
     const water = this.probe.heightAt(0);
-    const under = water === null ? this.underwater : nextUnderwater(this.underwater, this.camera.position.y, water);
+    const floating = this.rig.mode === 'lineup';
+    const under = water === null ? this.underwater && !floating : nextUnderwater(this.underwater, this.camera.position.y, water, floating);
     if (under === this.underwater) return;
     this.underwater = under;
     this.oceanSurface.setUnderwater(under);
