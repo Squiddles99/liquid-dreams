@@ -55,6 +55,8 @@ Carried past Phase 1 (Reef & Sets, completed 2026-09-27, approved by Andrew as "
 
 # Phase 2 follow-ups (work in progress, written overnight 2026-09-27)
 
+- **Waves stack on the previous wave's back (Andrew, 2026-09-27; next after the breaking-ribbon review).** The next wave in a set arrives before the reef has drained, so it rides on what's left of the previous wave instead of drawing the water off the ledge that gives it height and power. Suspected cause: the set-wave envelope (ENVELOPE_WIDTH 0.8 periods) still leaves a crest of about 21% one period behind each wave. Measure the water ahead of each wave first; then make each wave's leftovers die away within a period, and bring back the stacked "step" (Shipsterns-style) as an occasional event (an unusually close pair, or a big wave leaving water behind), not every wave.
+
 - **Timings not measured.** GPU ms haven't been measured since Phase 1: the app window was hidden overnight, so frames were paused. Measure `barrel-peeling` at 2560×1600 with max fps 0. The levers are:
   - finite-difference normals only near breaking waves;
   - a per-vertex spatial "can break" bound. The per-wave flag (B8) saves nothing at the Womb: the field's breaking height is about 6 cm, because some shallow cell breaks almost anything;
