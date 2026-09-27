@@ -41,7 +41,9 @@ import { Sky } from '../sky/Sky';
 import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesNear } from '../swell/sets';
 import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FoamField } from '../whitewater/FoamField';
-import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams } from '../whitewater/foamStep';
+import { SprayParticles } from '../whitewater/SprayParticles';
+import { DEFAULT_SPRAY_PARAMS, type SprayParams, normalizeSprayParams, sprayBirths, sprayEmitters, windToVector } from '../whitewater/sprayEmitters';
+import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { showOverlay } from './overlay';
 
@@ -85,6 +87,7 @@ export class App {
   readonly overlays: DebugOverlays = { ...DEFAULT_DEBUG_OVERLAYS };
   readonly breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
   readonly foamParams: FoamParams = { ...DEFAULT_FOAM_PARAMS };
+  readonly sprayParams: SprayParams = { ...DEFAULT_SPRAY_PARAMS };
   readonly setStatus = { nextSet: '', wave: '', face: '' };
   /** The look as constructed (deep clones): what "Reset settings" and default mode restore. */
   private readonly lookDefaults: DevLookParams = cloneLook(this.lookParams());
@@ -115,6 +118,8 @@ export class App {
     dirNode: (xz) => this.setWaves.sample(xz, true).dir,
   });
   private foamTimer: number | undefined;
+  /** Offshore spray off the throwing lips (spec 2026-09-27-offshore-spray-design.md). */
+  readonly spray = new SprayParticles(this.sky);
   private readonly fieldClient = new ReefFieldClient();
   private fieldKey = '';
   /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
@@ -177,13 +182,14 @@ export class App {
     this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField });
     this.scene.add(this.oceanSurface.mesh);
     this.scene.add(this.ribbon.mesh);
+    this.scene.add(this.spray.mesh);
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
     this.perf = new PerfOverlay(renderer);
     this.panel = new DevPanel(
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
         picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
-        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
+        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
         onConditions: () => this.onConditionsEdited(),
@@ -207,12 +213,19 @@ export class App {
         onOverlays: () => {
           this.oceanSurface.setOverlays(this.overlays);
           this.ribbon.setOverlays(this.overlays);
+          this.spray.setOverlays(this.overlays);
         },
         onCallSet: () => this.callSetNow(),
         onBreak: () => {
           normalizeBreakParams(this.breakParams);
           this.setWaves.setBreakParams(this.breakParams);
           this.onRibbonInputs();
+          this.panel.refresh();
+          this.scheduleFoamReplay();
+        },
+        onSpray: () => {
+          normalizeSprayParams(this.sprayParams);
+          this.spray.setParams(this.sprayParams);
           this.panel.refresh();
           this.scheduleFoamReplay();
         },
@@ -234,7 +247,7 @@ export class App {
     this.fieldClient.onField = (f) => {
       this.field = f;
       this.setWaves.setField(f);
-      this.foamField.invalidate();
+      this.invalidateParticles();
       this.onRibbonInputs();
       // The set waves appear (or change) with the field, so the water under the camera jumps: read it afresh and set
       // the lineup camera back on it (on load the probe read flat water until now, and the lineup sat a crest's height low).
@@ -280,7 +293,7 @@ export class App {
     this.requestFieldIfNeeded(true);
     // The rebuild clears foam too, but a moment is a jump in sim time even when the sea is unchanged.
     this.ocean.resetFoam();
-    this.foamField.invalidate();
+    this.invalidateParticles();
     this.ribbonKey = null;
     this.panel.refresh();
   }
@@ -359,6 +372,40 @@ export class App {
     return { ms, steps };
   }
 
+  /** This frame's spray ticks: each tick's emitters (the lip tips mid-throw at t_k) give its births (spec §3.1). */
+  private stepSpray(): void {
+    const w = windToVector(this.conditions.wind.directionDeg), s = this.conditions.wind.speedMs;
+    this.spray.setWind(w[0] * s, w[1] * s);
+    this.spray.advance(this.renderer, this.clock.simTime, (k) => this.sprayBirthsAt(k));
+  }
+
+  private sprayBirthsAt(k: number) {
+    const t = tickTime(k);
+    const emitters = sprayEmitters({
+      field: this.field, ctx: this.waveCtx, events: wavesNear(t, this.conditions, this.setParams), t, params: this.breakParams,
+      minHeightM: this.ribbonMinHeightM, wind: { speedMs: this.conditions.wind.speedMs, fromDeg: this.conditions.wind.directionDeg },
+      tideM: this.conditions.tideM, amount: this.sprayParams.amount,
+    });
+    return sprayBirths(emitters, k, this.sprayParams);
+  }
+
+  /** Dev (plan Task 5): a forced spray replay, timed to the GPU's completion; cpuMs is the emitter work alone. */
+  async measureSprayReplay(): Promise<{ ms: number; steps: number; cpuMs: number }> {
+    const device = (this.renderer.backend as unknown as { device: GPUDevice }).device;
+    await device.queue.onSubmittedWorkDone();
+    let cpuMs = 0;
+    this.spray.invalidate();
+    const start = performance.now();
+    const steps = this.spray.advance(this.renderer, this.clock.simTime, (k) => {
+      const c0 = performance.now();
+      const b = this.sprayBirthsAt(k);
+      cpuMs += performance.now() - c0;
+      return b;
+    });
+    await device.queue.onSubmittedWorkDone();
+    return { ms: performance.now() - start, steps, cpuMs };
+  }
+
   private updateRibbon(events: readonly WaveEvent[]): void {
     const field = this.field, ctx = this.waveCtx, cam = this.camera.position;
     const tracing = field !== null && ctx !== null && this.breakParams.enabled;
@@ -398,10 +445,16 @@ export class App {
     }, SPECTRUM_REBUILD_DEBOUNCE_MS);
   }
 
+  /** A jump (or new conditions or field): the foam map and the spray replay their windows. */
+  private invalidateParticles(): void {
+    this.foamField.invalidate();
+    this.spray.invalidate();
+  }
+
   /** Slider edits change the foam the map would hold: replay once the drag stops (Review Focus 3), not on every event. */
   private scheduleFoamReplay(): void {
     clearTimeout(this.foamTimer);
-    this.foamTimer = window.setTimeout(() => this.foamField.invalidate(), SPECTRUM_REBUILD_DEBOUNCE_MS);
+    this.foamTimer = window.setTimeout(() => this.invalidateParticles(), SPECTRUM_REBUILD_DEBOUNCE_MS);
   }
 
   private rebuildSpectrumIfNeeded(force: boolean): void {
@@ -409,7 +462,7 @@ export class App {
     if (!force && key === this.spectrumKey) return;
     this.spectrumKey = key;
     this.ocean.setConditions(this.conditions, this.spectrumParams);
-    this.foamField.invalidate();
+    this.invalidateParticles();
     this.ribbonKey = null;
   }
 
@@ -449,7 +502,7 @@ export class App {
     }
     this.clock.setTime(t);
     this.ocean.resetFoam();
-    this.foamField.invalidate();
+    this.invalidateParticles();
     this.perf.flash('Set incoming');
   }
 
@@ -485,7 +538,7 @@ export class App {
     return {
       spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams,
       maxFps: this.frameLimiter.maxFps, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams, overlays: this.overlays,
-      breaking: this.breakParams, foam: this.foamParams,
+      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams,
     };
   }
 
@@ -503,6 +556,7 @@ export class App {
     assignParams(this.overlays, look.overlays);
     assignParams(this.breakParams, look.breaking);
     assignParams(this.foamParams, look.foam);
+    assignParams(this.sprayParams, look.spray);
   }
 
   /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
@@ -526,6 +580,9 @@ export class App {
     this.onRibbonInputs();
     normalizeFoamParams(this.foamParams);
     this.foamField.setParams(this.foamParams);
+    normalizeSprayParams(this.sprayParams);
+    this.spray.setParams(this.sprayParams);
+    this.spray.setOverlays(this.overlays);
     clearTimeout(this.reefTimer);
     this.rebuildReefIfChanged();
   }
@@ -750,10 +807,12 @@ export class App {
     const events = wavesNear(this.clock.simTime, this.conditions, this.setParams);
     this.setWaves.setEvents(events);
     this.stepFoam(events);
+    this.stepSpray();
     this.updateUnderwater();
     this.updateRibbon(events);
     // The ribbon is single-sided and the sheet is cut away under it only above water: hidden underwater.
     if (this.underwater) this.ribbon.mesh.visible = false;
+    this.spray.mesh.visible = !this.underwater;
     this.statusAge += realDt;
     if (this.statusAge > 0.25) {
       this.statusAge = 0;
@@ -771,6 +830,7 @@ export class App {
     this.lensClockS += realDt;
     this.picture.setLensWater(this.lensWater.state(), this.lensClockS);
     this.ribbon.setDisplayExposure(this.picture.exposureValue);
+    this.spray.setDisplayExposure(this.picture.exposureValue);
     this.picture.render(this.captureTarget);
     if (this.screenshotRequested) {
       this.screenshotRequested = false;

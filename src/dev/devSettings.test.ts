@@ -11,6 +11,7 @@ import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { DEFAULT_SET_PARAMS } from '../swell/sets';
 import { DEFAULT_FOAM_PARAMS } from '../whitewater/foamStep';
+import { DEFAULT_SPRAY_PARAMS } from '../whitewater/sprayEmitters';
 import {
   BREAKING_MODEL, CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
   loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
@@ -57,6 +58,7 @@ function defaults(): DevSettings {
     overlays: DEFAULT_DEBUG_OVERLAYS,
     breaking: DEFAULT_BREAK_PARAMS,
     foam: DEFAULT_FOAM_PARAMS,
+    spray: DEFAULT_SPRAY_PARAMS,
   });
 }
 
@@ -89,6 +91,9 @@ function tweaked(): DevSettings {
   s.breaking.ribbonOnset = 0.62;
   s.foam.clearTimeS = 14;
   s.foam.driftMps = 0.9;
+  s.spray.amount = 1.7;
+  s.spray.lifeS = 3.1;
+  s.overlays.sprayTint = true;
   return s;
 }
 
