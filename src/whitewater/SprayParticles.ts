@@ -100,21 +100,23 @@ export class SprayParticles {
     m.scaleNode = vec2(size.mul(stretch), size);
     m.rotationNode = atan(vView.y, vView.x);
     const vAgeFrac: N = varying(ageFrac), vAgeS: N = varying(pa.w), vStrength: N = varying(mt.x);
-    const vCentre: N = varying(centre), vSeed: N = varying(float(instanceIndex));
+    const vSeed: N = varying(float(instanceIndex));
     // Shape: a soft round puff broken by one octave of noise seeded per slot.
     const q = uv().sub(0.5);
     const shape = float(1.0).sub(smoothstep(0.3, 1.0, length(q).mul(2.0))).mul(mx_noise_float(vec3(uv().mul(3.0), vSeed.mul(0.137))).mul(0.5).add(0.75));
     const fades = smoothstep(0.0, 0.1, vAgeS).mul(float(1.0).sub(smoothstep(0.6, 1.0, vAgeFrac)));
     m.opacityNode = clamp(shape.mul(fades).mul(vStrength).mul(SPRAY_OPACITY), 0.0, 1.0);
-    // Single scattering: the sun through a forward-peaked phase function, the sky isotropically; then the haze.
-    const toP = vCentre.sub(cameraPosition);
+    // Single scattering: the sun through a forward-peaked phase function, the sky isotropically; then the haze. All of it
+    // depends only on the puff's centre, so it runs once per vertex (a varying), not per pixel: per pixel it cost ~5 ms
+    // for a close veil (sky LUT reads under heavy overdraw).
+    const toP = centre.sub(cameraPosition);
     const dist = length(toP);
     const viewDir = toP.div(max(dist, 1e-3));
     const cosT = dot(viewDir, sky.sunDirection);
     const g2 = PHASE_G * PHASE_G;
     const hg = float((1 - g2) / (4 * Math.PI)).div(pow(max(float(1 + g2).sub(cosT.mul(2 * PHASE_G)), 1e-4), 1.5));
     const radiance = sky.sunIlluminance.mul(hg).add(sky.skyIrradiance.mul(1 / (4 * Math.PI)));
-    const colour = sky.applyAerialPerspective(radiance, dist, viewDir);
+    const colour: N = varying(sky.applyAerialPerspective(radiance, dist, viewDir));
     const ageColour = mix(vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vAgeFrac).mul(this.inverseExposure.mul(0.5));
     m.colorNode = mix(colour, ageColour, this.tint.mul(0.8));
     return m;

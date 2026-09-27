@@ -100,13 +100,21 @@ describe('the births', () => {
     const k = Math.round(T_THROW * 20);
     const em = e();
     for (const b of sprayBirths(em, k, DEFAULT_SPRAY_PARAMS)) {
-      expect(em.some((x) => Math.hypot(b.x - x.x, b.z - x.z) <= 0.41 && b.y >= x.y - 1e-9 && b.y <= x.y + 0.3 + 1e-9)).toBe(true);
+      expect(em.some((x) => Math.hypot(b.x - x.x, b.z - x.z) <= SPRAY_SPACING_M / 2 + 1e-6 && b.y >= x.y - 1e-9 && b.y <= x.y + 0.3 + 1e-9)).toBe(true);
       expect(b.vy).toBeGreaterThanOrEqual(1 - 1e-9);
       expect(b.vy).toBeLessThanOrEqual(5 + 1e-9);
       expect(b.life).toBeGreaterThanOrEqual(1.2 - 1e-9);
       expect(b.life).toBeLessThanOrEqual(2.4 + 1e-9);
       expect(b.strength).toBeLessThanOrEqual(1);
     }
+  });
+  it('emitters are 3 m apart (the cost lever) and births scatter half a spacing either side, so the veil stays continuous', () => {
+    expect(SPRAY_SPACING_M).toBe(3);
+    const one = [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 1, waveId: 1, arc: 0 }];
+    let widest = 0;
+    for (let k = 0; k < 200; k++) for (const b of sprayBirths(one, k, DEFAULT_SPRAY_PARAMS)) widest = Math.max(widest, Math.abs(b.z));
+    expect(widest).toBeGreaterThan(0.8 * SPRAY_SPACING_M / 2);
+    expect(widest).toBeLessThanOrEqual(SPRAY_SPACING_M / 2 + 1e-9);
   });
   it('births never exceed the per-tick cap (amount 3 on a long section)', () => {
     const many = Array.from({ length: 400 }, (_, i) => ({ x: i, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 3, waveId: 1, arc: i }));
