@@ -10,6 +10,7 @@ import { DEFAULT_PICTURE } from '../render/PicturePipeline';
 import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { DEFAULT_SET_PARAMS } from '../swell/sets';
+import { DEFAULT_FOAM_PARAMS } from '../whitewater/foamStep';
 import {
   BREAKING_MODEL, CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
   loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
@@ -55,6 +56,7 @@ function defaults(): DevSettings {
     shallow: DEFAULT_SHALLOW_SWELL,
     overlays: DEFAULT_DEBUG_OVERLAYS,
     breaking: DEFAULT_BREAK_PARAMS,
+    foam: DEFAULT_FOAM_PARAMS,
   });
 }
 
@@ -85,6 +87,8 @@ function tweaked(): DevSettings {
   s.breaking.enabled = false;
   s.breaking.stageSpan = 2.2;
   s.breaking.ribbonOnset = 0.62;
+  s.foam.clearTimeS = 14;
+  s.foam.driftMps = 0.9;
   return s;
 }
 
