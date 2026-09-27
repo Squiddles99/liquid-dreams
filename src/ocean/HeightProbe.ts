@@ -19,12 +19,22 @@ export function holdFiniteHeights(held: Float32Array | null, readback: Float32Ar
   return next;
 }
 
+/**
+ * A readback dispatched in generation `dispatched`, arriving in generation `current`: dropped (the held values kept) when
+ * the probes were invalidated in between (a moment jump: it measured the old spot), else merged by holdFiniteHeights.
+ */
+export function acceptReadback(held: Float32Array | null, readback: Float32Array, dispatched: number, current: number): Float32Array | null {
+  return dispatched === current ? holdFiniteHeights(held, readback) : held;
+}
+
 /** Samples the ocean's height at up to 16 world XZ points on the GPU and reads them back asynchronously. */
 export class HeightProbe {
   readonly outputAttr = new THREE.StorageBufferAttribute(new Float32Array(MAX_PROBES * 4), 4);
   private readonly inputAttr = new THREE.StorageBufferAttribute(new Float32Array(MAX_PROBES * 4), 4);
   private readonly pass: THREE.ComputeNode;
   private latest: Float32Array | null = null;
+  /** Bumped by invalidate(): a readback dispatched before it is dropped (acceptReadback). */
+  private generation = 0;
   private pending = false;
 
   constructor(model: WaterSurfaceModel) {
@@ -57,11 +67,21 @@ export class HeightProbe {
     renderer.compute(this.pass);
     if (this.pending) return;
     this.pending = true;
+    const dispatched = this.generation;
     renderer
       .getArrayBufferAsync(this.outputAttr)
-      .then((buffer) => { this.latest = holdFiniteHeights(this.latest, new Float32Array(buffer)); })
+      .then((buffer) => { this.latest = acceptReadback(this.latest, new Float32Array(buffer), dispatched, this.generation); })
       .catch((e) => console.warn('HeightProbe readback failed; holding last value', e))
       .finally(() => { this.pending = false; });
+  }
+
+  /**
+   * Forget the held heights (the probes moved somewhere new, as on a moment jump): heightAt is null until a readback
+   * dispatched after this arrives, so nothing reads the old spot's water as the new one's.
+   */
+  invalidate(): void {
+    this.generation++;
+    this.latest = null;
   }
 
   /** Null until the probe has read back a finite height. */
