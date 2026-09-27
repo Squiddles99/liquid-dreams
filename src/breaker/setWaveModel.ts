@@ -223,7 +223,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const perAhead = dXiDs / jacobian;
   const b = breakPoint({
     theta, env: env * lateral, uUnbroken: v0 + dh, eta, uCrest: pitchC * etaCrest, etaCrest, H: Hc * lateral, k: fc.k, hmin: fc.hmin,
-    slope: slopeAlong, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead,
+    slope: slopeAlong, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead, crestConfidence: crest.confidence,
   }, crest.s, crest.r, o.params);
   out.eta = b.eta;
   out.slopeX += f.dirX * b.dEtaDAhead;

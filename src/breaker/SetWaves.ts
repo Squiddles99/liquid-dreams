@@ -293,9 +293,10 @@ export class SetWaves {
             const rC = breakingRatioNode(a.y.mul(fc.amp), fc.hmin, brk).toVar();
             const sC = breakingStageNode(rC, brk).toVar();
             const steep = steepeningNode(rC, brk).toVar();
-            // The readout's confidence in sC: 1 − smoothstep(T/8, T/4, |ξ left at the crest|).
+            // The lookup's confidence: 1 − smoothstep(T/8, T/4, |ξ left at the crest|). It weights the reported stage and
+            // the front sharpening (a var: the breaking below reads it inside nested Ifs).
             const quarterPeriod = float(Math.PI / 2).div(a.z);
-            const confidence = float(1.0).sub(smoothstep(quarterPeriod.mul(0.5), quarterPeriod, abs(phaseXi(cPos, fc.tau, this.meanOmega.div(fc.k)))));
+            const confidence = float(1.0).sub(smoothstep(quarterPeriod.mul(0.5), quarterPeriod, abs(phaseXi(cPos, fc.tau, this.meanOmega.div(fc.k))))).toVar();
             // waveAtCrest returns nothing (no stage, no breaking) where the point's own height is 0.
             const here = H.greaterThan(0.0);
             stage.assign(max(stage, select(here, sC.mul(confidence), float(0.0))));
@@ -315,7 +316,7 @@ export class SetWaves {
                 const v0 = dot(xz.sub(cPos), f.dir);
                 const br = breakPointNode({
                   theta, env: env.mul(lateral), uUnbroken: v0.add(d), eta: e, uCrest: pitchC.mul(etaCrest), etaCrest, H: Hl, k: fc.k, hmin: fc.hmin,
-                  slope: along, dThetaDAhead: a.z.mul(perAhead), dEnvDAhead: dEnv.mul(lateral).mul(perAhead),
+                  slope: along, dThetaDAhead: a.z.mul(perAhead), dEnvDAhead: dEnv.mul(lateral).mul(perAhead), crestConfidence: confidence,
                 }, steep, brk, stageCurvesNode(sC, brk));
                 eta.addAssign(br.eta.sub(e));
                 slope.addAssign(f.dir.mul(br.dEtaDAhead));

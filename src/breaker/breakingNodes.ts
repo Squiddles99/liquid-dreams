@@ -74,6 +74,8 @@ export function stageCurvesNode(s: N, u: BreakUniforms): StageCurveNodes {
 /** One wave at one point (see breaking.ts BreakPointInput): the derivatives are per metre ahead. */
 export interface BreakPointNodes {
   theta: N; env: N; uUnbroken: N; eta: N; uCrest: N; etaCrest: N; H: N; k: N; hmin: N; slope: N; dThetaDAhead: N; dEnvDAhead: N;
+  /** The crest lookup's confidence (breaking.BreakPointInput.crestConfidence): the front sharpening scales with it. */
+  crestConfidence: N;
 }
 
 /**
@@ -98,8 +100,9 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const above = i.eta.sub(i.etaCrest.sub(i.H));
   const m = max(above, 0.0);
   const dM = select(above.greaterThan(0.0), i.slope, float(0.0));
-  const drop = steep.mul(sink).mul(fade).mul(m);
-  const dDrop = steep.mul(dSink.mul(fade).mul(m).add(sink.mul(dFade).mul(m)).add(sink.mul(fade).mul(dM)));
+  const sharpen = steep.mul(i.crestConfidence);
+  const drop = sharpen.mul(sink).mul(fade).mul(m);
+  const dDrop = sharpen.mul(dSink.mul(fade).mul(m).add(sink.mul(dFade).mul(m)).add(sink.mul(fade).mul(dM)));
   // drainDepth × drainShape × env, and its slope (drainShapeSlope)
   const depth = u.troughDrain.mul(u.delta).mul(i.H).mul(drain);
   const nearFace = smoothstepDown(0.0, -Math.PI / 4, i.theta);
