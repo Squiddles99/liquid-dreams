@@ -60,6 +60,11 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
 // saturate(): at the anti-solar point v·h rounds to a hair above 1, and pow() of a negative base is NaN on the GPU (it showed as a fake sun).
 export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(saturate(float(1.0).sub(cosTheta)), 5.0)));
 
+/** The deep water's own light, as the surface shows it from above with its body lit from straight up (shadeWater's upwelling). */
+export function deepWaterUpwelling(sky: Sky, u: WaterOpticsUniforms): N {
+  return u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(max(sky.sunDirection.y, 0.0)))).div(PI).mul(u.bodyScale);
+}
+
 /**
  * Water = Fresnel-weighted sky reflection (the water itself where a turned-over surface reflects downward) + GGX sun
  * glitter + light from the water column (deep upwelling + lip transmission of sun and skylight), mixed with lit foam,
