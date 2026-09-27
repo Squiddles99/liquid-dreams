@@ -72,7 +72,9 @@ export interface SheetFoamMap {
  * band. Takes one sample (sampleNode's result, or null without a map) so each material binds the map once.
  */
 export function sheetFoamWeight(placeholder: N, sample: { density: N; inside: N } | null): N {
-  return sample ? mix(placeholder, sample.density, sample.inside) : placeholder;
+  // max with the frame's own breaking foam: the map holds the source at its last 20 Hz tick on 1 m texels, so on its
+  // own the bore's front would lag, step every third frame and blur; the map adds what lingers (final review, I2).
+  return sample ? mix(placeholder, max(sample.density, placeholder), sample.inside) : placeholder;
 }
 
 /**
