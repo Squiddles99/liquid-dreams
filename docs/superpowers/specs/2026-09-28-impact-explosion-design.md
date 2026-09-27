@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-28 (overnight, from 2026-09-27)
 **Authors:** Claude, under Andrew's delegation
-**Status:** Written and ruled overnight by Claude under Andrew's delegation ("complete 3b then merge and move to 3c"). Every decision below marked **Ruling** is Claude's, for Andrew to review. Not merged.
+**Status:** Written, ruled and implemented overnight by Claude under Andrew's delegation ("complete 3b then merge and move to 3c") on `phase-3c-impact-explosion` (plan `docs/superpowers/plans/2026-09-28-impact-explosion.md`). Every decision marked **Ruling** is Claude's, for Andrew to review. **Not merged.**
 **Builds on:**
 - Phase 3b, offshore spray (`2026-09-27-offshore-spray-design.md`): the particle pool, fixed slots per tick, the replay, the look;
 - the breaking ribbon (the lip profile's landing time τ_land);
@@ -66,6 +66,8 @@ The hashes are salted differently from the spray's, so the two effects never sha
 
 `IMPACT_RATE` = 40 per metre per second (**Ruling I3**, a denser burst than the mist).
 
+**As built (tuned in captures):** at the values above the burst topped out at crest height (about 2 m on the reference wave) and hid against the wave's white face; switching it on and off looked the same. The kick is now U(0.6, 1.2)·√(2·7·1.5·max(H, 0.5)), aiming 1.5 H above the landing. `IMPACT_KIND` is 0.8 → 3.5 m at opacity 0.32. It now rises to about 4 m and shows above the lip.
+
 ### 3.3 The look
 
 The same material as the spray (single scattering, per-puff lighting, a 3–10 m near-camera fade), with the kind's size, opacity and phase: 60% isotropic, 40% HG at g = 0.75. The effect is dense white, still glowing when backlit.
@@ -84,6 +86,13 @@ The targets are the spray's:
 - a replay: ≤ 150 ms (both systems together) at the default conditions.
 
 It is measured the same way. The 3b slider-maximum overrun (12 ft) remains Andrew's decision and is not addressed here.
+
+**As built (measured, pane visible, RTX 4060 Laptop):**
+- drawing: 0.3 ms;
+- the explosion's replay alone: 42 ticks in 57 ms (about 1.2 ms of CPU per tick);
+- shared with the spray in a real replay, both together take about 75 ms.
+
+All targets are met.
 
 **Ruling I4:** no foam deposition. The foam map already rises at the landing through Phase 2's landing foam (the ribbon's curl foam and the sheet's collapse foam), which is where the explosion lands. Depositing particle foam is deferred.
 
