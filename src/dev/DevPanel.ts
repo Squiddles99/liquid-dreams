@@ -14,7 +14,7 @@ import type { ReefParams } from '../seabed/wombReef';
 import type { AtmosphereParams } from '../sky/atmosphereParams';
 import type { SetParams } from '../swell/sets';
 import { FOAM_PARAM_RANGES, type FoamParams } from '../whitewater/foamStep';
-import { SPRAY_PARAM_RANGES, type SprayParams } from '../whitewater/sprayEmitters';
+import { IMPACT_PARAM_RANGES, type ImpactParams, SPRAY_PARAM_RANGES, type SprayParams } from '../whitewater/sprayEmitters';
 import type { SettingsMode } from './devSettings';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS } from './referenceMoments';
 
@@ -33,6 +33,7 @@ export interface DevPanelModel {
   breaking: BreakParams;
   foam: FoamParams;
   spray: SprayParams;
+  impact: ImpactParams;
   setStatus: { nextSet: string; wave: string; face: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
@@ -59,6 +60,7 @@ export interface DevPanelHandlers {
   onBreak(): void;
   onFoam(): void;
   onSpray(): void;
+  onImpact(): void;
   onSettingsMode(mode: SettingsMode): void;
   onResetSettings(): void;
   /** Any user-editable value changed (every binding and list; not the read-only readouts). */
@@ -137,6 +139,11 @@ export const FOAM_BINDINGS = {
 export const SPRAY_BINDINGS = {
   amount: { label: 'spray amount', ...SPRAY_PARAM_RANGES.amount, step: 0.05 },
   lifeS: { label: 'spray life (s)', ...SPRAY_PARAM_RANGES.lifeS, step: 0.1 },
+} as const;
+
+/** Impact folder slider (spec 2026-09-28-impact-explosion-design.md §3.4), range exactly normalizeImpactParams's. */
+export const IMPACT_BINDINGS = {
+  amount: { label: 'impact amount', ...IMPACT_PARAM_RANGES.amount, step: 0.05 },
 } as const;
 
 export class DevPanel {
@@ -228,6 +235,11 @@ export class DevPanel {
     const spray = this.pane.addFolder({ title: 'Spray' });
     for (const [key, opts] of Object.entries(SPRAY_BINDINGS) as [keyof SprayParams, (typeof SPRAY_BINDINGS)[keyof typeof SPRAY_BINDINGS]][]) {
       spray.addBinding(m.spray, key, opts).on('change', h.onSpray);
+    }
+
+    const impact = this.pane.addFolder({ title: 'Impact' });
+    for (const [key, opts] of Object.entries(IMPACT_BINDINGS) as [keyof ImpactParams, (typeof IMPACT_BINDINGS)[keyof typeof IMPACT_BINDINGS]][]) {
+      impact.addBinding(m.impact, key, opts).on('change', h.onImpact);
     }
 
     const reef = this.pane.addFolder({ title: 'Reef', expanded: false });
