@@ -2,6 +2,8 @@ import * as THREE from 'three/webgpu';
 import { agxToneMapping, dot, float, max, min, mix, neutralToneMapping, pass, pow, renderOutput, uniform, vec3, vec4 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { computeExposure, withUnderwater } from './exposure';
+import type { LensWaterState } from './lensWater';
+import { createLensWaterUniforms, updateLensWaterUniforms, wetLensSampleNode } from './lensWaterNode';
 
 type N = any;
 
@@ -55,13 +57,17 @@ export class PicturePipeline {
   private sunElevationDeg = 45;
   private forwardDotSun = -1;
   private underwater = false;
+  /** Water on the lens as the camera breaks the surface (LensWater, via setLensWater). */
+  private readonly lens = createLensWaterUniforms();
 
   constructor(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, params: PictureParams = DEFAULT_PICTURE) {
     this.params = { ...params };
     const scenePass = pass(scene, camera);
     // Clamped below the half-float maximum (65504): the scene is finite, but exposure > ~2 could push the sun
     // disk past it, overflowing bloom's HalfFloat targets, and PBR Neutral turns Infinity into NaN.
-    const exposed = min(scenePass.getTextureNode('output').rgb.mul(this.exposure), vec3(HDR_MAX));
+    // The scene through the lens: exactly the pass while the lens is dry, bent and blurred while it is wet.
+    const throughLens: N = wetLensSampleNode(scenePass.getTextureNode('output'), this.lens);
+    const exposed = min(throughLens.rgb.mul(this.exposure), vec3(HDR_MAX));
     this.bloomNode = bloom(vec4(exposed, 1.0), params.bloomStrength, params.bloomRadius, params.bloomThreshold);
     const hdr: N = exposed.add(this.bloomNode.rgb);
     // three typings gap: the tone-mapping Fns return an untyped Node, which mix() rejects.
@@ -102,6 +108,11 @@ export class PicturePipeline {
   setUnderwater(on: boolean): void {
     this.underwater = on;
     this.updateExposure();
+  }
+
+  /** This frame's water on the lens, and a clock (s) for its movement. */
+  setLensWater(s: LensWaterState, timeS: number): void {
+    updateLensWaterUniforms(this.lens, s, timeS);
   }
 
   render(): void {

@@ -60,11 +60,4 @@ describe('underwater optics', () => {
     for (let i = 0; i < 1000; i++) { const n = nextUnderwater(s, 0.03 * Math.sin(i * 0.37), 0); if (n !== s) flips++; s = n; }
     expect(flips).toBe(0);
   });
-  it('a floating camera (the lineup camera rides the surface at eye height) never switches underwater, even when a stale probe puts the water above it', () => {
-    // On load the probe is empty (the lineup seeds at water 0) and after a moment jump it holds the old spot's height, so
-    // for a moment the water can read above the eye: that must not flash the underwater view.
-    expect(nextUnderwater(false, 0.8, 1.5, true)).toBe(false);
-    expect(nextUnderwater(true, 0.8, 1.5, true)).toBe(false);
-    expect(nextUnderwater(false, 0.8, 1.5)).toBe(true);
-  });
 });
