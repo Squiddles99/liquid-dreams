@@ -319,6 +319,7 @@ export class SetWaves {
                 const v0 = dot(xz.sub(cPos), f.dir);
                 const br = breakPointNode({
                   theta, env: env.mul(lateral), uUnbroken: v0.add(d), eta: e, uCrest: pitchC.mul(etaCrest), etaCrest, H: Hl, k: fc.k, hmin: fc.hminBreak,
+                  boreH: min(a.y.mul(fc.amp), fc.hminBreak.mul(BREAKING_RATIO)).mul(lateral),
                   slope: along, dThetaDAhead: a.z.mul(perAhead), dEnvDAhead: dEnv.mul(lateral).mul(perAhead), crestConfidence: confidence,
                 }, steep, brk, stageCurvesNode(rC, brk));
                 eta.addAssign(br.eta.sub(e));

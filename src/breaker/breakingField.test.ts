@@ -10,8 +10,8 @@ import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import {
-  type ActiveWave, type BreakOptions, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
-  seabedFloor, sumWaves, toActiveWave, waveAt, waveAtCrest,
+  type ActiveWave, BREAKING_RATIO, type BreakOptions, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
+  phaseXi, seabedFloor, sumWaves, toActiveWave, waveAt, waveAtCrest,
 } from './setWaveModel';
 
 // The app's field: 1 m cells, default swell and tide (~1 s to solve), shared by every test here.
@@ -204,6 +204,33 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
     for (const k of ['steep', 'drain', 'collapse'] as const) expect(worst[k], k).toBeLessThanOrEqual(bounds[k]);
     expect(worst.drain, 'the drain changes somewhere').toBeGreaterThan(0.1);
   });
+  it('behind a broken crest the settled water is smooth along the crest: where the reef focuses the swell at the crest there are no trenches (Andrew, 12 ft)', { timeout: 60_000 }, () => {
+    // Everything behind a crest shares its crest's bore, so a bore that jumps along the crest draws a line along the
+    // travel, a crest-to-trough deep trench over the reef flat. The bore read β × the breaking depth over the capped
+    // height; the breaking depth (amp over the smoothed amp/depth) carries amp's focusing spikes, which the capped height
+    // does not, and the trough behind the crest stepped 0.5–0.8 m per 0.5 m of crest. Measured over the reef flat
+    // behind the peak (Andrew's view from inside the reef), as breaking's change to the Phase 1 surface.
+    const tx = -ctx.travelZ, tz = ctx.travelX;
+    let worst = 0, checked = 0;
+    for (const heightM of [5, 8]) for (const behindS of [3, 6, 9]) {
+      const w = testWave(heightM), t = at(20, 40).tau + behindS;
+      const change = (x: number, z: number): number | null => {
+        const f = at(x, z), c = crestAt(x, z, t, f, w, ctx, sheet)!;
+        const xi = phaseXi(x, z, t, f, w, ctx);
+        if (!(c.s > 0) || xi < 1 || xi > Math.PI / w.omega) return null;
+        return waveAtCrest(x, z, t, f, w, ctx, c, sheet).eta - waveAtCrest(x, z, t, f, w, ctx, null).eta;
+      };
+      for (let u = -60; u <= 20; u += 4) for (let v = -60; v <= 60; v += 0.5) {
+        const x = 20 + ctx.travelX * u + tx * v, z = 40 + ctx.travelZ * u + tz * v;
+        const a = change(x, z), b = change(x + tx * 0.5, z + tz * 0.5);
+        if (a === null || b === null) continue;
+        worst = Math.max(worst, Math.abs(b - a));
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(5000);
+    expect(worst, 'the largest step in 0.5 m of crest (m)').toBeLessThan(0.1);
+  });
 });
 
 describe('the breaking sheet on the real reef', () => {
@@ -222,7 +249,7 @@ describe('the breaking sheet on the real reef', () => {
       if (behind < 0.5 || behind > 20) return;
       const f = at(p.x, p.z), c = crestAt(p.x, p.z, t, f, w, ctx, sheet)!;
       // η = (Phase 1 η − drain × drainShape) × boreScale, and drainShape is 0 behind the crest: no sinking.
-      const scale = boreScale(localHeight(w, c.f), c.f.hminBreak, stageCurves(c.r, P).collapse, P);
+      const scale = boreScale(Math.min(w.heightM * c.f.amp, BREAKING_RATIO * c.f.hminBreak), c.f.hminBreak, stageCurves(c.r, P).collapse, P);
       const broken = sumWaves(p.x, p.z, t, f, [w], ctx, sheet).eta, unbroken = sumWaves(p.x, p.z, t, f, [w], ctx).eta;
       expect(Math.abs(broken - unbroken * scale), `${behind.toFixed(1)} m behind the crest`).toBeLessThan(1e-3);
       checked++;
