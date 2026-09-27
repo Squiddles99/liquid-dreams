@@ -113,9 +113,10 @@ function peakRay(field: ReefField): [number, number][] {
   return out;
 }
 
-/** The biggest wave of the default set 1, and the times after its arrival at the peak that the break tests read. */
+/** The biggest wave of the default set 1, and the times after its arrival at the peak that the break tests read (0.6
+ * and 0.9 s catch the lip landing: foam between 0 and 1). */
 const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
-const BREAK_DTS = [0, 0.3, 0.6, 1.2, 4];
+const BREAK_DTS = [0, 0.3, 0.6, 0.9, 1.2, 4];
 const EPS = 0.25;
 const f3 = (v: number): string => v.toFixed(3);
 
@@ -147,6 +148,8 @@ registerSelfTest({
     const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: DEFAULT_BREAK_PARAMS, includeCurl: true };
     const disp = new Worst(true, 0), foam = new Worst(true, 0), lip = new Worst(true, 0), stage = new Worst(true, 0), dotN = new Worst(false, 1);
     const tables: string[] = [];
+    // Samples where the CPU foam is strictly between 0 and 1 (the landing window): the foam terms are really compared.
+    let partial = 0;
     for (const dt of BREAK_DTS) {
       const t = REF_BIGGEST.arrivalS + dt;
       time.value = t;
@@ -164,6 +167,7 @@ registerSelfTest({
         const nDot = g[4] * c.normal[0] + g[5] * c.normal[1] + g[6] * c.normal[2];
         disp.see(d, dt, i); foam.see(Math.abs(g[3] - c.foam), dt, i); lip.see(Math.abs(g[7] - c.lip), dt, i);
         stage.see(Math.abs(g[8] - c.stage), dt, i); dotN.see(nDot, dt, i);
+        if (c.foam > 0.05 && c.foam < 0.95) partial++;
         rows.push(
           `#${i} (${x.toFixed(1)},${z.toFixed(1)}) GPU/CPU d ${gd.map(f3).join(',')}/${cd.map(f3).join(',')} n.y ${f3(g[5])}/${f3(c.normal[1])} ` +
           `n·n ${nDot.toFixed(4)} foam ${f3(g[3])}/${f3(c.foam)} lip ${f3(g[7])}/${f3(c.lip)} stage ${f3(g[8])}/${f3(c.stage)}`,
@@ -172,11 +176,11 @@ registerSelfTest({
       tables.push(`dt ${dt}: ${rows.join('; ')}`);
     }
     for (const line of tables) console.log(`[selftest]   breaking ${line}`);
-    const ok = disp.value < 0.05 && foam.value < 0.05 && lip.value < 0.05 && dotN.value > 0.99 && stage.value < 0.02;
+    const ok = disp.value < 0.05 && foam.value < 0.05 && lip.value < 0.05 && dotN.value > 0.99 && stage.value < 0.02 && partial > 0;
     return {
       pass: ok,
       detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s; worst |Δdisp| ${disp} m; |Δfoam| ${foam}; |Δlip| ${lip}; ` +
-        `min n·n ${dotN}; |Δstage| ${stage}${ok ? '' : `. Per point (GPU/CPU): ${tables.join(' || ')}`}`,
+        `min n·n ${dotN}; |Δstage| ${stage}; samples with 0.05 < foam < 0.95 ${partial}${ok ? '' : `. Per point (GPU/CPU): ${tables.join(' || ')}`}`,
     };
   },
 });
