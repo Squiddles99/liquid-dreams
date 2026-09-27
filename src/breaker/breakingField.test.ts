@@ -4,12 +4,13 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, breakingHeightThreshold } from './breaking';
+import { DEFAULT_BREAK_PARAMS, boreScale, breakingHeightThreshold, stageCurves } from './breaking';
+import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import {
-  type ActiveWave, type BreakOptions, SEABED_CLEARANCE_M, type WaveContext, crestStage, fieldBreakingHeight, localHeight, sumWaves, sumWavesWithNormal,
-  toActiveWave, waveAt,
+  type ActiveWave, type BreakOptions, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
+  seabedFloor, sumWaves, toActiveWave, waveAt, waveAtCrest,
 } from './setWaveModel';
 
 // The app's field: 1 m cells, default swell and tide (~1 s to solve), shared by every test here.
@@ -17,9 +18,9 @@ const reef05 = buildBathymetry();
 const field = computeReefField({ bed: downsample(reef05, 2), periodS: 15, fromDeg: 225, tideM: 0 });
 const ctxOf = (f: ReefField): WaveContext => ({ omega: f.omega, travelX: f.far.dirX, travelZ: f.far.dirZ });
 const ctx = ctxOf(field);
-const optsFor = (f: ReefField, includeCurl = true, params = DEFAULT_BREAK_PARAMS): BreakOptions => ({ sample: (x, z) => sampleField(f, x, z), params, includeCurl });
-const render = optsFor(field);
-const probe = optsFor(field, false);
+const optsFor = (f: ReefField, params = DEFAULT_BREAK_PARAMS): BreakOptions => ({ sample: (x, z) => sampleField(f, x, z), params });
+/** The one breaking surface: the sheet the render draws and the probe reads. */
+const sheet = optsFor(field);
 const HS = surferFeetToHs(DEFAULT_CONDITIONS.swell.sizeFt);
 const REF_SET = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
 const REF_BIGGEST = REF_SET.reduce((a, b) => (b.heightM > a.heightM ? b : a));
@@ -27,7 +28,7 @@ const REF_BIGGEST = REF_SET.reduce((a, b) => (b.heightM > a.heightM ? b : a));
 const testWave = (heightM: number): ActiveWave => ({ arrivalS: 0, heightM, omega: ctx.omega, travelX: ctx.travelX, travelZ: ctx.travelZ, crestLengthM: 400, crestOffsetM: 0 });
 const at = (x: number, z: number): FieldSample => sampleField(field, x, z);
 /** The stage a wave's crest has when it is at (x, z). */
-const stageWhenCrestAt = (x: number, z: number, w: ActiveWave): number => crestStage(x, z, at(x, z).tau, at(x, z), w, ctx, render);
+const stageWhenCrestAt = (x: number, z: number, w: ActiveWave): number => crestStage(x, z, at(x, z).tau, at(x, z), w, ctx, sheet);
 
 /** Points along the ray through (px, pz), from `backM` seaward to `aheadM` shoreward, 0.5 m apart. */
 function ray(px: number, pz: number, backM: number, aheadM: number): { x: number; z: number; tau: number }[] {
@@ -55,7 +56,7 @@ describe('breaking reduces to Phase 1', () => {
   it('a 5 cm swell never breaks at mid tide (the shallowest water is 1.5 m): exactly the Phase 1 surface', () => {
     const tiny = [testWave(0.05)];
     for (const [x, z] of grid) for (const t of [-5, 0, 3, 8]) {
-      expect(sumWaves(x, z, t, at(x, z), tiny, ctx, render)).toEqual(sumWaves(x, z, t, at(x, z), tiny, ctx));
+      expect(sumWaves(x, z, t, at(x, z), tiny, ctx, sheet)).toEqual(sumWaves(x, z, t, at(x, z), tiny, ctx));
     }
   });
   it('a lone wave in deep water, before it reaches the ledge, is exactly the Phase 1 wave', () => {
@@ -63,11 +64,11 @@ describe('breaking reduces to Phase 1', () => {
     const crest = ray(0, 0, 100, 0)[0]; // 100 m seaward of the peak, on its ray
     for (let du = -50; du <= 50; du += 5) for (const side of [-30, 0, 30]) {
       const x = crest.x + at(0, 0).dirX * du - at(0, 0).dirZ * side, z = crest.z + at(0, 0).dirZ * du + at(0, 0).dirX * side;
-      expect(waveAt(x, z, crest.tau, at(x, z), w, ctx, render)).toEqual(waveAt(x, z, crest.tau, at(x, z), w, ctx));
+      expect(waveAt(x, z, crest.tau, at(x, z), w, ctx, sheet)).toEqual(waveAt(x, z, crest.tau, at(x, z), w, ctx));
     }
   });
   it('breaking switched off is exactly the Phase 1 surface, even mid-barrel', () => {
-    const off = optsFor(field, true, { ...DEFAULT_BREAK_PARAMS, enabled: false });
+    const off = optsFor(field, { ...DEFAULT_BREAK_PARAMS, enabled: false });
     const waves = REF_SET.map(toActiveWave);
     for (const [x, z] of grid) for (const dt of [-1, 0, 1, 2]) {
       const t = REF_BIGGEST.arrivalS + dt;
@@ -76,7 +77,7 @@ describe('breaking reduces to Phase 1', () => {
   });
 });
 
-describe('the field breaking height (SetWaves skips the GPU breaking below it)', () => {
+describe('the field breaking height (SetWaves skips the GPU breaking below its steepening share)', () => {
   const nodeMin = (p = DEFAULT_BREAK_PARAMS) => {
     let best = { T: Infinity, x: 0, z: 0 };
     const g = field.grid;
@@ -93,11 +94,13 @@ describe('the field breaking height (SetWaves skips the GPU breaking below it)',
       expect(hb).toBeLessThanOrEqual(n.T);
       expect(hb).toBeGreaterThan(0.8 * n.T);
       // Just above the best node's threshold, a crest there breaks.
-      const w = testWave(1.01 * n.T), o = optsFor(field, true, p);
+      const w = testWave(1.01 * n.T), o = optsFor(field, p);
       expect(crestStage(n.x, n.z, at(n.x, n.z).tau, at(n.x, n.z), w, ctx, o)).toBeGreaterThan(0);
     });
-    it(`a wave no taller than it is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
-      const w = [testWave(fieldBreakingHeight(field, p))], o = optsFor(field, true, p);
+    it(`its steepening share (ribbonOnset + 0.2 of it) bounds the sheet: a wave no taller is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
+      const hs = fieldSteepeningHeight(field, p);
+      expect(hs).toBeCloseTo((p.ribbonOnset + 0.2) * fieldBreakingHeight(field, p), 12);
+      const w = [testWave(hs)], o = optsFor(field, p);
       for (let x = -400; x <= 300; x += 12.5) for (let z = -600; z <= 300; z += 12.5) for (const t of [-20, -5, 0, 4, 12]) {
         expect(sumWaves(x, z, t, at(x, z), w, ctx, o)).toEqual(sumWaves(x, z, t, at(x, z), w, ctx));
       }
@@ -170,64 +173,156 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
   });
 });
 
-describe('the breaking surface on the real reef', () => {
-  const waves = REF_SET.map(toActiveWave);
-  const dir = at(0, 0);
-  // The ray through the peak, 40 m either side, every 5 cm: a true cross-section, since every point on one ray finds
-  // the same crest (a straight line would cut across the crest at an angle where the ray bends).
-  const peakRay: { x: number; z: number; arc: number }[] = [];
-  {
-    let x = 0, z = 0;
-    for (let d = 0; d < 40; d += 0.05) { const s = at(x, z); x -= s.dirX * 0.05; z -= s.dirZ * 0.05; }
-    for (let arc = -40; arc <= 40 + 1e-9; arc += 0.05) { peakRay.push({ x, z, arc }); const s = at(x, z); x += s.dirX * 0.05; z += s.dirZ * 0.05; }
-  }
-  /** The surface along the peak ray at time t: (distance along the ray + displacement along it, height) points. */
-  const crossSection = (t: number, o: BreakOptions, only: ActiveWave[] = waves): [number, number][] =>
-    peakRay.map(({ x, z, arc }) => {
-      const f = at(x, z), r = sumWaves(x, z, t, f, only, ctx, o);
-      return [arc + r.dx * f.dirX + r.dz * f.dirZ, r.eta];
+describe('the breaking sheet on the real reef', () => {
+  const P = DEFAULT_BREAK_PARAMS;
+  it('the back of a breaking wave is its unbroken back', () => {
+    // The biggest default wave at the peak, 0.5 s after it arrives there (testWave: arrival 0, crest at τ = t).
+    const w = testWave(REF_BIGGEST.heightM), t = 0.5;
+    const line = ray(0, 0, 40, 40);
+    const j = line.findIndex((p) => p.tau >= t);
+    const crestArc = (j - 1 + (t - line[j - 1].tau) / (line[j].tau - line[j - 1].tau)) * 0.5;
+    const crestHere = crestAt(line[j].x, line[j].z, t, at(line[j].x, line[j].z), w, ctx, sheet)!;
+    expect(crestHere.s, 'the wave is breaking at the peak').toBeGreaterThan(0);
+    let checked = 0;
+    line.forEach((p, i) => {
+      const behind = crestArc - i * 0.5;
+      if (behind < 0.5 || behind > 20) return;
+      const f = at(p.x, p.z), c = crestAt(p.x, p.z, t, f, w, ctx, sheet)!;
+      // η = (Phase 1 η − drain × drainShape) × boreScale, and drainShape is 0 behind the crest: no sinking.
+      const scale = boreScale(localHeight(w, c.f), c.f.hmin, stageCurves(c.s, P).collapse, P);
+      const broken = sumWaves(p.x, p.z, t, f, [w], ctx, sheet).eta, unbroken = sumWaves(p.x, p.z, t, f, [w], ctx).eta;
+      expect(Math.abs(broken - unbroken * scale), `${behind.toFixed(1)} m behind the crest`).toBeLessThan(1e-3);
+      checked++;
     });
-  const overhang = (pts: [number, number][]) => { let front = -Infinity, back = 0; for (const [u] of pts) { front = Math.max(front, u); back = Math.max(back, front - u); } return back; };
-  const selfIntersects = (pts: [number, number][]): boolean => {
-    const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx;
-    for (let i = 0; i + 1 < pts.length; i++) for (let j = i + 2; j + 1 < pts.length; j++) {
-      const [x1, y1] = pts[i], [x2, y2] = pts[i + 1], [x3, y3] = pts[j], [x4, y4] = pts[j + 1];
-      if (Math.max(x3, x4) < Math.min(x1, x2) || Math.min(x3, x4) > Math.max(x1, x2) || Math.max(y3, y4) < Math.min(y1, y2) || Math.min(y3, y4) > Math.max(y1, y2)) continue;
-      if (cross(x2 - x1, y2 - y1, x3 - x1, y3 - y1) * cross(x2 - x1, y2 - y1, x4 - x1, y4 - y1) < 0 && cross(x4 - x3, y4 - y3, x1 - x3, y1 - y3) * cross(x4 - x3, y4 - y3, x2 - x3, y2 - y3) < 0) return true;
-    }
-    return false;
+    expect(checked).toBeGreaterThanOrEqual(38);
+  });
+  it('the face stands up before it breaks', () => {
+    // On the north ledge, where the crest's breaking ratio reaches 0.85 (unbroken, steepening), 2 m ahead of the crest.
+    const w = testWave(REF_BIGGEST.heightM);
+    const [px, pz] = along(NORTH_LEDGE, 100, 10)[3];
+    const line = ray(px, pz, 60, 30);
+    const crests = line.map((p) => crestAt(p.x, p.z, p.tau, at(p.x, p.z), w, ctx, sheet)!);
+    const j = crests.findIndex((c) => c.r >= 0.85);
+    expect(j, 'the crest reaches r = 0.85 on this ray').toBeGreaterThan(0);
+    expect(crests[j].r).toBeLessThan(0.9);
+    expect(crests[j].s).toBe(0);
+    const t = line[j].tau, q = line[j + 4];
+    const f = at(q.x, q.z), H = localHeight(w, at(line[j].x, line[j].z));
+    const drop = sumWaves(q.x, q.z, t, f, [w], ctx).eta - sumWaves(q.x, q.z, t, f, [w], ctx, sheet).eta;
+    expect(drop).toBeGreaterThanOrEqual(0.1 * H);
+  });
+  // The analytic slope against central differences. Differencing the live sheet on the real reef is not a valid test:
+  // Phase 1's slope already omits the field's gradients (amp and the hmin cap change by up to 0.5 per m over reef heads
+  // and the ledge), and the breaking derivative is taken at a fixed crest while the crest frame (r, s) varies along the
+  // crest (the peel, the collapse). So the check is (A) the live sheet on a uniform field, where the model's assumptions
+  // hold, and (A′) on the real reef, the sheet's own model: the field frozen per point and every crest held fixed.
+  /**
+   * The Eulerian slope (per metre of the displaced surface, as the render's normal needs) from central differences of
+   * the displaced surface point P(x, z) = (x + dx, η, z + dz): Δη = sx·ΔX + sz·ΔZ over the x and z stencils, solved.
+   */
+  const differencedSlope = (P: (x: number, z: number) => number[], x: number, z: number, h: number): [number, number] => {
+    const [xp, xm, zp, zm] = [P(x + h, z), P(x - h, z), P(x, z + h), P(x, z - h)];
+    const [aX, aE, aZ] = [xp[0] - xm[0], xp[1] - xm[1], xp[2] - xm[2]], [bX, bE, bZ] = [zp[0] - zm[0], zp[1] - zm[1], zp[2] - zm[2]];
+    const det = aX * bZ - aZ * bX;
+    return [(aE * bZ - aZ * bE) / det, (aX * bE - aE * bX) / det];
   };
-  const times = [-0.5, 0, 0.3, 0.6, 0.9, 1.2, 1.5, 2.5, 4].map((dt) => REF_BIGGEST.arrivalS + dt);
-  it('the biggest wave barrels through the peak without its surface crossing itself', { timeout: 60_000 }, () => {
-    let deepest = 0;
-    for (const t of times) {
-      const pts = crossSection(t, render, [toActiveWave(REF_BIGGEST)]);
-      expect(selfIntersects(pts), `t = arrival ${(t - REF_BIGGEST.arrivalS).toFixed(1)} s`).toBe(false);
-      deepest = Math.max(deepest, overhang(pts));
+  it("the sheet's slope matches central differences of its height (uniform field)", () => {
+    // Steepening (r 0.80), breaking (r 1.28, 1.51, 1.68) and collapsed (r 2.99), on a field uniform in everything but τ.
+    const cases: [number, number, number, number][] = [[15, 7, 6, 2.3], [15, 7, 6, 3.0], [15, 7, 6, 3.4], [12, 5, 4, 1.5], [15, 7, 6, 4.2]]; // period, depth, hmin, height
+    let worstJ = 0;
+    const ratios: number[] = [];
+    for (const [T, depth, hmin, height] of cases) {
+      const omega = (2 * Math.PI) / T, k = waveNumber(omega, depth), c = omega / k;
+      const dirX = Math.cos(0.4), dirZ = Math.sin(0.4);
+      const fAt = (x: number, z: number): FieldSample => ({ tau: (x * dirX + z * dirZ) / c, amp: 1, hmin, k, dirX, dirZ, depth });
+      const w: ActiveWave = { arrivalS: 0, heightM: height, omega, travelX: dirX, travelZ: dirZ, crestLengthM: 400, crestOffsetM: 0 };
+      const cx: WaveContext = { omega, travelX: dirX, travelZ: dirZ };
+      const o: BreakOptions = { sample: fAt, params: DEFAULT_BREAK_PARAMS };
+      const P3 = (t: number) => (px: number, pz: number) => { const q = sumWaves(px, pz, t, fAt(px, pz), [w], cx, o); return [px + q.dx, q.eta, pz + q.dz]; };
+      ratios.push(crestAt(0, 0, 0, fAt(0, 0), w, cx, o)!.r);
+      const rows: { s0: number; t: number; ax: number; az: number; nx: number; nz: number }[] = [];
+      for (const t of [0.3, 1.5]) for (let s0 = -40; s0 <= 40; s0 += 0.37) {
+        const x = s0 * dirX + 3 * dirZ, z = s0 * dirZ - 3 * dirX, h = 0.01;
+        const c0 = crestAt(x, z, t, fAt(x, z), w, cx, o)!;
+        if (Math.abs((x - c0.x) * dirX + (z - c0.z) * dirZ) < 0.05) continue;
+        const [nx, nz] = differencedSlope(P3(t), x, z, h);
+        const r = sumWaves(x, z, t, fAt(x, z), [w], cx, o);
+        rows.push({ s0, t, ax: r.slopeX, az: r.slopeZ, nx, nz });
+        // How far the along-travel Jacobian is from 1 here: the Eulerian correction must be exercised.
+        const along = (P3(t)(x + h * dirX, z + h * dirZ)[0] - P3(t)(x - h * dirX, z - h * dirZ)[0]) / (2 * h * dirX);
+        worstJ = Math.max(worstJ, Math.abs(along - 1));
+      }
+      const maxSlope = Math.max(...rows.flatMap((q) => [Math.abs(q.nx), Math.abs(q.nz)]));
+      for (const q of rows) {
+        const label = `T ${T} height ${height} at ${q.s0.toFixed(2)} m, t ${q.t}`;
+        expect(Math.abs(q.ax - q.nx), `slopeX ${label}`).toBeLessThan(0.03 * maxSlope + 2e-3);
+        expect(Math.abs(q.az - q.nz), `slopeZ ${label}`).toBeLessThan(0.03 * maxSlope + 2e-3);
+      }
     }
-    expect(deepest).toBeGreaterThan(2);
+    expect(Math.min(...ratios), 'a steepening case').toBeLessThan(1);
+    expect(Math.max(...ratios), 'a collapsed case').toBeGreaterThan(2);
+    expect(worstJ, 'J ≠ 1 somewhere').toBeGreaterThan(0.1);
   });
-  it('the probe surface through the same barrel stays single-valued, with no lip', () => {
-    for (const t of times) {
-      expect(overhang(crossSection(t, probe))).toBe(0);
-      for (let u = -20; u <= 20; u += 1) expect(sumWaves(dir.dirX * u, dir.dirZ * u, t, at(dir.dirX * u, dir.dirZ * u), waves, ctx, probe).lip).toBe(0);
+  it("the sheet's slope matches its own model's derivative on the real reef (field frozen, crests fixed)", () => {
+    const waves = REF_SET.map(toActiveWave);
+    let seed = 20260927;
+    const rand = (): number => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
+    const h = 0.02;
+    const rows: { x: number; z: number; t: number; ax: number; az: number; nx: number; nz: number }[] = [];
+    let nearCrest = 0, breakingPart = 0;
+    while (rows.length + nearCrest < 300) {
+      // Around the peak, up the north ledge and along the south ledge, through the biggest wave's break.
+      const x = -30 + 90 * rand(), z = -110 + 150 * rand(), t = REF_BIGGEST.arrivalS - 1 + 4 * rand();
+      const f0 = at(x, z);
+      const crests = waves.map((w) => crestAt(x, z, t, f0, w, ctx, sheet));
+      // Within 5 cm of a crest the stencil straddles ahead = 0, where the sharpening's one-sided definition begins.
+      if (crests.some((c) => Math.abs((x - c!.x) * f0.dirX + (z - c!.z) * f0.dirZ) < 0.05)) {
+        nearCrest++;
+        continue;
+      }
+      // The field frozen at this point's sample, τ shifted to first order along its ray; every wave keeps this point's crest.
+      const frozen = (px: number, pz: number): FieldSample => ({ ...f0, tau: f0.tau + (f0.k / ctx.omega) * (f0.dirX * (px - x) + f0.dirZ * (pz - z)) });
+      const sum = (px: number, pz: number, o?: BreakOptions) => {
+        const out = { eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0 };
+        waves.forEach((w, i) => {
+          const r = waveAtCrest(px, pz, t, frozen(px, pz), w, ctx, o ? crests[i] : null, o);
+          out.eta += r.eta; out.dx += r.dx; out.dz += r.dz; out.slopeX += r.slopeX; out.slopeZ += r.slopeZ;
+        });
+        if (out.eta < seabedFloor(f0)) { out.eta = seabedFloor(f0); out.slopeX = 0; out.slopeZ = 0; }
+        return out;
+      };
+      const r = sum(x, z, sheet), unbroken = sum(x, z);
+      // The frozen model at the point is the sheet itself.
+      expect(r.eta).toBeCloseTo(sumWaves(x, z, t, f0, waves, ctx, sheet).eta, 9);
+      breakingPart = Math.max(breakingPart, Math.abs(r.slopeX - unbroken.slopeX), Math.abs(r.slopeZ - unbroken.slopeZ));
+      const [nx, nz] = differencedSlope((px, pz) => { const q = sum(px, pz, sheet); return [px + q.dx, q.eta, pz + q.dz]; }, x, z, h);
+      rows.push({ x, z, t, ax: r.slopeX, az: r.slopeZ, nx, nz });
+    }
+    const maxSlope = Math.max(...rows.flatMap((q) => [Math.abs(q.nx), Math.abs(q.nz)]));
+    expect(maxSlope, 'the sample reaches the steep face').toBeGreaterThan(0.3);
+    expect(breakingPart, 'breaking changes the slope somewhere').toBeGreaterThan(0.3);
+    for (const q of rows) {
+      const where = `(${q.x.toFixed(2)}, ${q.z.toFixed(2)}) arrival + ${(q.t - REF_BIGGEST.arrivalS).toFixed(2)} s`;
+      expect(Math.abs(q.ax - q.nx), `slopeX at ${where}`).toBeLessThan(0.05 * maxSlope + 2e-3);
+      expect(Math.abs(q.az - q.nz), `slopeZ at ${where}`).toBeLessThan(0.05 * maxSlope + 2e-3);
     }
   });
-  it('the normal is up on flat water, matches the height derivative on small waves, and faces down under the lip', () => {
-    expect(sumWavesWithNormal(-300, 0, 0, at(-300, 0), [], ctx, render, 0.25).normal).toEqual([0, 1, 0]);
-    const small = [testWave(0.1)];
-    for (const x of [-200, -150]) {
-      const f = at(x, 0), t = f.tau + 1.3;
-      const n = sumWavesWithNormal(x, 0, t, f, small, ctx, render, 0.05).normal;
-      const a = waveAt(x, 0, t, f, small[0], ctx);
-      expect(Math.abs(-n[0] / n[1] - a.slopeX)).toBeLessThan(0.05 * Math.abs(a.slopeX) + 2e-4);
+  it("the probe's fixed-point search converges with the front sharpening", () => {
+    // HeightProbe's loop (4 iterations of x0 ← x − d(x0)) at 50 lineup positions around the peak, through the break.
+    const waves = REF_SET.map(toActiveWave);
+    const positions: [number, number][] = [];
+    for (let u = -20; u <= 25; u += 5) for (let side = -20; side <= 20; side += 10) {
+      positions.push([at(0, 0).dirX * u - at(0, 0).dirZ * side, at(0, 0).dirZ * u + at(0, 0).dirX * side]);
     }
-    let lowest = 1;
-    for (const t of times.slice(2, 7)) for (let u = -10; u <= 15; u += 0.25) {
-      const x = dir.dirX * u, z = dir.dirZ * u;
-      lowest = Math.min(lowest, sumWavesWithNormal(x, z, t, at(x, z), waves, ctx, render, 0.1).normal[1]);
+    expect(positions.length).toBe(50);
+    for (const dt of [0, 0.5, 1, 2]) for (const [px, pz] of positions) {
+      const t = REF_BIGGEST.arrivalS + dt;
+      const disp = (x: number, z: number) => sumWaves(x, z, t, at(x, z), waves, ctx, sheet);
+      let ox = px, oz = pz;
+      for (let i = 0; i < 4; i++) { const d = disp(ox, oz); ox = px - d.dx; oz = pz - d.dz; }
+      const d = disp(ox, oz);
+      expect(Math.hypot(ox + d.dx - px, oz + d.dz - pz), `(${px.toFixed(1)}, ${pz.toFixed(1)}) arrival + ${dt} s`).toBeLessThan(0.01);
     }
-    expect(lowest).toBeLessThan(0);
   });
 });
 
@@ -235,13 +330,11 @@ describe('the breaking surface has no seams across the crest', () => {
   // Each wave's crest is looked up along the wave's own travel direction (the same at every point), so neighbouring
   // points find neighbouring crests. Along each point's field ray instead, the lookup fanned out where the rays turn
   // just shoreward of the peak and cut ~1 m trenches along the crest (x 18–30, z −5…−9). A seam is a jump: it does not
-  // shrink as the points close in. The breaking shape itself is steep there (the collapse front and the curl add
-  // 0.4–3.5 m to a 0.5 m step, but only 2–8 cm to a 1 cm one), so the check is at 1 cm, where the old lookup's seams
-  // stepped 0.19–0.38 m. The distance is the displaced surface's (dx, η, dz), so a seam in the horizontal displacement
-  // (the curl moves points along travel) counts too. And the power: a steep but continuous surface's excess shrinks
-  // with the spacing, a seam's does not, so the worst pairs are re-measured a quarter as far apart and must shrink by
-  // at least 2× (the old lookup's 0.18 m at 4 mm would fail this).
-  it('1 cm apart, breaking adds at most 0.15 m to Phase 1’s 3D step (probe and render), and the worst pairs shrink ≥ 2× at 2.5 mm', { timeout: 120_000 }, () => {
+  // shrink as the points close in. So the check is at 1 cm, where the old lookup's seams stepped 0.19–0.38 m, and on the
+  // displaced surface's (dx, η, dz). And the power: a steep but continuous surface's excess shrinks with the spacing, a
+  // seam's does not, so the worst pairs are re-measured a quarter as far apart and must shrink by at least 2× (the old
+  // lookup's 0.18 m at 4 mm would fail this).
+  it('1 cm apart, breaking adds at most 0.15 m to Phase 1’s 3D step, and the worst pairs shrink ≥ 2× at 2.5 mm', { timeout: 120_000 }, () => {
     const waves = REF_SET.map(toActiveWave);
     const h = 0.01;
     const pos = (x: number, z: number, t: number, o?: BreakOptions): [number, number, number] => {
@@ -252,18 +345,18 @@ describe('the breaking surface has no seams across the crest', () => {
     /** Breaking's addition to the distance between the surface points of (x, z) and (x, z) + d. */
     const excessAt = (x: number, z: number, dx: number, dz: number, t: number, o: BreakOptions): number =>
       gap(pos(x, z, t, o), pos(x + dx, z + dz, t, o)) - gap(pos(x, z, t), pos(x + dx, z + dz, t));
-    for (const dt of [0, 1]) for (const o of [probe, render]) {
-      const t = REF_BIGGEST.arrivalS + dt, name = o.includeCurl ? 'render' : 'probe';
+    for (const dt of [0, 1]) {
+      const t = REF_BIGGEST.arrivalS + dt;
       const pairs: { x: number; z: number; dx: number; dz: number; e: number }[] = [];
       for (let x = 0; x <= 40 + 1e-9; x += 0.5) for (let z = -15; z <= 5 + 1e-9; z += 0.5) {
-        for (const [dx, dz] of [[h, 0], [0, h]]) pairs.push({ x, z, dx, dz, e: excessAt(x, z, dx, dz, t, o) });
+        for (const [dx, dz] of [[h, 0], [0, h]]) pairs.push({ x, z, dx, dz, e: excessAt(x, z, dx, dz, t, sheet) });
       }
       pairs.sort((p, q) => q.e - p.e);
       const w = pairs[0];
-      expect(w.e, `${name} at arrival + ${dt} s, worst (${w.x}, ${w.z}) + (${w.dx}, ${w.dz})`).toBeLessThanOrEqual(0.15);
+      expect(w.e, `arrival + ${dt} s, worst (${w.x}, ${w.z}) + (${w.dx}, ${w.dz})`).toBeLessThanOrEqual(0.15);
       for (const p of pairs.slice(0, 20).filter((q) => q.e > 0.005)) {
-        const quarter = excessAt(p.x, p.z, p.dx / 4, p.dz / 4, t, o);
-        expect(quarter, `${name} at arrival + ${dt} s, (${p.x}, ${p.z}): ${p.e.toFixed(4)} m at 1 cm`).toBeLessThanOrEqual(p.e / 2);
+        const quarter = excessAt(p.x, p.z, p.dx / 4, p.dz / 4, t, sheet);
+        expect(quarter, `arrival + ${dt} s, (${p.x}, ${p.z}): ${p.e.toFixed(4)} m at 1 cm`).toBeLessThanOrEqual(p.e / 2);
       }
     }
   });
@@ -285,14 +378,14 @@ describe('breaking stays finite and bounded', () => {
         for (const w of set) tallest = Math.max(tallest, localHeight(w, sampleField(f, x, z)));
       }
       for (let x = -60; x <= 110; x += 10) for (let z = -150; z <= 60; z += 10) for (let dt = -10; dt <= 10; dt += 2.5) {
-        const r = sumWavesWithNormal(x, z, peakT + dt, sampleField(f, x, z), set, cx, o, 0.25);
-        for (const v of [r.eta, r.dx, r.dz, r.foam, r.lip, r.stage, ...r.normal]) expect(Number.isFinite(v)).toBe(true);
+        const r = sumWaves(x, z, peakT + dt, sampleField(f, x, z), set, cx, o);
+        for (const v of Object.values(r)) expect(Number.isFinite(v)).toBe(true);
         expect(Math.abs(r.eta)).toBeLessThanOrEqual(1.2 * tallest);
-        for (const v of [r.foam, r.lip, r.stage]) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(1); }
+        for (const v of [r.foam, r.stage]) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(1); }
       }
     }
   });
-  it('the surface never goes below the seabed: η ≥ −(depth − 0.05) at 12 ft / 25 s / −1.5 m tide', { timeout: 60_000 }, () => {
+  it('the surface never goes below the seabed: η ≥ −(depth − 0.05) at 12 ft / 25 s / −1.5 m tide, flat where clamped', { timeout: 60_000 }, () => {
     const c = cloneConditions(DEFAULT_CONDITIONS);
     c.swell.sizeFt = 12; c.swell.periodS = 25; c.tideM = -1.5;
     const f = computeReefField({ bed: downsample(reef05, 4), periodS: 25, fromDeg: 225, tideM: -1.5 });
@@ -302,31 +395,23 @@ describe('breaking stays finite and bounded', () => {
     // (90, −140): 0.07 m of water beside a big crest, where the unclamped drain read η −2.87 m.
     const points: [number, number][] = [[90, -140]];
     for (let x = -60; x <= 110; x += 10) for (let z = -150; z <= 60; z += 10) points.push([x, z]);
-    // Per variant: Phase 1 (breaking off), the probe, the render.
-    const clamped = [0, 0, 0];
-    let flat = 0;
+    // Per variant: Phase 1 (breaking off), the sheet.
+    const clamped = [0, 0];
     for (const [x, z] of points) for (let dt = -4; dt <= 6; dt += 0.5) {
       const fs = sampleField(f, x, z), floor = -(fs.depth - SEABED_CLEARANCE_M), t = peakT + dt;
-      const render = sumWavesWithNormal(x, z, t, fs, set, cx, optsFor(f), 0.25);
-      const variants = [sumWaves(x, z, t, fs, set, cx), sumWaves(x, z, t, fs, set, cx, optsFor(f, false)), render];
+      const variants = [sumWaves(x, z, t, fs, set, cx), sumWaves(x, z, t, fs, set, cx, optsFor(f))];
       variants.forEach((r, i) => {
         expect(r.eta, `variant ${i} at (${x}, ${z}), peak + ${dt} s, depth ${fs.depth.toFixed(3)}`).toBeGreaterThanOrEqual(floor - 1e-9);
-        if (r.eta <= floor + 1e-9) clamped[i]++;
+        if (r.eta <= floor + 1e-9) {
+          clamped[i]++;
+          // Where the clamp holds the surface on the floor, the floor is flat: the slope is 0 there.
+          expect([r.slopeX, r.slopeZ], `slope at clamped (${x}, ${z}), peak + ${dt} s`).toEqual([0, 0]);
+        }
       });
-      if (render.eta <= floor + 1e-9) {
-        // A clamped point's normal is finite, unit and faces up; where its neighbours are clamped too it is exactly flat.
-        const [nx, ny, nz] = render.normal;
-        expect(Number.isFinite(nx) && Number.isFinite(ny) && Number.isFinite(nz)).toBe(true);
-        expect(Math.hypot(nx, ny, nz)).toBeCloseTo(1, 9);
-        expect(ny, `normal at clamped (${x}, ${z}), peak + ${dt} s`).toBeGreaterThan(0);
-        if (ny > 1 - 1e-9) flat++;
-      }
     }
-    // The breaking variants reach the bed at this extreme: their clamps are exercised, not vacuous. Phase 1 does not (it
-    // reads 0 here): its height is capped at 0.78·hmin, so its trough stays above the bed and the clamp there is a guard.
+    // The sheet reaches the bed at this extreme: its clamp is exercised, not vacuous. Phase 1 does not (it reads 0 here):
+    // its height is capped at 0.78·hmin, so its trough stays above the bed and the clamp there is a guard.
     expect(clamped[1]).toBeGreaterThan(0);
-    expect(clamped[2]).toBeGreaterThan(0);
-    expect(flat).toBeGreaterThan(0);
   });
   it('unusual swell directions (from the land, along the coast) stay finite with breaking on', { timeout: 60_000 }, () => {
     for (const fromDeg of [0, 90, 180, 270]) {
@@ -340,32 +425,20 @@ describe('breaking stays finite and bounded', () => {
       }
     }
   });
-  it('the Break sliders at their ends keep the surface finite (γ, δ, Δ, Θmax, β, trough drain)', () => {
+  it('the Break sliders at their ends keep the surface finite (γ, δ, Δ, β, trough drain, face width, ribbon onset)', () => {
     const waves = REF_SET.map(toActiveWave);
     const ends: Partial<typeof DEFAULT_BREAK_PARAMS>[] = [
-      { gamma: 0.5 }, { gamma: 1.2 }, { delta: 0 }, { delta: 2 }, { stageSpan: 0.2 }, { stageSpan: 4 },
-      { thetaMaxDeg: 0 }, { thetaMaxDeg: 180 }, { beta: 0.1 }, { beta: 0.8 }, { troughDrain: 0 }, { troughDrain: 1 },
+      { gamma: 0.5 }, { gamma: 1.2 }, { delta: 0 }, { delta: 2 }, { stageSpan: 0.2 }, { stageSpan: 4 }, { beta: 0.1 }, { beta: 0.8 },
+      { troughDrain: 0 }, { troughDrain: 1 }, { faceWidth: 0.1 }, { faceWidth: 3 }, { ribbonOnset: 0.3 }, { ribbonOnset: 0.9 },
     ];
     for (const end of ends) {
-      const o = optsFor(field, true, { ...DEFAULT_BREAK_PARAMS, ...end });
+      const o = optsFor(field, { ...DEFAULT_BREAK_PARAMS, ...end });
       for (let u = -20; u <= 30; u += 2.5) for (const dt of [0, 0.5, 1, 3]) {
         const x = at(0, 0).dirX * u, z = at(0, 0).dirZ * u;
-        const r = sumWavesWithNormal(x, z, REF_BIGGEST.arrivalS + dt, at(x, z), waves, ctx, o, 0.25);
-        for (const v of [r.eta, r.dx, r.dz, r.foam, r.lip, r.stage, ...r.normal]) expect(Number.isFinite(v), JSON.stringify(end)).toBe(true);
+        const r = sumWaves(x, z, REF_BIGGEST.arrivalS + dt, at(x, z), waves, ctx, o);
+        for (const v of Object.values(r)) expect(Number.isFinite(v), JSON.stringify(end)).toBe(true);
         expect(Math.abs(r.eta)).toBeLessThan(10);
       }
-    }
-  });
-  it('the probe’s fixed-point search converges on a breaking wave (4 iterations, as HeightProbe runs)', () => {
-    const waves = REF_SET.map(toActiveWave);
-    for (const dt of [0, 0.5, 1, 2]) for (let u = -15; u <= 15; u += 2.5) for (const side of [-10, 0, 10]) {
-      const t = REF_BIGGEST.arrivalS + dt;
-      const px = at(0, 0).dirX * u - at(0, 0).dirZ * side, pz = at(0, 0).dirZ * u + at(0, 0).dirX * side;
-      const disp = (x: number, z: number) => sumWaves(x, z, t, at(x, z), waves, ctx, probe);
-      let ox = px, oz = pz;
-      for (let i = 0; i < 4; i++) { const d = disp(ox, oz); ox = px - d.dx; oz = pz - d.dz; }
-      const d = disp(ox, oz);
-      expect(Math.hypot(ox + d.dx - px, oz + d.dz - pz)).toBeLessThan(0.05);
     }
   });
 });

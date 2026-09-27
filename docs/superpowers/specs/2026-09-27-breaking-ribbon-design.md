@@ -157,7 +157,7 @@ Near the camera (8 cm station spacing), that gives lip samples a few centimetres
 
 ### 7.4 The height probe and the camera
 
-Unchanged (Phase 2 §3.4). The probe reads the unbroken surface (Phase 1 plus drain plus bore), which is now also exactly what the sheet draws. The sheet still outputs Phase 2's foam weight for the bore. The camera never rides the lip.
+Unchanged (Phase 2 §3.4). The probe reads the unbroken surface (Phase 1 plus drain plus bore), which is now also exactly what the sheet draws. The sheet still outputs Phase 2's foam weight for the bore. The camera never rides the lip. The sheet's analytic normal (plan Q2) omits the field's gradients and the crest frame's variation along the crest, as Phase 1's normal already omits the field's gradients: it is a shading normal, not the exact derivative of the surface on the real reef.
 
 ## 8. Foam in Phase 3 (recorded, not built)
 

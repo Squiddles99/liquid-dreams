@@ -81,7 +81,7 @@ function tweaked(): DevSettings {
   s.overlays.crestLines = true;
   s.breaking.enabled = false;
   s.breaking.stageSpan = 2.2;
-  s.breaking.thetaMaxDeg = 120;
+  s.breaking.ribbonOnset = 0.62;
   return s;
 }
 
@@ -205,6 +205,20 @@ describe('dev settings persistence', () => {
     const loaded = loadDevSettings(store(phase1), defaults())!;
     expect(loaded.breaking).toEqual(DEFAULT_BREAK_PARAMS);
     expect(loaded.sets.meanIntervalS).toBe(300); // the rest of the stored look still loads
+  });
+  it('loads an overnight profile: removed break fields dropped, new ones defaulted', () => {
+    // Andrew's stored overnight Phase 2 settings: every field BreakParams had then, none of the new ones.
+    const overnight = {
+      enabled: true, gamma: 0.83, delta: 1.0, hFloorM: 0.3, stageSpan: 1.0, thetaMaxDeg: 120, pivotDrop: 0.65, pivotAhead: 0.65, lipZone: 0.4,
+      lipBackReach: 0.6, troughDrain: 0.35, beta: 0.4, faceWidth: 0.5, backWidth: 2, drainEnd: 0.25, steepEnd: 0.3, curlStart: 0.15, curlEnd: 0.8,
+      collapseStart: 0.75,
+    };
+    const stored = { ...(JSON.parse(JSON.stringify(tweaked())) as Record<string, unknown>), breaking: overnight };
+    const loaded = loadDevSettings(store(stored), defaults())!;
+    expect(loaded.breaking).toEqual({ ...DEFAULT_BREAK_PARAMS, gamma: 0.83 });
+    for (const removed of ['thetaMaxDeg', 'pivotDrop', 'pivotAhead', 'lipZone', 'lipBackReach', 'backWidth', 'steepEnd', 'curlStart', 'curlEnd']) {
+      expect(removed in loaded.breaking, removed).toBe(false);
+    }
   });
   it('repairs a bad break value from the default and keeps the others', () => {
     const s = tweaked() as unknown as Record<string, Record<string, unknown>>;

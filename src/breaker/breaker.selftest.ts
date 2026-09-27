@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Fn, float, instanceIndex, storage, uniform, vec4 } from 'three/tsl';
+import { Fn, instanceIndex, storage, uniform, vec4 } from 'three/tsl';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
@@ -7,7 +7,7 @@ import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from './breaking';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
-import { type BreakOptions, sumWaves, sumWavesWithNormal, toActiveWave } from './setWaveModel';
+import { type BreakOptions, sumWaves, toActiveWave } from './setWaveModel';
 
 // Inside the reef grid, the inflow far field (west, south) and the outflow edge continuation (east, north).
 const POINTS: [number, number][] = [
@@ -87,6 +87,7 @@ registerSelfTest({
   },
 });
 
+
 /** One compute pass over arbitrary points, `perPoint` vec4 outputs each (body runs inside the pass's Fn). */
 function computeAt(points: [number, number][], perPoint: number, body: (xz: any) => any[]) {
   const n = points.length;
@@ -119,18 +120,21 @@ function peakRay(field: ReefField): [number, number][] {
  */
 const OFF_RAY: [number, number][] = [[20, -6], [27, -6.5], [30, -9], [10.3, -28.2], [12.5, 14], [42.5, 33]];
 
+/** 64 points around the peak: an 8 × 8 grid 4 m apart, from −14 to +14 m in x and z. */
+const AROUND_PEAK: [number, number][] = Array.from({ length: 64 }, (_, i) => [-14 + 4 * (i % 8), -14 + 4 * Math.floor(i / 8)]);
+
 /** The biggest wave of the default set 1, and the times after its arrival at the peak that the break tests read (0.6
  * and 0.9 s catch the lip landing: foam between 0 and 1). */
 const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
 const BREAK_DTS = [0, 0.3, 0.6, 0.9, 1.2, 4];
 
-/** A non-default shape, so every break uniform is exercised away from its default (normalized, as the GPU uploads). */
+/** A non-default shape, so every break uniform the sheet reads is exercised away from its default (normalized, as the GPU uploads). */
 const ALT_BREAK_PARAMS: BreakParams = (() => {
-  const p = { ...DEFAULT_BREAK_PARAMS, gamma: 0.7, stageSpan: 1.4, thetaMaxDeg: 130, lipZone: 0.3, lipBackReach: 0.9, beta: 0.5, collapseStart: 0.7 };
+  const p = { ...DEFAULT_BREAK_PARAMS, gamma: 0.7, stageSpan: 1.4, beta: 0.5, collapseStart: 0.7, faceWidth: 0.7, ribbonOnset: 0.45, troughDrain: 0.5, drainEnd: 0.3 };
   normalizeBreakParams(p);
   return p;
 })();
-const EPS = 0.25;
+const PARAM_SETS = [['default', DEFAULT_BREAK_PARAMS], ['alt', ALT_BREAK_PARAMS]] as const;
 const f3 = (v: number): string => v.toFixed(3);
 
 /** Tracks the worst value of one comparison, with the dt and point it came from. */
@@ -138,32 +142,32 @@ class Worst {
   value: number;
   at = '';
   constructor(private readonly larger: boolean, start: number) { this.value = start; }
-  see(v: number, dt: number, i: number): void {
-    if (this.larger ? v > this.value : v < this.value) { this.value = v; this.at = `dt ${dt} #${i}`; }
+  see(v: number, dt: number, i: number, tag = ''): void {
+    if (this.larger ? v > this.value : v < this.value) { this.value = v; this.at = `${tag}dt ${dt} #${i}`; }
   }
   toString(): string { return `${this.value.toFixed(4)} (${this.at || 'none'})`; }
 }
 
 registerSelfTest({
-  name: 'breaker: GPU breaking surface matches the CPU (drain, tube, collapse: displacement, normal, foam, lip, stage)',
+  name: 'breaker: GPU breaking sheet matches the CPU (sharpening, drain, collapse: displacement, foam, stage)',
   async run(renderer) {
     const field = getField();
     const time = uniform(0);
     const sets = new SetWaves(time);
     sets.setField(field);
     const points = [...peakRay(field), ...OFF_RAY];
-    const { pass, outAttr } = computeAt(points, 3, (xz) => {
-      const b = sets.breakSampleNode(xz, float(EPS));
-      return [vec4(b.disp, b.foam), vec4(b.normal, b.lip), vec4(b.stage, 0.0, 0.0, 0.0)];
+    const { pass, outAttr } = computeAt(points, 2, (xz) => {
+      const b = sets.breakSampleNode(xz);
+      return [vec4(b.disp, b.foam), vec4(b.stage, 0.0, 0.0, 0.0)];
     });
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    const disp = new Worst(true, 0), foam = new Worst(true, 0), lip = new Worst(true, 0), stage = new Worst(true, 0), dotN = new Worst(false, 1);
+    const disp = new Worst(true, 0), foam = new Worst(true, 0), stage = new Worst(true, 0);
     const tables: string[] = [];
     // Samples where the CPU foam is strictly between 0 and 1 (the landing window), per param set: the foam terms compared.
     const partialFoam: number[] = [];
-    for (const [setName, params] of [['default', DEFAULT_BREAK_PARAMS], ['alt', ALT_BREAK_PARAMS]] as const) {
+    for (const [setName, params] of PARAM_SETS) {
       sets.setBreakParams(params);
-      const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params, includeCurl: true };
+      const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params };
       let partial = 0;
       for (const dt of BREAK_DTS) {
         const t = REF_BIGGEST.arrivalS + dt;
@@ -175,36 +179,119 @@ registerSelfTest({
         const waves = events.map(toActiveWave);
         const rows: string[] = [];
         points.forEach(([x, z], i) => {
-          const c = sumWavesWithNormal(x, z, t, sampleField(field, x, z), waves, ctx, o, EPS);
-          const g = out.slice(i * 12, i * 12 + 12);
+          const c = sumWaves(x, z, t, sampleField(field, x, z), waves, ctx, o);
+          const g = out.slice(i * 8, i * 8 + 8);
           const gd = [g[0], g[1], g[2]], cd = [c.dx, c.eta, c.dz];
-          const d = Math.max(...gd.map((v, k) => Math.abs(v - cd[k])));
-          const nDot = g[4] * c.normal[0] + g[5] * c.normal[1] + g[6] * c.normal[2];
-          disp.see(d, dt, i); foam.see(Math.abs(g[3] - c.foam), dt, i); lip.see(Math.abs(g[7] - c.lip), dt, i);
-          stage.see(Math.abs(g[8] - c.stage), dt, i); dotN.see(nDot, dt, i);
+          disp.see(Math.max(...gd.map((v, k) => Math.abs(v - cd[k]))), dt, i, `${setName} `);
+          foam.see(Math.abs(g[3] - c.foam), dt, i, `${setName} `);
+          stage.see(Math.abs(g[4] - c.stage), dt, i, `${setName} `);
           if (c.foam > 0.05 && c.foam < 0.95) partial++;
-          rows.push(
-            `#${i} (${x.toFixed(1)},${z.toFixed(1)}) GPU/CPU d ${gd.map(f3).join(',')}/${cd.map(f3).join(',')} n.y ${f3(g[5])}/${f3(c.normal[1])} ` +
-            `n·n ${nDot.toFixed(4)} foam ${f3(g[3])}/${f3(c.foam)} lip ${f3(g[7])}/${f3(c.lip)} stage ${f3(g[8])}/${f3(c.stage)}`,
-          );
+          rows.push(`#${i} (${x.toFixed(1)},${z.toFixed(1)}) GPU/CPU d ${gd.map(f3).join(',')}/${cd.map(f3).join(',')} foam ${f3(g[3])}/${f3(c.foam)} stage ${f3(g[4])}/${f3(c.stage)}`);
         });
         tables.push(`${setName} dt ${dt}: ${rows.join('; ')}`);
       }
       partialFoam.push(partial);
     }
-    for (const line of tables) console.log(`[selftest]   breaking ${line}`);
-    const ok = disp.value < 0.05 && foam.value < 0.05 && lip.value < 0.05 && dotN.value > 0.99 && stage.value < 0.02 && partialFoam.every((n) => n > 0);
+    for (const line of tables) console.log(`[selftest]   sheet ${line}`);
+    const ok = disp.value < 0.05 && foam.value < 0.05 && stage.value < 0.02 && partialFoam.every((n) => n > 0);
     return {
       pass: ok,
       detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s × default and alt params; worst |Δdisp| ${disp} m; |Δfoam| ${foam}; ` +
-        `|Δlip| ${lip}; min n·n ${dotN}; |Δstage| ${stage}; samples with 0.05 < foam < 0.95 (default/alt) ${partialFoam.join('/')}` +
-        `${ok ? '' : `. Per point (GPU/CPU): ${tables.join(' || ')}`}`,
+        `|Δstage| ${stage}; samples with 0.05 < foam < 0.95 (default/alt) ${partialFoam.join('/')}${ok ? '' : `. Per point (GPU/CPU): ${tables.join(' || ')}`}`,
     };
   },
 });
 
 registerSelfTest({
-  name: 'breaker: the probe path has the drain and the bore but no curl, and matches the CPU',
+  name: 'breaker: GPU slope with breaking matches the CPU',
+  async run(renderer) {
+    const field = getField();
+    const time = uniform(0);
+    const sets = new SetWaves(time);
+    sets.setField(field);
+    const points = [...peakRay(field), ...OFF_RAY, ...AROUND_PEAK];
+    const { pass, outAttr } = computeAt(points, 1, (xz) => [vec4(sets.slopeNode(xz), 0.0, 0.0)]);
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    // Each component within 2e-3 absolute or 2% of the CPU's, whichever is looser: `excess` > 0 is a failure.
+    const excess = new Worst(true, -Infinity);
+    let breakingPart = 0;
+    const tables: string[] = [];
+    for (const [setName, params] of PARAM_SETS) {
+      sets.setBreakParams(params);
+      const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params };
+      for (const dt of BREAK_DTS) {
+        const t = REF_BIGGEST.arrivalS + dt;
+        time.value = t;
+        const events = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+        sets.setEvents(events);
+        renderer.compute(pass);
+        const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+        const waves = events.map(toActiveWave);
+        const rows: string[] = [];
+        points.forEach(([x, z], i) => {
+          const f = sampleField(field, x, z);
+          const c = sumWaves(x, z, t, f, waves, ctx, o), unbroken = sumWaves(x, z, t, f, waves, ctx);
+          const g = out.slice(i * 4, i * 4 + 2);
+          const e = Math.max(...[[g[0], c.slopeX], [g[1], c.slopeZ]].map(([gv, cv]) => Math.abs(gv - cv) - Math.max(2e-3, 0.02 * Math.abs(cv))));
+          excess.see(e, dt, i, `${setName} `);
+          breakingPart = Math.max(breakingPart, Math.abs(c.slopeX - unbroken.slopeX), Math.abs(c.slopeZ - unbroken.slopeZ));
+          rows.push(`#${i} (${x.toFixed(1)},${z.toFixed(1)}) GPU/CPU slope ${f3(g[0])},${f3(g[1])}/${f3(c.slopeX)},${f3(c.slopeZ)} (Phase 1 ${f3(unbroken.slopeX)},${f3(unbroken.slopeZ)})`);
+        });
+        tables.push(`${setName} dt ${dt}: ${rows.join('; ')}`);
+      }
+    }
+    for (const line of tables) console.log(`[selftest]   slope ${line}`);
+    // The breaking part of the slope must actually be there: at least 0.05 off Phase 1's somewhere.
+    const ok = excess.value <= 0 && breakingPart > 0.05;
+    return {
+      pass: ok,
+      detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s × default and alt params; worst excess over max(2e-3, 2%) ${excess}; ` +
+        `largest breaking change to the CPU slope ${breakingPart.toFixed(3)}${ok ? '' : `. Per point: ${tables.join(' || ')}`}`,
+    };
+  },
+});
+
+registerSelfTest({
+  name: "breaker: the rendered sheet is the probe's surface",
+  async run(renderer) {
+    const field = getField();
+    const time = uniform(0);
+    const sets = new SetWaves(time);
+    sets.setField(field);
+    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+    const points = [...POINTS, ...AROUND_PEAK];
+    const { pass, outAttr } = computeAt(points, 2, (xz) => [vec4(sets.breakSampleNode(xz).disp, 0.0), vec4(sets.displacementNode(xz), 0.0)]);
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: DEFAULT_BREAK_PARAMS };
+    const gap = new Worst(true, 0);
+    let breaking = 0;
+    for (const dt of BREAK_DTS) {
+      const t = REF_BIGGEST.arrivalS + dt;
+      time.value = t;
+      const events = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+      sets.setEvents(events);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      const waves = events.map(toActiveWave);
+      points.forEach(([x, z], i) => {
+        const g = out.slice(i * 8, i * 8 + 8);
+        gap.see(Math.max(Math.abs(g[0] - g[4]), Math.abs(g[1] - g[5]), Math.abs(g[2] - g[6])), dt, i);
+        const f = sampleField(field, x, z);
+        breaking = Math.max(breaking, Math.abs(sumWaves(x, z, t, f, waves, ctx, o).eta - sumWaves(x, z, t, f, waves, ctx).eta));
+      });
+    }
+    // The points must see the break (at least 5 cm off Phase 1 somewhere), or the comparison proves nothing.
+    const ok = gap.value <= 1e-5 && breaking > 0.05;
+    return {
+      pass: ok,
+      detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s; worst |render − probe| ${gap.value.toExponential(2)} m (${gap.at || 'none'}); ` +
+        `largest CPU breaking change from Phase 1 ${breaking.toFixed(3)} m`,
+    };
+  },
+});
+
+registerSelfTest({
+  name: 'breaker: the probe path (the sheet) matches the CPU, with the sharpening, drain and bore in it',
   async run(renderer) {
     const field = getField();
     const time = uniform(0);
@@ -214,9 +301,9 @@ registerSelfTest({
     const points = [...peakRay(field), ...OFF_RAY];
     const { pass, outAttr } = computeAt(points, 1, (xz) => [vec4(sets.displacementNode(xz), 0.0)]);
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: DEFAULT_BREAK_PARAMS, includeCurl: false };
+    const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: DEFAULT_BREAK_PARAMS };
     const disp = new Worst(true, 0);
-    let cpuLip = 0, drained = 0;
+    let drained = 0;
     const tables: string[] = [];
     for (const dt of BREAK_DTS) {
       const t = REF_BIGGEST.arrivalS + dt;
@@ -234,19 +321,18 @@ registerSelfTest({
         const g = out.slice(i * 4, i * 4 + 4);
         const gd = [g[0], g[1], g[2]], cd = [c.dx, c.eta, c.dz];
         disp.see(Math.max(...gd.map((v, k) => Math.abs(v - cd[k]))), dt, i);
-        cpuLip = Math.max(cpuLip, c.lip);
         drained = Math.max(drained, Math.abs(c.eta - unbroken.eta));
         rows.push(`#${i} (${x.toFixed(1)},${z.toFixed(1)}) GPU/CPU d ${gd.map(f3).join(',')}/${cd.map(f3).join(',')} (Phase 1 η ${f3(unbroken.eta)})`);
       });
       tables.push(`dt ${dt}: ${rows.join('; ')}`);
     }
     for (const line of tables) console.log(`[selftest]   probe ${line}`);
-    // The drain and the bore must actually be there (the probe reads them): at least 5 cm off Phase 1 somewhere.
-    const ok = disp.value < 0.05 && cpuLip === 0 && drained > 0.05;
+    // The sharpening, the drain and the bore must actually be there (the probe reads them): at least 5 cm off Phase 1 somewhere.
+    const ok = disp.value < 0.05 && drained > 0.05;
     return {
       pass: ok,
-      detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s; worst |Δdisp| ${disp} m; CPU probe max lip ${cpuLip}; ` +
-        `largest drain/bore change from Phase 1 ${drained.toFixed(3)} m${ok ? '' : `. Per point: ${tables.join(' || ')}`}`,
+      detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s; worst |Δdisp| ${disp} m; ` +
+        `largest sharpening/drain/bore change from Phase 1 ${drained.toFixed(3)} m${ok ? '' : `. Per point: ${tables.join(' || ')}`}`,
     };
   },
 });

@@ -14,8 +14,8 @@ export interface WaterSurfaceInputs {
   foam: N;
   /** Brightness of the foam colour (1 when absent): the set foam's pattern darkens its hollows a little. */
   foamShade?: N;
-  /** The set waves' lip mask (0..1): the thin, curling lip (spec R5). Keys the turquoise transmission. */
-  lip: N;
+  /** The lip mask (0..1): the thin, curling lip. Keys the turquoise transmission. Absent means 0 (the ocean sheet). */
+  lip?: N;
   /** How far the set wave has turned over (0..1, 1 where it faces down: the tube's ceiling). Absent means 0. */
   underside?: N;
   unresolvedSlopeVariance: N;
@@ -102,7 +102,7 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // from beneath the lip (the tube's ceiling) the skylight through it adds a blue-green glow as well.
   const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
   const lipLight = sky.sunIlluminance.mul(backlight).add(sky.skyIrradiance.mul(underside).mul(u.lipSkyTransmission));
-  const transmitted = u.transmission.mul(lipLight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI);
+  const transmitted = i.lip ? u.transmission.mul(lipLight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI) : vec3(0.0);
 
   // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.
   const column = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;

@@ -1,22 +1,19 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, cameraPosition, clamp, cross, dot, faceDirection, float, length, max, mx_noise_float, positionLocal, positionWorld, saturate, select,
-  smoothstep, uniform, varying, varyingProperty, vec2, vec3,
+  Fn, If, cameraPosition, float, length, max, mx_noise_float, normalize, positionLocal, positionWorld, saturate, smoothstep, uniform, varying,
+  varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { seabedTerms } from '../seabed/seabedShading';
 import type { Sky } from '../sky/Sky';
 import { CASCADE_FADES, fadeWeightNode } from './cascadeFades';
 import type { OceanSimulation } from './OceanSimulation';
-import { DEFAULT_POLAR_GRID, buildPolarGrid } from './polarGrid';
+import { buildPolarGrid } from './polarGrid';
 import { type WaterOpticsUniforms, shadeWater } from './waterShading';
 import type { WaterSurfaceModel } from './waterSurface';
 
 type N = any;
 
 export const EARTH_RADIUS_M = 6_371_000;
-
-/** normalize() that stays finite at zero: the interpolated set-wave normal passes near zero across the lip's fold. */
-const safeNormalize = (v: N): N => v.div(max(length(v), 1e-6));
 
 /**
  * The set-wave foam placeholder broken into whitewater (fragment stage, math only: no texture fetch). `foam` is the
@@ -70,32 +67,26 @@ export class OceanSurface {
     geometry.setIndex(new THREE.BufferAttribute(grid.indices, 1));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    // Double-sided. With consistent winding the thrown lip's top and the tube's inside are both front faces: at the fold
-    // the finite-difference normal and the triangle winding reverse together. Back faces show only where the surface
-    // self-intersects (a lip landing through the face), along the fold line itself, and at FFT folds (choppiness can
-    // drive the FFT Jacobian below 0); culled, those would be holes.
-    material.side = THREE.DoubleSide;
+    // Single-sided: the sheet is one single-valued surface (the breaking ribbon draws the curl).
+    material.side = THREE.FrontSide;
 
     // Vertex: world-anchored sampling, distance-faded cascades, the tide, Earth curvature. The set waves are summed
-    // once per vertex, with two finite-difference neighbours (spec R3); their normal, foam and lip reach the fragment as
-    // varyings, so the fragment stage adds no texture fetch for them.
+    // once per vertex; their analytic slope, foam and foam frame reach the fragment as varyings, so the fragment stage
+    // adds no texture fetch for them.
     const baseXZ = positionLocal.xz.add(this.cameraXZ);
     const radial = length(positionLocal.xz);
-    const setNormal = varyingProperty('vec3', 'vSetNormal');
+    const setSlope = varyingProperty('vec2', 'vSetSlope');
     const setFoam = varyingProperty('float', 'vSetFoam');
-    const setLip = varyingProperty('float', 'vSetLip');
     const setFoamFrame = varyingProperty('vec2', 'vSetFoamFrame');
-    // Half a polar-grid cell: the cells are radial·2π/segments across (1.6 m at 100 m).
-    const eps = clamp(radial.mul(Math.PI / DEFAULT_POLAR_GRID.segments), 0.05, 4.0);
-    const displacement = model.displacementWithSetBreak(
-      baseXZ, (c) => fadeWeightNode(radial, CASCADE_FADES[c].geometry), eps, { normal: setNormal, foam: setFoam, lip: setLip, foamFrame: setFoamFrame },
+    const displacement = model.displacementWithSetFoam(
+      baseXZ, (c) => fadeWeightNode(radial, CASCADE_FADES[c].geometry), { slope: setSlope, foam: setFoam, foamFrame: setFoamFrame },
     );
     const curvatureDrop = radial.mul(radial).div(2 * EARTH_RADIUS_M);
     material.positionNode = vec3(baseXZ.x.add(displacement.x), model.seabed.tide.add(displacement.y).sub(curvatureDrop), baseXZ.y.add(displacement.z));
     const vBaseXZ = varying(baseXZ);
 
-    // Fragment: the set waves' finite-difference normal (interpolated), tilted by the FFT detail normals; foam from both,
-    // the set waves' broken up by setFoamPattern.
+    // Fragment: FFT normals and foam (long swell faded over shallow water) plus the set waves' slope (interpolated), as
+    // Phase 1; the set waves' foam broken up by setFoamPattern.
     const toCamera = cameraPosition.sub(positionWorld);
     const distance = length(toCamera);
     const viewDir = toCamera.div(max(distance, 1e-4));
@@ -103,35 +94,12 @@ export class OceanSurface {
     // FFT slopes, Jacobian-corrected (the Jxz cross term is knowingly dropped: the derivatives texture has no channel for it).
     const fsx = fft.sx.div(max(float(1.0).add(fft.jxx), 0.1));
     const fsz = fft.sz.div(max(float(1.0).add(fft.jzz), 0.1));
-    // The FFT detail tilts the set-wave normal in its own tangent plane, in an orthonormal frame seeded from the
-    // along-crest axis (horizontal, perpendicular to the mean swell's travel). A breaking profile curls in the travel
-    // plane, so that axis stays tangent to it everywhere, under the lip included; the second tangent, nSet × crest,
-    // follows the curl. The FFT slopes are rotated into (crest, travel) to match. On flat water the frame is the world's
-    // (crest, travel) pair and the normal is exactly Phase 0's (−fsx, 1, −fsz). The frame degenerates only where nSet
-    // points horizontally along the mean crest, which a set wave curling in (nearly) its travel plane never does.
-    const nSet = safeNormalize(setNormal);
-    const travel = model.sets.meanTravel;
-    const crestAxis = vec3(travel.y.negate(), 0.0, travel.x);
-    const tCrest = safeNormalize(crestAxis.sub(nSet.mul(dot(crestAxis, nSet))));
-    const tTravel = cross(nSet, tCrest);
-    const slopeCrest = fsx.mul(crestAxis.x).add(fsz.mul(crestAxis.z));
-    const slopeTravel = fsx.mul(travel.x).add(fsz.mul(travel.y));
-    // Back faces (see the material note above): where the set normal also faces away from the camera (a lip landing
-    // through the face, the fold line) the normal is flipped to the side you see. An FFT-fold back face keeps its set
-    // normal, which still faces the camera, and shades like the water around it. The tube's inside is a front face and
-    // is found from the set normal (the underside weight below), never from the face direction.
-    const setTurnedOver = faceDirection.lessThan(0.0).and(dot(nSet, viewDir).lessThan(0.0));
-    // safeNormalize: across the lip's fold the interpolated normal and the FFT tilt can all but cancel.
-    const flip = select(setTurnedOver, float(-1.0), float(1.0));
-    const normal = safeNormalize(nSet.sub(tCrest.mul(slopeCrest)).sub(tTravel.mul(slopeTravel))).mul(flip);
-    // How far the set wave has turned over here, from its own (smooth, as-shaded) normal: 0 facing up or steep, 1
-    // facing down. It marks the tube's ceiling (the lip's underside, a front face) for the water shading.
-    const underside = float(1.0).sub(smoothstep(-0.3, 0.3, nSet.y.mul(flip)));
+    const normal = normalize(vec3(fsx.negate().sub(setSlope.x), 1.0, fsz.negate().sub(setSlope.y)));
     const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
     const setFoamLook = setFoamPattern(setFoam, setFoamFrame, model.sim.time);
 
     material.colorNode = shadeWater(
-      { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y, lip: setLip, underside,
+      { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y,
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed,
         overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest } },
       sky,
