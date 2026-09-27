@@ -1,4 +1,5 @@
 import { FOAM_TICK_S } from './foamStep';
+import { type ParticleKind, SPRAY_KIND } from './particleKinds';
 import { SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, SPRAY_POOL, type SprayBirth } from './sprayEmitters';
 
 /**
@@ -7,9 +8,9 @@ import { SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, SPRAY_POOL, type SprayBirth } fro
  */
 
 /** The wind takes a puff over with this time constant (s)… */
-export const SPRAY_DRAG_TAU_S = 0.45;
+export const SPRAY_DRAG_TAU_S = SPRAY_KIND.dragTauS;
 /** …and it settles at this rate (m/s², mist barely falls). */
-export const SPRAY_SETTLE_MS2 = 1.2;
+export const SPRAY_SETTLE_MS2 = SPRAY_KIND.gravityMs2;
 
 /** The first slot tick k's births take: (k mod SPRAY_HISTORY_TICKS) × SPRAY_BIRTH_CAP (negative ticks wrap). */
 export function slotBase(tick: number): number {
@@ -40,10 +41,10 @@ export function birthInto(pool: SprayPool, tick: number, births: readonly SprayB
   });
 }
 
-/** One tick (Δ = FOAM_TICK_S) for every live slot: drag toward the wind, settle, move, age. */
-export function stepPool(pool: SprayPool, windX: number, windZ: number): void {
+/** One tick (Δ = FOAM_TICK_S) for every live slot: drag toward the wind, settle (or fall), move, age. */
+export function stepPool(pool: SprayPool, windX: number, windZ: number, kind: ParticleKind = SPRAY_KIND): void {
   const f = Math.fround;
-  const k = f(Math.min(1, FOAM_TICK_S / SPRAY_DRAG_TAU_S)), dt = f(FOAM_TICK_S), settle = f(SPRAY_SETTLE_MS2 * FOAM_TICK_S);
+  const k = f(Math.min(1, FOAM_TICK_S / kind.dragTauS)), dt = f(FOAM_TICK_S), settle = f(kind.gravityMs2 * FOAM_TICK_S);
   for (let j = 0; j < pool.size * 4; j += 4) {
     const age = pool.posAge[j + 3], life = pool.velLife[j + 3];
     if (!(age < life)) continue;

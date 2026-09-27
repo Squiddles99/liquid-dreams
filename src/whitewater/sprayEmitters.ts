@@ -6,6 +6,7 @@ import { type BreakOptions, type WaveContext, sumWaves, toActiveWave } from '../
 import { smoothstep } from '../math/smoothstep';
 import type { WaveEvent } from '../swell/sets';
 import { FOAM_TICK_S } from './foamStep';
+import { SPRAY_KIND } from './particleKinds';
 
 /**
  * Offshore spray's emitters and births (spec 2026-09-27-offshore-spray-design.md §3.1), on the CPU: each 20 Hz tick, the
@@ -30,7 +31,7 @@ export const SPRAY_POOL = SPRAY_BIRTH_CAP * SPRAY_HISTORY_TICKS;
 /** A station emits only where its constructed lip is actually drawn: weight · ρ above this. */
 export const MIN_EMIT_WEIGHT = 0.1;
 /** A puff's opacity at strength 1, before its shape and fades (plan S3). */
-export const SPRAY_OPACITY = 0.08;
+export const SPRAY_OPACITY = SPRAY_KIND.opacity;
 /** The offshore wind speed (m/s) below which there is no spray, and from which it is full. */
 export const WIND_CALM_MS = 1;
 export const WIND_FULL_MS = 6;
@@ -57,7 +58,12 @@ export function normalizeSprayParams(p: SprayParams): void {
  * the replay only rewrote slots of puffs long dead).
  */
 export function sprayReplayTicks(lifeS: number): number {
-  return Math.min(SPRAY_HISTORY_TICKS, Math.ceil((1.2 * lifeS + 0.5) / FOAM_TICK_S - 1e-9));
+  return replayTicksForMaxLife(1.2 * lifeS);
+}
+
+/** Ticks a replay covers for particles living at most maxLifeS: that plus 0.5 s, at most the pool's history. */
+export function replayTicksForMaxLife(maxLifeS: number): number {
+  return Math.min(SPRAY_HISTORY_TICKS, Math.ceil((maxLifeS + 0.5) / FOAM_TICK_S - 1e-9));
 }
 
 export interface Wind {
