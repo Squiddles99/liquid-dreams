@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, Loop, abs, clamp, cos, cross, dot, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, storage,
-  tanh, textureLoad, uniform, vec2, vec3,
+  tanh, textureLoad, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { REEF_GRID } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
@@ -155,7 +155,8 @@ export class SetWaves {
    * clamped to the grid: on the inflow side the exact coast solution; on the outflow side the grid's edge sample at c,
    * with τ advanced along the edge's ray direction from c to xz, so the reef's delay and shadow continue past the map.
    * `hoist` (only inside an Fn) makes the texture reads vars first: each select() below becomes an if/else, and TSL
-   * would otherwise emit the reads inside every branch that uses them (44 loads per sample instead of 12).
+   * would otherwise emit the reads inside every branch that uses them (44 loads per sample instead of 12), and it loads
+   * the far field only outside the grid (8 loads per sample inside it).
    */
   sample(xz: N, hoist = false): { tau: N; amp: N; hmin: N; k: N; dir: N; depth: N } {
     const v = (n: N): N => (hoist ? n.toVar() : n);
@@ -165,8 +166,20 @@ export class SetWaves {
     const a = v(bilinearLoad(this.fieldA, g, this.fieldMax));
     const b = v(bilinearLoad(this.fieldB, g, this.fieldMax));
     const fg = v(clamp(xz.x.sub(FAR_X0).div(FAR_DX), 0.0, this.farMax.sub(0.001)));
-    const fa = v(linearLoad1D(this.farA, fg, this.farMax));
-    const fb = v(linearLoad1D(this.farB, fg, this.farMax));
+    // Hoisted, the far field's four loads run only outside the grid (inside, every value below takes the grid's side
+    // of its select, and the zeros left in fa and fb are never read into the result).
+    let fa: N, fb: N;
+    if (hoist) {
+      fa = vec4(0.0).toVar();
+      fb = vec4(0.0).toVar();
+      If(inside.not(), () => {
+        fa.assign(linearLoad1D(this.farA, fg, this.farMax));
+        fb.assign(linearLoad1D(this.farB, fg, this.farMax));
+      });
+    } else {
+      fa = linearLoad1D(this.farA, fg, this.farMax);
+      fb = linearLoad1D(this.farB, fg, this.farMax);
+    }
     const xc = fg.mul(FAR_DX).add(FAR_X0);
     const farTau = fa.x.add(xz.x.sub(xc).mul(fb.x)).add(this.farP.mul(xz.y));
     const farDir = safeNormalize(vec2(fb.x, this.farP));
