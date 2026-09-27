@@ -13,6 +13,7 @@ import { BreakingRibbon, MAX_STORAGE_BUFFERS_PER_STAGE, modelRibbonSurface } fro
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { SetWaves } from './SetWaves';
 import { FoamField } from '../whitewater/FoamField';
+import { SprayParticles } from '../whitewater/SprayParticles';
 
 type N = any;
 
@@ -137,5 +138,17 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
         expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
       }
     });
+  });
+
+  it('the spray passes and material stay within the limits', () => {
+    const spray = new SprayParticles(new Sky(DEFAULT_ATMOSPHERE));
+    for (const p of ['birthPass', 'stepPass', 'clearPass'] as const) {
+      expect(storageBindings(computeWgsl((spray as unknown as Record<string, THREE.ComputeNode>)[p])), p).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+    }
+    const w = renderWgsl(spray.mesh as unknown as THREE.Mesh);
+    console.log(`spray storage buffers: vertex ${storageBindings(w.vertex)}, fragment ${storageBindings(w.fragment)}`);
+    expect(storageBindings(w.vertex)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+    expect(storageBindings(w.fragment)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+    expect(sampledTextures(w.fragment)).toBeLessThanOrEqual(16);
   });
 });

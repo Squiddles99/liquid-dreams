@@ -46,6 +46,20 @@ describe('crestTrace', () => {
     expect(times[5]).toBeLessThan(20);
   });
 
+  it('a fixed spacingM traces the same stations wherever the camera is (spray emitters, offshore-spray plan S1)', () => {
+    const base = { params: P, minHeightM: MIN_H, spacingM: 1.5 };
+    const a = traceStations(field, [peeler], 2, ctx, { ...base, cameraX: 0, cameraZ: 0 });
+    const b = traceStations(field, [peeler], 2, ctx, { ...base, cameraX: 500, cameraZ: -300 });
+    expect(b).toEqual(a);
+    const st = live(a);
+    expect(st.length).toBeGreaterThan(20);
+    for (let i = 1; i < st.length; i++) {
+      if (st[i].wave !== st[i - 1].wave) continue;
+      const d = Math.abs(st[i].arc - st[i - 1].arc);
+      if (d < 3) expect(d).toBeCloseTo(1.5, 1);
+    }
+  });
+
   it('spaces stations by distance from the camera, within the cap', () => {
     const cam: [number, number] = [8, 2];
     const st = live(trace([peeler], 2, cam));
