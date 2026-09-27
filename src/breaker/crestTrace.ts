@@ -175,6 +175,11 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], ctx: WaveCo
         s.tb = a.tb + ((b.tb - a.tb) * (s.arc - a.arc)) / (b.arc - a.arc);
       } else if (a.tb === Infinity && b.tb === Infinity) {
         s.tb = Infinity;
+      } else if (a.tb === null && b.tb === null) {
+        // Unbroken at both keys (3 m apart): the breaking depth, smoothed along the crest over metres, leaves no room
+        // for a broken island between them. This skipped a full look-back march per station on every pre-break
+        // stretch (37 stations per key interval near the camera; 25–35% of the trace's time).
+        s.tb = null;
       } else {
         s.tb = timeSinceOnset(field, w, s.x, s.z, ctx, p);
       }

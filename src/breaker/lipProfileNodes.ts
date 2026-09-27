@@ -195,7 +195,7 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   const reach = vj.mul(t).toVar();
   // The back-off edges scale with H: floored so a zero-height row (never drawn) can't give smoothstep equal edges.
   const Hs = max(H, 1e-6);
-  const steep = select(pre, smoothstep(u.steepFrom, 1.0, r), smoothstep(Hs.mul(BACK_OFF_DROP_H[0]), Hs.mul(BACK_OFF_DROP_H[1]), K.y.sub(F.y)));
+  const steep = select(pre, smoothstep(u.steepFrom, 1.0, r).mul(smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r)), smoothstep(Hs.mul(BACK_OFF_DROP_H[0]), Hs.mul(BACK_OFF_DROP_H[1]), K.y.sub(F.y)));
   const collapse = select(pre, float(0.0), smoothstep(tauLand, tauLand.mul(u.collapseTime.add(1.0)), tb)).toVar();
   const landing = select(pre, float(0.0), smoothstep(tauLand, tauLand.mul(u.collapseTime.mul(LANDING_FOAM_RISE).add(1.0)), tb)).toVar();
   const grow = smoothstep(0.0, LIP_GROW_PROGRESS, prog);

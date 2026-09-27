@@ -1,5 +1,6 @@
 import type { Bathymetry } from '../seabed/bathymetry';
 import type { GridSpec } from '../seabed/wombReef';
+import { breakingDepth } from './breaking';
 import { AMP_CAP, type FarField, computeFarField, farSample } from './coastFarField';
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
 import { solveEikonal } from './eikonal';
@@ -19,7 +20,7 @@ export interface ReefField {
   tau: Float32Array;
   amp: Float32Array;
   hmin: Float32Array;
-  /** The breaking depth: amp / (amp/hmin smoothed along the crest) (FieldSample.hminBreak). */
+  /** The breaking depth: amp / (amp/breakingDepth(hmin) smoothed along the crest) (FieldSample.hminBreak). */
   hminBreak: Float32Array;
   k: Float32Array;
   dirX: Float32Array;
@@ -52,6 +53,18 @@ function bilinear(a: ArrayLike<number>, g: GridSpec, x: number, z: number): numb
  */
 export const BREAK_REACH_M = 6;
 export const BREAK_SMOOTHING_M = 6;
+/**
+ * A wider along-crest smoothing (σ, m) that only ever lifts the breaking depth's ratio (the larger of the two is kept):
+ * it spreads the low side of each section's ends over a few wave heights without lowering the peak.
+ */
+export const BREAK_TAIL_M = 20;
+/**
+ * Then smoothed along travel (σ, m): the crest crosses the reef's edge in a few metres, so without it the sharpening and
+ * the drain switched on in ~0.4 s, a trap door (Andrew, 7.4 ft). Smoothed, a wave feels the reef coming and stands up
+ * over a couple of seconds. It cannot spoil the right's closeout: that is the whole crest reaching the ledge at once,
+ * which smoothing along travel leaves as it is.
+ */
+export const BREAK_TRAVEL_SMOOTHING_M = 8;
 
 /** The largest of `a` within radiusM along the crest line through each node (sampled as smoothAlongCrest samples). */
 export function maxAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, radiusM: number): Float32Array {
@@ -86,6 +99,15 @@ function bilinearCells(a: Float32Array, grid: GridSpec): (fx: number, fz: number
  * A straight tangent is close enough: the crest turns ~10° over ±3σ around the wedge.
  */
 export function smoothAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, sigmaM: number): Float32Array {
+  return smoothAlongLine(a, dirX, dirZ, grid, sigmaM, true);
+}
+
+/** `a` smoothed along the travel direction through each node (as smoothAlongCrest, along the ray instead). */
+export function smoothAlongTravel(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, sigmaM: number): Float32Array {
+  return smoothAlongLine(a, dirX, dirZ, grid, sigmaM, false);
+}
+
+function smoothAlongLine(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, sigmaM: number, crest: boolean): Float32Array {
   const { nx, nz, cellM } = grid;
   const out = new Float32Array(a.length);
   const sigma = sigmaM / cellM, step = Math.max(1, sigma / 3);
@@ -95,7 +117,7 @@ export function smoothAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Floa
   const at = bilinearCells(a, grid);
   for (let row = 0; row < nz; row++) for (let col = 0; col < nx; col++) {
     const i = row * nx + col;
-    const tx = -dirZ[i], tz = dirX[i];
+    const tx = crest ? -dirZ[i] : dirX[i], tz = crest ? dirX[i] : dirZ[i];
     let sum = 0, ws = 0;
     for (let j = -R; j <= R; j++) { sum += w[j + R] * at(col + j * step * tx, row + j * step * tz); ws += w[j + R]; }
     out[i] = sum / ws;
@@ -209,12 +231,15 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const tau32 = new Float32Array(n);
   for (let i = 0; i < n; i++) tau32[i] = tau[i] - tauPeak;
   far.tauOffset = tauPeak;
-  // The breaking ratio is ∝ amp/hmin (above its floor): smoothing that, not hmin, smooths the ratio itself.
+  // The breaking ratio is ∝ amp/depth (above its floor): smoothing that, not the depth, smooths the ratio itself.
   const gain = new Float32Array(n);
-  for (let i = 0; i < n; i++) gain[i] = amp[i] / hmin[i];
-  const smoothGain = smoothAlongCrest(maxAlongCrest(gain, dirX, dirZ, grid, BREAK_REACH_M), dirX, dirZ, grid, BREAK_SMOOTHING_M);
+  for (let i = 0; i < n; i++) gain[i] = amp[i] / breakingDepth(hmin[i]);
+  const near = smoothAlongCrest(maxAlongCrest(gain, dirX, dirZ, grid, BREAK_REACH_M), dirX, dirZ, grid, BREAK_SMOOTHING_M);
+  const tail = smoothAlongCrest(gain, dirX, dirZ, grid, BREAK_TAIL_M);
+  for (let i = 0; i < n; i++) near[i] = Math.max(near[i], tail[i]);
+  const smoothGain = smoothAlongTravel(near, dirX, dirZ, grid, BREAK_TRAVEL_SMOOTHING_M);
   const hminBreak = new Float32Array(n);
-  for (let i = 0; i < n; i++) hminBreak[i] = smoothGain[i] > 0 ? amp[i] / smoothGain[i] : hmin[i];
+  for (let i = 0; i < n; i++) hminBreak[i] = smoothGain[i] > 0 ? amp[i] / smoothGain[i] : breakingDepth(hmin[i]);
   return { grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, depth, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
 }
 

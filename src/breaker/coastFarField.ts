@@ -1,5 +1,6 @@
 import { travelDirectionXZ } from '../conditions/directions';
 import { depthBg } from '../seabed/coastProfile';
+import { breakingDepth } from './breaking';
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 
@@ -86,7 +87,8 @@ export function farSample(f: FarField, x: number, z: number): FieldSample {
   const len = Math.hypot(dTauDx, f.p);
   const dirX = len > 0 ? dTauDx / len : f.dirX;
   const dirZ = len > 0 ? f.p / len : f.dirZ;
-  const hmin = lerp(f.hmin);
-  // The coast has no reef edges to smooth (and runs along the crest): the breaking depth is hmin.
-  return { tau, amp: lerp(f.amp), hmin, hminBreak: hmin, k: lerp(f.k), dirX, dirZ, depth: lerp(f.depth) };
+  // The coast has no reef edges to smooth (and runs along the crest): its breaking depth is breakingDepth at the nodes,
+  // interpolated (as the GPU reads it, baked into farB.z).
+  const b0 = breakingDepth(f.hmin[i]), b1 = breakingDepth(f.hmin[i + 1]);
+  return { tau, amp: lerp(f.amp), hmin: lerp(f.hmin), hminBreak: b0 + (b1 - b0) * t, k: lerp(f.k), dirX, dirZ, depth: lerp(f.depth) };
 }

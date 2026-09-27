@@ -31,14 +31,14 @@ let shared: { field: ReturnType<typeof computeReefField> } | null = null;
 const getField = () => (shared ??= { field: computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 }) }).field;
 
 registerSelfTest({
-  name: 'breaker: GPU field sampling matches the CPU field (inside and far field)',
+  name: 'breaker: GPU field sampling matches the CPU field (inside and far field, the breaking depth included)',
   async run(renderer) {
     const field = getField();
     const sets = new SetWaves(uniform(0));
     sets.setField(field);
     const { pass, outAttr } = readPass(POINTS.length, (xz) => {
       const s = sets.sample(xz);
-      return [vec4(s.tau, s.amp, s.hmin, s.k), vec4(s.dir.x, s.dir.y, s.depth, 0.0)];
+      return [vec4(s.tau, s.amp, s.hmin, s.k), vec4(s.dir.x, s.dir.y, s.depth, s.hminBreak)];
     });
     renderer.compute(pass);
     const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
@@ -47,10 +47,12 @@ registerSelfTest({
     POINTS.forEach(([x, z], i) => {
       const c = sampleField(field, x, z);
       const g = out.slice(i * 8, i * 8 + 8);
-      const errs = [g[0] - c.tau, g[1] - c.amp, g[2] - c.hmin, (g[3] - c.k) * 100, g[4] - c.dirX, g[5] - c.dirZ, g[6] - c.depth].map(Math.abs);
+      // The breaking depth runs to ~100 m over the far field's deep water: compared relative to its size there.
+      const errs = [g[0] - c.tau, g[1] - c.amp, g[2] - c.hmin, (g[3] - c.k) * 100, g[4] - c.dirX, g[5] - c.dirZ, g[6] - c.depth,
+        (g[7] - c.hminBreak) / Math.max(1, c.hminBreak / 10)].map(Math.abs);
       const e = Math.max(...errs);
       worst = Math.max(worst, e);
-      notes.push(`(${x},${z}) τ ${g[0].toFixed(2)}/${c.tau.toFixed(2)} amp ${g[1].toFixed(2)}/${c.amp.toFixed(2)}`);
+      notes.push(`(${x},${z}) τ ${g[0].toFixed(2)}/${c.tau.toFixed(2)} amp ${g[1].toFixed(2)}/${c.amp.toFixed(2)} depth ${g[7].toFixed(2)}/${c.hminBreak.toFixed(2)}`);
     });
     return { pass: worst < 0.02, detail: `worst ${worst.toFixed(4)}; ${notes.join('; ')}` };
   },
