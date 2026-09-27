@@ -321,3 +321,10 @@ A test pins the new bounds at 1.0 / 0.7 / 0.6. vitest 421/421; GPU self-tests 29
   - The sheet's sharpening starts 0.1 before the ribbon is full (at 0.65), and the sheet draws that mild start itself. Below the ribbon, the profile's constructed weight is gated by the ribbon's fade-in.
   - The curl collapses over 1.8 × τ_land (BREAKING_MODEL 4).
 - **Measured** (5 / 6.6 / 9.9 ft): steepest change per wave height of crest is ≤ 1.0 / 0.85 / 0.9. At 9.9 ft the ribbon traces 144–243 stations.
+
+**Addendum 2 (same day, Andrew's barrel-peeling and 12 ft reviews; supersedes B9's collapse time):**
+- **B10 After the lip lands.**
+  - The curl collapses over `collapseTime × landingTime(H·(1 + troughDrain·δ))`, which depends on the local height only. It read τ_land from the live crest, which the settling lowers, so the peak dropped in about 0.5 s (the "trap door" at barrel-peeling). The collapse completes at ρ = 1 + 4.5·Δ.
+  - The sharpened face drops 0.7 H, then keeps the wave's own lower face. This roughly halves the depth and length of any trench beside a less-steep section.
+  - The bore is `β·hminBreak` as a share of `min(H·amp, 0.78·hminBreak)` at the crest, not of the Phase 1 height capped at the raw hmin. hminBreak is amp over the smoothed amp/depth, so it carries amp's focusing spikes and the capped height doesn't. Every point behind a crest shares its bore, so each spike drew a trench up to 1.3 m deep back along the travel (the lines in Andrew's 12 ft view). Over the reef flat the share is now β/0.78 (Phase 2's β·hmin bore again), smooth along the crest.
+  - **Measured:** behind broken crests over the reef flat (5 and 8 m waves, 3–9 s behind), the largest step in 0.5 m of crest is under 0.1 m (it was 0.77 m).

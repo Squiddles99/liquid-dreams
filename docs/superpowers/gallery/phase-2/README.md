@@ -32,3 +32,10 @@ Andrew's review found square-edged channels running forward from the break, and 
 - `13b-channels-after.png`: the same frame after the fix. The section stays at wave height and throws along a long, level lip, with no sunken bowl. The water in front is continuous, with only a soft hollow at the foot of the face.
 - `14-barrel-peeling-longer-line.png`: the `barrel-peeling` moment, from its new camera further down the shoulder. The lip throws over the tube, and the unbroken shoulder tapers off smoothly with no vertical end.
 - `15-closeout-lip-colour.png`: `closeout-right` after the lip-colour fix. The lip reads as water with a soft sunrise reflection, no longer brown.
+
+## The lines behind a broken wave (Andrew, 12 ft)
+
+Andrew's moment at 12 ft (camera [60, 12, 0], yaw 231°, pitch −12°), 3 s before the link's time: we look out to sea from over the reef, just after a wave has broken underneath. Every point behind a broken crest shares that crest's bore. The bore read a breaking depth that spikes wherever the reef focuses the swell at the crest, and each spike drew a trench back along the wave's travel. The bore is now a smooth share of the crest's height (addendum B10).
+
+- `16-bore-lines-before.png`: before the fix. A V of bent ripples runs from the incoming crest toward the camera over a trench up to 1.3 m deep, and the incoming crest carries small bumps.
+- `16b-bore-lines-after.png`: the same frame after the fix. The water behind the broken wave is continuous, and the incoming crest is level.
