@@ -196,6 +196,26 @@ describe('the breaking sheet on the real reef', () => {
     });
     expect(checked).toBeGreaterThanOrEqual(38);
   });
+  it('a wave two or more periods from a point leaves it alone (its sharpening needs a found crest)', () => {
+    // The reference set 0.3 s after the biggest wave's arrival, over the inside of the reef (shoreward of the peak), where
+    // the later waves' crests are still one to five wavelengths seaward. Their crest lookups there don't converge (two
+    // half-wavelength steps), and a wave's envelope is below 0.2% at 2 periods: breaking must add nothing visible.
+    const t = REF_BIGGEST.arrivalS + 0.3;
+    const waves = REF_SET.map(toActiveWave);
+    let checked = 0, worst = 0, where = '';
+    for (let x = 60; x <= 200; x += 10) for (let z = -120; z <= 40; z += 20) {
+      const f = at(x, z);
+      for (const w of waves) {
+        const xi = t - w.arrivalS - f.tau - ((w.travelX - ctx.travelX) * x + (w.travelZ - ctx.travelZ) * z) / (ctx.omega / f.k);
+        if (Math.abs(xi) < (2 * 2 * Math.PI) / w.omega) continue;
+        const d = Math.abs(waveAt(x, z, t, f, w, ctx, sheet).eta - waveAt(x, z, t, f, w, ctx).eta);
+        if (d > worst) { worst = d; where = `(${x}, ${z}) ξ ${xi.toFixed(1)} s`; }
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+    expect(worst, where).toBeLessThan(5e-3);
+  });
   it('the face stands up before it breaks', () => {
     // On the north ledge, where the crest's breaking ratio reaches 0.85 (unbroken, steepening), 2 m ahead of the crest.
     const w = testWave(REF_BIGGEST.heightM);

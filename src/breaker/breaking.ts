@@ -256,6 +256,13 @@ export interface BreakPointInput {
   dThetaDAhead: number;
   /** ∂env/∂ahead. */
   dEnvDAhead: number;
+  /**
+   * The crest lookup's confidence (setWaveModel.Crest.confidence): 1 where it found the crest, 0 where the point is too
+   * far from it for two half-wavelength steps (more than about a wavelength). The front sharpening scales with it: its
+   * drop is not scaled by the envelope, so from an unfound "crest" a wave several periods away would sink the sheet.
+   * Treated as constant along ahead (it is 1 wherever the sharpening is meant to act, within half a wavelength ahead).
+   */
+  crestConfidence: number;
 }
 
 export interface BreakPointResult {
@@ -267,8 +274,8 @@ export interface BreakPointResult {
 }
 
 /**
- * Breaking at one point, for a crest with breaking ratio r and stage s: the front sharpening (by steepening(r), before
- * and through the break), the drain and the bore. Neither steepening nor breaking (or H too small) returns the Phase 1
+ * Breaking at one point, for a crest with breaking ratio r and stage s: the front sharpening (by steepening(r) × the
+ * crest lookup's confidence, before and through the break), the drain and the bore. Neither steepening nor breaking (or H too small) returns the Phase 1
  * point exactly. With D the sharpening, R = drainDepth·drainShape(θ)·env the drain and S the bore scale (constant along
  * the cross-section), eta = (η − D − R)·S, and what breaking adds is eta − η = η·(S − 1) − (D + R)·S, differentiated
  * term by term along ahead.
@@ -278,8 +285,9 @@ export function breakPoint(i: BreakPointInput, s: number, r: number, p: BreakPar
   if (!(steep > 0 || s > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { eta: i.eta, foam: 0, dEtaDAhead: 0 };
   const c = stageCurves(s, p);
   const ahead = i.uUnbroken - i.uCrest;
-  const drop = sharpenDrop(ahead, i.eta, i.etaCrest, i.H, i.k, steep, p);
-  const dDrop = sharpenDropSlope(ahead, i.eta, i.slope, i.etaCrest, i.H, i.k, steep, p);
+  const sharpen = steep * i.crestConfidence;
+  const drop = sharpenDrop(ahead, i.eta, i.etaCrest, i.H, i.k, sharpen, p);
+  const dDrop = sharpenDropSlope(ahead, i.eta, i.slope, i.etaCrest, i.H, i.k, sharpen, p);
   const depth = drainDepth(i.H, c.drain, p);
   const drain = depth * drainShape(i.theta) * i.env;
   const dDrain = depth * (drainShapeSlope(i.theta) * i.dThetaDAhead * i.env + drainShape(i.theta) * i.dEnvDAhead);
