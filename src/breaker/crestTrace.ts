@@ -11,14 +11,14 @@ import { type ActiveWave, TAPER_NEAR_M, type WaveContext, localHeight, phaseXi }
  */
 
 /** Station spacing: SPACING_PER_M × distance to the camera, clamped (spec R1). */
-export const SPACING_PER_M = 0.008;
+export const SPACING_PER_M = 0.012;
 export const MIN_SPACING_M = 0.08;
 export const MAX_SPACING_M = 4;
 export const MAX_STATIONS = 2048;
 /** A side of the trace ends after this much crest (m) below the ribbon's onset ratio. */
 export const BELOW_ONSET_RUN_M = 20;
 /** The time since onset is computed at key stations at most this far apart (m of crest) and interpolated between. */
-export const KEY_SPACING_M = 2;
+export const KEY_SPACING_M = 3;
 /** The look-back march for the time since onset steps this far (m) along the ray. */
 export const LOOK_BACK_STEP_M = 1;
 /** Extra look-back beyond the hand-back (s), and the CPU's culling margin over its landing-time estimate. */
@@ -119,7 +119,11 @@ export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: nu
   if (onset === rs.length - 1 && rs.length > 1) return Infinity;
   let cSum = 0;
   for (let i = 0; i <= onset; i++) cSum += cs[i];
-  return (onset * LOOK_BACK_STEP_M) / (cSum / (onset + 1));
+  // The onset lies between the march's last sample with r ≥ 1 and the next one back (r < 1): r interpolated to 1
+  // there, so tb is continuous along the crest (whole march steps would quantise it into 1 m / c ≈ 0.13 s steps, which
+  // the lip's reach turned into a staircase of lips half a metre apart; and it tends to 0 as the crest's own r → 1).
+  const frac = onset + 1 < rs.length ? (rs[onset] - 1) / Math.max(rs[onset] - rs[onset + 1], 1e-9) : 0;
+  return ((onset + Math.min(Math.max(frac, 0), 1)) * LOOK_BACK_STEP_M) / (cSum / (onset + 1));
 }
 
 /** Whether a station still draws: before breaking, from the ribbon's onset ratio; after, until the (estimated) hand-back. */
