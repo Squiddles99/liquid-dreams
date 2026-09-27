@@ -4,7 +4,8 @@ import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { CONDITION_RANGES, sanitizeConditions } from '../conditions/sanitize';
 import { msToKmh } from '../conditions/units';
 import { DEFAULT_DEBUG_OVERLAYS } from '../ocean/OceanSurface';
-import { BREAK_BINDINGS, CONDITION_BINDINGS, OVERLAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
+import { DEFAULT_FOAM_PARAMS, FOAM_PARAM_RANGES, type FoamParams } from '../whitewater/foamStep';
+import { BREAK_BINDINGS, CONDITION_BINDINGS, FOAM_BINDINGS, OVERLAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
 
 describe('dev panel condition bindings never rewrite a loaded moment', () => {
   // windSpeedMs has no widget of its own: it's edited in km/h through WIND_SPEED_KMH_BINDING instead, checked below.
@@ -69,5 +70,15 @@ describe('debug overlay toggles', () => {
   it('has a toggle for every DebugOverlays field, the ribbon tint among them', () => {
     expect(Object.keys(OVERLAY_BINDINGS).sort()).toEqual(Object.keys(DEFAULT_DEBUG_OVERLAYS).sort());
     expect(OVERLAY_BINDINGS.ribbonTint.label).toBe('ribbon tint');
+  });
+});
+
+describe('Foam folder sliders', () => {
+  it('has a slider for every FoamParams field, each inside what normalizeFoamParams keeps', () => {
+    expect(Object.keys(FOAM_BINDINGS).sort()).toEqual((Object.keys(DEFAULT_FOAM_PARAMS) as (keyof FoamParams)[]).sort());
+    for (const k of Object.keys(FOAM_BINDINGS) as (keyof FoamParams)[]) {
+      expect(FOAM_BINDINGS[k].min).toBe(FOAM_PARAM_RANGES[k].min);
+      expect(FOAM_BINDINGS[k].max).toBe(FOAM_PARAM_RANGES[k].max);
+    }
   });
 });
