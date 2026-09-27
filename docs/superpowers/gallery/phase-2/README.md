@@ -23,3 +23,12 @@ The curl is now drawn by the breaking ribbon, a separate fine mesh (breaking-rib
 - `10-lip-close-up.png`: the new `lip-close-up` moment, from the unbroken shoulder about 15 m down the line from the lip as it throws. Known flaw: the lip still ends in a fairly straight vertical edge on the shoulder side.
 - `11-closeout-right.png`: the `closeout-right` moment, looking from over the shelf at the right section breaking along the south ledge. Known flaw: the thrown lip picks up a brown seabed colour, because the seabed look-through shading still applies to the lip.
 - `12-ribbon-tint.png`: `barrel-peeling` with the dev overlay `ribbon tint` on. Magenta marks the ribbon's extent (face, lip, tube and a margin in front); the rest is the ocean sheet.
+
+## The break along the crest (Andrew's second review, 2026-09-27)
+
+Andrew's review found square-edged channels running forward from the break, and the broken section sunk into a right-angled bowl. The break now fades in and out along the crest over wave heights (spec §15). Same capture setup as above.
+
+- `13-channels-before.png`: Andrew's viewpoint at 6.6 ft, before the fix. The collapsed section is a sunken white bowl, and hard channel edges run toward the camera from both ends of it.
+- `13b-channels-after.png`: the same frame after the fix. The section stays at wave height and throws along a long, level lip, with no sunken bowl. The water in front is continuous, with only a soft hollow at the foot of the face.
+- `14-barrel-peeling-longer-line.png`: the `barrel-peeling` moment, from its new camera further down the shoulder. The lip throws over the tube, and the unbroken shoulder tapers off smoothly with no vertical end.
+- `15-closeout-lip-colour.png`: `closeout-right` after the lip-colour fix. The lip reads as water with a soft sunrise reflection, no longer brown.
