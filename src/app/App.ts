@@ -27,6 +27,8 @@ import { DEFAULT_OCEAN_SIM, type OceanSimParams, OceanSimulation } from '../ocea
 import { DEFAULT_DEBUG_OVERLAYS, type DebugOverlays, OceanSurface } from '../ocean/OceanSurface';
 import { DEFAULT_SPECTRUM_PARAMS, type OceanSpectrumParams, spectrumInputsKey } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS, type WaterOpticsParams } from '../ocean/waterOptics';
+import { nextUnderwater } from '../ocean/underwaterOptics';
+import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
 import { DEFAULT_PICTURE, type PictureParams, PicturePipeline } from '../render/PicturePipeline';
@@ -108,6 +110,10 @@ export class App {
   /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
   private field: ReefField | null = null;
   readonly waterOptics = createWaterOpticsUniforms(this.waterParams);
+  /** The water around an underwater eye, in place of the sky dome (hidden above water). */
+  readonly waterVolume = new WaterVolume(this.seabed, this.sky, this.waterOptics);
+  /** The eye is below the water surface (with hysteresis: underwaterOptics.nextUnderwater). */
+  private underwater = false;
   /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
   readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
@@ -148,6 +154,7 @@ export class App {
   ) {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
+    this.scene.add(this.waterVolume.mesh);
     this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID } });
     this.scene.add(this.oceanSurface.mesh);
     this.scene.add(this.ribbon.mesh);
@@ -259,6 +266,24 @@ export class App {
    * This frame's crest stations (crestTrace), timed into traceMs; none with no field yet or breaking off. The ribbon
    * then uploads them, computes its vertices and renders the footprint the sheet reads, all before the frame renders.
    */
+  /**
+   * Switches the view when the eye crosses the water surface (the probe under the camera, one frame behind): the sheet
+   * seen from below, the water volume in place of the sky dome, the ribbon hidden. A crossing redraws the ribbon's
+   * stations so its visibility comes back on surfacing.
+   */
+  private updateUnderwater(): void {
+    this.waterVolume.followCamera(this.camera.position);
+    const water = this.probe.heightAt(0);
+    const under = water === null ? this.underwater : nextUnderwater(this.underwater, this.camera.position.y, water);
+    if (under === this.underwater) return;
+    this.underwater = under;
+    this.oceanSurface.setUnderwater(under);
+    this.sky.dome.visible = !under;
+    this.waterVolume.mesh.visible = under;
+    this.picture.setUnderwater(under);
+    this.ribbonKey = null;
+  }
+
   private updateRibbon(events: readonly WaveEvent[]): void {
     const field = this.field, ctx = this.waveCtx, cam = this.camera.position;
     const tracing = field !== null && ctx !== null && this.breakParams.enabled;
@@ -609,7 +634,10 @@ export class App {
     this.ocean.update(this.renderer, this.clock.simTime, simDt);
     const events = wavesNear(this.clock.simTime, this.conditions, this.setParams);
     this.setWaves.setEvents(events);
+    this.updateUnderwater();
     this.updateRibbon(events);
+    // The ribbon is single-sided and the sheet is cut away under it only above water: hidden underwater.
+    if (this.underwater) this.ribbon.mesh.visible = false;
     this.statusAge += realDt;
     if (this.statusAge > 0.25) {
       this.statusAge = 0;

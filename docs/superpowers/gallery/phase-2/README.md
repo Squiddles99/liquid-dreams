@@ -43,3 +43,12 @@ Andrew's moment at 12 ft (camera [60, 12, 0], yaw 231°, pitch −12°), 3 s bef
 ## Waves no longer stack (Andrew)
 
 - `17-set-trace.svg`: the water height 100 m seaward of the peak as one 5 ft set passes, before and after. With the old Gaussian envelope, every wave rode on the one ahead: crests stood 1.27–1.44× the wave's own crest, and small bumps led and trailed the set. Now each wave has one crest at its own height (1.00–1.01×) with deeper troughs either side. The wave behind a long-tail wave (about 1 in 12) steps on its leftover, at 1.18×.
+
+## Underwater (Andrew)
+
+The camera below the surface, at the `the-drain` moment's time. The surface is seen from below with Snell's window, the reef shows through the water, and the water fades to its own blue with distance (spec `2026-09-27-underwater-view-design.md`). GPU time was not measured: the pane's GPU timestamps are too coarse (65 µs steps), so Andrew's perf reading decides it. Above water nothing changes: the sheet's above-water material is untouched and the water volume is hidden.
+
+- `18-underwater-window.png`: 3 m under the channel north of the peak, looking straight up. The sky fills Snell's window, brightening toward its rim where the horizon sky is squeezed in, and the low morning sun sits at the top left. At the right edge, the ripples tip the surface past the 48.6° rim into total internal reflection.
+- `19-underwater-reef.png`: 3 m deep over the north ledge, looking along it. The ledge fades into the blue, and the rippled surface overhead mirrors the reef below.
+- `20-underwater-down.png`: 4 m deep over the peak, looking down at the reef close below. Its detail is soft because the seabed data is 1 m resolution.
+- `21-underwater-drain.png`: the `the-drain` camera moved 1.5 m under the surface. The reef edge runs off into the channel, under the mirror of the surface.

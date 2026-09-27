@@ -1,6 +1,6 @@
 # Underwater view: design
 
-**Status:** draft for Andrew's review (2026-09-27).
+**Status:** implemented 2026-09-27 (plan: `docs/superpowers/plans/2026-09-27-underwater-view.md`). Approved by Andrew 2026-09-27.
 
 ## 1. What Andrew asked for
 
@@ -45,7 +45,7 @@ There is no split view: the whole frame switches as the eye crosses the surface.
 - The sheet's material side is set from the underwater state: `FrontSide` above water (as now), `BackSide` below. Above water the pipeline and nodes are exactly today's, so the look and cost cannot change there. The first switch compiles a second pipeline once (a single hitch the first time you go under).
 - A new `shadeWaterFromBelow(i, sky, u)` runs in the `underwater` uniform's branch (uniform control flow):
   - normal flipped to face down, into the water;
-  - the transmitted ray's sky radiance × (1 − R), plus the water below (L∞ at the surface point's depth) × R;
+  - the transmitted ray's sky radiance × (1 − R), plus the water below × R. The water below is what the reflected ray sees: the same seabed march as §3.4, from the surface point, so beyond the rim the surface mirrors the reef and sand. (First built as L∞ alone, the mirror read as flat dark navy over shallow reef.);
   - foam blocks the window: the result mixes toward the lit foam colour at 0.6× by the foam weight;
   - then the path from the camera to the surface point (§3.2), with no aerial perspective (the sky through the window already has it).
 
@@ -59,11 +59,13 @@ There is no split view: the whole frame switches as the eye crosses the surface.
 
 ### 3.5 The ribbon
 
-Underwater, the ribbon's colour is fogged by its distance from the camera (§3.2). Its own shading, including the lip, is otherwise as now. That's enough to keep it from standing out as a bright shape from below; a proper underside look is out of scope.
+**As built (plan ruling):** underwater, the ribbon is hidden and the sheet ignores its footprint. The ribbon is drawn single-sided, so from below it is mostly culled. Meanwhile the sheet cuts itself away under the ribbon's footprint, so from below the surface would show a hole. A proper underside look for the lip is out of scope.
+
+**As built (plan ruling):** the view from below is a second sheet material that App swaps in, not a branch in one shader, so the above-water shader is untouched.
 
 ### 3.6 Exposure
 
-Auto-exposure is left as it is. The gallery captures will show whether the view reads too dark. If they do, the fix is a single underwater exposure factor, measured from the captures and recorded here.
+Auto-exposure is set by the sun for a scene with the bright sky in it. At the same exposure, the reef read 4.6× darker underwater than from above. So underwater the exposure is × `UNDERWATER_EXPOSURE_GAIN` = 5 (`src/render/exposure.ts`), measured so the reef reads 0.93× as bright as from above (a gain of 3 left it 1.5× darker; the tone map compresses the gain).
 
 ## 4. Files
 

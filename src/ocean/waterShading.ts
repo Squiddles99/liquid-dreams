@@ -154,9 +154,11 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
  * The water's surface seen from below: Snell's window (the sky, and the sun, along the ray refracted out of the water) and,
  * by the Fresnel from inside (1 beyond the 48.6° rim), the water below reflected in it; foam blocks the window. Then the
  * path from the eye up to the surface point. No aerial perspective: the sky through the window already has it.
+ * `reflected(dir)` is what the reflected ray sees (WaterVolume's seabed march from the surface point), so beyond the rim
+ * the surface mirrors the reef and sand below, not only the deep water's colour.
  */
 export function shadeWaterFromBelow(
-  i: { normal: N; viewDir: N; distance: N; foam: N; surfaceY: N; tide: N }, sky: Sky, u: WaterOpticsUniforms,
+  i: { normal: N; viewDir: N; distance: N; foam: N; surfaceY: N; tide: N; reflected: (dir: N) => N }, sky: Sky, u: WaterOpticsUniforms,
 ): N {
   const nDown = i.normal.negate();
   const cosI = max(dot(nDown, i.viewDir), 0.0);
@@ -165,7 +167,7 @@ export function shadeWaterFromBelow(
   const tDir = normalize(vec3(t.x, max(t.y, 1e-3), t.z));
   const skyThrough = sky.radiance(tDir).add(sunThroughWindowNode(tDir, sky));
   const upwelling = deepWaterUpwelling(sky, u);
-  const below = waterColourAtDepthNode(upwelling, u.extinction, max(i.tide.sub(i.surfaceY), 0.0));
+  const below = i.reflected(reflect(i.viewDir.negate(), nDown));
   const surface = skyThrough.mul(float(1.0).sub(R)).add(below.mul(R));
   const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(max(sky.sunDirection.y, 0.0))).mul(u.foamAlbedo).div(PI);
   const seen = mix(surface, foamLight.mul(0.6), saturate(i.foam));
