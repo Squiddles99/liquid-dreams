@@ -8,6 +8,7 @@ import type { Sky } from '../sky/Sky';
 import { CASCADE_FADES, fadeWeightNode } from './cascadeFades';
 import type { OceanSimulation } from './OceanSimulation';
 import { buildPolarGrid } from './polarGrid';
+import { waterVolumeColourNode } from './WaterVolume';
 import { type WaterOpticsUniforms, shadeWater, shadeWaterFromBelow } from './waterShading';
 import type { WaterSurfaceModel } from './waterSurface';
 
@@ -167,7 +168,10 @@ export class OceanSurface {
     below.side = THREE.BackSide;
     below.positionNode = material.positionNode;
     below.colorNode = shadeWaterFromBelow(
-      { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), surfaceY: positionWorld.y, tide: model.seabed.tide },
+      {
+        normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), surfaceY: positionWorld.y, tide: model.seabed.tide,
+        reflected: (dir: N) => waterVolumeColourNode(positionWorld, dir, model.seabed, sky, optics),
+      },
       sky, optics,
     );
     this.aboveMaterial = material;

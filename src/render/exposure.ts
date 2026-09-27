@@ -52,3 +52,15 @@ export function computeExposure(elevationDeg: number, baseExposure: number, evOf
   const autoStops = auto ? exposureStopsForSun(elevationDeg) - sunInViewStops(forwardDotSun, elevationDeg) : 0;
   return baseExposure * 2 ** (autoStops + evOffset);
 }
+
+/**
+ * Underwater the eye opens up by this: the auto-exposure is set by the sun for a scene with the bright sky in it, and
+ * under the surface the water is far darker: the reef read 4.6× darker than from above at the same exposure. At 5 it
+ * reads 0.93× as bright as from above (3 left it 1.5× darker; the tone map compresses the gain).
+ */
+export const UNDERWATER_EXPOSURE_GAIN = 5;
+
+/** The exposure for the eye's side of the surface. */
+export function withUnderwater(exposure: number, underwater: boolean): number {
+  return underwater ? exposure * UNDERWATER_EXPOSURE_GAIN : exposure;
+}
