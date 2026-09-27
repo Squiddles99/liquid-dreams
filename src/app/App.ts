@@ -40,6 +40,8 @@ import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmo
 import { Sky } from '../sky/Sky';
 import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesNear } from '../swell/sets';
 import { formatNextSet, waveStatus } from '../swell/setStatus';
+import { FoamField } from '../whitewater/FoamField';
+import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { showOverlay } from './overlay';
 
@@ -82,6 +84,7 @@ export class App {
   readonly shallowParams: ShallowSwellParams = { ...DEFAULT_SHALLOW_SWELL };
   readonly overlays: DebugOverlays = { ...DEFAULT_DEBUG_OVERLAYS };
   readonly breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
+  readonly foamParams: FoamParams = { ...DEFAULT_FOAM_PARAMS };
   readonly setStatus = { nextSet: '', wave: '', face: '' };
   /** The look as constructed (deep clones): what "Reset settings" and default mode restore. */
   private readonly lookDefaults: DevLookParams = cloneLook(this.lookParams());
@@ -106,6 +109,12 @@ export class App {
   readonly setWaves = new SetWaves(this.ocean.time);
   readonly surfaceModel = new WaterSurfaceModel(this.ocean, this.seabed, this.setWaves);
   readonly probe = new HeightProbe(this.surfaceModel);
+  /** Breaking foam that lingers and drifts (spec 2026-09-27-foam-field-design.md), stepped at 20 Hz of sim time. */
+  readonly foamField = new FoamField({
+    foamNode: (xz) => this.setWaves.breakingFoamNode(xz),
+    dirNode: (xz) => this.setWaves.sample(xz, true).dir,
+  });
+  private foamTimer: number | undefined;
   private readonly fieldClient = new ReefFieldClient();
   private fieldKey = '';
   /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
@@ -123,7 +132,7 @@ export class App {
   private lensQuiet = false;
   private lensClockS = 0;
   /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
-  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics });
+  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
   private ribbonMinHeightM = Infinity;
   /** The field's wave context (made once per field, outside the timed trace). */
@@ -152,6 +161,8 @@ export class App {
   private saveTimer: number | undefined;
   private statusAge = 0;
   private screenshotRequested = false;
+  /** Set only inside captureFrame: this frame renders there instead of to the canvas. */
+  private captureTarget: THREE.RenderTarget | null = null;
   private devUiVisible = true;
 
   /** `hashMoment` is the moment a #m= / #ref= link opened, or null to open the saved (or default) moment. */
@@ -163,7 +174,7 @@ export class App {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
     this.scene.add(this.waterVolume.mesh);
-    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID } });
+    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField });
     this.scene.add(this.oceanSurface.mesh);
     this.scene.add(this.ribbon.mesh);
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
@@ -172,7 +183,7 @@ export class App {
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
         picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
-        overlays: this.overlays, breaking: this.breakParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
+        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
         onConditions: () => this.onConditionsEdited(),
@@ -189,6 +200,7 @@ export class App {
         onSets: () => {
           normalizeSetParams(this.setParams);
           this.panel.refresh();
+          this.scheduleFoamReplay();
         },
         onReef: () => this.scheduleReefRebuild(),
         onShallow: () => this.surfaceModel.setParams(this.shallowParams),
@@ -202,6 +214,13 @@ export class App {
           this.setWaves.setBreakParams(this.breakParams);
           this.onRibbonInputs();
           this.panel.refresh();
+          this.scheduleFoamReplay();
+        },
+        onFoam: () => {
+          normalizeFoamParams(this.foamParams);
+          this.foamField.setParams(this.foamParams);
+          this.panel.refresh();
+          this.scheduleFoamReplay();
         },
         onSettingsMode: (mode) => this.setSettingsMode(mode),
         onResetSettings: () => this.resetSettings(),
@@ -215,6 +234,7 @@ export class App {
     this.fieldClient.onField = (f) => {
       this.field = f;
       this.setWaves.setField(f);
+      this.foamField.invalidate();
       this.onRibbonInputs();
       // The set waves appear (or change) with the field, so the water under the camera jumps: read it afresh and set
       // the lineup camera back on it (on load the probe read flat water until now, and the lineup sat a crest's height low).
@@ -260,6 +280,7 @@ export class App {
     this.requestFieldIfNeeded(true);
     // The rebuild clears foam too, but a moment is a jump in sim time even when the sea is unchanged.
     this.ocean.resetFoam();
+    this.foamField.invalidate();
     this.ribbonKey = null;
     this.panel.refresh();
   }
@@ -308,6 +329,36 @@ export class App {
     this.ribbonKey = null;
   }
 
+  /**
+   * Runs the foam field's ticks for this frame (none while paused; a replay after a jump). Each tick points the ocean's
+   * time uniform and the waves buffer at its own time; both are restored for the frame's render and probe.
+   */
+  private stepFoam(events: readonly WaveEvent[]): void {
+    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t));
+    if (steps === 0) return;
+    this.ocean.time.value = this.clock.simTime;
+    this.setWaves.setEvents(events);
+  }
+
+  /** The foam field's source at sim time t: the ocean's time uniform and the set waves in flight then. */
+  private pointFoamSourceAt(t: number): void {
+    this.ocean.time.value = t;
+    this.setWaves.setEvents(wavesNear(t, this.conditions, this.setParams));
+  }
+
+  /** Dev (plan Task 5, spec §3.4): times a forced replay to the GPU's completion. ms / steps is one step's cost. */
+  async measureFoamReplay(): Promise<{ ms: number; steps: number }> {
+    const device = (this.renderer.backend as unknown as { device: GPUDevice }).device;
+    await device.queue.onSubmittedWorkDone();
+    this.foamField.invalidate();
+    const start = performance.now();
+    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t));
+    await device.queue.onSubmittedWorkDone();
+    const ms = performance.now() - start;
+    this.pointFoamSourceAt(this.clock.simTime);
+    return { ms, steps };
+  }
+
   private updateRibbon(events: readonly WaveEvent[]): void {
     const field = this.field, ctx = this.waveCtx, cam = this.camera.position;
     const tracing = field !== null && ctx !== null && this.breakParams.enabled;
@@ -347,11 +398,18 @@ export class App {
     }, SPECTRUM_REBUILD_DEBOUNCE_MS);
   }
 
+  /** Slider edits change the foam the map would hold: replay once the drag stops (Review Focus 3), not on every event. */
+  private scheduleFoamReplay(): void {
+    clearTimeout(this.foamTimer);
+    this.foamTimer = window.setTimeout(() => this.foamField.invalidate(), SPECTRUM_REBUILD_DEBOUNCE_MS);
+  }
+
   private rebuildSpectrumIfNeeded(force: boolean): void {
     const key = spectrumInputsKey(this.conditions, this.spectrumParams);
     if (!force && key === this.spectrumKey) return;
     this.spectrumKey = key;
     this.ocean.setConditions(this.conditions, this.spectrumParams);
+    this.foamField.invalidate();
     this.ribbonKey = null;
   }
 
@@ -391,6 +449,7 @@ export class App {
     }
     this.clock.setTime(t);
     this.ocean.resetFoam();
+    this.foamField.invalidate();
     this.perf.flash('Set incoming');
   }
 
@@ -426,7 +485,7 @@ export class App {
     return {
       spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams,
       maxFps: this.frameLimiter.maxFps, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams, overlays: this.overlays,
-      breaking: this.breakParams,
+      breaking: this.breakParams, foam: this.foamParams,
     };
   }
 
@@ -443,6 +502,7 @@ export class App {
     assignParams(this.shallowParams, look.shallow);
     assignParams(this.overlays, look.overlays);
     assignParams(this.breakParams, look.breaking);
+    assignParams(this.foamParams, look.foam);
   }
 
   /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
@@ -464,6 +524,8 @@ export class App {
     normalizeBreakParams(this.breakParams);
     this.setWaves.setBreakParams(this.breakParams);
     this.onRibbonInputs();
+    normalizeFoamParams(this.foamParams);
+    this.foamField.setParams(this.foamParams);
     clearTimeout(this.reefTimer);
     this.rebuildReefIfChanged();
   }
@@ -623,15 +685,37 @@ export class App {
 
   /**
    * Dev automation (gallery captures): render one frame now, even when the page isn't animating (a hidden or
-   * occluded window pauses requestAnimationFrame), and return it as a PNG. toBlob runs in the same task as the
-   * render, so the WebGPU canvas still holds the frame.
+   * occluded window pauses requestAnimationFrame), and return it as a PNG, read back from an offscreen target.
    */
-  captureFrame(): Promise<Blob | null> {
+  async captureFrame(): Promise<Blob | null> {
+    // Rendered into an offscreen target and read back: a hidden or covered window never presents the canvas, so a
+    // canvas toBlob there returns the last frame it did present (captures were silently stale).
+    const { width, height } = this.renderer.domElement;
+    const target = new THREE.RenderTarget(width, height, { type: THREE.UnsignedByteType, depthBuffer: false });
     const maxFps = this.frameLimiter.maxFps;
     this.frameLimiter.maxFps = 0;
-    this.frame();
-    this.frameLimiter.maxFps = maxFps;
-    return new Promise((resolve) => this.renderer.domElement.toBlob(resolve, 'image/png'));
+    this.captureTarget = target;
+    // Start a new node frame, as the renderer's animation loop does before each frame (Animation.update): passes that
+    // render once per frame (the scene pass) otherwise re-use the last frame's render, so a capture showed the frame
+    // before it (one capture late), or the same frame over and over while the window was hidden.
+    const r = this.renderer as unknown as { _nodes: { nodeFrame: { update(): void; frameId: number } }; info: { frame: number } };
+    r._nodes.nodeFrame.update();
+    r.info.frame = r._nodes.nodeFrame.frameId;
+    try {
+      this.frame();
+    } finally {
+      this.captureTarget = null;
+      this.frameLimiter.maxFps = maxFps;
+    }
+    const padded = (await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, width, height)) as Uint8Array;
+    target.dispose();
+    // The readback's rows are padded to 256 bytes.
+    const rowBytes = Math.ceil((width * 4) / 256) * 256;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y++) pixels.set(padded.subarray(y * rowBytes, y * rowBytes + width * 4), y * width * 4);
+    const canvas = new OffscreenCanvas(width, height);
+    canvas.getContext('2d')?.putImageData(new ImageData(pixels, width, height), 0, 0);
+    return canvas.convertToBlob({ type: 'image/png' });
   }
 
   private frame = (): void => {
@@ -665,6 +749,7 @@ export class App {
     this.ocean.update(this.renderer, this.clock.simTime, simDt);
     const events = wavesNear(this.clock.simTime, this.conditions, this.setParams);
     this.setWaves.setEvents(events);
+    this.stepFoam(events);
     this.updateUnderwater();
     this.updateRibbon(events);
     // The ribbon is single-sided and the sheet is cut away under it only above water: hidden underwater.
@@ -686,7 +771,7 @@ export class App {
     this.lensClockS += realDt;
     this.picture.setLensWater(this.lensWater.state(), this.lensClockS);
     this.ribbon.setDisplayExposure(this.picture.exposureValue);
-    this.picture.render();
+    this.picture.render(this.captureTarget);
     if (this.screenshotRequested) {
       this.screenshotRequested = false;
       captureScreenshot(this.renderer.domElement, screenshotFilename(this.conditions));

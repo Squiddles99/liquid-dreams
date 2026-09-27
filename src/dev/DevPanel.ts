@@ -13,6 +13,7 @@ import type { PictureParams } from '../render/PicturePipeline';
 import type { ReefParams } from '../seabed/wombReef';
 import type { AtmosphereParams } from '../sky/atmosphereParams';
 import type { SetParams } from '../swell/sets';
+import { FOAM_PARAM_RANGES, type FoamParams } from '../whitewater/foamStep';
 import type { SettingsMode } from './devSettings';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS } from './referenceMoments';
 
@@ -29,6 +30,7 @@ export interface DevPanelModel {
   shallow: ShallowSwellParams;
   overlays: DebugOverlays;
   breaking: BreakParams;
+  foam: FoamParams;
   setStatus: { nextSet: string; wave: string; face: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
@@ -53,6 +55,7 @@ export interface DevPanelHandlers {
   onOverlays(): void;
   onCallSet(): void;
   onBreak(): void;
+  onFoam(): void;
   onSettingsMode(mode: SettingsMode): void;
   onResetSettings(): void;
   /** Any user-editable value changed (every binding and list; not the read-only readouts). */
@@ -117,7 +120,14 @@ export const OVERLAY_BINDINGS: Record<keyof DebugOverlays, { label: string }> = 
   depthContours: { label: 'depth contours' },
   crestLines: { label: 'crest lines' },
   ribbonTint: { label: 'ribbon tint' },
+  foamMap: { label: 'foam map' },
 };
+
+/** Foam folder sliders (spec 2026-09-27-foam-field-design.md §3.1), ranges exactly normalizeFoamParams's (DevPanel.test.ts). */
+export const FOAM_BINDINGS = {
+  clearTimeS: { label: 'clear time (s)', ...FOAM_PARAM_RANGES.clearTimeS, step: 0.5 },
+  driftMps: { label: 'foam drift (m/s)', ...FOAM_PARAM_RANGES.driftMps, step: 0.05 },
+} as const;
 
 export class DevPanel {
   private readonly pane = new Pane({ title: 'Liquid Dreams', expanded: true });
@@ -198,6 +208,11 @@ export class DevPanel {
     brk.addBinding(m.breaking, 'enabled', { label: 'breaking' }).on('change', h.onBreak);
     for (const [key, opts] of Object.entries(BREAK_BINDINGS) as [keyof typeof BREAK_BINDINGS, (typeof BREAK_BINDINGS)[keyof typeof BREAK_BINDINGS]][]) {
       brk.addBinding(m.breaking, key, opts).on('change', h.onBreak);
+    }
+
+    const foam = this.pane.addFolder({ title: 'Foam' });
+    for (const [key, opts] of Object.entries(FOAM_BINDINGS) as [keyof FoamParams, (typeof FOAM_BINDINGS)[keyof typeof FOAM_BINDINGS]][]) {
+      foam.addBinding(m.foam, key, opts).on('change', h.onFoam);
     }
 
     const reef = this.pane.addFolder({ title: 'Reef', expanded: false });

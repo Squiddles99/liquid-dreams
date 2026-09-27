@@ -392,6 +392,15 @@ export class SetWaves {
     return { disp: vec3(s.dh.x, s.eta, s.dh.y), slope: s.slope, foam: s.foam, stage: s.stage, foamFrame: s.foamFrame };
   }
 
+  /**
+   * The breaking foam weight at undisplaced xz (Phase 2's placeholder weight; the foam field's source, spec
+   * 2026-09-27-foam-field-design.md §3.1): breakSampleNode's foam without the foam frame's work. Compute-safe; must be
+   * called inside an Fn.
+   */
+  breakingFoamNode(xz: N): N {
+    return this.sumBreaking(xz, false).foam;
+  }
+
   /** vec2(∂η/∂x, ∂η/∂z) of the set waves (Eulerian, Jacobian-corrected), breaking included. Self-test only. */
   slopeNode(xz: N): N {
     return Fn(() => this.sumBreaking(xz, false).slope)();

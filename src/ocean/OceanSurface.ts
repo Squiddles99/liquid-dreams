@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, mx_noise_float, normalize, positionLocal, positionWorld, saturate, smoothstep,
+  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, mix, mx_noise_float, normalize, positionLocal, positionWorld, saturate, smoothstep,
   textureLoad, uniform, varying, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { seabedTerms } from '../seabed/seabedShading';
@@ -39,12 +39,42 @@ export function setFoamPattern(foam: N, frame: N, time: N): N {
       // The blend's typical swing is about ±0.3: × 1.7 spreads it over the whole 0–1 range.
       const n = saturate(n1.mul(0.65).add(n2.mul(0.35)).mul(1.7).add(0.5));
       const t = float(1.0).sub(saturate(foam).mul(0.8));
-      const cover = smoothstep(t.sub(SET_FOAM_BAND), t.add(SET_FOAM_BAND), n).mul(SET_FOAM_MAX_COVER);
+      // × saturate(4·foam): thin foam's coverage goes to 0 with its weight. Without it, where the noise saturates the
+      // coverage stayed ~0.43 down to the 1e-3 cut-off, a hard edge wherever clearing foam ends (foam field, 3a).
+      const cover = smoothstep(t.sub(SET_FOAM_BAND), t.add(SET_FOAM_BAND), n).mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0)));
       const shade = saturate(n2.mul(1.7).add(0.5)).mul(0.25).add(n.mul(0.3)).add(0.55);
       out.assign(vec2(cover, shade));
     });
     return out;
   })();
+}
+
+/**
+ * The foam pattern's water-anchored coordinates (spec 2026-09-27-foam-field-design.md §3.2): base xz in the mean
+ * swell frame, vec2(metres along travel, metres across it). Crests pass through it; foam stays where the water put
+ * it, and the pattern keeps its streaks along the crests (setFoamPattern's x is its long axis). CPU mirror below.
+ */
+export function waterFoamFrame(xz: N, travel: N): N {
+  return vec2(xz.x.mul(travel.x).add(xz.y.mul(travel.y)), xz.y.mul(travel.x).sub(xz.x.mul(travel.y)));
+}
+
+export function waterFoamFrameCpu(x: number, z: number, travelX: number, travelZ: number): [number, number] {
+  return [x * travelX + z * travelZ, z * travelX - x * travelZ];
+}
+
+/** The breaking foam map (FoamField), sampled at the undisplaced base xz. */
+export interface SheetFoamMap {
+  sampleNode(xz: N): { density: N; inside: N };
+}
+
+/**
+ * The foam weight a surface point uses: the map inside its box, the Phase 2 placeholder outside, blended over the edge
+ * band. Takes one sample (sampleNode's result, or null without a map) so each material binds the map once.
+ */
+export function sheetFoamWeight(placeholder: N, sample: { density: N; inside: N } | null): N {
+  // max with the frame's own breaking foam: the map holds the source at its last 20 Hz tick on 1 m texels, so on its
+  // own the bore's front would lag, step every third frame and blur; the map adds what lingers (final review, I2).
+  return sample ? mix(placeholder, max(sample.density, placeholder), sample.inside) : placeholder;
 }
 
 /**
@@ -66,9 +96,11 @@ export interface DebugOverlays {
   crestLines: boolean;
   /** The breaking ribbon mixed 40% with magenta, to see where it starts and ends. */
   ribbonTint: boolean;
+  /** The foam map: its box tinted faintly and its density in cyan, to see foam build up and clear. */
+  foamMap: boolean;
 }
 
-export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false };
+export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false, foamMap: false };
 
 /**
  * The breaking ribbon's footprint mask (BreakingRibbon.footprint): an R8 texture of `size` texels, `cellM` m each,
@@ -83,6 +115,8 @@ export interface SheetFootprint {
 
 export interface OceanSurfaceOptions {
   footprint?: SheetFootprint;
+  /** The breaking foam map (spec 2026-09-27-foam-field-design.md); without it the sheet shows Phase 2's placeholder. */
+  foamMap?: SheetFoamMap;
 }
 
 /** True where the sheet draws: outside the footprint grid, or on a texel the mask leaves clear (≤ 0.5). */
@@ -113,6 +147,7 @@ export class OceanSurface {
   private readonly slopeVariance: THREE.UniformNode<'float', number>[];
   private readonly overlayDepth = uniform(0);
   private readonly overlayCrest = uniform(0);
+  private readonly overlayFoam = uniform(0);
 
   constructor(readonly model: WaterSurfaceModel, sky: Sky, optics: WaterOpticsUniforms, options: OceanSurfaceOptions = {}) {
     const sim = model.sim;
@@ -149,12 +184,18 @@ export class OceanSurface {
     const fft = model.fftSlopes(vBaseXZ, distance, this.slopeVariance);
     const normal = sheetNormal(fft, setSlope);
     const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
-    const setFoamLook = setFoamPattern(setFoam, setFoamFrame, model.sim.time);
+    // The foam map inside its box, Phase 2's placeholder outside (spec 2026-09-27-foam-field-design.md §3.2); the
+    // pattern rides the water. setFoamFrame (the crest frame) stays computed for the spec's fallback, unused here.
+    // One sample, shared by the weight and the overlay (one texture binding).
+    const foamOverlay = options.foamMap ? options.foamMap.sampleNode(vBaseXZ) : null;
+    const foamWeight = sheetFoamWeight(setFoam, foamOverlay);
+    const setFoamLook = setFoamPattern(foamWeight, waterFoamFrame(vBaseXZ, model.sets.meanTravel), model.sim.time);
 
     material.colorNode = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y,
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed,
-        overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest } },
+        overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
+          foamMap: foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0), foamOn: this.overlayFoam } },
       sky,
       optics,
     );
@@ -191,6 +232,7 @@ export class OceanSurface {
   setOverlays(o: DebugOverlays): void {
     this.overlayDepth.value = o.depthContours ? 1 : 0;
     this.overlayCrest.value = o.crestLines ? 1 : 0;
+    this.overlayFoam.value = o.foamMap ? 1 : 0;
   }
 
   update(cameraPos: THREE.Vector3, sim: OceanSimulation): void {
