@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-27
 **Authors:** Claude, with Andrew Justice
-**Status:** Design approved section by section by Andrew (2026-09-27); written spec awaiting his review.
+**Status:** Approved by Andrew 2026-09-27. Implemented on `phase-3b-offshore-spray` (plan `docs/superpowers/plans/2026-09-27-offshore-spray.md`) overnight under his delegation; awaiting his review.
 **Builds on:**
 - the vision spec (`2026-09-25-liquid-dreams-first-light-design.md`): Phase 3 and the `whitewater/` module;
 - the breaking ribbon (`2026-09-27-breaking-ribbon-design.md`): the crest trace and the lip profile;
@@ -46,6 +46,7 @@ Emitters are worked out on each spray tick at tₖ = k·Δ in sim time, with Δ 
   - 0 < `prog` < 1, meaning thrown and not yet landed;
   - `weight · rho` > 0.1, meaning the constructed lip is actually drawn.
 - **Emitter spacing:** emitters are placed about every 1.5 m of crest arc. That means the stations nearest each 1.5 m step of `arc`, per wave.
+  - **As built:** the stations of a camera-independent trace at a fixed spacing (plan S1), set to **3 m** (§3.5 lever 1, after measuring). Births scatter half a spacing either side along the crest. The lip profile's base sums only the station's own wave; the set-wave envelopes are tight enough that the others contribute nothing at its crest.
 - **Emitter data:**
   - **world position:** the station xz plus n·R.u, and height R.y plus the tide;
   - **lip velocity:** vj along n (the throw direction);
@@ -57,6 +58,7 @@ Emitters are worked out on each spray tick at tₖ = k·Δ in sim time, with Δ 
   So there is none when glassy or onshore, and full spray from 6 m/s of offshore.
 - **Births:** each emitter gets `n = floor(strength · SPRAY_RATE · 1.5 m · Δ + carry)` particles. `SPRAY_RATE` (particles per metre of lip per second at strength 1) is a constant set in the plan so that the pool is never exhausted. `carry` is a deterministic per-emitter fraction from a hash of (tick, wave id, arc step), so fractional rates still emit on average.
 - **Pool slots:** births take pool slots in order from a running head, modulo the pool size, in a fixed order (wave, then arc). Which slot is born when depends only on the tick sequence, never on frame rate.
+  - **As built (plan S2):** tick k's births take slots `(k mod 100)·320 + i`, in a pool of 32,000 (not 32,768). So a replay reproduces live play slot for slot, and at most 320 puffs are born per tick. The random draws are computed on the CPU with a PCG hash and uploaded with each birth (plan S4).
 - **The seed:** every random choice (scatter, kick, lifetime) is a hash of (tick index, slot), so the CPU reference and the GPU agree.
 
 ### 3.2 Particles (new `src/whitewater/SprayParticles.ts`, GPU; CPU reference `sprayStep.ts`)
@@ -93,6 +95,11 @@ Emitters are worked out on each spray tick at tₖ = k·Δ in sim time, with Δ 
   - the albedo is 1 (water droplets).
 
   So the veil is gold and bright when backlit and faint white when front-lit. The sky's aerial perspective is applied by distance. The sun and sky terms come from the same `Sky` the water uses, and the exposure is the picture pipeline's.
+  - **As built (`sprayLook.ts`):**
+    - The phase function is 0.7·HG(g = 0.75) + 0.3·isotropic, which stands in for multiple scattering. Pure HG left side-lit and front-lit mist as dark grey smoke against the sky.
+    - The sky term is `skyIrradiance/π`.
+    - The lighting is computed per puff in the vertex stage.
+    - Puffs fade out 3–10 m from the camera. Close up, a puff was metres across and its quad cut the water in straight edges.
 - **Opacity:** per particle, `SPRAY_OPACITY` × alpha, a constant set in the plan (low, about 0.06–0.12), times the particle's emitter strength.
 - **Blending:** premultiplied alpha, depth test on (hidden behind the wave), depth write off, unsorted. The opacity is low enough that order doesn't show. It is drawn after the opaque scene, in the same scene pass as the water.
 - **Underwater:** hidden, with the ribbon (App's underwater switch).
@@ -118,6 +125,12 @@ Emitters are worked out on each spray tick at tₖ = k·Δ in sim time, with Δ 
   - a smaller maximum sprite size;
   - replay at 10 Hz.
 - **Bindings:** the passes and the material stay within 8 storage buffers per stage. The limits test is extended to cover them.
+- **As built (measured, pane visible, RTX 4060 Laptop):**
+  - a replay: 87 ms (58 ticks);
+  - per tick: 1.38 ms CPU and 0.13 ms GPU;
+  - drawing a close full veil: about 0 ms.
+  
+  All targets are met. At the spec's 1.5 m spacing, and with lighting per pixel, it was 181 ms, 2.96 ms and 5.2 ms. Lever 1 (3 m emitters) was used, plus two changes that don't alter the picture.
 
 ## 4. Files
 
