@@ -55,3 +55,6 @@ The first measurements were over target (a 181 ms replay, 2.96 ms of CPU per tic
 - emitters 3 m apart (the spec's lever 1);
 - the lip maths from the station's own wave;
 - lighting computed per puff, not per pixel.
+- `08-default-morning.png`: the default moment's conditions (4 ft; wind 3 m/s from 80°, a light offshore; 08:15), 0.8 s after set 1's biggest wave reaches the peak, from the lineup camera of frame 01. A faint veil. The light wind gives a wind factor of about 0.3, and since the final review that sets only how many puffs are born (before, it also dimmed each puff, so a light wind showed about a tenth of a veil).
+
+**At the slider maximum** (12 ft, spray life 4 s): a replay takes 100 ticks in 367 ms, and each tick 3.5 ms of CPU. That is over the targets, which are met at the Womb's usual sizes. It is left for Andrew to decide; the options are replaying at 10 Hz, or moving the emitter work to a worker.
