@@ -75,7 +75,9 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
   ref('reef-overhead', 'Free camera 60 m above the reef at noon: the wedge, the shelf and the sand pockets from above.',
     conditions({ timeOfDay: 12.5 }), { mode: 'free', position: [0, 60, 40], yawDeg: 0, pitchDeg: -70 }, 'view'),
   setMoment('barrel-peeling', "08:15, 5 ft: from the shoulder, low over the shelf north-east of the peak, looking back at the lip throwing over the tube.",
-    conditions({ swell: { sizeFt: 5 } }), { mode: 'free', position: [12, 3.5, -32], yawDeg: 200, pitchDeg: -6 }, REF_BIGGEST.arrivalS + 2),
+    // 15 m further down the shoulder than it first stood: the break fading in along the crest over wave heights (not metres)
+    // carries each section further along the shoulder, and from [12, 3.5, -32] the camera sat beside the lip.
+    conditions({ swell: { sizeFt: 5 } }), { mode: 'free', position: [18, 3.5, -46], yawDeg: 200, pitchDeg: -6 }, REF_BIGGEST.arrivalS + 2),
   setMoment('closeout-right', "08:15 from a drone over the shelf, looking south-west at the south ledge as the biggest wave's right closes out along it.",
     conditions({}), { mode: 'free', position: [60, 12, 0], yawDeg: 231, pitchDeg: -12 }, REF_BIGGEST.arrivalS + 0.5),
   setMoment('the-drain', "08:15, low in the water in the channel north of the peak, looking at the biggest wave's face as the ledge drains in front of it.",
@@ -89,12 +91,12 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
     "(Andrew's own wave wasn't the reference set's biggest, so this reuses REF_BIGGEST + 7.2 s in its place.)",
     conditions({ swell: { sizeFt: 4.65 }, wind: { speedMs: 6.09, directionDeg: 57 } }),
     { mode: 'free', position: [12, 3.5, -32], yawDeg: 73.5, pitchDeg: -13 }, REF_BIGGEST.arrivalS + 7.2),
-  // Placed by eye from the ribbon's stations at this time (crest along x ≈ 4–6, breaking from z ≈ −16.6, the lip
-  // mid-throw near (5, −10.5)): on the unbroken shoulder, a little ahead of the face. Closer than ~12 m the camera
-  // ends up inside the face.
+  // Placed by eye on the unbroken shoulder, a little ahead of the face, down the line from the lip mid-throw. The break
+  // now reaches further along the shoulder (it fades in along the crest over wave heights), so the first placement,
+  // [9.5, 2.9, -26], ended up behind the section; closer than ~12 m the camera ends up inside the face.
   setMoment('lip-close-up', "08:15, 5 ft: from the unbroken shoulder, about 15 m down the line from the lip as it throws over the tube.",
     conditions({ swell: { sizeFt: 5 } }),
-    { mode: 'free', position: [9.5, 2.9, -26], yawDeg: 193, pitchDeg: -3 }, REF_BIGGEST.arrivalS + 1.0),
+    { mode: 'free', position: [16, 2.9, -41], yawDeg: 196, pitchDeg: -3 }, REF_BIGGEST.arrivalS + 1.0),
 ];
 
 const cloneMoment = (m: Moment): Moment => ({
