@@ -115,10 +115,17 @@ export interface ProfileInputNodes { H: N; c: N; r: N; tb: N }
 export interface ProfileFrameNodes {
   K: N; F: N; tF: N; W: N; R: N;
   uFoot: N; uFront: N; uBack: N; tauLand: N; vj: N; prog: N; reach: N; eRoot: N; weight: N; collapse: N; landing: N; rho: N;
+  /** The base samples at uFoot − 0.1 and the landing guess (vec2 each; profileFrameNode sets them, the stored frame
+   * keeps them for the self-test's mirror check; the samples don't need them). */
+  Fb?: N; landing0?: N;
 }
 
-/** A station's frame is stored as this many vec4s (packFrameNodes). */
-export const FRAME_VEC4S = 6;
+/** A station's frame is stored as this many vec4s (packFrameNodes): FRAME_LAYOUT, then the base samples. */
+export const FRAME_VEC4S = 7;
+/** vec4s of the stored frame that the samples read (FRAME_LAYOUT); the last holds the base samples. */
+export const FRAME_PROFILE_VEC4S = 6;
+/** Float offset of the stored base samples within a frame: Fb (x, y), then the landing guess (x, y). */
+export const FRAME_BASE_OFFSET = 4 * FRAME_PROFILE_VEC4S;
 /** The packed frame's components in order (4 per vec4; the last two slots are 0). */
 export const FRAME_LAYOUT = [
   'K.x', 'K.y', 'F.x', 'F.y', 'tF.x', 'tF.y', 'W.x', 'W.y', 'R.x', 'R.y', 'uFoot', 'uFront',
@@ -133,15 +140,16 @@ export function packFrameCpu(f: ProfileFrame): number[] {
   ];
 }
 
-/** The frame as FRAME_VEC4S vec4s, in FRAME_LAYOUT order. */
+/** The frame as FRAME_VEC4S vec4s: FRAME_LAYOUT order, then vec4(Fb, landing0). */
 export function packFrameNodes(f: ProfileFrameNodes): N[] {
+  if (!f.Fb || !f.landing0) throw new Error('packFrameNodes needs the base samples (profileFrameNode sets them)');
   return [
     vec4(f.K, f.F), vec4(f.tF, f.W), vec4(f.R, f.uFoot, f.uFront), vec4(f.uBack, f.tauLand, f.vj, f.prog),
-    vec4(f.reach, f.eRoot, f.weight, f.collapse), vec4(f.landing, f.rho, 0.0, 0.0),
+    vec4(f.reach, f.eRoot, f.weight, f.collapse), vec4(f.landing, f.rho, 0.0, 0.0), vec4(f.Fb, f.landing0),
   ];
 }
 
-/** The frame back from its FRAME_VEC4S vec4s (pass vars: every field is a swizzle of them). */
+/** The frame back from its first FRAME_PROFILE_VEC4S vec4s (pass vars: every field is a swizzle of them). */
 export function unpackFrameNodes(v: readonly N[]): ProfileFrameNodes {
   return {
     K: v[0].xy, F: v[0].zw, tF: v[1].xy, W: v[1].zw, R: v[2].xy, uFoot: v[2].z, uFront: v[2].w,
@@ -200,7 +208,7 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   const end = tauLand.mul(u.collapseTime.add(1.0));
   const rho = select(pre, smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r), float(1.0).sub(smoothstep(end, end.add(HAND_BACK_S), tb))).toVar();
   const weight = steep.mul(float(1.0).sub(collapse)).toVar();
-  return { K, F, tF, W, R, uFoot, uFront, uBack, tauLand, vj, prog, reach, eRoot, weight, collapse, landing, rho };
+  return { K, F, tF, W, R, uFoot, uFront, uBack, tauLand, vj, prog, reach, eRoot, weight, collapse, landing, rho, Fb, landing0 };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

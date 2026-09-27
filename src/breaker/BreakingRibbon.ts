@@ -6,7 +6,7 @@ import type { BreakParams } from './breaking';
 import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
 import { PROFILE_SAMPLES } from './lipProfile';
 import {
-  FRAME_VEC4S, createLipUniforms, encodeTb, packFrameNodes, profileFrameNode, profilePointNode, sampleHomeNode, unpackFrameNodes, updateLipUniforms,
+  FRAME_PROFILE_VEC4S, FRAME_VEC4S, createLipUniforms, encodeTb, packFrameNodes, profileFrameNode, profilePointNode, sampleHomeNode, unpackFrameNodes, updateLipUniforms,
 } from './lipProfileNodes';
 
 type N = any;
@@ -37,8 +37,13 @@ export const VERTS_PER_STATION = PROFILE_SAMPLES + 2;
 export const STATION_VEC4S = 3;
 /** A sample whose home is more than this inside both edges is `inner` (the footprint's 1 m shrink, spec R9). */
 export const INNER_MARGIN_M = 1;
-/** A profile difference shorter than this (m) is dead (the collapsed, unthrown lip)… */
-export const MIN_PROFILE_STEP_M = 1e-6;
+/**
+ * A profile difference whose part across the crest (in the station's (n, y) plane: the difference less its component
+ * along t̂) is shorter than this (m) is dead: the collapsed, unthrown lip, whose samples differ only by the lateral
+ * displacement carried along t̂, so ∂P/∂j is parallel to ∂P/∂station and their cross product is f32 noise. 1 mm keeps
+ * f32 position noise (≈ 1e-5 m at 100 m) to ~1% of any live difference, so the GPU and a CPU mirror agree on it…
+ */
+export const MIN_PROFILE_STEP_M = 1e-3;
 /** …and the vertex takes the normal of the nearest live sample within this many along the profile (else straight up). */
 export const NORMAL_SEARCH = 8;
 /** The FFT cascade that is the chop (35 m patch): it fades out over the lip (spec R6). */
@@ -111,7 +116,8 @@ export class BreakingRibbon {
   readonly extras: THREE.StorageBufferAttribute;
   /** Per vertex: vec4(home world x, home world z, along-crest tangent x, tangent z) (the tangent is t̂ = (−n.z, n.x)). */
   readonly homes: THREE.StorageBufferAttribute;
-  /** Per station: the frame as FRAME_VEC4S vec4s in lipProfileNodes.FRAME_LAYOUT order (self-tests and diagnostics). */
+  /** Per station: the frame as FRAME_VEC4S vec4s, lipProfileNodes.FRAME_LAYOUT order then the base samples Fb and the
+   * landing guess (FRAME_BASE_OFFSET) (self-tests and diagnostics). */
   readonly frames: THREE.StorageBufferAttribute;
   /** How many station rows are live this frame (the draw range covers these). */
   stationCount = 0;
@@ -206,7 +212,7 @@ export class BreakingRibbon {
       const j = local.sub(1).clamp(int(0), int(LAST)).toVar();
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const gap = stations.element(i.mul(STATION_VEC4S).add(2)).x.toVar();
-      const fv = Array.from({ length: FRAME_VEC4S }, (_, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).toVar());
+      const fv = Array.from({ length: FRAME_PROFILE_VEC4S }, (_, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).toVar());
       const f = unpackFrameNodes(fv);
       const S = a.xy, n = a.zw;
       const tHat = vec2(n.y.negate(), n.x).toVar();
@@ -234,8 +240,8 @@ export class BreakingRibbon {
    * Each vertex's normal: cross(∂P/∂station, ∂P/∂j) from central differences (one-sided at the profile's ends, and
    * along the stations next to a gap or the end of the rows; a station alone in its run uses its tangent t̂), flipped
    * for the whole station if it points down at the back edge (the water is below and behind). A vertex whose profile
-   * difference is dead takes the normal of the nearest live sample within NORMAL_SEARCH (else straight up). Skirts
-   * take their edge vertex's normal.
+   * difference is dead (MIN_PROFILE_STEP_M across the crest) takes the normal of the nearest live sample within
+   * NORMAL_SEARCH (else straight up). Skirts take their edge vertex's normal.
    */
   private buildNormalPass(): THREE.ComputeNode {
     const stations = this.stationsNode();
@@ -261,7 +267,11 @@ export class BreakingRibbon {
         select(hasNext, P(iNext, jj).sub(P(i, jj)), select(hasPrev, P(i, jj).sub(P(iPrev, jj)), tangent)));
       const dProfile = (jj: N): N => select(jj.equal(int(0)), P(i, jj.add(1)).sub(P(i, jj)),
         select(jj.equal(int(LAST)), P(i, jj).sub(P(i, jj.sub(1))), P(i, jj.add(1)).sub(P(i, jj.sub(1)))));
-      const isLive = (jj: N): N => length(dProfile(jj)).greaterThanEqual(MIN_PROFILE_STEP_M);
+      const isLive = (jj: N): N => {
+        const dj = dProfile(jj).toVar();
+        const across = dj.sub(tangent.mul(dot(dj, tangent)));
+        return dot(across, across).greaterThanEqual(MIN_PROFILE_STEP_M * MIN_PROFILE_STEP_M);
+      };
       // The nearest sample with a live profile difference.
       const jn = j.toVar();
       If(isLive(j).not(), () => {
