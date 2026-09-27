@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, steepeningStart } from './breaking';
+import { COLLAPSE_END, DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, RIBBON_FULL_OFFSET, steepeningStart } from './breaking';
 import { createBreakUniforms, updateBreakUniforms } from './breakingNodes';
 
 describe('break uniforms (the GPU copy of BreakParams)', () => {
@@ -9,11 +9,12 @@ describe('break uniforms (the GPU copy of BreakParams)', () => {
     expect(u.gamma.value).toBe(DEFAULT_BREAK_PARAMS.gamma);
     expect(u.hFloorM.value).toBe(DEFAULT_BREAK_PARAMS.hFloorM);
     expect(u.faceWidth.value).toBe(DEFAULT_BREAK_PARAMS.faceWidth);
-    expect(u.collapseStart.value).toBe(DEFAULT_BREAK_PARAMS.collapseStart);
-    expect(u.steepFrom.value).toBeCloseTo(DEFAULT_BREAK_PARAMS.ribbonOnset + 0.2, 12);
+    expect(u.collapseFrom.value).toBeCloseTo(1 + DEFAULT_BREAK_PARAMS.collapseStart * DEFAULT_BREAK_PARAMS.stageSpan, 12);
+    expect(u.collapseTo.value).toBeCloseTo(1 + COLLAPSE_END * DEFAULT_BREAK_PARAMS.stageSpan, 12);
+    expect(u.steepFrom.value).toBeCloseTo(DEFAULT_BREAK_PARAMS.ribbonOnset + RIBBON_FULL_OFFSET, 12);
     updateBreakUniforms(u, { ...DEFAULT_BREAK_PARAMS, enabled: false, ribbonOnset: 0.4 });
     expect(u.enabled.value).toBe(0);
-    expect(u.steepFrom.value).toBeCloseTo(0.6, 12);
+    expect(u.steepFrom.value).toBeCloseTo(0.4 + RIBBON_FULL_OFFSET, 12);
   });
 
   it('upload only normalized params (no empty stage window, no zero floor, a steepening that starts below r = 1), leaving the caller’s object alone', () => {
@@ -22,7 +23,8 @@ describe('break uniforms (the GPU copy of BreakParams)', () => {
     const copy = { ...bad };
     updateBreakUniforms(u, bad);
     expect(bad).toEqual(copy);
-    expect(u.drainEnd.value).toBeGreaterThan(0);
+    expect(u.drainTo.value).toBeGreaterThan(1);
+    expect(u.drainTo.value).toBeGreaterThan(u.steepFrom.value);
     expect(u.stageSpan.value).toBeGreaterThanOrEqual(MIN_STAGE_SPAN);
     expect(u.hFloorM.value).toBeGreaterThan(0);
     expect(u.gamma.value).toBe(DEFAULT_BREAK_PARAMS.gamma);

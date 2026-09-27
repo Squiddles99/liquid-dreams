@@ -104,12 +104,12 @@ export const BREAK_BINDINGS = {
   troughDrain: { label: 'trough drain', min: 0, max: 1, step: 0.01 },
   hFloorM: { label: 'depth floor h₀ (m)', min: 0.05, max: 2, step: 0.05 },
   faceWidth: { label: 'face width (×H)', min: 0.1, max: 3, step: 0.05 },
-  drainEnd: { label: 'drain end (stage)', min: 0.01, max: 1, step: 0.01 },
-  collapseStart: { label: 'collapse start (stage)', min: 0, max: 0.95, step: 0.01 },
+  drainEnd: { label: 'drain full (× Δ past ρ 1)', min: 0.01, max: 1, step: 0.01 },
+  collapseStart: { label: 'collapse from (× Δ past ρ 1)', min: 0, max: 0.95, step: 0.01 },
   throwStrength: { label: 'throw strength (×c)', min: 0.1, max: 1.5, step: 0.01 },
   lipThickness: { label: 'lip thickness (×H)', min: 0.03, max: 0.3, step: 0.005 },
   collapseTime: { label: 'collapse time (×τ land)', min: 0.3, max: 3, step: 0.05 },
-  ribbonOnset: { label: 'ribbon onset r', min: 0.3, max: 0.9, step: 0.01 },
+  ribbonOnset: { label: 'ribbon onset ρ', min: 0.3, max: 0.9, step: 0.01 },
 } as const;
 
 /** Debug overlay toggles (Reef folder), one per DebugOverlays field, checked by DevPanel.test.ts. */

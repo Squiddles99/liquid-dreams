@@ -1,5 +1,5 @@
 import { clamp, exp, float, max, min, select, smoothstep, uniform } from 'three/tsl';
-import { type BreakParams, FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, MIN_STAGE_SPAN, normalizeBreakParams, steepeningStart } from './breaking';
+import { type BreakParams, COLLAPSE_END, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, HOLLOW_REACH_Q, MIN_STAGE_SPAN, normalizeBreakParams, steepeningStart } from './breaking';
 
 type N = any;
 
@@ -9,11 +9,12 @@ type N = any;
  * the mirror.
  */
 
-/** One uniform per BreakParams number the sheet reads (the stage span floored, the steepening as the ratio it starts at). */
+/** One uniform per BreakParams number the sheet reads (the stage span floored, the steepening as the ratio it starts at, the
+ * drain as the ratio it is full at). */
 export function createBreakUniforms(p: BreakParams) {
   const u = {
     enabled: uniform(0), gamma: uniform(0), delta: uniform(0), hFloorM: uniform(0), stageSpan: uniform(1), troughDrain: uniform(0), beta: uniform(0),
-    faceWidth: uniform(0), drainEnd: uniform(0), collapseStart: uniform(0), steepFrom: uniform(0),
+    faceWidth: uniform(0), drainTo: uniform(1), collapseFrom: uniform(1), collapseTo: uniform(2), steepFrom: uniform(0),
   };
   updateBreakUniforms(u, p);
   return u;
@@ -22,7 +23,7 @@ export type BreakUniforms = ReturnType<typeof createBreakUniforms>;
 
 /**
  * Uploads a normalized copy of `p` (the caller's object is left alone): every stage window non-empty, every width and
- * the drained-depth floor positive, and the steepening's start below r = 1, so no smoothstep on the GPU ever gets equal
+ * the drained-depth floor positive, and the steepening's start below ρ = 1, so no smoothstep on the GPU ever gets equal
  * or reversed edges.
  */
 export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void {
@@ -32,7 +33,8 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.gamma.value = p.gamma; u.delta.value = p.delta; u.hFloorM.value = p.hFloorM;
   u.stageSpan.value = Math.max(p.stageSpan, MIN_STAGE_SPAN);
   u.troughDrain.value = p.troughDrain; u.beta.value = p.beta; u.faceWidth.value = p.faceWidth;
-  u.drainEnd.value = p.drainEnd; u.collapseStart.value = p.collapseStart;
+  u.drainTo.value = drainFullRatio(p);
+  u.collapseFrom.value = 1 + p.collapseStart * u.stageSpan.value; u.collapseTo.value = 1 + COLLAPSE_END * u.stageSpan.value;
   u.steepFrom.value = steepeningStart(p);
 }
 
@@ -46,28 +48,28 @@ const smoothstepSlope = (e0: N, e1: N, x: N): N => {
   return t.mul(float(1.0).sub(t)).mul(6.0).div(span);
 };
 
-/** breakingRatio: r = H / (γ·max(hmin − δ·H, h_floor)), the drained depth floored at hFloorM exactly as on the CPU. */
+/** breakingRatio: ρ = H / breakingHeight(hmin), breakingHeight = γ·max(hmin / (1 + γδ), h_floor), exactly as on the CPU. */
 export function breakingRatioNode(H: N, hmin: N, u: BreakUniforms): N {
-  return H.div(u.gamma.mul(max(hmin.sub(u.delta.mul(H)), u.hFloorM)));
+  return H.div(u.gamma.mul(max(hmin.div(u.gamma.mul(u.delta).add(1.0)), u.hFloorM)));
 }
 
-/** breakingStage: 0 until r = 1. */
+/** breakingStage: 0 until ρ = 1. */
 export function breakingStageNode(r: N, u: BreakUniforms): N {
   return select(r.greaterThan(1.0), smoothstep(1.0, u.stageSpan.add(1.0), r), float(0.0));
 }
 
-/** steepening: 0 below steepeningStart, 1 from r = 1. */
+/** steepening: 0 below steepeningStart, 1 from ρ = 1. */
 export function steepeningNode(r: N, u: BreakUniforms): N {
   return smoothstep(u.steepFrom, 1.0, r);
 }
 
-/** stageCurves: the stage windows at crest stage s. */
+/** stageCurves: the drain and the collapse at crest ratio r. */
 export interface StageCurveNodes { drain: N; collapse: N }
 
-export function stageCurvesNode(s: N, u: BreakUniforms): StageCurveNodes {
+export function stageCurvesNode(r: N, u: BreakUniforms): StageCurveNodes {
   return {
-    drain: smoothstep(0.0, u.drainEnd, s),
-    collapse: smoothstep(u.collapseStart, 1.0, s),
+    drain: smoothstep(u.steepFrom, u.drainTo, r),
+    collapse: smoothstep(u.collapseFrom, u.collapseTo, r),
   };
 }
 
@@ -103,14 +105,19 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const sharpen = steep.mul(i.crestConfidence);
   const drop = sharpen.mul(sink).mul(fade).mul(m);
   const dDrop = sharpen.mul(dSink.mul(fade).mul(m).add(sink.mul(dFade).mul(m)).add(sink.mul(fade).mul(dM)));
-  // drainDepth × drainShape × env, and its slope (drainShapeSlope)
+  // drainDepth × drainShape × env, and its slope (drainShapeSlope): the hollow at the foot. It reuses the sharpening's
+  // sink (the same face width); behind the crest a = 0, where the sink and its slope vanish, so both are exactly 0.
   const depth = u.troughDrain.mul(u.delta).mul(i.H).mul(drain);
-  const nearFace = smoothstepDown(0.0, -Math.PI / 4, i.theta);
+  const hollowReach = quarter.mul(HOLLOW_REACH_Q);
+  const xr = a.div(hollowReach);
+  const decay = exp(xr.mul(xr).negate());
+  const dDecay = a.mul(-2.0).div(hollowReach.mul(hollowReach)).mul(decay);
   const pastTrough = smoothstep(-Math.PI, -Math.PI / 2, i.theta);
-  const shape = nearFace.mul(pastTrough);
-  const dShape = smoothstepSlope(-Math.PI / 4, 0.0, i.theta).negate().mul(pastTrough).add(nearFace.mul(smoothstepSlope(-Math.PI, -Math.PI / 2, i.theta)));
+  const dPast = smoothstepSlope(-Math.PI, -Math.PI / 2, i.theta).mul(i.dThetaDAhead);
+  const shape = sink.mul(decay).mul(pastTrough);
+  const dShape = dSink.mul(decay).add(sink.mul(dDecay)).mul(pastTrough).add(sink.mul(decay).mul(dPast));
   const drained = depth.mul(shape).mul(i.env);
-  const dDrained = depth.mul(dShape.mul(i.dThetaDAhead).mul(i.env).add(shape.mul(i.dEnvDAhead)));
+  const dDrained = depth.mul(dShape.mul(i.env).add(shape.mul(i.dEnvDAhead)));
   // boreScale
   const scale = float(1.0).add(min(float(1.0), u.beta.mul(max(i.hmin, 0.0)).div(i.H)).sub(1.0).mul(collapse));
   // foamWeight: the H > MIN_BREAKING_HEIGHT_M gate keeps the front edge's smoothstep edges apart.

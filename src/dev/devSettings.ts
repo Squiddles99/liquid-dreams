@@ -21,6 +21,12 @@ import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, findReferenceMoment, type Momen
  */
 
 export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
+/**
+ * Saved with the settings. A stored `breaking` from another model is dropped for the defaults: its numbers meant
+ * something else there (model 2: the breaking ratio became ρ = H / breakingHeight, so the stage span, the drain end,
+ * the collapse start and the ribbon onset all moved).
+ */
+export const BREAKING_MODEL = 2;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;
@@ -92,7 +98,7 @@ function mergeValue(def: unknown, stored: unknown): unknown {
 /** Writes the settings as JSON. Never throws (a full or blocked store just keeps the old value). */
 export function saveDevSettings(storage: SettingsStorage, settings: DevSettings): void {
   try {
-    storage.setItem(DEV_SETTINGS_KEY, JSON.stringify(settings));
+    storage.setItem(DEV_SETTINGS_KEY, JSON.stringify({ ...settings, breakingModel: BREAKING_MODEL }));
   } catch {
     // Storage unavailable or full: the app behaves as it did before settings were persisted.
   }
@@ -114,6 +120,7 @@ export function loadDevSettings(storage: SettingsStorage, defaults: DevSettings)
   if (!isPlainObject(raw)) return null;
   const look = {} as Record<string, unknown>;
   for (const k of LOOK_KEYS) look[k] = mergeValue(defaults[k], raw[k]);
+  if (raw.breakingModel !== BREAKING_MODEL) look.breaking = deepClone(defaults.breaking);
   return {
     ...(look as unknown as DevLookParams),
     mode: raw.mode === 'default' || raw.mode === 'custom' ? raw.mode : 'custom',

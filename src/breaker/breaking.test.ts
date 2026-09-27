@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
-  type BreakParams, type BreakPointInput, DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_TRAIL_H, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, normalizeBreakParams, sharpenDrop, stageCurves, steepening,
+  type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, RIBBON_FULL_OFFSET, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, normalizeBreakParams, sharpenDrop, stageCurves, steepening,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -66,8 +66,13 @@ function overhang(pts: Pt[]): number {
 // Height, hmin, period: the default biggest wave at the peak, the onset height, big and small, shelf, extremes.
 const CASES: [number, number, number][] = [[3.16, 6.02, 15], [2.64, 6, 15], [4.5, 6, 18], [3, 4, 12], [1.5, 2, 8], [8.6, 12, 25], [0.8, 1.5, 6]];
 const STAGES = Array.from({ length: 21 }, (_, i) => i / 20);
-/** A crest breaking ratio for stage s at the defaults (s > 0 only past r = 1); at s = 0, a steepening but unbroken r. */
-const ratioFor = (s: number): number => (s > 0 ? 1 + P.stageSpan * s : 0.85);
+/** A crest breaking ratio at progress s ∈ (0, 1] through the break (s = 1: settled to the bore, ρ = 1 + COLLAPSE_END·Δ);
+ * at s = 0, a steepening but unbroken ρ. */
+const ratioFor = (s: number): number => (s > 0 ? 1 + COLLAPSE_END * P.stageSpan * s : 0.9);
+/** Stages where the lip is still in the air (foam waits for the collapse to reach FOAM_ONSET_COLLAPSE)… */
+const AIRBORNE = STAGES.filter((s) => stageCurves(ratioFor(s), P).collapse <= FOAM_ONSET_COLLAPSE);
+/** …and where it has landed but the tube is still open (the collapse short of FOAM_SETTLE_COLLAPSE). */
+const LANDED_OPEN = STAGES.filter((s) => { const c = stageCurves(ratioFor(s), P).collapse; return c > FOAM_ONSET_COLLAPSE + 0.02 && c < FOAM_SETTLE_COLLAPSE; });
 
 describe('breaking criterion and stage', () => {
   it('breaks once H ≥ 0.44·hmin (γ = 0.78, δ = 1): about 2.6 m over the 6 m ledge', () => {
@@ -83,8 +88,16 @@ describe('breaking criterion and stage', () => {
     expect(breakingHeightThreshold(0, 6, P)).toBe(Infinity);
   });
   it('floors the drained depth, so a wave taller than the water stays finite', () => {
-    expect(breakingRatio(5, 2, P)).toBeCloseTo(5 / (0.78 * 0.3), 9);
+    expect(breakingRatio(5, 0.4, P)).toBeCloseTo(5 / (0.78 * 0.3), 9);
     expect(breakingRatio(0, 6, P)).toBe(0);
+  });
+  it('is proportional to the height and to 1/hmin above the floor (no blow-up as the drained depth nears it)', () => {
+    for (const hmin of [2, 6, 12]) for (const H of [0.5, 2, 4]) {
+      expect(breakingRatio(2 * H, hmin, P)).toBeCloseTo(2 * breakingRatio(H, hmin, P), 12);
+      expect(breakingRatio(H, hmin / 2, P)).toBeCloseTo(2 * breakingRatio(H, hmin, P), 12);
+    }
+    // A wave twice its breaking height (the old ratio: ~2.7e1 at the floor) reads 2.
+    expect(breakingRatio(2 * 0.78 * 6 / 1.78, 6, P)).toBeCloseTo(2, 12);
   });
   it('stage is 0 below r = 1, 1 from r = 1 + Δ, and never decreases as r grows', () => {
     expect(breakingStage(0.99, P)).toBe(0);
@@ -97,18 +110,29 @@ describe('breaking criterion and stage', () => {
     for (const r of [0.5, 1, 1.01, 1.04, 2, Number.NaN, Infinity]) expect(Number.isFinite(breakingStage(r, p))).toBe(true);
     expect(breakingStage(1 + MIN_STAGE_SPAN, p)).toBe(1);
   });
-  it('stage curves run in order: the drain first, then the collapse', () => {
-    const at = (s: number) => stageCurves(s, P);
-    expect(at(0)).toEqual({ drain: 0, collapse: 0 });
-    expect(at(0.25).drain).toBe(1);
-    expect(at(0.75).collapse).toBe(0);
-    expect(at(1)).toEqual({ drain: 1, collapse: 1 });
+  it('stage curves run in order: the drain first (from the steepening, before the break), then the collapse', () => {
+    const at = (r: number) => stageCurves(r, P);
+    const from = P.ribbonOnset + RIBBON_FULL_OFFSET;
+    expect(at(from)).toEqual({ drain: 0, collapse: 0 });
+    expect(at(0.95).drain).toBeGreaterThan(0); // draining before it breaks…
+    expect(at(0.95).collapse).toBe(0);
+    expect(at(1 + P.drainEnd * P.stageSpan).drain).toBe(1); // …full at 1 + drainEnd·Δ…
+    expect(at(1 + P.drainEnd * P.stageSpan).collapse).toBeLessThan(0.05); // …before the collapse has got going
+    expect(at(1 + P.stageSpan).collapse, 'still settling when the stage is done').toBeLessThan(0.5);
+    expect(at(1 + COLLAPSE_END * P.stageSpan)).toEqual({ drain: 1, collapse: 1 });
+    let prev = { drain: 0, collapse: 0 };
+    for (let r = 0; r <= 3; r += 0.01) {
+      const c = at(r);
+      expect(c.drain).toBeGreaterThanOrEqual(prev.drain);
+      expect(c.collapse).toBeGreaterThanOrEqual(prev.collapse);
+      prev = c;
+    }
   });
-  it('steepening ramps from ribbonOnset + 0.2 to r = 1', () => {
-    expect(steepening(0.69, P)).toBe(0);
+  it('steepening ramps from ribbonOnset + RIBBON_FULL_OFFSET to ρ = 1', () => {
+    const from = P.ribbonOnset + RIBBON_FULL_OFFSET;
+    expect(steepening(from - 0.01, P)).toBe(0);
     expect(steepening(1, P)).toBe(1);
-    expect(steepening(0.85, P)).toBeGreaterThan(0.4);
-    expect(steepening(0.85, P)).toBeLessThan(0.6);
+    expect(steepening((from + 1) / 2, P)).toBeCloseTo(0.5, 12);
     expect(steepening(3, P)).toBe(1);
     // An onset dragged to the slider's top still ramps up (0 below, 1 from r = 1), never inverted.
     const late = { ribbonOnset: 0.9 };
@@ -153,9 +177,9 @@ describe('the sheet shape (sampled cross-sections)', () => {
       }
     }
   });
-  it('the front stands up and the back keeps its unbroken shape (r = 0.85, s = 0)', () => {
+  it('the front stands up and the back keeps its unbroken shape (ρ = 0.9, s = 0)', () => {
     for (const [H, hmin, T] of CASES) {
-      const { pts, info } = section(0, 0.85, H, hmin, T), unbroken = section(0, 0.5, H, hmin, T).pts;
+      const { pts, info } = section(0, 0.9, H, hmin, T), unbroken = section(0, 0.5, H, hmin, T).pts;
       info.forEach((q, j) => {
         if (q.ahead < 0) expect(pts[j][1]).toBe(unbroken[j][1]);
         if (q.ahead > P.faceWidth * H && q.ahead < 2 * P.faceWidth * H) expect(unbroken[j][1] - pts[j][1]).toBeGreaterThan(0.1 * H);
@@ -175,9 +199,10 @@ describe('the sheet shape (sampled cross-sections)', () => {
   it('foam waits for the lip to land, then whitens the collapsed crest and the bore behind it, never the face ahead while the tube is open', () => {
     for (const [H, hmin, T] of CASES) {
       const label = `H ${H} hmin ${hmin} T ${T}`;
-      for (const s of STAGES.filter((x) => x <= 0.8)) for (const q of section(s, ratioFor(s), H, hmin, T).info) expect(q.foam, `${label} s ${s}`).toBe(0);
+      for (const s of AIRBORNE) for (const q of section(s, ratioFor(s), H, hmin, T).info) expect(q.foam, `${label} s ${s}`).toBe(0);
       // Landing, the tube still open (the collapse short of FOAM_SETTLE_COLLAPSE): foam behind the crest only.
-      for (const s of [0.83, 0.85, 0.88]) {
+      expect(LANDED_OPEN.length).toBeGreaterThan(0);
+      for (const s of LANDED_OPEN) {
         const { info } = section(s, ratioFor(s), H, hmin, T);
         for (const q of info) if (q.ahead >= 0) expect(q.foam, `${label} s ${s}`).toBe(0);
         expect(Math.max(...info.map((q) => q.foam)), `${label} s ${s}: foam has begun behind the crest`).toBeGreaterThan(0);
@@ -207,8 +232,8 @@ describe('drain, bore, foam and face height', () => {
   });
   it('foam waits for the lip to land, then covers the collapsed crest and trails behind it, not far ahead', () => {
     const H = 3;
-    const at = (s: number, theta: number, ahead: number) => foamWeight(theta, ahead, H, 1, stageCurves(s, P), P);
-    for (const s of [0, 0.3, 0.6, 0.75, 0.8]) expect(at(s, 0.5, -2)).toBe(0); // the lip is still in the air or landing
+    const at = (s: number, theta: number, ahead: number) => foamWeight(theta, ahead, H, 1, stageCurves(ratioFor(s), P), P);
+    for (const s of AIRBORNE) expect(at(s, 0.5, -2)).toBe(0); // the lip is still in the air or landing
     expect(at(1, 0.5, -2)).toBe(1); // collapsed, behind the crest
     expect(at(1, 0, 0)).toBe(1); // collapsed, at the crest
     expect(at(1, -0.1, P.faceWidth * H)).toBe(0); // down the bore's face, past its front edge
@@ -217,11 +242,11 @@ describe('drain, bore, foam and face height', () => {
     expect(at(1, 0.4, -2 * H)).toBeGreaterThan(0); // …thinning…
     expect(at(1, 0.4, -2 * H)).toBeLessThan(1);
     expect(at(1, 0.6, -FOAM_TRAIL_H * H)).toBe(0); // …and gone FOAM_TRAIL_H·H behind (not half a wavelength)
-    expect(at(0.88, -0.02, 0.3)).toBe(0); // the tube still open: nothing ahead of the crest (the tube's inside)
+    for (const s of LANDED_OPEN) expect(at(s, -0.02, 0.3)).toBe(0); // the tube still open: nothing ahead of the crest (the tube's inside)
   });
-  it('face height is H unbroken and H·(1 + troughDrain·δ) once drained', () => {
-    expect(faceHeight(3, 0, P)).toBe(3);
-    expect(faceHeight(3, 0.5, P)).toBeCloseTo(3 * (1 + P.troughDrain * P.delta), 12);
+  it('face height is H unstood and H·(1 + troughDrain·δ) once drained', () => {
+    expect(faceHeight(3, 0.5, P)).toBe(3);
+    expect(faceHeight(3, 1 + P.drainEnd * P.stageSpan, P)).toBeCloseTo(3 * (1 + P.troughDrain * P.delta), 12);
   });
   it('every output stays finite for extreme inputs', () => {
     for (const [H, hmin, T] of [[0.001, 0.05, 4], [8.6, 0.05, 25], [0.2, 30, 25]] as const) for (const s of STAGES) {
@@ -250,12 +275,12 @@ describe('normalizeBreakParams', () => {
     expect([low.throwStrength, low.lipThickness, low.collapseTime, low.ribbonOnset]).toEqual([0.1, 0.03, 0.3, 0.3]);
     const bad = { ...P, throwStrength: Number.NaN, lipThickness: Infinity, collapseTime: -Infinity, ribbonOnset: Number.NaN };
     normalizeBreakParams(bad);
-    expect([bad.throwStrength, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([0.55, 0.12, 1.0, 0.5]);
+    expect([bad.throwStrength, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([0.55, 0.12, 1.0, 0.55]);
   });
   it('leaves the defaults unchanged', () => {
     const p = { ...P };
     normalizeBreakParams(p);
     expect(p).toEqual(P);
-    expect([P.throwStrength, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.55, 0.12, 1.0, 0.5]);
+    expect([P.throwStrength, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.55, 0.12, 1.0, 0.55]);
   });
 });

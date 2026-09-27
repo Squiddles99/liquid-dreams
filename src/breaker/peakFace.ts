@@ -22,8 +22,9 @@ export function peakFace(field: ReefField | null, events: readonly WaveEvent[], 
   if (!e) return null;
   const f = sampleField(field, 0, 0);
   const w = toActiveWave(e);
-  const stage = p.enabled ? breakingStage(breakingRatio(w.heightM * f.amp, f.hmin, p), p) : 0;
-  return { faceM: faceHeight(localHeight(w, f), stage, p), stage };
+  const r = p.enabled ? breakingRatio(w.heightM * f.amp, f.hminBreak, p) : 0;
+  const stage = breakingStage(r, p);
+  return { faceM: faceHeight(localHeight(w, f), r, p), stage };
 }
 
 /** "4.3 m (14 ft) face, breaking" for the Sets folder. */
