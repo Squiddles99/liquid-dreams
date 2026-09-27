@@ -112,6 +112,23 @@ describe('BreakingRibbon detail coordinate (developed u)', () => {
     expect(maxJump).toBeLessThan(0.25);
     expect(dev[face] - dev[faceEnd]).toBeCloseTo(faceArc, 9);
   });
+
+  it('blends toward the home by the frame’s weight: the home at weight 0, the developed u at weight 1, edges exact', () => {
+    const base = (u: number): Vec2 => [u, 3 * Math.exp(-((u / 2.5) ** 2))];
+    const prof = buildProfile(base, { H: 3, c: 9, r: 1.3, tb: 0.45 }, DEFAULT_BREAK_PARAMS);
+    const { uFront, uBack } = prof.frame;
+    const dev = developedU(prof.points, uFront, uBack);
+    // The developed coordinate really departs from the home here (else the blend proves nothing).
+    expect(Math.max(...dev.map((u, j) => Math.abs(u - prof.homes[j])))).toBeGreaterThan(0.5);
+    const at0 = developedU(prof.points, uFront, uBack, { homes: prof.homes, weight: 0 });
+    at0.forEach((u, j) => expect(Math.abs(u - prof.homes[j])).toBeLessThanOrEqual(1e-9));
+    const at1 = developedU(prof.points, uFront, uBack, { homes: prof.homes, weight: 1 });
+    at1.forEach((u, j) => expect(Math.abs(u - dev[j])).toBeLessThanOrEqual(1e-9));
+    const half = developedU(prof.points, uFront, uBack, { homes: prof.homes, weight: 0.3 });
+    half.forEach((u, j) => expect(u).toBeCloseTo(0.7 * prof.homes[j] + 0.3 * dev[j], 9));
+    expect(half[0]).toBe(prof.homes[0]);
+    expect(half[PROFILE_SAMPLES - 1]).toBe(prof.homes[PROFILE_SAMPLES - 1]);
+  });
 });
 
 describe('BreakingRibbon tint overlay', () => {

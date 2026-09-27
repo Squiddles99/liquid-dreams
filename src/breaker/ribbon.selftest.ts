@@ -15,7 +15,7 @@ import {
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
 import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame } from './lipProfile';
-import { FRAME_BASE_OFFSET, FRAME_LAYOUT, FRAME_VEC4S, SEGMENT_OF_SAMPLE, packFrameCpu } from './lipProfileNodes';
+import { FRAME_BASE_OFFSET, FRAME_LAYOUT, FRAME_VEC4S, SEGMENT_OF_SAMPLE, homeFromTable, packFrameCpu } from './lipProfileNodes';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
 import { type ActiveWave, type BreakOptions, type SetWaveResult, type WaveContext, fieldBreakingHeight, sumWaves, toActiveWave } from './setWaveModel';
@@ -538,8 +538,8 @@ registerSelfTest({
     const gp = await read(renderer, ribbon.positions), gd = await read(renderer, ribbon.details), gh = await read(renderer, ribbon.homes);
     const gf = await read(renderer, ribbon.frames);
     const frameAt = (i: number, name: (typeof FRAME_LAYOUT)[number]): number => gf[i * FRAME_FLOATS + FRAME_LAYOUT.indexOf(name)];
-    const mirror = new Worst(), place = new Worst(), edges = new Worst(), skirts = new Worst();
-    let live = 0, peaks = 0, faceShort = Infinity, faceAt = '';
+    const mirror = new Worst(), place = new Worst(), edges = new Worst(), skirts = new Worst(), flat = new Worst();
+    let live = 0, peaks = 0, flatStations = 0, faceShort = Infinity, faceAt = '';
     entries.forEach((e, i) => {
       if (e.gap) return;
       live++;
@@ -547,10 +547,16 @@ registerSelfTest({
         const k = (i * V + j + 1) * 4;
         return [(gp[k] - e.x) * e.nx + (gp[k + 2] - e.z) * e.nz, gp[k + 1]];
       });
-      const dev = developedU(pts, frameAt(i, 'uFront'), frameAt(i, 'uBack'));
+      // The detail coordinate: mix(home u, developed u, the frame's weight) on the GPU's own frame and positions.
+      const frame = { uFoot: frameAt(i, 'uFoot'), uFront: frameAt(i, 'uFront'), uBack: frameAt(i, 'uBack') }, weight = frameAt(i, 'weight');
+      const homes = Array.from({ length: PROFILE_SAMPLES }, (_, j) => homeFromTable(j, frame));
+      const dev = developedU(pts, frame.uFront, frame.uBack, { homes, weight });
+      if (weight === 0) flatStations++;
       for (let j = 0; j < PROFILE_SAMPLES; j++) {
         const k = (i * V + j + 1) * 4;
-        mirror.see(Math.abs(gd[k + 2] - dev[j]), `#${i} j ${j}`);
+        mirror.see(Math.abs(gd[k + 2] - dev[j]), `#${i} j ${j} weight ${weight.toFixed(3)}`);
+        // Where the frame's weight is 0 the profile is the sheet's own: the detail is the sheet's home, exactly.
+        if (weight === 0) flat.see(Math.max(Math.abs(gd[k] - gh[k]), Math.abs(gd[k + 1] - gh[k + 1])), `#${i} j ${j}`);
         place.see(Math.max(Math.abs(gd[k] - (e.x + e.nx * gd[k + 2])), Math.abs(gd[k + 1] - (e.z + e.nz * gd[k + 2]))), `#${i} j ${j}`);
       }
       for (const j of [0, LAST]) {
@@ -559,24 +565,31 @@ registerSelfTest({
       }
       const s0 = i * V * 4, s1 = (i * V + V - 1) * 4, e0 = (i * V + 1) * 4, e1 = (i * V + PROFILE_SAMPLES) * 4;
       skirts.see(Math.max(...[0, 1, 2].map((m) => Math.max(Math.abs(gd[s0 + m] - gd[e0 + m]), Math.abs(gd[s1 + m] - gd[e1 + m])))), `#${i}`);
-      // Where the lip is thrown, the face gets a face's worth of detail: its developed span is its own arc length.
-      if (frameAt(i, 'weight') > 0.9 && frameAt(i, 'prog') > 0.3) {
+      // Where the lip is thrown, the face gets a face's worth of detail: its developed span is its own arc length
+      // (blended with the home's span by the weight, so exactly the arc at weight 1).
+      if (weight > 0.9 && frameAt(i, 'prog') > 0.3) {
         peaks++;
         const f0 = PROFILE_SEGMENTS.front, f1 = f0 + PROFILE_SEGMENTS.face;
         let arc = 0;
         for (let j = f0 + 1; j <= f1; j++) arc += Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]);
         const span = gd[(i * V + f0 + 1) * 4 + 2] - gd[(i * V + f1 + 1) * 4 + 2];
         const homeSpan = gh[(i * V + f0 + 1) * 4] * e.nx + gh[(i * V + f0 + 1) * 4 + 1] * e.nz - (gh[(i * V + f1 + 1) * 4] * e.nx + gh[(i * V + f1 + 1) * 4 + 1] * e.nz);
-        const ratio = span / Math.max(arc, 1e-9);
-        if (ratio < faceShort) { faceShort = ratio; faceAt = `#${i}: face arc ${arc.toFixed(2)} m, developed span ${span.toFixed(2)} m, home span ${homeSpan.toFixed(2)} m`; }
+        const expected = weight * arc + (1 - weight) * homeSpan;
+        const ratio = span / Math.max(expected, 1e-9);
+        if (ratio < faceShort) {
+          faceShort = ratio;
+          faceAt = `#${i}: weight ${weight.toFixed(3)}, face arc ${arc.toFixed(2)} m, home span ${homeSpan.toFixed(2)} m, expected ${expected.toFixed(2)} m, detail span ${span.toFixed(2)} m`;
+        }
       }
     });
-    const ok = live > 0 && mirror.value < 1e-3 && place.value < 1e-3 && edges.value <= 1e-5 && skirts.value === 0 && peaks > 0 && faceShort > 0.99;
+    const ok = live > 0 && mirror.value < 1e-3 && place.value < 1e-3 && edges.value <= 1e-5 && flat.value <= 1e-5 && skirts.value === 0 &&
+      peaks > 0 && faceShort > 0.99;
     return {
       pass: ok,
-      detail: `${live} live stations at dt 0.6 s; worst |GPU developed u − developedU on the GPU's positions| ${mirror} m (< 1e-3); ` +
-        `worst |detail xz − (S + n·u)| ${place} m (< 1e-3); worst |detail − home| at the edges ${edges} m (≤ 1e-5); skirts vs their edge ${skirts} (0); ` +
-        `${peaks} stations with a thrown lip, lowest face developed span / face arc ${faceShort.toFixed(4)} (> 0.99) [${faceAt}]`,
+      detail: `${live} live stations at dt 0.6 s; worst |GPU detail u − developedU(mix(home, developed, weight)) on the GPU's frames and positions| ${mirror} m (< 1e-3); ` +
+        `worst |detail xz − (S + n·u)| ${place} m (< 1e-3); worst |detail − home| at the edges ${edges} m (≤ 1e-5); ` +
+        `${flatStations} stations at weight 0, worst |detail − home| there ${flat} m (≤ 1e-5); skirts vs their edge ${skirts} (0); ` +
+        `${peaks} stations with a thrown lip, lowest face detail span / (weight·arc + (1 − weight)·home span) ${faceShort.toFixed(4)} (> 0.99) [${faceAt}]`,
     };
   },
 });
