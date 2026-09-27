@@ -18,4 +18,4 @@ export interface ParticleKind {
 /** 3b's offshore spray, exactly. */
 export const SPRAY_KIND: Readonly<ParticleKind> = { dragTauS: 0.45, gravityMs2: 1.2, sizeM: [0.3, 2], opacity: 0.08, isotropic: 0.3 };
 /** 3c's impact explosion: heavier (falls back within about a second and a half), bigger, denser, whiter side-on. */
-export const IMPACT_KIND: Readonly<ParticleKind> = { dragTauS: 1.1, gravityMs2: 7, sizeM: [0.5, 2.5], opacity: 0.2, isotropic: 0.6 };
+export const IMPACT_KIND: Readonly<ParticleKind> = { dragTauS: 1.1, gravityMs2: 7, sizeM: [0.8, 3.5], opacity: 0.32, isotropic: 0.6 };
