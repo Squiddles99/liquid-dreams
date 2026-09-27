@@ -1,5 +1,5 @@
 import { clamp, exp, float, max, min, select, smoothstep, uniform } from 'three/tsl';
-import { type BreakParams, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, MIN_STAGE_SPAN, normalizeBreakParams, steepeningStart } from './breaking';
+import { type BreakParams, FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, MIN_STAGE_SPAN, normalizeBreakParams, steepeningStart } from './breaking';
 
 type N = any;
 
@@ -119,7 +119,8 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const edge = fw.mul(0.5);
   const reach = fw.mul(smoothstep(FOAM_SETTLE_COLLAPSE, 1.0, collapse));
   const front = float(1.0).sub(smoothstep(reach.sub(edge), reach, ahead));
-  const trail = float(1.0).sub(smoothstep(Math.PI / 2, Math.PI, i.theta));
+  const trail = float(1.0).sub(smoothstep(Math.PI / 2, Math.PI, i.theta))
+    .mul(float(1.0).sub(smoothstep(i.H.mul(FOAM_DENSE_BEHIND_H), i.H.mul(FOAM_TRAIL_H), ahead.negate())));
   const foam = land.mul(i.env).mul(front).mul(trail);
   return {
     eta: i.eta.sub(drop).sub(drained).mul(scale),

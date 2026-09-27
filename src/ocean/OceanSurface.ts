@@ -19,12 +19,16 @@ export const EARTH_RADIUS_M = 6_371_000;
  * The set-wave foam placeholder broken into whitewater (fragment stage, math only: no texture fetch). `foam` is the
  * model's weight, `frame` the wave-attached coordinates (m behind the crest, m along it) from SetWaves, so the pattern
  * rides with the wave; `time` churns it slowly. Two octaves of gradient noise (the first stretched along travel into
- * streaks), renormalised to fill 0–1, are thresholded against the weight: t = 1 − 0.8·foam, coverage =
- * smoothstep(t − 0.1, t + 0.1, n). Dense foam (weight 1) covers where n > 0.3, so it keeps holes where the noise is
- * low (about a fifth of it); thin foam is scattered patches, and the foam's edge is ragged rather than a line.
+ * streaks), renormalised to fill 0–1, are thresholded against the weight with a wide soft band: t = 1 − 0.8·foam,
+ * coverage = SET_FOAM_MAX_COVER · smoothstep(t − SET_FOAM_BAND, t + SET_FOAM_BAND, n). Dense foam (weight 1) is full
+ * where n > 0.45 and thins through the band below, so it keeps soft holes; thin foam is scattered soft patches, and no
+ * edge is hard. Coverage never reaches opaque (the water shows through even dense foam).
  * Returns vec2(coverage, brightness): brightness 0.55–1.1 shades streaks and hollows within the foam. Skipped
  * (coverage 0) where there is no set foam.
  */
+export const SET_FOAM_MAX_COVER = 0.85;
+export const SET_FOAM_BAND = 0.25;
+
 export function setFoamPattern(foam: N, frame: N, time: N): N {
   return Fn(() => {
     const out = vec2(0.0, 1.0).toVar();
@@ -34,7 +38,7 @@ export function setFoamPattern(foam: N, frame: N, time: N): N {
       // The blend's typical swing is about ±0.3: × 1.7 spreads it over the whole 0–1 range.
       const n = saturate(n1.mul(0.65).add(n2.mul(0.35)).mul(1.7).add(0.5));
       const t = float(1.0).sub(saturate(foam).mul(0.8));
-      const cover = smoothstep(t.sub(0.1), t.add(0.1), n);
+      const cover = smoothstep(t.sub(SET_FOAM_BAND), t.add(SET_FOAM_BAND), n).mul(SET_FOAM_MAX_COVER);
       const shade = saturate(n2.mul(1.7).add(0.5)).mul(0.25).add(n.mul(0.3)).add(0.55);
       out.assign(vec2(cover, shade));
     });
