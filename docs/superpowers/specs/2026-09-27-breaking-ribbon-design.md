@@ -181,6 +181,7 @@ Andrew's `behind-the-wave` view shows hard-edged bright turquoise patches on the
 - **The first plan task** confirms or refutes this with the dev overlays before the ribbon work.
 - **If confirmed,** the hard clamp is replaced by a smooth, depth-limited drain: the drain's depth tapers as the local still-water depth runs out, so the surface can't approach the bed with a hard edge.
 - **Acceptance:** in `behind-the-wave`, there are no hard-edged turquoise patches.
+- **Result (plan Task 1, GPU, 2026-09-27):** the patches keep their shapes with the seabed look-through switched off (turning dark navy) and vanish with breaking off. They are the overnight sheet's curl-era shading: the finite-difference normal turning down near a breaking crest drives the tube-interior `underside` weight, which swaps the sky reflection for upwelling and the seabed. The tall walls are the sinking ahead of and behind the crest. Task 2 (one sheet, analytic normal, no underside, no back sinking) removes both, so there is no separate fix.
 
 ## 11. Performance
 
