@@ -13,8 +13,12 @@ import { FOAM_TICK_S } from './foamStep';
  * every random value from a hash of the tick (plan S4), so a replay reproduces live play exactly.
  */
 
-/** Emitters are the trace's stations at this fixed spacing (m of crest arc). */
-export const SPRAY_SPACING_M = 1.5;
+/**
+ * Emitters are the trace's stations at this fixed spacing (m of crest arc). 3 m, not the spec's 1.5 m: the spec's cost
+ * lever 1, applied after measuring 2.96 ms of CPU per tick at 1.5 m (target 1.5 ms); births scatter half a spacing either
+ * side, so the veil stays continuous.
+ */
+export const SPRAY_SPACING_M = 3;
 /** Particles per metre of throwing lip per second, at strength 1 (plan S3). */
 export const SPRAY_RATE = 20;
 /** Births per tick, and the pool slots each tick owns (plan S2)… */
@@ -114,9 +118,12 @@ export function sprayEmitters(i: EmitterInput): SprayEmitter[] {
     if (s.gap || s.tb === null || !Number.isFinite(s.tb)) continue;
     const wind = offshoreFactor(i.wind, s.nx, s.nz);
     if (!(wind > 0)) continue;
+    // The station's own wave only: a set wave's envelope is tight (exp(−(ξ/0.7T)⁶)), so the others add nothing at its
+    // crest, and summing all of them was most of the lip maths' cost (measured, final cost pass).
+    const own = [waves[s.wave]];
     const base = (u: number): Vec2 => {
       const x = s.x + s.nx * u, z = s.z + s.nz * u;
-      const r = sumWaves(x, z, i.t, sampleField(field, x, z), waves, ctx, opts);
+      const r = sumWaves(x, z, i.t, sampleField(field, x, z), own, ctx, opts);
       return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
     };
     const f = profileFrame(base, { H: s.H, c: s.c, r: s.r, tb: s.tb }, params);
@@ -157,7 +164,7 @@ export interface SprayBirth {
 
 /**
  * Tick k's births (spec §3.1–3.2): floor(strength × rate × spacing × Δ + a hashed fraction) per emitter, in emitter order,
- * at most SPRAY_BIRTH_CAP (plan S2; the rest are dropped). Each is scattered ±0.4 m along the crest and 0–0.3 m up,
+ * at most SPRAY_BIRTH_CAP (plan S2; the rest are dropped). Each is scattered half a spacing along the crest and 0–0.3 m up,
  * launched with half the lip's throw, a 2–4 m/s upward kick and ±1 m/s per axis, for lifeS × U(0.6, 1.2).
  */
 export function sprayBirths(emitters: readonly SprayEmitter[], tick: number, p: SprayParams): SprayBirth[] {
@@ -167,7 +174,7 @@ export function sprayBirths(emitters: readonly SprayEmitter[], tick: number, p: 
     for (let j = 0; j < n; j++) {
       if (out.length >= SPRAY_BIRTH_CAP) return out;
       const r = (q: number): number => rand01(tick, e.waveId, e.arc, j * 8 + q + 1);
-      const along = (r(0) * 2 - 1) * 0.4;
+      const along = (r(0) * 2 - 1) * (SPRAY_SPACING_M / 2);
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.3, z: e.z + e.nx * along,
         vx: 0.5 * e.vx + (r(2) * 2 - 1), vy: 2 + 2 * r(3) + (r(4) * 2 - 1), vz: 0.5 * e.vz + (r(5) * 2 - 1),
