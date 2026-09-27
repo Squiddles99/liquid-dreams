@@ -7,7 +7,7 @@ import { formatPeakFace, peakFace } from '../breaker/peakFace';
 import type { ReefField } from '../breaker/reefField';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
-import { fieldBreakingHeight, toActiveWave } from '../breaker/setWaveModel';
+import { type WaveContext, fieldBreakingHeight, toActiveWave } from '../breaker/setWaveModel';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -112,6 +112,14 @@ export class App {
   readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
   private ribbonMinHeightM = Infinity;
+  /** The field's wave context (made once per field, outside the timed trace). */
+  private waveCtx: WaveContext | null = null;
+  /**
+   * What the ribbon last traced and computed from (sim time, camera xz, whether it traces). A frame with the same key
+   * (paused, a captureFrame) skips the trace, the upload, the compute and the footprint. null forces a recompute: the
+   * field, the break params, a moment or any panel edit (the sea, the tide or the reef may have changed) reset it.
+   */
+  private ribbonKey: string | null = null;
   /**
    * Dev readout (window.liquidDreams.traceMs in dev builds): the crest trace's CPU time per frame (ms), an exponential
    * moving average over the frames that trace (plan Q7's 2 ms target is measured here).
@@ -182,7 +190,10 @@ export class App {
         },
         onSettingsMode: (mode) => this.setSettingsMode(mode),
         onResetSettings: () => this.resetSettings(),
-        onAnySettingChanged: () => this.scheduleSave(),
+        onAnySettingChanged: () => {
+          this.ribbonKey = null;
+          this.scheduleSave();
+        },
       },
     );
     renderer.onDeviceLost = (info) => this.onDeviceLost(info);
@@ -223,6 +234,7 @@ export class App {
     this.requestFieldIfNeeded(true);
     // The rebuild clears foam too, but a moment is a jump in sim time even when the sea is unchanged.
     this.ocean.resetFoam();
+    this.ribbonKey = null;
     this.panel.refresh();
   }
 
@@ -239,6 +251,8 @@ export class App {
   private onRibbonInputs(): void {
     this.ribbon.setParams(this.breakParams);
     this.ribbonMinHeightM = this.field ? minRibbonHeight(fieldBreakingHeight(this.field, this.breakParams), this.breakParams) : Infinity;
+    this.waveCtx = this.field ? { omega: this.field.omega, travelX: this.field.far.dirX, travelZ: this.field.far.dirZ } : null;
+    this.ribbonKey = null;
   }
 
   /**
@@ -246,16 +260,20 @@ export class App {
    * then uploads them, computes its vertices and renders the footprint the sheet reads, all before the frame renders.
    */
   private updateRibbon(events: readonly WaveEvent[]): void {
+    const field = this.field, ctx = this.waveCtx, cam = this.camera.position;
+    const tracing = field !== null && ctx !== null && this.breakParams.enabled;
+    const key = `${tracing}|${this.clock.simTime}|${cam.x}|${cam.z}`;
+    if (key === this.ribbonKey) return;
+    this.ribbonKey = key;
     let entries: StationEntry[] = [];
-    const field = this.field;
-    if (field && this.breakParams.enabled) {
+    if (tracing) {
+      const waves = events.map(toActiveWave);
+      const input = { cameraX: cam.x, cameraZ: cam.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM };
       const start = performance.now();
-      entries = traceStations(field, events.map(toActiveWave), this.clock.simTime, { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ }, {
-        cameraX: this.camera.position.x, cameraZ: this.camera.position.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM,
-      });
+      entries = traceStations(field, waves, this.clock.simTime, ctx, input);
       this.traceMs += TRACE_MS_ALPHA * (performance.now() - start - this.traceMs);
     }
-    this.ribbon.setStations(entries, this.camera.position);
+    this.ribbon.setStations(entries, cam);
     this.ribbon.compute(this.renderer);
     this.ribbon.renderFootprint(this.renderer);
   }
@@ -285,6 +303,7 @@ export class App {
     if (!force && key === this.spectrumKey) return;
     this.spectrumKey = key;
     this.ocean.setConditions(this.conditions, this.spectrumParams);
+    this.ribbonKey = null;
   }
 
   /** Re-solve the reef wave field (off-thread) when the swell period or direction, the tide or the reef changes. */
@@ -310,6 +329,7 @@ export class App {
     if (key === this.builtReefKey) return false;
     this.builtReefKey = key;
     this.seabed.setBathymetry(buildBathymetry(this.reefParams));
+    this.ribbonKey = null;
     return true;
   }
 
@@ -603,6 +623,7 @@ export class App {
     this.oceanSurface.update(this.camera.position, this.ocean);
 
     this.picture.setSun(sun.elevationDeg, this.camera.getWorldDirection(this.viewDir).dot(this.sunDir));
+    this.ribbon.setDisplayExposure(this.picture.exposureValue);
     this.picture.render();
     if (this.screenshotRequested) {
       this.screenshotRequested = false;

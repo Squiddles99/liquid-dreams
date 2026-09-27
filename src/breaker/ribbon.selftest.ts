@@ -8,11 +8,12 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { Seabed } from '../seabed/Seabed';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import {
-  BreakingRibbon, FOOTPRINT_GRID, MIN_PROFILE_STEP_M, NORMAL_SEARCH, type RibbonSurface, SKIRT_DEPTH_M, VERTS_PER_STATION, modelRibbonSurface,
+  BreakingRibbon, FOOTPRINT_END_MARGIN_M, FOOTPRINT_GRID, MIN_PROFILE_STEP_M, NORMAL_SEARCH, type RibbonSurface, SKIRT_DEPTH_M, VERTS_PER_STATION,
+  developedU, modelRibbonSurface,
 } from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
-import { PROFILE_SAMPLES, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame } from './lipProfile';
+import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame } from './lipProfile';
 import { FRAME_BASE_OFFSET, FRAME_LAYOUT, FRAME_VEC4S, SEGMENT_OF_SAMPLE, packFrameCpu } from './lipProfileNodes';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
@@ -356,6 +357,9 @@ registerSelfTest({
   },
 });
 
+/** A station is interior (the footprint test) with this much live crest (m of arc) on both sides. */
+const INTERIOR_ARC_M = FOOTPRINT_END_MARGIN_M + 1;
+
 /** The footprint mask read back: texel (col, row) → 0/1, rows padded to WebGPU's 256-byte copy alignment. */
 async function readFootprint(renderer: THREE.WebGPURenderer, ribbon: BreakingRibbon) {
   const w = FOOTPRINT_GRID.size.x, h = FOOTPRINT_GRID.size.y;
@@ -391,14 +395,15 @@ registerSelfTest({
     const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: P };
     const rhoAt = (i: number): number => ge[(i * V + 1) * 4 + 3];
     const liveAt = (i: number): boolean => i >= 0 && i < entries.length && !entries[i].gap && rhoAt(i) >= 0.02;
-    /** Whether the stations within 1 m of arc on both sides of i are live and in the ribbon (ρ ≥ 0.02): away from a run's end. */
+    /** Whether the stations within INTERIOR_ARC_M of arc on both sides of i are live and in the ribbon (ρ ≥ 0.02): away from a
+     * run's end, including the FOOTPRINT_END_MARGIN_M its footprint leaves out there, plus 1 m for the texels. */
     const interior = (i: number): boolean => {
       const e = entries[i] as Station;
       for (const step of [-1, 1]) {
         let k = i + step;
         for (;;) {
           if (!liveAt(k)) return false;
-          if (Math.abs((entries[k] as Station).arc - e.arc) >= 1) break;
+          if (Math.abs((entries[k] as Station).arc - e.arc) >= INTERIOR_ARC_M) break;
           k += step;
         }
       }
@@ -436,7 +441,7 @@ registerSelfTest({
     const ok = mask.lengthOk && coveredChecks >= 10 && covered === coveredChecks && clearChecks === live && clear === clearChecks;
     return {
       pass: ok,
-      detail: `${live} live stations at dt 0.6 s, ${mask.marked} texels marked; under the u = 0 point of ${coveredChecks} interior stations (ρ ≥ 0.02 within 1 m of arc each side; ≥ 10): ` +
+      detail: `${live} live stations at dt 0.6 s, ${mask.marked} texels marked; under the u = 0 point of ${coveredChecks} interior stations (ρ ≥ 0.02 within ${INTERIOR_ARC_M} m of arc each side; ≥ 10): ` +
         `${covered} marked (all) [missed: ${missed.join('; ') || 'none'}]; 3 m beyond the front edge of ${clearChecks} stations (all ${live} in the grid): ${clear} clear (all) ` +
         `[marked: ${stray.join('; ') || 'none'}]. Diagnostic, rows mirrored: ${coveredFlipped} marked under u = 0, ${clearFlipped} clear ahead (a row-order mistake would pass this way).` +
         `${mask.lengthOk ? '' : ' Readback shorter than the padded rows expect.'}`,
@@ -466,6 +471,62 @@ registerSelfTest({
       pass: ok,
       detail: `with the trace at dt 0.6 s ${before} texels marked (> 0); after setStations([]): stationCount ${ribbon.stationCount} (0), ${after.marked} texels marked (0), ` +
         `draw range ${drawn} indices (0), mesh ${ribbon.mesh.visible ? 'visible' : 'hidden'} (hidden)`,
+    };
+  },
+});
+
+registerSelfTest({
+  name: 'ribbon: the detail coordinate is the developed profile',
+  async run(renderer) {
+    const { time, sets, ribbon } = setsRig();
+    const t = REF_BIGGEST.arrivalS + 0.6;
+    time.value = t;
+    const { entries } = traceAt(t, sets);
+    ribbon.setStations(entries, LINEUP);
+    ribbon.compute(renderer);
+    // The rig's chop is 0, so the positions are the chop-free profile the develop pass measured.
+    const gp = await read(renderer, ribbon.positions), gd = await read(renderer, ribbon.details), gh = await read(renderer, ribbon.homes);
+    const gf = await read(renderer, ribbon.frames);
+    const frameAt = (i: number, name: (typeof FRAME_LAYOUT)[number]): number => gf[i * FRAME_FLOATS + FRAME_LAYOUT.indexOf(name)];
+    const mirror = new Worst(), place = new Worst(), edges = new Worst(), skirts = new Worst();
+    let live = 0, peaks = 0, faceShort = Infinity, faceAt = '';
+    entries.forEach((e, i) => {
+      if (e.gap) return;
+      live++;
+      const pts = Array.from({ length: PROFILE_SAMPLES }, (_, j): Vec2 => {
+        const k = (i * V + j + 1) * 4;
+        return [(gp[k] - e.x) * e.nx + (gp[k + 2] - e.z) * e.nz, gp[k + 1]];
+      });
+      const dev = developedU(pts, frameAt(i, 'uFront'), frameAt(i, 'uBack'));
+      for (let j = 0; j < PROFILE_SAMPLES; j++) {
+        const k = (i * V + j + 1) * 4;
+        mirror.see(Math.abs(gd[k + 2] - dev[j]), `#${i} j ${j}`);
+        place.see(Math.max(Math.abs(gd[k] - (e.x + e.nx * gd[k + 2])), Math.abs(gd[k + 1] - (e.z + e.nz * gd[k + 2]))), `#${i} j ${j}`);
+      }
+      for (const j of [0, LAST]) {
+        const k = (i * V + j + 1) * 4;
+        edges.see(Math.max(Math.abs(gd[k] - gh[k]), Math.abs(gd[k + 1] - gh[k + 1])), `#${i} ${j === 0 ? 'front' : 'back'}`);
+      }
+      const s0 = i * V * 4, s1 = (i * V + V - 1) * 4, e0 = (i * V + 1) * 4, e1 = (i * V + PROFILE_SAMPLES) * 4;
+      skirts.see(Math.max(...[0, 1, 2].map((m) => Math.max(Math.abs(gd[s0 + m] - gd[e0 + m]), Math.abs(gd[s1 + m] - gd[e1 + m])))), `#${i}`);
+      // Where the lip is thrown, the face gets a face's worth of detail: its developed span is its own arc length.
+      if (frameAt(i, 'weight') > 0.9 && frameAt(i, 'prog') > 0.3) {
+        peaks++;
+        const f0 = PROFILE_SEGMENTS.front, f1 = f0 + PROFILE_SEGMENTS.face;
+        let arc = 0;
+        for (let j = f0 + 1; j <= f1; j++) arc += Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]);
+        const span = gd[(i * V + f0 + 1) * 4 + 2] - gd[(i * V + f1 + 1) * 4 + 2];
+        const homeSpan = gh[(i * V + f0 + 1) * 4] * e.nx + gh[(i * V + f0 + 1) * 4 + 1] * e.nz - (gh[(i * V + f1 + 1) * 4] * e.nx + gh[(i * V + f1 + 1) * 4 + 1] * e.nz);
+        const ratio = span / Math.max(arc, 1e-9);
+        if (ratio < faceShort) { faceShort = ratio; faceAt = `#${i}: face arc ${arc.toFixed(2)} m, developed span ${span.toFixed(2)} m, home span ${homeSpan.toFixed(2)} m`; }
+      }
+    });
+    const ok = live > 0 && mirror.value < 1e-3 && place.value < 1e-3 && edges.value <= 1e-5 && skirts.value === 0 && peaks > 0 && faceShort > 0.99;
+    return {
+      pass: ok,
+      detail: `${live} live stations at dt 0.6 s; worst |GPU developed u − developedU on the GPU's positions| ${mirror} m (< 1e-3); ` +
+        `worst |detail xz − (S + n·u)| ${place} m (< 1e-3); worst |detail − home| at the edges ${edges} m (≤ 1e-5); skirts vs their edge ${skirts} (0); ` +
+        `${peaks} stations with a thrown lip, lowest face developed span / face arc ${faceShort.toFixed(4)} (> 0.99) [${faceAt}]`,
     };
   },
 });
