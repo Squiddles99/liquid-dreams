@@ -63,3 +63,14 @@ describe('shadow casters (4c-2)', () => {
     expect(buildGroundShadows([rock], 0, 0, sunEast)).toEqual(buildGroundShadows([{ ...rock, strength: 1 }], 0, 0, sunEast));
   });
 });
+
+describe('shadow length caps (final review I1)', () => {
+  it('a caster with maxLenM casts no further than that', () => {
+    const e3 = (3 * Math.PI) / 180;
+    const low: [number, number, number] = [Math.cos(e3), Math.sin(e3), 0];
+    const capped = buildGroundShadows([{ ...rock, maxLenM: 4 }], 0, 0, low);
+    expect(at(capped, 32 - 2.5, 32, 0)).toBeGreaterThan(0.5);
+    expect(at(capped, 32 - 5, 32, 0)).toBe(0);
+  });
+});
+

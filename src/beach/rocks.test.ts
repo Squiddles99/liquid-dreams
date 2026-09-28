@@ -87,3 +87,11 @@ describe('rock footprints', () => {
     expect(f.covers(land.waterlineAt(-40) + 25, -40, 0.2)).toBe(false);
   });
 });
+
+describe('rock density edits (final review I3)', () => {
+  it('setDensity reports whether the rocks changed', () => {
+    const f = new RockField(land, 1);
+    expect(f.setDensity(1)).toBe(false);
+    expect(f.setDensity(2)).toBe(true);
+  });
+});

@@ -54,7 +54,7 @@ import { Land } from '../land/Land';
 import { GroundPatch } from '../beach/GroundPatchMesh';
 import { PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
 import { Rocks } from '../beach/RockMeshes';
-import { PlantField, plantCaster, type Plant } from '../heath/plants';
+import { PlantField, patchCasters, type Plant } from '../heath/plants';
 import { PlantMeshes } from '../heath/PlantMeshes';
 import { uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
@@ -638,10 +638,11 @@ export class App {
   /** The Land folder's params to the land and the rocks (from the panel, and from settings: final review I3). */
   private applyLandParams(): void {
     if (this.land.setParams(this.landParams)) this.scheduleLandRebuild();
-    this.rockField?.setDensity(this.landParams.rockDensity);
+    const rocksChanged = this.rockField?.setDensity(this.landParams.rockDensity) ?? false;
     this.plantField?.setDensity(this.landParams.bushDensity);
-    // The rocks may have changed: plants re-place around them (Review Focus 2).
-    this.plantField?.clear();
+    // Only when the rocks changed do the plants re-place around them (Review Focus 2); other Land edits keep the cells
+    // (regenerating them stalled 50–120 ms per slider event: final review I3).
+    if (rocksChanged) this.plantField?.clear();
     this.invalidateBeach();
   }
 
@@ -696,7 +697,7 @@ export class App {
     this.plants.tick(this.clock.simTime, this.conditions.wind.speedMs);
     if (c && (moved || this.sunDir.angleTo(this.shadowSun) > (0.5 * Math.PI) / 180)) {
       const inSquare = (x: number, z: number): boolean => Math.abs(x - c[0]) < 42 && Math.abs(z - c[1]) < 42;
-      const casters = [...this.rocksNear.filter((r) => inSquare(r.x, r.z)), ...this.plantsNear.filter((p) => inSquare(p.x, p.z)).map(plantCaster)];
+      const casters = [...this.rocksNear.filter((r) => inSquare(r.x, r.z)), ...patchCasters(this.plantsNear, c, cam.x, cam.z)];
       this.patch.setShadows(buildGroundShadows(casters, c[0] - 32, c[1] - 32, [this.sunDir.x, this.sunDir.y, this.sunDir.z]));
       this.shadowSun.copy(this.sunDir);
     }
