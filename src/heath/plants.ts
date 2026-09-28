@@ -1,4 +1,9 @@
-import { icosphere, noise3, vertexNormals } from '../beach/procedural';
+import { hash3, icosphere, noise3, vertexNormals } from '../beach/procedural';
+import type { RockField } from '../beach/rocks';
+import { coverAt } from '../land/landCover';
+import type { LandHeight } from '../land/landHeight';
+import { coarseMeshHeightAt } from '../land/landMesh';
+import { smoothstep } from '../math/smoothstep';
 
 /** The heath's plants (spec 2026-09-28-the-heath-design.md §3.1). */
 export type PlantKind = 'daisy' | 'green' | 'tall' | 'pigface' | 'rice';
@@ -70,4 +75,139 @@ export function plantShapeGeometry(kind: PlantKind, shape: number, lod: number):
   // Icosphere levels nest (a coarse level's vertices are a subset of the fine one's), so the finest level's extent bounds all.
   const indices = Uint32Array.from(faces.flat());
   return { positions, normals: vertexNormals(positions, indices), indices };
+}
+
+export const PLANT_CELL_M = 4;
+export const PLANT_FULL_M = 150;
+export const PLANT_GONE_M = 200;
+export const LOD_RANGES_M = [25, 70] as const;
+/** Instances per kind × shape mesh at each level of detail (Review Focus 1: the inland heath at density 1 fits). */
+export const LOD_CAPACITY = [400, 1000, 3000] as const;
+/** Candidates per 16 m² cell: shrubs at up to one per 4 m², low plants at up to one per 8 m². */
+const SHRUB_CANDIDATES = 4, LOW_CANDIDATES = 2;
+/** Keep probabilities on full cover: 4 × 0.8 / 16 m² = one shrub per 5 m²; 2 × 0.67 / 16 m² = one low plant per 12 m². */
+const SHRUB_KEEP = 0.8, LOW_KEEP = 0.667;
+/** Plants start inland of the toe's rock band (the dune rise begins at toeEnd − 3 = 52 m on the default beach). */
+const PLANT_MIN_D = 45;
+const SINK = 0.15;
+
+export interface Plant {
+  x: number;
+  z: number;
+  kind: PlantKind;
+  shape: number;
+  width: number;
+  height: number;
+  /** The base on the true ground (inside the fine patch) and on the coarse mesh (beyond it), less the sinking. */
+  yTrue: number;
+  yCoarse: number;
+  yaw: number;
+  /** [0, 1): the sway's phase. */
+  seed: number;
+  tint: [number, number, number];
+}
+
+/** 4a's painted palette (landShading.ts), so near and far agree. */
+const ALBEDO: Record<PlantKind, [number, number, number]> = {
+  daisy: [0.2, 0.215, 0.185],
+  green: [0.12, 0.16, 0.065],
+  tall: [0.08, 0.1, 0.05],
+  pigface: [0.15, 0.19, 0.07],
+  rice: [0.12, 0.16, 0.07],
+};
+
+export function plantScale(distance: number): number {
+  return 1 - smoothstep(PLANT_FULL_M, PLANT_GONE_M, distance);
+}
+
+export function plantLod(distance: number): 0 | 1 | 2 {
+  return distance < LOD_RANGES_M[0] ? 0 : distance < LOD_RANGES_M[1] ? 1 : 2;
+}
+
+/** The plants of cell (ci, cj), from its own hash: the same plants whatever the camera. */
+export function cellPlants(ci: number, cj: number, land: LandHeight, rocks: RockField | null, density: number): Plant[] {
+  const out: Plant[] = [];
+  if (density <= 0) return out;
+  const cx = (ci + 0.5) * PLANT_CELL_M, cz = (cj + 0.5) * PLANT_CELL_M;
+  if (cx - land.waterlineAt(cz) < PLANT_MIN_D - PLANT_CELL_M) return out;
+  // The cell's slope, once (the cover's slope term changes slowly across 4 m).
+  const gx = (land.heightAt(cx + 2, cz) - land.heightAt(cx - 2, cz)) / 4, gz = (land.heightAt(cx, cz + 2) - land.heightAt(cx, cz - 2)) / 4;
+  const grad = Math.hypot(gx, gz), slope = 1 - 1 / Math.sqrt(1 + grad * grad);
+  // Density 1 keeps each candidate at its weight × share; above 1 a second pass of candidates adds (density − 1) × that,
+  // so density 2 doubles the plants instead of saturating each candidate's probability.
+  const per = SHRUB_CANDIDATES + LOW_CANDIDATES;
+  for (let k = 0; k < (density > 1 ? 2 : 1) * per; k++) {
+    const pass = k < per ? Math.min(1, density) : density - 1;
+    const r = (q: number) => hash3(ci, cj, 1000 + k * 16 + q);
+    const x = (ci + r(0)) * PLANT_CELL_M, z = (cj + r(1)) * PLANT_CELL_M;
+    const d = x - land.waterlineAt(z);
+    if (d < PLANT_MIN_D) continue;
+    const h = land.heightAt(x, z);
+    const c = coverAt(d, slope, x, z, h, land.profile);
+    const heathW = Math.max(0, c.heath - c.bushes), riseW = c.bushes;
+    const shrub = k % per < SHRUB_CANDIDATES;
+    if (r(2) >= (heathW + riseW) * (shrub ? SHRUB_KEEP : LOW_KEEP) * pass) continue;
+    let kind: PlantKind;
+    if (!shrub) kind = r(3) < 0.5 ? 'pigface' : 'rice';
+    else if (riseW > heathW) kind = r(3) < 0.54 ? 'daisy' : 'green';
+    else {
+      const tall = 0.04 + 0.06 * smoothstep(90, 300, d);
+      kind = r(3) < tall ? 'tall' : r(3) < tall + 0.5 ? 'daisy' : 'green';
+    }
+    const spec = PLANT_SPECS[kind];
+    const width = spec.widthM[0] + (spec.widthM[1] - spec.widthM[0]) * r(4);
+    if (rocks?.covers(x, z, 0.2)) continue;
+    const height = spec.heightM[0] + (spec.heightM[1] - spec.heightM[0]) * r(5);
+    const drop = SINK * height + 0.5 * (width / 2) * grad;
+    const base = ALBEDO[kind], vary = 0.85 + 0.3 * r(6), hue = (r(7) - 0.5) * 0.1;
+    out.push({
+      x, z, kind, shape: Math.floor(r(8) * PLANT_SHAPES) % PLANT_SHAPES, width, height,
+      yTrue: h - drop, yCoarse: coarseMeshHeightAt(land, x, z) - drop,
+      yaw: r(9) * Math.PI * 2, seed: r(10),
+      tint: [base[0] * vary * (1 + hue), base[1] * vary, base[2] * vary * (1 - hue)],
+    });
+  }
+  return out;
+}
+
+/** The plants around the camera, cells cached. */
+export class PlantField {
+  private readonly cells = new Map<number, Plant[]>();
+  private readonly land: LandHeight;
+  private readonly rocks: RockField | null;
+  private density: number;
+
+  constructor(land: LandHeight, rocks: RockField | null, density: number) {
+    this.land = land;
+    this.rocks = rocks;
+    this.density = density;
+  }
+
+  setDensity(d: number): void {
+    if (d !== this.density) { this.density = d; this.cells.clear(); }
+  }
+
+  /** Forget every cell (the rocks changed: plants must re-place around them). */
+  clear(): void {
+    this.cells.clear();
+  }
+
+  near(camX: number, camZ: number): Plant[] {
+    const out: Plant[] = [];
+    const n = Math.ceil(PLANT_GONE_M / PLANT_CELL_M), cj0 = Math.floor(camZ / PLANT_CELL_M);
+    for (let dj = -n; dj <= n; dj++) {
+      const cj = cj0 + dj, cz = (cj + 0.5) * PLANT_CELL_M, dz = cz - camZ;
+      const reach = PLANT_GONE_M * PLANT_GONE_M - dz * dz;
+      if (reach < 0) continue;
+      const half = Math.sqrt(reach);
+      const x0 = Math.max(camX - half, this.land.waterlineAt(cz) + PLANT_MIN_D - PLANT_CELL_M), x1 = camX + half;
+      for (let ci = Math.ceil(x0 / PLANT_CELL_M - 0.5); (ci + 0.5) * PLANT_CELL_M <= x1; ci++) {
+        const key = (ci + 0x8000) * 0x10000 + (cj + 0x8000);
+        let c = this.cells.get(key);
+        if (!c) { c = cellPlants(ci, cj, this.land, this.rocks, this.density); this.cells.set(key, c); }
+        for (const p of c) out.push(p);
+      }
+    }
+    return out;
+  }
 }
