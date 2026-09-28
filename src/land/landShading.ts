@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, abs, attribute, cameraPosition, cos, dot, float, length, max, min, mix, mx_noise_float, normalize, positionWorld, reflect, saturate, select, smoothstep, step, uniform, vec3 } from 'three/tsl';
+import { PI, abs, attribute, cameraPosition, cos, dot, fwidth, float, length, max, min, mix, mx_noise_float, normalize, positionWorld, reflect, saturate, select, smoothstep, step, uniform, vec3 } from 'three/tsl';
 import { PATCH_HOLE_INSET_M } from '../beach/groundPatch';
 import { schlickWater } from '../ocean/waterShading';
 import type { Sky } from '../sky/Sky';
@@ -130,7 +130,9 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
     const phase = p.x.add(n2.mul(1.2)).mul((2 * Math.PI) / 0.12);
     // Strength varies in patches (the wind leaves some sand smooth): 0.2–0.8 cm crest to trough.
     const patchy = n3.mul(0.6).add(0.2);
-    const slope = cos(phase).mul(patchy).mul(0.004 * ((2 * Math.PI) / 0.12)).mul(float(1.0).sub(wetness)).mul(rest).mul(float(1.0).sub(smoothstep(12.0, 30.0, dist)));
+    // Faded where a pixel spans more than about half a ripple (grazing views alias them into moiré bands).
+    const resolved = float(1.0).sub(smoothstep(1.2, 2.6, fwidth(phase)));
+    const slope = cos(phase).mul(patchy).mul(0.004 * ((2 * Math.PI) / 0.12)).mul(float(1.0).sub(wetness)).mul(rest).mul(resolved).mul(float(1.0).sub(smoothstep(12.0, 30.0, dist)));
     n = normalize(n0.sub(vec3(slope, 0.0, 0.0)));
   }
   const albedo = wet.mul(wetness.mul(rest)).add(dry.mul(float(1.0).sub(wetness).mul(rest))).add(rock.mul(rF)).add(heath.mul(hF));
