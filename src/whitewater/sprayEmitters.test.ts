@@ -212,3 +212,22 @@ describe('the spray can emit (final review: calm-day replays)', () => {
     expect(sprayCanEmit(1, 1)).toBe(false);
   });
 });
+
+import { BOMBIE_X, BOMBIE_Z } from '../bombie/bombieModel';
+import { bombieImpactEmitters } from './sprayEmitters';
+describe('the Bombie’s spray (4c-3)', () => {
+  it('fires along the burst line for its first 1.5 s, sized by the wave and the size slider, and never after', () => {
+    const b = { n: 40, ageS: 0.5, heightM: 3 };
+    const e = bombieImpactEmitters(b, 30, 0, 1);
+    expect(e.length).toBe(11); // a station every 3 m across 30 m
+    for (const s of e) {
+      expect(Math.hypot(s.x - BOMBIE_X, s.z - BOMBIE_Z)).toBeLessThanOrEqual(15.01);
+      expect(s.H).toBeGreaterThanOrEqual(3);
+      expect(s.H).toBeLessThanOrEqual(10);
+    }
+    expect(impactBirths(e, 1234).length).toBeGreaterThan(0);
+    expect(bombieImpactEmitters({ ...b, ageS: 1.6 }, 30, 0, 1)).toEqual([]);
+    expect(bombieImpactEmitters(null, 30, 0, 1)).toEqual([]);
+    expect(bombieImpactEmitters(b, 30, 0, 2)[0].H).toBeGreaterThan(e[0].H);
+  });
+});
