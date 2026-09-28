@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-28
 **Authors:** Andrew and Claude
-**Status:** Design approved in conversation section by section (2026-09-28); written spec awaiting Andrew's review. Branch `phase-4a-the-view-back`.
+**Status:** Approved by Andrew 2026-09-28; implemented on `phase-4a-the-view-back` (plan `docs/superpowers/plans/2026-09-28-the-view-back.md`, rulings P1–P10). **Not merged.**
 **Builds on:**
 - the vision spec (`2026-09-25-liquid-dreams-first-light-design.md`), whose Phase 4 is "The land: beach, dunes, heath, rocks; Ellensbrook Bombie in the distance";
 - Phase 1 (`2026-09-26-reef-and-sets-design.md`): the reef map, the 1D coast profile (`coastProfile.ts`, beach waterline `SHORE_X` = 190 m), the far field;
@@ -166,6 +166,22 @@ At the default 1080p view on the RTX 4060 Laptop, measured with the pane visible
 - the sunlight map's rebuild: ≤ 5 ms, only when the sun moves;
 - the skyline table: ≤ 5 ms CPU per rebuild, only when the camera moves 25 m or the light changes;
 - the load: ≤ 1.5 s to fetch, compose and build the mesh.
+
+**As built (measured, pane visible, RTX 4060 Laptop):**
+- the land's draw: about 0.2 ms;
+- the sunlight rebuild: 2.9 ms;
+- the skyline rebuild: 3.7 ms;
+- the load: 0.48 s;
+- 641,762 triangles (plan ruling P6);
+- the water's above fragment stage: 14 sampled textures, 4 uniform buffers.
+
+All targets are met. At the default lineup the sun breaks over the ridge at 08:02.8 on 15 July (the estimate above said about 08:05).
+
+**As built (other notes):**
+- The real waterline comes from the DEM's own water-mask trough (plan ruling P2). The trough is searched only within 150 m of where the land rises; otherwise the rule takes the 3 m crossing.
+- The rock toe is limestone in clumps with sand between (Andrew's inside-shelf aerial), not a continuous band.
+- Reversed depth was already on; no depth fighting was seen at the far waterline (plan ruling P9).
+- The existing bloom spreads the glitter path's brightness over the dark land under a low sun, as a straight-sided band. It's left for Andrew (the Picture folder).
 
 ## 5. Files
 

@@ -97,6 +97,10 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
   setMoment('lip-close-up', "08:15, 5 ft: from the unbroken shoulder, about 15 m down the line from the lip as it throws over the tube.",
     conditions({ swell: { sizeFt: 5 } }),
     { mode: 'free', position: [16, 2.9, -41], yawDeg: 196, pitchDeg: -3 }, REF_BIGGEST.arrivalS + 1.0),
+    ref('in-the-shade', "07:45 facing the land (east): the lineup still in the ridge's shade, a glow along the skyline where the sun will break.",
+      conditions({ timeOfDay: 7.75 }), lineup(90, 4)),
+    ref('sunbreak', '08:05 facing the sun (ENE): the sun clearing the ridge, the light arriving across the water.',
+      conditions({ timeOfDay: 8 + 5 / 60 }), lineup(58, 4)),
 ];
 
 const cloneMoment = (m: Moment): Moment => ({

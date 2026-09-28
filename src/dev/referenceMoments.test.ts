@@ -16,6 +16,7 @@ describe('reference moments', () => {
       'autumn-glass', 'golden-hour', 'sunset', 'overview',
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'looking-down', 'reef-overhead',
       'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
+      'in-the-shade', 'sunbreak',
     ]);
   });
   it('round-trip through moment links', () => {
@@ -59,6 +60,7 @@ describe('reference moment kinds', () => {
     const viewOrSet = new Set([
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'overview', 'reef-overhead', 'looking-down',
       'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
+      'in-the-shade', 'sunbreak',
     ]);
     for (const r of REFERENCE_MOMENTS.filter((m) => !viewOrSet.has(m.name))) {
       expect(r.kind).toBe('time');
