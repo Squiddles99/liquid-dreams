@@ -15,6 +15,7 @@ import { DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS } from '../whitewater/spray
 import { DEFAULT_LAND_PARAMS } from '../land/landParams';
 import { DEFAULT_SURF_PARAMS } from '../surf/surfModel';
 import { DEFAULT_BOMBIE_PARAMS } from '../bombie/bombieParams';
+import { DEFAULT_SOUND_PARAMS } from '../sound/soundParams';
 import {
   BREAKING_MODEL, CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
   loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
@@ -66,6 +67,7 @@ function defaults(): DevSettings {
     land: DEFAULT_LAND_PARAMS,
     surf: DEFAULT_SURF_PARAMS,
     bombie: DEFAULT_BOMBIE_PARAMS,
+    sound: DEFAULT_SOUND_PARAMS,
   });
 }
 
@@ -108,6 +110,9 @@ function tweaked(): DevSettings {
   s.bombie.enabled = false;
   s.bombie.size = 1.7;
   s.bombie.thresholdFt = 8;
+  s.sound.master = 0.5;
+  s.sound.music = 0.35;
+  s.sound.muted = true;
   s.overlays.coverMap = true;
   s.overlays.sunlightMap = true;
   s.overlays.sprayTint = true;
@@ -484,5 +489,10 @@ describe('Phase 4a land settings', () => {
     const old = JSON.parse(JSON.stringify(defaults())) as Record<string, unknown>;
     delete old.bombie;
     expect(loadDevSettings(store(old), defaults())!.bombie).toEqual(DEFAULT_BOMBIE_PARAMS);
+  });
+  it('settings stored before Phase 5 (no sound) load the Sound defaults', () => {
+    const old = JSON.parse(JSON.stringify(defaults())) as Record<string, unknown>;
+    delete old.sound;
+    expect(loadDevSettings(store(old), defaults())!.sound).toEqual(DEFAULT_SOUND_PARAMS);
   });
 });
