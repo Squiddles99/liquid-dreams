@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-28
 **Authors:** Claude, under Andrew's delegation ("use your superior understanding to do this based on your own decisions")
-**Status:** Written and ruled by Claude under Andrew's delegation; every decision marked **Ruling** is Claude's, for Andrew to review. Branch `phase-4b-the-waterline`. **Not to be merged without Andrew.**
+**Status:** Written, ruled and implemented by Claude under Andrew's delegation on `phase-4b-the-waterline` (plan `docs/superpowers/plans/2026-09-28-the-waterline.md`). Every decision marked **Ruling** is Claude's, for Andrew to review. **Not merged.**
 **Builds on:**
 - Phase 4a (`2026-09-28-the-view-back-design.md`): the land, the waterline x_s(z), the seabed shift (`Seabed.shiftNode`), the shore reef platform (`seabed/shoreReef.ts`, width W(z)), the sunlight map;
 - Phase 1/2: the swell period, the set events (`swell/sets.ts`, `wavesNear`), the reef field's arrival time τ (`reefField.sampleField`, which falls back to the coast's far field outside the map);
@@ -140,3 +140,21 @@ Uniform buffers stay ≤ 12 per stage and sampled textures don't grow (the limit
 - Breaking wave faces along the coast (the coastal surf is white water only; seen from the lineup the faces are hundreds of metres to kilometres away).
 - Wave setup, rips, sandbar dynamics.
 - Foam deposited on the sand; surf sound (Phase 5); spit (3d); Ellensbrook Bombie (4c).
+
+## 8. As built
+
+**Tuned in captures (rulings in the plan ledger):**
+- **Bore fronts:** 4 m wide and ×1.8 brighter (§3.2 said 2.5 m and ×1), so even a between-sets front reads as solid white water.
+- **The far band's grazing boost:** clamp(0.08/|view y|, 1, 5). From low views a flat band is squashed to a sliver, while real white water stands about 1 m tall.
+- **Runup:** 0.5·H + 0.1 m (Ruling W5 said 0.25·H + 0.05). That's the Stockdon-type estimate for long-period swell on a steepish beach; at the smaller value the wet band was a 2 m strip.
+- **`surf-from-the-lineup`'s camera:** 5 m above the lineup. From the lineup's 0.8 m eye height the surf zone, 125–215 m away, is about 2 px and nearby crests hide it (true to life: surfers see the shore break from the tops of swells).
+
+**Other:**
+- **The seabed's waterline table** went from 50 m to 25 m samples. With the beach bed landward of the waterline, the coarser table put the bed's waterline up to about 2.5 m off the land's.
+- **The land** now builds its material once and disposes of the one it replaces (4a's deferred minor).
+
+**Measured:**
+- CPU: 0.0005 ms steady per frame; 0.24 ms for the τ table.
+- GPU: within noise (the switch only zeroes the result).
+- No new textures; 5 uniform buffers per stage.
+- 594 unit tests; 48 GPU self-tests (the surf's GPU nodes match the CPU model exactly).
