@@ -14,6 +14,9 @@ import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { SetWaves } from './SetWaves';
 import { FoamField } from '../whitewater/FoamField';
 import { SprayParticles } from '../whitewater/SprayParticles';
+import { Land } from '../land/Land';
+import { SkylineTable } from '../land/SkylineTable';
+import { SunlightMap } from '../land/SunlightMap';
 
 type N = any;
 
@@ -57,6 +60,8 @@ function stubRenderer(): N {
 const storageBindings = (wgsl: string): number => (wgsl.match(/var<storage/g) ?? []).length;
 /** Sampled (non-storage) texture bindings in a WGSL stage: the baseline allows 16 per stage. */
 const sampledTextures = (wgsl: string): number => (wgsl.match(/var\s+\w+\s*:\s*texture_(?!storage)/g) ?? []).length;
+/** Uniform buffer bindings in a WGSL stage: the baseline allows 12 per stage. */
+const uniformBuffers = (wgsl: string): number => (wgsl.match(/var<uniform>/g) ?? []).length;
 
 function computeWgsl(node: THREE.ComputeNode): string {
   const b: N = new (THREE as N).WGSLNodeBuilder(null, stubRenderer());
@@ -118,6 +123,8 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
       it(`${which}: at most ${MAX_STORAGE_BUFFERS_PER_STAGE} storage buffers and 16 sampled textures per stage, with the foam map`, () => {
         const w = wgsl(withFoam);
         console.log(`sheet ${which} sampled textures: vertex ${sampledTextures(w.vertex)}, fragment ${sampledTextures(w.fragment)}`);
+        console.log(`sheet ${which} uniform buffers: vertex ${uniformBuffers(w.vertex)}, fragment ${uniformBuffers(w.fragment)}`);
+        for (const stage of [w.vertex, w.fragment]) expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
         for (const stage of [w.vertex, w.fragment]) {
           expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
           expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
@@ -138,6 +145,35 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
         expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
       }
     });
+        const sunlight = new SunlightMap();
+        it('the sunlight map adds exactly one sampled texture to the sheet above (the skyline none), and keeps every stage within the limits', () => {
+          const w0 = renderWgsl(new THREE.Mesh(withFoam.mesh.geometry, withFoam.aboveMaterial));
+          const lit = new OceanSurface(model, sky, optics, { foamMap: foam, sunlight, skyline: new SkylineTable() });
+          const w1 = renderWgsl(new THREE.Mesh(lit.mesh.geometry, lit.aboveMaterial));
+          console.log(`sheet above with sunlight: fragment sampled ${sampledTextures(w1.fragment)}, uniform buffers ${uniformBuffers(w1.fragment)}`);
+          expect(sampledTextures(w1.fragment) - sampledTextures(w0.fragment)).toBe(1);
+          for (const stage of [w1.vertex, w1.fragment]) {
+            expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+            expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
+            expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
+          }
+        });
+        it('the ribbon, the spray and the land with the sunlight map stay within the limits', () => {
+          const r = new BreakingRibbon(modelRibbonSurface(model), DEFAULT_BREAK_PARAMS, { model, sky, optics, foamMap: foam, sunlight, skyline: new SkylineTable() });
+          const spray = new SprayParticles(sky, undefined, sunlight);
+          const land = new Land(sky);
+          land.setSunVisibility((xz) => sunlight.visibilityNode(xz));
+          for (const w of [renderWgsl(r.mesh), renderWgsl(spray.mesh as unknown as THREE.Mesh), renderWgsl(land.mesh)]) {
+            for (const stage of [w.vertex, w.fragment]) {
+              expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+              expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
+              expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
+            }
+          }
+          for (const p of ['clearPass', 'marchPass'] as const) {
+            expect(storageBindings(computeWgsl((sunlight as unknown as Record<string, THREE.ComputeNode>)[p]))).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+          }
+        });
   });
 
   it('the spray passes and material stay within the limits', () => {

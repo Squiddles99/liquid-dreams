@@ -11,6 +11,8 @@ import { buildPolarGrid } from './polarGrid';
 import { reefInFrontNode, waterVolumeColourNode } from './WaterVolume';
 import { type WaterOpticsUniforms, shadeWater, shadeWaterFromBelow } from './waterShading';
 import type { WaterSurfaceModel } from './waterSurface';
+import type { SunlightSource } from '../land/SunlightMap';
+import type { SkylineTable } from '../land/SkylineTable';
 
 type N = any;
 
@@ -100,9 +102,13 @@ export interface DebugOverlays {
   foamMap: boolean;
   /** The spray puffs coloured by age (green at birth, red at death). */
   sprayTint: boolean;
+  /** The land's cover in false colours (wet sand blue, sand yellow, rock red, heath green). */
+  coverMap: boolean;
+  /** The land's shadow in blue, on the land and the water. */
+  sunlightMap: boolean;
 }
 
-export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false, foamMap: false, sprayTint: false };
+export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false, foamMap: false, sprayTint: false, coverMap: false, sunlightMap: false };
 
 /**
  * The breaking ribbon's footprint mask (BreakingRibbon.footprint): an R8 texture of `size` texels, `cellM` m each,
@@ -119,6 +125,10 @@ export interface OceanSurfaceOptions {
   footprint?: SheetFootprint;
   /** The breaking foam map (spec 2026-09-27-foam-field-design.md); without it the sheet shows Phase 2's placeholder. */
   foamMap?: SheetFoamMap;
+  /** The land's shadow (Phase 4a spec §4.8); without it the sun reaches everywhere. */
+  sunlight?: SunlightSource;
+  /** The land in the water's reflections (Phase 4a spec §4.9). */
+  skyline?: SkylineTable;
 }
 
 /** True where the sheet draws: outside the footprint grid, or on a texel the mask leaves clear (≤ 0.5). */
@@ -150,6 +160,7 @@ export class OceanSurface {
   private readonly overlayDepth = uniform(0);
   private readonly overlayCrest = uniform(0);
   private readonly overlayFoam = uniform(0);
+  private readonly overlaySun = uniform(0);
 
   constructor(readonly model: WaterSurfaceModel, sky: Sky, optics: WaterOpticsUniforms, options: OceanSurfaceOptions = {}) {
     const sim = model.sim;
@@ -185,7 +196,8 @@ export class OceanSurface {
     const viewDir = toCamera.div(max(distance, 1e-4));
     const fft = model.fftSlopes(vBaseXZ, distance, this.slopeVariance);
     const normal = sheetNormal(fft, setSlope);
-    const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
+    const sunVis = options.sunlight ? options.sunlight.visibilityNode(vBaseXZ) : undefined;
+    const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     // The foam map inside its box, Phase 2's placeholder outside (spec 2026-09-27-foam-field-design.md §3.2); the
     // pattern rides the water. setFoamFrame (the crest frame) stays computed for the spec's fallback, unused here.
     // One sample, shared by the weight and the overlay (one texture binding).
@@ -195,9 +207,10 @@ export class OceanSurface {
 
     material.colorNode = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y,
-        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed,
+        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
+        landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
         overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
-          foamMap: foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0), foamOn: this.overlayFoam } },
+          foamMap: foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0), foamOn: this.overlayFoam, sunOn: this.overlaySun } },
       sky,
       optics,
     );
@@ -235,6 +248,7 @@ export class OceanSurface {
     this.overlayDepth.value = o.depthContours ? 1 : 0;
     this.overlayCrest.value = o.crestLines ? 1 : 0;
     this.overlayFoam.value = o.foamMap ? 1 : 0;
+    this.overlaySun.value = o.sunlightMap ? 1 : 0;
   }
 
   update(cameraPos: THREE.Vector3, sim: OceanSimulation): void {

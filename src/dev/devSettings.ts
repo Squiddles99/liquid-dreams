@@ -13,6 +13,7 @@ import type { AtmosphereParams } from '../sky/atmosphereParams';
 import type { SetParams } from '../swell/sets';
 import type { FoamParams } from '../whitewater/foamStep';
 import type { ImpactParams, SprayParams } from '../whitewater/sprayEmitters';
+import type { LandParams } from '../land/landParams';
 import { type CameraPose, type Moment, parseCameraPose } from './momentLink';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, findReferenceMoment, type MomentKind } from './referenceMoments';
 
@@ -57,6 +58,7 @@ export interface DevLookParams {
   foam: FoamParams;
   spray: SprayParams;
   impact: ImpactParams;
+  land: LandParams;
 }
 
 export interface DevSettings extends DevLookParams {
@@ -67,7 +69,7 @@ export interface DevSettings extends DevLookParams {
   reference: string;
 }
 
-export const LOOK_KEYS = ['spectrum', 'sim', 'water', 'atmosphere', 'picture', 'maxFps', 'sets', 'reef', 'shallow', 'overlays', 'breaking', 'foam', 'spray', 'impact'] as const satisfies readonly (keyof DevLookParams)[];
+export const LOOK_KEYS = ['spectrum', 'sim', 'water', 'atmosphere', 'picture', 'maxFps', 'sets', 'reef', 'shallow', 'overlays', 'breaking', 'foam', 'spray', 'impact', 'land'] as const satisfies readonly (keyof DevLookParams)[];
 
 type Plain = Record<string, unknown>;
 

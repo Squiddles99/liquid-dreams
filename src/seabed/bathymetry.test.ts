@@ -91,3 +91,12 @@ describe('reef domain warp', () => {
     }
   });
 });
+
+describe('bedHeightAt with a waterline shift (Phase 4a spec §4.4)', () => {
+  it('moves the coast profile east by the shift outside the map, and leaves the map alone', () => {
+    const shift = (z: number) => (z > 1000 ? 120 : 0);
+    expect(bedHeightAt(bathy, 300, 2000, shift)).toBeCloseTo(-depthBg(300 - 120), 6);
+    expect(bedHeightAt(bathy, 300, 0, shift)).toBeCloseTo(bedHeightAt(bathy, 300, 0), 6);
+    expect(bedHeightAt(bathy, 0, 0, shift)).toBe(bedHeightAt(bathy, 0, 0)); // inside the reef map
+  });
+});

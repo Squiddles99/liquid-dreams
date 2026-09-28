@@ -11,6 +11,8 @@ import type { WaterSurfaceModel } from '../ocean/waterSurface';
 import { seabedTerms } from '../seabed/seabedShading';
 import { REEF_GRID } from '../seabed/wombReef';
 import type { Sky } from '../sky/Sky';
+import type { SunlightSource } from '../land/SunlightMap';
+import type { SkylineTable } from '../land/SkylineTable';
 import type { BreakParams } from './breaking';
 import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
 import { PROFILE_SAMPLES, PROFILE_SEGMENTS } from './lipProfile';
@@ -201,6 +203,10 @@ export interface RibbonShading {
   optics: WaterOpticsUniforms;
   /** The breaking foam map (spec 2026-09-27-foam-field-design.md), read at each vertex's home; absent: the placeholder. */
   foamMap?: SheetFoamMap;
+  /** The land's shadow (Phase 4a spec §4.8); absent: the sun reaches everywhere. */
+  sunlight?: SunlightSource;
+  /** The land in the water's reflections (Phase 4a spec §4.9). */
+  skyline?: SkylineTable;
 }
 
 /**
@@ -526,12 +532,14 @@ export class BreakingRibbon {
     const foamLook = setFoamPattern(max(vSetFoam, curlFoam.mul(rho)), waterFoamFrame(vHome.xy, model.sets.meanTravel), model.sim.time);
     // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
     // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
-    const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics);
+    const sunVis = shading.sunlight ? shading.sunlight.visibilityNode(positionWorld.xz) : undefined;
+    const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, underside,
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
-        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed },
+        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
+        landReflection: shading.skyline ? (r: N) => shading.skyline!.reflectionNode(positionWorld, r, sky) : undefined },
       sky,
       optics,
     ).toVar();

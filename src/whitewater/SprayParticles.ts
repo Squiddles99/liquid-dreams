@@ -4,6 +4,7 @@ import {
   storage, uint, uniform, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
+import type { SunlightSource } from '../land/SunlightMap';
 import { FOAM_TICK_S, FoamSchedule, tickIndex, tickTime } from './foamStep';
 import {
   DEFAULT_SPRAY_PARAMS, SPRAY_BIRTH_CAP, SPRAY_POOL, type SprayBirth, type SprayParams, normalizeSprayParams, replayTicksForMaxLife,
@@ -50,7 +51,7 @@ export class SprayParticles {
   private readonly stepPass: THREE.ComputeNode;
   private readonly clearPass: THREE.ComputeNode;
 
-  constructor(sky: Sky, readonly kind: ParticleKind = SPRAY_KIND) {
+  constructor(sky: Sky, readonly kind: ParticleKind = SPRAY_KIND, sunlight?: SunlightSource) {
     const posAge = storage(this.posAgeAttr, 'vec4', SPRAY_POOL);
     const velLife = storage(this.velLifeAttr, 'vec4', SPRAY_POOL);
     const meta = storage(this.metaAttr, 'vec4', SPRAY_POOL);
@@ -82,13 +83,13 @@ export class SprayParticles {
       velLife.element(i).assign(vec4(0.0));
       meta.element(i).assign(vec4(0.0));
     })().compute(SPRAY_POOL) as THREE.ComputeNode;
-    this.mesh = new THREE.Sprite(this.buildMaterial(sky));
+    this.mesh = new THREE.Sprite(this.buildMaterial(sky, sunlight));
     this.mesh.count = SPRAY_POOL;
     this.mesh.frustumCulled = false;
   }
 
   /** The sprite (spec §3.3): stretched along the screen velocity, growing, fading; single scattering; aerial perspective. */
-  private buildMaterial(sky: Sky): THREE.SpriteNodeMaterial {
+  private buildMaterial(sky: Sky, sunlight?: SunlightSource): THREE.SpriteNodeMaterial {
     const m = new THREE.SpriteNodeMaterial();
     m.transparent = true;
     m.depthWrite = false;
@@ -117,7 +118,9 @@ export class SprayParticles {
     const toP = centre.sub(cameraPosition);
     const dist = length(toP);
     const viewDir = toP.div(max(dist, 1e-3));
-    const radiance = sky.sunIlluminance.mul(sprayPhaseNode(dot(viewDir, sky.sunDirection), this.kind.isotropic)).add(sky.skyIrradiance.mul(SPRAY_SKY_SCALE));
+    // × the land's shadow at the puff's centre (Phase 4a §4.8).
+        const vis = sunlight ? sunlight.visibilityNode(centre.xz) : float(1.0);
+        const radiance = sky.sunIlluminance.mul(vis).mul(sprayPhaseNode(dot(viewDir, sky.sunDirection), this.kind.isotropic)).add(sky.skyIrradiance.mul(SPRAY_SKY_SCALE));
     // sprayLook.nearCameraFade: puffs within a few metres of the eye fade out.
     const vNear: N = varying(smoothstep(NEAR_FADE_M[0], NEAR_FADE_M[1], dist));
     const colour: N = varying(sky.applyAerialPerspective(radiance, dist, viewDir));
