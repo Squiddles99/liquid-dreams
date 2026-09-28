@@ -20,6 +20,7 @@ import { SunlightMap } from '../land/SunlightMap';
 import { CoastalSurf } from '../surf/CoastalSurf';
 import { GroundPatch } from '../beach/GroundPatchMesh';
 import { Rocks } from '../beach/RockMeshes';
+import { PlantMeshes } from '../heath/PlantMeshes';
 import { createLandLookUniforms } from '../land/landShading';
 
 type N = any;
@@ -185,6 +186,18 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
       land.setHole(patch.hole);
       for (const [label, w] of [['patch', renderWgsl(patch.mesh)], ['rocks', renderWgsl(rocks.meshes[0] as unknown as THREE.Mesh)], ['land', renderWgsl(land.mesh)]] as const) {
         console.log(`${label}: vertex sampled ${sampledTextures(w.vertex)} uniform ${uniformBuffers(w.vertex)}, fragment sampled ${sampledTextures(w.fragment)} uniform ${uniformBuffers(w.fragment)}`);
+        for (const stage of [w.vertex, w.fragment]) {
+          expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+          expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
+          expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
+        }
+      }
+    });
+    it('the plants stay within the limits', () => {
+      const plants = new PlantMeshes(sky, (xz) => sunlight.visibilityNode(xz));
+      for (const i of [0, 20, 40]) { // the first mesh of each level of detail (meshes are ordered level × kind × shape); LOD 2's 3000 matrices exceed the uniform limit (storage)
+        const w = renderWgsl(plants.meshes[i] as unknown as THREE.Mesh);
+        console.log(`plants lod ${i}: vertex sampled ${sampledTextures(w.vertex)} uniform ${uniformBuffers(w.vertex)} storage ${storageBindings(w.vertex)}, fragment sampled ${sampledTextures(w.fragment)} uniform ${uniformBuffers(w.fragment)}`);
         for (const stage of [w.vertex, w.fragment]) {
           expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
           expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
