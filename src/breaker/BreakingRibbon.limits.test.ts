@@ -21,6 +21,7 @@ import { CoastalSurf } from '../surf/CoastalSurf';
 import { GroundPatch } from '../beach/GroundPatchMesh';
 import { Rocks } from '../beach/RockMeshes';
 import { PlantMeshes } from '../heath/PlantMeshes';
+import { BombieMesh } from '../bombie/BombieMesh';
 import { createLandLookUniforms } from '../land/landShading';
 
 type N = any;
@@ -191,6 +192,16 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
           expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
           expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
         }
+      }
+    });
+    it('the Bombie stays within the limits', () => {
+      const b = new BombieMesh(model, sky, (xz) => sunlight.visibilityNode(xz));
+      const w = renderWgsl(b.mesh);
+      console.log(`bombie: vertex sampled ${sampledTextures(w.vertex)} uniform ${uniformBuffers(w.vertex)} storage ${storageBindings(w.vertex)}, fragment sampled ${sampledTextures(w.fragment)} uniform ${uniformBuffers(w.fragment)}`);
+      for (const stage of [w.vertex, w.fragment]) {
+        expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+        expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
+        expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
       }
     });
     it('the plants stay within the limits', () => {
