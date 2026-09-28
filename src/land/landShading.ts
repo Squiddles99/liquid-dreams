@@ -120,7 +120,10 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
   const bushPx = zones.y.mul(smoothstep(0.52, 0.57, px(7.0, 4.25)));
   const boulderPx = zones.y.mul(float(1.0).sub(bushPx)).mul(smoothstep(0.63, 0.67, px(5.0, 4.26)));
   const rF0 = max(cover.z.sub(zones.z).add(clumpsPx).add(boulderPx), 0.0);
-  const hF0 = max(cover.w.sub(zones.w).add(bushPx), 0.0);
+  // With the 3D plants up (4c-2), the dune rise's bush share near the camera is the per-vertex cover's (the CPU placement
+  // reads the same values), so the heath floor lies under the 3D clumps, not under the per-pixel painted ones.
+  const bushShown = opts.plantFloor ? mix(bushPx, zones.w, opts.plantFloor.mul(float(1.0).sub(smoothstep(150.0, 200.0, dist)))) : bushPx;
+  const hF0 = max(cover.w.sub(zones.w).add(bushShown), 0.0);
   const rF1 = mix(cover.z, rF0, fade), hF1 = mix(cover.w, hF0, fade);
   const scale = min(float(1.0), float(1.0).div(max(rF1.add(hF1), 1e-4)));
   const hF = hF1.mul(scale), rF = rF1.mul(scale);
