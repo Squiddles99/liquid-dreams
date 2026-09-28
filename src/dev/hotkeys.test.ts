@@ -5,7 +5,7 @@ describe('handleHotkeys', () => {
   it('fires each action once per press', () => {
     const pressed = new Set(['KeyP', 'KeyL']);
     const input = { consumePressed: (code: string) => pressed.delete(code) };
-    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn() };
+    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn(), toggleMute: vi.fn() };
     handleHotkeys(input, h);
     handleHotkeys(input, h);
     expect(h.togglePause).toHaveBeenCalledTimes(1);
@@ -17,9 +17,17 @@ describe('handleHotkeys', () => {
   it('N calls a set', () => {
     const pressed = new Set(['KeyN']);
     const input = { consumePressed: (code: string) => pressed.delete(code) };
-    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn() };
+    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn(), toggleMute: vi.fn() };
     handleHotkeys(input, h);
     expect(h.callSet).toHaveBeenCalledTimes(1);
+    expect(h.togglePause).not.toHaveBeenCalled();
+  });
+  it('M toggles the mute', () => {
+    const pressed = new Set(['KeyM']);
+    const input = { consumePressed: (code: string) => pressed.delete(code) };
+    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn(), toggleMute: vi.fn() };
+    handleHotkeys(input, h);
+    expect(h.toggleMute).toHaveBeenCalledTimes(1);
     expect(h.togglePause).not.toHaveBeenCalled();
   });
 });

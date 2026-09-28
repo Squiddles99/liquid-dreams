@@ -5,11 +5,13 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '..
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, peakFace } from '../breaker/peakFace';
 import { type ReefField, sampleField } from '../breaker/reefField';
-import { BOMBIE_X, BOMBIE_Z, type BombieWaves, burstAt, burstWidthM, burstsAt, setIndicesFrom, setWindow } from '../bombie/bombieModel';
+import { BOMBIE_X, BOMBIE_Z, type BombieWaves, type Burst, burstAt, burstWidthM, burstsAt, setIndicesFrom, setWindow } from '../bombie/bombieModel';
 import { BombieMesh } from '../bombie/BombieMesh';
 import { surferFeetToHs } from '../conditions/units';
 import { DEFAULT_BOMBIE_PARAMS, type BombieParams, normalizeBombieParams } from '../bombie/bombieParams';
 import { DEFAULT_SOUND_PARAMS, type SoundParams, normalizeSoundParams } from '../sound/soundParams';
+import { SoundSystem } from '../sound/SoundSystem';
+import { ticksToHear } from '../sound/hits';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
 import { type WaveContext, fieldBreakingHeight, toActiveWave } from '../breaker/setWaveModel';
@@ -65,7 +67,7 @@ import { uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
 import { buildGroundShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
-import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime } from '../whitewater/foamStep';
+import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime, FOAM_TICKS_PER_S } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { showOverlay } from './overlay';
 
@@ -126,6 +128,10 @@ export class App {
   bombieBurst: { n: number; ageS: number; heightM: number } | null = null;
   /** The Sound folder (Phase 5): the volumes and mute, persisted with the look. */
   readonly soundParams: SoundParams = { ...DEFAULT_SOUND_PARAMS };
+  /** The sound (Phase 5): silent until the first click or key press. */
+  readonly sound = new SoundSystem(this.soundParams);
+  private lastSoundTick: number | null = null;
+  private readonly soundDir = new THREE.Vector3();
   /** The coastal surf along the whole shore (Phase 4b spec 2026-09-28-the-waterline-design.md). */
   readonly surf = new CoastalSurf();
   readonly setStatus = { nextSet: '', wave: '', face: '' };
@@ -283,7 +289,7 @@ export class App {
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
         picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
-        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
+        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, sound: this.soundParams, soundStatus: this.sound.status, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
         onConditions: () => this.onConditionsEdited(),
@@ -340,6 +346,13 @@ export class App {
           normalizeBombieParams(this.bombieParams);
           this.panel.refresh();
         },
+        onSound: () => {
+          normalizeSoundParams(this.soundParams);
+          this.panel.refresh();
+          this.sound.applyParams();
+        },
+        onMusicPlayPause: () => this.sound.toggleMusic(),
+        onMusicNext: () => this.sound.nextTrack(),
         onLand: () => {
           normalizeLandParams(this.landParams);
           this.panel.refresh();
@@ -390,6 +403,7 @@ export class App {
 
   start(): void {
     this.renderer.setAnimationLoop(this.frame);
+    this.sound.arm();
   }
 
   applyMoment(m: Moment): void {
@@ -687,6 +701,23 @@ export class App {
     this.plantsAt = null;
   }
 
+  /** The sound's frame (Phase 5): the spray ticks since the last frame, the Bombie's bursts, the camera and what's around it. */
+  private updateSound(realDt: number, bursts: readonly Burst[]): void {
+    const nowTick = Math.floor(this.clock.simTime * FOAM_TICKS_PER_S);
+    const ks = this.clock.paused ? [] : ticksToHear(this.lastSoundTick, nowTick);
+    this.lastSoundTick = nowTick;
+    const cam = this.camera.position;
+    this.sound.update({
+      simTime: this.clock.simTime, paused: this.clock.paused,
+      camera: { x: cam.x, y: cam.y, z: cam.z, mode: this.rig.mode }, underwater: this.underwater,
+      windSpeedMs: this.conditions.wind.speedMs, tideM: this.conditions.tideM,
+      ticks: ks.map((k) => ({ k, t: tickTime(k), impact: this.emittersAt(k).impact })),
+      bursts, bombieSize: this.bombieParams.size,
+      surf: this.surf.state, waterlineX: this.land.height?.waterlineAt(cam.z) ?? null, waterY: this.probe.heightAt(0),
+      plants: this.plantsNear, rocks: this.rocksNear,
+    }, { position: cam, forward: this.camera.getWorldDirection(this.soundDir), up: { x: 0, y: 1, z: 0 } }, realDt);
+  }
+
   /**
    * The fine patch and the rocks follow the camera (Phase 4c-1 §3.2–3.4): the rocks are relaid every ROCK_RELAY_M; the
    * patch shows in walk mode or near the ground, refreshing its grids after an 8 m move and its shadows then or when the
@@ -861,6 +892,7 @@ export class App {
     normalizeSurfParams(this.surfParams);
     normalizeBombieParams(this.bombieParams);
     normalizeSoundParams(this.soundParams);
+    this.sound.applyParams();
     this.surf.invalidate();
     this.ocean.setParams(this.simParams);
     updateWaterOpticsUniforms(this.waterOptics, this.waterParams);
@@ -1087,6 +1119,12 @@ export class App {
       screenshot: () => { this.screenshotRequested = true; },
       toggleDevUi: () => this.toggleDevUi(),
       callSet: () => this.callSetNow(),
+      toggleMute: () => {
+        this.sound.toggleMute();
+        this.panel.refresh();
+        this.scheduleSave();
+        this.perf.flash(this.soundParams.muted ? 'Sound muted (M)' : 'Sound on');
+      },
     });
     if (this.reseedLineup) {
       const water = this.probe.heightAt(0);
@@ -1116,6 +1154,7 @@ export class App {
     this.bombieBurst = bursts[0] ?? null;
     const thresholdHs = surferFeetToHs(this.bombieParams.thresholdFt);
     this.bombie.show(this.underwater ? [] : bursts.map((b) => ({ ageS: b.ageS, widthM: burstWidthM(b.heightM, thresholdHs, this.bombieParams.size), heightM: b.heightM })));
+    this.updateSound(realDt, bursts);
     this.updateRibbon(events);
     // The ribbon is single-sided and the sheet is cut away under it only above water: hidden underwater.
     if (this.underwater) this.ribbon.mesh.visible = false;

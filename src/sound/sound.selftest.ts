@@ -88,3 +88,20 @@ registerSelfTest({
     return { pass: first >= 0.49 && first <= 0.56, detail: `first sound at ${first.toFixed(3)} s (hit at 0.5 s)` };
   },
 });
+
+registerSelfTest({
+  name: 'sound: a frame with a hit costs the main thread under 0.4 ms',
+  async run() {
+    // A live context (suspended without a gesture): building nodes costs more there than offline, as in the game.
+    const ctx = new AudioContext();
+    try {
+      const e = new AudioEngine(ctx);
+      const n = 40, t0 = performance.now();
+      for (let i = 0; i < n; i++) e.apply(frame({ hits: [{ ...HIT, x: 10 + i, z: -i, delayS: 0.01 * i }] }));
+      const ms = (performance.now() - t0) / n;
+      return { pass: ms < 0.4, detail: `${ms.toFixed(3)} ms per frame with one hit (live context)` };
+    } finally {
+      void ctx.close();
+    }
+  },
+});
