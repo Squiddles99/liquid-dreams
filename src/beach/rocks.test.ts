@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readBakedLand } from '../land/bakedLand.testutil';
 import { decodeLandFile } from '../land/landData';
 import { LandHeight } from '../land/landHeight';
+import { coarseMeshHeightAt } from '../land/landMesh';
 import { ROCK_BAND_M, ROCK_GONE_M, ROCK_FULL_M, RockField, cellRocks, rockScale, rockShapeGeometry } from './rocks';
 
 const land = new LandHeight(decodeLandFile(readBakedLand()));
@@ -49,7 +50,9 @@ describe('rock placement', () => {
     for (const r of rocks) {
       for (let k = 0; k < 8; k++) {
         const a = (k * Math.PI) / 4;
-        worst = Math.max(worst, r.y - land.heightAt(r.x + Math.cos(a) * r.radius * 0.8, r.z + Math.sin(a) * r.radius * 0.8));
+        const px = r.x + Math.cos(a) * r.radius * 0.8, pz = r.z + Math.sin(a) * r.radius * 0.8;
+        // Below the true ground (the patch) and the coarse mesh (beyond the patch) alike (final review I2).
+        worst = Math.max(worst, r.y - Math.min(land.heightAt(px, pz), coarseMeshHeightAt(land, px, pz)));
       }
     }
     expect(worst).toBeLessThanOrEqual(0);

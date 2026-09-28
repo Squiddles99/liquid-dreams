@@ -1,6 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { coverAt } from '../land/landCover';
 import type { LandHeight } from '../land/landHeight';
+import { coarseMeshHeightAt } from '../land/landMesh';
 
 /** The limestone rocks (spec 2026-09-28-on-the-beach-design.md §3.3). */
 export const ROCK_SHAPES = 8;
@@ -130,7 +131,11 @@ export function cellRocks(ci: number, cj: number, land: LandHeight, density: num
     const sink = height * (0.15 + 0.15 * r(6));
     // Seated on the lowest ground under its footprint, so on a slope the downhill side doesn't float.
     let seat = h;
-    for (let k = 0; k < 8; k++) seat = Math.min(seat, land.heightAt(x + Math.cos(k * Math.PI / 4) * radius * 0.8, z + Math.sin(k * Math.PI / 4) * radius * 0.8));
+    // Both the true ground (the patch) and the coarse mesh (beyond it, up to metres off on its 4–64 m cells).
+    for (let k = 0; k < 8; k++) {
+      const px = x + Math.cos(k * Math.PI / 4) * radius * 0.8, pz = z + Math.sin(k * Math.PI / 4) * radius * 0.8;
+      seat = Math.min(seat, land.heightAt(px, pz), coarseMeshHeightAt(land, px, pz));
+    }
     out.push({
       x, z, y: seat - sink, kind, shape: Math.floor(r(7) * 8) % 8, radius, height,
       yaw: r(8) * Math.PI * 2, tiltX: (r(9) - 0.5) * 0.25, tiltZ: (r(10) - 0.5) * 0.25, tint, topTint,

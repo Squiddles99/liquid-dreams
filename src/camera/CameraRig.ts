@@ -7,6 +7,9 @@ import { type LineupState, initialLineupState, stepLineup } from './lineup';
 import { applyMouseLook, lookDirection } from './look';
 import { type FreeState, adjustSpeed, stepFree } from './movement';
 
+/** The still water a return to the lineup needs under it, or it goes back to the last lineup spot instead. */
+const LINEUP_MIN_DEPTH_M = 0.2;
+
 export class CameraRig {
   readonly camera = new THREE.PerspectiveCamera(60, 1, 0.05, 60000);
   mode: CameraMode = 'lineup';
@@ -109,7 +112,12 @@ export class CameraRig {
       this.walk = initialWalkState(p.position[0], p.position[2], look, this.ground);
       this.mode = 'walk';
     } else {
-      this.lineup = initialLineupState(p.position[0], p.position[2], look, waterHeight);
+      // Set down in the water where you are, unless that's dry land (the lineup's eye would be under the sand): then
+      // back to the last lineup spot (final review I1).
+      const ground = this.groundAt(p.position[0], p.position[2]);
+      const dry = Number.isFinite(ground) && ground > waterHeight - LINEUP_MIN_DEPTH_M;
+      const [x, z] = dry ? [this.lineup.x, this.lineup.z] : [p.position[0], p.position[2]];
+      this.lineup = initialLineupState(x, z, look, waterHeight);
       this.mode = 'lineup';
     }
     this.apply();
