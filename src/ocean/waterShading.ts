@@ -26,10 +26,14 @@ export interface WaterSurfaceInputs {
    */
   bodyLightNormal?: N;
   unresolvedSlopeVariance: N;
+  /** The land seen in the reflection (Phase 4a §4.9): how much of the reflected ray r hits it, and its radiance. */
+  landReflection?: (r: N) => { cover: N; radiance: N };
+  /** The land's shadow: the fraction of the sun reaching this point (Phase 4a §4.8). Absent means 1. */
+  sunVisibility?: N;
   /** The seabed seen through the water (Phase 1); absent means infinitely deep water (Phase 0). */
   seabed?: { radiance: N; transmittance: N };
   /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
-  overlay?: { depth: N; tau: N; depthOn: N; crestOn: N; foamMap?: N; foamOn?: N };
+  overlay?: { depth: N; tau: N; depthOn: N; crestOn: N; foamMap?: N; foamOn?: N; sunOn?: N };
 }
 
 export function createWaterOpticsUniforms(p: WaterOpticsParams) {
@@ -75,12 +79,15 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const n = i.normal;
   const v = i.viewDir;
   const l = sky.sunDirection;
+  const sv = i.sunVisibility ?? float(1.0);
   const nDotV = max(dot(n, v), 1e-3);
   const nDotL = dot(n, l);
   const fresnel = schlickWater(nDotV);
 
   const r: N = reflect(v.negate(), n); // three typings gap: reflect() is typed as returning vec2
   const skyReflection = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z)));
+  const land = i.landReflection ? i.landReflection(r) : null;
+  const seen = land ? mix(skyReflection, land.radiance, land.cover) : skyReflection;
 
   // GGX sun glitter. Slopes too small to resolve at this distance widen the lobe. unresolvedSlopeVariance
   // is the total two-axis mean-square slope, and for GGX/Beckmann E[px² + pz²] = α², so it adds to α² directly.
@@ -100,27 +107,27 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const specular = min(
     sky.sunIlluminance.mul(ggx).mul(schlickWater(max(dot(v, h), 0.0))).mul(visibility).mul(nDotLSat).mul(step(0.0, nDotL)),
     vec3(30000.0),
-  );
+  ).mul(sv);
 
   // Light scattered back up out of the deep, clear water column.
   const sunIntoBody = i.bodyLightNormal ? max(dot(i.bodyLightNormal, l), 0.0).mul(step(0.0, l.y)) : max(l.y, 0.0);
-  const upwelling = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(sunIntoBody))).div(PI).mul(u.bodyScale);
+  const upwelling = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(sunIntoBody).mul(sv))).div(PI).mul(u.bodyScale);
 
   // Where the set wave has turned over (the tube's ceiling), a reflection that heads down sees the water under the lip
   // (the face and the trough), not the horizon sky the clamp above would give: the tube stays water-dark, never white.
   const underside = i.underside ? saturate(i.underside) : float(0.0);
-  const reflection = mix(skyReflection, upwelling, underside.mul(float(1.0).sub(smoothstep(-0.2, 0.05, r.y))));
+  const reflection = mix(seen, upwelling, underside.mul(float(1.0).sub(smoothstep(-0.2, 0.05, r.y))));
 
   // Lip transmission: the sun behind a thin, curling lip shines through it toward the viewer (turquoise, spec §3.5, P11);
   // from beneath the lip (the tube's ceiling) the skylight through it adds a blue-green glow as well.
   const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
-  const lipLight = sky.sunIlluminance.mul(backlight).add(sky.skyIrradiance.mul(underside).mul(u.lipSkyTransmission));
+  const lipLight = sky.sunIlluminance.mul(backlight).mul(sv).add(sky.skyIrradiance.mul(underside).mul(u.lipSkyTransmission));
   const transmitted = i.lip ? u.transmission.mul(lipLight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI) : vec3(0.0);
 
   // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.
   const column = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;
   const water = column.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
-  const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL))).mul(u.foamAlbedo).div(PI);
+  const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL)).mul(sv)).mul(u.foamAlbedo).div(PI);
   const colour = mix(water, i.foamShade ? foamLight.mul(i.foamShade) : foamLight, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
@@ -147,6 +154,10 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
       if (o.foamMap && o.foamOn) {
         const map = o.foamMap;
         If(o.foamOn.greaterThan(0.5), () => { c.assign(mix(c, foamLight.mul(vec3(0.25, 0.9, 1.0)), saturate(map).mul(0.8))); });
+      }
+      if (o.sunOn) {
+        const on = o.sunOn;
+        If(on.greaterThan(0.5), () => { c.assign(mix(c, foamLight.mul(vec3(0.1, 0.2, 1.0)), float(1.0).sub(sv).mul(0.7))); });
       }
       return c;
     })()
