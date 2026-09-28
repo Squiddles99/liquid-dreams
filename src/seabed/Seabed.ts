@@ -1,9 +1,14 @@
 import * as THREE from 'three/webgpu';
-import { float, max, select, smoothstep, texture, uniform, vec2 } from 'three/tsl';
+import { clamp, float, floor, fract, int, max, mix, select, smoothstep, texture, uniform, uniformArray, vec2 } from 'three/tsl';
 import type { Bathymetry } from './bathymetry';
 import { FAR_DEPTH_M, REEF_SURROUND_DEPTH_M, SHORE_FLAT_DEPTH_M, SHORE_X } from './coastProfile';
 
 type N = any;
+
+/** The waterline shift outside the reef map (Phase 4a spec §4.4): x_s − SHORE_X every 50 m of z, z ∈ [−15000, 15000]. */
+export const WATERLINE_STEP_M = 50;
+export const WATERLINE_Z0 = -15000;
+export const WATERLINE_COUNT = 601;
 
 /** TSL mirror of depthBg(): the same piecewise smoothstep profile, as one select chain. */
 export function depthBgNode(x: N): N {
@@ -42,6 +47,32 @@ export class Seabed {
   private readonly origin = uniform(new THREE.Vector2());
   private readonly cell = uniform(1);
   private readonly size = uniform(new THREE.Vector2(1, 1));
+
+  private readonly shiftCpu = new Float32Array(WATERLINE_COUNT);
+  private readonly shiftGpu: N = uniformArray( // three typings gap: element() isn't typed as a float node
+    new Array<number>(WATERLINE_COUNT).fill(0), 'float');
+
+  /** The land's waterline x_s at WATERLINE_COUNT samples (LandHeight.waterlineSamples(WATERLINE_STEP_M)). */
+  setWaterline(xs: Float32Array): void {
+    if (xs.length !== WATERLINE_COUNT) throw new Error(`setWaterline wants ${WATERLINE_COUNT} samples, got ${xs.length}`);
+    for (let i = 0; i < WATERLINE_COUNT; i++) {
+      this.shiftCpu[i] = xs[i] - SHORE_X;
+      (this.shiftGpu.array as number[])[i] = this.shiftCpu[i];
+    }
+  }
+
+  /** The shift at z (CPU mirror of shiftNode). */
+  shiftAt(z: number): number {
+    const f = Math.min(WATERLINE_COUNT - 1.001, Math.max(0, (z - WATERLINE_Z0) / WATERLINE_STEP_M));
+    const i = Math.floor(f), t = f - i;
+    return this.shiftCpu[i] * (1 - t) + this.shiftCpu[i + 1] * t;
+  }
+
+  private shiftNode(z: N): N {
+    const f = clamp(z.sub(WATERLINE_Z0).div(WATERLINE_STEP_M), 0.0, WATERLINE_COUNT - 1.001);
+    const i = int(floor(f));
+    return mix(this.shiftGpu.element(i), this.shiftGpu.element(i.add(1)), fract(f));
+  }
 
   constructor(b: Bathymetry) {
     this.bathymetry = b;
@@ -84,9 +115,9 @@ export class Seabed {
     return texture(this.tex, uv).level(float(0)); // three typings gap: level() wants a node
   }
 
-  /** Seabed height y (m) at world xz; the coast profile outside the map. */
+  /** Seabed height y (m) at world xz; outside the map, the coast profile shifted with the land's waterline. */
   bedHeightNode(xz: N): N {
-    return select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).x, depthBgNode(xz.x).negate());
+    return select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).x, depthBgNode(xz.x.sub(this.shiftNode(xz.y))).negate());
   }
 
   /** Still-water depth (m) including the tide, never negative. */
