@@ -55,7 +55,7 @@ import { GroundPatch } from '../beach/GroundPatchMesh';
 import { PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
 import { Rocks } from '../beach/RockMeshes';
 import { type Rock, RockField } from '../beach/rocks';
-import { buildRockShadows } from '../beach/rockShadows';
+import { buildGroundShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
 import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
@@ -658,7 +658,7 @@ export class App {
     }
     if (moved || this.sunDir.angleTo(this.shadowSun) > (0.5 * Math.PI) / 180) {
       const near = this.rocksNear.filter((r) => Math.abs(r.x - c[0]) < 42 && Math.abs(r.z - c[1]) < 42);
-      this.patch.setShadows(buildRockShadows(near, c[0] - 32, c[1] - 32, [this.sunDir.x, this.sunDir.y, this.sunDir.z]));
+      this.patch.setShadows(buildGroundShadows(near, c[0] - 32, c[1] - 32, [this.sunDir.x, this.sunDir.y, this.sunDir.z]));
       this.shadowSun.copy(this.sunDir);
     }
   }

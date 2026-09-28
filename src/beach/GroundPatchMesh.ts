@@ -150,7 +150,7 @@ export class GroundPatch {
     this.hole.centre.value.set(g.cornerX + HALF, g.cornerZ + HALF);
   }
 
-  /** The rocks' grounding shadows (buildRockShadows' output for this square), stored as 8-bit (filterable). */
+  /** The grounding shadows (buildGroundShadows' output for this square), stored as 8-bit (filterable). */
   setShadows(s: Float32Array): void {
     const d = this.shadows.image.data as Uint8Array;
     for (let k = 0; k < d.length; k++) d[k] = Math.round(Math.min(1, Math.max(0, s[k])) * 255);

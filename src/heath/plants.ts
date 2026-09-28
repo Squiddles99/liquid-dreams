@@ -1,4 +1,5 @@
 import { hash3, icosphere, noise3, vertexNormals } from '../beach/procedural';
+import type { ShadowCaster } from '../beach/rockShadows';
 import type { RockField } from '../beach/rocks';
 import { coverAt } from '../land/landCover';
 import type { LandHeight } from '../land/landHeight';
@@ -210,4 +211,9 @@ export class PlantField {
     }
     return out;
   }
+}
+
+/** A plant in the fine patch's shadow picture (spec §3.5): lighter than a rock; the low plants only darken their contact. */
+export function plantCaster(p: Plant): ShadowCaster {
+  return { x: p.x, z: p.z, radius: p.width / 2, height: p.height, strength: 0.6, ringOnly: p.kind === 'pigface' || p.kind === 'rice' };
 }
