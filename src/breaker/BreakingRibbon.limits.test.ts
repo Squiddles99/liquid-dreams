@@ -57,6 +57,8 @@ function stubRenderer(): N {
 const storageBindings = (wgsl: string): number => (wgsl.match(/var<storage/g) ?? []).length;
 /** Sampled (non-storage) texture bindings in a WGSL stage: the baseline allows 16 per stage. */
 const sampledTextures = (wgsl: string): number => (wgsl.match(/var\s+\w+\s*:\s*texture_(?!storage)/g) ?? []).length;
+/** Uniform buffer bindings in a WGSL stage: the baseline allows 12 per stage. */
+const uniformBuffers = (wgsl: string): number => (wgsl.match(/var<uniform>/g) ?? []).length;
 
 function computeWgsl(node: THREE.ComputeNode): string {
   const b: N = new (THREE as N).WGSLNodeBuilder(null, stubRenderer());
@@ -118,6 +120,8 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
       it(`${which}: at most ${MAX_STORAGE_BUFFERS_PER_STAGE} storage buffers and 16 sampled textures per stage, with the foam map`, () => {
         const w = wgsl(withFoam);
         console.log(`sheet ${which} sampled textures: vertex ${sampledTextures(w.vertex)}, fragment ${sampledTextures(w.fragment)}`);
+        console.log(`sheet ${which} uniform buffers: vertex ${uniformBuffers(w.vertex)}, fragment ${uniformBuffers(w.fragment)}`);
+        for (const stage of [w.vertex, w.fragment]) expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
         for (const stage of [w.vertex, w.fragment]) {
           expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
           expect(sampledTextures(stage)).toBeLessThanOrEqual(16);

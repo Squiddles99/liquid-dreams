@@ -171,11 +171,14 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   return { grid, bed, sand, weed };
 }
 
-/** Bilinear seabed height inside the map; the reef-free coast profile outside it. */
-export function bedHeightAt(b: Bathymetry, x: number, z: number): number {
+/**
+ * Bilinear seabed height inside the map; outside it, the reef-free coast profile shifted east by shiftAt(z), the land's
+ * waterline offset (Phase 4a spec §4.4; none by default).
+ */
+export function bedHeightAt(b: Bathymetry, x: number, z: number, shiftAt?: (z: number) => number): number {
   const g = b.grid;
   const fx = (x - g.x0) / g.cellM, fz = (z - g.z0) / g.cellM;
-  if (fx < 0 || fz < 0 || fx > g.nx - 1 || fz > g.nz - 1) return -depthBg(x);
+  if (fx < 0 || fz < 0 || fx > g.nx - 1 || fz > g.nz - 1) return -depthBg(x - (shiftAt ? shiftAt(z) : 0));
   const c = Math.min(g.nx - 2, Math.floor(fx)), r = Math.min(g.nz - 2, Math.floor(fz));
   const tx = fx - c, tz = fz - r;
   const i = r * g.nx + c;
