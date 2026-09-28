@@ -14,6 +14,7 @@ All shots use the reference set of `surf-from-the-lineup` (the biggest wave's bo
 | `06-surf-off.png` | `01` with the Surf folder's `surf` off: calm water to the sand. |
 | `07-drone-over-the-surf.png` | 10:30, the 4a drone view: the swash lace along the waterline, foam across the platform. |
 | `08-oblique-over-the-platform.png` | 10:30, 22 m up over the shelf: white water over the platform toward the beach. |
+| `09-low-tide.png` | `01` at tide −1.5 m: the weedy platform lies exposed between the sand and the surf, and the bores run on to the water's edge out on the platform (final review I2). |
 | `00-sheet.png` | All of the above. |
 
 ## Measured cost

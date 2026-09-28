@@ -158,3 +158,8 @@ Uniform buffers stay ≤ 12 per stage and sampled textures don't grow (the limit
 - GPU: within noise (the switch only zeroes the result).
 - No new textures; 5 uniform buffers per stage.
 - 594 unit tests; 48 GPU self-tests (the surf's GPU nodes match the CPU model exactly).
+
+**After the final review:**
+- **The height table (I1):** 2048 entries, packed four per vec4 (8 KB). On the real coast τ spans 1300–2500 s, so 256 entries didn't cover short periods. It's now tested against the real far field at T = 4–20 s and swells from 180°–330°.
+- **The water's edge (I2):** where the tide meets the beach or seabed (`waterEdgeOffset(tide)`). It anchors the bores' run, the swash, the lift and the lace, so at low tide the bores reach the water out on the platform, and at high tide the white water reaches the sand. The intertidal sand stays damp whatever the swash.
+- **Bores per pixel (I3):** 10, not 3, so every bore reaches the water's edge at short periods.
