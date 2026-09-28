@@ -1,10 +1,13 @@
 import * as THREE from 'three/webgpu';
-import { Fn, instanceIndex, storage, vec4 } from 'three/tsl';
+import { Fn, instanceIndex, normalize, storage, vec4 } from 'three/tsl';
 import { sunForConditions } from '../astro/sunForConditions';
 import { registerSelfTest } from '../dev/selfTest';
 import { LAND_URL } from './Land';
 import { decodeLandFile } from './landData';
 import { LandHeight } from './landHeight';
+import { Sky } from '../sky/Sky';
+import { reflectionCover, skylineTable } from './skyline';
+import { SkylineTable } from './SkylineTable';
 import { SunlightMap } from './SunlightMap';
 import { buildMarchHeights, sunVisibility } from './sunlight';
 
@@ -54,5 +57,39 @@ registerSelfTest({
       });
     }
     return { pass: worst <= 0.1, detail: `worst ${worst.toFixed(3)}; ${rows.join('; ')}` };
+  },
+});
+
+registerSelfTest({
+  name: 'land: the GPU reflection cover matches the CPU skyline (0/1 away from the edge)',
+  async run(renderer) {
+    const land = await bakedLand();
+    const table = new SkylineTable();
+    const eye = new THREE.Vector3(-25, 0.8, 45);
+    table.update(land, 1, eye);
+    const cpuTable = skylineTable((x, z) => land.heightAt(x, z), eye);
+    const cases: [number[], number[]][] = [
+      [[-25, 0, 45], [1, 0.02, 0]], [[-25, 0, 45], [1, 0.3, 0]], [[-25, 0, 45], [-1, 0.02, 0]],
+      [[100, 0, 0], [1, 0.1, 0.1]], [[-25, 0, 45], [0.2, 0.01, -1]],
+    ];
+    const n = cases.length;
+    const pAttr = new THREE.StorageBufferAttribute(new Float32Array(cases.flatMap(([p]) => [...p, 0])), 4);
+    const rAttr = new THREE.StorageBufferAttribute(new Float32Array(cases.flatMap(([, r]) => [...r, 0])), 4);
+    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 4), 4);
+    const P = storage(pAttr, 'vec4', n).toReadOnly(), R = storage(rAttr, 'vec4', n).toReadOnly(), O = storage(outAttr, 'vec4', n);
+    const sky = new Sky();
+    renderer.compute(Fn(() => {
+      const c = table.reflectionNode(P.element(instanceIndex).xyz, normalize(R.element(instanceIndex).xyz), sky).cover;
+      O.element(instanceIndex).assign(vec4(c, 0.0, 0.0, 0.0));
+    })().compute(n) as THREE.ComputeNode);
+    const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    let worst = 0;
+    const rows = cases.map(([p, r], i) => {
+      const len = Math.hypot(...r);
+      const cpu = reflectionCover(cpuTable, eye, p as [number, number, number], r.map((v) => v / len) as [number, number, number]);
+      worst = Math.max(worst, Math.abs(out[i * 4] - cpu));
+      return `gpu ${out[i * 4].toFixed(2)} cpu ${cpu.toFixed(2)}`;
+    });
+    return { pass: worst <= 0.05, detail: `worst ${worst.toFixed(3)}; ${rows.join('; ')}` };
   },
 });

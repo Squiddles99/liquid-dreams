@@ -6,6 +6,7 @@ import { LandHeight } from './landHeight';
 import { buildLandMesh } from './landMesh';
 import { DEFAULT_LAND_PARAMS, type LandParams, beachProfileFor, normalizeLandParams } from './landParams';
 import { type LandLookUniforms, createLandLookUniforms, createLandMaterial } from './landShading';
+import { SkylineTable } from './SkylineTable';
 import { SunlightMap } from './SunlightMap';
 import { buildMarchHeights } from './sunlight';
 
@@ -27,6 +28,8 @@ export class Land {
   readonly mesh: THREE.Mesh;
   /** The land's shadow over the ground and the water (spec §4.8): 1 everywhere until the land loads. */
   readonly sunlight = new SunlightMap();
+  /** The skyline for the water's reflections (spec §4.9). */
+  readonly skyline = new SkylineTable();
   height: LandHeight | null = null;
   /** Bumped on every (re)build: the skyline and sunlight caches key on it. */
   version = 0;
@@ -88,9 +91,10 @@ export class Land {
     return shape && this.file !== null;
   }
 
-  /** Rebuild the sunlight map when the sun moved (at most one march per frame). */
-  update(renderer: THREE.WebGPURenderer, sun: readonly [number, number, number]): void {
+  /** The sunlight map when the sun moved (at most one march per frame); the skyline when the eye moved 25 m. */
+  update(renderer: THREE.WebGPURenderer, sun: readonly [number, number, number], eye: THREE.Vector3): void {
     this.sunlight.update(renderer, sun);
+    this.skyline.update(this.height, this.version, eye);
   }
 
   get shadowOn(): boolean {

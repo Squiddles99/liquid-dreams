@@ -12,6 +12,7 @@ import { reefInFrontNode, waterVolumeColourNode } from './WaterVolume';
 import { type WaterOpticsUniforms, shadeWater, shadeWaterFromBelow } from './waterShading';
 import type { WaterSurfaceModel } from './waterSurface';
 import type { SunlightSource } from '../land/SunlightMap';
+import type { SkylineTable } from '../land/SkylineTable';
 
 type N = any;
 
@@ -126,6 +127,8 @@ export interface OceanSurfaceOptions {
   foamMap?: SheetFoamMap;
   /** The land's shadow (Phase 4a spec §4.8); without it the sun reaches everywhere. */
   sunlight?: SunlightSource;
+  /** The land in the water's reflections (Phase 4a spec §4.9). */
+  skyline?: SkylineTable;
 }
 
 /** True where the sheet draws: outside the footprint grid, or on a texel the mask leaves clear (≤ 0.5). */
@@ -205,6 +208,7 @@ export class OceanSurface {
     material.colorNode = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y,
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
+        landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
         overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
           foamMap: foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0), foamOn: this.overlayFoam, sunOn: this.overlaySun } },
       sky,

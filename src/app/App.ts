@@ -155,7 +155,7 @@ export class App {
   private lensQuiet = false;
   private lensClockS = 0;
   /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
-  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField, sunlight: this.land.sunlight });
+  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField, sunlight: this.land.sunlight, skyline: this.land.skyline });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
   private ribbonMinHeightM = Infinity;
   /** The field's wave context (made once per field, outside the timed trace). */
@@ -197,7 +197,7 @@ export class App {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
     this.scene.add(this.waterVolume.mesh);
-    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.land.sunlight });
+    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.land.sunlight, skyline: this.land.skyline });
     this.scene.add(this.oceanSurface.mesh);
     this.scene.add(this.ribbon.mesh);
     this.scene.add(this.spray.mesh);
@@ -911,7 +911,7 @@ export class App {
     const sun = sunForConditions(this.conditions);
     this.sunDir.set(...sun.direction);
     this.sky.update(this.renderer, this.sunDir, this.camera.position.y);
-    this.land.update(this.renderer, sun.direction);
+    this.land.update(this.renderer, sun.direction, this.camera.position);
     this.sky.followCamera(this.camera.position);
 
     this.ocean.update(this.renderer, this.clock.simTime, simDt);
