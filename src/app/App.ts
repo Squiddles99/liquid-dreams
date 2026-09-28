@@ -19,7 +19,7 @@ import {
   cloneDevSettings, cloneLook, loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
 } from '../dev/devSettings';
 import { captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
-import { type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
+import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
 import { PerfOverlay } from '../dev/perf';
 import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
 import { HeightProbe } from '../ocean/HeightProbe';
@@ -33,7 +33,8 @@ import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
 import { DEFAULT_PICTURE, type PictureParams, PicturePipeline } from '../render/PicturePipeline';
-import { buildBathymetry, downsample } from '../seabed/bathymetry';
+import { bedHeightAt, buildBathymetry, downsample } from '../seabed/bathymetry';
+import { SHORE_X } from '../seabed/coastProfile';
 import { Seabed, WATERLINE_STEP_M } from '../seabed/Seabed';
 import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
@@ -50,6 +51,11 @@ import {
 } from '../whitewater/sprayEmitters';
 import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { Land } from '../land/Land';
+import { GroundPatch } from '../beach/GroundPatchMesh';
+import { PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
+import { Rocks } from '../beach/RockMeshes';
+import { type Rock, RockField } from '../beach/rocks';
+import { buildRockShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
 import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
@@ -58,6 +64,8 @@ import { showOverlay } from './overlay';
 const SPECTRUM_REBUILD_DEBOUNCE_MS = 150;
 const REEF_REBUILD_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 500;
+/** The rocks are relaid (from the cached cells) once the camera has moved this far (Phase 4c-1). */
+const ROCK_RELAY_M = 2;
 /** The crest trace's timing readout is an exponential moving average with this weight on each new frame. */
 const TRACE_MS_ALPHA = 0.1;
 
@@ -124,6 +132,18 @@ export class App {
   /** The land behind the Womb (Phase 4a spec 2026-09-28-the-view-back-design.md); landless until its file loads. */
   readonly land = new Land(this.sky);
   private landTimer: number | undefined;
+  /** On the beach (Phase 4c-1): the fine ground at your feet and the 3D rocks, from the land once it loads. */
+  readonly patch: GroundPatch;
+  readonly rocks: Rocks;
+  private rockField: RockField | null = null;
+  private readonly patchTracker = new PatchTracker();
+  private patchGrids: ReturnType<typeof buildPatchGrids> | undefined;
+  /** The rocks near the camera, relaid when it has moved ROCK_RELAY_M (or the field changed). */
+  private rocksNear: Rock[] = [];
+  private rocksAt: [number, number] | null = null;
+  private readonly shadowSun = new THREE.Vector3(0, -1, 0);
+  /** A walk pose applied before the land loaded (it became a free pose): walked into once the ground exists. */
+  private pendingWalk: CameraPose | null = null;
   private builtReefKey = JSON.stringify(this.reefParams);
   readonly setWaves = new SetWaves(this.ocean.time);
   readonly surfaceModel = new WaterSurfaceModel(this.ocean, this.seabed, this.setWaves);
@@ -210,6 +230,14 @@ export class App {
     this.impact.setMaxLifeS(IMPACT_MAX_LIFE_S);
     this.scene.add(this.impact.mesh);
     this.scene.add(this.land.mesh);
+    this.patch = new GroundPatch(this.sky, this.land.look, {
+      sunVisibility: (xz) => this.land.sunlight.visibilityNode(xz),
+      wetHeight: (xz) => this.seabed.tide.add(this.surf.wetLevelNode(xz.y)),
+    });
+    this.land.setHole(this.patch.hole);
+    this.rocks = new Rocks(this.sky, (xz) => this.land.sunlight.visibilityNode(xz));
+    this.scene.add(this.patch.mesh);
+    for (const m of this.rocks.meshes) this.scene.add(m);
     void this.land.load().then(() => this.onLandBuilt(), (e: unknown) => {
       console.warn(`The land didn't load (${e instanceof Error ? e.message : String(e)}); running without it.`);
     });
@@ -275,7 +303,7 @@ export class App {
         onLand: () => {
           normalizeLandParams(this.landParams);
           this.panel.refresh();
-          if (this.land.setParams(this.landParams)) this.scheduleLandRebuild();
+          this.applyLandParams();
         },
         onFoam: () => {
           normalizeFoamParams(this.foamParams);
@@ -334,6 +362,7 @@ export class App {
     // snap the lineup onto the water at the first reading of the new spot (reseedLineup). Seeded from the stale reading,
     // the lineup camera could start a metre under a crest or the tide and flash the underwater view.
     this.rig.setPose(m.camera, this.conditions.tideM);
+    this.pendingWalk = m.camera.mode === 'walk' && this.rig.mode !== 'walk' ? m.camera : null;
     this.probe.invalidate();
     this.reseedLineup = true;
     this.lensQuiet = true;
@@ -565,7 +594,73 @@ export class App {
 
   /** The land was (re)built: the seabed outside the reef map follows its waterline (spec §4.4). */
   private onLandBuilt(): void {
-    if (this.land.height) this.seabed.setWaterline(this.land.height.waterlineSamples(WATERLINE_STEP_M));
+    const lh = this.land.height;
+    if (!lh) return;
+    this.seabed.setWaterline(lh.waterlineSamples(WATERLINE_STEP_M));
+    // Where walking stands (Phase 4c-1 §3.1): the land, or seaward of its waterline the seabed (the reef and the beach
+    // bed, one surface since 4b), or the top of a rock; the water is the still tide.
+    const field = new RockField(lh, this.landParams.rockDensity);
+    this.rockField = field;
+    this.rig.setGround({
+      groundAt: (x, z) => {
+        const seaward = SHORE_X + this.seabed.shiftAt(z) - x > 0;
+        const base = seaward ? bedHeightAt(this.seabed.bathymetry, x, z, (zz) => this.seabed.shiftAt(zz)) : lh.heightAt(x, z);
+        return Math.max(base, field.topAt(x, z));
+      },
+      waterLevel: () => this.conditions.tideM,
+    });
+    this.invalidateBeach();
+    if (this.pendingWalk && this.rig.mode === 'free') this.rig.setPose(this.pendingWalk, this.conditions.tideM);
+    this.pendingWalk = null;
+  }
+
+  /** The Land folder's params to the land and the rocks (from the panel, and from settings: final review I3). */
+  private applyLandParams(): void {
+    if (this.land.setParams(this.landParams)) this.scheduleLandRebuild();
+    this.rockField?.setDensity(this.landParams.rockDensity);
+    this.invalidateBeach();
+  }
+
+  /** The land or the rock density changed: rebuild the patch's grids and relay the rocks. */
+  private invalidateBeach(): void {
+    this.patchTracker.centre = null;
+    this.patchGrids = undefined;
+    this.rocksAt = null;
+  }
+
+  /**
+   * The fine patch and the rocks follow the camera (Phase 4c-1 §3.2–3.4): the rocks are relaid every ROCK_RELAY_M; the
+   * patch shows in walk mode or near the ground, refreshing its grids after an 8 m move and its shadows then or when the
+   * sun has moved half a degree.
+   */
+  private updateBeach(): void {
+    const lh = this.land.height;
+    if (!this.rockField || !lh) {
+      this.patch.setVisible(false);
+      this.rocks.setVisible(false);
+      return;
+    }
+    this.rocks.setVisible(true);
+    const cam = this.camera.position;
+    if (!this.rocksAt || Math.hypot(cam.x - this.rocksAt[0], cam.z - this.rocksAt[1]) > ROCK_RELAY_M) {
+      this.rocksNear = this.rockField.near(cam.x, cam.z);
+      this.rocks.update(this.rocksNear, cam.x, cam.z);
+      this.rocksAt = [cam.x, cam.z];
+    }
+    const show = patchVisible(this.rig.mode, cam.y, this.rig.groundAt(cam.x, cam.z)) && !this.underwater;
+    this.patch.setVisible(show);
+    if (!show) return;
+    const moved = this.patchTracker.update(cam.x, cam.z);
+    const c = this.patchTracker.centre!;
+    if (moved) {
+      this.patchGrids = buildPatchGrids(lh, c, this.patchGrids);
+      this.patch.setGrids(this.patchGrids);
+    }
+    if (moved || this.sunDir.angleTo(this.shadowSun) > (0.5 * Math.PI) / 180) {
+      const near = this.rocksNear.filter((r) => Math.abs(r.x - c[0]) < 42 && Math.abs(r.z - c[1]) < 42);
+      this.patch.setShadows(buildRockShadows(near, c[0] - 32, c[1] - 32, [this.sunDir.x, this.sunDir.y, this.sunDir.z]));
+      this.shadowSun.copy(this.sunDir);
+    }
   }
 
   /** Beach-shape edits rebuild the mesh (about half a second), debounced like the reef. */
@@ -709,7 +804,7 @@ export class App {
     this.impact.setOverlays(this.overlays);
     this.land.setOverlays(this.overlays);
     normalizeLandParams(this.landParams);
-    if (this.land.setParams(this.landParams)) this.scheduleLandRebuild();
+    this.applyLandParams();
     clearTimeout(this.reefTimer);
     this.rebuildReefIfChanged();
   }
@@ -929,6 +1024,7 @@ export class App {
     this.sunDir.set(...sun.direction);
     this.sky.update(this.renderer, this.sunDir, this.camera.position.y);
     this.land.update(this.renderer, sun.direction, this.camera.position);
+    this.updateBeach();
     this.sky.followCamera(this.camera.position);
 
     this.ocean.update(this.renderer, this.clock.simTime, simDt);

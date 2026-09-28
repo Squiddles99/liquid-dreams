@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readBakedLand } from './bakedLand.testutil';
 import { decodeLandFile } from './landData';
 import { LandHeight } from './landHeight';
-import { MESH_LEVELS, SEAWARD_M, buildLandMesh } from './landMesh';
+import { MESH_LEVELS, SEAWARD_M, buildLandMesh, coarseMeshHeightAt } from './landMesh';
 
 const land = new LandHeight(decodeLandFile(readBakedLand()));
 const mesh = buildLandMesh(land);
@@ -29,6 +29,16 @@ describe('the land mesh', () => {
       if (Math.abs(y - land.heightAt(x, z)) < 1e-3) within++;
     }
     expect(within / n).toBeGreaterThan(0.95);
+  });
+  it('coarseMeshHeightAt is the mesh surface itself: exact at every sampled triangle centroid and edge midpoints', () => {
+    let worst = 0;
+    for (let t = 0; t < mesh.triangles; t += 211) {
+      const v = [0, 1, 2].map((q) => mesh.indices[t * 3 + q]);
+      const P = v.map((i) => [mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]]);
+      const pts = [[0, 1, 2], [0, 1], [1, 2]].map((ids) => [0, 1, 2].map((c) => ids.reduce((a, i) => a + P[i][c], 0) / ids.length));
+      for (const [x, y, z] of pts) worst = Math.max(worst, Math.abs(coarseMeshHeightAt(land, x, z) - y));
+    }
+    expect(worst).toBeLessThan(1e-3);
   });
   it('keeps its seaward edge under water at the lowest tide (−1.5 m)', () => {
     // every vertex further than SEAWARD_M − 1 m seaward of the waterline is below −1.8 m

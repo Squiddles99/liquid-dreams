@@ -93,3 +93,43 @@ export function buildLandMesh(land: LandHeight): LandMeshData {
     indices: Uint32Array.from(idx), triangles: idx.length / 3,
   };
 }
+
+/**
+ * The coarse land mesh's own surface at (x, z): the finest level containing the point, its stitched corner heights and
+ * its triangle split (the b–c diagonal), exactly as buildLandMesh lays them out. Where the mesh has no quad (dropped
+ * seaward, or beyond every level) it is the composed height. The fine ground patch meets this at its edge.
+ */
+export function coarseMeshHeightAt(land: LandHeight, x: number, z: number): number {
+  for (let k = 0; k < MESH_LEVELS.length; k++) {
+    const { cellM, box } = MESH_LEVELS[k];
+    if (x < box[0] || x > box[2] || z < box[1] || z > box[3]) continue;
+    const nx = (box[2] - box[0]) / cellM, nz = (box[3] - box[1]) / cellM;
+    const fi = (x - box[0]) / cellM, fj = (z - box[1]) / cellM;
+    const seaward = (xx: number, zz: number): boolean => xx - land.waterlineAt(zz) < -SEAWARD_M;
+    const dropped = (ii: number, jj: number): boolean => {
+      const x0 = box[0] + ii * cellM, z0 = box[1] + jj * cellM, x1 = x0 + cellM, z1 = z0 + cellM;
+      return seaward(x0, z0) && seaward(x1, z0) && seaward(x0, z1) && seaward(x1, z1);
+    };
+    let i = Math.min(Math.floor(fi), nx - 1), j = Math.min(Math.floor(fj), nz - 1);
+    // On a cell boundary the neighbouring quad gives the same edge: use it where this one was dropped.
+    if (dropped(i, j) && fi === i && i > 0 && !dropped(i - 1, j)) i -= 1;
+    if (dropped(i, j) && fj === j && j > 0 && !dropped(i, j - 1)) j -= 1;
+    if (dropped(i, j)) return land.heightAt(x, z);
+    const u = fi - i, v = fj - j;
+    const stitch = k + 1 < MESH_LEVELS.length;
+    const raw = (ii: number, jj: number): number => land.heightAt(box[0] + ii * cellM, box[1] + jj * cellM);
+    const H = (ii: number, jj: number): number => {
+      if (stitch && (jj === 0 || jj === nz) && ii % 2 === 1) return (raw(ii - 1, jj) + raw(ii + 1, jj)) / 2;
+      if (stitch && (ii === 0 || ii === nx) && jj % 2 === 1) return (raw(ii, jj - 1) + raw(ii, jj + 1)) / 2;
+      return raw(ii, jj);
+    };
+    const b = H(i + 1, j), c = H(i, j + 1);
+    if (u + v <= 1) {
+      const a = H(i, j);
+      return a + (b - a) * u + (c - a) * v;
+    }
+    const d = H(i + 1, j + 1);
+    return d + (c - d) * (1 - u) + (b - d) * (1 - v);
+  }
+  return land.heightAt(x, z);
+}
