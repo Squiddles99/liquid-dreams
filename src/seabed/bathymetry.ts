@@ -1,5 +1,6 @@
 import { smoothstep } from '../math/smoothstep';
-import { REEF_SURROUND_DEPTH_M, depthBg } from './coastProfile';
+import { REEF_SURROUND_DEPTH_M, SHORE_X, depthBg } from './coastProfile';
+import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { fbm2, valueNoise2 } from './noise';
 import { DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE } from './wombReef';
 
@@ -185,6 +186,25 @@ export function bedHeightAt(b: Bathymetry, x: number, z: number, shiftAt?: (z: n
   const top = b.bed[i] + (b.bed[i + 1] - b.bed[i]) * tx;
   const bottom = b.bed[i + g.nx] + (b.bed[i + g.nx + 1] - b.bed[i + g.nx]) * tx;
   return top + (bottom - top) * tz;
+}
+
+/**
+ * [sand, weed] at (x, z) (reef = 1 − both): bilinear inside the map, the open coast's weedy rock outside, then the shore reef platform
+ * mixed in within its width of the waterline (SHORE_X + shiftAt(z)). CPU mirror of Seabed.materialNode.
+ */
+export function bedMaterialAt(b: Bathymetry, x: number, z: number, shiftAt?: (z: number) => number, shore = true): [number, number] {
+  const g = b.grid;
+  const fx = (x - g.x0) / g.cellM, fz = (z - g.z0) / g.cellM;
+  let sand: number = OPEN_COAST_MATERIAL[0], weed: number = OPEN_COAST_MATERIAL[1];
+  if (!(fx < 0 || fz < 0 || fx > g.nx - 1 || fz > g.nz - 1)) {
+    const c = Math.min(g.nx - 2, Math.floor(fx)), r = Math.min(g.nz - 2, Math.floor(fz));
+    const tx = fx - c, tz = fz - r, i = r * g.nx + c;
+    const bl = (a: Float32Array) => (a[i] * (1 - tx) + a[i + 1] * tx) * (1 - tz) + (a[i + g.nx] * (1 - tx) + a[i + g.nx + 1] * tx) * tz;
+    sand = bl(b.sand); weed = bl(b.weed);
+  }
+  if (!shore) return [sand, weed];
+  const w = shoreReefWeight(SHORE_X + (shiftAt ? shiftAt(z) : 0) - x, z);
+  return [sand + (SHORE_REEF_MATERIAL[0] - sand) * w, weed + (SHORE_REEF_MATERIAL[1] - weed) * w];
 }
 
 /** Average factor × factor blocks (for the 1 m wave-field grid). nx and nz must divide by factor. */

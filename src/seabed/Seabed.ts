@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
-import { clamp, float, floor, fract, int, max, mix, select, smoothstep, texture, uniform, uniformArray, vec2 } from 'three/tsl';
+import { clamp, float, floor, fract, int, max, mix, select, sin, smoothstep, texture, uniform, uniformArray, vec2 } from 'three/tsl';
 import type { Bathymetry } from './bathymetry';
 import { FAR_DEPTH_M, REEF_SURROUND_DEPTH_M, SHORE_FLAT_DEPTH_M, SHORE_X } from './coastProfile';
+import { OPEN_COAST_MATERIAL, SHORE_REEF_AT_MAP_M, SHORE_REEF_EDGE_M, SHORE_REEF_MAP_EASE_M, SHORE_REEF_MAP_Z, SHORE_REEF_MATERIAL, SHORE_REEF_MEAN_M } from './shoreReef';
 
 type N = any;
 
@@ -125,8 +126,17 @@ export class Seabed {
     return max(this.tide.sub(this.bedHeightNode(xz)), 0.0);
   }
 
-  /** vec2(sand, weed) weights; open sand outside the map. */
+  /**
+   * vec2(sand, weed) weights: the map inside it, the open coast's weedy rock outside, then the shore reef platform within its width of the
+   * waterline (shoreReef.ts; CPU mirror bathymetry.bedMaterialAt).
+   */
   materialNode(xz: N): N {
-    return select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).yz, vec2(1.0, 0.0));
+    const base = select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).yz, vec2(OPEN_COAST_MATERIAL[0], OPEN_COAST_MATERIAL[1]));
+    const dSea = float(SHORE_X).add(this.shiftNode(xz.y)).sub(xz.x);
+    const [mz0, mz1] = SHORE_REEF_MAP_Z;
+    const atMap = smoothstep(mz0 - SHORE_REEF_MAP_EASE_M, mz0, xz.y).mul(float(1.0).sub(smoothstep(mz1, mz1 + SHORE_REEF_MAP_EASE_M, xz.y)));
+    const width = max(float(SHORE_REEF_MEAN_M).add(sin(xz.y.div(97.0)).mul(12.0)).add(sin(xz.y.div(41.0).add(1.3)).mul(8.0)), atMap.mul(SHORE_REEF_AT_MAP_M));
+    const w = float(1.0).sub(smoothstep(width.sub(SHORE_REEF_EDGE_M), width.add(SHORE_REEF_EDGE_M), dSea));
+    return mix(base, vec2(SHORE_REEF_MATERIAL[0], SHORE_REEF_MATERIAL[1]), w);
   }
 }

@@ -68,7 +68,8 @@ export class Land {
     g.setAttribute('position', new THREE.BufferAttribute(d.positions, 3));
     g.setAttribute('normal', new THREE.BufferAttribute(d.normals, 3));
     g.setAttribute('cover', new THREE.BufferAttribute(d.cover, 4));
-    g.setAttribute('detail', new THREE.BufferAttribute(d.detail, 2));
+    g.setAttribute('detail', new THREE.BufferAttribute(d.detail, 3));
+    g.setAttribute('zones', new THREE.BufferAttribute(d.zones, 4));
     g.setIndex(new THREE.BufferAttribute(d.indices, 1));
     this.mesh.geometry.dispose();
     this.mesh.geometry = g;

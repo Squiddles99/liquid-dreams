@@ -37,6 +37,11 @@ describe('the land mesh', () => {
       if (x - land.waterlineAt(z) < -(SEAWARD_M - 1)) expect(mesh.positions[v * 3 + 1]).toBeLessThan(-1.8);
     }
   });
+  it('carries skyView, rockGrey and weed per vertex', () => {
+    expect(mesh.detail.length).toBe(mesh.positions.length);
+    expect(mesh.zones.length).toBe((mesh.positions.length / 3) * 4);
+    for (let v = 0; v < mesh.detail.length / 3; v += 997) expect(mesh.detail[v * 3 + 2]).toBeGreaterThanOrEqual(0);
+  });
   it('has unit normals and cover weights summing to 1', () => {
     for (let v = 0; v < mesh.positions.length / 3; v += 1013) {
       expect(Math.hypot(mesh.normals[v * 3], mesh.normals[v * 3 + 1], mesh.normals[v * 3 + 2])).toBeCloseTo(1, 4);

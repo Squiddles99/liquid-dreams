@@ -30,14 +30,16 @@ export interface LandMeshData {
   normals: Float32Array;
   /** wet, sand, rock, heath per vertex. */
   cover: Float32Array;
-  /** skyView, rockGrey per vertex. */
+  /** skyView, rockGrey, weed per vertex. */
   detail: Float32Array;
+  /** toeBand, duneBand, clumpRock, bushes per vertex (the shader redraws the clumps per pixel). */
+  zones: Float32Array;
   indices: Uint32Array;
   triangles: number;
 }
 
 export function buildLandMesh(land: LandHeight): LandMeshData {
-  const pos: number[] = [], nor: number[] = [], cov: number[] = [], det: number[] = [], idx: number[] = [];
+  const pos: number[] = [], nor: number[] = [], cov: number[] = [], det: number[] = [], zon: number[] = [], idx: number[] = [];
   for (let k = 0; k < MESH_LEVELS.length; k++) {
     const { cellM, box } = MESH_LEVELS[k];
     const hole = k > 0 ? MESH_LEVELS[k - 1].box : null;
@@ -71,7 +73,8 @@ export function buildLandMesh(land: LandHeight): LandMeshData {
       pos.push(x, y, z);
       nor.push(-hx / len, ny, -hz / len);
       cov.push(c.wet, c.sand, c.rock, c.heath);
-      det.push(land.skyViewAt(x, z), c.rockGrey);
+      det.push(land.skyViewAt(x, z), c.rockGrey, c.weed);
+      zon.push(c.toeBand, c.duneBand, c.clumpRock, c.bushes);
       return remap[g];
     };
     for (let j = 0; j < nz; j++) {
@@ -86,7 +89,7 @@ export function buildLandMesh(land: LandHeight): LandMeshData {
     }
   }
   return {
-    positions: Float32Array.from(pos), normals: Float32Array.from(nor), cover: Float32Array.from(cov), detail: Float32Array.from(det),
+    positions: Float32Array.from(pos), normals: Float32Array.from(nor), cover: Float32Array.from(cov), detail: Float32Array.from(det), zones: Float32Array.from(zon),
     indices: Uint32Array.from(idx), triangles: idx.length / 3,
   };
 }

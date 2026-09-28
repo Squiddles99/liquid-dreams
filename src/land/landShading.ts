@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, attribute, cameraPosition, dot, float, length, max, mix, mx_noise_float, normalize, positionWorld, reflect, saturate, smoothstep, step, uniform, vec3 } from 'three/tsl';
+import { PI, attribute, cameraPosition, dot, float, length, max, min, mix, mx_noise_float, normalize, positionWorld, reflect, saturate, select, smoothstep, step, uniform, vec3 } from 'three/tsl';
 import { schlickWater } from '../ocean/waterShading';
 import type { Sky } from '../sky/Sky';
 
@@ -10,6 +10,8 @@ const DRY_SAND = vec3(0.62, 0.55, 0.42);
 const WET_SAND = vec3(0.3, 0.26, 0.2);
 const ROCK_RUST = vec3(0.3, 0.2, 0.13);
 const ROCK_GREY = vec3(0.42, 0.4, 0.36);
+/** The shore platform's weed-covered limestone at the waterline (Andrew's aerial: olive green). */
+const ROCK_WEED = vec3(0.1, 0.13, 0.05);
 const HEATH_OLIVE = vec3(0.11, 0.14, 0.065);
 const HEATH_SILVER = vec3(0.2, 0.215, 0.185);
 const PIGFACE = vec3(0.15, 0.19, 0.07);
@@ -43,7 +45,7 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, sunVisibility?
   const p = positionWorld;
   const n = normalize(attribute('normal', 'vec3'));
   const cover = attribute('cover', 'vec4');
-  const det = attribute('detail', 'vec2');
+  const det = attribute('detail', 'vec3');
   const toCam = cameraPosition.sub(p);
   const dist = length(toCam);
   const v = toCam.div(max(dist, 1e-3));
@@ -57,22 +59,38 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, sunVisibility?
   const ripple = mx_noise_float(vec3(p.x.mul(1.3), p.z.mul(0.35), 5.0)).mul(0.08).mul(fade);
   const dry = DRY_SAND.mul(ripple.add(0.97)).mul(u.sandBrightness);
   const wet = WET_SAND.mul(n1.sub(0.5).mul(0.1).mul(fade).add(1.0)).mul(u.sandBrightness);
-  const rock = mix(ROCK_RUST, ROCK_GREY, det.y).mul(mix(float(0.85), n1.mul(0.35).add(0.7), fade));
+  const rock = mix(mix(ROCK_RUST, ROCK_GREY, det.y), ROCK_WEED, det.z).mul(mix(float(0.85), n1.mul(0.35).add(0.7), fade));
   const base = mix(HEATH_OLIVE, HEATH_SILVER, smoothstep(0.55, 0.8, n2.add(u.heathSilver).sub(0.35)).mul(0.85));
   const pig = mix(PIGFACE, PIGFACE_TIPS, smoothstep(0.55, 0.8, n1));
   const withPig = mix(base, pig, smoothstep(0.66, 0.74, n3.add(u.heathOrange).sub(0.12)));
   const withPink = mix(withPig, RICE_PINK, smoothstep(0.9, 0.95, n4).mul(0.8));
   const heathNear = mix(withPink, HEATH_GAP, smoothstep(0.35, 0.2, n1).mul(0.7));
   const heath = mix(HEATH_AVG, heathNear, fade).mul(u.heathBrightness);
-  const albedo = wet.mul(cover.x).add(dry.mul(cover.y)).add(rock.mul(cover.z)).add(heath.mul(cover.w));
+  // The cover is per vertex (2–64 m apart), so noise-drawn clumps would come out as the mesh's squares. Near the camera
+  // the toe's rock clumps and the dune rise's bushes and boulders are drawn per pixel instead, inside the bands the mesh
+  // carries, replacing the per-vertex parts (Andrew's aerial review, 2026-09-28); far away the per-vertex cover stands.
+  const zones = attribute('zones', 'vec4');
+  const px = (sx: number, seed: number): N => mx_noise_float(vec3(p.x.div(sx), p.z.div(sx), seed)).mul(0.5).add(0.5);
+  const clumpsPx = zones.x.mul(smoothstep(0.43, 0.5, px(9.0, 4.24)));
+  const bushPx = zones.y.mul(smoothstep(0.52, 0.57, px(7.0, 4.25)));
+  const boulderPx = zones.y.mul(float(1.0).sub(bushPx)).mul(smoothstep(0.63, 0.67, px(5.0, 4.26)));
+  const rF0 = max(cover.z.sub(zones.z).add(clumpsPx).add(boulderPx), 0.0);
+  const hF0 = max(cover.w.sub(zones.w).add(bushPx), 0.0);
+  const rF1 = mix(cover.z, rF0, fade), hF1 = mix(cover.w, hF0, fade);
+  const scale = min(float(1.0), float(1.0).div(max(rF1.add(hF1), 1e-4)));
+  const hF = hF1.mul(scale), rF = rF1.mul(scale);
+  const rest = max(float(1.0).sub(hF).sub(rF), 0.0);
+  const sandPair = cover.x.add(cover.y);
+  const wetShare = select(sandPair.lessThan(1e-3), float(0.0), cover.x.div(max(sandPair, 1e-3)));
+  const albedo = wet.mul(wetShare.mul(rest)).add(dry.mul(float(1.0).sub(wetShare).mul(rest))).add(rock.mul(rF)).add(heath.mul(hF));
 
   const vis = sunVisibility ? sunVisibility(p.xz) : float(1.0);
   const back = saturate(dot(v.negate(), l));
-  const canopy = float(1.0).sub(cover.w.mul(0.55).mul(back).mul(float(1.0).sub(max(l.y, 0.0))));
+  const canopy = float(1.0).sub(hF.mul(0.55).mul(back).mul(float(1.0).sub(max(l.y, 0.0))));
   const sunE = sky.sunIlluminance.mul(vis).mul(max(dot(n, l), 0.0)).mul(canopy).mul(step(0.0, l.y));
   const skyE = sky.skyIrradiance.mul(det.x).mul(n.y.mul(0.5).add(0.5));
   const r: N = reflect(v.negate(), n);
-  const sheen = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z))).mul(schlickWater(max(dot(n, v), 0.0))).mul(cover.x).mul(0.6);
+  const sheen = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z))).mul(schlickWater(max(dot(n, v), 0.0))).mul(wetShare.mul(rest)).mul(0.6);
   const lit = albedo.mul(sunE.add(skyE)).div(PI).add(sheen);
   // Overlays: the cover map in false colours (wet blue, sand yellow, rock red, heath green); the sunlight map (shade blue).
   const white = sky.skyIrradiance.add(sky.sunIlluminance.mul(max(l.y, 0.0))).div(PI);
