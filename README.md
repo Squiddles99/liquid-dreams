@@ -71,4 +71,10 @@ Pick these with settings: default (or open `#ref=<name>`) to see them exactly as
 - Reef folder overlays: depth contours, crest lines, and ribbon tint (an unmistakable tint over the ribbon's own detail, to see where it takes over from the sheet).
 - Sets folder: "face at the peak" reads the face height (crest to drained trough) of the wave passing the peak, in metres and feet, and whether it is breaking. Use it to calibrate the surfer-feet dial.
 
+## Music
+
+The game plays the audio files under `music/` quietly under the ocean: one folder per album, tracks in the order of the number at the start of each file name (`1. …`, `2. …`, `10. …`). Click or press a key once to start the sound. The Sound folder has the volumes, play/pause and next track; `M` mutes everything.
+
+`music/morning-of-the-earth/` is Andrew's personal copy of the *Morning Of The Earth* soundtrack, committed for his own use. **This repository must stay private**: making it public would publish a commercial recording.
+
 Design: `docs/superpowers/specs/`. Plans: `docs/superpowers/plans/`.
