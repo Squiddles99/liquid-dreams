@@ -9,6 +9,7 @@ import { BOMBIE_X, BOMBIE_Z, type BombieWaves, burstAt, burstWidthM, burstsAt, s
 import { BombieMesh } from '../bombie/BombieMesh';
 import { surferFeetToHs } from '../conditions/units';
 import { DEFAULT_BOMBIE_PARAMS, type BombieParams, normalizeBombieParams } from '../bombie/bombieParams';
+import { DEFAULT_SOUND_PARAMS, type SoundParams, normalizeSoundParams } from '../sound/soundParams';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
 import { type WaveContext, fieldBreakingHeight, toActiveWave } from '../breaker/setWaveModel';
@@ -123,6 +124,8 @@ export class App {
   private bombieTauField: ReefField | null = null;
   /** Dev readout (window.liquidDreams.bombieBurst): the Bombie's current burst, or null. */
   bombieBurst: { n: number; ageS: number; heightM: number } | null = null;
+  /** The Sound folder (Phase 5): the volumes and mute, persisted with the look. */
+  readonly soundParams: SoundParams = { ...DEFAULT_SOUND_PARAMS };
   /** The coastal surf along the whole shore (Phase 4b spec 2026-09-28-the-waterline-design.md). */
   readonly surf = new CoastalSurf();
   readonly setStatus = { nextSet: '', wave: '', face: '' };
@@ -820,7 +823,7 @@ export class App {
     return {
       spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams,
       maxFps: this.frameLimiter.maxFps, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams, overlays: this.overlays,
-      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams,
+      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, sound: this.soundParams,
     };
   }
 
@@ -843,6 +846,7 @@ export class App {
     assignParams(this.landParams, look.land);
     assignParams(this.surfParams, look.surf);
     assignParams(this.bombieParams, look.bombie);
+    assignParams(this.soundParams, look.sound);
   }
 
   /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
@@ -856,6 +860,7 @@ export class App {
     normalizeSetParams(this.setParams);
     normalizeSurfParams(this.surfParams);
     normalizeBombieParams(this.bombieParams);
+    normalizeSoundParams(this.soundParams);
     this.surf.invalidate();
     this.ocean.setParams(this.simParams);
     updateWaterOpticsUniforms(this.waterOptics, this.waterParams);
