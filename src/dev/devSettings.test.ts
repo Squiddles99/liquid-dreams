@@ -12,6 +12,7 @@ import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { DEFAULT_SET_PARAMS } from '../swell/sets';
 import { DEFAULT_FOAM_PARAMS } from '../whitewater/foamStep';
 import { DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS } from '../whitewater/sprayEmitters';
+import { DEFAULT_LAND_PARAMS } from '../land/landParams';
 import {
   BREAKING_MODEL, CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
   loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
@@ -60,6 +61,7 @@ function defaults(): DevSettings {
     foam: DEFAULT_FOAM_PARAMS,
     spray: DEFAULT_SPRAY_PARAMS,
     impact: DEFAULT_IMPACT_PARAMS,
+    land: DEFAULT_LAND_PARAMS,
   });
 }
 
@@ -95,6 +97,10 @@ function tweaked(): DevSettings {
   s.spray.amount = 1.7;
   s.spray.lifeS = 3.1;
   s.impact.amount = 2.2;
+  s.land.sandBrightness = 1.3;
+  s.land.shadow = false;
+  s.overlays.coverMap = true;
+  s.overlays.sunlightMap = true;
   s.overlays.sprayTint = true;
   return s;
 }
@@ -451,5 +457,13 @@ describe('a link is a visit, not an edit', () => {
     const p = new CustomProfile(tweaked());
     expect(p.visiting).toBe(false);
     expect(p.capture(linkSnapshot())).toEqual(linkSnapshot());
+  });
+});
+
+describe('Phase 4a land settings', () => {
+  it('settings stored before Phase 4a (no land) load the land defaults', () => {
+    const old = JSON.parse(JSON.stringify(defaults())) as Record<string, unknown>;
+    delete old.land;
+    expect(loadDevSettings(store(old), defaults())!.land).toEqual(DEFAULT_LAND_PARAMS);
   });
 });

@@ -134,7 +134,7 @@ describe('buildOceanSpectra', () => {
     const c = cloneConditions(DEFAULT_CONDITIONS);
     c.seed = 7;
     expect(buildOceanSpectra(c).h0[1]).not.toEqual(a.h0[1]);
-  });
+  }, 20_000); // ~1.2 s alone; over 5 s while the land tests build their meshes in parallel
   it('swell energy travels toward the NE (+X, -Z) in cascade 0', () => {
     const s = buildOceanSpectra(DEFAULT_CONDITIONS);
     const a = s.h0[0], n = FFT_SIZE;
