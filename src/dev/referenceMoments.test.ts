@@ -16,7 +16,7 @@ describe('reference moments', () => {
       'autumn-glass', 'golden-hour', 'sunset', 'overview',
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'looking-down', 'reef-overhead',
       'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
-      'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach',
+      'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach', 'up-the-dune',
     ]);
   });
   it('round-trip through moment links', () => {
@@ -65,11 +65,19 @@ describe('reference moment kinds', () => {
     expect(r.moment.camera.yawDeg).toBe(0);
     expect(r.moment.conditions.timeOfDay).toBe(10.5);
   });
+  it('up-the-dune is a view-kind walk at the toe at 08:45, facing east up the rise', () => {
+    const r = REFERENCE_MOMENTS.find((m) => m.name === 'up-the-dune')!;
+    expect(r.kind).toBe('view');
+    expect(r.moment.camera.mode).toBe('walk');
+    expect(r.moment.camera.position[0]).toBe(234);
+    expect(r.moment.camera.yawDeg).toBe(90);
+    expect(r.moment.conditions.timeOfDay).toBe(8.75);
+  });
   it('the rest are time-kind', () => {
     const viewOrSet = new Set([
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'overview', 'reef-overhead', 'looking-down',
       'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
-      'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach',
+      'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach', 'up-the-dune',
     ]);
     for (const r of REFERENCE_MOMENTS.filter((m) => !viewOrSet.has(m.name))) {
       expect(r.kind).toBe('time');
