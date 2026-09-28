@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-28
 **Authors:** Andrew and Claude
-**Status:** Design approved in conversation, section by section (2026-09-28). The written spec awaits Andrew's review. Branch `phase-4c3-the-bombie`.
+**Status:** Approved by Andrew (2026-09-28); built on branch `phase-4c3-the-bombie` (Native execution). See §8 for the as-built notes and the gallery at `docs/superpowers/gallery/phase-4/bombie/`.
 **Builds on:**
 - **Phase 3:** the water surface model (`WaterSurfaceModel.displacement`), the sets (`sets.ts`), and the spray system (`SprayParticles`, impact kind).
 - **Phase 4a:** the sunlight map and the land.
@@ -156,3 +156,23 @@ On the RTX 4060 Laptop, pane visible:
 - Surfing it: it is atmospheric background.
 - The Bombie refracting or shadowing the Womb's swell.
 - Sound (a later phase).
+
+## 8. As built
+
+- **The bed:** at the Bombie it is about 25 m deep (the coast profile), not 15–18 m, so the mound rises from about 25 m to 5 m.
+- **Threshold:** "never below the threshold" is a hard cut-off.
+- **The white water stands up** (captures): a flat sheet 450 m away lies behind the swell crests from the lineup's eye. The mesh's vertices lift with the foam:
+  - a plume of 2.5 × the break height, rising in 0.6 s and falling by 5 s;
+  - a foam pile of 0.5 × the break height, decaying by 20 s;
+  - a bore of 0.35 × the break height on the roll.
+  
+  That's still white water only, with no face or lip.
+- **Look** (captures):
+  - the foam floats 0.3 m above the sea;
+  - it's lit by its own facing (screen-space normal, wrapped diffuse);
+  - the burst starts at 40% of its width, with a noise-roughened outline;
+  - the roll leaves from the burst's edge, trailing broken foam;
+  - shape and noise add, so it frays and thins with age.
+- **The moments** break at 188.5 s (8 ft) and 128.5 s (10 ft) at the default field; `bombie-from-the-lineup` is at 192.5 s and `bombie-close` at 131.5 s.
+- **Cost (measured):** 0.07–0.13 ms GPU during a burst up close, 0 when idle; 0.009 ms CPU per query.
+
