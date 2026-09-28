@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { surferFeetToHs } from '../conditions/units';
-import { BOMBIE_X, BOMBIE_Z, BURST_LIFE_S, MOUND_BASE_Y, MOUND_CREST_Y, MOUND_HALF_X_M, MOUND_HALF_Z_M, type BombieWaves, breaks, burstAt, burstWidthM, moundY, waveFactor } from './bombieModel';
+import { BOMBIE_X, BOMBIE_Z, BURST_LIFE_S, MOUND_BASE_Y, MOUND_CREST_Y, MOUND_HALF_X_M, MOUND_HALF_Z_M, type BombieWaves, breaks, burstAt, burstWidthM, burstsAt, moundY, setIndicesFrom, setWindow, waveFactor } from './bombieModel';
 
 const waves = (ft: number, thresholdFt = 6, setIndices: number[] = []): BombieWaves => ({
   tauS: 7.5, periodS: 15, hs: surferFeetToHs(ft), thresholdHs: surferFeetToHs(thresholdFt), seed: 2002, setIndices: new Set(setIndices),
@@ -70,5 +70,29 @@ describe('burstAt', () => {
     expect(burstWidthM(0.55 * t * 1.8 * 2, t, 1)).toBeCloseTo(60, 6);
     expect(burstWidthM(0.55 * t * 1.8 * 5, t, 1)).toBeCloseTo(60, 6);
     expect(burstWidthM(0.55 * t * 1.8, t, 2)).toBeCloseTo(60, 6);
+  });
+});
+
+describe('final review fixes', () => {
+  it('the Womb set waves to skip are found around each wave’s peak arrival, whatever the sign of τ_B (I1)', () => {
+    // Wave n passes the Bombie at τ_B + nT and the Womb's peak at about nT: with τ_B = −36.5 s, the waves bursting now
+    // (age 0–40 s) reach the peak between t − 3.5 and t + 36.5.
+    const T = 15, tauS = -36.5, t = 1000;
+    const window = setWindow(t, tauS, T);
+    expect(window.t0).toBeLessThanOrEqual(t - BURST_LIFE_S - tauS - T + 1e-9);
+    expect(window.t1).toBeGreaterThanOrEqual(t - tauS + T - 1e-9);
+    const idx = setIndicesFrom([{ arrivalS: 1030 }, { arrivalS: 1044.9 }, { arrivalS: 1200 }], T);
+    expect([...idx].sort((a, b) => a - b)).toEqual([69, 70, 80]);
+  });
+  it('the latest two bursts are both kept, so a new break doesn’t wipe the last one’s roll (I4)', () => {
+    const w = waves(12);
+    const pairs = Array.from({ length: 2000 }, (_, n) => n).filter((n) => breaks(n, w) && breaks(n + 1, w));
+    expect(pairs.length).toBeGreaterThan(0);
+    const n = pairs[0], t = w.tauS + (n + 1) * w.periodS + 2;
+    const both = burstsAt(t, w);
+    expect(both.map((b) => b.n)).toEqual([n + 1, n]);
+    expect(burstAt(t, w)).toEqual(both[0]);
+    expect(burstsAt(t + BURST_LIFE_S, w).every((b) => b.ageS <= BURST_LIFE_S)).toBe(true);
+    expect(burstsAt(t, null)).toEqual([]);
   });
 });

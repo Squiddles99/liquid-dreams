@@ -51,14 +51,43 @@ export function breaks(n: number, w: BombieWaves): boolean {
   return w.hs * waveFactor(n, w.seed) >= BREAK_RATIO * w.thresholdHs;
 }
 
-/** The latest break within BURST_LIFE_S of t (its wave, age and breaking height), or null. */
-export function burstAt(t: number, w: BombieWaves | null): { n: number; ageS: number; heightM: number } | null {
-  if (!w || w.hs <= 0 || w.periodS <= 0) return null;
+export interface Burst {
+  n: number;
+  ageS: number;
+  heightM: number;
+}
+
+/**
+ * The latest two breaks within BURST_LIFE_S of t, newest first: on a big day a new break comes before the last one's roll
+ * has faded, and both show (final review I4).
+ */
+export function burstsAt(t: number, w: BombieWaves | null): Burst[] {
+  const out: Burst[] = [];
+  if (!w || w.hs <= 0 || w.periodS <= 0 || !Number.isFinite(w.tauS)) return out;
   const last = Math.floor((t - w.tauS) / w.periodS);
-  for (let n = last; (t - (w.tauS + n * w.periodS)) <= BURST_LIFE_S; n--) {
-    if (breaks(n, w)) return { n, ageS: t - (w.tauS + n * w.periodS), heightM: BREAK_HEIGHT * w.hs * waveFactor(n, w.seed) };
+  for (let n = last; out.length < 2 && (t - (w.tauS + n * w.periodS)) <= BURST_LIFE_S; n--) {
+    if (breaks(n, w)) out.push({ n, ageS: t - (w.tauS + n * w.periodS), heightM: BREAK_HEIGHT * w.hs * waveFactor(n, w.seed) });
   }
-  return null;
+  return out;
+}
+
+/** The latest break within BURST_LIFE_S of t (its wave, age and breaking height), or null. */
+export function burstAt(t: number, w: BombieWaves | null): Burst | null {
+  return burstsAt(t, w)[0] ?? null;
+}
+
+/**
+ * The sim-time window whose Womb set waves could share an index with a wave bursting the Bombie at t: wave n passes the
+ * Bombie at τ_B + nT and the Womb's peak at about nT, so the bursting waves (age 0 to BURST_LIFE_S) reach the peak between
+ * t − τ_B − BURST_LIFE_S and t − τ_B (± a period for the rounding). (Final review I1: the window was centred on t.)
+ */
+export function setWindow(t: number, tauS: number, periodS: number): { t0: number; t1: number } {
+  return { t0: t - tauS - BURST_LIFE_S - periodS, t1: t - tauS + periodS };
+}
+
+/** The wave indices of the Womb's set waves (their arrival rounded to the swell period). */
+export function setIndicesFrom(events: readonly { arrivalS: number }[], periodS: number): Set<number> {
+  return new Set(events.map((e) => Math.round(e.arrivalS / periodS)));
 }
 
 /** The burst's full width: 30 m at the threshold's breaking height, growing to 60 m at twice it, × size. */

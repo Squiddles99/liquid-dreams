@@ -31,7 +31,7 @@ RTX 4060 Laptop, pane visible.
 
 - **Scrubbing time:** the burst appears and disappears exactly across a break.
 - **Threshold:** at 10 ft, few bursts; at 4 ft, many.
-- **The Womb's sets:** 103 bursts over 48 minutes of sim time, none on a Womb set wave.
+- **The Womb's sets:** after the final review's fix, 38 bursts over an hour of sim time at 8 ft, none on a Womb set wave (checked around each wave's peak arrival). The first check used the same wrong window as the code and missed the overlaps.
 - **Underwater:** hidden.
 - **Period change** (15 → 11 s): the reef field rebuilds and τ_B follows (−36.5 → −38.5 s).
 

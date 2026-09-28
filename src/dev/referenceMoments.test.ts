@@ -73,9 +73,9 @@ describe('reference moment kinds', () => {
     expect(r.moment.camera.yawDeg).toBe(90);
     expect(r.moment.conditions.timeOfDay).toBe(8.75);
   });
-  it('the Bombie moments are view-kind: the lineup at 8 ft, a free camera at 10 ft', () => {
+  it('the Bombie moments are set-kind (they need their own swell to show a burst; final review I2): the lineup at 8 ft, a free camera at 10 ft', () => {
     const l = REFERENCE_MOMENTS.find((m) => m.name === 'bombie-from-the-lineup')!, c = REFERENCE_MOMENTS.find((m) => m.name === 'bombie-close')!;
-    expect([l.kind, c.kind]).toEqual(['view', 'view']);
+    expect([l.kind, c.kind]).toEqual(['set', 'set']);
     expect(l.moment.camera.mode).toBe('lineup');
     expect(l.moment.conditions.swell.sizeFt).toBe(8);
     expect(c.moment.camera.mode).toBe('free');

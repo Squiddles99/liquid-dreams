@@ -173,6 +173,11 @@ On the RTX 4060 Laptop, pane visible:
   - the burst starts at 40% of its width, with a noise-roughened outline;
   - the roll leaves from the burst's edge, trailing broken foam;
   - shape and noise add, so it frays and thins with age.
+- **Final review fixes:**
+  - **Set waves:** the Womb's set waves are looked up around each Bombie wave's peak arrival (t − τ_B), not around t. With τ_B at −36.5 s, the old window missed the waves that had broken in the last 20 s.
+  - **The moments:** both are set-kind, so they carry their own 8 ft and 10 ft swell. As view-kind they kept the player's swell and showed nothing at 4 ft.
+  - **The swell over the mound:** the water model's swell depth (its long-swell fade and its bed clamp) leaves the mound out, so the sea over the Bombie is unchanged. The long swell had faded out over the crest.
+  - **Overlapping breaks:** the latest two bursts show together, so a new break no longer wipes the previous roll.
 - **The moments** break at 188.5 s (8 ft) and 128.5 s (10 ft) at the default field; `bombie-from-the-lineup` is at 192.5 s and `bombie-close` at 131.5 s.
 - **Cost (measured):** 0.07–0.13 ms GPU during a burst up close, 0 when idle; 0.009 ms CPU per query.
 
