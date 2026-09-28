@@ -27,6 +27,19 @@ describe('grounding shadows', () => {
     expect(at(m, 32 + rock.radius * 0.9, 32, 1)).toBeGreaterThan(at(m, 32 + rock.radius * 1.25, 32, 1));
     expect(at(m, 32 + rock.radius * 2, 32, 1)).toBe(0);
   });
+  it('diagonal shadows match a brute-force pass over every texel (the per-row span skips only empty texels)', () => {
+    const rocks: Rock[] = [rock, { ...rock, x: 20, z: 45, radius: 1, height: 2 }, { ...rock, x: 50, z: 10, radius: 0.4, height: 0.5 }];
+    const a = (20 * Math.PI) / 180, e5 = (5 * Math.PI) / 180;
+    const sun: [number, number, number] = [Math.cos(e5) * Math.cos(a), Math.sin(e5), Math.cos(e5) * Math.sin(a)];
+    const fast = buildRockShadows(rocks, 0, 0, sun);
+    const slow = buildRockShadows(rocks, 0, 0, sun, { bruteForce: true });
+    let worst = 0;
+    for (let k = 0; k < fast.length; k++) worst = Math.max(worst, Math.abs(fast[k] - slow[k]));
+    expect(worst).toBe(0);
+    let peak = 0;
+    for (const v of fast) peak = Math.max(peak, v);
+    expect(peak).toBeGreaterThan(0.5);
+  });
   it('none with the sun below 1°', () => {
     const night = buildRockShadows([rock], 0, 0, [1, -0.1, 0]);
     expect(Math.max(...Array.from(night).filter((_, i) => i % 2 === 0))).toBe(0);
