@@ -16,7 +16,7 @@ describe('reference moments', () => {
       'autumn-glass', 'golden-hour', 'sunset', 'overview',
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'looking-down', 'reef-overhead',
       'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
-      'in-the-shade', 'sunbreak', 'surf-from-the-lineup',
+      'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach',
     ]);
   });
   it('round-trip through moment links', () => {
@@ -56,11 +56,20 @@ describe('reference moment kinds', () => {
       expect(referenceKind(name)).toBe('view');
     }
   });
+  it('on-the-beach is a view-kind walk on the sand in front of the Womb at 10:30, facing north', () => {
+    const r = REFERENCE_MOMENTS.find((m) => m.name === 'on-the-beach')!;
+    expect(r.kind).toBe('view');
+    expect(r.moment.camera.mode).toBe('walk');
+    expect(r.moment.camera.position[0]).toBe(210);
+    expect(r.moment.camera.position[2]).toBe(-40);
+    expect(r.moment.camera.yawDeg).toBe(0);
+    expect(r.moment.conditions.timeOfDay).toBe(10.5);
+  });
   it('the rest are time-kind', () => {
     const viewOrSet = new Set([
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'overview', 'reef-overhead', 'looking-down',
       'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
-      'in-the-shade', 'sunbreak', 'surf-from-the-lineup',
+      'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach',
     ]);
     for (const r of REFERENCE_MOMENTS.filter((m) => !viewOrSet.has(m.name))) {
       expect(r.kind).toBe('time');

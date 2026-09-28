@@ -9,6 +9,8 @@ type N = any;
 export const ROCKS_PER_SHAPE = 800;
 /** The unit rock's height, from its flat bottom (y −0.6) to about its top. */
 const UNIT_HEIGHT = 1.7;
+/** The sand's albedo seen by a rock's lower hemisphere (dry sand 0.62, less the wet and the shade around it). */
+const GROUND_BOUNCE = 0.45;
 
 /**
  * The limestone boulders (Phase 4c-1 §3.3): one InstancedMesh per shape, coloured per instance (body and top: the shore
@@ -95,8 +97,11 @@ function rockMaterial(sky: Sky, sunVisibility?: (xz: N) => N): THREE.MeshBasicNo
   const vis = sunVisibility ? sunVisibility(positionWorld.xz) : float(1.0);
   const sunE = sky.sunIlluminance.mul(vis).mul(max(dot(n, l), 0.0)).mul(step(0.0, l.y));
   const skyE = sky.skyIrradiance.mul(n.y.mul(0.5).add(0.5)).mul(baseOcc);
+  // Light off the sunlit sand onto the sides and undersides (the ground's albedo × the lower hemisphere): without it a
+  // face turned from the sun sees only the sky and reads black against the bright beach.
+  const bounce = sky.sunIlluminance.mul(max(l.y, 0.0)).add(sky.skyIrradiance).mul(GROUND_BOUNCE).mul(float(0.5).sub(n.y.mul(0.5)));
   const toCam = cameraPosition.sub(positionWorld);
   const dist = length(toCam);
-  m.colorNode = sky.applyAerialPerspective(albedo.mul(sunE.add(skyE)).div(PI), dist, toCam.div(max(dist, 1e-3)).negate());
+  m.colorNode = sky.applyAerialPerspective(albedo.mul(sunE.add(skyE).add(bounce)).div(PI), dist, toCam.div(max(dist, 1e-3)).negate());
   return m;
 }

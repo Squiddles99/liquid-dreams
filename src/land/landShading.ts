@@ -120,12 +120,14 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
   // whatever the swash, so a low tide's exposed flat reads wet (final review I2). Without the surf, the cover's share alone.
   const wetH = opts.wetHeight ? opts.wetHeight(p.xz) : null;
   const wetness = wetH ? max(float(1.0).sub(smoothstep(wetH.sub(0.02), wetH.add(0.12), p.y)), wetShare.mul(0.8)) : wetShare;
-  // The dry sand's wind ripples in the patch's shading normal: 12 cm apart, 1.5 cm crest to trough, crests along the beach
+  // The dry sand's wind ripples in the patch's shading normal: 12 cm apart, up to 0.8 cm crest to trough, crests along the beach
   // (north–south), wavering with noise, flattened where the sand is wet; faded out by 30 m (they'd alias beyond).
   let n: N = n0;
   if (opts.patch) {
     const phase = p.x.add(mx_noise_float(vec3(p.x.div(3.0), p.z.div(3.0), 8.8)).mul(0.6)).mul((2 * Math.PI) / 0.12);
-    const slope = cos(phase).mul(0.0075 * ((2 * Math.PI) / 0.12)).mul(float(1.0).sub(wetness)).mul(rest).mul(float(1.0).sub(smoothstep(12.0, 30.0, dist)));
+    // Strength varies in patches (the wind leaves some sand smooth): 0.2–0.8 cm crest to trough.
+    const patchy = mx_noise_float(vec3(p.x.div(6.0), p.z.div(6.0), 9.4)).mul(0.5).add(0.5).mul(0.6).add(0.2);
+    const slope = cos(phase).mul(patchy).mul(0.004 * ((2 * Math.PI) / 0.12)).mul(float(1.0).sub(wetness)).mul(rest).mul(float(1.0).sub(smoothstep(12.0, 30.0, dist)));
     n = normalize(n0.sub(vec3(slope, 0.0, 0.0)));
   }
   const albedo = wet.mul(wetness.mul(rest)).add(dry.mul(float(1.0).sub(wetness).mul(rest))).add(rock.mul(rF)).add(heath.mul(hF));
