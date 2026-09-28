@@ -299,6 +299,8 @@ export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): 
   return out;
 }
 
+/** The Bombie's emitters' wave ids start here (above any Womb wave's), so listeners can tell its spray from a lip's. */
+export const BOMBIE_WAVE_ID_BASE = 0x40000;
 /** The Bombie's burst (4c-3 §3.4): impact spray along the burst line across the reef for its first 1.5 s. */
 export const BOMBIE_SPRAY_S = 1.5;
 export function bombieImpactEmitters(burst: { n: number; ageS: number; heightM: number } | null, widthM: number, tideM: number, size: number): ImpactEmitter[] {
@@ -312,7 +314,7 @@ export function bombieImpactEmitters(burst: { n: number; ageS: number; heightM: 
     out.push({
       x: BOMBIE_X - ROLL_DIR[1] * v, y: tideM + 0.5, z: BOMBIE_Z + ROLL_DIR[0] * v,
       vx: ROLL_DIR[0] * 4, vz: ROLL_DIR[1] * 4, nx: ROLL_DIR[0], nz: ROLL_DIR[1],
-      H, strength: Math.min(2, size), lip: 1, waveId: 0x40000 + burst.n, arc: i,
+      H, strength: Math.min(2, size), lip: 1, waveId: BOMBIE_WAVE_ID_BASE + burst.n, arc: i,
     });
   }
   return out;

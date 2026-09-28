@@ -61,6 +61,7 @@ Pick these with settings: default (or open `#ref=<name>`) to see them exactly as
 - `K` saves a screenshot.
 - `P` pauses and resumes (reference moments open paused; a "Paused — P to resume" badge shows under the stats).
 - `N` calls a set.
+- `M` mutes and unmutes the sound. The sound starts on your first click or key press; the Sound folder has the volumes (master, waves, ambience, near water, music), music play/pause and next track, and shows the track playing.
 - Settings panel: custom/default switch and Reset settings button; settings are remembered between visits.
 - Wind speed is shown and edited in km/h; swell and wind directions show compass points (e.g. `225° SW`), the direction they come from.
 - Break folder: the breaking toggle (compare with Phase 1), the breaker index γ, the drain δ, the stage span Δ, the bore height β and the trough drain, plus the breaking ribbon's own controls; remembered with your other settings.
@@ -70,5 +71,11 @@ Pick these with settings: default (or open `#ref=<name>`) to see them exactly as
   - ribbon onset r: the breaking ratio at which the ribbon (the thrown sheet) starts fading in.
 - Reef folder overlays: depth contours, crest lines, and ribbon tint (an unmistakable tint over the ribbon's own detail, to see where it takes over from the sheet).
 - Sets folder: "face at the peak" reads the face height (crest to drained trough) of the wave passing the peak, in metres and feet, and whether it is breaking. Use it to calibrate the surfer-feet dial.
+
+## Music
+
+The game plays the audio files under `music/` quietly under the ocean: one folder per album, tracks in the order of the number at the start of each file name (`1. …`, `2. …`, `10. …`). Click or press a key once to start the sound. The Sound folder has the volumes, play/pause and next track; `M` mutes everything.
+
+`music/morning-of-the-earth/` is Andrew's personal copy of the *Morning Of The Earth* soundtrack, committed for his own use. **This repository must stay private**: making it public would publish a commercial recording.
 
 Design: `docs/superpowers/specs/`. Plans: `docs/superpowers/plans/`.
