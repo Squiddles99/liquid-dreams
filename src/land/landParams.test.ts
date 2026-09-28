@@ -13,4 +13,13 @@ describe('LandParams', () => {
     expect(p.heathSilver).toBe(LAND_PARAM_RANGES.heathSilver.min);
     expect(p.beachWidthM).toBe(DEFAULT_LAND_PARAMS.beachWidthM);
   });
+  it('rock density defaults to 1 and is clamped to 0–2 (Phase 4c-1 §3.5)', () => {
+    expect(DEFAULT_LAND_PARAMS.rockDensity).toBe(1);
+    const p = { ...DEFAULT_LAND_PARAMS, rockDensity: 5 };
+    normalizeLandParams(p);
+    expect(p.rockDensity).toBe(2);
+    p.rockDensity = -1;
+    normalizeLandParams(p);
+    expect(p.rockDensity).toBe(0);
+  });
 });

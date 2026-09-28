@@ -17,6 +17,10 @@ describe('encode/decode', () => {
     expect(hash.startsWith('#m=')).toBe(true);
     expect(decodeMoment(hash)).toEqual(sample);
   });
+  it('round-trips a walk pose', () => {
+    const walk: Moment = { ...sample, camera: { mode: 'walk', position: [210, 4, -40], yawDeg: 0, pitchDeg: -4 } };
+    expect(decodeMoment(encodeMoment(walk))).toEqual(walk);
+  });
   it('uses URL-safe characters only', () => {
     expect(encodeMoment(sample).slice(3)).toMatch(/^[A-Za-z0-9_-]+$/);
   });
