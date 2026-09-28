@@ -49,6 +49,8 @@ export function reflectionCover(t: Float32Array, eye: { x: number; y?: number; z
   const b = bearingIndex(r[0], r[2]);
   const h = Math.hypot(r[0], r[2]) || 1;
   const along = ((p[0] - eye.x) * r[0] + (p[2] - eye.z) * r[2]) / h;
+  // Water beyond the skyline point along the bearing has the land behind the reflected ray (final review I2).
+  if (along >= t[2 * b]) return 0;
   const sk = skylineElevationFrom(t, b, along, p[1]);
   if (sk === -Math.PI / 2) return 0;
   const e = Math.asin(Math.max(-1, Math.min(1, r[1] / Math.hypot(...r))));

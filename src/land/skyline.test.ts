@@ -26,6 +26,13 @@ describe('skylineTable on a synthetic ridge', () => {
     expect(reflectionCover(t, eye, [0, 0, 0], down(sk + 0.02))).toBe(0);
     expect(reflectionCover(t, eye, [0, 0, 0], [-1, 0.01, 0])).toBe(0);
   });
+  it('water beyond the skyline point along the bearing reflects no land (final review I2)', () => {
+    // From 40 m up, water 1 km out past the ridge's skyline point (500 m): the land is behind the reflected ray.
+    const high = skylineTable(ridge, { x: 0, y: 40, z: 0 });
+    expect(reflectionCover(high, { x: 0, y: 40, z: 0 }, [1000, 0, 0], [0.99, 0.02, 0])).toBe(0);
+    // Just short of it the land is still ahead.
+    expect(reflectionCover(high, { x: 0, y: 40, z: 0 }, [400, 0, 0], [0.99, 0.02, 0])).toBe(1);
+  });
   it('from high above the ridge the skyline is below the horizon, and the reflection sees no land', () => {
     const high = skylineTable(ridge, { x: 0, y: 300, z: 0 });
     expect(skylineElevationFrom(high, 90, 0, 300)).toBeLessThan(0);

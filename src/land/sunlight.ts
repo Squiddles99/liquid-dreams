@@ -2,13 +2,19 @@ import { smoothstep } from '../math/smoothstep';
 import { SUN_ANGULAR_RADIUS_RAD } from '../sky/Sky';
 import type { GridSpec } from './landData';
 
-/** The sunlight map's texels (spec §4.8): centre of texel (i, j) at x0 + (i + 0.5)·cell, z0 + (j + 0.5)·cell. */
-export const SUN_GRID: GridSpec = { x0: -600, z0: -4000, cellM: 8, nx: 375, nz: 1000 };
-/** The heights the march reads: sample (i, j) at x0 + i·cell (reaches 4 km toward the morning sun from the lineup). */
-export const MARCH_GRID: GridSpec = { x0: -600, z0: -6000, cellM: 8, nx: 826, nz: 1501 };
-export const MARCH_STEPS = 48;
+/**
+ * The sunlight map's texels (spec §4.8): centre of texel (i, j) at x0 + (i + 0.5)·cell, z0 + (j + 0.5)·cell. It reaches
+ * 3 km out to sea and 6 km along the coast, because before about 07:55 the ridge's shade reaches past x = −600 (final
+ * review I1); 16 m texels keep the rebuild cheaper than the spec's 8 m map over its smaller area.
+ */
+export const SUN_GRID: GridSpec = { x0: -3000, z0: -6000, cellM: 16, nx: 338, nz: 750 };
+/** Beyond the map the edge value fades to full sun over this distance (no hard line where the map stops). */
+export const SUN_EDGE_FADE_M = 1500;
+/** The heights the march reads: sample (i, j) at x0 + i·cell (4 km toward the sun from anywhere on the map). */
+export const MARCH_GRID: GridSpec = { x0: -3000, z0: -8000, cellM: 16, nx: 563, nz: 1001 };
+export const MARCH_STEPS = 56;
 export const MARCH_MIN_M = 8;
-export const MARCH_MAX_M = 4000;
+export const MARCH_MAX_M = 6000;
 /** The shadow's soft edge: the sun's disc plus about one terrain cell's angle. */
 export const SUN_SOFT_RAD = SUN_ANGULAR_RADIUS_RAD + 0.004;
 /** Rebuild the map when the sun has moved this far (0.05°: about 12 s of sim time). */
@@ -27,7 +33,7 @@ export function buildMarchHeights(heightAt: (x: number, z: number) => number): F
   return out;
 }
 
-/** Bilinear between samples, clamped to the grid's edge (the GPU's clamp-to-edge filtering at (g + 0.5)/size). */
+/** Bilinear between samples, clamped to the grid's edge (SunlightMap's manual bilinear over f32 heights mirrors it). */
 export function sampleMarch(h: Float32Array, x: number, z: number): number {
   const g = MARCH_GRID;
   const fx = Math.min(g.nx - 1, Math.max(0, (x - g.x0) / g.cellM)), fz = Math.min(g.nz - 1, Math.max(0, (z - g.z0) / g.cellM));
@@ -48,6 +54,11 @@ export function sunVisibility(h: Float32Array, x: number, z: number, sun: readon
   }
   const elev = Math.asin(Math.max(-1, Math.min(1, sun[1])));
   return smoothstep(-SUN_SOFT_RAD, SUN_SOFT_RAD, elev - Math.atan(maxTan));
+}
+
+/** How far a point beyond the map's edge has faded to full sun (0 at the edge, 1 at SUN_EDGE_FADE_M). */
+export function outsideFade(distanceOutsideM: number): number {
+  return smoothstep(0, SUN_EDGE_FADE_M, distanceOutsideM);
 }
 
 /** True when the angle between two sun directions exceeds the threshold. */
