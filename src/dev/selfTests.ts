@@ -15,3 +15,4 @@ import '../surf/surf.selftest';
 
 export { renderSelfTestReport, runSelfTests } from './selfTest';
 import '../beach/beach.selftest';
+import '../heath/heath.selftest';

@@ -79,7 +79,7 @@ export class GroundPatch {
   private readonly zones = gridTexture(4);
   private readonly shadows: THREE.DataTexture;
 
-  constructor(sky: Sky, look: LandLookUniforms, opts: { sunVisibility?: (xz: N) => N; wetHeight?: (xz: N) => N } = {}) {
+  constructor(sky: Sky, look: LandLookUniforms, opts: { sunVisibility?: (xz: N) => N; wetHeight?: (xz: N) => N; plantFloor?: THREE.UniformNode<'float', number> } = {}) {
     this.hole = { centre: uniform(new THREE.Vector2(0, 0)), half: uniform(HALF), on: uniform(0) };
     this.shadows = new THREE.DataTexture(new Uint8Array(SHADOW_N * SHADOW_N * 2), SHADOW_N, SHADOW_N, THREE.RGFormat, THREE.UnsignedByteType);
     this.shadows.minFilter = THREE.LinearFilter;
@@ -109,6 +109,7 @@ export class GroundPatch {
     const m = createLandMaterial(sky, look, {
       sunVisibility: opts.sunVisibility,
       wetHeight: opts.wetHeight,
+      plantFloor: opts.plantFloor,
       inputs: { normal: varying(normalize(vec3(hx.negate(), 1.0, hz.negate()))), cover: varying(cover), detail: varying(detail.xyz), zones: varying(zones) },
       patch: { shadow: (p: N) => texture(this.shadows, p.sub(this.corner).div(PATCH_SIZE_M)).xy },
     });
@@ -150,7 +151,7 @@ export class GroundPatch {
     this.hole.centre.value.set(g.cornerX + HALF, g.cornerZ + HALF);
   }
 
-  /** The rocks' grounding shadows (buildRockShadows' output for this square), stored as 8-bit (filterable). */
+  /** The grounding shadows (buildGroundShadows' output for this square), stored as 8-bit (filterable). */
   setShadows(s: Float32Array): void {
     const d = this.shadows.image.data as Uint8Array;
     for (let k = 0; k < d.length; k++) d[k] = Math.round(Math.min(1, Math.max(0, s[k])) * 255);

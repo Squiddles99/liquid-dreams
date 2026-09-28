@@ -21,6 +21,9 @@ const RICE_PINK = vec3(0.55, 0.36, 0.4);
 const HEATH_GAP = vec3(0.03, 0.035, 0.025);
 /** What the mottled heath averages to at a distance (the fade target, so 2 km of heath doesn't alias). */
 const HEATH_AVG = vec3(0.12, 0.14, 0.085);
+/** The heath's floor under the 3D plants (4c-2): litter over sand, mostly dark (a pale floor read as desert). */
+const HEATH_FLOOR_SAND = vec3(0.2, 0.18, 0.13);
+const HEATH_LITTER = vec3(0.07, 0.065, 0.045);
 
 export interface LandLookUniforms {
   sandBrightness: THREE.UniformNode<'float', number>;
@@ -59,6 +62,8 @@ export interface LandMaterialOptions {
   hole?: PatchHole;
   /** The patch's own terms: the rocks' grounding shadows (vec2: sun shadow, contact ring) and the sand's fine detail. */
   patch?: { shadow: (xz: N) => N };
+  /** 1 while 3D plants stand near the camera (Phase 4c-2 §3.5): the painted heath fades to its floor there. */
+  plantFloor?: THREE.UniformNode<'float', number>;
 }
 
 /**
@@ -102,6 +107,10 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
   const withPink = mix(withPig, RICE_PINK, smoothstep(0.9, 0.95, n4).mul(0.8));
   const heathNear = mix(withPink, HEATH_GAP, smoothstep(0.35, 0.2, n1).mul(0.7));
   const heath = mix(HEATH_AVG, heathNear, fade).mul(u.heathBrightness);
+  // The heath under the 3D plants (4c-2): sand, litter and dark gaps, full within 150 m, back to the painting by 200 m.
+  const floorN = mx_noise_float(vec3(p.x.mul(0.8), p.z.mul(0.8), 12.5)).mul(0.5).add(0.5);
+  const floor = mix(HEATH_LITTER, HEATH_FLOOR_SAND, smoothstep(0.6, 0.8, floorN)).mul(u.sandBrightness);
+  const heathShown = opts.plantFloor ? mix(heath, floor, opts.plantFloor.mul(float(1.0).sub(smoothstep(150.0, 200.0, dist)))) : heath;
   // The cover is per vertex (2–64 m apart), so noise-drawn clumps would come out as the mesh's squares. Near the camera
   // the toe's rock clumps and the dune rise's bushes and boulders are drawn per pixel instead, inside the bands the mesh
   // carries, replacing the per-vertex parts (Andrew's aerial review, 2026-09-28); far away the per-vertex cover stands.
@@ -111,7 +120,10 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
   const bushPx = zones.y.mul(smoothstep(0.52, 0.57, px(7.0, 4.25)));
   const boulderPx = zones.y.mul(float(1.0).sub(bushPx)).mul(smoothstep(0.63, 0.67, px(5.0, 4.26)));
   const rF0 = max(cover.z.sub(zones.z).add(clumpsPx).add(boulderPx), 0.0);
-  const hF0 = max(cover.w.sub(zones.w).add(bushPx), 0.0);
+  // With the 3D plants up (4c-2), the dune rise's bush share near the camera is the per-vertex cover's (the CPU placement
+  // reads the same values), so the heath floor lies under the 3D clumps, not under the per-pixel painted ones.
+  const bushShown = opts.plantFloor ? mix(bushPx, zones.w, opts.plantFloor.mul(float(1.0).sub(smoothstep(150.0, 200.0, dist)))) : bushPx;
+  const hF0 = max(cover.w.sub(zones.w).add(bushShown), 0.0);
   const rF1 = mix(cover.z, rF0, fade), hF1 = mix(cover.w, hF0, fade);
   const scale = min(float(1.0), float(1.0).div(max(rF1.add(hF1), 1e-4)));
   const hF = hF1.mul(scale), rF = rF1.mul(scale);
@@ -135,7 +147,7 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
     const slope = cos(phase).mul(patchy).mul(0.004 * ((2 * Math.PI) / 0.12)).mul(float(1.0).sub(wetness)).mul(rest).mul(resolved).mul(float(1.0).sub(smoothstep(12.0, 30.0, dist)));
     n = normalize(n0.sub(vec3(slope, 0.0, 0.0)));
   }
-  const albedo = wet.mul(wetness.mul(rest)).add(dry.mul(float(1.0).sub(wetness).mul(rest))).add(rock.mul(rF)).add(heath.mul(hF));
+  const albedo = wet.mul(wetness.mul(rest)).add(dry.mul(float(1.0).sub(wetness).mul(rest))).add(rock.mul(rF)).add(heathShown.mul(hF));
 
   const vis = sunVisibility ? sunVisibility(p.xz) : float(1.0);
   const back = saturate(dot(v.negate(), l));
