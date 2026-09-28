@@ -6,6 +6,8 @@ import { LandHeight } from './landHeight';
 import { buildLandMesh } from './landMesh';
 import { DEFAULT_LAND_PARAMS, type LandParams, beachProfileFor, normalizeLandParams } from './landParams';
 import { type LandLookUniforms, createLandLookUniforms, createLandMaterial } from './landShading';
+import { SunlightMap } from './SunlightMap';
+import { buildMarchHeights } from './sunlight';
 
 type N = any;
 
@@ -23,6 +25,8 @@ async function fetchLand(): Promise<Uint8Array> {
  */
 export class Land {
   readonly mesh: THREE.Mesh;
+  /** The land's shadow over the ground and the water (spec §4.8): 1 everywhere until the land loads. */
+  readonly sunlight = new SunlightMap();
   height: LandHeight | null = null;
   /** Bumped on every (re)build: the skyline and sunlight caches key on it. */
   version = 0;
@@ -37,6 +41,7 @@ export class Land {
     this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), createLandMaterial(sky, this.look));
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
+    this.setSunVisibility((xz) => this.sunlight.visibilityNode(xz));
   }
 
   /** The sunlight map's lookup (Task 8); rebuilds the material. Call before the first render. */
@@ -65,6 +70,8 @@ export class Land {
     this.mesh.geometry.dispose();
     this.mesh.geometry = g;
     this.mesh.visible = true;
+    const lh = this.height;
+    this.sunlight.setHeights(buildMarchHeights((x, z) => lh.heightAt(x, z)));
     this.version++;
   }
 
@@ -77,7 +84,13 @@ export class Land {
     this.look.heathBrightness.value = this.params.heathBrightness;
     this.look.heathSilver.value = this.params.heathSilver;
     this.look.heathOrange.value = this.params.heathOrange;
+    this.sunlight.setEnabled(this.params.shadow);
     return shape && this.file !== null;
+  }
+
+  /** Rebuild the sunlight map when the sun moved (at most one march per frame). */
+  update(renderer: THREE.WebGPURenderer, sun: readonly [number, number, number]): void {
+    this.sunlight.update(renderer, sun);
   }
 
   get shadowOn(): boolean {

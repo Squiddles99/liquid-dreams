@@ -52,7 +52,7 @@ export function marchSeabedNode(p: N, d: N, seabed: Seabed): N {
  * The lit seabed at a world point: its normal (four height fetches), its material, and the sun and sky reaching it through
  * the water above. Shared by the look-through from above (seabedTerms) and the underwater view (WaterVolume).
  */
-export function seabedRadianceNode(hitPos: N, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms): N {
+export function seabedRadianceNode(hitPos: N, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms, sunVisibility?: N): N {
   const e = 0.5;
   const hx = seabed.bedHeightNode(hitPos.xz.add(vec2(e, 0.0))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(e, 0.0))));
   const hz = seabed.bedHeightNode(hitPos.xz.add(vec2(0.0, e))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(0.0, e))));
@@ -66,7 +66,8 @@ export function seabedRadianceNode(hitPos: N, seabed: Seabed, sky: Sky, u: Water
   const cosW = max(lw.y.negate(), 0.2);
   const depthHit = max(seabed.tide.sub(hitPos.y), 0.0);
   const sunIn = sky.sunIlluminance.mul(float(1.0).sub(schlickWater(max(l.y, 0.0)))).mul(step(0.0, l.y));
-  const eSun = sunIn.mul(exp(u.extinction.mul(depthHit.div(cosW)).negate())).mul(max(dot(nBed, lw.negate()), 0.0));
+  // × the land's shadow (Phase 4a §4.8), read at the surface point by the caller; absent means 1.
+  const eSun = sunIn.mul(exp(u.extinction.mul(depthHit.div(cosW)).negate())).mul(max(dot(nBed, lw.negate()), 0.0)).mul(sunVisibility ?? float(1.0));
   const eSky = sky.skyIrradiance.mul(exp(u.extinction.mul(depthHit.mul(1.2)).negate()));
   return albedo.mul(eSun.add(eSky)).div(PI);
 }
@@ -80,7 +81,7 @@ export interface SeabedShadingInputs {
 }
 
 /** The seabed seen through the water: its radiance at the hit and the view-path transmittance (0 on a miss). */
-export function seabedTerms(i: SeabedShadingInputs, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms): { radiance: N; transmittance: N } {
+export function seabedTerms(i: SeabedShadingInputs, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms, sunVisibility?: N): { radiance: N; transmittance: N } {
   const t = normalize(refract(i.viewDir.negate(), i.normal, float(1 / WATER_IOR)));
   const march = marchSeabedNode(i.surfacePos, t, seabed);
   // reachFade() mirror: fade the seabed out before the march's depth and distance cutoffs so there is no seam.
@@ -95,7 +96,7 @@ export function seabedTerms(i: SeabedShadingInputs, seabed: Seabed, sky: Sky, u:
   const radiance = Fn(() => {
     const out = vec3(0.0).toVar();
     If(march.y.greaterThan(0.5).and(fade.greaterThan(0.0)), () => {
-      out.assign(seabedRadianceNode(i.surfacePos.add(t.mul(march.x)), seabed, sky, u));
+      out.assign(seabedRadianceNode(i.surfacePos.add(t.mul(march.x)), seabed, sky, u, sunVisibility));
     });
     return out;
   })();
