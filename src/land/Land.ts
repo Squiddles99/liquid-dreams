@@ -38,20 +38,33 @@ export class Land {
   private readonly look: LandLookUniforms = createLandLookUniforms();
   private readonly sky: Sky;
   private sunVisibility: ((xz: N) => N) | undefined;
+  private wetHeight: ((xz: N) => N) | undefined;
 
   constructor(sky: Sky) {
     this.sky = sky;
-    this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), createLandMaterial(sky, this.look));
+    this.sunVisibility = (xz) => this.sunlight.visibilityNode(xz);
+    this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), createLandMaterial(sky, this.look, { sunVisibility: this.sunVisibility }));
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
-    this.setSunVisibility((xz) => this.sunlight.visibilityNode(xz));
   }
 
-  /** The sunlight map's lookup (Task 8); rebuilds the material. Call before the first render. */
+  /** The sunlight map's lookup (Phase 4a §4.8); rebuilds the material. Call before the first render. */
   setSunVisibility(fn: (xz: N) => N): void {
     this.sunVisibility = fn;
-    this.mesh.material = createLandMaterial(this.sky, this.look, fn);
+    this.rebuildMaterial();
   }
+
+  /** The height the sand is wet up to (Phase 4b §3.4: the tide plus the recent runup); rebuilds the material. */
+  setWetHeight(fn: (xz: N) => N): void {
+    this.wetHeight = fn;
+    this.rebuildMaterial();
+  }
+
+  private rebuildMaterial(): void {
+    (this.mesh.material as THREE.Material).dispose();
+    this.mesh.material = createLandMaterial(this.sky, this.look, { sunVisibility: this.sunVisibility, wetHeight: this.wetHeight });
+  }
+
 
   async load(fetchBytes: () => Promise<Uint8Array> = fetchLand): Promise<void> {
     const file = decodeLandFile(await fetchBytes());

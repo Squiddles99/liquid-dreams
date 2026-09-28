@@ -1,6 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { REEF_SURROUND_DEPTH_M, SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
+import { beachHeight } from '../land/landHeight';
 import { fbm2, valueNoise2 } from './noise';
 import { DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE } from './wombReef';
 
@@ -174,18 +175,25 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
 
 /**
  * Bilinear seabed height inside the map; outside it, the reef-free coast profile shifted east by shiftAt(z), the land's
- * waterline offset (Phase 4a spec §4.4; none by default).
+ * waterline offset (Phase 4a spec §4.4; none by default). Landward of the waterline, the beach (Phase 4b §3.3): the
+ * shading's bed, so the swash is a thin film over sand. The wave model's arrays are unaffected.
  */
 export function bedHeightAt(b: Bathymetry, x: number, z: number, shiftAt?: (z: number) => number): number {
+  const shift = shiftAt ? shiftAt(z) : 0;
   const g = b.grid;
   const fx = (x - g.x0) / g.cellM, fz = (z - g.z0) / g.cellM;
-  if (fx < 0 || fz < 0 || fx > g.nx - 1 || fz > g.nz - 1) return -depthBg(x - (shiftAt ? shiftAt(z) : 0));
-  const c = Math.min(g.nx - 2, Math.floor(fx)), r = Math.min(g.nz - 2, Math.floor(fz));
-  const tx = fx - c, tz = fz - r;
-  const i = r * g.nx + c;
-  const top = b.bed[i] + (b.bed[i + 1] - b.bed[i]) * tx;
-  const bottom = b.bed[i + g.nx] + (b.bed[i + g.nx + 1] - b.bed[i + g.nx]) * tx;
-  return top + (bottom - top) * tz;
+  let bed: number;
+  if (fx < 0 || fz < 0 || fx > g.nx - 1 || fz > g.nz - 1) bed = -depthBg(x - shift);
+  else {
+    const c = Math.min(g.nx - 2, Math.floor(fx)), r = Math.min(g.nz - 2, Math.floor(fz));
+    const tx = fx - c, tz = fz - r;
+    const i = r * g.nx + c;
+    const top = b.bed[i] + (b.bed[i + 1] - b.bed[i]) * tx;
+    const bottom = b.bed[i + g.nx] + (b.bed[i + g.nx + 1] - b.bed[i + g.nx]) * tx;
+    bed = top + (bottom - top) * tz;
+  }
+  const dSea = SHORE_X + shift - x;
+  return dSea < 0 ? Math.max(bed, beachHeight(-dSea)) : bed;
 }
 
 /**
@@ -193,6 +201,8 @@ export function bedHeightAt(b: Bathymetry, x: number, z: number, shiftAt?: (z: n
  * mixed in within its width of the waterline (SHORE_X + shiftAt(z)). CPU mirror of Seabed.materialNode.
  */
 export function bedMaterialAt(b: Bathymetry, x: number, z: number, shiftAt?: (z: number) => number, shore = true): [number, number] {
+  // Landward of the waterline the swash runs up sand (Phase 4b §3.3).
+  if (shore && SHORE_X + (shiftAt ? shiftAt(z) : 0) - x < 0) return [1, 0];
   const g = b.grid;
   const fx = (x - g.x0) / g.cellM, fz = (z - g.z0) / g.cellM;
   let sand: number = OPEN_COAST_MATERIAL[0], weed: number = OPEN_COAST_MATERIAL[1];

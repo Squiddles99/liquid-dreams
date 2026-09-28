@@ -39,7 +39,8 @@ export function createLandLookUniforms(): LandLookUniforms {
  * by the sun (× the sunlight map, × the heath canopy's self-shading) and the sky (× the baked sky view), a faint sky sheen
  * on wet sand, then aerial perspective.
  */
-export function createLandMaterial(sky: Sky, u: LandLookUniforms, sunVisibility?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
+export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: { sunVisibility?: (xz: N) => N; wetHeight?: (xz: N) => N } = {}): THREE.MeshBasicNodeMaterial {
+  const sunVisibility = opts.sunVisibility;
   const m = new THREE.MeshBasicNodeMaterial();
   m.side = THREE.FrontSide;
   const p = positionWorld;
@@ -82,7 +83,11 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, sunVisibility?
   const rest = max(float(1.0).sub(hF).sub(rF), 0.0);
   const sandPair = cover.x.add(cover.y);
   const wetShare = select(sandPair.lessThan(1e-3), float(0.0), cover.x.div(max(sandPair, 1e-3)));
-  const albedo = wet.mul(wetShare.mul(rest)).add(dry.mul(float(1.0).sub(wetShare).mul(rest))).add(rock.mul(rF)).add(heath.mul(hF));
+  // The wet line (Phase 4b §3.4): sand below the recent runup is wet; the intertidal band (the cover's wet share) stays damp
+  // whatever the swash, so a low tide's exposed flat reads wet (final review I2). Without the surf, the cover's share alone.
+  const wetH = opts.wetHeight ? opts.wetHeight(p.xz) : null;
+  const wetness = wetH ? max(float(1.0).sub(smoothstep(wetH.sub(0.02), wetH.add(0.12), p.y)), wetShare.mul(0.8)) : wetShare;
+  const albedo = wet.mul(wetness.mul(rest)).add(dry.mul(float(1.0).sub(wetness).mul(rest))).add(rock.mul(rF)).add(heath.mul(hF));
 
   const vis = sunVisibility ? sunVisibility(p.xz) : float(1.0);
   const back = saturate(dot(v.negate(), l));
@@ -90,7 +95,7 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, sunVisibility?
   const sunE = sky.sunIlluminance.mul(vis).mul(max(dot(n, l), 0.0)).mul(canopy).mul(step(0.0, l.y));
   const skyE = sky.skyIrradiance.mul(det.x).mul(n.y.mul(0.5).add(0.5));
   const r: N = reflect(v.negate(), n);
-  const sheen = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z))).mul(schlickWater(max(dot(n, v), 0.0))).mul(wetShare.mul(rest)).mul(0.6);
+  const sheen = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z))).mul(schlickWater(max(dot(n, v), 0.0))).mul(wetness.mul(rest)).mul(0.6);
   const lit = albedo.mul(sunE.add(skyE)).div(PI).add(sheen);
   // Overlays: the cover map in false colours (wet blue, sand yellow, rock red, heath green); the sunlight map (shade blue).
   const white = sky.skyIrradiance.add(sky.sunIlluminance.mul(max(l.y, 0.0))).div(PI);
