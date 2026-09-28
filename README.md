@@ -61,6 +61,7 @@ Pick these with settings: default (or open `#ref=<name>`) to see them exactly as
 - `K` saves a screenshot.
 - `P` pauses and resumes (reference moments open paused; a "Paused — P to resume" badge shows under the stats).
 - `N` calls a set.
+- `M` mutes and unmutes the sound. The sound starts on your first click or key press; the Sound folder has the volumes (master, waves, ambience, near water, music), music play/pause and next track, and shows the track playing.
 - Settings panel: custom/default switch and Reset settings button; settings are remembered between visits.
 - Wind speed is shown and edited in km/h; swell and wind directions show compass points (e.g. `225° SW`), the direction they come from.
 - Break folder: the breaking toggle (compare with Phase 1), the breaker index γ, the drain δ, the stage span Δ, the bore height β and the trough drain, plus the breaking ribbon's own controls; remembered with your other settings.

@@ -8,7 +8,7 @@ import { DEFAULT_FOAM_PARAMS, FOAM_PARAM_RANGES, type FoamParams } from '../whit
 import { DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, IMPACT_PARAM_RANGES, SPRAY_PARAM_RANGES, type ImpactParams, type SprayParams } from '../whitewater/sprayEmitters';
 import { DEFAULT_LAND_PARAMS, LAND_PARAM_RANGES, type LandParams } from '../land/landParams';
 import { DEFAULT_SURF_PARAMS, SURF_PARAM_RANGES, type SurfParams } from '../surf/surfModel';
-import { BOMBIE_BINDINGS, BREAK_BINDINGS, CONDITION_BINDINGS, FOAM_BINDINGS, IMPACT_BINDINGS, LAND_BINDINGS, OVERLAY_BINDINGS, SURF_BINDINGS, SPRAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
+import { BOMBIE_BINDINGS, BREAK_BINDINGS, SOUND_BINDINGS, CONDITION_BINDINGS, FOAM_BINDINGS, IMPACT_BINDINGS, LAND_BINDINGS, OVERLAY_BINDINGS, SURF_BINDINGS, SPRAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
 
 describe('dev panel condition bindings never rewrite a loaded moment', () => {
   // windSpeedMs has no widget of its own: it's edited in km/h through WIND_SPEED_KMH_BINDING instead, checked below.
@@ -132,6 +132,17 @@ describe('the Bombie folder (4c-3)', () => {
     for (const k of ['size', 'thresholdFt'] as const) {
       expect(BOMBIE_BINDINGS[k].min).toBe(BOMBIE_PARAM_RANGES[k].min);
       expect(BOMBIE_BINDINGS[k].max).toBe(BOMBIE_PARAM_RANGES[k].max);
+    }
+  });
+});
+
+import { SOUND_PARAM_RANGES, SOUND_VOLUME_KEYS } from '../sound/soundParams';
+describe('the Sound folder (Phase 5)', () => {
+  it('has a slider for every volume, with exactly normalizeSoundParams’s ranges', () => {
+    expect(Object.keys(SOUND_BINDINGS).sort()).toEqual([...SOUND_VOLUME_KEYS].sort());
+    for (const k of SOUND_VOLUME_KEYS) {
+      expect(SOUND_BINDINGS[k].min).toBe(SOUND_PARAM_RANGES[k].min);
+      expect(SOUND_BINDINGS[k].max).toBe(SOUND_PARAM_RANGES[k].max);
     }
   });
 });

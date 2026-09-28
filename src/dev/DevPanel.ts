@@ -18,6 +18,7 @@ import { IMPACT_PARAM_RANGES, type ImpactParams, SPRAY_PARAM_RANGES, type SprayP
 import { LAND_PARAM_RANGES, type LandParams } from '../land/landParams';
 import { SURF_PARAM_RANGES, type SurfParams } from '../surf/surfModel';
 import { BOMBIE_PARAM_RANGES, type BombieParams } from '../bombie/bombieParams';
+import { SOUND_PARAM_RANGES, type SoundParams } from '../sound/soundParams';
 import type { SettingsMode } from './devSettings';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS } from './referenceMoments';
 
@@ -40,6 +41,8 @@ export interface DevPanelModel {
   land: LandParams;
   surf: SurfParams;
   bombie: BombieParams;
+  sound: SoundParams;
+  soundStatus: { track: string };
   setStatus: { nextSet: string; wave: string; face: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
@@ -70,6 +73,9 @@ export interface DevPanelHandlers {
   onLand(): void;
   onSurf(): void;
   onBombie(): void;
+  onSound(): void;
+  onMusicPlayPause(): void;
+  onMusicNext(): void;
   onSettingsMode(mode: SettingsMode): void;
   onResetSettings(): void;
   /** Any user-editable value changed (every binding and list; not the read-only readouts). */
@@ -166,6 +172,15 @@ export const SURF_BINDINGS = {
 export const BOMBIE_BINDINGS = {
   size: { label: 'bombie size', ...BOMBIE_PARAM_RANGES.size, step: 0.05 },
   thresholdFt: { label: 'bombie threshold (ft)', ...BOMBIE_PARAM_RANGES.thresholdFt, step: 0.5 },
+} as const;
+
+/** Sound folder sliders (Phase 5 §3.5), ranges exactly normalizeSoundParams's (DevPanel.test.ts). */
+export const SOUND_BINDINGS = {
+  master: { label: 'master', ...SOUND_PARAM_RANGES.master, step: 0.01 },
+  waves: { label: 'waves', ...SOUND_PARAM_RANGES.waves, step: 0.01 },
+  ambience: { label: 'ambience', ...SOUND_PARAM_RANGES.ambience, step: 0.01 },
+  nearWater: { label: 'near water', ...SOUND_PARAM_RANGES.nearWater, step: 0.01 },
+  music: { label: 'music', ...SOUND_PARAM_RANGES.music, step: 0.01 },
 } as const;
 
 /** Land folder sliders (Phase 4a spec §4.11), ranges exactly normalizeLandParams's (DevPanel.test.ts). */
@@ -289,6 +304,14 @@ export class DevPanel {
     bombieFolder.addBinding(m.bombie, 'enabled', { label: 'bombie' }).on('change', h.onBombie);
     bombieFolder.addBinding(m.bombie, 'size', BOMBIE_BINDINGS.size).on('change', h.onBombie);
     bombieFolder.addBinding(m.bombie, 'thresholdFt', BOMBIE_BINDINGS.thresholdFt).on('change', h.onBombie);
+    const soundFolder = this.pane.addFolder({ title: 'Sound', expanded: false });
+    for (const [key, opts] of Object.entries(SOUND_BINDINGS) as [keyof typeof SOUND_BINDINGS, (typeof SOUND_BINDINGS)[keyof typeof SOUND_BINDINGS]][]) {
+      soundFolder.addBinding(m.sound, key, opts).on('change', h.onSound);
+    }
+    soundFolder.addBinding(m.sound, 'muted', { label: 'mute (M)' }).on('change', h.onSound);
+    readouts.add(soundFolder.addBinding(m.soundStatus, 'track', { label: 'music', readonly: true, interval: 500 }));
+    soundFolder.addButton({ title: 'Music play / pause' }).on('click', h.onMusicPlayPause);
+    soundFolder.addButton({ title: 'Next track' }).on('click', h.onMusicNext);
 
     const reef = this.pane.addFolder({ title: 'Reef', expanded: false });
     reef.addBinding(m.reef, 'ledgeDepthM', { label: 'ledge depth (m)', min: 2, max: 12, step: 0.1 }).on('change', h.onReef);
