@@ -105,6 +105,9 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
   // sees the shore break from the tops of swells (Phase 4b gallery ruling).
   setMoment('surf-from-the-lineup', "08:15 from the top of a swell at the lineup, facing the beach as the reference set's bores reach the shore: white water across the platform, the swash on the sand.",
     conditions({}), { mode: 'free', position: [-25, 5, 45], yawDeg: 90, pitchDeg: -1 }, REF_BIGGEST.arrivalS + 12),
+  // Walk mode takes its height from the ground (the y here is informational); before the land loads it is a free pose.
+  ref('on-the-beach', '10:30 standing on the dry sand in front of the Womb, looking north along the beach: the rock clumps at the dune toe, the swash.',
+    conditions({ timeOfDay: 10.5 }), { mode: 'walk', position: [210, 4, -40], yawDeg: 0, pitchDeg: -4 }, 'view'),
 ];
 
 const cloneMoment = (m: Moment): Moment => ({
