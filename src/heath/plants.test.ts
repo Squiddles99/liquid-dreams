@@ -145,3 +145,12 @@ describe('plant placement', () => {
     for (const [k, c] of counts) expect(c, k).toBeLessThanOrEqual(LOD_CAPACITY[Number(k.split(':')[2])]);
   });
 });
+
+import { plantCaster } from './plants';
+describe('plants as shadow casters', () => {
+  it('shrubs cast at 0.6; pigface and rice-flower cast the ring only', () => {
+    const base = { x: 0, z: 0, shape: 0, width: 2, height: 1, yTrue: 0, yCoarse: 0, yaw: 0, seed: 0, tint: [0, 0, 0] as [number, number, number] };
+    expect(plantCaster({ ...base, kind: 'daisy' })).toEqual({ x: 0, z: 0, radius: 1, height: 1, strength: 0.6, ringOnly: false });
+    expect(plantCaster({ ...base, kind: 'pigface' }).ringOnly).toBe(true);
+  });
+});
