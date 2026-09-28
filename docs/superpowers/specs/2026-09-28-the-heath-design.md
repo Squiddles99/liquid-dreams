@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-28
 **Authors:** Andrew and Claude
-**Status:** Design approved in conversation, section by section (2026-09-28). The written spec awaits Andrew's review. Branch `phase-4c2-the-heath`.
+**Status:** Approved by Andrew (2026-09-28); built on branch `phase-4c2-the-heath` (Native execution). See §8 for the as-built notes and the gallery at `docs/superpowers/gallery/phase-4/heath/`.
 **Builds on:**
 - **Phase 4a** (`2026-09-28-the-view-back-design.md`):
   - the land's cover (`coverAt`: `heath`, `duneBand`, `bushes`);
@@ -202,3 +202,21 @@ At `up-the-dune` and `on-the-beach` on the RTX 4060 Laptop, pane visible:
 - Bushes shadowing each other or the coarse land.
 - The grey heath outcrops in 3D.
 - Ellensbrook Bombie (4c-3).
+
+## 8. As built
+
+- **Shapes:** plants are cut flat at y −0.35 of the unit sphere (every level of detail reaches it), so they are two-thirds domes.
+- **Density (captures):** one shrub per 3 m² (six candidates per cell), not one per 5 m², because "nearly touch" won and one per 5 m² read as bushes dotted on sand. Above density 1, a second pass of candidates is kept at (density − 1) × the weights. The far level's meshes hold 6,000 instances.
+- **Look (captures):**
+  - daisy-bush sage (0.17, 0.2, 0.14);
+  - a leaf-clump normal jitter and stronger leaf noise;
+  - a stronger ragged cut;
+  - the heath floor mostly dark litter;
+  - near the camera, the dune rise's floor follows the per-vertex bush share, the same values the CPU placement reads, so the floor lies under the 3D clumps.
+- **`up-the-dune`:** stands at (234, −38), pitch 8.
+- **Performance:** the instance refresh writes in place and uploads only the used instances. Each plant stores its yaw's cosine and sine.
+- **Cost (measured):**
+  - plants 0.07–0.33 ms GPU;
+  - refresh about 3.1 ms CPU every 3 m, over the 2 ms target because of the density;
+  - the lineup +0.065 ms.
+
