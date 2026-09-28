@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Ground } from '../beach/walk';
 import { CameraRig } from './CameraRig';
 import type { Input } from './Input';
 import { NO_KEYS, type MoveKeys } from './movement';
@@ -35,5 +36,31 @@ describe('CameraRig probe position', () => {
     expect(rig.mode).toBe('lineup');
     expect(rig.probeXZ.x).toBeCloseTo(x);
     expect(rig.probeXZ.z).toBeCloseTo(z);
+  });
+});
+
+describe('the walk mode', () => {
+  const ground: Ground = { groundAt: (x) => 0.1 * x, waterLevel: () => 0 };
+  it('cycles lineup → free → walk → lineup, skipping walk without ground or over deep water', () => {
+    const rig = new CameraRig();
+    rig.setPose({ mode: 'free', position: [20, 10, 0], yawDeg: 90, pitchDeg: 0 });
+    rig.cycleMode(0);
+    expect(rig.mode).toBe('lineup'); // no ground yet
+    rig.setGround(ground);
+    rig.setPose({ mode: 'free', position: [20, 10, 0], yawDeg: 90, pitchDeg: 0 });
+    rig.cycleMode(0);
+    expect(rig.mode).toBe('walk');
+    expect(rig.getPose().position[1]).toBeCloseTo(2 + 1.7, 1);
+    rig.cycleMode(0);
+    expect(rig.mode).toBe('lineup');
+    rig.setPose({ mode: 'free', position: [-50, 10, 0], yawDeg: 90, pitchDeg: 0 }); // 5 m deep below
+    rig.cycleMode(0);
+    expect(rig.mode).toBe('lineup');
+  });
+  it('a walk pose without ground falls back to free at that position', () => {
+    const rig = new CameraRig();
+    rig.setPose({ mode: 'walk', position: [20, 3.7, 0], yawDeg: 90, pitchDeg: 0 });
+    expect(rig.mode).toBe('free');
+    expect(rig.getPose().position).toEqual([20, 3.7, 0]);
   });
 });

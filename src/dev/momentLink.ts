@@ -2,7 +2,7 @@ import { sanitizeConditions, wrapDegrees } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
 import { findReferenceMoment } from './referenceMoments';
 
-export type CameraMode = 'lineup' | 'free';
+export type CameraMode = 'lineup' | 'free' | 'walk';
 
 export interface CameraPose {
   mode: CameraMode;
@@ -44,7 +44,7 @@ const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFi
 export function parseCameraPose(v: unknown): CameraPose | null {
   if (typeof v !== 'object' || v === null) return null;
   const c = v as Record<string, unknown>;
-  if (c.mode !== 'lineup' && c.mode !== 'free') return null;
+  if (c.mode !== 'lineup' && c.mode !== 'free' && c.mode !== 'walk') return null;
   if (!Array.isArray(c.position) || c.position.length !== 3 || !c.position.every(finite)) return null;
   if (!finite(c.yawDeg) || !finite(c.pitchDeg)) return null;
   return {
