@@ -29,6 +29,7 @@ The target is ≤ 1.0 ms.
 - **CPU:**
   - **A plant refresh** (every 3 m) costs about 3.1 ms at `up-the-dune`: 1.4 ms to gather the nearby plants and 1.7 ms to lay out 25,500 instances. That's over the 2 ms target, because the capture-driven density (one shrub per 3 m²) added about 60% more plants.
   - **First entry** into an area is 51–57 ms (Node).
+  - **The patch's shadow rebuild with plants** (after the final review's fix: only plants within 12 m cast, their shadows capped at 4 m) costs 0.7–2.6 ms at a 20–45° sun and up to 3.4 ms at a 5° sun (Node, from the toe to the heath).
 - **Bindings:** the plant material uses 2 sampled textures and at most 3 uniform buffers per stage. The far level's 6,000-instance meshes keep their matrices in instanced vertex attributes.
 
 ## Tuning points for Andrew

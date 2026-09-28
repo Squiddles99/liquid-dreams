@@ -215,8 +215,13 @@ At `up-the-dune` and `on-the-beach` on the RTX 4060 Laptop, pane visible:
   - near the camera, the dune rise's floor follows the per-vertex bush share, the same values the CPU placement reads, so the floor lies under the 3D clumps.
 - **`up-the-dune`:** stands at (234, −38), pitch 8.
 - **Performance:** the instance refresh writes in place and uploads only the used instances. Each plant stores its yaw's cosine and sine.
+- **Final review fixes:**
+  - **Shadows:** only plants within 12 m of the camera cast on the fine patch, with shadows capped at 4 m. Beyond that, the dark floor grounds them, as §3.5 already does beyond the patch. With every plant in the square casting, a rebuild on the heath took 12–35 ms.
+  - **Cache:** the plant cell cache trims to 220 m once it holds 12,000 cells.
+  - **Land edits:** the plant field re-places only when the rocks actually changed.
 - **Cost (measured):**
   - plants 0.07–0.33 ms GPU;
   - refresh about 3.1 ms CPU every 3 m, over the 2 ms target because of the density;
+  - the patch's shadow rebuild with plants 0.7–2.6 ms at a 20–45° sun, up to 3.4 ms at 5° (Node);
   - the lineup +0.065 ms.
 
