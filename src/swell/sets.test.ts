@@ -4,6 +4,7 @@ import { surferFeetToHs } from '../conditions/units';
 import {
   CALL_SET_LEAD_S, DEFAULT_SET_PARAMS, LONG_TAIL_CHANCE, MAX_ACTIVE_WAVES, WAVE_WINDOW_AFTER_S, WAVE_WINDOW_BEFORE_S,
   callSetTime, nextSetArrivalS, normalizeSetParams, setStartS, straysAfterSet, wavesNear, wavesOfSet,
+  wavesBetween,
 } from './sets';
 
 const c = DEFAULT_CONDITIONS, p = DEFAULT_SET_PARAMS;
@@ -148,5 +149,24 @@ describe('set timeline', () => {
     const fine = { ...p, meanIntervalS: 900, intervalJitterS: 150 };
     normalizeSetParams(fine);
     expect(fine.intervalJitterS).toBe(150); // already within bounds: untouched
+  });
+});
+
+describe('wavesBetween', () => {
+  it('lists every wave arriving in the window, sorted and uncapped, including those wavesNear returns', () => {
+    const c = cloneConditions(DEFAULT_CONDITIONS);
+    const t0 = 1000, t1 = 3000;
+    const all = wavesBetween(t0, t1, c, DEFAULT_SET_PARAMS);
+    for (let i = 1; i < all.length; i++) expect(all[i].arrivalS).toBeGreaterThanOrEqual(all[i - 1].arrivalS);
+    for (const w of all) { expect(w.arrivalS).toBeGreaterThanOrEqual(t0); expect(w.arrivalS).toBeLessThanOrEqual(t1); }
+    for (const w of wavesNear(2000, c, DEFAULT_SET_PARAMS)) {
+      if (w.arrivalS >= t0 && w.arrivalS <= t1) expect(all.some((a) => a.arrivalS === w.arrivalS)).toBe(true);
+    }
+    expect(all.length).toBeGreaterThan(8);
+  });
+  it('is empty for a flat swell', () => {
+    const c = cloneConditions(DEFAULT_CONDITIONS);
+    c.swell.sizeFt = 0;
+    expect(wavesBetween(0, 5000, c, DEFAULT_SET_PARAMS)).toEqual([]);
   });
 });

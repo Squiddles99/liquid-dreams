@@ -13,6 +13,7 @@ import { type WaterOpticsUniforms, shadeWater, shadeWaterFromBelow } from './wat
 import type { WaterSurfaceModel } from './waterSurface';
 import type { SunlightSource } from '../land/SunlightMap';
 import type { SkylineTable } from '../land/SkylineTable';
+import type { CoastalSurf } from '../surf/CoastalSurf';
 
 type N = any;
 
@@ -129,6 +130,8 @@ export interface OceanSurfaceOptions {
   sunlight?: SunlightSource;
   /** The land in the water's reflections (Phase 4a spec §4.9). */
   skyline?: SkylineTable;
+  /** The coastal surf (Phase 4b spec 2026-09-28-the-waterline-design.md): the swash lift, the surf foam, the swash lace. */
+  surf?: CoastalSurf;
 }
 
 /** True where the sheet draws: outside the footprint grid, or on a texel the mask leaves clear (≤ 0.5). */
@@ -186,7 +189,9 @@ export class OceanSurface {
       baseXZ, (c) => fadeWeightNode(radial, CASCADE_FADES[c].geometry), { slope: setSlope, foam: setFoam, foamFrame: setFoamFrame },
     );
     const curvatureDrop = radial.mul(radial).div(2 * EARTH_RADIUS_M);
-    material.positionNode = vec3(baseXZ.x.add(displacement.x), model.seabed.tide.add(displacement.y).sub(curvatureDrop), baseXZ.y.add(displacement.z));
+    // The swash (Phase 4b §3.3): near the shore the sheet is lifted by the swash level, so the waterline climbs the sand.
+    const swashLift = options.surf ? options.surf.liftNode(baseXZ, model.seabed) : float(0.0);
+    material.positionNode = vec3(baseXZ.x.add(displacement.x), model.seabed.tide.add(displacement.y).add(swashLift).sub(curvatureDrop), baseXZ.y.add(displacement.z));
     const vBaseXZ = varying(baseXZ);
 
     // Fragment: FFT normals and foam (long swell faded over shallow water) plus the set waves' slope (interpolated), as
@@ -202,7 +207,14 @@ export class OceanSurface {
     // pattern rides the water. setFoamFrame (the crest frame) stays computed for the spec's fallback, unused here.
     // One sample, shared by the weight and the overlay (one texture binding).
     const foamOverlay = options.foamMap ? options.foamMap.sampleNode(vBaseXZ) : null;
-    const foamWeight = sheetFoamWeight(setFoam, foamOverlay);
+        const surfFoam = options.surf ? options.surf.foamNode(vBaseXZ, model.seabed, viewDir.y) : float(0.0);
+        // The swash's edge (Phase 4b §3.3): lifted water under 0.1 m deep over the beach near the shore shows a foam lace.
+        const swashLace = options.surf
+          ? float(1.0).sub(smoothstep(0.02, 0.1, positionWorld.y.sub(model.seabed.bedHeightNode(vBaseXZ))))
+            .mul(float(1.0).sub(smoothstep(0.0, 10.0, options.surf.dEdgeNode(vBaseXZ, model.seabed))))
+            .mul(smoothstep(0.01, 0.05, options.surf.swashLevelNode(vBaseXZ.y))).mul(0.8)
+          : float(0.0);
+    const foamWeight = max(sheetFoamWeight(setFoam, foamOverlay), max(surfFoam, swashLace));
     const setFoamLook = setFoamPattern(foamWeight, waterFoamFrame(vBaseXZ, model.sets.meanTravel), model.sim.time);
 
     material.colorNode = shadeWater(
@@ -210,7 +222,7 @@ export class OceanSurface {
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
         landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
         overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
-          foamMap: foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0), foamOn: this.overlayFoam, sunOn: this.overlaySun } },
+          foamMap: (foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0)).add(surfFoam.mul(0.5)), foamOn: this.overlayFoam, sunOn: this.overlaySun } },
       sky,
       optics,
     );

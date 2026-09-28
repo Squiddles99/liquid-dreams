@@ -185,6 +185,22 @@ export function wavesNear(t: number, c: Conditions, p: SetParams): WaveEvent[] {
   return [...out].sort((a, b) => Math.abs(a.arrivalS - t) - Math.abs(b.arrivalS - t)).slice(0, MAX_ACTIVE_WAVES).sort((a, b) => a.arrivalS - b.arrivalS);
 }
 
+/**
+ * Every wave whose crest reaches the peak within [t0, t1], sorted, uncapped (the coastal surf's height table spans
+ * many sets; spec 2026-09-28-the-waterline-design.md §3.1). Empty for a flat swell.
+ */
+export function wavesBetween(t0: number, t1: number, c: Conditions, p: SetParams): WaveEvent[] {
+  if (surferFeetToHs(c.swell.sizeFt) <= 0) return [];
+  const setSpan = p.maxWaves * c.swell.periodS * (1 + p.spacingJitter);
+  const k0 = Math.floor((t0 - setSpan - p.intervalJitterS - p.meanIntervalS) / p.meanIntervalS);
+  const k1 = Math.ceil((t1 + p.intervalJitterS) / p.meanIntervalS);
+  const out: WaveEvent[] = [];
+  for (let k = k0; k <= k1; k++) {
+    for (const w of [...wavesOfSet(k, c, p), ...straysAfterSet(k, c, p)]) if (w.arrivalS >= t0 && w.arrivalS <= t1) out.push(w);
+  }
+  return out.sort((a, b) => a.arrivalS - b.arrivalS);
+}
+
 /** When the first wave of the next set (starting after t) reaches the peak; null when the swell is flat (no sets). */
 export function nextSetArrivalS(t: number, c: Conditions, p: SetParams): number | null {
   if (surferFeetToHs(c.swell.sizeFt) <= 0) return null;
