@@ -183,6 +183,18 @@ All targets are met. At the default lineup the sun breaks over the ridge at 08:0
 - Reversed depth was already on; no depth fighting was seen at the far waterline (plan ruling P9).
 - The existing bloom spreads the glitter path's brightness over the dark land under a low sun, as a straight-sided band. It's left for Andrew (the Picture folder).
 
+**As built (after the final review):**
+- **The sunlight map** covers x ∈ [−3000, 2408] and z ∈ [−6000, 6000] at 16 m, instead of §4.8's x from −600 and z ±4000 at 8 m. Before about 07:55 the ridge's shade reaches past x = −600, and the old edge drew a hard line on the water.
+- **Past its edges,** the value fades to full sun over 1.5 km.
+- **The march** reaches 6 km (56 steps), so the dawn shade covers the sea 3 km out.
+- **Heights on the GPU** are full-precision, because half floats put a grazing sun's edge about 0.2° off.
+- **Reflections:** water beyond a bearing's skyline point reflects no land.
+
+**As built (Andrew's aerial review, 2026-09-28):**
+- **The reef reaches the shore.** The seabed within 50–90 m of the waterline (at least 90 m along the reef map, meeting its shelf) is weedy limestone (`seabed/shoreReef.ts`), and the open coast beyond is mostly weedy rock, not sand. There are no turquoise shallows in front of the beach.
+- **The waterline edge** is weedy rock along about three quarters of the coast.
+- **The first dune rise** (35 m inland of the toe) is mostly sand, with about a third bush clumps and a few boulders, before the heath. The toe's clumps and the dune's bushes and boulders are drawn per pixel near the camera, so they don't follow the mesh's squares.
+
 ## 5. Files
 
 - **New:**
