@@ -12,6 +12,7 @@ import { seabedTerms } from '../seabed/seabedShading';
 import { REEF_GRID } from '../seabed/wombReef';
 import type { Sky } from '../sky/Sky';
 import type { SunlightSource } from '../land/SunlightMap';
+import type { SkylineTable } from '../land/SkylineTable';
 import type { BreakParams } from './breaking';
 import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
 import { PROFILE_SAMPLES, PROFILE_SEGMENTS } from './lipProfile';
@@ -204,6 +205,8 @@ export interface RibbonShading {
   foamMap?: SheetFoamMap;
   /** The land's shadow (Phase 4a spec §4.8); absent: the sun reaches everywhere. */
   sunlight?: SunlightSource;
+  /** The land in the water's reflections (Phase 4a spec §4.9). */
+  skyline?: SkylineTable;
 }
 
 /**
@@ -535,7 +538,8 @@ export class BreakingRibbon {
     const colour = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, underside,
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
-        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis },
+        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
+        landReflection: shading.skyline ? (r: N) => shading.skyline!.reflectionNode(positionWorld, r, sky) : undefined },
       sky,
       optics,
     ).toVar();
