@@ -4,7 +4,11 @@ import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/B
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, peakFace } from '../breaker/peakFace';
-import type { ReefField } from '../breaker/reefField';
+import { type ReefField, sampleField } from '../breaker/reefField';
+import { BOMBIE_X, BOMBIE_Z, BURST_LIFE_S, type BombieWaves, burstAt, burstWidthM } from '../bombie/bombieModel';
+import { BombieMesh } from '../bombie/BombieMesh';
+import { surferFeetToHs } from '../conditions/units';
+import { DEFAULT_BOMBIE_PARAMS, type BombieParams, normalizeBombieParams } from '../bombie/bombieParams';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
 import { type WaveContext, fieldBreakingHeight, toActiveWave } from '../breaker/setWaveModel';
@@ -46,7 +50,7 @@ import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FoamField } from '../whitewater/FoamField';
 import { SprayParticles } from '../whitewater/SprayParticles';
 import {
-  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
+  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
   impactBirths, normalizeImpactParams, normalizeSprayParams, sprayBirths, sprayCanEmit, windToVector,
 } from '../whitewater/sprayEmitters';
 import { IMPACT_KIND } from '../whitewater/particleKinds';
@@ -112,6 +116,13 @@ export class App {
   readonly impactParams: ImpactParams = { ...DEFAULT_IMPACT_PARAMS };
   readonly landParams: LandParams = { ...DEFAULT_LAND_PARAMS };
   readonly surfParams: SurfParams = { ...DEFAULT_SURF_PARAMS };
+  /** Ellensbrook Bombie (Phase 4c-3): its folder, its white water, its arrival time from the reef field. */
+  readonly bombieParams: BombieParams = { ...DEFAULT_BOMBIE_PARAMS };
+  readonly bombie: BombieMesh;
+  private bombieTauS: number | null = null;
+  private bombieTauField: ReefField | null = null;
+  /** Dev readout (window.liquidDreams.bombieBurst): the Bombie's current burst, or null. */
+  bombieBurst: { n: number; ageS: number; heightM: number } | null = null;
   /** The coastal surf along the whole shore (Phase 4b spec 2026-09-28-the-waterline-design.md). */
   readonly surf = new CoastalSurf();
   readonly setStatus = { nextSet: '', wave: '', face: '' };
@@ -241,6 +252,8 @@ export class App {
     this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.land.sunlight, skyline: this.land.skyline, surf: this.surf });
     this.land.setWetHeight((xz) => this.seabed.tide.add(this.surf.wetLevelNode(xz.y)));
     this.scene.add(this.oceanSurface.mesh);
+    this.bombie = new BombieMesh(this.surfaceModel, this.sky, (xz) => this.land.sunlight.visibilityNode(xz));
+    this.scene.add(this.bombie.mesh);
     this.scene.add(this.ribbon.mesh);
     this.scene.add(this.spray.mesh);
     this.impact.setMaxLifeS(IMPACT_MAX_LIFE_S);
@@ -267,7 +280,7 @@ export class App {
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
         picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
-        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
+        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
         onConditions: () => this.onConditionsEdited(),
@@ -319,6 +332,10 @@ export class App {
           normalizeSurfParams(this.surfParams);
           this.panel.refresh();
           this.surf.invalidate();
+        },
+        onBombie: () => {
+          normalizeBombieParams(this.bombieParams);
+          this.panel.refresh();
         },
         onLand: () => {
           normalizeLandParams(this.landParams);
@@ -470,6 +487,15 @@ export class App {
     return { ms, steps };
   }
 
+  /** The Bombie's waves now (4c-3 §3.2), or null while the reef field is missing (Review Focus 1). */
+  private bombieWaves(t: number): BombieWaves | null {
+    if (!this.bombieParams.enabled || !this.field) return null;
+    if (this.bombieTauField !== this.field) { this.bombieTauS = sampleField(this.field, BOMBIE_X, BOMBIE_Z).tau; this.bombieTauField = this.field; } // Review Focus 3
+    const T = this.conditions.swell.periodS;
+    const setIndices = new Set(wavesBetween(t - BURST_LIFE_S - 2 * T, t + T, this.conditions, this.setParams).map((e) => Math.round(e.arrivalS / T)));
+    return { tauS: this.bombieTauS!, periodS: T, hs: surferFeetToHs(this.conditions.swell.sizeFt), thresholdHs: surferFeetToHs(this.bombieParams.thresholdFt), seed: this.conditions.seed, setIndices };
+  }
+
   /**
    * This frame's particle ticks: each tick's emitters (the lip tips mid-throw and the landing points at t_k, one shared
    * trace) give the spray's and the explosion's births.
@@ -493,6 +519,8 @@ export class App {
         minHeightM: this.ribbonMinHeightM, wind: { speedMs: this.conditions.wind.speedMs, fromDeg: this.conditions.wind.directionDeg },
         tideM: this.conditions.tideM, amount: this.sprayParams.amount, impactAmount: this.impactParams.amount,
       });
+          const bb = burstAt(t, this.bombieWaves(t));
+          e.impact.push(...bombieImpactEmitters(bb, bb ? burstWidthM(bb.heightM, surferFeetToHs(this.bombieParams.thresholdFt), this.bombieParams.size) : 0, this.conditions.tideM, this.bombieParams.size));
       this.tickEmitters.set(k, e);
     }
     return e;
@@ -790,7 +818,7 @@ export class App {
     return {
       spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams,
       maxFps: this.frameLimiter.maxFps, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams, overlays: this.overlays,
-      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams,
+      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams,
     };
   }
 
@@ -812,6 +840,7 @@ export class App {
     assignParams(this.impactParams, look.impact);
     assignParams(this.landParams, look.land);
     assignParams(this.surfParams, look.surf);
+    assignParams(this.bombieParams, look.bombie);
   }
 
   /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
@@ -824,6 +853,7 @@ export class App {
   private applyAllParams(): void {
     normalizeSetParams(this.setParams);
     normalizeSurfParams(this.surfParams);
+    normalizeBombieParams(this.bombieParams);
     this.surf.invalidate();
     this.ocean.setParams(this.simParams);
     updateWaterOpticsUniforms(this.waterOptics, this.waterParams);
@@ -1074,6 +1104,9 @@ export class App {
     this.stepFoam(events);
     this.stepSpray();
     this.updateUnderwater();
+        this.bombieBurst = burstAt(this.clock.simTime, this.bombieWaves(this.clock.simTime));
+        const bw = this.bombieBurst ? burstWidthM(this.bombieBurst.heightM, surferFeetToHs(this.bombieParams.thresholdFt), this.bombieParams.size) : 0;
+        this.bombie.show(this.bombieBurst && !this.underwater ? { ageS: this.bombieBurst.ageS, widthM: bw, heightM: this.bombieBurst.heightM } : null);
     this.updateRibbon(events);
     // The ribbon is single-sided and the sheet is cut away under it only above water: hidden underwater.
     if (this.underwater) this.ribbon.mesh.visible = false;
