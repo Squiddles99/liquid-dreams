@@ -17,6 +17,7 @@ import { SprayParticles } from '../whitewater/SprayParticles';
 import { Land } from '../land/Land';
 import { SkylineTable } from '../land/SkylineTable';
 import { SunlightMap } from '../land/SunlightMap';
+import { CoastalSurf } from '../surf/CoastalSurf';
 
 type N = any;
 
@@ -158,7 +159,20 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
             expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
           }
         });
-        it('the ribbon, the spray and the land with the sunlight map stay within the limits', () => {
+        it('the surf adds no sampled textures to the sheet and keeps it within the limits', () => {
+      const surf = new CoastalSurf();
+      const w0 = renderWgsl(new THREE.Mesh(withFoam.mesh.geometry, withFoam.aboveMaterial));
+      const s = new OceanSurface(model, sky, optics, { foamMap: foam, surf });
+      const w1 = renderWgsl(new THREE.Mesh(s.mesh.geometry, s.aboveMaterial));
+      console.log(`sheet above with surf: vertex sampled ${sampledTextures(w1.vertex)} uniform ${uniformBuffers(w1.vertex)}, fragment sampled ${sampledTextures(w1.fragment)} uniform ${uniformBuffers(w1.fragment)}`);
+      expect(sampledTextures(w1.fragment)).toBe(sampledTextures(w0.fragment));
+      expect(sampledTextures(w1.vertex)).toBe(sampledTextures(w0.vertex));
+      for (const stage of [w1.vertex, w1.fragment]) {
+        expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+        expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
+      }
+    });
+    it('the ribbon, the spray and the land with the sunlight map stay within the limits', () => {
           const r = new BreakingRibbon(modelRibbonSurface(model), DEFAULT_BREAK_PARAMS, { model, sky, optics, foamMap: foam, sunlight, skyline: new SkylineTable() });
           const spray = new SprayParticles(sky, undefined, sunlight);
           const land = new Land(sky);

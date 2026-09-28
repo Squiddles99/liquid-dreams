@@ -17,8 +17,9 @@ export const H_REF_M = 1.5;
 export const LULL_FACTOR = 0.45;
 export const LULL_SPREAD = 0.2;
 export const SET_FACTOR = 0.55;
-export const RUNUP_PER_H = 0.25;
-export const RUNUP_BASE_M = 0.05;
+/** Runup ≈ 0.5·H + 0.1 m: long-period swell on a steepish beach (Stockdon-type; tuned in captures from 0.25·H + 0.05). */
+export const RUNUP_PER_H = 0.5;
+export const RUNUP_BASE_M = 0.1;
 export const SWASH_FRACTION = 0.6;
 export const SWASH_RISE = 0.25;
 export const WET_DRY_S = 90;
@@ -27,7 +28,13 @@ export const SURF_BEHIND_M = 5;
 export const SURF_AHEAD_M = 30;
 export const BURST_S = 1.5;
 export const LIFT_REACH_M = 40;
-export const FRONT_M = 2.5;
+/** The bore front's width (m) and brightness gain: even a between-sets front reads as solid white water (tuned in captures). */
+export const FRONT_M = 4;
+export const FRONT_GAIN = 1.8;
+/** Grazing views: white water stands ~1 m tall, so seen side-on it covers more screen than its footprint (up to 5×). */
+export const GRAZING_K = 0.08;
+export const GRAZING_MIN_Y = 0.016;
+export const GRAZING_MAX = 5;
 export const TRAIL_M = 12;
 export const TRAIL_WEIGHT = 0.6;
 export const LACE_WEIGHT = 0.25;
@@ -145,15 +152,20 @@ export function surfFoam(d: number, z: number, t: number, s: SurfState): number 
     const front = Math.exp(-(((d - df) / FRONT_M) ** 2));
     const trail = d > df ? TRAIL_WEIGHT * Math.exp(-(d - df) / TRAIL_M) : 0;
     const burst = age < BURST_S ? (1 - age / BURST_S) * Math.exp(-(((d - W) / 6) ** 2)) : 0;
-    foam = Math.max(foam, str * (front + trail + burst));
+    foam = Math.max(foam, str * (FRONT_GAIN * front + trail + burst));
   }
   return Math.min(1, Math.max(foam, LACE_WEIGHT * recent * zoneOf(d, W)));
 }
 
-/** The steady band a distant pixel shows (the time-average), CoastalSurf.foamNode's far branch. */
-export function surfFoamFar(d: number, z: number, s: SurfState): number {
+/** The grazing boost for a view ray whose y component is viewY. */
+export function grazingBoost(viewY: number): number {
+  return Math.min(GRAZING_MAX, Math.max(1, GRAZING_K / Math.max(Math.abs(viewY), GRAZING_MIN_Y)));
+}
+
+/** The steady band a distant pixel shows (the time-average, × the grazing boost), CoastalSurf.foamNode's far branch. */
+export function surfFoamFar(d: number, z: number, s: SurfState, viewY = 1): number {
   if (!s.enabled) return 0;
-  return Math.min(1, ((DUTY * s.table.meanHeight) / H_REF_M) * zoneOf(d, shoreReefWidth(z)));
+  return Math.min(1, ((DUTY * s.table.meanHeight) / H_REF_M) * zoneOf(d, shoreReefWidth(z)) * grazingBoost(viewY));
 }
 
 export function swashShape(u: number): number {

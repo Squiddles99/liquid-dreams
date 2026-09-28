@@ -6,7 +6,7 @@ import { SHORE_X } from '../seabed/coastProfile';
 import { type Seabed, shoreReefWidthNode } from '../seabed/Seabed';
 import type { WaveEvent } from '../swell/sets';
 import {
-  BORE_DECAY, BORE_SPEED_MS, BURST_S, DUTY, FRONT_M, H_REF_M, LACE_WEIGHT, LIFT_REACH_M, RUNUP_BASE_M, RUNUP_PER_H, SURF_AHEAD_M, SURF_BEHIND_M,
+  BORE_DECAY, BORE_SPEED_MS, BURST_S, DUTY, FRONT_GAIN, FRONT_M, GRAZING_K, GRAZING_MAX, GRAZING_MIN_Y, H_REF_M, LACE_WEIGHT, LIFT_REACH_M, RUNUP_BASE_M, RUNUP_PER_H, SURF_AHEAD_M, SURF_BEHIND_M,
   SURF_DZ, SURF_NZ, SURF_TABLE, SURF_Z0, SWASH_FRACTION, SWASH_RISE, type SurfParams, type SurfState, TRAIL_M, TRAIL_WEIGHT, WET_ARRIVALS, WET_DRY_S,
   buildHeights, buildTauTable, heightRange,
 } from './surfModel';
@@ -106,17 +106,21 @@ export class CoastalSurf {
       const trail = select(d.greaterThan(df), exp(d.sub(df).div(TRAIL_M).negate()).mul(TRAIL_WEIGHT), float(0.0));
       const b = d.sub(W).div(6.0);
       const burst = select(age.lessThan(BURST_S), float(1.0).sub(age.div(BURST_S)).mul(exp(b.mul(b).negate())), float(0.0));
-      foam = max(foam, select(df.greaterThanEqual(0.0), str.mul(front.add(trail).add(burst)), float(0.0)));
+      foam = max(foam, select(df.greaterThanEqual(0.0), str.mul(front.mul(FRONT_GAIN).add(trail).add(burst)), float(0.0)));
     }
     const inZone = d.greaterThanEqual(-SURF_BEHIND_M).and(d.lessThanEqual(W.add(SURF_AHEAD_M)));
     const v = min(float(1.0), max(foam, recent.mul(LACE_WEIGHT).mul(this.zoneNode(d, W))));
     return select(inZone, v, float(0.0)).mul(this.on);
   }
 
-  /** The render's foam: near, the bores; once a pixel spans metres of d, the steady time-average (fragment only). */
-  foamNode(xz: N, seabed: Seabed): N {
+  /**
+   * The render's foam: near, the bores; once a pixel spans metres of d, the steady time-average, boosted at grazing views
+   * (surfModel.grazingBoost; `viewY` is the view ray's y). Fragment only.
+   */
+  foamNode(xz: N, seabed: Seabed, viewY: N = float(1.0)): N {
     const d = this.dSeaNode(xz, seabed), W = shoreReefWidthNode(xz.y);
-    const far = min(float(1.0), this.meanH.mul(DUTY / H_REF_M).mul(this.zoneNode(d, W))).mul(this.on);
+    const boost = clamp(float(GRAZING_K).div(max(viewY.abs(), GRAZING_MIN_Y)), 1.0, GRAZING_MAX);
+    const far = min(float(1.0), this.meanH.mul(DUTY / H_REF_M).mul(this.zoneNode(d, W)).mul(boost)).mul(this.on);
     return mix(this.foamNearNode(xz, seabed), far, smoothstep(1.5, 4.0, fwidth(d)));
   }
 

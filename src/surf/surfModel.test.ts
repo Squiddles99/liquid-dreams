@@ -69,6 +69,15 @@ describe('the bores', () => {
     expect(surfFoam(df, z, tBreak + age, s)).toBeGreaterThan(surfFoam(df - 6, z, tBreak + age, s));
     expect(surfFoam(df, z, tBreak + age, s)).toBeGreaterThan(0.5);
   });
+  it('even a between-sets bore front reads as solid white water (tuned in captures)', () => {
+    const tb = 9 * T + tableAt(s.tau, z); // a lull wave
+    const age = 6, df = W - BORE_SPEED_MS * age;
+    expect(surfFoam(df, z, tb + age, s)).toBeGreaterThan(0.8);
+  });
+  it('the far band is boosted at grazing views (white water stands up; seen side-on it covers more than its footprint)', () => {
+    expect(surfFoamFar(W / 2, z, s, 0.005)).toBeGreaterThan(3 * surfFoamFar(W / 2, z, s, 1));
+    expect(surfFoamFar(W / 2, z, s, 0.5)).toBeCloseTo(surfFoamFar(W / 2, z, s, 1), 6);
+  });
   it('surf off gives no foam; the far band is steady and inside the zone', () => {
     expect(surfFoam(W / 2, z, tBreak + 5, state(1, 1.6, false))).toBe(0);
     expect(surfFoamFar(W / 2, z, s)).toBeGreaterThan(0);
@@ -91,6 +100,8 @@ describe('the swash and the wet line', () => {
     expect(swashLevel(z, tArrive + 0.25 * Ts, s)).toBeCloseTo(R, 3);
     expect(swashLevel(z, tArrive - 0.01, s)).toBeLessThan(R);
     expect(runupOf(0)).toBe(0);
+    // Long-period swell on a steepish beach runs up about half the breaker height plus 0.1 m (Stockdon-type estimate).
+    expect(runupOf(1)).toBeCloseTo(0.6, 6);
   });
   it('the wet line holds the latest runup right after, decays after, never negative; the lift reaches 40 m out', () => {
     const R = runupOf(0.55 * 2.6);
