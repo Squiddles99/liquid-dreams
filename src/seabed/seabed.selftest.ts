@@ -6,6 +6,8 @@ import { Seabed, WATERLINE_COUNT } from './Seabed';
 
 const POINTS: [number, number][] = [
   [0, 0], [-30, -60], [50, -110], [20, -40], [-300, 100], [-1000, 0], [400, 0], [0, -449], [120, 10], [-399.9, 299.9],
+  // Ellensbrook Bombie's mound (4c-3): its crest, its slope, beyond its edge.
+  [-300, 340], [-288, 360], [-270, 340],
 ];
 
 registerSelfTest({

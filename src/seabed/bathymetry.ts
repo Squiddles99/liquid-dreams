@@ -1,4 +1,5 @@
 import { smoothstep } from '../math/smoothstep';
+import { moundY } from '../bombie/bombieModel';
 import { REEF_SURROUND_DEPTH_M, SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { beachHeight } from '../land/landHeight';
@@ -183,7 +184,8 @@ export function bedHeightAt(b: Bathymetry, x: number, z: number, shiftAt?: (z: n
   const g = b.grid;
   const fx = (x - g.x0) / g.cellM, fz = (z - g.z0) / g.cellM;
   let bed: number;
-  if (fx < 0 || fz < 0 || fx > g.nx - 1 || fz > g.nz - 1) bed = -depthBg(x - shift);
+  // Outside the map: the coast profile, and Ellensbrook Bombie's mound (Phase 4c-3 §3.1) where it rises above it.
+  if (fx < 0 || fz < 0 || fx > g.nx - 1 || fz > g.nz - 1) bed = Math.max(-depthBg(x - shift), moundY(x, z));
   else {
     const c = Math.min(g.nx - 2, Math.floor(fx)), r = Math.min(g.nz - 2, Math.floor(fz));
     const tx = fx - c, tz = fz - r;

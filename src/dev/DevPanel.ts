@@ -17,6 +17,7 @@ import { FOAM_PARAM_RANGES, type FoamParams } from '../whitewater/foamStep';
 import { IMPACT_PARAM_RANGES, type ImpactParams, SPRAY_PARAM_RANGES, type SprayParams } from '../whitewater/sprayEmitters';
 import { LAND_PARAM_RANGES, type LandParams } from '../land/landParams';
 import { SURF_PARAM_RANGES, type SurfParams } from '../surf/surfModel';
+import { BOMBIE_PARAM_RANGES, type BombieParams } from '../bombie/bombieParams';
 import type { SettingsMode } from './devSettings';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS } from './referenceMoments';
 
@@ -38,6 +39,7 @@ export interface DevPanelModel {
   impact: ImpactParams;
   land: LandParams;
   surf: SurfParams;
+  bombie: BombieParams;
   setStatus: { nextSet: string; wave: string; face: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
@@ -67,6 +69,7 @@ export interface DevPanelHandlers {
   onImpact(): void;
   onLand(): void;
   onSurf(): void;
+  onBombie(): void;
   onSettingsMode(mode: SettingsMode): void;
   onResetSettings(): void;
   /** Any user-editable value changed (every binding and list; not the read-only readouts). */
@@ -157,6 +160,12 @@ export const IMPACT_BINDINGS = {
 /** Surf folder (Phase 4b spec §3.5), range exactly normalizeSurfParams's. */
 export const SURF_BINDINGS = {
   amount: { label: 'surf amount', ...SURF_PARAM_RANGES.amount, step: 0.05 },
+} as const;
+
+/** Bombie folder sliders (Phase 4c-3 §3.5), ranges exactly normalizeBombieParams's (DevPanel.test.ts). */
+export const BOMBIE_BINDINGS = {
+  size: { label: 'bombie size', ...BOMBIE_PARAM_RANGES.size, step: 0.05 },
+  thresholdFt: { label: 'bombie threshold (ft)', ...BOMBIE_PARAM_RANGES.thresholdFt, step: 0.5 },
 } as const;
 
 /** Land folder sliders (Phase 4a spec §4.11), ranges exactly normalizeLandParams's (DevPanel.test.ts). */
@@ -276,6 +285,10 @@ export class DevPanel {
     const surfFolder = this.pane.addFolder({ title: 'Surf', expanded: false });
     surfFolder.addBinding(m.surf, 'amount', SURF_BINDINGS.amount).on('change', h.onSurf);
     surfFolder.addBinding(m.surf, 'enabled', { label: 'surf' }).on('change', h.onSurf);
+    const bombieFolder = this.pane.addFolder({ title: 'Bombie', expanded: false });
+    bombieFolder.addBinding(m.bombie, 'enabled', { label: 'bombie' }).on('change', h.onBombie);
+    bombieFolder.addBinding(m.bombie, 'size', BOMBIE_BINDINGS.size).on('change', h.onBombie);
+    bombieFolder.addBinding(m.bombie, 'thresholdFt', BOMBIE_BINDINGS.thresholdFt).on('change', h.onBombie);
 
     const reef = this.pane.addFolder({ title: 'Reef', expanded: false });
     reef.addBinding(m.reef, 'ledgeDepthM', { label: 'ledge depth (m)', min: 2, max: 12, step: 0.1 }).on('change', h.onReef);

@@ -36,7 +36,7 @@ export class WaterSurfaceModel {
 
   /** Weight of the FFT long swell: over the reef the set waves carry the swell instead. */
   swellWeight(xz: N): N {
-    return smoothstep(this.fadeFrom, this.fadeTo, this.seabed.waterDepthNode(xz));
+    return smoothstep(this.fadeFrom, this.fadeTo, this.seabed.swellDepthNode(xz));
   }
 
   private cascadeWeight(xz: N, c: number): N {
@@ -69,7 +69,7 @@ export class WaterSurfaceModel {
    * FFT. Compute-safe (the seabed samples at an explicit LOD).
    */
   private clampToSeabed(xz: N, d: N): N {
-    return vec3(d.x, max(d.y, float(SEABED_CLEARANCE_M).sub(this.seabed.waterDepthNode(xz))), d.z);
+    return vec3(d.x, max(d.y, float(SEABED_CLEARANCE_M).sub(this.seabed.swellDepthNode(xz))), d.z);
   }
 
   /**

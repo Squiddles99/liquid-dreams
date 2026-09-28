@@ -1,4 +1,5 @@
 import type { BreakParams } from '../breaker/breaking';
+import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
 import { traceStations } from '../breaker/crestTrace';
 import { GRAVITY_MS2, type Vec2, profileFrame } from '../breaker/lipProfile';
 import { type ReefField, sampleField } from '../breaker/reefField';
@@ -294,6 +295,25 @@ export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): 
         life: 1.3 + (IMPACT_MAX_LIFE_S - 1.3) * r(6), strength: Math.min(1, e.lip),
       });
     }
+  }
+  return out;
+}
+
+/** The Bombie's burst (4c-3 §3.4): impact spray along the burst line across the reef for its first 1.5 s. */
+export const BOMBIE_SPRAY_S = 1.5;
+export function bombieImpactEmitters(burst: { n: number; ageS: number; heightM: number } | null, widthM: number, tideM: number, size: number): ImpactEmitter[] {
+  if (!burst || burst.ageS < 0 || burst.ageS >= BOMBIE_SPRAY_S) return [];
+  const out: ImpactEmitter[] = [];
+  const count = Math.floor(widthM / SPRAY_SPACING_M) + 1;
+  // Plumes 5–15 m: impactBirths rises 1.5 × H above the landing.
+  const H = Math.min(10, Math.max(3, 2 * burst.heightM)) * size;
+  for (let i = 0; i < count; i++) {
+    const v = -widthM / 2 + i * SPRAY_SPACING_M;
+    out.push({
+      x: BOMBIE_X - ROLL_DIR[1] * v, y: tideM + 0.5, z: BOMBIE_Z + ROLL_DIR[0] * v,
+      vx: ROLL_DIR[0] * 4, vz: ROLL_DIR[1] * 4, nx: ROLL_DIR[0], nz: ROLL_DIR[1],
+      H, strength: Math.min(2, size), lip: 1, waveId: 0x40000 + burst.n, arc: i,
+    });
   }
   return out;
 }

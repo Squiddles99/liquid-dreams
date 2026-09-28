@@ -52,6 +52,10 @@ const setMoment = (name: string, description: string, c: Conditions, camera: Cam
   name, description, kind: 'set', moment: { conditions: c, camera, simTime, paused: true },
 });
 
+/** Sim times just after a Bombie break at these moments' own conditions (set-kind: they need them; found in the browser, ledgered). */
+const BOMBIE_LINEUP_SIM_S = 192.5;
+const BOMBIE_CLOSE_SIM_S = 131.5;
+
 export const REFERENCE_MOMENTS: ReferenceMoment[] = [
   ref('pre-dawn', '06:30 facing the land (east). Twilight glow where the sun will rise, dark sea, no sun artefacts.', conditions({ timeOfDay: 6.5 }), lineup(90, 4)),
   ref('first-sun', '07:35 facing out to sea (west), sun just up behind you over the land. First light on the swell lines.', conditions({ timeOfDay: 7 + 35 / 60 }), lineup(270, 3)),
@@ -110,6 +114,10 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
     conditions({ timeOfDay: 10.5 }), { mode: 'walk', position: [210, 4, -40], yawDeg: 0, pitchDeg: -4 }, 'view'),
   ref('up-the-dune', '08:45 standing at the toe, looking east up the first dune rise into the backlit heath: shrub clumps, glowing rims, the dune still shading the lower slope.',
     conditions({ timeOfDay: 8.75 }), { mode: 'walk', position: [234, 4, -38], yawDeg: 90, pitchDeg: 8 }, 'view'),
+  setMoment('bombie-from-the-lineup', "08:15, 8 ft, from the Womb's lineup facing south-west: a Bombie burst 450 m out, spray blowing back out to sea on the offshore.",
+    conditions({ swell: { sizeFt: 8 } }), lineup(223, 1), BOMBIE_LINEUP_SIM_S),
+  setMoment('bombie-close', '10 ft, from 30 m up and 120 m inshore of the Bombie: the burst over the reef, the white water rolling toward shore.',
+    conditions({ swell: { sizeFt: 10 } }), { mode: 'free', position: [-180, 30, 330], yawDeg: 270, pitchDeg: -10 }, BOMBIE_CLOSE_SIM_S),
 ];
 
 const cloneMoment = (m: Moment): Moment => ({
