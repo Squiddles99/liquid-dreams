@@ -123,8 +123,7 @@ View and set picks are visits: your saved swell, tide and camera stay untouched,
 
 The game plays the audio files under `music/` quietly under the ocean: one folder per album, tracks in the order of the number at the start of each file name (`1. …`, `2. …`, `10. …`). The Sound folder has the volumes, play/pause and next track; `M` mutes everything.
 
-`music/morning-of-the-earth/` is Andrew's personal copy of the *Morning Of The Earth* soundtrack, committed for his own use. **This repository must stay private**: making it public would publish a commercial recording.
-
+`music/morning-of-the-earth/` is Andrew's personal copy of the *Morning Of The Earth* soundtrack, committed for his own use. 
 ## Developers
 
 ```bash
