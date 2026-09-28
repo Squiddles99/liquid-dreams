@@ -106,6 +106,9 @@ export interface Plant {
   yTrue: number;
   yCoarse: number;
   yaw: number;
+  /** cos and sin of the yaw (the instance refresh lays out ~20,000 plants; precomputed once at placement). */
+  cosYaw: number;
+  sinYaw: number;
   /** [0, 1): the sway's phase. */
   seed: number;
   tint: [number, number, number];
@@ -168,7 +171,7 @@ export function cellPlants(ci: number, cj: number, land: LandHeight, rocks: Rock
     out.push({
       x, z, kind, shape: Math.floor(r(8) * PLANT_SHAPES) % PLANT_SHAPES, width, height,
       yTrue: h - drop, yCoarse: coarseMeshHeightAt(land, x, z) - drop,
-      yaw: r(9) * Math.PI * 2, seed: r(10),
+      yaw: r(9) * Math.PI * 2, cosYaw: Math.cos(r(9) * Math.PI * 2), sinYaw: Math.sin(r(9) * Math.PI * 2), seed: r(10),
       tint: [base[0] * vary * (1 + hue), base[1] * vary, base[2] * vary * (1 - hue)],
     });
   }

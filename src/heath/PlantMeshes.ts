@@ -52,8 +52,10 @@ export class PlantMeshes {
     }
   }
 
+  private readonly kindIndex = new Map<PlantKind, number>(PLANT_KINDS.map((k, i) => [k, i]));
+
   private index(lod: number, kind: PlantKind, shape: number): number {
-    return (lod * PLANT_KINDS.length + PLANT_KINDS.indexOf(kind)) * PLANT_SHAPES + shape;
+    return (lod * PLANT_KINDS.length + this.kindIndex.get(kind)!) * PLANT_SHAPES + shape;
   }
 
   /**
@@ -65,32 +67,42 @@ export class PlantMeshes {
     const counts = new Array<number>(this.meshes.length).fill(0);
     let drawn = 0, dropped = 0;
     for (const p of plants) {
-      const dist = Math.hypot(p.x - camX, p.z - camZ);
+      const dx = p.x - camX, dz = p.z - camZ;
+      const dist = Math.sqrt(dx * dx + dz * dz);
       const s = plantScale(dist);
       if (s <= 0) continue;
       const m = this.index(plantLod(dist), p.kind, p.shape);
       const i = counts[m];
-      if (i >= this.meshes[m].instanceMatrix.count) { dropped++; continue; }
+      const mesh = this.meshes[m];
+      if (i >= mesh.instanceMatrix.count) { dropped++; continue; }
       let w = 0;
       if (patch.on) {
-        const edge = 32 - Math.max(Math.abs(p.x - patch.cx), Math.abs(p.z - patch.cz));
-        const t = Math.min(1, Math.max(0, edge / 4));
-        w = t * t * (3 - 2 * t); // smoothstep(0, 4, edge): the patch's own height blend
+        const t = Math.min(1, Math.max(0, (32 - Math.max(Math.abs(p.x - patch.cx), Math.abs(p.z - patch.cz))) / 4));
+        w = t * t * (3 - 2 * t); // smoothstep(0, 4, distance inside the patch's edge): the patch's own height blend
       }
       const y = p.yCoarse + (p.yTrue - p.yCoarse) * w;
-      const sx = (p.width / 2) * s, sy = p.height * s, c = Math.cos(p.yaw), sn = Math.sin(p.yaw);
-      // Column-major: a yaw rotation about y, scaled.
-      this.meshes[m].instanceMatrix.array.set([c * sx, 0, -sn * sx, 0, 0, sy, 0, 0, sn * sx, 0, c * sx, 0, p.x, y, p.z, 1], i * 16);
-      this.tints[m].setXYZ(i, p.tint[0], p.tint[1], p.tint[2]);
-      this.seeds[m].setX(i, p.seed);
+      const sx = (p.width / 2) * s, sy = p.height * s, c = p.cosYaw, sn = p.sinYaw;
+      // Column-major, written in place (a refresh lays out ~20,000 plants): a yaw rotation about y, scaled.
+      const a = mesh.instanceMatrix.array as Float32Array, o = i * 16;
+      a[o] = c * sx; a[o + 1] = 0; a[o + 2] = -sn * sx; a[o + 3] = 0;
+      a[o + 4] = 0; a[o + 5] = sy; a[o + 6] = 0; a[o + 7] = 0;
+      a[o + 8] = sn * sx; a[o + 9] = 0; a[o + 10] = c * sx; a[o + 11] = 0;
+      a[o + 12] = p.x; a[o + 13] = y; a[o + 14] = p.z; a[o + 15] = 1;
+      const tint = this.tints[m].array as Float32Array;
+      tint[i * 3] = p.tint[0]; tint[i * 3 + 1] = p.tint[1]; tint[i * 3 + 2] = p.tint[2];
+      (this.seeds[m].array as Float32Array)[i] = p.seed;
       counts[m] = i + 1;
       drawn++;
     }
     this.meshes.forEach((mesh, k) => {
-      mesh.count = counts[k];
-      mesh.instanceMatrix.needsUpdate = true;
-      this.tints[k].needsUpdate = true;
-      this.seeds[k].needsUpdate = true;
+      const n = counts[k];
+      mesh.count = n;
+      // Upload only the instances in use (a far mesh's full buffer is 6,000 matrices).
+      for (const [attr, size] of [[mesh.instanceMatrix, 16], [this.tints[k], 3], [this.seeds[k], 1]] as const) {
+        attr.clearUpdateRanges();
+        if (n > 0) attr.addUpdateRange(0, n * size);
+        attr.needsUpdate = n > 0;
+      }
     });
     return { drawn, dropped };
   }
