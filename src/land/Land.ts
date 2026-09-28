@@ -5,7 +5,7 @@ import { type LandFile, decodeLandFile } from './landData';
 import { LandHeight } from './landHeight';
 import { buildLandMesh } from './landMesh';
 import { DEFAULT_LAND_PARAMS, type LandParams, beachProfileFor, normalizeLandParams } from './landParams';
-import { type LandLookUniforms, createLandLookUniforms, createLandMaterial } from './landShading';
+import { type LandLookUniforms, type PatchHole, createLandLookUniforms, createLandMaterial } from './landShading';
 import { SkylineTable } from './SkylineTable';
 import { SunlightMap } from './SunlightMap';
 import { buildMarchHeights } from './sunlight';
@@ -35,10 +35,12 @@ export class Land {
   version = 0;
   private file: LandFile | null = null;
   private readonly params: LandParams = { ...DEFAULT_LAND_PARAMS };
-  private readonly look: LandLookUniforms = createLandLookUniforms();
+  /** The look uniforms (the Land folder), shared with the fine ground patch. */
+  readonly look: LandLookUniforms = createLandLookUniforms();
   private readonly sky: Sky;
   private sunVisibility: ((xz: N) => N) | undefined;
   private wetHeight: ((xz: N) => N) | undefined;
+  private hole: PatchHole | undefined;
 
   constructor(sky: Sky) {
     this.sky = sky;
@@ -60,9 +62,15 @@ export class Land {
     this.rebuildMaterial();
   }
 
+  /** The fine ground patch's square, cut out of this mesh while the patch shows (Phase 4c-1 §3.2); rebuilds the material. */
+  setHole(h: PatchHole): void {
+    this.hole = h;
+    this.rebuildMaterial();
+  }
+
   private rebuildMaterial(): void {
     (this.mesh.material as THREE.Material).dispose();
-    this.mesh.material = createLandMaterial(this.sky, this.look, { sunVisibility: this.sunVisibility, wetHeight: this.wetHeight });
+    this.mesh.material = createLandMaterial(this.sky, this.look, { sunVisibility: this.sunVisibility, wetHeight: this.wetHeight, hole: this.hole });
   }
 
 
