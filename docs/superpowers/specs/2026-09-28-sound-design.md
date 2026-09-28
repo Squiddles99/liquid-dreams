@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-28
 **Authors:** Andrew and Claude
-**Status:** Draft for Andrew's review, on branch `phase-5-sound`.
+**Status:** Approved by Andrew (2026-09-28); built on branch `phase-5-sound` (Native execution). See §8 for the as-built notes and `docs/superpowers/gallery/phase-5/sound/`.
 **Builds on:**
 - **Phase 3:** the spray system's break emitters (`whitewater/sprayEmitters.ts`: `breakEmitters`, `impactBirths`) and the Womb's breaking.
 - **Phase 4b** (`2026-09-28-the-waterline-design.md`): the surf model (`surf/surfModel.ts`: the coast arrivals, `swashLevel`).
@@ -183,3 +183,26 @@ On the RTX 4060 Laptop, pane visible:
 - Birds and other wildlife.
 - Ducking the music on big sets.
 - Reverb from the cliffs.
+
+## 8. As built
+
+- **Files:**
+  - the model is split three ways: `hits.ts` (the hits), `levels.ts` (the continuous voices) and `soundModel.ts` (the per-frame step);
+  - `SoundSystem.ts` is the App's single entry point (the gesture start, visibility, model → engine, the music);
+  - `musicFiles.ts` holds the build-time glob.
+- **Hits** (§3.2, sound 1):
+  - **From emitters, not births:** a hit comes from the impact emitters, not the particle births. Each crest station (wave and arc) makes a hit the first time it lands; it lands for 7 ticks.
+  - **Merging and pacing:** new stations in one tick within 8 m merge into one hit, and one wave's hits come at most every 0.3 s. A peeling lip booms along its length rather than crackling.
+  - **The voice cap:** with 16 hits sounding (24 voices less the 8 continuous ones), the quietest new hits are dropped; the oldest are already fading.
+  - **Seeking:** a jump back in time forgets what was heard, and each frame listens to at most the last 10 ticks.
+- **The pebbles:** any rock within 20 m counts, the shore platform's and the toe's, since the swash reaches the shore rocks.
+- **The shore wash** is placed mid-platform abreast of the camera. Its level swells as each wave bursts on the platform edge, over a steady floor from the surf's mean height.
+- **Measured cost:** `SoundSystem.update` means 0.097 ms at the lineup and 0.077 ms walking the heath (medians 0.1 ms and 0).
+  - Frames with hits (about 1%) cost 0.3 ms for one hit and up to 1.1 ms for four.
+  - The plant-density count, redone every 2 m over about 35,000 plants, peaks at 1.6 ms.
+  - The four sound self-tests pass (57/57 in all).
+- **Rulings made while building** (the full list is in the final report):
+  - the per-hit cost measured 0.2–0.3 ms, not the 0.8 ms first estimated, so hits build their nodes per hit, with no pooled panners;
+  - the hit-cost self-test uses a median under 1 ms (a mean flaked on the laptop);
+  - one existing heath test (`plants.test.ts`, the 2 km cache flight) times out under full-suite load on main too. It's flagged as a separate task.
+- **Limitation:** with the Impact folder's `amount` at 0, the spray system emits no impact emitters, so there are no lip hits and no roar.
