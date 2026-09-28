@@ -18,6 +18,9 @@ import { Land } from '../land/Land';
 import { SkylineTable } from '../land/SkylineTable';
 import { SunlightMap } from '../land/SunlightMap';
 import { CoastalSurf } from '../surf/CoastalSurf';
+import { GroundPatch } from '../beach/GroundPatchMesh';
+import { Rocks } from '../beach/RockMeshes';
+import { createLandLookUniforms } from '../land/landShading';
 
 type N = any;
 
@@ -45,6 +48,8 @@ function stubRenderer(): N {
     backend: {
       utils: { getTextureSampleData: () => ({ primarySamples: 1 }) },
       isWebGPUBackend: true, device: { features: new Set(), limits: {} }, compatibilityMode: false, hasFeature: () => false, getClearColor: () => null,
+      // WebGPU's default maxUniformBufferBindingSize (instanced meshes size their matrix buffer against it).
+      capabilities: { getUniformBufferLimit: () => 65536 },
     },
     hasCompatibility: () => false,
     hasFeature: () => false,
@@ -170,6 +175,21 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
       for (const stage of [w1.vertex, w1.fragment]) {
         expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
         expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
+      }
+    });
+    it('the ground patch, the rocks and the land with its hole stay within the limits', () => {
+      const patch = new GroundPatch(sky, createLandLookUniforms(), { sunVisibility: (xz) => sunlight.visibilityNode(xz) });
+      const rocks = new Rocks(sky, (xz) => sunlight.visibilityNode(xz));
+      const land = new Land(sky);
+      land.setSunVisibility((xz) => sunlight.visibilityNode(xz));
+      land.setHole(patch.hole);
+      for (const [label, w] of [['patch', renderWgsl(patch.mesh)], ['rocks', renderWgsl(rocks.meshes[0] as unknown as THREE.Mesh)], ['land', renderWgsl(land.mesh)]] as const) {
+        console.log(`${label}: vertex sampled ${sampledTextures(w.vertex)} uniform ${uniformBuffers(w.vertex)}, fragment sampled ${sampledTextures(w.fragment)} uniform ${uniformBuffers(w.fragment)}`);
+        for (const stage of [w.vertex, w.fragment]) {
+          expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+          expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
+          expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
+        }
       }
     });
     it('the ribbon, the spray and the land with the sunlight map stay within the limits', () => {
