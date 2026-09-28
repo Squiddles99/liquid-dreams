@@ -143,9 +143,13 @@ export class Seabed {
     return texture(this.tex, uv).level(float(0)); // three typings gap: level() wants a node
   }
 
-  /** Seabed height y (m) at world xz; outside the map, the coast profile shifted with the land's waterline. */
-  bedHeightNode(xz: N): N {
-    const bed = select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).x, max(depthBgNode(xz.x.sub(this.waterlineShiftNode(xz.y))).negate(), moundYNode(xz)));
+  /**
+   * Seabed height y (m) at world xz; outside the map, the coast profile shifted with the land's waterline, and Ellensbrook
+   * Bombie's mound unless `withMound` is false (the water model's swell depth: the mound mustn't change the sea).
+   */
+  bedHeightNode(xz: N, withMound = true): N {
+    const bg = depthBgNode(xz.x.sub(this.waterlineShiftNode(xz.y))).negate();
+    const bed = select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).x, withMound ? max(bg, moundYNode(xz)) : bg);
     const dSea = float(SHORE_X).add(this.waterlineShiftNode(xz.y)).sub(xz.x);
     // Landward of the waterline, the beach (Phase 4b §3.3): the swash is a thin film over sand, not half a metre of water.
     return select(dSea.lessThan(0.0), max(bed, beachBedNode(dSea.negate())), bed);
@@ -154,6 +158,14 @@ export class Seabed {
   /** Still-water depth (m) including the tide, never negative. */
   waterDepthNode(xz: N): N {
     return max(this.tide.sub(this.bedHeightNode(xz)), 0.0);
+  }
+
+  /**
+   * The depth the water model's swell sees (its long-swell fade and its clamp to the bed): the bed without the Bombie's
+   * mound, which is atmospheric (final review I3: over the mound the long swell faded out and the sea flattened).
+   */
+  swellDepthNode(xz: N): N {
+    return max(this.tide.sub(this.bedHeightNode(xz, false)), 0.0);
   }
 
   /**

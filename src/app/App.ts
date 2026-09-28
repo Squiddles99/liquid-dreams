@@ -5,7 +5,7 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '..
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, peakFace } from '../breaker/peakFace';
 import { type ReefField, sampleField } from '../breaker/reefField';
-import { BOMBIE_X, BOMBIE_Z, BURST_LIFE_S, type BombieWaves, burstAt, burstWidthM } from '../bombie/bombieModel';
+import { BOMBIE_X, BOMBIE_Z, type BombieWaves, burstAt, burstWidthM, burstsAt, setIndicesFrom, setWindow } from '../bombie/bombieModel';
 import { BombieMesh } from '../bombie/BombieMesh';
 import { surferFeetToHs } from '../conditions/units';
 import { DEFAULT_BOMBIE_PARAMS, type BombieParams, normalizeBombieParams } from '../bombie/bombieParams';
@@ -492,7 +492,9 @@ export class App {
     if (!this.bombieParams.enabled || !this.field) return null;
     if (this.bombieTauField !== this.field) { this.bombieTauS = sampleField(this.field, BOMBIE_X, BOMBIE_Z).tau; this.bombieTauField = this.field; } // Review Focus 3
     const T = this.conditions.swell.periodS;
-    const setIndices = new Set(wavesBetween(t - BURST_LIFE_S - 2 * T, t + T, this.conditions, this.setParams).map((e) => Math.round(e.arrivalS / T)));
+    // The Womb's set waves around the bursting waves' peak arrivals (final review I1: the window was centred on t).
+    const win = setWindow(t, this.bombieTauS!, T);
+    const setIndices = setIndicesFrom(wavesBetween(win.t0, win.t1, this.conditions, this.setParams), T);
     return { tauS: this.bombieTauS!, periodS: T, hs: surferFeetToHs(this.conditions.swell.sizeFt), thresholdHs: surferFeetToHs(this.bombieParams.thresholdFt), seed: this.conditions.seed, setIndices };
   }
 
@@ -1104,9 +1106,11 @@ export class App {
     this.stepFoam(events);
     this.stepSpray();
     this.updateUnderwater();
-        this.bombieBurst = burstAt(this.clock.simTime, this.bombieWaves(this.clock.simTime));
-        const bw = this.bombieBurst ? burstWidthM(this.bombieBurst.heightM, surferFeetToHs(this.bombieParams.thresholdFt), this.bombieParams.size) : 0;
-        this.bombie.show(this.bombieBurst && !this.underwater ? { ageS: this.bombieBurst.ageS, widthM: bw, heightM: this.bombieBurst.heightM } : null);
+    // The Bombie (4c-3): its latest two bursts (final review I4), hidden underwater.
+    const bursts = burstsAt(this.clock.simTime, this.bombieWaves(this.clock.simTime));
+    this.bombieBurst = bursts[0] ?? null;
+    const thresholdHs = surferFeetToHs(this.bombieParams.thresholdFt);
+    this.bombie.show(this.underwater ? [] : bursts.map((b) => ({ ageS: b.ageS, widthM: burstWidthM(b.heightM, thresholdHs, this.bombieParams.size), heightM: b.heightM })));
     this.updateRibbon(events);
     // The ribbon is single-sided and the sheet is cut away under it only above water: hidden underwater.
     if (this.underwater) this.ribbon.mesh.visible = false;
