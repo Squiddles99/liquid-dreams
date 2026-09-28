@@ -1,6 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { SHORE_X } from '../seabed/coastProfile';
 import { shoreReefWidth } from '../seabed/shoreReef';
+import { beachHeight } from '../land/landHeight';
 
 /**
  * The coastal surf (spec 2026-09-28-the-waterline-design.md): one breaker per swell period at the shore platform's
@@ -10,7 +11,10 @@ import { shoreReefWidth } from '../seabed/shoreReef';
 export const SURF_Z0 = -15000;
 export const SURF_DZ = 25;
 export const SURF_NZ = 1201;
-export const SURF_TABLE = 256;
+/** The height table's length: along the real coast τ spans 1300–2500 s, so short periods need hundreds of waves (final review I1). */
+export const SURF_TABLE = 2048;
+/** Bores evaluated per pixel: a bore takes up to ~37 s from the platform's edge to a low tide's water edge, so at T = 4 s up to 10 are on the platform (final review I3). */
+export const MAX_BORES = 10;
 export const BORE_SPEED_MS = 3.5;
 export const BORE_DECAY = 0.6;
 export const H_REF_M = 1.5;
@@ -41,7 +45,7 @@ export const LACE_WEIGHT = 0.25;
 /** The time-average of a bore's front and trail over the zone, per unit strength (the band at a distance). */
 export const DUTY = 0.3;
 /** The widest platform plus a margin (m): how long a bore can take to reach the sand, for the tables' history. */
-export const MAX_PLATFORM_M = 100;
+export const MAX_PLATFORM_M = 130;
 
 export interface SurfParams {
   /** Scales every breaker's height. */
@@ -129,32 +133,47 @@ export interface SurfState {
   table: SurfTable;
   periodS: number;
   enabled: boolean;
+  /** Where the still water meets the beach or seabed, metres seaward of the land's waterline (waterEdgeOffset(tide)). */
+  edgeM: number;
+}
+
+/**
+ * Where the tide's still water meets the land (final review I2): metres seaward of the waterline x_s (negative up the
+ * beach), solving beachHeight(−d) = tide (the beach profile landward, the coast profile's seabed seaward).
+ */
+export function waterEdgeOffset(tideM: number): number {
+  let lo = -55, hi = 600; // beachHeight(−d) falls as d grows
+  for (let k = 0; k < 60; k++) {
+    const mid = (lo + hi) / 2;
+    if (beachHeight(-mid) > tideM) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
 }
 
 export function boreStrength(H: number, df: number, W: number): number {
   return (H / H_REF_M) * (1 - BORE_DECAY * (1 - df / W));
 }
 
-const zoneOf = (d: number, W: number): number => smoothstep(-SURF_BEHIND_M, 0, d) * (1 - smoothstep(W, W + 10, d));
+const zoneOf = (d: number, W: number, e: number): number => smoothstep(e - SURF_BEHIND_M, e, d) * (1 - smoothstep(W, W + 10, d));
 
 /** The surf's foam weight d m seaward of the waterline at z, time t (CoastalSurf.foamNode's near branch). */
 export function surfFoam(d: number, z: number, t: number, s: SurfState): number {
   if (!s.enabled) return 0;
-  const W = shoreReefWidth(z);
-  if (d < -SURF_BEHIND_M || d > W + SURF_AHEAD_M) return 0;
+  const W = shoreReefWidth(z), e = s.edgeM;
+  if (d < e - SURF_BEHIND_M || d > W + SURF_AHEAD_M) return 0;
   const tau = tableAt(s.tau, z), T = s.periodS, nL = Math.floor((t - tau) / T);
   let foam = 0, recent = 0;
-  for (let k = 0; k < 3; k++) {
+  for (let k = 0; k < MAX_BORES; k++) {
     const n = nL - k, H = heightOf(s.table, n), age = t - (n * T + tau), df = W - BORE_SPEED_MS * age;
     if (k < 2) recent += (0.5 * H) / H_REF_M;
-    if (df < 0) continue;
-    const str = boreStrength(H, df, W);
+    if (df < e) continue; // the bore has reached the water's edge (it is swash now)
+    const str = boreStrength(H, df - e, W - e);
     const front = Math.exp(-(((d - df) / FRONT_M) ** 2));
     const trail = d > df ? TRAIL_WEIGHT * Math.exp(-(d - df) / TRAIL_M) : 0;
     const burst = age < BURST_S ? (1 - age / BURST_S) * Math.exp(-(((d - W) / 6) ** 2)) : 0;
     foam = Math.max(foam, str * (FRONT_GAIN * front + trail + burst));
   }
-  return Math.min(1, Math.max(foam, LACE_WEIGHT * recent * zoneOf(d, W)));
+  return Math.min(1, Math.max(foam, LACE_WEIGHT * recent * zoneOf(d, W, e)));
 }
 
 /** The grazing boost for a view ray whose y component is viewY. */
@@ -165,7 +184,7 @@ export function grazingBoost(viewY: number): number {
 /** The steady band a distant pixel shows (the time-average, × the grazing boost), CoastalSurf.foamNode's far branch. */
 export function surfFoamFar(d: number, z: number, s: SurfState, viewY = 1): number {
   if (!s.enabled) return 0;
-  return Math.min(1, ((DUTY * s.table.meanHeight) / H_REF_M) * zoneOf(d, shoreReefWidth(z)) * grazingBoost(viewY));
+  return Math.min(1, ((DUTY * s.table.meanHeight) / H_REF_M) * zoneOf(d, shoreReefWidth(z), s.edgeM) * grazingBoost(viewY));
 }
 
 export function swashShape(u: number): number {
@@ -177,8 +196,8 @@ export function runupOf(H: number): number {
   return H > 0.01 ? RUNUP_PER_H * H + RUNUP_BASE_M : 0;
 }
 
-/** The time a wave's bore reaches the sand at z (its break time plus the crossing). */
-const arrivalOffset = (s: SurfState, z: number): number => tableAt(s.tau, z) + shoreReefWidth(z) / BORE_SPEED_MS;
+/** The time a wave's bore reaches the water's edge at z (its break time plus the crossing to the tide's edge). */
+const arrivalOffset = (s: SurfState, z: number): number => tableAt(s.tau, z) + (shoreReefWidth(z) - s.edgeM) / BORE_SPEED_MS;
 
 /** The swash's height above the tide at the shoreline at z: the max of the two latest arrivals. */
 export function swashLevel(z: number, t: number, s: SurfState): number {
@@ -204,7 +223,7 @@ export function wetLevel(z: number, t: number, s: SurfState): number {
   return w;
 }
 
-/** The share of the swash level the water surface takes d m seaward of the waterline (all of it on the beach). */
-export function swashLift(d: number): number {
-  return 1 - smoothstep(0, LIFT_REACH_M, d);
+/** The share of the swash level the water surface takes d m seaward of the waterline: all of it up the beach from the water's edge e. */
+export function swashLift(d: number, e: number): number {
+  return 1 - smoothstep(e, e + LIFT_REACH_M, d);
 }

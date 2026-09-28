@@ -211,7 +211,7 @@ export class OceanSurface {
         // The swash's edge (Phase 4b §3.3): lifted water under 0.1 m deep over the beach near the shore shows a foam lace.
         const swashLace = options.surf
           ? float(1.0).sub(smoothstep(0.02, 0.1, positionWorld.y.sub(model.seabed.bedHeightNode(vBaseXZ))))
-            .mul(float(1.0).sub(smoothstep(0.0, 10.0, options.surf.dSeaNode(vBaseXZ, model.seabed))))
+            .mul(float(1.0).sub(smoothstep(0.0, 10.0, options.surf.dEdgeNode(vBaseXZ, model.seabed))))
             .mul(smoothstep(0.01, 0.05, options.surf.swashLevelNode(vBaseXZ.y))).mul(0.8)
           : float(0.0);
     const foamWeight = max(sheetFoamWeight(setFoam, foamOverlay), max(surfFoam, swashLace));

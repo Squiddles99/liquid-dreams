@@ -83,10 +83,10 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: { sunVis
   const rest = max(float(1.0).sub(hF).sub(rF), 0.0);
   const sandPair = cover.x.add(cover.y);
   const wetShare = select(sandPair.lessThan(1e-3), float(0.0), cover.x.div(max(sandPair, 1e-3)));
-  // The wet line (Phase 4b §3.4): sand below the recent runup is wet; without the surf, the cover's intertidal share.
-  const wetness = opts.wetHeight
-    ? float(1.0).sub(smoothstep(opts.wetHeight(p.xz).sub(0.02), opts.wetHeight(p.xz).add(0.12), p.y))
-    : wetShare;
+  // The wet line (Phase 4b §3.4): sand below the recent runup is wet; the intertidal band (the cover's wet share) stays damp
+  // whatever the swash, so a low tide's exposed flat reads wet (final review I2). Without the surf, the cover's share alone.
+  const wetH = opts.wetHeight ? opts.wetHeight(p.xz) : null;
+  const wetness = wetH ? max(float(1.0).sub(smoothstep(wetH.sub(0.02), wetH.add(0.12), p.y)), wetShare.mul(0.8)) : wetShare;
   const albedo = wet.mul(wetness.mul(rest)).add(dry.mul(float(1.0).sub(wetness).mul(rest))).add(rock.mul(rF)).add(heath.mul(hF));
 
   const vis = sunVisibility ? sunVisibility(p.xz) : float(1.0);
