@@ -210,5 +210,9 @@ The limits test still passes (≤ 8 storage buffers, ≤ 16 sampled textures, �
 - **App:**
   - the rocks are relaid every 2 m of camera movement;
   - a walk link opened before the land loads is walked into once the ground exists.
+- **Final review fixes:**
+  - **Walk → lineup (§3.1):** you're set down in the water where you stand only if there's still water there. From dry land you go back to the last lineup spot, so the lineup's eye can't end up under the sand.
+  - **The patch edge:** the patch's heights blend over its outer 4 m into the coarse land mesh's own surface (`coarseMeshHeightAt`, an exact CPU mirror of the mesh), so the two meet with no crack or step on any of the mesh's 2–64 m cells. Rocks sit below both surfaces.
+  - **Settings:** rock density from saved settings reaches the rocks.
 - **Cost (measured):** patch 0.33 ms and rocks 0.13 ms GPU; a patch recentre about 1.7 ms CPU; a rock relay 0.45 ms warm.
 
