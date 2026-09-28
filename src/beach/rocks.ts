@@ -142,7 +142,7 @@ export function rockScale(distance: number): number {
 
 /** The rocks around the camera, cells cached; and the rock tops for standing on. */
 export class RockField {
-  private readonly cells = new Map<string, Rock[]>();
+  private readonly cells = new Map<number, Rock[]>();
   private readonly land: LandHeight;
   private density: number;
 
@@ -156,7 +156,7 @@ export class RockField {
   }
 
   private cell(ci: number, cj: number): Rock[] {
-    const key = `${ci},${cj}`;
+    const key = (ci + 0x8000) * 0x10000 + (cj + 0x8000); // cells within ±131 km: unique
     let c = this.cells.get(key);
     if (!c) { c = cellRocks(ci, cj, this.land, this.density); this.cells.set(key, c); }
     return c;
@@ -166,13 +166,13 @@ export class RockField {
     const out: Rock[] = [];
     const n = Math.ceil(ROCK_RADIUS_M / ROCK_CELL_M), ci0 = Math.floor(camX / ROCK_CELL_M), cj0 = Math.floor(camZ / ROCK_CELL_M);
     for (let dj = -n; dj <= n; dj++) {
-      for (let di = -n; di <= n; di++) {
-        const ci = ci0 + di, cj = cj0 + dj;
-        const cx = (ci + 0.5) * ROCK_CELL_M, cz = (cj + 0.5) * ROCK_CELL_M;
-        if (Math.hypot(cx - camX, cz - camZ) > ROCK_RADIUS_M) continue;
-        // Cells well outside the rock bands are skipped before any height lookup (cellRocks checks each point exactly).
-        const d = cx - this.land.waterlineAt(cz);
-        if (d < ROCK_BAND_M[0] - ROCK_CELL_M || d > ROCK_BAND_M[1] + ROCK_CELL_M) continue;
+      const cj = cj0 + dj, cz = (cj + 0.5) * ROCK_CELL_M, dz = cz - camZ;
+      const reach = ROCK_RADIUS_M * ROCK_RADIUS_M - dz * dz;
+      if (reach < 0) continue;
+      // Only the row's cells inside the rock bands (cellRocks checks each point exactly) and within the radius.
+      const xs = this.land.waterlineAt(cz), half = Math.sqrt(reach);
+      const x0 = Math.max(camX - half, xs + ROCK_BAND_M[0] - ROCK_CELL_M), x1 = Math.min(camX + half, xs + ROCK_BAND_M[1] + ROCK_CELL_M);
+      for (let ci = Math.ceil(x0 / ROCK_CELL_M - 0.5); (ci + 0.5) * ROCK_CELL_M <= x1; ci++) {
         for (const r of this.cell(ci, cj)) out.push(r);
       }
     }

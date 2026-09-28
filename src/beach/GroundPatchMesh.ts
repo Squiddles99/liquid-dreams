@@ -120,6 +120,9 @@ export class GroundPatch {
     this.mesh = new THREE.Mesh(patchGeometry(), m);
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
+    // Drawn before the land and the water: the coarse land discards its pixels under the patch, so without the patch's
+    // depth already there the land (and the water beneath the beach) would shade them first (0.3–0.6 ms, measured).
+    this.mesh.renderOrder = -1;
   }
 
   /** The grid's height at world xz (bilinear between 1 m samples, clamped to the square), without the relief. */

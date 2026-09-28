@@ -89,8 +89,10 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
   // The patch's sand up close (Phase 4c-1 §3.2): fine grit and sparse shell flecks, faded out by 20 m (finer than a pixel
   // beyond; the coarse land never gets them).
   const near = float(1.0).sub(smoothstep(8.0, 20.0, dist));
-  const grit = opts.patch ? mx_noise_float(vec3(p.x.mul(60.0), p.z.mul(60.0), 3.3)).mul(0.04).mul(near) : float(0.0);
-  const flecks = opts.patch ? smoothstep(0.93, 0.97, mx_noise_float(vec3(p.x.mul(25.0), p.z.mul(25.0), 6.1)).mul(0.5).add(0.5)).mul(0.25).mul(near) : float(0.0);
+  // One noise for both (the patch fills much of the screen, so each noise costs): grit its low part, flecks its peaks.
+  const gritN = opts.patch ? mx_noise_float(vec3(p.x.mul(60.0), p.z.mul(60.0), 3.3)) : float(0.0);
+  const grit = gritN.mul(0.04).mul(near);
+  const flecks = opts.patch ? smoothstep(0.62, 0.72, gritN).mul(0.25).mul(near) : float(0.0);
   const dry = DRY_SAND.mul(ripple.add(0.97).add(grit).add(flecks)).mul(u.sandBrightness);
   const wet = WET_SAND.mul(n1.sub(0.5).mul(0.1).mul(fade).add(1.0)).mul(u.sandBrightness);
   const rock = mix(mix(ROCK_RUST, ROCK_GREY, det.y), ROCK_WEED, det.z).mul(mix(float(0.85), n1.mul(0.35).add(0.7), fade));
@@ -124,9 +126,10 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
   // (north–south), wavering with noise, flattened where the sand is wet; faded out by 30 m (they'd alias beyond).
   let n: N = n0;
   if (opts.patch) {
-    const phase = p.x.add(mx_noise_float(vec3(p.x.div(3.0), p.z.div(3.0), 8.8)).mul(0.6)).mul((2 * Math.PI) / 0.12);
+    // The wobble and the patches reuse the heath's 4 m and 8 m noises (n2, n3): no new noise per pixel.
+    const phase = p.x.add(n2.mul(1.2)).mul((2 * Math.PI) / 0.12);
     // Strength varies in patches (the wind leaves some sand smooth): 0.2–0.8 cm crest to trough.
-    const patchy = mx_noise_float(vec3(p.x.div(6.0), p.z.div(6.0), 9.4)).mul(0.5).add(0.5).mul(0.6).add(0.2);
+    const patchy = n3.mul(0.6).add(0.2);
     const slope = cos(phase).mul(patchy).mul(0.004 * ((2 * Math.PI) / 0.12)).mul(float(1.0).sub(wetness)).mul(rest).mul(float(1.0).sub(smoothstep(12.0, 30.0, dist)));
     n = normalize(n0.sub(vec3(slope, 0.0, 0.0)));
   }
