@@ -42,7 +42,11 @@ import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSe
 import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FoamField } from '../whitewater/FoamField';
 import { SprayParticles } from '../whitewater/SprayParticles';
-import { DEFAULT_SPRAY_PARAMS, type SprayParams, normalizeSprayParams, sprayBirths, sprayEmitters, windToVector } from '../whitewater/sprayEmitters';
+import {
+  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
+  impactBirths, normalizeImpactParams, normalizeSprayParams, sprayBirths, sprayCanEmit, windToVector,
+} from '../whitewater/sprayEmitters';
+import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { showOverlay } from './overlay';
@@ -88,6 +92,7 @@ export class App {
   readonly breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
   readonly foamParams: FoamParams = { ...DEFAULT_FOAM_PARAMS };
   readonly sprayParams: SprayParams = { ...DEFAULT_SPRAY_PARAMS };
+  readonly impactParams: ImpactParams = { ...DEFAULT_IMPACT_PARAMS };
   readonly setStatus = { nextSet: '', wave: '', face: '' };
   /** The look as constructed (deep clones): what "Reset settings" and default mode restore. */
   private readonly lookDefaults: DevLookParams = cloneLook(this.lookParams());
@@ -122,6 +127,11 @@ export class App {
   private foamOnlyTimer: number | undefined;
   /** Offshore spray off the throwing lips (spec 2026-09-27-offshore-spray-design.md). */
   readonly spray = new SprayParticles(this.sky);
+  /** The impact explosion where each lip lands (spec 2026-09-28-impact-explosion-design.md), on the same particle system. */
+  readonly impact = new SprayParticles(this.sky, IMPACT_KIND);
+  private impactTimer: number | undefined;
+  /** This frame's emitters per tick, shared by the spray and the explosion (their replays cover different tick counts). */
+  private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[] }>();
   private readonly fieldClient = new ReefFieldClient();
   private fieldKey = '';
   /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
@@ -185,13 +195,15 @@ export class App {
     this.scene.add(this.oceanSurface.mesh);
     this.scene.add(this.ribbon.mesh);
     this.scene.add(this.spray.mesh);
+    this.impact.setMaxLifeS(IMPACT_MAX_LIFE_S);
+    this.scene.add(this.impact.mesh);
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
     this.perf = new PerfOverlay(renderer);
     this.panel = new DevPanel(
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
         picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
-        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
+        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
         onConditions: () => this.onConditionsEdited(),
@@ -216,6 +228,7 @@ export class App {
           this.oceanSurface.setOverlays(this.overlays);
           this.ribbon.setOverlays(this.overlays);
           this.spray.setOverlays(this.overlays);
+          this.impact.setOverlays(this.overlays);
         },
         onCallSet: () => this.callSetNow(),
         onBreak: () => {
@@ -230,6 +243,11 @@ export class App {
           this.spray.setParams(this.sprayParams);
           this.panel.refresh();
           this.scheduleSprayReplay();
+        },
+        onImpact: () => {
+          normalizeImpactParams(this.impactParams);
+          this.panel.refresh();
+          this.scheduleImpactReplay();
         },
         onFoam: () => {
           normalizeFoamParams(this.foamParams);
@@ -374,27 +392,64 @@ export class App {
     return { ms, steps };
   }
 
-  /** This frame's spray ticks: each tick's emitters (the lip tips mid-throw at t_k) give its births (spec §3.1). */
+  /**
+   * This frame's particle ticks: each tick's emitters (the lip tips mid-throw and the landing points at t_k, one shared
+   * trace) give the spray's and the explosion's births.
+   */
   private stepSpray(): void {
+    this.tickEmitters.clear();
     const w = windToVector(this.conditions.wind.directionDeg), s = this.conditions.wind.speedMs;
     this.spray.setWind(w[0] * s, w[1] * s);
+    this.impact.setWind(w[0] * s, w[1] * s);
     this.spray.advance(this.renderer, this.clock.simTime, (k) => this.sprayBirthsAt(k));
+    this.impact.advance(this.renderer, this.clock.simTime, (k) => impactBirths(this.emittersAt(k).impact, k));
+  }
+
+  /** Tick k's emitters, computed once per frame (both systems ask for the same ticks). */
+  private emittersAt(k: number): { spray: SprayEmitter[]; impact: ImpactEmitter[] } {
+    let e = this.tickEmitters.get(k);
+    if (!e) {
+      const t = tickTime(k);
+      e = breakEmitters({
+        field: this.field, ctx: this.waveCtx, events: wavesNear(t, this.conditions, this.setParams), t, params: this.breakParams,
+        minHeightM: this.ribbonMinHeightM, wind: { speedMs: this.conditions.wind.speedMs, fromDeg: this.conditions.wind.directionDeg },
+        tideM: this.conditions.tideM, amount: this.sprayParams.amount, impactAmount: this.impactParams.amount,
+      });
+      this.tickEmitters.set(k, e);
+    }
+    return e;
   }
 
   private sprayBirthsAt(k: number) {
-    const t = tickTime(k);
-    const emitters = sprayEmitters({
-      field: this.field, ctx: this.waveCtx, events: wavesNear(t, this.conditions, this.setParams), t, params: this.breakParams,
-      minHeightM: this.ribbonMinHeightM, wind: { speedMs: this.conditions.wind.speedMs, fromDeg: this.conditions.wind.directionDeg },
-      tideM: this.conditions.tideM, amount: this.sprayParams.amount,
+    // When the spray can't emit, don't compute the tick's emitters for it: on a calm day its replay would run the
+    // shared trace for all its ticks just for the explosion's sake (final review).
+    if (!sprayCanEmit(this.sprayParams.amount, this.conditions.wind.speedMs)) return [];
+    return sprayBirths(this.emittersAt(k).spray, k, this.sprayParams);
+  }
+
+  /** Dev (3c plan Task 4): a forced impact replay, timed to the GPU's completion; cpuMs is the emitter work alone. */
+  async measureImpactReplay(): Promise<{ ms: number; steps: number; cpuMs: number }> {
+    const device = (this.renderer.backend as unknown as { device: GPUDevice }).device;
+    await device.queue.onSubmittedWorkDone();
+    this.tickEmitters.clear();
+    let cpuMs = 0;
+    this.impact.invalidate();
+    const start = performance.now();
+    const steps = this.impact.advance(this.renderer, this.clock.simTime, (k) => {
+      const c0 = performance.now();
+      const b = impactBirths(this.emittersAt(k).impact, k);
+      cpuMs += performance.now() - c0;
+      return b;
     });
-    return sprayBirths(emitters, k, this.sprayParams);
+    await device.queue.onSubmittedWorkDone();
+    return { ms: performance.now() - start, steps, cpuMs };
   }
 
   /** Dev (plan Task 5): a forced spray replay, timed to the GPU's completion; cpuMs is the emitter work alone. */
   async measureSprayReplay(): Promise<{ ms: number; steps: number; cpuMs: number }> {
     const device = (this.renderer.backend as unknown as { device: GPUDevice }).device;
     await device.queue.onSubmittedWorkDone();
+    this.tickEmitters.clear();
     let cpuMs = 0;
     this.spray.invalidate();
     const start = performance.now();
@@ -451,6 +506,7 @@ export class App {
   private invalidateParticles(): void {
     this.foamField.invalidate();
     this.spray.invalidate();
+    this.impact.invalidate();
   }
 
   /** Slider edits change the foam the map would hold: replay once the drag stops (Review Focus 3), not on every event. */
@@ -469,6 +525,12 @@ export class App {
   private scheduleSprayReplay(): void {
     clearTimeout(this.sprayTimer);
     this.sprayTimer = window.setTimeout(() => this.spray.invalidate(), SPECTRUM_REBUILD_DEBOUNCE_MS);
+  }
+
+  /** Impact slider edits replay only the explosion. */
+  private scheduleImpactReplay(): void {
+    clearTimeout(this.impactTimer);
+    this.impactTimer = window.setTimeout(() => this.impact.invalidate(), SPECTRUM_REBUILD_DEBOUNCE_MS);
   }
 
   private rebuildSpectrumIfNeeded(force: boolean): void {
@@ -552,7 +614,7 @@ export class App {
     return {
       spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams,
       maxFps: this.frameLimiter.maxFps, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams, overlays: this.overlays,
-      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams,
+      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams,
     };
   }
 
@@ -571,6 +633,7 @@ export class App {
     assignParams(this.breakParams, look.breaking);
     assignParams(this.foamParams, look.foam);
     assignParams(this.sprayParams, look.spray);
+    assignParams(this.impactParams, look.impact);
   }
 
   /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
@@ -597,6 +660,8 @@ export class App {
     normalizeSprayParams(this.sprayParams);
     this.spray.setParams(this.sprayParams);
     this.spray.setOverlays(this.overlays);
+    normalizeImpactParams(this.impactParams);
+    this.impact.setOverlays(this.overlays);
     clearTimeout(this.reefTimer);
     this.rebuildReefIfChanged();
   }
@@ -827,6 +892,7 @@ export class App {
     // The ribbon is single-sided and the sheet is cut away under it only above water: hidden underwater.
     if (this.underwater) this.ribbon.mesh.visible = false;
     this.spray.mesh.visible = !this.underwater;
+    this.impact.mesh.visible = !this.underwater;
     this.statusAge += realDt;
     if (this.statusAge > 0.25) {
       this.statusAge = 0;
@@ -845,6 +911,7 @@ export class App {
     this.picture.setLensWater(this.lensWater.state(), this.lensClockS);
     this.ribbon.setDisplayExposure(this.picture.exposureValue);
     this.spray.setDisplayExposure(this.picture.exposureValue);
+    this.impact.setDisplayExposure(this.picture.exposureValue);
     this.picture.render(this.captureTarget);
     if (this.screenshotRequested) {
       this.screenshotRequested = false;

@@ -5,8 +5,8 @@ import { CONDITION_RANGES, sanitizeConditions } from '../conditions/sanitize';
 import { msToKmh } from '../conditions/units';
 import { DEFAULT_DEBUG_OVERLAYS } from '../ocean/OceanSurface';
 import { DEFAULT_FOAM_PARAMS, FOAM_PARAM_RANGES, type FoamParams } from '../whitewater/foamStep';
-import { DEFAULT_SPRAY_PARAMS, SPRAY_PARAM_RANGES, type SprayParams } from '../whitewater/sprayEmitters';
-import { BREAK_BINDINGS, CONDITION_BINDINGS, FOAM_BINDINGS, OVERLAY_BINDINGS, SPRAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
+import { DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, IMPACT_PARAM_RANGES, SPRAY_PARAM_RANGES, type ImpactParams, type SprayParams } from '../whitewater/sprayEmitters';
+import { BREAK_BINDINGS, CONDITION_BINDINGS, FOAM_BINDINGS, IMPACT_BINDINGS, OVERLAY_BINDINGS, SPRAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
 
 describe('dev panel condition bindings never rewrite a loaded moment', () => {
   // windSpeedMs has no widget of its own: it's edited in km/h through WIND_SPEED_KMH_BINDING instead, checked below.
@@ -90,6 +90,16 @@ describe('Spray folder sliders', () => {
     for (const k of Object.keys(SPRAY_BINDINGS) as (keyof SprayParams)[]) {
       expect(SPRAY_BINDINGS[k].min).toBe(SPRAY_PARAM_RANGES[k].min);
       expect(SPRAY_BINDINGS[k].max).toBe(SPRAY_PARAM_RANGES[k].max);
+    }
+  });
+});
+
+describe('Impact folder sliders', () => {
+  it('has a slider for every ImpactParams field, with exactly normalizeImpactParams ranges', () => {
+    expect(Object.keys(IMPACT_BINDINGS).sort()).toEqual((Object.keys(DEFAULT_IMPACT_PARAMS) as (keyof ImpactParams)[]).sort());
+    for (const k of Object.keys(IMPACT_BINDINGS) as (keyof ImpactParams)[]) {
+      expect(IMPACT_BINDINGS[k].min).toBe(IMPACT_PARAM_RANGES[k].min);
+      expect(IMPACT_BINDINGS[k].max).toBe(IMPACT_PARAM_RANGES[k].max);
     }
   });
 });
