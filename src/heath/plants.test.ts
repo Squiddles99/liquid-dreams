@@ -79,7 +79,7 @@ describe('plant placement', () => {
       expect(p.x - land.waterlineAt(p.z)).toBeGreaterThan(45);
     }
   });
-  it('has about one shrub per 5 m² and one low plant per 12 m² on full heath, in the specified mix', () => {
+  it('has about one shrub per 3 m² (they nearly touch: capture ruling) and one low plant per 12 m² on full heath, in the specified mix', () => {
     // Plants on full heath (heath − bushes > 0.95) within a 150 m circle, against that area (sampled on a 2 m grid).
     let area = 0;
     for (let x = 60; x <= 360; x += 2) for (let z = -190; z <= 110; z += 2) {
@@ -91,8 +91,8 @@ describe('plant placement', () => {
     const shrubs = onFull.filter((p) => p.kind === 'daisy' || p.kind === 'green' || p.kind === 'tall');
     const low = onFull.length - shrubs.length;
     expect(area).toBeGreaterThan(5000);
-    expect(shrubs.length / area).toBeGreaterThan(0.2 * 0.75);
-    expect(shrubs.length / area).toBeLessThan(0.2 * 1.25);
+    expect(shrubs.length / area).toBeGreaterThan((1 / 3) * 0.75);
+    expect(shrubs.length / area).toBeLessThan((1 / 3) * 1.25);
     expect(low / area).toBeGreaterThan((1 / 12) * 0.75);
     expect(low / area).toBeLessThan((1 / 12) * 1.25);
     const share = (k: string) => shrubs.filter((p) => p.kind === k).length / shrubs.length;

@@ -108,6 +108,8 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
   // Walk mode takes its height from the ground (the y here is informational); before the land loads it is a free pose.
   ref('on-the-beach', '10:30 standing on the dry sand in front of the Womb, looking north along the beach: the rock clumps at the dune toe, the swash.',
     conditions({ timeOfDay: 10.5 }), { mode: 'walk', position: [210, 4, -40], yawDeg: 0, pitchDeg: -4 }, 'view'),
+  ref('up-the-dune', '08:45 standing at the toe, looking east up the first dune rise into the backlit heath: shrub clumps, glowing rims, the dune still shading the lower slope.',
+    conditions({ timeOfDay: 8.75 }), { mode: 'walk', position: [234, 4, -38], yawDeg: 90, pitchDeg: 8 }, 'view'),
 ];
 
 const cloneMoment = (m: Moment): Moment => ({

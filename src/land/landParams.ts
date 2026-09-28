@@ -14,12 +14,14 @@ export interface LandParams {
   toeHeightM: number;
   /** The 3D rocks' number, × the cover's rock weight (Phase 4c-1 §3.5). */
   rockDensity: number;
+  /** The 3D plants' number, × the cover's heath and bush weights (Phase 4c-2 §3.7). */
+  bushDensity: number;
   /** The land's shadow on (off for comparison captures). */
   shadow: boolean;
 }
 
 export const DEFAULT_LAND_PARAMS: Readonly<LandParams> = {
-  sandBrightness: 1, heathBrightness: 1, heathSilver: 0.35, heathOrange: 0.12, beachWidthM: DEFAULT_BEACH.dryWidthM, toeHeightM: DEFAULT_BEACH.toeTopM, rockDensity: 1, shadow: true,
+  sandBrightness: 1, heathBrightness: 1, heathSilver: 0.35, heathOrange: 0.12, beachWidthM: DEFAULT_BEACH.dryWidthM, toeHeightM: DEFAULT_BEACH.toeTopM, rockDensity: 1, bushDensity: 1, shadow: true,
 };
 
 export const LAND_PARAM_RANGES = {
@@ -30,6 +32,7 @@ export const LAND_PARAM_RANGES = {
   beachWidthM: { min: 15, max: 45 },
   toeHeightM: { min: 3, max: 10 },
   rockDensity: { min: 0, max: 2 },
+  bushDensity: { min: 0, max: 2 },
 } as const;
 
 export function normalizeLandParams(p: LandParams): void {
