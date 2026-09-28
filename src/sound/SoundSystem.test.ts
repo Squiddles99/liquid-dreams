@@ -25,3 +25,56 @@ describe('SoundSystem before the first gesture', () => {
     expect(p.muted).toBe(false);
   });
 });
+
+/** A context the browser keeps suspended until `allow()` (a key it doesn't count as a gesture, then a real one). */
+class FakeContext {
+  state: AudioContextState = 'suspended';
+  resumes = 0;
+  private readonly listeners: (() => void)[] = [];
+  resume(): Promise<void> { this.resumes++; return Promise.resolve(); }
+  addEventListener(_type: 'statechange', cb: () => void): void { this.listeners.push(cb); }
+  allow(): void { this.state = 'running'; this.listeners.forEach((f) => f()); }
+}
+
+function fakeAudio() {
+  const ctx = new FakeContext();
+  const applied: unknown[] = [];
+  const decks: string[] = [];
+  const audio = {
+    context: () => ctx,
+    engine: () => ({ apply: (f: unknown) => { applied.push(f); }, setListener: () => {}, setVolumes: () => {}, setEffectsOn: () => {}, groups: { music: {} as AudioNode } }),
+    deck: (_ctx: unknown, _dest: AudioNode, url: string) => {
+      decks.push(url);
+      return { play: () => Promise.resolve(), pause: () => {}, fade: () => {}, remainingS: () => 200, onEnded: () => {}, onError: () => {}, dispose: () => {} };
+    },
+  };
+  return { ctx, applied, decks, audio };
+}
+
+describe('SoundSystem and the browser’s autoplay rule (final review I1)', () => {
+  const tracks = [{ album: 'a', number: 1, title: 'One', url: 'u1' }];
+  it('a gesture the browser does not count leaves it waiting: nothing applied, no music, still asking for a click', () => {
+    const { ctx, applied, decks, audio } = fakeAudio();
+    const s = new SoundSystem({ ...DEFAULT_SOUND_PARAMS }, tracks, audio);
+    s.gesture();
+    s.update(scene, listener, 0.016);
+    expect(ctx.state).toBe('suspended');
+    expect(s.started).toBe(false);
+    expect(applied).toHaveLength(0);
+    expect(decks).toHaveLength(0);
+    expect(s.status.track).toBe('click for sound');
+  });
+  it('the next gesture retries on the same context, and once it runs the sound and the album start', () => {
+    const { ctx, applied, decks, audio } = fakeAudio();
+    const s = new SoundSystem({ ...DEFAULT_SOUND_PARAMS }, tracks, audio);
+    s.gesture();
+    s.gesture();
+    expect(ctx.resumes).toBe(2);
+    ctx.allow();
+    expect(s.started).toBe(true);
+    s.update(scene, listener, 0.016);
+    expect(applied).toHaveLength(1);
+    expect(decks).toEqual(['u1']);
+    expect(s.status.track).toBe('▶ 1/1 One');
+  });
+});

@@ -205,4 +205,7 @@ On the RTX 4060 Laptop, pane visible:
   - the per-hit cost measured 0.2–0.3 ms, not the 0.8 ms first estimated, so hits build their nodes per hit, with no pooled panners;
   - the hit-cost self-test uses a median under 1 ms (a mean flaked on the laptop);
   - one existing heath test (`plants.test.ts`, the 2 km cache flight) times out under full-suite load on main too. It's flagged as a separate task.
+- **Final review fixes:**
+  - **Starting the sound:** a key the browser doesn't count as a gesture (Alt, Esc, a lone modifier) left the audio suspended for the session. Now the hint and the listeners stay until the audio really runs, and every click or key press retries. Nothing is scheduled while it's suspended.
+  - **The sound is a listening preference, not part of the look** (a change to §3.5): the volumes and mute are kept across moment picks and in both settings modes, and saved in both. Only Reset settings resets them.
 - **Limitation:** with the Impact folder's `amount` at 0, the spray system emits no impact emitters, so there are no lip hits and no roar.

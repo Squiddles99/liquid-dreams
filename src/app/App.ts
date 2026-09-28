@@ -858,7 +858,10 @@ export class App {
     };
   }
 
-  /** Copy a look into the params objects in place (the panel binds them). */
+  /**
+   * Copy a look into the params objects in place (the panel binds them). Not the sound: its volumes and mute are a
+   * listening preference, kept the same in both settings modes and across picks (final review I2).
+   */
   private assignLook(look: DevLookParams): void {
     assignParams(this.spectrumParams, look.spectrum);
     assignParams(this.simParams, look.sim);
@@ -877,7 +880,6 @@ export class App {
     assignParams(this.landParams, look.land);
     assignParams(this.surfParams, look.surf);
     assignParams(this.bombieParams, look.bombie);
-    assignParams(this.soundParams, look.sound);
   }
 
   /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
@@ -933,6 +935,7 @@ export class App {
     this.settingsMode = stored.mode;
     this.currentReference = stored.reference;
     if (stored.mode === 'custom') this.assignLook(stored);
+    assignParams(this.soundParams, stored.sound); // in either mode (a preference, not the look)
     return { ...stored, mode: 'custom' };
   }
 
@@ -957,7 +960,10 @@ export class App {
     clearTimeout(this.saveTimer);
     if (this.settingsMode === 'custom') this.profile.capture(this.snapshotSettings());
     // Default mode never visits: every pick there is shown in full, so its name always belongs in the reference list.
-    else this.profile.profile.reference = this.currentReference;
+    else {
+      this.profile.profile.reference = this.currentReference;
+      this.profile.profile.sound = { ...this.soundParams }; // the sound is saved in either mode
+    }
     if (this.persist) saveDevSettings(browserStorage, { ...this.profile.profile, mode: this.settingsMode });
   }
 
@@ -992,6 +998,7 @@ export class App {
     clearDevSettings(browserStorage);
     this.profile.profile = this.defaultSettings();
     this.profile.own();
+    assignParams(this.soundParams, this.lookDefaults.sound);
     this.restoreLook(this.lookDefaults);
     this.currentReference = DEFAULT_MOMENT_NAME;
     this.panel.setReference(DEFAULT_MOMENT_NAME);
