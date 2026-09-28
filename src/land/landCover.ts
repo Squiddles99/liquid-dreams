@@ -23,7 +23,9 @@ export function coverAt(d: number, slope: number, x: number, z: number, heightM:
   const wetEnd = p.wetWidthM, dryEnd = wetEnd + p.dryWidthM, toeEnd = dryEnd + p.toeWidthM;
   const shoreRock = smoothstep(0.62, 0.75, n01(0.5, z / 80, 421)) * (1 - smoothstep(wetEnd - 4, wetEnd + 4, d));
   let wet = (1 - smoothstep(wetEnd - 2, wetEnd + 2, d)) * (1 - shoreRock);
-  const toe = smoothstep(dryEnd - 2, dryEnd + 2, d) * (1 - smoothstep(toeEnd - 2, toeEnd + 4, d));
+  // The toe's limestone lies in clumps with sand between them (Andrew's inside-shelf aerial), not a continuous band.
+  const clumps = smoothstep(0.3, 0.5, n01(x / 9, z / 9, 424));
+  const toe = smoothstep(dryEnd - 2, dryEnd + 2, d) * (1 - smoothstep(toeEnd - 2, toeEnd + 4, d)) * clumps;
   const heathZone = smoothstep(toeEnd - 3, toeEnd + 5, d);
   const blowout = heathZone * smoothstep(0.62, 0.72, n01(x / 45, z / 45, 422)) * smoothstep(0.25, 0.45, slope);
   const outcrop = heathZone * (1 - blowout) * smoothstep(0.45, 0.6, slope) * smoothstep(0.55, 0.65, n01(x / 25, z / 25, 423));

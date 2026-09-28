@@ -34,7 +34,7 @@ import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/w
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
 import { DEFAULT_PICTURE, type PictureParams, PicturePipeline } from '../render/PicturePipeline';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
-import { Seabed } from '../seabed/Seabed';
+import { Seabed, WATERLINE_STEP_M } from '../seabed/Seabed';
 import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
@@ -47,6 +47,8 @@ import {
   impactBirths, normalizeImpactParams, normalizeSprayParams, sprayBirths, sprayCanEmit, windToVector,
 } from '../whitewater/sprayEmitters';
 import { IMPACT_KIND } from '../whitewater/particleKinds';
+import { Land } from '../land/Land';
+import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
 import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { showOverlay } from './overlay';
@@ -93,6 +95,7 @@ export class App {
   readonly foamParams: FoamParams = { ...DEFAULT_FOAM_PARAMS };
   readonly sprayParams: SprayParams = { ...DEFAULT_SPRAY_PARAMS };
   readonly impactParams: ImpactParams = { ...DEFAULT_IMPACT_PARAMS };
+  readonly landParams: LandParams = { ...DEFAULT_LAND_PARAMS };
   readonly setStatus = { nextSet: '', wave: '', face: '' };
   /** The look as constructed (deep clones): what "Reset settings" and default mode restore. */
   private readonly lookDefaults: DevLookParams = cloneLook(this.lookParams());
@@ -113,6 +116,9 @@ export class App {
   readonly sky = new Sky(this.atmosphereParams);
   readonly ocean = new OceanSimulation(this.simParams);
   readonly seabed = new Seabed(buildBathymetry(this.reefParams));
+  /** The land behind the Womb (Phase 4a spec 2026-09-28-the-view-back-design.md); landless until its file loads. */
+  readonly land = new Land(this.sky);
+  private landTimer: number | undefined;
   private builtReefKey = JSON.stringify(this.reefParams);
   readonly setWaves = new SetWaves(this.ocean.time);
   readonly surfaceModel = new WaterSurfaceModel(this.ocean, this.seabed, this.setWaves);
@@ -197,13 +203,17 @@ export class App {
     this.scene.add(this.spray.mesh);
     this.impact.setMaxLifeS(IMPACT_MAX_LIFE_S);
     this.scene.add(this.impact.mesh);
+    this.scene.add(this.land.mesh);
+    void this.land.load().then(() => this.onLandBuilt(), (e: unknown) => {
+      console.warn(`The land didn't load (${e instanceof Error ? e.message : String(e)}); running without it.`);
+    });
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
     this.perf = new PerfOverlay(renderer);
     this.panel = new DevPanel(
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
         picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
-        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
+        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
         onConditions: () => this.onConditionsEdited(),
@@ -229,6 +239,7 @@ export class App {
           this.ribbon.setOverlays(this.overlays);
           this.spray.setOverlays(this.overlays);
           this.impact.setOverlays(this.overlays);
+          this.land.setOverlays(this.overlays);
         },
         onCallSet: () => this.callSetNow(),
         onBreak: () => {
@@ -248,6 +259,11 @@ export class App {
           normalizeImpactParams(this.impactParams);
           this.panel.refresh();
           this.scheduleImpactReplay();
+        },
+        onLand: () => {
+          normalizeLandParams(this.landParams);
+          this.panel.refresh();
+          if (this.land.setParams(this.landParams)) this.scheduleLandRebuild();
         },
         onFoam: () => {
           normalizeFoamParams(this.foamParams);
@@ -533,6 +549,17 @@ export class App {
     this.impactTimer = window.setTimeout(() => this.impact.invalidate(), SPECTRUM_REBUILD_DEBOUNCE_MS);
   }
 
+  /** The land was (re)built: the seabed outside the reef map follows its waterline (spec §4.4). */
+  private onLandBuilt(): void {
+    if (this.land.height) this.seabed.setWaterline(this.land.height.waterlineSamples(WATERLINE_STEP_M));
+  }
+
+  /** Beach-shape edits rebuild the mesh (about half a second), debounced like the reef. */
+  private scheduleLandRebuild(): void {
+    clearTimeout(this.landTimer);
+    this.landTimer = window.setTimeout(() => { this.land.rebuild(); this.onLandBuilt(); }, SPECTRUM_REBUILD_DEBOUNCE_MS);
+  }
+
   private rebuildSpectrumIfNeeded(force: boolean): void {
     const key = spectrumInputsKey(this.conditions, this.spectrumParams);
     if (!force && key === this.spectrumKey) return;
@@ -614,7 +641,7 @@ export class App {
     return {
       spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams,
       maxFps: this.frameLimiter.maxFps, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams, overlays: this.overlays,
-      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams,
+      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams,
     };
   }
 
@@ -634,6 +661,7 @@ export class App {
     assignParams(this.foamParams, look.foam);
     assignParams(this.sprayParams, look.spray);
     assignParams(this.impactParams, look.impact);
+    assignParams(this.landParams, look.land);
   }
 
   /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
@@ -662,6 +690,9 @@ export class App {
     this.spray.setOverlays(this.overlays);
     normalizeImpactParams(this.impactParams);
     this.impact.setOverlays(this.overlays);
+    this.land.setOverlays(this.overlays);
+    normalizeLandParams(this.landParams);
+    if (this.land.setParams(this.landParams)) this.scheduleLandRebuild();
     clearTimeout(this.reefTimer);
     this.rebuildReefIfChanged();
   }
@@ -893,6 +924,7 @@ export class App {
     if (this.underwater) this.ribbon.mesh.visible = false;
     this.spray.mesh.visible = !this.underwater;
     this.impact.mesh.visible = !this.underwater;
+    this.land.mesh.visible = this.land.height !== null && !this.underwater;
     this.statusAge += realDt;
     if (this.statusAge > 0.25) {
       this.statusAge = 0;

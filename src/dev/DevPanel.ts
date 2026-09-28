@@ -15,6 +15,7 @@ import type { AtmosphereParams } from '../sky/atmosphereParams';
 import type { SetParams } from '../swell/sets';
 import { FOAM_PARAM_RANGES, type FoamParams } from '../whitewater/foamStep';
 import { IMPACT_PARAM_RANGES, type ImpactParams, SPRAY_PARAM_RANGES, type SprayParams } from '../whitewater/sprayEmitters';
+import { LAND_PARAM_RANGES, type LandParams } from '../land/landParams';
 import type { SettingsMode } from './devSettings';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS } from './referenceMoments';
 
@@ -34,6 +35,7 @@ export interface DevPanelModel {
   foam: FoamParams;
   spray: SprayParams;
   impact: ImpactParams;
+  land: LandParams;
   setStatus: { nextSet: string; wave: string; face: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
@@ -61,6 +63,7 @@ export interface DevPanelHandlers {
   onFoam(): void;
   onSpray(): void;
   onImpact(): void;
+  onLand(): void;
   onSettingsMode(mode: SettingsMode): void;
   onResetSettings(): void;
   /** Any user-editable value changed (every binding and list; not the read-only readouts). */
@@ -127,6 +130,8 @@ export const OVERLAY_BINDINGS: Record<keyof DebugOverlays, { label: string }> = 
   ribbonTint: { label: 'ribbon tint' },
   foamMap: { label: 'foam map' },
   sprayTint: { label: 'spray tint' },
+  coverMap: { label: 'cover map' },
+  sunlightMap: { label: 'sunlight map' },
 };
 
 /** Foam folder sliders (spec 2026-09-27-foam-field-design.md §3.1), ranges exactly normalizeFoamParams's (DevPanel.test.ts). */
@@ -144,6 +149,16 @@ export const SPRAY_BINDINGS = {
 /** Impact folder slider (spec 2026-09-28-impact-explosion-design.md §3.4), range exactly normalizeImpactParams's. */
 export const IMPACT_BINDINGS = {
   amount: { label: 'impact amount', ...IMPACT_PARAM_RANGES.amount, step: 0.05 },
+} as const;
+
+/** Land folder sliders (Phase 4a spec §4.11), ranges exactly normalizeLandParams's (DevPanel.test.ts). */
+export const LAND_BINDINGS = {
+  sandBrightness: { label: 'sand brightness', ...LAND_PARAM_RANGES.sandBrightness, step: 0.01 },
+  heathBrightness: { label: 'heath brightness', ...LAND_PARAM_RANGES.heathBrightness, step: 0.01 },
+  heathSilver: { label: 'heath silver', ...LAND_PARAM_RANGES.heathSilver, step: 0.01 },
+  heathOrange: { label: 'heath orange', ...LAND_PARAM_RANGES.heathOrange, step: 0.01 },
+  beachWidthM: { label: 'beach width (m)', ...LAND_PARAM_RANGES.beachWidthM, step: 1 },
+  toeHeightM: { label: 'rock band top (m)', ...LAND_PARAM_RANGES.toeHeightM, step: 0.1 },
 } as const;
 
 export class DevPanel {
@@ -241,6 +256,12 @@ export class DevPanel {
     for (const [key, opts] of Object.entries(IMPACT_BINDINGS) as [keyof ImpactParams, (typeof IMPACT_BINDINGS)[keyof typeof IMPACT_BINDINGS]][]) {
       impact.addBinding(m.impact, key, opts).on('change', h.onImpact);
     }
+
+    const landFolder = this.pane.addFolder({ title: 'Land', expanded: false });
+    for (const [key, opts] of Object.entries(LAND_BINDINGS) as [keyof typeof LAND_BINDINGS, (typeof LAND_BINDINGS)[keyof typeof LAND_BINDINGS]][]) {
+      landFolder.addBinding(m.land, key, opts).on('change', h.onLand);
+    }
+    landFolder.addBinding(m.land, 'shadow', { label: 'land shadow' }).on('change', h.onLand);
 
     const reef = this.pane.addFolder({ title: 'Reef', expanded: false });
     reef.addBinding(m.reef, 'ledgeDepthM', { label: 'ledge depth (m)', min: 2, max: 12, step: 0.1 }).on('change', h.onReef);

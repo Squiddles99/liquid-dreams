@@ -87,18 +87,18 @@ describe('LandHeight on the baked data', () => {
   it('climbs to the ridge behind the Womb (≥ 60 m by 600 m inland)', () => {
     expect(land.heightAt(190 + 600, 0)).toBeGreaterThan(60);
   });
-    it('meets the shifted seabed at the waterline everywhere outside the reef map (no lagoons)', async () => {
-      const { bedHeightAt, buildBathymetry } = await import('../seabed/bathymetry');
-      const bathy = buildBathymetry();
-      const samples = land.waterlineSamples(50);
-      const shiftAt = (z: number) => {
-        const f = Math.min(599.999, Math.max(0, (z + 15000) / 50)), i = Math.floor(f), t = f - i;
-        return samples[i] * (1 - t) + samples[i + 1] * t - 190;
-      };
-      for (let z = -14000; z <= 14000; z += 137) {
-        if (z > -500 && z < 350) continue; // the reef map
-        const xs = land.waterlineAt(z);
-        expect(Math.abs(bedHeightAt(bathy, xs - 0.01, z, shiftAt) - land.heightAt(xs + 0.01, z))).toBeLessThan(0.1);
-      }
-    });
+  it('meets the shifted seabed at the waterline everywhere outside the reef map (no lagoons)', async () => {
+    const { bedHeightAt, buildBathymetry } = await import('../seabed/bathymetry');
+    const bathy = buildBathymetry();
+    const samples = land.waterlineSamples(50);
+    const shiftAt = (z: number) => {
+      const f = Math.min(599.999, Math.max(0, (z + 15000) / 50)), i = Math.floor(f), t = f - i;
+      return samples[i] * (1 - t) + samples[i + 1] * t - 190;
+    };
+    for (let z = -14000; z <= 14000; z += 137) {
+      if (z > -500 && z < 350) continue; // the reef map
+      const xs = land.waterlineAt(z);
+      expect(Math.abs(bedHeightAt(bathy, xs - 0.01, z, shiftAt) - land.heightAt(xs + 0.01, z))).toBeLessThan(0.1);
+    }
+  }, 30_000); // builds the reef map
 });

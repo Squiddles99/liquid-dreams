@@ -100,9 +100,13 @@ export interface DebugOverlays {
   foamMap: boolean;
   /** The spray puffs coloured by age (green at birth, red at death). */
   sprayTint: boolean;
+  /** The land's cover in false colours (wet sand blue, sand yellow, rock red, heath green). */
+  coverMap: boolean;
+  /** The land's shadow in blue, on the land and the water. */
+  sunlightMap: boolean;
 }
 
-export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false, foamMap: false, sprayTint: false };
+export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false, foamMap: false, sprayTint: false, coverMap: false, sunlightMap: false };
 
 /**
  * The breaking ribbon's footprint mask (BreakingRibbon.footprint): an R8 texture of `size` texels, `cellM` m each,

@@ -10,7 +10,12 @@ describe('coverAt', () => {
     const at = (d: number, slope = 0.05) => coverAt(d, slope, 0, 1234, 5, p);
     expect(at(5).wet + at(5).rock).toBeGreaterThan(0.9);
     expect(at(25).sand).toBeGreaterThan(0.9);
-    expect(at(47).rock).toBeGreaterThan(0.9);
+    // The toe is rock in clumps with sand between (Andrew's inside-shelf aerial): mostly rock along the coast, never heath.
+    let rock = 0, heathAtToe = 0;
+    for (let z = 0; z < 2000; z += 7) { const c = coverAt(47, 0.1, 0, z, 5, p); rock += c.rock; heathAtToe = Math.max(heathAtToe, c.heath); }
+    expect(rock / Math.ceil(2000 / 7)).toBeGreaterThan(0.5);
+    expect(rock / Math.ceil(2000 / 7)).toBeLessThan(0.9);
+    expect(heathAtToe).toBeLessThan(0.3);
     expect(at(300, 0).heath).toBeGreaterThan(0.99); // flat heath: no blowouts or outcrops
   });
   it('always sums to 1', () => {
