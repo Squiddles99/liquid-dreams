@@ -132,9 +132,9 @@ export class App {
   private sprayTimer: number | undefined;
   private foamOnlyTimer: number | undefined;
   /** Offshore spray off the throwing lips (spec 2026-09-27-offshore-spray-design.md). */
-  readonly spray = new SprayParticles(this.sky);
+  readonly spray = new SprayParticles(this.sky, undefined, this.land.sunlight);
   /** The impact explosion where each lip lands (spec 2026-09-28-impact-explosion-design.md), on the same particle system. */
-  readonly impact = new SprayParticles(this.sky, IMPACT_KIND);
+  readonly impact = new SprayParticles(this.sky, IMPACT_KIND, this.land.sunlight);
   private impactTimer: number | undefined;
   /** This frame's emitters per tick, shared by the spray and the explosion (their replays cover different tick counts). */
   private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[] }>();
@@ -155,7 +155,7 @@ export class App {
   private lensQuiet = false;
   private lensClockS = 0;
   /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
-  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField });
+  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField, sunlight: this.land.sunlight });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
   private ribbonMinHeightM = Infinity;
   /** The field's wave context (made once per field, outside the timed trace). */
@@ -197,7 +197,7 @@ export class App {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
     this.scene.add(this.waterVolume.mesh);
-    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField });
+    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.land.sunlight });
     this.scene.add(this.oceanSurface.mesh);
     this.scene.add(this.ribbon.mesh);
     this.scene.add(this.spray.mesh);
@@ -911,6 +911,7 @@ export class App {
     const sun = sunForConditions(this.conditions);
     this.sunDir.set(...sun.direction);
     this.sky.update(this.renderer, this.sunDir, this.camera.position.y);
+    this.land.update(this.renderer, sun.direction);
     this.sky.followCamera(this.camera.position);
 
     this.ocean.update(this.renderer, this.clock.simTime, simDt);
