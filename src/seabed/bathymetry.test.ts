@@ -1,3 +1,4 @@
+import { beachHeight } from '../land/landHeight';
 import { describe, expect, it } from 'vitest';
 import { depthBg } from './coastProfile';
 import { bedHeightAt, buildBathymetry, downsample, reefWarp } from './bathymetry';
@@ -98,5 +99,21 @@ describe('bedHeightAt with a waterline shift (Phase 4a spec §4.4)', () => {
     expect(bedHeightAt(bathy, 300, 2000, shift)).toBeCloseTo(-depthBg(300 - 120), 6);
     expect(bedHeightAt(bathy, 300, 0, shift)).toBeCloseTo(bedHeightAt(bathy, 300, 0), 6);
     expect(bedHeightAt(bathy, 0, 0, shift)).toBe(bedHeightAt(bathy, 0, 0)); // inside the reef map
+  });
+});
+
+describe('the beach under the swash (Phase 4b spec §3.3, Ruling W7)', () => {
+  it('landward of the waterline the shading bed follows the beach profile; seaward it is unchanged', () => {
+    expect(bedHeightAt(bathy, 190 + 6, 3000)).toBeCloseTo(beachHeight(6), 6);
+    expect(bedHeightAt(bathy, 190 + 30, 3000, () => 0)).toBeCloseTo(beachHeight(30), 6);
+    expect(bedHeightAt(bathy, 150, 3000)).toBeCloseTo(-depthBg(150), 6);
+    // shifted: the waterline at 190 + 120
+    expect(bedHeightAt(bathy, 310 + 5, 3000, () => 120)).toBeCloseTo(beachHeight(5), 6);
+  });
+  it('is continuous with the seabed at the waterline, at any shift', () => {
+    for (const shift of [-300, 0, 150]) {
+      const xs = 190 + shift;
+      expect(Math.abs(bedHeightAt(bathy, xs + 0.001, 3000, () => shift) - bedHeightAt(bathy, xs - 0.001, 3000, () => shift))).toBeLessThan(0.01);
+    }
   });
 });

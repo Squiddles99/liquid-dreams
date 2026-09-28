@@ -34,4 +34,9 @@ describe('the shore reef platform (Andrew, 2026-09-28: the reef goes all the way
     // No sand gap between the reef map's shelf (ends ~x 110) and the platform, anywhere along the map's inshore edge.
     for (let z = -440; z <= 290; z += 10) expect(bedMaterialAt(b, 115, z)[0]).toBeLessThan(0.5);
   });
+    it('landward of the waterline the bed is sand (the swash runs up the beach)', () => {
+      const b = buildBathymetry();
+      expect(bedMaterialAt(b, 195, 3000)).toEqual([1, 0]);
+      expect(bedMaterialAt(b, 185, 3000)[0]).toBeLessThan(0.2); // just seaward: the weedy platform
+    });
 });
