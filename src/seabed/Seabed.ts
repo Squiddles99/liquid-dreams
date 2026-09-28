@@ -1,15 +1,16 @@
 import * as THREE from 'three/webgpu';
-import { clamp, float, floor, fract, int, max, mix, select, sin, smoothstep, texture, uniform, uniformArray, vec2 } from 'three/tsl';
+import { clamp, float, floor, fract, int, max, mix, pow, select, sin, smoothstep, texture, uniform, uniformArray, vec2 } from 'three/tsl';
+import { DEFAULT_BEACH } from '../land/landHeight';
 import type { Bathymetry } from './bathymetry';
 import { FAR_DEPTH_M, REEF_SURROUND_DEPTH_M, SHORE_FLAT_DEPTH_M, SHORE_X } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_AT_MAP_M, SHORE_REEF_EDGE_M, SHORE_REEF_MAP_EASE_M, SHORE_REEF_MAP_Z, SHORE_REEF_MATERIAL, SHORE_REEF_MEAN_M } from './shoreReef';
 
 type N = any;
 
-/** The waterline shift outside the reef map (Phase 4a spec §4.4): x_s − SHORE_X every 50 m of z, z ∈ [−15000, 15000]. */
-export const WATERLINE_STEP_M = 50;
+/** The waterline shift outside the reef map (Phase 4a spec §4.4): x_s − SHORE_X every 25 m of z (Phase 4b: 25 m, so the beach bed meets the land within centimetres), z ∈ [−15000, 15000]. */
+export const WATERLINE_STEP_M = 25;
 export const WATERLINE_Z0 = -15000;
-export const WATERLINE_COUNT = 601;
+export const WATERLINE_COUNT = 1201;
 
 /** TSL mirror of depthBg(): the same piecewise smoothstep profile, as one select chain. */
 export function depthBgNode(x: N): N {
@@ -18,6 +19,24 @@ export function depthBgNode(x: N): N {
   const slope = float(1.5).add(float(REEF_SURROUND_DEPTH_M - 1.5).mul(smoothstep(30, 140, s)));
   const offshore = float(REEF_SURROUND_DEPTH_M).add(float(FAR_DEPTH_M - REEF_SURROUND_DEPTH_M).mul(smoothstep(260, 590, s)));
   return select(s.lessThan(30), nearShore, select(s.lessThan(140), slope, offshore));
+}
+
+/** TSL mirror of landHeight.beachHeight(dl) for dl ≥ 0 (the default profile): the beach the swash runs up. */
+export function beachBedNode(dl: N): N {
+  const p = DEFAULT_BEACH;
+  const wetEnd = p.wetWidthM, dryEnd = wetEnd + p.dryWidthM, toeEnd = dryEnd + p.toeWidthM, low = -SHORE_FLAT_DEPTH_M;
+  const wet = float(low).add(dl.div(wetEnd).mul(p.wetTopM - low));
+  const dry = float(p.wetTopM).add(pow(clamp(dl.sub(wetEnd).div(p.dryWidthM), 0.0, 1.0), 1.4).mul(p.beachTopM - p.wetTopM));
+  const toe = float(p.beachTopM).add(smoothstep(dryEnd, toeEnd, dl).mul(p.toeTopM - p.beachTopM));
+  const face = float(p.toeTopM).add(dl.sub(toeEnd).mul(0.25));
+  return select(dl.lessThan(wetEnd), wet, select(dl.lessThan(dryEnd), dry, select(dl.lessThan(toeEnd), toe, face)));
+}
+
+/** TSL mirror of shoreReef.shoreReefWidth: the shore reef platform's width at z. */
+export function shoreReefWidthNode(z: N): N {
+  const [mz0, mz1] = SHORE_REEF_MAP_Z;
+  const atMap = smoothstep(mz0 - SHORE_REEF_MAP_EASE_M, mz0, z).mul(float(1.0).sub(smoothstep(mz1, mz1 + SHORE_REEF_MAP_EASE_M, z)));
+  return max(float(SHORE_REEF_MEAN_M).add(sin(z.div(97.0)).mul(12.0)).add(sin(z.div(41.0).add(1.3)).mul(8.0)), atMap.mul(SHORE_REEF_AT_MAP_M));
 }
 
 function packTexture(b: Bathymetry, target?: THREE.DataTexture): THREE.DataTexture {
@@ -69,7 +88,8 @@ export class Seabed {
     return this.shiftCpu[i] * (1 - t) + this.shiftCpu[i + 1] * t;
   }
 
-  private shiftNode(z: N): N {
+  /** The land's waterline shift at z (x_s − SHORE_X; CPU mirror shiftAt). */
+  waterlineShiftNode(z: N): N {
     const f = clamp(z.sub(WATERLINE_Z0).div(WATERLINE_STEP_M), 0.0, WATERLINE_COUNT - 1.001);
     const i = int(floor(f));
     return mix(this.shiftGpu.element(i), this.shiftGpu.element(i.add(1)), fract(f));
@@ -118,7 +138,10 @@ export class Seabed {
 
   /** Seabed height y (m) at world xz; outside the map, the coast profile shifted with the land's waterline. */
   bedHeightNode(xz: N): N {
-    return select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).x, depthBgNode(xz.x.sub(this.shiftNode(xz.y))).negate());
+    const bed = select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).x, depthBgNode(xz.x.sub(this.waterlineShiftNode(xz.y))).negate());
+    const dSea = float(SHORE_X).add(this.waterlineShiftNode(xz.y)).sub(xz.x);
+    // Landward of the waterline, the beach (Phase 4b §3.3): the swash is a thin film over sand, not half a metre of water.
+    return select(dSea.lessThan(0.0), max(bed, beachBedNode(dSea.negate())), bed);
   }
 
   /** Still-water depth (m) including the tide, never negative. */
@@ -132,11 +155,10 @@ export class Seabed {
    */
   materialNode(xz: N): N {
     const base = select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).yz, vec2(OPEN_COAST_MATERIAL[0], OPEN_COAST_MATERIAL[1]));
-    const dSea = float(SHORE_X).add(this.shiftNode(xz.y)).sub(xz.x);
-    const [mz0, mz1] = SHORE_REEF_MAP_Z;
-    const atMap = smoothstep(mz0 - SHORE_REEF_MAP_EASE_M, mz0, xz.y).mul(float(1.0).sub(smoothstep(mz1, mz1 + SHORE_REEF_MAP_EASE_M, xz.y)));
-    const width = max(float(SHORE_REEF_MEAN_M).add(sin(xz.y.div(97.0)).mul(12.0)).add(sin(xz.y.div(41.0).add(1.3)).mul(8.0)), atMap.mul(SHORE_REEF_AT_MAP_M));
+    const dSea = float(SHORE_X).add(this.waterlineShiftNode(xz.y)).sub(xz.x);
+    const width = shoreReefWidthNode(xz.y);
     const w = float(1.0).sub(smoothstep(width.sub(SHORE_REEF_EDGE_M), width.add(SHORE_REEF_EDGE_M), dSea));
-    return mix(base, vec2(SHORE_REEF_MATERIAL[0], SHORE_REEF_MATERIAL[1]), w);
+    // Landward of the waterline the swash runs up sand (Phase 4b §3.3).
+    return select(dSea.lessThan(0.0), vec2(1.0, 0.0), mix(base, vec2(SHORE_REEF_MATERIAL[0], SHORE_REEF_MATERIAL[1]), w));
   }
 }

@@ -90,9 +90,10 @@ describe('LandHeight on the baked data', () => {
   it('meets the shifted seabed at the waterline everywhere outside the reef map (no lagoons)', async () => {
     const { bedHeightAt, buildBathymetry } = await import('../seabed/bathymetry');
     const bathy = buildBathymetry();
-    const samples = land.waterlineSamples(50);
+    const { WATERLINE_COUNT, WATERLINE_STEP_M } = await import('../seabed/Seabed');
+    const samples = land.waterlineSamples(WATERLINE_STEP_M);
     const shiftAt = (z: number) => {
-      const f = Math.min(599.999, Math.max(0, (z + 15000) / 50)), i = Math.floor(f), t = f - i;
+      const f = Math.min(WATERLINE_COUNT - 1.001, Math.max(0, (z + 15000) / WATERLINE_STEP_M)), i = Math.floor(f), t = f - i;
       return samples[i] * (1 - t) + samples[i + 1] * t - 190;
     };
     for (let z = -14000; z <= 14000; z += 137) {
