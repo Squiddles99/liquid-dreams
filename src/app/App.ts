@@ -303,9 +303,7 @@ export class App {
         onLand: () => {
           normalizeLandParams(this.landParams);
           this.panel.refresh();
-          if (this.land.setParams(this.landParams)) this.scheduleLandRebuild();
-          this.rockField?.setDensity(this.landParams.rockDensity);
-          this.invalidateBeach();
+          this.applyLandParams();
         },
         onFoam: () => {
           normalizeFoamParams(this.foamParams);
@@ -616,6 +614,13 @@ export class App {
     this.pendingWalk = null;
   }
 
+  /** The Land folder's params to the land and the rocks (from the panel, and from settings: final review I3). */
+  private applyLandParams(): void {
+    if (this.land.setParams(this.landParams)) this.scheduleLandRebuild();
+    this.rockField?.setDensity(this.landParams.rockDensity);
+    this.invalidateBeach();
+  }
+
   /** The land or the rock density changed: rebuild the patch's grids and relay the rocks. */
   private invalidateBeach(): void {
     this.patchTracker.centre = null;
@@ -799,7 +804,7 @@ export class App {
     this.impact.setOverlays(this.overlays);
     this.land.setOverlays(this.overlays);
     normalizeLandParams(this.landParams);
-    if (this.land.setParams(this.landParams)) this.scheduleLandRebuild();
+    this.applyLandParams();
     clearTimeout(this.reefTimer);
     this.rebuildReefIfChanged();
   }

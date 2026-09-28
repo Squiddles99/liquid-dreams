@@ -57,6 +57,19 @@ describe('the walk mode', () => {
     rig.cycleMode(0);
     expect(rig.mode).toBe('lineup');
   });
+  it('C from walk on dry land returns to the last lineup (final review I1: never under the sand); from the swash, sets down there', () => {
+    const rig = new CameraRig();
+    rig.setGround(ground);
+    rig.setPose({ mode: 'lineup', position: [-25, 0, 45], yawDeg: 270, pitchDeg: 0 });
+    rig.setPose({ mode: 'walk', position: [20, 0, 0], yawDeg: 90, pitchDeg: 0 }); // ground 2 m, water 0
+    rig.cycleMode(0);
+    expect(rig.mode).toBe('lineup');
+    expect(rig.probeXZ).toEqual({ x: -25, z: 45 });
+    expect(rig.getPose().position[1]).toBeGreaterThan(0.5);
+    rig.setPose({ mode: 'walk', position: [-8, 0, 3], yawDeg: 90, pitchDeg: 0 }); // wading: ground −0.8 m
+    rig.cycleMode(0);
+    expect(rig.probeXZ).toEqual({ x: -8, z: 3 });
+  });
   it('a walk pose without ground falls back to free at that position', () => {
     const rig = new CameraRig();
     rig.setPose({ mode: 'walk', position: [20, 3.7, 0], yawDeg: 90, pitchDeg: 0 });
