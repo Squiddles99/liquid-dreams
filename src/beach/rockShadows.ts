@@ -17,6 +17,8 @@ export interface ShadowCaster {
   height: number;
   strength?: number;
   ringOnly?: boolean;
+  /** The sun shadow's longest reach (default 12 m, the rocks'). */
+  maxLenM?: number;
 }
 
 export function buildGroundShadows(
@@ -29,7 +31,7 @@ export function buildGroundShadows(
   const tanEl = castSun ? sun[1] / horiz : 1;
   for (const r of rocks) {
     const s0 = r.strength ?? 1;
-    const len = castSun && !r.ringOnly ? Math.min(MAX_LEN_M, r.height / tanEl) : 0;
+    const len = castSun && !r.ringOnly ? Math.min(r.maxLenM ?? MAX_LEN_M, r.height / tanEl) : 0;
     const ex = r.x + dx * len, ez = r.z + dz * len;
     const pad = r.radius * 1.4;
     const i0 = Math.max(0, Math.floor((Math.min(r.x, ex) - pad - cornerX) / SHADOW_CELL_M));

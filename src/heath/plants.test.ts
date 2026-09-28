@@ -150,7 +150,36 @@ import { plantCaster } from './plants';
 describe('plants as shadow casters', () => {
   it('shrubs cast at 0.6; pigface and rice-flower cast the ring only', () => {
     const base = { x: 0, z: 0, shape: 0, width: 2, height: 1, yTrue: 0, yCoarse: 0, yaw: 0, cosYaw: 1, sinYaw: 0, seed: 0, tint: [0, 0, 0] as [number, number, number] };
-    expect(plantCaster({ ...base, kind: 'daisy' })).toEqual({ x: 0, z: 0, radius: 1, height: 1, strength: 0.6, ringOnly: false });
+    expect(plantCaster({ ...base, kind: 'daisy' })).toEqual({ x: 0, z: 0, radius: 1, height: 1, strength: 0.6, ringOnly: false, maxLenM: 4 });
     expect(plantCaster({ ...base, kind: 'pigface' }).ringOnly).toBe(true);
+  });
+});
+
+import { SHADOW_N, SHADOW_CELL_M } from '../beach/rockShadows';
+import { SUN_SHADOW_RANGE_M, patchCasters } from './plants';
+
+describe('the plant casters for the patch (final review I1: the shadow rebuild stays cheap on the heath)', () => {
+  it('only plants within SUN_SHADOW_RANGE_M of the camera cast, with shadows capped at 4 m', () => {
+    const field = new PlantField(land, null, 1);
+    const plants = field.near(320, -40);
+    const casters = patchCasters(plants, [320, -40], 320, -40);
+    const half = (SHADOW_N * SHADOW_CELL_M) / 2;
+    expect(casters.length).toBeGreaterThan(100);
+    expect(casters.length).toBeLessThan(700);
+    for (const c of casters) {
+      expect(Math.hypot(c.x - 320, c.z + 40)).toBeLessThanOrEqual(SUN_SHADOW_RANGE_M);
+      expect(c.maxLenM).toBe(4);
+    }
+    void half;
+  });
+});
+
+describe('the plant cache (final review I2)', () => {
+  it('stays bounded while the camera flies 2 km over the heath', () => {
+    const field = new PlantField(land, null, 1);
+    for (let x = 400; x <= 2400; x += 3) field.near(x, 0);
+    expect(field.cachedCells).toBeLessThan(12000);
+    // and what's near is still right after eviction
+    expect(field.near(2400, 0)).toEqual(new PlantField(land, null, 1).near(2400, 0));
   });
 });

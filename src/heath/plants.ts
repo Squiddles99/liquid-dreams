@@ -94,6 +94,13 @@ const SHRUB_KEEP = 0.89, LOW_KEEP = 0.667;
 /** Plants start inland of the toe's rock band (the dune rise begins at toeEnd − 3 = 52 m on the default beach). */
 const PLANT_MIN_D = 45;
 const SINK = 0.15;
+/** The cache is trimmed to cells within PLANT_KEEP_M of the camera once it holds more than PLANT_CACHE_CELLS (final review I2). */
+const PLANT_CACHE_CELLS = 12000, PLANT_KEEP_M = 220;
+/**
+ * Plants cast on the fine patch only this near the camera (their shadows capped at 4 m); beyond, the dark heath floor grounds
+ * them, as it does beyond the patch (spec §3.5; final review I1).
+ */
+export const SUN_SHADOW_RANGE_M = 12;
 
 export interface Plant {
   x: number;
@@ -216,11 +223,34 @@ export class PlantField {
         for (const p of c) out.push(p);
       }
     }
+    if (this.cells.size > PLANT_CACHE_CELLS) {
+      for (const key of this.cells.keys()) {
+        const ci = Math.floor(key / 0x10000) - 0x8000, cj = (key % 0x10000) - 0x8000;
+        if (Math.hypot((ci + 0.5) * PLANT_CELL_M - camX, (cj + 0.5) * PLANT_CELL_M - camZ) > PLANT_KEEP_M) this.cells.delete(key);
+      }
+    }
     return out;
+  }
+
+  /** The number of cached cells (dev readout; bounded by the trim). */
+  get cachedCells(): number {
+    return this.cells.size;
   }
 }
 
 /** A plant in the fine patch's shadow picture (spec §3.5): lighter than a rock; the low plants only darken their contact. */
 export function plantCaster(p: Plant): ShadowCaster {
-  return { x: p.x, z: p.z, radius: p.width / 2, height: p.height, strength: 0.6, ringOnly: p.kind === 'pigface' || p.kind === 'rice' };
+  return { x: p.x, z: p.z, radius: p.width / 2, height: p.height, strength: 0.6, ringOnly: p.kind === 'pigface' || p.kind === 'rice', maxLenM: 4 };
+}
+
+/**
+ * The plants in the fine patch's shadow picture: those within SUN_SHADOW_RANGE_M of the camera. With every plant in the
+ * square casting (a low sun's shadows 12 m long), a rebuild on the heath took 12–35 ms (final review I1).
+ */
+export function patchCasters(plants: readonly Plant[], _centre: [number, number], camX: number, camZ: number): ShadowCaster[] {
+  const out: ShadowCaster[] = [];
+  for (const p of plants) {
+    if (Math.hypot(p.x - camX, p.z - camZ) <= SUN_SHADOW_RANGE_M) out.push(plantCaster(p));
+  }
+  return out;
 }

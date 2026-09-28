@@ -110,8 +110,12 @@ export class RockField {
     this.density = density;
   }
 
-  setDensity(d: number): void {
-    if (d !== this.density) { this.density = d; this.cells.clear(); }
+  /** Returns whether the rocks changed (the plants must then re-place around them). */
+  setDensity(d: number): boolean {
+    if (d === this.density) return false;
+    this.density = d;
+    this.cells.clear();
+    return true;
   }
 
   private cell(ci: number, cj: number): Rock[] {
