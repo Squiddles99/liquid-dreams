@@ -117,3 +117,13 @@ describe('the beach under the swash (Phase 4b spec §3.3, Ruling W7)', () => {
     }
   });
 });
+
+import { BOMBIE_X, BOMBIE_Z, MOUND_CREST_Y, MOUND_HALF_X_M } from '../bombie/bombieModel';
+describe('the Bombie’s mound (4c-3)', () => {
+  const b = buildBathymetry();
+  it('rises to 5 m below mean sea level outside the reef map, and leaves the bed alone beyond its oval', () => {
+    expect(bedHeightAt(b, BOMBIE_X, BOMBIE_Z)).toBeCloseTo(MOUND_CREST_Y, 3);
+    expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z)).toBeLessThan(-20);
+    expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M * 0.5, BOMBIE_Z)).toBeGreaterThan(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z));
+  });
+});
