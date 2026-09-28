@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-28
 **Authors:** Andrew and Claude
-**Status:** Design approved in conversation section by section (2026-09-28); written spec awaiting Andrew's review. Branch `phase-4c1-on-the-beach`.
+**Status:** Approved by Andrew (2026-09-28); built on branch `phase-4c1-on-the-beach` (Native execution). See §8 for the as-built notes and the gallery at `docs/superpowers/gallery/phase-4/on-the-beach/`.
 **Builds on:**
 - Phase 4a (`2026-09-28-the-view-back-design.md`): the land's composed height (`LandHeight`), its cover (`coverAt`: wet, sand, rock, heath, rockGrey, weed, the toe/dune bands), the land material (`createLandMaterial`), the sunlight map;
 - Phase 4b (`2026-09-28-the-waterline-design.md`): the wet line and the swash;
@@ -193,3 +193,22 @@ The limits test still passes (≤ 8 storage buffers, ≤ 16 sampled textures, �
 - Footprints, sound, a visible body.
 - Rock-on-rock and far-land shadows.
 - Sliding down dunes, and rock collision other than standing on top.
+
+## 8. As built
+
+- **Files:** the GPU classes live in `GroundPatchMesh.ts` (class `GroundPatch`) and `RockMeshes.ts` (class `Rocks`). `GroundPatch.ts` and `Rocks.ts` would collide with `groundPatch.ts` and `rocks.ts` on Windows' case-insensitive filesystem.
+- **Rocks (§3.3):**
+  - **Count:** keep probability = rock weight × `rock density` × a per-kind share (toe 0.6, face 1, shore 0.35), in a band from 10 m seaward to 100 m inland of the waterline. Without the shares, the shore platform and the toe saturated at about 2,000 rocks, and density couldn't double them.
+  - **Seating:** each rock sits on the lowest ground under its footprint, so none floats on a slope.
+  - **Light:** the rock material adds light bounced off the sand.
+- **The patch (§3.2):**
+  - **Ripples:** in the shading normal only, since a 25 cm grid can't carry 12 cm ripples. They're 0.2–0.8 cm from crest to trough, patchy, and faded where a pixel spans half a ripple (`fwidth`) and beyond 30 m.
+  - **Grit and flecks:** from one shared noise, faded by 20 m.
+  - **Draw order:** the patch draws before the land (`renderOrder` −1), so the land's discard doesn't shade the pixels twice.
+  - **Recentring:** a recentre reuses the samples the old square shares.
+  - **Shadows:** the shadow texture is RG8 (sun shadow, contact ring).
+- **App:**
+  - the rocks are relaid every 2 m of camera movement;
+  - a walk link opened before the land loads is walked into once the ground exists.
+- **Cost (measured):** patch 0.33 ms and rocks 0.13 ms GPU; a patch recentre about 1.7 ms CPU; a rock relay 0.45 ms warm.
+

@@ -43,6 +43,17 @@ describe('rock placement', () => {
     }
     expect(rocks.some((r) => r.kind === 'toe')).toBe(true);
   });
+  it('on a slope a rock is seated: its flat base lies below the ground all round its footprint (none float downhill)', () => {
+    const rocks = new RockField(land, 1).near(210, -40);
+    let worst = -Infinity;
+    for (const r of rocks) {
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4;
+        worst = Math.max(worst, r.y - land.heightAt(r.x + Math.cos(a) * r.radius * 0.8, r.z + Math.sin(a) * r.radius * 0.8));
+      }
+    }
+    expect(worst).toBeLessThanOrEqual(0);
+  });
   it('rock density scales the count (0 → none)', () => {
     const n = (d: number) => new RockField(land, d).near(210, -40).length;
     expect(n(0)).toBe(0);

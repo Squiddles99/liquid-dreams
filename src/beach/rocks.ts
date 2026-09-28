@@ -23,7 +23,7 @@ export type RockKind = 'toe' | 'face' | 'shore';
 export interface Rock {
   x: number;
   z: number;
-  /** The base's height (the ground, less the sinking). */
+  /** The base's height: the lowest ground under the footprint, less the sinking. */
   y: number;
   kind: RockKind;
   shape: number;
@@ -128,8 +128,11 @@ export function cellRocks(ci: number, cj: number, land: LandHeight, density: num
     const tint = mix3(base, [0, 0, 0], 1 - vary);
     const topTint = kind === 'shore' ? mix3(WEED, RUST, 0.25 * r(5)) : tint;
     const sink = height * (0.15 + 0.15 * r(6));
+    // Seated on the lowest ground under its footprint, so on a slope the downhill side doesn't float.
+    let seat = h;
+    for (let k = 0; k < 8; k++) seat = Math.min(seat, land.heightAt(x + Math.cos(k * Math.PI / 4) * radius * 0.8, z + Math.sin(k * Math.PI / 4) * radius * 0.8));
     out.push({
-      x, z, y: h - sink, kind, shape: Math.floor(r(7) * 8) % 8, radius, height,
+      x, z, y: seat - sink, kind, shape: Math.floor(r(7) * 8) % 8, radius, height,
       yaw: r(8) * Math.PI * 2, tiltX: (r(9) - 0.5) * 0.25, tiltZ: (r(10) - 0.5) * 0.25, tint, topTint,
     });
   }
