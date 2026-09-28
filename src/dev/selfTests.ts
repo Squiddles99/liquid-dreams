@@ -11,5 +11,6 @@ import '../breaker/ribbon.selftest';
 import '../whitewater/foamField.selftest';
 import '../whitewater/spray.selftest';
 import '../land/land.selftest';
+import '../surf/surf.selftest';
 
 export { renderSelfTestReport, runSelfTests } from './selfTest';
