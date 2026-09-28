@@ -16,7 +16,7 @@ describe('reference moments', () => {
       'autumn-glass', 'golden-hour', 'sunset', 'overview',
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'looking-down', 'reef-overhead',
       'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
-      'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach', 'up-the-dune',
+      'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach', 'up-the-dune', 'bombie-from-the-lineup', 'bombie-close',
     ]);
   });
   it('round-trip through moment links', () => {
@@ -73,11 +73,19 @@ describe('reference moment kinds', () => {
     expect(r.moment.camera.yawDeg).toBe(90);
     expect(r.moment.conditions.timeOfDay).toBe(8.75);
   });
+  it('the Bombie moments are view-kind: the lineup at 8 ft, a free camera at 10 ft', () => {
+    const l = REFERENCE_MOMENTS.find((m) => m.name === 'bombie-from-the-lineup')!, c = REFERENCE_MOMENTS.find((m) => m.name === 'bombie-close')!;
+    expect([l.kind, c.kind]).toEqual(['view', 'view']);
+    expect(l.moment.camera.mode).toBe('lineup');
+    expect(l.moment.conditions.swell.sizeFt).toBe(8);
+    expect(c.moment.camera.mode).toBe('free');
+    expect(c.moment.conditions.swell.sizeFt).toBe(10);
+  });
   it('the rest are time-kind', () => {
     const viewOrSet = new Set([
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'overview', 'reef-overhead', 'looking-down',
       'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
-      'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach', 'up-the-dune',
+      'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach', 'up-the-dune', 'bombie-from-the-lineup', 'bombie-close',
     ]);
     for (const r of REFERENCE_MOMENTS.filter((m) => !viewOrSet.has(m.name))) {
       expect(r.kind).toBe('time');

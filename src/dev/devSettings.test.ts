@@ -14,6 +14,7 @@ import { DEFAULT_FOAM_PARAMS } from '../whitewater/foamStep';
 import { DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS } from '../whitewater/sprayEmitters';
 import { DEFAULT_LAND_PARAMS } from '../land/landParams';
 import { DEFAULT_SURF_PARAMS } from '../surf/surfModel';
+import { DEFAULT_BOMBIE_PARAMS } from '../bombie/bombieParams';
 import {
   BREAKING_MODEL, CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
   loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
@@ -64,6 +65,7 @@ function defaults(): DevSettings {
     impact: DEFAULT_IMPACT_PARAMS,
     land: DEFAULT_LAND_PARAMS,
     surf: DEFAULT_SURF_PARAMS,
+    bombie: DEFAULT_BOMBIE_PARAMS,
   });
 }
 
@@ -103,6 +105,9 @@ function tweaked(): DevSettings {
   s.land.shadow = false;
   s.surf.amount = 1.6;
   s.surf.enabled = false;
+  s.bombie.enabled = false;
+  s.bombie.size = 1.7;
+  s.bombie.thresholdFt = 8;
   s.overlays.coverMap = true;
   s.overlays.sunlightMap = true;
   s.overlays.sprayTint = true;
@@ -474,5 +479,10 @@ describe('Phase 4a land settings', () => {
     const old = JSON.parse(JSON.stringify(defaults())) as Record<string, unknown>;
     delete old.surf;
     expect(loadDevSettings(store(old), defaults())!.surf).toEqual(DEFAULT_SURF_PARAMS);
+  });
+  it('settings stored before Phase 4c-3 (no bombie) load the Bombie defaults', () => {
+    const old = JSON.parse(JSON.stringify(defaults())) as Record<string, unknown>;
+    delete old.bombie;
+    expect(loadDevSettings(store(old), defaults())!.bombie).toEqual(DEFAULT_BOMBIE_PARAMS);
   });
 });

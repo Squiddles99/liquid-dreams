@@ -8,7 +8,7 @@ import { DEFAULT_FOAM_PARAMS, FOAM_PARAM_RANGES, type FoamParams } from '../whit
 import { DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, IMPACT_PARAM_RANGES, SPRAY_PARAM_RANGES, type ImpactParams, type SprayParams } from '../whitewater/sprayEmitters';
 import { DEFAULT_LAND_PARAMS, LAND_PARAM_RANGES, type LandParams } from '../land/landParams';
 import { DEFAULT_SURF_PARAMS, SURF_PARAM_RANGES, type SurfParams } from '../surf/surfModel';
-import { BREAK_BINDINGS, CONDITION_BINDINGS, FOAM_BINDINGS, IMPACT_BINDINGS, LAND_BINDINGS, OVERLAY_BINDINGS, SURF_BINDINGS, SPRAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
+import { BOMBIE_BINDINGS, BREAK_BINDINGS, CONDITION_BINDINGS, FOAM_BINDINGS, IMPACT_BINDINGS, LAND_BINDINGS, OVERLAY_BINDINGS, SURF_BINDINGS, SPRAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
 
 describe('dev panel condition bindings never rewrite a loaded moment', () => {
   // windSpeedMs has no widget of its own: it's edited in km/h through WIND_SPEED_KMH_BINDING instead, checked below.
@@ -123,5 +123,15 @@ describe('Surf folder sliders', () => {
     expect(Object.keys(SURF_BINDINGS).sort()).toEqual(numeric.sort());
     expect(SURF_BINDINGS.amount.min).toBe(SURF_PARAM_RANGES.amount.min);
     expect(SURF_BINDINGS.amount.max).toBe(SURF_PARAM_RANGES.amount.max);
+  });
+});
+
+import { BOMBIE_PARAM_RANGES } from '../bombie/bombieParams';
+describe('the Bombie folder (4c-3)', () => {
+  it('binds size and threshold with exactly normalizeBombieParams’s ranges', () => {
+    for (const k of ['size', 'thresholdFt'] as const) {
+      expect(BOMBIE_BINDINGS[k].min).toBe(BOMBIE_PARAM_RANGES[k].min);
+      expect(BOMBIE_BINDINGS[k].max).toBe(BOMBIE_PARAM_RANGES[k].max);
+    }
   });
 });
