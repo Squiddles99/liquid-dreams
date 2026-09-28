@@ -76,3 +76,14 @@ describe('rock placement', () => {
     expect(rockScale(200)).toBeLessThan(1);
   });
 });
+
+describe('rock footprints', () => {
+  it('covers() is true within a rock\'s radius plus the margin, false beyond', () => {
+    const f = new RockField(land, 1);
+    const r = f.near(210, -40).find((q) => q.kind === 'toe')!;
+    expect(f.covers(r.x, r.z, 0)).toBe(true);
+    expect(f.covers(r.x + r.radius + 0.1, r.z, 0.2)).toBe(true);
+    // A point well clear of every rock (the open dry beach, 25 m inland).
+    expect(f.covers(land.waterlineAt(-40) + 25, -40, 0.2)).toBe(false);
+  });
+});
