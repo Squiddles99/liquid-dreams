@@ -168,6 +168,7 @@ export const LAND_BINDINGS = {
   beachWidthM: { label: 'beach width (m)', ...LAND_PARAM_RANGES.beachWidthM, step: 1 },
   toeHeightM: { label: 'rock band top (m)', ...LAND_PARAM_RANGES.toeHeightM, step: 0.1 },
   rockDensity: { label: 'rock density', ...LAND_PARAM_RANGES.rockDensity, step: 0.05 },
+  bushDensity: { label: 'bush density', ...LAND_PARAM_RANGES.bushDensity, step: 0.05 },
 } as const;
 
 export class DevPanel {

@@ -83,11 +83,14 @@ export const PLANT_FULL_M = 150;
 export const PLANT_GONE_M = 200;
 export const LOD_RANGES_M = [25, 70] as const;
 /** Instances per kind × shape mesh at each level of detail (Review Focus 1: the inland heath at density 1 fits). */
-export const LOD_CAPACITY = [400, 1000, 3000] as const;
-/** Candidates per 16 m² cell: shrubs at up to one per 4 m², low plants at up to one per 8 m². */
-const SHRUB_CANDIDATES = 4, LOW_CANDIDATES = 2;
-/** Keep probabilities on full cover: 4 × 0.8 / 16 m² = one shrub per 5 m²; 2 × 0.67 / 16 m² = one low plant per 12 m². */
-const SHRUB_KEEP = 0.8, LOW_KEEP = 0.667;
+export const LOD_CAPACITY = [400, 1000, 6000] as const;
+/** Candidates per 16 m² cell: shrubs at up to one per 2.7 m², low plants at up to one per 8 m². */
+const SHRUB_CANDIDATES = 6, LOW_CANDIDATES = 2;
+/**
+ * Keep probabilities on full cover: 6 × 0.89 / 16 m² = one shrub per 3 m² (the shrubs nearly touch: capture ruling; one
+ * per 5 m² read as bushes dotted on sand); 2 × 0.67 / 16 m² = one low plant per 12 m².
+ */
+const SHRUB_KEEP = 0.89, LOW_KEEP = 0.667;
 /** Plants start inland of the toe's rock band (the dune rise begins at toeEnd − 3 = 52 m on the default beach). */
 const PLANT_MIN_D = 45;
 const SINK = 0.15;
@@ -110,7 +113,8 @@ export interface Plant {
 
 /** 4a's painted palette (landShading.ts), so near and far agree. */
 const ALBEDO: Record<PlantKind, [number, number, number]> = {
-  daisy: [0.2, 0.215, 0.185],
+  // Silvery sage (the flora photo), a touch greener than 4a's painted silver-grey, which read as stone in 3D.
+  daisy: [0.17, 0.2, 0.14],
   green: [0.12, 0.16, 0.065],
   tall: [0.08, 0.1, 0.05],
   pigface: [0.15, 0.19, 0.07],

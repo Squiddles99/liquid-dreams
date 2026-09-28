@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, abs, attribute, cameraPosition, dot, float, length, max, mix, mx_noise_float, normalWorld, normalize, positionLocal, positionWorld, pow, reflect, saturate, sin, smoothstep, step, uniform, vec3 } from 'three/tsl';
+import { PI, abs, attribute, cameraPosition, dot, float, length, max, mix, mx_noise_float, mx_noise_vec3, normalWorld, normalize, positionLocal, positionWorld, pow, reflect, saturate, sin, smoothstep, step, uniform, vec3 } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
 import { LOD_CAPACITY, PLANT_KINDS, PLANT_LODS, PLANT_SHAPES, type Plant, type PlantKind, plantLod, plantScale, plantShapeGeometry } from './plants';
 
@@ -14,7 +14,7 @@ const RICE_PINK = vec3(0.55, 0.36, 0.4);
  * surface turns edge-on (facing = |n·v| → 0); a surface facing the camera is never cut.
  */
 export function raggedKeepNode(noise01: N, facing: N): N {
-  const cut = smoothstep(0.35, 0.95, float(1.0).sub(facing)).mul(0.85);
+  const cut = smoothstep(0.2, 0.9, float(1.0).sub(facing)).mul(0.95);
   return noise01.greaterThanEqual(cut);
 }
 
@@ -115,21 +115,22 @@ export class PlantMeshes {
     const swayZ: N = sin(this.time.mul(1.3).add(seed.mul(4.1))).mul(lean).mul(0.6);
     m.positionNode = positionLocal.add(vec3(swayX, 0.0, swayZ));
 
-    const n = normalize(normalWorld);
+    // Leaf clumps in the shading: the normal jittered by a 3D noise (~15 cm), so a shrub doesn't shade like a smooth stone.
+    const n = normalize(normalWorld.add(mx_noise_vec3(positionWorld.mul(6.0)).mul(0.45)));
     const l = sky.sunDirection;
     const toCam = cameraPosition.sub(positionWorld);
     const dist = length(toCam);
     const v = toCam.div(max(dist, 1e-3));
     const facing = abs(dot(n, v));
     // Ragged silhouettes, faded out by 100 m (the edge is under a pixel beyond).
-    const edgeN = mx_noise_float(positionWorld.mul(7.0)).mul(0.5).add(0.5);
+    const edgeN = mx_noise_float(positionWorld.mul(5.0)).mul(0.5).add(0.5);
     const keep = raggedKeepNode(edgeN.add(smoothstep(80.0, 100.0, dist)), facing);
     m.maskNode = keep;
 
     const near = float(1.0).sub(smoothstep(20.0, 60.0, dist));
     const leaf = mx_noise_float(positionWorld.mul(10.0)).mul(0.5).add(0.5);
     const fine = mx_noise_float(positionWorld.mul(40.0)).mul(0.5).add(0.5);
-    let albedo: N = attribute('plantTint', 'vec3').mul(mix(float(1.0), leaf.mul(0.4).add(0.8), near)).mul(mix(float(1.0), fine.mul(0.2).add(0.9), near));
+    let albedo: N = attribute('plantTint', 'vec3').mul(mix(float(1.0), leaf.mul(0.6).add(0.7), near)).mul(mix(float(1.0), fine.mul(0.2).add(0.9), near));
     if (kind === 'pigface') albedo = mix(albedo, PIGFACE_TIPS, smoothstep(0.62, 0.72, leaf).mul(smoothstep(0.4, 0.9, local.y)).mul(0.8));
     if (kind === 'rice') albedo = mix(albedo, RICE_PINK, smoothstep(0.7, 0.8, fine).mul(smoothstep(0.3, 0.7, local.y)));
 

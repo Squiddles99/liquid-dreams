@@ -22,4 +22,10 @@ describe('LandParams', () => {
     normalizeLandParams(p);
     expect(p.rockDensity).toBe(0);
   });
+  it('bush density defaults to 1 and is clamped to 0–2 (Phase 4c-2 §3.7)', () => {
+    expect(DEFAULT_LAND_PARAMS.bushDensity).toBe(1);
+    const p = { ...DEFAULT_LAND_PARAMS, bushDensity: 9 };
+    normalizeLandParams(p);
+    expect(p.bushDensity).toBe(2);
+  });
 });

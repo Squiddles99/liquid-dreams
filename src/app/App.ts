@@ -54,6 +54,9 @@ import { Land } from '../land/Land';
 import { GroundPatch } from '../beach/GroundPatchMesh';
 import { PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
 import { Rocks } from '../beach/RockMeshes';
+import { PlantField, plantCaster, type Plant } from '../heath/plants';
+import { PlantMeshes } from '../heath/PlantMeshes';
+import { uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
 import { buildGroundShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
@@ -66,6 +69,8 @@ const REEF_REBUILD_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 500;
 /** The rocks are relaid (from the cached cells) once the camera has moved this far (Phase 4c-1). */
 const ROCK_RELAY_M = 2;
+/** The plants are relaid once the camera has moved this far (Phase 4c-2 §3.7). */
+const PLANT_RELAY_M = 3;
 /** The crest trace's timing readout is an exponential moving average with this weight on each new frame. */
 const TRACE_MS_ALPHA = 0.1;
 
@@ -142,6 +147,17 @@ export class App {
   private rocksNear: Rock[] = [];
   private rocksAt: [number, number] | null = null;
   private readonly shadowSun = new THREE.Vector3(0, -1, 0);
+  /** The heath's plants (Phase 4c-2): from the land once it loads, refreshed every PLANT_RELAY_M. */
+  readonly plants: PlantMeshes;
+  private plantField: PlantField | null = null;
+  private plantsNear: Plant[] = [];
+  private plantsAt: [number, number] | null = null;
+  /** The plant layout's patch state at the last refresh (a patch recentre or show/hide re-seats the plants). */
+  private plantPatchKey = '';
+  /** 1 while the plants stand near the camera: the painted heath fades to its floor there. */
+  private readonly plantFloor = uniform(0);
+  /** Dev readout (window.liquidDreams.plantStats): plants drawn and dropped (a full mesh) at the last refresh. */
+  plantStats = { drawn: 0, dropped: 0 };
   /** A walk pose applied before the land loaded (it became a free pose): walked into once the ground exists. */
   private pendingWalk: CameraPose | null = null;
   private builtReefKey = JSON.stringify(this.reefParams);
@@ -233,9 +249,13 @@ export class App {
     this.patch = new GroundPatch(this.sky, this.land.look, {
       sunVisibility: (xz) => this.land.sunlight.visibilityNode(xz),
       wetHeight: (xz) => this.seabed.tide.add(this.surf.wetLevelNode(xz.y)),
+      plantFloor: this.plantFloor,
     });
     this.land.setHole(this.patch.hole);
     this.rocks = new Rocks(this.sky, (xz) => this.land.sunlight.visibilityNode(xz));
+    this.plants = new PlantMeshes(this.sky, (xz) => this.land.sunlight.visibilityNode(xz));
+    for (const m of this.plants.meshes) this.scene.add(m);
+    this.land.setPlantFloor(this.plantFloor);
     this.scene.add(this.patch.mesh);
     for (const m of this.rocks.meshes) this.scene.add(m);
     void this.land.load().then(() => this.onLandBuilt(), (e: unknown) => {
@@ -601,6 +621,7 @@ export class App {
     // bed, one surface since 4b), or the top of a rock; the water is the still tide.
     const field = new RockField(lh, this.landParams.rockDensity);
     this.rockField = field;
+    this.plantField = new PlantField(lh, field, this.landParams.bushDensity);
     this.rig.setGround({
       groundAt: (x, z) => {
         const seaward = SHORE_X + this.seabed.shiftAt(z) - x > 0;
@@ -618,6 +639,9 @@ export class App {
   private applyLandParams(): void {
     if (this.land.setParams(this.landParams)) this.scheduleLandRebuild();
     this.rockField?.setDensity(this.landParams.rockDensity);
+    this.plantField?.setDensity(this.landParams.bushDensity);
+    // The rocks may have changed: plants re-place around them (Review Focus 2).
+    this.plantField?.clear();
     this.invalidateBeach();
   }
 
@@ -626,6 +650,7 @@ export class App {
     this.patchTracker.centre = null;
     this.patchGrids = undefined;
     this.rocksAt = null;
+    this.plantsAt = null;
   }
 
   /**
@@ -635,12 +660,15 @@ export class App {
    */
   private updateBeach(): void {
     const lh = this.land.height;
-    if (!this.rockField || !lh) {
+    if (!this.rockField || !this.plantField || !lh) {
       this.patch.setVisible(false);
       this.rocks.setVisible(false);
+      this.plants.setVisible(false);
+      this.plantFloor.value = 0;
       return;
     }
     this.rocks.setVisible(true);
+    this.plants.setVisible(true);
     const cam = this.camera.position;
     if (!this.rocksAt || Math.hypot(cam.x - this.rocksAt[0], cam.z - this.rocksAt[1]) > ROCK_RELAY_M) {
       this.rocksNear = this.rockField.near(cam.x, cam.z);
@@ -649,16 +677,27 @@ export class App {
     }
     const show = patchVisible(this.rig.mode, cam.y, this.rig.groundAt(cam.x, cam.z)) && !this.underwater;
     this.patch.setVisible(show);
-    if (!show) return;
-    const moved = this.patchTracker.update(cam.x, cam.z);
-    const c = this.patchTracker.centre!;
-    if (moved) {
+    const moved = show && this.patchTracker.update(cam.x, cam.z);
+    const c = show ? this.patchTracker.centre : null;
+    if (moved && c) {
       this.patchGrids = buildPatchGrids(lh, c, this.patchGrids);
       this.patch.setGrids(this.patchGrids);
     }
-    if (moved || this.sunDir.angleTo(this.shadowSun) > (0.5 * Math.PI) / 180) {
-      const near = this.rocksNear.filter((r) => Math.abs(r.x - c[0]) < 42 && Math.abs(r.z - c[1]) < 42);
-      this.patch.setShadows(buildGroundShadows(near, c[0] - 32, c[1] - 32, [this.sunDir.x, this.sunDir.y, this.sunDir.z]));
+    // The plants (Phase 4c-2): relaid every PLANT_RELAY_M, and whenever the patch recentres, shows or hides (each plant
+    // sits on the surface drawn under it). With density 0 the painted heath stands near the camera again.
+    this.plantFloor.value = this.landParams.bushDensity > 0 ? 1 : 0;
+    const patchKey = c ? `${c[0]},${c[1]}` : 'off';
+    if (!this.plantsAt || patchKey !== this.plantPatchKey || Math.hypot(cam.x - this.plantsAt[0], cam.z - this.plantsAt[1]) > PLANT_RELAY_M) {
+      this.plantsNear = this.plantField.near(cam.x, cam.z);
+      this.plantStats = this.plants.update(this.plantsNear, cam.x, cam.z, { cx: c ? c[0] : 0, cz: c ? c[1] : 0, on: !!c });
+      this.plantsAt = [cam.x, cam.z];
+      this.plantPatchKey = patchKey;
+    }
+    this.plants.tick(this.clock.simTime, this.conditions.wind.speedMs);
+    if (c && (moved || this.sunDir.angleTo(this.shadowSun) > (0.5 * Math.PI) / 180)) {
+      const inSquare = (x: number, z: number): boolean => Math.abs(x - c[0]) < 42 && Math.abs(z - c[1]) < 42;
+      const casters = [...this.rocksNear.filter((r) => inSquare(r.x, r.z)), ...this.plantsNear.filter((p) => inSquare(p.x, p.z)).map(plantCaster)];
+      this.patch.setShadows(buildGroundShadows(casters, c[0] - 32, c[1] - 32, [this.sunDir.x, this.sunDir.y, this.sunDir.z]));
       this.shadowSun.copy(this.sunDir);
     }
   }
