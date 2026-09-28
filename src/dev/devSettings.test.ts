@@ -13,6 +13,7 @@ import { DEFAULT_SET_PARAMS } from '../swell/sets';
 import { DEFAULT_FOAM_PARAMS } from '../whitewater/foamStep';
 import { DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS } from '../whitewater/sprayEmitters';
 import { DEFAULT_LAND_PARAMS } from '../land/landParams';
+import { DEFAULT_SURF_PARAMS } from '../surf/surfModel';
 import {
   BREAKING_MODEL, CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
   loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
@@ -62,6 +63,7 @@ function defaults(): DevSettings {
     spray: DEFAULT_SPRAY_PARAMS,
     impact: DEFAULT_IMPACT_PARAMS,
     land: DEFAULT_LAND_PARAMS,
+    surf: DEFAULT_SURF_PARAMS,
   });
 }
 
@@ -99,6 +101,8 @@ function tweaked(): DevSettings {
   s.impact.amount = 2.2;
   s.land.sandBrightness = 1.3;
   s.land.shadow = false;
+  s.surf.amount = 1.6;
+  s.surf.enabled = false;
   s.overlays.coverMap = true;
   s.overlays.sunlightMap = true;
   s.overlays.sprayTint = true;
@@ -465,5 +469,10 @@ describe('Phase 4a land settings', () => {
     const old = JSON.parse(JSON.stringify(defaults())) as Record<string, unknown>;
     delete old.land;
     expect(loadDevSettings(store(old), defaults())!.land).toEqual(DEFAULT_LAND_PARAMS);
+  });
+  it('settings stored before Phase 4b (no surf) load the surf defaults', () => {
+    const old = JSON.parse(JSON.stringify(defaults())) as Record<string, unknown>;
+    delete old.surf;
+    expect(loadDevSettings(store(old), defaults())!.surf).toEqual(DEFAULT_SURF_PARAMS);
   });
 });

@@ -38,7 +38,9 @@ import { Seabed, WATERLINE_STEP_M } from '../seabed/Seabed';
 import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
-import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesNear } from '../swell/sets';
+import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesBetween, wavesNear } from '../swell/sets';
+import { CoastalSurf } from '../surf/CoastalSurf';
+import { DEFAULT_SURF_PARAMS, type SurfParams, normalizeSurfParams } from '../surf/surfModel';
 import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FoamField } from '../whitewater/FoamField';
 import { SprayParticles } from '../whitewater/SprayParticles';
@@ -96,6 +98,9 @@ export class App {
   readonly sprayParams: SprayParams = { ...DEFAULT_SPRAY_PARAMS };
   readonly impactParams: ImpactParams = { ...DEFAULT_IMPACT_PARAMS };
   readonly landParams: LandParams = { ...DEFAULT_LAND_PARAMS };
+  readonly surfParams: SurfParams = { ...DEFAULT_SURF_PARAMS };
+  /** The coastal surf along the whole shore (Phase 4b spec 2026-09-28-the-waterline-design.md). */
+  readonly surf = new CoastalSurf();
   readonly setStatus = { nextSet: '', wave: '', face: '' };
   /** The look as constructed (deep clones): what "Reset settings" and default mode restore. */
   private readonly lookDefaults: DevLookParams = cloneLook(this.lookParams());
@@ -197,7 +202,8 @@ export class App {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
     this.scene.add(this.waterVolume.mesh);
-    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.land.sunlight, skyline: this.land.skyline });
+    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.land.sunlight, skyline: this.land.skyline, surf: this.surf });
+    this.land.setWetHeight((xz) => this.seabed.tide.add(this.surf.wetLevelNode(xz.y)));
     this.scene.add(this.oceanSurface.mesh);
     this.scene.add(this.ribbon.mesh);
     this.scene.add(this.spray.mesh);
@@ -213,7 +219,7 @@ export class App {
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
         picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
-        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
+        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
         onConditions: () => this.onConditionsEdited(),
@@ -229,6 +235,7 @@ export class App {
         onTogglePause: () => this.setPaused(!this.clock.paused),
         onSets: () => {
           normalizeSetParams(this.setParams);
+          this.surf.invalidate();
           this.panel.refresh();
           this.scheduleParticleReplay();
         },
@@ -259,6 +266,11 @@ export class App {
           normalizeImpactParams(this.impactParams);
           this.panel.refresh();
           this.scheduleImpactReplay();
+        },
+        onSurf: () => {
+          normalizeSurfParams(this.surfParams);
+          this.panel.refresh();
+          this.surf.invalidate();
         },
         onLand: () => {
           normalizeLandParams(this.landParams);
@@ -313,6 +325,7 @@ export class App {
   }
 
   applyMoment(m: Moment): void {
+    this.surf.invalidate();
     assignConditions(this.conditions, m.conditions);
     this.seabed.setTide(this.conditions.tideM);
     this.clock.setTime(m.simTime);
@@ -499,6 +512,7 @@ export class App {
   }
 
   private onConditionsEdited(): void {
+    this.surf.invalidate();
     const clean = sanitizeConditions(this.conditions);
     if (JSON.stringify(clean) !== JSON.stringify(this.conditions)) {
       assignConditions(this.conditions, clean);
@@ -641,7 +655,7 @@ export class App {
     return {
       spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams,
       maxFps: this.frameLimiter.maxFps, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams, overlays: this.overlays,
-      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams,
+      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams,
     };
   }
 
@@ -662,6 +676,7 @@ export class App {
     assignParams(this.sprayParams, look.spray);
     assignParams(this.impactParams, look.impact);
     assignParams(this.landParams, look.land);
+    assignParams(this.surfParams, look.surf);
   }
 
   /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
@@ -673,6 +688,8 @@ export class App {
   /** Every subsystem update handler, once, from the current params objects. */
   private applyAllParams(): void {
     normalizeSetParams(this.setParams);
+    normalizeSurfParams(this.surfParams);
+    this.surf.invalidate();
     this.ocean.setParams(this.simParams);
     updateWaterOpticsUniforms(this.waterOptics, this.waterParams);
     this.sky.setParams(this.atmosphereParams);
@@ -916,6 +933,7 @@ export class App {
 
     this.ocean.update(this.renderer, this.clock.simTime, simDt);
     const events = wavesNear(this.clock.simTime, this.conditions, this.setParams);
+        this.surf.update(this.clock.simTime, this.conditions, (t0, t1) => wavesBetween(t0, t1, this.conditions, this.setParams), this.field, this.surfParams);
     this.setWaves.setEvents(events);
     this.stepFoam(events);
     this.stepSpray();
