@@ -4,7 +4,9 @@ import { DEFAULT_LINEUP_POSITION } from '../dev/referenceMoments';
 import { readBakedLand } from './bakedLand.testutil';
 import { decodeLandFile } from './landData';
 import { LandHeight } from './landHeight';
-import { MARCH_GRID, MARCH_STEPS, SUN_REBUILD_RAD, SUN_SOFT_RAD, buildMarchHeights, marchDistance, sampleMarch, sunMoved, sunVisibility } from './sunlight';
+import {
+  MARCH_GRID, MARCH_STEPS, SUN_EDGE_FADE_M, SUN_GRID, SUN_REBUILD_RAD, SUN_SOFT_RAD, buildMarchHeights, marchDistance, outsideFade, sampleMarch, sunMoved, sunVisibility,
+} from './sunlight';
 
 const sunAt = (elevDeg: number, towardX: number, towardZ: number): [number, number, number] => {
   const e = (elevDeg * Math.PI) / 180, h = Math.hypot(towardX, towardZ);
@@ -45,6 +47,22 @@ describe('sunMoved', () => {
   });
 });
 
+describe('the sunlight map covers the dawn shade (final review I1)', () => {
+  it('reaches 3 km out to sea and 6 km along the coast', () => {
+    expect(SUN_GRID.x0).toBeLessThanOrEqual(-3000);
+    expect(SUN_GRID.z0).toBeLessThanOrEqual(-6000);
+    expect(SUN_GRID.z0 + SUN_GRID.nz * SUN_GRID.cellM).toBeGreaterThanOrEqual(6000);
+    // The march heights reach beyond it, so no march samples a clamped (repeated) edge.
+    expect(MARCH_GRID.x0).toBeLessThanOrEqual(SUN_GRID.x0);
+    expect(MARCH_GRID.z0).toBeLessThanOrEqual(SUN_GRID.z0 - 1500);
+  });
+  it('outside it the edge value fades to full sun over SUN_EDGE_FADE_M, not a step', () => {
+    expect(outsideFade(0)).toBe(0);
+    expect(outsideFade(SUN_EDGE_FADE_M / 2)).toBeCloseTo(0.5, 2);
+    expect(outsideFade(SUN_EDGE_FADE_M)).toBe(1);
+  });
+});
+
 describe('the ridge shades the lineup at sunrise (spec §3: sunbreak about 08:05 on 15 July)', () => {
   const land = new LandHeight(decodeLandFile(readBakedLand()));
   const h = buildMarchHeights((x, z) => land.heightAt(x, z));
@@ -52,6 +70,9 @@ describe('the ridge shades the lineup at sunrise (spec §3: sunbreak about 08:05
   const vis = (hours: number) => sunVisibility(h, lx, lz, sunForConditions({ date: '2026-07-15', timeOfDay: hours }).direction);
   it('is in shade at 07:45 and in sun at 08:15', () => {
     expect(vis(7.75)).toBe(0);
+    // At 07:30 the shade reaches nearly 3 km out to sea: inside the map (not cut off at its old x = −600 edge), and within
+    // the march's reach of the ridge (final review I1).
+    expect(sunVisibility(h, -2900, lz, sunForConditions({ date: '2026-07-15', timeOfDay: 7.5 }).direction)).toBe(0);
     expect(vis(8.25)).toBe(1);
   });
   it('the sunbreak falls between 08:00 and 08:10', () => {

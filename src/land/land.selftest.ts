@@ -9,7 +9,7 @@ import { Sky } from '../sky/Sky';
 import { reflectionCover, skylineTable } from './skyline';
 import { SkylineTable } from './SkylineTable';
 import { SunlightMap } from './SunlightMap';
-import { buildMarchHeights, sunVisibility } from './sunlight';
+import { SUN_GRID, buildMarchHeights, sunVisibility } from './sunlight';
 
 async function bakedLand(): Promise<LandHeight> {
   const r = await fetch(LAND_URL);
@@ -17,9 +17,9 @@ async function bakedLand(): Promise<LandHeight> {
 }
 
 /** Sample points snapped to sunlight-map texel centres (the map filters between centres; the CPU value is a point). */
-const snap = (v: number, o: number): number => o + (Math.floor((v - o) / 8) + 0.5) * 8;
+const snap = (v: number, o: number): number => o + (Math.floor((v - o) / SUN_GRID.cellM) + 0.5) * SUN_GRID.cellM;
 const POINTS: [number, number][] = ([[-25, 45], [-200, 0], [0, -300], [150, 200], [400, 0], [800, 100], [-500, -3000], [300, 2500], [1500, 0], [100, -1200]] as [number, number][])
-  .map(([x, z]) => [snap(x, -600), snap(z, -4000)]);
+  .map(([x, z]) => [snap(x, SUN_GRID.x0), snap(z, SUN_GRID.z0)]);
 
 registerSelfTest({
   name: 'land: the baked file loads; the waterline is 190 m at the reef',

@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { Fn, Loop, asin, atan, clamp, float, instanceIndex, length, max, mix, pow, select, smoothstep, texture, textureStore, uniform, uvec2, vec2, vec4 } from 'three/tsl';
-import { MARCH_GRID, MARCH_MAX_M, MARCH_MIN_M, MARCH_STEPS, SUN_GRID, SUN_REBUILD_RAD, SUN_SOFT_RAD, sunMoved } from './sunlight';
+import { Fn, Loop, asin, atan, clamp, float, floor, instanceIndex, int, ivec2, length, max, min, mix, pow, select, smoothstep, texture, textureLoad, textureStore, uniform, uvec2, vec2, vec4 } from 'three/tsl';
+import { MARCH_GRID, MARCH_MAX_M, MARCH_MIN_M, MARCH_STEPS, SUN_EDGE_FADE_M, SUN_GRID, SUN_REBUILD_RAD, SUN_SOFT_RAD, sunMoved } from './sunlight';
 
 type N = any;
 
@@ -36,17 +36,27 @@ export class SunlightMap implements SunlightSource {
     this.texture.wrapS = THREE.ClampToEdgeWrapping;
     this.texture.wrapT = THREE.ClampToEdgeWrapping;
     this.texture.generateMipmaps = false;
-    this.heights = new THREE.DataTexture(new Uint16Array(g.nx * g.nz), g.nx, g.nz, THREE.RedFormat, THREE.HalfFloatType);
-    this.heights.minFilter = THREE.LinearFilter;
-    this.heights.magFilter = THREE.LinearFilter;
+    // Full-precision heights (not half-float: 0.125 m steps at the ridge put a grazing sun's shade edge ~0.2° off in the
+    // first march steps, final review fix pass), read with a manual bilinear since f32 textures aren't filterable.
+    this.heights = new THREE.DataTexture(new Float32Array(g.nx * g.nz), g.nx, g.nz, THREE.RedFormat, THREE.FloatType);
+    this.heights.minFilter = THREE.NearestFilter;
+    this.heights.magFilter = THREE.NearestFilter;
     this.heights.wrapS = THREE.ClampToEdgeWrapping;
     this.heights.wrapT = THREE.ClampToEdgeWrapping;
     this.heights.generateMipmaps = false;
     this.heights.needsUpdate = true;
 
     const texel = (i: N): N => uvec2(i.mod(s.nx), i.div(s.nx));
-    // sampleMarch's mirror: hardware bilinear at (g + 0.5) / size, clamped to the edge.
-    const heightAt = (xz: N): N => texture(this.heights, xz.sub(vec2(g.x0, g.z0)).div(g.cellM).add(0.5).div(vec2(g.nx, g.nz))).level(float(0)).x;
+    // sampleMarch's exact mirror: bilinear between samples, clamped to the grid's edge.
+    const maxIndex = vec2(g.nx - 1, g.nz - 1);
+    const heightAt = (xz: N): N => {
+      const f = clamp(xz.sub(vec2(g.x0, g.z0)).div(g.cellM), vec2(0.0), maxIndex);
+      const base = min(floor(f), maxIndex.sub(1.0));
+      const t = f.sub(base);
+      const i0 = ivec2(base);
+      const load = (dx: number, dz: number): N => textureLoad(this.heights, i0.add(ivec2(dx, dz)), int(0)).x;
+      return mix(mix(load(0, 0), load(1, 0), t.x), mix(load(0, 1), load(1, 1), t.x), t.y);
+    };
     this.clearPass = Fn(() => {
       textureStore(this.texture, texel(instanceIndex), vec4(1.0, 0.0, 0.0, 1.0));
     })().compute(s.nx * s.nz) as THREE.ComputeNode;
@@ -70,8 +80,7 @@ export class SunlightMap implements SunlightSource {
 
   /** The land's march heights (sunlight.buildMarchHeights); the next update() rebuilds. */
   setHeights(h: Float32Array): void {
-    const data = this.heights.image.data as Uint16Array;
-    for (let k = 0; k < h.length; k++) data[k] = THREE.DataUtils.toHalfFloat(h[k]);
+    (this.heights.image.data as Float32Array).set(h);
     this.heights.needsUpdate = true;
     this.hasHeights = true;
     this.dirty = true;
@@ -98,9 +107,13 @@ export class SunlightMap implements SunlightSource {
 
   visibilityNode(xz: N): N {
     const s = SUN_GRID;
-    const uv = xz.sub(vec2(s.x0, s.z0)).div(vec2(s.nx * s.cellM, s.nz * s.cellM));
-    const inside = uv.x.greaterThanEqual(0.0).and(uv.y.greaterThanEqual(0.0)).and(uv.x.lessThanEqual(1.0)).and(uv.y.lessThanEqual(1.0));
+    const lo = vec2(s.x0, s.z0), size = vec2(s.nx * s.cellM, s.nz * s.cellM);
+    const uv = xz.sub(lo).div(size);
+    // Beyond the map, the edge value fades to full sun (sunlight.outsideFade) instead of stepping to it (final review I1).
+    const outside = max(max(lo.sub(xz), xz.sub(lo.add(size))), vec2(0.0));
     const v = texture(this.texture, clamp(uv, vec2(0.0), vec2(1.0))).level(float(0)).x;
-    return mix(float(1.0), select(inside, v, float(1.0)), this.enabled);
+    const faded = mix(v, float(1.0), smoothstep(0.0, SUN_EDGE_FADE_M, max(outside.x, outside.y)));
+    return mix(float(1.0), faded, this.enabled);
   }
+
 }

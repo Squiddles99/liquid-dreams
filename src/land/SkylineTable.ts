@@ -39,7 +39,8 @@ export class SkylineTable {
     const dist = max(entry.x.sub(along), 10.0);
     const sk = atan(entry.y.sub(p.y).div(dist));
     const rElev = asin(clamp(r.y, -1.0, 1.0));
-    const cover = select(entry.x.greaterThan(0.0), float(1.0).sub(smoothstep(sk.sub(SKYLINE_EDGE_RAD), sk.add(SKYLINE_EDGE_RAD), rElev)), float(0.0));
+    // No land where there's no skyline, or for water beyond the skyline point along the bearing (final review I2).
+    const cover = select(entry.x.greaterThan(0.0).and(along.lessThan(entry.x)), float(1.0).sub(smoothstep(sk.sub(SKYLINE_EDGE_RAD), sk.add(SKYLINE_EDGE_RAD), rElev)), float(0.0));
     const l = sky.sunDirection;
     const face = normalize(vec3(r.x.negate().mul(0.97), 0.26, r.z.negate().mul(0.97)));
     const lum = REFLECT_ALBEDO.mul(sky.skyIrradiance.mul(0.7).add(sky.sunIlluminance.mul(max(dot(face, l), 0.0)))).div(PI);
