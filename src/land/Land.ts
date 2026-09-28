@@ -41,6 +41,7 @@ export class Land {
   private sunVisibility: ((xz: N) => N) | undefined;
   private wetHeight: ((xz: N) => N) | undefined;
   private hole: PatchHole | undefined;
+  private plantFloor: THREE.UniformNode<'float', number> | undefined;
 
   constructor(sky: Sky) {
     this.sky = sky;
@@ -68,9 +69,15 @@ export class Land {
     this.rebuildMaterial();
   }
 
+  /** The painted heath's fade under the 3D plants (Phase 4c-2 §3.5); rebuilds the material. */
+  setPlantFloor(u: THREE.UniformNode<'float', number>): void {
+    this.plantFloor = u;
+    this.rebuildMaterial();
+  }
+
   private rebuildMaterial(): void {
     (this.mesh.material as THREE.Material).dispose();
-    this.mesh.material = createLandMaterial(this.sky, this.look, { sunVisibility: this.sunVisibility, wetHeight: this.wetHeight, hole: this.hole });
+    this.mesh.material = createLandMaterial(this.sky, this.look, { sunVisibility: this.sunVisibility, wetHeight: this.wetHeight, hole: this.hole, plantFloor: this.plantFloor });
   }
 
 
