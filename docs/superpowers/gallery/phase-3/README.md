@@ -58,3 +58,20 @@ The first measurements were over target (a 181 ms replay, 2.96 ms of CPU per tic
 - `08-default-morning.png`: the default moment's conditions (4 ft; wind 3 m/s from 80°, a light offshore; 08:15), 0.8 s after set 1's biggest wave reaches the peak, from the lineup camera of frame 01. A faint veil. The light wind gives a wind factor of about 0.3, and since the final review that sets only how many puffs are born (before, it also dimmed each puff, so a light wind showed about a tenth of a veil).
 
 **At the slider maximum** (12 ft, spray life 4 s): a replay takes 100 ticks in 367 ms, and each tick 3.5 ms of CPU. That is over the targets, which are met at the Womb's usual sizes. It is left for Andrew to decide; the options are replaying at 10 Hz, or moving the emitter work to a worker.
+
+## The impact explosion (Phase 3c, `impact/`, not merged)
+
+These use the `behind-the-wave` conditions, 5.4 s before that moment, when the reference set's biggest wave has just landed its lip along the section. Settings are the defaults, including `impact amount` 1.
+
+- `00-sheet.png`: the frames below on one sheet.
+- `01-close-side.png`: close, side-on to the throwing section (camera [18, 3, -32], looking south-south-west). A white burst rises above the lip where it lands.
+- `02-close-side-off.png`: the same frame with `impact amount` 0, for comparison.
+- `03-from-in-front.png`: from the shelf in front of the wave, looking back out at it. A haze of the burst shows above the lip.
+- `04-glassy-still-explodes.png`: frame 01 with no wind. The explosion still happens; the offshore spray doesn't.
+
+**Cost** (pane visible, RTX 4060 Laptop):
+- drawing: 0.3 ms;
+- the explosion's replay: 58 ticks, 76 ms alone (after the final review lengthened the lives so the burst falls back), about 1.2 ms of CPU per tick;
+- sharing the tick's emitters with the spray, both replay together in about 75 ms.
+
+**Tuned overnight** (Andrew's eye is the test): at the spec's values the burst topped out at crest height and hid against the wave's white face. The kick now aims 1.5 × H above the landing, and the puffs are 0.8–3.5 m at opacity 0.32.
