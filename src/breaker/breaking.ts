@@ -211,14 +211,21 @@ export function settleSpan(H: number, p: Pick<BreakParams, 'collapseTime' | 'tro
 }
 
 /**
- * The onset record (reefField.ReefField.onset): per field node, ONSET_LAGS values of the running maximum of
- * amp/hminBreak along the ray through it, at the node itself and at ONSET_LAG_S, 2·ONSET_LAG_S, … seconds upstream (the
- * water the crest was over that long ago). The running maximum never falls along a ray, so a section that has broken
- * stays broken wherever the reef goes deeper after it, and the time since its onset is where the lagged maxima cross
- * the wave's breaking level (onsetTime). One record serves every wave height: ρ = height·onsetGain·amp/hminBreak.
+ * The onset record (reefField.ReefField.onset, onsetAmp): per field node, ONSET_LAGS values of the running maximum of
+ * amp/hminBreak along the ray through it, at the node itself and at the lag times ONSET_LAG_TIMES_S upstream (the water
+ * the crest was over that long ago), then the wave's amplification at each (onsetHeight). The running maximum never
+ * falls along a ray, so a section that has broken stays broken wherever the reef goes deeper after it, and the time since
+ * its onset is where the lagged maxima cross the wave's breaking level (onsetTime). One record serves every wave height:
+ * ρ = height·onsetGain·amp/hminBreak.
  */
-export const ONSET_LAGS = 8;
-export const ONSET_LAG_S = 0.7;
+/** The lags' times (s upstream of the node): fine while the lip throws and the curl collapses, coarse over the pile's
+ * slow decay, 13 s (≈ 90 m) back at the far end. */
+export const ONSET_LAG_TIMES_S: readonly number[] = [0, 0.4, 0.8, 1.2, 2, 3.5, 7, 13];
+export const ONSET_LAGS = ONSET_LAG_TIMES_S.length;
+/** How far back the record reaches (s): a section broken longer ago reads Infinity. */
+export const ONSET_REACH_S = ONSET_LAG_TIMES_S[ONSET_LAGS - 1];
+/** Values per record sample: ONSET_LAGS running maxima, then ONSET_LAGS amplifications (reefField.sampleOnset). */
+export const ONSET_RECORD_LENGTH = 2 * ONSET_LAGS;
 
 /**
  * ρ per metre of wave height per unit amp/hminBreak: (1 + γδ)/γ, breakingRatio without its floor. The record leaves the
@@ -229,20 +236,43 @@ export function onsetGain(p: Pick<BreakParams, 'gamma' | 'delta'>): number {
   return (1 + p.gamma * p.delta) / p.gamma;
 }
 
-/**
- * The time (s) since the section at a crest first broke, from the onset record there (`rec`, ONSET_LAGS values from
- * `offset`) for a wave of deep-water height `heightM`: null if it hasn't broken, Infinity if it broke longer ago than
- * the record reaches ((ONSET_LAGS − 1)·ONSET_LAG_S). Linear between the lags, stopping at the first lag below the
- * breaking level.
- */
-export function onsetTime(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
+/** Where the lags cross the breaking level: the first lag j below it and the fraction phi of the way from j − 1; j =
+ * ONSET_LAGS once every lag is at or above it; null if the section hasn't broken. */
+function onsetCrossing(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): { j: number; phi: number } | null {
   const g = heightM * onsetGain(p);
   if (!(g > 0) || !(g * rec[offset] >= 1)) return null;
   for (let j = 1; j < ONSET_LAGS; j++) {
     const a = g * rec[offset + j - 1], b = g * rec[offset + j];
-    if (b < 1) return (j - 1 + Math.min(1, Math.max(0, (a - 1) / Math.max(a - b, 1e-9)))) * ONSET_LAG_S;
+    if (b < 1) return { j, phi: Math.min(1, Math.max(0, (a - 1) / Math.max(a - b, 1e-9))) };
   }
-  return Infinity;
+  return { j: ONSET_LAGS, phi: 0 };
+}
+
+/**
+ * The time (s) since the section at a crest first broke, from the onset record there (`rec`, its values from `offset`)
+ * for a wave of deep-water height `heightM`: null if it hasn't broken, Infinity if it broke longer ago than the record
+ * reaches (ONSET_REACH_S). Linear between the lags' times, stopping at the first lag below the breaking level.
+ */
+export function onsetTime(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
+  const c = onsetCrossing(rec, offset, heightM, p);
+  if (!c) return null;
+  if (c.j === ONSET_LAGS) return Infinity;
+  const t0 = ONSET_LAG_TIMES_S[c.j - 1];
+  return t0 + c.phi * (ONSET_LAG_TIMES_S[c.j] - t0);
+}
+
+/**
+ * The wave's height (m) where the section broke: heightM × the amplification the record carries (rec[offset +
+ * ONSET_LAGS + j]), interpolated where the lags cross the breaking level as onsetTime interpolates the time; the far lag's
+ * once the section broke beyond the record's reach; null if it hasn't broken. At onset ρ = 1, so this height is the
+ * breaking height there, uncapped by the depth (it is below 0.78·hmin wherever hminBreak is hmin).
+ */
+export function onsetHeight(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
+  const c = onsetCrossing(rec, offset, heightM, p);
+  if (!c) return null;
+  const amp = offset + ONSET_LAGS;
+  if (c.j === ONSET_LAGS) return heightM * rec[amp + ONSET_LAGS - 1];
+  return heightM * (rec[amp + c.j - 1] + c.phi * (rec[amp + c.j] - rec[amp + c.j - 1]));
 }
 
 /** A crest's breaking state: how far the face sharpens, the stage (readout, gate), the drain and the collapse. */

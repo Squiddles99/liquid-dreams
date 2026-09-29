@@ -1,6 +1,6 @@
 import { clamp, exp, float, max, min, select, smoothstep, uniform } from 'three/tsl';
 import {
-  type BreakParams, COLLAPSE_END, GRAVITY_MS2, ONSET_LAGS, ONSET_LAG_S, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
+  type BreakParams, COLLAPSE_END, GRAVITY_MS2, ONSET_LAGS, ONSET_LAG_TIMES_S, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
   HOLLOW_REACH_Q, MIN_STAGE_SPAN, normalizeBreakParams, onsetGain, steepeningStart,
 } from './breaking';
 
@@ -96,10 +96,10 @@ export function onsetTimeNode(rec: readonly N[], heightM: N, u: BreakUniforms): 
   for (let j = 1; j < ONSET_LAGS; j++) {
     const a = rho[j - 1], b = rho[j];
     const seg = select(b.greaterThanEqual(1.0), float(1.0), clamp(a.sub(1.0).div(max(a.sub(b), 1e-9)), 0.0, 1.0));
-    tb = tb.add(select(alive, seg, float(0.0)));
+    tb = tb.add(select(alive, seg.mul(ONSET_LAG_TIMES_S[j] - ONSET_LAG_TIMES_S[j - 1]), float(0.0)));
     alive = alive.and(b.greaterThanEqual(1.0));
   }
-  return { broken: rho[0].greaterThanEqual(1.0), tb: select(alive, float(ONSET_LONG_AGO_S), tb.mul(ONSET_LAG_S)), rMax: rho[0] };
+  return { broken: rho[0].greaterThanEqual(1.0), tb: select(alive, float(ONSET_LONG_AGO_S), tb), rMax: rho[0] };
 }
 
 /** breaking.lifecycle's result as nodes. */

@@ -1,4 +1,4 @@
-import { type BreakParams, ONSET_LAGS, breakingRatio, landingEstimate, onsetTime } from './breaking';
+import { type BreakParams, ONSET_RECORD_LENGTH, breakingRatio, landingEstimate, onsetTime } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { HAND_BACK_S } from './lipProfile';
 import { type ReefField, sampleField, sampleOnset } from './reefField';
@@ -91,7 +91,7 @@ function project(field: ReefField, w: ActiveWave, t: number, ctx: WaveContext, x
 
 export { landingEstimate };
 
-const onsetScratch = new Float32Array(ONSET_LAGS);
+const onsetScratch = new Float32Array(ONSET_RECORD_LENGTH);
 
 /**
  * How long ago (s) the crest at (x, z) first broke: the field's onset record there (breaking.onsetTime), the same
