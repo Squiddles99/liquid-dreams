@@ -5,7 +5,8 @@ import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
 import { computeReefField, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
-import { ONSET_LAGS, ONSET_LAG_TIMES_S, ONSET_RECORD_LENGTH } from './breaking';
+import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, onsetGain, onsetHeight, onsetTime } from './breaking';
+import { BREAKING_RATIO } from './setWaveModel';
 
 const reef05 = buildBathymetry();
 const reef1 = downsample(reef05, 2);
@@ -150,9 +151,10 @@ describe('the breaking depth smoothing (along the crest and along travel)', () =
 
 describe('the onset record', () => {
   const f = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
-  it('lag 0 is the running maximum of amp/hminBreak: never below the node\'s own, never falling along a ray', () => {
+  const R = ONSET_RECORD_LENGTH;
+  it("its running maximum of amp/hminBreak is never below the node's own, and never falls along a ray", () => {
     const n = f.tau.length;
-    for (let i = 0; i < n; i += 97) expect(f.onset[i * ONSET_LAGS]).toBeGreaterThanOrEqual(f.amp[i] / f.hminBreak[i] - 1e-6);
+    for (let i = 0; i < n; i += 97) expect(f.onset[i * R]).toBeGreaterThanOrEqual(f.amp[i] / f.hminBreak[i] - 1e-6);
     // Along rays through both ledges: sampled every 0.5 m, 60 m in from 40 m out. Not through the wedge's tip: ~26 m
     // inshore of it the rays from the two ledges meet (the field's direction swings 40° in 2 m), and past that line the
     // water is the other ledge's rays, with their own maximum.
@@ -160,49 +162,74 @@ describe('the onset record', () => {
       let x = px, z = pz;
       for (let d = 0; d < 40; d += 0.5) { const s = sampleField(f, x, z); x -= s.dirX * 0.5; z -= s.dirZ * 0.5; }
       let last = 0;
-      for (let d = 0; d <= 100; d += 0.5) {
+      for (let d = 0; d <= 80; d += 0.5) {
         const r = sampleOnset(f, x, z)!;
         // Where sections break and settle, to 40 m inshore of the ledge: within 2% (bilinear between nodes). Further in the
         // rays fan out onto neighbours that broke less hard, and it eases off slowly: long settled by then, and the
         // lifecycle is continuous in it.
-        if (d > 80) break;
         expect(r[0], `(${px}, ${pz}) + ${d} m`).toBeGreaterThanOrEqual(last * 0.98);
         last = Math.max(last, r[0]);
         const s = sampleField(f, x, z); x += s.dirX * 0.5; z += s.dirZ * 0.5;
       }
     }
   });
-  it('the lags look further back up the ray: each is at most the one before (the running maximum was lower then)', () => {
-    let worst = 0;
-    for (let i = 0; i < f.tau.length; i += 13) for (let j = 1; j < ONSET_LAGS; j++) {
-      const a = f.onset[i * ONSET_LAGS + j - 1], b = f.onset[i * ONSET_LAGS + j];
-      worst = Math.max(worst, (b - a) / Math.max(a, 1e-6));
+  it('a higher level breaks no earlier: at every node the time since onset never rises from level to level, 0 where unbroken', () => {
+    let worst = 0, unbrokenRunning = 0;
+    for (let i = 0; i < f.tau.length; i += 13) {
+      for (let k = 1; k < ONSET_LEVELS; k++) worst = Math.max(worst, f.onset[i * R + 1 + 2 * k] - f.onset[i * R + 1 + 2 * (k - 1)]);
+      // Unbroken: the running maximum below the level by more than the dips the carry bridges (3%).
+      for (let k = 0; k < ONSET_LEVELS; k++) if (0.97 * ONSET_LEVEL_Q[k] > f.onset[i * R] && f.onset[i * R + 1 + 2 * k] !== 0) unbrokenRunning++;
     }
-    expect(worst, 'the most a lag exceeds the one before it (fraction)').toBeLessThanOrEqual(0);
+    expect(worst, "the most a level's time exceeds the level below it (s)").toBeLessThanOrEqual(1e-4);
+    expect(unbrokenRunning, 'unbroken levels with a clock running (a broken neighbour blended in)').toBe(0);
   });
-  it('each lag carries the amplification where the crest was that long ago (8% to 3.5 s back, 10% at 7 and 13 s)', () => {
-    // A sample blends four nodes' records, and over the ledge the field's amplification varies ±5% node to node (2.21–2.43
-    // at the four nodes around the north ledge ray's point): the blend of their lags sits up to ~6.5% off the ray marched
-    // from the point itself, whose own hop matches it within 0.3%. That noise is the crest height's own (the sheet reads the
-    // same amplification).
+  it('the time since onset and the height of the throw match a march up the ray, for the waves that break at the Womb', () => {
+    // The record is read between levels (×1.44 apart) and blends four nodes, so it is judged against a march up the ray
+    // through the same running maximum, for the default set's smallest, biggest and a 1.5× wave, on every ledge ray.
+    // Where sections break and settle (to 30 m inshore) it matches within 0.15 s, and the throw's height within 10% above
+    // and 15% below: it is the tallest point in two seconds of travel, and the march takes it on one path, spikes and all
+    // (the amplification varies ±5% node to node), where the record blends four nodes' carries. Further in the rays fan out and
+    // cross, and the march itself follows one ray of many (60 m in from 16 m up the north ledge it is past the line where
+    // the two ledges' rays meet, and reads the other ledge's water): within 10% + 0.2 s and 20%. Sections that barely break (ρ <
+    // 1.3, at most half a break's extent) are left out: their ratio hovers at the level for tens of metres (0.301–0.305
+    // for 30 m on the north ledge), where no level spacing places the crossing, and they barely collapse.
+    const P = DEFAULT_BREAK_PARAMS;
     let checked = 0;
-    for (const [px, pz] of [[11, -30], [27, -75], [25, 28], [0, 0]] as const) {
-      // 20 m inshore of the ledge point.
+    const ledge: readonly [number, number][] = [[0, 0], [5.5, -15], [11, -30], [16.4, -45], [21.9, -60], [27, -75], [12.5, 14], [25, 28], [42, 33]];
+    for (const heightM of [1.7, 2.34, 3.5]) for (const [px, pz] of ledge) for (const inshore of [5, 10, 20, 30, 45, 60]) {
+      const q = 1 / (heightM * onsetGain(P));
       let x = px, z = pz;
-      for (let d = 0; d < 20; d += 0.5) { const s = sampleField(f, x, z); x += s.dirX * 0.5; z += s.dirZ * 0.5; }
-      const rec = sampleOnset(f, x, z)!;
-      expect(rec.length).toBe(ONSET_RECORD_LENGTH);
+      for (let d = 0; d < inshore; d += 0.5) { const s = sampleField(f, x, z); x += s.dirX * 0.5; z += s.dirZ * 0.5; }
+      const rec = Float32Array.from(sampleOnset(f, x, z)!);
+      if (!(rec[0] >= 1.3 * q)) continue;
       const tau0 = sampleField(f, x, z).tau;
-      ONSET_LAG_TIMES_S.forEach((lagS, j) => {
-        // March back along the ray in 0.25 m steps to where the crest was lagS earlier.
-        let bx = x, bz = z;
-        for (let n = 0; n < 4000 && sampleField(f, bx, bz).tau > tau0 - lagS; n++) { const s = sampleField(f, bx, bz); bx -= s.dirX * 0.25; bz -= s.dirZ * 0.25; }
-        const want = sampleField(f, bx, bz).amp, got = rec[ONSET_LAGS + j];
-        expect(Math.abs(got - want) / want, `(${px}, ${pz}) lag ${lagS} s: record ${got.toFixed(3)} vs ray ${want.toFixed(3)}`).toBeLessThan(lagS <= 3.5 ? 0.08 : 0.1);
-        checked++;
-      });
+      // Back up the ray in 0.25 m steps to where the running maximum drops below q: the section broke there. The throw is
+      // the tallest the crest stood (its height capped by the depth, as the sheet's) in the LIP_THROW_S after that.
+      let bx = x, bz = z, prev = { x, z, run: rec[0] };
+      const seen: { tau: number; h: number }[] = [];
+      for (let n = 0; n < 4000; n++) {
+        const s = sampleField(f, bx, bz);
+        seen.push({ tau: s.tau, h: Math.min(s.amp, (BREAKING_RATIO * s.hmin) / heightM) });
+        const nx = bx - s.dirX * 0.25, nz = bz - s.dirZ * 0.25, run = sampleOnset(f, nx, nz)?.[0] ?? 0;
+        if (run < q) {
+          const fr = (q - run) / Math.max(prev.run - run, 1e-9);
+          bx = nx + (prev.x - nx) * fr; bz = nz + (prev.z - nz) * fr;
+          break;
+        }
+        prev = { x: nx, z: nz, run }; bx = nx; bz = nz;
+      }
+      const ref = sampleField(f, bx, bz), refTb = tau0 - ref.tau;
+      const refThrow = Math.max(Math.min(ref.amp, (BREAKING_RATIO * ref.hmin) / heightM), ...seen.filter((p) => p.tau <= ref.tau + LIP_THROW_S).map((p) => p.h));
+      const tb = onsetTime(rec, 0, heightM, P)!, amp = onsetHeight(rec, 0, heightM, P)! / heightM;
+      const near = inshore <= 30;
+      const tag = `${heightM} m at (${px}, ${pz}) +${inshore} m`;
+      expect(Math.abs(tb - refTb), `${tag}: time since onset ${tb.toFixed(2)} vs ${refTb.toFixed(2)} s`).toBeLessThan(near ? 0.15 : 0.2 + 0.1 * refTb);
+      const off = (amp - refThrow) / refThrow;
+      expect(off, `${tag}: the throw's height (× the deep-water height) ${amp.toFixed(3)} vs ${refThrow.toFixed(3)}`).toBeGreaterThan(near ? -0.15 : -0.2);
+      expect(off, `${tag}: the throw's height (× the deep-water height) ${amp.toFixed(3)} vs ${refThrow.toFixed(3)}`).toBeLessThan(near ? 0.1 : 0.2);
+      checked++;
     }
-    expect(checked).toBe(4 * ONSET_LAG_TIMES_S.length);
+    expect(checked).toBeGreaterThan(100);
   });
   it('is off the record outside the grid', () => {
     expect(sampleOnset(f, f.grid.x0 - 1, 0)).toBeNull();

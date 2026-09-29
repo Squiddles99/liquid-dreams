@@ -4,13 +4,13 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, breakingHeightThreshold, stageCurves, steepening, steepeningStart } from './breaking';
+import { DEFAULT_BREAK_PARAMS, PILE_RISE_S, breakingHeightThreshold, landingEstimate, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
 import { type Station, traceStations } from './crestTrace';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import {
-  type ActiveWave, type BreakOptions, breakOptions, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
+  type ActiveWave, type BreakOptions, breakOptions, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestPileTop, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
   phaseXi, seabedFloor, sumWaves, toActiveWave, waveAt, waveAtCrest,
 } from './setWaveModel';
 
@@ -47,6 +47,23 @@ const along = (line: readonly (readonly [number, number])[], metres: number, ste
   for (let s = 0; s <= metres + 1e-9; s += step) out.push([a[0] + ((b[0] - a[0]) * s) / len, a[1] + ((b[1] - a[1]) * s) / len]);
   return out;
 };
+/** When the section on the ray through (px, pz) broke (s): from the record at the crest, at the first point from the
+ * ledge point inshore (0.5 m steps, up to 40 m) where the crest has broken. */
+function onsetAt(px: number, pz: number, w: ActiveWave): { tOn: number; H: number } {
+  for (const p of ray(px, pz, 0, 40)) {
+    const f = at(p.x, p.z), c = crestAt(p.x, p.z, f.tau, f, w, ctx, sheet)!;
+    if (c.tb !== null && c.tb !== undefined && Number.isFinite(c.tb)) return { tOn: f.tau - c.tb, H: localHeight(w, c.f) };
+  }
+  throw new Error(`(${px}, ${pz}) has not broken within 40 m inshore`);
+}
+/** The highest water within 20 m of w's crest at t on `line`, its index, and the crest's index. */
+function topNear(line: { x: number; z: number; tau: number }[], t: number, w: ActiveWave, o = sheet) {
+  const eta = line.map((p) => sumWaves(p.x, p.z, t, at(p.x, p.z), [w], ctx, o).eta);
+  const j = line.findIndex((p) => p.tau >= t);
+  let top = -1;
+  for (let i = 0; i < line.length; i++) if (Math.abs(i - j) * 0.5 <= 20 && (top < 0 || eta[i] > eta[top])) top = i;
+  return { eta, top, j, height: eta[top] };
+}
 /** When the crest first breaks (s > 0) on the ray through a ledge point, as arrival time τ (s); Infinity if it doesn't within ±40 m. */
 const onsetTau = (px: number, pz: number, w: ActiveWave): number =>
   Math.min(...ray(px, pz, 40, 40).filter((p) => stageWhenCrestAt(p.x, p.z, w) > 0).map((p) => p.tau));
@@ -241,14 +258,18 @@ const LEDGE_POINTS: readonly [number, number][] = [[0, 0], [5.5, -15], [11, -30]
 
 describe('the breaking sheet on the real reef', () => {
   const P = DEFAULT_BREAK_PARAMS;
-  it('while the wave throws, its crest is its highest water: nothing behind it stands above it', () => {
+  it('while the wave throws (onset to the landing), its crest is its highest water: nothing behind it stands above it', () => {
     // Each point's own height, capped by the depth under it, left the back of the wave over the ledge (5 m) taller than
     // its crest over the reef top (3 m): the highest water stayed behind as a hump (Andrew's "it passes by"). From onset
-    // to where the curl collapses, at the peak: the water 3–20 m behind the crest (ξ = 0) stays below the crest.
+    // to where the lip lands, at the peak: the water 3–20 m behind the crest (ξ = 0) stays below the crest. From the
+    // landing on, the whitewater pile is the highest water (the pile's own tests).
     const w = testWave(REF_BIGGEST.heightM);
     const line = ray(0, 0, 40, 60);
     let checked = 0;
     for (let t = 0; t <= 1.5 + 1e-9; t += 0.25) {
+      const cp = line[Math.max(1, line.findIndex((p) => p.tau >= t))];
+      const cc = crestAt(cp.x, cp.z, t, at(cp.x, cp.z), w, ctx, sheet)!;
+      if (cc.tb !== null && cc.tb !== undefined && cc.tb >= landingEstimate(localHeight(w, cc.f), P)) continue;
       const j = line.findIndex((p) => p.tau >= t);
       const crestArc = (j - 1 + (t - line[j - 1].tau) / (line[j].tau - line[j - 1].tau)) * 0.5;
       const eta = line.map((p) => sumWaves(p.x, p.z, t, at(p.x, p.z), [w], ctx, sheet).eta);
@@ -257,7 +278,7 @@ describe('the breaking sheet on the real reef', () => {
       expect(behind, `${t.toFixed(2)} s after onset: the water behind the crest (crest ${crest.toFixed(2)} m)`).toBeLessThan(crest);
       checked++;
     }
-    expect(checked).toBe(7);
+    expect(checked).toBeGreaterThanOrEqual(4);
   });
   it('through the break the highest water moves with the wave: it neither stalls nor hands on to a second crest (Andrew)', { timeout: 120_000 }, () => {
     // Along each ledge ray, from half a second before the crest reaches the ledge to 6 s after: every 0.25 s the highest
@@ -265,6 +286,9 @@ describe('the breaking sheet on the real reef', () => {
     // the crest and each point kept its own height, it stood still for up to 2 s over the ledge while its crest shrank,
     // then jumped 10–15 m to a second crest that grew and broke inshore (26 m/s at the north ledge 60 m from the peak).
     // A crest collapsing into whitewater may pause for a step as its top falls; it may not stand, and it may not jump.
+    // Where the top is a plateau (the whitewater pile merging with the collapsed crest behind it), its highest sample
+    // wanders over it: the top is the middle of the unbroken run of samples within 1% of the highest (a second crest is
+    // not part of that run, so a hand-on to one still jumps).
     const w = testWave(REF_BIGGEST.heightM);
     let worstStand = 0, worstJump = 0, samples = 0;
     for (const [px, pz] of LEDGE_POINTS) {
@@ -275,9 +299,14 @@ describe('the breaking sheet on the real reef', () => {
         const eta = line.map((p) => sumWaves(p.x, p.z, t, at(p.x, p.z), [w], ctx, sheet).eta);
         const j = line.findIndex((p) => p.tau >= t);
         if (j < 1 || j * 0.5 > 90) { prev = null; continue; }
-        let top = -1;
-        for (let i = 0; i < line.length; i++) if (Math.abs(i - j) * 0.5 <= 20 && (top < 0 || eta[i] > eta[top])) top = i;
-        if (!(eta[top] > 0.3)) { prev = null; continue; }
+        let hi = -1;
+        for (let i = 0; i < line.length; i++) if (Math.abs(i - j) * 0.5 <= 20 && (hi < 0 || eta[i] > eta[hi])) hi = i;
+        if (!(eta[hi] > 0.3)) { prev = null; continue; }
+        const level = eta[hi] - 0.01 * Math.abs(eta[hi]);
+        let lo = hi, up = hi;
+        while (lo > 0 && Math.abs(lo - 1 - j) * 0.5 <= 20 && eta[lo - 1] >= level) lo--;
+        while (up < line.length - 1 && Math.abs(up + 1 - j) * 0.5 <= 20 && eta[up + 1] >= level) up++;
+        const top = (lo + up) / 2;
         if (prev !== null) {
           const v = ((top - prev) * 0.5) / 0.25;
           stand = v < 2 ? stand + 1 : 0;
@@ -532,6 +561,7 @@ describe('breaking stays finite and bounded', () => {
         for (const v of Object.values(r)) expect(Number.isFinite(v)).toBe(true);
         expect(Math.abs(r.eta)).toBeLessThanOrEqual(1.2 * tallest);
         for (const v of [r.foam, r.stage]) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(1); }
+        expect(r.pile).toBeGreaterThanOrEqual(0);
       }
     }
   });
@@ -580,6 +610,7 @@ describe('breaking stays finite and bounded', () => {
     const ends: Partial<typeof DEFAULT_BREAK_PARAMS>[] = [
       { gamma: 0.5 }, { gamma: 1.2 }, { delta: 0 }, { delta: 2 }, { stageSpan: 0.2 }, { stageSpan: 4 }, { beta: 0.1 }, { beta: 0.8 },
       { troughDrain: 0 }, { troughDrain: 1 }, { faceWidth: 0.1 }, { faceWidth: 3 }, { ribbonOnset: 0.3 }, { ribbonOnset: 0.9 },
+      { pileHalfM: 10 }, { pileHalfM: 150 }, { pileSurge: 0 }, { pileSurge: 0.6 },
     ];
     for (const end of ends) {
       const o = optsFor(field, { ...DEFAULT_BREAK_PARAMS, ...end });
@@ -619,5 +650,102 @@ describe('set waves do not stack on the wave ahead (Andrew)', () => {
     expect(worstClean, 'the tallest crest over its own height, behind a tight wave').toBeLessThanOrEqual(1.08);
     expect(stepped, 'long tails happen').toBeGreaterThan(10);
     expect(bestStep, 'a wave behind a long tail stands on its leftover').toBeGreaterThan(1.15);
+  });
+});
+
+describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
+  const P = DEFAULT_BREAK_PARAMS;
+  const w = testWave(REF_BIGGEST.heightM);
+  it('when the pile has risen it stands at least as high as the lip, and above it at the peak (the surge)', { timeout: 60_000 }, () => {
+    for (const [px, pz] of LEDGE_POINTS) {
+      const line = ray(px, pz, 40, 80);
+      const { tOn, H } = onsetAt(px, pz, w);
+      const lip = topNear(line, tOn, w).height;
+      const tRisen = tOn + landingEstimate(H, P) + PILE_RISE_S, rs = topNear(line, tRisen, w), risen = rs.height;
+      // A section that broke only partly builds a partial pile (its extent, lc.pile once risen).
+      const cp = line[rs.j], extent = crestAt(cp.x, cp.z, tRisen, at(cp.x, cp.z), w, ctx, sheet)!.lc.pile;
+      console.log(`(${px}, ${pz}) lip ${lip.toFixed(2)} m, pile ${risen.toFixed(2)} m, extent ${extent.toFixed(2)}`);
+      expect(risen, `(${px}, ${pz})`).toBeGreaterThanOrEqual((extent >= 0.99 ? 0.97 : 0.9) * lip);
+      if (px === 0 && pz === 0) expect(risen, 'the peak surges').toBeGreaterThan(1.1 * lip);
+    }
+  });
+  it("once the curl has collapsed its top is where the lip landed, about 1.2 lips' heights ahead of the crest", { timeout: 60_000 }, () => {
+    for (const [px, pz] of LEDGE_POINTS) {
+      const line = ray(px, pz, 40, 80);
+      const { tOn, H } = onsetAt(px, pz, w);
+      const t = tOn + landingEstimate(H, P) + settleSpan(H, P);
+      const { top, j } = topNear(line, t, w);
+      const cp = line[j], cc = crestAt(cp.x, cp.z, t, at(cp.x, cp.z), w, ctx, sheet)!;
+      // Where the water is, displaced (ahead of the crest it is pulled back up to ~1.5 m: the pile is placed there), in the
+      // lip's height (the section's height while it threw): the pile's scale.
+      const along = (i: number): number => {
+        const p = line[i], f = at(p.x, p.z), r = sumWaves(p.x, p.z, t, f, [w], ctx, sheet);
+        return i * 0.5 + r.dx * f.dirX + r.dz * f.dirZ;
+      };
+      const ahead = (along(top) - along(j)) / (cc.lipH as number);
+      // The pile is placed PILE_LAND_H (1.2) lips ahead of the crest its lookup found; the crest here (ξ = 0 on this ray)
+      // sits up to ~0.35 lips from that one where the lookup runs oblique to the rays (most at the peak's meeting line).
+      expect(ahead, `(${px}, ${pz}) top ahead of the crest (× the lip's H)`).toBeGreaterThanOrEqual(0.9);
+      expect(ahead, `(${px}, ${pz}) top ahead of the crest (× the lip's H)`).toBeLessThanOrEqual(1.6);
+    }
+  });
+  it("the sheet stands at least at the pile's height as it rolls in, and the pile never grows while it stands above the bore", { timeout: 120_000 }, () => {
+    for (const [px, pz] of LEDGE_POINTS) {
+      const line = ray(px, pz, 20, 110);
+      const { tOn, H } = onsetAt(px, pz, w);
+      const from = tOn + landingEstimate(H, P) + settleSpan(H, P) + 0.5;
+      let prev = Infinity, halfAt: number | null = null, first: { top: number; floor: number; j: number } | null = null;
+      for (let t = from; t <= tOn + 12 + 1e-9; t += 0.5) {
+        const { height, j, top } = topNear(line, t, w);
+        if (j < 1) break;
+        const cp = line[j], pt = crestPileTop(cp.x, cp.z, t, at(cp.x, cp.z), w, ctx, sheet);
+        if (!pt) break;
+        // The sheet stands at the pile's height where its top is (each point reads its own ray's lip: at the peak's
+        // meeting line the crest's own differs).
+        const tp = line[top], here = crestPileTop(tp.x, tp.z, t, at(tp.x, tp.z), w, ctx, sheet);
+        // The pile's front is steep (half a lip wide): its top can fall between the 0.5 m samples, so look 0.1 m apart there.
+        let fine = height;
+        for (const nb of [top - 1, top + 1]) {
+          const q = line[Math.min(line.length - 1, Math.max(0, nb))];
+          for (let fr = 0.2; fr < 1; fr += 0.2) {
+            const x = tp.x + (q.x - tp.x) * fr, z = tp.z + (q.z - tp.z) * fr;
+            fine = Math.max(fine, sumWaves(x, z, t, at(x, z), [w], ctx, sheet).eta);
+          }
+        }
+        // It never stands under the pile (where the wave under it is taller, as once the pile has decayed onto the bore,
+        // the wave is the surface). A section that broke only partly builds a partial pile: checked where it is whole.
+        const whole = crestAt(tp.x, tp.z, t, at(tp.x, tp.z), w, ctx, sheet)!.lc.pile >= 0.99;
+        if (here && whole) expect(here.top - fine, `(${px}, ${pz}) t ${(t - tOn).toFixed(1)} s: sheet ${fine.toFixed(2)} vs pile ${here.top.toFixed(2)}`).toBeLessThan(Math.max(0.05, 0.05 * here.top));
+        // The pile's own height (the lip, surged and decayed): its floor is the bore, which grows where the reef deepens (as
+        // the sheet's bore does).
+        // Not across the two ledges' meeting line, which the peak's ray runs down and rays from near the peak reach ~55 m
+        // in: water there came from the other ledge's break (0.1 m taller at the peak's ray, 11% from 16 m up the north
+        // ledge, ~35 m after the collapse). Checked on the rays that stay their own ledge's: from 20 m or more from the
+        // wedge's tip (seven of the nine).
+        const ownLedge = Math.hypot(px, pz) >= 20;
+        if (ownLedge && pt.own > pt.floor) expect(pt.own, `(${px}, ${pz}) t ${(t - tOn).toFixed(1)} s: the pile never grows`).toBeLessThanOrEqual(prev * 1.03 + 0.01);
+        prev = pt.own;
+        first ??= { ...pt, j };
+        if (halfAt === null && pt.top <= 0.5 * first.top) halfAt = (j - first.j) * 0.5;
+      }
+      console.log(`(${px}, ${pz}) the pile fell to half its height ${halfAt?.toFixed(0) ?? '(not within 12 s)'} m after the collapse`);
+    }
+  });
+  it('along a ray every point of the pile reads the same lip (it is carried along the rays)', () => {
+    // Not along the peak's ray: it runs down the line where the two ledges' rays meet (the field's direction swings 40° in
+    // 2 m there), and points a few metres apart read the lips of different ledges.
+    for (const [px, pz] of LEDGE_POINTS.filter(([x, z]) => x !== 0 || z !== 0)) {
+      const line = ray(px, pz, 40, 110);
+      const { tOn } = onsetAt(px, pz, w);
+      const t = tOn + 3.4, j = line.findIndex((p) => p.tau >= t);
+      const lips = line.slice(j - 4, j + 17).map((p) => crestAt(p.x, p.z, t, at(p.x, p.z), w, ctx, sheet)!.lipH as number);
+      expect((Math.max(...lips) - Math.min(...lips)) / Math.max(...lips), `(${px}, ${pz})`).toBeLessThan(0.05);
+    }
+  });
+  it('off the record grid there is no pile, and the sheet is as without it', () => {
+    const x = field.grid.x0 - 30, z = 0, f = at(x, z);
+    const r = sumWaves(x, z, f.tau + 3, f, [w], ctx, sheet), n = sumWaves(x, z, f.tau + 3, f, [w], ctx, { ...sheet, pile: false });
+    expect(r.pile).toBe(0);
+    expect(r.eta).toBe(n.eta);
   });
 });
