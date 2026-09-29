@@ -6,7 +6,7 @@ import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, breakingRatio } from './breaking';
 import {
   GRAVITY_MS2, type LipParams, barrelMetrics, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings,
-  landingTime, profileFrame, sampleHome,
+  landingTime, profileFrame, sampleHome, sampleSegment, settleSpan,
 } from './lipProfile';
 import { computeReefField, sampleField } from './reefField';
 import { type ActiveWave, type BreakOptions, breakOptions, type WaveContext, localHeight, sumWaves } from './setWaveModel';
@@ -154,7 +154,7 @@ describe('lipProfile', () => {
     }
   });
 
-  it('the lip is never thinner than 2 cm once it has grown, and has no foam before it lands', () => {
+  it('the lip is never thinner than 2 cm once it has grown', () => {
     const thin = { ...LIP, lipThickness: 0.03 };
     const probe = stationAt(0, 0, big, 0);
     const tau = profileFrame(probe.base, probe.input, thin).tauLand;
@@ -162,10 +162,31 @@ describe('lipProfile', () => {
       const { base, input } = stationAt(0, 0, big, frac * tau);
       const p = buildProfile(base, input, thin);
       p.lipness.forEach((l, j) => { if (l > 0.99) expect(p.thickness[j]).toBeGreaterThanOrEqual(MIN_LIP_THICKNESS_M - 1e-12); });
-      expect(Math.max(...p.curlFoam)).toBe(0);
     }
-    const after = stationAt(0, 0, big, 1.5);
-    expect(Math.max(...buildProfile(after.base, after.input, LIP).curlFoam)).toBeGreaterThan(0.5);
+  });
+
+  it("the foam zones (Andrew's photo): the lip whitens as it throws, most at its tip, the tube is clean, and foam fills it once the lip lands", () => {
+    const probe = stationAt(0, 0, big, 0);
+    const f0 = profileFrame(probe.base, probe.input, LIP);
+    const at = (tb: number) => { const { base, input } = stationAt(0, 0, big, tb); return buildProfile(base, input, LIP); };
+    const segOf = (j: number) => sampleSegment(j).seg;
+    const inside = (j: number) => ['face', 'wall', 'under'].includes(segOf(j));
+    const outerFrom = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall + PROFILE_SEGMENTS.under + PROFILE_SEGMENTS.cap;
+    // In the air: the tube's inside hides the sheet's foam (< 0), the outside carries its own, more at the tip than the root.
+    const air = at(0.8 * f0.tauLand);
+    expect(air.frame.weight).toBeGreaterThan(0.5);
+    air.curlFoam.forEach((c, j) => {
+      if (inside(j)) expect(c, `j ${j} (${segOf(j)}) in the air`).toBeLessThan(0);
+      if (segOf(j) === 'outer' || segOf(j) === 'cap') expect(c, `j ${j} (${segOf(j)}) in the air`).toBeGreaterThanOrEqual(0);
+    });
+    const tip = air.curlFoam[outerFrom], root = air.curlFoam[outerFrom + PROFILE_SEGMENTS.outer - 1];
+    expect(tip, 'the tip whitens').toBeGreaterThan(0.3);
+    expect(tip, 'more at the tip than the root').toBeGreaterThan(root + 0.2);
+    // Landed: the curl implodes into foam, inside and out.
+    const landed = at(f0.tauLand + 0.5 * settleSpan(probe.input.H, LIP));
+    const wallFoam = landed.curlFoam.filter((_, j) => segOf(j) === 'wall' || segOf(j) === 'under');
+    expect(Math.min(...wallFoam), 'the tube foams once the lip has landed').toBeGreaterThan(0.3);
+    expect(Math.max(...at(1.5).curlFoam)).toBeGreaterThan(0.5);
   });
 
   it('stays finite at the extremes (12 ft, 0.5 ft, huge and tiny times)', () => {

@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { If, atan, cos, float, length, max, min, mix, normalize, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
 import { type BreakParams, RIBBON_FULL_OFFSET, normalizeBreakParams, steepeningStart } from './breaking';
 import {
-  BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_MARGIN_M, FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_GROW_PROGRESS,
+  BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_MARGIN_M, FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_GROW_PROGRESS, LIP_SPRAY, LIP_SPRAY_FROM, LIP_SPRAY_PROGRESS,
   MAX_THICKNESS_OF_RADIUS, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID, TIP_THICKNESS_RATIO,
   WALL_BACK_H, WALL_HEIGHT, sampleSegment,
 } from './lipProfile';
@@ -312,5 +312,14 @@ export function profilePointNode(j: N, f: ProfileFrameNodes, baseHome: N, home: 
   const region = select(seg.equal(float(SEGMENT_ID.back)), float(0.0),
     select(seg.equal(float(SEGMENT_ID.front)), float(1.0).sub(smoothstep(landAt, landAt.add(1.5), h)),
       select(seg.equal(float(SEGMENT_ID.face)), float(0.5), float(1.0))));
-  return { pos: mix(bh, pos, f.weight), thickness: thickness.mul(f.weight), curlFoam: f.landing.mul(region), lipness: lipness.mul(f.weight) };
+  const landed = f.landing.mul(region);
+  // lipProfile.profilePoint's foam zones: in the air the outside sprays (by σ, the cap its tip) and the tube's inside is
+  // clean (< 0); once the lip lands, the landing foam.
+  const isOuter = seg.equal(float(SEGMENT_ID.outer)), isCap = seg.equal(float(SEGMENT_ID.cap));
+  const isInside = seg.equal(float(SEGMENT_ID.face)).or(seg.equal(float(SEGMENT_ID.wall))).or(seg.equal(float(SEGMENT_ID.under)));
+  const sigma = select(isOuter, float(1.0).sub(sv), select(isCap, float(1.0), float(0.0)));
+  const spray = smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog).mul(LIP_SPRAY).mul(smoothstep(LIP_SPRAY_FROM, 1.0, sigma));
+  const air = f.weight.mul(float(1.0).sub(f.landing));
+  const curlFoam = select(isOuter.or(isCap), max(landed, spray.mul(air)), select(isInside, landed.sub(air), landed));
+  return { pos: mix(bh, pos, f.weight), thickness: thickness.mul(f.weight), curlFoam, lipness: lipness.mul(f.weight) };
 }

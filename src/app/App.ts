@@ -54,7 +54,7 @@ import { FoamField } from '../whitewater/FoamField';
 import { SprayParticles } from '../whitewater/SprayParticles';
 import {
   DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
-  impactBirths, normalizeImpactParams, normalizeSprayParams, sprayBirths, sprayCanEmit, windToVector,
+  impactBirths, normalizeImpactParams, type SpitEmitter, spitBirths, SPRAY_BIRTH_CAP, normalizeSprayParams, sprayBirths, sprayCanEmit, windToVector,
 } from '../whitewater/sprayEmitters';
 import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { Land } from '../land/Land';
@@ -198,7 +198,7 @@ export class App {
   readonly impact = new SprayParticles(this.sky, IMPACT_KIND, this.land.sunlight);
   private impactTimer: number | undefined;
   /** This frame's emitters per tick, shared by the spray and the explosion (their replays cover different tick counts). */
-  private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[] }>();
+  private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] }>();
   private readonly fieldClient = new ReefFieldClient();
   private fieldKey = '';
   /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
@@ -525,11 +525,11 @@ export class App {
     this.spray.setWind(w[0] * s, w[1] * s);
     this.impact.setWind(w[0] * s, w[1] * s);
     this.spray.advance(this.renderer, this.clock.simTime, (k) => this.sprayBirthsAt(k));
-    this.impact.advance(this.renderer, this.clock.simTime, (k) => impactBirths(this.emittersAt(k).impact, k));
+    this.impact.advance(this.renderer, this.clock.simTime, (k) => this.impactBirthsAt(k));
   }
 
   /** Tick k's emitters, computed once per frame (both systems ask for the same ticks). */
-  private emittersAt(k: number): { spray: SprayEmitter[]; impact: ImpactEmitter[] } {
+  private emittersAt(k: number): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] } {
     let e = this.tickEmitters.get(k);
     if (!e) {
       const t = tickTime(k);
@@ -543,6 +543,13 @@ export class App {
       this.tickEmitters.set(k, e);
     }
     return e;
+  }
+
+  /** Tick k's births in the explosion's pool: the lips' landings (and the Bombie's burst), then the barrels' spit, within
+   * the tick's slots. */
+  private impactBirthsAt(k: number) {
+    const e = this.emittersAt(k);
+    return [...impactBirths(e.impact, k), ...spitBirths(e.spit, k)].slice(0, SPRAY_BIRTH_CAP);
   }
 
   private sprayBirthsAt(k: number) {
@@ -562,7 +569,7 @@ export class App {
     const start = performance.now();
     const steps = this.impact.advance(this.renderer, this.clock.simTime, (k) => {
       const c0 = performance.now();
-      const b = impactBirths(this.emittersAt(k).impact, k);
+      const b = this.impactBirthsAt(k);
       cpuMs += performance.now() - c0;
       return b;
     });
