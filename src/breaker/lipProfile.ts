@@ -207,11 +207,23 @@ export interface ProfilePoint {
   pos: Vec2;
   /** The lip's thickness here (m); 0 off the lip (segments under, cap, outer carry it). Keys the turquoise glow. */
   thickness: number;
-  /** Foam from the lip's landing [0, 1] (spec D4: where the wave turns inside out). Composed with the sheet's by max. */
+  /**
+   * The curl's foam, signed (Andrew's photo, 2026-09-29: white water on the lip as it peels, the tube behind it clean,
+   * full foam once it has imploded). > 0: foam of its own, composed with the sheet's by max: the lip's outside whitens as
+   * it throws (LIP_SPRAY, most at the tip), and once the lip lands the curl turns to foam (spec D4). < 0: the tube's
+   * inside (the face, wall and ceiling under the thrown lip) is clean while the lip is in the air, so the sheet's foam
+   * there is hidden by that share.
+   */
   curlFoam: number;
   /** 1 on the lip (under, cap, outer), 0 elsewhere: the FFT chop fades out over it (spec R6). */
   lipness: number;
 }
+
+/** The throwing lip's outside whitens up to this at its tip (its spray), from LIP_SPRAY_PROGRESS[0] to [1] of the throw… */
+export const LIP_SPRAY = 0.6;
+export const LIP_SPRAY_PROGRESS: readonly [number, number] = [0.2, 0.7];
+/** …from nothing at this fraction of the way from the lip's root to its tip. */
+export const LIP_SPRAY_FROM = 0.3;
 
 /** The constructed (unblended) point for sample j. */
 function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; thickness: number; lipness: number } {
@@ -244,12 +256,20 @@ function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; t
 /** Sample j of the profile, given its frame and the base at its home (base(sampleHome(j, f))). */
 export function profilePoint(j: number, f: ProfileFrame, baseHome: Vec2): ProfilePoint {
   const c = constructed(j, f, baseHome);
-  const { seg } = sampleSegment(j);
+  const { seg, s } = sampleSegment(j);
   // Landing foam: the curl (wall, lip) and the front out to just past where the lip lands.
   const home = sampleHome(j, f);
   const landAt = f.K[0] + f.vj * f.tauLand;
   const region = seg === 'back' ? 0 : seg === 'front' ? 1 - smoothstep(landAt, landAt + 1.5, home) : seg === 'face' ? 0.5 : 1;
-  return { pos: lerp2(baseHome, c.pos, f.weight), thickness: c.thickness * f.weight, curlFoam: f.landing * region, lipness: c.lipness * f.weight };
+  const landed = f.landing * region;
+  // In the air: the outside's spray (by σ, the root 0 to the tip 1; the cap is the tip), and the tube's inside clean.
+  const sigma = seg === 'outer' ? 1 - s : seg === 'cap' ? 1 : 0;
+  const spray = LIP_SPRAY * smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog) * smoothstep(LIP_SPRAY_FROM, 1, sigma);
+  const air = f.weight * (1 - f.landing);
+  const curlFoam = seg === 'outer' || seg === 'cap' ? Math.max(landed, spray * air)
+    : seg === 'face' || seg === 'wall' || seg === 'under' ? landed - air
+      : landed;
+  return { pos: lerp2(baseHome, c.pos, f.weight), thickness: c.thickness * f.weight, curlFoam, lipness: c.lipness * f.weight };
 }
 
 export interface Profile {

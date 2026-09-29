@@ -544,10 +544,12 @@ export class BreakingRibbon {
     // The tube's ceiling only where the curve departs from the sheet (the sheet has none).
     const underside = float(1.0).sub(smoothstep(-0.3, 0.3, shadingNormal.geometric.y)).mul(saturate(vConstructed));
     const lip = float(1.0).sub(smoothstep(0.05, 0.6, thickness)).mul(lipness);
-    // The curl's landing foam fades with ρ, so by the hand-back (and at the along-crest ends) the foam is the sheet's.
+    // The curl's foam is signed (lipProfile.ProfilePoint.curlFoam): its own foam by max, and the clean tube (< 0) hiding the
+    // sheet's foam by that share; both fade with ρ, so by the hand-back the foam is the sheet's.
+    const curlOwn = saturate(curlFoam).mul(rho), clean = saturate(curlFoam.negate()).mul(rho);
     // Read at the developed coordinate (as the chop is): at the home the whole thrown lip maps onto a strip of the sheet a
     // few metres wide, and the pattern smeared into bands down the lip. At the edges the two are the same point.
-    const foamLook = setFoamPattern(max(vSetFoam, curlFoam.mul(rho)), waterFoamFrame(vDetail, model.sets.meanTravel), model.sim.time);
+    const foamLook = setFoamPattern(max(vSetFoam.mul(float(1.0).sub(clean)), curlOwn), waterFoamFrame(vDetail, model.sets.meanTravel), model.sim.time);
     // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
     // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
     const sunVis = shading.sunlight ? shading.sunlight.visibilityNode(positionWorld.xz) : undefined;

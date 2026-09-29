@@ -27,8 +27,7 @@ export const EARTH_RADIUS_M = 6_371_000;
  * solid, clumpy white where the whitewater is fresh. So: Worley cells (FOAM_CELL_M, warped by noise so they are
  * irregular and drift), rimmed by bands whose width grows with the weight (the old threshold of 7 m noise blobs gave
  * hard-edged camouflage patches over the wave's back, Andrew's references show lace and solid whitewater). The weight
- * is varied ±30% by a large, slow noise, so the lace gathers in patches and streaks along travel. Thin lace breaks into
- * threads. Coverage reaches SET_FOAM_MAX_COVER (fresh whitewater is all but opaque) and goes to 0 with the weight
+ * is varied ±40% by a large, slow noise, so the lace gathers in patches and streaks along travel. Coverage reaches SET_FOAM_MAX_COVER (fresh whitewater is all but opaque) and goes to 0 with the weight
  * (× saturate(4·foam): no hard edge where clearing foam ends).
  * Returns vec2(coverage, brightness): brightness 0.62–1.07, the clumps bright and the creases between them in the
  * clumps' shadow (shadeWater); 1.07 (plain lit foam) where there is no set foam (coverage 0, skipped).
@@ -49,9 +48,8 @@ export function setFoamPattern(foam: N, frame: N, time: N): N {
       // F1, F2 (squared, in cells): the rims are where the two nearest cell centres are equally far.
       const f = sqrt(mx_worley_noise_vec2(q, 0.9));
       const edge = f.y.sub(f.x);
-      const width = w.pow(1.3).mul(1.0).add(0.14);
-      const threads = smoothstep(-0.35, 0.15, n2.add(w).sub(0.25));
-      const lace = float(1.0).sub(smoothstep(width.mul(0.5), width, edge)).mul(threads);
+      const width = w.pow(1.3).mul(0.95).add(0.18);
+      const lace = float(1.0).sub(smoothstep(width.mul(0.5), width, edge));
       const cover = lace.mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0)));
       // The clumps: bright over each cell's middle, and a finer mottle of bubble clusters (~0.5 m) over them.
       const fine = mx_noise_float(vec3(frame.x.mul(2.2).add(5.3), frame.y.mul(2.2), time.mul(0.6)));

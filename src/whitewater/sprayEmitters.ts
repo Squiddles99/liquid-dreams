@@ -1,7 +1,7 @@
 import type { BreakParams } from '../breaker/breaking';
 import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
-import { traceStations } from '../breaker/crestTrace';
-import { GRAVITY_MS2, type Vec2, profileFrame } from '../breaker/lipProfile';
+import { type Station, type StationEntry, traceStations } from '../breaker/crestTrace';
+import { GRAVITY_MS2, type ProfileFrame, type Vec2, profileFrame } from '../breaker/lipProfile';
 import { type ReefField, sampleField } from '../breaker/reefField';
 import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { smoothstep } from '../math/smoothstep';
@@ -170,24 +170,63 @@ export interface ImpactEmitter {
 }
 
 /**
- * The emitters at sim time t (spec §3.1; 3c §3.2): one camera-independent crest trace and one profile frame per breaking
- * station feed both the spray (the lip tip mid-throw, off an offshore wind) and the impact explosion (the landing point,
- * for IMPACT_WINDOW_S after the lip lands, with or without wind).
+ * The barrel's spit (Andrew: "foam, spit and spray"): as the tube collapses behind its mouth, the air in it is squeezed out
+ * of the open end in a horizontal jet of spray along the line. A station spits while its own lip is still in the air and a
+ * section within SPIT_REACH_STATIONS behind it along the crest (the one further through its break) has landed, most in
+ * the SPIT_PULSE_S after that landing. With the explosion (its amount), with or without wind.
  */
-export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact: ImpactEmitter[] } {
+export interface SpitEmitter {
+  /** The tube's middle at the mouth (world m; y includes the tide). */
+  x: number;
+  y: number;
+  z: number;
+  /** Along the crest, out of the open end (unit, horizontal). */
+  dx: number;
+  dz: number;
+  /** The jet's speed (m/s). */
+  speed: number;
+  /** The crest normal (the wave's travel). */
+  nx: number;
+  nz: number;
+  /** The tube's radius (m): births scatter over its mouth. */
+  radius: number;
+  /** pulse · weight · ρ · min(1, H / 2 m) · impact amount: how many puffs are born. */
+  strength: number;
+  /** weight · ρ (≤ 1): each puff's opacity. */
+  lip: number;
+  waveId: number;
+  arc: number;
+}
+/** A collapse this many stations (× SPRAY_SPACING_M) behind a lip still in the air blows out of its mouth… */
+export const SPIT_REACH_STATIONS = 3;
+/** …fully up to SPIT_PULSE_S[0] after that section landed, gone by [1] (s). */
+export const SPIT_PULSE_S: readonly [number, number] = [0.3, 1.0];
+/** The jet's speed: this × √(g·H), at most SPIT_MAX_SPEED_MS (a heavy 3 m barrel spits at ~14 m/s). */
+export const SPIT_SPEED = 2.5;
+export const SPIT_MAX_SPEED_MS = 25;
+/** Spit puffs per second per mouth at strength 1. */
+export const SPIT_RATE = 120;
+
+/**
+ * The emitters at sim time t (spec §3.1; 3c §3.2): one camera-independent crest trace and one profile frame per breaking
+ * station feed the spray (the lip tip mid-throw, off an offshore wind), the impact explosion (the landing point, for
+ * IMPACT_WINDOW_S after the lip lands, with or without wind) and the barrel's spit (SpitEmitter).
+ */
+export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] } {
   const { field, ctx, params } = i;
-  const spray: SprayEmitter[] = [], impact: ImpactEmitter[] = [];
-  if (!field || !ctx || !params.enabled || i.events.length === 0) return { spray, impact };
+  const spray: SprayEmitter[] = [], impact: ImpactEmitter[] = [], spit: SpitEmitter[] = [];
+  if (!field || !ctx || !params.enabled || i.events.length === 0) return { spray, impact, spit };
   // A calm wind makes no spray anywhere (final review I2); the explosion doesn't care about the wind.
   const wantSpray = sprayCanEmit(i.amount, i.wind.speedMs);
   const impactAmount = i.impactAmount ?? 0;
   const wantImpact = impactAmount > 0;
-  if (!wantSpray && !wantImpact) return { spray, impact };
+  if (!wantSpray && !wantImpact) return { spray, impact, spit };
   const waves = i.events.map(toActiveWave);
   const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M });
   // The lip is thrown from the wave as it stood: the frame reads the sheet without the whitewater pile (as the ribbon's).
   const opts: BreakOptions = { ...breakOptions(field, params), pile: false };
-  for (const s of stations) {
+  const frames: (ProfileFrame | null)[] = stations.map(() => null);
+  for (const [si, s] of stations.entries()) {
     if (s.gap || s.tb === null || !Number.isFinite(s.tb)) continue;
     const wind = wantSpray ? offshoreFactor(i.wind, s.nx, s.nz) : 0;
     if (!(wind > 0) && !wantImpact) continue;
@@ -200,6 +239,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
     };
     const f = profileFrame(base, { H: s.H, c: s.c, r: s.r, tb: s.tb }, params);
+    if (wantImpact) frames[si] = f;
     const waveId = i.events[s.wave].id, arc = Math.round(s.arc / SPRAY_SPACING_M);
     if (wind > 0 && f.prog > 0 && f.prog < 1 && f.weight * f.rho > MIN_EMIT_WEIGHT) {
       const tp = f.reach / f.vj;
@@ -218,7 +258,53 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       });
     }
   }
-  return { spray, impact };
+  if (wantImpact) spitEmitters(stations, frames, i, impactAmount, spit);
+  return { spray, impact, spit };
+}
+
+/** The stations' spit (SpitEmitter), from their frames (null: no frame), into `out`. */
+function spitEmitters(stations: readonly StationEntry[], frames: readonly (ProfileFrame | null)[], i: EmitterInput, amount: number, out: SpitEmitter[]): void {
+  // The station k steps from j along its run (same wave, no gap between), or -1.
+  const at = (j: number): Station | null => {
+    const e = j >= 0 && j < stations.length ? stations[j] : null;
+    return e && !e.gap ? e : null;
+  };
+  const step = (j: number, k: number): number => {
+    let q = j;
+    for (let m = 0; m < Math.abs(k); m++) {
+      q += Math.sign(k);
+      if (at(q)?.wave !== at(j)?.wave) return -1;
+    }
+    return q;
+  };
+  const tbOf = (j: number): number => (frames[j] ? (at(j)?.tb ?? -Infinity) : -Infinity);
+  for (let j = 0; j < stations.length; j++) {
+    const s = at(j), f = frames[j];
+    if (!s || !f || s.tb === null || !(s.tb < f.tauLand) || !(f.prog > 0.4) || !(f.weight * f.rho > MIN_EMIT_WEIGHT)) continue;
+    // Behind the mouth: the side further through its break.
+    const back = tbOf(step(j, -1)) > tbOf(step(j, 1)) ? -1 : 1;
+    if (!(tbOf(step(j, back)) > s.tb)) continue;
+    let age = -1, from = -1;
+    for (let k = 1; k <= SPIT_REACH_STATIONS; k++) {
+      const q = step(j, back * k), fq = q >= 0 ? frames[q] : null, tq = q >= 0 ? at(q)?.tb : null;
+      if (fq && tq !== null && tq !== undefined && tq >= fq.tauLand) { age = tq - fq.tauLand; from = q; break; }
+    }
+    if (from < 0) continue;
+    const pulse = 1 - smoothstep(SPIT_PULSE_S[0], SPIT_PULSE_S[1], age);
+    if (!(pulse > 0)) continue;
+    const b = at(from) as Station;
+    const ddx = s.x - b.x, ddz = s.z - b.z, dl = Math.hypot(ddx, ddz);
+    if (!(dl > 1e-6)) continue;
+    // The tube's middle: under the lip, between the face's foot and the crest.
+    const tubeH = Math.max(f.K[1] - f.F[1], 0.1);
+    const u = f.K[0] + 0.4 * f.reach, y = f.F[1] + 0.45 * tubeH;
+    out.push({
+      x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, dx: ddx / dl, dz: ddz / dl,
+      speed: Math.min(SPIT_MAX_SPEED_MS, SPIT_SPEED * Math.sqrt(GRAVITY_MS2 * s.H)), nx: s.nx, nz: s.nz, radius: 0.3 * tubeH,
+      strength: pulse * f.weight * f.rho * Math.min(1, s.H / 2) * amount, lip: Math.min(1, f.weight * f.rho),
+      waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M),
+    });
+  }
 }
 
 /** The spray's emitters at sim time t (breakEmitters' spray). */
@@ -294,6 +380,30 @@ export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): 
         x: e.x - e.nz * along, y: e.y + r(1) * 0.4, z: e.z + e.nx * along,
         vx: 0.6 * e.vx + (r(2) * 2 - 1) * 1.5, vy: (0.6 + 0.6 * r(3)) * kick + (r(4) * 2 - 1) * 1.5, vz: 0.6 * e.vz + (r(5) * 2 - 1) * 1.5,
         life: 1.3 + (IMPACT_MAX_LIFE_S - 1.3) * r(6), strength: Math.min(1, e.lip),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Tick k's spit births: floor(strength × SPIT_RATE × Δ + a hashed fraction) per mouth, at most SPRAY_BIRTH_CAP, hashed
+ * apart from the spray's and the explosion's draws. Each is scattered over the tube's mouth (± 0.6 radius across it and up)
+ * and blown out along it at U(0.7, 1.1) × its speed, ± 12% of that sideways, ± 1 m/s up, for U(0.8, 1.6) s.
+ */
+export function spitBirths(emitters: readonly SpitEmitter[], tick: number): SprayBirth[] {
+  const out: SprayBirth[] = [];
+  for (const e of emitters) {
+    const n = Math.floor(e.strength * SPIT_RATE * FOAM_TICK_S + rand01(tick, e.waveId, e.arc, 0x5bd1e995));
+    for (let j = 0; j < n; j++) {
+      if (out.length >= SPRAY_BIRTH_CAP) return out;
+      const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x20000000 + j * 8 + q);
+      const across = (r(0) * 2 - 1) * 0.6 * e.radius, up = (r(1) * 2 - 1) * 0.6 * e.radius;
+      const v = (0.7 + 0.4 * r(2)) * e.speed, side = (r(3) * 2 - 1) * 0.12 * e.speed;
+      out.push({
+        x: e.x + e.nx * across, y: e.y + up, z: e.z + e.nz * across,
+        vx: e.dx * v + e.nx * side, vy: r(4) * 2 - 1, vz: e.dz * v + e.nz * side,
+        life: 0.8 + 0.8 * r(5), strength: Math.min(1, e.lip),
       });
     }
   }
