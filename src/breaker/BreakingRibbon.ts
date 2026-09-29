@@ -543,7 +543,9 @@ export class BreakingRibbon {
     const normal = shadingNormal.normal.toVar();
     // The tube's ceiling only where the curve departs from the sheet (the sheet has none).
     const underside = float(1.0).sub(smoothstep(-0.3, 0.3, shadingNormal.geometric.y)).mul(saturate(vConstructed));
-    const lip = float(1.0).sub(smoothstep(0.05, 0.6, thickness)).mul(lipness);
+    // The whole lip transmits (spec 2026-09-29 §3.3): its colour comes from its thickness (shadeWater's lipThickness), so
+    // the thick root glows deeper blue-green, not dark: keyed to thin lips only, a thick lip read as opaque plastic.
+    const lip = lipness;
     // The curl's foam is signed (lipProfile.ProfilePoint.curlFoam): its own foam by max, and the clean tube (< 0) hiding the
     // sheet's foam by that share; both fade with ρ, so by the hand-back the foam is the sheet's.
     const curlOwn = saturate(curlFoam).mul(rho), clean = saturate(curlFoam.negate()).mul(rho);
@@ -556,7 +558,7 @@ export class BreakingRibbon {
     const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
-      { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, underside,
+      { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, lipThickness: thickness, underside,
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
         landReflection: shading.skyline ? (r: N) => shading.skyline!.reflectionNode(positionWorld, r, sky) : undefined },

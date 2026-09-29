@@ -496,3 +496,17 @@ describe('Phase 4a land settings', () => {
     expect(loadDevSettings(store(old), defaults())!.sound).toEqual(DEFAULT_SOUND_PARAMS);
   });
 });
+
+describe("settings saved before the lip's light and the pile", () => {
+  it("a water look saved before the lip's side skylight loads with its default and keeps its other tweaks", () => {
+    const raw = JSON.parse(JSON.stringify(tweaked()));
+    delete raw.water.lipSideSkylight;
+    const got = loadDevSettings(store(raw), defaults())!;
+    expect(got.water.lipSideSkylight).toBe(DEFAULT_WATER_OPTICS.lipSideSkylight);
+    expect(got.water.bodyScale).toBe(tweaked().water.bodyScale);
+  });
+  it('a breaking look saved by model 4 (before the barrel and the pile) loads the new defaults', () => {
+    const got = loadDevSettings(store(JSON.parse(JSON.stringify(tweaked())), 4), defaults())!;
+    expect(got.breaking).toEqual(DEFAULT_BREAK_PARAMS);
+  });
+});
