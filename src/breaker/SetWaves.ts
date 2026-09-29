@@ -5,13 +5,13 @@ import {
 } from 'three/tsl';
 import { REEF_GRID } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, breakingDepth, normalizeBreakParams } from './breaking';
-import { breakPointNode, breakingRatioNode, breakingStageNode, createBreakUniforms, stageCurvesNode, steepeningNode, updateBreakUniforms } from './breakingNodes';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LAGS, breakingDepth, normalizeBreakParams } from './breaking';
+import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import type { ReefField } from './reefField';
 import {
-  BREAKING_RATIO, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_WIDTH, FOLD_LIMIT, LONG_TAIL_WIDTH, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
+  BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_WIDTH, FOLD_LIMIT, LONG_TAIL_WIDTH, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
   TAPER_FAR_M, TAPER_NEAR_M, fieldSteepeningHeight, toActiveWave,
 } from './setWaveModel';
 
@@ -66,6 +66,9 @@ export class SetWaves {
   hasField = false;
   private readonly fieldA = floatTexture(FIELD_NX, FIELD_NZ);
   private readonly fieldB = floatTexture(FIELD_NX, FIELD_NZ);
+  /** The onset record (ReefField.onset): lags 0–3 and 4–7 on the field grid. */
+  private readonly onsetA = floatTexture(FIELD_NX, FIELD_NZ);
+  private readonly onsetB = floatTexture(FIELD_NX, FIELD_NZ);
   private readonly farA = floatTexture(FAR_COUNT, 1);
   private readonly farB = floatTexture(FAR_COUNT, 1);
   private readonly origin = uniform(new THREE.Vector2(REEF_GRID.x0 + REEF_GRID.cellM / 2, REEF_GRID.z0 + REEF_GRID.cellM / 2));
@@ -112,12 +115,17 @@ export class SetWaves {
       a[i * 4] = f.tau[i]; a[i * 4 + 1] = f.amp[i]; a[i * 4 + 2] = f.hmin[i]; a[i * 4 + 3] = f.k[i];
       b[i * 4] = f.dirX[i]; b[i * 4 + 1] = f.dirZ[i]; b[i * 4 + 2] = f.depth[i]; b[i * 4 + 3] = f.hminBreak[i];
     }
+    const oa = this.onsetA.image.data as Float32Array, ob = this.onsetB.image.data as Float32Array;
+    for (let i = 0; i < f.tau.length; i++) {
+      oa.set(f.onset.subarray(i * ONSET_LAGS, i * ONSET_LAGS + 4), i * 4);
+      ob.set(f.onset.subarray(i * ONSET_LAGS + 4, i * ONSET_LAGS + 8), i * 4);
+    }
     const fa = this.farA.image.data as Float32Array, fb = this.farB.image.data as Float32Array;
     for (let i = 0; i < f.far.count; i++) {
       fa[i * 4] = f.far.tau[i] - f.far.tauOffset; fa[i * 4 + 1] = f.far.amp[i]; fa[i * 4 + 2] = f.far.hmin[i]; fa[i * 4 + 3] = f.far.k[i];
       fb[i * 4] = f.far.dTauDx[i]; fb[i * 4 + 1] = f.far.depth[i]; fb[i * 4 + 2] = breakingDepth(f.far.hmin[i]); fb[i * 4 + 3] = 0;
     }
-    for (const t of [this.fieldA, this.fieldB, this.farA, this.farB]) t.needsUpdate = true;
+    for (const t of [this.fieldA, this.fieldB, this.onsetA, this.onsetB, this.farA, this.farB]) t.needsUpdate = true;
     this.origin.value.set(f.grid.x0, f.grid.z0);
     this.cell.value = f.grid.cellM;
     this.farP.value = f.far.p;
@@ -212,6 +220,15 @@ export class SetWaves {
     };
   }
 
+  /** reefField.sampleOnset: the onset record's ONSET_LAGS values at world xz (bilinear), and whether xz is on the grid. Inside an Fn. */
+  private sampleOnset(xz: N): { inside: N; values: N[] } {
+    const g = xz.sub(this.origin).div(this.cell).toVar();
+    const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThanEqual(this.fieldMax.x)).and(g.y.lessThanEqual(this.fieldMax.y));
+    const a = bilinearLoad(this.onsetA, g, this.fieldMax).toVar();
+    const b = bilinearLoad(this.onsetB, g, this.fieldMax).toVar();
+    return { inside, values: [a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w] };
+  }
+
   /**
    * Σ over the active waves of the setWaveModel formulas, with breaking (setWaveModel.waveAtCrest, term by term): the one
    * set-wave surface, its analytic slope (Phase 1's plus what breaking adds along each wave's travel), foam and stage.
@@ -240,19 +257,18 @@ export class SetWaves {
       Loop(MAX_ACTIVE_WAVES, ({ i }: N) => {
         const a = this.waves.element(i.mul(2));
         const b = this.waves.element(i.mul(2).add(1));
-        const H: N = min(a.y.mul(f.amp), f.hmin.mul(BREAKING_RATIO));
-        const A = H.mul(0.5);
+        // The point's own height (setWaveModel.localHeight); the crest's replaces it once the wave stands up (waveHeightAt).
+        const Hown: N = min(a.y.mul(f.amp), f.hmin.mul(BREAKING_RATIO)).toVar();
         // b.w = canBreak + 2·longTail (setEvents).
         const longTailFlag = b.w.greaterThan(1.5);
         const canBreak = b.w.sub(select(longTailFlag, float(2.0), float(0.0))).greaterThan(0.5).toVar();
-        const B = min(float(STOKES_CAP), stokesPerA.mul(A));
         /** Time since this wave's crest passed a point (negative: still to come), for field speed `cLoc` and arrival time `tau`. */
         const phaseXi = (p: N, tau: N, cLoc: N): N => {
           const dTau = b.x.sub(this.meanTravel.x).mul(p.x).add(b.y.sub(this.meanTravel.y).mul(p.y)).div(cLoc);
           return this.time.sub(a.x).sub(tau).sub(dTau);
         };
         // The Phase 1 wave here: waveAtCrest's first half.
-        const xi = phaseXi(xz, f.tau, cLocal);
+        const xi = phaseXi(xz, f.tau, cLocal).toVar();
         // setWaveModel.waveEnvelope: a long tail is Gaussian only behind its crest (ξ > 0).
         const longTail = longTailFlag.and(xi.greaterThan(0.0)).toVar();
         const width = select(longTail, float(LONG_TAIL_WIDTH * 2 * Math.PI), float(ENVELOPE_WIDTH * 2 * Math.PI)).div(a.z);
@@ -270,6 +286,49 @@ export class SetWaves {
           const q2 = q.mul(q);
           const lateral = mix(float(1.0), exp(q2.mul(q2).negate()), wFar).toVar();
           const theta = a.z.mul(xi).toVar();
+          // Breaking on, and this wave flagged as able to steepen somewhere (setEvents): else it is Phase 1 exactly.
+          const breaking = brk.enabled.greaterThan(0.5).and(canBreak).toVar();
+          // setWaveModel.crestAt, before the Phase 1 terms: the height comes from the crest once the wave stands up.
+          // Defaults: no crest, so no sharpening, stage or crest height.
+          const cPos = xz.toVar();
+          const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), hminBreak: f.hminBreak.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
+          const confidence = float(0.0).toVar(), rC = float(0.0).toVar();
+          const lc = { steep: float(0.0).toVar(), stage: float(0.0).toVar(), drain: float(0.0).toVar(), collapse: float(0.0).toVar() };
+          If(breaking, () => {
+            // CREST_STEPS Newton steps toward ξ = 0 along the wave's own travel direction b.xy (the same at every point,
+            // so the lookup has no seams), each at most half a wavelength, reading the field where the crest lands, so
+            // every point of one cross-section shares its crest's ratio, height and frame.
+            const wm = float(1.0).sub(dot(this.meanTravel, b.xy)).toVar();
+            for (let step = 0; step < CREST_STEPS; step++) {
+              const xiC = phaseXi(cPos, fc.tau, this.meanOmega.div(fc.k));
+              const reach = float(Math.PI).div(fc.k);
+              const crossing = max(dot(fc.dir, b.xy).add(wm), CREST_MIN_CROSSING);
+              cPos.addAssign(b.xy.mul(clamp(xiC.mul(this.meanOmega).div(fc.k).div(crossing), reach.negate(), reach)));
+              const sc = this.sample(cPos, true);
+              fc.tau.assign(sc.tau); fc.amp.assign(sc.amp); fc.hmin.assign(sc.hmin); fc.hminBreak.assign(sc.hminBreak);
+              fc.k.assign(sc.k); fc.dir.assign(sc.dir); fc.depth.assign(sc.depth);
+            }
+            rC.assign(breakingRatioNode(a.y.mul(fc.amp), fc.hminBreak, brk));
+            // The lookup's confidence: 1 − smoothstep(T/8, T/4, |ξ left at the crest|). It weights the reported stage,
+            // the crest height and the front sharpening.
+            const quarterPeriod = float(Math.PI / 2).div(a.z);
+            confidence.assign(float(1.0).sub(smoothstep(quarterPeriod.mul(0.5), quarterPeriod, abs(phaseXi(cPos, fc.tau, this.meanOmega.div(fc.k))))));
+            // The time since onset, from the onset record where this point's crest is along its own ray
+            // (setWaveModel.rayCrestPoint: one straight step of ξ·c, at most half a wavelength).
+            const reachHere = float(Math.PI).div(f.k);
+            const on = xz.add(f.dir.mul(clamp(xi.mul(this.meanOmega).div(f.k), reachHere.negate(), reachHere))).toVar();
+            const rec = this.sampleOnset(on);
+            const onset = onsetTimeNode(rec.values, a.y, brk);
+            const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), brk);
+            lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
+          });
+          // setWaveModel.waveHeightAt: the point's own height, the crest's by the sharpening × the lookup's confidence ×
+          // nearness to the crest in phase (CREST_HEIGHT_REACH periods, T = 2π/ω). mix(a, b, 0) is a exactly, so without
+          // breaking this is the Phase 1 height.
+          const near = float(1.0).sub(smoothstep(float(CREST_HEIGHT_REACH[0] * 2 * Math.PI).div(a.z), float(CREST_HEIGHT_REACH[1] * 2 * Math.PI).div(a.z), abs(xi)));
+          const H: N = mix(Hown, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), lc.steep.mul(confidence).mul(near)).toVar();
+          const A = H.mul(0.5);
+          const B = min(float(STOKES_CAP), stokesPerA.mul(A));
           const aE = A.mul(env).mul(lateral);
           const shape = cos(theta).add(B.mul(cos(theta.mul(2.0))));
           const e = aE.mul(shape).toVar();
@@ -292,34 +351,12 @@ export class SetWaves {
               foamFrame.assign(vec2(xi.mul(cLocal), dot(xz, vec2(b.y.negate(), b.x))));
             });
           }
-          // Breaking on, and this wave flagged as able to steepen somewhere (setEvents): else it is Phase 1 exactly.
-          If(brk.enabled.greaterThan(0.5).and(canBreak), () => {
-            // crestAt: CREST_STEPS Newton steps toward ξ = 0 along the wave's own travel direction b.xy (the same at
-            // every point, so the lookup has no seams), each at most half a wavelength, reading the field where the
-            // crest lands, so every point of one cross-section shares its crest's ratio, stage and frame.
-            const wm = float(1.0).sub(dot(this.meanTravel, b.xy)).toVar();
-            const cPos = xz.toVar();
-            const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), hminBreak: f.hminBreak.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
-            for (let step = 0; step < CREST_STEPS; step++) {
-              const xiC = phaseXi(cPos, fc.tau, this.meanOmega.div(fc.k));
-              const reach = float(Math.PI).div(fc.k);
-              const crossing = max(dot(fc.dir, b.xy).add(wm), CREST_MIN_CROSSING);
-              cPos.addAssign(b.xy.mul(clamp(xiC.mul(this.meanOmega).div(fc.k).div(crossing), reach.negate(), reach)));
-              const sc = this.sample(cPos, true);
-              fc.tau.assign(sc.tau); fc.amp.assign(sc.amp); fc.hmin.assign(sc.hmin); fc.hminBreak.assign(sc.hminBreak);
-              fc.k.assign(sc.k); fc.dir.assign(sc.dir); fc.depth.assign(sc.depth);
-            }
-            const rC = breakingRatioNode(a.y.mul(fc.amp), fc.hminBreak, brk).toVar();
-            const sC = breakingStageNode(rC, brk).toVar();
-            const steep = steepeningNode(rC, brk).toVar();
-            // The lookup's confidence: 1 − smoothstep(T/8, T/4, |ξ left at the crest|). It weights the reported stage and
-            // the front sharpening (a var: the breaking below reads it inside nested Ifs).
-            const quarterPeriod = float(Math.PI / 2).div(a.z);
-            const confidence = float(1.0).sub(smoothstep(quarterPeriod.mul(0.5), quarterPeriod, abs(phaseXi(cPos, fc.tau, this.meanOmega.div(fc.k))))).toVar();
+          // The breaking shape, with the crest found above.
+          If(breaking, () => {
             // waveAtCrest returns nothing (no stage, no breaking) where the point's own height is 0.
             const here = H.greaterThan(0.0);
-            stage.assign(max(stage, select(here, sC.mul(confidence), float(0.0))));
-            If(sC.greaterThan(0.0).or(steep.greaterThan(0.0)).and(here), () => {
+            stage.assign(max(stage, select(here, lc.stage.mul(confidence), float(0.0))));
+            If(lc.stage.greaterThan(0.0).or(lc.steep.greaterThan(0.0)).and(here), () => {
               // The crest's frame (height, Stokes ratio, lean, wavenumber, bore depth).
               const Hc = min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO));
               const Hl = Hc.mul(lateral).toVar();
@@ -337,7 +374,7 @@ export class SetWaves {
                   theta, env: env.mul(lateral), uUnbroken: v0.add(d), eta: e, uCrest: pitchC.mul(etaCrest), etaCrest, H: Hl, k: fc.k, hmin: fc.hminBreak,
                   boreH: min(a.y.mul(fc.amp), fc.hminBreak.mul(BREAKING_RATIO)).mul(lateral),
                   slope: along, dThetaDAhead: a.z.mul(perAhead), dEnvDAhead: dEnv.mul(lateral).mul(perAhead), crestConfidence: confidence,
-                }, steep, brk, stageCurvesNode(rC, brk));
+                }, lc.steep, brk, { drain: lc.drain, collapse: lc.collapse });
                 eta.addAssign(br.eta.sub(e));
                 slope.addAssign(f.dir.mul(br.dEtaDAhead));
                 foam.assign(max(foam, br.foam));

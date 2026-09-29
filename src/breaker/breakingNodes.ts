@@ -1,5 +1,8 @@
 import { clamp, exp, float, max, min, select, smoothstep, uniform } from 'three/tsl';
-import { type BreakParams, COLLAPSE_END, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, HOLLOW_REACH_Q, MIN_STAGE_SPAN, normalizeBreakParams, steepeningStart } from './breaking';
+import {
+  type BreakParams, COLLAPSE_END, GRAVITY_MS2, ONSET_LAGS, ONSET_LAG_S, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
+  HOLLOW_REACH_Q, MIN_STAGE_SPAN, normalizeBreakParams, onsetGain, steepeningStart,
+} from './breaking';
 
 type N = any;
 
@@ -15,6 +18,7 @@ export function createBreakUniforms(p: BreakParams) {
   const u = {
     enabled: uniform(0), gamma: uniform(0), delta: uniform(0), hFloorM: uniform(0), stageSpan: uniform(1), troughDrain: uniform(0), beta: uniform(0),
     faceWidth: uniform(0), drainTo: uniform(1), collapseFrom: uniform(1), collapseTo: uniform(2), steepFrom: uniform(0),
+    collapseTime: uniform(1), drainGrowth: uniform(1), onsetGain: uniform(1),
   };
   updateBreakUniforms(u, p);
   return u;
@@ -36,6 +40,7 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.drainTo.value = drainFullRatio(p);
   u.collapseFrom.value = 1 + p.collapseStart * u.stageSpan.value; u.collapseTo.value = 1 + COLLAPSE_END * u.stageSpan.value;
   u.steepFrom.value = steepeningStart(p);
+  u.collapseTime.value = p.collapseTime; u.drainGrowth.value = 1 + p.troughDrain * p.delta; u.onsetGain.value = onsetGain(p);
 }
 
 /** smoothstep with its edges reversed (e0 > e1): WGSL's smoothstep wants low < high. */
@@ -70,6 +75,55 @@ export function stageCurvesNode(r: N, u: BreakUniforms): StageCurveNodes {
   return {
     drain: smoothstep(u.steepFrom, u.drainTo, r),
     collapse: smoothstep(u.collapseFrom, u.collapseTo, r),
+  };
+}
+
+/** breaking.onsetTime's "Infinity" on the GPU: past every window it is compared with. */
+export const ONSET_LONG_AGO_S = 1e6;
+
+/**
+ * breaking.onsetTime: the time since the section broke from the onset record's ONSET_LAGS values `rec` (running
+ * maxima of amp/hminBreak, lag 0 first) for deep-water height `heightM`. Returns { broken, tb, rMax }: rMax is
+ * breaking.onsetRatio; tb is linear between
+ * the lags up to the first below the breaking level, ONSET_LONG_AGO_S when every lag is at or above it; meaningless
+ * when not broken.
+ */
+export function onsetTimeNode(rec: readonly N[], heightM: N, u: BreakUniforms): { broken: N; tb: N; rMax: N } {
+  const g: N = float(heightM).mul(u.onsetGain);
+  const rho: N[] = rec.map((v) => g.mul(v));
+  let tb: N = float(0.0);
+  let alive: N = rho[0].greaterThanEqual(1.0);
+  for (let j = 1; j < ONSET_LAGS; j++) {
+    const a = rho[j - 1], b = rho[j];
+    const seg = select(b.greaterThanEqual(1.0), float(1.0), clamp(a.sub(1.0).div(max(a.sub(b), 1e-9)), 0.0, 1.0));
+    tb = tb.add(select(alive, seg, float(0.0)));
+    alive = alive.and(b.greaterThanEqual(1.0));
+  }
+  return { broken: rho[0].greaterThanEqual(1.0), tb: select(alive, float(ONSET_LONG_AGO_S), tb.mul(ONSET_LAG_S)), rMax: rho[0] };
+}
+
+/** breaking.lifecycle's result as nodes. */
+export interface LifecycleNodes { steep: N; stage: N; drain: N; collapse: N }
+
+/**
+ * breaking.lifecycle: `hasRecord` false is its tb undefined (the ratio alone); else `broken` (the record's, or r ≥ 1)
+ * with time since onset `tb` (0 where only r ≥ 1 says so) and the section's largest ratio `rMax`. H is the crest's
+ * local height.
+ */
+export function lifecycleNode(r: N, hasRecord: N, broken: N, tb: N, rMax: N, H: N, u: BreakUniforms): LifecycleNodes {
+  const steepR = steepeningNode(r, u), stageR = breakingStageNode(r, u), c = stageCurvesNode(r, u);
+  const isBroken = hasRecord.and(broken.or(r.greaterThanEqual(1.0)));
+  const t = select(broken, tb, float(0.0));
+  // landingEstimate: landingTime(H·(1 + troughDrain·δ)), the fall floored at 0.05 m; settleSpan is collapseTime × it.
+  const land = max(H.mul(u.drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt();
+  const extent = breakingStageNode(max(r, rMax), u);
+  const thrown = smoothstep(0.0, land, t).mul(extent);
+  const settled = smoothstep(land, land.mul(u.collapseTime.add(1.0)), t).mul(extent);
+  return {
+    steep: select(isBroken, max(steepR, thrown), steepR),
+    stage: select(isBroken, max(stageR, thrown), stageR),
+    drain: select(isBroken, max(c.drain, thrown), c.drain),
+    collapse: select(hasRecord, select(isBroken, settled, float(0.0)), c.collapse),
   };
 }
 

@@ -187,6 +187,110 @@ export interface StageCurves {
   collapse: number;
 }
 
+export const GRAVITY_MS2 = 9.81;
+
+/** The landing time for a crest `drop` metres above the trough it lands in: a fall from rest, √(2·drop/g). */
+export function landingTime(drop: number): number {
+  return Math.sqrt((2 * Math.max(drop, 0.05)) / GRAVITY_MS2);
+}
+
+/** When a section's lip has landed, s after onset: a fall from the crest to the drained trough, H + the full drain. The
+ * sheet starts collapsing then; the ribbon at the later of this and its own measured landing. */
+export function landingEstimate(H: number, p: Pick<BreakParams, 'troughDrain' | 'delta'>): number {
+  return landingTime(H + p.troughDrain * p.delta * H);
+}
+
+/**
+ * How long (s) the curl takes to collapse after the lip lands: collapseTime × the fall from the crest to the fully drained
+ * trough, H·(1 + troughDrain·δ), which depends on the local height only. It used to be collapseTime × τ_land, but τ_land
+ * is re-measured every frame from the live crest, and the sheet's own settling lowers that crest: the window shrank as the
+ * curl collapsed and the barrel dropped in about half a second after the lip landed (Andrew's "trap door").
+ */
+export function settleSpan(H: number, p: Pick<BreakParams, 'collapseTime' | 'troughDrain' | 'delta'>): number {
+  return p.collapseTime * landingEstimate(H, p);
+}
+
+/**
+ * The onset record (reefField.ReefField.onset): per field node, ONSET_LAGS values of the running maximum of
+ * amp/hminBreak along the ray through it, at the node itself and at ONSET_LAG_S, 2·ONSET_LAG_S, … seconds upstream (the
+ * water the crest was over that long ago). The running maximum never falls along a ray, so a section that has broken
+ * stays broken wherever the reef goes deeper after it, and the time since its onset is where the lagged maxima cross
+ * the wave's breaking level (onsetTime). One record serves every wave height: ρ = height·onsetGain·amp/hminBreak.
+ */
+export const ONSET_LAGS = 8;
+export const ONSET_LAG_S = 0.7;
+
+/**
+ * ρ per metre of wave height per unit amp/hminBreak: (1 + γδ)/γ, breakingRatio without its floor. The record leaves the
+ * floor out (it has no params), so onsetTime agrees with breakingRatio wherever hminBreak ≥ hFloorM·(1 + γδ): 0.53 m at
+ * the defaults, below the field's shallowest breaking depth.
+ */
+export function onsetGain(p: Pick<BreakParams, 'gamma' | 'delta'>): number {
+  return (1 + p.gamma * p.delta) / p.gamma;
+}
+
+/**
+ * The time (s) since the section at a crest first broke, from the onset record there (`rec`, ONSET_LAGS values from
+ * `offset`) for a wave of deep-water height `heightM`: null if it hasn't broken, Infinity if it broke longer ago than
+ * the record reaches ((ONSET_LAGS − 1)·ONSET_LAG_S). Linear between the lags, stopping at the first lag below the
+ * breaking level.
+ */
+export function onsetTime(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
+  const g = heightM * onsetGain(p);
+  if (!(g > 0) || !(g * rec[offset] >= 1)) return null;
+  for (let j = 1; j < ONSET_LAGS; j++) {
+    const a = g * rec[offset + j - 1], b = g * rec[offset + j];
+    if (b < 1) return (j - 1 + Math.min(1, Math.max(0, (a - 1) / Math.max(a - b, 1e-9)))) * ONSET_LAG_S;
+  }
+  return Infinity;
+}
+
+/** A crest's breaking state: how far the face sharpens, the stage (readout, gate), the drain and the collapse. */
+export interface Lifecycle {
+  steep: number;
+  stage: number;
+  drain: number;
+  collapse: number;
+}
+
+/**
+ * One section's breaking state, on one clock. Before it breaks (tb null) the wave stands up with its crest's breaking
+ * ratio r: the front sharpens and the reef drains, as it shoals. From onset on everything runs on the time since then
+ * (tb): the sharpening, the drain and the stage reach their full by the time the lip lands (landingEstimate), and the
+ * wave collapses to its bore over the settle span after that, which is when the ribbon's curl collapses. How full is how
+ * far the section ever got into its breaking stage: breakingStage(rMax), rMax the largest ratio its crest has reached
+ * (the onset record's running maximum, onsetRatio). A section that only just reached ρ = 1 on a shoulder spills a little
+ * and runs on; one that stood well past it (the peak reaches 3.4) turns wholly to whitewater. Each is the larger of its
+ * ratio value and its time value, and every time value is 0 at tb = 0 and at rMax = 1, so the state is continuous across
+ * the onset and wherever the record's running maximum dips back under the level (its upwind march averages
+ * neighbouring rays; up to ~2%). It never runs backwards: a section that runs into deeper water after breaking stays
+ * broken (the ratio falls there, and when the stage and collapse followed it the broken wave stood back up as a second,
+ * unbroken one: Andrew's "second wave"). r ≥ 1 counts as broken at tb 0 where the record lags it.
+ * tb undefined: no onset record here (outside the field grid): the ratio alone, as before the record.
+ * H is the crest's local height (setWaveModel.localHeight, no lateral taper), as the ribbon's stations carry.
+ */
+export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r): Lifecycle {
+  const c = stageCurves(r, p);
+  const steep = steepening(r, p), stage = breakingStage(r, p);
+  if (tb === undefined) return { steep, stage, drain: c.drain, collapse: c.collapse };
+  const t = tb ?? (r >= 1 ? 0 : null);
+  if (t === null) return { steep, stage, drain: c.drain, collapse: 0 };
+  const extent = breakingStage(Math.max(r, rMax), p);
+  const land = landingEstimate(H, p);
+  const thrown = smoothstep(0, land, t) * extent;
+  return {
+    steep: Math.max(steep, thrown),
+    stage: Math.max(stage, thrown),
+    drain: Math.max(c.drain, thrown),
+    collapse: smoothstep(land, land + settleSpan(H, p), t) * extent,
+  };
+}
+
+/** The largest breaking ratio the section at a record ever reached, for a wave of deep-water height `heightM`. */
+export function onsetRatio(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number {
+  return heightM * onsetGain(p) * rec[offset];
+}
+
 /**
  * The collapse (the wave settling to its bore) is complete at ρ = 1 + COLLAPSE_END·Δ (4.2 at the defaults; at 2.5 the
  * peak's crest halved within ~1 s of the lip landing, and the ribbon collapsed onto it): well after the tube has closed
@@ -385,16 +489,16 @@ export interface BreakPointResult {
 }
 
 /**
- * Breaking at one point, for a crest with breaking ratio r and stage s: the front sharpening (by steepening(r) × the
- * crest lookup's confidence, before and through the break), the drain and the bore. Neither steepening nor breaking (or H too small) returns the Phase 1
+ * Breaking at one point, for a crest in breaking state `lc` (lifecycle): the front sharpening (lc.steep × the crest
+ * lookup's confidence), the drain and the bore. Neither steepening nor breaking (or H too small) returns the Phase 1
  * point exactly. With D the sharpening, R = drainDepth·drainShape(θ)·env the drain and S the bore scale (constant along
  * the cross-section), eta = (η − D − R)·S, and what breaking adds is eta − η = η·(S − 1) − (D + R)·S, differentiated
  * term by term along ahead.
  */
-export function breakPoint(i: BreakPointInput, s: number, r: number, p: BreakParams): BreakPointResult {
-  const steep = steepening(r, p);
-  if (!(steep > 0 || s > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { eta: i.eta, foam: 0, dEtaDAhead: 0 };
-  const c = stageCurves(r, p);
+export function breakPoint(i: BreakPointInput, lc: Lifecycle, p: BreakParams): BreakPointResult {
+  const steep = lc.steep;
+  if (!(steep > 0 || lc.stage > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { eta: i.eta, foam: 0, dEtaDAhead: 0 };
+  const c: StageCurves = { drain: lc.drain, collapse: lc.collapse };
   const ahead = i.uUnbroken - i.uCrest;
   const sharpen = steep * i.crestConfidence;
   const drop = sharpenDrop(ahead, i.eta, i.etaCrest, i.H, i.k, sharpen, p);

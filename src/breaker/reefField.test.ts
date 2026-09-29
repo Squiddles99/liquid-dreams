@@ -4,7 +4,8 @@ import { depthBg } from '../seabed/coastProfile';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
-import { computeReefField, maxAlongCrest, sampleField, smoothAlongCrest, smoothAlongTravel } from './reefField';
+import { computeReefField, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
+import { ONSET_LAGS } from './breaking';
 
 const reef05 = buildBathymetry();
 const reef1 = downsample(reef05, 2);
@@ -144,5 +145,43 @@ describe('the breaking depth smoothing (along the crest and along travel)', () =
     for (let row = 24; row <= 36; row++) expect(at(m, 30, row)).toBeCloseTo(5, 5);
     expect(at(m, 30, 38)).toBeCloseTo(1, 5);
     for (let i = 0; i < n; i++) expect(m[i]).toBeGreaterThanOrEqual(spike[i]);
+  });
+});
+
+describe('the onset record', () => {
+  const f = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
+  it('lag 0 is the running maximum of amp/hminBreak: never below the node\'s own, never falling along a ray', () => {
+    const n = f.tau.length;
+    for (let i = 0; i < n; i += 97) expect(f.onset[i * ONSET_LAGS]).toBeGreaterThanOrEqual(f.amp[i] / f.hminBreak[i] - 1e-6);
+    // Along rays through both ledges: sampled every 0.5 m, 60 m in from 40 m out. Not through the wedge's tip: ~26 m
+    // inshore of it the rays from the two ledges meet (the field's direction swings 40° in 2 m), and past that line the
+    // water is the other ledge's rays, with their own maximum.
+    for (const [px, pz] of [[11, -30], [27, -75], [25, 28]] as const) {
+      let x = px, z = pz;
+      for (let d = 0; d < 40; d += 0.5) { const s = sampleField(f, x, z); x -= s.dirX * 0.5; z -= s.dirZ * 0.5; }
+      let last = 0;
+      for (let d = 0; d <= 100; d += 0.5) {
+        const r = sampleOnset(f, x, z)!;
+        // Where sections break and settle, to 40 m inshore of the ledge: within 2% (bilinear between nodes). Further in the
+        // rays fan out onto neighbours that broke less hard, and it eases off slowly: long settled by then, and the
+        // lifecycle is continuous in it.
+        if (d > 80) break;
+        expect(r[0], `(${px}, ${pz}) + ${d} m`).toBeGreaterThanOrEqual(last * 0.98);
+        last = Math.max(last, r[0]);
+        const s = sampleField(f, x, z); x += s.dirX * 0.5; z += s.dirZ * 0.5;
+      }
+    }
+  });
+  it('the lags look further back up the ray: each is at most the one before (the running maximum was lower then)', () => {
+    let worst = 0;
+    for (let i = 0; i < f.tau.length; i += 13) for (let j = 1; j < ONSET_LAGS; j++) {
+      const a = f.onset[i * ONSET_LAGS + j - 1], b = f.onset[i * ONSET_LAGS + j];
+      worst = Math.max(worst, (b - a) / Math.max(a, 1e-6));
+    }
+    expect(worst, 'the most a lag exceeds the one before it (fraction)').toBeLessThanOrEqual(0);
+  });
+  it('is off the record outside the grid', () => {
+    expect(sampleOnset(f, f.grid.x0 - 1, 0)).toBeNull();
+    expect(sampleOnset(f, 0, 0)).not.toBeNull();
   });
 });

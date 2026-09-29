@@ -1,7 +1,7 @@
-import { type BreakParams, breakingRatio, drainDepth } from './breaking';
+import { type BreakParams, ONSET_LAGS, breakingRatio, landingEstimate, onsetTime } from './breaking';
 import type { FieldSample } from './fieldSample';
-import { HAND_BACK_S, landingTime } from './lipProfile';
-import { type ReefField, sampleField } from './reefField';
+import { HAND_BACK_S } from './lipProfile';
+import { type ReefField, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, TAPER_NEAR_M, type WaveContext, localHeight, phaseXi } from './setWaveModel';
 
 /**
@@ -19,9 +19,7 @@ export const MAX_STATIONS = 2048;
 export const BELOW_ONSET_RUN_M = 20;
 /** The time since onset is computed at key stations at most this far apart (m of crest) and interpolated between. */
 export const KEY_SPACING_M = 3;
-/** The look-back march for the time since onset steps this far (m) along the ray. */
-export const LOOK_BACK_STEP_M = 1;
-/** Extra look-back beyond the hand-back (s), and the CPU's culling margin over its landing-time estimate. */
+/** The CPU's culling margin over its landing-time estimate (s). */
 export const LOOK_BACK_MARGIN_S = 0.5;
 /** Newton projections onto ξ = 0 per step (the seed takes SEED_ITERATIONS). */
 export const PROJECT_ITERATIONS = 2;
@@ -91,41 +89,18 @@ function project(field: ReefField, w: ActiveWave, t: number, ctx: WaveContext, x
   return { x, z, xi: phaseXi(x, z, t, f, w, ctx), f };
 }
 
-/** The landing time the CPU assumes for culling: a fall from the crest to the drained trough, H + the full drain. */
-export function landingEstimate(H: number, p: BreakParams): number {
-  return landingTime(H + drainDepth(H, 1, p));
-}
+export { landingEstimate };
+
+const onsetScratch = new Float32Array(ONSET_LAGS);
 
 /**
- * How long ago (s) the crest at (x, z) first broke: march back along the ray (against the field direction) over the
- * look-back window; the onset is the farthest-back point in the window with ρ ≥ 1, and the time is the distance from
- * there to the crest over the mean crest speed along it. null if nothing in the window has broken; Infinity if even the
- * window's far end had (the section is past its hand-back).
+ * How long ago (s) the crest at (x, z) first broke: the field's onset record there (breaking.onsetTime), the same
+ * record the sheet reads, so the lip and the water under it agree on when each section broke. null if it hasn't
+ * broken (or the point is off the record); Infinity once the record's reach is past (the section is long handed back).
  */
-export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: number, ctx: WaveContext, p: BreakParams): number | null {
-  const f0 = sampleField(field, x, z);
-  const windowS = landingEstimate(localHeight(w, f0), p) * (1 + p.collapseTime) + HAND_BACK_S + LOOK_BACK_MARGIN_S;
-  const windowM = (ctx.omega / f0.k) * windowS;
-  const rs: number[] = [], cs: number[] = [];
-  let px = x, pz = z;
-  for (let d = 0; d <= windowM; d += LOOK_BACK_STEP_M) {
-    const f = sampleField(field, px, pz);
-    rs.push(breakingRatio(w.heightM * f.amp, f.hminBreak, p));
-    cs.push(ctx.omega / f.k);
-    px -= f.dirX * LOOK_BACK_STEP_M;
-    pz -= f.dirZ * LOOK_BACK_STEP_M;
-  }
-  let onset = -1;
-  for (let i = rs.length - 1; i >= 0; i--) if (rs[i] >= 1) { onset = i; break; }
-  if (onset < 0) return null;
-  if (onset === rs.length - 1 && rs.length > 1) return Infinity;
-  let cSum = 0;
-  for (let i = 0; i <= onset; i++) cSum += cs[i];
-  // The onset lies between the march's last sample with ρ ≥ 1 and the next one back (ρ < 1): ρ interpolated to 1
-  // there, so tb is continuous along the crest (whole march steps would quantise it into 1 m / c ≈ 0.13 s steps, which
-  // the lip's reach turned into a staircase of lips half a metre apart; and it tends to 0 as the crest's own r → 1).
-  const frac = onset + 1 < rs.length ? (rs[onset] - 1) / Math.max(rs[onset] - rs[onset + 1], 1e-9) : 0;
-  return ((onset + Math.min(Math.max(frac, 0), 1)) * LOOK_BACK_STEP_M) / (cSum / (onset + 1));
+export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: number, _ctx: WaveContext, p: BreakParams): number | null {
+  const rec = sampleOnset(field, x, z, onsetScratch);
+  return rec ? onsetTime(rec, 0, w.heightM, p) : null;
 }
 
 /** Whether a station still draws: before breaking, from the ribbon's onset ratio; after, until the (estimated) hand-back. */

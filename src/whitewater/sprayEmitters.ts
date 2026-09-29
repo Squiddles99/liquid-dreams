@@ -3,7 +3,7 @@ import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
 import { traceStations } from '../breaker/crestTrace';
 import { GRAVITY_MS2, type Vec2, profileFrame } from '../breaker/lipProfile';
 import { type ReefField, sampleField } from '../breaker/reefField';
-import { type BreakOptions, type WaveContext, sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { smoothstep } from '../math/smoothstep';
 import type { WaveEvent } from '../swell/sets';
 import { FOAM_TICK_S } from './foamStep';
@@ -185,7 +185,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
   if (!wantSpray && !wantImpact) return { spray, impact };
   const waves = i.events.map(toActiveWave);
   const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M });
-  const opts: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params };
+  const opts: BreakOptions = breakOptions(field, params);
   for (const s of stations) {
     if (s.gap || s.tb === null || !Number.isFinite(s.tb)) continue;
     const wind = wantSpray ? offshoreFactor(i.wind, s.nx, s.nz) : 0;
