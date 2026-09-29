@@ -46,10 +46,11 @@ export class WaterSurfaceModel {
   /**
    * vec3 displacement at undisplaced world xz, relative to the tide level. `lod` adds the render's distance fades. The
    * set waves here are the one sheet (Phase 1, the front sharpening, the drain and the bore): the render draws it and
-   * the height probe reads it. The total height is clamped above the seabed (clampToSeabed).
+   * the height probe reads it. The total height is clamped above the seabed (clampToSeabed). `pile` false: without the
+   * whitewater pile (the breaking ribbon's frame reads the wave as it stood).
    */
-  displacement(xz: N, lod: (cascade: number) => N = () => float(1.0)): N {
-    return this.clampToSeabed(xz, this.fftDisplacement(xz, lod).add(this.sets.displacementNode(xz)));
+  displacement(xz: N, lod: (cascade: number) => N = () => float(1.0), pile = true): N {
+    return this.clampToSeabed(xz, this.fftDisplacement(xz, lod).add(this.sets.displacementNode(xz, pile)));
   }
 
   /**
@@ -57,7 +58,7 @@ export class WaterSurfaceModel {
    * and foam wave frame assigned to `out`'s varyings (vec2, float, vec2 varyingProperty nodes). The probe uses
    * displacement(). Never call this from a compute shader.
    */
-  displacementWithSetFoam(xz: N, lod: (cascade: number) => N, out: { slope: N; foam: N; foamFrame: N }): N {
+  displacementWithSetFoam(xz: N, lod: (cascade: number) => N, out: { slope: N; foam: N; foamFrame: N; pile?: N }): N {
     return this.clampToSeabed(xz, this.fftDisplacement(xz, lod).add(this.sets.displacementWithSetFoamNode(xz, out)));
   }
 

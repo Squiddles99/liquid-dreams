@@ -1,7 +1,9 @@
-import { clamp, exp, float, floor, log, max, min, mix, select, smoothstep, uniform } from 'three/tsl';
+import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, smoothstep, uniform } from 'three/tsl';
 import {
   type BreakParams, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
-  HOLLOW_REACH_Q, MIN_STAGE_SPAN, SLURP_FULL_RATIO, normalizeBreakParams, onsetGain, steepeningStart,
+  HOLLOW_REACH_Q, MIN_BREAKING_HEIGHT_M, MIN_STAGE_SPAN, PILE_BACK_H, PILE_BLEND_H, PILE_FOAM_EDGE, PILE_FOAM_THIN, PILE_FRONT_H,
+  PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S,
+  normalizeBreakParams, onsetGain, steepeningStart,
 } from './breaking';
 
 type N = any;
@@ -19,6 +21,7 @@ export function createBreakUniforms(p: BreakParams) {
     enabled: uniform(0), gamma: uniform(0), delta: uniform(0), hFloorM: uniform(0), stageSpan: uniform(1), troughDrain: uniform(0), beta: uniform(0),
     faceWidth: uniform(0), drainTo: uniform(1), collapseFrom: uniform(1), collapseTo: uniform(2), steepFrom: uniform(0),
     collapseTime: uniform(1), drainGrowth: uniform(1), onsetGain: uniform(1),
+    pileHalfM: uniform(50), pileSurge: uniform(0),
   };
   updateBreakUniforms(u, p);
   return u;
@@ -41,6 +44,7 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.collapseFrom.value = 1 + p.collapseStart * u.stageSpan.value; u.collapseTo.value = 1 + COLLAPSE_END * u.stageSpan.value;
   u.steepFrom.value = steepeningStart(p);
   u.collapseTime.value = p.collapseTime; u.drainGrowth.value = 1 + p.troughDrain * p.delta; u.onsetGain.value = onsetGain(p);
+  u.pileHalfM.value = Math.max(p.pileHalfM, 1e-3); u.pileSurge.value = p.pileSurge;
 }
 
 /** smoothstep with its edges reversed (e0 > e1): WGSL's smoothstep wants low < high. */
@@ -114,8 +118,8 @@ export function slurpNode(rSlurp: N, u: BreakUniforms): N {
   return smoothstep(u.steepFrom, SLURP_FULL_RATIO, rSlurp);
 }
 
-/** breaking.lifecycle's result as nodes. */
-export interface LifecycleNodes { steep: N; stage: N; drain: N; collapse: N }
+/** breaking.lifecycle's result as nodes (the pile's terms as breaking.Lifecycle's). */
+export interface LifecycleNodes { steep: N; stage: N; drain: N; collapse: N; pile: N; pileReach: N; surge: N; decay: N }
 
 /**
  * breaking.lifecycle: `hasRecord` false is its tb undefined (the ratio alone); else `broken` (the record's, or r ≥ 1)
@@ -132,12 +136,22 @@ export function lifecycleNode(r: N, hasRecord: N, broken: N, tb: N, rMax: N, H: 
   const land = max(H.mul(u.drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt();
   const extent = breakingStageNode(max(r, rMax), u);
   const thrown = smoothstep(0.0, land, t).mul(extent);
-  const settled = smoothstep(land, land.mul(u.collapseTime.add(1.0)), t).mul(extent);
+  const reach = smoothstep(land, land.mul(u.collapseTime.add(1.0)), t);
+  const settled = reach.mul(extent);
+  // The whitewater pile (breaking.lifecycle): none unless broken on a record.
+  const rolled = max(t.sub(land).sub(PILE_RISE_S), 0.0).mul(PILE_SPEED_MS);
+  const surgeWeight = u.pileSurge.mul(smoothstep(1.0, SURGE_FULL_RATIO, max(r, rMax)));
+  const surge = float(1.0).add(surgeWeight.mul(smoothstep(land, land.add(SURGE_RISE_S), t))
+    .mul(float(1.0).sub(smoothstep(land.add(SURGE_RISE_S), land.add(SURGE_RISE_S + SURGE_FALL_S), t))));
   return {
     steep: select(isBroken, max(steepR, thrown), steepR),
     stage: select(isBroken, max(stageR, thrown), stageR),
     drain: select(isBroken, max(c.drain, thrown), c.drain),
     collapse: select(hasRecord, select(isBroken, settled, float(0.0)), c.collapse),
+    pile: select(isBroken, smoothstep(land, land.add(PILE_RISE_S), t).mul(extent), float(0.0)),
+    pileReach: select(isBroken, reach, float(0.0)),
+    surge: select(isBroken, surge, float(1.0)),
+    decay: select(isBroken, exp2(rolled.div(u.pileHalfM).negate()), float(1.0)),
   };
 }
 
@@ -146,14 +160,22 @@ export interface BreakPointNodes {
   theta: N; env: N; uUnbroken: N; eta: N; uCrest: N; etaCrest: N; H: N; k: N; hmin: N; boreH: N; slope: N; dThetaDAhead: N; dEnvDAhead: N;
   /** The crest lookup's confidence (breaking.BreakPointInput.crestConfidence): the front sharpening scales with it. */
   crestConfidence: N;
+  /** The pile's lip above still water, the lateral taper and the lip's wave height (breaking.BreakPointInput). Absent: no
+   * pile (the ribbon frame's sheet). */
+  lipTop?: N;
+  lateral?: N;
+  lipHeight?: N;
 }
+
+/** The whitewater pile's curves (breaking.Lifecycle's pile terms). */
+export interface PileCurveNodes { pile: N; pileReach: N; surge: N; decay: N }
 
 /**
  * The TSL mirror of breakPoint, for the crest's steepening weight `steep` and stage curves. The caller must gate it on
  * `(steep > 0 || s > 0) && H > MIN_BREAKING_HEIGHT_M` (an If, before any of this is evaluated): at H = 0 the H-scaled
  * smoothsteps have equal edges.
  */
-export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, curves: StageCurveNodes): { eta: N; foam: N; dEtaDAhead: N } {
+export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, curves: StageCurveNodes, pc?: PileCurveNodes): { eta: N; foam: N; dEtaDAhead: N; pile: N } {
   const { drain, collapse } = curves;
   const ahead = i.uUnbroken.sub(i.uCrest);
   // sharpenDrop and sharpenDropSlope, front only. Behind the crest `a` is 0, where sink and sink′ both vanish, so the
@@ -197,9 +219,38 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const trail = float(1.0).sub(smoothstep(Math.PI / 2, Math.PI, i.theta))
     .mul(float(1.0).sub(smoothstep(i.H.mul(FOAM_DENSE_BEHIND_H), i.H.mul(FOAM_TRAIL_H), ahead.negate())));
   const foam = land.mul(i.env).mul(front).mul(trail);
+  const base = i.eta.sub(drop).sub(drained).mul(scale);
+  const dBase = i.slope.mul(scale.sub(1.0)).sub(dDrop.add(dDrained).mul(scale));
+  if (!pc || i.lipTop === undefined || i.lateral === undefined || i.lipHeight === undefined) return { eta: base, foam, dEtaDAhead: dBase, pile: float(0.0) };
+  // The whitewater pile (breaking.breakPoint, term by term): the sheet lifted toward the pile's top T by a smooth
+  // maximum, weighted by its shape g around its top (PILE_LAND_H·size·pileReach ahead) and by nearness to its crest.
+  // Where the weight is 0 every term below is finite and adds exactly 0.
+  const floorTop = i.etaCrest.div(max(i.H, MIN_BREAKING_HEIGHT_M)).mul(u.beta.mul(max(i.hmin, 0.0))).mul(i.lateral);
+  const phase = abs(i.theta).div(2 * Math.PI);
+  const nearC = float(1.0).sub(smoothstep(PILE_REACH[0], PILE_REACH[1], phase));
+  const dNear = smoothstepSlope(PILE_REACH[0], PILE_REACH[1], phase).negate().mul(sign(i.theta)).mul(i.dThetaDAhead).div(2 * Math.PI);
+  const crestWeight = pc.pile.mul(i.crestConfidence).mul(smoothstep(PILE_MIN_LIFT[0], PILE_MIN_LIFT[1], i.lipTop.div(max(floorTop, 1e-6))));
+  const weight = crestWeight.mul(nearC);
+  const T = max(floorTop, i.lipTop.mul(pc.surge).mul(pc.decay));
+  const size = max(i.lipHeight, MIN_BREAKING_HEIGHT_M);
+  // pileShape: a Gaussian, steep in front (PILE_FRONT_H) and long behind (PILE_BACK_H).
+  const v = ahead.sub(size.mul(PILE_LAND_H).mul(pc.pileReach));
+  const pw = select(v.greaterThanEqual(0.0), float(PILE_FRONT_H), float(PILE_BACK_H)).mul(size);
+  const px = v.div(pw);
+  const pg = exp(px.mul(px).negate());
+  const dg = px.mul(-2.0).div(pw).mul(pg);
+  // smoothMax(base, T, k).
+  const k = size.mul(PILE_BLEND_H);
+  const h = max(k.sub(abs(base.sub(T))), 0.0).div(k);
+  const mValue = max(base, T).add(h.mul(h).mul(k).div(4.0));
+  const mDA = clamp(base.sub(T).div(k.mul(2.0)).add(0.5), 0.0, 1.0);
+  const lift = mValue.sub(base), w = weight.mul(pg);
+  const pileFoam = weight.mul(smoothstep(PILE_FOAM_EDGE[0], PILE_FOAM_EDGE[1], pg)).mul(float(1.0).sub(mDA))
+    .mul(pc.decay.mul(1 - PILE_FOAM_THIN).add(PILE_FOAM_THIN));
   return {
-    eta: i.eta.sub(drop).sub(drained).mul(scale),
-    foam,
-    dEtaDAhead: i.slope.mul(scale.sub(1.0)).sub(dDrop.add(dDrained).mul(scale)),
+    eta: base.add(w.mul(lift)),
+    foam: max(foam, pileFoam),
+    dEtaDAhead: dBase.add(crestWeight.mul(dNear.mul(pg).add(nearC.mul(dg))).mul(lift)).add(w.mul(mDA.sub(1.0)).mul(i.slope.add(dBase))),
+    pile: w.mul(float(1.0).sub(mDA)).mul(T),
   };
 }

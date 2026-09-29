@@ -169,17 +169,29 @@ function peakRay(field: ReefField): [number, number][] {
  */
 const OFF_RAY: [number, number][] = [[20, -6], [27, -6.5], [30, -9], [10.3, -28.2], [12.5, 14], [42.5, 33]];
 
+/** Where the pile rolls: 20–70 m shoreward of the peak along its ray, every 5 m, and one point off the record grid. */
+function pileRay(field: ReefField): [number, number][] {
+  let x = 0, z = 0;
+  const out: [number, number][] = [];
+  for (let d = 0; d <= 70 + 1e-9; d += 0.5) {
+    if (d >= 20 && Math.abs(d % 5) < 1e-9) out.push([x, z]);
+    const s = sampleField(field, x, z); x += s.dirX * 0.5; z += s.dirZ * 0.5;
+  }
+  out.push([field.grid.x0 - 30, 0]);
+  return out;
+}
+
 /** 64 points around the peak: an 8 × 8 grid 4 m apart, from −14 to +14 m in x and z. */
 const AROUND_PEAK: [number, number][] = Array.from({ length: 64 }, (_, i) => [-14 + 4 * (i % 8), -14 + 4 * Math.floor(i / 8)]);
 
 /** The biggest wave of the default set 1, and the times after its arrival at the peak that the break tests read (1.8
  * and 2.4 s catch the whitewater rising as the section settles: foam between 0 and 1). */
 const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
-const BREAK_DTS = [0, 0.3, 0.6, 0.9, 1.2, 1.8, 2.4, 4];
+const BREAK_DTS = [0, 0.3, 0.6, 0.9, 1.2, 1.8, 2.4, 4, 7];
 
 /** A non-default shape, so every break uniform the sheet reads is exercised away from its default (normalized, as the GPU uploads). */
 const ALT_BREAK_PARAMS: BreakParams = (() => {
-  const p = { ...DEFAULT_BREAK_PARAMS, gamma: 0.7, stageSpan: 0.6, beta: 0.5, collapseStart: 0.2, faceWidth: 0.7, ribbonOnset: 0.45, troughDrain: 0.5, drainEnd: 0.3 };
+  const p = { ...DEFAULT_BREAK_PARAMS, gamma: 0.7, stageSpan: 0.6, beta: 0.5, collapseStart: 0.2, faceWidth: 0.7, ribbonOnset: 0.45, troughDrain: 0.5, drainEnd: 0.3, pileHalfM: 30, pileSurge: 0.15 };
   normalizeBreakParams(p);
   return p;
 })();
@@ -198,19 +210,20 @@ class Worst {
 }
 
 registerSelfTest({
-  name: 'breaker: GPU breaking sheet matches the CPU (sharpening, drain, collapse: displacement, foam, stage)',
+  name: 'breaker: GPU breaking sheet matches the CPU (sharpening, drain, collapse, whitewater pile: displacement, foam, stage)',
   async run(renderer) {
     const field = getField();
     const time = uniform(0);
     const sets = new SetWaves(time);
     sets.setField(field);
-    const points = [...peakRay(field), ...OFF_RAY];
+    const points = [...peakRay(field), ...OFF_RAY, ...pileRay(field)];
     const { pass, outAttr } = computeAt(points, 2, (xz) => {
       const b = sets.breakSampleNode(xz);
-      return [vec4(b.disp, b.foam), vec4(b.stage, 0.0, 0.0, 0.0)];
+      return [vec4(b.disp, b.foam), vec4(b.stage, b.pile, 0.0, 0.0)];
     });
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    const disp = new Worst(true, 0), foam = new Worst(true, 0), stage = new Worst(true, 0);
+    const disp = new Worst(true, 0), foam = new Worst(true, 0), stage = new Worst(true, 0), pile = new Worst(true, 0);
+    let pileSamples = 0;
     const tables: string[] = [];
     // Samples where the CPU foam is strictly between 0 and 1 (the landing window), per param set: the foam terms compared.
     const partialFoam: number[] = [];
@@ -234,19 +247,21 @@ registerSelfTest({
           disp.see(Math.max(...gd.map((v, k) => Math.abs(v - cd[k]))), dt, i, `${setName} `);
           foam.see(Math.abs(g[3] - c.foam), dt, i, `${setName} `);
           stage.see(Math.abs(g[4] - c.stage), dt, i, `${setName} `);
+          pile.see(Math.abs(g[5] - c.pile), dt, i, `${setName} `);
+          if (c.pile > 0.3) pileSamples++;
           if (c.foam > 0.05 && c.foam < 0.95) partial++;
-          rows.push(`#${i} (${x.toFixed(1)},${z.toFixed(1)}) GPU/CPU d ${gd.map(f3).join(',')}/${cd.map(f3).join(',')} foam ${f3(g[3])}/${f3(c.foam)} stage ${f3(g[4])}/${f3(c.stage)}`);
+          rows.push(`#${i} (${x.toFixed(1)},${z.toFixed(1)}) GPU/CPU d ${gd.map(f3).join(',')}/${cd.map(f3).join(',')} foam ${f3(g[3])}/${f3(c.foam)} stage ${f3(g[4])}/${f3(c.stage)} pile ${f3(g[5])}/${f3(c.pile)}`);
         });
         tables.push(`${setName} dt ${dt}: ${rows.join('; ')}`);
       }
       partialFoam.push(partial);
     }
     for (const line of tables) console.log(`[selftest]   sheet ${line}`);
-    const ok = disp.value < 0.05 && foam.value < 0.05 && stage.value < 0.02 && partialFoam.every((n) => n > 0);
+    const ok = disp.value < 0.05 && foam.value < 0.05 && stage.value < 0.02 && pile.value < 0.05 && pileSamples > 0 && partialFoam.every((n) => n > 0);
     return {
       pass: ok,
       detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s × default and alt params; worst |Δdisp| ${disp} m; |Δfoam| ${foam}; ` +
-        `|Δstage| ${stage}; samples with 0.05 < foam < 0.95 (default/alt) ${partialFoam.join('/')}${ok ? '' : `. Per point (GPU/CPU): ${tables.join(' || ')}`}`,
+        `|Δstage| ${stage}; |Δpile| ${pile} m (${pileSamples} samples with pile > 0.3 m); samples with 0.05 < foam < 0.95 (default/alt) ${partialFoam.join('/')}${ok ? '' : `. Per point (GPU/CPU): ${tables.join(' || ')}`}`,
     };
   },
 });

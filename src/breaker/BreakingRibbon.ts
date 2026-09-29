@@ -38,6 +38,9 @@ export interface RibbonSurface {
    * only (no FFT), so the GPU can be compared with the CPU model. */
   smooth: BaseSurfaceNode;
   chop: BaseSurfaceNode;
+  /** The smooth sheet without the whitewater pile: the frame (where the lip lands, when, how fast it throws) is measured
+   * on it (lipProfile.buildProfile's frameBase). Absent: `smooth`. */
+  frameBase?: BaseSurfaceNode;
   /** Called by BreakingRibbon.setStations with the frame's camera (the fades' distance is measured from it). */
   setCamera?(camera: THREE.Vector3): void;
 }
@@ -257,6 +260,10 @@ export function modelRibbonSurface(model: WaterSurfaceModel): ModelRibbonSurface
       return model.displacement(xz, (c) => (c === CHOP_CASCADE ? float(0.0) : l(c)));
     },
     chop: (xz) => model.fftCascadeDisplacement(xz, CHOP_CASCADE, lod(xz)(CHOP_CASCADE)),
+    frameBase: (xz) => {
+      const l = lod(xz);
+      return model.displacement(xz, (c) => (c === CHOP_CASCADE ? float(0.0) : l(c)), false);
+    },
     setCamera: (c) => { cameraXZ.value.set(c.x, c.z); },
   };
 }
@@ -593,11 +600,13 @@ export class BreakingRibbon {
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const b = stations.element(i.mul(STATION_VEC4S).add(1)).toVar();
       const S = a.xy, n = a.zw;
-      // base(u) = (d·n + u, d.y) with d the smooth sheet at S + n·u: the displaced point's component along n.
+      // base(u) = (d·n + u, d.y) with d the smooth sheet without the pile at S + n·u: the displaced point's component
+      // along n.
+      const frameSurface = this.surface.frameBase ?? this.surface.smooth;
       const baseAt = (u: N): N => {
         const uu = float(u).toVar();
         const xz = S.add(n.mul(uu)).toVar();
-        const d = vec3(this.surface.smooth(xz)).toVar();
+        const d = vec3(frameSurface(xz)).toVar();
         return vec2(dot(d.xz, n).add(uu), d.y);
       };
       const f = profileFrameNode(baseAt, { H: b.x, c: b.y, r: b.z, tb: b.w }, this.lip);
