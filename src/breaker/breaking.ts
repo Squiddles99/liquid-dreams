@@ -245,6 +245,18 @@ export function onsetTime(rec: ArrayLike<number>, offset: number, heightM: numbe
   return Infinity;
 }
 
+/**
+ * The slurp's pull on a shoulder: how far its face stands up and its water is drawn in, from the slurp's ratio
+ * (FieldSample.hminSlurp: the strongest ratio along its crest line nearby, fading with distance). From where its own
+ * sharpening would start to full at SLURP_FULL_RATIO: a wider ramp than the sharpening's own (to ρ = 1), so it fades out
+ * along the line over tens of metres, not in a wall (with the sharpening's ramp the drawn water climbed 0.7 m in 5 m where
+ * it ended), and a neighbour's pull is weaker than the peak's own.
+ */
+export const SLURP_FULL_RATIO = 2;
+export function slurp(rSlurp: number, p: Pick<BreakParams, 'ribbonOnset'>): number {
+  return smoothstep(steepeningStart(p), SLURP_FULL_RATIO, rSlurp);
+}
+
 /** A crest's breaking state: how far the face sharpens, the stage (readout, gate), the drain and the collapse. */
 export interface Lifecycle {
   steep: number;
@@ -267,11 +279,15 @@ export interface Lifecycle {
  * broken (the ratio falls there, and when the stage and collapse followed it the broken wave stood back up as a second,
  * unbroken one: Andrew's "second wave"). r ≥ 1 counts as broken at tb 0 where the record lags it.
  * tb undefined: no onset record here (outside the field grid): the ratio alone, as before the record.
- * H is the crest's local height (setWaveModel.localHeight, no lateral taper), as the ribbon's stations carry.
+ * H is the crest's local height (setWaveModel.localHeight, no lateral taper), as the ribbon's stations carry. rSlurp is
+ * the crest's ratio over the slurp's breaking depth (FieldSample.hminSlurp, ≥ r): the face's sharpening and the drain
+ * follow it, so the shoulders beside a section standing up are drawn in with it (the slurp); the stage and the collapse
+ * follow r, so they don't break any earlier.
  */
-export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r): Lifecycle {
-  const c = stageCurves(r, p);
-  const steep = steepening(r, p), stage = breakingStage(r, p);
+export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, rSlurp = r): Lifecycle {
+  const own = stageCurves(r, p), pulled = slurp(rSlurp, p);
+  const c = { drain: Math.max(own.drain, pulled), collapse: own.collapse };
+  const steep = Math.max(steepening(r, p), pulled), stage = breakingStage(r, p);
   if (tb === undefined) return { steep, stage, drain: c.drain, collapse: c.collapse };
   const t = tb ?? (r >= 1 ? 0 : null);
   if (t === null) return { steep, stage, drain: c.drain, collapse: 0 };
@@ -497,7 +513,7 @@ export interface BreakPointResult {
  */
 export function breakPoint(i: BreakPointInput, lc: Lifecycle, p: BreakParams): BreakPointResult {
   const steep = lc.steep;
-  if (!(steep > 0 || lc.stage > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { eta: i.eta, foam: 0, dEtaDAhead: 0 };
+  if (!(steep > 0 || lc.stage > 0 || lc.drain > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { eta: i.eta, foam: 0, dEtaDAhead: 0 };
   const c: StageCurves = { drain: lc.drain, collapse: lc.collapse };
   const ahead = i.uUnbroken - i.uCrest;
   const sharpen = steep * i.crestConfidence;
