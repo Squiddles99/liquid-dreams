@@ -30,13 +30,34 @@ function stationAt(x0: number, z0: number, w: ActiveWave, tb: number | null, fac
     const s = sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, sheet);
     return [u + s.dx * f0.dirX + s.dz * f0.dirZ, s.eta];
   };
+  const flat: BreakOptions = { ...sheet, pile: false };
+  const frameBase = (u: number): Vec2 => {
+    const x = x0 + f0.dirX * u, z = z0 + f0.dirZ * u;
+    const s = sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, flat);
+    return [u + s.dx * f0.dirX + s.dz * f0.dirZ, s.eta];
+  };
   const input: ProfileInput = { H: localHeight(w, f0), c: ctx.omega / f0.k, r: breakingRatio(w.heightM * f0.amp, f0.hmin, DEFAULT_BREAK_PARAMS), tb };
-  return { base, input };
+  return { base, frameBase, input };
 }
 const near = (a: Vec2, b: Vec2, tol = 1e-9) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol;
 
 describe('lipProfile', () => {
   const big = testWave(REF_BIGGEST.heightM);
+  it('as the whitewater rises under the curl the lip keeps falling: it never pulls back or flips up level', () => {
+    const probe = stationAt(0, 0, big, 0);
+    const tau = profileFrame(probe.base, probe.input, LIP).tauLand;
+    const tipAt = (tb: number) => {
+      const { base, frameBase, input } = stationAt(0, 0, big, tb);
+      const p = buildProfile(base, input, LIP, frameBase);
+      return { reach: p.frame.reach, y: p.frame.K[1] - 0.5 * GRAVITY_MS2 * (p.frame.reach / p.frame.vj) ** 2 };
+    };
+    const landed = tipAt(tau);
+    for (const extra of [0.2, 0.5, 0.8, 1.2]) {
+      const now = tipAt(tau + extra);
+      expect(now.reach, `${extra} s after landing: the lip's reach`).toBeGreaterThanOrEqual(0.95 * landed.reach);
+      expect(now.y, `${extra} s after landing: the lip tip's height`).toBeLessThanOrEqual(landed.y + 0.1 * big.heightM);
+    }
+  });
   it('has PROFILE_SAMPLES samples whose homes run monotonically from the front edge to the back edge', () => {
     const { base, input } = stationAt(0, 0, big, 0.3);
     const f = profileFrame(base, input, LIP);
