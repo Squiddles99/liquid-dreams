@@ -204,8 +204,11 @@ export const SPIT_PULSE_S: readonly [number, number] = [0.3, 1.0];
 /** The jet's speed: this × √(g·H), at most SPIT_MAX_SPEED_MS (a heavy 3 m barrel spits at ~14 m/s). */
 export const SPIT_SPEED = 2.5;
 export const SPIT_MAX_SPEED_MS = 25;
-/** Spit puffs per second per mouth at strength 1. */
+/** Spit puffs per second per mouth at strength 1… */
 export const SPIT_RATE = 120;
+/** …each this faint (× the explosion's opacity): a mist blown out of the tube. At the explosion's own opacity the
+ * overlapping puffs at the mouth read as a round cotton ball. */
+export const SPIT_OPACITY = 0.3;
 
 /**
  * The emitters at sim time t (spec §3.1; 3c §3.2): one camera-independent crest trace and one profile frame per breaking
@@ -403,7 +406,7 @@ export function spitBirths(emitters: readonly SpitEmitter[], tick: number): Spra
       out.push({
         x: e.x + e.nx * across, y: e.y + up, z: e.z + e.nz * across,
         vx: e.dx * v + e.nx * side, vy: r(4) * 2 - 1, vz: e.dz * v + e.nz * side,
-        life: 0.8 + 0.8 * r(5), strength: Math.min(1, e.lip),
+        life: 0.8 + 0.8 * r(5), strength: SPIT_OPACITY * Math.min(1, e.lip),
       });
     }
   }
