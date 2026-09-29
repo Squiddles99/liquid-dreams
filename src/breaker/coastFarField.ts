@@ -90,5 +90,6 @@ export function farSample(f: FarField, x: number, z: number): FieldSample {
   // The coast has no reef edges to smooth (and runs along the crest): its breaking depth is breakingDepth at the nodes,
   // interpolated (as the GPU reads it, baked into farB.z).
   const b0 = breakingDepth(f.hmin[i]), b1 = breakingDepth(f.hmin[i + 1]);
-  return { tau, amp: lerp(f.amp), hmin: lerp(f.hmin), hminBreak: b0 + (b1 - b0) * t, k: lerp(f.k), dirX, dirZ, depth: lerp(f.depth) };
+  const hminBreak = b0 + (b1 - b0) * t;
+  return { tau, amp: lerp(f.amp), hmin: lerp(f.hmin), hminBreak, hminSlurp: hminBreak, k: lerp(f.k), dirX, dirZ, depth: lerp(f.depth) };
 }

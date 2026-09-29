@@ -68,6 +68,8 @@ export class SetWaves {
   hasField = false;
   private readonly fieldA = floatTexture(FIELD_NX, FIELD_NZ);
   private readonly fieldB = floatTexture(FIELD_NX, FIELD_NZ);
+  /** The slurp's breaking depth (ReefField.hminSlurp) in x: read only where the crest lookup lands. */
+  private readonly fieldC = floatTexture(FIELD_NX, FIELD_NZ);
   /** The onset record (ReefField.onset), ONSET_TEXELS texels per field node side by side along x: the running maximum,
    * then two levels per texel, (time since onset, amplification) each. One texture, so the record is one binding. */
   private readonly onsetRec = floatTexture(FIELD_NX * ONSET_TEXELS, FIELD_NZ);
@@ -117,6 +119,8 @@ export class SetWaves {
       a[i * 4] = f.tau[i]; a[i * 4 + 1] = f.amp[i]; a[i * 4 + 2] = f.hmin[i]; a[i * 4 + 3] = f.k[i];
       b[i * 4] = f.dirX[i]; b[i * 4 + 1] = f.dirZ[i]; b[i * 4 + 2] = f.depth[i]; b[i * 4 + 3] = f.hminBreak[i];
     }
+    const sc = this.fieldC.image.data as Float32Array;
+    for (let i = 0; i < f.tau.length; i++) sc[i * 4] = f.hminSlurp[i];
     const od = this.onsetRec.image.data as Float32Array;
     for (let i = 0; i < f.tau.length; i++) {
       const col = i % FIELD_NX, row = (i - col) / FIELD_NX, o = (row * FIELD_NX + col) * ONSET_TEXELS * 4, r = i * ONSET_RECORD_LENGTH;
@@ -128,7 +132,7 @@ export class SetWaves {
       fa[i * 4] = f.far.tau[i] - f.far.tauOffset; fa[i * 4 + 1] = f.far.amp[i]; fa[i * 4 + 2] = f.far.hmin[i]; fa[i * 4 + 3] = f.far.k[i];
       fb[i * 4] = f.far.dTauDx[i]; fb[i * 4 + 1] = f.far.depth[i]; fb[i * 4 + 2] = breakingDepth(f.far.hmin[i]); fb[i * 4 + 3] = 0;
     }
-    for (const t of [this.fieldA, this.fieldB, this.onsetRec, this.farA, this.farB]) t.needsUpdate = true;
+    for (const t of [this.fieldA, this.fieldB, this.fieldC, this.onsetRec, this.farA, this.farB]) t.needsUpdate = true;
     this.origin.value.set(f.grid.x0, f.grid.z0);
     this.cell.value = f.grid.cellM;
     this.farP.value = f.far.p;
@@ -178,13 +182,15 @@ export class SetWaves {
    * would otherwise emit the reads inside every branch that uses them (44 loads per sample instead of 12), and it loads
    * the far field only outside the grid (8 loads per sample inside it).
    */
-  sample(xz: N, hoist = false): { tau: N; amp: N; hmin: N; hminBreak: N; k: N; dir: N; depth: N } {
+  sample(xz: N, hoist = false, slurp = false): { tau: N; amp: N; hmin: N; hminBreak: N; hminSlurp: N; k: N; dir: N; depth: N } {
     const v = (n: N): N => (hoist ? n.toVar() : n);
     const g = v(xz.sub(this.origin).div(this.cell));
     const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThanEqual(this.fieldMax.x)).and(g.y.lessThanEqual(this.fieldMax.y));
     // bilinearLoad clamps g, so outside the grid a and b are already the edge sample at the clamped point.
     const a = v(bilinearLoad(this.fieldA, g, this.fieldMax));
     const b = v(bilinearLoad(this.fieldB, g, this.fieldMax));
+    // The slurp's depth only where asked (the crest lookup): its four loads nowhere else.
+    const c = slurp ? v(bilinearLoad(this.fieldC, g, this.fieldMax)) : null;
     const fg = v(clamp(xz.x.sub(FAR_X0).div(FAR_DX), 0.0, this.farMax.sub(0.001)));
     // Hoisted, the far field's four loads run only outside the grid (inside, every value below takes the grid's side
     // of its select, and the zeros left in fa and fb are never read into the result).
@@ -217,6 +223,8 @@ export class SetWaves {
       // The coast (far field) has no reef edges to smooth: its breaking depth is breakingDepth(hmin), baked into farB.z
       // (coastFarField.farSample; linear between nodes there as here).
       hminBreak: select(useGrid, b.w, fb.z),
+      // The coast has no slurp: its depth is the breaking depth (coastFarField.farSample).
+      hminSlurp: c ? select(useGrid, c.x, fb.z) : select(useGrid, b.w, fb.z),
       k: max(select(useGrid, a.w, fa.w), 1e-4),
       dir: select(useGrid, edgeDir, farDir),
       depth: select(useGrid, b.z, fb.y),
@@ -308,7 +316,7 @@ export class SetWaves {
           // setWaveModel.crestAt, before the Phase 1 terms: the height comes from the crest once the wave stands up.
           // Defaults: no crest, so no sharpening, stage or crest height.
           const cPos = xz.toVar();
-          const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), hminBreak: f.hminBreak.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
+          const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), hminBreak: f.hminBreak.toVar(), hminSlurp: f.hminBreak.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
           const confidence = float(0.0).toVar(), rC = float(0.0).toVar();
           const lc = { steep: float(0.0).toVar(), stage: float(0.0).toVar(), drain: float(0.0).toVar(), collapse: float(0.0).toVar() };
           If(breaking, () => {
@@ -321,8 +329,8 @@ export class SetWaves {
               const reach = float(Math.PI).div(fc.k);
               const crossing = max(dot(fc.dir, b.xy).add(wm), CREST_MIN_CROSSING);
               cPos.addAssign(b.xy.mul(clamp(xiC.mul(this.meanOmega).div(fc.k).div(crossing), reach.negate(), reach)));
-              const sc = this.sample(cPos, true);
-              fc.tau.assign(sc.tau); fc.amp.assign(sc.amp); fc.hmin.assign(sc.hmin); fc.hminBreak.assign(sc.hminBreak);
+              const sc = this.sample(cPos, true, step === CREST_STEPS - 1);
+              fc.tau.assign(sc.tau); fc.amp.assign(sc.amp); fc.hmin.assign(sc.hmin); fc.hminBreak.assign(sc.hminBreak); fc.hminSlurp.assign(sc.hminSlurp);
               fc.k.assign(sc.k); fc.dir.assign(sc.dir); fc.depth.assign(sc.depth);
             }
             rC.assign(breakingRatioNode(a.y.mul(fc.amp), fc.hminBreak, brk));
@@ -337,7 +345,8 @@ export class SetWaves {
             const level = onsetLevelNode(a.y, brk);
             const rec = this.sampleOnset(on, level.k);
             const onset = onsetTimeNode(rec, level, a.y, brk);
-            const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), brk);
+            const rSlurp = breakingRatioNode(a.y.mul(fc.amp), fc.hminSlurp, brk);
+            const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), rSlurp, brk);
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
           });
           // setWaveModel.waveHeightAt: the point's own height, the crest's by the sharpening × the lookup's confidence ×
@@ -374,7 +383,7 @@ export class SetWaves {
             // waveAtCrest returns nothing (no stage, no breaking) where the point's own height is 0.
             const here = H.greaterThan(0.0);
             stage.assign(max(stage, select(here, lc.stage.mul(confidence), float(0.0))));
-            If(lc.stage.greaterThan(0.0).or(lc.steep.greaterThan(0.0)).and(here), () => {
+            If(lc.stage.greaterThan(0.0).or(lc.steep.greaterThan(0.0)).or(lc.drain.greaterThan(0.0)).and(here), () => {
               // The crest's frame (height, Stokes ratio, lean, wavenumber, bore depth).
               const Hc = min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO));
               const Hl = Hc.mul(lateral).toVar();
