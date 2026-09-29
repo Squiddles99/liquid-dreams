@@ -133,6 +133,10 @@ export const BREAK_BINDINGS = {
   lipThickness: { label: 'lip thickness (×H)', min: 0.03, max: 0.3, step: 0.005 },
   collapseTime: { label: 'collapse time (×τ land)', min: 0.3, max: 3, step: 0.05 },
   ribbonOnset: { label: 'ribbon onset ρ', min: 0.3, max: 0.9, step: 0.01 },
+  pileHalfM: { label: 'pile half distance (m)', min: 10, max: 150, step: 1 },
+  pileSurge: { label: 'pile surge (× lip)', min: 0, max: 0.6, step: 0.01 },
+  churnSize: { label: 'churn size (× pile)', min: 0, max: 0.4, step: 0.01 },
+  churnSpeed: { label: 'churn speed', min: 0, max: 3, step: 0.05 },
 } as const;
 
 /** Debug overlay toggles (Reef folder), one per DebugOverlays field, checked by DevPanel.test.ts. */

@@ -35,6 +35,14 @@ export interface BreakParams {
   /** The ribbon fades in from this breaking ratio, full at ribbonOnset + RIBBON_FULL_OFFSET; the sheet's front sharpening
    * ramps from there to ρ = 1. */
   ribbonOnset: number;
+  /** The whitewater pile halves its height above its floor every this many metres it rolls past the landing (m). */
+  pileHalfM: number;
+  /** How far the pile surges above the lip right after the landing, on the heaviest breaks (× the lip; 0 on a shoulder). */
+  pileSurge: number;
+  /** The pile's churn (render only; the CPU model ignores it): lumps up to this fraction of the pile's height… */
+  churnSize: number;
+  /** …churning at this rate (× CHURN_RATE_PER_S, pileChurn.ts). */
+  churnSpeed: number;
 }
 
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
@@ -52,6 +60,10 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   lipThickness: 0.25,
   collapseTime: 1.8,
   ribbonOnset: 0.7,
+  pileHalfM: 50,
+  pileSurge: 0.3,
+  churnSize: 0.2,
+  churnSpeed: 1,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
@@ -101,6 +113,10 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.lipThickness = clampTo(p.lipThickness, 0.03, 0.3, d.lipThickness);
   p.collapseTime = clampTo(p.collapseTime, 0.3, 3, d.collapseTime);
   p.ribbonOnset = clampTo(p.ribbonOnset, 0.3, 0.9, d.ribbonOnset);
+  p.pileHalfM = clampTo(p.pileHalfM, 10, 150, d.pileHalfM);
+  p.pileSurge = clampTo(p.pileSurge, 0, 0.6, d.pileSurge);
+  p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
+  p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
 
 /**
@@ -275,13 +291,31 @@ export function onsetHeight(rec: ArrayLike<number>, offset: number, heightM: num
   return heightM * (rec[amp + c.j - 1] + c.phi * (rec[amp + c.j] - rec[amp + c.j - 1]));
 }
 
-/** A crest's breaking state: how far the face sharpens, the stage (readout, gate), the drain and the collapse. */
+/** The pile rises this long after the lip lands (s): where the lip hits the water, the whitewater stands up. */
+export const PILE_RISE_S = 0.5;
+/** The impact's surge rises over SURGE_RISE_S from the landing and eases back over SURGE_FALL_S… */
+export const SURGE_RISE_S = 0.5;
+export const SURGE_FALL_S = 1.5;
+/** …in full on a section whose crest reached this breaking ratio (the peak's), not at all at ρ = 1. */
+export const SURGE_FULL_RATIO = 3.4;
+
+/** A crest's breaking state: how far the face sharpens, the stage (readout, gate), the drain, the collapse and the pile. */
 export interface Lifecycle {
   steep: number;
   stage: number;
   drain: number;
   collapse: number;
+  /** The whitewater pile's weight [0, 1]: 0 until the lip lands, full PILE_RISE_S later, × the section's extent. */
+  pile: number;
+  /** How far the pile's top has moved from the crest to where the lip landed [0, 1]: the settle's progress. */
+  pileReach: number;
+  /** The impact's surge on the pile's height (≥ 1): 1 + pileSurge·smoothstep(1, SURGE_FULL_RATIO, rMax)·rise·fall. */
+  surge: number;
+  /** The pile's decay toward its floor: 0.5^(d / pileHalfM), d the metres rolled since the landing (the time past it,
+   * capped at ONSET_REACH_S since onset, × the crest speed c). */
+  decay: number;
 }
+const NO_PILE = { pile: 0, pileReach: 0, surge: 1, decay: 1 } as const;
 
 /**
  * One section's breaking state, on one clock. Before it breaks (tb null) the wave stands up with its crest's breaking
@@ -297,22 +331,32 @@ export interface Lifecycle {
  * broken (the ratio falls there, and when the stage and collapse followed it the broken wave stood back up as a second,
  * unbroken one: Andrew's "second wave"). r ≥ 1 counts as broken at tb 0 where the record lags it.
  * tb undefined: no onset record here (outside the field grid): the ratio alone, as before the record.
- * H is the crest's local height (setWaveModel.localHeight, no lateral taper), as the ribbon's stations carry.
+ * H is the crest's local height (setWaveModel.localHeight, no lateral taper), as the ribbon's stations carry. c is the
+ * crest speed (m/s): the pile's decay runs on the metres it has rolled.
+ * From the landing the section turns into a whitewater pile (breakPoint): its weight, where its top is, its surge and its
+ * decay.
  */
-export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r): Lifecycle {
-  const c = stageCurves(r, p);
+export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, c = 0): Lifecycle {
+  const c0 = stageCurves(r, p);
   const steep = steepening(r, p), stage = breakingStage(r, p);
-  if (tb === undefined) return { steep, stage, drain: c.drain, collapse: c.collapse };
+  if (tb === undefined) return { steep, stage, drain: c0.drain, collapse: c0.collapse, ...NO_PILE };
   const t = tb ?? (r >= 1 ? 0 : null);
-  if (t === null) return { steep, stage, drain: c.drain, collapse: 0 };
+  if (t === null) return { steep, stage, drain: c0.drain, collapse: 0, ...NO_PILE };
   const extent = breakingStage(Math.max(r, rMax), p);
   const land = landingEstimate(H, p);
+  const span = settleSpan(H, p);
   const thrown = smoothstep(0, land, t) * extent;
+  const rolled = Math.max(0, Math.min(t, ONSET_REACH_S) - land) * c;
+  const surgeWeight = p.pileSurge * smoothstep(1, SURGE_FULL_RATIO, Math.max(r, rMax));
   return {
     steep: Math.max(steep, thrown),
     stage: Math.max(stage, thrown),
-    drain: Math.max(c.drain, thrown),
-    collapse: smoothstep(land, land + settleSpan(H, p), t) * extent,
+    drain: Math.max(c0.drain, thrown),
+    collapse: smoothstep(land, land + span, t) * extent,
+    pile: smoothstep(land, land + PILE_RISE_S, t) * extent,
+    pileReach: smoothstep(land, land + span, t),
+    surge: 1 + surgeWeight * smoothstep(land, land + SURGE_RISE_S, t) * (1 - smoothstep(land + SURGE_RISE_S, land + SURGE_RISE_S + SURGE_FALL_S, t)),
+    decay: 0.5 ** (rolled / p.pileHalfM),
   };
 }
 
