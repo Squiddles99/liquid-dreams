@@ -14,6 +14,13 @@ export interface FieldSample {
    * neighbour didn't; the Phase 1 height cap reads hmin.
    */
   hminBreak: number;
+  /**
+   * The slurp's breaking depth (m), ≤ hminBreak: the face's sharpening and the drain read the strongest breaking ratio
+   * along the crest line within reach, fading with distance (reefField.SLURP_REACH_M), so the shoulders beside a section
+   * standing up stand up and draw the water in front of them with it: the swell line slurps the reef as a whole (Andrew).
+   * The stage and the collapse read hminBreak: the shoulders don't break any earlier.
+   */
+  hminSlurp: number;
   /** Local wavenumber (rad/m) for the mean period. */
   k: number;
   /** Unit travel direction. */

@@ -117,7 +117,7 @@ describe('the field breaking height (SetWaves skips the GPU breaking below its s
     });
     it(`its steepening share (steepeningStart of it) bounds the sheet: a wave no taller is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
       const hs = fieldSteepeningHeight(field, p);
-      expect(hs).toBeCloseTo(steepeningStart(p) * fieldBreakingHeight(field, p), 12);
+      expect(hs).toBeCloseTo(steepeningStart(p) * fieldBreakingHeight(field, p, field.hminSlurp), 12);
       const w = [testWave(hs)], o = optsFor(field, p);
       for (let x = -400; x <= 300; x += 12.5) for (let z = -600; z <= 300; z += 12.5) for (const t of [-20, -5, 0, 4, 12]) {
         expect(sumWaves(x, z, t, at(x, z), w, ctx, o)).toEqual(sumWaves(x, z, t, at(x, z), w, ctx));
@@ -413,7 +413,7 @@ describe('the breaking sheet on the real reef', () => {
     for (const [T, depth, hmin, height] of cases) {
       const omega = (2 * Math.PI) / T, k = waveNumber(omega, depth), c = omega / k;
       const dirX = Math.cos(0.4), dirZ = Math.sin(0.4);
-      const fAt = (x: number, z: number): FieldSample => ({ tau: (x * dirX + z * dirZ) / c, amp: 1, hmin, hminBreak: hmin, k, dirX, dirZ, depth });
+      const fAt = (x: number, z: number): FieldSample => ({ tau: (x * dirX + z * dirZ) / c, amp: 1, hmin, hminBreak: hmin, hminSlurp: hmin, k, dirX, dirZ, depth });
       const w: ActiveWave = { arrivalS: 0, heightM: height, omega, travelX: dirX, travelZ: dirZ, crestLengthM: 400, crestOffsetM: 0 };
       const cx: WaveContext = { omega, travelX: dirX, travelZ: dirZ };
       const o: BreakOptions = { sample: fAt, params: DEFAULT_BREAK_PARAMS };
@@ -747,5 +747,61 @@ describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
     const r = sumWaves(x, z, f.tau + 3, f, [w], ctx, sheet), n = sumWaves(x, z, f.tau + 3, f, [w], ctx, { ...sheet, pile: false });
     expect(r.pile).toBe(0);
     expect(r.eta).toBe(n.eta);
+  });
+});
+
+describe('the slurp: the draw-up reaches along the swell line either side of the peak (Andrew, 12 ft)', () => {
+  // As the peak draws the reef's water into itself, the swell either side is part of it: the water in front of the
+  // shoulders near the peak is drawn down too, fading along the line, with no steep wall where it ends. When only the
+  // section standing up drained, the shoulders stood as tall smooth walls beside a sunken, steep-sided bowl.
+  const c12 = cloneConditions(DEFAULT_CONDITIONS);
+  c12.swell.sizeFt = 12;
+  const big12 = wavesOfSet(1, c12, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+  const w = testWave(big12.heightM);
+  const tx = -ctx.travelZ, tz = ctx.travelX;
+  /** Along the crest (v m across travel from the peak) as the peak breaks: the lowest water in the 25 m in front of the
+   * crest, and the crest's stage. */
+  const alongCrest = (t: number) => {
+    const out: { v: number; lowest: number; stage: number }[] = [];
+    for (let v = -100; v <= 100; v += 5) {
+      let x = 0, z = 0;
+      for (let u = -200; u <= 200; u += 0.5) { x = ctx.travelX * u + tx * v; z = ctx.travelZ * u + tz * v; if (at(x, z).tau >= t) break; }
+      const f = at(x, z);
+      let lowest = Infinity, xx = x, zz = z;
+      for (let d = 0; d <= 25; d += 0.5) { const s = at(xx, zz); lowest = Math.min(lowest, sumWaves(xx, zz, t, s, [w], ctx, sheet).eta); xx += s.dirX * 0.5; zz += s.dirZ * 0.5; }
+      out.push({ v, lowest, stage: crestAt(x, z, t, f, w, ctx, sheet)!.s });
+    }
+    return out;
+  };
+  it('as the peak breaks, the water in front of the shoulders within 60 m of it is drawn below sea level, less so further out', { timeout: 60_000 }, () => {
+    const line = alongCrest(at(0, 0).tau);
+    for (const p of line) if (Math.abs(p.v) <= 60) expect(p.lowest, `${p.v} m along the crest`).toBeLessThan(0);
+    const near = Math.max(...line.filter((p) => Math.abs(p.v) === 60).map((p) => p.lowest));
+    const far = Math.min(...line.filter((p) => Math.abs(p.v) === 100).map((p) => p.lowest));
+    expect(far, 'it fades along the line').toBeGreaterThan(near);
+  });
+  it('where the draw-down ends it eases off along the line: under 0.9 m per 5 m of crest (it climbed 1.1–1.4 m)', { timeout: 60_000 }, () => {
+    // Measured 5, 10 and 15 m in front of the crest, where the sunken face meets the shoulder's untouched one: the wall
+    // at each end of the drained bowl. At and after the break, where the slurp acts. (Before it, the shoulders' own
+    // standing up still switches on over ~15 m of crest: about 1 m per 5 m, as before.)
+    for (const dt of [0, 1]) {
+      const t = at(0, 0).tau + dt;
+      const heights: number[][] = [];
+      for (let v = -100; v <= 100; v += 5) {
+        let x = 0, z = 0;
+        for (let u = -200; u <= 200; u += 0.5) { x = ctx.travelX * u + tx * v; z = ctx.travelZ * u + tz * v; if (at(x, z).tau >= t) break; }
+        const row: number[] = [];
+        let xx = x, zz = z;
+        for (let d = 0; d <= 15; d += 0.5) { const f = at(xx, zz); if (d === 5 || d === 10 || d === 15) row.push(sumWaves(xx, zz, t, f, [w], ctx, sheet).eta); xx += f.dirX * 0.5; zz += f.dirZ * 0.5; }
+        heights.push(row);
+      }
+      for (let i = 1; i < heights.length; i++) for (let k = 0; k < 3; k++) {
+        expect(Math.abs(heights[i][k] - heights[i - 1][k]), `${dt} s, ${-100 + 5 * i} m along the crest, ${5 * (k + 1)} m in front`).toBeLessThan(0.9);
+      }
+    }
+  });
+  it('the shoulders do not break any earlier: only the drain reaches along the line', () => {
+    const noSlurp = alongCrest(at(0, 0).tau);
+    for (const p of noSlurp) if (Math.abs(p.v) >= 80) expect(p.stage, `${p.v} m along the crest`).toBe(0);
   });
 });

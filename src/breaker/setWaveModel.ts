@@ -198,7 +198,8 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   // The lip too, on the point's own ray: carried along the rays, it is the same all along one (under 1% at most ledge
   // points). Read at the lookup's crest instead, it slid along the crest's lip gradient (the peak's lip falls 20% in 7 m).
   const lipH = rec ? onsetHeight(rec, 0, w.heightM, o.params) : null;
-  const lc = lifecycle(r, tb, localHeight(w, fc), o.params, rMax);
+  const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
+  const lc = lifecycle(r, tb, localHeight(w, fc), o.params, rMax, rSlurp);
   return { x: cx, z: cz, f: fc, r, s: lc.stage, tb, lc, confidence, lipH };
 }
 
@@ -209,7 +210,7 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
  * exactly. SetWaves uses it per wave to skip the GPU's crest search and breaking (a pure optimisation; the CPU model
  * does not need it and its results are the same either way).
  */
-export function fieldBreakingHeight(f: ReefField, p: BreakParams): number {
+export function fieldBreakingHeight(f: ReefField, p: BreakParams, depths: Float32Array = f.hminBreak): number {
   const { nx, nz } = f.grid;
   // Between nodes the sample's amp/depth is a ratio of two interpolations of positive amp_i and amp_i/q_i, a weighted mean
   // of the q_i = amp_i/depth_i: at most their largest. (Pairing the largest amp with the smallest depth, which grows with
@@ -219,7 +220,7 @@ export function fieldBreakingHeight(f: ReefField, p: BreakParams): number {
   let best = Infinity;
   for (let r = 0; r + 1 < nz; r++) for (let c = 0; c + 1 < nx; c++) {
     const i = r * nx + c, j = i + nx;
-    const q = (k: number): number => f.amp[k] / f.hminBreak[k];
+    const q = (k: number): number => f.amp[k] / depths[k];
     best = Math.min(best, bound(Math.max(q(i), q(i + 1), q(j), q(j + 1)), Math.max(f.amp[i], f.amp[i + 1], f.amp[j], f.amp[j + 1])));
   }
   for (let i = 0; i + 1 < f.far.count; i++) {
@@ -235,10 +236,11 @@ export function fieldBreakingHeight(f: ReefField, p: BreakParams): number {
  * breaks. ρ is proportional to the height (ρ(λH) = λ·ρ(H)), so a wave no taller than λ × fieldBreakingHeight (so no
  * taller than λ × every point's own breaking height, where ρ = 1) has ρ ≤ λ at every crest: with λ =
  * steepeningStart it has no sharpening and no stage anywhere, so its surface is Phase 1 exactly. SetWaves flags waves
- * against it (see fieldBreakingHeight).
+ * against it (see fieldBreakingHeight). Over the slurp's depths (FieldSample.hminSlurp ≤ hminBreak): the slurp pulls a
+ * shoulder in from where its slurp ratio reaches steepeningStart, which comes first.
  */
 export function fieldSteepeningHeight(f: ReefField, p: BreakParams): number {
-  return steepeningStart(p) * fieldBreakingHeight(f, p);
+  return steepeningStart(p) * fieldBreakingHeight(f, p, f.hminSlurp);
 }
 
 /** The breaking stage of w's crest nearest (x, z) (0 when breaking is off). */
@@ -271,7 +273,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const jacobian = Math.max(0.2, 1 + (hAmp * w.omega * Math.cos(theta) + pitch * dEtaDXi) * dXiDs);
   const slopeAlong = (dEtaDXi * dXiDs) / jacobian;
   const out: SetWaveResult = { eta, dx: f.dirX * dh, dz: f.dirZ * dh, slopeX: f.dirX * slopeAlong, slopeZ: f.dirZ * slopeAlong, foam: 0, stage: crest ? crest.s * crest.confidence : 0, pile: 0 };
-  if (!o || !crest || !(crest.lc.stage > 0 || crest.lc.steep > 0)) return out;
+  if (!o || !crest || !(crest.lc.stage > 0 || crest.lc.steep > 0 || crest.lc.drain > 0)) return out;
   // The crest's frame (height, Stokes ratio, wavenumber, lean, bore depth) sets the shape's scale for the whole
   // cross-section; this point's own unbroken position and height are what get steepened, drained and settled.
   const cf = crestFrame(w, crest, lateral, o);

@@ -22,6 +22,8 @@ export interface ReefField {
   hmin: Float32Array;
   /** The breaking depth: amp / (amp/breakingDepth(hmin) smoothed along the crest) (FieldSample.hminBreak). */
   hminBreak: Float32Array;
+  /** The drain's breaking depth: amp / the slurp's gain (slurpAlongCrest; FieldSample.hminSlurp). */
+  hminSlurp: Float32Array;
   k: Float32Array;
   dirX: Float32Array;
   dirZ: Float32Array;
@@ -69,6 +71,40 @@ export const BREAK_TAIL_M = 20;
  * which smoothing along travel leaves as it is.
  */
 export const BREAK_TRAVEL_SMOOTHING_M = 8;
+
+/**
+ * The slurp (Andrew): as a section stands up it draws the reef's water into itself, and the swell line either side is
+ * part of that. The drain reads, at each node, the strongest breaking gain along its crest line within 2·SLURP_REACH_M,
+ * weighted exp(−s / SLURP_REACH_M) by its distance s along the line: fully at the section itself, 37% at SLURP_REACH_M.
+ * Exponential, not Gaussian: the drain saturates (full from ρ ≈ 1.3), and a Gaussian took a peak's ratio of 3 through the
+ * drain's whole ramp in ~15 m of crest, a wall at each end of a flat-bottomed bowl; an exponential spends 0.7 reaches on it.
+ * A bigger swell stands further past breaking at the peak, and so slurps further along the line.
+ */
+export const SLURP_REACH_M = 80;
+/** The slurp's samples along the crest line are this far apart (m). */
+const SLURP_STEP_M = 2;
+
+/** `a` spread along the crest line through each node: the largest of a × exp(−s/reachM) within ±2·reachM. */
+export function slurpAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, reachM: number): Float32Array {
+  const { nx, cellM } = grid;
+  const out = new Float32Array(a.length);
+  const at = bilinearCells(a, grid);
+  const steps = Math.ceil((2 * reachM) / SLURP_STEP_M);
+  const weight = Array.from({ length: steps + 1 }, (_, j) => Math.exp(-(j * SLURP_STEP_M) / reachM));
+  let aMax = 0;
+  for (let i = 0; i < a.length; i++) aMax = Math.max(aMax, a[i]);
+  for (let i = 0; i < a.length; i++) {
+    const col = i % nx, row = (i - col) / nx, tx = (-dirZ[i] * SLURP_STEP_M) / cellM, tz = (dirX[i] * SLURP_STEP_M) / cellM;
+    let m = a[i];
+    for (let j = 1; j <= steps; j++) {
+      const w = weight[j];
+      if (m >= w * aMax) break; // nothing further along can beat it
+      m = Math.max(m, w * at(col + j * tx, row + j * tz), w * at(col - j * tx, row - j * tz));
+    }
+    out[i] = m;
+  }
+  return out;
+}
 
 /** The largest of `a` within radiusM along the crest line through each node (sampled as smoothAlongCrest samples). */
 export function maxAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, radiusM: number): Float32Array {
@@ -244,8 +280,11 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const smoothGain = smoothAlongTravel(near, dirX, dirZ, grid, BREAK_TRAVEL_SMOOTHING_M);
   const hminBreak = new Float32Array(n);
   for (let i = 0; i < n; i++) hminBreak[i] = smoothGain[i] > 0 ? amp[i] / smoothGain[i] : breakingDepth(hmin[i]);
+  const slurp = slurpAlongCrest(smoothGain, dirX, dirZ, grid, SLURP_REACH_M);
+  const hminSlurp = new Float32Array(n);
+  for (let i = 0; i < n; i++) hminSlurp[i] = slurp[i] > 0 ? Math.min(hminBreak[i], amp[i] / slurp[i]) : hminBreak[i];
   const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega });
-  return { grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
+  return { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
 }
 
 /**
@@ -354,7 +393,7 @@ function sampleInside(f: ReefField, x: number, z: number): FieldSample {
   const dirX = bilinear(f.dirX, g, x, z), dirZ = bilinear(f.dirZ, g, x, z);
   const len = Math.hypot(dirX, dirZ) || 1;
   return {
-    tau: bilinear(f.tau, g, x, z), amp: bilinear(f.amp, g, x, z), hmin: bilinear(f.hmin, g, x, z), hminBreak: bilinear(f.hminBreak, g, x, z),
+    tau: bilinear(f.tau, g, x, z), amp: bilinear(f.amp, g, x, z), hmin: bilinear(f.hmin, g, x, z), hminBreak: bilinear(f.hminBreak, g, x, z), hminSlurp: bilinear(f.hminSlurp, g, x, z),
     k: bilinear(f.k, g, x, z), dirX: dirX / len, dirZ: dirZ / len, depth: bilinear(f.depth, g, x, z),
   };
 }
