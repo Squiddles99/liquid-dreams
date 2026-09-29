@@ -1,18 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS } from './defaults';
 import { CONDITION_RANGES, sanitizeConditions, wrapDegrees } from './sanitize';
+import { WEATHER_PRESETS } from '../weather/weather';
+
+/** What a moment made before weather existed gets: the defaults under a clear sky. */
+const legacy = { ...DEFAULT_CONDITIONS, weather: WEATHER_PRESETS.clear };
 
 describe('sanitizeConditions', () => {
   it('returns defaults for non-objects', () => {
-    expect(sanitizeConditions(undefined)).toEqual(DEFAULT_CONDITIONS);
-    expect(sanitizeConditions(null)).toEqual(DEFAULT_CONDITIONS);
-    expect(sanitizeConditions('nope')).toEqual(DEFAULT_CONDITIONS);
+    expect(sanitizeConditions(undefined)).toEqual(legacy);
+    expect(sanitizeConditions(null)).toEqual(legacy);
+    expect(sanitizeConditions('nope')).toEqual(legacy);
+  });
+  it('gives conditions with no weather the legacy weather: clear unless told otherwise', () => {
+    expect(sanitizeConditions({}).weather).toEqual(WEATHER_PRESETS.clear);
+    expect(sanitizeConditions({}, WEATHER_PRESETS.scattered).weather).toEqual(WEATHER_PRESETS.scattered);
+  });
+  it('keeps and sanitises a weather block', () => {
+    expect(sanitizeConditions({ weather: WEATHER_PRESETS.showers }).weather).toEqual(WEATHER_PRESETS.showers);
+    expect(sanitizeConditions({ weather: { ...WEATHER_PRESETS.rain, lowCover: 7 } }).weather.lowCover).toBe(1);
   });
   it('keeps valid values', () => {
     const c = {
       date: '2026-04-20', timeOfDay: 9.5,
       swell: { sizeFt: 5, periodS: 17, directionDeg: 230 },
-      wind: { speedMs: 0, directionDeg: 90 }, tideM: 0.4, seed: 7,
+      wind: { speedMs: 0, directionDeg: 90 }, tideM: 0.4, seed: 7, weather: { ...WEATHER_PRESETS.broken },
     };
     expect(sanitizeConditions(c)).toEqual(c);
   });
