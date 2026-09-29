@@ -9,12 +9,12 @@ import {
   landingTime, profileFrame, sampleHome,
 } from './lipProfile';
 import { computeReefField, sampleField } from './reefField';
-import { type ActiveWave, type BreakOptions, type WaveContext, localHeight, sumWaves } from './setWaveModel';
+import { type ActiveWave, type BreakOptions, breakOptions, type WaveContext, localHeight, sumWaves } from './setWaveModel';
 
 // The app's field (1 m cells, default swell and tide) and the Task 2 sheet: Phase 1 + front sharpening + drain + bore.
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
 const ctx: WaveContext = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-const SHEET: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: DEFAULT_BREAK_PARAMS };
+const SHEET: BreakOptions = breakOptions(field, DEFAULT_BREAK_PARAMS);
 const LIP: LipParams = DEFAULT_BREAK_PARAMS;
 const HS = surferFeetToHs(DEFAULT_CONDITIONS.swell.sizeFt);
 const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));

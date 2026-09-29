@@ -3,7 +3,7 @@ import { Fn, abs, float, instanceIndex, int, ivec2, select, storage, textureLoad
 import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
 import { computeReefField, sampleField } from '../breaker/reefField';
 import { SetWaves } from '../breaker/SetWaves';
-import { sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import { breakOptions, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { SET_FOAM_MAX_COVER, setFoamPattern, sheetFoamWeight, waterFoamFrame, waterFoamFrameCpu } from '../ocean/OceanSurface';
@@ -108,7 +108,7 @@ registerSelfTest({
     });
     const gpu = await readMap(renderer, foam);
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    const o = { sample: (x: number, z: number) => sampleField(field, x, z), params: DEFAULT_BREAK_PARAMS };
+    const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
     const cpuSource: FoamSourceCpu = {
       foam: (x, z, tt) => sumWaves(x, z, tt, sampleField(field, x, z), wavesNear(tt, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave), ctx, o).foam,
       dir: (x, z) => { const s = sampleField(field, x, z); const l = Math.hypot(s.dirX, s.dirZ) || 1; return [s.dirX / l, s.dirZ / l]; },

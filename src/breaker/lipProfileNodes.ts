@@ -198,9 +198,12 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   // The back-off edges scale with H: floored so a zero-height row (never drawn) can't give smoothstep equal edges.
   const Hs = max(H, 1e-6);
   const steep = select(pre, smoothstep(u.steepFrom, 1.0, r).mul(smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r)), smoothstep(Hs.mul(BACK_OFF_DROP_H[0]), Hs.mul(BACK_OFF_DROP_H[1]), K.y.sub(F.y)));
-  // lipProfile.settleSpan: collapseTime × landingTime(H·(1 + troughDrain·δ)), the fall floored at 0.05 m as landingTime floors it.
-  const span = u.collapseTime.mul(max(H.mul(u.drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt()).toVar();
-  const collapse = select(pre, float(0.0), smoothstep(tauLand, tauLand.add(span), tb)).toVar();
+  // breaking.landingEstimate: landingTime(H·(1 + troughDrain·δ)), the fall floored at 0.05 m as landingTime floors it;
+  // settleSpan is collapseTime × that. The curl collapses from the later of it and the lip's own landing.
+  const landEstimate = max(H.mul(u.drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt().toVar();
+  const span = u.collapseTime.mul(landEstimate).toVar();
+  const settleFrom = max(tauLand, landEstimate).toVar();
+  const collapse = select(pre, float(0.0), smoothstep(settleFrom, settleFrom.add(span), tb)).toVar();
   const landing = select(pre, float(0.0), smoothstep(tauLand, tauLand.add(span.mul(LANDING_FOAM_RISE)), tb)).toVar();
   const grow = smoothstep(0.0, LIP_GROW_PROGRESS, prog);
   const eRoot = max(MIN_LIP_THICKNESS_M, min(u.lipThickness.mul(H), vj.mul(vj).mul(MAX_THICKNESS_OF_RADIUS / GRAVITY_MS2))).mul(grow).toVar();
@@ -209,7 +212,7 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   const uFront = max(uFoot, K.x.add(vj.mul(tauLand))).add(LAND_CLEARANCE_M + EDGE_MARGIN_M).toVar();
   const uBack = H.mul(BACK_EDGE_H).add(EDGE_MARGIN_M).negate().toVar();
   // ribbonWeight
-  const end = tauLand.add(span);
+  const end = settleFrom.add(span);
   const rho = select(pre, smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r), float(1.0).sub(smoothstep(end, end.add(HAND_BACK_S), tb))).toVar();
   const weight = steep.mul(float(1.0).sub(collapse)).toVar();
   return { K, F, tF, W, R, uFoot, uFront, uBack, tauLand, vj, prog, reach, eRoot, weight, collapse, landing, rho, Fb, landing0 };
