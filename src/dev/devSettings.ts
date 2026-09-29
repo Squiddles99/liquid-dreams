@@ -32,9 +32,10 @@ export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
  * something else there (model 2: the breaking ratio became ρ = H / breakingHeight, so the stage span, the drain end,
  * the collapse start and the ribbon onset all moved; model 3: the ribbon onset rose to 0.7, above the deep water's ρ at
  * 6.6 ft, so the ribbon no longer redraws the plain sheet along every crest in the set; model 4: the curl collapses over
- * 1.8 × its landing time, not 1 ×, so a barrel no longer drops like a trap door once the lip lands).
+ * 1.8 × its landing time, not 1 ×, so a barrel no longer drops like a trap door once the lip lands; model 5: the barrel's new
+ * proportions (trough drain 0.7, throw 0.6, lip 0.25·H) and the whitewater pile).
  */
-export const BREAKING_MODEL = 4;
+export const BREAKING_MODEL = 5;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;

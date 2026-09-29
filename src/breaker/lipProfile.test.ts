@@ -5,7 +5,7 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, breakingRatio } from './breaking';
 import {
-  GRAVITY_MS2, type LipParams, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings,
+  GRAVITY_MS2, type LipParams, barrelMetrics, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings,
   landingTime, profileFrame, sampleHome,
 } from './lipProfile';
 import { computeReefField, sampleField } from './reefField';
@@ -54,6 +54,25 @@ describe('lipProfile', () => {
     expect(f.tauLand).toBeLessThan(1.5);
     expect(f.K[0] + f.vj * f.tauLand).toBeGreaterThanOrEqual(f.F[0] + 0.3 - 1e-9);
     console.log(`peak: H ${input.H.toFixed(2)} τ_land ${f.tauLand.toFixed(3)} s, vj ${f.vj.toFixed(2)} m/s (c ${input.c.toFixed(2)}), reach ${(f.vj * f.tauLand).toFixed(2)} m, foot ${f.uFoot.toFixed(2)} m, drop ${(f.K[1] - f.F[1]).toFixed(2)} m`);
+  });
+
+  it("the barrel matches Andrew's photo when the lip lands (spec §3.1: thick lip, thrown far, round tube, face below sea level)", () => {
+    const probe = stationAt(0, 0, big, 0);
+    const tau = profileFrame(probe.base, probe.input, LIP).tauLand;
+    const { base, input } = stationAt(0, 0, big, tau);
+    const m = barrelMetrics(buildProfile(base, input, LIP), input.H);
+    console.log(`barrel at the peak: ${JSON.stringify(Object.fromEntries(Object.entries(m).map(([k, v]) => [k, +v.toFixed(3)])))}`);
+    expect(m.rootThickness, 'lip root (× H)').toBeGreaterThan(0.22);
+    expect(m.rootThickness).toBeLessThan(0.28);
+    expect(m.tipRatio, 'tip ÷ root').toBeCloseTo(0.4, 2);
+    expect(m.landAhead, 'lands ahead of the crest (× H)').toBeGreaterThanOrEqual(1.1);
+    expect(m.landAhead).toBeLessThanOrEqual(1.3);
+    expect(m.tubeRatio, 'tube width at half height ÷ height').toBeGreaterThanOrEqual(0.9);
+    expect(m.tubeRatio).toBeLessThanOrEqual(1.2);
+    expect(m.wallBack, 'wall behind the crest (× H)').toBeGreaterThan(0.2);
+    expect(m.wallBack).toBeLessThan(0.3);
+    expect(m.wallBulge, 'the wall curves concave up into the lip (m behind its chord)').toBeGreaterThan(0.02 * input.H);
+    expect(m.troughBelow, 'trough below still water (× H)').toBeGreaterThanOrEqual(0.5);
   });
 
   it('the tip follows the ballistic arc from the crest', () => {
