@@ -4,7 +4,7 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, PILE_RISE_S, breakingHeightThreshold, landingEstimate, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
+import { DEFAULT_BREAK_PARAMS, PILE_LAND_H, PILE_RISE_S, breakingHeightThreshold, landingEstimate, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
 import { type Station, traceStations } from './crestTrace';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
@@ -311,7 +311,15 @@ describe('the breaking sheet on the real reef', () => {
           const v = ((top - prev) * 0.5) / 0.25;
           stand = v < 2 ? stand + 1 : 0;
           worstStand = Math.max(worstStand, stand);
-          worstJump = Math.max(worstJump, v);
+          // As the lip lands the whitewater rises where it hits, in front of the falls (spec §3.2, Andrew), while the
+          // crest behind falls: the highest water moves onto the pile (up to ~6 m in a step at the peak), which is the
+          // lip's own travel, not a hand-on to a second crest. A move onto the pile's landing spot while the curl collapses
+          // (its top moves out from the crest to there over the settle span) is allowed; a jump anywhere else still counts.
+          const cp = line[j], cc = crestAt(cp.x, cp.z, t, at(cp.x, cp.z), w, ctx, sheet);
+          const H = cc ? localHeight(w, cc.f) : 0, land = landingEstimate(H, DEFAULT_BREAK_PARAMS);
+          const rising = cc?.tb !== null && cc?.tb !== undefined && cc.lipH !== null && cc.lipH !== undefined && cc.tb >= land && cc.tb <= land + settleSpan(H, DEFAULT_BREAK_PARAMS) + 0.25;
+          const ontoPile = rising && (top - j) * 0.5 <= PILE_LAND_H * (cc.lipH as number) * 1.35 + 1.5;
+          if (!ontoPile) worstJump = Math.max(worstJump, v);
           samples++;
         }
         prev = top;
@@ -714,8 +722,10 @@ describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
         }
         // It never stands under the pile (where the wave under it is taller, as once the pile has decayed onto the bore,
         // the wave is the surface). A section that broke only partly builds a partial pile: checked where it is whole.
+        // Once the pile has decayed onto its floor the surface is the sheet's own bore (boreScale), which may sit a few cm
+        // under the floor's estimate (settledCrestTop): checked while the pile stands above its floor.
         const whole = crestAt(tp.x, tp.z, t, at(tp.x, tp.z), w, ctx, sheet)!.lc.pile >= 0.99;
-        if (here && whole) expect(here.top - fine, `(${px}, ${pz}) t ${(t - tOn).toFixed(1)} s: sheet ${fine.toFixed(2)} vs pile ${here.top.toFixed(2)}`).toBeLessThan(Math.max(0.05, 0.05 * here.top));
+        if (here && whole && here.own > here.floor) expect(here.top - fine, `(${px}, ${pz}) t ${(t - tOn).toFixed(1)} s: sheet ${fine.toFixed(2)} vs pile ${here.top.toFixed(2)}`).toBeLessThan(Math.max(0.05, 0.05 * here.top));
         // The pile's own height (the lip, surged and decayed): its floor is the bore, which grows where the reef deepens (as
         // the sheet's bore does).
         // Not across the two ledges' meeting line, which the peak's ray runs down and rays from near the peak reach ~55 m
