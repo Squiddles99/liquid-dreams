@@ -70,6 +70,7 @@ don't move. Cost if wrong: one default value.
 | `rain` | 0–1 | Rain rate under the rain cells: 0 none, 0.2 drizzle, 0.5 steady rain, 1 downpour |
 | `storm` | 0–1 | Lightning and thunder frequency under the tallest cells |
 | `visibilityKm` | 0.3–60 | Low-level visibility: haze, mist, sea fog and rain all lower it |
+| `fogTopM` | 20–3000 | How deep the low haze is: about 60 m for sea mist, about 1.5 km for rain haze (added in the W1 plan: without it mist and rain haze look the same) |
 | `windAloftDeg`, `windAloftMs` | | The steering wind that moves the clouds (independent of the surface wind) |
 
 **Presets** (the dev panel's weather dropdown, and the conditions menu):
