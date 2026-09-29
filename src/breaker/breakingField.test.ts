@@ -4,13 +4,13 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, boreScale, breakingHeightThreshold, stageCurves, steepening, steepeningStart } from './breaking';
+import { DEFAULT_BREAK_PARAMS, breakingHeightThreshold, stageCurves, steepening, steepeningStart } from './breaking';
 import { type Station, traceStations } from './crestTrace';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import {
-  type ActiveWave, BREAKING_RATIO, type BreakOptions, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
+  type ActiveWave, type BreakOptions, breakOptions, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
   phaseXi, seabedFloor, sumWaves, toActiveWave, waveAt, waveAtCrest,
 } from './setWaveModel';
 
@@ -19,7 +19,7 @@ const reef05 = buildBathymetry();
 const field = computeReefField({ bed: downsample(reef05, 2), periodS: 15, fromDeg: 225, tideM: 0 });
 const ctxOf = (f: ReefField): WaveContext => ({ omega: f.omega, travelX: f.far.dirX, travelZ: f.far.dirZ });
 const ctx = ctxOf(field);
-const optsFor = (f: ReefField, params = DEFAULT_BREAK_PARAMS): BreakOptions => ({ sample: (x, z) => sampleField(f, x, z), params });
+const optsFor = (f: ReefField, params = DEFAULT_BREAK_PARAMS): BreakOptions => breakOptions(f, params);
 /** The one breaking surface: the sheet the render draws and the probe reads. */
 const sheet = optsFor(field);
 const HS = surferFeetToHs(DEFAULT_CONDITIONS.swell.sizeFt);
@@ -209,52 +209,122 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
     // travel, a crest-to-trough deep trench over the reef flat. The bore read β × the breaking depth over the capped
     // height; the breaking depth (amp over the smoothed amp/depth) carries amp's focusing spikes, which the capped height
     // does not, and the trough behind the crest stepped 0.5–0.8 m per 0.5 m of crest. Measured over the reef flat
-    // behind the peak (Andrew's view from inside the reef), as breaking's change to the Phase 1 surface.
+    // behind the peak (Andrew's view from inside the reef), on the broken surface itself: a trench is a step (first
+    // difference) or a crease (second difference) along the crest. A peeling section's edge of whitewater is neither: it
+    // rises steadily along the crest (up to ~0.4 m per metre on an 8 m wave 3 s after it broke). This no longer measures
+    // breaking's change to the Phase 1 surface: near the crest the wave now carries its crest's height
+    // (setWaveModel.waveHeightAt), and the unbroken surface's own focusing spikes are not the sheet's to keep.
     const tx = -ctx.travelZ, tz = ctx.travelX;
-    let worst = 0, checked = 0;
+    let step = 0, crease = 0, checked = 0;
     for (const heightM of [5, 8]) for (const behindS of [3, 6, 9]) {
       const w = testWave(heightM), t = at(20, 40).tau + behindS;
-      const change = (x: number, z: number): number | null => {
-        const f = at(x, z), c = crestAt(x, z, t, f, w, ctx, sheet)!;
-        const xi = phaseXi(x, z, t, f, w, ctx);
-        if (!(c.s > 0) || xi < 1 || xi > Math.PI / w.omega) return null;
-        return waveAtCrest(x, z, t, f, w, ctx, c, sheet).eta - waveAtCrest(x, z, t, f, w, ctx, null).eta;
-      };
+      const eta = (x: number, z: number): number => sumWaves(x, z, t, at(x, z), [w], ctx, sheet).eta;
       for (let u = -60; u <= 20; u += 4) for (let v = -60; v <= 60; v += 0.5) {
         const x = 20 + ctx.travelX * u + tx * v, z = 40 + ctx.travelZ * u + tz * v;
-        const a = change(x, z), b = change(x + tx * 0.5, z + tz * 0.5);
-        if (a === null || b === null) continue;
-        worst = Math.max(worst, Math.abs(b - a));
+        const f = at(x, z), c = crestAt(x, z, t, f, w, ctx, sheet)!;
+        const xi = phaseXi(x, z, t, f, w, ctx);
+        if (!(c.s > 0) || xi < 1 || xi > Math.PI / w.omega) continue;
+        const a = eta(x - tx * 0.5, z - tz * 0.5), b = eta(x, z), c2 = eta(x + tx * 0.5, z + tz * 0.5);
+        step = Math.max(step, Math.abs(c2 - b));
+        crease = Math.max(crease, Math.abs(a - 2 * b + c2));
         checked++;
       }
     }
     expect(checked).toBeGreaterThan(5000);
-    expect(worst, 'the largest step in 0.5 m of crest (m)').toBeLessThan(0.1);
+    expect(step, 'the largest step in 0.5 m of crest (m)').toBeLessThan(0.3);
+    expect(crease, 'the sharpest crease along the crest (m, second difference at 0.5 m)').toBeLessThan(0.15);
   });
 });
 
+/** The ledge rays the crest-progress tests follow: the peak, the north ledge (the left) every 15 m, the south ledge (the right). */
+const LEDGE_POINTS: readonly [number, number][] = [[0, 0], [5.5, -15], [11, -30], [16.4, -45], [21.9, -60], [27, -75], [12.5, 14], [25, 28], [42, 33]];
+
 describe('the breaking sheet on the real reef', () => {
   const P = DEFAULT_BREAK_PARAMS;
-  it('the back of a breaking wave is its unbroken back', () => {
-    // The biggest default wave at the peak, 0.5 s after it arrives there (testWave: arrival 0, crest at τ = t).
-    const w = testWave(REF_BIGGEST.heightM), t = 0.5;
-    const line = ray(0, 0, 40, 40);
-    const j = line.findIndex((p) => p.tau >= t);
-    const crestArc = (j - 1 + (t - line[j - 1].tau) / (line[j].tau - line[j - 1].tau)) * 0.5;
-    const crestHere = crestAt(line[j].x, line[j].z, t, at(line[j].x, line[j].z), w, ctx, sheet)!;
-    expect(crestHere.s, 'the wave is breaking at the peak').toBeGreaterThan(0);
+  it('while the wave throws, its crest is its highest water: nothing behind it stands above it', () => {
+    // Each point's own height, capped by the depth under it, left the back of the wave over the ledge (5 m) taller than
+    // its crest over the reef top (3 m): the highest water stayed behind as a hump (Andrew's "it passes by"). From onset
+    // to where the curl collapses, at the peak: the water 3–20 m behind the crest (ξ = 0) stays below the crest.
+    const w = testWave(REF_BIGGEST.heightM);
+    const line = ray(0, 0, 40, 60);
     let checked = 0;
-    line.forEach((p, i) => {
-      const behind = crestArc - i * 0.5;
-      if (behind < 0.5 || behind > 20) return;
-      const f = at(p.x, p.z), c = crestAt(p.x, p.z, t, f, w, ctx, sheet)!;
-      // η = (Phase 1 η − drain × drainShape) × boreScale, and drainShape is 0 behind the crest: no sinking.
-      const scale = boreScale(Math.min(w.heightM * c.f.amp, BREAKING_RATIO * c.f.hminBreak), c.f.hminBreak, stageCurves(c.r, P).collapse, P);
-      const broken = sumWaves(p.x, p.z, t, f, [w], ctx, sheet).eta, unbroken = sumWaves(p.x, p.z, t, f, [w], ctx).eta;
-      expect(Math.abs(broken - unbroken * scale), `${behind.toFixed(1)} m behind the crest`).toBeLessThan(1e-3);
+    for (let t = 0; t <= 1.5 + 1e-9; t += 0.25) {
+      const j = line.findIndex((p) => p.tau >= t);
+      const crestArc = (j - 1 + (t - line[j - 1].tau) / (line[j].tau - line[j - 1].tau)) * 0.5;
+      const eta = line.map((p) => sumWaves(p.x, p.z, t, at(p.x, p.z), [w], ctx, sheet).eta);
+      const crest = Math.max(eta[j - 1], eta[j]);
+      const behind = Math.max(...line.map((_, i) => (crestArc - i * 0.5 >= 3 && crestArc - i * 0.5 <= 20 ? eta[i] : -Infinity)));
+      expect(behind, `${t.toFixed(2)} s after onset: the water behind the crest (crest ${crest.toFixed(2)} m)`).toBeLessThan(crest);
       checked++;
-    });
-    expect(checked).toBeGreaterThanOrEqual(38);
+    }
+    expect(checked).toBe(7);
+  });
+  it('through the break the highest water moves with the wave: it neither stalls nor hands on to a second crest (Andrew)', { timeout: 120_000 }, () => {
+    // Along each ledge ray, from half a second before the crest reaches the ledge to 6 s after: every 0.25 s the highest
+    // water within 20 m of the crest (ξ = 0), and how fast it moved. When the stage and collapse followed the depth under
+    // the crest and each point kept its own height, it stood still for up to 2 s over the ledge while its crest shrank,
+    // then jumped 10–15 m to a second crest that grew and broke inshore (26 m/s at the north ledge 60 m from the peak).
+    // A crest collapsing into whitewater may pause for a step as its top falls; it may not stand, and it may not jump.
+    const w = testWave(REF_BIGGEST.heightM);
+    let worstStand = 0, worstJump = 0, samples = 0;
+    for (const [px, pz] of LEDGE_POINTS) {
+      const line = ray(px, pz, 30, 70);
+      const tau0 = at(px, pz).tau;
+      let prev: number | null = null, stand = 0;
+      for (let t = tau0 - 0.5; t <= tau0 + 6 + 1e-9; t += 0.25) {
+        const eta = line.map((p) => sumWaves(p.x, p.z, t, at(p.x, p.z), [w], ctx, sheet).eta);
+        const j = line.findIndex((p) => p.tau >= t);
+        if (j < 1 || j * 0.5 > 90) { prev = null; continue; }
+        let top = -1;
+        for (let i = 0; i < line.length; i++) if (Math.abs(i - j) * 0.5 <= 20 && (top < 0 || eta[i] > eta[top])) top = i;
+        if (!(eta[top] > 0.3)) { prev = null; continue; }
+        if (prev !== null) {
+          const v = ((top - prev) * 0.5) / 0.25;
+          stand = v < 2 ? stand + 1 : 0;
+          worstStand = Math.max(worstStand, stand);
+          worstJump = Math.max(worstJump, v);
+          samples++;
+        }
+        prev = top;
+      }
+    }
+    expect(samples).toBeGreaterThan(200);
+    expect(worstStand, 'the most 0.25 s steps in a row the highest water stood still').toBeLessThanOrEqual(2);
+    expect(worstJump, 'the fastest the highest water moved (m/s): a hand-on to a second crest').toBeLessThanOrEqual(20);
+  });
+  it('a broken section never un-breaks: at the crest the collapse only grows, however the reef deepens after the ledge', () => {
+    // The ratio at the crest peaks on the reef top and falls where it deepens again inshore (3.4 at 24 m from the peak,
+    // 2.9 at 38 m): when the collapse followed the ratio, the whitewater stood back up into a clean face. How far it
+    // settles follows the record's running maximum, which the field's upwind march lowers by up to ~2% where it averages
+    // neighbouring rays: that may ease it by a hair (0.001 here), never stand it back up.
+    const w = testWave(REF_BIGGEST.heightM);
+    for (const [px, pz] of LEDGE_POINTS) {
+      const line = ray(px, pz, 0, 70);
+      let last = 0, broke = false;
+      line.forEach((p, i) => {
+        const f = at(p.x, p.z), c = crestAt(p.x, p.z, f.tau, f, w, ctx, sheet)!;
+        expect(c.lc.collapse, `(${px}, ${pz}) + ${(i * 0.5).toFixed(1)} m`).toBeGreaterThanOrEqual(last - 0.005);
+        last = Math.max(last, c.lc.collapse);
+        broke ||= c.tb !== null && c.tb !== undefined;
+      });
+      expect(broke, `(${px}, ${pz}) breaks`).toBe(true);
+      expect(last, `(${px}, ${pz}) has settled 70 m in`).toBeGreaterThan(0.99);
+    }
+  });
+  it('the lip and the water under it agree on when each section broke (one onset record)', () => {
+    // The ribbon's stations carry the time since onset their cross-section is built for; the sheet's crest reads the
+    // same record, so the curl collapses as the water under it does.
+    const w = testWave(REF_BIGGEST.heightM);
+    let checked = 0;
+    for (const t of [0.5, 1, 2, 3]) {
+      for (const e of traceStations(field, [w], t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: 0 })) {
+        if (e.gap || e.tb === null || !Number.isFinite(e.tb)) continue;
+        const f = at(e.x, e.z), c = crestAt(e.x, e.z, t, f, w, ctx, sheet)!;
+        expect(Math.abs((c.tb as number) - e.tb), `station at (${e.x.toFixed(1)}, ${e.z.toFixed(1)}), ${t} s`).toBeLessThan(0.05);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
   });
   it('a wave two or more periods from a point leaves it alone (its sharpening needs a found crest)', () => {
     // The reference set 0.3 s after the biggest wave's arrival, over the inside of the reef (shoreward of the peak), where

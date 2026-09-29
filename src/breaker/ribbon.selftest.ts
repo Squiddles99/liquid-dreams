@@ -18,7 +18,7 @@ import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, SEGMENT_ID, type 
 import { FRAME_BASE_OFFSET, FRAME_LAYOUT, FRAME_VEC4S, SEGMENT_OF_SAMPLE, homeFromTable, packFrameCpu } from './lipProfileNodes';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
-import { type ActiveWave, type BreakOptions, type SetWaveResult, type WaveContext, fieldBreakingHeight, sumWaves, toActiveWave } from './setWaveModel';
+import { type ActiveWave, type BreakOptions, breakOptions, type SetWaveResult, type WaveContext, fieldBreakingHeight, sumWaves, toActiveWave } from './setWaveModel';
 
 const P = DEFAULT_BREAK_PARAMS;
 const V = VERTS_PER_STATION;
@@ -64,7 +64,7 @@ const read = async (renderer: THREE.WebGPURenderer, attr: THREE.StorageBufferAtt
 /** The CPU ribbon row of a station: buildProfile on the sumWaves base along n, placed in the world as the vertex pass places it. */
 function cpuRow(st: Station, t: number, waves: readonly ActiveWave[]) {
   const field = getField(), ctx = ctxOf(field);
-  const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: P };
+  const o: BreakOptions = breakOptions(field, P);
   const memo = new Map<number, SetWaveResult>();
   const at = (u: number): SetWaveResult => {
     let r = memo.get(u);
@@ -364,7 +364,7 @@ registerSelfTest({
     ribbon.compute(renderer);
     const gn = await read(renderer, ribbon.normals), gf = await read(renderer, ribbon.frames), gp = await read(renderer, ribbon.positions);
     const field = getField(), ctx = ctxOf(field);
-    const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: P };
+    const o: BreakOptions = breakOptions(field, P);
     const frameAt = (i: number, name: (typeof FRAME_LAYOUT)[number]): number => gf[i * FRAME_FLOATS + FRAME_LAYOUT.indexOf(name)];
     // The mirror runs on the GPU's own positions, so it checks the normal pass alone (test 1 checks the positions).
     const rows = entries.map((e, i) => (e.gap ? null : Array.from({ length: PROFILE_SAMPLES }, (_, j) => Array.from(gp.slice((i * V + j + 1) * 4, (i * V + j + 1) * 4 + 3)))));
@@ -448,7 +448,7 @@ registerSelfTest({
     const mask = await readFootprint(renderer, ribbon);
     const gp = await read(renderer, ribbon.positions), ge = await read(renderer, ribbon.extras);
     const field = getField(), ctx = ctxOf(field);
-    const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: P };
+    const o: BreakOptions = breakOptions(field, P);
     const rhoAt = (i: number): number => ge[(i * V + 1) * 4 + 3];
     const liveAt = (i: number): boolean => i >= 0 && i < entries.length && !entries[i].gap && rhoAt(i) >= 0.02;
     /** Whether the stations within INTERIOR_ARC_M of arc on both sides of i are live and in the ribbon (ρ ≥ 0.02): away from a
