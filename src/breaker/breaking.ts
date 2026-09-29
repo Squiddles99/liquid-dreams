@@ -227,21 +227,37 @@ export function settleSpan(H: number, p: Pick<BreakParams, 'collapseTime' | 'tro
 }
 
 /**
- * The onset record (reefField.ReefField.onset, onsetAmp): per field node, ONSET_LAGS values of the running maximum of
- * amp/hminBreak along the ray through it, at the node itself and at the lag times ONSET_LAG_TIMES_S upstream (the water
- * the crest was over that long ago), then the wave's amplification at each (onsetHeight). The running maximum never
- * falls along a ray, so a section that has broken stays broken wherever the reef goes deeper after it, and the time since
- * its onset is where the lagged maxima cross the wave's breaking level (onsetTime). One record serves every wave height:
- * ρ = height·onsetGain·amp/hminBreak.
+ * The onset record (reefField.ReefField.onset): per field node, the running maximum `run` of amp/hminBreak along the ray
+ * through it, then, for each breaking level q_k (ONSET_LEVEL_Q, amp/hminBreak), the time since the section on that ray
+ * first reached q_k (0 if it hasn't) and the throw's height there: the tallest the crest stood (its height capped by the
+ * depth, as the sheet caps it) in the LIP_THROW_S after that, as a multiple of the deep-water height (the amplification,
+ * where the cap doesn't bind). A wave of deep-water height h breaks
+ * where h·onsetGain·amp/hminBreak ≥ 1, at the level q* = 1/(h·onsetGain): between two of the record's levels, and read
+ * there (onsetLevel). The running maximum never falls along a ray, so a section that has broken stays broken wherever the
+ * reef goes deeper after it. The times and amplifications are carried along the rays (reefField.computeOnsetRecord):
+ * exact, never running backwards, with no reach limit. (Sampled instead at fixed times back up the ray, the lags straddled
+ * the ledge 25–40 m apart where the ratio climbs 0.8 → 3.4 in metres, and the time since onset ran at 0.5–2× real time.)
  */
-/** The lags' times (s upstream of the node): fine while the lip throws and the curl collapses, coarse over the pile's
- * slow decay, 13 s (≈ 90 m) back at the far end. */
-export const ONSET_LAG_TIMES_S: readonly number[] = [0, 0.4, 0.8, 1.2, 2, 3.5, 7, 13];
-export const ONSET_LAGS = ONSET_LAG_TIMES_S.length;
-/** How far back the record reaches (s): a section broken longer ago reads Infinity. */
-export const ONSET_REACH_S = ONSET_LAG_TIMES_S[ONSET_LAGS - 1];
-/** Values per record sample: ONSET_LAGS running maxima, then ONSET_LAGS amplifications (reefField.sampleOnset). */
-export const ONSET_RECORD_LENGTH = 2 * ONSET_LAGS;
+/** The record's breaking levels: ONSET_LEVELS geometric steps from ONSET_LEVEL_Q0 (a 12 ft set's biggest wave breaks
+ * near 0.05; the γ and δ sliders take it to ~0.03) to ONSET_LEVEL_TOP (the field's largest running ratio is 1.34). */
+export const ONSET_LEVELS = 12;
+export const ONSET_LEVEL_Q0 = 0.025;
+export const ONSET_LEVEL_TOP = 1.4;
+export const ONSET_LEVEL_RATIO = (ONSET_LEVEL_TOP / ONSET_LEVEL_Q0) ** (1 / (ONSET_LEVELS - 1));
+export const ONSET_LEVEL_Q: readonly number[] = Array.from({ length: ONSET_LEVELS }, (_, k) => ONSET_LEVEL_Q0 * ONSET_LEVEL_RATIO ** k);
+/** A wave breaks when its height reaches about 0.78 × depth; Phase 1 caps it there (the "fade"). */
+export const BREAKING_RATIO = 0.78;
+/** The lip's height is the tallest the crest stands in this long after its section breaks (s): while it throws and lands
+ * (at the peak the crest grows until ~1.75 s, past the lip's landing at ~1.05 s). */
+export const LIP_THROW_S = 2;
+/** Each level's wave height (m) at the default γ and δ (ρ = height·onsetGain·q = 1): the record caps the throw's height by
+ * the depth with it (as the sheet caps a crest), since the record has no params. */
+export function onsetLevelHeight(k: number): number {
+  return 1 / (ONSET_LEVEL_Q[k] * onsetGain(DEFAULT_BREAK_PARAMS));
+}
+/** Values per record sample: the running maximum, then per level (time since onset, the throw's height ÷ the level's
+ * deep-water height). */
+export const ONSET_RECORD_LENGTH = 1 + 2 * ONSET_LEVELS;
 
 /**
  * ρ per metre of wave height per unit amp/hminBreak: (1 + γδ)/γ, breakingRatio without its floor. The record leaves the
@@ -252,47 +268,49 @@ export function onsetGain(p: Pick<BreakParams, 'gamma' | 'delta'>): number {
   return (1 + p.gamma * p.delta) / p.gamma;
 }
 
-/** Where the lags cross the breaking level: the first lag j below it and the fraction phi of the way from j − 1; j =
- * ONSET_LAGS once every lag is at or above it; null if the section hasn't broken. */
-function onsetCrossing(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): { j: number; phi: number } | null {
-  const g = heightM * onsetGain(p);
-  if (!(g > 0) || !(g * rec[offset] >= 1)) return null;
-  for (let j = 1; j < ONSET_LAGS; j++) {
-    const a = g * rec[offset + j - 1], b = g * rec[offset + j];
-    if (b < 1) return { j, phi: Math.min(1, Math.max(0, (a - 1) / Math.max(a - b, 1e-9))) };
-  }
-  return { j: ONSET_LAGS, phi: 0 };
-}
-
 /**
- * The time (s) since the section at a crest first broke, from the onset record there (`rec`, its values from `offset`)
- * for a wave of deep-water height `heightM`: null if it hasn't broken, Infinity if it broke longer ago than the record
- * reaches (ONSET_REACH_S). Linear between the lags' times, stopping at the first lag below the breaking level.
+ * Where a wave of deep-water height `heightM` reads the record `rec` (from `offset`): from level k toward level k + 1 by
+ * w, log-linearly in q; where level k + 1 is above the running maximum (it hasn't broken there) toward the running maximum
+ * itself instead, where the section breaks now (`toRun`: time 0, today's amplification, which the record keeps for an
+ * unbroken level). null if the section hasn't broken for this wave.
  */
+function onsetLevel(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): { k: number; w: number; toRun: boolean } | null {
+  const g = heightM * onsetGain(p), run = rec[offset];
+  if (!(g > 0) || !(g * run >= 1)) return null;
+  const logR = Math.log(ONSET_LEVEL_RATIO);
+  const lq = Math.log(1 / (g * ONSET_LEVEL_Q0)) / logR;
+  const k = Math.min(ONSET_LEVELS - 2, Math.max(0, Math.floor(lq)));
+  const toRun = run < ONSET_LEVEL_Q[k + 1];
+  const hi = toRun ? Math.log(run / ONSET_LEVEL_Q0) / logR : k + 1;
+  return { k, w: Math.min(1, Math.max(0, (lq - k) / Math.max(hi - k, 1e-9))), toRun };
+}
+
+/** The time (s) since the section at a crest first broke, from the onset record there, for a wave of deep-water height
+ * `heightM`: null if it hasn't broken. */
 export function onsetTime(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
-  const c = onsetCrossing(rec, offset, heightM, p);
-  if (!c) return null;
-  if (c.j === ONSET_LAGS) return Infinity;
-  const t0 = ONSET_LAG_TIMES_S[c.j - 1];
-  return t0 + c.phi * (ONSET_LAG_TIMES_S[c.j] - t0);
+  const l = onsetLevel(rec, offset, heightM, p);
+  if (!l) return null;
+  const lo = rec[offset + 1 + 2 * l.k], hi = l.toRun ? 0 : rec[offset + 3 + 2 * l.k];
+  return lo + l.w * (hi - lo);
 }
 
 /**
- * The wave's height (m) where the section broke: heightM × the amplification the record carries (rec[offset +
- * ONSET_LAGS + j]), interpolated where the lags cross the breaking level as onsetTime interpolates the time; the far lag's
- * once the section broke beyond the record's reach; null if it hasn't broken. At onset ρ = 1, so this height is the
- * breaking height there, uncapped by the depth (it is below 0.78·hmin wherever hminBreak is hmin).
+ * The height (m) the section's crest stood at while it threw its lip: heightM × the record's factor for its level (the
+ * tallest in the LIP_THROW_S after onset, capped by the depth), interpolated as onsetTime interpolates the time; null if
+ * it hasn't broken.
  */
 export function onsetHeight(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
-  const c = onsetCrossing(rec, offset, heightM, p);
-  if (!c) return null;
-  const amp = offset + ONSET_LAGS;
-  if (c.j === ONSET_LAGS) return heightM * rec[amp + ONSET_LAGS - 1];
-  return heightM * (rec[amp + c.j - 1] + c.phi * (rec[amp + c.j] - rec[amp + c.j - 1]));
+  const l = onsetLevel(rec, offset, heightM, p);
+  if (!l) return null;
+  const lo = rec[offset + 2 + 2 * l.k], hi = rec[offset + 4 + 2 * l.k];
+  return heightM * (lo + l.w * (hi - lo));
 }
 
 /** The pile rises this long after the lip lands (s): where the lip hits the water, the whitewater stands up. */
 export const PILE_RISE_S = 0.5;
+/** The pile's decay runs on the time since it rose, as metres at this crest speed (m/s): the reef top's (spec: half height
+ * ~50 m ≈ 7 s). On the crest's speed now, a crest slowing into shallower water rolled "back" and its pile grew. */
+export const PILE_SPEED_MS = 7;
 /** The impact's surge rises over SURGE_RISE_S from the landing and eases back over SURGE_FALL_S… */
 export const SURGE_RISE_S = 0.5;
 export const SURGE_FALL_S = 1.5;
@@ -311,8 +329,8 @@ export interface Lifecycle {
   pileReach: number;
   /** The impact's surge on the pile's height (≥ 1): 1 + pileSurge·smoothstep(1, SURGE_FULL_RATIO, rMax)·rise·fall. */
   surge: number;
-  /** The pile's decay toward its floor: 0.5^(d / pileHalfM), d the metres rolled since the landing (the time past it,
-   * capped at ONSET_REACH_S since onset, × the crest speed c). */
+  /** The pile's decay: 0.5^(d / pileHalfM), d the metres rolled since it rose (the time past the landing and PILE_RISE_S,
+   * × PILE_SPEED_MS): it stands at the lip's height first. */
   decay: number;
 }
 const NO_PILE = { pile: 0, pileReach: 0, surge: 1, decay: 1 } as const;
@@ -331,12 +349,11 @@ const NO_PILE = { pile: 0, pileReach: 0, surge: 1, decay: 1 } as const;
  * broken (the ratio falls there, and when the stage and collapse followed it the broken wave stood back up as a second,
  * unbroken one: Andrew's "second wave"). r ≥ 1 counts as broken at tb 0 where the record lags it.
  * tb undefined: no onset record here (outside the field grid): the ratio alone, as before the record.
- * H is the crest's local height (setWaveModel.localHeight, no lateral taper), as the ribbon's stations carry. c is the
- * crest speed (m/s): the pile's decay runs on the metres it has rolled.
+ * H is the crest's local height (setWaveModel.localHeight, no lateral taper), as the ribbon's stations carry.
  * From the landing the section turns into a whitewater pile (breakPoint): its weight, where its top is, its surge and its
  * decay.
  */
-export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, c = 0): Lifecycle {
+export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r): Lifecycle {
   const c0 = stageCurves(r, p);
   const steep = steepening(r, p), stage = breakingStage(r, p);
   if (tb === undefined) return { steep, stage, drain: c0.drain, collapse: c0.collapse, ...NO_PILE };
@@ -346,7 +363,7 @@ export function lifecycle(r: number, tb: number | null | undefined, H: number, p
   const land = landingEstimate(H, p);
   const span = settleSpan(H, p);
   const thrown = smoothstep(0, land, t) * extent;
-  const rolled = Math.max(0, Math.min(t, ONSET_REACH_S) - land) * c;
+  const rolled = Math.max(0, t - land - PILE_RISE_S) * PILE_SPEED_MS;
   const surgeWeight = p.pileSurge * smoothstep(1, SURGE_FULL_RATIO, Math.max(r, rMax));
   return {
     steep: Math.max(steep, thrown),
@@ -484,6 +501,57 @@ export function boreScale(H: number, hmin: number, collapse: number, p: BreakPar
 }
 
 /**
+ * The pile's floor, the settled bore's crest above still water: the bore's height β × the breaking depth `hmin`, with the
+ * crest's shape (etaCrest / H, the crest's share of its height) and the lateral taper. Not the crest's own height settled
+ * (boreScale): that follows the crest's height, which spikes along the crest where the reef focuses the swell (capped by
+ * the unsmoothed depth), and the floor drew those spikes into the pile as steps.
+ */
+export function settledCrestTop(etaCrest: number, H: number, hmin: number, lateral: number, p: BreakParams): number {
+  return (etaCrest / Math.max(H, MIN_BREAKING_HEIGHT_M)) * boreHeight(hmin, p) * lateral;
+}
+
+/**
+ * The pile's top above still water (spec §3.2): the lip's height, surged, halving every pileHalfM it rolls (Andrew: half
+ * height about 50 m in), never below its floor (the bore). It follows the floor only once it has decayed onto it: where
+ * the reef deepens behind the ledge the bore grows, and floor + (lip − floor) × decay grew with it.
+ */
+export function pileTop(lipTop: number, floorTop: number, lc: Lifecycle): number {
+  return Math.max(floorTop, lipTop * lc.surge * lc.decay);
+}
+
+/** The pile's top sits this many H ahead of the crest once the curl has collapsed: where the lip landed (spec §3.1). */
+export const PILE_LAND_H = 1.2;
+/** Its steep front falls away over this many H (a Gaussian's width)… */
+export const PILE_FRONT_H = 0.5;
+/** …its back slopes away over this many. */
+export const PILE_BACK_H = 1.5;
+/** The pile is full within PILE_REACH[0] periods of its crest in phase and gone from PILE_REACH[1], as the crest's height
+ * (setWaveModel.CREST_HEIGHT_REACH): out there the crest lookup lands metres apart for neighbouring points, and the pile's
+ * back drew those jumps as steps along the crest. */
+export const PILE_REACH: readonly [number, number] = [1 / 8, 1 / 4];
+/** The pile meets the wave under it over this many H (smoothMax's k), so the join has no crease. */
+export const PILE_BLEND_H = 0.1;
+/** No pile where the lip stands no higher than the settled bore; full once it is this much (×) higher. */
+export const PILE_MIN_LIFT: readonly [number, number] = [1, 1.2];
+/** The pile's foam thins to this as it decays to its floor… */
+export const PILE_FOAM_THIN = 0.5;
+/** …and covers the pile out to where its shape falls to these (smoothstep over g, front and back). */
+export const PILE_FOAM_EDGE: readonly [number, number] = [0.02, 0.25];
+
+/** A polynomial smooth maximum: exactly max(a, b) where they differ by k or more, C1 everywhere; dA = ∂/∂a (∂/∂b = 1 − dA). */
+export function smoothMax(a: number, b: number, k: number): { value: number; dA: number } {
+  const h = Math.max(k - Math.abs(a - b), 0) / k;
+  return { value: Math.max(a, b) + (h * h * k) / 4, dA: Math.min(1, Math.max(0, 0.5 + (a - b) / (2 * k))) };
+}
+
+/** The pile's shape g(v) ∈ (0, 1] at v metres ahead of its top (negative behind), and dg/dv: a steep front, a long back. */
+export function pileShape(v: number, H: number): { g: number; dg: number } {
+  const w = (v >= 0 ? PILE_FRONT_H : PILE_BACK_H) * H;
+  const x = v / w, g = Math.exp(-x * x);
+  return { g, dg: ((-2 * x) / w) * g };
+}
+
+/**
  * Whitewater placeholder: only once the lip has landed, and only on the collapsed surface at and behind the crest. It
  * rises over the collapse from FOAM_ONSET_COLLAPSE, is dense at the bore's front and down to FOAM_DENSE_BEHIND_H·H
  * behind the crest, and has faded out by FOAM_TRAIL_H·H behind it (and never beyond half a wavelength, θ > 0 behind).
@@ -552,6 +620,15 @@ export interface BreakPointInput {
    * Treated as constant along ahead (it is 1 wherever the sharpening is meant to act, within half a wavelength ahead).
    */
   crestConfidence: number;
+  /** How high the crest stood above still water when the section broke (m, with the lateral taper; spec §3.2's lip): the
+   * whitewater pile's height. 0: no pile (unbroken, off the record, or the ribbon frame's sheet). */
+  lipTop: number;
+  /** The lateral taper at the point (setWaveModel.waveAtCrest): the floor's share of it. */
+  lateral: number;
+  /** The section's wave height while it threw (m, with the lateral taper; breaking.onsetHeight): the pile's size and where
+   * it lands. The crest's own H spikes along the crest where the reef focuses the swell, and the pile's long back drew
+   * those spikes as ridges behind the crest. */
+  lipHeight: number;
 }
 
 export interface BreakPointResult {
@@ -560,6 +637,8 @@ export interface BreakPointResult {
   foam: number;
   /** ∂(eta − the Phase 1 height)/∂ahead: what breaking adds to the Phase 1 slope along travel. */
   dEtaDAhead: number;
+  /** The pile's height (m) where it is the surface, 0 elsewhere: the churn's scale (render). */
+  pile: number;
 }
 
 /**
@@ -567,11 +646,12 @@ export interface BreakPointResult {
  * lookup's confidence), the drain and the bore. Neither steepening nor breaking (or H too small) returns the Phase 1
  * point exactly. With D the sharpening, R = drainDepth·drainShape(θ)·env the drain and S the bore scale (constant along
  * the cross-section), eta = (η − D − R)·S, and what breaking adds is eta − η = η·(S − 1) − (D + R)·S, differentiated
- * term by term along ahead.
+ * term by term along ahead; and the whitewater pile on top (spec 2026-09-29 §3.2), which lifts it toward the pile's height
+ * by a smooth maximum.
  */
 export function breakPoint(i: BreakPointInput, lc: Lifecycle, p: BreakParams): BreakPointResult {
   const steep = lc.steep;
-  if (!(steep > 0 || lc.stage > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { eta: i.eta, foam: 0, dEtaDAhead: 0 };
+  if (!(steep > 0 || lc.stage > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { eta: i.eta, foam: 0, dEtaDAhead: 0, pile: 0 };
   const c: StageCurves = { drain: lc.drain, collapse: lc.collapse };
   const ahead = i.uUnbroken - i.uCrest;
   const sharpen = steep * i.crestConfidence;
@@ -582,9 +662,30 @@ export function breakPoint(i: BreakPointInput, lc: Lifecycle, p: BreakParams): B
   const drain = depth * shape * i.env;
   const dDrain = depth * (drainShapeSlope(ahead, i.theta, i.dThetaDAhead, i.H, i.k, p) * i.env + shape * i.dEnvDAhead);
   const scale = boreScale(i.boreH, i.hmin, c.collapse, p);
-  return {
-    eta: (i.eta - drop - drain) * scale,
-    foam: foamWeight(i.theta, ahead, i.H, i.env, c, p),
-    dEtaDAhead: i.slope * (scale - 1) - (dDrop + dDrain) * scale,
-  };
+  const base = (i.eta - drop - drain) * scale;
+  const dBase = i.slope * (scale - 1) - (dDrop + dDrain) * scale;
+  const out: BreakPointResult = { eta: base, foam: foamWeight(i.theta, ahead, i.H, i.env, c, p), dEtaDAhead: dBase, pile: 0 };
+  // The whitewater pile (spec §3.2): the sheet lifted toward the pile's top T, most at its top (PILE_LAND_H·H ahead once
+  // the curl has collapsed), fading over its front and back: eta = base + w·(smoothMax(base, T) − base), w = weight·g(v).
+  // Where the wave under it is higher (the crest before it settles) the pile adds nothing.
+  const floorTop = settledCrestTop(i.etaCrest, i.H, i.hmin, i.lateral, p);
+  // Near its crest in phase (PILE_REACH): θ changes along ahead, so this weight's slope counts too.
+  const phase = Math.abs(i.theta) / (2 * Math.PI);
+  const near = 1 - smoothstep(PILE_REACH[0], PILE_REACH[1], phase);
+  const dNear = (-smoothstepSlope(PILE_REACH[0], PILE_REACH[1], phase) * Math.sign(i.theta) * i.dThetaDAhead) / (2 * Math.PI);
+  const crestWeight = lc.pile * i.crestConfidence * smoothstep(PILE_MIN_LIFT[0], PILE_MIN_LIFT[1], i.lipTop / Math.max(floorTop, 1e-6));
+  const weight = crestWeight * near;
+  if (weight > 0) {
+    const T = pileTop(i.lipTop, floorTop, lc);
+    const size = Math.max(i.lipHeight, MIN_BREAKING_HEIGHT_M);
+    const { g, dg } = pileShape(ahead - PILE_LAND_H * size * lc.pileReach, size);
+    const m = smoothMax(base, T, PILE_BLEND_H * size);
+    const lift = m.value - base, w = weight * g;
+    out.eta = base + w * lift;
+    // d/dahead: the base's slope, + (weight·g)′·lift, + w·(dA − 1)·(the base's whole slope, Phase 1's included).
+    out.dEtaDAhead = dBase + crestWeight * (dNear * g + near * dg) * lift + w * (m.dA - 1) * (i.slope + dBase);
+    out.pile = w * (1 - m.dA) * T;
+    out.foam = Math.max(out.foam, weight * smoothstep(PILE_FOAM_EDGE[0], PILE_FOAM_EDGE[1], g) * (1 - m.dA) * (PILE_FOAM_THIN + (1 - PILE_FOAM_THIN) * lc.decay));
+  }
+  return out;
 }

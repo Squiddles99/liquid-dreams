@@ -5,8 +5,8 @@ import {
 } from 'three/tsl';
 import { REEF_GRID } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LAGS, breakingDepth, normalizeBreakParams } from './breaking';
-import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_RECORD_LENGTH, breakingDepth, normalizeBreakParams } from './breaking';
+import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import type { ReefField } from './reefField';
@@ -27,6 +27,8 @@ const LONG_TAIL_CUTOFF = 3.5;
 /** A wave is flagged "can break" once it is taller than this fraction of the field's steepening height: a 2% margin over
  * the exact bound, for the GPU's f32 field interpolation. */
 const CAN_BREAK_MARGIN = 0.98;
+/** Texels per field node in the onset record: the running maximum, then two levels per texel. */
+const ONSET_TEXELS = 1 + Math.ceil(ONSET_LEVELS / 2);
 
 function floatTexture(width: number, height: number): THREE.DataTexture {
   const data = new Float32Array(width * height * 4);
@@ -66,9 +68,9 @@ export class SetWaves {
   hasField = false;
   private readonly fieldA = floatTexture(FIELD_NX, FIELD_NZ);
   private readonly fieldB = floatTexture(FIELD_NX, FIELD_NZ);
-  /** The onset record (ReefField.onset): lags 0–3 and 4–7 on the field grid. */
-  private readonly onsetA = floatTexture(FIELD_NX, FIELD_NZ);
-  private readonly onsetB = floatTexture(FIELD_NX, FIELD_NZ);
+  /** The onset record (ReefField.onset), ONSET_TEXELS texels per field node side by side along x: the running maximum,
+   * then two levels per texel, (time since onset, amplification) each. One texture, so the record is one binding. */
+  private readonly onsetRec = floatTexture(FIELD_NX * ONSET_TEXELS, FIELD_NZ);
   private readonly farA = floatTexture(FAR_COUNT, 1);
   private readonly farB = floatTexture(FAR_COUNT, 1);
   private readonly origin = uniform(new THREE.Vector2(REEF_GRID.x0 + REEF_GRID.cellM / 2, REEF_GRID.z0 + REEF_GRID.cellM / 2));
@@ -115,17 +117,18 @@ export class SetWaves {
       a[i * 4] = f.tau[i]; a[i * 4 + 1] = f.amp[i]; a[i * 4 + 2] = f.hmin[i]; a[i * 4 + 3] = f.k[i];
       b[i * 4] = f.dirX[i]; b[i * 4 + 1] = f.dirZ[i]; b[i * 4 + 2] = f.depth[i]; b[i * 4 + 3] = f.hminBreak[i];
     }
-    const oa = this.onsetA.image.data as Float32Array, ob = this.onsetB.image.data as Float32Array;
+    const od = this.onsetRec.image.data as Float32Array;
     for (let i = 0; i < f.tau.length; i++) {
-      oa.set(f.onset.subarray(i * ONSET_LAGS, i * ONSET_LAGS + 4), i * 4);
-      ob.set(f.onset.subarray(i * ONSET_LAGS + 4, i * ONSET_LAGS + 8), i * 4);
+      const col = i % FIELD_NX, row = (i - col) / FIELD_NX, o = (row * FIELD_NX + col) * ONSET_TEXELS * 4, r = i * ONSET_RECORD_LENGTH;
+      od[o] = f.onset[r];
+      od.set(f.onset.subarray(r + 1, r + ONSET_RECORD_LENGTH), o + 4);
     }
     const fa = this.farA.image.data as Float32Array, fb = this.farB.image.data as Float32Array;
     for (let i = 0; i < f.far.count; i++) {
       fa[i * 4] = f.far.tau[i] - f.far.tauOffset; fa[i * 4 + 1] = f.far.amp[i]; fa[i * 4 + 2] = f.far.hmin[i]; fa[i * 4 + 3] = f.far.k[i];
       fb[i * 4] = f.far.dTauDx[i]; fb[i * 4 + 1] = f.far.depth[i]; fb[i * 4 + 2] = breakingDepth(f.far.hmin[i]); fb[i * 4 + 3] = 0;
     }
-    for (const t of [this.fieldA, this.fieldB, this.onsetA, this.onsetB, this.farA, this.farB]) t.needsUpdate = true;
+    for (const t of [this.fieldA, this.fieldB, this.onsetRec, this.farA, this.farB]) t.needsUpdate = true;
     this.origin.value.set(f.grid.x0, f.grid.z0);
     this.cell.value = f.grid.cellM;
     this.farP.value = f.far.p;
@@ -220,13 +223,27 @@ export class SetWaves {
     };
   }
 
-  /** reefField.sampleOnset: the onset record's ONSET_LAGS values at world xz (bilinear), and whether xz is on the grid. Inside an Fn. */
-  private sampleOnset(xz: N): { inside: N; values: N[] } {
+  /**
+   * reefField.sampleOnset, the part a wave reads: the running maximum and levels k and k + 1 (breakingNodes.onsetLevelNode;
+   * k a float) at world xz (bilinear between nodes), and whether xz is on the grid. Three texel columns per node: the
+   * running maximum's, and the one or two holding the two levels. Inside an Fn.
+   */
+  private sampleOnset(xz: N, k: N): { inside: N; run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N } {
     const g = xz.sub(this.origin).div(this.cell).toVar();
     const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThanEqual(this.fieldMax.x)).and(g.y.lessThanEqual(this.fieldMax.y));
-    const a = bilinearLoad(this.onsetA, g, this.fieldMax).toVar();
-    const b = bilinearLoad(this.onsetB, g, this.fieldMax).toVar();
-    return { inside, values: [a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w] };
+    const gc = clamp(g, vec2(0.0), this.fieldMax.sub(0.001));
+    const base = floor(gc).toVar();
+    const t = gc.sub(base).toVar();
+    const i0 = ivec2(base).toVar();
+    const texel = (m: N): N => {
+      const load = (dx: number, dz: number): N => textureLoad(this.onsetRec, ivec2(i0.x.add(dx).mul(ONSET_TEXELS).add(m), i0.y.add(dz)), int(0));
+      return mix(mix(load(0, 0), load(1, 0), t.x), mix(load(0, 1), load(1, 1), t.x), t.y).toVar();
+    };
+    const ki = int(k).toVar();
+    const lo = texel(ki.div(2).add(1)), hi = texel(ki.add(1).div(2).add(1));
+    const even = ki.mod(2).equal(int(0));
+    const run = texel(int(0)).x;
+    return { inside, run, tbLo: select(even, lo.x, lo.z), ampLo: select(even, lo.y, lo.w), tbHi: select(even, lo.z, hi.x), ampHi: select(even, lo.w, hi.y) };
   }
 
   /**
@@ -317,8 +334,9 @@ export class SetWaves {
             // (setWaveModel.rayCrestPoint: one straight step of ξ·c, at most half a wavelength).
             const reachHere = float(Math.PI).div(f.k);
             const on = xz.add(f.dir.mul(clamp(xi.mul(this.meanOmega).div(f.k), reachHere.negate(), reachHere))).toVar();
-            const rec = this.sampleOnset(on);
-            const onset = onsetTimeNode(rec.values, a.y, brk);
+            const level = onsetLevelNode(a.y, brk);
+            const rec = this.sampleOnset(on, level.k);
+            const onset = onsetTimeNode(rec, level, a.y, brk);
             const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), brk);
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
           });

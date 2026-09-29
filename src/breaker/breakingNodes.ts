@@ -1,6 +1,6 @@
-import { clamp, exp, float, max, min, select, smoothstep, uniform } from 'three/tsl';
+import { clamp, exp, float, floor, log, max, min, mix, select, smoothstep, uniform } from 'three/tsl';
 import {
-  type BreakParams, COLLAPSE_END, GRAVITY_MS2, ONSET_LAGS, ONSET_LAG_TIMES_S, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
+  type BreakParams, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
   HOLLOW_REACH_Q, MIN_STAGE_SPAN, normalizeBreakParams, onsetGain, steepeningStart,
 } from './breaking';
 
@@ -78,28 +78,35 @@ export function stageCurvesNode(r: N, u: BreakUniforms): StageCurveNodes {
   };
 }
 
-/** breaking.onsetTime's "Infinity" on the GPU: past every window it is compared with. */
-export const ONSET_LONG_AGO_S = 1e6;
+/**
+ * Where a wave of deep-water height `heightM` reads the onset record (breaking.onsetLevel): lq, its breaking level's
+ * position in level steps, log(q* ÷ ONSET_LEVEL_Q0) ÷ log(ONSET_LEVEL_RATIO), and the level below it, k ∈ [0, ONSET_LEVELS −
+ * 2] (a float). The same for every point of a wave: SetWaves loads just levels k and k + 1.
+ */
+export function onsetLevelNode(heightM: N, u: BreakUniforms): { lq: N; k: N } {
+  const g = float(heightM).mul(u.onsetGain);
+  const lq = log(float(1.0).div(max(g, 1e-6).mul(ONSET_LEVEL_Q0))).div(Math.log(ONSET_LEVEL_RATIO));
+  return { lq, k: clamp(floor(lq), 0.0, ONSET_LEVELS - 2) };
+}
 
 /**
- * breaking.onsetTime: the time since the section broke from the onset record's ONSET_LAGS values `rec` (running
- * maxima of amp/hminBreak, lag 0 first) for deep-water height `heightM`. Returns { broken, tb, rMax }: rMax is
- * breaking.onsetRatio; tb is linear between
- * the lags up to the first below the breaking level, ONSET_LONG_AGO_S when every lag is at or above it; meaningless
- * when not broken.
+ * breaking.onsetTime, onsetHeight and onsetRatio from the record's running maximum and levels k (lo) and k + 1 (hi) at a
+ * point: { broken, tb, rMax, lipH }. From level k toward level k + 1 log-linearly, or toward the running maximum (time 0)
+ * where level k + 1 is above it. tb and lipH are meaningless when not broken.
  */
-export function onsetTimeNode(rec: readonly N[], heightM: N, u: BreakUniforms): { broken: N; tb: N; rMax: N } {
+export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N }, level: { lq: N; k: N }, heightM: N, u: BreakUniforms): { broken: N; tb: N; rMax: N; lipH: N } {
   const g: N = float(heightM).mul(u.onsetGain);
-  const rho: N[] = rec.map((v) => g.mul(v));
-  let tb: N = float(0.0);
-  let alive: N = rho[0].greaterThanEqual(1.0);
-  for (let j = 1; j < ONSET_LAGS; j++) {
-    const a = rho[j - 1], b = rho[j];
-    const seg = select(b.greaterThanEqual(1.0), float(1.0), clamp(a.sub(1.0).div(max(a.sub(b), 1e-9)), 0.0, 1.0));
-    tb = tb.add(select(alive, seg.mul(ONSET_LAG_TIMES_S[j] - ONSET_LAG_TIMES_S[j - 1]), float(0.0)));
-    alive = alive.and(b.greaterThanEqual(1.0));
-  }
-  return { broken: rho[0].greaterThanEqual(1.0), tb: select(alive, float(ONSET_LONG_AGO_S), tb), rMax: rho[0] };
+  const logR = Math.log(ONSET_LEVEL_RATIO);
+  const qHi = exp(level.k.add(1.0).mul(logR)).mul(ONSET_LEVEL_Q0);
+  const toRun = rec.run.lessThan(qHi);
+  const hi = select(toRun, log(max(rec.run, 1e-9).div(ONSET_LEVEL_Q0)).div(logR), level.k.add(1.0));
+  const w = clamp(level.lq.sub(level.k).div(max(hi.sub(level.k), 1e-9)), 0.0, 1.0);
+  return {
+    broken: g.mul(rec.run).greaterThanEqual(1.0),
+    tb: mix(rec.tbLo, select(toRun, float(0.0), rec.tbHi), w),
+    rMax: g.mul(rec.run),
+    lipH: float(heightM).mul(mix(rec.ampLo, rec.ampHi, w)),
+  };
 }
 
 /** breaking.lifecycle's result as nodes. */
