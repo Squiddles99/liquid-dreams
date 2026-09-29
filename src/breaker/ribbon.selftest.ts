@@ -42,7 +42,7 @@ function setsRig() {
     const sets = new SetWaves(time);
     sets.setField(getField());
     sets.setBreakParams(P);
-    const surface: RibbonSurface = { smooth: (xz) => sets.displacementNode(xz), chop: () => vec3(0.0) };
+    const surface: RibbonSurface = { smooth: (xz) => sets.displacementNode(xz), chop: () => vec3(0.0), frameBase: (xz) => sets.displacementNode(xz, false) };
     rig = { time, sets, ribbon: new BreakingRibbon(surface, P) };
   }
   return rig;
@@ -76,7 +76,13 @@ function cpuRow(st: Station, t: number, waves: readonly ActiveWave[]) {
     return r;
   };
   const base = (u: number): Vec2 => { const d = at(u); return [u + d.dx * st.nx + d.dz * st.nz, d.eta]; };
-  const prof = buildProfile(base, st, P);
+  // The frame on the sheet without the pile (as the GPU frame pass reads it).
+  const flat: BreakOptions = { ...o, pile: false };
+  const frameBase = (u: number): Vec2 => {
+    const x = st.x + st.nx * u, z = st.z + st.nz * u, d = sumWaves(x, z, t, sampleField(field, x, z), waves, ctx, flat);
+    return [u + d.dx * st.nx + d.dz * st.nz, d.eta];
+  };
+  const prof = buildProfile(base, st, P, frameBase);
   const tx = -st.nz, tz = st.nx;
   const world = prof.points.map(([u, y], j): [number, number, number] => {
     const d = at(prof.homes[j]);

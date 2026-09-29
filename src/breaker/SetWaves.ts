@@ -263,9 +263,9 @@ export class SetWaves {
    * largest envelope there, vec2(metres behind its crest, ξ·c; metres along its crest). It moves with the crest, so
    * noise read in it is advected with the wave; the foam's noise uses it (render only, not part of the CPU model).
    */
-  private sumBreaking(xz: N, frame: boolean): { eta: N; dh: N; slope: N; foam: N; stage: N; foamFrame: N } {
+  private sumBreaking(xz: N, frame: boolean, withPile = true): { eta: N; dh: N; slope: N; foam: N; stage: N; foamFrame: N; pile: N } {
     const eta = float(0.0).toVar(), dh = vec2(0.0).toVar(), slope = vec2(0.0).toVar();
-    const foam = float(0.0).toVar(), stage = float(0.0).toVar();
+    const foam = float(0.0).toVar(), stage = float(0.0).toVar(), pile = float(0.0).toVar();
     const foamFrame = vec2(0.0).toVar(), frameEnv = float(0.0).toVar();
     If(this.activeCount.greaterThan(0.5), () => {
       // Everything that does not depend on the wave is made a var here, before the loop: the field sample, wFar, the
@@ -319,6 +319,9 @@ export class SetWaves {
           const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), hminBreak: f.hminBreak.toVar(), hminSlurp: f.hminBreak.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
           const confidence = float(0.0).toVar(), rC = float(0.0).toVar();
           const lc = { steep: float(0.0).toVar(), stage: float(0.0).toVar(), drain: float(0.0).toVar(), collapse: float(0.0).toVar() };
+          // The whitewater pile's curves and the lip's height (setWaveModel.Crest.lipH: 0 unbroken or off the record).
+          const pc = { pile: float(0.0).toVar(), pileReach: float(0.0).toVar(), surge: float(1.0).toVar(), decay: float(1.0).toVar() };
+          const lipH = float(0.0).toVar();
           If(breaking, () => {
             // CREST_STEPS Newton steps toward ξ = 0 along the wave's own travel direction b.xy (the same at every point,
             // so the lookup has no seams), each at most half a wavelength, reading the field where the crest lands, so
@@ -348,6 +351,10 @@ export class SetWaves {
             const rSlurp = breakingRatioNode(a.y.mul(fc.amp), fc.hminSlurp, brk);
             const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), rSlurp, brk);
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
+            if (withPile) {
+              pc.pile.assign(l.pile); pc.pileReach.assign(l.pileReach); pc.surge.assign(l.surge); pc.decay.assign(l.decay);
+              lipH.assign(select(rec.inside.and(onset.broken), onset.lipH, float(0.0)));
+            }
           });
           // setWaveModel.waveHeightAt: the point's own height, the crest's by the sharpening × the lookup's confidence ×
           // nearness to the crest in phase (CREST_HEIGHT_REACH periods, T = 2π/ω). mix(a, b, 0) is a exactly, so without
@@ -395,16 +402,21 @@ export class SetWaves {
                 const ac = Hc.mul(0.5).mul(lateral);
                 const pitchC = min(nearBreakingC.mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(fc.k.mul(ac), 1e-4)));
                 const etaCrest = ac.mul(Bc.add(1.0));
+                // setWaveModel.crestFrame's lip: its crest's height above still water (the Stokes ratio at its own height).
+                const Bl = min(float(STOKES_CAP), fc.k.mul(lipH.mul(0.5)).mul(float(3.0).sub(sigmaC.mul(sigmaC))).div(sigmaC.mul(sigmaC).mul(sigmaC).mul(4.0)));
+                const lipTop = lipH.mul(0.5).mul(Bl.add(1.0)).mul(lateral);
                 // Measured, not inferred from ξ: every point of the cross-section must agree on where its crest is.
                 const v0 = dot(xz.sub(cPos), f.dir);
                 const br = breakPointNode({
                   theta, env: env.mul(lateral), uUnbroken: v0.add(d), eta: e, uCrest: pitchC.mul(etaCrest), etaCrest, H: Hl, k: fc.k, hmin: fc.hminBreak,
                   boreH: min(a.y.mul(fc.amp), fc.hminBreak.mul(BREAKING_RATIO)).mul(lateral),
                   slope: along, dThetaDAhead: a.z.mul(perAhead), dEnvDAhead: dEnv.mul(lateral).mul(perAhead), crestConfidence: confidence,
-                }, lc.steep, brk, { drain: lc.drain, collapse: lc.collapse });
+                  ...(withPile ? { lipTop, lateral, lipHeight: lipH.mul(lateral) } : {}),
+                }, lc.steep, brk, { drain: lc.drain, collapse: lc.collapse }, withPile ? pc : undefined);
                 eta.addAssign(br.eta.sub(e));
                 slope.addAssign(f.dir.mul(br.dEtaDAhead));
                 foam.assign(max(foam, br.foam));
+                pile.assign(max(pile, br.pile));
               });
             });
           });
@@ -417,7 +429,7 @@ export class SetWaves {
         slope.assign(vec2(0.0));
       });
     });
-    return { eta, dh, slope, foam, stage, foamFrame };
+    return { eta, dh, slope, foam, stage, foamFrame, pile };
   }
 
   /**
@@ -425,9 +437,9 @@ export class SetWaves {
    * bore), which the render draws and the height probe reads. Compute-safe; WaterSurfaceModel.displacement() and so
    * HeightProbe read this.
    */
-  displacementNode(xz: N): N {
+  displacementNode(xz: N, pile = true): N {
     return Fn(() => {
-      const s = this.sumBreaking(xz, false);
+      const s = this.sumBreaking(xz, false, pile);
       return vec3(s.dh.x, s.eta, s.dh.y);
     })();
   }
@@ -437,12 +449,13 @@ export class SetWaves {
    * varyingProperty nodes) the set waves' analytic slope, the foam weight and the foam's wave frame (see sumBreaking).
    * Never use this in a compute shader: there are no varyings to write. Tests use breakSampleNode.
    */
-  displacementWithSetFoamNode(xz: N, out: { slope: N; foam: N; foamFrame: N }): N {
+  displacementWithSetFoamNode(xz: N, out: { slope: N; foam: N; foamFrame: N; pile?: N }): N {
     return Fn(() => {
       const s = this.sumBreaking(xz, true);
       out.slope.assign(s.slope);
       out.foam.assign(s.foam);
       out.foamFrame.assign(s.foamFrame);
+      out.pile?.assign(s.pile);
       return vec3(s.dh.x, s.eta, s.dh.y);
     })();
   }
@@ -451,9 +464,9 @@ export class SetWaves {
    * The render path's values as nodes, for self-tests, diagnostics and the breaking ribbon's vertex stage (the sheet's
    * foam and foam frame at a ribbon vertex's home). Compute-safe; must be called inside an Fn.
    */
-  breakSampleNode(xz: N): { disp: N; slope: N; foam: N; stage: N; foamFrame: N } {
+  breakSampleNode(xz: N): { disp: N; slope: N; foam: N; stage: N; foamFrame: N; pile: N } {
     const s = this.sumBreaking(xz, true);
-    return { disp: vec3(s.dh.x, s.eta, s.dh.y), slope: s.slope, foam: s.foam, stage: s.stage, foamFrame: s.foamFrame };
+    return { disp: vec3(s.dh.x, s.eta, s.dh.y), slope: s.slope, foam: s.foam, stage: s.stage, foamFrame: s.foamFrame, pile: s.pile };
   }
 
   /**
