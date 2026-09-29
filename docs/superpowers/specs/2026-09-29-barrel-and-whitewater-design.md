@@ -62,12 +62,14 @@ Measured on the ribbon's profile at the moment the lip lands (`tb = τ_land`):
 | The back wall, behind the crest | 0.1·H (`WALL_BACK_H`) | ≈ 0.25·H, curving concave up into the lip |
 | The trough in front, below still water | ≈ 0.35·H (`troughDrain`) | ≥ 0.5·H |
 
-- The tube's width runs from the back wall to where the lip lands; its height from the tube's floor (the foot of the
-  face) to the underside of the lip at its highest.
-- The throw's speed stays physical (`throwStrength` × crest speed, floored so the lip lands clear of the face); it already
-  matches a round tube. What moves is where the face's foot is and where the lip lands (`FOOT_WIDTHS`,
-  `LAND_CLEARANCE_M`, the landing's clearance ahead of the foot), and the wall's recess and curve (`WALL_BACK_H`,
-  `WALL_HEIGHT`, the face and wall Hermite tangents).
+- The tube's width is measured at half its height, from the back wall to the underside of the falling lip; its height
+  from the tube's floor (the foot of the face) to the underside of the lip at its root. (Measured from the wall to where
+  the lip lands, no round tube fits: the landing is 1.2·H ahead and the tube only ~0.9·H tall.)
+- Measured at the peak (H 3.16 m, c 7.55 m/s): today the lip lands 0.99·H ahead, 0.12·H thick, the wall 0.11·H back,
+  the trough 0.34·H down, the tube 1.0 wide for its height at half height. With lipThickness 0.25, TIP_THICKNESS_RATIO
+  0.4, WALL_BACK_H 0.25, troughDrain 0.7 and throwStrength 0.6 (from 0.55: the deeper trough alone reached only 1.12·H),
+  it lands 1.19·H ahead, the tube 1.15, the wall 0.25·H back, the trough 0.52·H down. FOOT_WIDTHS and LAND_CLEARANCE_M
+  stay as they are.
 - The deeper trough is the existing drain (`troughDrain`), deepened: it also deepens the draw-up before the break (the
   "suck").
 - The lip keeps its current rules otherwise: its thickness never exceeds `MAX_THICKNESS_OF_RADIUS` of the arc's radius
@@ -85,15 +87,17 @@ span). It becomes a whitewater pile.
 
   pile(d) = floor + (lip × surge(t) − floor) × 0.5^(d / 50 m)
 
-- **lip:** how high the crest stood above still water when the lip was thrown (the crest's height at onset:
-  `etaCrest` for the crest's own height, `Hc`).
+- **lip:** how high the crest stood above still water when the section broke: (H_o/2)·(1 + B), H_o = the deep-water
+  height × the amplification where it broke. The onset record carries the amplification at each lag, read where the lags
+  cross the breaking level, as the time is.
 - **surge(t):** the impact pushing the pile above the lip. 1 + S·rise(t)·fall(t): rises over ≈ 0.5 s after the landing,
   eases back to 1 over the next ≈ 1.5 s. S scales with how hard the section broke, from how far past breaking its crest
   went (the onset record's `rMax`): 0 for a shoulder that only just broke, up to 0.3 for the heaviest breaks (the peak,
   ρ ≈ 3.4). So some sections stand taller than their lip, others don't.
 - **floor:** the depth-limited bore (today's β × the breaking depth), so by the inside it is a low, foamy bore. Where the
   floor is at or above the lip (a small wave breaking in deep water), the pile is today's bore, no taller.
-- **d:** the time since onset × the local crest speed, from the same clock the ribbon uses.
+- **d:** the time since the lip landed (the time since onset less the landing estimate, never below 0) × the local
+  crest speed. From the landing, not the onset, so the pile starts at the lip's full height.
 - **Never grows back.** Where the reef deepens after the break, the pile holds its height; it never rises again (the
   "regrowth" seen on the reef top). The pile's height is a function of the section's clock and its strongest break, not
   of the depth under the crest now, except through the floor, which only lowers it.
@@ -107,12 +111,16 @@ over a few wave heights.
 
 **The clock.** The halving needs the clock past 7 s (50 m); the onset record reaches 4.9 s. Its eight lags become
 uneven, fine early and coarse late: ≈ 0, 0.4, 0.8, 1.2, 2, 3.5, 7, 13 s. The throw and the collapse keep sub-second
-timing; the pile's slow decay reads the coarse lags. No extra textures (still two RGBA per field node). Past the last
+timing; the pile's slow decay reads the coarse lags. The record also stores the amplification at each lag (for the
+lip). On the GPU the whole record is one texture with four RGBA texels per field node, side by side (one binding instead
+of two; sixteen texel loads per breaking sample instead of eight). Past the last
 lag, the pile sits at its 13 s height (≈ 0.28 of the way from floor to lip, 90 m in).
 
 **The ribbon.** The curl still collapses onto the sheet as now (`settleSpan`, the hand-back), but onto a tall pile, not a
 sunken bore: the barrel turns into the whitewater instead of dropping into it. Its landing foam hands on to the pile's
-foam.
+foam. The ribbon's frame (where the lip lands, when, how fast it throws) is measured on the sheet without the pile: the
+whitewater rising under the curl must not pull the lip back (with the pile in it, the tube's floor rose ~2 m and the lip
+flipped up level). The ribbon's points still settle onto the sheet with the pile.
 
 **Foam.** The whole pile is covered in foam (weight 1 from the landing on), thinning as the pile shrinks toward the
 floor. The foam field (3a) keeps receiving the sheet's foam as its source, so foam lingers behind the pile as now.
@@ -124,7 +132,9 @@ deepening to blue-green toward the thick root (absorption through the water's th
 own absorption colour). Today the glow is keyed to thin lips and the sun behind them (`lip = 1 − smoothstep(0.05, 0.6,
 thickness)`, `backlight`), so a thicker lip would go dark: the opposite of the photo. Skylight comes through from the
 side as well as from beneath, so the lip glows seen from the lineup and down the line, not only from inside the tube. No
-seabed colour through the lip (as now).
+seabed colour through the lip (as now). The path the light takes through the lip scales with its thickness:
+transmissionThicknessM (the Water folder's slider, 2 m) at 0.3 m of lip; a new Water slider, "lip side skylight" (0.6),
+sets the skylight through it from the side.
 
 **The whitewater pile.** Fully foam-covered and bright, with a lumpy, churning top: rolling bumps up to about a fifth of
 the pile's height, carried with the water (the foam frame) and changing over time, tilting the shading so hollows sit in
@@ -139,7 +149,7 @@ distance (50 m) and surge (0.3).
 ### 3.4 Cost
 
 - The pile's height is a handful of terms in the sheet's per-wave breaking (CPU model and its TSL mirror), with no new
-  field samples: it reads the onset record already sampled for the clock.
+  field samples: it reads the onset record already sampled for the clock (now 16 texel loads, from 8).
 - The churn is a noise lookup per vertex (and its normal) inside the pile only.
 - The lip's transmission is a few terms in the ribbon's shading.
 - The onset record's uneven lags cost nothing extra to build (the same hops, different lengths).
@@ -155,7 +165,11 @@ distance (50 m) and surge (0.3).
 - `src/breaker/reefField.ts`: the uneven lags; `breaking.onsetTime` reads them.
 - `src/ocean/waterShading.ts`, `src/breaker/BreakingRibbon.ts`: the lip's transmission.
 - `src/ocean/OceanSurface.ts` (and `setFoamPattern`): the pile's foam and churn.
-- `src/dev/DevPanel.ts`: sliders.
+- `src/dev/DevPanel.ts`: sliders; `src/dev/devSettings.ts`: breaking model 5.
+- `src/whitewater/pileChurn.ts` (new): the churn's height and slope.
+- `src/ocean/waterOptics.ts`: the lip's colour by thickness.
+- `src/ocean/waterSurface.ts`, `src/breaker/crestTrace.ts`, `src/breaker/fieldWorker.ts`: plumbing.
+- `src/whitewater/sprayEmitters.ts`: the lip frame on the pile-free sheet.
 - Tests beside each; GPU self-tests in `breaker.selftest.ts`, `ribbon.selftest.ts`.
 
 ## 5. Testing
