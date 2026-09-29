@@ -783,21 +783,47 @@ describe('the slurp: the draw-up reaches along the swell line either side of the
   it('where the draw-down ends it eases off along the line: under 0.9 m per 5 m of crest (it climbed 1.1–1.4 m)', { timeout: 60_000 }, () => {
     // Measured 5, 10 and 15 m in front of the crest, where the sunken face meets the shoulder's untouched one: the wall
     // at each end of the drained bowl. At and after the break, where the slurp acts. (Before it, the shoulders' own
-    // standing up still switches on over ~15 m of crest: about 1 m per 5 m, as before.)
+    // standing up still switches on over ~15 m of crest: about 1 m per 5 m, as before.) The drawn-down water itself: the
+    // whitewater pile sits 5–15 m in front of the crest at 12 ft, and has its own seam where the ledges' rays meet.
+    const drawn: BreakOptions = { ...sheet, pile: false };
     for (const dt of [0, 1]) {
       const t = at(0, 0).tau + dt;
-      const heights: number[][] = [];
+      // Where the drawn water ends, in the shoulders that haven't broken: the broken section itself is collapsing as it
+      // peels, a different thing from one metre of crest to the next.
+      const heights: number[][] = [], broken: boolean[] = [];
       for (let v = -100; v <= 100; v += 5) {
         let x = 0, z = 0;
         for (let u = -200; u <= 200; u += 0.5) { x = ctx.travelX * u + tx * v; z = ctx.travelZ * u + tz * v; if (at(x, z).tau >= t) break; }
+        broken.push(crestAt(x, z, t, at(x, z), w, ctx, sheet)!.s > 0);
         const row: number[] = [];
         let xx = x, zz = z;
-        for (let d = 0; d <= 15; d += 0.5) { const f = at(xx, zz); if (d === 5 || d === 10 || d === 15) row.push(sumWaves(xx, zz, t, f, [w], ctx, sheet).eta); xx += f.dirX * 0.5; zz += f.dirZ * 0.5; }
+        for (let d = 0; d <= 15; d += 0.5) { const f = at(xx, zz); if (d === 5 || d === 10 || d === 15) row.push(sumWaves(xx, zz, t, f, [w], ctx, drawn).eta); xx += f.dirX * 0.5; zz += f.dirZ * 0.5; }
         heights.push(row);
       }
-      for (let i = 1; i < heights.length; i++) for (let k = 0; k < 3; k++) {
-        expect(Math.abs(heights[i][k] - heights[i - 1][k]), `${dt} s, ${-100 + 5 * i} m along the crest, ${5 * (k + 1)} m in front`).toBeLessThan(0.9);
+      let pairs = 0;
+      for (let i = 1; i < heights.length; i++) {
+        if (broken[i] || broken[i - 1]) continue;
+        pairs++;
+        for (let k = 0; k < 3; k++) expect(Math.abs(heights[i][k] - heights[i - 1][k]), `${dt} s, ${-100 + 5 * i} m along the crest, ${5 * (k + 1)} m in front`).toBeLessThan(0.9);
       }
+      expect(pairs, `${dt} s: shoulders checked`).toBeGreaterThan(5);
+    }
+  });
+  it('the breaking peak stays the tallest point of the line while it throws (it held 2.6 m under 4.9 m shoulders)', { timeout: 60_000 }, () => {
+    // A broken section's height was capped by the depth under it (0.78 × 6 m over the peak), so the peak sank below the
+    // shoulders the moment it broke. It keeps the height it threw at until its whitewater takes over.
+    for (const dt of [0, 0.5]) {
+      const t = at(0, 0).tau + dt;
+      const crestAtV = (v: number): number => {
+        let x = 0, z = 0;
+        for (let u = -200; u <= 200; u += 0.5) { x = ctx.travelX * u + tx * v; z = ctx.travelZ * u + tz * v; if (at(x, z).tau >= t) break; }
+        let top = -Infinity, xx = x, zz = z;
+        for (let d = -4; d <= 4; d += 0.5) { const f = at(xx, zz); top = Math.max(top, sumWaves(xx, zz, t, f, [w], ctx, sheet).eta); xx += f.dirX * 0.5; zz += f.dirZ * 0.5; }
+        return top;
+      };
+      const peak = Math.max(...[-10, -5, 0, 5, 10].map(crestAtV));
+      const shoulders = Math.max(...[-100, -80, -60, 60, 80, 100].map(crestAtV));
+      expect(peak, `${dt} s: the peak (shoulders ${shoulders.toFixed(2)} m)`).toBeGreaterThanOrEqual(0.95 * shoulders);
     }
   });
   it('the shoulders do not break any earlier: only the drain reaches along the line', () => {

@@ -75,12 +75,13 @@ export const BREAK_TRAVEL_SMOOTHING_M = 8;
 /**
  * The slurp (Andrew): as a section stands up it draws the reef's water into itself, and the swell line either side is
  * part of that. The drain reads, at each node, the strongest breaking gain along its crest line within 2·SLURP_REACH_M,
- * weighted exp(−s / SLURP_REACH_M) by its distance s along the line: fully at the section itself, 37% at SLURP_REACH_M.
+ * weighted exp(−s / SLURP_REACH_M) by its distance s along the line: fully at the section itself, 37% at SLURP_REACH_M
+ * (100 m: with the barrel's deeper trough drain, 80 m left 1.06 m per 5 m of crest where it ended).
  * Exponential, not Gaussian: the drain saturates (full from ρ ≈ 1.3), and a Gaussian took a peak's ratio of 3 through the
  * drain's whole ramp in ~15 m of crest, a wall at each end of a flat-bottomed bowl; an exponential spends 0.7 reaches on it.
  * A bigger swell stands further past breaking at the peak, and so slurps further along the line.
  */
-export const SLURP_REACH_M = 80;
+export const SLURP_REACH_M = 100;
 /** The slurp's samples along the crest line are this far apart (m). */
 const SLURP_STEP_M = 2;
 
