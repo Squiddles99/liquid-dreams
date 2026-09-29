@@ -5,7 +5,7 @@ import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
 import { computeReefField, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
-import { ONSET_LAGS } from './breaking';
+import { ONSET_LAGS, ONSET_LAG_TIMES_S, ONSET_RECORD_LENGTH } from './breaking';
 
 const reef05 = buildBathymetry();
 const reef1 = downsample(reef05, 2);
@@ -179,6 +179,30 @@ describe('the onset record', () => {
       worst = Math.max(worst, (b - a) / Math.max(a, 1e-6));
     }
     expect(worst, 'the most a lag exceeds the one before it (fraction)').toBeLessThanOrEqual(0);
+  });
+  it('each lag carries the amplification where the crest was that long ago (8% to 3.5 s back, 10% at 7 and 13 s)', () => {
+    // A sample blends four nodes' records, and over the ledge the field's amplification varies ±5% node to node (2.21–2.43
+    // at the four nodes around the north ledge ray's point): the blend of their lags sits up to ~6.5% off the ray marched
+    // from the point itself, whose own hop matches it within 0.3%. That noise is the crest height's own (the sheet reads the
+    // same amplification).
+    let checked = 0;
+    for (const [px, pz] of [[11, -30], [27, -75], [25, 28], [0, 0]] as const) {
+      // 20 m inshore of the ledge point.
+      let x = px, z = pz;
+      for (let d = 0; d < 20; d += 0.5) { const s = sampleField(f, x, z); x += s.dirX * 0.5; z += s.dirZ * 0.5; }
+      const rec = sampleOnset(f, x, z)!;
+      expect(rec.length).toBe(ONSET_RECORD_LENGTH);
+      const tau0 = sampleField(f, x, z).tau;
+      ONSET_LAG_TIMES_S.forEach((lagS, j) => {
+        // March back along the ray in 0.25 m steps to where the crest was lagS earlier.
+        let bx = x, bz = z;
+        for (let n = 0; n < 4000 && sampleField(f, bx, bz).tau > tau0 - lagS; n++) { const s = sampleField(f, bx, bz); bx -= s.dirX * 0.25; bz -= s.dirZ * 0.25; }
+        const want = sampleField(f, bx, bz).amp, got = rec[ONSET_LAGS + j];
+        expect(Math.abs(got - want) / want, `(${px}, ${pz}) lag ${lagS} s: record ${got.toFixed(3)} vs ray ${want.toFixed(3)}`).toBeLessThan(lagS <= 3.5 ? 0.08 : 0.1);
+        checked++;
+      });
+    }
+    expect(checked).toBe(4 * ONSET_LAG_TIMES_S.length);
   });
   it('is off the record outside the grid', () => {
     expect(sampleOnset(f, f.grid.x0 - 1, 0)).toBeNull();

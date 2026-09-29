@@ -1,7 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { type BreakParams, type Lifecycle, ONSET_LAGS, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetRatio, onsetTime, steepeningStart } from './breaking';
+import { type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetRatio, onsetTime, steepeningStart } from './breaking';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, sampleField, sampleOnset } from './reefField';
@@ -87,7 +87,7 @@ export interface BreakOptions {
 
 /** Breaking on `field` with `params`: the field and its onset record, as the render reads them. */
 export function breakOptions(field: ReefField, params: BreakParams): BreakOptions {
-  const rec = new Float32Array(ONSET_LAGS);
+  const rec = new Float32Array(ONSET_RECORD_LENGTH);
   return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec) };
 }
 

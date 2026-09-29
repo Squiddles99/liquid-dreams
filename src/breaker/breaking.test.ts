@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LAG_S, onsetGain, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LAG_TIMES_S, ONSET_REACH_S, onsetHeight, onsetGain, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -301,14 +301,28 @@ describe('one clock: the onset record and the lifecycle', () => {
   it('onsetTime: null below the breaking level, linear between the lags, Infinity past the record', () => {
     expect(onsetTime(lags(0.4, 0.3, 0.2, 0.1, 0, 0, 0, 0), 0, height, P)).toBeNull();
     expect(onsetTime(lags(0.5, 0.4, 0, 0, 0, 0, 0, 0), 0, height, P)).toBe(0);
-    // Lag 1 at the level, lag 2 halfway below it: 1.5 lags ago.
-    expect(onsetTime(lags(0.7, 0.5, 0.45, 0.4, 0, 0, 0, 0), 0, height, P)).toBeCloseTo(1 * ONSET_LAG_S, 6);
-    expect(onsetTime(lags(0.7, 0.6, 0.4, 0.3, 0, 0, 0, 0), 0, height, P)).toBeCloseTo(1.5 * ONSET_LAG_S, 6);
+    // Lag 1 (0.4 s) at the level, lag 2 below it: 0.4 s ago.
+    expect(onsetTime(lags(0.7, 0.5, 0.45, 0.4, 0, 0, 0, 0), 0, height, P)).toBeCloseTo(ONSET_LAG_TIMES_S[1], 6);
+    // Halfway between lags 1 and 2 (0.4 and 0.8 s).
+    expect(onsetTime(lags(0.7, 0.6, 0.4, 0.3, 0, 0, 0, 0), 0, height, P)).toBeCloseTo(0.6, 6);
+    // Halfway between the coarse lags 5 and 6 (3.5 and 7 s).
+    expect(onsetTime(lags(0.7, 0.7, 0.7, 0.7, 0.7, 0.6, 0.4, 0.3), 0, height, P)).toBeCloseTo(5.25, 6);
     expect(onsetTime(lags(0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7), 0, height, P)).toBe(Infinity);
     // The first lag below the level ends it, whatever is further back.
-    expect(onsetTime(lags(0.7, 0.3, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9), 0, height, P)).toBeCloseTo(0.5 * ONSET_LAG_S, 6);
+    expect(onsetTime(lags(0.7, 0.3, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9), 0, height, P)).toBeCloseTo(0.2, 6);
     // Read from an offset (the record is interleaved per node).
-    expect(onsetTime(lags(9, 9, 0.7, 0.6, 0.4, 0.3, 0, 0, 0, 0), 2, height, P)).toBeCloseTo(1.5 * ONSET_LAG_S, 6);
+    expect(onsetTime(lags(9, 9, 0.7, 0.6, 0.4, 0.3, 0, 0, 0, 0), 2, height, P)).toBeCloseTo(0.6, 6);
+    expect(ONSET_LAG_TIMES_S.at(-1)).toBe(ONSET_REACH_S);
+  });
+  it("onsetHeight: the wave's height where the section broke, read where the lags cross the level (as the time is)", () => {
+    // Running maxima, then amplification, per lag.
+    const rec = lags(0.7, 0.6, 0.4, 0.3, 0, 0, 0, 0, 2, 1.8, 1.6, 1.4, 1, 1, 1, 1);
+    expect(onsetHeight(rec, 0, height, P)).toBeCloseTo(height * 1.7, 6); // halfway between lags 1 and 2
+    expect(onsetHeight(lags(0.4, 0.3, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2), 0, height, P)).toBeNull();
+    // Past the record: the far lag's.
+    expect(onsetHeight(lags(0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 2, 2, 2, 2, 2, 2, 2, 1.25), 0, height, P)).toBeCloseTo(height * 1.25, 6);
+    // From an offset.
+    expect(onsetHeight(lags(9, 9, ...Array.from(rec)), 2, height, P)).toBeCloseTo(height * 1.7, 6);
   });
   it('lifecycle without a record is the ratio alone (the curves as before)', () => {
     for (const r of [0.5, 0.8, 1, 1.3, 2, 5]) {

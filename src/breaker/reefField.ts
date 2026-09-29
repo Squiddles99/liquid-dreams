@@ -1,6 +1,6 @@
 import type { Bathymetry } from '../seabed/bathymetry';
 import type { GridSpec } from '../seabed/wombReef';
-import { ONSET_LAGS, ONSET_LAG_S, breakingDepth } from './breaking';
+import { ONSET_LAGS, ONSET_LAG_TIMES_S, ONSET_RECORD_LENGTH, breakingDepth } from './breaking';
 import { AMP_CAP, type FarField, computeFarField, farSample } from './coastFarField';
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
 import { solveEikonal } from './eikonal';
@@ -27,8 +27,10 @@ export interface ReefField {
   dirZ: Float32Array;
   depth: Float32Array;
   /** The onset record (breaking.ONSET_LAGS): per node, ONSET_LAGS values at [i·ONSET_LAGS + j], the running maximum of
-   * amp/hminBreak along the ray at j·ONSET_LAG_S seconds upstream of the node (computeOnsetRecord). */
+   * amp/hminBreak along the ray at the lag times breaking.ONSET_LAG_TIMES_S upstream of the node (computeOnsetRecord). */
   onset: Float32Array;
+  /** The wave's amplification at the same lags (n × ONSET_LAGS): where the crest was, for breaking.onsetHeight. */
+  onsetAmp: Float32Array;
   far: FarField;
   omega: number;
   periodS: number;
@@ -243,25 +245,28 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const smoothGain = smoothAlongTravel(near, dirX, dirZ, grid, BREAK_TRAVEL_SMOOTHING_M);
   const hminBreak = new Float32Array(n);
   for (let i = 0; i < n; i++) hminBreak[i] = smoothGain[i] > 0 ? amp[i] / smoothGain[i] : breakingDepth(hmin[i]);
-  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hminBreak, k, dirX, dirZ, fixed, order, omega });
-  return { grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
+  const { onset, onsetAmp } = computeOnsetRecord({ grid, tau: tau32, amp, hminBreak, k, dirX, dirZ, fixed, order, omega });
+  return { grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, depth, onset, onsetAmp, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
 }
 
 /**
  * The onset record (breaking.ONSET_LAGS). First the running maximum R of amp/hminBreak along the rays, marched in
- * arrival order: R = max(own ratio, R a couple of cells back along the ray), so it (all but) never falls along a ray. Then, for each node, lag j is R at the point the crest was over j·ONSET_LAG_S earlier:
- * reached by hops of ONSET_LAG_S upstream, each a straight step of c·ONSET_LAG_S against the ray direction, corrected
- * once onto the right arrival time; then a running maximum over the lags from the far end, so no lag is below one
- * further back. Upstream of the grid (a hop leaving it) the edge's value holds: the reef starts inside the grid, so
- * nothing out there has broken.
+ * arrival order: R = max(own ratio, R a couple of cells back along the ray), so it (all but) never falls along a ray.
+ * Then, for each node, lag j is R at the point the crest was over ONSET_LAG_TIMES_S[j] earlier, reached in hops of at
+ * most MAX_HOP_S upstream, each a straight step against the ray direction aimed at an absolute arrival time; the
+ * amplification there goes into onsetAmp (no running maximum). Then a running maximum over R's lags from the far end, so
+ * no lag is below one further back. Upstream of the grid (a hop leaving it) the edge's value holds: the reef starts
+ * inside the grid, so nothing out there has broken.
  */
 /** How far back along its ray (cells) a node reads the running maximum: past its own cell, so every node read arrived earlier. */
 const RUN_BACK_CELLS = 2;
+/** A hop back along the ray is never longer than this (s): a straight hop cuts across a ray that curves over the ledge. */
+const MAX_HOP_S = 1;
 
 function computeOnsetRecord(f: {
   grid: GridSpec; tau: Float32Array; amp: Float32Array; hminBreak: Float32Array; k: Float32Array; dirX: Float32Array; dirZ: Float32Array;
   fixed: Uint8Array; order: Uint32Array; omega: number;
-}): Float32Array {
+}): { onset: Float32Array; onsetAmp: Float32Array } {
   const { grid, dirX, dirZ } = f;
   const { nx, nz } = grid;
   const n = nx * nz;
@@ -278,7 +283,7 @@ function computeOnsetRecord(f: {
     const inside = !f.fixed[i] && x >= grid.x0 && z >= grid.z0 && x <= grid.x0 + (nx - 1) * grid.cellM && z <= grid.z0 + (nz - 1) * grid.cellM;
     run[i] = inside ? Math.max(own, bilinear(run, grid, x, z)) : own;
   }
-  const out = new Float32Array(n * ONSET_LAGS);
+  const out = new Float32Array(n * ONSET_LAGS), outAmp = new Float32Array(n * ONSET_LAGS);
   // One bilinear cell for the direction, wavenumber and arrival time together (the record's cost is these lookups).
   const xMax = (nx - 1) * grid.cellM, zMax = (nz - 1) * grid.cellM;
   let ci = 0, wx = 0, wz = 0;
@@ -294,43 +299,52 @@ function computeOnsetRecord(f: {
   };
   for (let row = 0; row < nz; row++) for (let col = 0; col < nx; col++) {
     const i = row * nx + col;
-    let x = grid.x0 + col * grid.cellM, z = grid.z0 + row * grid.cellM, t = f.tau[i];
+    let x = grid.x0 + col * grid.cellM, z = grid.z0 + row * grid.cellM;
+    const tau0 = f.tau[i];
     out[i * ONSET_LAGS] = run[i];
+    outAmp[i * ONSET_LAGS] = f.amp[i];
     for (let j = 1; j < ONSET_LAGS; j++) {
-      // Straight back along the ray to arrival time t, from where the last hop landed. Each hop aims at an absolute
-      // time, so a hop's error does not carry into the next.
-      t -= ONSET_LAG_S;
-      cell(x, z);
-      const dx = lerp(dirX), dz = lerp(dirZ), len = Math.hypot(dx, dz) || 1;
-      const back = ((lerp(f.tau) - t) * f.omega) / Math.max(lerp(f.k), 1e-4);
-      x -= (dx / len) * back;
-      z -= (dz / len) * back;
+      const from = ONSET_LAG_TIMES_S[j - 1], to = ONSET_LAG_TIMES_S[j];
+      const hops = Math.max(1, Math.ceil((to - from) / MAX_HOP_S - 1e-9));
+      for (let h = 1; h <= hops; h++) {
+        // Straight back along the ray to arrival time t, from where the last hop landed. Each hop aims at an absolute
+        // time, so a hop's error does not carry into the next.
+        const t = tau0 - (from + ((to - from) * h) / hops);
+        cell(x, z);
+        const dx = lerp(dirX), dz = lerp(dirZ), len = Math.hypot(dx, dz) || 1;
+        const back = ((lerp(f.tau) - t) * f.omega) / Math.max(lerp(f.k), 1e-4);
+        x -= (dx / len) * back;
+        z -= (dz / len) * back;
+      }
       cell(x, z);
       out[i * ONSET_LAGS + j] = lerp(run);
+      outAmp[i * ONSET_LAGS + j] = lerp(f.amp);
     }
     // A running maximum along the hops, from the far end: each lag at least every lag further back, so the record never
     // falls along the ray within its reach (the grid's upwind march averages neighbouring rays, and lost up to ~2%).
     for (let j = ONSET_LAGS - 2; j >= 0; j--) out[i * ONSET_LAGS + j] = Math.max(out[i * ONSET_LAGS + j], out[i * ONSET_LAGS + j + 1]);
   }
-  return out;
+  return { onset: out, onsetAmp: outAmp };
 }
 
 /**
- * The onset record at world (x, z): ONSET_LAGS values (bilinear between nodes) into `out`, or null outside the grid
- * (there is no record there: breaking.lifecycle falls back to the breaking ratio alone).
+ * The onset record at world (x, z): ONSET_RECORD_LENGTH values (bilinear between nodes) into `out`, the running maxima
+ * then the amplification, or null outside the grid (there is no record there: breaking.lifecycle falls back to the
+ * breaking ratio alone).
  */
-export function sampleOnset(f: ReefField, x: number, z: number, out = new Float32Array(ONSET_LAGS)): Float32Array | null {
+export function sampleOnset(f: ReefField, x: number, z: number, out = new Float32Array(ONSET_RECORD_LENGTH)): Float32Array | null {
   const g = f.grid;
   if (!(x >= g.x0 && z >= g.z0 && x <= g.x0 + (g.nx - 1) * g.cellM && z <= g.z0 + (g.nz - 1) * g.cellM)) return null;
   const fx = Math.min(g.nx - 1, (x - g.x0) / g.cellM), fz = Math.min(g.nz - 1, (z - g.z0) / g.cellM);
   const c = Math.min(g.nx - 2, Math.floor(fx)), r = Math.min(g.nz - 2, Math.floor(fz));
   const tx = fx - c, tz = fz - r, i = r * g.nx + c;
-  const L = ONSET_LAGS, rec = f.onset;
-  for (let j = 0; j < L; j++) {
-    const top = rec[i * L + j] + (rec[(i + 1) * L + j] - rec[i * L + j]) * tx;
-    const bottom = rec[(i + g.nx) * L + j] + (rec[(i + g.nx + 1) * L + j] - rec[(i + g.nx) * L + j]) * tx;
-    out[j] = top + (bottom - top) * tz;
-  }
+  const L = ONSET_LAGS;
+  const lerp4 = (a: Float32Array, j: number): number => {
+    const top = a[i * L + j] + (a[(i + 1) * L + j] - a[i * L + j]) * tx;
+    const bottom = a[(i + g.nx) * L + j] + (a[(i + g.nx + 1) * L + j] - a[(i + g.nx) * L + j]) * tx;
+    return top + (bottom - top) * tz;
+  };
+  for (let j = 0; j < L; j++) { out[j] = lerp4(f.onset, j); out[L + j] = lerp4(f.onsetAmp, j); }
   return out;
 }
 

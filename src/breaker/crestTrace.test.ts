@@ -4,7 +4,7 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS } from './breaking';
+import { DEFAULT_BREAK_PARAMS, ONSET_REACH_S } from './breaking';
 import {
   MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, timeSinceOnset, traceStations,
 } from './crestTrace';
@@ -117,7 +117,7 @@ describe('crestTrace', () => {
     expect(checked).toBeGreaterThan(0);
   });
 
-  it('timeSinceOnset: null before breaking, grows with the crest, Infinity past the hand-back', () => {
+  it('timeSinceOnset: null before breaking, grows with the crest, Infinity past the record (13 s)', () => {
     const f0 = sampleField(field, 0, 0);
     // The crest at the peak at t = τ(0,0) = 0, then points shoreward along the ray.
     expect(timeSinceOnset(field, testWave(0.5), 0, 0, ctx, P)).toBeNull();
@@ -125,6 +125,10 @@ describe('crestTrace', () => {
     const seq = [0, 5, 10, 20].map((d) => timeSinceOnset(field, peeler, ...along(d), ctx, P));
     console.log(`tb along the ray from the peak: ${seq.map((v) => (v === null ? 'null' : v.toFixed(2))).join(', ')}`);
     for (let i = 1; i < seq.length; i++) if (seq[i - 1] !== null && seq[i] !== null && Number.isFinite(seq[i] as number)) expect(seq[i] as number).toBeGreaterThanOrEqual(seq[i - 1] as number);
-    expect(timeSinceOnset(field, peeler, ...along(80), ctx, P)).toBe(Infinity);
+    // 80 m in: long past the hand-back (the ribbon has dropped the section), but within the record's 13 s, so finite.
+    const far = timeSinceOnset(field, peeler, ...along(80), ctx, P) as number;
+    expect(far).toBeGreaterThan(8);
+    expect(far).toBeLessThanOrEqual(ONSET_REACH_S);
+    expect(timeSinceOnset(field, peeler, ...along(160), ctx, P)).toBe(Infinity);
   });
 });
