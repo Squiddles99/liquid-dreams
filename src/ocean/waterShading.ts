@@ -127,8 +127,16 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.
   const column = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;
   const water = column.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
-  const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL)).mul(sv)).mul(u.foamAlbedo).div(PI);
-  const colour = mix(water, i.foamShade ? foamLight.mul(i.foamShade) : foamLight, saturate(i.foam));
+  const foamSky = sky.skyIrradiance.mul(u.foamAlbedo).div(PI);
+  const foamSun = sky.sunIlluminance.mul(saturate(nDotL)).mul(sv).mul(u.foamAlbedo).div(PI);
+  const foamLight = foamSky.add(foamSun);
+  // The foam's own shade (its clumps and the creases between them, setFoamPattern's brightness 0.62–1.07; 1.07, the default
+  // without set foam, is the plain lit foam): whitewater is
+  // a heap of bubble clumps that shadow each other, so the creases lose the sun far more than the sky. The clumps' tops
+  // catch the sun and the creases go sky-lit blue-grey; shaded as one smooth surface it read as flat peach plasticine.
+  const shade = i.foamShade ? saturate(i.foamShade.sub(0.62).div(0.45)) : null;
+  const foamSeen = shade ? foamSky.mul(mix(0.75, 1.0, shade)).add(foamSun.mul(mix(0.3, 1.0, shade.mul(shade)))) : foamLight;
+  const colour = mix(water, foamSeen, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
   // would paint the whole flat field NaN, so the edge is floored and a flat field draws no line.

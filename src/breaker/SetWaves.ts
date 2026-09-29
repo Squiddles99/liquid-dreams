@@ -6,6 +6,7 @@ import {
 import { REEF_GRID } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_RECORD_LENGTH, breakingDepth, normalizeBreakParams } from './breaking';
+import { churnHeightNode } from '../whitewater/pileChurn';
 import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
@@ -95,7 +96,7 @@ export class SetWaves {
   private steepeningHeight = Infinity;
   private events: readonly WaveEvent[] = [];
 
-  constructor(private readonly time: N) {
+  constructor(readonly time: N) {
     this.setEvents([]);
   }
 
@@ -446,7 +447,8 @@ export class SetWaves {
 
   /**
    * Render path only, vertex stage: the same vec3 displacement as displacementNode, and into `out` (vec2/float/vec2
-   * varyingProperty nodes) the set waves' analytic slope, the foam weight and the foam's wave frame (see sumBreaking).
+   * varyingProperty nodes) the set waves' analytic slope, the foam weight and the foam's wave frame (see sumBreaking), and
+   * the whitewater pile's churn on top of the height (pileChurn.ts).
    * Never use this in a compute shader: there are no varyings to write. Tests use breakSampleNode.
    */
   displacementWithSetFoamNode(xz: N, out: { slope: N; foam: N; foamFrame: N; pile?: N }): N {
@@ -456,7 +458,9 @@ export class SetWaves {
       out.foam.assign(s.foam);
       out.foamFrame.assign(s.foamFrame);
       out.pile?.assign(s.pile);
-      return vec3(s.dh.x, s.eta, s.dh.y);
+      // The pile's churn (render only: the probe's displacementNode leaves it out).
+      const churn = churnHeightNode(s.pile, s.foamFrame, this.time, this.churn);
+      return vec3(s.dh.x, s.eta.add(churn), s.dh.y);
     })();
   }
 
@@ -481,6 +485,11 @@ export class SetWaves {
   /** vec2(∂η/∂x, ∂η/∂z) of the set waves (Eulerian, Jacobian-corrected), breaking included. Self-test only. */
   slopeNode(xz: N): N {
     return Fn(() => this.sumBreaking(xz, false).slope)();
+  }
+
+  /** The pile's churn sliders (pileChurn.ts), as uniforms. */
+  get churn(): { churnSize: N; churnSpeed: N } {
+    return { churnSize: this.brk.churnSize, churnSpeed: this.brk.churnSpeed };
   }
 
   tauNode(xz: N): N {

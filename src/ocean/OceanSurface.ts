@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, mix, mx_noise_float, normalize, positionLocal, positionWorld, saturate, smoothstep,
+  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, mix, mx_noise_float, mx_worley_noise_vec2, normalize, positionLocal, positionWorld, saturate, smoothstep, sqrt,
   textureLoad, uniform, varying, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { seabedTerms } from '../seabed/seabedShading';
@@ -9,6 +9,7 @@ import { CASCADE_FADES, fadeWeightNode } from './cascadeFades';
 import type { OceanSimulation } from './OceanSimulation';
 import { buildPolarGrid } from './polarGrid';
 import { reefInFrontNode, waterVolumeColourNode } from './WaterVolume';
+import { churnSlopeNode } from '../whitewater/pileChurn';
 import { type WaterOpticsUniforms, shadeWater, shadeWaterFromBelow } from './waterShading';
 import type { WaterSurfaceModel } from './waterSurface';
 import type { SunlightSource } from '../land/SunlightMap';
@@ -20,33 +21,43 @@ type N = any;
 export const EARTH_RADIUS_M = 6_371_000;
 
 /**
- * The set-wave foam placeholder broken into whitewater (fragment stage, math only: no texture fetch). `foam` is the
- * model's weight, `frame` the wave-attached coordinates (m behind the crest, m along it) from SetWaves, so the pattern
- * rides with the wave; `time` churns it slowly. Two octaves of gradient noise (the first stretched along travel into
- * streaks), renormalised to fill 0–1, are thresholded against the weight with a wide soft band: t = 1 − 0.8·foam,
- * coverage = SET_FOAM_MAX_COVER · smoothstep(t − SET_FOAM_BAND, t + SET_FOAM_BAND, n). Dense foam (weight 1) is full
- * where n > 0.45 and thins through the band below, so it keeps soft holes; thin foam is scattered soft patches, and no
- * edge is hard. Coverage never reaches opaque (the water shows through even dense foam).
- * Returns vec2(coverage, brightness): brightness 0.55–1.1 shades streaks and hollows within the foam. Skipped
- * (coverage 0) where there is no set foam.
+ * The set-wave foam broken into whitewater (fragment stage, math only: no texture fetch). `foam` is the model's weight,
+ * `frame` the pattern's coordinates in metres (x along travel, y across), `time` churns it slowly. Real foam is a lace:
+ * cells of dark water rimmed with foam, fine threads where it is old and thin, the holes closing as it thickens, and
+ * solid, clumpy white where the whitewater is fresh. So: Worley cells (FOAM_CELL_M, warped by noise so they are
+ * irregular and drift), rimmed by bands whose width grows with the weight (the old threshold of 7 m noise blobs gave
+ * hard-edged camouflage patches over the wave's back, Andrew's references show lace and solid whitewater). The weight
+ * is varied ±30% by a large, slow noise, so the lace gathers in patches and streaks along travel. Thin lace breaks into
+ * threads. Coverage reaches SET_FOAM_MAX_COVER (fresh whitewater is all but opaque) and goes to 0 with the weight
+ * (× saturate(4·foam): no hard edge where clearing foam ends).
+ * Returns vec2(coverage, brightness): brightness 0.62–1.07, the clumps bright and the creases between them in the
+ * clumps' shadow (shadeWater); 1.07 (plain lit foam) where there is no set foam (coverage 0, skipped).
  */
-export const SET_FOAM_MAX_COVER = 0.85;
-export const SET_FOAM_BAND = 0.25;
+export const SET_FOAM_MAX_COVER = 0.95;
+/** The lace's cells, along travel and across it (m). */
+export const FOAM_CELL_M: readonly [number, number] = [2.8, 2.0];
 
 export function setFoamPattern(foam: N, frame: N, time: N): N {
   return Fn(() => {
-    const out = vec2(0.0, 1.0).toVar();
+    const out = vec2(0.0, 1.07).toVar();
     If(foam.greaterThan(1e-3), () => {
       const n1 = mx_noise_float(vec3(frame.x.mul(0.15), frame.y.mul(0.35), time.mul(0.12)));
       const n2 = mx_noise_float(vec3(frame.x.mul(0.9).add(19.7), frame.y.mul(0.9), time.mul(0.3)));
-      // The blend's typical swing is about ±0.3: × 1.7 spreads it over the whole 0–1 range.
-      const n = saturate(n1.mul(0.65).add(n2.mul(0.35)).mul(1.7).add(0.5));
-      const t = float(1.0).sub(saturate(foam).mul(0.8));
-      // × saturate(4·foam): thin foam's coverage goes to 0 with its weight. Without it, where the noise saturates the
-      // coverage stayed ~0.43 down to the 1e-3 cut-off, a hard edge wherever clearing foam ends (foam field, 3a).
-      const cover = smoothstep(t.sub(SET_FOAM_BAND), t.add(SET_FOAM_BAND), n).mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0)));
-      const shade = saturate(n2.mul(1.7).add(0.5)).mul(0.25).add(n.mul(0.3)).add(0.55);
-      out.assign(vec2(cover, shade));
+      const n3 = mx_noise_float(vec3(frame.x.mul(0.9), frame.y.mul(0.9).add(41.3), time.mul(0.3)));
+      const w = saturate(saturate(foam).mul(n1.mul(0.4).add(1.0)));
+      const q = vec2(frame.x.div(FOAM_CELL_M[0]), frame.y.div(FOAM_CELL_M[1])).add(vec2(n2, n3).mul(0.35));
+      // F1, F2 (squared, in cells): the rims are where the two nearest cell centres are equally far.
+      const f = sqrt(mx_worley_noise_vec2(q, 0.9));
+      const edge = f.y.sub(f.x);
+      const width = w.pow(1.3).mul(1.0).add(0.14);
+      const threads = smoothstep(-0.35, 0.15, n2.add(w).sub(0.25));
+      const lace = float(1.0).sub(smoothstep(width.mul(0.5), width, edge)).mul(threads);
+      const cover = lace.mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0)));
+      // The clumps: bright over each cell's middle, and a finer mottle of bubble clusters (~0.5 m) over them.
+      const fine = mx_noise_float(vec3(frame.x.mul(2.2).add(5.3), frame.y.mul(2.2), time.mul(0.6)));
+      // Three scales mixed, so no one cell size repeats as spots: the cells, the bubble clusters, and the ~1 m mottle.
+      const clump = float(1.0).sub(smoothstep(0.05, 0.6, f.x)).mul(0.3).add(smoothstep(-0.35, 0.35, fine).mul(0.45)).add(smoothstep(-0.4, 0.4, n2).mul(0.25));
+      out.assign(vec2(cover, saturate(clump).mul(0.45).add(0.62)));
     });
     return out;
   })();
@@ -185,8 +196,9 @@ export class OceanSurface {
     const setSlope = varyingProperty('vec2', 'vSetSlope');
     const setFoam = varyingProperty('float', 'vSetFoam');
     const setFoamFrame = varyingProperty('vec2', 'vSetFoamFrame');
+    const setPile = varyingProperty('float', 'vSetPile');
     const displacement = model.displacementWithSetFoam(
-      baseXZ, (c) => fadeWeightNode(radial, CASCADE_FADES[c].geometry), { slope: setSlope, foam: setFoam, foamFrame: setFoamFrame },
+      baseXZ, (c) => fadeWeightNode(radial, CASCADE_FADES[c].geometry), { slope: setSlope, foam: setFoam, foamFrame: setFoamFrame, pile: setPile },
     );
     const curvatureDrop = radial.mul(radial).div(2 * EARTH_RADIUS_M);
     // The swash (Phase 4b §3.3): near the shore the sheet is lifted by the swash level, so the waterline climbs the sand.
@@ -200,11 +212,13 @@ export class OceanSurface {
     const distance = length(toCamera);
     const viewDir = toCamera.div(max(distance, 1e-4));
     const fft = model.fftSlopes(vBaseXZ, distance, this.slopeVariance);
-    const normal = sheetNormal(fft, setSlope);
+    // The pile's churn tilts the shading (its height is in the vertex stage, SetWaves.displacementWithSetFoamNode).
+    const churnSlope = churnSlopeNode(setPile, setFoamFrame, model.sets.meanTravel, model.sets.time, model.sets.churn);
+    const normal = sheetNormal(fft, setSlope.add(churnSlope));
     const sunVis = options.sunlight ? options.sunlight.visibilityNode(vBaseXZ) : undefined;
     const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     // The foam map inside its box, Phase 2's placeholder outside (spec 2026-09-27-foam-field-design.md §3.2); the
-    // pattern rides the water. setFoamFrame (the crest frame) stays computed for the spec's fallback, unused here.
+    // pattern rides the water. setFoamFrame (the crest frame) is the churn's.
     // One sample, shared by the weight and the overlay (one texture binding).
     const foamOverlay = options.foamMap ? options.foamMap.sampleNode(vBaseXZ) : null;
         const surfFoam = options.surf ? options.surf.foamNode(vBaseXZ, model.seabed, viewDir.y) : float(0.0);

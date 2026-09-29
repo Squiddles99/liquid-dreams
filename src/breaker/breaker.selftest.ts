@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Fn, instanceIndex, storage, uniform, vec4 } from 'three/tsl';
+import { Fn, float, instanceIndex, storage, uniform, vec2, vec4 } from 'three/tsl';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
@@ -8,6 +8,7 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from './
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
 import { type BreakOptions, breakOptions, sumWaves, toActiveWave } from './setWaveModel';
+import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 
 // Inside the reef grid, the inflow far field (west, south) and the outflow edge continuation (east, north).
 const POINTS: [number, number][] = [
@@ -398,5 +399,34 @@ registerSelfTest({
       detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s; worst |Δdisp| ${disp} m; ` +
         `largest sharpening/drain/bore change from Phase 1 ${drained.toFixed(3)} m${ok ? '' : `. Per point: ${tables.join(' || ')}`}`,
     };
+  },
+});
+
+registerSelfTest({
+  name: "breaker: the pile's churn is bounded by churnSize × pile, zero off the pile, and its slope is finite",
+  async run(renderer) {
+    const time = uniform(3.7);
+    const u = { churnSize: uniform(0.2), churnSpeed: uniform(1) };
+    const piles = [0, 0.5, 2];
+    const frames: [number, number][] = Array.from({ length: 40 }, (_, i) => [-12 + 0.61 * i, 7 - 0.37 * i]);
+    let worstOver = -Infinity, nonZero = 0, zeroOff = true, finite = true;
+    for (const pile of piles) {
+      const { pass, outAttr } = computeAt(frames, 1, (frame) => {
+        const h = churnHeightNode(float(pile), frame, time, u);
+        const s = churnSlopeNode(float(pile), frame, vec2(0.6, 0.8), time, u);
+        return [vec4(h, s.x, s.y, 0.0)];
+      });
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      frames.forEach((_, i) => {
+        const [h, sx, sz] = out.slice(i * 4, i * 4 + 3);
+        worstOver = Math.max(worstOver, Math.abs(h) - 0.5 * 0.2 * pile);
+        if (pile === 0 && h !== 0) zeroOff = false;
+        if (pile > 0 && Math.abs(h) > 0.02 * pile) nonZero++;
+        if (![h, sx, sz].every(Number.isFinite)) finite = false;
+      });
+    }
+    const ok = worstOver <= 1e-5 && zeroOff && finite && nonZero > 20;
+    return { pass: ok, detail: `worst |h| over its bound ${worstOver.toExponential(2)} m; zero off the pile ${zeroOff}; finite ${finite}; lumps > 2% of the pile ${nonZero}/80` };
   },
 });
