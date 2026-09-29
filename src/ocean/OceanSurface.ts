@@ -27,7 +27,8 @@ export const EARTH_RADIUS_M = 6_371_000;
  * solid, clumpy white where the whitewater is fresh. So: Worley cells (FOAM_CELL_M, warped by noise so they are
  * irregular and drift), rimmed by bands whose width grows with the weight (the old threshold of 7 m noise blobs gave
  * hard-edged camouflage patches over the wave's back, Andrew's references show lace and solid whitewater). The weight
- * is varied ±40% by a large, slow noise, so the lace gathers in patches and streaks along travel. Coverage reaches SET_FOAM_MAX_COVER (fresh whitewater is all but opaque) and goes to 0 with the weight
+ * is varied by a large, slow noise (±40% where it is thin, none at full weight), so thinning foam gathers in patches
+ * and streaks along travel while fresh whitewater (weight ≳ 0.75) is solid. Coverage reaches SET_FOAM_MAX_COVER (fresh whitewater is all but opaque) and goes to 0 with the weight
  * (× saturate(4·foam): no hard edge where clearing foam ends).
  * Returns vec2(coverage, brightness): brightness 0.62–1.07, the clumps bright and the creases between them in the
  * clumps' shadow (shadeWater); 1.07 (plain lit foam) where there is no set foam (coverage 0, skipped).
@@ -43,12 +44,14 @@ export function setFoamPattern(foam: N, frame: N, time: N): N {
       const n1 = mx_noise_float(vec3(frame.x.mul(0.15), frame.y.mul(0.35), time.mul(0.12)));
       const n2 = mx_noise_float(vec3(frame.x.mul(0.9).add(19.7), frame.y.mul(0.9), time.mul(0.3)));
       const n3 = mx_noise_float(vec3(frame.x.mul(0.9), frame.y.mul(0.9).add(41.3), time.mul(0.3)));
-      const w = saturate(saturate(foam).mul(n1.mul(0.4).add(1.0)));
+      // The variation fades out toward full weight: fresh whitewater is solid, only thinning foam gathers in patches.
+      const w = saturate(saturate(foam).mul(n1.mul(0.4).mul(float(1.0).sub(saturate(foam))).add(1.0)));
       const q = vec2(frame.x.div(FOAM_CELL_M[0]), frame.y.div(FOAM_CELL_M[1])).add(vec2(n2, n3).mul(0.35));
       // F1, F2 (squared, in cells): the rims are where the two nearest cell centres are equally far.
       const f = sqrt(mx_worley_noise_vec2(q, 0.9));
       const edge = f.y.sub(f.x);
-      const width = w.pow(1.3).mul(0.95).add(0.18);
+      // Solid from a weight of ~0.75 (the rims' band covers the widest cells), lace below, threads at the thinnest.
+      const width = w.pow(1.3).mul(1.2).add(0.18);
       const lace = float(1.0).sub(smoothstep(width.mul(0.5), width, edge));
       const cover = lace.mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0)));
       // The clumps: bright over each cell's middle, and a finer mottle of bubble clusters (~0.5 m) over them.
