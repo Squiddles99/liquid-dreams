@@ -21,7 +21,7 @@ export function createBreakUniforms(p: BreakParams) {
     enabled: uniform(0), gamma: uniform(0), delta: uniform(0), hFloorM: uniform(0), stageSpan: uniform(1), troughDrain: uniform(0), beta: uniform(0),
     faceWidth: uniform(0), drainTo: uniform(1), collapseFrom: uniform(1), collapseTo: uniform(2), steepFrom: uniform(0),
     collapseTime: uniform(1), drainGrowth: uniform(1), onsetGain: uniform(1),
-    pileHalfM: uniform(50), pileSurge: uniform(0),
+    pileHalfM: uniform(50), pileSurge: uniform(0), churnSize: uniform(0), churnSpeed: uniform(1),
   };
   updateBreakUniforms(u, p);
   return u;
@@ -45,6 +45,7 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.steepFrom.value = steepeningStart(p);
   u.collapseTime.value = p.collapseTime; u.drainGrowth.value = 1 + p.troughDrain * p.delta; u.onsetGain.value = onsetGain(p);
   u.pileHalfM.value = Math.max(p.pileHalfM, 1e-3); u.pileSurge.value = p.pileSurge;
+  u.churnSize.value = p.churnSize; u.churnSpeed.value = p.churnSpeed;
 }
 
 /** smoothstep with its edges reversed (e0 > e1): WGSL's smoothstep wants low < high. */

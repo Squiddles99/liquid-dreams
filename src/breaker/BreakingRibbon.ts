@@ -1,3 +1,4 @@
+import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 import * as THREE from 'three/webgpu';
 import {
   Break, Fn, If, Loop, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
@@ -508,20 +509,27 @@ export class BreakingRibbon {
     // the undisplaced point, as the sheet measures its undisplaced grid).
     const home: N = attribute('ribbonHome', 'vec4');
     const radial = length(home.xy.sub(this.cameraXZ));
-    material.positionNode = vec3(pos.x, model.seabed.tide.add(pos.y).sub(radial.mul(radial).div(2 * EARTH_RADIUS_M)), pos.z);
     const vNormal: N = varying(attribute('ribbonNormal', 'vec4').xyz);
     const vExtra: N = varying(attribute('ribbonExtra', 'vec4'));
     const vHome: N = varying(home);
     const vDetail: N = varying(attribute('ribbonDetail', 'vec4').xy);
     const vConstructed: N = varying(attribute('ribbonDetail', 'vec4').w);
-    // The sheet's set-wave foam weight, foam frame and analytic slope at the home, from one set-wave sum per vertex (the
-    // sheet's own vertex-stage sum); the slope reaches the fragment through a varying property, as the sheet's does.
+    // The sheet at the home, from one set-wave sum per vertex (the sheet's own vertex-stage sum): its foam, foam frame,
+    // analytic slope and pile reach the fragment through varying properties, and the pile's churn lifts the vertex as it
+    // lifts the sheet there, so the ribbon's edges stay on the sheet.
     const vSetSlope: N = varyingProperty('vec2', 'vRibbonSetSlope');
-    const vSetFoam: N = varying(Fn(() => {
+    const vSetFoam: N = varyingProperty('float', 'vRibbonSetFoam');
+    const vPile: N = varyingProperty('float', 'vRibbonPile');
+    const vFrame: N = varyingProperty('vec2', 'vRibbonFrame');
+    const churn = Fn(() => {
       const b = model.sets.breakSampleNode(home.xy);
       vSetSlope.assign(b.slope);
-      return sheetFoamWeight(b.foam, foamMap ? foamMap.sampleNode(home.xy) : null);
-    })());
+      vSetFoam.assign(sheetFoamWeight(b.foam, foamMap ? foamMap.sampleNode(home.xy) : null));
+      vPile.assign(b.pile);
+      vFrame.assign(b.foamFrame);
+      return churnHeightNode(b.pile, b.foamFrame, model.sets.time, model.sets.churn);
+    })();
+    material.positionNode = vec3(pos.x, model.seabed.tide.add(pos.y).add(churn).sub(radial.mul(radial).div(2 * EARTH_RADIUS_M)), pos.z);
 
     const toCamera = cameraPosition.sub(positionWorld);
     const distance = length(toCamera);
@@ -529,14 +537,17 @@ export class BreakingRibbon {
     const thickness = vExtra.x, lipness = saturate(vExtra.y), curlFoam = vExtra.z, rho = vExtra.w;
     const fft = model.fftSlopes(vDetail, distance, this.slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness) : float(1.0)));
     const shadingNormal = ribbonShadingNormal({
-      geometric: vNormal, tangent: vec3(vHome.z, 0.0, vHome.w), fft, setSlope: vSetSlope, constructed: vConstructed, viewDir,
+      geometric: vNormal, tangent: vec3(vHome.z, 0.0, vHome.w), fft,
+      setSlope: vSetSlope.add(churnSlopeNode(vPile, vFrame, model.sets.meanTravel, model.sets.time, model.sets.churn)), constructed: vConstructed, viewDir,
     });
     const normal = shadingNormal.normal.toVar();
     // The tube's ceiling only where the curve departs from the sheet (the sheet has none).
     const underside = float(1.0).sub(smoothstep(-0.3, 0.3, shadingNormal.geometric.y)).mul(saturate(vConstructed));
     const lip = float(1.0).sub(smoothstep(0.05, 0.6, thickness)).mul(lipness);
     // The curl's landing foam fades with ρ, so by the hand-back (and at the along-crest ends) the foam is the sheet's.
-    const foamLook = setFoamPattern(max(vSetFoam, curlFoam.mul(rho)), waterFoamFrame(vHome.xy, model.sets.meanTravel), model.sim.time);
+    // Read at the developed coordinate (as the chop is): at the home the whole thrown lip maps onto a strip of the sheet a
+    // few metres wide, and the pattern smeared into bands down the lip. At the edges the two are the same point.
+    const foamLook = setFoamPattern(max(vSetFoam, curlFoam.mul(rho)), waterFoamFrame(vDetail, model.sets.meanTravel), model.sim.time);
     // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
     // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
     const sunVis = shading.sunlight ? shading.sunlight.visibilityNode(positionWorld.xz) : undefined;
