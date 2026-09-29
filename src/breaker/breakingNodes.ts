@@ -1,7 +1,7 @@
 import { clamp, exp, float, max, min, select, smoothstep, uniform } from 'three/tsl';
 import {
   type BreakParams, COLLAPSE_END, GRAVITY_MS2, ONSET_LAGS, ONSET_LAG_S, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
-  HOLLOW_REACH_Q, MIN_STAGE_SPAN, normalizeBreakParams, onsetGain, steepeningStart,
+  HOLLOW_REACH_Q, MIN_STAGE_SPAN, SLURP_FULL_RATIO, normalizeBreakParams, onsetGain, steepeningStart,
 } from './breaking';
 
 type N = any;
@@ -102,16 +102,23 @@ export function onsetTimeNode(rec: readonly N[], heightM: N, u: BreakUniforms): 
   return { broken: rho[0].greaterThanEqual(1.0), tb: select(alive, float(ONSET_LONG_AGO_S), tb.mul(ONSET_LAG_S)), rMax: rho[0] };
 }
 
+/** breaking.slurp: the slurp's pull on a shoulder, from its slurp ratio (its sharpening's start to SLURP_FULL_RATIO). */
+export function slurpNode(rSlurp: N, u: BreakUniforms): N {
+  return smoothstep(u.steepFrom, SLURP_FULL_RATIO, rSlurp);
+}
+
 /** breaking.lifecycle's result as nodes. */
 export interface LifecycleNodes { steep: N; stage: N; drain: N; collapse: N }
 
 /**
  * breaking.lifecycle: `hasRecord` false is its tb undefined (the ratio alone); else `broken` (the record's, or r ≥ 1)
  * with time since onset `tb` (0 where only r ≥ 1 says so) and the section's largest ratio `rMax`. H is the crest's
- * local height.
+ * local height; rSlurp its slurp ratio (the sharpening and the drain take the slurp's pull, as breaking.lifecycle).
  */
-export function lifecycleNode(r: N, hasRecord: N, broken: N, tb: N, rMax: N, H: N, u: BreakUniforms): LifecycleNodes {
-  const steepR = steepeningNode(r, u), stageR = breakingStageNode(r, u), c = stageCurvesNode(r, u);
+export function lifecycleNode(r: N, hasRecord: N, broken: N, tb: N, rMax: N, H: N, rSlurp: N, u: BreakUniforms): LifecycleNodes {
+  const pulled = slurpNode(rSlurp, u);
+  const steepR = max(steepeningNode(r, u), pulled), stageR = breakingStageNode(r, u), own = stageCurvesNode(r, u);
+  const c = { drain: max(own.drain, pulled), collapse: own.collapse };
   const isBroken = hasRecord.and(broken.or(r.greaterThanEqual(1.0)));
   const t = select(broken, tb, float(0.0));
   // landingEstimate: landingTime(H·(1 + troughDrain·δ)), the fall floored at 0.05 m; settleSpan is collapseTime × it.
