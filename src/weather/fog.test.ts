@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CLEAR_VISIBILITY_KM, exposureCloudStops, fogExtinctionPerM, fogOpticalDepth } from './fog';
 
 describe('fogExtinctionPerM (Koschmieder)', () => {
-  it('leaves a 2% contrast at the visibility distance, together with the clear air's own haze', () => {
+  it("leaves a 2% contrast at the visibility distance, together with the clear air's own haze", () => {
     const clearAir = 3.912 / (CLEAR_VISIBILITY_KM * 1000);
     for (const km of [0.5, 1, 5, 20]) expect(Math.exp(-(fogExtinctionPerM(km) + clearAir) * km * 1000)).toBeCloseTo(0.02, 4);
   });
