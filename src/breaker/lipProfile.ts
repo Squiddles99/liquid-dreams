@@ -261,9 +261,13 @@ export interface Profile {
   lipness: number[];
 }
 
-/** The whole profile for one station (CPU reference and tests). */
-export function buildProfile(base: (u: number) => Vec2, input: ProfileInput, p: LipParams): Profile {
-  const frame = profileFrame(base, input, p);
+/**
+ * The whole profile for one station (CPU reference and tests). The frame (where and when the lip lands, how fast it
+ * throws) is measured on `frameBase`, the sheet without the whitewater pile: the lip is thrown from the wave as it stood,
+ * and the whitewater rising under the curl must not pull it back. The points settle onto `base`, the sheet with it.
+ */
+export function buildProfile(base: (u: number) => Vec2, input: ProfileInput, p: LipParams, frameBase: (u: number) => Vec2 = base): Profile {
+  const frame = profileFrame(frameBase, input, p);
   const out: Profile = { frame, points: [], homes: [], thickness: [], curlFoam: [], lipness: [] };
   for (let j = 0; j < PROFILE_SAMPLES; j++) {
     const home = sampleHome(j, frame);
