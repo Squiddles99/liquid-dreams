@@ -406,10 +406,15 @@ export class SetWaves {
                 // setWaveModel.crestFrame's lip: its crest's height above still water (the Stokes ratio at its own height).
                 const Bl = min(float(STOKES_CAP), fc.k.mul(lipH.mul(0.5)).mul(float(3.0).sub(sigmaC.mul(sigmaC))).div(sigmaC.mul(sigmaC).mul(sigmaC).mul(4.0)));
                 const lipTop = lipH.mul(0.5).mul(Bl.add(1.0)).mul(lateral);
-                // Measured, not inferred from ξ: every point of the cross-section must agree on where its crest is.
-                const v0 = dot(xz.sub(cPos), f.dir);
+                // Measured, not inferred from ξ: every point of the cross-section must agree on where its crest is. Along
+                // the bisector of the point's and the crest's directions (setWaveModel.waveAtCrest).
+                const bis = f.dir.add(fc.dir).toVar();
+                const bisL = length(bis);
+                const bisDir = select(bisL.greaterThan(0.0), bis.div(max(bisL, 1e-9)), vec2(1.0, 0.0));
+                const facing = dot(f.dir, bisDir);
+                const v0 = dot(xz.sub(cPos), bisDir);
                 const br = breakPointNode({
-                  theta, env: env.mul(lateral), uUnbroken: v0.add(d), eta: e, uCrest: pitchC.mul(etaCrest), etaCrest, H: Hl, k: fc.k, hmin: fc.hminBreak,
+                  theta, env: env.mul(lateral), uUnbroken: v0.add(d.mul(facing)), eta: e, uCrest: pitchC.mul(etaCrest), etaCrest, H: Hl, k: fc.k, hmin: fc.hminBreak,
                   boreH: min(a.y.mul(fc.amp), fc.hminBreak.mul(BREAKING_RATIO)).mul(lateral),
                   slope: along, dThetaDAhead: a.z.mul(perAhead), dEnvDAhead: dEnv.mul(lateral).mul(perAhead), crestConfidence: confidence,
                   ...(withPile ? { lipTop, lateral, lipHeight: lipH.mul(lateral) } : {}),
