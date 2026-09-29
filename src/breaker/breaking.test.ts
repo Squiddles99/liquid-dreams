@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LAG_TIMES_S, ONSET_REACH_S, onsetHeight, onsetGain, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LAG_TIMES_S, ONSET_REACH_S, onsetHeight, onsetGain, PILE_RISE_S, SURGE_RISE_S, SURGE_FALL_S, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -286,6 +286,15 @@ describe('normalizeBreakParams', () => {
     normalizeBreakParams(bad);
     expect([bad.throwStrength, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([0.6, 0.25, 1.8, 0.7]);
   });
+  it('fills the pile and churn fields a saved setting from before them lacks, and clamps them', () => {
+    const old = { ...P } as Partial<BreakParams>;
+    delete old.pileHalfM; delete old.pileSurge; delete old.churnSize; delete old.churnSpeed;
+    normalizeBreakParams(old as BreakParams);
+    expect([old.pileHalfM, old.pileSurge, old.churnSize, old.churnSpeed]).toEqual([50, 0.3, 0.2, 1]);
+    const wild = { ...P, pileHalfM: 1, pileSurge: 9, churnSize: -1, churnSpeed: 99 };
+    normalizeBreakParams(wild);
+    expect([wild.pileHalfM, wild.pileSurge, wild.churnSize, wild.churnSpeed]).toEqual([10, 0.6, 0, 3]);
+  });
   it('leaves the defaults unchanged', () => {
     const p = { ...P };
     normalizeBreakParams(p);
@@ -327,7 +336,7 @@ describe('one clock: the onset record and the lifecycle', () => {
   it('lifecycle without a record is the ratio alone (the curves as before)', () => {
     for (const r of [0.5, 0.8, 1, 1.3, 2, 5]) {
       const c = stageCurves(r, P);
-      expect(lifecycle(r, undefined, 3, P)).toEqual({ steep: steepening(r, P), stage: breakingStage(r, P), drain: c.drain, collapse: c.collapse });
+      expect(lifecycle(r, undefined, 3, P)).toEqual({ steep: steepening(r, P), stage: breakingStage(r, P), drain: c.drain, collapse: c.collapse, pile: 0, pileReach: 0, surge: 1, decay: 1 });
     }
   });
   it('lifecycle is continuous across the onset, and from there only runs forward', () => {
@@ -340,11 +349,42 @@ describe('one clock: the onset record and the lifecycle', () => {
       let prev = at0;
       for (let tb = 0.05; tb <= 6; tb += 0.05) {
         const lc = lifecycle(r, tb, H, P, rMax);
-        for (const k of ['steep', 'stage', 'drain', 'collapse'] as const) expect(lc[k], `${k} at r ${r}, tb ${tb.toFixed(2)}`).toBeGreaterThanOrEqual(prev[k] - 1e-12);
+        for (const k of ['steep', 'stage', 'drain', 'collapse', 'pile', 'pileReach'] as const) expect(lc[k], `${k} at r ${r}, tb ${tb.toFixed(2)}`).toBeGreaterThanOrEqual(prev[k] - 1e-12);
         prev = lc;
       }
-      expect(prev).toEqual({ steep: 1, stage: 1, drain: 1, collapse: 1 });
+      expect(prev).toEqual({ steep: 1, stage: 1, drain: 1, collapse: 1, pile: 1, pileReach: 1, surge: 1, decay: 1 });
     }
+  });
+  it('the pile rises over PILE_RISE_S from the landing, partial on a section that broke only a little', () => {
+    const H = 3, land = landingEstimate(H, P), c = 7;
+    expect(lifecycle(3, land, H, P, 3, c).pile).toBe(0);
+    expect(lifecycle(3, land + PILE_RISE_S, H, P, 3, c).pile).toBeCloseTo(breakingStage(3, P), 12);
+    expect(lifecycle(1.1, land + PILE_RISE_S, H, P, 1.1, c).pile).toBeCloseTo(breakingStage(1.1, P), 12);
+    expect(lifecycle(1.1, land + PILE_RISE_S, H, P, 1.1, c).pile).toBeLessThan(0.5);
+    expect(lifecycle(0.9, null, H, P).pile).toBe(0);
+  });
+  it("the pile's top moves from the crest to the landing spot as the curl collapses (pileReach)", () => {
+    const H = 3, land = landingEstimate(H, P), span = settleSpan(H, P);
+    expect(lifecycle(3, land, H, P, 3, 7).pileReach).toBe(0);
+    expect(lifecycle(3, land + span / 2, H, P, 3, 7).pileReach).toBeCloseTo(0.5, 12);
+    expect(lifecycle(3, land + span, H, P, 3, 7).pileReach).toBe(1);
+  });
+  it('the surge lifts the pile above the lip on the heaviest breaks only, then eases back', () => {
+    const H = 3, land = landingEstimate(H, P);
+    expect(lifecycle(3.4, land + SURGE_RISE_S, H, P, 3.4, 7).surge).toBeCloseTo(1 + P.pileSurge, 12);
+    expect(lifecycle(1.05, land + SURGE_RISE_S, H, P, 1.05, 7).surge).toBeLessThan(1.001);
+    expect(lifecycle(3.4, land + SURGE_RISE_S + SURGE_FALL_S, H, P, 3.4, 7).surge).toBe(1);
+    expect(lifecycle(3.4, land, H, P, 3.4, 7).surge).toBe(1);
+  });
+  it('the pile halves every pileHalfM it rolls past the landing, and holds its 13 s height past the record', () => {
+    const H = 3, land = landingEstimate(H, P), c = 7;
+    expect(lifecycle(3, land, H, P, 3, c).decay).toBe(1);
+    expect(lifecycle(3, land + P.pileHalfM / c, H, P, 3, c).decay).toBeCloseTo(0.5, 12);
+    const atReach = lifecycle(3, ONSET_REACH_S, H, P, 3, c).decay;
+    expect(lifecycle(3, Infinity, H, P, 3, c).decay).toBeCloseTo(atReach, 12);
+    expect(lifecycle(3, 1e6, H, P, 3, c).decay).toBeCloseTo(atReach, 12);
+    let prev = 2;
+    for (let tb = 0; tb <= 20; tb += 0.1) { const d = lifecycle(3, tb, H, P, 3, c).decay; expect(d).toBeLessThanOrEqual(prev); prev = d; }
   });
   it('lifecycle: the lip lands and the wave settles on time, whatever the reef does under the crest', () => {
     const H = 3, land = landingEstimate(H, P), span = settleSpan(H, P);
