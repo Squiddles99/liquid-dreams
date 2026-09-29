@@ -278,12 +278,19 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   // cross-section; this point's own unbroken position and height are what get steepened, drained and settled.
   const cf = crestFrame(w, crest, lateral, o);
   // Measured, not inferred from ξ: the wave speed changes across the ledge, and every point of one cross-section must
-  // agree on where its crest is.
-  const v0 = (x - crest.x) * f.dirX + (z - crest.z) * f.dirZ;
+  // agree on where its crest is. Along the bisector of the point's own ray and the crest's direction. Along the point's
+  // own ray alone, where the rays fan out over the inside reef (45° within 8 m) a point 6 m ahead of its crest measured
+  // 1 m, took the crest's height and foam among drained neighbours, and stood as a white-topped spike 0.68 m above
+  // everything 4 m around it (Andrew's "rock"). Along the crest's direction alone, the peak's meeting line (where the two
+  // ledges' rays meet and the direction swings 40° in 2 m) creased the settled water behind it (0.22 m in 0.5 m).
+  const sx = f.dirX + crest.f.dirX, sz = f.dirZ + crest.f.dirZ, sl = Math.hypot(sx, sz);
+  const bx = sl > 0 ? sx / sl : 1, bz = sl > 0 ? sz / sl : 0;
+  const facing = f.dirX * bx + f.dirZ * bz;
+  const v0 = (x - crest.x) * bx + (z - crest.z) * bz;
   // Per metre of the displaced surface along travel (ahead): Phase 1's derivatives along s, over its Jacobian.
   const perAhead = dXiDs / jacobian;
   const b = breakPoint({
-    theta, env: env * lateral, uUnbroken: v0 + dh, eta, uCrest: cf.pitchC * cf.etaCrest, etaCrest: cf.etaCrest, H: cf.Hc * lateral, k: crest.f.k,
+    theta, env: env * lateral, uUnbroken: v0 + dh * facing, eta, uCrest: cf.pitchC * cf.etaCrest, etaCrest: cf.etaCrest, H: cf.Hc * lateral, k: crest.f.k,
     hmin: crest.f.hminBreak, boreH: cf.boreH, lipTop: cf.lipTop, lipHeight: cf.lipHeight, lateral,
     slope: slopeAlong, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead, crestConfidence: crest.confidence,
   }, crest.lc, o.params);
