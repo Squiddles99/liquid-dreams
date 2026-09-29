@@ -1,10 +1,10 @@
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { type BreakParams, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, breakingStage, steepening, steepeningStart } from './breaking';
+import { type BreakParams, type Lifecycle, ONSET_LAGS, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetRatio, onsetTime, steepeningStart } from './breaking';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
-import type { ReefField } from './reefField';
+import { type ReefField, sampleField, sampleOnset } from './reefField';
 
 /** A wave breaks when its height reaches about 0.78 × depth; Phase 1 caps it there (the "fade"). */
 export const BREAKING_RATIO = 0.78;
@@ -80,6 +80,15 @@ export interface BreakOptions {
   /** The field at any world point (sampleField on the CPU). The crest's ratio and stage are read where the crest is. */
   sample: (x: number, z: number) => FieldSample;
   params: BreakParams;
+  /** The onset record at any world point (reefField.sampleOnset), null where there is none. Absent: none anywhere, so
+   * every crest breaks on its ratio alone (breaking.lifecycle with tb undefined). */
+  onset?: (x: number, z: number) => ArrayLike<number> | null;
+}
+
+/** Breaking on `field` with `params`: the field and its onset record, as the render reads them. */
+export function breakOptions(field: ReefField, params: BreakParams): BreakOptions {
+  const rec = new Float32Array(ONSET_LAGS);
+  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec) };
 }
 
 const ZERO: SetWaveResult = { eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0 };
@@ -131,10 +140,15 @@ export interface Crest {
   f: FieldSample;
   /** The crest's breaking ratio: the sheet's front sharpening steepens with it, before the wave breaks. */
   r: number;
-  /** The crest's breaking stage: it drains and collapses the wave. */
+  /** The crest's breaking stage (lc.stage). */
   s: number;
-  /** How much to trust s as a readout, [0, 1]: 1 when the lookup landed on the crest, falling to 0 as the ξ left
-   * after the steps grows from an eighth to a quarter period (a wave far past its crest). Only the reported stage uses it. */
+  /** Time since the section at the crest broke (breaking.onsetTime): null before, undefined without a record there. */
+  tb: number | null | undefined;
+  /** The crest's breaking state: the sharpening, the drain and the collapse (breaking.lifecycle). */
+  lc: Lifecycle;
+  /** How much to trust the lookup, [0, 1]: 1 when it landed on the crest, falling to 0 as the ξ left after the steps
+   * grows from an eighth to a quarter period (a wave far past its crest). The reported stage, the front sharpening and
+   * the crest's height (waveHeightAt) are weighted by it. */
   confidence: number;
 }
 
@@ -142,8 +156,15 @@ export interface Crest {
  * w's crest nearest (x, z): the field is read where the crest is now, found by Newton steps toward ξ = 0 along the line
  * through (x, z) in w's own travel direction (at most half a wavelength a step). That direction is the same at every
  * point, so the lookup is smooth across the crest as well as along the ray, and every point of one cross-section shares
- * its crest's ratio, stage and shape frame. Found whatever the ratio (the sheet steepens before the wave breaks, so a
- * crest with s = 0 still shapes it). Null when breaking is off.
+ * its crest's ratio, height and shape frame. (Along each point's own ray instead, the lookup follows the ray field's
+ * kinks, where rays from either side of the wedge meet: seams.) Found whatever the ratio (the sheet steepens before the
+ * wave breaks, so a crest with s = 0 still shapes it). Null when breaking is off.
+ *
+ * The time since onset is the one thing read on the point's own ray (rayCrestPoint): on the ledge the wave's
+ * deep-water direction crosses the refracted rays at up to ~45°, so the lookup's crest lies metres along the crest from
+ * the point's own, and along a peeling section that is most of a second of onset: the wave's back and front collapsed
+ * out of step with its crest, and the highest water jumped ahead mid-collapse. The record is smooth (a running maximum),
+ * so reading it one straight step along the ray adds no seams.
  */
 export function crestAt(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, o: BreakOptions | undefined): Crest | null {
   if (!o || !o.params.enabled || !(w.heightM > 0)) return null;
@@ -162,7 +183,11 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   const quarterPeriod = Math.PI / (2 * w.omega);
   const confidence = 1 - smoothstep(quarterPeriod / 2, quarterPeriod, Math.abs(phaseXi(cx, cz, t, fc, w, ctx)));
   const r = breakingRatio(w.heightM * fc.amp, fc.hminBreak, o.params);
-  return { x: cx, z: cz, f: fc, r, s: breakingStage(r, o.params), confidence };
+  const on = rayCrestPoint(x, z, t, f, w, ctx);
+  const rec = o.onset?.(on.x, on.z);
+  const tb = rec ? onsetTime(rec, 0, w.heightM, o.params) : undefined;
+  const lc = lifecycle(r, tb, localHeight(w, fc), o.params, rec ? onsetRatio(rec, 0, w.heightM, o.params) : r);
+  return { x: cx, z: cz, f: fc, r, s: lc.stage, tb, lc, confidence };
 }
 
 /**
@@ -211,10 +236,10 @@ export function crestStage(x: number, z: number, t: number, f: FieldSample, w: A
 
 /** One wave at one point, given its crest (null, or neither steepening nor breaking: the Phase 1 wave exactly). */
 export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, crest: Crest | null, o?: BreakOptions): SetWaveResult {
-  const H = localHeight(w, f);
+  const xi = phaseXi(x, z, t, f, w, ctx);
+  const H = waveHeightAt(w, f, crest, xi);
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;
-  const xi = phaseXi(x, z, t, f, w, ctx);
   const { env, dEnv } = waveEnvelope(xi, w);
   const sigma = Math.max(Math.tanh(f.k * f.depth), 0.05);
   const B = Math.min(STOKES_CAP, (f.k * A * (3 - sigma * sigma)) / (4 * sigma * sigma * sigma));
@@ -234,7 +259,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const jacobian = Math.max(0.2, 1 + (hAmp * w.omega * Math.cos(theta) + pitch * dEtaDXi) * dXiDs);
   const slopeAlong = (dEtaDXi * dXiDs) / jacobian;
   const out: SetWaveResult = { eta, dx: f.dirX * dh, dz: f.dirZ * dh, slopeX: f.dirX * slopeAlong, slopeZ: f.dirZ * slopeAlong, foam: 0, stage: crest ? crest.s * crest.confidence : 0 };
-  if (!o || !crest || !(crest.s > 0 || steepening(crest.r, o.params) > 0)) return out;
+  if (!o || !crest || !(crest.lc.stage > 0 || crest.lc.steep > 0)) return out;
   // The crest's frame (height, Stokes ratio, wavenumber, lean, bore depth) sets the shape's scale for the whole
   // cross-section; this point's own unbroken position and height are what get steepened, drained and settled.
   const fc = crest.f;
@@ -254,12 +279,45 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
     theta, env: env * lateral, uUnbroken: v0 + dh, eta, uCrest: pitchC * etaCrest, etaCrest, H: Hc * lateral, k: fc.k, hmin: fc.hminBreak,
     boreH: Math.min(w.heightM * fc.amp, BREAKING_RATIO * fc.hminBreak) * lateral,
     slope: slopeAlong, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead, crestConfidence: crest.confidence,
-  }, crest.s, crest.r, o.params);
+  }, crest.lc, o.params);
   out.eta = b.eta;
   out.slopeX += f.dirX * b.dEtaDAhead;
   out.slopeZ += f.dirZ * b.dEtaDAhead;
   out.foam = b.foam;
   return out;
+}
+
+/** The crest's height reaches this far from the crest in phase: fully within CREST_HEIGHT_REACH[0] periods, gone by [1]. */
+export const CREST_HEIGHT_REACH: readonly [number, number] = [1 / 8, 1 / 4];
+
+/**
+ * The wave's height at a point `xi` seconds behind its crest: the point's own (localHeight) until the wave stands up,
+ * then, near the crest, its crest's: by the crest's sharpening (1 from onset on) × the lookup's confidence × nearness
+ * (1 within CREST_HEIGHT_REACH[0] periods of the crest, 0 from [1]). A wave is one shape: its crest is its highest
+ * point. With each point's own height, capped at BREAKING_RATIO × the depth under it, a crest crossing from the ledge
+ * onto the shallower reef top was capped lower than its own back, still over the ledge: the highest water stayed
+ * behind as a hump that stopped advancing, and a new crest grew ahead of it where the reef deepened (Andrew's "passes
+ * by, then a second wave"). Far from the crest the lookup lands unreliably (its confidence swings between neighbours),
+ * and a deep-water back and a reef-top crest can differ threefold in height: weighted in there, the lookup's noise
+ * drew metre-high steps along the crest. The nearness keeps the crest's height to the face and the back just behind it.
+ */
+export function waveHeightAt(w: ActiveWave, f: FieldSample, crest: Crest | null, xi: number): number {
+  const own = localHeight(w, f);
+  if (!crest) return own;
+  const period = (2 * Math.PI) / w.omega;
+  const near = 1 - smoothstep(CREST_HEIGHT_REACH[0] * period, CREST_HEIGHT_REACH[1] * period, Math.abs(xi));
+  const weight = crest.lc.steep * crest.confidence * near;
+  return weight > 0 ? own + (localHeight(w, crest.f) - own) * weight : own;
+}
+
+/**
+ * Where the point's crest is along its own ray: one straight step of ξ·c (m) along the field direction at the point, at
+ * most half a wavelength either way. Where the onset record is read (crestAt).
+ */
+export function rayCrestPoint(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext): { x: number; z: number } {
+  const reach = Math.PI / f.k;
+  const d = Math.max(-reach, Math.min(reach, (phaseXi(x, z, t, f, w, ctx) * ctx.omega) / f.k));
+  return { x: x + f.dirX * d, z: z + f.dirZ * d };
 }
 
 /** One wave at one point. Without `o` (or with breaking disabled) this is the Phase 1 wave. */

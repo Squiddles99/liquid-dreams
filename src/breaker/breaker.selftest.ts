@@ -7,7 +7,7 @@ import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from './breaking';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
-import { type BreakOptions, sumWaves, toActiveWave } from './setWaveModel';
+import { type BreakOptions, breakOptions, sumWaves, toActiveWave } from './setWaveModel';
 
 // Inside the reef grid, the inflow far field (west, south) and the outflow edge continuation (east, north).
 const POINTS: [number, number][] = [
@@ -104,7 +104,7 @@ registerSelfTest({
       return [vec4(b.disp, b.foam), vec4(b.stage, 0.0, 0.0, 0.0)];
     });
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: DEFAULT_BREAK_PARAMS };
+    const o: BreakOptions = breakOptions(field, DEFAULT_BREAK_PARAMS);
     const disp = new Worst(true, 0), stage = new Worst(true, 0);
     let flagsOk = true, tails = 0, breakers = 0;
     // Before, at and after the biggest wave: points both ahead of crests (tight side) and behind them (Gaussian side).
@@ -216,7 +216,7 @@ registerSelfTest({
     const partialFoam: number[] = [];
     for (const [setName, params] of PARAM_SETS) {
       sets.setBreakParams(params);
-      const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params };
+      const o: BreakOptions = breakOptions(field, params);
       let partial = 0;
       for (const dt of BREAK_DTS) {
         const t = REF_BIGGEST.arrivalS + dt;
@@ -267,7 +267,7 @@ registerSelfTest({
     const tables: string[] = [];
     for (const [setName, params] of PARAM_SETS) {
       sets.setBreakParams(params);
-      const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params };
+      const o: BreakOptions = breakOptions(field, params);
       for (const dt of BREAK_DTS) {
         const t = REF_BIGGEST.arrivalS + dt;
         time.value = t;
@@ -311,7 +311,7 @@ registerSelfTest({
     const points = [...POINTS, ...AROUND_PEAK];
     const { pass, outAttr } = computeAt(points, 2, (xz) => [vec4(sets.breakSampleNode(xz).disp, 0.0), vec4(sets.displacementNode(xz), 0.0)]);
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: DEFAULT_BREAK_PARAMS };
+    const o: BreakOptions = breakOptions(field, DEFAULT_BREAK_PARAMS);
     const gap = new Worst(true, 0);
     let breaking = 0;
     for (const dt of BREAK_DTS) {
@@ -350,7 +350,7 @@ registerSelfTest({
     const points = [...peakRay(field), ...OFF_RAY];
     const { pass, outAttr } = computeAt(points, 1, (xz) => [vec4(sets.displacementNode(xz), 0.0)]);
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    const o: BreakOptions = { sample: (x, z) => sampleField(field, x, z), params: DEFAULT_BREAK_PARAMS };
+    const o: BreakOptions = breakOptions(field, DEFAULT_BREAK_PARAMS);
     const disp = new Worst(true, 0);
     let drained = 0;
     const tables: string[] = [];

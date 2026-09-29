@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, normalizeBreakParams, sharpenDrop, stageCurves, steepening, steepeningStart,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LAG_S, onsetGain, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -49,7 +49,7 @@ function section(s: number, r: number, H: number, hmin: number, periodS: number,
   const info: { foam: number; ahead: number; theta: number }[] = [];
   for (let v0 = -3 * quarter; v0 <= 3 * quarter + 1e-9; v0 += dv) {
     const i = wavePoint(v0, H, hmin, periodS);
-    const b = breakPoint(i, s, r, p);
+    const b = breakPoint(i, lifecycle(r, undefined, 1, p), p);
     pts.push([i.uUnbroken, b.eta]);
     info.push({ foam: b.foam, ahead: i.uUnbroken - i.uCrest, theta: i.theta });
   }
@@ -164,7 +164,7 @@ describe('the sheet shape (sampled cross-sections)', () => {
   });
   it('breakPoint keeps the Phase 1 point when neither steep nor breaking', () => {
     const i = wavePoint(3.4, 3, 6, 15);
-    expect(breakPoint(i, 0, 0.5, P)).toEqual({ eta: i.eta, foam: 0, dEtaDAhead: 0 });
+    expect(breakPoint(i, lifecycle(0.5, undefined, 1, P), P)).toEqual({ eta: i.eta, foam: 0, dEtaDAhead: 0 });
   });
   it("breakPoint's dEtaDAhead matches a central difference of its eta along ahead", () => {
     const d = 1e-4;
@@ -172,13 +172,13 @@ describe('the sheet shape (sampled cross-sections)', () => {
       const k = Math.PI / (2 * quarterOf(hmin, T));
       // θ from −π to π: v0 from π/k behind the crest to π/k ahead. The breaking change (breakPoint's η − the Phase 1 η)
       // is what dEtaDAhead differentiates.
-      const change = (q: BreakPointInput) => breakPoint(q, s, r, P).eta - q.eta;
+      const change = (q: BreakPointInput) => breakPoint(q, lifecycle(r, undefined, 1, P), P).eta - q.eta;
       const rows: { a: number; analytic: number; numeric: number }[] = [];
       for (let j = 0; j <= 400; j++) {
         const v0 = -Math.PI / k + (j * 2 * Math.PI) / k / 400;
         if (Math.abs(v0) < 0.05) continue;
         const numeric = (change(wavePoint(v0 + d, H, hmin, T, true)) - change(wavePoint(v0 - d, H, hmin, T, true))) / (2 * d);
-        rows.push({ a: v0, analytic: breakPoint(wavePoint(v0, H, hmin, T, true), s, r, P).dEtaDAhead, numeric });
+        rows.push({ a: v0, analytic: breakPoint(wavePoint(v0, H, hmin, T, true), lifecycle(r, undefined, 1, P), P).dEtaDAhead, numeric });
       }
       const maxSlope = Math.max(...rows.map((q) => Math.abs(q.numeric)));
       for (const q of rows) {
@@ -260,7 +260,7 @@ describe('drain, bore, foam and face height', () => {
   it('every output stays finite for extreme inputs', () => {
     for (const [H, hmin, T] of [[0.001, 0.05, 4], [8.6, 0.05, 25], [0.2, 30, 25]] as const) for (const s of STAGES) {
       for (const r of [0.8, ratioFor(s)]) for (let v0 = -30; v0 <= 30; v0 += 0.5) {
-        const b = breakPoint(wavePoint(v0, H, hmin, T), s, r, P);
+        const b = breakPoint(wavePoint(v0, H, hmin, T), lifecycle(r, undefined, 1, P), P);
         for (const v of [b.eta, b.foam, b.dEtaDAhead]) expect(Number.isFinite(v)).toBe(true);
       }
     }
@@ -291,5 +291,65 @@ describe('normalizeBreakParams', () => {
     normalizeBreakParams(p);
     expect(p).toEqual(P);
     expect([P.throwStrength, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.55, 0.12, 1.8, 0.7]);
+  });
+});
+
+describe('one clock: the onset record and the lifecycle', () => {
+  const lags = (...v: number[]): Float32Array => Float32Array.from(v);
+  // A wave whose breaking level is ρ = 1 at amp/hminBreak = 0.5: height × onsetGain = 2.
+  const height = 2 / onsetGain(P);
+  it('onsetTime: null below the breaking level, linear between the lags, Infinity past the record', () => {
+    expect(onsetTime(lags(0.4, 0.3, 0.2, 0.1, 0, 0, 0, 0), 0, height, P)).toBeNull();
+    expect(onsetTime(lags(0.5, 0.4, 0, 0, 0, 0, 0, 0), 0, height, P)).toBe(0);
+    // Lag 1 at the level, lag 2 halfway below it: 1.5 lags ago.
+    expect(onsetTime(lags(0.7, 0.5, 0.45, 0.4, 0, 0, 0, 0), 0, height, P)).toBeCloseTo(1 * ONSET_LAG_S, 6);
+    expect(onsetTime(lags(0.7, 0.6, 0.4, 0.3, 0, 0, 0, 0), 0, height, P)).toBeCloseTo(1.5 * ONSET_LAG_S, 6);
+    expect(onsetTime(lags(0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7), 0, height, P)).toBe(Infinity);
+    // The first lag below the level ends it, whatever is further back.
+    expect(onsetTime(lags(0.7, 0.3, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9), 0, height, P)).toBeCloseTo(0.5 * ONSET_LAG_S, 6);
+    // Read from an offset (the record is interleaved per node).
+    expect(onsetTime(lags(9, 9, 0.7, 0.6, 0.4, 0.3, 0, 0, 0, 0), 2, height, P)).toBeCloseTo(1.5 * ONSET_LAG_S, 6);
+  });
+  it('lifecycle without a record is the ratio alone (the curves as before)', () => {
+    for (const r of [0.5, 0.8, 1, 1.3, 2, 5]) {
+      const c = stageCurves(r, P);
+      expect(lifecycle(r, undefined, 3, P)).toEqual({ steep: steepening(r, P), stage: breakingStage(r, P), drain: c.drain, collapse: c.collapse });
+    }
+  });
+  it('lifecycle is continuous across the onset, and from there only runs forward', () => {
+    // A section that stood well past breaking (rMax 3; the peak reaches 3.4), whatever the ratio at the crest now.
+    const H = 3, rMax = 3;
+    for (const r of [0.7, 0.95, 1, 1.4, 3]) {
+      const before = lifecycle(r, null, H, P, rMax), at0 = lifecycle(r, 0, H, P, rMax);
+      if (r < 1) for (const k of ['steep', 'stage', 'drain'] as const) expect(at0[k], `${k} at r ${r}`).toBeCloseTo(before[k], 12);
+      expect(at0.collapse).toBe(0);
+      let prev = at0;
+      for (let tb = 0.05; tb <= 6; tb += 0.05) {
+        const lc = lifecycle(r, tb, H, P, rMax);
+        for (const k of ['steep', 'stage', 'drain', 'collapse'] as const) expect(lc[k], `${k} at r ${r}, tb ${tb.toFixed(2)}`).toBeGreaterThanOrEqual(prev[k] - 1e-12);
+        prev = lc;
+      }
+      expect(prev).toEqual({ steep: 1, stage: 1, drain: 1, collapse: 1 });
+    }
+  });
+  it('lifecycle: the lip lands and the wave settles on time, whatever the reef does under the crest', () => {
+    const H = 3, land = landingEstimate(H, P), span = settleSpan(H, P);
+    for (const r of [0.2, 1, 4]) {
+      expect(lifecycle(r, land, H, P, 3).collapse, 'nothing collapses before the lip lands').toBe(0);
+      expect(lifecycle(r, land, H, P, 3).steep).toBe(1);
+      expect(lifecycle(r, land + span, H, P, 3).collapse).toBe(1);
+      expect(lifecycle(r, land + span / 2, H, P, 3).collapse).toBeCloseTo(0.5, 12);
+    }
+    // r ≥ 1 counts as broken where the record lags it: tb 0, continuous with the ratio.
+    expect(lifecycle(1.2, null, H, P)).toEqual(lifecycle(1.2, 0, H, P));
+    // How far it settles is how far the section got into its breaking stage: a shoulder that only just broke spills a
+    // little and runs on; continuous in rMax, so a record that dips back under the level nudges it, never pops it.
+    const settled = (rMax: number): number => lifecycle(1, land + span, H, P, rMax).collapse;
+    expect(settled(1)).toBe(0);
+    expect(settled(1 + P.stageSpan)).toBe(1);
+    expect(settled(1 + P.stageSpan / 2)).toBeCloseTo(0.5, 12);
+    for (let x = 1; x < 2; x += 0.01) expect(Math.abs(settled(x + 0.01) - settled(x))).toBeLessThan(0.03);
+    // The ribbon's settle span and the sheet's are one function.
+    expect(span).toBeCloseTo(P.collapseTime * landingTime(H * (1 + P.troughDrain * P.delta)), 12);
   });
 });

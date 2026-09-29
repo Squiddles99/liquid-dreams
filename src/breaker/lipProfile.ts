@@ -1,5 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
-import { type BreakParams, RIBBON_FULL_OFFSET, steepening } from './breaking';
+import { type BreakParams, GRAVITY_MS2, RIBBON_FULL_OFFSET, landingEstimate, landingTime, settleSpan, steepening } from './breaking';
+
+export { GRAVITY_MS2, landingTime, settleSpan };
 
 /**
  * The breaking ribbon's cross-section (breaking-ribbon spec §6): the water's surface outline in the vertical plane
@@ -15,8 +17,6 @@ import { type BreakParams, RIBBON_FULL_OFFSET, steepening } from './breaking';
  */
 
 export type Vec2 = [number, number];
-
-export const GRAVITY_MS2 = 9.81;
 
 /** Samples per segment, front edge to back edge (spec §6.6, R7). */
 export const PROFILE_SEGMENTS = { front: 12, face: 16, wall: 12, under: 28, cap: 12, outer: 40, back: 40 } as const;
@@ -107,26 +107,12 @@ function hermite(p0: Vec2, t0: Vec2, p1: Vec2, t1: Vec2, s: number): Vec2 {
   return [h00 * p0[0] + h10 * t0[0] + h01 * p1[0] + h11 * t1[0], h00 * p0[1] + h10 * t0[1] + h01 * p1[1] + h11 * t1[1]];
 }
 
-/**
- * How long (s) the curl takes to collapse after the lip lands: collapseTime × the fall from the crest to the fully drained
- * trough, H·(1 + troughDrain·δ), which depends on the local height only. It used to be collapseTime × τ_land, but τ_land
- * is re-measured every frame from the live crest, and the sheet's own settling lowers that crest: the window shrank as the
- * curl collapsed and the barrel dropped in about half a second after the lip landed (Andrew's "trap door").
- */
-export function settleSpan(H: number, p: LipParams): number {
-  return p.collapseTime * landingTime(H * (1 + p.troughDrain * p.delta));
-}
-
-/** ρ: fades in over [ribbonOnset, ribbonOnset + RIBBON_FULL_OFFSET] before breaking, 1 from onset, out over HAND_BACK_S after the collapse. */
-export function ribbonWeight(r: number, tb: number | null, tauLand: number, span: number, p: LipParams): number {
+/** ρ: fades in over [ribbonOnset, ribbonOnset + RIBBON_FULL_OFFSET] before breaking, 1 from onset, out over HAND_BACK_S
+ * after the collapse (which runs from settleFrom for span). */
+export function ribbonWeight(r: number, tb: number | null, settleFrom: number, span: number, p: LipParams): number {
   if (tb === null) return smoothstep(p.ribbonOnset, p.ribbonOnset + RIBBON_FULL_OFFSET, r);
-  const end = tauLand + span;
+  const end = settleFrom + span;
   return 1 - smoothstep(end, end + HAND_BACK_S, tb);
-}
-
-/** The landing time for a crest `drop` metres above the trough it lands in: a fall from rest, √(2·drop/g). */
-export function landingTime(drop: number): number {
-  return Math.sqrt((2 * Math.max(drop, 0.05)) / GRAVITY_MS2);
 }
 
 /**
@@ -154,7 +140,10 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: 
     ? steepening(r, p) * smoothstep(p.ribbonOnset, p.ribbonOnset + RIBBON_FULL_OFFSET, r)
     : smoothstep(BACK_OFF_DROP_H[0] * H, BACK_OFF_DROP_H[1] * H, K[1] - F[1]);
   const span = settleSpan(H, p);
-  const collapse = tb === null ? 0 : smoothstep(tauLand, tauLand + span, tb);
+  // The curl collapses as the sheet under it does (breaking.lifecycle, from landingEstimate), but never before its own
+  // lip has landed.
+  const settleFrom = Math.max(tauLand, landingEstimate(H, p));
+  const collapse = tb === null ? 0 : smoothstep(settleFrom, settleFrom + span, tb);
   const landing = tb === null ? 0 : smoothstep(tauLand, tauLand + LANDING_FOAM_RISE * span, tb);
   const grow = smoothstep(0, LIP_GROW_PROGRESS, prog);
   const eRoot = Math.max(MIN_LIP_THICKNESS_M, Math.min(p.lipThickness * H, (MAX_THICKNESS_OF_RADIUS * vj * vj) / GRAVITY_MS2)) * grow;
@@ -164,7 +153,7 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: 
   const uFront = Math.max(uFoot, K[0] + vj * tauLand) + LAND_CLEARANCE_M + EDGE_MARGIN_M;
   return {
     K, F, tF, uFoot, uFront, uBack: -(BACK_EDGE_H * H + EDGE_MARGIN_M), tauLand, vj, prog, reach, eRoot,
-    weight: steep * (1 - collapse), collapse, landing, rho: ribbonWeight(r, tb, tauLand, span, p), W, R,
+    weight: steep * (1 - collapse), collapse, landing, rho: ribbonWeight(r, tb, settleFrom, span, p), W, R,
   };
 }
 
