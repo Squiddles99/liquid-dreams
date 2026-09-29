@@ -284,13 +284,13 @@ describe('normalizeBreakParams', () => {
     expect([low.throwStrength, low.lipThickness, low.collapseTime, low.ribbonOnset]).toEqual([0.1, 0.03, 0.3, 0.3]);
     const bad = { ...P, throwStrength: Number.NaN, lipThickness: Infinity, collapseTime: -Infinity, ribbonOnset: Number.NaN };
     normalizeBreakParams(bad);
-    expect([bad.throwStrength, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([0.55, 0.12, 1.8, 0.7]);
+    expect([bad.throwStrength, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([0.6, 0.25, 1.8, 0.7]);
   });
   it('leaves the defaults unchanged', () => {
     const p = { ...P };
     normalizeBreakParams(p);
     expect(p).toEqual(P);
-    expect([P.throwStrength, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.55, 0.12, 1.8, 0.7]);
+    expect([P.throwStrength, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.6, 0.25, 1.8, 0.7]);
   });
 });
 

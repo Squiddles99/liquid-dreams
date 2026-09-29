@@ -36,15 +36,15 @@ export const EDGE_MARGIN_M = 2;
 /** The back edge: this many H behind the crest, plus EDGE_MARGIN_M. */
 export const BACK_EDGE_H = 0.5;
 export const MIN_LIP_THICKNESS_M = 0.02;
-/** The lip's thickness at the tip, as a fraction of its thickness at the root. */
-export const TIP_THICKNESS_RATIO = 0.25;
+/** The lip's thickness at the tip, as a fraction of its thickness at the root (Andrew's photo: a thick lip all the way out). */
+export const TIP_THICKNESS_RATIO = 0.4;
 /** The lip grows to its full thickness over this fraction of the throw (at onset it has no length, so no thickness). */
 export const LIP_GROW_PROGRESS = 0.3;
 /** The underside is the outer arc offset inward; its thickness never exceeds this fraction of the arc's smallest radius
  * of curvature (v_j²/g, at the root), so the offset curve never folds. */
 export const MAX_THICKNESS_OF_RADIUS = 0.8;
-/** The tube's back wall W: this many H behind the crest at full throw… */
-export const WALL_BACK_H = 0.1;
+/** The tube's back wall W: this many H behind the crest at full throw (a round tube, spec 2026-09-29 §3.1)… */
+export const WALL_BACK_H = 0.25;
 /** …at this fraction of the way from the trough up to the lip's root. */
 export const WALL_HEIGHT = 0.45;
 /** After the collapse ends the ribbon fades out (hands back to the sheet) over this long (s). */
@@ -271,6 +271,55 @@ export function buildProfile(base: (u: number) => Vec2, input: ProfileInput, p: 
     out.points.push(pt.pos); out.homes.push(home); out.thickness.push(pt.thickness); out.curlFoam.push(pt.curlFoam); out.lipness.push(pt.lipness);
   }
   return out;
+}
+
+/** The barrel's proportions at one moment (spec 2026-09-29 §3.1; tests and the gallery). Lengths are × H. */
+export interface BarrelMetrics {
+  /** The lip's thickness at its root (× H), and at its tip as a fraction of the root. */
+  rootThickness: number;
+  tipRatio: number;
+  /** Where the lip lands, ahead of the crest (× H). */
+  landAhead: number;
+  /** The tube's width at half its height (the wall to the underside of the falling lip) ÷ its height (the foot to the
+   * lip's underside at the root). NaN until the lip has fallen below half the tube's height. */
+  tubeRatio: number;
+  /** How far the back wall stands behind the crest (× H). */
+  wallBack: number;
+  /** How far the water in front of the face is drawn below still water (× H). */
+  troughBelow: number;
+  /** The most the wall bulges behind the straight line from W to the lip's root R (m; > 0: concave up into the lip). */
+  wallBulge: number;
+}
+
+export function barrelMetrics(p: Profile, H: number): BarrelMetrics {
+  const f = p.frame, n = PROFILE_SEGMENTS;
+  const faceStart = n.front, wallStart = n.front + n.face, wallEnd = wallStart + n.wall, capEnd = wallEnd + n.under + n.cap;
+  let wallX = Infinity, trough = Infinity, bulge = -Infinity;
+  for (let j = faceStart; j < wallEnd; j++) wallX = Math.min(wallX, p.points[j][0]);
+  for (let j = 0; j < wallStart; j++) trough = Math.min(trough, p.points[j][1]);
+  for (let j = wallStart; j < wallEnd; j++) {
+    const [x, y] = p.points[j];
+    const chordX = f.W[0] + ((f.R[0] - f.W[0]) * (y - f.W[1])) / (f.R[1] - f.W[1] || 1e-9);
+    bulge = Math.max(bulge, chordX - x);
+  }
+  const mid = (f.F[1] + f.R[1]) / 2;
+  const crossAt = (a: number, b: number): number => {
+    for (let j = a; j < b; j++) {
+      const [x0, y0] = p.points[j], [x1, y1] = p.points[j + 1];
+      if ((y0 - mid) * (y1 - mid) <= 0 && y0 !== y1) return x0 + ((x1 - x0) * (mid - y0)) / (y1 - y0);
+    }
+    return NaN;
+  };
+  const width = crossAt(wallEnd, capEnd - 1) - crossAt(faceStart, wallEnd - 1);
+  return {
+    rootThickness: f.eRoot / H,
+    tipRatio: f.eRoot > 0 ? lipThicknessAt(f, 1) / f.eRoot : 0,
+    landAhead: (f.vj * f.tauLand) / H,
+    tubeRatio: width / (f.R[1] - f.F[1]),
+    wallBack: (f.K[0] - wallX) / H,
+    troughBelow: -trough / H,
+    wallBulge: bulge,
+  };
 }
 
 /**
