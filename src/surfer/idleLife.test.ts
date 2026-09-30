@@ -83,9 +83,11 @@ describe('IdleLife', () => {
     const smiles: Record<string, number> = {};
     for (const name of ['female', 'male', 'grommet'] as const) {
       const states = run(new IdleLife(9, MOODS[name]), 120);
-      for (const s of states) for (const c of FACE_CHANNELS) {
-        expect(s[c]).toBeGreaterThanOrEqual(0);
-        expect(s[c]).toBeLessThanOrEqual(1);
+      // One assertion per channel on its extremes (per-frame expects timed the test out under a loaded full suite).
+      for (const c of FACE_CHANNELS) {
+        const v = states.map((s) => s[c]);
+        expect(Math.min(...v), c).toBeGreaterThanOrEqual(0);
+        expect(Math.max(...v), c).toBeLessThanOrEqual(1);
       }
       smiles[name] = mean(states.map((s) => s.smile));
     }
