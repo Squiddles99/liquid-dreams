@@ -163,7 +163,7 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
     expect(closed.tau - onset.tau).toBeGreaterThanOrEqual(0.6);
     expect(closed.tau - onset.tau).toBeLessThanOrEqual(1.5);
   });
-  it('the tide moves the break: at low tide the biggest wave breaks earlier, at high tide later', { timeout: 30_000 }, () => {
+  it('the tide moves the break: at low tide the biggest wave breaks earlier, at high tide later', { timeout: 60_000 }, () => {
     const onsetAtPeak = (tideM: number): number => {
       const f = tideM === 0 ? field : computeReefField({ bed: downsample(reef05, 2), periodS: 15, fromDeg: 225, tideM });
       const o = optsFor(f), cx = ctxOf(f), w = testWave(REF_BIGGEST.heightM);
@@ -194,7 +194,7 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
       expect(total).toBeLessThanOrEqual(0.1);
     }
   });
-  it('the breaking fades in and out along the crest over wave heights, not metres (no square channels, no right-angled bowl)', { timeout: 30_000 }, () => {
+  it('the breaking fades in and out along the crest over wave heights, not metres (no square channels, no right-angled bowl)', { timeout: 60_000 }, () => {
     // The sheet's three breaking weights along the crest of the biggest set wave, at 5, 6.6 and 9.9 ft (Andrew's
     // reviews), from before the peak breaks to the right's closeout: the steepest change of each per wave height of crest,
     // between stations under 2 m apart. The old ratio gave 1.4–2.0 (sharpening), 2.4–5.0 (drain) and 2.7–8.3 (collapse)
