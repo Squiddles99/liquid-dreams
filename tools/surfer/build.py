@@ -12,6 +12,7 @@ import hair  # noqa: E402
 import mpfb_bridge  # noqa: E402
 import previews  # noqa: E402
 import rig_trim  # noqa: E402
+import sculpt  # noqa: E402
 import wardrobe  # noqa: E402
 
 preset_path, out_dir, preview_dir = sys.argv[sys.argv.index("--") + 1:][:3]
@@ -26,6 +27,7 @@ rig_trim.bake_shape(body)
 rig_trim.apply_transforms(rig, [body])
 landmarks = rig_trim.delete_helpers(body)
 rig_trim.scale_to_height(body, rig, preset["heightM"], landmarks)
+sculpt.smooth_anatomy(body, preset["heightM"], preset.get("smooth", []))
 rig_trim.trim(rig, body)
 rig_trim.decimate(body, preset["bodyTriangles"])
 rig_trim.limit_weights(body)
@@ -51,4 +53,5 @@ previews.sheet(name, preset["heightM"], preview_dir, "clay")
 for outfit in preset["outfits"]:
     previews.dress(parts, preset, outfit)
     previews.sheet(name, preset["heightM"], preview_dir, outfit)
+    previews.sheet(name, preset["heightM"], preview_dir, outfit, close=True)
 print(f"built {name}: {sum(len(p.vertices) - 2 for p in body.data.polygons)} body triangles")

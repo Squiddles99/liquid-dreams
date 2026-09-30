@@ -50,14 +50,17 @@ def clay(obj):
             bsdf.inputs["Base Color"].default_value = (0.6, 0.6, 0.6, 1)
 
 
-def sheet(name, height, out_dir, label):
+def sheet(name, height, out_dir, label, close=False):
+    """8 views around the body; close=True frames the hips (for judging a cut) and names the file <label>-close."""
     scene, cam = _setup()
-    dist, target = height * 2.9, Vector((0, 0, height * 0.52))
+    dist, target = (height * 0.75, Vector((0, 0, height * 0.52))) if close else (height * 2.9, Vector((0, 0, height * 0.52)))
+    if close:
+        label = f"{label}-close"
     grid = np.zeros((VIEW_H * 2, VIEW_W * 4, 4), dtype=np.float32)
     tmp = os.path.join(out_dir, "_view.png")
     for i in range(8):
         a = math.radians(45 * i)
-        cam.location = Vector((dist * math.sin(a), -dist * math.cos(a), height * 0.55))
+        cam.location = Vector((dist * math.sin(a), -dist * math.cos(a), height * (0.52 if close else 0.55)))
         cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
         scene.render.filepath = tmp
         bpy.ops.render.render(write_still=True)
@@ -77,7 +80,7 @@ import json  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUTFITS = json.load(open(os.path.join(REPO, "src", "surfer", "outfitMasks.json"), encoding="utf-8"))
-WEIGHTS = ("spring", "steamer", "vest", "bottoms", "top", "boardies")
+WEIGHTS = ("spring", "steamer", "rashie", "bottoms", "top", "boardies")
 
 
 def _sock(node, identifier, outputs=False):
@@ -126,11 +129,13 @@ def _body_material(mat, preset):
                 nt.links.new(col, _sock(n, ident))
         return _sock(n, "Result_Color", outputs=True)
 
-    neo = math("MAXIMUM", math("MAXIMUM", math("MULTIPLY", w["spring"], a.outputs[0]), math("MULTIPLY", w["steamer"], a.outputs[1])), math("MULTIPLY", w["vest"], b.outputs[0]))
+    neo = math("MAXIMUM", math("MULTIPLY", w["spring"], a.outputs[0]), math("MULTIPLY", w["steamer"], a.outputs[1]))
+    lycra = math("MULTIPLY", w["rashie"], b.outputs[0])
     fabric = math("MAXIMUM", math("MULTIPLY", w["bottoms"], b.outputs[1]), math("MULTIPLY", w["top"], c.outputs[0]))
     under = math("MULTIPLY", w["boardies"], c.outputs[1])
     col = mix(math("GREATER_THAN", fabric, 0.5), tuple(preset["preview"]["skin"]), tuple(preset["preview"]["fabric"]))
     col = mix(math("GREATER_THAN", under, 0.5), col, tuple(preset["preview"]["boardies"]))
+    col = mix(math("GREATER_THAN", lycra, 0.5), col, tuple(preset["preview"]["rashie"]))
     col = mix(math("GREATER_THAN", neo, 0.5), col, (0.02, 0.02, 0.025))
     nt.links.new(col, bsdf.inputs["Base Color"])
 

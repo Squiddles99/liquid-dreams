@@ -14,20 +14,20 @@ describe('wardrobe (Andrew’s months, spec §4.3)', () => {
     expect(['2026-02-01', '2026-05-01', '2026-08-01', '2026-10-15'].map((d) => outfitFor(PRESETS.male, 'season', d)))
       .toEqual(['boardies', 'springsuit', 'shortArmSteamer', 'springsuit']);
     expect(['2026-02-01', '2026-05-01', '2026-08-01', '2026-10-15'].map((d) => outfitFor(PRESETS.female, 'season', d)))
-      .toEqual(['bikini', 'vestAndBottoms', 'shortArmSteamer', 'vestAndBottoms']);
+      .toEqual(['bikini', 'rashieAndBottoms', 'shortArmSteamer', 'rashieAndBottoms']);
   });
 
   it('lets the override win, but only with one of that surfer’s own outfits', () => {
     expect(outfitFor(PRESETS.male, 'shortArmSteamer', '2026-02-01')).toBe('shortArmSteamer');
     expect(outfitFor(PRESETS.male, 'bikini', '2026-02-01')).toBe('boardies');
-    expect(presetOutfits(PRESETS.female).sort()).toEqual(['bikini', 'shortArmSteamer', 'vestAndBottoms']);
+    expect(presetOutfits(PRESETS.female).sort()).toEqual(['bikini', 'rashieAndBottoms', 'shortArmSteamer']);
   });
 
   it('falls back to winter for a date it can’t read', () => expect(seasonOf('nonsense')).toBe('winter'));
 
   it('covers the right body regions for each outfit', () => {
-    expect(outfitMasks('bikini')).toEqual({ spring: 0, steamer: 0, vest: 0, bottoms: 1, top: 1, boardies: 0 });
-    expect(outfitMasks('vestAndBottoms')).toEqual({ spring: 0, steamer: 0, vest: 1, bottoms: 1, top: 0, boardies: 0 });
+    expect(outfitMasks('bikini')).toEqual({ spring: 0, steamer: 0, rashie: 0, bottoms: 1, top: 1, boardies: 0 });
+    expect(outfitMasks('rashieAndBottoms')).toEqual({ spring: 0, steamer: 0, rashie: 1, bottoms: 1, top: 0, boardies: 0 });
     expect(outfitMasks('boardies').boardies).toBe(1);
     for (const o of Object.keys(OUTFIT_LABELS) as (keyof typeof OUTFIT_LABELS)[]) expect(Object.values(outfitMasks(o)).some((v) => v === 1)).toBe(true);
   });
