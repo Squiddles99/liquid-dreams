@@ -14,7 +14,7 @@ import { PRESETS, type PresetName, boardFor, boardLookFor } from './presets';
 import { POSE_PHASE, POSE_ZONE, type RideState } from './rideState';
 import { type BoardFrame, boardQuaternion, solvePose } from './solvePose';
 import { Surfer } from './Surfer';
-import type { SurferParams } from './surferParams';
+import { type SurferParams, playPhase } from './surferParams';
 import { KeyedLoader } from './surferLoader';
 import { OUTFIT_LABELS, outfitFor } from './wardrobe';
 
@@ -83,7 +83,8 @@ export class SurferStand {
 
     const bal = p.balance ? balanceAt(seed, simTime, p.balanceAmount, this.heave) : null;
     const dials = { compression: p.compression + (bal?.compression ?? 0), lean: p.lean, twist: p.twist, reach: p.reach };
-    const t = poseTargets(p.pose, { spec, layout, rest: s.rest, stance: p.stance, dials, phaseT: p.phaseT });
+    const phaseT = p.play ? playPhase(p.pose, simTime, p.phaseT) : p.phaseT;
+    const t = poseTargets(p.pose, { spec, layout, rest: s.rest, stance: p.stance, dials, phaseT });
     if (bal) {
       const lead = p.stance === 'regular' ? 'l' : 'r', trail = lead === 'l' ? 'r' : 'l';
       t.hands[lead].pos.add(bal.lead);
@@ -91,7 +92,7 @@ export class SurferStand {
     }
     const state: RideState = {
       board: frame, speedMs: 0, railAngleRad: p.lean * 35 * DEG, compression: dials.compression,
-      zone: POSE_ZONE[p.pose], phase: POSE_PHASE[p.pose], phaseT: p.phaseT,
+      zone: POSE_ZONE[p.pose], phase: POSE_PHASE[p.pose], phaseT,
       lookAt: frame.position.clone().add(t.look.clone().normalize().multiplyScalar(10).applyQuaternion(Qb)),
     };
     const solved = solvePose(s.rest, t, state.board, state.lookAt);

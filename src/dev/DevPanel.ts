@@ -385,6 +385,7 @@ export class DevPanel {
     for (const [key, opts] of Object.entries(SURFER_BINDINGS) as [keyof typeof SURFER_BINDINGS, (typeof SURFER_BINDINGS)[keyof typeof SURFER_BINDINGS]][]) {
       surferFolder.addBinding(m.surfer, key, opts).on('change', h.onSurfer);
     }
+    surferFolder.addBinding(m.surfer, 'play', { label: 'play (paddle, pop-up)' }).on('change', h.onSurfer);
     surferFolder.addBinding(m.surfer, 'balance', { label: 'balance layer' }).on('change', h.onSurfer);
     surferFolder.addButton({ title: 'Place ahead of camera' }).on('click', h.onSurferPlaceAhead);
     surferFolder.addButton({ title: 'Chase view' }).on('click', h.onSurferChase);
