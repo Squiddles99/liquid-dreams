@@ -3,7 +3,8 @@ import { sunForConditions } from '../astro/sunForConditions';
 import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
-import { formatPeakFace, peakFace } from '../breaker/peakFace';
+import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from '../breaker/peakFace';
+import { offshoreSpeed } from '../breaker/overturn';
 import { type ReefField, sampleField } from '../breaker/reefField';
 import { BOMBIE_X, BOMBIE_Z, type BombieWaves, type Burst, burstAt, burstWidthM, burstsAt, setIndicesFrom, setWindow } from '../bombie/bombieModel';
 import { BombieMesh } from '../bombie/BombieMesh';
@@ -142,7 +143,9 @@ export class App {
   private readonly soundDir = new THREE.Vector3();
   /** The coastal surf along the whole shore (Phase 4b spec 2026-09-28-the-waterline-design.md). */
   readonly surf = new CoastalSurf();
-  readonly setStatus = { nextSet: '', wave: '', face: '' };
+  readonly setStatus = { nextSet: '', wave: '', face: '', psi: '' };
+  /** The wind's offshore speed against the field's swell (m/s; updateOffshore): the lip's wind factors. */
+  private offshoreMs = 0;
   /** The look as constructed (deep clones): what "Reset settings" and default mode restore. */
   private readonly lookDefaults: DevLookParams = cloneLook(this.lookParams());
   private settingsMode: SettingsMode = 'custom';
@@ -474,6 +477,14 @@ export class App {
     this.ribbon.setParams(this.breakParams);
     this.ribbonMinHeightM = this.field ? minRibbonHeight(fieldBreakingHeight(this.field, this.breakParams), this.breakParams) : Infinity;
     this.waveCtx = this.field ? { omega: this.field.omega, travelX: this.field.far.dirX, travelZ: this.field.far.dirZ } : null;
+    this.updateOffshore();
+    this.ribbonKey = null;
+  }
+
+  /** The wind's offshore speed against the field's swell (overturn.offshoreSpeed): the lip's wind factors. */
+  private updateOffshore(): void {
+    this.offshoreMs = this.field ? offshoreSpeed(this.conditions.wind.speedMs, this.conditions.wind.directionDeg, this.field.far.dirX, this.field.far.dirZ) : 0;
+    this.ribbon.setOffshore(this.offshoreMs);
     this.ribbonKey = null;
   }
 
@@ -634,7 +645,7 @@ export class App {
     let entries: StationEntry[] = [];
     if (tracing) {
       const waves = events.map(toActiveWave);
-      const input = { cameraX: cam.x, cameraZ: cam.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM };
+      const input = { cameraX: cam.x, cameraZ: cam.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs: this.offshoreMs };
       const start = performance.now();
       entries = traceStations(field, waves, this.clock.simTime, ctx, input);
       this.traceMs += TRACE_MS_ALPHA * (performance.now() - start - this.traceMs);
@@ -652,6 +663,7 @@ export class App {
       this.panel.refresh();
     }
     this.seabed.setTide(this.conditions.tideM);
+    this.updateOffshore();
     this.scheduleSpectrumRebuild();
   }
 
@@ -1226,6 +1238,7 @@ export class App {
       this.setStatus.nextSet = formatNextSet(nextSetArrivalS(this.clock.simTime, this.conditions, this.setParams), this.clock.simTime);
       this.setStatus.wave = waveStatus(this.clock.simTime, events);
       this.setStatus.face = formatPeakFace(peakFace(this.field, events, this.clock.simTime, this.breakParams), this.field !== null);
+      this.setStatus.psi = formatPeakPsi(peakPsi(this.field, events, this.clock.simTime, this.breakParams, this.offshoreMs), this.field !== null);
     }
     const probeXZ = this.rig.probeXZ;
     this.probe.setProbe(0, probeXZ.x, probeXZ.z);

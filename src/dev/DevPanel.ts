@@ -44,7 +44,7 @@ export interface DevPanelModel {
   bombie: BombieParams;
   sound: SoundParams;
   soundStatus: { track: string };
-  setStatus: { nextSet: string; wave: string; face: string };
+  setStatus: { nextSet: string; wave: string; face: string; psi: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
 }
@@ -303,6 +303,7 @@ export class DevPanel {
       sets.addBinding(m.setStatus, 'nextSet', { label: 'next set', readonly: true, interval: 250 }),
       sets.addBinding(m.setStatus, 'wave', { label: 'at the peak', readonly: true, interval: 250 }),
       sets.addBinding(m.setStatus, 'face', { label: 'face at the peak', readonly: true, interval: 250 }),
+      sets.addBinding(m.setStatus, 'psi', { label: 'barrel at the peak', readonly: true, interval: 250 }),
     ]);
     sets.addButton({ title: 'Call a set now (N)' }).on('click', h.onCallSet);
     sets.addBinding(m.sets, 'meanIntervalS', { label: 'mean interval (s)', min: 120, max: 3600, step: 10 }).on('change', h.onSets);
