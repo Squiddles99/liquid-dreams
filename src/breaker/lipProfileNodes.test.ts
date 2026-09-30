@@ -38,11 +38,16 @@ describe('lipProfileNodes sample tables', () => {
     const f = frames[0];
     const packed = packFrameCpu(f);
     expect(packed.length).toBe(FRAME_LAYOUT.length);
-    expect(FRAME_LAYOUT.length).toBeLessThanOrEqual(4 * FRAME_VEC4S);
+    expect(FRAME_LAYOUT.length).toBe(4 * FRAME_VEC4S);
     const read = (name: (typeof FRAME_LAYOUT)[number]): number => packed[FRAME_LAYOUT.indexOf(name)];
-    expect([read('K.x'), read('K.y'), read('tF.x'), read('tF.y'), read('R.y'), read('W.x')]).toEqual([f.K[0], f.K[1], f.tF[0], f.tF[1], f.K[1] - f.tTop, f.P[0]]);
-    expect([read('uFoot'), read('uFront'), read('uBack'), read('tauLand'), read('vj'), read('prog'), read('reach')]).toEqual([f.uFoot, f.uFront, f.uBack, f.tauLand, f.vj, f.prog, f.reach]);
-    expect([read('eRoot'), read('weight'), read('collapse'), read('landing'), read('rho')]).toEqual([f.tTop, f.weight, f.collapse, f.landing, f.rho]);
+    expect([read('K.x'), read('K.y'), read('tF.x'), read('tF.y'), read('P.x'), read('P.y'), read('tip.x'), read('tip.y')]).toEqual([f.K[0], f.K[1], f.tF[0], f.tF[1], f.P[0], f.P[1], f.tip[0], f.tip[1]]);
+    expect([read('O.x'), read('O.y'), read('d.x'), read('d.y'), read('L'), read('W'), read('clipY')]).toEqual([f.tube.O[0], f.tube.O[1], f.tube.d[0], f.tube.d[1], f.tube.L, f.tube.W, f.tube.clipY]);
+    expect([read('xiTop'), read('xiTip'), read('xiEnd'), read('tTop'), read('tipE'), read('HI')]).toEqual([f.xiTop, f.xiTip, f.xiEnd, f.tTop, f.tipE, f.HI]);
+    expect([read('uFoot'), read('uFront'), read('uBack'), read('tauLand'), read('vj'), read('prog'), read('reach'), read('uLand')]).toEqual([f.uFoot, f.uFront, f.uBack, f.tauLand, f.vj, f.prog, f.reach, f.uLand]);
+    expect([read('weight'), read('collapse'), read('landing'), read('rho')]).toEqual([f.weight, f.collapse, f.landing, f.rho]);
+    // The tube's n is not stored: it is (−d.y, d.x).
+    expect(f.tube.n[0]).toBeCloseTo(-f.tube.d[1], 12);
+    expect(f.tube.n[1]).toBeCloseTo(f.tube.d[0], 12);
   });
 
   it('lip uniforms mirror the normalized params, with the steepening start as the ratio it starts at', () => {

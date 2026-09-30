@@ -1,6 +1,6 @@
 import { smoothstep } from '../math/smoothstep';
 import { type BreakParams, GRAVITY_MS2, RIBBON_FULL_OFFSET, landingEstimate, landingTime, settleSpan, steepening } from './breaking';
-import { type Overturn, PSI_MIN, PSI_NONE, PSI_NORMAL, overturnShape, windUC } from './overturn';
+import { type Overturn, PSI_MIN, PSI_NONE, PSI_NORMAL, overturnShape, sheetShape, windUC } from './overturn';
 import { type Tube, tubeAxes, tubeBackMostX, tubeLower, tubeTopXi, tubeUpper, tubeUpperArc, tubeUpperNormal } from './tube';
 
 export { GRAVITY_MS2, landingTime, settleSpan };
@@ -214,9 +214,11 @@ export function ribbonWeight(r: number, tb: number | null, settleFrom: number, s
  * point, or where its upper side first reaches the water in front); the free-fall clock; and the throw's progress, over
  * which the tube's width grows and the tip runs along its upper side (plan rulings 1–5).
  */
-export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: LipParams): ProfileFrame {
+export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp: LipParams): ProfileFrame {
   const { H, c, r, tb } = input;
   const psi = input.psi ?? PSI_NORMAL, uc = windUC(input.offshoreMs ?? 0, c);
+  // The curl collapses on its own crest's drain clock, as the sheet under it does (overturn.withSheetShape at its ψ).
+  const p: LipParams = { ...lp, troughDrain: sheetShape(psi).troughDrain };
   // The wave's own foot: where the sheet's front sharpening has sunk to the trough.
   const uFootWave = FOOT_WIDTHS * p.faceWidth * H;
   const K = base(0), F0 = base(uFootWave);
@@ -452,12 +454,19 @@ function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; t
  * The lip's surfaces take the lift at the tube's upper side's x (liftX), so the thin lip is lifted whole, never sheared
  * through itself; the floor (the face) runs evenly from its foot's lift to the landing's.
  */
+/** The front and back are lowered where the pile stands above the crest's own rise, easing in over this share of their
+ * samples from the edge, so that the edges stay the sheet (the pile included) and stitch to it. */
+export const EDGE_LOWER_FADE = 0.25;
+
 function riding(j: number, f: ProfileFrame, c: { pos: Vec2; liftX: number }): Vec2 {
   if (!f.lift) return c.pos;
   const { seg, s } = sampleSegment(j);
   const crest = liftAt(f.lift, f.K[0])[1];
   const capped = (x: number): Vec2 => { const l = liftAt(f.lift!, x); return [l[0], Math.min(l[1], crest)]; };
-  if (seg === 'front' || seg === 'back') return [c.pos[0], c.pos[1] - Math.max(0, liftAt(f.lift, c.pos[0])[1] - crest)];
+  if (seg === 'front' || seg === 'back') {
+    const k = smoothstep(0, EDGE_LOWER_FADE, seg === 'front' ? s : 1 - s);
+    return [c.pos[0], c.pos[1] - k * Math.max(0, liftAt(f.lift, c.pos[0])[1] - crest)];
+  }
   if (seg === 'face') return add2(c.pos, lerp2(capped(f.F[0]), capped(f.P[0]), s));
   return add2(c.pos, capped(c.liftX));
 }

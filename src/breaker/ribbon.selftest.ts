@@ -14,8 +14,8 @@ import {
 } from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
-import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame, settleSpan } from './lipProfile';
-import { FRAME_BASE_OFFSET, FRAME_LAYOUT, FRAME_VEC4S, SEGMENT_OF_SAMPLE, homeFromTable, packFrameCpu } from './lipProfileNodes';
+import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame, sampleTarget, settleSpan } from './lipProfile';
+import { FRAME_LAYOUT, FRAME_VEC4S, SEGMENT_OF_SAMPLE, homeFromTable, packFrameCpu, profilePointNode, readFrameNodes, sampleHomeNode, sampleTargetNode } from './lipProfileNodes';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
 import { type ActiveWave, type BreakOptions, breakOptions, type SetWaveResult, type WaveContext, fieldBreakingHeight, sumWaves, toActiveWave } from './setWaveModel';
@@ -105,103 +105,96 @@ class Worst {
 const dist3 = (g: Float32Array, k: number, w: readonly number[]): number => Math.max(Math.abs(g[k] - w[0]), Math.abs(g[k + 1] - w[1]), Math.abs(g[k + 2] - w[2]));
 /** Frame fields that matter only through the geometry: compared directly only where the station's curve is drawn. */
 const GEOMETRY_ONLY = new Set<string>(['vj', 'tauLand', 'reach', 'prog', 'collapse', 'landing', 'weight']);
-/** The frame tolerance (controller ruling): 1e-3 × max(1, |CPU value|). */
-const frameTol = (c: number): number => 1e-3 * Math.max(1, Math.abs(c));
+/** The frame tolerance (controller ruling): 1e-3 × max(1, |CPU value|); the pile's knots' x, dx and dy are sheet evaluations (and
+ * their differences), bounded by the sheet's own f32 GPU/CPU gap as the edge samples are (1 cm). */
+const SHEET_FIELD = /^k\d\.(x|dx|dy)$/;
+const frameTol = (c: number, name: string): number => (SHEET_FIELD.test(name) ? 1e-2 : 1e-3 * Math.max(1, Math.abs(c)));
 /** Whether a station's constructed curve shows: CPU weight > 0.01, or a finite tb before the collapse ends. */
 const drawn = (e: Station, f: ProfileFrame): boolean =>
   f.weight > 0.01 || (e.tb !== null && Number.isFinite(e.tb) && e.tb < f.tauLand + settleSpan(e.H, P));
 
 const isEdge = (j: number): boolean => SEGMENT_OF_SAMPLE[j] === SEGMENT_ID.front || SEGMENT_OF_SAMPLE[j] === SEGMENT_ID.back;
 
+/** The ψ the mirror test forces on every station (states 4, 5, 6 and a slab past the fits), and its times: from before the
+ * peak breaks (it breaks seconds before the biggest wave reaches (0, 0) on the softened ramp) through the landing. */
+const MIRROR_PSI = [0.03, 0.065, 0.09, 0.2];
+const MIRROR_DTS = [-5, -3.5, -2, 0.6];
+/** Every MIRROR_STRIDE-th live station is compared (the CPU reference is ~300 sheet evaluations a station). */
+const MIRROR_STRIDE = 3;
+
 registerSelfTest({
   name: 'ribbon: GPU profile matches lipProfile',
   async run(renderer) {
     const { time, sets, ribbon } = setsRig();
     // Front/back samples are the sheet itself (their error is the sheet's own GPU/CPU gap); the rest are constructed.
-    // Frame A: the GPU frame against the CPU frame on the CPU base (the ruling's rule; excess over frameTol, > 0 fails).
-    // Frame B: the mirror alone: the CPU profileFrame fed the GPU's own four base samples, against the GPU frame. A
-    // station failing A but passing B differs only through the sheet's GPU/CPU gap (amplified by the frame's maths).
-    const edge = new Worst(), constructed = new Worst(), skirt = new Worst(), extras = new Worst(), explainedExtras = new Worst();
-    const frameA = new Worst(), frameB = new Worst();
-    frameA.value = frameB.value = -Infinity;
+    // The frame: the GPU frame against the CPU frame on the CPU base (excess over frameTol, > 0 fails; geometry-only fields
+    // only where the station's curve is drawn).
+    const edge = new Worst(), constructed = new Worst(), skirt = new Worst(), extras = new Worst(), thick = new Worst();
+    const frame = new Worst();
+    frame.value = -Infinity;
     const perField = FRAME_LAYOUT.map(() => 0);
-    let stations = 0, deadLive = 0, unexplained = 0;
-    const failuresA: string[] = [];
-    const peaks: string[] = [];
-    for (const dt of PROFILE_DTS) {
+    let stations = 0, deadLive = 0, broken = 0, landed = 0, worstDetail = '';
+    const segBad = [0, 0, 0, 0, 0, 0, 0], segWorst = [0, 0, 0, 0, 0, 0, 0];
+    const failures: string[] = [];
+    for (const psi of MIRROR_PSI) for (const dt of MIRROR_DTS) {
       const t = REF_BIGGEST.arrivalS + dt;
       time.value = t;
-      const { waves, entries } = traceAt(t, sets);
+      const traced = traceAt(t, sets);
+      const entries = traced.entries.map((e) => (e.gap ? e : { ...e, psi }));
       ribbon.setStations(entries, LINEUP);
       ribbon.compute(renderer);
       const gp = await read(renderer, ribbon.positions), gf = await read(renderer, ribbon.frames), ge = await read(renderer, ribbon.extras);
+      let live = 0;
       entries.forEach((e, i) => {
-        if (e.gap) return;
+        if (e.gap || live++ % MIRROR_STRIDE !== 0) return;
         stations++;
-        const where = `dt ${dt} #${i}`;
-        const { prof, world } = cpuRow(e, t, waves);
-        let stationExtras = 0, stationExtrasAt = '';
+        const where = `ψ ${psi} dt ${dt} #${i}`;
+        const { prof, world } = cpuRow(e, t, traced.waves);
+        if (prof.frame.prog > 0 && prof.frame.prog < 1) broken++;
+        if (prof.frame.landing > 0) landed++;
         for (let j = 0; j < PROFILE_SAMPLES; j++) {
           const k = (i * V + j + 1) * 4;
-          (isEdge(j) ? edge : constructed).see(dist3(gp, k, world[j]), `${where} j ${j}`);
+          const dj = dist3(gp, k, world[j]);
+          const sg = SEGMENT_OF_SAMPLE[j];
+          if (dj > 5e-3) { segBad[sg]++; segWorst[sg] = Math.max(segWorst[sg], dj); }
+          if (!isEdge(j) && dj > constructed.value) {
+            const fr = prof.frame;
+            worstDetail = `${where} j ${j}: GPU (${[gp[k], gp[k + 1], gp[k + 2]].map((v) => v.toFixed(3)).join(', ')}) CPU (${world[j].map((v) => v.toFixed(3)).join(', ')}); ` +
+              `home ${prof.homes[j].toFixed(3)} target ${sampleTarget(j, fr).toFixed(3)}; prog ${fr.prog.toFixed(3)} landing ${fr.landing.toFixed(3)} collapse ${fr.collapse.toFixed(3)} weight ${fr.weight.toFixed(3)}`;
+          }
+          (isEdge(j) ? edge : constructed).see(dj, `${where} j ${j}`);
           if (gp[k + 3] !== 0) deadLive++;
           const cx = [prof.thickness[j], prof.lipness[j], prof.curlFoam[j], prof.frame.rho];
-          const dx = Math.max(...cx.map((c, m) => Math.abs(ge[k + m] - c)));
-          if (dx > stationExtras) { stationExtras = dx; stationExtrasAt = `${where} j ${j}`; }
+          thick.see(Math.abs(ge[k] - cx[0]), `${where} j ${j} GPU ${ge[k].toFixed(4)} CPU ${cx[0].toFixed(4)}`);
+          const xm = cx.map((c, m) => (m === 0 ? 0 : Math.abs(ge[k + m] - c))), xw = xm.indexOf(Math.max(...xm));
+          extras.see(xm[xw], `${where} j ${j} ${['thickness', 'lipness', 'curlFoam', 'rho'][xw]} GPU ${ge[k + xw].toFixed(4)} CPU ${cx[xw].toFixed(4)}`);
         }
         const lowered = (w: readonly number[]) => [w[0], w[1] - SKIRT_DEPTH_M, w[2]];
         skirt.see(Math.max(dist3(gp, i * V * 4, lowered(world[0])), dist3(gp, (i * V + V - 1) * 4, lowered(world[LAST]))), where);
         const g = gf.subarray(i * FRAME_FLOATS, (i + 1) * FRAME_FLOATS);
         const cf = packFrameCpu(prof.frame);
         const isDrawn = drawn(e, prof.frame);
-        let failA = false;
         cf.forEach((c, m) => {
           const err = Math.abs(g[m] - c);
           perField[m] = Math.max(perField[m], err);
           if (GEOMETRY_ONLY.has(FRAME_LAYOUT[m]) && !isDrawn) return;
-          const excess = err - frameTol(c);
-          frameA.see(excess, `${where} ${FRAME_LAYOUT[m]}`);
-          if (excess > 0) failA = true;
+          const excess = err - frameTol(c, FRAME_LAYOUT[m]);
+          frame.see(excess, `${where} ${FRAME_LAYOUT[m]}`);
+          if (excess > 0 && failures.length < 8) failures.push(`${where} ${FRAME_LAYOUT[m]} GPU ${g[m].toFixed(4)} CPU ${c.toFixed(4)}`);
         });
-        // B: profileFrame on the GPU's base samples, in profileFrame's call order (K, F, Fb, the landing guess).
-        const gpuBase: Vec2[] = [[g[0], g[1]], [g[2], g[3]], [g[FRAME_BASE_OFFSET], g[FRAME_BASE_OFFSET + 1]], [g[FRAME_BASE_OFFSET + 2], g[FRAME_BASE_OFFSET + 3]]];
-        let call = 0;
-        const mirrored = packFrameCpu(profileFrame(() => gpuBase[Math.min(call++, 3)], e, P));
-        let failB = false;
-        mirrored.forEach((c, m) => {
-          const excess = Math.abs(g[m] - c) - frameTol(c);
-          frameB.see(excess, `${where} ${FRAME_LAYOUT[m]}`);
-          if (excess > 0) failB = true;
-        });
-        // A station whose frame fails A but passes B differs only through the sheet's amplified GPU/CPU gap, and its
-        // extras carry the same amplification (a short fall, tiny τ_land, turns ~1e-4 m of the sheet into ~1e-2 m/s of
-        // vj): reported, not failed. Every other station's extras are held to 2e-3.
-        (failA && !failB ? explainedExtras : extras).see(stationExtras, stationExtrasAt);
-        if (failA) {
-          if (failB) unexplained++;
-          if (failuresA.length < 6) {
-            const f = prof.frame, at = (n: (typeof FRAME_LAYOUT)[number]) => g[FRAME_LAYOUT.indexOf(n)];
-            failuresA.push(`${where}: tb ${e.tb === null ? 'null' : e.tb.toFixed(3)}, drop K.y − F.y CPU ${(f.K[1] - f.F[1]).toFixed(4)} GPU ${(at('K.y') - at('F.y')).toFixed(4)}, ` +
-              `tauLand CPU ${f.tauLand.toFixed(4)} GPU ${at('tauLand').toFixed(4)}, vj CPU ${f.vj.toFixed(3)} GPU ${at('vj').toFixed(3)} (mirror on GPU base ${mirrored[FRAME_LAYOUT.indexOf('vj')].toFixed(3)}), ` +
-              `weight CPU ${f.weight.toFixed(3)} GPU ${at('weight').toFixed(3)}; mirror ${failB ? 'FAILS' : 'passes'}`);
-          }
-        }
-        if (Math.hypot(e.x, e.z) < 3) peaks.push(`dt ${dt} (${e.x.toFixed(1)},${e.z.toFixed(1)}) tb ${e.tb === null ? 'null' : e.tb.toFixed(2)} prog ${prof.frame.prog.toFixed(2)} weight ${prof.frame.weight.toFixed(2)}`);
       });
     }
-    // Positions are what the ribbon draws; the frame passes when the mirror is exact (B) and every A failure is explained by B.
-    // Bounds (controller ruling): the constructed samples are the mirror (5 mm). The edge samples and the skirts are pure
-    // sheet evaluations, so they measure the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest), not the mirror:
-    // 1 cm. Extras 2e-3: rho and curlFoam amplify the same gap through the frame's timings.
-    const ok = stations > 0 && deadLive === 0 && constructed.value < 5e-3 && Math.max(edge.value, skirt.value) < 1e-2 &&
-      frameB.value <= 0 && unexplained === 0 && extras.value < 2e-3;
+    // Bounds: the constructed samples are the mirror (5 mm). The edge samples and the skirts are pure sheet evaluations,
+    // so they measure the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest): 1 cm. The lip's thickness is a length on
+    // the profile, bounded as the constructed points (5 mm); the unitless extras (lipness, curl foam, ρ) 2e-3.
+    const ok = stations > 0 && broken > 0 && landed > 0 && deadLive === 0 && constructed.value < 5e-3 && Math.max(edge.value, skirt.value) < 1e-2 &&
+      frame.value <= 0 && thick.value < 5e-3 && extras.value < 2e-3;
     const fields = FRAME_LAYOUT.map((n, m) => `${n} ${perField[m].toExponential(1)}`).join(', ');
     return {
       pass: ok,
-      detail: `${stations} live stations × dt ${PROFILE_DTS.join('/')} s; worst |Δpos| (m) constructed ${constructed} (< 5e-3, the mirror), ` +
-        `edge samples ${edge} and skirts ${skirt} (< 1e-2: pure sheet evaluations, so the sheet's own GPU/CPU gap, which breaker.selftest pins); frame A (vs the CPU base; excess over 1e-3·max(1, |v|), geometry-only fields where drawn) worst ${frameA}, ` +
-        `frame B (the mirror on the GPU's base samples) worst ${frameB} (≤ 0), A failures not explained by B ${unexplained}; worst |Δextras| (thickness, lipness, curlFoam, rho; < 2e-3: rho and curlFoam carry the sheet's gap through the frame's timings) ${extras}, at stations whose A failure B explains (reported) ${explainedExtras}; live rows flagged dead ${deadLive}. ` +
-        `Per frame field |Δ| (all stations): ${fields}. A failures: ${failuresA.join(' | ') || 'none'}. Near the peak: ${peaks.slice(0, 8).join('; ')}`,
+      detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${broken} in the throw, ${landed} landed); worst |Δpos| (m) constructed ${constructed} (< 5e-3), ` +
+        `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); ` +
+        `live rows flagged dead ${deadLive}. Samples off > 5 mm by segment (front..back) ${segBad.join('/')}, worst ${segWorst.map((v) => v.toFixed(3)).join('/')}. Worst constructed: ${worstDetail}. Per frame field |Δ|: ${fields}. Frame failures: ${failures.join(' | ') || 'none'}`,
     };
   },
 });
@@ -359,6 +352,9 @@ function cpuNormal(rows: readonly (readonly (readonly number[])[] | null)[], ent
   return l > 1e-12 ? n.map((c) => c / l) : [0, 1, 0];
 }
 
+/** The first under sample (lipProfile's segment order: front, face, wall, under). */
+const UNDER_FROM = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall;
+
 registerSelfTest({
   name: 'ribbon: normals face up out of the water on the back slope and down under the lip',
   async run(renderer) {
@@ -387,7 +383,8 @@ registerSelfTest({
     entries.forEach((e, i) => {
       if (e.gap) return;
       live++;
-      const peak = Math.hypot(e.x, e.z) < 15 && frameAt(i, 'weight') > 0.9 && frameAt(i, 'prog') > 0.3;
+      // Any station with a thrown lip (the break sits 50–130 m seaward of (0, 0) on the softened reef).
+      const peak = frameAt(i, 'weight') > 0.9 && frameAt(i, 'prog') > 0.3;
       if (peak) peakStations++;
       for (let j = 0; j < PROFILE_SAMPLES; j++) {
         const k = (i * V + j + 1) * 4;
@@ -399,7 +396,11 @@ registerSelfTest({
             `rows i±1 at j ${[i - 1, i + 1].map((q) => (rows[q] ? f3((rows[q] as number[][])[j]) : 'none')).join(' ')}`;
         }
         mirror.see(err, `#${i} j ${j}`);
-        if (peak && SEGMENT_OF_SAMPLE[j] === SEGMENT_ID.under && !(gn[k + 1] <= underMax)) { underMax = gn[k + 1]; underAt = `#${i} j ${j}`; }
+        // The lip's underside: the under samples past the tube's top (ξ = s·ξtip ≥ ξtop). Behind the top it is the tube's
+        // back, the inside of the wall rising to the top, whose normal faces back and up.
+        const underXi = ((j - UNDER_FROM) / PROFILE_SEGMENTS.under) * frameAt(i, 'xiTip');
+        const lipUnder = SEGMENT_OF_SAMPLE[j] === SEGMENT_ID.under && underXi >= frameAt(i, 'xiTop');
+        if (peak && lipUnder && !(gn[k + 1] <= underMax)) { underMax = gn[k + 1]; underAt = `#${i} j ${j}`; }
       }
       const by = gn[(i * V + LAST + 1) * 4 + 1];
       if (!(by >= backMin)) { backMin = by; backAt = `#${i} (sheet's own normal y there ${sheetNormalY(e).toFixed(3)})`; }
@@ -414,7 +415,7 @@ registerSelfTest({
       pass: ok,
       detail: `${live} live stations at dt 0.6 s; worst |GPU normal − CPU mirror of the normal pass| ${mirror} (< 0.05) [${mirrorNote}]; ` +
         `lowest back-edge normal y ${backMin.toFixed(3)} (${backAt}; > 0); on the ${gentle} gentle back slopes (sheet normal y > 0.95) lowest ${gentleMin.toFixed(3)} (${gentleAt}; > 0.8); ` +
-        `${peakStations} peak stations with a thrown lip (|xz| < 15 m, weight > 0.9, prog > 0.3); highest underside normal y ${underMax.toFixed(3)} (${underAt}; < 0)`,
+        `${peakStations} stations with a thrown lip (weight > 0.9, prog > 0.3); highest lip underside normal y (ξ ≥ ξtop) ${underMax.toFixed(3)} (${underAt}; < 0)`,
     };
   },
 });
@@ -603,5 +604,57 @@ registerSelfTest({
         `${flatStations} stations at weight 0, worst |detail − home| there ${flat} m (≤ 1e-5); skirts vs their edge ${skirts} (0); ` +
         `${peaks} stations with a thrown lip, lowest face detail span / (weight·arc + (1 − weight)·home span) ${faceShort.toFixed(4)} (> 0.99) [${faceAt}]`,
     };
+  },
+});
+
+registerSelfTest({
+  name: 'ribbon: the sample mirror on CPU frames (constructed, riding, settling target)',
+  async run(renderer) {
+    // A synthetic cross-section steep enough to throw (weight ~1: a crest at u = 0 falling to a trough ahead) and the same with a whitewater bump ahead.
+    const frameBase = (u: number): Vec2 => [u + 0.3 * Math.sin(u * 0.2), 2.6 * Math.exp(-((u / 2.5) ** 2)) - 1.6];
+    const base = (u: number): Vec2 => { const b = frameBase(u); return [b[0], b[1] + 1.2 * Math.exp(-(((u - 4) / 3) ** 2))]; };
+    const cases: { psi: number; tb: number }[] = [];
+    for (const psi of [0.03, 0.065, 0.09]) {
+      const tau = profileFrame(frameBase, { H: 4, c: 8, r: 1.4, tb: 0, psi }, P).tauLand;
+      for (const tb of [0.3 * tau, 0.8 * tau, tau + 0.2, tau + 0.8]) cases.push({ psi, tb });
+    }
+    const profs = cases.map((c) => buildProfile(base, { H: 4, c: 8, r: 1.4, tb: c.tb, psi: c.psi }, P, frameBase));
+    const nF = profs.length, frameData = new Float32Array(nF * FRAME_FLOATS), targets = new Float32Array(nF * PROFILE_SAMPLES * 4);
+    profs.forEach((pr, q) => {
+      frameData.set(packFrameCpu(pr.frame), q * FRAME_FLOATS);
+      for (let j = 0; j < PROFILE_SAMPLES; j++) targets.set([...base(sampleTarget(j, pr.frame)), 0, 0], (q * PROFILE_SAMPLES + j) * 4);
+    });
+    const framesAttr = new THREE.StorageBufferAttribute(frameData, 4), targetsAttr = new THREE.StorageBufferAttribute(targets, 4);
+    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(nF * PROFILE_SAMPLES * 8), 4);
+    const framesS = storage(framesAttr, 'vec4', nF * FRAME_VEC4S).toReadOnly(), targetsS = storage(targetsAttr, 'vec4', nF * PROFILE_SAMPLES).toReadOnly();
+    const out = storage(outAttr, 'vec4', nF * PROFILE_SAMPLES * 2);
+    const pass = Fn(() => {
+      const idx: any = int(instanceIndex).toVar();
+      const q: any = idx.div(PROFILE_SAMPLES).toVar(), j: any = idx.sub(q.mul(PROFILE_SAMPLES)).toVar();
+      const f = readFrameNodes((k) => framesS.element(q.mul(FRAME_VEC4S).add(k)));
+      const home = sampleHomeNode(j, f).toVar();
+      const st = sampleTargetNode(j, f, home);
+      const p = profilePointNode(j, f, targetsS.element(idx).xy, home, st.c);
+      out.element(idx.mul(2)).assign(vec4(p.pos, st.target, p.thickness));
+      out.element(idx.mul(2).add(1)).assign(vec4(p.curlFoam, p.lipness, 0.0, 0.0));
+    })().compute(nF * PROFILE_SAMPLES) as THREE.ComputeNode;
+    renderer.compute(pass);
+    const g = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    const pos = new Worst(), target = new Worst(), extra = new Worst();
+    const bySeg = [0, 0, 0, 0, 0, 0, 0];
+    profs.forEach((pr, q) => {
+      for (let j = 0; j < PROFILE_SAMPLES; j++) {
+        const k = (q * PROFILE_SAMPLES + j) * 8, where = `ψ ${cases[q].psi} tb ${cases[q].tb.toFixed(2)} j ${j}`;
+        const dp = Math.hypot(g[k] - pr.points[j][0], g[k + 1] - pr.points[j][1]);
+        pos.see(dp, `${where} GPU (${g[k].toFixed(3)}, ${g[k + 1].toFixed(3)}) CPU (${pr.points[j][0].toFixed(3)}, ${pr.points[j][1].toFixed(3)})`);
+        if (dp > 5e-3) bySeg[SEGMENT_OF_SAMPLE[j]]++;
+        target.see(Math.abs(g[k + 2] - sampleTarget(j, pr.frame)), where);
+        extra.see(Math.max(Math.abs(g[k + 3] - pr.thickness[j]), Math.abs(g[k + 4] - pr.curlFoam[j]), Math.abs(g[k + 5] - pr.lipness[j])), where);
+      }
+    });
+    // The frames must throw, or the lip's samples are the base and the mirror proves nothing.
+    const thrown = profs.filter((pr) => pr.frame.weight > 0.9).length;
+    const ok = pos.value < 5e-3 && target.value < 5e-3 && extra.value < 2e-3 && thrown >= nF / 2;
+    return { pass: ok, detail: `${nF} CPU frames × ${PROFILE_SAMPLES} samples, ${thrown} thrown (weight > 0.9; ≥ ${nF / 2}); worst |Δpos| ${pos} (< 5e-3), off by segment ${bySeg.join('/')}; |Δtarget| ${target}; |Δextras| ${extra}` };
   },
 });
