@@ -52,9 +52,9 @@ describe.skipIf(!OUT)('anchor drawings', () => {
           // As in the game, the lip's profile replaces the sheet over its span: the sheet is drawn only behind the profile's
           // back end and ahead of its front start, and the profile's water is closed down through the bottom (the tube is air).
           const pts = prof.points, xFront = pts[0][0], xBack = pts[pts.length - 1][0];
-          const behind = sea.filter((q) => q[0] <= xBack), ahead = sea.filter((q) => q[0] >= xFront);
-          const fillTo = (q: Vec2[]) => (q.length ? `<path d="${line(X, Y, q)}L${X(q[q.length - 1][0])},${Y(-8)}L${X(q[0][0])},${Y(-8)}Z" fill="#1f4e9c"/>` : '');
-          return `${fillTo(behind)}${fillTo(ahead)}<path d="${line(X, Y, pts)}L${X(xBack)},${Y(-8)}L${X(xFront)},${Y(-8)}Z" fill="#2f6fbf" stroke="#bdf0f7" stroke-width="1.4"/>${overlay}`;
+          const behind = [...sea.filter((q) => q[0] <= xBack), pts[pts.length - 1]], ahead = [pts[0], ...sea.filter((q) => q[0] >= xFront)];
+          const fillTo = (q: Vec2[]) => (q.length ? `<path d="${line(X, Y, q)}L${X(q[q.length - 1][0])},${Y(-8)}L${X(q[0][0])},${Y(-8)}Z" fill="#1f4e9c" stroke="#1f4e9c" stroke-width="1.5"/>` : '');
+          return `${fillTo(behind)}${fillTo(ahead)}<path d="${line(X, Y, pts)}L${X(xBack)},${Y(-8)}L${X(xFront)},${Y(-8)}Z" fill="#1f4e9c" stroke="#1f4e9c" stroke-width="1.5"/><path d="${line(X, Y, pts)}" fill="none" stroke="#bdf0f7" stroke-width="1.4"/>${overlay}`;
         })}</figure>`);
       }
     }

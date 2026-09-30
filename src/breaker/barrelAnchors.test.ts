@@ -65,6 +65,25 @@ export function anchorMetrics(I: number, shape: BarrelShape = barrelShape(I)) {
   return { ...barrelMetrics(buildProfile(s.base, s.input, s.lip, s.frameBase), s.input.H), pileSurge: shape.pileSurge };
 }
 
+/**
+ * How deep the polyline folds through itself (m): over every pair of non-adjacent segments that cross, the least distance
+ * any of their four ends lies from the other's line, the largest such. A tip grazing the water it lies on as it collapses
+ * folds by millimetres; the landed tip in the risen water folded by ~0.3 m and the crest step stood ~2.5 m (Andrew's
+ * circles, 2026-09-30).
+ */
+export function foldDepth(pts: readonly Vec2[]): number {
+  const off = (p: Vec2, a: Vec2, b: Vec2) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return Math.abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / L; };
+  let worst = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    for (let j = i + 2; j + 1 < pts.length; j++) {
+      const [a, b, c, d] = [pts[i], pts[i + 1], pts[j], pts[j + 1]];
+      if (crossings([a, b, c, d]) === 0) continue; // segments a→b and c→d (b→c is only a joiner here)
+      worst = Math.max(worst, Math.min(off(c, a, b), off(d, a, b), off(a, c, d), off(b, c, d)));
+    }
+  }
+  return worst;
+}
+
 describe('the anchors (spec 2026-09-30 §3.3)', () => {
   for (const k of [0, 1, 2] as const) {
     it(`anchor ${k} reproduces its row`, () => {
@@ -85,19 +104,23 @@ describe('the anchors (spec 2026-09-30 §3.3)', () => {
       }
     }
   });
-  it('as the whitewater pile rises under the landed lip, the curl rides it: no folds, and no step where it joins the wave (Andrew, 2026-09-30)', () => {
-    // The pile rises over PILE_RISE_S (0.5 s) after the landing. Later in the collapse the curl still folds as it slides
-    // back to its homes (pre-existing, a separate fix).
+  it('after the lip lands the tube fills with whitewater: no folds, no step at either join, no horn, to the hand-back (Andrew, 2026-09-30)', () => {
     for (const I of [0, 1, 2]) {
-      const tau = anchorLanding(I);
-      for (const dt of [0.1, 0.25, 0.4, 0.5]) {
-        const s = anchorStation(I, tau + dt), pts = buildProfile(s.base, s.input, s.lip, s.frameBase).points;
-        expect(crossings(pts), `I ${I} +${dt} s: crossings`).toBe(0);
-        // The back (on the sheet with the pile) starts where the lip's outer arc ends at its root: no bigger a jump than
-        // the arc's own last step (before the fix, the pile's full height: 1.35–2.45 m at +0.5 s).
-        const r = pts.length - PROFILE_SEGMENTS.back - 1;
-        const jump = Math.hypot(pts[r + 1][0] - pts[r][0], pts[r + 1][1] - pts[r][1]), prev = Math.hypot(pts[r][0] - pts[r - 1][0], pts[r][1] - pts[r - 1][1]);
-        expect(jump, `I ${I} +${dt} s: step at the crest`).toBeLessThanOrEqual(1.2 * prev + 0.02);
+      const tau = anchorLanding(I), K0 = anchorStation(I, tau);
+      const standing = Math.max(...buildProfile(K0.base, K0.input, K0.lip, K0.frameBase).points.map((q) => q[1]));
+      for (const dt of [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 2.5]) {
+        const s = anchorStation(I, tau + dt), prof = buildProfile(s.base, s.input, s.lip, s.frameBase), pts = prof.points;
+        // The tube pinches shut as the whitewater lifts its floor: the face touches the lip by up to ~7 cm mid-collapse.
+        expect(foldDepth(pts), `I ${I} +${dt} s: fold depth (m)`).toBeLessThanOrEqual(0.1);
+        // Each join (the back at the lip's root, the front at the face's foot) is no bigger a jump than its neighbours' (the
+        // front's samples are ~1 m apart and climb the whitewater steeply; the crest's step was 1.35–2.45 m).
+        const jump = (i: number) => Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+        const r = pts.length - PROFILE_SEGMENTS.back - 1, f = PROFILE_SEGMENTS.front - 1;
+        expect(jump(r), `I ${I} +${dt} s: step at the crest`).toBeLessThanOrEqual(1.2 * Math.max(jump(r - 1), jump(r + 1)) + 0.1);
+        expect(jump(f), `I ${I} +${dt} s: step at the foot`).toBeLessThanOrEqual(1.2 * Math.max(jump(f - 1), jump(f + 1)) + 0.1);
+        // No horn: the curl never stands above both the lip as it landed and the whitewater under it.
+        const mound = Math.max(...prof.homes.map((u) => s.base(u)[1]));
+        expect(Math.max(...pts.map((q) => q[1])), `I ${I} +${dt} s: horn`).toBeLessThanOrEqual(Math.max(standing, mound) + 0.2);
       }
     }
   });
