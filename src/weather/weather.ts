@@ -75,7 +75,8 @@ export const WEATHER_PRESETS: Readonly<Record<WeatherPresetName, Readonly<W>>> =
   'drizzle': w(1, 0.05, 400, 0.6, 0.3, 0.2, 0, 12, 1200, 270, 12),
   'showers': w(0.45, 0.85, 800, 0.1, 0.2, 0.6, 0.1, 40, 1500, 250, 15),
   'rain': w(1, 0.3, 350, 0.9, 0.5, 0.5, 0, 10, 1500, 320, 18),
-  'storm': w(0.85, 1, 500, 0.6, 0.4, 1, 1, 8, 1500, 300, 22),
+  // The towers punch through the mid levels and their anvils shade them: no sunlit mid sheet showing through the gaps.
+  'storm': w(0.95, 1, 500, 0, 0.4, 1, 1, 8, 1500, 300, 22),
   'sea mist': w(0, 0.3, 1000, 0, 0.15, 0, 0, 0.8, 60, 270, 5),
 });
 
