@@ -69,22 +69,22 @@ def _pony(tie, rng):
 
 
 def _curl(root, n, centre, eye_z, rng):
-    """One springy lock: a loose spiral out from the scalp (7–10 cm), shorter over the forehead so it stops above the
-    glasses. 2–4 turns sampled 24 times (fewer points drew zig-zag shards, not curls); the radius opens from the root,
-    and nothing dips inside the scalp."""
+    """One springy lock: a loose spiral out from the scalp (6–9 cm), shorter over the forehead so it stops above the
+    glasses. 1.3–3 turns sampled 16 times (too few points per turn drew zig-zag shards, not curls); the radius opens
+    from the root, and nothing dips inside the scalp."""
     fringe = root.y < centre.y - 0.02 and root.z < eye_z + 0.11
-    length = rng.uniform(0.035, 0.055) if fringe else rng.uniform(0.07, 0.1)
-    radius, pitch, phase = rng.uniform(0.007, 0.012), rng.uniform(0.025, 0.04), rng.uniform(0, 2 * math.pi)
+    length = rng.uniform(0.035, 0.05) if fringe else rng.uniform(0.06, 0.09)
+    radius, pitch, phase = rng.uniform(0.008, 0.013), rng.uniform(0.03, 0.045), rng.uniform(0, 2 * math.pi)
     noise = _unit(rng)
     d = (n * (0.35 if fringe else 0.75) + DOWN * (0.65 if fringe else 0.25) + noise * 0.25).normalized()
     e1 = d.orthogonal().normalized()
     e2 = d.cross(e1)
     r_min = (root - centre).length + 0.002
     pts = []
-    for i in range(24):
-        s = length * i / 23
+    for i in range(16):
+        s = length * i / 15
         th = phase + 2 * math.pi * s / pitch
-        p = root + n * 0.002 + d * s + (e1 * math.cos(th) + e2 * math.sin(th)) * radius * min(1.0, i / 4)
+        p = root + n * 0.002 + d * s + (e1 * math.cos(th) + e2 * math.sin(th)) * radius * min(1.0, i / 3)
         q = p - centre
         if q.length < r_min:
             p = centre + q.normalized() * r_min
@@ -155,13 +155,13 @@ def build(body, rig, style, L, coords, name):
             cards.append((_pony(tie, rng), 0.036))
     elif style["style"] == "curly":
         locks = []
-        for _ in range(320):
+        for _ in range(450):
             root, n = pick()
             locks.append(_curl(root, n, centre, eye_z, rng))
-            cards.append((locks[-1], rng.uniform(0.009, 0.012)))
+            cards.append((locks[-1], rng.uniform(0.011, 0.014)))
         for _ in range(300):
             lock = rng.choice(locks)
-            cards.append((_frizz(lock[rng.randint(12, 23)], centre, rng), 0.006))
+            cards.append((_frizz(lock[rng.randint(8, 15)], centre, rng), 0.006))
     else:
         raise SystemExit(f"unknown hair style {style['style']}")
     return _cards_object(cards, centre, rig, f"{name}_hair")

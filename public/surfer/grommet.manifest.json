@@ -335,7 +335,7 @@
   },
   {
    "name": "grommet_hair",
-   "triangles": 15920,
+   "triangles": 14700,
    "materials": [
     "hair"
    ]
@@ -408,8 +408,8 @@
    0.13282
   ],
   "lipFront": [
-   0.00129,
-   1.33871,
+   0.00133,
+   1.34247,
    0.17439
   ],
   "teethFront": [

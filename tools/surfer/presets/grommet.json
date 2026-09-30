@@ -64,7 +64,7 @@
     "crotch"
   ],
   "face": {
-    "chin-jaw-drop-incr": 0.25,
+    "chin-jaw-drop-incr": 0.6,
     "mouth-trans-forward": 0.3,
     "mouth-upperlip-volume-incr": 0.3,
     "chin-prognathism-decr": 0.4,
@@ -75,7 +75,9 @@
     "nose-scale-depth-incr": 0.2,
     "nose-point-up": 0.4,
     "l-eye-scale-incr": 0.3,
-    "r-eye-scale-incr": 0.3
+    "r-eye-scale-incr": 0.3,
+    "mouth-upperlip-middle-up": 1.0,
+    "mouth-lowerlip-middle-down": 0.4
   },
   "browWeight": 1.3
 }
