@@ -213,7 +213,7 @@ const SURFER_OPTIONS = {
   preset: { female: 'female', male: 'male' },
   stance: { regular: 'regular', goofy: 'goofy' },
   board: { thruster: 'thruster', 'step-up': 'stepUp', bodyboard: 'bodyboard' },
-  outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'bikini bottoms + rash vest': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer' },
+  outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'bikini bottoms + rash vest': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer', 'boardies + rash vest': 'rashieAndBoardies' },
   pose: Object.fromEntries(ALL_POSES.map((p) => [p, p])),
 };
 
