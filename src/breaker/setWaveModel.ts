@@ -2,6 +2,7 @@ import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
 import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetTime, pileTop, settledCrestTop, steepeningStart } from './breaking';
+import { drainBonus } from './breakIntensity';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, sampleField, sampleOnset } from './reefField';
@@ -50,6 +51,10 @@ export interface ActiveWave {
   crestOffsetM: number;
   /** The Gaussian envelope (LONG_TAIL_WIDTH) instead of the tight one: this wave leaves water for the next to step on. */
   longTail?: boolean;
+  /** The wave's drain bonus to its break intensity (breakIntensity.drainBonus); absent: 0. */
+  drainBonus?: number;
+  /** The wave's random draw for the throw's dial, in [−1, 1]; absent: 0. */
+  throwDraw?: number;
 }
 
 /** The field's mean swell (the field was computed for this frequency and direction). */
@@ -103,6 +108,7 @@ export function toActiveWave(e: WaveEvent): ActiveWave {
   return {
     arrivalS: e.arrivalS, heightM: e.heightM, omega: (2 * Math.PI) / e.periodS,
     travelX: d.x, travelZ: d.z, crestLengthM: e.crestLengthM, crestOffsetM: e.crestOffsetM, longTail: e.longTail,
+    drainBonus: drainBonus(e.gapS, e.periodS), throwDraw: e.throwDraw,
   };
 }
 
