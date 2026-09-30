@@ -5,6 +5,7 @@ import type { Sky } from '../sky/Sky';
 import { cloudDrift, lowLayer } from './cloudModel';
 import { type CloudField, cloudField, cloudLight, createCloudUniforms, marchSkyNode, sunTransmittanceNode } from './cloudNodes';
 import { hash3 } from './cloudNoiseNodes';
+import { CloudShadow } from './CloudShadow';
 import { CloudTextures } from './CloudTextures';
 import { SKY_MAP, SKY_MAP_SMALL, SLICES, SLICE_OFFSETS } from './skyMapLayout';
 import { WEATHER_PRESETS, type WeatherConditions } from './weather';
@@ -32,6 +33,8 @@ export class Clouds {
   readonly textures = new CloudTextures();
   readonly u = createCloudUniforms();
   readonly field: CloudField;
+  /** The clouds' shadow on the sea and land (a SunlightSource). */
+  readonly shadow: CloudShadow;
   private weather: WeatherConditions = { ...WEATHER_PRESETS.clear };
   private seed = -1;
   private readonly slice = uniform(new THREE.Vector2());
@@ -54,6 +57,7 @@ export class Clouds {
 
   constructor(private readonly sky: Sky) {
     this.field = cloudField(this.u, this.textures);
+    this.shadow = new CloudShadow(this.u, this.field);
     // Lit by the clear sky above them (the cloudy sky light is what's left under them: using it would feed back).
     const light = cloudLight(this.u, sky.luts, sky.uniforms, sky.clearSkyIrradiance);
     const { width: W, height: H } = SKY_MAP;
@@ -134,6 +138,7 @@ export class Clouds {
     if (!this.hasClouds) {
       if (this.active || !this.cleared) {
         renderer.compute(this.clearPasses);
+        this.shadow.clear(renderer);
         this.sky.refreshSkyLight(renderer);
       }
       this.active = false;
@@ -154,6 +159,7 @@ export class Clouds {
     const timeJump = !(Math.abs(simTimeS - this.lastTimeS) <= FULL_REFRESH_TIME_S);
     if (this.dirty || timeJump || this.lastSun.angleTo(sunDir) > FULL_REFRESH_SUN_RAD || this.lastCamera.distanceTo(camera) > FULL_REFRESH_CAMERA_M) {
       renderer.compute(this.marchAllPass);
+      this.shadow.update(renderer, true);
       this.lastSun.copy(sunDir);
       this.lastCamera.copy(camera);
       this.dirty = false;
@@ -162,6 +168,7 @@ export class Clouds {
       if (simTimeS !== this.lastTimeS || !this.lastSliceSun.equals(sunDir)) this.settle = SLICES;
       if (this.settle === 0) return; // paused with nothing moving: the map is already right
       this.marchSlice(renderer, this.frame++ % SLICES);
+      this.shadow.update(renderer, false);
       this.settle--;
     }
     this.lastTimeS = simTimeS;
