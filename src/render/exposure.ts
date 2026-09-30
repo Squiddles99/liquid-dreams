@@ -47,9 +47,15 @@ export function sunInViewStops(forwardDotSun: number, elevationDeg: number): num
   return SUN_IN_VIEW_MAX_STOPS * smoothstep(COS_SUN_OUT_OF_VIEW, COS_SUN_CENTRED, forwardDotSun) * smoothstep(-2, 2, elevationDeg);
 }
 
-/** `forwardDotSun`: cosine between the view direction and the sun (default: facing away). */
-export function computeExposure(elevationDeg: number, baseExposure: number, evOffset: number, auto: boolean, forwardDotSun = -1): number {
-  const autoStops = auto ? exposureStopsForSun(elevationDeg) - sunInViewStops(forwardDotSun, elevationDeg) : 0;
+/**
+ * `forwardDotSun`: cosine between the view direction and the sun (default: facing away). `cloudStops`: how far the
+ * meter opens up under cloud (weather/cloudMeter). `sunVisible`: the sun's transmittance through the cloud, which
+ * scales the stop-down for a sun in view (a hidden sun doesn't dazzle the meter).
+ */
+export function computeExposure(
+  elevationDeg: number, baseExposure: number, evOffset: number, auto: boolean, forwardDotSun = -1, cloudStops = 0, sunVisible = 1,
+): number {
+  const autoStops = auto ? exposureStopsForSun(elevationDeg) - sunInViewStops(forwardDotSun, elevationDeg) * sunVisible + cloudStops : 0;
   return baseExposure * 2 ** (autoStops + evOffset);
 }
 

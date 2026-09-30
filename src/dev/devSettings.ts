@@ -139,7 +139,8 @@ export function loadDevSettings(storage: SettingsStorage, defaults: DevSettings)
   return {
     ...(look as unknown as DevLookParams),
     mode: raw.mode === 'default' || raw.mode === 'custom' ? raw.mode : 'custom',
-    conditions: isPlainObject(raw.conditions) ? sanitizeConditions(raw.conditions) : cloneConditions(defaults.conditions),
+    // A profile stored before weather existed predates it rather than choosing clear: it gets the default sky.
+    conditions: isPlainObject(raw.conditions) ? sanitizeConditions(raw.conditions, defaults.conditions.weather) : cloneConditions(defaults.conditions),
     camera: parseCameraPose(raw.camera) ?? deepClone(defaults.camera),
     reference: typeof raw.reference === 'string' && REFERENCE_MOMENTS.some((r) => r.name === raw.reference) ? raw.reference : DEFAULT_MOMENT_NAME,
   };

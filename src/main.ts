@@ -23,9 +23,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (new URLSearchParams(location.search).has('selftest')) {
+  const query = new URLSearchParams(location.search);
+  if (query.has('selftest')) {
     const { runSelfTests, renderSelfTestReport } = await import('./dev/selfTests');
-    renderSelfTestReport(await runSelfTests(renderer));
+    renderSelfTestReport(await runSelfTests(renderer, query.get('selftest') ?? ''));
     return;
   }
 

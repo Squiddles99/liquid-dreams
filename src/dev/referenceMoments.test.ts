@@ -3,6 +3,7 @@ import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { msToKmh, surferFeetToHs } from '../conditions/units';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { decodeMoment, encodeMoment } from './momentLink';
+import { WEATHER_PRESETS } from '../weather/weather';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, defaultMoment, findReferenceMoment, referenceKind } from './referenceMoments';
 
 describe('reference moments', () => {
@@ -29,6 +30,11 @@ describe('reference moments', () => {
     expect(DEFAULT_MOMENT_NAME).toBe('morning-offshore');
     expect(defaultMoment().conditions).toEqual(DEFAULT_CONDITIONS);
     expect(defaultMoment().paused).toBe(false);
+  });
+  it('keep the clear sky they were tuned under, except the default morning (fair-weather cumulus)', () => {
+    for (const r of REFERENCE_MOMENTS) {
+      expect(r.moment.conditions.weather, r.name).toEqual(r.name === DEFAULT_MOMENT_NAME ? WEATHER_PRESETS.fair : WEATHER_PRESETS.clear);
+    }
   });
   it('autumn-glass has no wind', () => {
     expect(findReferenceMoment('autumn-glass')?.conditions.wind.speedMs).toBe(0);

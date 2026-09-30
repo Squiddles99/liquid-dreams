@@ -51,7 +51,8 @@ export function marchBedAlongNode(origin: N, dir: N, maxDist: N, seabed: Seabed)
 /** The water's own colour seen from an eye at `origin` (its depth below the still water). */
 function waterColourFrom(origin: N, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms): N {
   // From `origin`, not cameraPosition: the self-tests evaluate this in a compute pass, which has no camera.
-  return waterColourAtDepthNode(deepWaterUpwelling(sky, u), u.extinction, max(seabed.tide.sub(origin.y), 0.0));
+  // The sun shaded as at the eye: the camera's sun through the clouds (final review I2).
+  return waterColourAtDepthNode(deepWaterUpwelling(sky, u, sky.cloudSunTransmittance), u.extinction, max(seabed.tide.sub(origin.y), 0.0));
 }
 
 /**
@@ -65,7 +66,7 @@ function reefOrNode(origin: N, dir: N, maxDist: N, behind: N, seabed: Seabed, sk
     const fade = float(1.0).sub(smoothstep(REACH_FADE_DIST_M, MAX_MARCH_DIST_M, march.x));
     If(march.y.greaterThan(0.5).and(fade.greaterThan(0.0)), () => {
       const inf = waterColourFrom(origin, seabed, sky, u);
-      const bed = alongPathNode(seabedRadianceNode(origin.add(dir.mul(march.x)), seabed, sky, u), inf, u.extinction, march.x);
+      const bed = alongPathNode(seabedRadianceNode(origin.add(dir.mul(march.x)), seabed, sky, u, sky.cloudSunTransmittance), inf, u.extinction, march.x);
       out.assign(inf.add(bed.sub(inf).mul(fade)));
     });
     return out;
