@@ -20,5 +20,6 @@ import '../heath/heath.selftest';
 import '../bombie/bombie.selftest';
 import '../board/board.selftest';
 import '../surfer/grommet.selftest';
+import '../surfer/face.selftest';
 import '../surfer/surfer.selftest';
 import '../sound/sound.selftest';
