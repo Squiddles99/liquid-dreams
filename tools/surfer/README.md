@@ -7,9 +7,15 @@ It runs Blender in the background with the scripts in this folder:
 2. The shape keys are baked in, the helper geometry removed, and the body scaled to the preset's exact height.
 3. The rig is trimmed to the game's 23-bone skeleton (`src/surfer/rig.ts`), and the dropped bones' weights are merged
    into their nearest kept parent.
-4. The body is decimated to about 21,000 triangles, with at most 4 bone weights per vertex.
-5. The wardrobe masks, hair cards, eyes and (for the male) boardies are added (`wardrobe.py`, `hair.py`).
-6. Out come `public/surfer/<name>.glb`, `public/surfer/<name>.manifest.json`, and turntable sheets in `previews/`
+4. The body is decimated to about 27,000 triangles (the head is kept whole), with at most 4 bone weights per vertex.
+5. The face's morph targets ride along (`expressions.py`): MPFB's expression units (blinks, jaw, smile, brows,
+   squint, nostrils) are loaded on the baked base mesh, carried through the helper deletion, the scaling and the
+   decimation as vertex attributes, and turned back into shape keys (plus our own `breathe`), exported off at rest.
+6. The wardrobe masks, face paint, baked occlusion, lashes (the base mesh's own lash strips), eyes fitted to MPFB's eye
+   helper, teeth, hair cards (wet, and a dry style on land) and boardies are added (`wardrobe.py`, `face.py`,
+   `skin.py`, `hair.py`, `teeth.py`). A ray check writes `checks.blinkCovers` to the manifest: the closed lids must
+   cover the eyes.
+7. Out come `public/surfer/<name>.glb`, `public/surfer/<name>.manifest.json`, and turntable sheets in `previews/`
    (git-ignored).
 
 The `.glb` files are committed, so `npm run dev`, `npm test` and the launcher never need Blender. Only rebuilding the
