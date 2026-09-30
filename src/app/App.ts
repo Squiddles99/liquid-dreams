@@ -43,6 +43,7 @@ import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
 import { DEFAULT_PICTURE, type PictureParams, PicturePipeline } from '../render/PicturePipeline';
+import { withOnlyShown } from '../render/prewarm';
 import { bedHeightAt, buildBathymetry, downsample } from '../seabed/bathymetry';
 import { SHORE_X } from '../seabed/coastProfile';
 import { Seabed, WATERLINE_STEP_M } from '../seabed/Seabed';
@@ -447,6 +448,27 @@ export class App {
 
   get camera(): THREE.PerspectiveCamera {
     return this.rig.camera;
+  }
+
+  /**
+   * Builds, while the game loads, what the first break would otherwise build on the frame it shows: the breaking ribbon
+   * (its compute passes, footprint and material), the Bombie's white water, and the particles' birth passes. Measured
+   * in the Electron probe on the RTX 4060 (Andrew's 11 ft profile), the first break froze for 0.5–2.8 s building them.
+   *
+   * The two meshes are built by rendering the picture once, into a throwaway target, with only them shown (withOnlyShown),
+   * not by renderer.compileAsync: the scene pass renders nested inside the picture's pipeline, a different render context
+   * (part of every material's cache key), so what compileAsync built was built again when the ribbon first showed.
+   */
+  async prewarm(): Promise<void> {
+    const target = new THREE.RenderTarget(1, 1);
+    try {
+      await withOnlyShown(this.scene, [this.ribbon.mesh, this.bombie.mesh], async () => this.picture.render(target));
+    } finally {
+      target.dispose();
+    }
+    await this.ribbon.compileAsync(this.renderer);
+    await this.spray.compileAsync(this.renderer);
+    await this.impact.compileAsync(this.renderer);
   }
 
   start(): void {
