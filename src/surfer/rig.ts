@@ -93,3 +93,52 @@ export function measures(r: SkeletonRest): RiderMeasures {
     hipHalf: Math.abs(j.thigh_l.x), hipDrop: j.pelvis.y - j.thigh_l.y, torso: j.spine_03.y - j.pelvis.y,
   };
 }
+export interface ManifestBone {
+  name: string;
+  parent: string | null;
+  /** glTF axes, metres. */
+  head: [number, number, number];
+  tail: [number, number, number];
+}
+
+/** Written by tools/surfer/export.py beside each .glb (spec §3.1). */
+export interface SurferManifest {
+  name: string;
+  heightM: number;
+  bones: ManifestBone[];
+  meshes: { name: string; triangles: number; materials: string[] }[];
+  blender: string;
+  mpfb: string;
+}
+
+/** Everything wrong with a manifest's skeleton against the contract (empty = fine). */
+export function manifestProblems(m: SurferManifest): string[] {
+  const out: string[] = [];
+  const byName = new Map(m.bones.map((b) => [b.name, b]));
+  const names = [...byName.keys()].sort(), want = [...BONES].sort();
+  if (JSON.stringify(names) !== JSON.stringify(want)) out.push(`bones ${JSON.stringify(names)} ≠ contract ${JSON.stringify(want)}`);
+  for (const b of BONES) {
+    const mb = byName.get(b);
+    if (!mb) continue;
+    if (mb.parent !== PARENT[b]) out.push(`${b}: parent ${mb.parent} ≠ ${PARENT[b]}`);
+    if (Math.hypot(mb.tail[0] - mb.head[0], mb.tail[1] - mb.head[1], mb.tail[2] - mb.head[2]) < 0.01) out.push(`${b}: shorter than 1 cm`);
+  }
+  for (const s of ['l', 'r'] as const) {
+    for (const leg of [`thigh_${s}`, `shin_${s}`] as const) {
+      const mb = byName.get(leg);
+      if (mb && mb.tail[1] >= mb.head[1]) out.push(`${leg}: doesn't point down`);
+    }
+    const foot = byName.get(`foot_${s}`);
+    if (foot && foot.head[1] > 0.12 * m.heightM) out.push(`foot_${s}: ankle too high (${foot.head[1].toFixed(3)} m)`);
+  }
+  const head = byName.get('head');
+  if (head && head.head[1] < 0.8 * m.heightM) out.push(`head: too low (${head.head[1].toFixed(3)} m)`);
+  return out;
+}
+
+/** The rest skeleton of a loaded body: joints from its manifest, rest rotations from its bones. */
+export function restFromManifest(m: SurferManifest, restQ: Record<BoneName, Quaternion>): SkeletonRest {
+  const joint = {} as Record<BoneName, Vector3>;
+  for (const b of m.bones) if ((BONES as readonly string[]).includes(b.name)) joint[b.name as BoneName] = new Vector3(...b.head);
+  return { heightM: m.heightM, joint, restQ };
+}
