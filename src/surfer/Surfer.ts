@@ -8,6 +8,7 @@ import type { Outfit, SurferPreset } from './presets';
 import { BONES, type BoneName, type SkeletonRest, type SurferManifest, assertManifest, restFromManifest } from './rig';
 import type { SolvedPose } from './solvePose';
 import { type OutfitUniforms, bodyMaterial, eyesMaterial, fabricMaterial, hairMaterial, lensMaterial, outfitUniforms, teethMaterial } from './surferShading';
+import { skinZones } from './skinDetail';
 import { landLook, outfitMasks, showsBoardies } from './wardrobe';
 
 type N = any;
@@ -52,8 +53,8 @@ export class Surfer {
     for (const b of BONES) restQ[b] = this.bones[b].getWorldQuaternion(new THREE.Quaternion());
     this.rest = restFromManifest(manifest, restQ);
     const materials: Record<string, () => THREE.Material> = {
-      body: () => bodyMaterial(sky, preset, this.outfit, sv),
-      hair: () => hairMaterial(sky, preset, this.headCentre, sv),
+      body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones: skinZones(manifest), wet: this.wet }),
+      hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
       eyes: () => eyesMaterial(sky, preset, sv),
       boardies: () => fabricMaterial(sky, preset.boardies, sv),
       glasses: () => fabricMaterial(sky, [0.08, 0.04, 0.02], sv),
