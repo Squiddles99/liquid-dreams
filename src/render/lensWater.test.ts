@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LENS_CLEAR_S, LENS_DRAIN_S, LensWater, lensWaterAt } from './lensWater';
+import { LENS_CLEAR_S, LENS_DRAIN_S, LensWater, RAIN_LENS_MAX, lensWaterAt, rainLensStep } from './lensWater';
 
 describe('water on the lens after surfacing', () => {
   it('at the moment of surfacing the whole lens is under a sheet of water, with its drops', () => {
@@ -40,5 +40,35 @@ describe('water on the lens after surfacing', () => {
     lens.surfaced();
     lens.step(LENS_CLEAR_S + 0.1);
     expect(lens.state().active).toBe(false);
+  });
+});
+
+describe('rain on the lens', () => {
+  it('wets the lens in rain, more when looking up into it, and dries it after the rain stops', () => {
+    let up = 0, level = 0;
+    for (let k = 0; k < 120; k++) { up = rainLensStep(up, 0.6, 1, 1 / 60); level = rainLensStep(level, 0.6, 0.3, 1 / 60); }
+    expect(up).toBeGreaterThan(level);
+    expect(level).toBeGreaterThan(0);
+    let dry = up;
+    for (let k = 0; k < 60 * 10; k++) dry = rainLensStep(dry, 0, 1, 1 / 60);
+    expect(dry).toBe(0);
+    expect(rainLensStep(0, 0, 1, 1)).toBe(0);
+  });
+
+  it('never over-wets (the drops stay drops)', () => {
+    let w = 0;
+    for (let k = 0; k < 6000; k++) w = rainLensStep(w, 1, 1, 1 / 60);
+    expect(w).toBeLessThanOrEqual(RAIN_LENS_MAX);
+  });
+
+  it('shows the wetter of the surfacing sheet and the rain', () => {
+    const s = new LensWater();
+    s.rain(0.5);
+    expect(s.state()).toEqual({ active: true, front: 2, drops: 0.5 });
+    s.surfaced();
+    expect(s.state().front).toBeLessThan(1);
+    s.rain(0);
+    s.step(10);
+    expect(s.state().active).toBe(false);
   });
 });

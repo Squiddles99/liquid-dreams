@@ -1,3 +1,4 @@
+import type { ThunderEvent } from './weatherSound';
 import { HIT_DURATION_S, type HitEvent, type Point3 } from './hits';
 
 /** The synthesised voices (Phase 5 spec §3.3): seeded noise loops, filters, oscillators and envelopes. No samples. */
@@ -144,6 +145,46 @@ export function playHit(ctx: BaseAudioContext, n: NoiseBuffers, dest: AudioNode,
   tail.start(when, offset);
   tail.stop(when + HIT_DURATION_S + 0.05);
   osc.onended = () => { air.disconnect(); pan.disconnect(); };
+}
+
+/**
+ * Thunder at `when` (weather W2): a crack for a near strike, then a rolling rumble of low-passed brown noise, a few
+ * overlapping bursts over several seconds (the sound arriving from along the length of the bolt and its echoes).
+ */
+export function playThunder(ctx: BaseAudioContext, n: NoiseBuffers, dest: AudioNode, ev: ThunderEvent, when: number, rng: () => number): void {
+  const pan = makePanner(ctx, 400);
+  pan.positionX.value = ev.x;
+  pan.positionY.value = ev.y;
+  pan.positionZ.value = ev.z;
+  const air = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: ev.cutoffHz, Q: 0.4 });
+  air.connect(pan).connect(dest);
+  let end = when;
+  if (ev.crack) {
+    const crack = new AudioBufferSourceNode(ctx, { buffer: n.white });
+    const cg = new GainNode(ctx, { gain: 0 });
+    crack.connect(new BiquadFilterNode(ctx, { type: 'highpass', frequency: 800 })).connect(cg).connect(pan);
+    cg.gain.setValueAtTime(0, when);
+    cg.gain.linearRampToValueAtTime(0.9 * ev.level, when + 0.005);
+    cg.gain.exponentialRampToValueAtTime(0.001, when + 0.35);
+    crack.start(when, rng() * 3);
+    crack.stop(when + 0.4);
+  }
+  const bursts = 3 + Math.floor(rng() * 3);
+  for (let k = 0; k < bursts; k++) {
+    const at = when + (ev.crack ? 0.1 : 0) + k * (0.4 + rng() * 0.9);
+    const len = 1.5 + rng() * 3;
+    const src = new AudioBufferSourceNode(ctx, { buffer: n.brown });
+    const g = new GainNode(ctx, { gain: 0 });
+    src.connect(g).connect(air);
+    const peak = ev.level * (k === 0 ? 1 : 0.4 + 0.5 * rng());
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(peak, at + 0.15 + 0.3 * rng());
+    g.gain.exponentialRampToValueAtTime(0.001, at + len);
+    src.start(at, rng() * 3);
+    src.stop(at + len + 0.05);
+    end = Math.max(end, at + len);
+  }
+  setTimeout(() => { air.disconnect(); pan.disconnect(); }, Math.max(0, (end - ctx.currentTime + 0.5) * 1000));
 }
 
 /** One short band-passed noise burst (a lapping plip, or a pebble click) at `when`. */

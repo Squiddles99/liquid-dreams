@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, abs, asin, atan, clamp, dot, exp, float, fract, max, mix, normalize, pow, select, sqrt, storage, texture, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import { PI, abs, asin, atan, cameraPosition, clamp, dot, exp, float, fract, max, mix, normalize, pow, select, sqrt, storage, texture, uniform, vec2, vec3, vec4 } from 'three/tsl';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, extinctionPerKm } from './atmosphereParams';
 import { type AtmosphereUniforms, createAtmosphereUniforms, nightFloorRadiance, skyViewUvFromAngles, updateAtmosphereUniforms } from './atmosphereNodes';
 import { AtmosphereLuts } from './AtmosphereLuts';
@@ -42,9 +42,20 @@ export class Sky {
   /** The weather's haze (spec 2026-09-30 §4.7): sea-level extinction (per m) beyond the clear air's, and its depth (m). */
   readonly fogSigma0 = uniform(0);
   readonly fogTopM = uniform(1500);
+  /** Falling rain's extinction (per m) at world xz, from the clouds' rain field (weather/Clouds attaches it). */
+  private rainExtinctionAt: ((xz: N) => N) | null = null;
+  /** 1 while the weather has rain: the rain along a view path is only sampled then. */
+  readonly rainOn = uniform(0);
+  /** A lightning flash (weather/LightningView): toward where it lights the cloud, its glow's radiance (RGB), its angular
+   * spread (1 − cos of its radius), and the lift it gives the sky light. All zero between flashes. */
+  readonly flashDir = uniform(new THREE.Vector3(0, 1, 0));
+  readonly flashRadiance = uniform(new THREE.Vector3());
+  readonly flashSpread = uniform(0.01);
+  readonly flashIrradiance = uniform(new THREE.Vector3());
   readonly dome: THREE.Mesh;
-  /** [0].x: the sun's transmittance through the clouds from the camera (the sun disk, the exposure meter). */
-  readonly cloudSunAttr = new THREE.StorageBufferAttribute(new Float32Array([1, 1, 1, 1]), 4);
+  /** [0].x: the sun's transmittance through the clouds from the camera (the sun disk, the exposure meter); .y: the rain
+   * rate falling at the camera. */
+  readonly cloudSunAttr = new THREE.StorageBufferAttribute(new Float32Array([1, 0, 0, 1]), 4);
   readonly cloudSun = storage(this.cloudSunAttr, 'vec4', 1).toReadOnly();
   private params: AtmosphereParams;
   private readonly lastSun = new THREE.Vector3(0, -2, 0);
@@ -64,9 +75,17 @@ export class Sky {
     return this.luts.skyLightRead.element(1).xyz;
   }
 
-  /** Sky irradiance on a horizontal surface, through the clouds (RGB node). */
+  /** Sky irradiance on a horizontal surface, through the clouds, plus a lightning flash's lift (RGB node). */
   get skyIrradiance(): N {
-    return this.luts.skyLightRead.element(0).xyz;
+    return this.luts.skyLightRead.element(0).xyz.add(this.flashIrradiance);
+  }
+
+  /**
+   * The light haze and rain scatter from the sky around them (RGB radiance node): the cloudy sky light, so the rain
+   * haze over the land and the rain curtains in the sky read as one (W2 review I3).
+   */
+  get hazeLight(): N {
+    return this.skyIrradiance.div(PI).mul(0.9);
   }
 
   /** The clear sky's irradiance, above the clouds (RGB node): what lights the clouds themselves. */
@@ -81,6 +100,24 @@ export class Sky {
   }
 
   /** The haze's optical depth from the camera along a ray rising dirY per metre, over distanceM (fog.fogOpticalDepth). */
+  /** The rain field (per-m extinction at world xz). Attach before any material is built (Clouds' constructor does). */
+  attachRain(extinctionAt: (xz: N) => N): void {
+    this.rainExtinctionAt = extinctionAt;
+  }
+
+  /**
+   * The falling rain's optical depth along a view path from the eye (four samples of the rain field): rain over the
+   * dunes greys them from the lineup even when none falls where you float. The sky's own rain is its shafts.
+   */
+  rainDepth(distanceM: N, rayDir: N): N {
+    const at = this.rainExtinctionAt;
+    if (!at) return float(0.0);
+    const n = 4;
+    let sum: N = float(0.0);
+    for (let k = 0; k < n; k++) sum = sum.add(at(cameraPosition.xz.add(rayDir.xz.mul(distanceM.mul((k + 0.5) / n)))));
+    return select(this.rainOn.greaterThan(0.5), sum.mul(distanceM.div(n)), float(0.0));
+  }
+
   fogDepth(dirY: N, distanceM: N): N {
     const H = this.fogTopM.div(3.0);
     const camH = this.luts.cameraHeightKm.mul(1000.0);
@@ -100,7 +137,7 @@ export class Sky {
     const g = 0.6;
     const phase = float((1 - g * g) / (4 * Math.PI)).div(pow(max(float(1 + g * g).sub(cosT.mul(2 * g)), 1e-4), 1.5));
     const sunThrough = this.cloudSunTransmittance.mul(exp(this.fogDepth(max(this.sunDirection.y, 0.0), float(1e6)).negate()));
-    return this.skyIrradiance.div(PI).mul(0.9).add(this.sunIlluminance.mul(sunThrough).mul(phase));
+    return this.hazeLight.add(this.sunIlluminance.mul(sunThrough).mul(phase));
   }
 
   /** Re-integrate the sky light after the clouds changed (the sun did not). */
@@ -152,7 +189,9 @@ export class Sky {
     const c = texture(sharp ? this.skyMap : this.skyMapSmall, uv).level(float(0));
     // Below the horizon no cloud stands between the eye and the (dome's) atmosphere.
     const clouds = select(dir.y.greaterThanEqual(0.0), c, vec4(0.0));
-    const sky = this.atmosphereRadiance(dir).mul(float(1.0).sub(clouds.a)).add(clouds.rgb);
+    // A lightning flash lights the cloud from inside around the strike (only where there is cloud to light).
+    const flash = this.flashRadiance.mul(clouds.a).mul(exp(float(1.0).sub(dot(dir, this.flashDir)).div(this.flashSpread).negate()));
+    const sky = this.atmosphereRadiance(dir).mul(float(1.0).sub(clouds.a)).add(clouds.rgb).add(flash);
     // The haze between the eye and the sky (none when the weather adds none: mix(fog, sky, 1) is exactly the sky).
     return mix(this.fogRadiance(dir), sky, exp(this.fogDepth(max(dir.y, 0.0), float(1e5)).negate()));
   }
@@ -167,7 +206,7 @@ export class Sky {
     const transmittance = exp(this.seaLevelExtinction.mul(distanceM.mul(0.001).mul(this.aerialScale)).negate());
     const horizonDir = normalize(vec3(rayDir.x, max(rayDir.y, 0.02), rayDir.z));
     const aerial = color.mul(transmittance).add(this.radiance(horizonDir).mul(vec3(1.0).sub(transmittance)));
-    return mix(this.fogRadiance(rayDir), aerial, exp(this.fogDepth(rayDir.y, distanceM).negate()));
+    return mix(this.fogRadiance(rayDir), aerial, exp(this.fogDepth(rayDir.y, distanceM).add(this.rainDepth(distanceM, rayDir)).negate()));
   }
 
   followCamera(position: THREE.Vector3): void {
