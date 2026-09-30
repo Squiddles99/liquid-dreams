@@ -1,5 +1,6 @@
 import { sanitizeConditions, wrapDegrees } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
+import { type SurferParams, sanitizeSurferParams } from '../surfer/surferParams';
 import { findReferenceMoment } from './referenceMoments';
 
 export type CameraMode = 'lineup' | 'free' | 'walk';
@@ -17,6 +18,11 @@ export interface Moment {
   camera: CameraPose;
   simTime: number;
   paused: boolean;
+  /**
+   * The stand's surfer, when it was on. Optional, so MOMENT_VERSION stays 1 and every older link still opens (the spec
+   * asked for a version bump, but the parser rejects any other version, which would break every saved link: ruling).
+   */
+  surfer?: SurferParams;
 }
 
 export const MOMENT_VERSION = 1;
@@ -79,6 +85,7 @@ function parseMomentLink(hash: string): Moment | string {
     camera,
     simTime: finite(o.simTime) ? Math.min(Math.max(o.simTime, 0), MAX_LINK_SIM_TIME_S) : 0,
     paused: o.paused === true,
+    ...(o.surfer !== undefined ? { surfer: sanitizeSurferParams(o.surfer) } : {}),
   };
 }
 

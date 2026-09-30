@@ -10,6 +10,9 @@ import { BOMBIE_X, BOMBIE_Z, type BombieWaves, type Burst, burstAt, burstWidthM,
 import { BombieMesh } from '../bombie/BombieMesh';
 import { surferFeetToHs } from '../conditions/units';
 import { DEFAULT_BOMBIE_PARAMS, type BombieParams, normalizeBombieParams } from '../bombie/bombieParams';
+import { placeAhead } from '../surfer/placement';
+import { DEFAULT_SURFER_PARAMS, type SurferParams, normalizeSurferParams } from '../surfer/surferParams';
+import { SurferStand } from '../surfer/SurferStand';
 import { DEFAULT_SOUND_PARAMS, type SoundParams, normalizeSoundParams } from '../sound/soundParams';
 import { SoundSystem } from '../sound/SoundSystem';
 import { ticksToHear } from '../sound/hits';
@@ -41,6 +44,7 @@ import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
 import { DEFAULT_PICTURE, type PictureParams, PicturePipeline } from '../render/PicturePipeline';
+import { withOnlyShown } from '../render/prewarm';
 import { bedHeightAt, buildBathymetry, downsample } from '../seabed/bathymetry';
 import { SHORE_X } from '../seabed/coastProfile';
 import { Seabed, WATERLINE_STEP_M } from '../seabed/Seabed';
@@ -130,6 +134,9 @@ export class App {
   readonly surfParams: SurfParams = { ...DEFAULT_SURF_PARAMS };
   /** Ellensbrook Bombie (Phase 4c-3): its folder, its white water, its arrival time from the reef field. */
   readonly bombieParams: BombieParams = { ...DEFAULT_BOMBIE_PARAMS };
+  /** The surfer on the stand (surfer spec §6): its folder and the board, body and pose on the water. */
+  readonly surferParams: SurferParams = { ...DEFAULT_SURFER_PARAMS };
+  readonly surferStand: SurferStand;
   readonly bombie: BombieMesh;
   private bombieTauS: number | null = null;
   private bombieTauField: ReefField | null = null;
@@ -310,6 +317,8 @@ export class App {
     this.land.setPlantFloor(this.plantFloor);
     this.scene.add(this.patch.mesh);
     for (const m of this.rocks.meshes) this.scene.add(m);
+    this.surferStand = new SurferStand(this.sky, (xz) => this.sunlight.visibilityNode(xz));
+    this.scene.add(this.surferStand.group);
     void this.land.load().then(() => this.onLandBuilt(), (e: unknown) => {
       console.warn(`The land didn't load (${e instanceof Error ? e.message : String(e)}); running without it.`);
     });
@@ -319,7 +328,7 @@ export class App {
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
         picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
-        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, sound: this.soundParams, soundStatus: this.sound.status, setStatus: this.setStatus, settingsMode: this.settingsMode,
+        overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, sound: this.soundParams, soundStatus: this.sound.status, surfer: this.surferParams, surferStatus: this.surferStand.status, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
         onConditions: () => this.onConditionsEdited(),
@@ -376,6 +385,19 @@ export class App {
           normalizeBombieParams(this.bombieParams);
           this.panel.refresh();
         },
+        onSurfer: () => {
+          normalizeSurferParams(this.surferParams);
+          this.panel.refresh();
+        },
+        onSurferPlaceAhead: () => {
+          Object.assign(this.surferParams, placeAhead(this.rig.getPose()));
+          this.panel.refresh();
+          this.scheduleSave();
+        },
+        onSurferChase: () => {
+          const pose = this.surferStand.chasePose(this.surferParams.headingDeg);
+          if (pose) this.rig.setPose(pose);
+        },
         onSound: () => {
           normalizeSoundParams(this.soundParams);
           this.panel.refresh();
@@ -431,6 +453,36 @@ export class App {
     return this.rig.camera;
   }
 
+  /**
+   * Builds, while the game loads, what would otherwise build on the frame it first shows. The first break: the breaking
+   * ribbon (its compute passes, footprint and material), the Bombie's white water, and the particles' birth passes
+   * (measured in the Electron probe on the RTX 4060, Andrew's 11 ft profile, it froze for 0.5–2.8 s building them). The
+   * land's arrival: the land, the rocks, the plants, the fine ground patch and the sunlight march (about 70 materials,
+   * 25–50 ms each: it froze for 2–3.4 s a few seconds in).
+   *
+   * The meshes are built by rendering the picture once, into a throwaway target, with only them shown (withOnlyShown),
+   * not by renderer.compileAsync: the scene pass renders nested inside the picture's pipeline, a different render context
+   * (part of every material's cache key), so what compileAsync built was built again when the ribbon first showed. The
+   * rocks, plants and patch already hold their final attributes (none laid yet: count 0 builds and draws nothing); the
+   * land draws its stand-in (Land.standIn), since its own geometry is empty until the land loads.
+   */
+  async prewarm(): Promise<void> {
+    const target = new THREE.RenderTarget(1, 1);
+    const landStandIn = this.land.standIn();
+    this.scene.add(landStandIn);
+    try {
+      const shown = [this.ribbon.mesh, this.bombie.mesh, landStandIn, this.patch.mesh, ...this.rocks.meshes, ...this.plants.meshes];
+      await withOnlyShown(this.scene, shown, async () => this.picture.render(target));
+    } finally {
+      this.scene.remove(landStandIn);
+      target.dispose();
+    }
+    await this.ribbon.compileAsync(this.renderer);
+    await this.spray.compileAsync(this.renderer);
+    await this.impact.compileAsync(this.renderer);
+    await this.land.sunlight.compileAsync(this.renderer);
+  }
+
   start(): void {
     this.renderer.setAnimationLoop(this.frame);
     this.sound.arm();
@@ -460,11 +512,18 @@ export class App {
     this.clouds.invalidate();
     this.cloudMeter.snapNext();
     this.ribbonKey = null;
+    if (m.surfer) {
+      assignParams(this.surferParams, m.surfer);
+      normalizeSurferParams(this.surferParams);
+    }
     this.panel.refresh();
   }
 
   currentMoment(): Moment {
-    return { conditions: cloneConditions(this.conditions), camera: this.rig.getPose(), simTime: this.clock.simTime, paused: this.clock.paused };
+    return {
+      conditions: cloneConditions(this.conditions), camera: this.rig.getPose(), simTime: this.clock.simTime, paused: this.clock.paused,
+      ...(this.surferParams.enabled ? { surfer: { ...this.surferParams } } : {}),
+    };
   }
 
   /** Latest GPU-sampled water height under the camera (holds while a readback is in flight). */
@@ -905,7 +964,7 @@ export class App {
     return {
       spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams, picture: this.pictureParams,
       maxFps: this.frameLimiter.maxFps, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams, overlays: this.overlays,
-      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, sound: this.soundParams,
+      breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, sound: this.soundParams, surfer: this.surferParams,
     };
   }
 
@@ -931,6 +990,7 @@ export class App {
     assignParams(this.landParams, look.land);
     assignParams(this.surfParams, look.surf);
     assignParams(this.bombieParams, look.bombie);
+    assignParams(this.surferParams, look.surfer);
   }
 
   /** Assign a look and push it into every subsystem. Callers then apply a moment, which rebuilds the spectrum and re-solves the field. */
@@ -944,6 +1004,7 @@ export class App {
     normalizeSetParams(this.setParams);
     normalizeSurfParams(this.surfParams);
     normalizeBombieParams(this.bombieParams);
+    normalizeSurferParams(this.surferParams);
     normalizeSoundParams(this.soundParams);
     this.sound.applyParams();
     this.surf.invalidate();
@@ -1110,6 +1171,8 @@ export class App {
       this.panel.setReference(name);
     }
     this.profile.visitLink();
+    // A #m= link made without the surfer opens with it off (surfer spec §6).
+    if (!m.surfer && location.hash.startsWith('#m=')) this.surferParams.enabled = false;
     this.applyMoment(m);
   }
 
@@ -1240,6 +1303,7 @@ export class App {
       this.setStatus.face = formatPeakFace(peakFace(this.field, events, this.clock.simTime, this.breakParams), this.field !== null);
       this.setStatus.psi = formatPeakPsi(peakPsi(this.field, events, this.clock.simTime, this.breakParams, this.offshoreMs), this.field !== null);
     }
+    this.surferStand.update(this.surferParams, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM);
     const probeXZ = this.rig.probeXZ;
     this.probe.setProbe(0, probeXZ.x, probeXZ.z);
     this.probe.update(this.renderer);

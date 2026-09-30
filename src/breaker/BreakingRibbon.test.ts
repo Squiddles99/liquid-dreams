@@ -161,6 +161,32 @@ describe('BreakingRibbon tint overlay', () => {
   });
 });
 
+describe('BreakingRibbon ahead of the first break', () => {
+  it('compiles its five compute passes and the footprint (into the footprint target), then restores the render target', async () => {
+    const sim = new OceanSimulation();
+    const grid = { x0: 0, z0: 0, cellM: 1, nx: 4, nz: 4 };
+    const bed = { grid, bed: new Float32Array(16).fill(-10), sand: new Float32Array(16), weed: new Float32Array(16) };
+    const ribbon = new BreakingRibbon(modelRibbonSurface(new WaterSurfaceModel(sim, new Seabed(bed), new SetWaves(sim.time))), DEFAULT_BREAK_PARAMS);
+    const outer = {} as THREE.RenderTarget;
+    let target: THREE.RenderTarget | null = outer;
+    const computes: unknown[][] = [];
+    const scenes: { scene: THREE.Object3D; target: THREE.RenderTarget | null }[] = [];
+    const renderer = {
+      compileComputeAsync: async (n: unknown[]) => { computes.push(n); },
+      compileAsync: async (scene: THREE.Object3D) => { scenes.push({ scene, target }); },
+      getRenderTarget: () => target,
+      setRenderTarget: (t: THREE.RenderTarget | null) => { target = t; },
+    } as unknown as THREE.WebGPURenderer;
+    await ribbon.compileAsync(renderer);
+    expect(computes.length).toBe(1);
+    expect(computes[0].length).toBe(5);
+    expect(scenes.length).toBe(1);
+    expect((scenes[0].scene as THREE.Scene).isScene).toBe(true);
+    expect(scenes[0].target).toBe(ribbon.footprintTarget);
+    expect(target).toBe(outer);
+  });
+});
+
 describe('BreakingRibbon mesh', () => {
   const V = VERTS_PER_STATION;
   it('indexes two triangles per quad over every station row pair, row by row', () => {

@@ -173,3 +173,27 @@ describe('the Sound folder (Phase 5)', () => {
     }
   });
 });
+
+import { SURFER_PARAM_RANGES } from '../surfer/surferParams';
+import { SURFER_BINDINGS } from './DevPanel';
+
+describe('Surfer folder bindings', () => {
+  it('match normalizeSurferParams’s ranges exactly', () => {
+    for (const k of Object.keys(SURFER_PARAM_RANGES) as (keyof typeof SURFER_PARAM_RANGES)[]) {
+      expect(SURFER_BINDINGS[k].min).toBe(SURFER_PARAM_RANGES[k].min);
+      expect(SURFER_BINDINGS[k].max).toBe(SURFER_PARAM_RANGES[k].max);
+    }
+  });
+});
+
+import { SURFER_PRESET_OPTIONS, surferBoardOptions } from './DevPanel';
+
+describe('the Surfer folder names the crew and lists only what each can ride (grommet spec §6)', () => {
+  it('labels the presets by nickname and real name', () => {
+    expect(SURFER_PRESET_OPTIONS).toEqual({ 'Shazza (Sharon)': 'female', 'T-Bone (Tom)': 'male', 'Grommet (Bradley)': 'grommet' });
+  });
+  it('lists the whole quiver for Shazza and T-Bone, only the bodyboard for Grommet', () => {
+    expect(Object.values(surferBoardOptions('male'))).toEqual(['thruster', 'stepUp', 'bodyboard']);
+    expect(surferBoardOptions('grommet')).toEqual({ bodyboard: 'bodyboard' });
+  });
+});

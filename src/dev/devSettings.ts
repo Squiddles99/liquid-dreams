@@ -17,6 +17,7 @@ import type { LandParams } from '../land/landParams';
 import type { SurfParams } from '../surf/surfModel';
 import type { BombieParams } from '../bombie/bombieParams';
 import type { SoundParams } from '../sound/soundParams';
+import type { SurferParams } from '../surfer/surferParams';
 import { type CameraPose, type Moment, parseCameraPose } from './momentLink';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, findReferenceMoment, type MomentKind } from './referenceMoments';
 
@@ -67,6 +68,7 @@ export interface DevLookParams {
   surf: SurfParams;
   bombie: BombieParams;
   sound: SoundParams;
+  surfer: SurferParams;
 }
 
 export interface DevSettings extends DevLookParams {
@@ -77,7 +79,7 @@ export interface DevSettings extends DevLookParams {
   reference: string;
 }
 
-export const LOOK_KEYS = ['spectrum', 'sim', 'water', 'atmosphere', 'picture', 'maxFps', 'sets', 'reef', 'shallow', 'overlays', 'breaking', 'foam', 'spray', 'impact', 'land', 'surf', 'bombie', 'sound'] as const satisfies readonly (keyof DevLookParams)[];
+export const LOOK_KEYS = ['spectrum', 'sim', 'water', 'atmosphere', 'picture', 'maxFps', 'sets', 'reef', 'shallow', 'overlays', 'breaking', 'foam', 'spray', 'impact', 'land', 'surf', 'bombie', 'sound', 'surfer'] as const satisfies readonly (keyof DevLookParams)[];
 
 type Plain = Record<string, unknown>;
 

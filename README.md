@@ -13,6 +13,8 @@ A surfing game built for the love of it. The first (and only) break is **The Wom
 - **The view back:** the land from the Ellensbrook terrain, the surf across the shore platform, and the swash on the sand.
 - **On foot:** walk the beach among the dune-toe rocks and up into the heath, with its shrubs, pigface and rice-flower.
 - **Ellensbrook Bombie:** about 450 m south-west, it goes off on its own waves on big days (6 ft and up). It's atmospheric background, not surfable.
+- **The surfers:** Shazza and T-Bone, late teens, built from MakeHuman's licence-free bodies, with a thruster, a step-up and a bodyboard. They dress for the season (boardies and bikinis in summer, springsuits and a rash vest either side, steamers in winter) and hold every key pose, backside and frontside. For now they're posed on the water with the dev panel's Surfer folder; riding comes next.
+- **Grommet:** Bradley, 13, the crew's bodyboarder: a wild ginger mop, thick black rectangular glasses (on land only), buck teeth, freckles and pimples. He rides only his bodyboard.
 - **Sound:**
   - lip impacts heard a beat after you see them, the white water's roar, and the shore break;
   - the Bombie's boom, wind in the scrub, lapping and swash;
@@ -75,6 +77,16 @@ Settings are remembered between visits.
   - the volumes: master, waves, ambience, near water and music;
   - mute;
   - the track playing, with music play/pause and next track.
+- **Surfer:** show the surfer, then pick who (Shazza (Sharon), T-Bone (Tom) or Grommet (Bradley)), regular or goofy, the board, the outfit (or the season's) and the pose.
+  - The board list shows only what that rider can ride: Grommet rides only his bodyboard, and a surfboard in an old link or setting switches to it.
+  - **On land** puts Grommet's glasses on and dries everyone's skin and hair (his curls loosen); off, they're wet from the water.
+  - The "wearing" readout says what the season picked.
+  - Heading turns the board, and the dials offset the pose: phase, compression, lean, twist and reach.
+  - Play runs the paddle stroke (and the bodyboard's kick) and the pop-up from the clock; turn it off to scrub the phase by hand.
+  - The balance layer adds the knees' give to the swell's heave, and its amount.
+  - x and z, the height nudge and the pitch nudge place the board.
+  - Buttons: **Place ahead of camera** (on the water 6 m in front of you, facing the way you look) and **Chase view** (the camera behind and above the surfer).
+  - Rebuilding the bodies from MakeHuman (Blender with MPFB): see `tools/surfer/README.md`.
 - **Reef, Ocean, Water, Sky, Picture:** the reef's depths, the sea and its optics, the atmosphere, and exposure and grading. The Reef folder has overlays for depth contours, crest lines and the ribbon tint.
 - **Frame rate:** capped at 60 fps. Picture → "max fps" changes it; 0 means the display's rate.
 
@@ -111,6 +123,9 @@ Pick one from the dev panel's Moment folder, or open `http://localhost:5173/#ref
 | `up-the-dune` | 08:45 standing at the toe, looking up the first dune rise into the backlit heath. |
 | `bombie-from-the-lineup` | 8 ft, from the lineup facing south-west: a Bombie burst 450 m out, its spray blowing back out to sea. |
 | `bombie-close` | 10 ft, from 30 m up and 120 m inshore of the Bombie: the burst over the reef, the white water rolling in. |
+| `surfer-lineup-sit` | 08:15 at the lineup: Shazza sitting on her thruster, nose out to the swell. |
+| `surfer-pocket-pigdog` | 5 ft, from the channel: T-Bone regular on the step-up, pig-dogging backside in the pocket under the lip. |
+| `surfer-pocket-frontside` | 5 ft, from the channel: Shazza goofy on the thruster, frontside in the pocket. |
 
 The moments come in three kinds, which matter in custom mode:
 - **Time of day** (`pre-dawn` to `sunset`): keep your own swell, tide and camera.

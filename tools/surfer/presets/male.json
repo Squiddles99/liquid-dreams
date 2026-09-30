@@ -1,0 +1,55 @@
+{
+  "name": "male",
+  "heightM": 1.78,
+  "bodyTriangles": 21000,
+  "macro": {
+    "gender": 1.0,
+    "age": 0.34375,
+    "muscle": 0.65,
+    "weight": 0.42,
+    "proportions": 0.8,
+    "height": 0.5
+  },
+  "hair": {
+    "style": "short",
+    "seed": 7
+  },
+  "boardies": true,
+  "outfits": [
+    "boardies",
+    "springsuit",
+    "shortArmSteamer"
+  ],
+  "preview": {
+    "skin": [
+      0.46,
+      0.3,
+      0.2
+    ],
+    "hair": [
+      0.3,
+      0.22,
+      0.12
+    ],
+    "fabric": [
+      0.1,
+      0.1,
+      0.12
+    ],
+    "boardies": [
+      0.08,
+      0.28,
+      0.3
+    ],
+    "rashie": [
+      0.05,
+      0.05,
+      0.06
+    ]
+  },
+  "smooth": [
+    "crotch"
+  ],
+  "face": {},
+  "browWeight": 1.6
+}
