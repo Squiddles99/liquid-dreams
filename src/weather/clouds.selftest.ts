@@ -4,6 +4,7 @@ import { fmt, registerSelfTest } from '../dev/selfTest';
 import { Sky } from '../sky/Sky';
 import { cloudDensity, lowLayer } from './cloudModel';
 import { meterLuminance } from './cloudMeter';
+import { fogExtinctionPerM, fogOpticalDepth } from './fog';
 import { Clouds } from './Clouds';
 import { CloudTextures, SHAPE_SIZE, WEATHER_SIZE } from './CloudTextures';
 import { WEATHER_PRESETS, type WeatherConditions } from './weather';
@@ -273,5 +274,46 @@ registerSelfTest({
     const still = await shadowGrid(renderer, clouds);
     const moved = mean(Array.from(a, (v, i) => Math.abs(v - b[i]))), unmoved = mean(Array.from(a, (v, i) => Math.abs(v - still[i])));
     return { pass: moved < 0.5 * unmoved, detail: `mean |Δ| against the pattern shifted 300 m downwind ${moved.toFixed(3)}, unshifted ${unmoved.toFixed(3)}` };
+  },
+});
+
+// ---- Visibility and sea mist (plan Task 7) ----
+
+registerSelfTest({
+  name: 'clouds: the GPU haze depth is the CPU reference (fog.fogOpticalDepth)',
+  async run(renderer) {
+    const { sky } = await skyRig(renderer, WEATHER_PRESETS['sea mist']);
+    const w = WEATHER_PRESETS['sea mist'];
+    const rays: [number, number][] = [[0, 500], [0.001, 2000], [0.05, 800], [0.3, 1e5], [-0.02, 300]];
+    const gpu = await readFloats(renderer, rays.length, (i: N) => {
+      let y: N = float(rays[0][0]), d: N = float(rays[0][1]);
+      for (let k = 1; k < rays.length; k++) { y = select(i.equal(uint(k)), float(rays[k][0]), y); d = select(i.equal(uint(k)), float(rays[k][1]), d); }
+      return sky.fogDepth(y, d);
+    });
+    const camH = Math.max(2, 1); // the rig's camera height (Sky clamps it to ≥ 1 m)
+    const cpu = rays.map(([y, d]) => fogOpticalDepth(camH, y, d, fogExtinctionPerM(w.visibilityKm), w.fogTopM));
+    const worst = Math.max(...cpu.map((c, i) => Math.abs(c - gpu[i]) / Math.max(c, 1e-6)));
+    return { pass: worst < 2e-3, detail: `cpu ${cpu.map((c) => c.toFixed(4)).join(' ')} gpu ${Array.from(gpu, (c) => c.toFixed(4)).join(' ')}` };
+  },
+});
+
+registerSelfTest({
+  name: 'clouds: sea mist whites out the horizon but not the sky overhead',
+  async run(renderer) {
+    const { sky } = await skyRig(renderer, WEATHER_PRESETS['sea mist']);
+    const horizon = vec3(-1, 0.0, 0), up = vec3(0, 1, 0);
+    // 0–2: the horizon's radiance; 3–5: the fog's own there; 6–8: the zenith; 9–11: the zenith's unfogged sky.
+    const v = await readFloats(renderer, 12, (i: N) => {
+      const k = i.mod(uint(3));
+      const pick = (c: N): N => select(k.equal(uint(0)), c.x, select(k.equal(uint(1)), c.y, c.z));
+      const zenithSky = sky.atmosphereRadiance(up).mul(float(1.0).sub(texture(sky.skyMap, vec2(0.5, 0.999)).level(float(0)).a))
+        .add(texture(sky.skyMap, vec2(0.5, 0.999)).level(float(0)).rgb);
+      return select(i.lessThan(uint(3)), pick(sky.radiance(horizon, true)),
+        select(i.lessThan(uint(6)), pick(sky.fogRadiance(horizon)),
+          select(i.lessThan(uint(9)), pick(sky.radiance(up, true)), pick(zenithSky))));
+    });
+    const lum = (o: number): number => 0.2126 * v[o] + 0.7152 * v[o + 1] + 0.0722 * v[o + 2];
+    const horizonOff = Math.abs(lum(0) - lum(3)) / lum(3), zenithKept = 1 - Math.abs(lum(6) - lum(9)) / lum(9);
+    return { pass: horizonOff < 0.05 && zenithKept > 0.3, detail: `horizon ${(horizonOff * 100).toFixed(1)}% from the fog's own light; zenith keeps ${(zenithKept * 100).toFixed(0)}% of its sky` };
   },
 });

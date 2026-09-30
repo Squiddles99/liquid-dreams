@@ -21,6 +21,8 @@ const SHADOW_SLICES = 4;
 export class CloudShadow implements SunlightSource {
   readonly texture: THREE.StorageTexture;
   private readonly row = uniform(0, 'uint');
+  /** The sun's transmittance through the weather's haze to sea level (Clouds sets it as the sun moves). */
+  readonly fogSun = uniform(1);
   private readonly slicePass: THREE.ComputeNode;
   private readonly allPass: THREE.ComputeNode;
   private readonly clearPass: THREE.ComputeNode;
@@ -89,7 +91,7 @@ export class CloudShadow implements SunlightSource {
 
   visibilityNode(xz: N): N {
     const uv = xz.add(SHADOW_SPAN_M / 2).div(SHADOW_SPAN_M);
-    return float(1.0).sub(texture(this.texture, clamp(uv, vec2(0.0), vec2(1.0))).level(float(0)).x);
+    return float(1.0).sub(texture(this.texture, clamp(uv, vec2(0.0), vec2(1.0))).level(float(0)).x).mul(this.fogSun);
   }
 }
 
