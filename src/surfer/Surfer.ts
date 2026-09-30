@@ -7,8 +7,9 @@ import type { Sky } from '../sky/Sky';
 import type { Outfit, SurferPreset } from './presets';
 import { BONES, type BoneName, type SkeletonRest, type SurferManifest, assertManifest, restFromManifest } from './rig';
 import type { SolvedPose } from './solvePose';
-import { type OutfitUniforms, bodyMaterial, eyesMaterial, fabricMaterial, hairMaterial, outfitUniforms } from './surferShading';
-import { outfitMasks } from './wardrobe';
+import { type OutfitUniforms, bodyMaterial, eyesMaterial, fabricMaterial, hairMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
+import { skinZones } from './skinDetail';
+import { landLook, outfitMasks, showsBoardies } from './wardrobe';
 
 type N = any;
 
@@ -22,6 +23,10 @@ export class Surfer {
   private readonly headCentre = uniform(new THREE.Vector3());
   private readonly fins: THREE.Mesh[] = [];
   private boardies: THREE.Object3D | null = null;
+  /** 0 dry … 1 wet: darkens and glosses the skin and hair, and tightens Grommet's curls (grommet spec §3). */
+  readonly wet = uniform(1);
+  /** Grommet's glasses (the frame and the lenses), shown only on land. */
+  private readonly glasses: THREE.Object3D[] = [];
 
   static async load(preset: SurferPreset, sky: Sky, sunVisibility?: (xz: N) => N): Promise<Surfer> {
     const base = import.meta.env.BASE_URL;
@@ -47,21 +52,32 @@ export class Surfer {
     const restQ = {} as Record<BoneName, THREE.Quaternion>;
     for (const b of BONES) restQ[b] = this.bones[b].getWorldQuaternion(new THREE.Quaternion());
     this.rest = restFromManifest(manifest, restQ);
+    // The head's centre at rest (as applyPose places it), so nothing renders with a centre at the origin before the
+    // first pose: the wet curls' pull would drag the hair toward the feet.
+    this.headCentre.value.copy(this.rest.joint.head).add(new THREE.Vector3(0, 0.09, 0.01));
     const materials: Record<string, () => THREE.Material> = {
-      body: () => bodyMaterial(sky, preset, this.outfit, sv),
-      hair: () => hairMaterial(sky, preset, this.headCentre, sv),
+      body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones: skinZones(manifest), wet: this.wet }),
+      hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
       eyes: () => eyesMaterial(sky, preset, sv),
       boardies: () => fabricMaterial(sky, preset.boardies, sv),
+      glasses: () => plasticMaterial(sky, [0.012, 0.012, 0.014], sv), // black plastic
+      lens: () => lensMaterial(sky, sv),
+      teeth: () => teethMaterial(sky, sv),
     };
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
-      const name = (mesh.material as THREE.Material).name;
-      const make = materials[name];
-      if (!make) throw new Error(`${preset.glbUrl}: unexpected material "${name}"`);
-      mesh.material = make();
+      // GLTFLoader gives a two-material mesh as a group of one-material meshes, but take an array too.
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const made = mats.map((mt) => {
+        const make = materials[mt.name];
+        if (!make) throw new Error(`${preset.glbUrl}: unexpected material "${mt.name}"`);
+        return make();
+      });
+      mesh.material = Array.isArray(mesh.material) ? made : made[0];
       mesh.frustumCulled = false;
-      if (name === 'boardies') this.boardies = mesh;
+      if (mats.some((mt) => mt.name === 'boardies')) this.boardies = mesh;
+      if (mats.some((mt) => mt.name === 'glasses' || mt.name === 'lens')) this.glasses.push(mesh);
     });
     // Swim fins ride the feet: placed in the rest pose at the sole, then held in each foot bone's frame. The pocket fits
     // this body's foot: the toes reach ~1.58× the ankle-to-toe-joint distance ahead of the ankle (both built bodies).
@@ -80,12 +96,20 @@ export class Surfer {
       foot.add(fin);
       this.fins.push(fin);
     }
+    this.setOnLand(false);
   }
 
   setOutfit(o: Outfit): void {
     const m = outfitMasks(o);
     for (const k of Object.keys(m) as (keyof typeof m)[]) this.outfit[k].value = m[k];
-    if (this.boardies) this.boardies.visible = o === 'boardies';
+    if (this.boardies) this.boardies.visible = showsBoardies(o);
+  }
+
+  /** On land: glasses on (only Grommet has any), hair and skin dry; in the water: wet, glasses off (grommet spec §6). */
+  setOnLand(on: boolean): void {
+    const look = landLook(on);
+    this.wet.value = look.wet;
+    for (const g of this.glasses) g.visible = look.glasses;
   }
 
   setSwimFins(on: boolean): void {

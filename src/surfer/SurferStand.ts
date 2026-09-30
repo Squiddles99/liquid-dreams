@@ -79,6 +79,7 @@ export class SurferStand {
     const outfit = outfitFor(preset, p.outfit, dateISO);
     s.setOutfit(outfit);
     s.setSwimFins(p.board === 'bodyboard');
+    s.setOnLand(p.onLand);
     this.status.outfit = OUTFIT_LABELS[outfit];
 
     const bal = p.balance ? balanceAt(seed, simTime, p.balanceAmount, this.heave) : null;

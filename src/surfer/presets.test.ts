@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeBoard } from '../board/boardSpec';
-import { PRESETS, boardFor, boardLookFor } from './presets';
+import { PRESETS, boardFor, boardLookFor, boardsFor } from './presets';
 
 describe('presets (spec §4.1, §5.1)', () => {
   it('are two late-teen surfers of the planned heights, one regular and one goofy by default', () => {
@@ -15,5 +15,29 @@ describe('presets (spec §4.1, §5.1)', () => {
   it('merge a preset’s board colours over the defaults', () => {
     expect(boardLookFor(PRESETS.female, 'bodyboard').deck).toEqual(PRESETS.female.boardLooks.bodyboard!.deck);
     expect(boardLookFor(PRESETS.female, 'thruster').padLengthM).toBe(0.3);
+  });
+});
+
+describe('Grommet (grommet spec §2, §6)', () => {
+  it('is 1.52 m, named Grommet (Bradley), and rides only a 38 in bodyboard', () => {
+    const g = PRESETS.grommet;
+    expect([g.heightM, g.nickname, g.realName]).toEqual([1.52, 'Grommet', 'Bradley']);
+    expect(boardsFor(g)).toEqual(['bodyboard']);
+    expect(boardFor(g, 'bodyboard').lengthM).toBeCloseTo(38 * 0.0254, 9);
+    expect(() => boardFor(g, 'thruster')).toThrow(/grommet.*thruster/);
+  });
+  it('names the other two, and keeps their quivers', () => {
+    expect([PRESETS.female.nickname, PRESETS.female.realName, PRESETS.male.nickname, PRESETS.male.realName]).toEqual(['Shazza', 'Sharon', 'T-Bone', 'Tom']);
+    expect(boardsFor(PRESETS.male)).toEqual(['thruster', 'stepUp', 'bodyboard']);
+  });
+  it('gives only Grommet freckles, sunburn and curls that tighten when wet', () => {
+    for (const k of ['freckles', 'sunburn', 'curlTighten'] as const) {
+      expect(PRESETS.female[k]).toBe(0);
+      expect(PRESETS.male[k]).toBe(0);
+      expect(PRESETS.grommet[k]).toBeGreaterThan(0);
+    }
+  });
+  it('loads from surfer/grommet.glb and its manifest (the same scheme as the others)', () => {
+    expect([PRESETS.grommet.glbUrl, PRESETS.grommet.manifestUrl]).toEqual(['surfer/grommet.glb', 'surfer/grommet.manifest.json']);
   });
 });
