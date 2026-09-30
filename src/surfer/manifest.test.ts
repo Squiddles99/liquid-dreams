@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { glbFloats } from './glbData';
+import { glbFloats, glbValues } from './glbData';
+import { FACE_CHANNELS } from './idleLife';
 import { PRESETS } from './presets';
 import { BONES, type SurferManifest, manifestProblems } from './rig';
 
@@ -23,11 +24,68 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       expect(gltf.skins.length).toBe(1);
       expect(gltf.skins[0].joints.map((i: number) => gltf.nodes[i].name).sort()).toEqual([...BONES].sort());
     });
-    it('keeps the body within budget (≤ 24k triangles, ≤ 4 materials; ≤ 40k in all)', () => {
+    it('keeps within budget: the body ≤ 30k triangles and ≤ 4 materials, each hair mesh ≤ 150k, ≤ 260k in all (closeup ruling 2)', () => {
       const body = man.meshes.find((m) => m.materials.includes('body'))!;
-      expect(body.triangles).toBeLessThanOrEqual(24000);
+      expect(body.triangles).toBeLessThanOrEqual(30000);
       expect(body.materials.length).toBeLessThanOrEqual(4);
-      expect(man.meshes.reduce((s, m) => s + m.triangles, 0)).toBeLessThanOrEqual(40000);
+      for (const m of man.meshes.filter((x) => x.materials.some((n) => n.startsWith('hair')))) expect(m.triangles, m.name).toBeLessThanOrEqual(150000);
+      expect(man.meshes.reduce((s, m) => s + m.triangles, 0)).toBeLessThanOrEqual(260000);
+    });
+    it('has a dry hairstyle for land where the preset names one (Shazza, T-Bone; Grommet dries his curls in the shader)', () => {
+      const dry = man.meshes.filter((m) => m.materials.includes('hairDry'));
+      expect(dry.length).toBe(name === 'grommet' ? 0 : 1);
+    });
+    it('carries the nine face morphs on every body primitive, by name (closeup spec §4.1)', () => {
+      const body = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'body'));
+      expect(body.extras?.targetNames).toEqual([...FACE_CHANNELS]);
+      for (const p of body.primitives) expect(p.targets?.length).toBe(FACE_CHANNELS.length);
+      // At rest, every morph is off: a default weight of 1 had her resting with every expression on at once.
+      expect((body.weights ?? []).every((w: number) => w === 0)).toBe(true);
+      expect(man.meshes.find((m) => m.materials.includes('body'))!.morphs).toEqual([...FACE_CHANNELS]);
+    });
+    it('keeps the head at full resolution (≥ 5,000 triangles weighted to the head)', () => {
+      expect(man.headTriangles).toBeGreaterThanOrEqual(5000);
+    });
+    it('closes the lids over the eyes at a blink, and opens them at rest (the build’s ray check; closeup spec §4.1)', () => {
+      expect(man.checks).toEqual({ blinkCovers: true, eyesOpen: true });
+    });
+    it('writes the face landmarks, with eyeballs fitted to MPFB’s eye helper (14–17.5 mm once scaled to height)', () => {
+      expect(man.landmarks).toBeDefined();
+      expect(man.landmarks!.eyeRadius).toBeGreaterThan(0.014);
+      expect(man.landmarks!.eyeRadius).toBeLessThan(0.0175);
+    });
+    it('keeps lashes on the body (their own material) and teeth whose lower row drops with the jaw', () => {
+      const body = man.meshes.find((m) => m.materials.includes('body'))!;
+      expect(body.materials).toEqual(['body', 'lashes']);
+      const teeth = man.meshes.find((m) => m.materials.includes('teeth'));
+      expect(teeth?.morphs).toEqual(['jawOpen']);
+      const mesh = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'teeth'));
+      for (const p of mesh.primitives) expect(p.targets?.length).toBe(1);
+    });
+    it('grows each upper lash from the lid all along it, to the preset’s length (final review: per-lash root → tip)', () => {
+      const path = `public/surfer/${name}.glb`;
+      const want = JSON.parse(readFileSync(`tools/surfer/presets/${name}.json`, 'utf8')).lashes.upper as number;
+      const body = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'lashes'));
+      const prim = body.primitives.find((p: any) => gltf.materials[p.material].name === 'lashes');
+      const pos = glbFloats(path, gltf, prim.attributes.POSITION), col = glbValues(path, gltf, prim.attributes.COLOR_0);
+      for (const side of [1, -1]) {
+        const up: number[] = [];
+        for (let i = 0; i < pos.length / 3; i++) if (col[4 * i + 2] > 0.5 && Math.sign(pos[3 * i]) === side) up.push(i);
+        const roots = up.filter((i) => col[4 * i] < 0.05), tips = up.filter((i) => col[4 * i] > 0.95);
+        const along = roots.map((i) => col[4 * i + 1]);
+        expect(Math.max(...along) - Math.min(...along), `${name} ${side} roots along the lid`).toBeGreaterThan(0.75);
+        const reach = Math.max(...tips.map((i) => Math.min(...roots.map((j) => Math.hypot(pos[3 * i] - pos[3 * j], pos[3 * i + 1] - pos[3 * j + 1], pos[3 * i + 2] - pos[3 * j + 2])))));
+        expect(reach, `${name} ${side} lash length`).toBeGreaterThan(0.8 * want);
+      }
+    });
+    it('puts the teeth in the mouth: behind the lip’s front, ahead of the mouth’s centre', () => {
+      const path = `public/surfer/${name}.glb`;
+      const mesh = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'teeth'));
+      const f = glbFloats(path, gltf, mesh.primitives[0].attributes.POSITION);
+      let front = -Infinity;
+      for (let i = 2; i < f.length; i += 3) front = Math.max(front, f[i]);
+      expect(front).toBeLessThan(man.landmarks!.lipFront[2] - 0.0005);
+      expect(front).toBeGreaterThan(man.landmarks!.mouth[2]);
     });
     it('carries the wardrobe masks on the body (TEXCOORD_1–3), and hair and eyes', () => {
       const matName = (i: number): string => gltf.materials[i].name;
@@ -74,6 +132,25 @@ describe('the grommet build (grommet spec §2, §5, §7)', () => {
     const pos = gltf.accessors[body.primitives[0].attributes.POSITION];
     expect(pos.min[1]).toBeCloseTo(0, 2);
     expect(pos.max[1]).toBeCloseTo(1.52, 2);
+  });
+});
+
+describe("Shazza's hair (closeup spec §3)", () => {
+  const man: SurferManifest = JSON.parse(readFileSync('public/surfer/female.manifest.json', 'utf8'));
+  const gltf = glbJson('public/surfer/female.glb');
+  const box = (material: string): any => {
+    const mesh = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === material));
+    return gltf.accessors[mesh.primitives[0].attributes.POSITION];
+  };
+  it('wet: many fine cards (≥ 2,500 cards, i.e. ≥ 25k triangles)', () => {
+    expect(man.meshes.find((m) => m.materials.includes('hair'))!.triangles).toBeGreaterThanOrEqual(25000);
+  });
+  it('dry: long, past the shoulders, and falling wider than her head', () => {
+    const dry = box('hairDry'), shoulder = man.bones.find((b) => b.name === 'upperarm_l')!.head[1];
+    expect(dry.min[1]).toBeLessThan(shoulder - 0.08);
+    const ears = man.landmarks!.ears;
+    expect(dry.max[0]).toBeGreaterThan(ears[0][0] + 0.01);
+    expect(dry.min[0]).toBeLessThan(ears[1][0] - 0.01);
   });
 });
 

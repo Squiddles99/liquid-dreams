@@ -36,7 +36,8 @@ def landmarks(body, rig, height, found, coords):
     lip_band = [p for p in head_pts if mouth is not None and abs(p.x - mouth.x) < 0.008 and abs(p.z - mouth.z - 0.004) < 0.006]
     lip_front = min(lip_band, key=lambda p: p.y) if lip_band else None
     return {"height": height, "head_centre": centre, "head_radius": radius, "eye_z": eye_z, "eyes": eyes, "mouth": mouth,
-            "ears": ears, "nose": nose, "lip_front": lip_front, "upper_teeth": found.get("upper_teeth")}
+            "ears": ears, "nose": nose, "lip_front": lip_front, "upper_teeth": found.get("upper_teeth"),
+            "lower_teeth": found.get("lower_teeth"), "eye_radius": found.get("eye_radius", 0.0115)}
 
 
 def bone_weights(body, rig):

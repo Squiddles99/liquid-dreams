@@ -328,33 +328,125 @@
  "meshes": [
   {
    "name": "male_body",
-   "triangles": 21000,
+   "triangles": 27000,
    "materials": [
-    "body"
+    "body",
+    "lashes"
+   ],
+   "morphs": [
+    "blinkL",
+    "blinkR",
+    "jawOpen",
+    "smile",
+    "browsUp",
+    "browsInner",
+    "squint",
+    "nostrils",
+    "breathe"
    ]
   },
   {
    "name": "male_hair",
-   "triangles": 9000,
+   "triangles": 16000,
    "materials": [
     "hair"
    ]
   },
   {
    "name": "male_eyes",
-   "triangles": 1440,
+   "triangles": 2944,
    "materials": [
     "eyes"
    ]
   },
   {
+   "name": "male_hairDry",
+   "triangles": 20400,
+   "materials": [
+    "hairDry"
+   ]
+  },
+  {
+   "name": "male_teeth",
+   "triangles": 704,
+   "materials": [
+    "teeth"
+   ],
+   "morphs": [
+    "jawOpen"
+   ]
+  },
+  {
    "name": "male_boardies",
-   "triangles": 1189,
+   "triangles": 1240,
    "materials": [
     "boardies"
+   ],
+   "morphs": [
+    "blinkL",
+    "blinkR",
+    "jawOpen",
+    "smile",
+    "browsUp",
+    "browsInner",
+    "squint",
+    "nostrils",
+    "breathe"
    ]
   }
  ],
  "blender": "5.2.2 LTS",
- "mpfb": "2.0.17"
+ "mpfb": "2.0.17",
+ "landmarks": {
+  "eyes": [
+   [
+    0.03245,
+    1.65912,
+    0.13835
+   ],
+   [
+    -0.03245,
+    1.65912,
+    0.13835
+   ]
+  ],
+  "ears": [
+   [
+    0.09492,
+    1.65383,
+    0.04024
+   ],
+   [
+    -0.09492,
+    1.65383,
+    0.04024
+   ]
+  ],
+  "nose": [
+   0.0,
+   1.61729,
+   0.18436
+  ],
+  "mouth": [
+   -0.0,
+   1.58432,
+   0.13622
+  ],
+  "lipFront": [
+   0.0,
+   1.58917,
+   0.17803
+  ],
+  "teethFront": [
+   0.0,
+   1.59944,
+   0.16028
+  ],
+  "eyeRadius": 0.01611
+ },
+ "headTriangles": 8456,
+ "checks": {
+  "blinkCovers": true,
+  "eyesOpen": true
+ }
 }

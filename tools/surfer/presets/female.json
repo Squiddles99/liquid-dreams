@@ -1,7 +1,7 @@
 {
   "name": "female",
   "heightM": 1.65,
-  "bodyTriangles": 21000,
+  "bodyTriangles": 27000,
   "macro": {
     "gender": 0.0,
     "age": 0.34375,
@@ -14,7 +14,9 @@
   },
   "hair": {
     "style": "ponytail",
-    "seed": 11
+    "seed": 11,
+    "inset": 0.008,
+    "aoReach": 0.018
   },
   "boardies": false,
   "outfits": [
@@ -54,20 +56,55 @@
     "nipples"
   ],
   "face": {
-    "l-eye-scale-incr": 0.35,
-    "r-eye-scale-incr": 0.35,
-    "nose-scale-horiz-decr": 0.35,
-    "nose-point-width-decr": 0.3,
-    "nose-volume-decr": 0.25,
-    "nose-point-up": 0.2,
-    "mouth-lowerlip-volume-incr": 0.35,
-    "mouth-upperlip-volume-incr": 0.3,
-    "mouth-cupidsbow-incr": 0.3,
-    "l-cheek-bones-incr": 0.3,
-    "r-cheek-bones-incr": 0.3,
-    "chin-width-decr": 0.3,
-    "head-oval": 0.5,
-    "head-fat-decr": 0.2
+    "l-eye-scale-incr": 0.3,
+    "r-eye-scale-incr": 0.3,
+    "l-eye-corner2-up": 0.3,
+    "r-eye-corner2-up": 0.3,
+    "l-eye-height2-incr": 0.2,
+    "r-eye-height2-incr": 0.2,
+    "nose-scale-horiz-decr": 0.4,
+    "nose-point-width-decr": 0.45,
+    "nose-volume-decr": 0.3,
+    "nose-point-up": 0.25,
+    "nose-scale-vert-decr": 0.2,
+    "nose-nostrils-width-decr": 0.25,
+    "mouth-cupidsbow-incr": 0.5,
+    "mouth-scale-horiz-decr": 0.1,
+    "l-cheek-bones-incr": 0.45,
+    "r-cheek-bones-incr": 0.45,
+    "l-cheek-volume-incr": 0.2,
+    "r-cheek-volume-incr": 0.2,
+    "chin-width-decr": 0.45,
+    "chin-height-decr": 0.3,
+    "chin-prominent-incr": 0.1,
+    "head-oval": 0.6,
+    "head-fat-decr": 0.35,
+    "forehead-scale-vert-decr": 0.3,
+    "l-ear-wing-decr": 0.5,
+    "r-ear-wing-decr": 0.5,
+    "l-ear-scale-decr": 0.2,
+    "r-ear-scale-decr": 0.2,
+    "mouth-scale-depth-decr": 0.3,
+    "mouth-lowerlip-height-decr": 0.15,
+    "nose-scale-depth-decr": 0.15,
+    "head-scale-horiz-decr": 0.25,
+    "head-invertedtriangular": 0.4,
+    "head-age-decr": 0.25,
+    "mouth-trans-up": 0.1,
+    "chin-bones-decr": 0.3
   },
-  "browWeight": 1.0
+  "browWeight": 1.6,
+  "teeth": "even",
+  "lashes": {
+    "upper": 0.0105,
+    "lower": 0.0045,
+    "curl": 0.004
+  },
+  "dryHair": {
+    "style": "waves",
+    "seed": 21,
+    "partX": 0.006,
+    "inset": 0.008,
+    "aoReach": 0.028
+  }
 }

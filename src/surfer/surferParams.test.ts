@@ -45,6 +45,23 @@ describe('play (Andrew, gate 2: the bodyboarder needs to kick his fins to move)'
   });
 });
 
+describe('the face (closeup spec §5.2)', () => {
+  it('starts with idle life on, the manual face off and its dials at rest', () => {
+    expect(DEFAULT_SURFER_PARAMS).toMatchObject({ idle: true, faceManual: false, faceBlink: 0, faceSmile: 0, faceJaw: 0, faceBrows: 0, faceSquint: 0, gazeYawDeg: 0, gazePitchDeg: 0 });
+  });
+  it('opens old links (no face keys) with the defaults, and repairs junk', () => {
+    const old = sanitizeSurferParams({ preset: 'male', pose: 'sit' });
+    expect([old.idle, old.faceManual, old.faceSmile]).toEqual([true, false, 0]);
+    const junk = sanitizeSurferParams({ idle: 0, faceManual: 'yes', faceSmile: 7, faceBlink: Number.NaN, gazeYawDeg: -40 });
+    expect(junk.idle).toBe(true);
+    expect(junk.faceManual).toBe(false);
+    expect(junk.faceSmile).toBe(1);
+    expect(junk.faceBlink).toBe(0);
+    expect(junk.gazeYawDeg).toBe(SURFER_PARAM_RANGES.gazeYawDeg.min);
+    expect(sanitizeSurferParams({ idle: false }).idle).toBe(false);
+  });
+});
+
 describe('Grommet in settings and links (grommet Review Focus 1)', () => {
   it('repairs Grommet on a surfboard to his bodyboard and a pose that exists on it', () => {
     const p = sanitizeSurferParams({ preset: 'grommet', board: 'thruster', pose: 'bottomTurn' });

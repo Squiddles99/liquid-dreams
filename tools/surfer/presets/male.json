@@ -1,7 +1,7 @@
 {
   "name": "male",
   "heightM": 1.78,
-  "bodyTriangles": 21000,
+  "bodyTriangles": 27000,
   "macro": {
     "gender": 1.0,
     "age": 0.34375,
@@ -12,7 +12,9 @@
   },
   "hair": {
     "style": "short",
-    "seed": 7
+    "seed": 7,
+    "inset": 0.008,
+    "aoReach": 0.02
   },
   "boardies": true,
   "outfits": [
@@ -51,5 +53,16 @@
     "crotch"
   ],
   "face": {},
-  "browWeight": 1.6
+  "browWeight": 1.6,
+  "teeth": "even",
+  "lashes": {
+    "upper": 0.0085,
+    "lower": 0.0045,
+    "curl": 0.0025
+  },
+  "dryHair": {
+    "style": "tousled",
+    "seed": 17,
+    "inset": 0.008
+  }
 }
