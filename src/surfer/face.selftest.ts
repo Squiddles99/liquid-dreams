@@ -102,3 +102,33 @@ registerSelfTest({
     return { pass: grin > 80, detail: `${grin} teeth px at his resting grin` };
   },
 });
+
+registerSelfTest({
+  name: "hair: Shazza's dry crown is solid at the roots (the cards' root → tip read the right way round)",
+  async run(renderer) {
+    const s = await Surfer.load(PRESETS.female, litSky(renderer));
+    s.setOnLand(true);
+    const body = s.group.getObjectByProperty('name', 'female_body')!;
+    const eyes = s.group.getObjectByProperty('name', 'female_eyes')!;
+    body.visible = false;
+    eyes.visible = false;
+    // From the front, just inside the crown's outline, where only a layer or two of cards (their roots) cover it:
+    // from above, ten layers hide any holes.
+    const crown = s.rest.joint.head.clone().add(new THREE.Vector3(0, 0.1, 0.0));
+    const size = 96;
+    const px = await renderCloseUp(renderer, s, crown, crown.clone().add(new THREE.Vector3(0, 0.02, 0.6)), 22, size);
+    body.visible = true;
+    eyes.visible = true;
+    let solid = 0, n = 0;
+    for (let x = 30; x < 66; x++) {
+      let top = -1;
+      for (let y = size - 1; y >= 0; y--) if (px[4 * (y * size + x) + 3] > 0.5) { top = y; break; }
+      if (top < 8) continue;
+      for (let y = top - 2; y > top - 8; y--) {
+        n++;
+        if (px[4 * (y * size + x) + 3] > 0.5) solid++;
+      }
+    }
+    return { pass: n > 100 && solid / n > 0.97, detail: `${((100 * solid) / Math.max(1, n)).toFixed(1)}% of ${n} px just inside the crown's outline covered by hair` };
+  },
+});

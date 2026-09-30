@@ -65,7 +65,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
       stepUp: { lengthIn: 76, widthIn: 19, thicknessIn: 2.5 },
       bodyboard: { lengthIn: 40, widthIn: 21, thicknessIn: 2.625 },
     },
-    skin: [0.52, 0.34, 0.24], tan: 0.35, brows: [0.16, 0.1, 0.055], lips: [0.42, 0.15, 0.14], iris: [0.12, 0.2, 0.22], hairRoot: [0.13, 0.085, 0.04], hairTip: [0.52, 0.4, 0.23],
+    skin: [0.5, 0.35, 0.27], tan: 0.35, brows: [0.085, 0.055, 0.032], lips: [0.46, 0.2, 0.19], iris: [0.1, 0.19, 0.24], hairRoot: [0.2, 0.14, 0.075], hairTip: [0.56, 0.44, 0.26],
     fabric: [0.55, 0.12, 0.1], rashie: [0.02, 0.12, 0.55], neopreneAccent: [0.1, 0.35, 0.45], boardies: [0.1, 0.2, 0.4],
     freckles: 0, sunburn: 0, curlTighten: 0,
     blush: 0.45, eyeShadow: 0.5, stubble: 0, lipGloss: 0.7, irisMm: 6.1, pupilMm: 2.1,

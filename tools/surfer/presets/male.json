@@ -12,7 +12,9 @@
   },
   "hair": {
     "style": "short",
-    "seed": 7
+    "seed": 7,
+    "inset": 0.008,
+    "aoReach": 0.02
   },
   "boardies": true,
   "outfits": [
@@ -60,6 +62,7 @@
   },
   "dryHair": {
     "style": "tousled",
-    "seed": 17
+    "seed": 17,
+    "inset": 0.008
   }
 }

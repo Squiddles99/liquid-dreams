@@ -54,10 +54,12 @@ hair_obj = hair.build(body, rig, preset["hair"], L, coords, name)
 eye_obj = hair.eyes(rig, L, name)
 face.colour_eyes(eye_obj, L)
 rig_trim.single_material(hair_obj, "hair")
+hair.bake_ao(hair_obj, body, L["head_centre"], reach=preset["hair"].get("aoReach", 0.045))
 dry_obj = None
 if preset.get("dryHair"):
     dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name)
     rig_trim.single_material(dry_obj, "hairDry")
+    hair.bake_ao(dry_obj, body, L["head_centre"], reach=preset["dryHair"].get("aoReach", 0.045))
 rig_trim.single_material(eye_obj, "eyes")
 parts = [body, hair_obj, eye_obj] + ([dry_obj] if dry_obj else [])
 if preset.get("glasses"):

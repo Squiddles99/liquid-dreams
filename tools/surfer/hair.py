@@ -20,14 +20,15 @@ def _hug(p, centre, r_min, r_max):
     return centre + q.normalized() * min(max(q.length, r_min), r_max)
 
 
-def _is_scalp(co, centre, eye_z):
+def _is_scalp(co, centre, eye_z, inset=0.0):
     # The face is toward -Y in Blender. The hairline sits well above the brow at the front, above the ears at the
-    # sides, and down to the nape at the back.
+    # sides, and down to the nape at the back. `inset`: roots that far inside it, so the cards' alpha-tested root ends
+    # sit on painted hair and the soft painted hairline is the one that shows (closeup spec §3).
     if co.y < centre.y - 0.02:
-        return co.z > eye_z + 0.065
+        return co.z > eye_z + 0.065 + inset
     if co.y > centre.y + 0.015:
-        return co.z > eye_z - 0.05
-    return co.z > eye_z + 0.025
+        return co.z > eye_z - 0.05 + inset
+    return co.z > eye_z + 0.025 + inset
 
 
 def _short(root, n, centre, crown, rng):
@@ -103,17 +104,29 @@ def _frizz(base, centre, rng):
     return [base, base + d * length * 0.5, base + d * length]
 
 
-def _cards_object(cards, centre, rig, name, skin=None):
-    verts, faces, uvs = [], [], []
+def _cards_object(cards, centre, rig, name, skin=None, seed=0):
+    verts, faces, uvs, tone, rootd = [], [], [], [], []
+    rng = random.Random(seed + 7)
     for pts, width in cards:
         k, base = len(pts) - 1, len(verts)
+        t = rng.random()
+        along = 0.0
         for i, p in enumerate(pts):
+            if i > 0:
+                along += (p - pts[i - 1]).length
             tangent = (pts[min(i + 1, k)] - pts[max(i - 1, 0)]).normalized()
-            side = tangent.cross((p - centre).normalized())
+            # Out from the head's centre on the head; below it (long hair), out from the fall, so the cards lie flat
+            # against the body's outline instead of twisting edge-on.
+            out = p - centre
+            if p.z < centre.z - 0.05:
+                out = Vector((out.x, out.y, 0.0))
+            side = tangent.cross(out.normalized() if out.length > 1e-6 else Vector((0, -1, 0)))
             side = side.normalized() if side.length > 1e-6 else tangent.orthogonal().normalized()
             half = width * 0.5 * (1 - 0.5 * i / k)
             verts += [p - side * half, p + side * half]
             uvs += [(0.0, i / k), (1.0, i / k)]
+            tone += [t, t]
+            rootd += [min(1.0, along / 0.012)] * 2
         for i in range(k):
             a = base + 2 * i
             faces.append((a, a + 2, a + 3, a + 1))
@@ -123,6 +136,11 @@ def _cards_object(cards, centre, rig, name, skin=None):
     for poly in me.polygons:
         for li in poly.loop_indices:
             uv.data[li].uv = uvs[me.loops[li].vertex_index]
+    # COLOR_0.r: one random per card, so the shader can vary each lock's shade (a smooth helmet otherwise).
+    col = me.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="POINT")
+    for i, t in enumerate(tone):
+        col.data[i].color = (t, 1.0, rootd[i], 1.0)  # R the card's tone, G occlusion (bake_ao), B 0 → 1 over the first 12 mm
+    me.color_attributes.active_color = col
     obj = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(obj)
     if skin is None:
@@ -142,7 +160,8 @@ def _cards_object(cards, centre, rig, name, skin=None):
 def build(body, rig, style, L, coords, name):
     rng = random.Random(style["seed"])
     centre, eye_z = L["head_centre"], L["eye_z"]
-    scalp = [v for v, (b, _) in zip(body.data.vertices, coords) if b == "head" and _is_scalp(v.co, centre, eye_z)]
+    inset = style.get("inset", 0.0)
+    scalp = [v for v, (b, _) in zip(body.data.vertices, coords) if b == "head" and _is_scalp(v.co, centre, eye_z, inset)]
     if len(scalp) < 50:
         raise SystemExit(f"only {len(scalp)} scalp vertices found; check the head landmarks")
 
@@ -168,10 +187,17 @@ def build(body, rig, style, L, coords, name):
         tree = _body_tree(body)
         neck_z = rig.data.bones["neck"].head_local.z
         part_x = style.get("partX", 0.006)
-        for _ in range(2300):
+        # Locks: every card belongs to the nearest of ~70 clump centres on the scalp and shares its wave, so the waves
+        # read as locks rather than a frizz of cards each on its own phase.
+        clumps = []
+        for _ in range(70):
+            c, _n = pick()
+            clumps.append((c, rng.uniform(0, 2 * math.pi), rng.uniform(0.1, 0.14), rng.uniform(0.01, 0.017), rng.uniform(0.36, 0.46)))
+        for _ in range(2400):
             root, n = pick()
-            cards.append((_wave(root, n, centre, eye_z, neck_z, part_x, rng, tree), rng.uniform(0.011, 0.015)))
-        return _cards_object(cards, centre, rig, f"{name}_hairDry", skin=_long_skin(rig))
+            clump = min(clumps, key=lambda cl: (cl[0] - root).length_squared)
+            cards.append((_wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump), rng.uniform(0.009, 0.013)))
+        return _cards_object(cards, centre, rig, f"{name}_hairDry", skin=_long_skin(rig), seed=style["seed"])
     elif style["style"] == "ponytail":
         # Wet and slicked back to the tie: many fine cards (closeup spec §3), so the combed lines read as hair.
         tie = centre + Vector((0, L["head_radius"] * 0.95, -0.01))
@@ -191,7 +217,7 @@ def build(body, rig, style, L, coords, name):
             cards.append((_frizz(lock[rng.randint(8, 15)], centre, rng), 0.006))
     else:
         raise SystemExit(f"unknown hair style {style['style']}")
-    return _cards_object(cards, centre, rig, f"{name}_hair" + ("Dry" if style.get("dry") else ""))
+    return _cards_object(cards, centre, rig, f"{name}_hair" + ("Dry" if style.get("dry") else ""), seed=style["seed"])
 
 
 def _tousled(root, n, centre, crown, eye_z, rng):
@@ -219,16 +245,20 @@ def _body_tree(body):
     return BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
 
 
-def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree):
+def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump):
     """One long dry lock: over the scalp away from the part, then down past the shoulders in a loose helix (a beach
-    wave), pushed out of the body wherever it would pass inside (1 cm clear)."""
-    length = rng.uniform(0.34, 0.46)
-    seg = 0.022
+    wave) shared with its clump, pushed out of the body wherever it would pass inside (1 cm clear). Sampled finely in
+    the fall (7+ points a wave; fewer drew zig-zags)."""
+    _, phase0, wl0, amp0, len0 = clump
+    length = len0 + rng.uniform(-0.02, 0.02)
+    seg = 0.026
     side = 1.0 if root.x >= part_x else -1.0
+    # The front of the hairline frames the face: those locks sweep down beside the cheeks, not back behind the ears.
+    front = root.y < centre.y - 0.035
     r0 = (root - centre).length
     pts = [root + n * 0.002]
-    phase, wl = rng.uniform(0, 2 * math.pi), rng.uniform(0.05, 0.075)
-    amp = rng.uniform(0.008, 0.016)
+    phase, wl = phase0 + rng.uniform(-0.3, 0.3), wl0 * rng.uniform(0.95, 1.05)
+    amp = amp0 * rng.uniform(0.85, 1.1)
     jitter = _unit(rng) * 0.2
     s = 0.0
     falling_from = None
@@ -238,9 +268,9 @@ def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree):
         out = (p - centre).normalized()
         if falling_from is None and p.z > eye_z - 0.02:
             # Over the head: away from the part and down, a little back; hugging the scalp with some volume.
-            comb = Vector((side * 0.8, 0.45, -0.7)) + jitter
+            comb = (Vector((side * 0.85, -0.1, -0.85)) if front else Vector((side * 0.8, 0.45, -0.7))) + jitter
             d = (comb - out * comb.dot(out)).normalized()
-            q = _hug(p + d * seg, centre, r0 + 0.003, r0 + 0.014)
+            q = _hug(p + d * seg, centre, r0 + 0.002, r0 + 0.008)
         else:
             if falling_from is None:
                 falling_from = s
@@ -248,19 +278,20 @@ def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree):
             flat = Vector((p.x - centre.x, p.y - centre.y, 0))
             flat = flat.normalized() if flat.length > 1e-6 else Vector((side, 0, 0))
             d = (DOWN + flat * 0.12).normalized()
-            # The wave: a loose helix around the fall, growing from nothing at the ears.
-            a = amp * min(1.0, f / 0.08)
+            # The wave: a loose S along the body's outline (a beach wave, not a ringlet), from nothing at the ears to
+            # full by the shoulders.
+            a = amp * min(1.0, f / 0.14)
             tang = flat.cross(DOWN).normalized()
             th = phase + 2 * math.pi * f / wl
-            off = (tang * math.cos(th) + flat * math.sin(th) * 0.6) * a
-            q = p + d * seg + off - prev_off
+            off = (tang * math.cos(th) + flat * math.sin(th) * 0.25) * a
+            q = p + d * (seg * 0.55) + off - prev_off
             prev_off = off
         # Keep out of the body (the face, neck, shoulders and back): 1 cm clear of the skin.
         loc, normal, _, _ = tree.find_nearest(q)
         if loc is not None and (q - loc).dot(normal) < 0.01:
             q = loc + normal * 0.01
         pts.append(q)
-        s += seg
+        s += seg if falling_from is None else seg * 0.55
     return pts
 
 
@@ -274,6 +305,37 @@ def _long_skin(rig):
         below = max(0.0, min(1.0, (neck - p.z) / 0.12))
         return {"head": h, "neck": (1 - h) * (1 - below), "spine_03": (1 - h) * below}
     return weights
+
+
+def bake_ao(obj, body, centre, reach=0.045, rays=6, seed=5):
+    """Ambient occlusion per card vertex into COLOR_0.g (closeup spec §4.2): rays out over the hemisphere around the
+    vertex's outward direction, against the hair itself and the body; 1 open … 0 buried. Under-layers and the hair
+    against the neck darken, so the cards read as a volume with depth, not planks."""
+    rng = random.Random(seed)
+    me, bme = obj.data, body.data
+    verts = [v.co.copy() for v in me.vertices] + [v.co.copy() for v in bme.vertices]
+    n0 = len(me.vertices)
+    polys = [list(p.vertices) for p in me.polygons] + [[i + n0 for i in p.vertices] for p in bme.polygons]
+    tree = BVHTree.FromPolygons(verts, polys)
+    col = me.color_attributes["Color"]
+    dirs = [_unit(rng) for _ in range(rays)]
+    cache = {}
+    for i, v in enumerate(me.vertices):
+        key = (round(v.co.x, 3), round(v.co.y, 3), round(v.co.z, 3))
+        if key not in cache:
+            out = v.co - centre
+            if v.co.z < centre.z - 0.05:
+                out = Vector((out.x, out.y, 0.0))
+            out = out.normalized() if out.length > 1e-6 else Vector((0, -1, 0))
+            hits = 0
+            for d in dirs:
+                d = d if d.dot(out) > 0 else -d
+                d = (d + out).normalized()
+                hit, _, _, _ = tree.ray_cast(v.co + d * 0.0015, d, reach)
+                hits += hit is not None
+            cache[key] = 1.0 - hits / len(dirs)
+        c = col.data[i].color
+        col.data[i].color = (c[0], cache[key], c[2], c[3])
 
 
 def eyes(rig, L, name):
