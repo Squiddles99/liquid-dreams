@@ -56,6 +56,8 @@ export class PicturePipeline {
   private readonly bloomNode: any;
   private sunElevationDeg = 45;
   private forwardDotSun = -1;
+  private cloudStops = 0;
+  private sunVisible = 1;
   private underwater = false;
   /** Water on the lens as the camera breaks the surface (LensWater, via setLensWater). */
   private readonly lens = createLensWaterUniforms();
@@ -104,6 +106,13 @@ export class PicturePipeline {
     this.updateExposure();
   }
 
+  /** Under cloud: the stops the meter opens up by, and the sun's transmittance (weather/cloudMeter). */
+  setCloud(stops: number, sunVisible: number): void {
+    this.cloudStops = stops;
+    this.sunVisible = sunVisible;
+    this.updateExposure();
+  }
+
   /** The eye is below the water surface: the exposure opens up (exposure.withUnderwater). */
   setUnderwater(on: boolean): void {
     this.underwater = on;
@@ -135,6 +144,7 @@ export class PicturePipeline {
   private updateExposure(): void {
     this.exposure.value = withUnderwater(computeExposure(
       this.sunElevationDeg, this.params.baseExposure, this.params.evOffset, this.params.autoExposure, this.forwardDotSun,
+      this.cloudStops, this.sunVisible,
     ), this.underwater);
   }
 }

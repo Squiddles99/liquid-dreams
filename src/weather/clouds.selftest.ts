@@ -1,8 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { Fn, cos, float, fract, instanceIndex, select, sin, sqrt, storage, texture, texture3D, uint, vec2, vec3 } from 'three/tsl';
-import { registerSelfTest } from '../dev/selfTest';
+import { fmt, registerSelfTest } from '../dev/selfTest';
 import { Sky } from '../sky/Sky';
 import { cloudDensity, lowLayer } from './cloudModel';
+import { meterLuminance } from './cloudMeter';
 import { Clouds } from './Clouds';
 import { CloudTextures, SHAPE_SIZE, WEATHER_SIZE } from './CloudTextures';
 import { WEATHER_PRESETS, type WeatherConditions } from './weather';
@@ -191,5 +192,44 @@ registerSelfTest({
     const cpu = heights.map((h) => cloudDensity((h - layer.baseM) / (layer.topM - layer.baseM), w.convection, 0.9, 0.3, 0.2, w.lowCover));
     const worst = Math.max(...cpu.map((c, i) => Math.abs(c - gpu[i])));
     return { pass: worst < 1e-3 && cpu.some((c) => c > 0.05), detail: `cpu ${cpu.map((c) => c.toFixed(3)).join(' ')} gpu ${Array.from(gpu, (c) => c.toFixed(3)).join(' ')}` };
+  },
+});
+
+// ---- The sky light (plan Task 5) ----
+
+async function skyLight(renderer: THREE.WebGPURenderer, sky: Sky): Promise<{ cloudy: number[]; clear: number[] }> {
+  const f = new Float32Array(await renderer.getArrayBufferAsync(sky.luts.skyLightAttr));
+  return { cloudy: Array.from(f.slice(0, 3)), clear: Array.from(f.slice(8, 11)) };
+}
+const lum3 = (v: number[]): number => 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+
+registerSelfTest({
+  name: 'clouds: under a clear sky the sky light is exactly the clear sky light',
+  async run(renderer) {
+    const { sky } = await skyRig(renderer, WEATHER_PRESETS.clear);
+    const { cloudy, clear } = await skyLight(renderer, sky);
+    const worst = Math.max(...cloudy.map((c, i) => Math.abs(c - clear[i]) / Math.max(clear[i], 1e-9)));
+    return { pass: worst <= 1e-4, detail: `irradiance ${fmt(cloudy)} vs clear ${fmt(clear)} (worst ${worst.toExponential(2)})` };
+  },
+});
+
+registerSelfTest({
+  name: "clouds: overcast light on the sea is dimmer and greyer than a clear morning's",
+  async run(renderer) {
+    const { sky } = await skyRig(renderer, WEATHER_PRESETS.overcast);
+    const { cloudy, clear } = await skyLight(renderer, sky);
+    const f = new Float32Array(await renderer.getArrayBufferAsync(sky.luts.skyLightAttr));
+    const sun: [number, number, number] = [f[4], f[5], f[6]];
+    const sunT = new Float32Array(await renderer.getArrayBufferAsync(sky.cloudSunAttr))[0];
+    // The global light on a level sea (sun + sky). At a low sun a clear sky's diffuse light is weak and a deck's can
+    // match it; what falls is the total, because the deck hides the sun.
+    const overcastGlobal = meterLuminance(sun, MORNING_SUN.y, sunT, [cloudy[0], cloudy[1], cloudy[2]]);
+    const clearGlobal = meterLuminance(sun, MORNING_SUN.y, 1, [clear[0], clear[1], clear[2]]);
+    const blueness = (v: number[]): number => v[2] / v[0];
+    const dim = overcastGlobal / clearGlobal;
+    return {
+      pass: dim < 0.6 && sunT < 0.05 && Math.abs(Math.log(blueness(cloudy))) < Math.abs(Math.log(blueness(clear))),
+      detail: `global light ${dim.toFixed(2)}× clear (sun through the deck ${sunT.toFixed(3)}); sky light ${(lum3(cloudy) / lum3(clear)).toFixed(2)}× clear; B/R ${blueness(cloudy).toFixed(2)} vs clear ${blueness(clear).toFixed(2)}`,
+    };
   },
 });

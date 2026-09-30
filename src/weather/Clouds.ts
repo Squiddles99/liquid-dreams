@@ -54,7 +54,8 @@ export class Clouds {
 
   constructor(private readonly sky: Sky) {
     this.field = cloudField(this.u, this.textures);
-    const light = cloudLight(this.u, sky.luts, sky.uniforms, sky.skyIrradiance);
+    // Lit by the clear sky above them (the cloudy sky light is what's left under them: using it would feed back).
+    const light = cloudLight(this.u, sky.luts, sky.uniforms, sky.clearSkyIrradiance);
     const { width: W, height: H } = SKY_MAP;
     const blocks = W / 4;
     const marchTexel = (x: N, y: N): void => {
@@ -131,7 +132,10 @@ export class Clouds {
 
   update(renderer: THREE.WebGPURenderer, sunDir: THREE.Vector3, camera: THREE.Vector3, simTimeS: number): void {
     if (!this.hasClouds) {
-      if (this.active || !this.cleared) renderer.compute(this.clearPasses);
+      if (this.active || !this.cleared) {
+        renderer.compute(this.clearPasses);
+        this.sky.refreshSkyLight(renderer);
+      }
       this.active = false;
       this.cleared = true;
       return;
@@ -163,6 +167,7 @@ export class Clouds {
     this.lastTimeS = simTimeS;
     this.lastSliceSun.copy(sunDir);
     renderer.compute([this.downsamplePass, this.sunPass]);
+    this.sky.refreshSkyLight(renderer);
   }
 
   private marchSlice(renderer: THREE.WebGPURenderer, k: number): void {
