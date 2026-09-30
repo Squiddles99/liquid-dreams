@@ -204,13 +204,13 @@ export class OceanSurface {
     const viewDir = toCamera.div(max(distance, 1e-4));
     const fft = model.fftSlopes(vBaseXZ, distance, this.slopeVariance);
     const swellNormal = sheetNormal(fft, setSlope);
-    // Rain on the sea (weather W2): raindrop rings in the near water (beyond ~25 m they only sparkle, so they fade into
-    // a slight roughening of the glitter instead). Dry, the normal and the roughness are exactly the sea's own.
+    // Rain on the sea (weather W2): raindrop rings in the near water, fading by ~25 m where they would only sparkle.
+    // Dry, the normal is exactly the sea's own. (No roughening: the breaking ribbon near the peak has no rain yet, and
+    // a rougher sheet around it showed the ribbon's footprint as a rectangle.)
     const rainRate = options.rain ? options.rain(vBaseXZ) : null;
     const raining = rainRate ? rainRate.greaterThan(0.0) : null;
     const ripple = rainRate ? rainRipplesNode(positionWorld.xz, model.sim.time, rainRate).mul(float(1.0).sub(smoothstep(8.0, 25.0, distance))) : null;
     const normal = ripple ? select(raining, normalize(vec3(swellNormal.x.sub(ripple.x), swellNormal.y, swellNormal.z.sub(ripple.y))), swellNormal) : swellNormal;
-    const slopeVariance = rainRate ? select(raining, fft.lostSlopeVariance.add(rainRate.mul(0.015)), fft.lostSlopeVariance) : fft.lostSlopeVariance;
     const sunVis = options.sunlight ? options.sunlight.visibilityNode(vBaseXZ) : undefined;
     const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     // The foam map inside its box, Phase 2's placeholder outside (spec 2026-09-27-foam-field-design.md §3.2); the
@@ -229,7 +229,7 @@ export class OceanSurface {
 
     material.colorNode = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y,
-        unresolvedSlopeVariance: slopeVariance, seabed, sunVisibility: sunVis,
+        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
         landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
         overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
           foamMap: (foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0)).add(surfFoam.mul(0.5)), foamOn: this.overlayFoam, sunOn: this.overlaySun } },
