@@ -451,24 +451,33 @@ export class App {
   }
 
   /**
-   * Builds, while the game loads, what the first break would otherwise build on the frame it shows: the breaking ribbon
-   * (its compute passes, footprint and material), the Bombie's white water, and the particles' birth passes. Measured
-   * in the Electron probe on the RTX 4060 (Andrew's 11 ft profile), the first break froze for 0.5–2.8 s building them.
+   * Builds, while the game loads, what would otherwise build on the frame it first shows. The first break: the breaking
+   * ribbon (its compute passes, footprint and material), the Bombie's white water, and the particles' birth passes
+   * (measured in the Electron probe on the RTX 4060, Andrew's 11 ft profile, it froze for 0.5–2.8 s building them). The
+   * land's arrival: the land, the rocks, the plants, the fine ground patch and the sunlight march (about 70 materials,
+   * 25–50 ms each: it froze for 2–3.4 s a few seconds in).
    *
-   * The two meshes are built by rendering the picture once, into a throwaway target, with only them shown (withOnlyShown),
+   * The meshes are built by rendering the picture once, into a throwaway target, with only them shown (withOnlyShown),
    * not by renderer.compileAsync: the scene pass renders nested inside the picture's pipeline, a different render context
-   * (part of every material's cache key), so what compileAsync built was built again when the ribbon first showed.
+   * (part of every material's cache key), so what compileAsync built was built again when the ribbon first showed. The
+   * rocks, plants and patch already hold their final attributes (none laid yet: count 0 builds and draws nothing); the
+   * land draws its stand-in (Land.standIn), since its own geometry is empty until the land loads.
    */
   async prewarm(): Promise<void> {
     const target = new THREE.RenderTarget(1, 1);
+    const landStandIn = this.land.standIn();
+    this.scene.add(landStandIn);
     try {
-      await withOnlyShown(this.scene, [this.ribbon.mesh, this.bombie.mesh], async () => this.picture.render(target));
+      const shown = [this.ribbon.mesh, this.bombie.mesh, landStandIn, this.patch.mesh, ...this.rocks.meshes, ...this.plants.meshes];
+      await withOnlyShown(this.scene, shown, async () => this.picture.render(target));
     } finally {
+      this.scene.remove(landStandIn);
       target.dispose();
     }
     await this.ribbon.compileAsync(this.renderer);
     await this.spray.compileAsync(this.renderer);
     await this.impact.compileAsync(this.renderer);
+    await this.land.sunlight.compileAsync(this.renderer);
   }
 
   start(): void {
