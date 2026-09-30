@@ -436,6 +436,21 @@ export class BreakingRibbon {
     }
   }
 
+  /**
+   * Builds the compute passes and the footprint's material while the game loads (App.prewarm builds the mesh itself).
+   * Built on the first breaking wave instead, they froze that frame (the frame pass alone took 0.4–1.7 s).
+   */
+  async compileAsync(renderer: THREE.WebGPURenderer): Promise<void> {
+    await renderer.compileComputeAsync([this.framePass, this.vertexPass, this.developPass, this.chopPass, this.normalPass]);
+    const target = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.footprintTarget);
+    try {
+      await renderer.compileAsync(this.footprintScene, this.footprintCamera);
+    } finally {
+      renderer.setRenderTarget(target);
+    }
+  }
+
   /** Runs the frame, vertex, develop, chop and normal compute passes (no-op with no stations). */
   compute(renderer: THREE.WebGPURenderer): void {
     if (this.stationCount === 0) return;
