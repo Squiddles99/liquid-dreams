@@ -109,10 +109,15 @@ def _mouth_inside(v, mouth, lip_front, tree):
 
 
 def _lash_coords(body, L):
-    """Per lash vertex: (root → tip, along the lid from the inner corner, 1 upper / 0 lower), per strip."""
+    """Per lash vertex: (root → tip, along the lid from the inner corner, 1 upper / 0 lower). Root → tip is per lash
+    (final review: it ran across the whole strip, so only the outer corner's roots read as roots): the roots are the
+    strip's vertices touching the lid's skin, and each vertex's t is its distance from the nearest root over the
+    strip's longest."""
     a = body.data.attributes.get("lash")
     if a is None:
         return {}
+    verts = [v.co.copy() for v in body.data.vertices]
+    skin = BVHTree.FromPolygons(verts, [list(p.vertices) for p in body.data.polygons if p.material_index == 0])
     strips = {}
     for v in body.data.vertices:
         kind = a.data[v.index].value
@@ -124,12 +129,19 @@ def _lash_coords(body, L):
     for (side, upper), vs in strips.items():
         c = L["eyes"][side]
         out_dir = 1.0 if side == "l" else -1.0
-        d = {v.index: (v.co - c).length for v in vs}
+        gap = {v.index: skin.find_nearest(v.co)[3] or 0.0 for v in vs}
+        g0 = min(gap.values())
+        roots = [v.co.copy() for v in vs if gap[v.index] < g0 + 0.0007]
+        kd = KDTree(len(roots))
+        for i, p in enumerate(roots):
+            kd.insert(p, i)
+        kd.balance()
+        d = {v.index: kd.find(v.co)[2] for v in vs}
+        dmax = max(d.values())
         ang = {v.index: math.atan2(v.co.z - c.z, (v.co.x - c.x) * out_dir) for v in vs}
-        dmin, dmax = min(d.values()), max(d.values())
         amin, amax = min(ang.values()), max(ang.values())
         for v in vs:
-            t = (d[v.index] - dmin) / max(dmax - dmin, 1e-6)
+            t = d[v.index] / max(dmax, 1e-6)
             along = (ang[v.index] - amin) / max(amax - amin, 1e-6)
             # The upper strip's angle runs outer (0 rad) → inner (π): flip so 0 is the inner corner either way.
             out[v.index] = (t, 1.0 - along if upper else along, 1.0 if upper else 0.0)
@@ -151,6 +163,8 @@ def shape_lashes(body, L, lashes):
         c = L["eyes"][side]
         radial = (v.co - c).normalized()
         extra = (up if upper else low) - 0.007  # the helper strips are ~7 mm long
+        # Runs before the morphs become shape keys (build.py): edits to v.co once a Basis key exists never reach the
+        # export (final review).
         v.co = v.co + radial * (max(0.0, extra) * t) + Vector((0, -0.25, 1.0 if upper else -1.0)).normalized() * (curl * t * t)
     body.data.update()
 

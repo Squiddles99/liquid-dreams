@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFaceParams, idleContextFor, restingFace } from './faceControl';
+import { applyFaceParams, idleContextFor, restingFace, sunFacing } from './faceControl';
 import { FACE_CHANNELS } from './idleLife';
 import { DEFAULT_SURFER_PARAMS } from './surferParams';
 
@@ -21,6 +21,14 @@ describe('the face on the stand (closeup spec §5.2)', () => {
   it('clamps the sun’s facing to 0–1', () => {
     expect(idleContextFor('sit', false, -0.5).sunFacing).toBe(0);
     expect(idleContextFor('sit', false, 2).sunFacing).toBe(1);
+  });
+  it('squints only at a sun that is up and ahead (final review: not at a sun on the horizon or set)', () => {
+    const ahead = { x: 0, y: 0, z: -1 };
+    const dir = (elevDeg: number): { x: number; y: number; z: number } => ({ x: 0, y: Math.sin((elevDeg * Math.PI) / 180), z: -Math.cos((elevDeg * Math.PI) / 180) });
+    expect(sunFacing(ahead, dir(-5))).toBe(0);
+    expect(sunFacing(ahead, dir(1))).toBeLessThan(0.15);
+    expect(sunFacing(ahead, dir(25))).toBeGreaterThan(0.7);
+    expect(sunFacing({ x: 0, y: 0, z: 1 }, dir(25))).toBe(0);
   });
   it('a resting face is all zeros', () => {
     const r = restingFace();
