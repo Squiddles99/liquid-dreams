@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, atan, attribute, cameraPosition, clamp, cos, cross, dFdx, dFdy, dot, exp, float, fwidth, length, max, min, mix, mx_noise_float, mx_worley_noise_float, normalize, normalWorld, positionGeometry, positionLocal, positionWorld, pow, sign, sin, smoothstep, sqrt, step, uniform, uv, vec2, vec3 } from 'three/tsl';
+import { abs, atan, attribute, fract, screenCoordinate, cameraPosition, clamp, cos, cross, dFdx, dFdy, dot, exp, float, fwidth, length, max, min, mix, mx_noise_float, mx_worley_noise_float, normalize, normalWorld, positionGeometry, positionLocal, positionWorld, pow, sign, sin, smoothstep, sqrt, step, uniform, uv, vec2, vec3 } from 'three/tsl';
 import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
 import type { SurferPreset } from './presets';
@@ -131,13 +131,13 @@ export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: 
   const inside = pw.mul(pz), lips = pz.mul(float(1).sub(pw)), lashLine = pw.mul(float(1).sub(pz));
   let face: N = skin;
   if (z) face = faceZones(face, p, z, lips);
-  face = mix(face, rgb(p.hairRoot).mul(0.85), smoothstep(0.25, 0.75, paint.x));
+  face = mix(face, rgb(p.hairRoot).mul(0.55), smoothstep(0.25, 0.75, paint.x));
   // Brows as fine hairs: the painted band broken by streaks running along it.
   const streak = z ? smoothstep(-0.25, 0.45, mx_noise_float(vec3(P.x.mul(380.0), P.y.mul(2600.0), P.z.mul(2600.0)))).mul(0.5).add(0.5) : float(1);
   face = mix(face, rgb(p.brows), smoothstep(0.3, 0.7, paint.y).mul(0.92).mul(streak));
   // Lips: the colour deepening toward the lip line.
   const edge = lips.mul(float(1).sub(lips)).mul(4.0);
-  face = mix(face, mix(rgb(p.lips), rgb(p.lips).mul(0.72), edge), lips.mul(0.8));
+  face = mix(face, mix(rgb(p.lips), rgb(p.lips).mul(0.72), edge), lips.mul(0.65));
   face = mix(face, vec3(0.015, 0.012, 0.012), lashLine.mul(0.85));
   face = mix(face, vec3(0.1, 0.028, 0.028), inside);
   if (z && (p.freckles > 0 || p.sunburn > 0)) face = frecklesAndSpots(face, p, z);
@@ -163,7 +163,7 @@ export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: 
     normal = bumpNormal(normalWorld, poreHeight(P, strength));
   }
   // Red light reaches furthest past the terminator (the skin's subsurface), cloth wraps alike.
-  const scatter = mix(vec3(1.0, 0.55, 0.4), vec3(1, 1, 1), covered);
+  const scatter = mix(vec3(1.0, 0.62, 0.48), vec3(1, 1, 1), covered);
   m.colorNode = litColor(sky, { albedo, normal, specular, shininess, wrap, scatter }, sv);
   if (detail?.lens) m.positionNode = lensPulled(detail.lens);
   return m;
@@ -178,21 +178,34 @@ export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: 
 export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.UniformNode<'vec3', THREE.Vector3>, sv?: (xz: N) => N, wet?: THREE.UniformNode<'float', number>): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();
   const u: N = uv();
+  // Root → tip. glTF stores V as 1 − v (three's loader keeps it), so the cards' v comes back flipped: the root is at
+  // uv().y = 1. Read the other way, the root fade and the tip fray had swapped ends since gate 2.
+  const v: N = float(1).sub(u.y);
   const w: N = wet ?? float(1);
   // Solid through each card's middle (with the scalp painted underneath there are no holes to see through); only the
   // edges and the tips break into strands (gate 2: the old alpha looked moth-eaten).
-  const strands = mx_noise_float(vec3(u.x.mul(26.0), u.y.mul(1.2), 1.7)).mul(0.5).add(0.5);
+  const strands = mx_noise_float(vec3(u.x.mul(26.0), v.mul(1.2), 1.7)).mul(0.5).add(0.5);
   const across = abs(u.x.mul(2).sub(1));
-  const tip = smoothstep(0.7, 1.0, u.y);
-  // Roots fade in, so the hairline is the painted scalp's soft edge, not a row of card ends.
-  const root = smoothstep(0.0, 0.26, u.y.add(strands.mul(0.16)).sub(0.04));
-  m.opacityNode = float(1).sub(smoothstep(0.82, 1.0, across.add(strands.mul(0.12)))).sub(tip.mul(strands).mul(0.8)).mul(root);
+  const tip = smoothstep(0.7, 1.0, v);
+  // Roots fade in, so the hairline is the painted scalp's soft edge, not a row of card ends; with no MSAA to spread an
+  // alpha test, the root and tip fades are dithered against a screen-space hash (interleaved gradient noise), so they
+  // read soft rather than as a jagged cut.
+  const root = smoothstep(0.0, 1.0, attribute('color', 'vec4').z.add(strands.mul(0.25)).sub(0.1));
+  const ign = fract(fract(screenCoordinate.x.mul(0.06711056).add(screenCoordinate.y.mul(0.00583715))).mul(52.9829189));
+  const fade = root.mul(float(1).sub(tip.mul(strands).mul(0.9)));
+  m.opacityNode = float(1).sub(smoothstep(0.82, 1.0, across.add(strands.mul(0.12)))).mul(step(ign.mul(0.96).add(0.02), fade));
   m.alphaTest = 0.5;
   m.side = THREE.DoubleSide;
   // Strands live in the colour: fine lines along each card, a darker line where cards overlap, root to bleached tip.
-  const fine = mx_noise_float(vec3(u.x.mul(70.0), u.y.mul(2.0), 7.3)).mul(0.5).add(0.5);
+  const fine = mx_noise_float(vec3(u.x.mul(70.0), v.mul(2.0), 7.3)).mul(0.5).add(0.5);
   const lines = fine.mul(0.22).add(0.86).mul(float(1).sub(across.mul(across).mul(0.3)));
-  const albedo = mix(rgb(p.hairRoot), rgb(p.hairTip), pow(u.y, 1.4)).mul(lines).mul(mix(float(0.95), float(0.72), w)); // wet: a shade darker
+  // Each card's own tone (COLOR_0.r, one random per card): locks a shade lighter or darker, so the hair isn't a helmet.
+  const baked: N = attribute('color', 'vec4');
+  const tone: N = baked.x;
+  // Baked occlusion (COLOR_0.g, tools/surfer/hair.py): under-layers and hair against the neck in shade.
+  const ao = baked.y;
+  const lock = tone.mul(0.3).add(0.82);
+  const albedo = mix(rgb(p.hairRoot), rgb(p.hairTip), pow(v, mix(float(1.2), float(1.8), tone))).mul(lines).mul(lock).mul(mix(float(0.95), float(0.72), w)).mul(mix(float(0.55), float(1.0), ao)); // wet: a shade darker
   // The volume's normal: out from the head; below the head (long hair), out from the fall, not down into the sea.
   const d: N = positionWorld.sub(headCentre);
   const below = smoothstep(0.0, 0.16, d.y.negate());
@@ -207,7 +220,7 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   const lit = smoothstep(-0.1, 0.3, dot(volume, L));
   const primary = kk(normalize(T.add(volume.mul(0.1))), mix(float(90), float(220), w)).mul(mix(float(0.05), float(0.1), w));
   const secondary = kk(normalize(T.sub(volume.mul(0.15))), float(28)).mul(0.05);
-  const sunExtra = vec3(primary, primary, primary).add(albedo.mul(secondary).mul(3.0)).mul(lit).mul(fine.mul(0.6).add(0.6));
+  const sunExtra = vec3(primary, primary, primary).add(albedo.mul(secondary).mul(3.0)).mul(lit).mul(fine.mul(0.6).add(0.6)).mul(ao.mul(ao));
   m.colorNode = litColor(sky, { albedo, normal: volume, specular: mix(float(0.02), float(0.03), w), shininess: mix(float(40), float(120), w), wrap: float(0.25), sunExtra }, sv);
   // Wet curls pull in toward the head, most at the tips (grommet spec §3), but never inside the scalp (~10 cm from the
   // head's centre; pulling straight to the centre sank them into his skull and left a bald orange cap). The surfer's
@@ -215,7 +228,7 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   // headCentre share a space.
   if (p.curlTighten > 0) {
     const out: N = positionLocal.sub(headCentre), r: N = length(out);
-    const pulled = max(r.mul(float(1).sub(float(p.curlTighten).mul(w).mul(u.y))), min(r, float(0.1)));
+    const pulled = max(r.mul(float(1).sub(float(p.curlTighten).mul(w).mul(v))), min(r, float(0.1)));
     m.positionNode = headCentre.add(out.div(r).mul(pulled));
   }
   return m;

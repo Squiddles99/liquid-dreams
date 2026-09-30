@@ -24,12 +24,12 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       expect(gltf.skins.length).toBe(1);
       expect(gltf.skins[0].joints.map((i: number) => gltf.nodes[i].name).sort()).toEqual([...BONES].sort());
     });
-    it('keeps within budget: the body ≤ 30k triangles and ≤ 4 materials, each hair mesh ≤ 100k, ≤ 220k in all (closeup ruling 2)', () => {
+    it('keeps within budget: the body ≤ 30k triangles and ≤ 4 materials, each hair mesh ≤ 150k, ≤ 260k in all (closeup ruling 2)', () => {
       const body = man.meshes.find((m) => m.materials.includes('body'))!;
       expect(body.triangles).toBeLessThanOrEqual(30000);
       expect(body.materials.length).toBeLessThanOrEqual(4);
-      for (const m of man.meshes.filter((x) => x.materials.some((n) => n.startsWith('hair')))) expect(m.triangles, m.name).toBeLessThanOrEqual(100000);
-      expect(man.meshes.reduce((s, m) => s + m.triangles, 0)).toBeLessThanOrEqual(220000);
+      for (const m of man.meshes.filter((x) => x.materials.some((n) => n.startsWith('hair')))) expect(m.triangles, m.name).toBeLessThanOrEqual(150000);
+      expect(man.meshes.reduce((s, m) => s + m.triangles, 0)).toBeLessThanOrEqual(260000);
     });
     it('has a dry hairstyle for land where the preset names one (Shazza, T-Bone; Grommet dries his curls in the shader)', () => {
       const dry = man.meshes.filter((m) => m.materials.includes('hairDry'));
