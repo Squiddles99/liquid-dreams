@@ -1,0 +1,7 @@
+{
+  "boardies": {"spring": 0, "steamer": 0, "rashie": 0, "bottoms": 0, "top": 0, "boardies": 1},
+  "bikini": {"spring": 0, "steamer": 0, "rashie": 0, "bottoms": 1, "top": 1, "boardies": 0},
+  "springsuit": {"spring": 1, "steamer": 0, "rashie": 0, "bottoms": 0, "top": 0, "boardies": 0},
+  "rashieAndBottoms": {"spring": 0, "steamer": 0, "rashie": 1, "bottoms": 1, "top": 0, "boardies": 0},
+  "shortArmSteamer": {"spring": 0, "steamer": 1, "rashie": 0, "bottoms": 0, "top": 0, "boardies": 0}
+}
