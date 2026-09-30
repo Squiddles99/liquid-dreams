@@ -46,6 +46,12 @@ export class Sky {
   private rainExtinctionAt: ((xz: N) => N) | null = null;
   /** 1 while the weather has rain: the rain along a view path is only sampled then. */
   readonly rainOn = uniform(0);
+  /** A lightning flash (weather/LightningView): toward where it lights the cloud, its glow's radiance (RGB), its angular
+   * spread (1 − cos of its radius), and the lift it gives the sky light. All zero between flashes. */
+  readonly flashDir = uniform(new THREE.Vector3(0, 1, 0));
+  readonly flashRadiance = uniform(new THREE.Vector3());
+  readonly flashSpread = uniform(0.01);
+  readonly flashIrradiance = uniform(new THREE.Vector3());
   readonly dome: THREE.Mesh;
   /** [0].x: the sun's transmittance through the clouds from the camera (the sun disk, the exposure meter); .y: the rain
    * rate falling at the camera. */
@@ -69,9 +75,9 @@ export class Sky {
     return this.luts.skyLightRead.element(1).xyz;
   }
 
-  /** Sky irradiance on a horizontal surface, through the clouds (RGB node). */
+  /** Sky irradiance on a horizontal surface, through the clouds, plus a lightning flash's lift (RGB node). */
   get skyIrradiance(): N {
-    return this.luts.skyLightRead.element(0).xyz;
+    return this.luts.skyLightRead.element(0).xyz.add(this.flashIrradiance);
   }
 
   /** The clear sky's irradiance, above the clouds (RGB node): what lights the clouds themselves. */
@@ -175,7 +181,9 @@ export class Sky {
     const c = texture(sharp ? this.skyMap : this.skyMapSmall, uv).level(float(0));
     // Below the horizon no cloud stands between the eye and the (dome's) atmosphere.
     const clouds = select(dir.y.greaterThanEqual(0.0), c, vec4(0.0));
-    const sky = this.atmosphereRadiance(dir).mul(float(1.0).sub(clouds.a)).add(clouds.rgb);
+    // A lightning flash lights the cloud from inside around the strike (only where there is cloud to light).
+    const flash = this.flashRadiance.mul(clouds.a).mul(exp(float(1.0).sub(dot(dir, this.flashDir)).div(this.flashSpread).negate()));
+    const sky = this.atmosphereRadiance(dir).mul(float(1.0).sub(clouds.a)).add(clouds.rgb).add(flash);
     // The haze between the eye and the sky (none when the weather adds none: mix(fog, sky, 1) is exactly the sky).
     return mix(this.fogRadiance(dir), sky, exp(this.fogDepth(max(dir.y, 0.0), float(1e5)).negate()));
   }

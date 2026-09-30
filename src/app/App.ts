@@ -49,6 +49,9 @@ import { Sky } from '../sky/Sky';
 import { Clouds } from '../weather/Clouds';
 import { CloudMeter } from '../weather/cloudMeter';
 import { RAIN_FALL_MS, RainStreaks } from '../weather/RainStreaks';
+import { LightningView } from '../weather/LightningView';
+import type { Strike } from '../weather/rainModel';
+import { lowLayer } from '../weather/cloudModel';
 import { travelDirectionXZ } from '../conditions/directions';
 import { combineSunlight } from '../weather/CloudShadow';
 import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesBetween, wavesNear } from '../swell/sets';
@@ -163,6 +166,10 @@ export class App {
   readonly cloudMeter = new CloudMeter(this.sky.luts.skyLightAttr, this.sky.cloudSunAttr);
   /** Falling rain around the camera (weather W2). */
   readonly rainStreaks = new RainStreaks(this.sky);
+  /** Lightning: the flash in the clouds, the bolt (weather W2). */
+  readonly lightning = new LightningView(this.sky);
+  /** The strikes that fired this frame (the thunder, weather W2). */
+  private strikesFired: Strike[] = [];
   readonly ocean = new OceanSimulation(this.simParams);
   readonly seabed = new Seabed(buildBathymetry(this.reefParams));
   /** The land behind the Womb (Phase 4a spec 2026-09-28-the-view-back-design.md); landless until its file loads. */
@@ -274,6 +281,7 @@ export class App {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
     this.scene.add(this.rainStreaks.mesh);
+    this.scene.add(this.lightning.bolt);
     this.scene.add(this.waterVolume.mesh);
     this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline, surf: this.surf, rain: (xz) => this.clouds.field.rainRate(xz) });
     this.land.setWetHeight((xz) => this.seabed.tide.add(this.surf.wetLevelNode(xz.y)));
@@ -1178,6 +1186,8 @@ export class App {
     const facing = Math.min(1, Math.max(0, 0.3 - 0.7 * this.camera.getWorldDirection(this.viewDir).dot(fall)));
     this.rainLensWet = this.underwater ? 0 : rainLensStep(this.rainLensWet, this.cloudMeter.rainHere, facing, realDt);
     this.lensWater.rain(this.rainLensWet);
+    this.strikesFired = this.lightning.update(this.conditions.seed, this.conditions.weather.storm, this.clock.simTime,
+      lowLayer(this.conditions.weather).baseM, this.camera.position).fired;
     this.land.update(this.renderer, sun.direction, this.camera.position);
     this.updateBeach();
     this.sky.followCamera(this.camera.position);
