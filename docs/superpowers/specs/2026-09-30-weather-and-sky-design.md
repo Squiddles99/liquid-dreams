@@ -51,7 +51,7 @@ days. That winter cycle is the surf season, and it is also the source of the Wom
 Summer brings clear, dry mornings, the sea breeze, and haze or sea fog on still mornings. Autumn brings calm, high
 cloud and glass-offs.
 
-**Ruling (default sky):** the default moment (15 Jul, 08:15, 3 m/s E offshore) gets **scattered cumulus (3–4 oktas)**.
+**Ruling (default sky), revised in the W1 look pass:** the default moment (15 Jul, 08:15, 3 m/s E offshore) gets **fair-weather cumulus (1–2 oktas, shallow)**. First ruled scattered (3–4 oktas); at the 08:15 sun a ray crosses ~13 km of a cumulus layer, and scattered cumulus shaded 89% of the lineup, where Andrew's fondest mornings are sunlit. Scattered stays a preset.
 That's the ridge-building morning after a front, the setup behind the Womb's best days, and Andrew says it's almost
 always cloudy. Old moment links, and the reference moments tuned under a clear sky, stay **clear**, so their baselines
 don't move. Cost if wrong: one default value.
@@ -78,8 +78,8 @@ don't move. Cost if wrong: one default value.
 | Preset | What it is |
 |---|---|
 | clear | No cloud: today's sky |
-| fair | Few small cumulus |
-| scattered | Scattered cumulus (the default) |
+| fair | Few small, shallow cumulus (the default) |
+| scattered | Scattered cumulus |
 | broken | Broken stratocumulus with gaps of blue |
 | high cloud | Pre-frontal cirrus: a watery sun |
 | overcast | Grey stratocumulus deck, flat light |
@@ -215,7 +215,7 @@ The 12 ft scene runs at about 4.5–5.3 ms GPU on the RTX 4060 today.
 
 ## 6. Questions for Andrew (I've ruled; overturn any)
 
-1. **Q1: The default sky.** I set scattered cumulus. Clear, or broken, if you'd rather.
+1. **Q1: The default sky.** I set fair-weather cumulus (first scattered: too much cloud shade on the lineup at 08:15). Clear, scattered or broken, if you'd rather.
 2. **Q2: Should picking "storm" or "showers" also set the wind to match** (NW gusts before a front, SW after)? Ruled
    no: weather and wind stay independent, so you can have an offshore morning under showers. A preset could offer
    "typical wind" later.

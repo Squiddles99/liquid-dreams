@@ -8,6 +8,7 @@ import { fogExtinctionPerM, fogOpticalDepth } from './fog';
 import { Clouds } from './Clouds';
 import { CloudTextures, SHAPE_SIZE, WEATHER_SIZE } from './CloudTextures';
 import { WEATHER_PRESETS, type WeatherConditions } from './weather';
+import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 
 type N = any;
 
@@ -315,5 +316,19 @@ registerSelfTest({
     const lum = (o: number): number => 0.2126 * v[o] + 0.7152 * v[o + 1] + 0.0722 * v[o + 2];
     const horizonOff = Math.abs(lum(0) - lum(3)) / lum(3), zenithKept = 1 - Math.abs(lum(6) - lum(9)) / lum(9);
     return { pass: horizonOff < 0.05 && zenithKept > 0.3, detail: `horizon ${(horizonOff * 100).toFixed(1)}% from the fog's own light; zenith keeps ${(zenithKept * 100).toFixed(0)}% of its sky` };
+  },
+});
+
+// ---- The default morning (plan Task 8) ----
+
+registerSelfTest({
+  name: "clouds: the default morning keeps the sun on the water more often than not (08:15, fair-weather cumulus)",
+  async run(renderer) {
+    const { clouds } = await skyRig(renderer, DEFAULT_CONDITIONS.weather);
+    const v = await shadowGrid(renderer, clouds);
+    const lit = Array.from(v).filter((x) => x > 0.7).length / v.length;
+    // Andrew's fondest mornings are sunlit, with cumulus about: at the low 08:15 sun a deep cumulus layer shades
+    // nearly everything, so the default's morning cumulus are shallow (humilis), as real ones are before they tower.
+    return { pass: lit > 0.5 && lit < 0.9, detail: `${(lit * 100).toFixed(0)}% of the 8 km around the break in sun` };
   },
 });

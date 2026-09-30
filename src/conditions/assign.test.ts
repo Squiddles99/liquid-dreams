@@ -3,8 +3,8 @@ import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from './default
 import { WEATHER_PRESETS } from '../weather/weather';
 
 describe('the default conditions', () => {
-  it('are a scattered-cumulus morning, and cloning copies the weather', () => {
-    expect(DEFAULT_CONDITIONS.weather).toEqual(WEATHER_PRESETS.scattered);
+  it('are a fair-weather-cumulus morning, and cloning copies the weather', () => {
+    expect(DEFAULT_CONDITIONS.weather).toEqual(WEATHER_PRESETS.fair);
     const c = cloneConditions(DEFAULT_CONDITIONS);
     expect(c.weather).toEqual(DEFAULT_CONDITIONS.weather);
     expect(c.weather).not.toBe(DEFAULT_CONDITIONS.weather);

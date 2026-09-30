@@ -64,6 +64,12 @@ export function coverageDensity(n: number, cover: number): number {
   return saturate((n - 1 + 1.5 * cover) / 0.5);
 }
 
+/**
+ * How much coverage a convective cloud loses toward its top (× hFrac × convection): towers narrow and round as they
+ * rise instead of standing as walls as wide as their base.
+ */
+export const TOWER_TAPER = 0.3;
+
 /** A cell this weak only fills this fraction of the layer: cells rise from low edges to a tall core (domes). */
 export const WEAK_CELL_HEIGHT = 0.3;
 
@@ -76,7 +82,8 @@ export function cloudDensity(hFrac: number, convection: number, coverageNoise: n
   const wc = coverageDensity(coverageNoise, cover);
   if (wc <= 0) return 0;
   const profile = heightProfile(hFrac / (WEAK_CELL_HEIGHT + (1 - WEAK_CELL_HEIGHT) * wc), convection);
-  const shaped = saturate((shapeNoise * profile - (1 - wc)) / wc) * wc;
+  const cut = 1 - wc + TOWER_TAPER * hFrac * convection;
+  const shaped = saturate((shapeNoise * profile - cut) / wc) * wc;
   const e = detailNoise * DETAIL_EROSION;
   return saturate((DENSITY_GAIN * (shaped - e)) / (1 - e));
 }

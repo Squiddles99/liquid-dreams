@@ -35,7 +35,7 @@ type ConditionsPatch = Partial<Omit<Conditions, 'swell' | 'wind' | 'weather'>> &
   wind?: Partial<Conditions['wind']>;
 };
 
-/** The moments were tuned under a clear sky and keep it (their baselines), except the default morning (scattered). */
+/** The moments were tuned under a clear sky and keep it (their baselines), except the default morning (fair). */
 const conditions = (patch: ConditionsPatch, weather = WEATHER_PRESETS.clear): Conditions => {
   const c = cloneConditions(DEFAULT_CONDITIONS);
   return { ...c, ...patch, swell: { ...c.swell, ...patch.swell }, wind: { ...c.wind, ...patch.wind }, weather: { ...weather } };
