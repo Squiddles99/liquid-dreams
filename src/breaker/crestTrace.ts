@@ -18,8 +18,6 @@ export const MAX_SPACING_M = 4;
 export const MAX_STATIONS = 2048;
 /** A side of the trace ends after this much crest (m) below the ribbon's onset ratio. */
 export const BELOW_ONSET_RUN_M = 20;
-/** The time since onset is computed at key stations at most this far apart (m of crest) and interpolated between. */
-export const KEY_SPACING_M = 3;
 /** The CPU's culling margin over its landing-time estimate (s). */
 export const LOOK_BACK_MARGIN_S = 0.5;
 /** Newton projections onto ξ = 0 per step (the seed takes SEED_ITERATIONS). */
@@ -149,36 +147,13 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
   return sides;
 }
 
-/** Fills each station's time since onset and ψ: exact at key stations ≤ KEY_SPACING_M apart, linear between two
- * finite keys, exact again wherever a neighbouring key is null (the onset boundary). */
+/** Fills each station's time since onset and ψ, each exactly from the onset record (a lookup). Interpolating between key
+ * stations 3 m apart (from when this was a march up the ray per station) put the lip up to 0.31 s off the sheet where the
+ * onset creeps unevenly along the crest (the softened ramp, plan 2026-09-30-barrel-from-maths Task 5). */
 function fillTimes(field: ReefField, w: ActiveWave, line: Station[], ctx: WaveContext, input: TraceInput): void {
-  if (line.length === 0) return;
-  const p = input.params;
-  const keys: number[] = [0];
-  for (let i = 1; i < line.length; i++) if (Math.abs(line[i].arc - line[keys[keys.length - 1]].arc) >= KEY_SPACING_M || i === line.length - 1) keys.push(i);
-  for (const k of keys) {
-    line[k].tb = timeSinceOnset(field, w, line[k].x, line[k].z, ctx, p);
-    line[k].psi = stationPsi(field, w, line[k].x, line[k].z, input);
-  }
-  for (let q = 0; q + 1 < keys.length; q++) {
-    const a = line[keys[q]], b = line[keys[q + 1]];
-    for (let i = keys[q] + 1; i < keys[q + 1]; i++) {
-      const s = line[i];
-      s.psi = a.psi + ((b.psi - a.psi) * (s.arc - a.arc)) / (b.arc - a.arc);
-      if (a.tb !== null && b.tb !== null && Number.isFinite(a.tb) && Number.isFinite(b.tb)) {
-        s.tb = a.tb + ((b.tb - a.tb) * (s.arc - a.arc)) / (b.arc - a.arc);
-      } else if (a.tb === Infinity && b.tb === Infinity) {
-        s.tb = Infinity;
-      } else if (a.tb === null && b.tb === null) {
-        // Unbroken at both keys (3 m apart): the breaking depth, smoothed along the crest over metres, leaves no room
-        // for a broken island between them. This skipped a full look-back march per station on every pre-break
-        // stretch (37 stations per key interval near the camera; 25–35% of the trace's time).
-        s.tb = null;
-      } else {
-        s.tb = timeSinceOnset(field, w, s.x, s.z, ctx, p);
-        s.psi = stationPsi(field, w, s.x, s.z, input);
-      }
-    }
+  for (const s of line) {
+    s.tb = timeSinceOnset(field, w, s.x, s.z, ctx, input.params);
+    s.psi = stationPsi(field, w, s.x, s.z, input);
   }
 }
 

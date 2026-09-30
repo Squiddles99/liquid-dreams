@@ -1,7 +1,7 @@
 import { beachHeight } from '../land/landHeight';
 import { describe, expect, it } from 'vitest';
 import { depthBg } from './coastProfile';
-import { bedHeightAt, buildBathymetry, downsample, reefWarp } from './bathymetry';
+import { bedHeightAt, buildBathymetry, downsample, rampShape, reefWarp } from './bathymetry';
 import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, REEF_GRID, REEF_WARP, SOUTH_LEDGE } from './wombReef';
 
 const bathy = buildBathymetry();
@@ -30,9 +30,32 @@ describe('the Womb reef', () => {
       expect(depth(x, z)).toBeLessThan(DEFAULT_REEF_PARAMS.ledgeDepthM + 1.5);
     }
   });
-  it('drops to deep water just seaward of the ledges and to the south-west', () => {
-    expect(depth(-30, 0)).toBeGreaterThan(11);
-    expect(depth(-20, 40)).toBeGreaterThan(11);
+  it("drops to deep water seaward of the ledges' ramp and to the south-west", () => {
+    const W = DEFAULT_REEF_PARAMS.ledgeWidthM;
+    expect(depth(-W - 10, 0)).toBeGreaterThan(11);
+    expect(depth(-W - 10, 40)).toBeGreaterThan(11);
+  });
+  it('the seaward ramp: v², flat at the ledge, steepest at the deep edge (spec §4)', () => {
+    expect(rampShape(0)).toBe(0);
+    expect(rampShape(1)).toBe(1);
+    expect(rampShape(2)).toBe(1);
+    const slope = (v: number) => (rampShape(v + 1e-4) - rampShape(v - 1e-4)) / 2e-4;
+    expect(slope(1e-4)).toBeLessThan(1e-3);
+    for (let v = 0.1; v < 0.95; v += 0.1) expect(slope(v + 0.05)).toBeGreaterThan(slope(v));
+  });
+  it('the ledge line stays at the ledge depth, and nothing outside the shelf near the peak is steeper than 1:8', () => {
+    const b = buildBathymetry(), g = b.grid, W = DEFAULT_REEF_PARAMS.ledgeWidthM;
+    const d = (c: number, r: number) => -b.bed[r * g.nx + c];
+    const c0 = Math.round(-g.x0 / g.cellM), r0 = Math.round(-g.z0 / g.cellM);
+    expect(d(c0, r0)).toBeCloseTo(DEFAULT_REEF_PARAMS.ledgeDepthM, 1);
+    let steepest = 0;
+    for (let r = 1; r < g.nz - 1; r++) for (let c = 1; c < g.nx - 1; c++) {
+      const x = g.x0 + c * g.cellM, z = g.z0 + r * g.cellM;
+      // The seaward ramp, not the shelf (nor the shelf's inshore edge at the lagoon, x ≈ 100 m, which this build leaves alone).
+    if (Math.hypot(x, z) > W + 20 || x > 40 || d(c, r) <= DEFAULT_REEF_PARAMS.ledgeDepthM + 0.5) continue;
+      steepest = Math.max(steepest, Math.hypot(d(c + 1, r) - d(c - 1, r), d(c, r + 1) - d(c, r - 1)) / (2 * g.cellM));
+    }
+    expect(steepest).toBeLessThanOrEqual(1 / 8 + 0.02);
   });
   it('is shallower on the shelf than at the ledge, never shallower than the minimum', () => {
     let sum = 0, n = 0;

@@ -2,7 +2,7 @@ import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
 import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetTime, pileTop, settledCrestTop, steepeningStart } from './breaking';
-import { PSI_NORMAL, drainFactor, effectivePsi, withSheetShape } from './overturn';
+import { PSI_MIN, PSI_NONE, PSI_NORMAL, drainFactor, effectivePsi, withSheetShape } from './overturn';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, sampleField, sampleOnset } from './reefField';
@@ -219,7 +219,7 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
     : PSI_NORMAL);
   const params = withSheetShape(o.params, psi);
   const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
-  const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp);
+  const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp, smoothstep(PSI_NONE, PSI_MIN, psi));
   return { x: cx, z: cz, f: fc, r, s: lc.stage, tb, lc, confidence, lipH, psi, params };
 }
 

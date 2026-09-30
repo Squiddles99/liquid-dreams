@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetPsi } from './breaking';
+import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetPsi, onsetTime } from './breaking';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ActiveWave, BREAKING_RATIO, type BreakOptions, type WaveContext, breakOptions, crestAt, localHeight, rayCrestPoint, sumWaves, toActiveWave, waveAt } from './setWaveModel';
@@ -108,12 +108,6 @@ describe('ψ at the crest (barrel from the maths)', () => {
   const big = wavesOfSet(1, c, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
   const w = toActiveWave(big), t = w.arrivalS + sampleField(field, 0, 0).tau + 0.5;
   const crest = (wave = w, p = DEFAULT_BREAK_PARAMS) => crestAt(0, 0, t, sampleField(field, 0, 0), wave, ctx, breakOptions(field, p))!;
-  const lowestAhead = (o: BreakOptions) => {
-    const f0 = sampleField(field, 0, 0);
-    let m = Infinity;
-    for (let u = 0; u <= 40; u += 0.5) { const x = f0.dirX * u, z = f0.dirZ * u; m = Math.min(m, sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, o).eta); }
-    return m;
-  };
   it("the crest carries ψ₀ × the game rules, and its own sheet params (the trough drain and surge at its ψ)", () => {
     const cr = crest();
     const on = rayCrestPoint(0, 0, t, sampleField(field, 0, 0), w, ctx); // crestAt reads the record on the point's own ray
@@ -134,8 +128,21 @@ describe('ψ at the crest (barrel from the maths)', () => {
     expect(on).toBeCloseTo(1.15 * b, 9);
   });
   it('a heavier ψ drains the water in front deeper', () => {
+    // Where the 12 ft set breaks (on the softened ramp, ~130 m seaward of the peak, along its traced ray), half a second on.
+    let bx = 0, bz = 0;
+    for (let d = 0; d < 300; d++) {
+      const f = sampleField(field, bx, bz), nx = bx - f.dirX, nz = bz - f.dirZ, r = sampleOnset(field, nx, nz);
+      if (!r || onsetTime(r, 0, w.heightM, DEFAULT_BREAK_PARAMS) === null) break;
+      bx = nx; bz = nz;
+    }
+    const fb = sampleField(field, bx, bz), tb = w.arrivalS + fb.tau + 0.5;
+    const lowest = (o: BreakOptions) => {
+      let m = Infinity;
+      for (let u = 0; u <= 40; u += 0.5) { const x = bx + fb.dirX * u, z = bz + fb.dirZ * u; m = Math.min(m, sumWaves(x, z, tb, sampleField(field, x, z), [w], ctx, o).eta); }
+      return m;
+    };
     const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
-    expect(lowestAhead({ ...o, force: { psi: 0.09 } })).toBeLessThan(lowestAhead({ ...o, force: { psi: 0.035 } }) - 0.3);
+    expect(lowest({ ...o, force: { psi: 0.09 } })).toBeLessThan(lowest({ ...o, force: { psi: 0.035 } }) - 0.3);
   });
   it('off the reef grid the crest reads ψ = PSI_NORMAL exactly', () => {
     const x = field.grid.x0 - 50, z = 0, f = sampleField(field, x, z);

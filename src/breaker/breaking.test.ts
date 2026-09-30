@@ -363,6 +363,19 @@ describe('one clock: the onset record and the lifecycle', () => {
       expect(prev.decay, 'the pile has started to decay 6 s on').toBeLessThan(1);
     }
   });
+  it('a plunging crest (the maths gives it a tube) breaks fully at onset, however slowly its ratio climbs (the softened ramp)', () => {
+    const H = 3, land = landingEstimate(H, P);
+    // Past breaking by PLUNGE_FULL_RATIO (at 1.2, a creeping ramp): without a tube it is a partial break; with one, whole,
+    // its stage (the tube's closing) at 0.75 by 0.7 of the landing time.
+    expect(lifecycle(1.2, land + PILE_RISE_S, H, P, 1.2).pile).toBeLessThan(0.5);
+    expect(lifecycle(1.2, land + PILE_RISE_S, H, P, 1.2, 1.2, 1).pile).toBeCloseTo(1, 12);
+    expect(lifecycle(1.2, 0.7 * land, H, P, 1.2, 1.2, 1).stage).toBeGreaterThanOrEqual(0.75);
+    expect(lifecycle(1.2, land + PILE_RISE_S, H, P, 1.2, 1.2, 0.5).pile).toBeCloseTo(Math.max(breakingStage(1.2, P), 0.5), 12);
+    // Just grazing breaking (rMax 1.01): still mostly partial.
+    expect(lifecycle(1.01, land + PILE_RISE_S, H, P, 1.01, 1.01, 1).pile).toBeLessThan(0.2);
+    // Unbroken, the tube's presence does nothing.
+    expect(lifecycle(0.9, null, H, P, 0.9, 0.9, 1)).toEqual(lifecycle(0.9, null, H, P, 0.9, 0.9));
+  });
   it('the pile rises over PILE_RISE_S from the landing, partial on a section that broke only a little', () => {
     const H = 3, land = landingEstimate(H, P);
     expect(lifecycle(3, land, H, P, 3).pile).toBe(0);

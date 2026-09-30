@@ -14,11 +14,12 @@ export interface FoamGrid {
 }
 
 /**
- * The foam box (plan ruling R1): x −245…210, z −450…300 at 1 m. It covers every breaking cell in the water for the
- * slider extreme with 20 m of seaward margin (foamStep.test.ts); north and south it ends with the reef grid, beyond
- * which the field is the straight coast and the placeholder foam stands.
+ * The foam box (plan ruling R1): x −320…210, z −450…300 at 1 m. It covers every breaking cell in the water for the
+ * slider extreme with 20 m of seaward margin (foamStep.test.ts; the softened ledge of the barrel-from-maths plan moved
+ * the biggest breaks ~75 m seaward, from −245); north and south it ends with the reef grid, beyond which the field is
+ * the straight coast and the placeholder foam stands.
  */
-export const FOAM_GRID: Readonly<FoamGrid> = { x0: -245, z0: -450, cellM: 1, nx: 455, nz: 750 };
+export const FOAM_GRID: Readonly<FoamGrid> = { x0: -320, z0: -450, cellM: 1, nx: 530, nz: 750 };
 
 export interface FoamParams {
   /** Foam falls linearly from 1 to 0 over this long once its source stops (s). */

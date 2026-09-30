@@ -50,6 +50,11 @@ export const LIP_TAPER_POWER = 0.8;
 export const FACE_JOIN_MIN_M = 1;
 /** Of ψ's fade-in (PSI_NONE to PSI_MIN, over which the tube grows from nothing), the share over which it is also blended in. */
 export const PRESENCE_FADE = 0.3;
+/** The face's join steps out by this many H (at most FACE_CONCAVE_STEPS times) until the sheet there is flatter than the
+ * face's chord by FACE_CONCAVE_MARGIN (rad). */
+export const FACE_CONCAVE_STEP_H = 0.15;
+export const FACE_CONCAVE_STEPS = 4;
+export const FACE_CONCAVE_MARGIN = 0.03;
 /** Steps placing that join in the sheet's displaced x. */
 export const FACE_JOIN_STEPS = 3;
 /** The outer samples' share on the lip's band (the rest run level from the tube's top to the crest). */
@@ -243,7 +248,13 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: 
     for (let i = 0; i < FACE_JOIN_STEPS; i++) { F = base(uFoot); uFoot += x - F[0]; }
     F = base(uFoot);
   }
-  const Fb = base(uFoot - 0.1);
+  // The face must leave the sheet where the sheet is flatter than the face's chord up to the landing, or it bulges
+  // (a lip landing just short of the foot, on the softened ramp): step the join out toward the trough.
+  let Fb = base(uFoot - 0.1);
+  const ang = (v: Vec2): number => Math.atan2(v[1], -v[0]);
+  for (let i = 0; i < FACE_CONCAVE_STEPS && ang([Fb[0] - F[0], Fb[1] - F[1]]) > ang([P[0] - F[0], P[1] - F[1]]) - FACE_CONCAVE_MARGIN; i++) {
+    uFoot += FACE_CONCAVE_STEP_H * H; F = base(uFoot); Fb = base(uFoot - 0.1);
+  }
   const tF = norm2([Fb[0] - F[0], Fb[1] - F[1]]);
   const t = tb === null ? 0 : Math.min(Math.max(tb, 0), tauLand);
   const prog = t / tauLand;

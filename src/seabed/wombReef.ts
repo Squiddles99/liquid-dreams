@@ -27,7 +27,8 @@ export interface ReefParams {
   deepDepthM: number;
   /** Still-water depth along both ledges and at the take-off corner (Andrew: about 6 m / 20 ft). */
   ledgeDepthM: number;
-  /** Horizontal distance over which the seabed rises from deep water to the ledge. */
+  /** The seaward ramp's width (m): from the deep flat to the ledge line (bathymetry.rampShape). Calibrated so 12 ft at mid
+   * tide reads ψ₀ ≈ 0.065 at the peak (plan 2026-09-30-barrel-from-maths, Task 5). */
   ledgeWidthM: number;
   /** Base depth of the shelf interior. */
   shelfDepthM: number;
@@ -42,7 +43,7 @@ export interface ReefParams {
 export const DEFAULT_REEF_PARAMS: ReefParams = {
   deepDepthM: 13,
   ledgeDepthM: 6,
-  ledgeWidthM: 15,
+  ledgeWidthM: 145,
   shelfDepthM: 4,
   headReliefM: 2.5,
   minDepthM: 1.5,

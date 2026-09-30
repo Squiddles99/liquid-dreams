@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
-import { minRibbonHeight, traceStations } from '../breaker/crestTrace';
-import { computeReefField } from '../breaker/reefField';
+import { minRibbonHeight, timeSinceOnset, traceStations } from '../breaker/crestTrace';
+import { computeReefField, sampleField } from '../breaker/reefField';
 import { fieldBreakingHeight, toActiveWave } from '../breaker/setWaveModel';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
@@ -16,6 +16,24 @@ import {
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
 const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
 const BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+/** The time the checks count from: the wave's first break anywhere on the reef (a section's crest arrival less its time
+ * since onset, the earliest over the whole reef grid) plus the 0.9 s the peak broke before reaching (0, 0) on the old
+ * ledge, where it broke first. On the softened ramp (barrel-from-maths plan, Task 5) the biggest default wave breaks ~45 m
+ * seaward, seconds before it reaches the peak, and sections west and north of the peak's ray break up to 2 s before it. */
+const BREAKS = ((): { first: number; last: number } => {
+  const w = toActiveWave(BIGGEST);
+  let first = Infinity, last = -Infinity;
+  const g = field.grid;
+  for (let x = g.x0; x <= g.x0 + (g.nx - 1) * g.cellM; x += 5) for (let z = g.z0; z <= g.z0 + (g.nz - 1) * g.cellM; z += 5) {
+    const tb = timeSinceOnset(field, w, x, z, ctx, DEFAULT_BREAK_PARAMS);
+    if (tb !== null) { const t = w.arrivalS + sampleField(field, x, z).tau - tb; first = Math.min(first, t); last = Math.max(last, t); }
+  }
+  return { first, last };
+})();
+const BREAK_CLOCK = BREAKS.first + 0.9;
+/** Long after: 5 s past the last section's break (on the old ledge the check stood 12 s after the peak's arrival, ~5 s
+ * past the north ledge's last break; on the ramp the wave breaks along its crest for ~18 s). */
+const LONG_AFTER = BREAKS.last + 5;
 const OFFSHORE = { speedMs: 22 / 3.6, fromDeg: 57 };
 const MIN_H = minRibbonHeight(fieldBreakingHeight(field, DEFAULT_BREAK_PARAMS), DEFAULT_BREAK_PARAMS);
 const input = (t: number, over: Partial<EmitterInput> = {}): EmitterInput => ({
@@ -153,10 +171,10 @@ describe('the births', () => {
 describe('the impact explosion', () => {
   const imp = (t: number, over: Partial<EmitterInput> = {}) => breakEmitters(input(t, { impactAmount: 1, ...over })).impact.filter((e) => e.waveId === BIGGEST.id);
   it('impact emitters only in the landing window: none before the lip lands, none long after', () => {
-    const counts = [-1, 0, 0.3, 0.6, 0.9, 1.2, 1.6, 2, 3, 5].map((dt) => imp(BIGGEST.arrivalS + dt).length);
+    const counts = [-1, 0, 0.3, 0.6, 0.9, 1.2, 1.6, 2, 3, 5].map((dt) => imp(BREAK_CLOCK + dt).length);
     expect(Math.max(...counts)).toBeGreaterThan(3);
     expect(counts[0]).toBe(0);
-    expect(imp(BIGGEST.arrivalS + 12).length).toBe(0);
+    expect(imp(LONG_AFTER).length).toBe(0);
   });
   it('impact happens with no wind (a glassy day still explodes) while the spray does not', () => {
     let any = 0;
@@ -236,11 +254,11 @@ describe("the barrel's spit (Andrew: foam, spit and spray)", () => {
   const spitAt = (t: number, over: Partial<EmitterInput> = {}) => breakEmitters(input(t, { impactAmount: 1, ...over })).spit.filter((e) => e.waveId === BIGGEST.id);
   const DTS = [-0.5, 0, 0.3, 0.6, 0.9, 1.2, 1.6, 2, 2.5, 3, 4, 5];
   it('while a section barrels the tube spits, with or without wind; none before the break, none long after, none with the explosion off', () => {
-    const counts = DTS.map((dt) => spitAt(BIGGEST.arrivalS + dt, { wind: { speedMs: 0, fromDeg: 57 } }).length);
+    const counts = DTS.map((dt) => spitAt(BREAK_CLOCK + dt, { wind: { speedMs: 0, fromDeg: 57 } }).length);
     expect(Math.max(...counts)).toBeGreaterThan(0);
-    expect(spitAt(BIGGEST.arrivalS - 3).length).toBe(0);
-    expect(spitAt(BIGGEST.arrivalS + 12).length).toBe(0);
-    for (const dt of DTS) expect(spitAt(BIGGEST.arrivalS + dt, { impactAmount: 0 }).length).toBe(0);
+    expect(spitAt(BREAK_CLOCK - 3).length).toBe(0);
+    expect(spitAt(LONG_AFTER).length).toBe(0);
+    for (const dt of DTS) expect(spitAt(BREAK_CLOCK + dt, { impactAmount: 0 }).length).toBe(0);
   });
   it('it blows along the crest, out of the open end (toward the sections that have not broken yet), from inside the tube', () => {
     let seen = 0;
