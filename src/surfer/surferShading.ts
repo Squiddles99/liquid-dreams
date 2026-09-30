@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, attribute, cameraPosition, clamp, dot, exp, float, length, max, mix, mx_noise_float, mx_worley_noise_float, normalize, normalWorld, positionGeometry, positionLocal, positionWorld, pow, smoothstep, step, uniform, uv, vec2, vec3 } from 'three/tsl';
+import { abs, attribute, cameraPosition, clamp, dot, exp, float, length, max, min, mix, mx_noise_float, mx_worley_noise_float, normalize, normalWorld, positionGeometry, positionLocal, positionWorld, pow, smoothstep, step, uniform, uv, vec2, vec3 } from 'three/tsl';
 import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
 import type { SurferPreset } from './presets';
@@ -113,9 +113,15 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   const albedo = mix(rgb(p.hairRoot), rgb(p.hairTip), pow(u.y, 1.4)).mul(lines).mul(mix(float(0.95), float(0.72), w)); // wet: a shade darker
   const volume = normalize(positionWorld.sub(headCentre));
   m.colorNode = litColor(sky, { albedo, normal: volume, specular: mix(float(0.03), float(0.045), w), shininess: mix(float(40), float(120), w), wrap: float(0.25) }, sv);
-  // Wet curls pull in toward the head, most at the tips (grommet spec §3). The surfer's group sits at the world origin
-  // with identity nodes (manifest.test pins it), so the skinned local position and headCentre share a space.
-  if (p.curlTighten > 0) m.positionNode = mix(positionLocal, headCentre, float(p.curlTighten).mul(w).mul(u.y));
+  // Wet curls pull in toward the head, most at the tips (grommet spec §3), but never inside the scalp (~10 cm from the
+  // head's centre; pulling straight to the centre sank them into his skull and left a bald orange cap). The surfer's
+  // group sits at the world origin with identity nodes (manifest.test pins it), so the skinned local position and
+  // headCentre share a space.
+  if (p.curlTighten > 0) {
+    const out: N = positionLocal.sub(headCentre), r: N = length(out);
+    const pulled = max(r.mul(float(1).sub(float(p.curlTighten).mul(w).mul(u.y))), min(r, float(0.1)));
+    m.positionNode = headCentre.add(out.div(r).mul(pulled));
+  }
   return m;
 }
 
