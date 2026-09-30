@@ -3,9 +3,10 @@ import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { MAX_LINK_SIM_TIME_S, type Moment, decodeMoment, encodeMoment, momentFromHash, momentHashProblem } from './momentLink';
 import { DEFAULT_SET_PARAMS, nextSetArrivalS, wavesNear } from '../swell/sets';
 import { findReferenceMoment } from './referenceMoments';
+import { WEATHER_PRESETS } from '../weather/weather';
 
 const sample: Moment = {
-  conditions: { ...cloneConditions(DEFAULT_CONDITIONS), timeOfDay: 16.8333, seed: 99 },
+  conditions: { ...cloneConditions(DEFAULT_CONDITIONS), timeOfDay: 16.8333, seed: 99, weather: { ...WEATHER_PRESETS.showers, lowCover: 0.52 } },
   camera: { mode: 'free', position: [12.5, 40, -3.25], yawDeg: 301, pitchDeg: -12.5 },
   simTime: 123.456,
   paused: true,
@@ -20,6 +21,11 @@ describe('encode/decode', () => {
   it('round-trips a walk pose', () => {
     const walk: Moment = { ...sample, camera: { mode: 'walk', position: [210, 4, -40], yawDeg: 0, pitchDeg: -4 } };
     expect(decodeMoment(encodeMoment(walk))).toEqual(walk);
+  });
+  it('opens a link made before weather existed under a clear sky (the sky it was made with)', () => {
+    const { weather: _w, ...old } = sample.conditions;
+    const b64 = btoa(JSON.stringify({ v: 1, ...sample, conditions: old })).replace(/=+$/, '');
+    expect(decodeMoment(`#m=${b64}`)?.conditions.weather).toEqual(WEATHER_PRESETS.clear);
   });
   it('uses URL-safe characters only', () => {
     expect(encodeMoment(sample).slice(3)).toMatch(/^[A-Za-z0-9_-]+$/);

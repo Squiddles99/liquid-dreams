@@ -37,5 +37,5 @@ export function sunThroughWindowNode(t: N, sky: Sky): N {
   const angle = acos(clamp(dot(t, sky.sunDirection), -1.0, 1.0));
   const r = float(SUN_ANGULAR_RADIUS_RAD);
   const disk = float(1.0).sub(smoothstep(r.mul(0.92), r.mul(1.08), angle));
-  return min(sky.sunIlluminance.div(PI.mul(r).mul(r)), vec3(30000.0)).mul(disk);
+  return min(sky.sunIlluminance.div(PI.mul(r).mul(r)), vec3(30000.0)).mul(disk).mul(sky.cloudSunTransmittance);
 }

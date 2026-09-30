@@ -1,7 +1,7 @@
 import type { Point3 } from './hits';
 import type { SoundFrame } from './soundModel';
 import { type SoundParams, masterGain } from './soundParams';
-import { LoopVoice, type NoiseBuffers, makeNoiseBuffers, makeRng, playHit, playPlip } from './voices';
+import { LoopVoice, type NoiseBuffers, makeNoiseBuffers, makeRng, playHit, playPlip, playThunder } from './voices';
 
 /**
  * The Web Audio graph (Phase 5 spec §3.1):
@@ -35,6 +35,8 @@ export class AudioEngine {
   private readonly wash: LoopVoice;
   private readonly rumble: LoopVoice;
   private readonly wind: LoopVoice;
+  /** The rain's hiss (weather W2). */
+  private readonly rain: LoopVoice;
   private readonly scrub: LoopVoice;
   private readonly flutter: GainNode;
   private readonly swash: LoopVoice;
@@ -66,6 +68,7 @@ export class AudioEngine {
     this.wash = new LoopVoice(ctx, n.pink, g.waves, { type: 'lowpass', freq: 1500, refDistance: 30, offsetS: 1.1 });
     this.rumble = new LoopVoice(ctx, n.brown, g.waves, { type: 'lowpass', freq: 250, refDistance: 60, offsetS: 2.3 });
     this.wind = new LoopVoice(ctx, n.pink, g.ambience, { type: 'bandpass', freq: 600, q: 0.6, offsetS: 3.7 });
+    this.rain = new LoopVoice(ctx, n.white, g.ambience, { type: 'highpass', freq: 1200, offsetS: 2.9 });
     this.scrub = new LoopVoice(ctx, n.white, g.ambience, { type: 'highpass', freq: 3500, offsetS: 0.9 });
     // The leaves' flutter: slow brown noise modulating the scrub's gain.
     const flutterSrc = new AudioBufferSourceNode(ctx, { buffer: n.brown, loop: true, playbackRate: 4 });
@@ -127,6 +130,8 @@ export class AudioEngine {
     this.rumble.place(f.rumble, t);
     this.wind.set(0.35 * f.wind.level, (300 + 900 * f.wind.brightness) * (1 + 0.3 * Math.sin(t * 0.4)), t, 0.3);
     this.scrub.set(0.25 * f.scrub, 3500, t, 0.2);
+    this.rain.set(0.4 * f.rain.level, 900 + 1500 * f.rain.brightness, t, 0.5);
+    for (const th of f.thunder) playThunder(this.ctx, this.noise, this.groups.ambience, th, t + th.delayS, this.rng);
     this.flutter.gain.setTargetAtTime(0.2 * f.scrub, t, 0.2);
     const back = f.swash.level > 0 ? f.swash.drawBack / f.swash.level : 0;
     this.swash.set(0.5 * f.swash.level, 1800 + 2200 * back, t, 0.1);

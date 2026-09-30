@@ -8,7 +8,8 @@ import { DEFAULT_FOAM_PARAMS, FOAM_PARAM_RANGES, type FoamParams } from '../whit
 import { DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, IMPACT_PARAM_RANGES, SPRAY_PARAM_RANGES, type ImpactParams, type SprayParams } from '../whitewater/sprayEmitters';
 import { DEFAULT_LAND_PARAMS, LAND_PARAM_RANGES, type LandParams } from '../land/landParams';
 import { DEFAULT_SURF_PARAMS, SURF_PARAM_RANGES, type SurfParams } from '../surf/surfModel';
-import { BOMBIE_BINDINGS, BREAK_BINDINGS, SOUND_BINDINGS, CONDITION_BINDINGS, FOAM_BINDINGS, IMPACT_BINDINGS, LAND_BINDINGS, OVERLAY_BINDINGS, SURF_BINDINGS, SPRAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
+import { WEATHER_PRESETS, WEATHER_PRESET_NAMES, WEATHER_RANGES, sanitizeWeather } from '../weather/weather';
+import { WEATHER_BINDINGS, WEATHER_PRESET_OPTIONS, BOMBIE_BINDINGS, BREAK_BINDINGS, SOUND_BINDINGS, CONDITION_BINDINGS, FOAM_BINDINGS, IMPACT_BINDINGS, LAND_BINDINGS, OVERLAY_BINDINGS, SURF_BINDINGS, SPRAY_BINDINGS, WIND_SPEED_KMH_BINDING } from './DevPanel';
 
 describe('dev panel condition bindings never rewrite a loaded moment', () => {
   // windSpeedMs has no widget of its own: it's edited in km/h through WIND_SPEED_KMH_BINDING instead, checked below.
@@ -45,6 +46,30 @@ describe('dev panel condition bindings never rewrite a loaded moment', () => {
       const kmh = msToKmh(c.wind.speedMs);
       expect(kmh).toBeGreaterThanOrEqual(WIND_SPEED_KMH_BINDING.min);
       expect(kmh).toBeLessThanOrEqual(WIND_SPEED_KMH_BINDING.max);
+    }
+  });
+});
+
+describe('Weather folder', () => {
+  it('has a slider for every weather field, with exactly the sanitised range and no step snapping', () => {
+    expect(Object.keys(WEATHER_BINDINGS).sort()).toEqual(Object.keys(WEATHER_RANGES).sort());
+    for (const [k, r] of Object.entries(WEATHER_RANGES)) {
+      const b = WEATHER_BINDINGS[k as keyof typeof WEATHER_BINDINGS];
+      expect([b.min, b.max], k).toEqual([r.min, r.max]);
+      expect('step' in b, k).toBe(false);
+    }
+  });
+  it('lists every preset in spectrum order, then custom', () => {
+    expect(WEATHER_PRESET_OPTIONS.map((o) => o.value)).toEqual([...WEATHER_PRESET_NAMES, 'custom']);
+  });
+  it('whatever a link carries, the sanitised weather sits inside the sliders', () => {
+    for (const v of [-1e9, -0.5, 0, 0.5, 250, 1e9]) {
+      const junk = Object.fromEntries(Object.keys(WEATHER_RANGES).map((k) => [k, v]));
+      const w = sanitizeWeather(junk, WEATHER_PRESETS.clear);
+      for (const k of Object.keys(WEATHER_RANGES) as (keyof typeof WEATHER_BINDINGS)[]) {
+        expect(w[k]).toBeGreaterThanOrEqual(WEATHER_BINDINGS[k].min);
+        expect(w[k]).toBeLessThanOrEqual(WEATHER_BINDINGS[k].max);
+      }
     }
   });
 });

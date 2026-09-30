@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, acos, cameraPosition, clamp, dot, float, min, normalize, positionWorld, smoothstep, sqrt, vec3 } from 'three/tsl';
+import { PI, acos, cameraPosition, clamp, dot, exp, float, max, min, normalize, positionWorld, smoothstep, sqrt, vec3 } from 'three/tsl';
 import { SUN_ANGULAR_RADIUS_RAD, type Sky } from './Sky';
 
 export function createSkyDome(sky: Sky): THREE.Mesh {
@@ -13,7 +13,8 @@ export function createSkyDome(sky: Sky): THREE.Mesh {
   // Keeps the disk well inside half-float range (max 65504) in the scene target. Exposure can still scale it past
   // that; what keeps bloom and tone mapping finite is PicturePipeline's clamp on the exposed colour (HDR_MAX).
   const sunRadiance = min(sky.sunIlluminance.div(PI.mul(r).mul(r)).mul(limbDarkening), vec3(30000.0));
-  material.colorNode = sky.radiance(dir).add(sunRadiance.mul(disk));
+  const fogged = exp(sky.fogDepth(max(sky.sunDirection.y, 0.0), float(1e5)).negate());
+  material.colorNode = sky.radiance(dir, true).add(sunRadiance.mul(disk).mul(sky.cloudSunTransmittance).mul(fogged));
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32), material);
   mesh.scale.setScalar(40000);
   mesh.frustumCulled = false;

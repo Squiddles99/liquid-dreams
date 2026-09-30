@@ -74,9 +74,12 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
 // saturate(): at the anti-solar point v·h rounds to a hair above 1, and pow() of a negative base is NaN on the GPU (it showed as a fake sun).
 export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(saturate(float(1.0).sub(cosTheta)), 5.0)));
 
-/** The deep water's own light, as the surface shows it from above with its body lit from straight up (shadeWater's upwelling). */
-export function deepWaterUpwelling(sky: Sky, u: WaterOpticsUniforms): N {
-  return u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(max(sky.sunDirection.y, 0.0)))).div(PI).mul(u.bodyScale);
+/**
+ * The deep water's own light, as the surface shows it from above with its body lit from straight up (shadeWater's
+ * upwelling). `sunVisibility`: how much of the sun reaches the water there (the clouds' shade; 1 when absent).
+ */
+export function deepWaterUpwelling(sky: Sky, u: WaterOpticsUniforms, sunVisibility: N = float(1.0)): N {
+  return u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(max(sky.sunDirection.y, 0.0)).mul(sunVisibility))).div(PI).mul(u.bodyScale);
 }
 
 /**
@@ -203,10 +206,12 @@ export function shadeWaterFromBelow(
   const t: N = refract(i.viewDir.negate(), nDown, float(WATER_IOR)); // zero beyond the rim, where R = 1
   const tDir = normalize(vec3(t.x, max(t.y, 1e-3), t.z));
   const skyThrough = sky.radiance(tDir).add(sunThroughWindowNode(tDir, sky));
-  const upwelling = deepWaterUpwelling(sky, u);
+  // Under water the sun is shaded as it is where the eye is (the camera's own sun through the clouds; final review I2).
+  const sunHere = sky.cloudSunTransmittance;
+  const upwelling = deepWaterUpwelling(sky, u, sunHere);
   const below = i.reflected(reflect(i.viewDir.negate(), nDown));
   const surface = skyThrough.mul(float(1.0).sub(R)).add(below.mul(R));
-  const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(max(sky.sunDirection.y, 0.0))).mul(u.foamAlbedo).div(PI);
+  const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(max(sky.sunDirection.y, 0.0)).mul(sunHere)).mul(u.foamAlbedo).div(PI);
   const seen = mix(surface, foamLight.mul(0.6), saturate(i.foam));
   const inf = waterColourAtDepthNode(upwelling, u.extinction, cameraDepthNode(i.tide));
   return alongPathNode(seen, inf, u.extinction, i.distance);

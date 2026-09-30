@@ -63,6 +63,14 @@ describe('sun-in-view metering', () => {
     expect(sunInViewStops(1, 0)).toBeGreaterThan(0);
     expect(sunInViewStops(1, 0)).toBeLessThan(SUN_IN_VIEW_MAX_STOPS);
   });
+  it('computeExposure adds the cloud stops in auto mode only', () => {
+    expect(computeExposure(45, 1, 0, true, -1, 1.5)).toBeCloseTo(2 ** 1.5);
+    expect(computeExposure(45, 1, 0, false, -1, 1.5)).toBeCloseTo(1);
+  });
+  it('a sun hidden by cloud does not stop the exposure down', () => {
+    expect(computeExposure(6, 1, 0, true, 1, 0, 0)).toBeCloseTo(2 ** exposureStopsForSun(6));
+    expect(computeExposure(6, 1, 0, true, 1, 0, 0.5)).toBeCloseTo(2 ** (exposureStopsForSun(6) - 0.5 * SUN_IN_VIEW_MAX_STOPS));
+  });
   it('computeExposure subtracts it in auto mode only', () => {
     expect(computeExposure(6, 1, 0, true, 1)).toBeCloseTo(2 ** (exposureStopsForSun(6) - SUN_IN_VIEW_MAX_STOPS));
     expect(computeExposure(6, 1, 0, false, 1)).toBeCloseTo(1);
