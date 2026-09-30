@@ -90,6 +90,19 @@ at the Womb's peak:
 | Small, high tide | on the reef top | ≈ 1.1–1.3 | gentle |
 | Too big, low tide | over the flat 13 m | ≈ 1.0 | breaks outside (B's) |
 
+**Re-fitted after the bake (Andrew's ruling, 2026-09-30).** Baked from the real reef, with the crest smoothing, the step
+at the peak for the biggest set wave is lower and compressed:
+
+| | 4 ft | 6 ft | 8 ft | 10 ft | 12 ft | 15 ft |
+|---|---|---|---|---|---|---|
+| Low tide (−1.5 m) | 1.79 | 2.22 | 2.16 | 1.91 | 1.48 | 1.05 |
+| Mid tide | 1.33 | 1.71 | 1.95 | 2.07 | 1.80 | 1.48 |
+| High tide (+1.5 m) | 1.22 | 1.35 | 1.58 | 1.80 | 1.85 | 1.80 |
+
+Each tide has its own best size (low 6–8 ft, mid ~10 ft, high 12 ft and up); past it the set breaks outside over the flat.
+12 ft at low tide is already too big. "Low throws heavier than mid, mid than high" holds up to about 8 ft; above that a
+bigger swell wants more tide. The step → intensity points below are re-fitted to this range.
+
 **How it's stored:**
 - The onset record gets one more value per breaking level: the step where that level broke. It's carried along the rays in
   the same march as the time since onset and the throw's height, so it never jumps backward along a ray.
@@ -103,9 +116,9 @@ at the Womb's peak:
 
 One number per crest point, built in this order:
 
-1. **The reef:** a piecewise-linear map from step to intensity through step 1.25 → 0, 2.2 → 1, 2.8 → 2. Below 1.25 it goes
-   negative, which A treats as 0 and B will use. This is the calibration. The plan checks it on the real field: 12 ft at mid
-   tide reads 1 ± 0.15 at the peak.
+1. **The reef:** a piecewise-linear map from step to intensity through step 1.3 → 0, 1.85 → 1, 2.25 → 2 (re-fitted to the
+   baked reef; first drafted as 1.25 / 2.2 / 2.8). Below 1.3 it goes negative, which A treats as 0 and B will use. This is
+   the calibration. The plan checks it on the real field: 12 ft at mid tide reads 1 ± 0.15 at the peak.
 2. **Wind:** + 0.25 × clamp(offshore speed ÷ 8 m/s, −1, 1). The offshore speed is the wind speed times the cosine of the
    angle between where the wind blows toward and against the waves' travel. Onshore is negative, cross-shore about 0.
 3. **Period:** + 0.15 × clamp((T − 12 s) ÷ 6 s, −1, 1). Longer groundswell hits harder.

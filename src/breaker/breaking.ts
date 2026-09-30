@@ -268,9 +268,11 @@ export const LIP_THROW_S = 2;
 export function onsetLevelHeight(k: number): number {
   return 1 / (ONSET_LEVEL_Q[k] * onsetGain(DEFAULT_BREAK_PARAMS));
 }
-/** Values per record sample: the running maximum, then per level (time since onset, the throw's height ÷ the level's
- * deep-water height). */
-export const ONSET_RECORD_LENGTH = 1 + 2 * ONSET_LEVELS;
+/** Values per record sample: the running maximum; per level (time since onset, the throw's height ÷ the level's
+ * deep-water height); then per level the step where that level broke (reefField.stepAlong, spec 2026-09-30 §3.1). */
+export const ONSET_RECORD_LENGTH = 1 + 3 * ONSET_LEVELS;
+/** Offset of level 0's step in a record sample. */
+export const ONSET_STEP_OFFSET = 1 + 2 * ONSET_LEVELS;
 
 /**
  * ρ per metre of wave height per unit amp/hminBreak: (1 + γδ)/γ, breakingRatio without its floor. The record leaves the
@@ -317,6 +319,20 @@ export function onsetHeight(rec: ArrayLike<number>, offset: number, heightM: num
   if (!l) return null;
   const lo = rec[offset + 2 + 2 * l.k], hi = rec[offset + 4 + 2 * l.k];
   return heightM * (lo + l.w * (hi - lo));
+}
+
+/**
+ * The step where the section broke, for a wave of deep-water height `heightM`: levels k and k + 1 around its breaking
+ * level, log-linearly (w = lq − k, clamped). Unlike onsetTime it reads a value whether or not the wave has broken: an
+ * unbroken level holds the node's own step (a section breaking there now), which the drain uses before the break.
+ */
+export function onsetStep(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number {
+  const g = heightM * onsetGain(p), s = offset + ONSET_STEP_OFFSET;
+  if (!(g > 0)) return rec[s];
+  const lq = Math.log(1 / (g * ONSET_LEVEL_Q0)) / Math.log(ONSET_LEVEL_RATIO);
+  const k = Math.min(ONSET_LEVELS - 2, Math.max(0, Math.floor(lq)));
+  const w = Math.min(1, Math.max(0, lq - k));
+  return rec[s + k] + w * (rec[s + k + 1] - rec[s + k]);
 }
 
 /** The pile rises this long after the lip lands (s): where the lip hits the water, the whitewater stands up. */

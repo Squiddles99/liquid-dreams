@@ -31,7 +31,7 @@
 ## Global Constraints
 
 - The step is clamped to **[1, 3]**, with a look-ahead of **1.5 ×** the still-water depth where the section starts to break.
-- Step → intensity is piecewise linear through **1.25 → 0, 2.2 → 1, 2.8 → 2**. It extrapolates below 1.25 and above 2.8 before the final clamp.
+- Step → intensity is piecewise linear through **1.3 → 0, 1.85 → 1, 2.25 → 2** (re-fitted in Task 2 to the baked reef, Andrew's ruling; first drafted as 1.25 / 2.2 / 2.8). It extrapolates below 1.25 and above 2.8 before the final clamp.
 - Wind adds **0.25 × clamp(offshore speed ÷ 8 m/s, −1, 1)**.
 - Period adds **0.15 × clamp((T − 12 s) ÷ 6 s, −1, 1)**, where T is the wave's own period.
 - The drain bonus is **0.1 × smoothstep(T, 2T, gap) − 0.3 × (1 − smoothstep(0.6T, T, gap))**. `gap` is the seconds since the previous wave reached the peak; Infinity for the first wave of a set and for strays.

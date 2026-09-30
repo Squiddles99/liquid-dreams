@@ -12,10 +12,12 @@ import type { BreakParams } from './breaking';
 /** The step (depth where a section starts to break ÷ the shallowest depth over 1.5 depths ahead) is clamped here. */
 export const STEP_MIN = 1;
 export const STEP_MAX = 3;
-/** Step → intensity, piecewise linear through these (step, intensity) points; extrapolated past both ends. */
-export const STEP_POINTS: readonly (readonly [number, number])[] = [[1.25, 0], [2.2, 1], [2.8, 2]];
+/** Step → intensity, piecewise linear through these (step, intensity) points; extrapolated past both ends. Fitted to the
+ * baked reef (Andrew's ruling, 2026-09-30): the step at the peak tops out near 2.3 (low tide, 6–8 ft); 12 ft at mid tide
+ * reads 1.8 (normal); a set too big for the tide breaks outside over the flat and reads 1.0–1.5. */
+export const STEP_POINTS: readonly (readonly [number, number])[] = [[1.3, 0], [1.85, 1], [2.25, 2]];
 /** The step a normal day's break reads (intensity 1). */
-export const STEP_NORMAL = 2.2;
+export const STEP_NORMAL = 1.85;
 /** Offshore wind adds WIND_WEIGHT × clamp(offshore ÷ WIND_FULL_MS, −1, 1). */
 export const WIND_WEIGHT = 0.25;
 export const WIND_FULL_MS = 8;

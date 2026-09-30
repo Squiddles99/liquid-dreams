@@ -5,7 +5,7 @@ import {
 } from 'three/tsl';
 import { REEF_GRID } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_RECORD_LENGTH, breakingDepth, normalizeBreakParams } from './breaking';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_RECORD_LENGTH, ONSET_STEP_OFFSET, breakingDepth, normalizeBreakParams } from './breaking';
 import { churnHeightNode } from '../whitewater/pileChurn';
 import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
@@ -126,7 +126,7 @@ export class SetWaves {
     for (let i = 0; i < f.tau.length; i++) {
       const col = i % FIELD_NX, row = (i - col) / FIELD_NX, o = (row * FIELD_NX + col) * ONSET_TEXELS * 4, r = i * ONSET_RECORD_LENGTH;
       od[o] = f.onset[r];
-      od.set(f.onset.subarray(r + 1, r + ONSET_RECORD_LENGTH), o + 4);
+      od.set(f.onset.subarray(r + 1, r + ONSET_STEP_OFFSET), o + 4);
     }
     const fa = this.farA.image.data as Float32Array, fb = this.farB.image.data as Float32Array;
     for (let i = 0; i < f.far.count; i++) {
