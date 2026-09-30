@@ -175,11 +175,19 @@ describe('the plant casters for the patch (final review I1: the shadow rebuild s
 });
 
 describe('the plant cache (final review I2)', () => {
+  // The flight walks 334 cache refreshes (each gathers ~7,850 cells within 200 m) and sweeps ~50,000 cells, well past
+  // the 12,000-cell trim: ~2 s alone, but several times that when the whole suite runs in parallel, hence the timeout.
   it('stays bounded while the camera flies 2 km over the heath', () => {
     const field = new PlantField(land, null, 1);
-    for (let x = 400; x <= 2400; x += 3) field.near(x, 0);
+    let trims = 0, last = 0;
+    for (let x = 400; x <= 2400; x += 6) {
+      field.near(x, 0);
+      if (field.cachedCells < last) trims++;
+      last = field.cachedCells;
+    }
+    expect(trims).toBeGreaterThan(0);
     expect(field.cachedCells).toBeLessThan(12000);
     // and what's near is still right after eviction
     expect(field.near(2400, 0)).toEqual(new PlantField(land, null, 1).near(2400, 0));
-  });
+  }, 30_000);
 });
