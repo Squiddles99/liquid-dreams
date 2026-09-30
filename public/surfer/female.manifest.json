@@ -332,6 +332,20 @@
    "materials": [
     "body"
    ]
+  },
+  {
+   "name": "female_hair",
+   "triangles": 9350,
+   "materials": [
+    "hair"
+   ]
+  },
+  {
+   "name": "female_eyes",
+   "triangles": 336,
+   "materials": [
+    "eyes"
+   ]
   }
  ],
  "blender": "5.2.2 LTS",

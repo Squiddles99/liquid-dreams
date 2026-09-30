@@ -332,6 +332,27 @@
    "materials": [
     "body"
    ]
+  },
+  {
+   "name": "male_hair",
+   "triangles": 7000,
+   "materials": [
+    "hair"
+   ]
+  },
+  {
+   "name": "male_eyes",
+   "triangles": 336,
+   "materials": [
+    "eyes"
+   ]
+  },
+  {
+   "name": "male_boardies",
+   "triangles": 1185,
+   "materials": [
+    "boardies"
+   ]
   }
  ],
  "blender": "5.2.2 LTS",

@@ -28,5 +28,13 @@ for (const name of ['female', 'male'] as const) {
       expect(body.materials.length).toBeLessThanOrEqual(4);
       expect(man.meshes.reduce((s, m) => s + m.triangles, 0)).toBeLessThanOrEqual(40000);
     });
+    it('carries the wardrobe masks on the body (TEXCOORD_1–3), and hair and eyes', () => {
+      const matName = (i: number): string => gltf.materials[i].name;
+      const body = gltf.meshes.find((m: any) => m.primitives.some((p: any) => matName(p.material) === 'body'));
+      for (const p of body.primitives) for (const a of ['TEXCOORD_1', 'TEXCOORD_2', 'TEXCOORD_3']) expect(p.attributes[a], a).toBeDefined();
+      const all = gltf.meshes.flatMap((m: any) => m.primitives.map((p: any) => matName(p.material)));
+      for (const m of ['hair', 'eyes']) expect(all).toContain(m);
+      expect(all.includes('boardies')).toBe(name === 'male');
+    });
   });
 }
