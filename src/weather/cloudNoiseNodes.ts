@@ -1,4 +1,4 @@
-import { abs, dot, float, floor, length, max, min, mix, saturate, uint, uvec3, vec3 } from 'three/tsl';
+import { Fn, abs, dot, float, floor, length, max, min, mix, saturate, uint, uvec3, vec3 } from 'three/tsl';
 
 type N = any;
 
@@ -7,15 +7,18 @@ type N = any;
  * cell index wraps modulo the noise's period, so a texture filled over one period repeats without a seam.
  */
 
-/** pcg3d (Jarzynski & Olano 2020): three well-mixed uints from three, mapped to [0, 1). */
-export function hash3(c: N): N {
+/**
+ * pcg3d (Jarzynski & Olano 2020): three well-mixed uints from three, mapped to [0, 1). A TSL Fn, so its variables work
+ * wherever it's called: in a material's colour node as well as a compute pass (outside an Fn the assigns fail).
+ */
+export const hash3 = Fn(([c]: [N]): N => {
   const k = c.mul(uint(1664525)).add(uint(1013904223)).toVar();
   const x = k.x.toVar(), y = k.y.toVar(), z = k.z.toVar();
   x.addAssign(y.mul(z)); y.addAssign(z.mul(x)); z.addAssign(x.mul(y));
   x.assign(x.bitXor(x.shiftRight(uint(16)))); y.assign(y.bitXor(y.shiftRight(uint(16)))); z.assign(z.bitXor(z.shiftRight(uint(16))));
   x.addAssign(y.mul(z)); y.addAssign(z.mul(x)); z.addAssign(x.mul(y));
   return vec3(float(x), float(y), float(z)).mul(1.0 / 4294967296.0);
-}
+}) as unknown as (c: N) => N;
 
 /** A lattice point's index, wrapped into [0, period) and salted with the seed. */
 function latticeKey(cell: N, period: number, seed: N): N {

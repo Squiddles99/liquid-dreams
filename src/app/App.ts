@@ -267,7 +267,7 @@ export class App {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
     this.scene.add(this.waterVolume.mesh);
-    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline, surf: this.surf });
+    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline, surf: this.surf, rain: (xz) => this.clouds.field.rainRate(xz) });
     this.land.setWetHeight((xz) => this.seabed.tide.add(this.surf.wetLevelNode(xz.y)));
     // The land's own material reads the ridge's shade; the clouds' shadow falls on it too.
     this.land.setSunVisibility((xz) => this.sunlight.visibilityNode(xz));

@@ -4,6 +4,7 @@ import { fmt, registerSelfTest } from '../dev/selfTest';
 import { Sky } from '../sky/Sky';
 import { cloudDensity, coverageDensity, lowLayer } from './cloudModel';
 import { rainRate } from './rainModel';
+import { rainRipplesNode } from './rainRipples';
 import { meterLuminance } from './cloudMeter';
 import { fogExtinctionPerM, fogOpticalDepth } from './fog';
 import { Clouds } from './Clouds';
@@ -433,5 +434,20 @@ registerSelfTest({
     const raw = await rough(clouds.rawMap), sharp = await rough(sky.skyMap);
     void W;
     return { pass: sharp < 0.5 * raw && raw > 0, detail: `texel-scale roughness: marched ${raw.toFixed(4)}, shown ${sharp.toFixed(4)}` };
+  },
+});
+
+registerSelfTest({
+  name: 'clouds: raindrop rings on the sea: none when dry, rings where it rains',
+  async run(renderer) {
+    const n = 1024;
+    const sample = (rate: number) => readFloats(renderer, n, (i: N) => {
+      const xz = vec2(float(i.mod(uint(32))), float(i.div(uint(32)))).mul(0.037);
+      const s: N = rainRipplesNode(xz, float(12.3), float(rate));
+      return s.x.abs().add(s.y.abs());
+    });
+    const dry = await sample(0), wet = await sample(0.6);
+    const lit = Array.from(wet).filter((v) => v > 1e-3).length / n;
+    return { pass: dry.every((v) => v === 0) && lit > 0.05 && wet.every(Number.isFinite), detail: `dry max ${Math.max(...dry)}; rain 0.6: ${(lit * 100).toFixed(0)}% of points on a ring` };
   },
 });
