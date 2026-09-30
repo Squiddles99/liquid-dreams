@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetPsi, onsetTime } from './breaking';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
-import { type ActiveWave, BREAKING_RATIO, type BreakOptions, type WaveContext, breakOptions, crestAt, localHeight, rayCrestPoint, sumWaves, toActiveWave, waveAt } from './setWaveModel';
+import {
+  type ActiveWave, BREAKING_RATIO, type BreakOptions, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, LONG_TAIL_CUTOFF, LONG_TAIL_WIDTH, type WaveContext, beyondEnvelope,
+  breakOptions, crestAt, localHeight, phaseXi, rayCrestPoint, sumWaves, toActiveWave, waveAt,
+} from './setWaveModel';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
@@ -108,6 +111,23 @@ describe('ψ at the crest (barrel from the maths)', () => {
   const big = wavesOfSet(1, c, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
   const w = toActiveWave(big), t = w.arrivalS + sampleField(field, 0, 0).tau + 0.5;
   const crest = (wave = w, p = DEFAULT_BREAK_PARAMS) => crestAt(0, 0, t, sampleField(field, 0, 0), wave, ctx, breakOptions(field, p))!;
+  it('past its envelope cutoff a wave is nothing, stage included (the GPU skips it there): 12 ft at the grid edge', () => {
+    // The GPU's repro (breaker self-test "eases the crest", 12 ft, dt +20 s): the set's biggest wave passed (140, 297.25)
+    // 19 s ago (envelope 1e-15), yet its crest lookup lands squarely on its crest 60 m on, where it has broken.
+    const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
+    const x = 140, z = field.grid.z0 + (field.grid.nz - 1) * field.grid.cellM - 2, tt = w.arrivalS + 20, f = sampleField(field, x, z);
+    expect(beyondEnvelope(phaseXi(x, z, tt, f, w, ctx), w)).toBe(true);
+    const found = crestAt(x, z, tt, f, w, ctx, o)!;
+    expect(found.s * found.confidence).toBeGreaterThan(0.9);
+    expect(waveAt(x, z, tt, f, w, ctx, o)).toEqual({ eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0, pile: 0 });
+    // The cutoff's edges: the tight envelope either side, the long tail's Gaussian behind its crest only.
+    const T = (2 * Math.PI) / w.omega, tight = ENVELOPE_CUTOFF * ENVELOPE_WIDTH * T, tail = { ...w, longTail: true };
+    expect(beyondEnvelope(0.99 * tight, w)).toBe(false);
+    expect(beyondEnvelope(1.01 * tight, w)).toBe(true);
+    expect(beyondEnvelope(-1.01 * tight, tail)).toBe(true);
+    expect(beyondEnvelope(1.01 * tight, tail)).toBe(false);
+    expect(beyondEnvelope(1.01 * LONG_TAIL_CUTOFF * LONG_TAIL_WIDTH * T, tail)).toBe(true);
+  });
   it("the crest carries ψ₀ × the game rules, and its own sheet params (the trough drain and surge at its ψ)", () => {
     const cr = crest();
     const on = rayCrestPoint(0, 0, t, sampleField(field, 0, 0), w, ctx); // crestAt reads the record on the point's own ray

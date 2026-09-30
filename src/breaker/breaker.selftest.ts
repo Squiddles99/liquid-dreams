@@ -498,10 +498,10 @@ registerSelfTest({
         if (c.stage > 0.1) breaking++;
       });
     }
-    // The ψ's fade shows in the displacement (the sheet's shape). The reported stage is compared as a diagnostic only:
-    // near the edge the crest lookup lands on crests 60 m away, and its confidence weighting differs between the CPU and
-    // the GPU there (a separate finding, not the ψ's).
-    const ok = breaking > 0 && disp.value < 0.05;
-    return { pass: ok, detail: `${points.length} points within 22 m of the grid's north and south edges × dt −40…40 s (12 ft); ${breaking} breaking samples (> 0); worst |Δdisp| ${disp} m (< 0.05); diagnostic |Δstage| ${stage} [${stageAt}]` };
+    // The ψ's fade shows in the displacement (the sheet's shape), and the reported stage agrees too: a wave past its
+    // envelope cutoff reports none on either side (setWaveModel.beyondEnvelope), though its crest lookup, 60 m on, lands
+    // on a broken crest (before, the CPU reported it: stage 1.000 against the GPU's 0.432 at (140, 297.3), dt +20 s).
+    const ok = breaking > 0 && disp.value < 0.05 && stage.value < 0.02;
+    return { pass: ok, detail: `${points.length} points within 22 m of the grid's north and south edges × dt −40…40 s (12 ft); ${breaking} breaking samples (> 0); worst |Δdisp| ${disp} m (< 0.05); worst |Δstage| ${stage} (< 0.02) [${stageAt}]` };
   },
 });

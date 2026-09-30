@@ -29,6 +29,10 @@ export const ENVELOPE_WIDTH = 0.7;
  * zero slope at the crest.
  */
 export const LONG_TAIL_WIDTH = 0.8;
+/** Envelope widths |ξ|/width beyond which a wave is nothing at a point: exp(−1.52⁶) ≈ 5e-6 for the tight envelope… */
+export const ENVELOPE_CUTOFF = 1.52;
+/** …and exp(−3.5²) ≈ 5e-6 for a long tail's Gaussian. */
+export const LONG_TAIL_CUTOFF = 3.5;
 /** Largest second-harmonic ratio (Stokes breaks down in very shallow water). */
 export const STOKES_CAP = 0.35;
 /** k × horizontal amplitude never exceeds this (keeps the along-ray Jacobian positive). */
@@ -127,6 +131,18 @@ export function waveEnvelope(xi: number, w: ActiveWave): { env: number; dEnv: nu
   }
   const width = ENVELOPE_WIDTH * T, r = xi / width, env = Math.exp(-(r ** 6));
   return { env, dEnv: ((-6 * r ** 5) / width) * env };
+}
+
+/**
+ * Whether ξ is past w's envelope cutoff (ENVELOPE_CUTOFF, LONG_TAIL_CUTOFF behind a long tail's crest): there the wave is
+ * nothing, stage included (waveAtCrest). Its height there is under 5e-6 of the wave's, but its crest lookup can still land
+ * squarely on its crest a period or more on, broken: counted, a wave long gone reported its crest's stage (the GPU skips
+ * such waves, so the two disagreed by up to 1 at the grid's edge).
+ */
+export function beyondEnvelope(xi: number, w: ActiveWave): boolean {
+  const T = (2 * Math.PI) / w.omega;
+  const r = w.longTail && xi > 0 ? xi / (LONG_TAIL_WIDTH * T) : xi / (ENVELOPE_WIDTH * T);
+  return !(Math.abs(r) < (w.longTail && xi > 0 ? LONG_TAIL_CUTOFF : ENVELOPE_CUTOFF));
 }
 
 export function localHeight(w: ActiveWave, f: FieldSample): number {
@@ -274,6 +290,7 @@ export function crestStage(x: number, z: number, t: number, f: FieldSample, w: A
 /** One wave at one point, given its crest (null, or neither steepening nor breaking: the Phase 1 wave exactly). */
 export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, crest: Crest | null, o?: BreakOptions): SetWaveResult {
   const xi = phaseXi(x, z, t, f, w, ctx);
+  if (beyondEnvelope(xi, w)) return { ...ZERO };
   const H = waveHeightAt(w, f, crest, xi);
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;
