@@ -3,6 +3,7 @@ import type { Conditions } from '../conditions/types';
 import { WEATHER_PRESETS } from '../weather/weather';
 import type { CameraPose, Moment } from './momentLink';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
+import { DEFAULT_SURFER_PARAMS, type SurferParams, sanitizeSurferParams } from '../surfer/surferParams';
 
 /**
  * How a custom-mode pick carries a moment over (see `pickMoment` in devSettings.ts):
@@ -53,6 +54,15 @@ const REF_BIGGEST = REF_SET.reduce((a, b) => (b.heightM > a.heightM ? b : a));
 const setMoment = (name: string, description: string, c: Conditions, camera: CameraPose, simTime: number): ReferenceMoment => ({
   name, description, kind: 'set', moment: { conditions: c, camera, simTime, paused: true },
 });
+
+/** The stand's surfer, on and still (the phase from the slider, not the clock). */
+const stand = (patch: Partial<SurferParams>): SurferParams => sanitizeSurferParams({ ...DEFAULT_SURFER_PARAMS, enabled: true, play: false, ...patch });
+const withSurfer = (r: ReferenceMoment, surfer: SurferParams): ReferenceMoment => ({ ...r, moment: { ...r.moment, surfer } });
+
+/** In the pocket of the reference set's biggest wave at 5 ft, 2 s past its arrival (barrel-peeling's wave), placed by eye
+ * in the browser at gate 2: on the flat of the tube's base under the lip, heading down the line (WNW). */
+const POCKET = { x: 13.6, z: -27.9, headingDeg: 290 };
+const pocketCamera = (): CameraPose => ({ mode: 'free', position: [16.5, 2.2, -38.5], yawDeg: 197, pitchDeg: -10 });
 
 /** Sim times just after a Bombie break at these moments' own conditions (set-kind: they need them; found in the browser, ledgered). */
 const BOMBIE_LINEUP_SIM_S = 192.5;
@@ -120,6 +130,16 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
     conditions({ swell: { sizeFt: 8 } }), lineup(223, 1), BOMBIE_LINEUP_SIM_S),
   setMoment('bombie-close', '10 ft, from 30 m up and 120 m inshore of the Bombie: the burst over the reef, the white water rolling toward shore.',
     conditions({ swell: { sizeFt: 10 } }), { mode: 'free', position: [-180, 30, 330], yawDeg: 270, pitchDeg: -10 }, BOMBIE_CLOSE_SIM_S),
+  // The stand's moments (surfer on the stand, sub-project 1): the rider placed by eye in the browser at gate 2.
+  withSurfer(setMoment('surfer-lineup-sit', "08:15 at the Womb's lineup: Shazza sitting on her thruster 4.5 m away, nose out to the south-west swell.",
+    conditions({}), lineup(258, -5), REFERENCE_SIM_TIME),
+  stand({ preset: 'female', board: 'thruster', pose: 'sit', x: -29.4, z: 45.8, headingDeg: 225 })),
+  withSurfer(setMoment('surfer-pocket-pigdog', '08:15, 5 ft, from the channel: T-Bone regular on the step-up, pig-dogging backside in the pocket under the lip.',
+    conditions({ swell: { sizeFt: 5 } }), pocketCamera(), REF_BIGGEST.arrivalS + 2),
+  stand({ preset: 'male', stance: 'regular', board: 'stepUp', pose: 'barrel', ...POCKET })),
+  withSurfer(setMoment('surfer-pocket-frontside', '08:15, 5 ft, from the channel: Shazza goofy on the thruster, frontside in the pocket, facing the wave.',
+    conditions({ swell: { sizeFt: 5 } }), pocketCamera(), REF_BIGGEST.arrivalS + 2),
+  stand({ preset: 'female', stance: 'goofy', board: 'thruster', pose: 'barrel', ...POCKET })),
 ];
 
 const cloneMoment = (m: Moment): Moment => ({
@@ -127,6 +147,7 @@ const cloneMoment = (m: Moment): Moment => ({
   camera: { ...m.camera, position: [...m.camera.position] },
   simTime: m.simTime,
   paused: m.paused,
+  ...(m.surfer ? { surfer: { ...m.surfer } } : {}),
 });
 
 export function findReferenceMoment(name: string): Moment | null {
