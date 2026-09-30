@@ -57,10 +57,10 @@ const w = (lowCover: number, convection: number, lowBaseM: number, midCover: num
 export const WEATHER_PRESETS: Readonly<Record<WeatherPresetName, Readonly<W>>> = Object.freeze({
   //                   low   conv  base  mid   high  rain  storm vis   fogTop aloft°  m/s
   'clear': w(0, 0.4, 1000, 0, 0, 0, 0, 60, 1500, 270, 10),
-  'fair': w(0.12, 0.35, 900, 0, 0.05, 0, 0, 60, 1500, 270, 8),
-  'scattered': w(0.35, 0.45, 900, 0, 0.1, 0, 0, 50, 1500, 270, 10),
+  'fair': w(0.22, 0.25, 900, 0, 0.05, 0, 0, 60, 1500, 270, 8),
+  'scattered': w(0.35, 0.4, 900, 0, 0.1, 0, 0, 50, 1500, 270, 10),
   'broken': w(0.65, 0.2, 800, 0.1, 0.1, 0, 0, 40, 1500, 280, 12),
-  'high cloud': w(0.05, 0.3, 1200, 0.3, 0.7, 0, 0, 40, 1500, 300, 20),
+  'high cloud': w(0.05, 0.3, 1200, 0.12, 0.6, 0, 0, 40, 1500, 300, 20),
   'overcast': w(0.95, 0.1, 700, 0.4, 0.3, 0, 0, 25, 1500, 280, 12),
   'drizzle': w(1, 0.05, 400, 0.6, 0.3, 0.2, 0, 5, 1200, 270, 12),
   'showers': w(0.45, 0.85, 800, 0.1, 0.2, 0.6, 0.1, 40, 1500, 250, 15),

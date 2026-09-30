@@ -5,7 +5,10 @@ import { WEATHER_PRESETS } from '../weather/weather';
 export const WOMB_LOCATION = { latDeg: -33.895216, lonDeg: 114.983359 } as const;
 export const AWST_UTC_OFFSET_HOURS = 8;
 
-/** A winter morning session: sun low behind the dunes, light easterly offshore, scattered cumulus as the ridge builds after a front. */
+/**
+ * A winter morning session: sun low behind the dunes, light easterly offshore, a few shallow cumulus as the ridge builds
+ * after a front. Fair, not scattered: at the 08:15 sun, 3–4 oktas of cumulus shade nearly all the lineup.
+ */
 export const DEFAULT_CONDITIONS: Readonly<Conditions> = Object.freeze({
   date: '2026-07-15',
   timeOfDay: 8.25,
@@ -13,7 +16,7 @@ export const DEFAULT_CONDITIONS: Readonly<Conditions> = Object.freeze({
   wind: Object.freeze({ speedMs: 3, directionDeg: 80 }),
   tideM: 0,
   seed: 2002,
-  weather: WEATHER_PRESETS.scattered,
+  weather: WEATHER_PRESETS.fair,
 }) as Readonly<Conditions>;
 
 export function cloneConditions(c: Readonly<Conditions>): Conditions {

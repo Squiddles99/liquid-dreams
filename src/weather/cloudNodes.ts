@@ -5,7 +5,7 @@ import {
 } from 'three/tsl';
 import type { AtmosphereLuts } from '../sky/AtmosphereLuts';
 import type { AtmosphereUniforms } from '../sky/atmosphereNodes';
-import { DENSITY_GAIN, DETAIL_EROSION, EARTH_RADIUS_M, WEAK_CELL_HEIGHT } from './cloudModel';
+import { DENSITY_GAIN, DETAIL_EROSION, EARTH_RADIUS_M, TOWER_TAPER, WEAK_CELL_HEIGHT } from './cloudModel';
 import { type CloudTextures, DETAIL_TILE_M, SHAPE_TILE_M, WEATHER_TILE_M } from './CloudTextures';
 
 type N = any;
@@ -71,7 +71,8 @@ export const coverageDensityNode = (n: N, cover: N): N => saturate(n.sub(1.0).ad
 export function cloudDensityNode(hFrac: N, convection: N, coverageNoise: N, shapeNoise: N, detailNoise: N, cover: N): N {
   const wc = coverageDensityNode(coverageNoise, cover);
   const profile = heightProfileNode(hFrac.div(wc.mul(1 - WEAK_CELL_HEIGHT).add(WEAK_CELL_HEIGHT)), convection);
-  const shaped = saturate(shapeNoise.mul(profile).sub(float(1.0).sub(wc)).div(max(wc, 1e-4))).mul(wc);
+  const cut = float(1.0).sub(wc).add(hFrac.mul(convection).mul(TOWER_TAPER));
+  const shaped = saturate(shapeNoise.mul(profile).sub(cut).div(max(wc, 1e-4))).mul(wc);
   const e = detailNoise.mul(DETAIL_EROSION);
   return saturate(shaped.sub(e).mul(DENSITY_GAIN).div(float(1.0).sub(e)));
 }
@@ -126,7 +127,8 @@ export function cloudField(u: CloudUniforms, tex: CloudTextures): CloudField {
   const weatherAt = (xz: N): N => texture(tex.weather, xz.sub(u.drift).div(WEATHER_TILE_M)).level(float(0));
   const shapeAt = (xz: N, h: N): N => {
     // The shape rides with the weather map, rising slowly as it goes (cumulus towers grow and fade).
-    const p = vec3(xz.x.sub(u.drift.x), h.sub(u.evolve.mul(0.4)), xz.y.sub(u.drift.y));
+    // Vertically 2× finer than across: a tower bubbles as it rises rather than streaking into columns.
+    const p = vec3(xz.x.sub(u.drift.x), h.sub(u.evolve.mul(0.4)).mul(2.0), xz.y.sub(u.drift.y));
     return select(flat, u.flatShape, texture3D(tex.shape, p.div(SHAPE_TILE_M), float(0)).x);
   };
   const detailAt = (xz: N, h: N): N => {
@@ -148,7 +150,9 @@ export function cloudField(u: CloudUniforms, tex: CloudTextures): CloudField {
       const hFrac = h.sub(MID_BASE_M).div(MID_TOP_M - MID_BASE_M);
       // A broad, flat sheet: the shape noise stretched 3× wider than the low cloud's.
       const shape = select(flat, u.flatShape, texture3D(tex.shape, vec3(xz.x.sub(u.drift.x), h, xz.y.sub(u.drift.y)).div(SHAPE_TILE_M * 3), float(0)).x);
-      return cloudDensityNode(hFrac, float(0.0), select(flat, u.flatCoverage, w.w), shape, float(0.0), u.midCover);
+      // Ragged, thin-edged patches (altocumulus / altostratus), not cut-outs: the detail noise eats the edges.
+      const detail = select(flat, u.flatDetail, texture3D(tex.detail, vec3(xz.x.sub(u.drift.x), h, xz.y.sub(u.drift.y)).div(DETAIL_TILE_M * 4), float(0)).x);
+      return cloudDensityNode(hFrac, float(0.0), select(flat, u.flatCoverage, w.w), shape, detail.mul(2.5), u.midCover);
     },
     highDepth(xz) {
       // Cirrus streaks lie along the wind aloft: noise stretched 5× along it.
@@ -157,7 +161,8 @@ export function cloudField(u: CloudUniforms, tex: CloudTextures): CloudField {
       const streak = texture3D(tex.shape, q, float(0)).y;
       const wisp = texture3D(tex.detail, vec3(along.div(3_000), 0.61, across.div(1_500)), float(0)).x;
       const n = streak.mul(0.75).add(wisp.mul(0.25));
-      return coverageDensityNode(n, u.highCover).mul(u.highCover).mul(1.2);
+      // A narrow ramp so the streaks stand out against clear sky between them; thickened toward a veil as cover rises.
+      return saturate(n.sub(float(1.0).sub(u.highCover)).div(0.2)).mul(u.highCover).mul(1.2);
     },
   };
 }

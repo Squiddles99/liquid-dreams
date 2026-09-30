@@ -85,6 +85,12 @@ describe('cloudDensity', () => {
     expect(cloudDensity(0.3, 0.5, 0.95, 0.12, 0.3, 0.6)).toBeLessThan(0.2);
   });
 
+  it('narrows a tall tower toward its top (a cumulonimbus is not a wall)', () => {
+    // Of all shape-noise values, how many still make cloud at a height: the tower's width there.
+    const width = (h: number): number => Array.from({ length: 101 }, (_, i) => cloudDensity(h, 0.9, 1, i / 100, 0, 0.6)).filter((d) => d > 0).length;
+    expect(width(0.75)).toBeLessThan(width(0.2) * 0.7);
+  });
+
   it('stays inside [0, 1]', () => {
     for (const p of [0, 0.3, 0.9]) for (const n of [0, 0.5, 1]) for (const s of [0, 0.5, 1]) for (const d of [0, 1]) for (const c of [0, 0.5, 1]) {
       const v = cloudDensity(p, 0.5, n, s, d, c);

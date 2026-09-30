@@ -31,9 +31,9 @@ describe('reference moments', () => {
     expect(defaultMoment().conditions).toEqual(DEFAULT_CONDITIONS);
     expect(defaultMoment().paused).toBe(false);
   });
-  it('keep the clear sky they were tuned under, except the default morning (scattered cumulus)', () => {
+  it('keep the clear sky they were tuned under, except the default morning (fair-weather cumulus)', () => {
     for (const r of REFERENCE_MOMENTS) {
-      expect(r.moment.conditions.weather, r.name).toEqual(r.name === DEFAULT_MOMENT_NAME ? WEATHER_PRESETS.scattered : WEATHER_PRESETS.clear);
+      expect(r.moment.conditions.weather, r.name).toEqual(r.name === DEFAULT_MOMENT_NAME ? WEATHER_PRESETS.fair : WEATHER_PRESETS.clear);
     }
   });
   it('autumn-glass has no wind', () => {
