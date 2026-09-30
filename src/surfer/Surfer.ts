@@ -7,7 +7,7 @@ import type { Sky } from '../sky/Sky';
 import type { Outfit, SurferPreset } from './presets';
 import { BONES, type BoneName, type SkeletonRest, type SurferManifest, assertManifest, restFromManifest } from './rig';
 import type { SolvedPose } from './solvePose';
-import { type OutfitUniforms, bodyMaterial, eyesMaterial, fabricMaterial, hairMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
+import { type OutfitUniforms, bodyMaterial, eyesMaterial, fabricMaterial, hairMaterial, lashesMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
 import { skinZones } from './skinDetail';
 import { landLook, outfitMasks, showsBoardies } from './wardrobe';
 
@@ -63,6 +63,7 @@ export class Surfer {
       glasses: () => plasticMaterial(sky, [0.012, 0.012, 0.014], sv), // black plastic
       lens: () => lensMaterial(sky, sv),
       teeth: () => teethMaterial(sky, sv),
+      lashes: () => lashesMaterial(sky, sv),
     };
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;

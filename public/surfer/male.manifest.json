@@ -328,9 +328,10 @@
  "meshes": [
   {
    "name": "male_body",
-   "triangles": 26756,
+   "triangles": 27000,
    "materials": [
-    "body"
+    "body",
+    "lashes"
    ],
    "morphs": [
     "blinkL",
@@ -353,9 +354,19 @@
   },
   {
    "name": "male_eyes",
-   "triangles": 1440,
+   "triangles": 2944,
    "materials": [
     "eyes"
+   ]
+  },
+  {
+   "name": "male_teeth",
+   "triangles": 704,
+   "materials": [
+    "teeth"
+   ],
+   "morphs": [
+    "jawOpen"
    ]
   },
   {
@@ -382,14 +393,14 @@
  "landmarks": {
   "eyes": [
    [
-    0.03237,
-    1.65923,
-    0.14006
+    0.03245,
+    1.65912,
+    0.13835
    ],
    [
-    -0.03237,
-    1.65923,
-    0.14006
+    -0.03245,
+    1.65912,
+    0.13835
    ]
   ],
   "ears": [
@@ -423,7 +434,12 @@
    0.0,
    1.59944,
    0.16028
-  ]
+  ],
+  "eyeRadius": 0.01611
  },
- "headTriangles": 8088
+ "headTriangles": 8456,
+ "checks": {
+  "blinkCovers": true,
+  "eyesOpen": true
+ }
 }

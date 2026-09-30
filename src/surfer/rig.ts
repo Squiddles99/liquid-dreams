@@ -110,8 +110,8 @@ export interface SurferManifest {
   meshes: { name: string; triangles: number; materials: string[]; morphs?: string[] }[];
   /** Body triangles weighted to the head (kept whole through decimation; closeup spec §4.1). */
   headTriangles?: number;
-  /** Build-time checks (closeup spec §4.1): the closed lids cover the eyes. */
-  checks?: { blinkCovers: boolean };
+  /** Build-time checks (closeup spec §4.1): the closed lids cover the eyes, and the open lids don't. */
+  checks?: { blinkCovers: boolean; eyesOpen: boolean };
   blender: string;
   mpfb: string;
   /** Face landmarks in the rest pose (glTF axes, metres), for the glasses fit and the skin detail (grommet spec §4, §5). */

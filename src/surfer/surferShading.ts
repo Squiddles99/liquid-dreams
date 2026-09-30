@@ -158,6 +158,29 @@ export function lensMaterial(sky: Sky, sv?: (xz: N) => N): THREE.MeshBasicNodeMa
   return m;
 }
 
+/**
+ * Lashes on the base mesh's lash strips (closeup spec §4.1, §4.2). COLOR_0 on the strips carries the lash coordinates
+ * (tools/surfer/face.py): R root → tip, G along the lid, B 1 upper / 0 lower. Each lash is a stripe along the lid that
+ * tapers to its tip, a little clumped and uneven, alpha-tested; near black with a warm tint.
+ */
+export function lashesMaterial(sky: Sky, sv?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
+  const m = new THREE.MeshBasicNodeMaterial();
+  m.side = THREE.DoubleSide;
+  const c: N = attribute('color', 'vec4');
+  const t = c.x, along = c.y, upper = c.z;
+  const count = mix(float(38), float(70), upper);
+  const jitter = mx_noise_float(vec3(along.mul(count).floor(), 3.1, upper.mul(5.0))).mul(0.18);
+  const cell = along.mul(count).add(jitter).fract();
+  const width = mix(float(0.62), float(0.1), pow(t, 0.8));
+  const lash = float(1).sub(smoothstep(width.mul(0.5), width.mul(0.5).add(0.08), abs(cell.sub(0.5))));
+  // Short lashes at the corners, full ones in the middle of the lid.
+  const reach = smoothstep(0.0, 0.18, along).mul(smoothstep(1.0, 0.8, along)).mul(0.35).add(0.65);
+  m.opacityNode = lash.mul(float(1).sub(smoothstep(reach.sub(0.12), reach, t)));
+  m.alphaTest = 0.5;
+  m.colorNode = litColor(sky, { albedo: vec3(0.018, 0.012, 0.009), normal: normalWorld, specular: float(0.04), shininess: float(60), wrap: float(0.4) }, sv);
+  return m;
+}
+
 /** Off-white teeth, a little translucent at the tips (a touch of wrap lighting). */
 export function teethMaterial(sky: Sky, sv?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();

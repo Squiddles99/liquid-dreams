@@ -328,9 +328,10 @@
  "meshes": [
   {
    "name": "female_body",
-   "triangles": 26756,
+   "triangles": 27000,
    "materials": [
-    "body"
+    "body",
+    "lashes"
    ],
    "morphs": [
     "blinkL",
@@ -346,16 +347,26 @@
   },
   {
    "name": "female_hair",
-   "triangles": 11912,
+   "triangles": 11736,
    "materials": [
     "hair"
    ]
   },
   {
    "name": "female_eyes",
-   "triangles": 1440,
+   "triangles": 2944,
    "materials": [
     "eyes"
+   ]
+  },
+  {
+   "name": "female_teeth",
+   "triangles": 704,
+   "materials": [
+    "teeth"
+   ],
+   "morphs": [
+    "jawOpen"
    ]
   }
  ],
@@ -364,14 +375,14 @@
  "landmarks": {
   "eyes": [
    [
-    0.03204,
-    1.52527,
-    0.11732
+    0.03211,
+    1.5252,
+    0.11645
    ],
    [
-    -0.03204,
-    1.52527,
-    0.11732
+    -0.03211,
+    1.5252,
+    0.11645
    ]
   ],
   "ears": [
@@ -405,7 +416,12 @@
    0.0,
    1.47556,
    0.13938
-  ]
+  ],
+  "eyeRadius": 0.01642
  },
- "headTriangles": 8088
+ "headTriangles": 8456,
+ "checks": {
+  "blinkCovers": true,
+  "eyesOpen": true
+ }
 }

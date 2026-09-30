@@ -41,6 +41,31 @@ for (const name of ['female', 'male', 'grommet'] as const) {
     it('keeps the head at full resolution (≥ 5,000 triangles weighted to the head)', () => {
       expect(man.headTriangles).toBeGreaterThanOrEqual(5000);
     });
+    it('closes the lids over the eyes at a blink, and opens them at rest (the build’s ray check; closeup spec §4.1)', () => {
+      expect(man.checks).toEqual({ blinkCovers: true, eyesOpen: true });
+    });
+    it('writes the face landmarks, with eyeballs fitted to MPFB’s eye helper (14–17.5 mm once scaled to height)', () => {
+      expect(man.landmarks).toBeDefined();
+      expect(man.landmarks!.eyeRadius).toBeGreaterThan(0.014);
+      expect(man.landmarks!.eyeRadius).toBeLessThan(0.0175);
+    });
+    it('keeps lashes on the body (their own material) and teeth whose lower row drops with the jaw', () => {
+      const body = man.meshes.find((m) => m.materials.includes('body'))!;
+      expect(body.materials).toEqual(['body', 'lashes']);
+      const teeth = man.meshes.find((m) => m.materials.includes('teeth'));
+      expect(teeth?.morphs).toEqual(['jawOpen']);
+      const mesh = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'teeth'));
+      for (const p of mesh.primitives) expect(p.targets?.length).toBe(1);
+    });
+    it('puts the teeth in the mouth: behind the lip’s front, ahead of the mouth’s centre', () => {
+      const path = `public/surfer/${name}.glb`;
+      const mesh = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'teeth'));
+      const f = glbFloats(path, gltf, mesh.primitives[0].attributes.POSITION);
+      let front = -Infinity;
+      for (let i = 2; i < f.length; i += 3) front = Math.max(front, f[i]);
+      expect(front).toBeLessThan(man.landmarks!.lipFront[2] - 0.0005);
+      expect(front).toBeGreaterThan(man.landmarks!.mouth[2]);
+    });
     it('carries the wardrobe masks on the body (TEXCOORD_1–3), and hair and eyes', () => {
       const matName = (i: number): string => gltf.materials[i].name;
       const body = gltf.meshes.find((m: any) => m.primitives.some((p: any) => matName(p.material) === 'body'));
