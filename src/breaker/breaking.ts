@@ -58,18 +58,18 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   delta: 1.0,
   hFloorM: 0.3,
   stageSpan: 0.7,
-  troughDrain: 0.7,
+  troughDrain: 0.638,
   beta: 0.4,
   faceWidth: 0.5,
   drainEnd: 0.4,
   collapseStart: 0.5,
-  throwStrength: 0.6,
-  lipThickness: 0.25,
+  throwStrength: 1.0696,
+  lipThickness: 0.2,
   collapseTime: 1.8,
   ribbonOnset: 0.7,
   pileHalfM: 50,
   pileSurge: 0.3,
-  wallBack: 0.25,
+  wallBack: 0.0282,
   intensityNudge: 0,
   randomDial: 0,
   churnSize: 0.2,
@@ -125,7 +125,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.ribbonOnset = clampTo(p.ribbonOnset, 0.3, 0.9, d.ribbonOnset);
   p.pileHalfM = clampTo(p.pileHalfM, 10, 150, d.pileHalfM);
   p.pileSurge = clampTo(p.pileSurge, 0, 0.6, d.pileSurge);
-  p.wallBack = clampTo(p.wallBack, -0.3, 0.5, d.wallBack);
+  p.wallBack = clampTo(p.wallBack, -0.3, 1, d.wallBack);
   p.intensityNudge = clampTo(p.intensityNudge, -1, 1, d.intensityNudge);
   p.randomDial = clampTo(p.randomDial, 0, 0.3, d.randomDial);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
