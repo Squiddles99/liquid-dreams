@@ -2,7 +2,7 @@ import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
 import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetTime, pileTop, settledCrestTop, steepeningStart } from './breaking';
-import { type BarrelShape, barrelShape, breakIntensity, drainBonus, withShape } from './breakIntensity';
+import { PSI_NORMAL, drainFactor, effectivePsi, withSheetShape } from './overturn';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, sampleField, sampleOnset } from './reefField';
@@ -51,9 +51,9 @@ export interface ActiveWave {
   crestOffsetM: number;
   /** The Gaussian envelope (LONG_TAIL_WIDTH) instead of the tight one: this wave leaves water for the next to step on. */
   longTail?: boolean;
-  /** The wave's drain bonus to its break intensity (breakIntensity.drainBonus); absent: 0. */
-  drainBonus?: number;
-  /** The wave's random draw for the throw's dial, in [−1, 1]; absent: 0. */
+  /** The wave's drain factor on its ψ (overturn.drainFactor, a game rule); absent: 1. */
+  drainFactor?: number;
+  /** The wave's random draw for the dial, in [−1, 1]; absent: 0. */
   throwDraw?: number;
 }
 
@@ -93,10 +93,10 @@ export interface BreakOptions {
   /** false: the sheet without the whitewater pile, which is the ribbon frame's sheet (the lip is thrown from the wave as it
    * stood, not from the whitewater rising under it). Absent: with it. */
   pile?: boolean;
-  /** The wind's offshore speed (m/s; breakIntensity.offshoreSpeed, negative onshore). Absent: 0. */
+  /** The wind's offshore speed (m/s; overturn.offshoreSpeed, negative onshore). Absent: 0. */
   offshoreMs?: number;
-  /** Tests, calibration and the anchor viewer: every crest takes this intensity (and this shape, if given). */
-  force?: { intensity: number; shape?: BarrelShape };
+  /** Tests and the drawings: every crest takes this ψ. */
+  force?: { psi: number };
 }
 
 /** Breaking on `field` with `params` and the wind's offshore speed: the field and its onset record, as the render reads them. */
@@ -112,7 +112,7 @@ export function toActiveWave(e: WaveEvent): ActiveWave {
   return {
     arrivalS: e.arrivalS, heightM: e.heightM, omega: (2 * Math.PI) / e.periodS,
     travelX: d.x, travelZ: d.z, crestLengthM: e.crestLengthM, crestOffsetM: e.crestOffsetM, longTail: e.longTail,
-    drainBonus: drainBonus(e.gapS, e.periodS), throwDraw: e.throwDraw,
+    drainFactor: drainFactor(e.gapS, e.periodS), throwDraw: e.throwDraw,
   };
 }
 
@@ -168,9 +168,9 @@ export interface Crest {
   /** The height the section stood at while it threw (breaking.onsetHeight): the pile's lip. null before it breaks or without
    * a record. */
   lipH: number | null;
-  /** The crest's break intensity [0, 2] (breakIntensity; 1 off the record). */
-  intensity: number;
-  /** The params its shape uses: o.params with the per-crest keys at its intensity (breakIntensity.withShape). */
+  /** The crest's ψ (overturn.effectivePsi of the record's ψ₀; PSI_NORMAL off the record). */
+  psi: number;
+  /** The params its shape uses: o.params with the trough drain and surge at its ψ (overturn.withSheetShape). */
   params: BreakParams;
 }
 
@@ -212,15 +212,15 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   // The lip too, on the point's own ray: carried along the rays, it is the same all along one (under 1% at most ledge
   // points). Read at the lookup's crest instead, it slid along the crest's lip gradient (the peak's lip falls 20% in 7 m).
   const lipH = rec ? onsetHeight(rec, 0, w.heightM, o.params) : null;
-  // Its break intensity (spec 2026-09-30 §3.2), read on the point's own ray as the time since onset is. Off the record:
-  // the normal anchor.
-  const intensity = o.force?.intensity ?? (rec
-    ? breakIntensity({ step: onsetPsi(rec, 0, w.heightM, o.params), offshoreMs: o.offshoreMs ?? 0, periodS: (2 * Math.PI) / w.omega, waveBonus: w.drainBonus ?? 0, throwDraw: w.throwDraw ?? 0 }, o.params)
-    : 1);
-  const params = withShape(o.params, o.force?.shape ?? barrelShape(intensity));
+  // Its ψ (spec 2026-09-30-barrel-from-maths §3), read on the point's own ray as the time since onset is. Off the
+  // record: PSI_NORMAL, with no game rules (plan ruling 9).
+  const psi = o.force?.psi ?? (rec
+    ? effectivePsi(onsetPsi(rec, 0, w.heightM, o.params), { drain: w.drainFactor ?? 1, draw: w.throwDraw ?? 0 }, o.params)
+    : PSI_NORMAL);
+  const params = withSheetShape(o.params, psi);
   const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
   const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp);
-  return { x: cx, z: cz, f: fc, r, s: lc.stage, tb, lc, confidence, lipH, intensity, params };
+  return { x: cx, z: cz, f: fc, r, s: lc.stage, tb, lc, confidence, lipH, psi, params };
 }
 
 /**

@@ -8,7 +8,7 @@ import {
   GRAVITY_MS2, type LipParams, barrelMetrics, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings, foldDepth,
   landingTime, profileFrame, sampleHome, sampleSegment, settleSpan,
 } from './lipProfile';
-import { ANCHORS } from './breakIntensity';
+import { PSI_NORMAL } from './overturn';
 import { computeReefField, sampleField } from './reefField';
 import { type ActiveWave, type BreakOptions, breakOptions, type WaveContext, localHeight, sumWaves } from './setWaveModel';
 
@@ -16,7 +16,7 @@ import { type ActiveWave, type BreakOptions, breakOptions, type WaveContext, loc
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
 const ctx: WaveContext = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
 // The sheet at the normal anchor, as LIP (the defaults) is: these tests measure one fixed shape (Task 6 calibrates the anchors).
-const SHEET: BreakOptions = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), force: { intensity: 1, shape: ANCHORS[1] } };
+const SHEET: BreakOptions = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), force: { psi: PSI_NORMAL } };
 const LIP: LipParams = DEFAULT_BREAK_PARAMS;
 const HS = surferFeetToHs(DEFAULT_CONDITIONS.swell.sizeFt);
 const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));

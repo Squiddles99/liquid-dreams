@@ -6,7 +6,7 @@ import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import {
-  MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, timeSinceOnset, traceStations,
+  MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, stationPsi, timeSinceOnset, traceStations,
 } from './crestTrace';
 import { computeReefField, sampleField } from './reefField';
 import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi } from './setWaveModel';
@@ -135,21 +135,25 @@ describe('crestTrace', () => {
   });
 });
 
-describe('station intensity (condition-driven barrel)', () => {
+describe('station ψ (barrel from the maths)', () => {
   const c12 = cloneConditions(DEFAULT_CONDITIONS); c12.swell.sizeFt = 12;
   const big = wavesOfSet(1, c12, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
   const w = testWave(big.heightM);
   const t = sampleField(field, 0, 0).tau + 0.5;
-  it("each station's intensity is the sheet's crest intensity there (the lip lands on water drained for its own shape)", () => {
+  it("each station's ψ is the sheet's crest ψ there (the lip lands on water drained for its own shape)", () => {
     const input = { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: 0, offshoreMs: 5 };
     const o = breakOptions(field, DEFAULT_BREAK_PARAMS, 5);
     const stations = traceStations(field, [w], t, ctx, input).filter((e): e is Station => !e.gap);
     expect(stations.length).toBeGreaterThan(20);
-    let worst = 0;
-    for (const s of stations.filter((_, i) => i % 7 === 0)) {
+    let worst = 0, worstStored = 0;
+    for (const s of stations) {
       const c = crestAt(s.x, s.z, t, sampleField(field, s.x, s.z), w, ctx, o);
-      if (c) worst = Math.max(worst, Math.abs(c.intensity - s.intensity));
+      if (!c) continue;
+      worst = Math.max(worst, Math.abs(c.psi - stationPsi(field, w, s.x, s.z, input)));
+      worstStored = Math.max(worstStored, Math.abs(c.psi - s.psi));
     }
-    expect(worst).toBeLessThan(0.05);
+    expect(worst).toBeLessThan(1e-6);
+    expect(worstStored).toBeLessThan(0.003); // stations between keys are interpolated (5% of a normal ψ)
   });
 });
+

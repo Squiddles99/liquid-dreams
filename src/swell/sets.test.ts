@@ -367,10 +367,10 @@ describe('the throw draw and the gap (condition-driven barrel)', () => {
     set.forEach((w, i) => { expect(w.throwDraw).toBeGreaterThanOrEqual(-1); expect(w.throwDraw).toBeLessThanOrEqual(1); expect(again[i].throwDraw).toBe(w.throwDraw); });
     expect(new Set(set.map((w) => w.throwDraw)).size).toBeGreaterThan(1);
   });
-  it('toActiveWave carries a finite drain bonus (Infinity → +0.1) and the draw', () => {
+  it('toActiveWave carries a finite drain factor (Infinity → ×1.1) and the draw', () => {
     const a = toActiveWave(set[0]);
-    expect(a.drainBonus).toBeCloseTo(0.1, 9);
+    expect(a.drainFactor).toBeCloseTo(1.1, 9);
     expect(a.throwDraw).toBe(set[0].throwDraw);
-    for (const w of set) expect(Number.isFinite(toActiveWave(w).drainBonus!)).toBe(true);
+    for (const w of set) expect(Number.isFinite(toActiveWave(w).drainFactor!)).toBe(true);
   });
 });

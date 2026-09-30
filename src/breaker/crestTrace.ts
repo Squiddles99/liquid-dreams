@@ -1,7 +1,7 @@
-import { breakIntensity } from './breakIntensity';
 import { type BreakParams, ONSET_RECORD_LENGTH, breakingRatio, landingEstimate, onsetPsi, onsetTime } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { HAND_BACK_S } from './lipProfile';
+import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, TAPER_NEAR_M, type WaveContext, localHeight, phaseXi } from './setWaveModel';
 
@@ -50,8 +50,8 @@ export interface Station {
   r: number;
   /** Time since onset (s): null before breaking, Infinity once past the hand-back. */
   tb: number | null;
-  /** The crest's break intensity (breakIntensity), as the sheet's crest there (setWaveModel.crestAt): the lip's shape. */
-  intensity: number;
+  /** The crest's ψ, as the sheet's crest there (setWaveModel.crestAt): the lip's shape. */
+  psi: number;
 }
 
 export type StationEntry = Station | { gap: true };
@@ -108,11 +108,11 @@ export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: nu
   return rec ? onsetTime(rec, 0, w.heightM, p) : null;
 }
 
-/** The station's break intensity: the onset record's step there, as setWaveModel.crestAt reads it; 1 off the record. */
-export function stationIntensity(field: ReefField, w: ActiveWave, x: number, z: number, input: TraceInput): number {
+/** The station's ψ: the onset record's ψ₀ there with the game rules, as setWaveModel.crestAt reads it; PSI_NORMAL off the record. */
+export function stationPsi(field: ReefField, w: ActiveWave, x: number, z: number, input: TraceInput): number {
   const rec = sampleOnset(field, x, z, onsetScratch);
-  if (!rec) return 1;
-  return breakIntensity({ step: onsetPsi(rec, 0, w.heightM, input.params), offshoreMs: input.offshoreMs ?? 0, periodS: (2 * Math.PI) / w.omega, waveBonus: w.drainBonus ?? 0, throwDraw: w.throwDraw ?? 0 }, input.params);
+  if (!rec) return PSI_NORMAL;
+  return effectivePsi(onsetPsi(rec, 0, w.heightM, input.params), { drain: w.drainFactor ?? 1, draw: w.throwDraw ?? 0 }, input.params);
 }
 
 /** Whether a station still draws: before breaking, from the ribbon's onset ratio; after, until the (estimated) hand-back. */
@@ -134,7 +134,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
     for (let n = 0; n < 20000; n++) {
       const nrm = crestNormal(w, f, ctx);
       if (sign > 0 || n > 0) {
-        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, intensity: 1 });
+        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, psi: PSI_NORMAL });
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS);
@@ -149,7 +149,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
   return sides;
 }
 
-/** Fills each station's time since onset and intensity: exact at key stations ≤ KEY_SPACING_M apart, linear between two
+/** Fills each station's time since onset and ψ: exact at key stations ≤ KEY_SPACING_M apart, linear between two
  * finite keys, exact again wherever a neighbouring key is null (the onset boundary). */
 function fillTimes(field: ReefField, w: ActiveWave, line: Station[], ctx: WaveContext, input: TraceInput): void {
   if (line.length === 0) return;
@@ -158,13 +158,13 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], ctx: WaveCo
   for (let i = 1; i < line.length; i++) if (Math.abs(line[i].arc - line[keys[keys.length - 1]].arc) >= KEY_SPACING_M || i === line.length - 1) keys.push(i);
   for (const k of keys) {
     line[k].tb = timeSinceOnset(field, w, line[k].x, line[k].z, ctx, p);
-    line[k].intensity = stationIntensity(field, w, line[k].x, line[k].z, input);
+    line[k].psi = stationPsi(field, w, line[k].x, line[k].z, input);
   }
   for (let q = 0; q + 1 < keys.length; q++) {
     const a = line[keys[q]], b = line[keys[q + 1]];
     for (let i = keys[q] + 1; i < keys[q + 1]; i++) {
       const s = line[i];
-      s.intensity = a.intensity + ((b.intensity - a.intensity) * (s.arc - a.arc)) / (b.arc - a.arc);
+      s.psi = a.psi + ((b.psi - a.psi) * (s.arc - a.arc)) / (b.arc - a.arc);
       if (a.tb !== null && b.tb !== null && Number.isFinite(a.tb) && Number.isFinite(b.tb)) {
         s.tb = a.tb + ((b.tb - a.tb) * (s.arc - a.arc)) / (b.arc - a.arc);
       } else if (a.tb === Infinity && b.tb === Infinity) {
@@ -176,7 +176,7 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], ctx: WaveCo
         s.tb = null;
       } else {
         s.tb = timeSinceOnset(field, w, s.x, s.z, ctx, p);
-        s.intensity = stationIntensity(field, w, s.x, s.z, input);
+        s.psi = stationPsi(field, w, s.x, s.z, input);
       }
     }
   }
