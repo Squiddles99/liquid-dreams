@@ -11,6 +11,9 @@ export const SKYLINE_MAX_M = 15000;
 export const SKYLINE_MOVE_M = 25;
 /** Half the soft edge of the land in a reflection (rad): 0.3° in all. */
 export const SKYLINE_EDGE_RAD = 0.0026;
+/** A ray the waves send at or below the horizon sees the band just above it, blurred by the waves: land fills it in as
+ * the skyline rises from the horizon to this (rad, ~1.1°), so a low spit reflects faintly and a ridge fully. */
+export const SKYLINE_HORIZON_SPREAD_RAD = 0.02;
 const EARTH_RADIUS_M = 6_371_000;
 
 export function bearingIndex(dx: number, dz: number): number {
@@ -46,14 +49,30 @@ export function skylineElevationFrom(t: Float32Array, bearing: number, alongM: n
 
 /** CPU mirror of SkylineTable.reflectionNode's cover: 1 where the reflected ray r from water point p hits the land. */
 export function reflectionCover(t: Float32Array, eye: { x: number; y?: number; z: number }, p: [number, number, number], r: [number, number, number]): number {
-  const b = bearingIndex(r[0], r[2]);
   const h = Math.hypot(r[0], r[2]) || 1;
   const along = ((p[0] - eye.x) * r[0] + (p[2] - eye.z) * r[2]) / h;
+  const e = Math.asin(Math.max(-1, Math.min(1, r[1] / Math.hypot(...r))));
+  // Blend the two whole-degree bearings either side of the ray: the nearest alone cut a headland's reflection off
+  // along one bearing, a hard vertical line down the water past the tip.
+  const deg = (Math.atan2(r[0], -r[2]) * 180) / Math.PI;
+  const b0 = Math.floor(deg), f = deg - b0;
+  const bin = (b: number) => binCover(t, ((b % 360) + 360) % 360, along, p[1], e);
+  return bin(b0) * (1 - f) + bin(b0 + 1) * f;
+}
+
+function binCover(t: Float32Array, b: number, along: number, y: number, e: number): number {
   // Water beyond the skyline point along the bearing has the land behind the reflected ray (final review I2).
   if (along >= t[2 * b]) return 0;
-  const sk = skylineElevationFrom(t, b, along, p[1]);
+  const sk = skylineElevationFrom(t, b, along, y);
   if (sk === -Math.PI / 2) return 0;
-  const e = Math.asin(Math.max(-1, Math.min(1, r[1] / Math.hypot(...r))));
-  const x = Math.min(1, Math.max(0, (e - (sk - SKYLINE_EDGE_RAD)) / (2 * SKYLINE_EDGE_RAD)));
+  return landCover(sk, e);
+}
+
+/** How much of a reflected ray at elevation e (rad) the land up to skyline sk covers: a sharp edge well above the
+ * horizon, widening to SKYLINE_HORIZON_SPREAD_RAD at and below it. */
+export function landCover(sk: number, e: number): number {
+  const rE = Math.max(e, 0);
+  const w = Math.max(2 * SKYLINE_EDGE_RAD, SKYLINE_HORIZON_SPREAD_RAD - rE);
+  const x = Math.min(1, Math.max(0, (rE - (sk - w)) / w));
   return 1 - x * x * (3 - 2 * x);
 }
