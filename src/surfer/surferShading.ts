@@ -370,13 +370,13 @@ export function lashesMaterial(sky: Sky, sv?: (xz: N) => N, lens?: LensPull | nu
   const c: N = attribute('color', 'vec4');
   const t = c.x, along = c.y, upper = c.z;
   // Upper: dense and clumped, full in the middle of the lid; lower: sparse, short and fine.
-  const count = mix(float(22), float(120), upper);
+  const count = mix(float(16), float(120), upper);
   const clump = mx_noise_float(vec3(along.mul(14.0), 1.3, upper.mul(5.0))).mul(0.5).add(0.5);
   const jitter = mx_noise_float(vec3(along.mul(count).floor(), 3.1, upper.mul(5.0))).mul(0.25);
   const cell = along.mul(count).add(jitter).fract();
-  const width = mix(float(0.85), float(0.12), pow(t, 0.7)).mul(mix(float(0.55), float(1.0), upper)).mul(clump.mul(0.4).add(0.8));
+  const width = mix(float(0.85), float(0.12), pow(t, 0.7)).mul(mix(float(0.35), float(1.0), upper)).mul(clump.mul(0.4).add(0.8));
   const lash = float(1).sub(smoothstep(width.mul(0.5), width.mul(0.5).add(0.06), abs(cell.sub(0.5))));
-  const reach = smoothstep(0.0, 0.2, along).mul(smoothstep(1.0, 0.75, along)).mul(0.4).add(0.6).mul(mix(float(0.55), float(1.0), upper));
+  const reach = smoothstep(0.0, 0.2, along).mul(smoothstep(1.0, 0.75, along)).mul(0.4).add(0.6).mul(mix(float(0.4), float(1.0), upper));
   m.opacityNode = lash.mul(float(1).sub(smoothstep(reach.sub(0.1), reach, t)));
   m.alphaTest = 0.5;
   m.colorNode = litColor(sky, { albedo: vec3(0.018, 0.012, 0.009), normal: normalWorld, specular: float(0.04), shininess: float(60), wrap: float(0.4) }, sv);

@@ -13,6 +13,17 @@ export function idleContextFor(pose: PoseName, onLand: boolean, sunFacing: numbe
   return { still: pose === 'sit' || onLand, exertionTarget: onLand ? 0 : EXERTION[pose], onLand, sunFacing: Math.min(1, Math.max(0, sunFacing)) };
 }
 
+type V = { x: number; y: number; z: number };
+/**
+ * How squarely the sun meets the eyes (0–1): the facing's alignment with the sun, faded out as the sun nears the horizon
+ * and gone once it has set (final review: riders held a full squint at a dawn sun on the horizon).
+ */
+export function sunFacing(facing: V, sun: V): number {
+  const along = Math.max(0, facing.x * sun.x + facing.y * sun.y + facing.z * sun.z);
+  const t = Math.min(1, Math.max(0, (sun.y - 0.02) / 0.12));
+  return along * t * t * (3 - 2 * t);
+}
+
 export function restingFace(): FaceState {
   const f = Object.fromEntries(FACE_CHANNELS.map((c) => [c, 0])) as FaceState;
   return { ...f, gazeYawDeg: 0, gazePitchDeg: 0, headYawDeg: 0, headPitchDeg: 0 };

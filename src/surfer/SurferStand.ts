@@ -12,7 +12,7 @@ import { STAND_PROBE_FIRST, boardFrameFrom, chaseCamera, probePoints, stableLook
 import { poseTargets } from './poses';
 import { PRESETS, type PresetName, boardFor, boardLookFor } from './presets';
 import { POSE_PHASE, POSE_ZONE, type RideState } from './rideState';
-import { applyFaceParams, idleContextFor, restingFace } from './faceControl';
+import { applyFaceParams, idleContextFor, restingFace, sunFacing } from './faceControl';
 import { type BoardFrame, boardQuaternion, solvePose } from './solvePose';
 import { Surfer } from './Surfer';
 import { type SurferParams, playPhase } from './surferParams';
@@ -103,7 +103,7 @@ export class SurferStand {
     const lookAt = stableLookAt(frame, t.look);
     const head = s.boneWorldPosition('head', new THREE.Vector3());
     const facing = lookAt.clone().sub(head).normalize();
-    const ctx = idleContextFor(p.pose, p.onLand, facing.dot(this.sky.sunDirection.value));
+    const ctx = idleContextFor(p.pose, p.onLand, sunFacing(facing, this.sky.sunDirection.value));
     const face = applyFaceParams(p.idle ? s.idle.tick(dt, ctx) : restingFace(), p);
     s.setFace(face);
     if (face.headYawDeg !== 0 || face.headPitchDeg !== 0) {

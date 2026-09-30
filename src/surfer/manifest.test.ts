@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { glbFloats } from './glbData';
+import { glbFloats, glbValues } from './glbData';
 import { FACE_CHANNELS } from './idleLife';
 import { PRESETS } from './presets';
 import { BONES, type SurferManifest, manifestProblems } from './rig';
@@ -61,6 +61,22 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       expect(teeth?.morphs).toEqual(['jawOpen']);
       const mesh = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'teeth'));
       for (const p of mesh.primitives) expect(p.targets?.length).toBe(1);
+    });
+    it('grows each upper lash from the lid all along it, to the preset’s length (final review: per-lash root → tip)', () => {
+      const path = `public/surfer/${name}.glb`;
+      const want = JSON.parse(readFileSync(`tools/surfer/presets/${name}.json`, 'utf8')).lashes.upper as number;
+      const body = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'lashes'));
+      const prim = body.primitives.find((p: any) => gltf.materials[p.material].name === 'lashes');
+      const pos = glbFloats(path, gltf, prim.attributes.POSITION), col = glbValues(path, gltf, prim.attributes.COLOR_0);
+      for (const side of [1, -1]) {
+        const up: number[] = [];
+        for (let i = 0; i < pos.length / 3; i++) if (col[4 * i + 2] > 0.5 && Math.sign(pos[3 * i]) === side) up.push(i);
+        const roots = up.filter((i) => col[4 * i] < 0.05), tips = up.filter((i) => col[4 * i] > 0.95);
+        const along = roots.map((i) => col[4 * i + 1]);
+        expect(Math.max(...along) - Math.min(...along), `${name} ${side} roots along the lid`).toBeGreaterThan(0.75);
+        const reach = Math.max(...tips.map((i) => Math.min(...roots.map((j) => Math.hypot(pos[3 * i] - pos[3 * j], pos[3 * i + 1] - pos[3 * j + 1], pos[3 * i + 2] - pos[3 * j + 2])))));
+        expect(reach, `${name} ${side} lash length`).toBeGreaterThan(0.8 * want);
+      }
     });
     it('puts the teeth in the mouth: behind the lip’s front, ahead of the mouth’s centre', () => {
       const path = `public/surfer/${name}.glb`;
