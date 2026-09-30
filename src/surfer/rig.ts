@@ -109,6 +109,21 @@ export interface SurferManifest {
   meshes: { name: string; triangles: number; materials: string[] }[];
   blender: string;
   mpfb: string;
+  /** Face landmarks in the rest pose (glTF axes, metres), for the glasses fit and the skin detail (grommet spec §4, §5). */
+  landmarks?: SurferLandmarks;
+  /** Seeded skin spots: x, y, z and radius (grommet spec §5). */
+  skin?: { pimples: [number, number, number, number][] };
+}
+
+export type Vec3 = [number, number, number];
+export interface SurferLandmarks {
+  /** Left, then right. */
+  eyes: [Vec3, Vec3];
+  ears: [Vec3, Vec3];
+  nose: Vec3;
+  mouth: Vec3;
+  lipFront: Vec3;
+  teethFront: Vec3;
 }
 
 /** Everything wrong with a manifest's skeleton against the contract (empty = fine). */

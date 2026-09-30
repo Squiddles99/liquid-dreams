@@ -12,7 +12,7 @@ export function glbJson(path: string): any {
   return JSON.parse(new TextDecoder().decode(b.subarray(20, 20 + v.getUint32(12, true))));
 }
 
-for (const name of ['female', 'male'] as const) {
+for (const name of ['female', 'male', 'grommet'] as const) {
   describe(`the ${name} surfer build`, () => {
     const man: SurferManifest = JSON.parse(readFileSync(`public/surfer/${name}.manifest.json`, 'utf8'));
     const gltf = glbJson(`public/surfer/${name}.glb`);
@@ -34,7 +34,7 @@ for (const name of ['female', 'male'] as const) {
       for (const p of body.primitives) for (const a of ['TEXCOORD_1', 'TEXCOORD_2', 'TEXCOORD_3']) expect(p.attributes[a], a).toBeDefined();
       const all = gltf.meshes.flatMap((m: any) => m.primitives.map((p: any) => matName(p.material)));
       for (const m of ['hair', 'eyes']) expect(all).toContain(m);
-      expect(all.includes('boardies')).toBe(name === 'male');
+      expect(all.includes('boardies')).toBe(name !== 'female');
     });
     it('carries the face paint on the body and the iris on the eyes (COLOR_0; gate 2)', () => {
       const matName = (i: number): string => gltf.materials[i].name;
@@ -45,3 +45,33 @@ for (const name of ['female', 'male'] as const) {
     });
   });
 }
+
+describe('the grommet build (grommet spec §2, §5, §7)', () => {
+  const man: SurferManifest = JSON.parse(readFileSync('public/surfer/grommet.manifest.json', 'utf8'));
+  const gltf = glbJson('public/surfer/grommet.glb');
+  it('writes his landmarks: eyes level either side of the midline, ears wider than the eyes, the nose ahead of them', () => {
+    const L = man.landmarks!;
+    expect(L.eyes[0][0]).toBeGreaterThan(0.02);
+    expect(L.eyes[1][0]).toBeLessThan(-0.02);
+    expect(Math.abs(L.eyes[0][1] - L.eyes[1][1])).toBeLessThan(0.005);
+    expect(L.ears[0][0]).toBeGreaterThan(L.eyes[0][0] + 0.02);
+    expect(L.nose[2]).toBeGreaterThan(L.eyes[0][2] + 0.01);
+    expect(L.lipFront[2]).toBeGreaterThan(L.mouth[2]);
+  });
+  it('carries about 8 pimples on his face, each 1.5–2.5 mm', () => {
+    const P = man.skin!.pimples;
+    expect(P.length).toBe(8);
+    for (const [, y, , r] of P) {
+      expect(y).toBeGreaterThan(man.landmarks!.mouth[1] - 0.06);
+      expect(r).toBeGreaterThanOrEqual(0.0015);
+      expect(r).toBeLessThanOrEqual(0.0025);
+    }
+  });
+  it('is built in the game’s space: identity nodes, feet on 0, the top of his head at his height', () => {
+    for (const n of gltf.nodes) if (n.mesh !== undefined || /armature/.test(n.name)) expect([n.translation, n.rotation, n.scale].every((v) => v === undefined), n.name).toBe(true);
+    const body = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'body'));
+    const pos = gltf.accessors[body.primitives[0].attributes.POSITION];
+    expect(pos.min[1]).toBeCloseTo(0, 2);
+    expect(pos.max[1]).toBeCloseTo(1.52, 2);
+  });
+});
