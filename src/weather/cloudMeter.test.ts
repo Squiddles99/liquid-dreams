@@ -64,6 +64,22 @@ describe('CloudMeter', () => {
     m.gains.forEach((g, i) => expect(g).toBeCloseTo(expected[i], 6));
   });
 
+  it('eases the rain at the camera in (a shower sweeps in, it never pops), and snaps it on a moment', async () => {
+    buffers.set(cloudSun, new Float32Array([0, 0.8, 0, 1]));
+    const m = make();
+    m.update(renderer, 0.016, 0.15, true);
+    await flush();
+    m.update(renderer, 0.5, 0.15, true);
+    expect(m.rainHere).toBeCloseTo(0.2, 9); // 0.4 a second, for half a second
+    const n = make();
+    n.snapNext();
+    n.update(renderer, 0.016, 0.15, true);
+    await flush();
+    n.update(renderer, 0.016, 0.15, true);
+    expect(n.rainHere).toBeCloseTo(0.8, 6);
+    buffers.set(cloudSun, new Float32Array([0, 0, 0, 1]));
+  });
+
   it('keeps white light as it is under a clear sky', () => {
     const m = make();
     m.update(renderer, 0.016, 0.15, false);

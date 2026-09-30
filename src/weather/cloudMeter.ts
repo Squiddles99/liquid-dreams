@@ -45,6 +45,8 @@ const READ_INTERVAL_S = 0.25;
 const ADAPT_STOPS_PER_S = 1;
 /** How fast the colour adaptation follows (gain per second): a few seconds to go grey as a deck covers the sun. */
 const ADAPT_GAIN_PER_S = 0.1;
+/** How fast the rain at the camera follows the rain field (rate per second): a shower sweeps in over a couple of seconds. */
+const RAIN_FADE_PER_S = 0.4;
 
 /**
  * The exposure's cloud term (spec 2026-09-30 §4.6): every READ_INTERVAL_S it reads back the sky light (clear and
@@ -55,10 +57,13 @@ export class CloudMeter {
   /** The stops the exposure opens up by now, and the sun's last-read transmittance (for the sun-in-view stop-down). */
   stops = 0;
   sunVisible = 1;
+  /** The rain falling at the camera (0..1), eased so a shower fades in and out rather than popping. */
+  rainHere = 0;
   /** The white balance the eye has adapted to so far (adaptationGains, eased). */
   gains: [number, number, number] = [1, 1, 1];
   private target = 0;
   private targetGains: [number, number, number] = [1, 1, 1];
+  private targetRain = 0;
   private sinceRead = READ_INTERVAL_S;
   private pending = false;
   /** Bumped by snapNext: a read issued before it is stale and ignored. */
@@ -72,7 +77,8 @@ export class CloudMeter {
       this.target = 0;
       this.sunVisible = 1;
       this.targetGains = [1, 1, 1];
-      if (this.snap) { this.stops = 0; this.gains = [1, 1, 1]; this.snap = false; }
+      this.targetRain = 0;
+      if (this.snap) { this.stops = 0; this.gains = [1, 1, 1]; this.rainHere = 0; this.snap = false; }
     } else {
       this.sinceRead += dtS;
       if (this.sinceRead >= READ_INTERVAL_S && !this.pending) {
@@ -87,11 +93,13 @@ export class CloudMeter {
           this.target = exposureCloudStops(meterLuminance(sun, sunY, 1, clear), meterLuminance(sun, sunY, s[0], cloudy));
           const up = Math.max(sunY, 0) * s[0];
           this.targetGains = adaptationGains([sun[0] * up + cloudy[0], sun[1] * up + cloudy[1], sun[2] * up + cloudy[2]], s[0], sunY);
-          if (this.snap) { this.stops = this.target; this.gains = [...this.targetGains]; this.snap = false; }
+          this.targetRain = s[1];
+          if (this.snap) { this.stops = this.target; this.gains = [...this.targetGains]; this.rainHere = this.targetRain; this.snap = false; }
         }).finally(() => { if (generation === this.generation) this.pending = false; });
       }
     }
     this.stops = easeStops(this.stops, this.target, dtS, ADAPT_STOPS_PER_S);
+    this.rainHere = easeStops(this.rainHere, this.targetRain, dtS, RAIN_FADE_PER_S);
     this.gains = this.gains.map((g, i) => easeStops(g, this.targetGains[i], dtS, ADAPT_GAIN_PER_S)) as [number, number, number];
   }
 

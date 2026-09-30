@@ -10,9 +10,12 @@ import type { WeatherConditions } from './weather';
 export const COAST_X_M = 200;
 /** Rain over the open sea, as a fraction of the rain the same cloud drops over the land. */
 export const SEA_RAIN = 0.3;
-/** The coastal factor rises from SEA_RAIN to 1 over this span around the coast (m): convergence as the air meets the
- * land, then the lift over the dunes and the ridge. */
-const COAST_RISE_M: readonly [number, number] = [-2500, 1500];
+/**
+ * The coastal factor rises from SEA_RAIN to 1 over this span around the coast (m): it starts at the beach and builds
+ * over the dunes and the ridge (the air lifting over the land). Andrew: the rain falls once the clouds have passed the
+ * coastline, so the lineup, 225 m offshore, gets only the sea's rain.
+ */
+export const COAST_RISE_M: readonly [number, number] = [-200, 2000];
 
 const saturate = (x: number): number => Math.min(1, Math.max(0, x));
 const smoothstep = (e0: number, e1: number, x: number): number => {

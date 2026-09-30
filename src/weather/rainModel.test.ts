@@ -15,6 +15,13 @@ describe('coastFactor (Andrew: the rain mostly falls once the clouds cross the c
   });
 });
 
+describe('the lineup (Andrew: rain falls once the clouds have passed the coastline)', () => {
+  it("gets only the sea's rain 225 m offshore; the full rate builds inland", () => {
+    expect(coastFactor(COAST_X_M - 225)).toBeCloseTo(SEA_RAIN, 2);
+    expect(coastFactor(COAST_X_M + 1000)).toBeGreaterThan(0.6);
+  });
+});
+
 describe('rainMask', () => {
   it('needs cloud overhead', () => {
     expect(rainMask(0.95, 0, 0.8)).toBe(0);
