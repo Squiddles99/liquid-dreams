@@ -2,7 +2,7 @@ import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, 
 import {
   type BreakParams, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
   HOLLOW_REACH_Q, MIN_BREAKING_HEIGHT_M, MIN_STAGE_SPAN, PILE_BACK_H, PILE_BLEND_H, PILE_FOAM_EDGE, PILE_FOAM_THIN, PILE_FRONT_H,
-  PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S,
+  PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, PLUNGE_FULL_RATIO, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S,
   normalizeBreakParams, onsetGain, steepeningStart,
 } from './breaking';
 
@@ -21,7 +21,7 @@ export function createBreakUniforms(p: BreakParams) {
     enabled: uniform(0), gamma: uniform(0), delta: uniform(0), hFloorM: uniform(0), stageSpan: uniform(1), troughDrain: uniform(0), beta: uniform(0),
     faceWidth: uniform(0), drainTo: uniform(1), collapseFrom: uniform(1), collapseTo: uniform(2), steepFrom: uniform(0),
     collapseTime: uniform(1), drainGrowth: uniform(1), onsetGain: uniform(1),
-    pileHalfM: uniform(50), pileSurge: uniform(0), churnSize: uniform(0), churnSpeed: uniform(1),
+    pileHalfM: uniform(50), pileSurge: uniform(0), churnSize: uniform(0), churnSpeed: uniform(1), psiNudge: uniform(0), randomDial: uniform(0),
   };
   updateBreakUniforms(u, p);
   return u;
@@ -45,6 +45,7 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.steepFrom.value = steepeningStart(p);
   u.collapseTime.value = p.collapseTime; u.drainGrowth.value = 1 + p.troughDrain * p.delta; u.onsetGain.value = onsetGain(p);
   u.pileHalfM.value = Math.max(p.pileHalfM, 1e-3); u.pileSurge.value = p.pileSurge;
+  u.psiNudge.value = p.psiNudge; u.randomDial.value = p.randomDial;
   u.churnSize.value = p.churnSize; u.churnSpeed.value = p.churnSpeed;
 }
 
@@ -88,6 +89,11 @@ export function stageCurvesNode(r: N, u: BreakUniforms): StageCurveNodes {
  * position in level steps, log(q* ÷ ONSET_LEVEL_Q0) ÷ log(ONSET_LEVEL_RATIO), and the level below it, k ∈ [0, ONSET_LEVELS −
  * 2] (a float). The same for every point of a wave: SetWaves loads just levels k and k + 1.
  */
+/** breaking.onsetPsi from the record's pair at level k (texel k holds (ψ_k, ψ_{k+1})): w = clamp(lq − k, 0, 1). */
+export function onsetPsiNode(lo: N, hi: N, level: { lq: N; k: N }): N {
+  return mix(lo, hi, clamp(level.lq.sub(level.k), 0.0, 1.0));
+}
+
 export function onsetLevelNode(heightM: N, u: BreakUniforms): { lq: N; k: N } {
   const g = float(heightM).mul(u.onsetGain);
   const lq = log(float(1.0).div(max(g, 1e-6).mul(ONSET_LEVEL_Q0))).div(Math.log(ONSET_LEVEL_RATIO));
@@ -127,21 +133,27 @@ export interface LifecycleNodes { steep: N; stage: N; drain: N; collapse: N; pil
  * with time since onset `tb` (0 where only r ≥ 1 says so) and the section's largest ratio `rMax`. H is the crest's
  * local height; rSlurp its slurp ratio (the sharpening and the drain take the slurp's pull, as breaking.lifecycle).
  */
-export function lifecycleNode(r: N, hasRecord: N, broken: N, tb: N, rMax: N, H: N, rSlurp: N, u: BreakUniforms): LifecycleNodes {
+/** The per-crest shape (overturn.withSheetShape and the tube's presence, from the crest's ψ): absent, the uniforms and no plunge. */
+export interface CrestShapeNodes { drainGrowth: N; pileSurge: N; plunge: N }
+
+export function lifecycleNode(r: N, hasRecord: N, broken: N, tb: N, rMax: N, H: N, rSlurp: N, u: BreakUniforms, sh?: CrestShapeNodes): LifecycleNodes {
+  const drainGrowth = sh?.drainGrowth ?? u.drainGrowth, pileSurge = sh?.pileSurge ?? u.pileSurge, plunge = sh?.plunge ?? float(0.0);
   const pulled = slurpNode(rSlurp, u);
   const steepR = max(steepeningNode(r, u), pulled), stageR = breakingStageNode(r, u), own = stageCurvesNode(r, u);
   const c = { drain: max(own.drain, pulled), collapse: own.collapse };
   const isBroken = hasRecord.and(broken.or(r.greaterThanEqual(1.0)));
   const t = select(broken, tb, float(0.0));
   // landingEstimate: landingTime(H·(1 + troughDrain·δ)), the fall floored at 0.05 m; settleSpan is collapseTime × it.
-  const land = max(H.mul(u.drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt();
-  const extent = breakingStageNode(max(r, rMax), u);
+  const land = max(H.mul(drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt();
+  // breaking.lifecycle's plunge: a section the maths throws a tube for breaks whole (and surges) once past PLUNGE_FULL_RATIO.
+  const plunged = plunge.mul(smoothstep(1.0, PLUNGE_FULL_RATIO, max(r, rMax)));
+  const extent = max(breakingStageNode(max(r, rMax), u), plunged);
   const thrown = smoothstep(0.0, land, t).mul(extent);
   const reach = smoothstep(land, land.mul(u.collapseTime.add(1.0)), t);
   const settled = reach.mul(extent);
   // The whitewater pile (breaking.lifecycle): none unless broken on a record.
   const rolled = max(t.sub(land).sub(PILE_RISE_S), 0.0).mul(PILE_SPEED_MS);
-  const surgeWeight = u.pileSurge.mul(smoothstep(1.0, SURGE_FULL_RATIO, max(r, rMax)));
+  const surgeWeight = pileSurge.mul(max(smoothstep(1.0, SURGE_FULL_RATIO, max(r, rMax)), plunged));
   const surge = float(1.0).add(surgeWeight.mul(smoothstep(land, land.add(SURGE_RISE_S), t))
     .mul(float(1.0).sub(smoothstep(land.add(SURGE_RISE_S), land.add(SURGE_RISE_S + SURGE_FALL_S), t))));
   return {
@@ -176,7 +188,7 @@ export interface PileCurveNodes { pile: N; pileReach: N; surge: N; decay: N }
  * `(steep > 0 || s > 0) && H > MIN_BREAKING_HEIGHT_M` (an If, before any of this is evaluated): at H = 0 the H-scaled
  * smoothsteps have equal edges.
  */
-export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, curves: StageCurveNodes, pc?: PileCurveNodes): { eta: N; foam: N; dEtaDAhead: N; pile: N } {
+export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, curves: StageCurveNodes, pc?: PileCurveNodes, sh?: { troughDrain: N }): { eta: N; foam: N; dEtaDAhead: N; pile: N } {
   const { drain, collapse } = curves;
   const ahead = i.uUnbroken.sub(i.uCrest);
   // sharpenDrop and sharpenDropSlope, front only. Behind the crest `a` is 0, where sink and sink′ both vanish, so the
@@ -198,7 +210,7 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const dDrop = sharpen.mul(dSink.mul(fade).mul(m).add(sink.mul(dFade).mul(m)).add(sink.mul(fade).mul(dM)));
   // drainDepth × drainShape × env, and its slope (drainShapeSlope): the hollow at the foot. It reuses the sharpening's
   // sink (the same face width); behind the crest a = 0, where the sink and its slope vanish, so both are exactly 0.
-  const depth = u.troughDrain.mul(u.delta).mul(i.H).mul(drain);
+  const depth = (sh?.troughDrain ?? u.troughDrain).mul(u.delta).mul(i.H).mul(drain);
   const hollowReach = quarter.mul(HOLLOW_REACH_Q);
   const xr = a.div(hollowReach);
   const decay = exp(xr.mul(xr).negate());
