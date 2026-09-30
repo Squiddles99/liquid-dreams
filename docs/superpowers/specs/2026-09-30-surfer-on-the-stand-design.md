@@ -1,7 +1,7 @@
 # The Surfer on the Stand: Design
 
-**Date:** 2026-09-30 · **Branch:** `surfer-on-the-stand` (worktree `ld-surfer`) · **Status:** brainstormed with Andrew,
-sections 1–4 approved in chat; written spec approved 2026-09-30 with one change (his wardrobe months, §4.3). Calls marked **Ruling** are mine, made while
+**Date:** 2026-09-30 · **Branch:** `surfer-on-the-stand` (worktree `ld-surfer`) · **Status:** built 2026-09-30; gates 1 and 2 signed off by Andrew.
+Brainstormed with Andrew, sections 1–4 approved in chat; written spec approved 2026-09-30 with one change (his wardrobe months, §4.3). Calls marked **Ruling** are mine, made while
 writing it up; each is his to overturn.
 
 ## 1. What Andrew asked for, and what we agreed
