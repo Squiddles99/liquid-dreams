@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRESETS } from './presets';
-import { OUTFIT_LABELS, outfitFor, outfitMasks, presetOutfits, seasonOf, showsBoardies } from './wardrobe';
+import { OUTFIT_LABELS, outfitFor, outfitMasks, presetOutfits, landLook, seasonOf, showsBoardies } from './wardrobe';
 
 describe('wardrobe (Andrew’s months, spec §4.3)', () => {
   it.each([
@@ -45,5 +45,12 @@ describe("Grommet's wardrobe (grommet spec §6)", () => {
     expect(showsBoardies('boardies')).toBe(true);
     expect(showsBoardies('springsuit')).toBe(false);
     expect(OUTFIT_LABELS.rashieAndBoardies).toBe('boardies + rash vest');
+  });
+});
+
+describe('on land (grommet spec §6)', () => {
+  it('dries off and puts the glasses on; in the water it’s wet with the glasses off', () => {
+    expect(landLook(true)).toEqual({ wet: 0, glasses: true });
+    expect(landLook(false)).toEqual({ wet: 1, glasses: false });
   });
 });
