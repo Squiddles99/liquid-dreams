@@ -1,7 +1,7 @@
 # The Surfer on the Stand: Design
 
 **Date:** 2026-09-30 · **Branch:** `surfer-on-the-stand` (worktree `ld-surfer`) · **Status:** brainstormed with Andrew,
-sections 1–4 approved in chat; waiting on his review of this written spec. Calls marked **Ruling** are mine, made while
+sections 1–4 approved in chat; written spec approved 2026-09-30 with one change (his wardrobe months, §4.3). Calls marked **Ruling** are mine, made while
 writing it up; each is his to overturn.
 
 ## 1. What Andrew asked for, and what we agreed
@@ -19,7 +19,7 @@ models are made.
 - **The quiver:** a shortboard thruster (3–5 ft), a step-up / semi-gun (6 ft+) and a bodyboard (prone and drop-knee).
 - **The ride camera is a chase camera**, behind and slightly above. The art budget goes to silhouette, wet materials and
   motion, not faces.
-- **Wardrobe:** the season (from the date) picks it; the player can override.
+- **Wardrobe:** the season (from the date) picks it, by Andrew's month table (§4.3); the player can override.
 - **Style:** grounded realism, matching the physically based ocean: real proportions, physically lit materials, detail
   sized for the chase camera. Not photoreal faces.
 - **Approach 1, a scripted Blender pipeline:** bodies from MakeHuman bases, shaped by Python scripts that run Blender in
@@ -78,7 +78,7 @@ physics and pose (`RideState`, §3.4) before the physics is built.
 | File | Purpose |
 |---|---|
 | `presets.ts` | The two surfers: display name, body .glb, default stance, board sizes (§5.1), colours |
-| `wardrobe.ts` | Pure: date → water temperature → suit (§4.3), with the player's override on top |
+| `wardrobe.ts` | Pure: date → month → outfit (§4.3), with the player's override on top |
 | `rig.ts` | The skeleton contract (§3.3): bone names, parent chain, joint limits |
 | `poses.ts` | The key poses as data (§3.5): targets, not bone angles |
 | `ik.ts` | Pure: two-bone IK for the legs and arms, the spine distributing bend and twist, joint-limit clamps |
@@ -195,36 +195,29 @@ on/off switch and an amount dial.
 - **Ruling:** the hair textures are made by our own build script (procedural strands baked to a texture in Blender), so
   their licence is ours.
 
-### 4.3 Wardrobe by water temperature
+### 4.3 Wardrobe by month
 
-Monthly average sea temperatures at Margaret River, from a web search on 2026-09-30 (seatemperature.info,
-surf-forecast.com):
+**Andrew's table (2026-09-30), from what he wore at the Capes.** It replaces the water-temperature thresholds in the
+first draft:
 
-| Month | J | F | M | A | M | J | J | A | S | O | N | D |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| °C | 20.8 | 21.1 | 21.6 | 21.6 | 21.3 | 20.3 | 19.4 | 18.6 | 18.2 | 18.4 | 19.1 | 19.9 |
+| Months | Male | Female |
+|---|---|---|
+| Dec – Mar | Boardies | Bikini |
+| Apr – Jun | Springsuit | Bikini bottoms + neoprene vest |
+| Jul – Sep | Short-arm steamer | Short-arm steamer |
+| Oct – Nov | Springsuit | Bikini bottoms + neoprene vest |
 
-- **Interpolation:** `wardrobe.ts` interpolates between mid-month values for the date. Plan Task 1 double-checks the
-  numbers against a satellite climatology (NOAA OISST) before they are frozen.
-- **The re-fit:** the water is warmer than the table Andrew approved in chat assumed (that one had a 4/3 below 17.5 °C,
-  which the Capes' averages never reach). The thresholds below keep all four suits in the year. **Ruling, Andrew to
-  confirm:**
-
-| Water | Months (on average) | Male | Female |
-|---|---|---|---|
-| ≥ 21.0 °C | Feb – May | Boardies | Bikini + rashie |
-| 19.6 – 21.0 °C | Dec – Jan, Jun | Springsuit | Springsuit |
-| 18.8 – 19.6 °C | Jul, Nov | 3/2 steamer | 3/2 steamer |
-| < 18.8 °C | Aug – Oct | 4/3 steamer | 4/3 steamer |
-
-- **Why a 4/3 at 18 °C:** in the coldest months, cold dawn air and the wind make it what locals wear, even though the water
-  itself isn't that cold.
-- **The override:** a dropdown with "season" (the default) and each suit.
+- **By calendar month:** `wardrobe.ts` maps the date's month straight to an outfit. There is no water-temperature model;
+  Andrew's months are what people actually wore.
+- **December:** Andrew listed it under both summer and spring. **Ruling:** December is summer (boardies and bikini), the
+  start of the Australian summer. It's a one-line change if he meant spring.
+- **The override:** a dropdown with "season" (the default) and each of that surfer's three outfits.
 - **How suits are built:**
   - **Wetsuits are painted onto the body surface,** a thin raised offset with seam and panel detail, rather than separate
-    cloth. That means no clipping when the knees go deep in a pig-dog.
+    cloth. That means no clipping when the knees go deep in a pig-dog. This covers the springsuit, the short-arm steamer
+    and the vest.
   - **Boardies are the one loose garment:** a separate skinned mesh.
-  - **The bikini and rashie** are painted regions like the wetsuits.
+  - **The bikini** is painted regions like the wetsuits.
   - **Bodyboard fins:** on the bodyboard, the surfer wears swim fins, a small mesh on each foot. The foot spots of the
     bodyboard poses account for them.
 
@@ -298,7 +291,7 @@ sub-project 2, derived from these same numbers.
 ## 7. Testing
 
 **Automated tests (vitest):**
-- **Wardrobe:** the thresholds; dates at each season boundary; the override wins; interpolation across the year end.
+- **Wardrobe:** every month maps to Andrew's table for both surfers; the first and last day of each season; the override wins.
 - **Boards:**
   - volumes within ±1.5 L of §5.1;
   - left/right symmetric;
@@ -347,9 +340,9 @@ This is ready for Steam's store review.
 - The surfer seen in walk mode (walking is first-person).
 - The surfer's shadow on the water.
 
-## 10. Rulings for Andrew to confirm
+## 10. Rulings (Andrew reviewed the spec 2026-09-30 and changed only the wardrobe; 2–5 stand)
 
-1. **Wardrobe thresholds (§4.3).** Re-fitted to the real water temperatures, which are warmer than the chat table assumed.
+1. **December is summer (§4.3).** Andrew listed it under both summer and spring.
 2. **Board sizes per surfer (§5.1).** Standard sizing for their weights. Andrew may remember what he actually rode.
 3. **Hair textures made by our own script (§4.2)** rather than taken from outside packs, for a clean licence.
 4. **Wave placement on the stand (§6).** It uses the lineup camera's height, plus a manual nudge where the curl isn't in
