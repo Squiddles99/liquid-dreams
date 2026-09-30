@@ -54,8 +54,12 @@ hair_obj = hair.build(body, rig, preset["hair"], L, coords, name)
 eye_obj = hair.eyes(rig, L, name)
 face.colour_eyes(eye_obj, L)
 rig_trim.single_material(hair_obj, "hair")
+dry_obj = None
+if preset.get("dryHair"):
+    dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name)
+    rig_trim.single_material(dry_obj, "hairDry")
 rig_trim.single_material(eye_obj, "eyes")
-parts = [body, hair_obj, eye_obj]
+parts = [body, hair_obj, eye_obj] + ([dry_obj] if dry_obj else [])
 if preset.get("glasses"):
     parts.append(glasses.build(rig, body, L, name))
 if preset.get("teeth"):

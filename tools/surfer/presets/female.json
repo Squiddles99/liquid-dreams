@@ -75,5 +75,10 @@
     "upper": 0.0105,
     "lower": 0.0055,
     "curl": 0.0035
+  },
+  "dryHair": {
+    "style": "waves",
+    "seed": 21,
+    "partX": 0.006
   }
 }

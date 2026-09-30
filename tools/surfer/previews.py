@@ -165,6 +165,8 @@ def dress(parts, preset, outfit):
         if p.name.endswith("_boardies"):
             p.hide_render = outfit not in ("boardies", "rashieAndBoardies")
             p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["boardies"], 1)
+        elif p.name.endswith("_hairDry"):
+            p.hide_render = True  # the sheets show the wet look; the dry one is judged in the game
         elif p.name.endswith("_hair"):
             p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["hair"], 1)
         elif p.name.endswith("_glasses"):

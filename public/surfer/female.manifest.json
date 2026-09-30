@@ -347,7 +347,7 @@
   },
   {
    "name": "female_hair",
-   "triangles": 11736,
+   "triangles": 31700,
    "materials": [
     "hair"
    ]
@@ -357,6 +357,13 @@
    "triangles": 2944,
    "materials": [
     "eyes"
+   ]
+  },
+  {
+   "name": "female_hairDry",
+   "triangles": 85616,
+   "materials": [
+    "hairDry"
    ]
   },
   {

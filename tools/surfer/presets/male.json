@@ -57,5 +57,9 @@
     "upper": 0.0085,
     "lower": 0.0045,
     "curl": 0.0025
+  },
+  "dryHair": {
+    "style": "tousled",
+    "seed": 17
   }
 }

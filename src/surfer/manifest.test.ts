@@ -24,11 +24,16 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       expect(gltf.skins.length).toBe(1);
       expect(gltf.skins[0].joints.map((i: number) => gltf.nodes[i].name).sort()).toEqual([...BONES].sort());
     });
-    it('keeps the body within budget (≤ 30k triangles, ≤ 4 materials; ≤ 150k in all, the hair cards most of it; closeup ruling 2)', () => {
+    it('keeps within budget: the body ≤ 30k triangles and ≤ 4 materials, each hair mesh ≤ 100k, ≤ 220k in all (closeup ruling 2)', () => {
       const body = man.meshes.find((m) => m.materials.includes('body'))!;
       expect(body.triangles).toBeLessThanOrEqual(30000);
       expect(body.materials.length).toBeLessThanOrEqual(4);
-      expect(man.meshes.reduce((s, m) => s + m.triangles, 0)).toBeLessThanOrEqual(150000);
+      for (const m of man.meshes.filter((x) => x.materials.some((n) => n.startsWith('hair')))) expect(m.triangles, m.name).toBeLessThanOrEqual(100000);
+      expect(man.meshes.reduce((s, m) => s + m.triangles, 0)).toBeLessThanOrEqual(220000);
+    });
+    it('has a dry hairstyle for land where the preset names one (Shazza, T-Bone; Grommet dries his curls in the shader)', () => {
+      const dry = man.meshes.filter((m) => m.materials.includes('hairDry'));
+      expect(dry.length).toBe(name === 'grommet' ? 0 : 1);
     });
     it('carries the nine face morphs on every body primitive, by name (closeup spec §4.1)', () => {
       const body = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'body'));
@@ -111,6 +116,25 @@ describe('the grommet build (grommet spec §2, §5, §7)', () => {
     const pos = gltf.accessors[body.primitives[0].attributes.POSITION];
     expect(pos.min[1]).toBeCloseTo(0, 2);
     expect(pos.max[1]).toBeCloseTo(1.52, 2);
+  });
+});
+
+describe("Shazza's hair (closeup spec §3)", () => {
+  const man: SurferManifest = JSON.parse(readFileSync('public/surfer/female.manifest.json', 'utf8'));
+  const gltf = glbJson('public/surfer/female.glb');
+  const box = (material: string): any => {
+    const mesh = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === material));
+    return gltf.accessors[mesh.primitives[0].attributes.POSITION];
+  };
+  it('wet: many fine cards (≥ 2,500 cards, i.e. ≥ 25k triangles)', () => {
+    expect(man.meshes.find((m) => m.materials.includes('hair'))!.triangles).toBeGreaterThanOrEqual(25000);
+  });
+  it('dry: long, past the shoulders, and falling wider than her head', () => {
+    const dry = box('hairDry'), shoulder = man.bones.find((b) => b.name === 'upperarm_l')!.head[1];
+    expect(dry.min[1]).toBeLessThan(shoulder - 0.08);
+    const ears = man.landmarks!.ears;
+    expect(dry.max[0]).toBeGreaterThan(ears[0][0] + 0.01);
+    expect(dry.min[0]).toBeLessThan(ears[1][0] - 0.01);
   });
 });
 
