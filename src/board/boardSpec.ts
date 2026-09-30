@@ -74,7 +74,7 @@ const SHAPES: Record<BoardKind, Omit<BoardSpec, 'kind' | 'lengthM' | 'maxWidthM'
     backFootFromTailM: 0.34,
   },
   bodyboard: {
-    tailFrac: 0.64, tail12Frac: 0.86, nose12Frac: 0.95, nose3Frac: 0.86, noseFrac: 0.78, widePointU: 0.6,
+    tailFrac: 0.64, tail12Frac: 0.86, nose12Frac: 0.95, nose3Frac: 0.84, noseFrac: 0.62, widePointU: 0.6,
     noseThickFrac: 0.86, tailThickFrac: 0.8, rockerNoseM: 1.2 * IN_M, rockerTailM: 0.4 * IN_M,
     tail: 'crescent', crescentDepthM: 0.035, deckExp: 5, bottomExp: 7, fins: [], backFootFromTailM: 0.2,
   },
