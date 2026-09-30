@@ -33,6 +33,25 @@ describe('skylineTable on a synthetic ridge', () => {
     // Just short of it the land is still ahead.
     expect(reflectionCover(high, { x: 0, y: 40, z: 0 }, [400, 0, 0], [0.99, 0.02, 0])).toBe(1);
   });
+  it('fades out past a headland tip instead of cutting off at a bearing boundary', () => {
+    // Land north-east only (bearings 0–90): the tip is between bearing 90 (land) and 91 (open sea).
+    const cape = skylineTable((x, z) => (x >= 500 && z <= 0 ? 100 : 0), eye);
+    const at = (b: number): [number, number, number] => { const a = (b * Math.PI) / 180; return [Math.sin(a), 0.01, -Math.cos(a)]; };
+    const c = (b: number) => reflectionCover(cape, eye, [0, 0, 0], at(b));
+    expect(c(89.5)).toBeCloseTo(1, 5);
+    expect(c(91.5)).toBe(0);
+    // Across the half-degree boundary between the two bins the cover changes a little, not from all to nothing.
+    expect(Math.abs(c(90.45) - c(90.55))).toBeLessThan(0.2);
+    expect(c(90.5)).toBeGreaterThan(0.3); expect(c(90.5)).toBeLessThan(0.7);
+  });
+  it('a ray the waves send below the horizon sees land by how high it stands, not all land alike', () => {
+    const down: [number, number, number] = [0.999, -0.03, 0];
+    const at = (h: number) => reflectionCover(skylineTable((x) => (x >= 500 ? h : 0), eye), eye, [0, 0, 0], down);
+    expect(at(2)).toBeLessThan(0.15); // a 2 m spit, 0.2° up
+    expect(at(100)).toBe(1); // a ridge 11° up
+    // Rising land fills it in gradually.
+    expect(at(6)).toBeGreaterThan(at(4)); expect(at(8)).toBeGreaterThan(at(6)); expect(at(8)).toBeLessThan(1);
+  });
   it('from high above the ridge the skyline is below the horizon, and the reflection sees no land', () => {
     const high = skylineTable(ridge, { x: 0, y: 300, z: 0 });
     expect(skylineElevationFrom(high, 90, 0, 300)).toBeLessThan(0);
