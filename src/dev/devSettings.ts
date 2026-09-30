@@ -33,9 +33,11 @@ export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
  * something else there (model 2: the breaking ratio became ρ = H / breakingHeight, so the stage span, the drain end,
  * the collapse start and the ribbon onset all moved; model 3: the ribbon onset rose to 0.7, above the deep water's ρ at
  * 6.6 ft, so the ribbon no longer redraws the plain sheet along every crest in the set; model 4: the curl collapses over
- * 1.8 × its landing time, not 1 ×, so a barrel no longer drops like a trap door once the lip lands).
+ * 1.8 × its landing time, not 1 ×, so a barrel no longer drops like a trap door once the lip lands; model 5: the barrel's new
+ * proportions (trough drain 0.7, throw 0.6, lip 0.25·H) and the whitewater pile; model 6: the barrel from the maths, whose
+ * shape follows each crest's ψ₀ on the reef, so the reef (its softened ledge) resets with it).
  */
-export const BREAKING_MODEL = 4;
+export const BREAKING_MODEL = 6;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;
@@ -138,6 +140,8 @@ export function loadDevSettings(storage: SettingsStorage, defaults: DevSettings)
   const look = {} as Record<string, unknown>;
   for (const k of LOOK_KEYS) look[k] = mergeValue(defaults[k], raw[k]);
   if (raw.breakingModel !== BREAKING_MODEL) look.breaking = deepClone(defaults.breaking);
+  // Model 6 softened the ledge the barrel's ψ₀ is read from: an older look's reef carries the old 1:2 ledge.
+  if (typeof raw.breakingModel !== 'number' || raw.breakingModel < 6) look.reef = deepClone(defaults.reef);
   return {
     ...(look as unknown as DevLookParams),
     mode: raw.mode === 'default' || raw.mode === 'custom' ? raw.mode : 'custom',

@@ -4,8 +4,9 @@ import { surferFeetToHs } from '../conditions/units';
 import {
   CALL_SET_LEAD_S, DEFAULT_SET_PARAMS, LONG_TAIL_CHANCE, MAX_ACTIVE_WAVES, WAVE_WINDOW_AFTER_S, WAVE_WINDOW_BEFORE_S,
   callSetTime, nextSetArrivalS, normalizeSetParams, setStartS, straysAfterSet, wavesNear, wavesOfSet,
-  wavesBetween,
+  type WaveEvent, wavesBetween,
 } from './sets';
+import { toActiveWave } from '../breaker/setWaveModel';
 
 const c = DEFAULT_CONDITIONS, p = DEFAULT_SET_PARAMS;
 
@@ -168,5 +169,208 @@ describe('wavesBetween', () => {
     const c = cloneConditions(DEFAULT_CONDITIONS);
     c.swell.sizeFt = 0;
     expect(wavesBetween(0, 5000, c, DEFAULT_SET_PARAMS)).toEqual([]);
+  });
+});
+
+describe('the set timeline stays put', () => {
+  it('adding the throw draw and the gap leaves every other value of a set and its strays as it was', () => {
+    const pick = (w: WaveEvent) => ({ id: w.id, arrivalS: +w.arrivalS.toFixed(6), heightM: +w.heightM.toFixed(6), periodS: +w.periodS.toFixed(6), fromDeg: +w.fromDeg.toFixed(6), crestLengthM: +w.crestLengthM.toFixed(3), crestOffsetM: +w.crestOffsetM.toFixed(3), longTail: w.longTail });
+    const all = [1, 2].flatMap((slot) => [...wavesOfSet(slot, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS), ...straysAfterSet(slot, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS)]);
+    expect(all.map(pick)).toMatchInlineSnapshot(`
+      [
+        {
+          "arrivalS": 1406.339834,
+          "crestLengthM": 457.18,
+          "crestOffsetM": 39.174,
+          "fromDeg": 227.871434,
+          "heightM": 1.75528,
+          "id": 64,
+          "longTail": true,
+          "periodS": 14.604369,
+        },
+        {
+          "arrivalS": 1422.463099,
+          "crestLengthM": 535.042,
+          "crestOffsetM": 56.692,
+          "fromDeg": 223.814987,
+          "heightM": 2.235003,
+          "id": 65,
+          "longTail": false,
+          "periodS": 15.247412,
+        },
+        {
+          "arrivalS": 1438.044562,
+          "crestLengthM": 528.574,
+          "crestOffsetM": 7.695,
+          "fromDeg": 224.726223,
+          "heightM": 2.283031,
+          "id": 66,
+          "longTail": false,
+          "periodS": 15.116214,
+        },
+        {
+          "arrivalS": 1453.410468,
+          "crestLengthM": 595.048,
+          "crestOffsetM": -28.178,
+          "fromDeg": 221.939184,
+          "heightM": 1.664907,
+          "id": 67,
+          "longTail": false,
+          "periodS": 15.12678,
+        },
+        {
+          "arrivalS": 1467.485806,
+          "crestLengthM": 325.599,
+          "crestOffsetM": 56.875,
+          "fromDeg": 228.76911,
+          "heightM": 2.341198,
+          "id": 68,
+          "longTail": false,
+          "periodS": 15.172427,
+        },
+        {
+          "arrivalS": 1482.416242,
+          "crestLengthM": 486.978,
+          "crestOffsetM": 44.335,
+          "fromDeg": 221.040722,
+          "heightM": 2.002701,
+          "id": 69,
+          "longTail": false,
+          "periodS": 14.505866,
+        },
+        {
+          "arrivalS": 1497.666617,
+          "crestLengthM": 530.031,
+          "crestOffsetM": -5.639,
+          "fromDeg": 226.977551,
+          "heightM": 1.638581,
+          "id": 70,
+          "longTail": false,
+          "periodS": 14.489902,
+        },
+        {
+          "arrivalS": 1512.600005,
+          "crestLengthM": 305.791,
+          "crestOffsetM": 32.03,
+          "fromDeg": 226.115449,
+          "heightM": 2.170544,
+          "id": 71,
+          "longTail": false,
+          "periodS": 15.301902,
+        },
+        {
+          "arrivalS": 2230.54306,
+          "crestLengthM": 340.861,
+          "crestOffsetM": -21.227,
+          "fromDeg": 223.92009,
+          "heightM": 1.103631,
+          "id": 96,
+          "longTail": false,
+          "periodS": 15.019401,
+        },
+        {
+          "arrivalS": 2349.661137,
+          "crestLengthM": 409.022,
+          "crestOffsetM": -44.067,
+          "fromDeg": 225.8108,
+          "heightM": 2.225917,
+          "id": 128,
+          "longTail": false,
+          "periodS": 14.92051,
+        },
+        {
+          "arrivalS": 2365.735593,
+          "crestLengthM": 469.126,
+          "crestOffsetM": 7.857,
+          "fromDeg": 222.522179,
+          "heightM": 2.163654,
+          "id": 129,
+          "longTail": false,
+          "periodS": 15.695873,
+        },
+        {
+          "arrivalS": 2382.057724,
+          "crestLengthM": 425.071,
+          "crestOffsetM": -34.335,
+          "fromDeg": 224.30329,
+          "heightM": 3.172913,
+          "id": 130,
+          "longTail": false,
+          "periodS": 14.843674,
+        },
+        {
+          "arrivalS": 2397.87825,
+          "crestLengthM": 563.877,
+          "crestOffsetM": -59.918,
+          "fromDeg": 225.892682,
+          "heightM": 2.655796,
+          "id": 131,
+          "longTail": false,
+          "periodS": 15.267188,
+        },
+        {
+          "arrivalS": 2412.023509,
+          "crestLengthM": 589.347,
+          "crestOffsetM": -27.939,
+          "fromDeg": 224.25146,
+          "heightM": 2.348641,
+          "id": 132,
+          "longTail": false,
+          "periodS": 14.755169,
+        },
+        {
+          "arrivalS": 2427.817214,
+          "crestLengthM": 557.921,
+          "crestOffsetM": -20.434,
+          "fromDeg": 221.048811,
+          "heightM": 1.68232,
+          "id": 133,
+          "longTail": false,
+          "periodS": 15.319954,
+        },
+        {
+          "arrivalS": 2443.566801,
+          "crestLengthM": 514.34,
+          "crestOffsetM": -32.442,
+          "fromDeg": 223.750652,
+          "heightM": 2.249946,
+          "id": 134,
+          "longTail": false,
+          "periodS": 14.432573,
+        },
+        {
+          "arrivalS": 2535.543163,
+          "crestLengthM": 466.657,
+          "crestOffsetM": 35.001,
+          "fromDeg": 222.275557,
+          "heightM": 1.151531,
+          "id": 160,
+          "longTail": false,
+          "periodS": 14.638017,
+        },
+      ]
+    `);
+  });
+});
+
+describe('the throw draw and the gap (condition-driven barrel)', () => {
+  const set = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+  it('the first wave of a set follows a lull; each later one the gap to the one before', () => {
+    expect(set[0].gapS).toBe(Infinity);
+    for (let i = 1; i < set.length; i++) expect(set[i].gapS).toBeCloseTo(set[i].arrivalS - set[i - 1].arrivalS, 9);
+  });
+  it('strays follow a lull', () => {
+    for (const s of straysAfterSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS)) expect(s.gapS).toBe(Infinity);
+  });
+  it('each wave has its own repeatable draw in [−1, 1], not all the same', () => {
+    const again = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+    set.forEach((w, i) => { expect(w.throwDraw).toBeGreaterThanOrEqual(-1); expect(w.throwDraw).toBeLessThanOrEqual(1); expect(again[i].throwDraw).toBe(w.throwDraw); });
+    expect(new Set(set.map((w) => w.throwDraw)).size).toBeGreaterThan(1);
+  });
+  it('toActiveWave carries a finite drain factor (Infinity → ×1.1) and the draw', () => {
+    const a = toActiveWave(set[0]);
+    expect(a.drainFactor).toBeCloseTo(1.1, 9);
+    expect(a.throwDraw).toBe(set[0].throwDraw);
+    for (const w of set) expect(Number.isFinite(toActiveWave(w).drainFactor!)).toBe(true);
   });
 });

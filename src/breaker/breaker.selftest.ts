@@ -1,13 +1,14 @@
 import * as THREE from 'three/webgpu';
-import { Fn, instanceIndex, storage, uniform, vec4 } from 'three/tsl';
-import { DEFAULT_CONDITIONS } from '../conditions/defaults';
+import { Fn, float, instanceIndex, storage, uniform, vec2, vec4 } from 'three/tsl';
+import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from './breaking';
-import { type ReefField, computeReefField, sampleField } from './reefField';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams, onsetPsi } from './breaking';
+import { type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import { SetWaves } from './SetWaves';
 import { type BreakOptions, breakOptions, sumWaves, toActiveWave } from './setWaveModel';
+import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 
 // Inside the reef grid, the inflow far field (west, south) and the outflow edge continuation (east, north).
 const POINTS: [number, number][] = [
@@ -169,21 +170,35 @@ function peakRay(field: ReefField): [number, number][] {
  */
 const OFF_RAY: [number, number][] = [[20, -6], [27, -6.5], [30, -9], [10.3, -28.2], [12.5, 14], [42.5, 33]];
 
+/** Where the pile rolls: 20–70 m shoreward of the peak along its ray, every 5 m, and one point off the record grid. */
+function pileRay(field: ReefField): [number, number][] {
+  let x = 0, z = 0;
+  const out: [number, number][] = [];
+  for (let d = 0; d <= 70 + 1e-9; d += 0.5) {
+    if (d >= 20 && Math.abs(d % 5) < 1e-9) out.push([x, z]);
+    const s = sampleField(field, x, z); x += s.dirX * 0.5; z += s.dirZ * 0.5;
+  }
+  out.push([field.grid.x0 - 30, 0]);
+  return out;
+}
+
 /** 64 points around the peak: an 8 × 8 grid 4 m apart, from −14 to +14 m in x and z. */
 const AROUND_PEAK: [number, number][] = Array.from({ length: 64 }, (_, i) => [-14 + 4 * (i % 8), -14 + 4 * Math.floor(i / 8)]);
 
 /** The biggest wave of the default set 1, and the times after its arrival at the peak that the break tests read (1.8
  * and 2.4 s catch the whitewater rising as the section settles: foam between 0 and 1). */
 const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
-const BREAK_DTS = [0, 0.3, 0.6, 0.9, 1.2, 1.8, 2.4, 4];
+const BREAK_DTS = [0, 0.3, 0.6, 0.9, 1.2, 1.8, 2.4, 4, 7];
 
 /** A non-default shape, so every break uniform the sheet reads is exercised away from its default (normalized, as the GPU uploads). */
 const ALT_BREAK_PARAMS: BreakParams = (() => {
-  const p = { ...DEFAULT_BREAK_PARAMS, gamma: 0.7, stageSpan: 0.6, beta: 0.5, collapseStart: 0.2, faceWidth: 0.7, ribbonOnset: 0.45, troughDrain: 0.5, drainEnd: 0.3 };
+  const p = { ...DEFAULT_BREAK_PARAMS, gamma: 0.7, stageSpan: 0.6, beta: 0.5, collapseStart: 0.2, faceWidth: 0.7, ribbonOnset: 0.45, troughDrain: 0.5, drainEnd: 0.3, pileHalfM: 30, pileSurge: 0.15 };
   normalizeBreakParams(p);
   return p;
 })();
-const PARAM_SETS = [['default', DEFAULT_BREAK_PARAMS], ['alt', ALT_BREAK_PARAMS]] as const;
+/** The game rules on ψ away from their defaults: the random dial (each wave's own draw) and the nudge. */
+const DIAL_BREAK_PARAMS: BreakParams = { ...DEFAULT_BREAK_PARAMS, randomDial: 0.15, psiNudge: 0.2 };
+const PARAM_SETS = [['default', DEFAULT_BREAK_PARAMS], ['alt', ALT_BREAK_PARAMS], ['dial', DIAL_BREAK_PARAMS]] as const;
 const f3 = (v: number): string => v.toFixed(3);
 
 /** Tracks the worst value of one comparison, with the dt and point it came from. */
@@ -198,19 +213,20 @@ class Worst {
 }
 
 registerSelfTest({
-  name: 'breaker: GPU breaking sheet matches the CPU (sharpening, drain, collapse: displacement, foam, stage)',
+  name: 'breaker: GPU breaking sheet matches the CPU (sharpening, drain, collapse, whitewater pile: displacement, foam, stage)',
   async run(renderer) {
     const field = getField();
     const time = uniform(0);
     const sets = new SetWaves(time);
     sets.setField(field);
-    const points = [...peakRay(field), ...OFF_RAY];
+    const points = [...peakRay(field), ...OFF_RAY, ...pileRay(field)];
     const { pass, outAttr } = computeAt(points, 2, (xz) => {
       const b = sets.breakSampleNode(xz);
-      return [vec4(b.disp, b.foam), vec4(b.stage, 0.0, 0.0, 0.0)];
+      return [vec4(b.disp, b.foam), vec4(b.stage, b.pile, 0.0, 0.0)];
     });
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    const disp = new Worst(true, 0), foam = new Worst(true, 0), stage = new Worst(true, 0);
+    const disp = new Worst(true, 0), foam = new Worst(true, 0), stage = new Worst(true, 0), pile = new Worst(true, 0);
+    let pileSamples = 0;
     const tables: string[] = [];
     // Samples where the CPU foam is strictly between 0 and 1 (the landing window), per param set: the foam terms compared.
     const partialFoam: number[] = [];
@@ -234,19 +250,21 @@ registerSelfTest({
           disp.see(Math.max(...gd.map((v, k) => Math.abs(v - cd[k]))), dt, i, `${setName} `);
           foam.see(Math.abs(g[3] - c.foam), dt, i, `${setName} `);
           stage.see(Math.abs(g[4] - c.stage), dt, i, `${setName} `);
+          pile.see(Math.abs(g[5] - c.pile), dt, i, `${setName} `);
+          if (c.pile > 0.3) pileSamples++;
           if (c.foam > 0.05 && c.foam < 0.95) partial++;
-          rows.push(`#${i} (${x.toFixed(1)},${z.toFixed(1)}) GPU/CPU d ${gd.map(f3).join(',')}/${cd.map(f3).join(',')} foam ${f3(g[3])}/${f3(c.foam)} stage ${f3(g[4])}/${f3(c.stage)}`);
+          rows.push(`#${i} (${x.toFixed(1)},${z.toFixed(1)}) GPU/CPU d ${gd.map(f3).join(',')}/${cd.map(f3).join(',')} foam ${f3(g[3])}/${f3(c.foam)} stage ${f3(g[4])}/${f3(c.stage)} pile ${f3(g[5])}/${f3(c.pile)}`);
         });
         tables.push(`${setName} dt ${dt}: ${rows.join('; ')}`);
       }
       partialFoam.push(partial);
     }
     for (const line of tables) console.log(`[selftest]   sheet ${line}`);
-    const ok = disp.value < 0.05 && foam.value < 0.05 && stage.value < 0.02 && partialFoam.every((n) => n > 0);
+    const ok = disp.value < 0.05 && foam.value < 0.05 && stage.value < 0.02 && pile.value < 0.05 && pileSamples > 0 && partialFoam.every((n) => n > 0);
     return {
       pass: ok,
       detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s × default and alt params; worst |Δdisp| ${disp} m; |Δfoam| ${foam}; ` +
-        `|Δstage| ${stage}; samples with 0.05 < foam < 0.95 (default/alt) ${partialFoam.join('/')}${ok ? '' : `. Per point (GPU/CPU): ${tables.join(' || ')}`}`,
+        `|Δstage| ${stage}; |Δpile| ${pile} m (${pileSamples} samples with pile > 0.3 m); samples with 0.05 < foam < 0.95 (default/alt) ${partialFoam.join('/')}${ok ? '' : `. Per point (GPU/CPU): ${tables.join(' || ')}`}`,
     };
   },
 });
@@ -383,5 +401,107 @@ registerSelfTest({
       detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s; worst |Δdisp| ${disp} m; ` +
         `largest sharpening/drain/bore change from Phase 1 ${drained.toFixed(3)} m${ok ? '' : `. Per point: ${tables.join(' || ')}`}`,
     };
+  },
+});
+
+registerSelfTest({
+  name: "breaker: the pile's churn is bounded by churnSize × pile, zero off the pile, and its slope is finite",
+  async run(renderer) {
+    const time = uniform(3.7);
+    const u = { churnSize: uniform(0.2), churnSpeed: uniform(1) };
+    const piles = [0, 0.5, 2];
+    const frames: [number, number][] = Array.from({ length: 40 }, (_, i) => [-12 + 0.61 * i, 7 - 0.37 * i]);
+    let worstOver = -Infinity, nonZero = 0, zeroOff = true, finite = true;
+    for (const pile of piles) {
+      const { pass, outAttr } = computeAt(frames, 1, (frame) => {
+        const h = churnHeightNode(float(pile), frame, time, u);
+        const s = churnSlopeNode(float(pile), frame, vec2(0.6, 0.8), time, u);
+        return [vec4(h, s.x, s.y, 0.0)];
+      });
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      frames.forEach((_, i) => {
+        const [h, sx, sz] = out.slice(i * 4, i * 4 + 3);
+        worstOver = Math.max(worstOver, Math.abs(h) - 0.5 * 0.2 * pile);
+        if (pile === 0 && h !== 0) zeroOff = false;
+        if (pile > 0 && Math.abs(h) > 0.02 * pile) nonZero++;
+        if (![h, sx, sz].every(Number.isFinite)) finite = false;
+      });
+    }
+    const ok = worstOver <= 1e-5 && zeroOff && finite && nonZero > 20;
+    return { pass: ok, detail: `worst |h| over its bound ${worstOver.toExponential(2)} m; zero off the pile ${zeroOff}; finite ${finite}; lumps > 2% of the pile ${nonZero}/80` };
+  },
+});
+
+registerSelfTest({
+  name: 'breaker: GPU onset psi0 matches the CPU (the pair texture, level interpolation)',
+  async run(renderer) {
+    const field = getField();
+    const sets = new SetWaves(uniform(0));
+    sets.setField(field);
+    // Where the waves break on the softened ramp too: the peak's ray 150 m seaward.
+    const seaward: [number, number][] = [];
+    { let x = 0, z = 0; for (let d = 0; d <= 150; d += 0.5) { if (Math.abs(d % 10) < 1e-9) seaward.push([x, z]); const s = sampleField(field, x, z); x -= s.dirX * 0.5; z -= s.dirZ * 0.5; } }
+    const points = [...peakRay(field), ...OFF_RAY, ...seaward];
+    let worst = 0, at = '';
+    for (const h of [REF_BIGGEST.heightM, 2 * REF_BIGGEST.heightM, 4.5]) {
+      const { pass, outAttr } = computeAt(points, 1, (xz) => [vec4(sets.onsetPsiAt(xz, float(h)), 0.0, 0.0, 0.0)]);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      points.forEach(([x, z], i) => {
+        const rec = sampleOnset(field, x, z);
+        if (!rec) return;
+        const d = Math.abs(out[i * 4] - onsetPsi(rec, 0, h, DEFAULT_BREAK_PARAMS));
+        if (d > worst) { worst = d; at = `h ${h.toFixed(2)} (${x.toFixed(1)}, ${z.toFixed(1)}) GPU ${out[i * 4].toFixed(5)}`; }
+      });
+    }
+    return { pass: worst < 1e-4, detail: `${points.length} points × 3 heights; worst |Δψ₀| ${worst.toExponential(2)} ${at}` };
+  },
+});
+
+registerSelfTest({
+  name: "breaker: at the reef grid's edge the GPU sheet eases the crest's ψ to PSI_NORMAL as the CPU does (12 ft)",
+  async run(renderer) {
+    const field = getField(), g = field.grid;
+    const time = uniform(0);
+    const sets = new SetWaves(time);
+    sets.setField(field);
+    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+    // Just inside the north and south edges, where the reef record's ψ is far from PSI_NORMAL (final review I2).
+    const z1 = g.z0 + (g.nz - 1) * g.cellM, points: [number, number][] = [];
+    for (let x = 80; x <= 230; x += 30) for (const d of [2, 8, 15, 22]) points.push([x, z1 - d], [x, g.z0 + d]);
+    const { pass, outAttr } = computeAt(points, 2, (xz) => {
+      const b = sets.breakSampleNode(xz);
+      return [vec4(b.disp, b.foam), vec4(b.stage, b.pile, 0.0, 0.0)];
+    });
+    const c12 = cloneConditions(DEFAULT_CONDITIONS);
+    c12.swell.sizeFt = 12;
+    const big = wavesOfSet(1, c12, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    const o: BreakOptions = breakOptions(field, DEFAULT_BREAK_PARAMS);
+    const disp = new Worst(true, 0), stage = new Worst(true, 0);
+    let breaking = 0, stageAt = '';
+    for (let dt = -40; dt <= 40; dt += 4) {
+      const t = big.arrivalS + dt;
+      time.value = t;
+      const events = wavesNear(t, c12, DEFAULT_SET_PARAMS);
+      sets.setEvents(events);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      const waves = events.map(toActiveWave);
+      points.forEach(([x, z], i) => {
+        const c = sumWaves(x, z, t, sampleField(field, x, z), waves, ctx, o);
+        const gg = out.slice(i * 8, i * 8 + 8);
+        disp.see(Math.max(Math.abs(gg[0] - c.dx), Math.abs(gg[1] - c.eta), Math.abs(gg[2] - c.dz)), dt, i, '');
+        if (Math.abs(gg[4] - c.stage) > stage.value) stageAt = `(${x}, ${z.toFixed(1)}) dt ${dt}: GPU stage ${gg[4].toFixed(3)} foam ${gg[3].toFixed(3)} pile ${gg[5].toFixed(3)}; CPU stage ${c.stage.toFixed(3)} foam ${c.foam.toFixed(3)} pile ${c.pile.toFixed(3)}`;
+        stage.see(Math.abs(gg[4] - c.stage), dt, i, '');
+        if (c.stage > 0.1) breaking++;
+      });
+    }
+    // The ψ's fade shows in the displacement (the sheet's shape), and the reported stage agrees too: a wave past its
+    // envelope cutoff reports none on either side (setWaveModel.beyondEnvelope), though its crest lookup, 60 m on, lands
+    // on a broken crest (before, the CPU reported it: stage 1.000 against the GPU's 0.432 at (140, 297.3), dt +20 s).
+    const ok = breaking > 0 && disp.value < 0.05 && stage.value < 0.02;
+    return { pass: ok, detail: `${points.length} points within 22 m of the grid's north and south edges × dt −40…40 s (12 ft); ${breaking} breaking samples (> 0); worst |Δdisp| ${disp} m (< 0.05); worst |Δstage| ${stage} (< 0.02) [${stageAt}]` };
   },
 });

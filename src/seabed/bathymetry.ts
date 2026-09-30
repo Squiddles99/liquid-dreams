@@ -88,6 +88,18 @@ export function reefWarp(x: number, z: number): [number, number] {
  * warp are all computed on a coarse 2 m lattice and interpolated (they are all smooth), which keeps the
  * full 0.5 m build well under a second.
  */
+/**
+ * The seaward ramp's shape: how far from the ledge depth to the deep water at v = (distance seaward of the ledge line) ÷
+ * the ramp's width: v², flat at the ledge and steepest at the deep edge (spec 2026-09-30-barrel-from-maths §4). A bigger
+ * swell or a lower tide breaks further out, on the steeper part, and throws heavier; a higher tide further in, on the
+ * gentler part; a swell too big for the reef breaks past it, on the easing seabed. (Plan ruling 10's v³(4 − 3v), flat at
+ * both ends, made the middle sizes the heaviest: 8 ft read ψ₀ 0.115, 12 ft 0.064, 15 ft 0.037.)
+ */
+export function rampShape(v: number): number {
+  const x = Math.min(1, Math.max(0, v));
+  return x * x;
+}
+
 export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridSpec = REEF_GRID): Bathymetry {
   const n = grid.nx * grid.nz;
   const bed = new Float32Array(n), sand = new Float32Array(n), weed = new Float32Array(n);
@@ -138,8 +150,12 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       const sd = lattice(sdf, xw, zw);
       let d: number, s: number, w = 0;
       if (sd < 0) {
-        // Outside the shelf: rise from the surrounding deep water to the ledge depth over ledgeWidthM.
-        const dLedge = p.ledgeDepthM + (background - p.ledgeDepthM) * smoothstep(0, p.ledgeWidthM, -sd);
+        // Outside the shelf: rise from the reef's deep water (deepDepthM) to the ledge depth over ledgeWidthM (rampShape);
+        // past the ramp the seabed eases on down to the coast's deeper water over another ramp's width. (Ramping straight
+        // into the coast's deepening seabed, 13 m to 28 m within 420 m, kept the steepest part ~1:9 at any width: Andrew's
+        // ruling 2026-09-30, the ramp to 13 m.)
+        const v = -sd / p.ledgeWidthM, deep = Math.min(background, p.deepDepthM);
+        const dLedge = p.ledgeDepthM + (deep - p.ledgeDepthM) * rampShape(v) + (background - deep) * smoothstep(1, 2, v);
         d = background + (dLedge - background) * edgeFade;
         const faceSand = smoothstep(0, LEDGE_FACE_WEED_FADE_M, -sd);
         s = 1 + (faceSand - 1) * edgeFade;

@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
-import { Fn, If, PI, dot, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, refract, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
+import { Fn, If, PI, dot, exp, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, refract, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
 import { WATER_IOR, extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
 import { alongPathNode, cameraDepthNode, fresnelFromInsideNode, sunThroughWindowNode, waterColourAtDepthNode } from './underwaterNodes';
-import { type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
+import { LIP_REFERENCE_THICKNESS_M, type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
 
 type N = any;
 
@@ -19,6 +19,9 @@ export interface WaterSurfaceInputs {
   lip?: N;
   /** How far the set wave has turned over (0..1, 1 where it faces down: the tube's ceiling). Absent means 0. */
   underside?: N;
+  /** The lip's thickness (m) where `lip` is set: the light through it takes the water's colour over a path growing with
+   * it (waterOptics.lipTransmissionColour). Absent: the fixed transmissionThicknessM path. */
+  lipThickness?: N;
   /**
    * The normal the water body's sunlight enters through. Absent means straight up, the ocean sheet's (its slopes are
    * gentle). The breaking ribbon passes its own where its face stands up: a steep face turned to the sun is lit through
@@ -44,6 +47,9 @@ export function createWaterOpticsUniforms(p: WaterOpticsParams) {
     bodyScale: uniform(p.bodyScale),
     transmissionIntensity: uniform(p.transmissionIntensity),
     lipSkyTransmission: uniform(p.lipSkyTransmission),
+    absorption: uniform(new THREE.Vector3(...p.absorptionPerM)),
+    transmissionThicknessM: uniform(p.transmissionThicknessM),
+    lipSideSkylight: uniform(p.lipSideSkylight),
     baseRoughness: uniform(p.baseRoughness),
     foamAlbedo: uniform(p.foamAlbedo),
   };
@@ -58,6 +64,9 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
   u.bodyScale.value = p.bodyScale;
   u.transmissionIntensity.value = p.transmissionIntensity;
   u.lipSkyTransmission.value = p.lipSkyTransmission;
+  u.absorption.value.set(...p.absorptionPerM);
+  u.transmissionThicknessM.value = p.transmissionThicknessM;
+  u.lipSideSkylight.value = p.lipSideSkylight;
   u.baseRoughness.value = p.baseRoughness;
   u.foamAlbedo.value = p.foamAlbedo;
 }
@@ -121,17 +130,30 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const underside = i.underside ? saturate(i.underside) : float(0.0);
   const reflection = mix(seen, upwelling, underside.mul(float(1.0).sub(smoothstep(-0.2, 0.05, r.y))));
 
-  // Lip transmission: the sun behind a thin, curling lip shines through it toward the viewer (turquoise, spec §3.5, P11);
-  // from beneath the lip (the tube's ceiling) the skylight through it adds a blue-green glow as well.
+  // Lip transmission: light through the lip toward the viewer (spec 2026-09-29 §3.3), coloured by the water it crossed:
+  // turquoise where the lip is thin, deeper blue-green toward its thick root (Beer–Lambert over a path that grows with the
+  // thickness). The sun from behind it, and the skylight through it from beneath (the tube's ceiling) and from the side.
   const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
-  const lipLight = sky.sunIlluminance.mul(backlight).mul(sv).add(sky.skyIrradiance.mul(underside).mul(u.lipSkyTransmission));
-  const transmitted = i.lip ? u.transmission.mul(lipLight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI) : vec3(0.0);
+  const lipLight = sky.sunIlluminance.mul(backlight).mul(sv)
+    .add(sky.skyIrradiance.mul(u.lipSkyTransmission).mul(max(underside, u.lipSideSkylight)));
+  const lipColour = i.lipThickness
+    ? exp(u.absorption.mul(u.transmissionThicknessM.mul(i.lipThickness).div(LIP_REFERENCE_THICKNESS_M)).negate())
+    : u.transmission;
+  const transmitted = i.lip ? lipColour.mul(lipLight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI) : vec3(0.0);
 
   // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.
   const column = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;
   const water = column.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
-  const foamLight = sky.skyIrradiance.add(sky.sunIlluminance.mul(saturate(nDotL)).mul(sv)).mul(u.foamAlbedo).div(PI);
-  const colour = mix(water, i.foamShade ? foamLight.mul(i.foamShade) : foamLight, saturate(i.foam));
+  const foamSky = sky.skyIrradiance.mul(u.foamAlbedo).div(PI);
+  const foamSun = sky.sunIlluminance.mul(saturate(nDotL)).mul(sv).mul(u.foamAlbedo).div(PI);
+  const foamLight = foamSky.add(foamSun);
+  // The foam's own shade (its clumps and the creases between them, setFoamPattern's brightness 0.62–1.07; 1.07, the default
+  // without set foam, is the plain lit foam): whitewater is
+  // a heap of bubble clumps that shadow each other, so the creases lose the sun far more than the sky. The clumps' tops
+  // catch the sun and the creases go sky-lit blue-grey; shaded as one smooth surface it read as flat peach plasticine.
+  const shade = i.foamShade ? saturate(i.foamShade.sub(0.62).div(0.45)) : null;
+  const foamSeen = shade ? foamSky.mul(mix(0.75, 1.0, shade)).add(foamSun.mul(mix(0.3, 1.0, shade.mul(shade)))) : foamLight;
+  const colour = mix(water, foamSeen, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
   // would paint the whole flat field NaN, so the edge is floored and a flat field draws no line.

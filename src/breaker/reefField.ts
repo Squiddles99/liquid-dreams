@@ -1,6 +1,7 @@
 import type { Bathymetry } from '../seabed/bathymetry';
+import { smoothstep } from '../math/smoothstep';
 import type { GridSpec } from '../seabed/wombReef';
-import { ONSET_LAGS, ONSET_LAG_S, breakingDepth } from './breaking';
+import { BREAKING_RATIO, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, breakingDepth, onsetLevelHeight } from './breaking';
 import { AMP_CAP, type FarField, computeFarField, farSample } from './coastFarField';
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
 import { solveEikonal } from './eikonal';
@@ -22,12 +23,15 @@ export interface ReefField {
   hmin: Float32Array;
   /** The breaking depth: amp / (amp/breakingDepth(hmin) smoothed along the crest) (FieldSample.hminBreak). */
   hminBreak: Float32Array;
+  /** The drain's breaking depth: amp / the slurp's gain (slurpAlongCrest; FieldSample.hminSlurp). */
+  hminSlurp: Float32Array;
   k: Float32Array;
   dirX: Float32Array;
   dirZ: Float32Array;
   depth: Float32Array;
-  /** The onset record (breaking.ONSET_LAGS): per node, ONSET_LAGS values at [i·ONSET_LAGS + j], the running maximum of
-   * amp/hminBreak along the ray at j·ONSET_LAG_S seconds upstream of the node (computeOnsetRecord). */
+  /** The onset record (breaking.ONSET_RECORD_LENGTH values per node at [i·ONSET_RECORD_LENGTH + j]): the running maximum
+   * of amp/hminBreak along the ray, then per breaking level the time since that level's onset and the amplification there
+   * (computeOnsetRecord). */
   onset: Float32Array;
   far: FarField;
   omega: number;
@@ -68,6 +72,64 @@ export const BREAK_TAIL_M = 20;
  * which smoothing along travel leaves as it is.
  */
 export const BREAK_TRAVEL_SMOOTHING_M = 8;
+
+/**
+ * The slurp (Andrew): as a section stands up it draws the reef's water into itself, and the swell line either side is
+ * part of that. The drain reads, at each node, the strongest breaking gain along its crest line within 2·SLURP_REACH_M,
+ * weighted exp(−s / SLURP_REACH_M) by its distance s along the line: fully at the section itself, 37% at SLURP_REACH_M
+ * (100 m: with the barrel's deeper trough drain, 80 m left 1.06 m per 5 m of crest where it ended).
+ * Exponential, not Gaussian: the drain saturates (full from ρ ≈ 1.3), and a Gaussian took a peak's ratio of 3 through the
+ * drain's whole ramp in ~15 m of crest, a wall at each end of a flat-bottomed bowl; an exponential spends 0.7 reaches on it.
+ * A bigger swell stands further past breaking at the peak, and so slurps further along the line.
+ */
+export const SLURP_REACH_M = 100;
+/** The slurp's samples along the crest line are this far apart (m). */
+const SLURP_STEP_M = 2;
+
+/** ψ₀'s seabed slope is the mean over this many still-water depths either side of a node along its ray… */
+export const PSI_SLOPE_HALF_WINDOW = 1;
+/** …its approach depth the deepest still water within this many depths seaward… */
+export const PSI_APPROACH_REACH = 3;
+/** …sampled this far apart (m): the field's cell. */
+export const PSI_SAMPLE_M = 1;
+
+/**
+ * ψ₀'s reef parts at a point of still-water depth d0 (plan ruling 11): the mean slope over ±PSI_SLOPE_HALF_WINDOW·d0
+ * along its ray (depthAlong(s), s metres ahead; floored at 0: a bottom deepening ahead gives no plunge), and the
+ * approach depth h0, the deepest still water within PSI_APPROACH_REACH·d0 seaward, with where it is (sApproach ≤ 0).
+ */
+export function psiReef(depthAlong: (s: number) => number, d0: number): { slope: number; h0: number; sApproach: number } {
+  const w = PSI_SLOPE_HALF_WINDOW * d0;
+  const slope = w > 0 ? Math.max(0, (depthAlong(-w) - depthAlong(w)) / (2 * w)) : 0;
+  let h0 = d0, sApproach = 0;
+  for (let s = -PSI_SAMPLE_M; s >= -PSI_APPROACH_REACH * d0 - 1e-9; s -= PSI_SAMPLE_M) {
+    const d = depthAlong(s);
+    if (d > h0) { h0 = d; sApproach = s; }
+  }
+  return { slope, h0, sApproach };
+}
+
+/** `a` spread along the crest line through each node: the largest of a × exp(−s/reachM) within ±2·reachM. */
+export function slurpAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, reachM: number): Float32Array {
+  const { nx, cellM } = grid;
+  const out = new Float32Array(a.length);
+  const at = bilinearCells(a, grid);
+  const steps = Math.ceil((2 * reachM) / SLURP_STEP_M);
+  const weight = Array.from({ length: steps + 1 }, (_, j) => Math.exp(-(j * SLURP_STEP_M) / reachM));
+  let aMax = 0;
+  for (let i = 0; i < a.length; i++) aMax = Math.max(aMax, a[i]);
+  for (let i = 0; i < a.length; i++) {
+    const col = i % nx, row = (i - col) / nx, tx = (-dirZ[i] * SLURP_STEP_M) / cellM, tz = (dirX[i] * SLURP_STEP_M) / cellM;
+    let m = a[i];
+    for (let j = 1; j <= steps; j++) {
+      const w = weight[j];
+      if (m >= w * aMax) break; // nothing further along can beat it
+      m = Math.max(m, w * at(col + j * tx, row + j * tz), w * at(col - j * tx, row - j * tz));
+    }
+    out[i] = m;
+  }
+  return out;
+}
 
 /** The largest of `a` within radiusM along the crest line through each node (sampled as smoothAlongCrest samples). */
 export function maxAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, radiusM: number): Float32Array {
@@ -243,43 +305,53 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const smoothGain = smoothAlongTravel(near, dirX, dirZ, grid, BREAK_TRAVEL_SMOOTHING_M);
   const hminBreak = new Float32Array(n);
   for (let i = 0; i < n; i++) hminBreak[i] = smoothGain[i] > 0 ? amp[i] / smoothGain[i] : breakingDepth(hmin[i]);
-  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hminBreak, k, dirX, dirZ, fixed, order, omega });
-  return { grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
+  const slurp = slurpAlongCrest(smoothGain, dirX, dirZ, grid, SLURP_REACH_M);
+  const hminSlurp = new Float32Array(n);
+  for (let i = 0; i < n; i++) hminSlurp[i] = slurp[i] > 0 ? Math.min(hminBreak[i], amp[i] / slurp[i]) : hminBreak[i];
+  // ψ₀ at every node and level (spec 2026-09-30-barrel-from-maths, plan ruling 11): the slope smoothed along the crest as
+  // the breaking depth is, so small reef bumps don't make the lip ragged; the approach depth and its amplification raw.
+  const depthAt = bilinearCells(depth, grid), ampAt = bilinearCells(amp, grid);
+  const rawSlope = new Float32Array(n), h0 = new Float32Array(n), amp0 = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const col = i % nx, row = (i - col) / nx, dx = dirX[i] / cellM, dz = dirZ[i] / cellM;
+    const r = psiReef((s) => depthAt(col + dx * s, row + dz * s), depth[i]);
+    rawSlope[i] = r.slope; h0[i] = r.h0; amp0[i] = ampAt(col + dx * r.sApproach, row + dz * r.sApproach);
+  }
+  const slope = smoothAlongCrest(rawSlope, dirX, dirZ, grid, BREAK_SMOOTHING_M);
+  const psiHere = new Float32Array(n * ONSET_LEVELS);
+  for (let i = 0; i < n; i++) for (let k = 0; k < ONSET_LEVELS; k++) {
+    const H0 = onsetLevelHeight(k) * amp0[i];
+    psiHere[i * ONSET_LEVELS + k] = H0 > 0 && h0[i] > 0 ? slope[i] / (H0 / h0[i]) ** 0.25 : 0;
+  }
+  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere });
+  return { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
 }
 
 /**
- * The onset record (breaking.ONSET_LAGS). First the running maximum R of amp/hminBreak along the rays, marched in
- * arrival order: R = max(own ratio, R a couple of cells back along the ray), so it (all but) never falls along a ray. Then, for each node, lag j is R at the point the crest was over j·ONSET_LAG_S earlier:
- * reached by hops of ONSET_LAG_S upstream, each a straight step of c·ONSET_LAG_S against the ray direction, corrected
- * once onto the right arrival time; then a running maximum over the lags from the far end, so no lag is below one
- * further back. Upstream of the grid (a hop leaving it) the edge's value holds: the reef starts inside the grid, so
- * nothing out there has broken.
+ * The onset record (breaking.ONSET_RECORD_LENGTH per node), in one march in arrival order, semi-Lagrangian: each node
+ * reads the record RUN_BACK_CELLS back along its ray (bilinear between nodes that arrived earlier). Its running maximum R
+ * of amp/hminBreak is the larger of its own ratio and R back there: it (all but) never falls along a ray. (The upwind
+ * two-neighbour mean the flux uses averaged the x and z neighbours of an oblique ray, and the maximum faded along it, 6%
+ * by 70 m inshore of the peak.) Per breaking level q: unbroken here (R < q), the time since onset is 0 and the throw's
+ * height is the node's own (a section breaking now); broken back there too, both are carried (the time grows by the
+ * arrival time between, and the throw's height takes the node's while the time is within LIP_THROW_S); broken in between,
+ * it broke where R crossed q (linear between the two), and the time and the throw's height start there. Off the grid's
+ * march (a boundary or fixed node) a node breaks at itself.
  */
-/** How far back along its ray (cells) a node reads the running maximum: past its own cell, so every node read arrived earlier. */
+/** How far back along its ray (cells) a node reads the record: past its own cell, so every node read arrived earlier. */
 const RUN_BACK_CELLS = 2;
+/** How far (fraction) the running maximum dips under a level between rays (≤ 2% measured) and still counts as broken there. */
+export const RUN_DIP = 0.03;
 
 function computeOnsetRecord(f: {
-  grid: GridSpec; tau: Float32Array; amp: Float32Array; hminBreak: Float32Array; k: Float32Array; dirX: Float32Array; dirZ: Float32Array;
-  fixed: Uint8Array; order: Uint32Array; omega: number;
+  grid: GridSpec; tau: Float32Array; amp: Float32Array; hmin: Float32Array; hminBreak: Float32Array; k: Float32Array; dirX: Float32Array;
+  dirZ: Float32Array; fixed: Uint8Array; order: Uint32Array; omega: number; psiHere: Float32Array;
 }): Float32Array {
   const { grid, dirX, dirZ } = f;
   const { nx, nz } = grid;
-  const n = nx * nz;
-  // Semi-Lagrangian, in arrival order: each node takes the larger of its own ratio and the running maximum RUN_BACK_CELLS
-  // back along its ray (bilinear between nodes that arrived earlier). The upwind two-neighbour mean the flux uses
-  // averaged the x and z neighbours of an oblique ray, and the maximum faded along it (6% by 70 m inshore of the peak).
-  const run = new Float32Array(n);
-  const back = RUN_BACK_CELLS * grid.cellM;
-  for (let o = 0; o < n; o++) {
-    const i = f.order[o];
-    const col = i % nx, row = (i - col) / nx;
-    const own = f.hminBreak[i] > 0 ? f.amp[i] / f.hminBreak[i] : 0;
-    const x = grid.x0 + col * grid.cellM - dirX[i] * back, z = grid.z0 + row * grid.cellM - dirZ[i] * back;
-    const inside = !f.fixed[i] && x >= grid.x0 && z >= grid.z0 && x <= grid.x0 + (nx - 1) * grid.cellM && z <= grid.z0 + (nz - 1) * grid.cellM;
-    run[i] = inside ? Math.max(own, bilinear(run, grid, x, z)) : own;
-  }
-  const out = new Float32Array(n * ONSET_LAGS);
-  // One bilinear cell for the direction, wavenumber and arrival time together (the record's cost is these lookups).
+  const n = nx * nz, R = ONSET_RECORD_LENGTH, S = ONSET_PSI_OFFSET;
+  const out = new Float32Array(n * R);
+  // One bilinear cell for everything read back there.
   const xMax = (nx - 1) * grid.cellM, zMax = (nz - 1) * grid.cellM;
   let ci = 0, wx = 0, wz = 0;
   const cell = (x: number, z: number): void => {
@@ -288,47 +360,84 @@ function computeOnsetRecord(f: {
     const c = Math.min(nx - 2, Math.floor(fx)), r = Math.min(nz - 2, Math.floor(fz));
     ci = r * nx + c; wx = fx - c; wz = fz - r;
   };
-  const lerp = (a: ArrayLike<number>): number => {
-    const top = a[ci] + (a[ci + 1] - a[ci]) * wx, bottom = a[ci + nx] + (a[ci + nx + 1] - a[ci + nx]) * wx;
+  const lerp = (a: ArrayLike<number>, stride = 1, off = 0): number => {
+    const i00 = ci * stride + off, i10 = (ci + 1) * stride + off, i01 = (ci + nx) * stride + off, i11 = (ci + nx + 1) * stride + off;
+    const top = a[i00] + (a[i10] - a[i00]) * wx, bottom = a[i01] + (a[i11] - a[i01]) * wx;
     return top + (bottom - top) * wz;
   };
-  for (let row = 0; row < nz; row++) for (let col = 0; col < nx; col++) {
-    const i = row * nx + col;
-    let x = grid.x0 + col * grid.cellM, z = grid.z0 + row * grid.cellM, t = f.tau[i];
-    out[i * ONSET_LAGS] = run[i];
-    for (let j = 1; j < ONSET_LAGS; j++) {
-      // Straight back along the ray to arrival time t, from where the last hop landed. Each hop aims at an absolute
-      // time, so a hop's error does not carry into the next.
-      t -= ONSET_LAG_S;
-      cell(x, z);
-      const dx = lerp(dirX), dz = lerp(dirZ), len = Math.hypot(dx, dz) || 1;
-      const back = ((lerp(f.tau) - t) * f.omega) / Math.max(lerp(f.k), 1e-4);
-      x -= (dx / len) * back;
-      z -= (dz / len) * back;
-      cell(x, z);
-      out[i * ONSET_LAGS + j] = lerp(run);
+  const back = RUN_BACK_CELLS * grid.cellM;
+  // The throw's height factor for level k: the amplification, capped by the depth as the sheet caps a crest.
+  const capOf = ONSET_LEVEL_Q.map((_, k) => BREAKING_RATIO / onsetLevelHeight(k));
+  const throwAt = (amp: number, hmin: number, k: number): number => Math.min(amp, capOf[k] * hmin);
+  for (let o = 0; o < n; o++) {
+    const i = f.order[o];
+    const col = i % nx, row = (i - col) / nx, base = i * R;
+    const own = f.hminBreak[i] > 0 ? f.amp[i] / f.hminBreak[i] : 0;
+    const x = grid.x0 + col * grid.cellM - dirX[i] * back, z = grid.z0 + row * grid.cellM - dirZ[i] * back;
+    const inside = !f.fixed[i] && x >= grid.x0 && z >= grid.z0 && x <= grid.x0 + (nx - 1) * grid.cellM && z <= grid.z0 + (nz - 1) * grid.cellM;
+    if (!inside) {
+      out[base] = own;
+      for (let k = 0; k < ONSET_LEVELS; k++) {
+        out[base + 2 + 2 * k] = throwAt(f.amp[i], f.hmin[i], k);
+        out[base + S + k] = f.psiHere[i * ONSET_LEVELS + k];
+      }
+      continue;
     }
-    // A running maximum along the hops, from the far end: each lag at least every lag further back, so the record never
-    // falls along the ray within its reach (the grid's upwind march averages neighbouring rays, and lost up to ~2%).
-    for (let j = ONSET_LAGS - 2; j >= 0; j--) out[i * ONSET_LAGS + j] = Math.max(out[i * ONSET_LAGS + j], out[i * ONSET_LAGS + j + 1]);
+    cell(x, z);
+    const runB = lerp(out, R, 0), tauB = lerp(f.tau), ampB = lerp(f.amp), hminB = lerp(f.hmin);
+    const run = Math.max(own, runB), dTau = f.tau[i] - tauB;
+    out[base] = run;
+    for (let k = 0; k < ONSET_LEVELS; k++) {
+      const q = ONSET_LEVEL_Q[k];
+      // Broken back there: its ratio reached q, or its clock is running and its ratio is within RUN_DIP of q (where the
+      // running maximum dips a hair under q between rays, the clock would otherwise restart; further below, a running
+      // clock is a broken neighbour's, blended in).
+      const tbB = lerp(out, R, 1 + 2 * k);
+      const brokenB = runB >= q || (tbB > 0 && runB >= q * (1 - RUN_DIP));
+      const here = throwAt(f.amp[i], f.hmin[i], k);
+      if (run < q && !brokenB) {
+        out[base + 2 + 2 * k] = here;
+        out[base + S + k] = f.psiHere[i * ONSET_LEVELS + k];
+      } else if (brokenB) {
+        const tb = tbB + dTau, thrownB = lerp(out, R, 2 + 2 * k);
+        out[base + 1 + 2 * k] = tb;
+        out[base + 2 + 2 * k] = tb <= LIP_THROW_S ? Math.max(thrownB, here) : thrownB;
+        out[base + S + k] = lerp(out, R, S + k);
+      } else {
+        const fr = (q - runB) / (run - runB);
+        out[base + 1 + 2 * k] = (1 - fr) * dTau;
+        const atOnset = throwAt(ampB + fr * (f.amp[i] - ampB), hminB + fr * (f.hmin[i] - hminB), k);
+        out[base + 2 + 2 * k] = Math.max(atOnset, here);
+        const psiB = lerp(f.psiHere, ONSET_LEVELS, k);
+        out[base + S + k] = psiB + fr * (f.psiHere[i * ONSET_LEVELS + k] - psiB);
+      }
+    }
   }
   return out;
 }
 
+/** Over this distance inside the reef grid's edge a crest's ψ eases to PSI_NORMAL, the value off the grid (final review I2). */
+export const PSI_EDGE_FADE_M = 25;
+/** 0 at the reef grid's edge (and outside it), 1 from PSI_EDGE_FADE_M inside: the weight of the record's ψ. */
+export function psiEdgeFade(g: GridSpec, x: number, z: number): number {
+  const d = Math.min(x - g.x0, z - g.z0, g.x0 + (g.nx - 1) * g.cellM - x, g.z0 + (g.nz - 1) * g.cellM - z);
+  return smoothstep(0, PSI_EDGE_FADE_M, d);
+}
+
 /**
- * The onset record at world (x, z): ONSET_LAGS values (bilinear between nodes) into `out`, or null outside the grid
- * (there is no record there: breaking.lifecycle falls back to the breaking ratio alone).
+ * The onset record at world (x, z): ONSET_RECORD_LENGTH values (bilinear between nodes) into `out`, or null outside the
+ * grid (there is no record there: breaking.lifecycle falls back to the breaking ratio alone).
  */
-export function sampleOnset(f: ReefField, x: number, z: number, out = new Float32Array(ONSET_LAGS)): Float32Array | null {
+export function sampleOnset(f: ReefField, x: number, z: number, out = new Float32Array(ONSET_RECORD_LENGTH)): Float32Array | null {
   const g = f.grid;
   if (!(x >= g.x0 && z >= g.z0 && x <= g.x0 + (g.nx - 1) * g.cellM && z <= g.z0 + (g.nz - 1) * g.cellM)) return null;
   const fx = Math.min(g.nx - 1, (x - g.x0) / g.cellM), fz = Math.min(g.nz - 1, (z - g.z0) / g.cellM);
   const c = Math.min(g.nx - 2, Math.floor(fx)), r = Math.min(g.nz - 2, Math.floor(fz));
   const tx = fx - c, tz = fz - r, i = r * g.nx + c;
-  const L = ONSET_LAGS, rec = f.onset;
-  for (let j = 0; j < L; j++) {
-    const top = rec[i * L + j] + (rec[(i + 1) * L + j] - rec[i * L + j]) * tx;
-    const bottom = rec[(i + g.nx) * L + j] + (rec[(i + g.nx + 1) * L + j] - rec[(i + g.nx) * L + j]) * tx;
+  const R = ONSET_RECORD_LENGTH, rec = f.onset;
+  for (let j = 0; j < R; j++) {
+    const top = rec[i * R + j] + (rec[(i + 1) * R + j] - rec[i * R + j]) * tx;
+    const bottom = rec[(i + g.nx) * R + j] + (rec[(i + g.nx + 1) * R + j] - rec[(i + g.nx) * R + j]) * tx;
     out[j] = top + (bottom - top) * tz;
   }
   return out;
@@ -339,7 +448,7 @@ function sampleInside(f: ReefField, x: number, z: number): FieldSample {
   const dirX = bilinear(f.dirX, g, x, z), dirZ = bilinear(f.dirZ, g, x, z);
   const len = Math.hypot(dirX, dirZ) || 1;
   return {
-    tau: bilinear(f.tau, g, x, z), amp: bilinear(f.amp, g, x, z), hmin: bilinear(f.hmin, g, x, z), hminBreak: bilinear(f.hminBreak, g, x, z),
+    tau: bilinear(f.tau, g, x, z), amp: bilinear(f.amp, g, x, z), hmin: bilinear(f.hmin, g, x, z), hminBreak: bilinear(f.hminBreak, g, x, z), hminSlurp: bilinear(f.hminSlurp, g, x, z),
     k: bilinear(f.k, g, x, z), dirX: dirX / len, dirZ: dirZ / len, depth: bilinear(f.depth, g, x, z),
   };
 }

@@ -1,17 +1,22 @@
 import * as THREE from 'three/webgpu';
-import { If, atan, cos, float, length, max, min, mix, normalize, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
+import { If, Loop, atan, clamp, cos, dot, float, int, length, max, min, mix, pow, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
 import { type BreakParams, RIBBON_FULL_OFFSET, normalizeBreakParams, steepeningStart } from './breaking';
 import {
-  BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_MARGIN_M, FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_GROW_PROGRESS,
-  MAX_THICKNESS_OF_RADIUS, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID, TIP_THICKNESS_RATIO,
-  WALL_BACK_H, WALL_HEIGHT, sampleSegment,
+  BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_LOWER_FADE, EDGE_MARGIN_M, FACE_CONCAVE_MARGIN, FACE_CONCAVE_STEPS, FACE_CONCAVE_STEP_H, FACE_DIR_STEP, FACE_JOIN_MIN_M, FACE_JOIN_STEPS,
+  FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
+  LIP_SPRAY_PROGRESS, LIP_TAPER_POWER, OUTER_LIP_SHARE, PRESENCE_FADE, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID,
+  TIP_GROW_PROGRESS, TIP_THICKNESS_RATIO, TUBE_BACK_AHEAD_H, sampleSegment,
 } from './lipProfile';
+import { LH82_K, PSI_MIN, PSI_NONE } from './overturn';
+import { overturnShapeNode, sheetShapeNode, windUCNode } from './overturnNodes';
+import { TUBE_ARC_STEPS, TUBE_SEARCH_STEPS, TUBE_XI_EPS } from './tube';
 
 type N = any;
 
 /**
- * The TSL mirror of lipProfile.ts, term by term: the station's frame (profileFrame) and each sample's point
- * (sampleHome, profilePoint, lipThicknessAt). lipProfile.ts stays the source of truth; lipProfileNodes.test.ts checks
+ * The TSL mirror of lipProfile.ts and tube.ts, term by term: the station's frame (profileFrame, impactHeight, sheetYAt,
+ * pileLift) and each sample's point (sampleHome, constructed, riding, sampleTarget, profilePoint, lipThicknessAt), with
+ * the same constants and fixed iteration counts. lipProfile.ts stays the source of truth; lipProfileNodes.test.ts checks
  * the tables below on the CPU and ribbon.selftest.ts checks the GPU against buildProfile.
  *
  * The segment logic is data, not branches on j: per sample, a table gives its segment id, its position s within the
@@ -75,26 +80,21 @@ function sampleTable(): N {
 
 /** One uniform per BreakParams number the profile reads, plus the steepening's start (breaking.steepeningStart). */
 export function createLipUniforms(p: BreakParams) {
-  const u = {
-    throwStrength: uniform(0), lipThickness: uniform(0), collapseTime: uniform(1), ribbonOnset: uniform(0), faceWidth: uniform(1), steepFrom: uniform(0),
-    drainGrowth: uniform(1),
-  };
+  const u = { collapseTime: uniform(1), ribbonOnset: uniform(0), faceWidth: uniform(1), steepFrom: uniform(0), delta: uniform(0) };
   updateLipUniforms(u, p);
   return u;
 }
 export type LipUniforms = ReturnType<typeof createLipUniforms>;
 
-/** Uploads a normalized copy of `params` (the caller's object is left alone). */
+/** Uploads a normalized copy of `params` (the caller's object is left alone). The trough drain is each crest's own (its ψ). */
 export function updateLipUniforms(u: LipUniforms, params: BreakParams): void {
   const p = { ...params };
   normalizeBreakParams(p);
-  u.throwStrength.value = p.throwStrength;
-  u.lipThickness.value = p.lipThickness;
   u.collapseTime.value = p.collapseTime;
   u.ribbonOnset.value = p.ribbonOnset;
   u.faceWidth.value = p.faceWidth;
   u.steepFrom.value = steepeningStart(p);
-  u.drainGrowth.value = 1 + p.troughDrain * p.delta;
+  u.delta.value = p.delta;
 }
 
 /** The time since onset as the GPU stores it: TB_NULL before breaking, TB_INFINITY past the hand-back. */
@@ -111,57 +111,154 @@ export function encodeTb(tb: number | null): number {
 }
 
 /** ProfileInput as nodes; tb encoded (encodeTb): < 0 means null. */
-export interface ProfileInputNodes { H: N; c: N; r: N; tb: N }
+export interface ProfileInputNodes { H: N; c: N; r: N; tb: N; psi: N; offshoreMs: N }
 
-/** ProfileFrame as nodes (vec2 for the points, float for the rest). */
+/** The tube (tube.Tube) as nodes: n is (−d.y, d.x). */
+export interface TubeNodes { O: N; d: N; n: N; L: N; W: N; clipY: N }
+
+/** One pile-lift knot (lipProfile.PileLift at one of pileLiftKnots' u): vec4(u, x on the frame's sheet, dx, dy). */
+export const PILE_KNOTS = 7;
+
+/** ProfileFrame as nodes (vec2 for the points, float for the rest), and the pile's knots. */
 export interface ProfileFrameNodes {
-  K: N; F: N; tF: N; W: N; R: N;
-  uFoot: N; uFront: N; uBack: N; tauLand: N; vj: N; prog: N; reach: N; eRoot: N; weight: N; collapse: N; landing: N; rho: N;
-  /** The base samples at uFoot − 0.1 and the landing guess (vec2 each; profileFrameNode sets them, the stored frame
-   * keeps them for the self-test's mirror check; the samples don't need them). */
-  Fb?: N; landing0?: N;
+  K: N; F: N; tF: N; P: N; tip: N; tube: TubeNodes;
+  xiTop: N; xiTip: N; xiEnd: N; tTop: N; tipE: N; uFoot: N; uFront: N; uBack: N;
+  tauLand: N; prog: N; weight: N; collapse: N; landing: N; rho: N; vj: N; reach: N; uLand: N; HI: N;
+  /** PILE_KNOTS vec4(u, x, dx, dy), in pileLiftKnots' order (monotone in u, and so in x along the ray). */
+  knots: N[];
 }
 
-/** A station's frame is stored as this many vec4s (packFrameNodes): FRAME_LAYOUT, then the base samples. */
-export const FRAME_VEC4S = 7;
-/** vec4s of the stored frame that the samples read (FRAME_LAYOUT); the last holds the base samples. */
-export const FRAME_PROFILE_VEC4S = 6;
-/** Float offset of the stored base samples within a frame: Fb (x, y), then the landing guess (x, y). */
-export const FRAME_BASE_OFFSET = 4 * FRAME_PROFILE_VEC4S;
-/** The packed frame's components in order (4 per vec4; the last two slots are 0). */
+/** A station's frame is stored as this many vec4s (packFrameNodes, FRAME_LAYOUT order); the samples read all of them. */
+export const FRAME_VEC4S = 16;
+export const FRAME_PROFILE_VEC4S = FRAME_VEC4S;
+/** The packed frame's components in order (4 per vec4). */
 export const FRAME_LAYOUT = [
-  'K.x', 'K.y', 'F.x', 'F.y', 'tF.x', 'tF.y', 'W.x', 'W.y', 'R.x', 'R.y', 'uFoot', 'uFront',
-  'uBack', 'tauLand', 'vj', 'prog', 'reach', 'eRoot', 'weight', 'collapse', 'landing', 'rho',
+  'K.x', 'K.y', 'F.x', 'F.y', 'tF.x', 'tF.y', 'P.x', 'P.y', 'tip.x', 'tip.y', 'O.x', 'O.y', 'd.x', 'd.y', 'L', 'W',
+  'clipY', 'xiTop', 'xiTip', 'xiEnd', 'tTop', 'tipE', 'uFoot', 'uFront', 'uBack', 'tauLand', 'prog', 'weight',
+  'collapse', 'landing', 'rho', 'vj', 'reach', 'uLand', 'HI', 'pad',
+  ...Array.from({ length: PILE_KNOTS }, (_, k) => [`k${k}.u`, `k${k}.x`, `k${k}.dx`, `k${k}.dy`]).flat(),
 ] as const;
 
-/** The CPU frame in FRAME_LAYOUT order (for comparing with the GPU's). */
+/** The CPU frame in FRAME_LAYOUT order (for comparing with the GPU's): the pile's knots from f.lift, zeros if absent. */
 export function packFrameCpu(f: ProfileFrame): number[] {
+  const knots: number[] = [];
+  for (let k = 0; k < PILE_KNOTS; k++) knots.push(...(f.lift ? [f.lift.u[k], f.lift.x[k], f.lift.dx[k], f.lift.dy[k]] : [0, 0, 0, 0]));
   return [
-    f.K[0], f.K[1], f.F[0], f.F[1], f.tF[0], f.tF[1], f.W[0], f.W[1], f.R[0], f.R[1], f.uFoot, f.uFront,
-    f.uBack, f.tauLand, f.vj, f.prog, f.reach, f.eRoot, f.weight, f.collapse, f.landing, f.rho,
+    f.K[0], f.K[1], f.F[0], f.F[1], f.tF[0], f.tF[1], f.P[0], f.P[1], f.tip[0], f.tip[1], f.tube.O[0], f.tube.O[1],
+    f.tube.d[0], f.tube.d[1], f.tube.L, f.tube.W, f.tube.clipY, f.xiTop, f.xiTip, f.xiEnd, f.tTop, f.tipE, f.uFoot, f.uFront,
+    f.uBack, f.tauLand, f.prog, f.weight, f.collapse, f.landing, f.rho, f.vj, f.reach, f.uLand, f.HI, 0,
+    ...knots,
   ];
 }
 
-/** The frame as FRAME_VEC4S vec4s: FRAME_LAYOUT order, then vec4(Fb, landing0). */
+/** The frame as its first 9 vec4s (FRAME_LAYOUT order); the knots, vec4s 9 to 15, are stored by profileFrameNode's storeKnot. */
 export function packFrameNodes(f: ProfileFrameNodes): N[] {
-  if (!f.Fb || !f.landing0) throw new Error('packFrameNodes needs the base samples (profileFrameNode sets them)');
   return [
-    vec4(f.K, f.F), vec4(f.tF, f.W), vec4(f.R, f.uFoot, f.uFront), vec4(f.uBack, f.tauLand, f.vj, f.prog),
-    vec4(f.reach, f.eRoot, f.weight, f.collapse), vec4(f.landing, f.rho, 0.0, 0.0), vec4(f.Fb, f.landing0),
+    vec4(f.K, f.F), vec4(f.tF, f.P), vec4(f.tip, f.tube.O), vec4(f.tube.d, f.tube.L, f.tube.W),
+    vec4(f.tube.clipY, f.xiTop, f.xiTip, f.xiEnd), vec4(f.tTop, f.tipE, f.uFoot, f.uFront), vec4(f.uBack, f.tauLand, f.prog, f.weight),
+    vec4(f.collapse, f.landing, f.rho, f.vj), vec4(f.reach, f.uLand, f.HI, 0.0),
   ];
 }
+/** The index of the first knot's vec4 in a stored frame. */
+export const FRAME_KNOT_VEC4 = 9;
 
-/** The frame back from its first FRAME_PROFILE_VEC4S vec4s (pass vars: every field is a swizzle of them). */
-export function unpackFrameNodes(v: readonly N[]): ProfileFrameNodes {
+/**
+ * The stored frame read into FRAME_VEC4S vars, each declared and assigned here, at the top of the pass. A `.toVar()` of
+ * the storage read is initialised where TSL first uses it: for the tube's fields that was inside one branch of the
+ * samples' segment If chain, and every other branch read them as 0 (the tube at the origin). The tube's n, derived
+ * from d, is a var assigned here too: as a shared expression TSL declared it where first built (inside the wall branch)
+ * and every other branch read it as (0, 0). Inside an Fn.
+ */
+export function readFrameNodes(read: (k: number) => N): ProfileFrameNodes {
+  const v = Array.from({ length: FRAME_VEC4S }, () => vec4(0.0).toVar());
+  v.forEach((x, k) => { x.assign(read(k)); });
+  const n = vec2(0.0).toVar();
+  n.assign(vec2(v[3].y.negate(), v[3].x));
+  return unpackFrameNodes(v, n);
+}
+
+/** The frame back from its FRAME_VEC4S vec4s and the tube's n (pass vars: every field is a swizzle of them). */
+function unpackFrameNodes(v: readonly N[], n: N): ProfileFrameNodes {
   return {
-    K: v[0].xy, F: v[0].zw, tF: v[1].xy, W: v[1].zw, R: v[2].xy, uFoot: v[2].z, uFront: v[2].w,
-    uBack: v[3].x, tauLand: v[3].y, vj: v[3].z, prog: v[3].w, reach: v[4].x, eRoot: v[4].y, weight: v[4].z, collapse: v[4].w,
-    landing: v[5].x, rho: v[5].y,
+    K: v[0].xy, F: v[0].zw, tF: v[1].xy, P: v[1].zw, tip: v[2].xy,
+    tube: { O: v[2].zw, d: v[3].xy, n, L: v[3].z, W: v[3].w, clipY: v[4].x },
+    xiTop: v[4].y, xiTip: v[4].z, xiEnd: v[4].w, tTop: v[5].x, tipE: v[5].y, uFoot: v[5].z, uFront: v[5].w,
+    uBack: v[6].x, tauLand: v[6].y, prog: v[6].z, weight: v[6].w, collapse: v[7].x, landing: v[7].y, rho: v[7].z, vj: v[7].w,
+    reach: v[8].x, uLand: v[8].y, HI: v[8].z,
+    knots: v.slice(FRAME_KNOT_VEC4, FRAME_KNOT_VEC4 + PILE_KNOTS),
   };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// The frame (profileFrame)
+// The tube (tube.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** No clip: the lower side free (tube.ts's clipY −Infinity). */
+const NO_CLIP = -1e9;
+
+/** tube.tubeAxes: d down and forward, n up and forward. */
+export function tubeAxesNode(theta: N): { d: N; n: N } {
+  const c = cos(theta), s = sin(theta);
+  return { d: vec2(c, s.negate()), n: vec2(s, c) };
+}
+export function tubeHalfNode(t: TubeNodes, xi: N): N {
+  const x = clamp(float(xi), 0.0, 1.0);
+  return t.W.mul(LH82_K).mul(sqrt(x)).mul(float(1.0).sub(x));
+}
+export function tubeAxisNode(t: TubeNodes, xi: N): N {
+  return t.O.add(t.d.mul(float(xi).mul(t.L)));
+}
+export function tubeUpperNode(t: TubeNodes, xi: N): N {
+  return tubeAxisNode(t, xi).add(t.n.mul(tubeHalfNode(t, xi)));
+}
+export function tubeLowerNode(t: TubeNodes, xi: N): N {
+  const p = tubeAxisNode(t, xi).sub(t.n.mul(tubeHalfNode(t, xi)));
+  return vec2(p.x, max(p.y, t.clipY));
+}
+/** The upper side's unit normal at ξ, pointing out of the tube. */
+export function tubeUpperNormalNode(t: TubeNodes, xi: N): N {
+  const x = clamp(float(xi), TUBE_XI_EPS, 1.0);
+  const sx = sqrt(x);
+  const dh = t.W.mul(LH82_K).mul(float(1.0).sub(x).div(sx.mul(2.0)).sub(sx));
+  const T = t.d.mul(t.L).add(t.n.mul(dh)).toVar();
+  const l = length(T);
+  const lSafe = select(l.greaterThan(0.0), l, float(1.0));
+  const nr = vec2(T.y.negate(), T.x).div(lSafe).toVar();
+  // A tube of no size: the tube's own n (tube.tubeUpperNormal).
+  return select(l.greaterThan(0.0), select(dot(nr, t.n).lessThan(0.0), nr.negate(), nr), vec2(t.n));
+}
+/** tube's ternary search for the maximum of a unimodal f on [a, b], TUBE_SEARCH_STEPS steps. */
+function argmaxNode(f: (x: N) => N, a: number, b: number): N {
+  const lo = float(a).toVar(), hi = float(b).toVar();
+  for (let i = 0; i < TUBE_SEARCH_STEPS; i++) {
+    const m1 = lo.add(hi.sub(lo).div(3.0)).toVar(), m2 = hi.sub(hi.sub(lo).div(3.0)).toVar();
+    const up = f(m1).lessThan(f(m2));
+    lo.assign(select(up, m1, lo));
+    hi.assign(select(up, hi, m2));
+  }
+  return lo.add(hi).mul(0.5);
+}
+export function tubeTopXiNode(t: TubeNodes): N {
+  return argmaxNode((xi) => tubeUpperNode(t, xi).y, 0, 1).toVar();
+}
+export function tubeBackMostXNode(t: TubeNodes): N {
+  const free: TubeNodes = { ...t, clipY: float(NO_CLIP) };
+  const xi = argmaxNode((x) => tubeLowerNode(free, x).x.negate(), 0, 1);
+  return min(t.O.x, tubeLowerNode(free, xi).x).toVar();
+}
+/** The upper side's arc length from ξ = a to b (TUBE_ARC_STEPS chords). */
+export function tubeUpperArcNode(t: TubeNodes, a: N, b: N): N {
+  const s = float(0.0).toVar(), prev = vec2(tubeUpperNode(t, a)).toVar();
+  for (let i = 1; i <= TUBE_ARC_STEPS; i++) {
+    const q = vec2(tubeUpperNode(t, float(a).add(float(b).sub(a).mul(i / TUBE_ARC_STEPS)))).toVar();
+    s.addAssign(length(q.sub(prev)));
+    prev.assign(q);
+  }
+  return s;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The frame (profileFrame, impactHeight, sheetYAt, pileLift)
 // ---------------------------------------------------------------------------------------------------------------
 
 /** lipProfile's norm2: v / |v|, or (0, 1) for |v| ≤ 1e-9. */
@@ -169,58 +266,180 @@ const norm2 = (v: N): N => {
   const l = length(v);
   return select(l.greaterThan(1e-9), v.div(max(l, 1e-30)), vec2(0.0, 1.0));
 };
-
 /** landingTime: √(2·max(drop, 0.05)/g). */
 const landingTimeNode = (drop: N): N => sqrt(max(drop, 0.05).mul(2 / GRAVITY_MS2));
+/** The angle going back (toward −x), up positive: atan2(v.y, −v.x). */
+const angBack = (v: N): N => atan(v.y, v.x.negate());
+
+/** lipProfile.sheetYAt: the frame sheet's height at x, u from x − K.x then four steps of u += x − base(u).x. Inside an Fn. */
+function sheetYAtNode(baseAt: (u: N) => N, K: N, x: N): N {
+  const xx = float(x).toVar();
+  const u = xx.sub(K.x).toVar(), q = vec2(0.0).toVar();
+  Loop(5, ({ i }: N) => {
+    q.assign(baseAt(u));
+    If(i.lessThan(int(4)), () => { u.addAssign(xx.sub(q.x)); });
+  });
+  return q.y;
+}
+
+/** The unit tube's pieces impactHeight needs (overturnShape at H = 1): its point relative to the placement anchor. */
+function unitReachNode(psi: N, uc: N): { px: N; py: N } {
+  const unit = overturnShapeNode(psi, 1.0, uc), ax = tubeAxesNode(unit.theta);
+  const t1: TubeNodes = { O: vec2(0.0), d: ax.d, n: ax.n, L: unit.L, W: unit.W, clipY: float(NO_CLIP) };
+  const xiTop = tubeTopXiNode(t1), top1 = vec2(tubeUpperNode(t1, xiTop)).toVar(), pt1 = vec2(tubeUpperNode(t1, 1.0)).toVar();
+  const tTop1 = unit.AJ.mul(1 + LIP_TAPER_POWER).div(max(tubeUpperArcNode(t1, xiTop, float(1.0)), 1e-9));
+  return { px: pt1.x.sub(tubeBackMostXNode(t1)).toVar(), py: pt1.y.sub(top1.y).sub(tTop1).toVar() };
+}
 
 /**
- * profileFrame on the GPU. `baseAt(u)` returns the base's vec2(u, y) at undisplaced u (it is called four times, in
- * profileFrame's order: 0, uFoot, uFoot − 0.1, the landing guess; each result is made a var here, so each base sample
- * is evaluated once). Must be called inside an Fn.
+ * lipProfile.impactHeight on the GPU: the scan over IMPACT_SCAN × H and the bisections in one loop (one sheet read per
+ * iteration: the scan's first IMPACT_SCAN.length iterations, then IMPACT_BISECT bisections once a crossing is found).
  */
-export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, u: LipUniforms): ProfileFrameNodes {
+function impactHeightNode(baseAt: (u: N) => N, K: N, H: N, psi: N, uc: N): N {
+  const { px, py } = unitReachNode(psi, uc);
+  const x0 = K.x.add(H.mul(TUBE_BACK_AHEAD_H)).toVar();
+  // lipProfile.impactHeight's warm-started sheet reads: the first cold (four steps), the rest SHEET_WARM_STEPS from the
+  // last read's u.
+  const wu = float(0.0).toVar(), wx = float(0.0).toVar(), warm = float(0.0).toVar();
+  const yAt = (x: N): N => {
+    const xx = float(x).toVar();
+    const uu = select(warm.greaterThan(0.5), wu.add(xx.sub(wx)), xx.sub(K.x)).toVar(), q = vec2(0.0).toVar();
+    const steps = select(warm.greaterThan(0.5), int(SHEET_WARM_STEPS), int(4)).toVar();
+    Loop(5, ({ i }: N) => {
+      If(i.lessThanEqual(steps), () => {
+        q.assign(baseAt(uu));
+        If(i.lessThan(steps), () => { uu.addAssign(xx.sub(q.x)); });
+      });
+    });
+    wu.assign(uu); wx.assign(xx); warm.assign(1.0);
+    return q.y;
+  };
+  const above = (hi: N): N => K.y.add(hi.mul(py)).sub(yAt(x0.add(hi.mul(px))));
+  const nScan = IMPACT_SCAN.length;
+  const lo = float(-1.0).toVar(), hi = float(-1.0).toVar(), prev = float(0.0).toVar(), prevAt = float(0.0).toVar();
+  const found = float(0.0).toVar();
+  Loop(nScan + IMPACT_BISECT, ({ i }: N) => {
+    const scanning = i.lessThan(int(nScan));
+    // The scan's factor at step i (IMPACT_SCAN is evenly spaced from 1 to 2: 1 + i/4), or the bisection's midpoint.
+    const at = select(scanning, H.mul(float(i).mul((IMPACT_SCAN[nScan - 1] - IMPACT_SCAN[0]) / (nScan - 1)).add(IMPACT_SCAN[0])), lo.add(hi).mul(0.5)).toVar();
+    // As the CPU: the scan stops at its crossing, and the bisection reads only once one is found.
+    If(scanning.and(found.lessThan(0.5)).or(scanning.not().and(found.greaterThan(0.5))), () => {
+      const g = above(at).toVar();
+      If(scanning, () => {
+        If(i.greaterThan(int(0)).and(found.lessThan(0.5)).and(prev.greaterThan(0.0)).and(g.lessThanEqual(0.0)), () => {
+          lo.assign(prevAt); hi.assign(at); found.assign(1.0);
+        });
+        prev.assign(g); prevAt.assign(at);
+      }).Else(() => {
+        If(g.greaterThan(0.0), () => { lo.assign(at); }).Else(() => { hi.assign(at); });
+      });
+    });
+  });
+  return select(found.greaterThan(0.5).and(H.greaterThan(0.0)), lo.add(hi).mul(0.5), H);
+}
+
+/**
+ * profileFrame on the GPU (lipProfile.profileFrame, term by term), with pileLift's knots: `baseAt(u)` is the frame's sheet
+ * (without the pile) and `pileAt(u)` the sheet with it, each the displaced vec2(x, y) at undisplaced u; `storeKnot(k, v)`
+ * stores knot k (an int node) as vec4(u, x, dx, dy). Must be called inside an Fn.
+ */
+export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input: ProfileInputNodes, u: LipUniforms, storeKnot: (k: N, v: N) => void): ProfileFrameNodes {
   const H = float(input.H).toVar(), c = float(input.c).toVar(), r = float(input.r).toVar(), tb = float(input.tb).toVar();
-  const uFoot = float(FOOT_WIDTHS).mul(u.faceWidth).mul(H).toVar();
+  const psi = float(input.psi).toVar(), uc = windUCNode(input.offshoreMs, c).toVar();
+  // The curl collapses on its own crest's drain clock (overturn.withSheetShape at its ψ).
+  const drainGrowth = sheetShapeNode(psi).troughDrain.mul(u.delta).add(1.0).toVar();
+  const uFootWave = float(FOOT_WIDTHS).mul(u.faceWidth).mul(H).toVar();
   const K = vec2(baseAt(float(0.0))).toVar();
-  const F = vec2(baseAt(uFoot)).toVar();
+  const F0 = vec2(baseAt(uFootWave)).toVar();
+  const HI = impactHeightNode(baseAt, K, H, psi, uc).mul(smoothstep(PSI_NONE, PSI_MIN, psi)).toVar();
+  const shape = overturnShapeNode(psi, HI, uc);
+  const ax = tubeAxesNode(shape.theta);
+  const d = vec2(ax.d).toVar(), n = vec2(ax.n).toVar();
+  const at0: TubeNodes = { O: vec2(0.0), d, n, L: shape.L, W: shape.W, clipY: float(NO_CLIP) };
+  const xiTop = tubeTopXiNode(at0), top0 = vec2(tubeUpperNode(at0, xiTop)).toVar();
+  const tTop = shape.AJ.mul(1 + LIP_TAPER_POWER).div(max(tubeUpperArcNode(at0, xiTop, float(1.0)), 1e-3)).toVar();
+  const O0 = vec2(K.x.add(H.mul(TUBE_BACK_AHEAD_H)).sub(tubeBackMostXNode(at0)), K.y.sub(tTop).sub(top0.y)).toVar();
+  const point0 = vec2(tubeUpperNode({ ...at0, O: O0 }, 1.0)).toVar();
+  const under = sheetYAtNode(baseAt, K, point0.x).toVar();
+  const drop = max(point0.y.sub(under), 0.0).toVar();
+  const full: TubeNodes = { ...at0, O: vec2(O0.x, O0.y.sub(drop)).toVar() };
+  const xiEnd = float(1.0);
+  const P = vec2(tubeUpperNode(full, xiEnd)).toVar();
+  const tauLand = landingTimeNode(K.y.sub(P.y)).toVar();
+  // The face's join: the wave's foot, or FACE_JOIN_MIN_M past a landing beyond it, in the sheet's displaced x.
+  const uFoot = float(uFootWave).toVar(), F = vec2(F0).toVar();
+  If(P.x.greaterThan(F0.x.sub(FACE_JOIN_MIN_M)), () => {
+    const x = P.x.add(FACE_JOIN_MIN_M).toVar();
+    uFoot.addAssign(x.sub(F0.x));
+    Loop(FACE_JOIN_STEPS + 1, ({ i }: N) => {
+      F.assign(baseAt(uFoot));
+      If(i.lessThan(int(FACE_JOIN_STEPS)), () => { uFoot.addAssign(x.sub(F.x)); });
+    });
+  });
+  // The join steps out toward the trough until the sheet there is flatter than the face's chord.
   const Fb = vec2(baseAt(uFoot.sub(0.1))).toVar();
+  const going = float(1.0).toVar();
+  Loop(FACE_CONCAVE_STEPS, () => {
+    If(going.greaterThan(0.5).and(angBack(Fb.sub(F)).greaterThan(angBack(P.sub(F)).sub(FACE_CONCAVE_MARGIN))), () => {
+      uFoot.addAssign(H.mul(FACE_CONCAVE_STEP_H));
+      F.assign(baseAt(uFoot));
+      Fb.assign(baseAt(uFoot.sub(0.1)));
+    }).Else(() => { going.assign(0.0); });
+  });
   const tF = norm2(Fb.sub(F)).toVar();
-  const tau0 = landingTimeNode(K.y.sub(F.y)).toVar();
-  const vj0 = max(u.throwStrength.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tau0)).toVar();
-  const landing0 = vec2(baseAt(uFoot.add(K.x.add(vj0.mul(tau0)).sub(F.x)))).toVar();
-  const tipBelow = float(TIP_THICKNESS_RATIO).mul(u.lipThickness).mul(H);
-  const tauLand = landingTimeNode(K.y.sub(max(F.y, landing0.y)).sub(tipBelow)).toVar();
-  const vj = max(u.throwStrength.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)).toVar();
   const pre = tb.lessThan(0.0);
   const t = select(pre, float(0.0), min(max(tb, 0.0), tauLand)).toVar();
   const prog = t.div(tauLand).toVar();
-  const reach = vj.mul(t).toVar();
+  const tube: TubeNodes = { O: full.O, d, n, L: shape.L, W: shape.W.mul(prog).toVar(), clipY: P.y };
+  const xiTip = prog.mul(prog).mul(xiEnd).toVar();
+  const tip = vec2(tubeUpperNode(tube, xiTip)).toVar();
   // The back-off edges scale with H: floored so a zero-height row (never drawn) can't give smoothstep equal edges.
   const Hs = max(H, 1e-6);
-  const steep = select(pre, smoothstep(u.steepFrom, 1.0, r).mul(smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r)), smoothstep(Hs.mul(BACK_OFF_DROP_H[0]), Hs.mul(BACK_OFF_DROP_H[1]), K.y.sub(F.y)));
-  // breaking.landingEstimate: landingTime(H·(1 + troughDrain·δ)), the fall floored at 0.05 m as landingTime floors it;
-  // settleSpan is collapseTime × that. The curl collapses from the later of it and the lip's own landing.
-  const landEstimate = max(H.mul(u.drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt().toVar();
+  const steep: N = select(pre, smoothstep(u.steepFrom, 1.0, r).mul(smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r)),
+    smoothstep(Hs.mul(BACK_OFF_DROP_H[0]), Hs.mul(BACK_OFF_DROP_H[1]), K.y.sub(F0.y)));
+  // breaking.landingEstimate and settleSpan on the crest's drain.
+  const landEstimate = max(H.mul(drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt().toVar();
   const span = u.collapseTime.mul(landEstimate).toVar();
   const settleFrom = max(tauLand, landEstimate).toVar();
-  const collapse = select(pre, float(0.0), smoothstep(settleFrom, settleFrom.add(span), tb)).toVar();
-  const landing = select(pre, float(0.0), smoothstep(tauLand, tauLand.add(span.mul(LANDING_FOAM_RISE)), tb)).toVar();
-  const grow = smoothstep(0.0, LIP_GROW_PROGRESS, prog);
-  const eRoot = max(MIN_LIP_THICKNESS_M, min(u.lipThickness.mul(H), vj.mul(vj).mul(MAX_THICKNESS_OF_RADIUS / GRAVITY_MS2))).mul(grow).toVar();
-  const R = vec2(K.x, K.y.sub(eRoot)).toVar();
-  const W = vec2(K.x.sub(H.mul(WALL_BACK_H).mul(prog)), F.y.add(R.y.sub(F.y).mul(WALL_HEIGHT))).toVar();
-  const uFront = max(uFoot, K.x.add(vj.mul(tauLand))).add(LAND_CLEARANCE_M + EDGE_MARGIN_M).toVar();
-  const uBack = H.mul(BACK_EDGE_H).add(EDGE_MARGIN_M).negate().toVar();
-  // ribbonWeight
+  const collapse: N = select(pre, float(0.0), smoothstep(settleFrom, settleFrom.add(span), tb)).toVar();
+  const present: N = smoothstep(PSI_NONE, PSI_NONE + PRESENCE_FADE * (PSI_MIN - PSI_NONE), psi).toVar();
+  const landing = select(pre, float(0.0), smoothstep(tauLand, tauLand.add(span.mul(LANDING_FOAM_RISE)), tb)).mul(present).toVar();
   const end = settleFrom.add(span);
   const rho = select(pre, smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r), float(1.0).sub(smoothstep(end, end.add(HAND_BACK_S), tb))).toVar();
-  const weight = steep.mul(float(1.0).sub(collapse)).toVar();
-  return { K, F, tF, W, R, uFoot, uFront, uBack, tauLand, vj, prog, reach, eRoot, weight, collapse, landing, rho, Fb, landing0 };
+  const uFront = uFoot.add(LAND_CLEARANCE_M + EDGE_MARGIN_M).toVar();
+  const uBack = H.mul(BACK_EDGE_H).add(EDGE_MARGIN_M).negate().toVar();
+  const drop2 = tTop.add(drop).toVar();
+  const f: ProfileFrameNodes = {
+    K, F, tF, P, tip, tube, xiTop, xiTip, xiEnd, tTop: drop2,
+    tipE: drop2.mul(TIP_THICKNESS_RATIO).mul(float(1.0).sub(prog)).mul(smoothstep(0.0, TIP_GROW_PROGRESS, prog)),
+    uFoot, uFront, uBack, tauLand, prog, weight: steep.mul(float(1.0).sub(collapse)).mul(present), collapse, landing, rho,
+    vj: P.x.sub(K.x).div(tauLand), reach: tip.x.sub(K.x), uLand: uFoot, HI, knots: [],
+  };
+  // pileLift at pileLiftKnots' u: behind the crest, the crest, half way to the foot, the foot (twice: uLand is the
+  // foot), half way to the front edge, the front edge.
+  Loop(PILE_KNOTS, ({ i }: N) => {
+    const ku = select(i.equal(int(0)), uBack, select(i.equal(int(1)), float(0.0), select(i.equal(int(2)), uFoot.mul(0.5),
+      select(i.lessThan(int(5)), uFoot, select(i.equal(int(5)), uFoot.add(uFront).mul(0.5), uFront))))).toVar();
+    const a = vec2(pileAt(ku)).toVar(), b = vec2(baseAt(ku)).toVar();
+    storeKnot(i, vec4(ku, b.x, a.x.sub(b.x), a.y.sub(b.y)));
+  });
+  return f;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// The samples (sampleSegment, sampleHome, profilePoint)
+// The samples (sampleSegment, sampleHome, constructed, riding, sampleTarget, profilePoint)
 // ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * A new var of `zero`'s type, assigned `v` here. An expression node shared by several branches of an If chain is
+ * declared by TSL where it is first built, inside one branch, and the other branches read it as 0: anything the
+ * segment branches share goes through a var assigned before them.
+ */
+function fresh(zero: N, v: N): N {
+  const x = zero.toVar();
+  x.assign(v);
+  return x;
+}
 
 /** Sample j's table row: its segment id (float), its s, and its home coefficients vec3(a, b, c). Inside an Fn. */
 export function sampleSegmentNode(j: N): { seg: N; s: N; coeffs: N } {
@@ -243,20 +462,121 @@ function hermiteNode(p0: N, t0: N, p1: N, t1: N, s: N): N {
   return p0.mul(h00).add(t0.mul(h10)).add(p1.mul(h01)).add(t1.mul(h11));
 }
 
-/** The lip's outer surface at σ (root to tip): the ballistic arc from K. */
-function outerNode(f: ProfileFrameNodes, sigma: N): N {
-  const du = f.reach.mul(sigma), tp = du.div(f.vj);
-  return vec2(f.K.x.add(du), f.K.y.sub(tp.mul(tp).mul(0.5 * GRAVITY_MS2)));
+/** lipProfile.lipThicknessAt. */
+export function lipThicknessNode(f: ProfileFrameNodes, xi: N): N {
+  const u = min(float(xi).sub(f.xiTop).div(max(f.xiTip.sub(f.xiTop), 1e-9)), 1.0);
+  const tapered = f.tipE.add(f.tTop.sub(f.tipE).mul(pow(max(float(1.0).sub(u), 0.0), LIP_TAPER_POWER)));
+  return select(f.xiTip.lessThanEqual(f.xiTop), f.tipE, select(float(xi).lessThanEqual(f.xiTop), f.tTop, tapered));
 }
-/** The arc's outward (upper) unit normal at σ (its length is ≥ 1, so norm2's fallback never applies). */
-function outerNormalNode(f: ProfileFrameNodes, sigma: N): N {
-  const tp = f.reach.mul(sigma).div(f.vj);
-  return normalize(vec2(tp.mul(GRAVITY_MS2).div(f.vj), 1.0));
+
+/** lipProfile's faceArrival: the face's tangent arriving at P (length Lf), going back. */
+function faceArrivalNode(f: ProfileFrameNodes, Lf: N): N {
+  const back = tubeLowerNode(f.tube, f.xiEnd.mul(1 - FACE_DIR_STEP));
+  const dP = norm2(back.sub(f.P));
+  const a = max(angBack(f.P.sub(f.F)).mul(2.0).sub(angBack(f.tF)), angBack(dP));
+  return vec2(cos(a).negate(), sin(a)).mul(Lf);
 }
-/** lipThicknessAt. */
-export function lipThicknessNode(f: ProfileFrameNodes, sigma: N): N {
-  const e = f.eRoot.mul(float(1.0).sub(float(sigma).mul(1 - TIP_THICKNESS_RATIO)));
-  return select(f.eRoot.greaterThan(0.0), max(e, smoothstep(0.0, LIP_GROW_PROGRESS, f.prog).mul(MIN_LIP_THICKNESS_M)), float(0.0));
+
+/** lipProfile's constructed point for sample j: { pos, thickness, lipness, liftX }. Inside an Fn. */
+function constructedNode(j: N, f: ProfileFrameNodes, baseHome: N): { pos: N; thickness: N; lipness: N; liftX: N } {
+  const { seg, s } = sampleSegmentNode(j);
+  // Fresh vars, the inputs assigned here, before the segment If chain (see fresh).
+  const sv = fresh(float(0.0), s);
+  const pos = fresh(vec2(0.0), baseHome), thickness = fresh(float(0.0), 0.0), lipness = fresh(float(0.0), 0.0), liftX = fresh(float(0.0), pos.x);
+  If(seg.equal(float(SEGMENT_ID.face)), () => {
+    const Lf = length(f.P.sub(f.F)).toVar();
+    pos.assign(hermiteNode(f.F, f.tF.mul(Lf), f.P, faceArrivalNode(f, Lf), sv));
+    liftX.assign(pos.x);
+  }).ElseIf(seg.equal(float(SEGMENT_ID.wall)), () => {
+    pos.assign(select(sv.equal(0.0), f.P, tubeLowerNode(f.tube, f.xiEnd.mul(float(1.0).sub(sv)))));
+    liftX.assign(pos.x);
+  }).ElseIf(seg.equal(float(SEGMENT_ID.under)), () => {
+    const xi = sv.mul(f.xiTip).toVar();
+    pos.assign(tubeUpperNode(f.tube, xi));
+    thickness.assign(lipThicknessNode(f, xi)); lipness.assign(1.0); liftX.assign(pos.x);
+  }).ElseIf(seg.equal(float(SEGMENT_ID.cap)), () => {
+    const no = vec2(tubeUpperNormalNode(f.tube, f.xiTip)).toVar(), e = float(f.tipE).toVar();
+    const centre = f.tip.add(no.mul(e).mul(0.5));
+    const a = atan(no.y.negate(), no.x.negate()).add(sv.mul(Math.PI));
+    pos.assign(centre.add(vec2(cos(a), sin(a)).mul(e).mul(0.5)));
+    thickness.assign(e); lipness.assign(1.0); liftX.assign(f.tip.x);
+  }).ElseIf(seg.equal(float(SEGMENT_ID.outer)), () => {
+    const band = f.xiTip.greaterThan(f.xiTop);
+    If(band.and(sv.lessThanEqual(OUTER_LIP_SHARE)), () => {
+      const xi = f.xiTip.add(f.xiTop.sub(f.xiTip).mul(sv.div(OUTER_LIP_SHARE))).toVar();
+      const uu = vec2(tubeUpperNode(f.tube, xi)).toVar(), no = tubeUpperNormalNode(f.tube, xi), e = lipThicknessNode(f, xi).toVar();
+      pos.assign(uu.add(no.mul(e)));
+      thickness.assign(e); liftX.assign(uu.x);
+    }).Else(() => {
+      const fromXi = select(band, f.xiTop, f.xiTip).toVar(), e = select(band, f.tTop, f.tipE).toVar();
+      const uu = vec2(tubeUpperNode(f.tube, fromXi)).toVar(), no = tubeUpperNormalNode(f.tube, fromXi);
+      const a = uu.add(no.mul(e));
+      const k = select(band, sv.sub(OUTER_LIP_SHARE).div(1 - OUTER_LIP_SHARE), sv).toVar();
+      pos.assign(mix(a, f.K, k));
+      thickness.assign(e.mul(float(1.0).sub(k))); liftX.assign(uu.x.add(f.K.x.sub(uu.x).mul(k)));
+    });
+    lipness.assign(1.0);
+  });
+  return { pos, thickness, lipness, liftX };
+}
+
+/** lipProfile.liftAt over the stored knots (monotone in x): linear between them, constant past the ends. */
+function liftAtNode(f: ProfileFrameNodes, x: N): N {
+  const kn = f.knots, last = kn[PILE_KNOTS - 1];
+  const res = vec2(last.zw).toVar();
+  for (let k = PILE_KNOTS - 2; k >= 0; k--) {
+    const a = kn[k], b = kn[k + 1];
+    const w = select(b.y.greaterThan(a.y), float(x).sub(a.y).div(max(b.y.sub(a.y), 1e-9)), float(1.0));
+    If(float(x).lessThanEqual(b.y), () => { res.assign(mix(a.zw, b.zw, w)); });
+  }
+  If(float(x).lessThanEqual(kn[0].y), () => { res.assign(kn[0].zw); });
+  return res;
+}
+/** lipProfile.uAtX over the stored knots: the u whose sheet (with the pile, x + dx) stands at x. */
+function uAtXNode(f: ProfileFrameNodes, x: N): N {
+  const kn = f.knots, X = (k: number): N => kn[k].y.add(kn[k].z);
+  const res = float(kn[PILE_KNOTS - 1].x).toVar();
+  for (let k = PILE_KNOTS - 2; k >= 0; k--) {
+    const a = X(k), b = X(k + 1);
+    const lerp = kn[k].x.add(float(x).sub(a).div(max(b.sub(a), 1e-9)).mul(kn[k + 1].x.sub(kn[k].x)));
+    If(float(x).lessThanEqual(b), () => { res.assign(select(b.greaterThan(a), lerp, kn[k + 1].x)); });
+  }
+  If(float(x).lessThanEqual(X(0)), () => { res.assign(kn[0].x); });
+  return res;
+}
+
+/** lipProfile's riding: the constructed point lifted by the pile, up to the crest's own rise. */
+function ridingNode(seg: N, s: N, f: ProfileFrameNodes, c: { pos: N; liftX: N }): N {
+  const crest = liftAtNode(f, f.K.x).y.toVar();
+  const capped = (x: N): N => { const l = liftAtNode(f, x); return vec2(l.x, min(l.y, crest)); };
+  const edge = seg.equal(float(SEGMENT_ID.front)).or(seg.equal(float(SEGMENT_ID.back)));
+  const out = vec2(0.0).toVar();
+  If(edge, () => {
+    const k = smoothstep(0.0, EDGE_LOWER_FADE, select(seg.equal(float(SEGMENT_ID.front)), float(s), float(1.0).sub(s)));
+    out.assign(vec2(c.pos.x, c.pos.y.sub(k.mul(max(liftAtNode(f, c.pos.x).y.sub(crest), 0.0)))));
+  }).ElseIf(seg.equal(float(SEGMENT_ID.face)), () => {
+    out.assign(c.pos.add(mix(capped(f.F.x), capped(f.P.x), s)));
+  }).Else(() => {
+    out.assign(c.pos.add(capped(c.liftX)));
+  });
+  return out;
+}
+
+/**
+ * lipProfile.sampleTarget on the GPU: the u where sample j settles. Returns the target and the constructed point (its
+ * pos is the front and back's base placeholder: profilePointNode replaces it with the base at the target). Inside an Fn.
+ */
+export function sampleTargetNode(j: N, f: ProfileFrameNodes, home: N): { target: N; c: { pos: N; thickness: N; lipness: N; liftX: N } } {
+  const { seg, s } = sampleSegmentNode(j);
+  const c = constructedNode(j, f, vec2(0.0));
+  const w = f.landing.mul(float(1.0).sub(smoothstep(HOME_SETTLE[0], HOME_SETTLE[1], f.collapse))).toVar();
+  const edge = seg.equal(float(SEGMENT_ID.front)).or(seg.equal(float(SEGMENT_ID.back)));
+  const target = fresh(float(0.0), home);
+  If(edge.not().and(w.greaterThan(0.0)), () => {
+    const p = ridingNode(seg, float(s), f, c);
+    target.assign(float(home).add(uAtXNode(f, p.x).sub(home).mul(w)));
+  });
+  return { target, c };
 }
 
 export interface ProfilePointNodes {
@@ -268,49 +588,30 @@ export interface ProfilePointNodes {
 }
 
 /**
- * profilePoint on the GPU: sample j (an int node) of the profile, given its frame and the base at its home
- * (vec2(home + d·n, d.y)). `home` is sampleHomeNode(j, f); pass it when the caller already has it. Must be called
- * inside an Fn. The segment picks its constructed point through an If chain on the table's segment id.
+ * profilePoint on the GPU: sample j (an int node), given its frame, the base where it settles (vec2(target + d·n, d.y))
+ * and its home. `c` is sampleTargetNode's constructed point (computed there already); absent, it is built here. Must
+ * be called inside an Fn.
  */
-export function profilePointNode(j: N, f: ProfileFrameNodes, baseHome: N, home: N = sampleHomeNode(j, f)): ProfilePointNodes {
+export function profilePointNode(j: N, f: ProfileFrameNodes, baseTarget: N, home: N, c0?: { pos: N; thickness: N; lipness: N; liftX: N }): ProfilePointNodes {
   const { seg, s } = sampleSegmentNode(j);
-  const sv = float(s).toVar();
-  const bh = vec2(baseHome).toVar();
-  const h = float(home).toVar();
-  // constructed(): front and back are the base itself.
-  const pos = vec2(bh).toVar();
-  const thickness = float(0.0).toVar();
-  const lipness = float(0.0).toVar();
-  If(seg.equal(float(SEGMENT_ID.face)), () => {
-    const L = length(f.W.sub(f.F));
-    pos.assign(hermiteNode(f.F, f.tF.mul(L), f.W, vec2(0.0, L), sv));
-  }).ElseIf(seg.equal(float(SEGMENT_ID.wall)), () => {
-    const L: N = max(length(f.R.sub(f.W)), 0.05);
-    pos.assign(hermiteNode(f.W, vec2(0.0, L), f.R, vec2(L.mul(f.prog), L.mul(float(1.0).sub(f.prog))), sv));
-  }).ElseIf(seg.equal(float(SEGMENT_ID.under)), () => {
-    const e = lipThicknessNode(f, sv).toVar();
-    pos.assign(outerNode(f, sv).sub(outerNormalNode(f, sv).mul(e)));
-    thickness.assign(e);
-    lipness.assign(1.0);
-  }).ElseIf(seg.equal(float(SEGMENT_ID.cap)), () => {
-    const P = outerNode(f, float(1.0)).toVar();
-    const n = outerNormalNode(f, float(1.0)).toVar();
-    const e = lipThicknessNode(f, float(1.0)).toVar();
-    const centre = P.sub(n.mul(e).div(2.0));
-    const a = atan(n.y.negate(), n.x.negate()).add(sv.mul(Math.PI));
-    pos.assign(centre.add(vec2(cos(a), sin(a)).mul(e).div(2.0)));
-    thickness.assign(e);
-    lipness.assign(1.0);
-  }).ElseIf(seg.equal(float(SEGMENT_ID.outer)), () => {
-    const sigma = float(1.0).sub(sv).toVar();
-    pos.assign(outerNode(f, sigma));
-    thickness.assign(lipThicknessNode(f, sigma));
-    lipness.assign(1.0);
-  });
+  const sv = fresh(float(0.0), s), bt = fresh(vec2(0.0), baseTarget), h = fresh(float(0.0), home);
+  const edge = seg.equal(float(SEGMENT_ID.front)).or(seg.equal(float(SEGMENT_ID.back)));
+  const built = c0 ?? constructedNode(j, f, bt);
+  // The front and back are the base at the target itself (constructed's front/back). Vars assigned here: as shared
+  // expressions TSL declared them in the first riding branch that used them, and the others read (0, 0).
+  const c = { pos: fresh(vec2(0.0), select(edge, bt, built.pos)), thickness: built.thickness, lipness: built.lipness, liftX: fresh(float(0.0), select(edge, bt.x, built.liftX)) };
   // Landing foam: the curl (wall, lip) and the front out to just past where the lip lands.
-  const landAt = f.K.x.add(f.vj.mul(f.tauLand));
+  const landAt = f.P.x;
   const region = select(seg.equal(float(SEGMENT_ID.back)), float(0.0),
     select(seg.equal(float(SEGMENT_ID.front)), float(1.0).sub(smoothstep(landAt, landAt.add(1.5), h)),
       select(seg.equal(float(SEGMENT_ID.face)), float(0.5), float(1.0))));
-  return { pos: mix(bh, pos, f.weight), thickness: thickness.mul(f.weight), curlFoam: f.landing.mul(region), lipness: lipness.mul(f.weight) };
+  const landed = f.landing.mul(region);
+  const isOuter = seg.equal(float(SEGMENT_ID.outer)), isCap = seg.equal(float(SEGMENT_ID.cap));
+  const isInside = seg.equal(float(SEGMENT_ID.face)).or(seg.equal(float(SEGMENT_ID.wall))).or(seg.equal(float(SEGMENT_ID.under)));
+  const sigma = select(isOuter, select(f.xiTip.greaterThan(0.0), clamp(float(1.0).sub(sv.div(OUTER_LIP_SHARE)), 0.0, 1.0), float(0.0)), select(isCap, float(1.0), float(0.0)));
+  const spray = smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog).mul(LIP_SPRAY).mul(smoothstep(LIP_SPRAY_FROM, 1.0, sigma));
+  const air = f.weight.mul(float(1.0).sub(f.landing));
+  const curlFoam = select(isOuter.or(isCap), max(landed, spray.mul(air)), select(isInside, landed.sub(air), landed));
+  const lifted = ridingNode(seg, sv, f, c);
+  return { pos: mix(bt, lifted, f.weight), thickness: c.thickness.mul(f.weight), curlFoam, lipness: c.lipness.mul(f.weight) };
 }

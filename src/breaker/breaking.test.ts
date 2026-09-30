@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LAG_S, onsetGain, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -32,7 +32,7 @@ function wavePoint(v0: number, H: number, hmin: number, periodS: number, rigid =
   const dh = rigid ? 0 : Math.min(aE, 0.6 / k) * Math.sin(theta) + pitchOf(aE) * eta;
   return {
     theta, env, uUnbroken: (rigid ? uCrest : 0) + v0 + dh, eta, uCrest, etaCrest, H, k, hmin, boreH: H,
-    slope: dEtaDXi * dXiDs, dThetaDAhead: omega * dXiDs, dEnvDAhead: dEnvDXi * dXiDs, crestConfidence: 1,
+    slope: dEtaDXi * dXiDs, dThetaDAhead: omega * dXiDs, dEnvDAhead: dEnvDXi * dXiDs, crestConfidence: 1, lipTop: 0, lipHeight: 0, lateral: 1,
   };
 }
 
@@ -164,7 +164,7 @@ describe('the sheet shape (sampled cross-sections)', () => {
   });
   it('breakPoint keeps the Phase 1 point when neither steep nor breaking', () => {
     const i = wavePoint(3.4, 3, 6, 15);
-    expect(breakPoint(i, lifecycle(0.5, undefined, 1, P), P)).toEqual({ eta: i.eta, foam: 0, dEtaDAhead: 0 });
+    expect(breakPoint(i, lifecycle(0.5, undefined, 1, P), P)).toEqual({ eta: i.eta, foam: 0, dEtaDAhead: 0, pile: 0 });
   });
   it("breakPoint's dEtaDAhead matches a central difference of its eta along ahead", () => {
     const d = 1e-4;
@@ -276,44 +276,74 @@ describe('normalizeBreakParams', () => {
     expect(p.faceWidth).toBeGreaterThan(0);
   });
   it('clamps the new fields and repairs non-finite ones', () => {
-    const high = { ...P, throwStrength: 5, lipThickness: 1, collapseTime: 10, ribbonOnset: 2 };
+    const high = { ...P, collapseTime: 10, ribbonOnset: 2 };
     normalizeBreakParams(high);
-    expect([high.throwStrength, high.lipThickness, high.collapseTime, high.ribbonOnset]).toEqual([1.5, 0.3, 3, 0.9]);
-    const low = { ...P, throwStrength: 0, lipThickness: 0, collapseTime: 0, ribbonOnset: 0 };
+    expect([high.collapseTime, high.ribbonOnset]).toEqual([3, 0.9]);
+    const low = { ...P, collapseTime: 0, ribbonOnset: 0 };
     normalizeBreakParams(low);
-    expect([low.throwStrength, low.lipThickness, low.collapseTime, low.ribbonOnset]).toEqual([0.1, 0.03, 0.3, 0.3]);
-    const bad = { ...P, throwStrength: Number.NaN, lipThickness: Infinity, collapseTime: -Infinity, ribbonOnset: Number.NaN };
+    expect([low.collapseTime, low.ribbonOnset]).toEqual([0.3, 0.3]);
+    const bad = { ...P, collapseTime: -Infinity, ribbonOnset: Number.NaN };
     normalizeBreakParams(bad);
-    expect([bad.throwStrength, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([0.55, 0.12, 1.8, 0.7]);
+    expect([bad.collapseTime, bad.ribbonOnset]).toEqual([1.8, 0.7]);
+  });
+  it('fills the pile and churn fields a saved setting from before them lacks, and clamps them', () => {
+    const old = { ...P } as Partial<BreakParams>;
+    delete old.pileHalfM; delete old.pileSurge; delete old.churnSize; delete old.churnSpeed;
+    normalizeBreakParams(old as BreakParams);
+    expect([old.pileHalfM, old.pileSurge, old.churnSize, old.churnSpeed]).toEqual([50, 0.3, 0.2, 1]);
+    const wild = { ...P, pileHalfM: 1, pileSurge: 9, churnSize: -1, churnSpeed: 99 };
+    normalizeBreakParams(wild);
+    expect([wild.pileHalfM, wild.pileSurge, wild.churnSize, wild.churnSpeed]).toEqual([10, 0.6, 0, 3]);
   });
   it('leaves the defaults unchanged', () => {
     const p = { ...P };
     normalizeBreakParams(p);
     expect(p).toEqual(P);
-    expect([P.throwStrength, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.55, 0.12, 1.8, 0.7]);
+    expect([P.collapseTime, P.ribbonOnset]).toEqual([1.8, 0.7]);
   });
 });
 
 describe('one clock: the onset record and the lifecycle', () => {
-  const lags = (...v: number[]): Float32Array => Float32Array.from(v);
-  // A wave whose breaking level is ρ = 1 at amp/hminBreak = 0.5: height × onsetGain = 2.
-  const height = 2 / onsetGain(P);
-  it('onsetTime: null below the breaking level, linear between the lags, Infinity past the record', () => {
-    expect(onsetTime(lags(0.4, 0.3, 0.2, 0.1, 0, 0, 0, 0), 0, height, P)).toBeNull();
-    expect(onsetTime(lags(0.5, 0.4, 0, 0, 0, 0, 0, 0), 0, height, P)).toBe(0);
-    // Lag 1 at the level, lag 2 halfway below it: 1.5 lags ago.
-    expect(onsetTime(lags(0.7, 0.5, 0.45, 0.4, 0, 0, 0, 0), 0, height, P)).toBeCloseTo(1 * ONSET_LAG_S, 6);
-    expect(onsetTime(lags(0.7, 0.6, 0.4, 0.3, 0, 0, 0, 0), 0, height, P)).toBeCloseTo(1.5 * ONSET_LAG_S, 6);
-    expect(onsetTime(lags(0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7), 0, height, P)).toBe(Infinity);
-    // The first lag below the level ends it, whatever is further back.
-    expect(onsetTime(lags(0.7, 0.3, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9), 0, height, P)).toBeCloseTo(0.5 * ONSET_LAG_S, 6);
-    // Read from an offset (the record is interleaved per node).
-    expect(onsetTime(lags(9, 9, 0.7, 0.6, 0.4, 0.3, 0, 0, 0, 0), 2, height, P)).toBeCloseTo(1.5 * ONSET_LAG_S, 6);
+  /** A record sample: the running maximum `run`, then per level its time since onset and the amplification there. */
+  const recOf = (run: number, tb: (q: number, k: number) => number, amp: (q: number, k: number) => number): Float32Array => {
+    const r = new Float32Array(ONSET_RECORD_LENGTH);
+    r[0] = run;
+    ONSET_LEVEL_Q.forEach((q, k) => { r[1 + 2 * k] = q <= run ? tb(q, k) : 0; r[2 + 2 * k] = amp(q, k); });
+    return r;
+  };
+  /** The deep-water height whose breaking level is q (ρ = height·onsetGain·q = 1). */
+  const heightFor = (q: number): number => 1 / (q * onsetGain(P));
+  const k = 5, qk = ONSET_LEVEL_Q[k], qMid = qk * Math.sqrt(ONSET_LEVEL_RATIO);
+  it('onsetTime: null below the breaking level, the level\'s own time on a level, log-linear between levels', () => {
+    const rec = recOf(1.3, (_, j) => 10 - j, (_, j) => 2 + 0.1 * j);
+    expect(onsetTime(recOf(0.2, () => 1, () => 1), 0, heightFor(0.3), P)).toBeNull();
+    expect(onsetTime(rec, 0, heightFor(qk), P)).toBeCloseTo(10 - k, 5);
+    // Halfway (in log q) between levels k and k + 1.
+    expect(onsetTime(rec, 0, heightFor(qMid), P)).toBeCloseTo(10 - k - 0.5, 5);
+    // From an offset (the record is interleaved per node).
+    expect(onsetTime(Float32Array.from([9, 9, ...rec]), 2, heightFor(qMid), P)).toBeCloseTo(10 - k - 0.5, 5);
+  });
+  it('onsetTime: just broken (the next level above the running maximum) runs to 0 at the running maximum', () => {
+    // Level k broke 2 s ago; the section's running maximum is halfway (in log q) to level k + 1: a wave at the running
+    // maximum breaks now (0 s), one at level k broke 2 s ago, between them log-linearly.
+    const run = qMid;
+    const rec = recOf(run, (_, j) => (j === k ? 2 : 5), () => 1);
+    expect(onsetTime(rec, 0, heightFor(qk), P)).toBeCloseTo(2, 5);
+    expect(onsetTime(rec, 0, heightFor(run), P)).toBeCloseTo(0, 5);
+    expect(onsetTime(rec, 0, heightFor(qk * ONSET_LEVEL_RATIO ** 0.25), P)).toBeCloseTo(1, 5);
+  });
+  it("onsetHeight: the wave's height where its level broke, interpolated as the time is", () => {
+    const rec = recOf(1.3, (_, j) => 10 - j, (_, j) => 2 + 0.1 * j);
+    expect(onsetHeight(rec, 0, heightFor(qk), P)).toBeCloseTo(heightFor(qk) * (2 + 0.1 * k), 5);
+    expect(onsetHeight(rec, 0, heightFor(qMid), P)).toBeCloseTo(heightFor(qMid) * (2 + 0.1 * k + 0.05), 5);
+    expect(onsetHeight(recOf(0.2, () => 1, () => 1), 0, heightFor(0.3), P)).toBeNull();
+    expect(ONSET_LEVELS).toBe(12);
+    expect(ONSET_LEVEL_Q[ONSET_LEVELS - 1]).toBeGreaterThanOrEqual(1.34); // the field's largest running ratio
   });
   it('lifecycle without a record is the ratio alone (the curves as before)', () => {
     for (const r of [0.5, 0.8, 1, 1.3, 2, 5]) {
       const c = stageCurves(r, P);
-      expect(lifecycle(r, undefined, 3, P)).toEqual({ steep: steepening(r, P), stage: breakingStage(r, P), drain: c.drain, collapse: c.collapse });
+      expect(lifecycle(r, undefined, 3, P)).toEqual({ steep: steepening(r, P), stage: breakingStage(r, P), drain: c.drain, collapse: c.collapse, pile: 0, pileReach: 0, surge: 1, decay: 1 });
     }
   });
   it('lifecycle is continuous across the onset, and from there only runs forward', () => {
@@ -326,11 +356,55 @@ describe('one clock: the onset record and the lifecycle', () => {
       let prev = at0;
       for (let tb = 0.05; tb <= 6; tb += 0.05) {
         const lc = lifecycle(r, tb, H, P, rMax);
-        for (const k of ['steep', 'stage', 'drain', 'collapse'] as const) expect(lc[k], `${k} at r ${r}, tb ${tb.toFixed(2)}`).toBeGreaterThanOrEqual(prev[k] - 1e-12);
+        for (const k of ['steep', 'stage', 'drain', 'collapse', 'pile', 'pileReach'] as const) expect(lc[k], `${k} at r ${r}, tb ${tb.toFixed(2)}`).toBeGreaterThanOrEqual(prev[k] - 1e-12);
         prev = lc;
       }
-      expect(prev).toEqual({ steep: 1, stage: 1, drain: 1, collapse: 1 });
+      expect(prev).toEqual({ steep: 1, stage: 1, drain: 1, collapse: 1, pile: 1, pileReach: 1, surge: 1, decay: prev.decay });
+      expect(prev.decay, 'the pile has started to decay 6 s on').toBeLessThan(1);
     }
+  });
+  it('a plunging crest (the maths gives it a tube) breaks fully at onset, however slowly its ratio climbs (the softened ramp)', () => {
+    const H = 3, land = landingEstimate(H, P);
+    // Past breaking by PLUNGE_FULL_RATIO (at 1.2, a creeping ramp): without a tube it is a partial break; with one, whole,
+    // its stage (the tube's closing) at 0.75 by 0.7 of the landing time.
+    expect(lifecycle(1.2, land + PILE_RISE_S, H, P, 1.2).pile).toBeLessThan(0.5);
+    expect(lifecycle(1.2, land + PILE_RISE_S, H, P, 1.2, 1.2, 1).pile).toBeCloseTo(1, 12);
+    expect(lifecycle(1.2, 0.7 * land, H, P, 1.2, 1.2, 1).stage).toBeGreaterThanOrEqual(0.75);
+    expect(lifecycle(1.2, land + PILE_RISE_S, H, P, 1.2, 1.2, 0.5).pile).toBeCloseTo(Math.max(breakingStage(1.2, P), 0.5), 12);
+    // Just grazing breaking (rMax 1.01): still mostly partial.
+    expect(lifecycle(1.01, land + PILE_RISE_S, H, P, 1.01, 1.01, 1).pile).toBeLessThan(0.2);
+    // Unbroken, the tube's presence does nothing.
+    expect(lifecycle(0.9, null, H, P, 0.9, 0.9, 1)).toEqual(lifecycle(0.9, null, H, P, 0.9, 0.9));
+  });
+  it('the pile rises over PILE_RISE_S from the landing, partial on a section that broke only a little', () => {
+    const H = 3, land = landingEstimate(H, P);
+    expect(lifecycle(3, land, H, P, 3).pile).toBe(0);
+    expect(lifecycle(3, land + PILE_RISE_S, H, P, 3).pile).toBeCloseTo(breakingStage(3, P), 12);
+    expect(lifecycle(1.1, land + PILE_RISE_S, H, P, 1.1).pile).toBeCloseTo(breakingStage(1.1, P), 12);
+    expect(lifecycle(1.1, land + PILE_RISE_S, H, P, 1.1).pile).toBeLessThan(0.5);
+    expect(lifecycle(0.9, null, H, P).pile).toBe(0);
+  });
+  it("the pile's top moves from the crest to the landing spot as the curl collapses (pileReach)", () => {
+    const H = 3, land = landingEstimate(H, P), span = settleSpan(H, P);
+    expect(lifecycle(3, land, H, P, 3).pileReach).toBe(0);
+    expect(lifecycle(3, land + span / 2, H, P, 3).pileReach).toBeCloseTo(0.5, 12);
+    expect(lifecycle(3, land + span, H, P, 3).pileReach).toBe(1);
+  });
+  it('the surge lifts the pile above the lip on the heaviest breaks only, then eases back', () => {
+    const H = 3, land = landingEstimate(H, P);
+    expect(lifecycle(3.4, land + SURGE_RISE_S, H, P, 3.4).surge).toBeCloseTo(1 + P.pileSurge, 12);
+    expect(lifecycle(1.05, land + SURGE_RISE_S, H, P, 1.05).surge).toBeLessThan(1.001);
+    expect(lifecycle(3.4, land + SURGE_RISE_S + SURGE_FALL_S, H, P, 3.4).surge).toBe(1);
+    expect(lifecycle(3.4, land, H, P, 3.4).surge).toBe(1);
+  });
+  it('the pile halves every pileHalfM it rolls past the landing, and stays finite however long ago it broke', () => {
+    const H = 3, land = landingEstimate(H, P);
+    // The pile stands at the lip's height until it has risen; then it rolls on and decays.
+    expect(lifecycle(3, land + PILE_RISE_S, H, P, 3).decay).toBe(1);
+    expect(lifecycle(3, land + PILE_RISE_S + P.pileHalfM / PILE_SPEED_MS, H, P, 3).decay).toBeCloseTo(0.5, 12);
+    for (const tb of [60, 1e6, Infinity]) { const d = lifecycle(3, tb, H, P, 3).decay; expect(Number.isFinite(d)).toBe(true); expect(d).toBeGreaterThanOrEqual(0); }
+    let prev = 2;
+    for (let tb = 0; tb <= 20; tb += 0.1) { const d = lifecycle(3, tb, H, P, 3).decay; expect(d).toBeLessThanOrEqual(prev); prev = d; }
   });
   it('lifecycle: the lip lands and the wave settles on time, whatever the reef does under the crest', () => {
     const H = 3, land = landingEstimate(H, P), span = settleSpan(H, P);
@@ -351,5 +425,83 @@ describe('one clock: the onset record and the lifecycle', () => {
     for (let x = 1; x < 2; x += 0.01) expect(Math.abs(settled(x + 0.01) - settled(x))).toBeLessThan(0.03);
     // The ribbon's settle span and the sheet's are one function.
     expect(span).toBeCloseTo(P.collapseTime * landingTime(H * (1 + P.troughDrain * P.delta)), 12);
+  });
+});
+
+describe('the whitewater pile (spec 2026-09-29 §3.2)', () => {
+  it('smoothMax is max where a and b differ by k or more, C1 between, with ∂/∂a = dA', () => {
+    expect(smoothMax(3, 1, 0.5)).toEqual({ value: 3, dA: 1 });
+    expect(smoothMax(1, 3, 0.5)).toEqual({ value: 3, dA: 0 });
+    for (const a of [-0.3, -0.1, 0, 0.1, 0.24]) {
+      const h = 1e-6, num = (smoothMax(a + h, 0, 0.5).value - smoothMax(a - h, 0, 0.5).value) / (2 * h);
+      expect(smoothMax(a, 0, 0.5).dA).toBeCloseTo(num, 5);
+      expect(smoothMax(a, 0, 0.5).value).toBeGreaterThanOrEqual(Math.max(a, 0));
+    }
+  });
+  it("the pile's floor is the bore's crest (β × the breaking depth, the crest's shape), whatever the crest's own height", () => {
+    // The crest's height spikes along the crest where the reef focuses it; the floor must not (it drew steps in the pile).
+    expect(settledCrestTop(1.5, 3, 4, 1, P)).toBeCloseTo(0.5 * P.beta * 4, 12);
+    expect(settledCrestTop(2.0, 4, 4, 1, P)).toBeCloseTo(settledCrestTop(1.5, 3, 4, 1, P), 12);
+    expect(settledCrestTop(1.5, 3, 4, 0.5, P)).toBeCloseTo(0.5 * settledCrestTop(1.5, 3, 4, 1, P), 12);
+  });
+  it("the pile's top is the lip's height, surged, halving every pileHalfM rolled, never below its floor", () => {
+    const lc = (surge: number, decay: number): Lifecycle => ({ steep: 1, stage: 1, drain: 1, collapse: 1, pile: 1, pileReach: 1, surge, decay });
+    expect(pileTop(2, 0.8, lc(1.3, 1))).toBeCloseTo(2.6, 12);
+    expect(pileTop(2, 0.8, lc(1, 0.5))).toBeCloseTo(1, 12); // half the lip's height, pileHalfM on
+    expect(pileTop(2, 0.8, lc(1, 0.25))).toBeCloseTo(0.8, 12); // decayed onto the bore
+  });
+  it('pileShape: 1 at its top, steep in front, a long back, slope continuous at the top', () => {
+    const H = 3;
+    expect(pileShape(0, H).g).toBe(1);
+    expect(Math.abs(pileShape(0, H).dg)).toBe(0);
+    expect(pileShape(H, H).g).toBeLessThan(pileShape(-H, H).g);
+    for (const v of [-4, -1, 0.5, 2]) {
+      const h = 1e-6;
+      expect(pileShape(v, H).dg).toBeCloseTo((pileShape(v + h, H).g - pileShape(v - h, H).g) / (2 * h), 6);
+    }
+  });
+  const lcFull: Lifecycle = { steep: 1, stage: 1, drain: 1, collapse: 1, pile: 1, pileReach: 1, surge: 1, decay: 1 };
+  // A synthetic cross-section: η = 1.5·cos(0.1·a), the crest at a = 0, H 3.
+  const inputAt = (a: number, lipTop = 2): BreakPointInput => ({
+    theta: -0.1 * a, env: 1, uUnbroken: a, eta: 1.5 * Math.cos(0.1 * a), uCrest: 0, etaCrest: 1.5, H: 3, k: 0.1, hmin: 4, boreH: 3,
+    slope: -0.15 * Math.sin(0.1 * a), dThetaDAhead: -0.1, dEnvDAhead: 0, crestConfidence: 1, lipTop, lipHeight: 3, lateral: 1,
+  });
+  it("at its top (PILE_LAND_H·H ahead once the curl has collapsed) the sheet stands at the pile's height, fully foamed", () => {
+    const top = pileTop(2, settledCrestTop(1.5, 3, 4, 1, P), lcFull);
+    expect(top).toBeCloseTo(2, 12); // decay 1, surge 1: the lip's own height
+    const b = breakPoint(inputAt(PILE_LAND_H * 3), lcFull, P);
+    expect(b.eta).toBeCloseTo(top, 6);
+    expect(b.pile).toBeCloseTo(top, 6);
+    expect(b.foam).toBeGreaterThan(0.99);
+  });
+  it("the pile fades a quarter period from its crest, as the crest's height does (the lookup is unreliable out there)", () => {
+    // θ = ω·ξ: an eighth of a period behind the crest is θ = π/4, a quarter π/2.
+    const at = (theta: number) => breakPoint({ ...inputAt(-3), theta }, lcFull, P);
+    const none = (theta: number) => breakPoint({ ...inputAt(-3, 0), theta }, lcFull, P);
+    expect(at(Math.PI / 5).pile).toBeGreaterThan(0);
+    expect(at(Math.PI / 2 + 0.01).eta).toBe(none(Math.PI / 2 + 0.01).eta);
+    expect(at(-Math.PI / 2 - 0.01).pile).toBe(0);
+  });
+  it('no pile where the floor is at or above the lip: the sheet is exactly as without it (a small wave in deep water)', () => {
+    const floor = settledCrestTop(1.5, 3, 4, 1, P);
+    for (const a of [-6, 0, 2, 3.6, 8]) {
+      const low = breakPoint(inputAt(a, floor * 0.99), lcFull, P), none = breakPoint(inputAt(a, 0), lcFull, P);
+      expect(low.eta).toBe(none.eta);
+      expect(low.pile).toBe(0);
+    }
+  });
+  it("breakPoint's slope with the pile matches central differences of its height", () => {
+    const lc: Lifecycle = { steep: 1, stage: 1, drain: 1, collapse: 0.5, pile: 0.8, pileReach: 0.6, surge: 1.1, decay: 0.9 };
+    // A 3 m lip, and a 12 m one whose back reaches the fade a quarter period behind the crest.
+    for (const lipHeight of [3, 12]) {
+      const inp = (a: number): BreakPointInput => ({ ...inputAt(a, lipHeight * 0.66), lipHeight });
+      let worst = 0;
+      for (let a = -20.03; a <= 20; a += 0.37) {
+        const h = 1e-5;
+        const num = (breakPoint(inp(a + h), lc, P).eta - breakPoint(inp(a - h), lc, P).eta) / (2 * h) - inp(a).slope;
+        worst = Math.max(worst, Math.abs(num - breakPoint(inp(a), lc, P).dEtaDAhead));
+      }
+      expect(worst, `lip ${lipHeight} m`).toBeLessThan(2e-3);
+    }
   });
 });

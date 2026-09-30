@@ -6,10 +6,12 @@ import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import {
-  MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, timeSinceOnset, traceStations,
+  MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, stationPsi, timeSinceOnset, traceStations,
 } from './crestTrace';
+import { PSI_NORMAL } from './overturn';
 import { computeReefField, sampleField } from './reefField';
-import { type ActiveWave, type WaveContext, fieldBreakingHeight, phaseXi } from './setWaveModel';
+import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi } from './setWaveModel';
+import { cloneConditions } from '../conditions/defaults';
 
 const P = DEFAULT_BREAK_PARAMS;
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
@@ -27,6 +29,12 @@ const alongLedge = (line: readonly (readonly [number, number])[], x: number, z: 
   const [a, b] = [line[0], line[1]];
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
   return ((x - a[0]) * (b[0] - a[0]) + (z - a[1]) * (b[1] - a[1])) / len;
+};
+
+/** When the peak's section broke (the crest's arrival at (0, 0) less its time since onset there). */
+const peakBreak = (w: ActiveWave): number => {
+  const f = sampleField(field, 0, 0), tb = timeSinceOnset(field, w, 0, 0, ctx, P);
+  return w.arrivalS + f.tau - (tb ?? 0);
 };
 
 describe('crestTrace', () => {
@@ -90,8 +98,9 @@ describe('crestTrace', () => {
   });
 
   it('the left peels north along the ledge at 8–20 m/s (time since onset falls toward the shoulder)', () => {
-    // P8: the 1.8·Hs wave peels over the first 100 m. Stations north of the peak on the north ledge's first segment.
-    const t = 6;
+    // P8: the 1.8·Hs wave peels over the first 100 m. Stations north of the peak on the north ledge's first segment,
+    // 6.9 s after the peak broke (it broke 0.9 s before the crest reached (0, 0) on the old ledge, where this was t = 6).
+    const t = peakBreak(peeler) + 6.9;
     const st = live(trace([peeler], t)).filter((s) => s.tb !== null && Number.isFinite(s.tb) && s.tb > 0.05 && s.z < 0);
     const pts = st.map((s) => ({ d: alongLedge(NORTH_LEDGE, s.x, s.z), tb: s.tb as number })).filter((p) => p.d > 5 && p.d < 110);
     expect(pts.length).toBeGreaterThan(10);
@@ -103,21 +112,22 @@ describe('crestTrace', () => {
   });
 
   it('the right closes out: the south ledge’s first 40 m broke within 1.5 s of each other', () => {
-    const w = peeler;
-    let checked = 0;
-    for (const t of [1, 1.5, 2]) {
-      const st = live(trace([w], t)).filter((s) => s.tb !== null && Number.isFinite(s.tb));
-      const onSouth = st.filter((s) => { const d = alongLedge(SOUTH_LEDGE, s.x, s.z); return d > 0 && d < 40 && s.z > 0; });
-      if (onSouth.length < 5) continue;
-      const tbs = onSouth.map((s) => s.tb as number);
-      console.log(`closeout t ${t}: ${onSouth.length} stations, onset spread ${(Math.max(...tbs) - Math.min(...tbs)).toFixed(2)} s`);
-      expect(Math.max(...tbs) - Math.min(...tbs)).toBeLessThan(1.5);
-      checked++;
+    // Each section's break time (its crest's arrival less its time since onset, from the onset record carried along its
+    // ray), at points on the south ledge's first 40 m. On the softened ramp the sections break ~100 m seaward: a trace's
+    // stations projecting onto those 40 m then swept in crest far from the ledge (283 stations, 1.53 s).
+    const w = peeler, [a, b] = [SOUTH_LEDGE[0], SOUTH_LEDGE[1]], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const times: number[] = [];
+    for (let d = 0; d <= 40; d += 2) {
+      const x = a[0] + ((b[0] - a[0]) * d) / len, z = a[1] + ((b[1] - a[1]) * d) / len;
+      const tb = timeSinceOnset(field, w, x, z, ctx, P);
+      if (tb !== null) times.push(w.arrivalS + sampleField(field, x, z).tau - tb);
     }
-    expect(checked).toBeGreaterThan(0);
+    expect(times.length).toBeGreaterThan(15);
+    console.log(`closeout: ${times.length} sections, break spread ${(Math.max(...times) - Math.min(...times)).toFixed(2)} s`);
+    expect(Math.max(...times) - Math.min(...times)).toBeLessThan(1.5);
   });
 
-  it('timeSinceOnset: null before breaking, grows with the crest, Infinity past the hand-back', () => {
+  it('timeSinceOnset: null before breaking, grows with the crest, however long ago it broke', () => {
     const f0 = sampleField(field, 0, 0);
     // The crest at the peak at t = τ(0,0) = 0, then points shoreward along the ray.
     expect(timeSinceOnset(field, testWave(0.5), 0, 0, ctx, P)).toBeNull();
@@ -125,6 +135,52 @@ describe('crestTrace', () => {
     const seq = [0, 5, 10, 20].map((d) => timeSinceOnset(field, peeler, ...along(d), ctx, P));
     console.log(`tb along the ray from the peak: ${seq.map((v) => (v === null ? 'null' : v.toFixed(2))).join(', ')}`);
     for (let i = 1; i < seq.length; i++) if (seq[i - 1] !== null && seq[i] !== null && Number.isFinite(seq[i] as number)) expect(seq[i] as number).toBeGreaterThanOrEqual(seq[i - 1] as number);
-    expect(timeSinceOnset(field, peeler, ...along(80), ctx, P)).toBe(Infinity);
+    // 80 m and 160 m in: long past the hand-back (the ribbon has dropped the section), and still counting (the record is
+    // carried along the rays, with no reach limit: the whitewater pile decays on it).
+    const far = timeSinceOnset(field, peeler, ...along(80), ctx, P) as number, further = timeSinceOnset(field, peeler, ...along(160), ctx, P) as number;
+    expect(far).toBeGreaterThan(8);
+    expect(Number.isFinite(further)).toBe(true);
+    expect(further).toBeGreaterThan(far);
+  });
+});
+
+describe('station ψ (barrel from the maths)', () => {
+  const c12 = cloneConditions(DEFAULT_CONDITIONS); c12.swell.sizeFt = 12;
+  const big = wavesOfSet(1, c12, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+  const w = testWave(big.heightM);
+  const t = sampleField(field, 0, 0).tau + 0.5;
+  it("each station's ψ is the sheet's crest ψ there (the lip lands on water drained for its own shape)", () => {
+    const input = { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: 0, offshoreMs: 5 };
+    const o = breakOptions(field, DEFAULT_BREAK_PARAMS, 5);
+    const stations = traceStations(field, [w], t, ctx, input).filter((e): e is Station => !e.gap);
+    expect(stations.length).toBeGreaterThan(20);
+    let worst = 0, worstStored = 0;
+    for (const s of stations) {
+      const c = crestAt(s.x, s.z, t, sampleField(field, s.x, s.z), w, ctx, o);
+      if (!c) continue;
+      worst = Math.max(worst, Math.abs(c.psi - stationPsi(field, w, s.x, s.z, input)));
+      worstStored = Math.max(worstStored, Math.abs(c.psi - s.psi));
+    }
+    expect(worst).toBeLessThan(1e-6);
+    expect(worstStored).toBeLessThan(0.003); // stations between keys are interpolated (5% of a normal ψ)
+  });
+});
+
+describe("the crest's ψ at the reef grid's edge (final review I2)", () => {
+  it('eases to PSI_NORMAL at the edge, so a crest crossing it keeps its shape', () => {
+    const g = field.grid, w = testWave(REF_BIGGEST.heightM), input = { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0 };
+    const x1 = g.x0 + (g.nx - 1) * g.cellM, z1 = g.z0 + (g.nz - 1) * g.cellM;
+    let worst = 0, inner = 0;
+    for (let k = 1; k < 20; k++) {
+      const x = g.x0 + ((x1 - g.x0) * k) / 20, z = g.z0 + ((z1 - g.z0) * k) / 20;
+      // Just inside each of the four edges against just outside: the jump across the edge.
+      for (const [a, b] of [[[x, g.z0 + 0.01], [x, g.z0 - 0.01]], [[x, z1 - 0.01], [x, z1 + 0.01]], [[g.x0 + 0.01, z], [g.x0 - 0.01, z]], [[x1 - 0.01, z], [x1 + 0.01, z]]] as const) {
+        worst = Math.max(worst, Math.abs(stationPsi(field, w, a[0], a[1], input) - stationPsi(field, w, b[0], b[1], input)));
+      }
+      // Deep inside, the record's own ψ is untouched.
+      inner = Math.max(inner, Math.abs(stationPsi(field, w, x, z, input) - PSI_NORMAL));
+    }
+    expect(worst).toBeLessThan(1e-3);
+    expect(inner).toBeGreaterThan(0.01);
   });
 });

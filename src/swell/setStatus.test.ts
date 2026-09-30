@@ -3,7 +3,7 @@ import type { WaveEvent } from './sets';
 import { formatCountdown, formatNextSet, waveStatus } from './setStatus';
 
 const ev = (arrivalS: number, indexInSet: number, waveCount: number): WaveEvent => ({
-  id: 0, slot: 0, indexInSet, waveCount, arrivalS, heightM: 2, periodS: 15, fromDeg: 225, crestLengthM: 400, crestOffsetM: 0, longTail: false,
+  id: 0, slot: 0, indexInSet, waveCount, arrivalS, heightM: 2, periodS: 15, fromDeg: 225, crestLengthM: 400, crestOffsetM: 0, longTail: false, gapS: Infinity, throwDraw: 0,
 });
 
 describe('set readout', () => {

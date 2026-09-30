@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { DEFAULT_OCEAN_SIM } from '../ocean/OceanSimulation';
 import { DEFAULT_DEBUG_OVERLAYS } from '../ocean/OceanSurface';
@@ -313,6 +313,13 @@ describe('assignParams', () => {
     source.absorptionPerM[0] = 9;
     expect(arr[0]).toBe(1);
   });
+  it('a stored look from before the maths barrel (the old shape sliders) loads and changes no crest', () => {
+    const p = { ...DEFAULT_BREAK_PARAMS };
+    assignParams(p, { ...DEFAULT_BREAK_PARAMS, throwStrength: 1.2, lipReach: 0.7, lipThickness: 0.2, wallBack: 0.5, intensityNudge: 0.3 } as unknown as BreakParams);
+    normalizeBreakParams(p);
+    expect(p).toEqual(DEFAULT_BREAK_PARAMS);
+    for (const k of ['lipReach', 'lipThickness', 'wallBack', 'intensityNudge']) expect(k in p, k).toBe(false);
+  });
 });
 
 describe('reference picks', () => {
@@ -503,5 +510,28 @@ describe('Phase 4a land settings', () => {
     const old = JSON.parse(JSON.stringify(defaults())) as Record<string, unknown>;
     delete old.sound;
     expect(loadDevSettings(store(old), defaults())!.sound).toEqual(DEFAULT_SOUND_PARAMS);
+  });
+});
+
+describe("settings saved before the lip's light and the pile", () => {
+  it("a water look saved before the lip's side skylight loads with its default and keeps its other tweaks", () => {
+    const raw = JSON.parse(JSON.stringify(tweaked()));
+    delete raw.water.lipSideSkylight;
+    const got = loadDevSettings(store(raw), defaults())!;
+    expect(got.water.lipSideSkylight).toBe(DEFAULT_WATER_OPTICS.lipSideSkylight);
+    expect(got.water.bodyScale).toBe(tweaked().water.bodyScale);
+  });
+  it('a breaking look saved by model 4 (before the barrel and the pile) loads the new defaults', () => {
+    const got = loadDevSettings(store(JSON.parse(JSON.stringify(tweaked())), 4), defaults())!;
+    expect(got.breaking).toEqual(DEFAULT_BREAK_PARAMS);
+  });
+  it('a look saved by model 5 (before the barrel from the maths) loads the new breaking defaults and the softened reef', () => {
+    const raw = JSON.parse(JSON.stringify(tweaked()));
+    raw.reef = { ...DEFAULT_REEF_PARAMS, ledgeWidthM: 15 };
+    const got = loadDevSettings(store(raw, 5), defaults())!;
+    expect(got.breaking).toEqual(DEFAULT_BREAK_PARAMS);
+    expect(got.reef).toEqual(DEFAULT_REEF_PARAMS);
+    const kept = loadDevSettings(store({ ...raw, reef: { ...DEFAULT_REEF_PARAMS, ledgeWidthM: 120 } }, BREAKING_MODEL), defaults())!;
+    expect(kept.reef.ledgeWidthM).toBe(120);
   });
 });

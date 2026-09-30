@@ -27,6 +27,9 @@ export function isLikelyIntegratedGpu(a: AdapterSummary): boolean {
 
 const PAUSED_BADGE_TEXT = 'Paused — P to resume';
 
+/** How many frames' GPU times window.__ldGpuMs keeps. */
+export const GPU_SAMPLES = 600;
+
 /** stats-gl (FPS / CPU / GPU ms) + adapter name + paused badge + integrated-GPU warning + transient messages. */
 export class PerfOverlay {
   private readonly stats: Stats;
@@ -73,6 +76,15 @@ export class PerfOverlay {
     void this.renderer.resolveTimestampsAsync(THREE.TimestampQuery.RENDER);
     void this.renderer.resolveTimestampsAsync(THREE.TimestampQuery.COMPUTE);
     this.stats.update();
+    // The frame's GPU time (render + compute, ms, as stats-gl graphs it), kept for reading by script: the panel is a
+    // canvas. window.__ldGpuMs holds the last GPU_SAMPLES frames (the barrel-from-maths plan's performance budget).
+    const info = this.renderer.info as unknown as { render: { timestamp?: number }; compute: { timestamp?: number } };
+    const ms = (info.render.timestamp ?? 0) + (info.compute.timestamp ?? 0);
+    if (ms > 0) {
+      const w = window as unknown as { __ldGpuMs?: number[] };
+      (w.__ldGpuMs ??= []).push(ms);
+      if (w.__ldGpuMs.length > GPU_SAMPLES) w.__ldGpuMs.shift();
+    }
   }
 
   setVisible(visible: boolean): void {
