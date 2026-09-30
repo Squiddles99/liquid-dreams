@@ -45,6 +45,8 @@ export interface BreakParams {
   wallBack: number;
   /** An overall offset on every crest's break intensity (the Break panel). */
   intensityNudge: number;
+  /** Nudge on the crest's ψ (a factor 1 + psiNudge), in [−0.5, 0.5]; 0 by default (spec 2026-09-30-barrel-from-maths §5). */
+  psiNudge: number;
   /** The random dial: each wave's throw moves by up to ± this much intensity (its seeded draw); 0 is pure physics. */
   randomDial: number;
   /** The pile's churn (render only; the CPU model ignores it): lumps up to this fraction of the pile's height… */
@@ -76,6 +78,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   pileSurge: 0.3,
   wallBack: 0.5511,
   intensityNudge: 0,
+  psiNudge: 0,
   randomDial: 0,
   churnSize: 0.2,
   churnSpeed: 1,
@@ -132,6 +135,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.pileSurge = clampTo(p.pileSurge, 0, 0.6, d.pileSurge);
   p.wallBack = clampTo(p.wallBack, -0.3, 1, d.wallBack);
   p.intensityNudge = clampTo(p.intensityNudge, -1, 1, d.intensityNudge);
+  p.psiNudge = clampTo(p.psiNudge, -0.5, 0.5, d.psiNudge);
   p.randomDial = clampTo(p.randomDial, 0, 0.3, d.randomDial);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
