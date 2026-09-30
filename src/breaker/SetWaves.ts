@@ -14,7 +14,7 @@ import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import { PSI_EDGE_FADE_M, type ReefField } from './reefField';
 import {
-  BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_WIDTH, FOLD_LIMIT, LONG_TAIL_WIDTH, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
+  BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, FOLD_LIMIT, LONG_TAIL_CUTOFF, LONG_TAIL_WIDTH, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
   TAPER_FAR_M, TAPER_NEAR_M, fieldSteepeningHeight, toActiveWave,
 } from './setWaveModel';
 
@@ -23,10 +23,6 @@ type N = any;
 const FIELD_NX = REEF_GRID.nx / 2;
 const FIELD_NZ = REEF_GRID.nz / 2;
 const FAR_COUNT = Math.round((FAR_X1 - FAR_X0) / FAR_DX) + 1;
-/** Envelope widths |ξ|/width beyond which a wave contributes nothing visible: exp(−1.52⁶) ≈ 5e-6 for the tight envelope… */
-const ENVELOPE_CUTOFF = 1.52;
-/** …and exp(−3.5²) ≈ 5e-6 for a long tail's Gaussian. */
-const LONG_TAIL_CUTOFF = 3.5;
 /** A wave is flagged "can break" once it is taller than this fraction of the field's steepening height: a 2% margin over
  * the exact bound, for the GPU's f32 field interpolation. */
 const CAN_BREAK_MARGIN = 0.98;
@@ -330,7 +326,8 @@ export class SetWaves {
         const longTail = longTailFlag.and(xi.greaterThan(0.0)).toVar();
         const width = select(longTail, float(LONG_TAIL_WIDTH * 2 * Math.PI), float(ENVELOPE_WIDTH * 2 * Math.PI)).div(a.z);
         const rEnv = xi.div(width);
-        // Empty slots, and waves beyond the cutoff (envelope < 5e-6), are skipped: most pixels are near one or two.
+        // Empty slots, and waves beyond the cutoff (envelope < 5e-6; setWaveModel.beyondEnvelope, stage included), are
+        // skipped: most pixels are near one or two.
         If(a.y.greaterThan(0.0).and(abs(rEnv).lessThan(select(longTail, float(LONG_TAIL_CUTOFF), float(ENVELOPE_CUTOFF)))), () => {
           // As vars: the breaking below reads them inside nested Ifs, and a TSL temp first assigned inside one If is
           // stale in the next. The Phase 1 sums are added now; breaking adds its difference.
