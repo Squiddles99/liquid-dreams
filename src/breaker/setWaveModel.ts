@@ -1,8 +1,8 @@
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetTime, pileTop, settledCrestTop, steepeningStart } from './breaking';
-import { drainBonus } from './breakIntensity';
+import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetStep, onsetTime, pileTop, settledCrestTop, steepeningStart } from './breaking';
+import { type BarrelShape, barrelShape, breakIntensity, drainBonus, withShape } from './breakIntensity';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { type ReefField, sampleField, sampleOnset } from './reefField';
@@ -93,12 +93,16 @@ export interface BreakOptions {
   /** false: the sheet without the whitewater pile, which is the ribbon frame's sheet (the lip is thrown from the wave as it
    * stood, not from the whitewater rising under it). Absent: with it. */
   pile?: boolean;
+  /** The wind's offshore speed (m/s; breakIntensity.offshoreSpeed, negative onshore). Absent: 0. */
+  offshoreMs?: number;
+  /** Tests, calibration and the anchor viewer: every crest takes this intensity (and this shape, if given). */
+  force?: { intensity: number; shape?: BarrelShape };
 }
 
-/** Breaking on `field` with `params`: the field and its onset record, as the render reads them. */
-export function breakOptions(field: ReefField, params: BreakParams): BreakOptions {
+/** Breaking on `field` with `params` and the wind's offshore speed: the field and its onset record, as the render reads them. */
+export function breakOptions(field: ReefField, params: BreakParams, offshoreMs = 0): BreakOptions {
   const rec = new Float32Array(ONSET_RECORD_LENGTH);
-  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec) };
+  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec), offshoreMs };
 }
 
 const ZERO: SetWaveResult = { eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0, pile: 0 };
@@ -164,6 +168,10 @@ export interface Crest {
   /** The height the section stood at while it threw (breaking.onsetHeight): the pile's lip. null before it breaks or without
    * a record. */
   lipH: number | null;
+  /** The crest's break intensity [0, 2] (breakIntensity; 1 off the record). */
+  intensity: number;
+  /** The params its shape uses: o.params with the per-crest keys at its intensity (breakIntensity.withShape). */
+  params: BreakParams;
 }
 
 /**
@@ -204,9 +212,15 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   // The lip too, on the point's own ray: carried along the rays, it is the same all along one (under 1% at most ledge
   // points). Read at the lookup's crest instead, it slid along the crest's lip gradient (the peak's lip falls 20% in 7 m).
   const lipH = rec ? onsetHeight(rec, 0, w.heightM, o.params) : null;
+  // Its break intensity (spec 2026-09-30 §3.2), read on the point's own ray as the time since onset is. Off the record:
+  // the normal anchor.
+  const intensity = o.force?.intensity ?? (rec
+    ? breakIntensity({ step: onsetStep(rec, 0, w.heightM, o.params), offshoreMs: o.offshoreMs ?? 0, periodS: (2 * Math.PI) / w.omega, waveBonus: w.drainBonus ?? 0, throwDraw: w.throwDraw ?? 0 }, o.params)
+    : 1);
+  const params = withShape(o.params, o.force?.shape ?? barrelShape(intensity));
   const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
-  const lc = lifecycle(r, tb, localHeight(w, fc), o.params, rMax, rSlurp);
-  return { x: cx, z: cz, f: fc, r, s: lc.stage, tb, lc, confidence, lipH };
+  const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp);
+  return { x: cx, z: cz, f: fc, r, s: lc.stage, tb, lc, confidence, lipH, intensity, params };
 }
 
 /**
@@ -299,7 +313,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
     theta, env: env * lateral, uUnbroken: v0 + dh * facing, eta, uCrest: cf.pitchC * cf.etaCrest, etaCrest: cf.etaCrest, H: cf.Hc * lateral, k: crest.f.k,
     hmin: crest.f.hminBreak, boreH: cf.boreH, lipTop: cf.lipTop, lipHeight: cf.lipHeight, lateral,
     slope: slopeAlong, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead, crestConfidence: crest.confidence,
-  }, crest.lc, o.params);
+  }, crest.lc, crest.params);
   out.eta = b.eta;
   out.slopeX += f.dirX * b.dEtaDAhead;
   out.slopeZ += f.dirZ * b.dEtaDAhead;

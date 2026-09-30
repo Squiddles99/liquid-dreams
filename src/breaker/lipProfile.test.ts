@@ -8,13 +8,15 @@ import {
   GRAVITY_MS2, type LipParams, barrelMetrics, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings,
   landingTime, profileFrame, sampleHome, sampleSegment, settleSpan,
 } from './lipProfile';
+import { ANCHORS } from './breakIntensity';
 import { computeReefField, sampleField } from './reefField';
 import { type ActiveWave, type BreakOptions, breakOptions, type WaveContext, localHeight, sumWaves } from './setWaveModel';
 
 // The app's field (1 m cells, default swell and tide) and the Task 2 sheet: Phase 1 + front sharpening + drain + bore.
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
 const ctx: WaveContext = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-const SHEET: BreakOptions = breakOptions(field, DEFAULT_BREAK_PARAMS);
+// The sheet at the normal anchor, as LIP (the defaults) is: these tests measure one fixed shape (Task 6 calibrates the anchors).
+const SHEET: BreakOptions = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), force: { intensity: 1, shape: ANCHORS[1] } };
 const LIP: LipParams = DEFAULT_BREAK_PARAMS;
 const HS = surferFeetToHs(DEFAULT_CONDITIONS.swell.sizeFt);
 const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
