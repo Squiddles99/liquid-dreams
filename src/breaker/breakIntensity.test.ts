@@ -4,14 +4,14 @@ import { DEFAULT_BREAK_PARAMS, normalizeBreakParams } from './breaking';
 import { ANCHORS, INTENSITY_MAX, PER_CREST_BREAK_KEYS, barrelShape, breakIntensity, drainBonus, offshoreSpeed, stepToIntensity, withShape } from './breakIntensity';
 
 const P = { intensityNudge: 0, randomDial: 0 };
-const base = { step: 2.2, offshoreMs: 0, periodS: 12, waveBonus: 0, throwDraw: 0 };
+const base = { step: 1.85, offshoreMs: 0, periodS: 12, waveBonus: 0, throwDraw: 0 };
 
 describe('breakIntensity', () => {
-  it('maps the step through 1.25 → 0, 2.2 → 1, 2.8 → 2, clamping the step to [1, 3]', () => {
-    expect(stepToIntensity(1.25)).toBeCloseTo(0, 9);
-    expect(stepToIntensity(2.2)).toBeCloseTo(1, 9);
-    expect(stepToIntensity(2.8)).toBeCloseTo(2, 9);
-    expect(stepToIntensity(1.725)).toBeCloseTo(0.5, 9);
+  it('maps the step through 1.3 → 0, 1.85 → 1, 2.25 → 2 (fitted to the baked reef), clamping the step to [1, 3]', () => {
+    expect(stepToIntensity(1.3)).toBeCloseTo(0, 9);
+    expect(stepToIntensity(1.85)).toBeCloseTo(1, 9);
+    expect(stepToIntensity(2.25)).toBeCloseTo(2, 9);
+    expect(stepToIntensity(1.575)).toBeCloseTo(0.5, 9);
     expect(stepToIntensity(0.5)).toBeCloseTo(stepToIntensity(1), 9);
     expect(stepToIntensity(9)).toBeCloseTo(stepToIntensity(3), 9);
     expect(stepToIntensity(1)).toBeLessThan(0);

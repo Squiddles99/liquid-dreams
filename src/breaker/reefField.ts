@@ -1,6 +1,7 @@
 import type { Bathymetry } from '../seabed/bathymetry';
 import type { GridSpec } from '../seabed/wombReef';
-import { BREAKING_RATIO, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, breakingDepth, onsetLevelHeight } from './breaking';
+import { STEP_MAX, STEP_MIN } from './breakIntensity';
+import { BREAKING_RATIO, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_STEP_OFFSET, breakingDepth, onsetLevelHeight } from './breaking';
 import { AMP_CAP, type FarField, computeFarField, farSample } from './coastFarField';
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
 import { solveEikonal } from './eikonal';
@@ -84,6 +85,23 @@ export const BREAK_TRAVEL_SMOOTHING_M = 8;
 export const SLURP_REACH_M = 100;
 /** The slurp's samples along the crest line are this far apart (m). */
 const SLURP_STEP_M = 2;
+
+/** The step looks this many still-water depths ahead along the ray (spec 2026-09-30 §3.1). */
+export const STEP_LOOK_AHEAD = 1.5;
+/** The look-ahead's samples are this far apart (m): the field's cell. */
+const STEP_SAMPLE_M = 1;
+
+/**
+ * The step at a point of still-water depth d0: d0 ÷ the shallowest depth over the next STEP_LOOK_AHEAD × d0 metres along
+ * its ray (depthAhead(s), s metres ahead), clamped to [STEP_MIN, STEP_MAX]. Deep before and shallow after is a heavy
+ * throw; a flat bottom is 1.
+ */
+export function stepAlong(depthAhead: (s: number) => number, d0: number): number {
+  const reach = STEP_LOOK_AHEAD * d0;
+  let m = d0;
+  for (let s = STEP_SAMPLE_M; s <= reach + 1e-9; s += STEP_SAMPLE_M) m = Math.min(m, depthAhead(s));
+  return Math.min(STEP_MAX, Math.max(STEP_MIN, d0 / Math.max(m, MIN_DEPTH_M)));
+}
 
 /** `a` spread along the crest line through each node: the largest of a × exp(−s/reachM) within ±2·reachM. */
 export function slurpAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, reachM: number): Float32Array {
@@ -284,7 +302,16 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const slurp = slurpAlongCrest(smoothGain, dirX, dirZ, grid, SLURP_REACH_M);
   const hminSlurp = new Float32Array(n);
   for (let i = 0; i < n; i++) hminSlurp[i] = slurp[i] > 0 ? Math.min(hminBreak[i], amp[i] / slurp[i]) : hminBreak[i];
-  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega });
+  // The step at every node (spec 2026-09-30 §3.1), smoothed along the crest as the breaking depth is, so small reef bumps
+  // don't make the lip ragged.
+  const depthAt = bilinearCells(depth, grid);
+  const rawStep = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const col = i % nx, row = (i - col) / nx, dx = dirX[i] / cellM, dz = dirZ[i] / cellM;
+    rawStep[i] = stepAlong((s) => depthAt(col + dx * s, row + dz * s), depth[i]);
+  }
+  const stepHere = smoothAlongCrest(rawStep, dirX, dirZ, grid, BREAK_SMOOTHING_M);
+  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, stepHere });
   return { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
 }
 
@@ -306,11 +333,11 @@ const RUN_DIP = 0.03;
 
 function computeOnsetRecord(f: {
   grid: GridSpec; tau: Float32Array; amp: Float32Array; hmin: Float32Array; hminBreak: Float32Array; k: Float32Array; dirX: Float32Array;
-  dirZ: Float32Array; fixed: Uint8Array; order: Uint32Array; omega: number;
+  dirZ: Float32Array; fixed: Uint8Array; order: Uint32Array; omega: number; stepHere: Float32Array;
 }): Float32Array {
   const { grid, dirX, dirZ } = f;
   const { nx, nz } = grid;
-  const n = nx * nz, R = ONSET_RECORD_LENGTH;
+  const n = nx * nz, R = ONSET_RECORD_LENGTH, S = ONSET_STEP_OFFSET;
   const out = new Float32Array(n * R);
   // One bilinear cell for everything read back there.
   const xMax = (nx - 1) * grid.cellM, zMax = (nz - 1) * grid.cellM;
@@ -338,7 +365,10 @@ function computeOnsetRecord(f: {
     const inside = !f.fixed[i] && x >= grid.x0 && z >= grid.z0 && x <= grid.x0 + (nx - 1) * grid.cellM && z <= grid.z0 + (nz - 1) * grid.cellM;
     if (!inside) {
       out[base] = own;
-      for (let k = 0; k < ONSET_LEVELS; k++) out[base + 2 + 2 * k] = throwAt(f.amp[i], f.hmin[i], k);
+      for (let k = 0; k < ONSET_LEVELS; k++) {
+        out[base + 2 + 2 * k] = throwAt(f.amp[i], f.hmin[i], k);
+        out[base + S + k] = f.stepHere[i];
+      }
       continue;
     }
     cell(x, z);
@@ -355,15 +385,19 @@ function computeOnsetRecord(f: {
       const here = throwAt(f.amp[i], f.hmin[i], k);
       if (run < q && !brokenB) {
         out[base + 2 + 2 * k] = here;
+        out[base + S + k] = f.stepHere[i];
       } else if (brokenB) {
         const tb = tbB + dTau, thrownB = lerp(out, R, 2 + 2 * k);
         out[base + 1 + 2 * k] = tb;
         out[base + 2 + 2 * k] = tb <= LIP_THROW_S ? Math.max(thrownB, here) : thrownB;
+        out[base + S + k] = lerp(out, R, S + k);
       } else {
         const fr = (q - runB) / (run - runB);
         out[base + 1 + 2 * k] = (1 - fr) * dTau;
         const atOnset = throwAt(ampB + fr * (f.amp[i] - ampB), hminB + fr * (f.hmin[i] - hminB), k);
         out[base + 2 + 2 * k] = Math.max(atOnset, here);
+        const stepB = lerp(f.stepHere);
+        out[base + S + k] = stepB + fr * (f.stepHere[i] - stepB);
       }
     }
   }
