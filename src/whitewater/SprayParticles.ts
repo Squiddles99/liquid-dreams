@@ -146,6 +146,11 @@ export class SprayParticles {
     this.wind.value.set(windX, windZ);
   }
 
+  /** Builds the passes while the game loads: the birth pass first runs when a lip first throws, mid-game (App.prewarm). */
+  async compileAsync(renderer: THREE.WebGPURenderer): Promise<void> {
+    await renderer.compileComputeAsync([this.birthPass, this.stepPass, this.clearPass]);
+  }
+
   /** The next advance() clears the pool and replays the longest life. */
   invalidate(): void {
     this.schedule.invalidate();
