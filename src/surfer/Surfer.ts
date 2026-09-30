@@ -52,6 +52,9 @@ export class Surfer {
     const restQ = {} as Record<BoneName, THREE.Quaternion>;
     for (const b of BONES) restQ[b] = this.bones[b].getWorldQuaternion(new THREE.Quaternion());
     this.rest = restFromManifest(manifest, restQ);
+    // The head's centre at rest (as applyPose places it), so nothing renders with a centre at the origin before the
+    // first pose: the wet curls' pull would drag the hair toward the feet.
+    this.headCentre.value.copy(this.rest.joint.head).add(new THREE.Vector3(0, 0.09, 0.01));
     const materials: Record<string, () => THREE.Material> = {
       body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones: skinZones(manifest), wet: this.wet }),
       hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),

@@ -104,7 +104,7 @@ describe("Grommet's glasses and teeth (grommet spec §4)", () => {
     for (let i = 0; i < f.length; i += 3) out.push([f[i], f[i + 1], f[i + 2]]);
     return out;
   });
-  it('centres a round lens 5 cm across in front of each eye (within 1 cm of its axis)', () => {
+  it('centres a lens 5 cm across in front of each eye (within 1 cm of its axis)', () => {
     const lens = pointsOf(meshNamed('grommet_glasses'), 'lens');
     for (const eye of L.eyes) {
       const mine = lens.filter((p) => Math.sign(p[0]) === Math.sign(eye[0]));
