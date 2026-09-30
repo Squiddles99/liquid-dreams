@@ -18,4 +18,5 @@ export { renderSelfTestReport, runSelfTests } from './selfTest';
 import '../beach/beach.selftest';
 import '../heath/heath.selftest';
 import '../bombie/bombie.selftest';
+import '../board/board.selftest';
 import '../sound/sound.selftest';
