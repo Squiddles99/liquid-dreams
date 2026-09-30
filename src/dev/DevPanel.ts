@@ -213,6 +213,16 @@ export const SURFER_BINDINGS = {
   heightNudgeM: { label: 'height nudge (m)', ...SURFER_PARAM_RANGES.heightNudgeM, step: 0.01 },
   pitchNudgeDeg: { label: 'pitch nudge (°)', ...SURFER_PARAM_RANGES.pitchNudgeDeg, step: 0.5 },
 } as const;
+/** The Face sub-folder's dials (closeup spec §5.2), ranges exactly normalizeSurferParams's (DevPanel.test.ts). */
+export const FACE_BINDINGS = {
+  faceBlink: { label: 'blink', ...SURFER_PARAM_RANGES.faceBlink, step: 0.01 },
+  faceSmile: { label: 'smile', ...SURFER_PARAM_RANGES.faceSmile, step: 0.01 },
+  faceJaw: { label: 'jaw', ...SURFER_PARAM_RANGES.faceJaw, step: 0.01 },
+  faceBrows: { label: 'brows', ...SURFER_PARAM_RANGES.faceBrows, step: 0.01 },
+  faceSquint: { label: 'squint', ...SURFER_PARAM_RANGES.faceSquint, step: 0.01 },
+  gazeYawDeg: { label: 'gaze yaw (°)', ...SURFER_PARAM_RANGES.gazeYawDeg, step: 0.5 },
+  gazePitchDeg: { label: 'gaze pitch (°)', ...SURFER_PARAM_RANGES.gazePitchDeg, step: 0.5 },
+} as const;
 const BOARD_LABELS: Record<BoardKind, string> = { thruster: 'thruster', stepUp: 'step-up', bodyboard: 'bodyboard' };
 /** The crew by nickname and real name (grommet spec §6): Shazza (Sharon), T-Bone (Tom), Grommet (Bradley). */
 export const SURFER_PRESET_OPTIONS = Object.fromEntries((Object.keys(PRESETS) as PresetName[]).map((k) => [`${PRESETS[k].nickname} (${PRESETS[k].realName})`, k]));
@@ -414,6 +424,12 @@ export class DevPanel {
     surferFolder.addBinding(m.surfer, 'play', { label: 'play (paddle, pop-up)' }).on('change', h.onSurfer);
     surferFolder.addBinding(m.surfer, 'onLand', { label: 'on land (glasses, dry)' }).on('change', h.onSurfer);
     surferFolder.addBinding(m.surfer, 'balance', { label: 'balance layer' }).on('change', h.onSurfer);
+    const face = surferFolder.addFolder({ title: 'Face', expanded: false });
+    face.addBinding(m.surfer, 'idle', { label: 'idle life' }).on('change', h.onSurfer);
+    face.addBinding(m.surfer, 'faceManual', { label: 'manual face' }).on('change', h.onSurfer);
+    for (const [key, opts] of Object.entries(FACE_BINDINGS) as [keyof typeof FACE_BINDINGS, (typeof FACE_BINDINGS)[keyof typeof FACE_BINDINGS]][]) {
+      face.addBinding(m.surfer, key, opts).on('change', h.onSurfer);
+    }
     surferFolder.addButton({ title: 'Place ahead of camera' }).on('click', h.onSurferPlaceAhead);
     surferFolder.addButton({ title: 'Chase view' }).on('click', h.onSurferChase);
     const soundFolder = this.pane.addFolder({ title: 'Sound', expanded: false });

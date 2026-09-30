@@ -15,6 +15,7 @@ A surfing game built for the love of it. The first (and only) break is **The Wom
 - **Ellensbrook Bombie:** about 450 m south-west, it goes off on its own waves on big days (6 ft and up). It's atmospheric background, not surfable.
 - **The surfers:** Shazza and T-Bone, late teens, built from MakeHuman's licence-free bodies, with a thruster, a step-up and a bodyboard. They dress for the season (boardies and bikinis in summer, springsuits and a rash vest either side, steamers in winter) and hold every key pose, backside and frontside. For now they're posed on the water with the dev panel's Surfer folder; riding comes next.
 - **Grommet:** Bradley, 13, the crew's bodyboarder: a wild ginger mop, thick black rectangular glasses (on land only), buck teeth, freckles and pimples. He rides only his bodyboard.
+- **Up close and alive:** all three hold up a metre from the camera. They have real lashes, eyes that look about, pores, blush, T-Bone's stubble, Grommet's lenses shrinking his eyes, and dry hairstyles on land (Shazza's long beach waves, T-Bone's tousled crop). They blink, glance around, breathe (harder after paddling), squint into the sun and smile in their own way; sitting, they look around.
 - **Sound:**
   - lip impacts heard a beat after you see them, the white water's roar, and the shore break;
   - the Bombie's boom, wind in the scrub, lapping and swash;
@@ -79,7 +80,8 @@ Settings are remembered between visits.
   - the track playing, with music play/pause and next track.
 - **Surfer:** show the surfer, then pick who (Shazza (Sharon), T-Bone (Tom) or Grommet (Bradley)), regular or goofy, the board, the outfit (or the season's) and the pose.
   - The board list shows only what that rider can ride: Grommet rides only his bodyboard, and a surfboard in an old link or setting switches to it.
-  - **On land** puts Grommet's glasses on and dries everyone's skin and hair (his curls loosen); off, they're wet from the water.
+  - **On land** puts Grommet's glasses on and dries everyone's skin and hair (his curls loosen, Shazza and T-Bone change to their dry hairstyles); off, they're wet from the water.
+  - **Face:** idle life on or off, and a manual face (blink, smile, jaw, brows, squint and gaze dials) for looking closely.
   - The "wearing" readout says what the season picked.
   - Heading turns the board, and the dials offset the pose: phase, compression, lean, twist and reach.
   - Play runs the paddle stroke (and the bodyboard's kick) and the pop-up from the clock; turn it off to scrub the phase by hand.
