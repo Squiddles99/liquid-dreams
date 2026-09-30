@@ -287,6 +287,8 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
 /** impactHeight's scan (× the wave's H: the first place the tube's point comes down onto the water) and bisections. */
 export const IMPACT_SCAN: readonly number[] = [1, 1.25, 1.5, 1.75, 2];
 export const IMPACT_BISECT = 10;
+/** impactHeight's sheet reads after the first: steps from the last read's u (the first read takes sheetYAt's four). */
+export const SHEET_WARM_STEPS = 2;
 
 /**
  * The fits' wave height H_I for this crest: Pick & Feddersen normalise by the crest's height above the water the jet
@@ -306,7 +308,17 @@ export function impactHeight(base: (u: number) => Vec2, K: Vec2, H: number, psi:
   const xiTop = tubeTopXi(t1), top1 = tubeUpper(t1, xiTop), pt1 = tubeUpper(t1, 1);
   const tTop1 = (unit.AJ * (1 + LIP_TAPER_POWER)) / Math.max(tubeUpperArc(t1, xiTop, 1), 1e-9);
   const px = pt1[0] - tubeBackMostX(t1), py = pt1[1] - top1[1] - tTop1, x0 = K[0] + TUBE_BACK_AHEAD_H * H;
-  const above = (hi: number): number => K[1] + hi * py - sheetYAt(base, K, x0 + hi * px);
+  // The sheet's height along the search, each read warm-started from the last one's u (the points are close: the scan's
+  // steps, then the bisection's), so it needs SHEET_WARM_STEPS steps, not sheetYAt's four (final review I3: the frame
+  // pass's surface reads).
+  let wu = 0, wx = 0, warm = false;
+  const yAt = (x: number): number => {
+    let u = warm ? wu + (x - wx) : x - K[0], q = base(u);
+    for (let i = 0, n = warm ? SHEET_WARM_STEPS : 4; i < n; i++) { u += x - q[0]; q = base(u); }
+    wu = u; wx = x; warm = true;
+    return q[1];
+  };
+  const above = (hi: number): number => K[1] + hi * py - yAt(x0 + hi * px);
   let lo = -1, hi = -1, prev = above(IMPACT_SCAN[0] * H);
   for (let i = 1; i < IMPACT_SCAN.length && lo < 0; i++) {
     const g = above(IMPACT_SCAN[i] * H);

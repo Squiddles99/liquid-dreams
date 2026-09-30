@@ -2,7 +2,7 @@ import { type BreakParams, ONSET_RECORD_LENGTH, breakingRatio, landingEstimate, 
 import type { FieldSample } from './fieldSample';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
-import { type ReefField, sampleField, sampleOnset } from './reefField';
+import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, TAPER_NEAR_M, type WaveContext, localHeight, phaseXi } from './setWaveModel';
 
 /**
@@ -110,7 +110,8 @@ export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: nu
 export function stationPsi(field: ReefField, w: ActiveWave, x: number, z: number, input: TraceInput): number {
   const rec = sampleOnset(field, x, z, onsetScratch);
   if (!rec) return PSI_NORMAL;
-  return effectivePsi(onsetPsi(rec, 0, w.heightM, input.params), { drain: w.drainFactor ?? 1, draw: w.throwDraw ?? 0 }, input.params);
+  const psi = effectivePsi(onsetPsi(rec, 0, w.heightM, input.params), { drain: w.drainFactor ?? 1, draw: w.throwDraw ?? 0 }, input.params);
+  return PSI_NORMAL + (psi - PSI_NORMAL) * psiEdgeFade(field.grid, x, z);
 }
 
 /** Whether a station still draws: before breaking, from the ribbon's onset ratio; after, until the (estimated) hand-back. */

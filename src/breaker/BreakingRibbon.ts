@@ -683,7 +683,9 @@ export class BreakingRibbon {
       // it has left its home (after the landing).
       const st = sampleTargetNode(j, f, home);
       const target = float(st.target).toVar();
-      const dT = vec3(smooth(S.add(n.mul(target)))).toVar();
+      // At home (every sample until the lip lands, and the edges always) the base at the target is the one at home.
+      const dT = vec3(d).toVar();
+      If(target.notEqual(home), () => { dT.assign(smooth(S.add(n.mul(target)))); });
       const baseTarget = vec2(target.add(dot(dT.xz, n)), dT.y).toVar();
       const p = profilePointNode(j, f, baseTarget, home, st.c);
       const pos = vec2(p.pos).toVar();

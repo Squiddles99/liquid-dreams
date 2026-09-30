@@ -40,7 +40,9 @@ export function tubeUpperNormal(t: Tube, xi: number): Vec2 {
   const x = Math.min(1, Math.max(TUBE_XI_EPS, xi));
   const dh = LH82_K * t.W * ((1 - x) / (2 * Math.sqrt(x)) - Math.sqrt(x));
   const T: Vec2 = [t.d[0] * t.L + t.n[0] * dh, t.d[1] * t.L + t.n[1] * dh];
-  const l = Math.hypot(T[0], T[1]) || 1;
+  const l = Math.hypot(T[0], T[1]);
+  // A tube of no size (W = L = 0): the tube's own n (the cap's angle reads this normal; atan2(0, 0) is undefined on the GPU).
+  if (!(l > 0)) return [t.n[0], t.n[1]];
   let nr: Vec2 = [-T[1] / l, T[0] / l];
   if (nr[0] * t.n[0] + nr[1] * t.n[1] < 0) nr = [-nr[0], -nr[1]];
   return nr;

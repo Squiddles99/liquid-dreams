@@ -1,4 +1,5 @@
 import type { Bathymetry } from '../seabed/bathymetry';
+import { smoothstep } from '../math/smoothstep';
 import type { GridSpec } from '../seabed/wombReef';
 import { BREAKING_RATIO, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, breakingDepth, onsetLevelHeight } from './breaking';
 import { AMP_CAP, type FarField, computeFarField, farSample } from './coastFarField';
@@ -413,6 +414,14 @@ function computeOnsetRecord(f: {
     }
   }
   return out;
+}
+
+/** Over this distance inside the reef grid's edge a crest's ψ eases to PSI_NORMAL, the value off the grid (final review I2). */
+export const PSI_EDGE_FADE_M = 25;
+/** 0 at the reef grid's edge (and outside it), 1 from PSI_EDGE_FADE_M inside: the weight of the record's ψ. */
+export function psiEdgeFade(g: GridSpec, x: number, z: number): number {
+  const d = Math.min(x - g.x0, z - g.z0, g.x0 + (g.nx - 1) * g.cellM - x, g.z0 + (g.nz - 1) * g.cellM - z);
+  return smoothstep(0, PSI_EDGE_FADE_M, d);
 }
 
 /**

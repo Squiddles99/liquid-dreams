@@ -5,7 +5,7 @@ import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, 
 import { PSI_MIN, PSI_NONE, PSI_NORMAL, drainFactor, effectivePsi, withSheetShape } from './overturn';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
-import { type ReefField, sampleField, sampleOnset } from './reefField';
+import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
 
 export { BREAKING_RATIO };
 /**
@@ -90,6 +90,8 @@ export interface BreakOptions {
   /** The onset record at any world point (reefField.sampleOnset), null where there is none. Absent: none anywhere, so
    * every crest breaks on its ratio alone (breaking.lifecycle with tb undefined). */
   onset?: (x: number, z: number) => ArrayLike<number> | null;
+  /** The record ψ's weight at x, z (reefField.psiEdgeFade: 0 at the grid's edge); absent 1. */
+  edgeFade?: (x: number, z: number) => number;
   /** false: the sheet without the whitewater pile, which is the ribbon frame's sheet (the lip is thrown from the wave as it
    * stood, not from the whitewater rising under it). Absent: with it. */
   pile?: boolean;
@@ -102,7 +104,7 @@ export interface BreakOptions {
 /** Breaking on `field` with `params` and the wind's offshore speed: the field and its onset record, as the render reads them. */
 export function breakOptions(field: ReefField, params: BreakParams, offshoreMs = 0): BreakOptions {
   const rec = new Float32Array(ONSET_RECORD_LENGTH);
-  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec), offshoreMs };
+  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec), edgeFade: (x, z) => psiEdgeFade(field.grid, x, z), offshoreMs };
 }
 
 const ZERO: SetWaveResult = { eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0, pile: 0 };
@@ -214,8 +216,9 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   const lipH = rec ? onsetHeight(rec, 0, w.heightM, o.params) : null;
   // Its ψ (spec 2026-09-30-barrel-from-maths §3), read on the point's own ray as the time since onset is. Off the
   // record: PSI_NORMAL, with no game rules (plan ruling 9).
+  // Near the grid's edge it eases to PSI_NORMAL (reefField.psiEdgeFade), so a crest crossing the edge keeps its shape.
   const psi = o.force?.psi ?? (rec
-    ? effectivePsi(onsetPsi(rec, 0, w.heightM, o.params), { drain: w.drainFactor ?? 1, draw: w.throwDraw ?? 0 }, o.params)
+    ? PSI_NORMAL + (effectivePsi(onsetPsi(rec, 0, w.heightM, o.params), { drain: w.drainFactor ?? 1, draw: w.throwDraw ?? 0 }, o.params) - PSI_NORMAL) * (o.edgeFade?.(on.x, on.z) ?? 1)
     : PSI_NORMAL);
   const params = withSheetShape(o.params, psi);
   const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
