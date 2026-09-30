@@ -8,17 +8,12 @@ import { type CloudField, cloudField, cloudLight, createCloudUniforms, marchSkyN
 import { hash3 } from './cloudNoiseNodes';
 import { CloudShadow } from './CloudShadow';
 import { CloudTextures } from './CloudTextures';
+import { createRefreshState, decideRefresh } from './cloudRefresh';
 import { SKY_MAP, SKY_MAP_SMALL, SLICES, SLICE_OFFSETS } from './skyMapLayout';
 import { WEATHER_PRESETS, type WeatherConditions } from './weather';
 
 type N = any;
 
-/** The whole sky map is re-marched at once after the sun moves this far (a time scrub), not slice by slice. */
-const FULL_REFRESH_SUN_RAD = (0.5 * Math.PI) / 180;
-/** …or after a jump in sim time (a moment link, a scrub of the clock). */
-const FULL_REFRESH_TIME_S = 2;
-/** …or after the camera jumps this far (the map is centred on it). */
-const FULL_REFRESH_CAMERA_M = 200;
 /** Air extinction at cloud heights as a fraction of sea level's (Mie haze thins fast above ~1 km). */
 const CLOUD_AIR_FRACTION = 0.6;
 
@@ -46,15 +41,10 @@ export class Clouds {
   private readonly sunPass: THREE.ComputeNode;
   private readonly clearPasses: THREE.ComputeNode[];
   private frame = 0;
-  private dirty = true;
   private active = false;
   private cleared = false;
-  private readonly lastSun = new THREE.Vector3(0, -2, 0);
-  private readonly lastCamera = new THREE.Vector3(1e9, 0, 0);
-  private lastTimeS = Number.NaN;
-  private readonly lastSliceSun = new THREE.Vector3(0, -2, 0);
-  /** Slices still to march after the clouds or the sun last moved: a paused, still sky stops marching once settled. */
-  private settle = 0;
+  /** What to march each frame (cloudRefresh.decideRefresh): all after a jump, slices while anything moves. */
+  private readonly refresh = createRefreshState();
 
   constructor(private readonly sky: Sky) {
     this.field = cloudField(this.u, this.textures);
@@ -123,12 +113,12 @@ export class Clouds {
     u.windDir.value.set(d.x, d.z);
     this.textures.setSeed(seed);
     this.sky.setFog(fogExtinctionPerM(w.visibilityKm), w.fogTopM);
-    this.dirty = true;
+    this.refresh.dirty = true;
   }
 
   /** Force a full re-march on the next update (the self-tests; a moment applied). */
   invalidate(): void {
-    this.dirty = true;
+    this.refresh.dirty = true;
   }
 
   get hasClouds(): boolean {
@@ -136,7 +126,13 @@ export class Clouds {
     return w.lowCover > 0 || w.midCover > 0 || w.highCover > 0;
   }
 
+  /**
+   * The sky's tables first (the march reads the transmittance table and the clear sky light: marched before them, the
+   * clouds were lit by the last frame's sun, or black on the first frame, and a paused map never repaired it; final
+   * review C1), then the clouds, the shadow and the sky light through them.
+   */
   update(renderer: THREE.WebGPURenderer, sunDir: THREE.Vector3, camera: THREE.Vector3, simTimeS: number): void {
+    this.sky.update(renderer, sunDir, camera.y);
     // The haze dims the sun reaching the sea (a sun in sea mist is a pale disk); below the horizon the atmosphere rules.
     const w = this.weather;
     this.shadow.fogSun.value = sunDir.y > 0.01 ? Math.exp(-fogOpticalDepth(0, sunDir.y, 1e6, fogExtinctionPerM(w.visibilityKm), w.fogTopM)) : 1;
@@ -148,6 +144,7 @@ export class Clouds {
       }
       this.active = false;
       this.cleared = true;
+      this.refresh.dirty = true; // cloud coming back marches it all
       return;
     }
     this.active = true;
@@ -161,23 +158,15 @@ export class Clouds {
     u.camera.value.copy(camera);
     u.airExtinction.value.copy(this.sky.seaLevelExtinction.value).multiplyScalar(CLOUD_AIR_FRACTION * 1e-3);
 
-    const timeJump = !(Math.abs(simTimeS - this.lastTimeS) <= FULL_REFRESH_TIME_S);
-    if (this.dirty || timeJump || this.lastSun.angleTo(sunDir) > FULL_REFRESH_SUN_RAD || this.lastCamera.distanceTo(camera) > FULL_REFRESH_CAMERA_M) {
+    const step = decideRefresh(this.refresh, { simTimeS, sun: [sunDir.x, sunDir.y, sunDir.z], camera: [camera.x, camera.y, camera.z] });
+    if (step === 'none') return; // nothing moving: the map is already right
+    if (step === 'full') {
       renderer.compute(this.marchAllPass);
       this.shadow.update(renderer, true);
-      this.lastSun.copy(sunDir);
-      this.lastCamera.copy(camera);
-      this.dirty = false;
-      this.settle = 0;
     } else {
-      if (simTimeS !== this.lastTimeS || !this.lastSliceSun.equals(sunDir)) this.settle = SLICES;
-      if (this.settle === 0) return; // paused with nothing moving: the map is already right
       this.marchSlice(renderer, this.frame++ % SLICES);
       this.shadow.update(renderer, false);
-      this.settle--;
     }
-    this.lastTimeS = simTimeS;
-    this.lastSliceSun.copy(sunDir);
     renderer.compute([this.downsamplePass, this.sunPass]);
     this.sky.refreshSkyLight(renderer);
   }

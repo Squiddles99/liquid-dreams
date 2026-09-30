@@ -9,6 +9,11 @@ import { Clouds } from './Clouds';
 import { CloudTextures, SHAPE_SIZE, WEATHER_SIZE } from './CloudTextures';
 import { WEATHER_PRESETS, type WeatherConditions } from './weather';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
+import { buildBathymetry } from '../seabed/bathymetry';
+import { Seabed } from '../seabed/Seabed';
+import { createWaterOpticsUniforms } from '../ocean/waterShading';
+import { DEFAULT_WATER_OPTICS } from '../ocean/waterOptics';
+import { waterVolumeColourNode } from '../ocean/WaterVolume';
 
 type N = any;
 
@@ -330,5 +335,44 @@ registerSelfTest({
     // Andrew's fondest mornings are sunlit, with cumulus about: at the low 08:15 sun a deep cumulus layer shades
     // nearly everything, so the default's morning cumulus are shallow (humilis), as real ones are before they tower.
     return { pass: lit > 0.5 && lit < 0.9, detail: `${(lit * 100).toFixed(0)}% of the 8 km around the break in sun` };
+  },
+});
+
+// ---- Final review fixes ----
+
+registerSelfTest({
+  name: 'clouds: a fresh sky marched in the App order is lit (final review C1: stale or empty sky tables)',
+  async run(renderer) {
+    // The App's first frame: nothing has updated the sky yet; the clouds update first.
+    const sky = new Sky();
+    const clouds = new Clouds(sky);
+    clouds.setWeather(WEATHER_PRESETS.overcast, 2002);
+    clouds.update(renderer, MORNING_SUN, new THREE.Vector3(-25, 2, 45), 30);
+    const v = await readFloats(renderer, 3, (i: N) => (texture(sky.skyMap, vec2(0.5, 0.8)).level(float(0)) as N).element(i));
+    const lum = 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+    return { pass: lum > 0.05, detail: `overcast cloud light at 55° up: ${fmt(v)} (luminance ${lum.toFixed(3)})` };
+  },
+});
+
+registerSelfTest({
+  name: 'clouds: under overcast the water is dimmer from below too (final review I2)',
+  async run(renderer) {
+    const seabed = new Seabed(buildBathymetry());
+    const u = createWaterOpticsUniforms(DEFAULT_WATER_OPTICS);
+    // Looking along the water and down at the reef, 3 m under.
+    const look = async (w: Readonly<WeatherConditions>): Promise<number> => {
+      const { sky } = await skyRig(renderer, w);
+      const v = await readFloats(renderer, 6, (i: N) => {
+        const dir = select(i.lessThan(uint(3)), vec3(1, 0, 0), vec3(0, -1, 0));
+        const c: N = waterVolumeColourNode(vec3(0, -3, 0), dir, seabed, sky, u);
+        const k = i.mod(uint(3));
+        return select(k.equal(uint(0)), c.x, select(k.equal(uint(1)), c.y, c.z));
+      });
+      return 0.2126 * (v[0] + v[3]) + 0.7152 * (v[1] + v[4]) + 0.0722 * (v[2] + v[5]);
+    };
+    const clear = await look(WEATHER_PRESETS.clear);
+    const over = await look(WEATHER_PRESETS.overcast);
+    // Above the water the overcast global light is ~0.35× a clear morning's; the water under it should follow.
+    return { pass: over / clear < 0.6, detail: `underwater luminance under overcast ${(over / clear).toFixed(2)}× clear` };
   },
 });

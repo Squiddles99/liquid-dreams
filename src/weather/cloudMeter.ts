@@ -33,6 +33,9 @@ export class CloudMeter {
   private target = 0;
   private sinceRead = READ_INTERVAL_S;
   private pending = false;
+  /** Bumped by snapNext: a read issued before it is stale and ignored. */
+  private generation = 0;
+  private snap = false;
 
   constructor(private readonly skyLight: THREE.StorageBufferAttribute, private readonly cloudSun: THREE.StorageBufferAttribute) {}
 
@@ -40,24 +43,34 @@ export class CloudMeter {
     if (!hasClouds) {
       this.target = 0;
       this.sunVisible = 1;
+      if (this.snap) { this.stops = 0; this.snap = false; }
     } else {
       this.sinceRead += dtS;
       if (this.sinceRead >= READ_INTERVAL_S && !this.pending) {
         this.sinceRead = 0;
         this.pending = true;
+        const generation = this.generation;
         void Promise.all([renderer.getArrayBufferAsync(this.skyLight), renderer.getArrayBufferAsync(this.cloudSun)]).then(([a, b]) => {
+          if (generation !== this.generation) return;
           const f = new Float32Array(a), s = new Float32Array(b);
           const cloudy: Rgb = [f[0], f[1], f[2]], sun: Rgb = [f[4], f[5], f[6]], clear: Rgb = [f[8], f[9], f[10]];
           this.sunVisible = s[0];
           this.target = exposureCloudStops(meterLuminance(sun, sunY, 1, clear), meterLuminance(sun, sunY, s[0], cloudy));
-        }).finally(() => { this.pending = false; });
+          if (this.snap) { this.stops = this.target; this.snap = false; }
+        }).finally(() => { if (generation === this.generation) this.pending = false; });
       }
     }
     this.stops = easeStops(this.stops, this.target, dtS, ADAPT_STOPS_PER_S);
   }
 
-  /** Jump straight to the target (a moment applied, a capture): no adaptation to watch. */
-  settle(): void {
-    this.stops = this.target;
+  /**
+   * A moment was applied: read at once and jump to what the new sky meters, with no adaptation to watch, so a capture
+   * or link never depends on the sky before it (final review I4). Reads already in flight are dropped.
+   */
+  snapNext(): void {
+    this.generation++;
+    this.pending = false;
+    this.snap = true;
+    this.sinceRead = READ_INTERVAL_S;
   }
 }
