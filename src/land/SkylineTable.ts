@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { PI, asin, atan, clamp, dot, float, floor, int, length, max, mod, normalize, select, smoothstep, uniform, uniformArray, vec2, vec3 } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
 import type { LandHeight } from './landHeight';
-import { SKYLINE_BEARINGS, SKYLINE_EDGE_RAD, SKYLINE_MOVE_M, skylineTable } from './skyline';
+import { SKYLINE_BEARINGS, SKYLINE_EDGE_RAD, SKYLINE_HORIZON_SPREAD_RAD, SKYLINE_MOVE_M, skylineTable } from './skyline';
 
 type N = any;
 
@@ -32,19 +32,36 @@ export class SkylineTable {
   /** How much of reflected ray r from world point p hits the land, and the land's radiance there. */
   reflectionNode(p: N, r: N, sky: Sky): { cover: N; radiance: N } {
     const deg = atan(r.x, r.z.negate()).mul(180.0 / Math.PI);
-    const idx = int(mod(floor(deg.add(0.5)).add(360.0), 360.0));
-    const entry = this.entries.element(idx);
     const dirH = normalize(vec2(r.x, r.z));
     const along = dot(p.xz.sub(this.eye.xz), dirH);
-    const dist = max(entry.x.sub(along), 10.0);
-    const sk = atan(entry.y.sub(p.y).div(dist));
-    const rElev = asin(clamp(r.y, -1.0, 1.0));
-    // No land where there's no skyline, or for water beyond the skyline point along the bearing (final review I2).
-    const cover = select(entry.x.greaterThan(0.0).and(along.lessThan(entry.x)), float(1.0).sub(smoothstep(sk.sub(SKYLINE_EDGE_RAD), sk.add(SKYLINE_EDGE_RAD), rElev)), float(0.0));
+    // A ray the waves send at or below the horizon sees the band just above it, so its land edge widens to
+    // SKYLINE_HORIZON_SPREAD_RAD (skyline.ts landCover). A sharp edge there counted every such ray as land, even under
+    // a 2 m spit: the reflection ran deep under the headland tips and stopped dead past them.
+    const rElev = asin(clamp(r.y, 0.0, 1.0));
+    const edge = max(2 * SKYLINE_EDGE_RAD, float(SKYLINE_HORIZON_SPREAD_RAD).sub(rElev));
+    // Blend the two whole-degree bearings either side of the ray: the nearest alone cut a headland's reflection off
+    // along one bearing, a hard vertical line down the water past the tip.
+    const b0 = floor(deg);
+    const f = deg.sub(b0);
+    const bin = (b: N) => {
+      const entry = this.entries.element(int(mod(b.add(360.0), 360.0)));
+      const dist = max(entry.x.sub(along), 10.0);
+      const sk = atan(entry.y.sub(p.y).div(dist));
+      // No land where there's no skyline, or for water beyond the skyline point along the bearing (final review I2).
+      const c = select(entry.x.greaterThan(0.0).and(along.lessThan(entry.x)), float(1.0).sub(smoothstep(sk.sub(edge), sk, rElev)), float(0.0));
+      return { c, dist, rise: entry.y.sub(p.y) };
+    };
+    const lo = bin(b0), hi = bin(b0.add(1.0));
+    const wLo = lo.c.mul(float(1.0).sub(f)), wHi = hi.c.mul(f);
+    const cover = wLo.add(wHi);
+    // The land's distance and rise for its haze, weighted by how much of each bearing's land the ray sees.
+    const w = wHi.div(max(cover, 1e-4));
+    const dist = lo.dist.mul(float(1.0).sub(w)).add(hi.dist.mul(w));
+    const rise = lo.rise.mul(float(1.0).sub(w)).add(hi.rise.mul(w));
     const l = sky.sunDirection;
     const face = normalize(vec3(r.x.negate().mul(0.97), 0.26, r.z.negate().mul(0.97)));
     const lum = REFLECT_ALBEDO.mul(sky.skyIrradiance.mul(0.7).add(sky.sunIlluminance.mul(max(dot(face, l), 0.0)))).div(PI);
-    const radiance = sky.applyAerialPerspective(lum, length(vec2(dist, entry.y.sub(p.y))), normalize(r));
+    const radiance = sky.applyAerialPerspective(lum, length(vec2(dist, rise)), normalize(r));
     return { cover, radiance };
   }
 }
