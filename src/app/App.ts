@@ -437,6 +437,9 @@ export class App {
     // The rebuild clears foam too, but a moment is a jump in sim time even when the sea is unchanged.
     this.ocean.resetFoam();
     this.invalidateParticles();
+    // The sky is part of the moment: march all of it, and meter it afresh (no easing from the sky before).
+    this.clouds.invalidate();
+    this.cloudMeter.snapNext();
     this.ribbonKey = null;
     this.panel.refresh();
   }
@@ -1156,10 +1159,10 @@ export class App {
     const sun = sunForConditions(this.conditions);
     this.sunDir.set(...sun.direction);
     this.clouds.setWeather(this.conditions.weather, this.conditions.seed);
+    // Brings the sky's tables up to date first, then marches the clouds through them.
     this.clouds.update(this.renderer, this.sunDir, this.camera.position, this.clock.simTime);
     this.cloudMeter.update(this.renderer, realDt, this.sunDir.y, this.clouds.hasClouds);
     this.picture.setCloud(this.cloudMeter.stops, this.cloudMeter.sunVisible);
-    this.sky.update(this.renderer, this.sunDir, this.camera.position.y);
     this.land.update(this.renderer, sun.direction, this.camera.position);
     this.updateBeach();
     this.sky.followCamera(this.camera.position);
