@@ -65,3 +65,40 @@ registerSelfTest({
     };
   },
 });
+
+registerSelfTest({
+  name: "face: Grommet's minus lenses make his eyes look smaller (closeup spec §4.2, ruling 3)",
+  async run(renderer) {
+    const s = await Surfer.load(PRESETS.grommet, litSky(renderer));
+    s.setFace(restingFace());
+    const glasses = s.group.getObjectByProperty('name', 'grommet_glasses')!;
+    s.setOnLand(false);
+    const bare = await eyePixels(renderer, s);
+    s.setOnLand(true);
+    glasses.visible = false; // the frames and lenses themselves aren't counted, only what the eye looks like
+    const behind = await eyePixels(renderer, s);
+    s.setOnLand(false);
+    return { pass: bare > 400 && behind < 0.9 * bare, detail: `his eye ${bare} px bare → ${behind} px behind the lens (${((100 * behind) / bare).toFixed(0)}%)` };
+  },
+});
+
+registerSelfTest({
+  name: "face: Grommet's grin shows his buck teeth (closeup spec §3, §5.1)",
+  async run(renderer) {
+    const s = await Surfer.load(PRESETS.grommet, litSky(renderer));
+    s.setOnLand(false);
+    const mouth = v3(s.landmarks!.lipFront);
+    const from = mouth.clone().add(new THREE.Vector3(0, 0, 0.3));
+    const teeth = s.group.getObjectByProperty('name', 'grommet_teeth')!;
+    const shown = async (): Promise<number> => {
+      const a = await renderCloseUp(renderer, s, mouth, from, 12);
+      teeth.visible = false;
+      const b = await renderCloseUp(renderer, s, mouth, from, 12);
+      teeth.visible = true;
+      return changedPixels(a, b);
+    };
+    s.setFace({ ...restingFace(), smile: 0.5 });
+    const grin = await shown();
+    return { pass: grin > 80, detail: `${grin} teeth px at his resting grin` };
+  },
+});

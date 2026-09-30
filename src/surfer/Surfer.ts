@@ -41,6 +41,9 @@ export class Surfer {
   readonly idle: IdleLife;
   /** 1 pores on, 0 off (the pores self-test compares). */
   readonly pores = uniform(1);
+  /** Grommet's lenses: on with his glasses, and the head's turn from rest (closeup spec §4.2). */
+  private readonly lensOn = uniform(0);
+  private readonly headTurn = uniform(new THREE.Matrix3());
   /** The face's landmarks from the build (glTF axes, metres, rest pose; all three riders since step 2). */
   readonly landmarks: SurferManifest['landmarks'];
 
@@ -73,16 +76,18 @@ export class Surfer {
     // The head's centre at rest (as applyPose places it), so nothing renders with a centre at the origin before the
     // first pose: the wet curls' pull would drag the hair toward the feet.
     this.headCentre.value.copy(this.rest.joint.head).add(new THREE.Vector3(0, 0.09, 0.01));
+    const zones = skinZones(manifest);
+    const lens = preset.name === 'grommet' && zones ? { eyes: zones.eyes, eyeRadius: zones.eyeRadius, on: this.lensOn, turn: this.headTurn } : null;
     const materials: Record<string, () => THREE.Material> = {
-      body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones: skinZones(manifest), wet: this.wet, pores: this.pores }),
+      body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones, wet: this.wet, pores: this.pores, lens }),
       hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
       hairDry: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
-      eyes: () => eyesMaterial(sky, preset, sv, { zones: skinZones(manifest), gaze: this.gaze }),
+      eyes: () => eyesMaterial(sky, preset, sv, { zones, gaze: this.gaze, lens }),
       boardies: () => fabricMaterial(sky, preset.boardies, sv),
       glasses: () => plasticMaterial(sky, [0.012, 0.012, 0.014], sv), // black plastic
       lens: () => lensMaterial(sky, sv),
       teeth: () => teethMaterial(sky, sv),
-      lashes: () => lashesMaterial(sky, sv),
+      lashes: () => lashesMaterial(sky, sv, lens),
     };
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -140,6 +145,7 @@ export class Surfer {
     const look = landLook(on);
     this.wet.value = look.wet;
     for (const g of this.glasses) g.visible = look.glasses;
+    this.lensOn.value = look.glasses && this.glasses.length > 0 ? 1 : 0;
     const dry = hairShown(on, this.hairDry.length > 0) === 'dry';
     for (const h of this.hairWet) h.visible = !dry;
     for (const h of this.hairDry) h.visible = dry;
@@ -162,6 +168,7 @@ export class Surfer {
   applyPose(p: SolvedPose): void {
     // The head's centre: 9 cm up and 1 cm forward of the head joint, turned with the head (its world rotation over rest).
     const turn = p.world.head.clone().multiply(this.rest.restQ.head.clone().invert());
+    this.headTurn.value.setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(turn));
     this.headCentre.value.copy(p.joint.head).add(new THREE.Vector3(0, 0.09, 0.01).applyQuaternion(turn));
     for (const b of BONES) if (b !== 'root') this.bones[b].quaternion.copy(p.local[b]);
     this.bones.pelvis.position.copy(p.pelvisWorld.clone().sub(p.joint.root).applyQuaternion(p.world.root.clone().invert()));
