@@ -48,6 +48,7 @@ import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmo
 import { Sky } from '../sky/Sky';
 import { Clouds } from '../weather/Clouds';
 import { CloudMeter } from '../weather/cloudMeter';
+import { combineSunlight } from '../weather/CloudShadow';
 import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesBetween, wavesNear } from '../swell/sets';
 import { CoastalSurf } from '../surf/CoastalSurf';
 import { DEFAULT_SURF_PARAMS, type SurfParams, normalizeSurfParams } from '../surf/surfModel';
@@ -162,6 +163,8 @@ export class App {
   readonly seabed = new Seabed(buildBathymetry(this.reefParams));
   /** The land behind the Womb (Phase 4a spec 2026-09-28-the-view-back-design.md); landless until its file loads. */
   readonly land = new Land(this.sky);
+  /** The sun reaching a point: the ridge's shade (the land's sunlight map) times the clouds' shadow. */
+  readonly sunlight = combineSunlight(this.land.sunlight, this.clouds.shadow);
   private landTimer: number | undefined;
   /** On the beach (Phase 4c-1): the fine ground at your feet and the 3D rocks, from the land once it loads. */
   readonly patch: GroundPatch;
@@ -199,9 +202,9 @@ export class App {
   private sprayTimer: number | undefined;
   private foamOnlyTimer: number | undefined;
   /** Offshore spray off the throwing lips (spec 2026-09-27-offshore-spray-design.md). */
-  readonly spray = new SprayParticles(this.sky, undefined, this.land.sunlight);
+  readonly spray = new SprayParticles(this.sky, undefined, this.sunlight);
   /** The impact explosion where each lip lands (spec 2026-09-28-impact-explosion-design.md), on the same particle system. */
-  readonly impact = new SprayParticles(this.sky, IMPACT_KIND, this.land.sunlight);
+  readonly impact = new SprayParticles(this.sky, IMPACT_KIND, this.sunlight);
   private impactTimer: number | undefined;
   /** This frame's emitters per tick, shared by the spray and the explosion (their replays cover different tick counts). */
   private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[] }>();
@@ -222,7 +225,7 @@ export class App {
   private lensQuiet = false;
   private lensClockS = 0;
   /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
-  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField, sunlight: this.land.sunlight, skyline: this.land.skyline });
+  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
   private ribbonMinHeightM = Infinity;
   /** The field's wave context (made once per field, outside the timed trace). */
@@ -264,10 +267,12 @@ export class App {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
     this.scene.add(this.waterVolume.mesh);
-    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.land.sunlight, skyline: this.land.skyline, surf: this.surf });
+    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline, surf: this.surf });
     this.land.setWetHeight((xz) => this.seabed.tide.add(this.surf.wetLevelNode(xz.y)));
+    // The land's own material reads the ridge's shade; the clouds' shadow falls on it too.
+    this.land.setSunVisibility((xz) => this.sunlight.visibilityNode(xz));
     this.scene.add(this.oceanSurface.mesh);
-    this.bombie = new BombieMesh(this.surfaceModel, this.sky, (xz) => this.land.sunlight.visibilityNode(xz));
+    this.bombie = new BombieMesh(this.surfaceModel, this.sky, (xz) => this.sunlight.visibilityNode(xz));
     this.scene.add(this.bombie.mesh);
     this.scene.add(this.ribbon.mesh);
     this.scene.add(this.spray.mesh);
@@ -275,13 +280,13 @@ export class App {
     this.scene.add(this.impact.mesh);
     this.scene.add(this.land.mesh);
     this.patch = new GroundPatch(this.sky, this.land.look, {
-      sunVisibility: (xz) => this.land.sunlight.visibilityNode(xz),
+      sunVisibility: (xz) => this.sunlight.visibilityNode(xz),
       wetHeight: (xz) => this.seabed.tide.add(this.surf.wetLevelNode(xz.y)),
       plantFloor: this.plantFloor,
     });
     this.land.setHole(this.patch.hole);
-    this.rocks = new Rocks(this.sky, (xz) => this.land.sunlight.visibilityNode(xz));
-    this.plants = new PlantMeshes(this.sky, (xz) => this.land.sunlight.visibilityNode(xz));
+    this.rocks = new Rocks(this.sky, (xz) => this.sunlight.visibilityNode(xz));
+    this.plants = new PlantMeshes(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     for (const m of this.plants.meshes) this.scene.add(m);
     this.land.setPlantFloor(this.plantFloor);
     this.scene.add(this.patch.mesh);

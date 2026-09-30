@@ -233,3 +233,45 @@ registerSelfTest({
     };
   },
 });
+
+// ---- Cloud shadows (plan Task 6) ----
+
+/** The shadow map's visibility on a 64×64 grid over the middle 8 km (offset by `shift` m in x). */
+function shadowGrid(renderer: THREE.WebGPURenderer, clouds: Clouds, shift = 0): Promise<Float32Array> {
+  return readFloats(renderer, 64 * 64, (i: N) => {
+    const xz = vec2(float(i.mod(uint(64))), float(i.div(uint(64)))).add(0.5).mul(125.0).sub(4000.0).add(vec2(shift, 0));
+    return clouds.shadow.visibilityNode(xz);
+  });
+}
+
+registerSelfTest({
+  name: 'clouds: shadows: none under a clear sky, nearly all under overcast, patches under scattered cumulus (40° sun)',
+  async run(renderer) {
+    const clear = await shadowGrid(renderer, (await skyRig(renderer, WEATHER_PRESETS.clear)).clouds);
+    const over = await shadowGrid(renderer, (await skyRig(renderer, WEATHER_PRESETS.overcast)).clouds);
+    // Patchiness at a 40° sun: at the morning's 8.5° a ray crosses ~13 km of the cumulus layer and nearly always meets
+    // a cloud (89% shaded, as on a real low-sun morning), which says nothing about the shadows being patches.
+    const midSun = new THREE.Vector3(0.6, Math.sin(40 * DEG), -0.4).normalize();
+    const scat = await shadowGrid(renderer, (await skyRig(renderer, WEATHER_PRESETS.scattered, midSun)).clouds);
+    const lit = Array.from(scat).filter((v) => v > 0.9).length / scat.length;
+    const shaded = Array.from(scat).filter((v) => v < 0.3).length / scat.length;
+    const pass = Math.min(...clear) === 1 && mean(over) < 0.1 && lit > 0.2 && shaded > 0.05;
+    return { pass, detail: `clear min ${Math.min(...clear).toFixed(3)}; overcast mean ${mean(over).toFixed(3)}; scattered ${(lit * 100).toFixed(0)}% sunlit, ${(shaded * 100).toFixed(0)}% shaded` };
+  },
+});
+
+registerSelfTest({
+  name: 'clouds: shadows drift downwind with the wind aloft',
+  async run(renderer) {
+    const w = WEATHER_PRESETS.scattered; // from 270° at 10 m/s: travelling +x
+    const { clouds, sky } = await skyRig(renderer, w);
+    const a = await shadowGrid(renderer, clouds);
+    // 30 s later the pattern should sit 300 m downwind.
+    clouds.update(renderer, MORNING_SUN, new THREE.Vector3(-25, 2, 45), 60);
+    sky.update(renderer, MORNING_SUN, 2);
+    const b = await shadowGrid(renderer, clouds, w.windAloftMs * 30);
+    const still = await shadowGrid(renderer, clouds);
+    const moved = mean(Array.from(a, (v, i) => Math.abs(v - b[i]))), unmoved = mean(Array.from(a, (v, i) => Math.abs(v - still[i])));
+    return { pass: moved < 0.5 * unmoved, detail: `mean |Δ| against the pattern shifted 300 m downwind ${moved.toFixed(3)}, unshifted ${unmoved.toFixed(3)}` };
+  },
+});
