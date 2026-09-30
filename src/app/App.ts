@@ -35,7 +35,7 @@ import { DEFAULT_DEBUG_OVERLAYS, type DebugOverlays, OceanSurface } from '../oce
 import { DEFAULT_SPECTRUM_PARAMS, type OceanSpectrumParams, spectrumInputsKey } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS, type WaterOpticsParams } from '../ocean/waterOptics';
 import { nextUnderwater } from '../ocean/underwaterOptics';
-import { LensWater } from '../render/lensWater';
+import { LensWater, rainLensStep } from '../render/lensWater';
 import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
@@ -48,6 +48,11 @@ import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmo
 import { Sky } from '../sky/Sky';
 import { Clouds } from '../weather/Clouds';
 import { CloudMeter } from '../weather/cloudMeter';
+import { RAIN_FALL_MS, RainStreaks } from '../weather/RainStreaks';
+import { LightningView } from '../weather/LightningView';
+import type { Strike } from '../weather/rainModel';
+import { lowLayer } from '../weather/cloudModel';
+import { travelDirectionXZ } from '../conditions/directions';
 import { combineSunlight } from '../weather/CloudShadow';
 import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesBetween, wavesNear } from '../swell/sets';
 import { CoastalSurf } from '../surf/CoastalSurf';
@@ -159,6 +164,12 @@ export class App {
   readonly clouds = new Clouds(this.sky);
   /** The exposure's cloud term: meters the light under the clouds (spec 2026-09-30 §4.6). */
   readonly cloudMeter = new CloudMeter(this.sky.luts.skyLightAttr, this.sky.cloudSunAttr);
+  /** Falling rain around the camera (weather W2). */
+  readonly rainStreaks = new RainStreaks(this.sky);
+  /** Lightning: the flash in the clouds, the bolt (weather W2). */
+  readonly lightning = new LightningView(this.sky);
+  /** Strikes fired since the sound last took them (their thunder, weather W2). */
+  private strikesPending: Strike[] = [];
   readonly ocean = new OceanSimulation(this.simParams);
   readonly seabed = new Seabed(buildBathymetry(this.reefParams));
   /** The land behind the Womb (Phase 4a spec 2026-09-28-the-view-back-design.md); landless until its file loads. */
@@ -224,6 +235,9 @@ export class App {
   /** After a moment jump, the first crossing is the jump itself, not the camera breaking the surface: no water on the lens. */
   private lensQuiet = false;
   private lensClockS = 0;
+  /** The rain's wetness on the lens (weather W2: rainLensStep). */
+  private rainLensWet = 0;
+  private readonly rainFall = new THREE.Vector3();
   /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
   readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
@@ -266,8 +280,10 @@ export class App {
   ) {
     this.input = new Input(renderer.domElement);
     this.scene.add(this.sky.dome);
+    this.scene.add(this.rainStreaks.mesh);
+    this.scene.add(this.lightning.bolt);
     this.scene.add(this.waterVolume.mesh);
-    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline, surf: this.surf });
+    this.oceanSurface = new OceanSurface(this.surfaceModel, this.sky, this.waterOptics, { footprint: { texture: this.ribbon.footprint, ...FOOTPRINT_GRID }, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline, surf: this.surf, rain: (xz) => this.clouds.field.rainRate(xz) });
     this.land.setWetHeight((xz) => this.seabed.tide.add(this.surf.wetLevelNode(xz.y)));
     // The land's own material reads the ridge's shade; the clouds' shadow falls on it too.
     this.land.setSunVisibility((xz) => this.sunlight.visibilityNode(xz));
@@ -729,7 +745,9 @@ export class App {
       bursts, bombieSize: this.bombieParams.size,
       surf: this.surf.state, waterlineX: this.land.height?.waterlineAt(cam.z) ?? null, waterY: this.probe.heightAt(0),
       plants: this.plantsNear, rocks: this.rocksNear,
+      rain: this.cloudMeter.rainHere, strikes: this.strikesPending,
     }, { position: cam, forward: this.camera.getWorldDirection(this.soundDir), up: { x: 0, y: 1, z: 0 } }, realDt);
+    this.strikesPending = [];
   }
 
   /**
@@ -1163,6 +1181,15 @@ export class App {
     this.clouds.update(this.renderer, this.sunDir, this.camera.position, this.clock.simTime);
     this.cloudMeter.update(this.renderer, realDt, this.sunDir.y, this.clouds.hasClouds);
     this.picture.setCloud(this.cloudMeter.stops, this.cloudMeter.sunVisible, this.cloudMeter.gains);
+    const windTo = travelDirectionXZ(this.conditions.wind.directionDeg), windMs = this.conditions.wind.speedMs;
+    this.rainStreaks.update(this.clock.simTime, windTo.x * windMs, windTo.z * windMs, this.cloudMeter.rainHere, this.underwater);
+    // Rain on the lens: more when looking up or into the slanting rain (the fall's reverse direction).
+    const fall = this.rainFall.set(windTo.x * windMs, -RAIN_FALL_MS, windTo.z * windMs).normalize();
+    const facing = Math.min(1, Math.max(0, 0.3 - 0.7 * this.camera.getWorldDirection(this.viewDir).dot(fall)));
+    this.rainLensWet = this.underwater ? 0 : rainLensStep(this.rainLensWet, this.cloudMeter.rainHere, facing, realDt);
+    this.lensWater.rain(this.rainLensWet);
+    this.strikesPending.push(...this.lightning.update(this.conditions.seed, this.conditions.weather.storm, this.clock.simTime,
+      lowLayer(this.conditions.weather).baseM, this.camera.position).fired);
     this.land.update(this.renderer, sun.direction, this.camera.position);
     this.updateBeach();
     this.sky.followCamera(this.camera.position);

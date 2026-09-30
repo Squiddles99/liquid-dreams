@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
+import { rainRipplesNode } from '../weather/rainRipples';
 import {
-  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, mix, mx_noise_float, normalize, positionLocal, positionWorld, saturate, smoothstep,
+  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, mix, mx_noise_float, normalize, positionLocal, positionWorld, saturate, select, smoothstep,
   textureLoad, uniform, varying, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { seabedTerms } from '../seabed/seabedShading';
@@ -132,6 +133,8 @@ export interface OceanSurfaceOptions {
   skyline?: SkylineTable;
   /** The coastal surf (Phase 4b spec 2026-09-28-the-waterline-design.md): the swash lift, the surf foam, the swash lace. */
   surf?: CoastalSurf;
+  /** The rain rate (0..1) at world xz (weather W2): rings on the water where it falls. */
+  rain?: (xz: N) => N;
 }
 
 /** True where the sheet draws: outside the footprint grid, or on a texel the mask leaves clear (≤ 0.5). */
@@ -200,7 +203,14 @@ export class OceanSurface {
     const distance = length(toCamera);
     const viewDir = toCamera.div(max(distance, 1e-4));
     const fft = model.fftSlopes(vBaseXZ, distance, this.slopeVariance);
-    const normal = sheetNormal(fft, setSlope);
+    const swellNormal = sheetNormal(fft, setSlope);
+    // Rain on the sea (weather W2): raindrop rings in the near water, fading by ~25 m where they would only sparkle.
+    // Dry, the normal is exactly the sea's own. (No roughening: the breaking ribbon near the peak has no rain yet, and
+    // a rougher sheet around it showed the ribbon's footprint as a rectangle.)
+    const rainRate = options.rain ? options.rain(vBaseXZ) : null;
+    const raining = rainRate ? rainRate.greaterThan(0.0) : null;
+    const ripple = rainRate ? rainRipplesNode(positionWorld.xz, model.sim.time, rainRate).mul(float(1.0).sub(smoothstep(8.0, 25.0, distance))) : null;
+    const normal = ripple ? select(raining, normalize(vec3(swellNormal.x.sub(ripple.x), swellNormal.y, swellNormal.z.sub(ripple.y))), swellNormal) : swellNormal;
     const sunVis = options.sunlight ? options.sunlight.visibilityNode(vBaseXZ) : undefined;
     const seabed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     // The foam map inside its box, Phase 2's placeholder outside (spec 2026-09-27-foam-field-design.md §3.2); the

@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { Fn, PI, cos, float, instanceIndex, ivec2, sin, storage, textureLoad, textureStore, uint, uniform, uvec2, uvec3, vec2, vec3, vec4 } from 'three/tsl';
+import { Fn, PI, clamp, cos, float, instanceIndex, int, ivec2, sin, storage, textureLoad, textureStore, uint, uniform, uvec2, uvec3, vec2, vec3, vec4 } from 'three/tsl';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { Sky } from '../sky/Sky';
 import { cloudDrift, lowLayer } from './cloudModel';
 import { fogExtinctionPerM, fogOpticalDepth } from './fog';
-import { type CloudField, cloudField, cloudLight, createCloudUniforms, marchSkyNode, sunTransmittanceNode } from './cloudNodes';
+import { type CloudField, cloudField, cloudLight, createCloudUniforms, marchSkyNode, rainExtinctionNode, sunTransmittanceNode } from './cloudNodes';
 import { hash3 } from './cloudNoiseNodes';
 import { CloudShadow } from './CloudShadow';
 import { CloudTextures } from './CloudTextures';
@@ -38,6 +38,12 @@ export class Clouds {
   /** Every texel at once: a uniform changed between dispatches in one frame is not seen, so no 16 slice calls. */
   private readonly marchAllPass: THREE.ComputeNode;
   private readonly downsamplePass: THREE.ComputeNode;
+  /**
+   * The march's own output, before smoothing: each texel's fixed jitter along its ray (which hides the steps' banding)
+   * showed as grain on the dome, a few screen pixels a texel. smoothPass filters it into the Sky's sky map.
+   */
+  readonly rawMap: THREE.StorageTexture;
+  private readonly smoothPass: THREE.ComputeNode;
   private readonly sunPass: THREE.ComputeNode;
   private readonly clearPasses: THREE.ComputeNode[];
   private frame = 0;
@@ -49,17 +55,23 @@ export class Clouds {
   constructor(private readonly sky: Sky) {
     this.field = cloudField(this.u, this.textures);
     this.shadow = new CloudShadow(this.u, this.field);
+    sky.attachRain((xz) => rainExtinctionNode(this.field.rainRate(xz)));
     // Lit by the clear sky above them (the cloudy sky light is what's left under them: using it would feed back).
-    const light = cloudLight(this.u, sky.luts, sky.uniforms, sky.clearSkyIrradiance);
+    const light = cloudLight(this.u, sky.luts, sky.uniforms, sky.clearSkyIrradiance, sky.hazeLight);
     const { width: W, height: H } = SKY_MAP;
     const blocks = W / 4;
+    this.rawMap = new THREE.StorageTexture(W, H);
+    this.rawMap.type = THREE.HalfFloatType;
+    this.rawMap.format = THREE.RGBAFormat;
+    this.rawMap.minFilter = this.rawMap.magFilter = THREE.NearestFilter;
+    this.rawMap.generateMipmaps = false;
     const marchTexel = (x: N, y: N): void => {
       const uv = vec2(float(x).add(0.5).div(W), float(y).add(0.5).div(H));
       const el = uv.y.mul(uv.y).mul(PI.mul(0.5)), az = uv.x.mul(PI.mul(2.0));
       const dir = vec3(cos(el).mul(cos(az)), sin(el), cos(el).mul(sin(az)));
       // A fixed per-texel offset along the ray: the steps' banding becomes fine noise the downsample averages away.
       const jitter = hash3(uvec3(x, y, uint(0))).x;
-      textureStore(sky.skyMap, uvec2(x, y), marchSkyNode(this.u, this.field, light, dir, jitter));
+      textureStore(this.rawMap, uvec2(x, y), marchSkyNode(this.u, this.field, light, dir, jitter));
     };
     this.marchPass = Fn(() => {
       const i = instanceIndex;
@@ -76,14 +88,27 @@ export class Clouds {
       const x: N = i.mod(uint(w)), y: N = i.div(uint(w));
       let sum: N = vec4(0.0);
       for (let dy = 0; dy < k; dy++) for (let dx = 0; dx < k; dx++) {
-        sum = sum.add(textureLoad(sky.skyMap, ivec2(x.mul(uint(k)).add(uint(dx)), y.mul(uint(k)).add(uint(dy))) as N));
+        sum = sum.add(textureLoad(this.rawMap, ivec2(x.mul(uint(k)).add(uint(dx)), y.mul(uint(k)).add(uint(dy))) as N));
       }
       textureStore(sky.skyMapSmall, uvec2(x, y), sum.div(k * k));
     })().compute(w * h) as THREE.ComputeNode;
 
+    // A 3×3 tent (1-2-1) over the raw march: azimuth wraps, elevation clamps.
+    this.smoothPass = Fn(() => {
+      const i = instanceIndex;
+      const x: N = int(i.mod(uint(W))), y: N = int(i.div(uint(W)));
+      let sum: N = vec4(0.0);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const wgt = (2 - Math.abs(dx)) * (2 - Math.abs(dy));
+        const xx: N = x.add(dx + W).mod(W), yy: N = (clamp as N)(y.add(dy), int(0), int(H - 1));
+        sum = sum.add((textureLoad(this.rawMap, ivec2(xx, yy)) as N).mul(wgt));
+      }
+      textureStore(sky.skyMap, uvec2(i.mod(uint(W)), i.div(uint(W))), sum.div(16));
+    })().compute(W * H) as THREE.ComputeNode;
+
     const sunOut = storage(sky.cloudSunAttr, 'vec4', 1);
     this.sunPass = Fn(() => {
-      sunOut.element(0).assign(vec4(sunTransmittanceNode(this.u, this.field), 0.0, 0.0, 1.0));
+      sunOut.element(0).assign(vec4(sunTransmittanceNode(this.u, this.field), this.field.rainRate(this.u.camera.xz), 0.0, 1.0));
     })().compute(1, [1]) as THREE.ComputeNode;
 
     const clear = (tex: THREE.StorageTexture, width: number, height: number): THREE.ComputeNode => Fn(() => {
@@ -91,8 +116,8 @@ export class Clouds {
       textureStore(tex, uvec2(i.mod(uint(width)), i.div(uint(width))), vec4(0.0));
     })().compute(width * height) as THREE.ComputeNode;
     this.clearPasses = [
-      clear(sky.skyMap, W, H), clear(sky.skyMapSmall, w, h),
-      Fn(() => { sunOut.element(0).assign(vec4(1.0)); })().compute(1, [1]) as THREE.ComputeNode,
+      clear(sky.skyMap, W, H), clear(this.rawMap, W, H), clear(sky.skyMapSmall, w, h),
+      Fn(() => { sunOut.element(0).assign(vec4(1.0, 0.0, 0.0, 1.0)); })().compute(1, [1]) as THREE.ComputeNode,
     ];
   }
 
@@ -109,6 +134,8 @@ export class Clouds {
     u.lowTop.value = layer.topM;
     u.midCover.value = w.midCover;
     u.highCover.value = w.highCover;
+    u.rain.value = w.rain;
+    this.sky.rainOn.value = w.rain > 0 ? 1 : 0;
     const d = travelDirectionXZ(w.windAloftDeg);
     u.windDir.value.set(d.x, d.z);
     this.textures.setSeed(seed);
@@ -167,7 +194,7 @@ export class Clouds {
       this.marchSlice(renderer, this.frame++ % SLICES);
       this.shadow.update(renderer, false);
     }
-    renderer.compute([this.downsamplePass, this.sunPass]);
+    renderer.compute([this.smoothPass, this.downsamplePass, this.sunPass]);
     this.sky.refreshSkyLight(renderer);
   }
 

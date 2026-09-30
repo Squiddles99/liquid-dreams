@@ -6,6 +6,7 @@ import {
 import type { AtmosphereLuts } from '../sky/AtmosphereLuts';
 import type { AtmosphereUniforms } from '../sky/atmosphereNodes';
 import { DENSITY_GAIN, DETAIL_EROSION, EARTH_RADIUS_M, TOWER_TAPER, WEAK_CELL_HEIGHT } from './cloudModel';
+import { COAST_RISE_M, COAST_X_M, SEA_RAIN } from './rainModel';
 import { type CloudTextures, DETAIL_TILE_M, SHAPE_TILE_M, WEATHER_TILE_M } from './CloudTextures';
 
 type N = any;
@@ -21,6 +22,8 @@ export const LOW_STEPS = 96;
 /** The low march's longest step: through a tall, dense cloud longer steps turn all-or-nothing (grain). */
 export const MAX_STEP_M = 100;
 export const MID_STEPS = 12;
+/** Rain shafts under the cloud base. */
+export const SHAFT_STEPS = 16;
 /** The sun's cone march: steps of 40·2^k m, 2.5 km in all. */
 export const LIGHT_STEPS = 6;
 
@@ -51,6 +54,11 @@ export function createCloudUniforms() {
     flatCoverage: uniform(0.5),
     flatShape: uniform(0.5),
     flatDetail: uniform(0),
+    flatRainCell: uniform(0.5),
+    /** Self-test hook: 0 turns the deck darkening off (to show a dry sky is untouched by it). */
+    columnOn: uniform(1),
+    /** The preset's rain rate under its rain cells (0 dry: nothing below changes). */
+    rain: uniform(0),
   };
 }
 export type CloudUniforms = ReturnType<typeof createCloudUniforms>;
@@ -96,6 +104,10 @@ const henyeyGreenstein = (cosT: N, g: number | N): N => {
 
 /** The share of sunlight a thick cloud sends back out as diffuse light, per steradian-ish (tuned by eye, spec §4.2). */
 export const DIFFUSE_SCATTER = 0.25;
+/** The average density (of the maximum) through a deck's column above a sample. */
+const COLUMN_DENSITY = 0.35;
+/** A thin stratocumulus deck's optical depth above its base (~500 m): the skylight the ambient term already gives. */
+const THIN_DECK_TAU = 17;
 /** Two-stream diffusion through a cloud of asymmetry g = 0.85: transmission ≈ 1 / (1 + 0.75 (1 − g) τ). */
 const DIFFUSION_K = 0.75 * (1 - 0.85);
 
@@ -119,7 +131,12 @@ export interface CloudField {
   mid(xz: N, h: N): N;
   /** The high sheet's optical depth where a ray meets it at world xz. */
   highDepth(xz: N): N;
+  /** The rain rate (0..1) falling at world xz (rainModel.rainRate). */
+  rainRate(xz: N): N;
 }
+
+/** rainModel.rainExtinctionPerM. */
+export const rainExtinctionNode = (rate: N): N => select(rate.greaterThan(0.0), pow(max(rate, 1e-6), 0.6).mul(2e-3), float(0.0));
 
 /** The three layers' density, sampled from the noise and weather textures (or the flat self-test values). */
 export function cloudField(u: CloudUniforms, tex: CloudTextures): CloudField {
@@ -154,6 +171,17 @@ export function cloudField(u: CloudUniforms, tex: CloudTextures): CloudField {
       const detail = select(flat, u.flatDetail, texture3D(tex.detail, vec3(xz.x.sub(u.drift.x), h, xz.y.sub(u.drift.y)).div(DETAIL_TILE_M * 4), float(0)).x);
       return cloudDensityNode(hFrac, float(0.0), select(flat, u.flatCoverage, w.w), shape, detail.mul(2.5), u.midCover);
     },
+    rainRate(xz) {
+      // rainModel.rainRate: cells or broad patches of the weather map's rain noise, under the low cloud's coverage,
+      // times the coast (Andrew: the rain mostly falls once the clouds cross the coast).
+      const w = weatherAt(xz);
+      const coverage = coverageDensityNode(select(flat, u.flatCoverage, w.x), u.lowCover);
+      const cell = select(flat, u.flatRainCell, w.z);
+      const convective = smoothstep(0.35, 0.65, u.convection);
+      const mask = mix(smoothstep(0.3, 0.7, cell), smoothstep(0.55, 0.9, cell), convective).mul(saturate(coverage));
+      const coast = mix(float(SEA_RAIN), float(1.0), smoothstep(COAST_X_M + COAST_RISE_M[0], COAST_X_M + COAST_RISE_M[1], xz.x));
+      return u.rain.mul(mask).mul(coast);
+    },
     highDepth(xz) {
       // Cirrus streaks lie along the wind aloft: noise stretched 5× along it.
       const along = dot(xz.sub(u.drift), u.windDir), across = dot(xz.sub(u.drift), vec2(u.windDir.y.negate(), u.windDir.x));
@@ -172,9 +200,11 @@ export interface CloudLight {
   sunAt(h: N): N;
   /** Skylight (RGB radiance) on the cloud at fraction hFrac through its layer: bases darker than tops. */
   ambientAt(hFrac: N): N;
+  /** The light the rain curtains scatter (RGB radiance). */
+  curtain: N;
 }
 
-export function cloudLight(u: CloudUniforms, luts: AtmosphereLuts, atm: AtmosphereUniforms, skyIrradiance: N): CloudLight {
+export function cloudLight(u: CloudUniforms, luts: AtmosphereLuts, atm: AtmosphereUniforms, skyIrradiance: N, hazeLight: N): CloudLight {
   return {
     sunAt(h) {
       const hKm = h.mul(0.001);
@@ -187,6 +217,8 @@ export function cloudLight(u: CloudUniforms, luts: AtmosphereLuts, atm: Atmosphe
     ambientAt(hFrac) {
       return skyIrradiance.div(PI).mul(mix(0.5, 1.2, saturate(hFrac)));
     },
+    // The curtains scatter the same light as the rain haze over the land (Sky.hazeLight), not the clear sky above the cloud.
+    curtain: hazeLight,
   };
 }
 
@@ -243,7 +275,16 @@ function marchLayer(
       const tau = kind === 'low' ? sunDepthNode(u, field, xz, h) : ext.mul(300.0);
       const hFrac = h.sub(base).div(top.sub(base));
       const sunLight = light.sunAt(h).mul(multiScatterNode(tau, cosT));
-      const inScatter = sunLight.add(light.ambientAt(hFrac));
+      // Under a deck, the light reaching a sample has come down through the cloud above it (two-stream transmission,
+      // 1/(1 + 0.75(1 − g)τ)), relative to a thin stratocumulus deck's (τ ≈ THIN_DECK_TAU, which the ambient term was
+      // tuned for): the same for a thin deck, half under a nimbostratus, a tenth under a storm's tower. Isolated cumulus
+      // still get the sky from the side, so it counts as the low cloud covers the sky.
+      const tauUp = kind === 'low' ? u.sigmaLow.mul(COLUMN_DENSITY).mul(top.sub(h)) : float(0.0);
+      const thick = min(float(1.0), float(1 + DIFFUSION_K * THIN_DECK_TAU).div(tauUp.mul(DIFFUSION_K).add(1.0)));
+      // Only for raining decks (nimbostratus, storms): a dry sky stays exactly as approved (W2 review I1: a grey
+      // deck's 800 m already darkened by a quarter, a look Andrew had signed off at the W1 merge).
+      const column = mix(float(1.0), thick, smoothstep(0.5, 1.0, u.lowCover).mul(smoothstep(0.0, 0.1, u.rain)).mul(u.columnOn));
+      const inScatter = sunLight.add(light.ambientAt(hFrac)).mul(column);
       L.addAssign(inScatter.mul(T).mul(float(1.0).sub(stepT)));
       depthSum.addAssign(t.mul(T).mul(float(1.0).sub(stepT)));
       T.mulAssign(stepT);
@@ -269,6 +310,28 @@ export function marchSkyNode(u: CloudUniforms, field: CloudField, light: CloudLi
   const rgb = vec3(0.0).toVar();
   const A = float(1.0).toVar();
   If(dir.y.greaterThan(-0.001), () => {
+    // Rain shafts: the grey curtains under the rain cells, between the eye and the cloud base (nearest first). Steps
+    // stretch with distance (t ∝ s²): the near shafts get the detail, the far ones on the horizon still show.
+    If(u.rain.greaterThan(0.0), () => {
+      const end = min(reachNode(camH, dir.y, u.lowBase), MAX_CLOUD_DISTANCE_M);
+      const T = float(1.0).toVar();
+      const L = vec3(0.0).toVar();
+      const depthSum = float(0.0).toVar();
+      const inScatter = light.curtain;
+      Loop(SHAFT_STEPS, ({ i }: N) => {
+        // Midpoints, not the per-texel jitter: over km-long steps the jitter showed as grain on the clouds behind.
+        const a0 = float(i).div(SHAFT_STEPS), a = float(i).add(0.5).div(SHAFT_STEPS), b = float(i).add(1.0).div(SHAFT_STEPS);
+        const t = a.mul(a).mul(end), dt = b.mul(b).sub(a0.mul(a0)).mul(end);
+        const ext = rainExtinctionNode(field.rainRate(u.camera.xz.add(dir.xz.mul(t))));
+        const stepT = exp(ext.mul(dt).negate());
+        L.addAssign(inScatter.mul(T).mul(float(1.0).sub(stepT)));
+        depthSum.addAssign(t.mul(T).mul(float(1.0).sub(stepT)));
+        T.mulAssign(stepT);
+      });
+      const f = fadeOf(depthSum.div(max(float(1.0).sub(T), 1e-4)));
+      rgb.addAssign(L.mul(f.rgb));
+      A.mulAssign(T.add(float(1.0).sub(T).mul(float(1.0).sub(f.lum))));
+    });
     If(u.lowCover.greaterThan(0.0), () => {
       const enter = reachNode(camH, dir.y, u.lowBase);
       const exit = min(reachNode(camH, dir.y, u.lowTop), MAX_CLOUD_DISTANCE_M);
