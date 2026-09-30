@@ -19,7 +19,9 @@ import { LAND_PARAM_RANGES, type LandParams } from '../land/landParams';
 import { SURF_PARAM_RANGES, type SurfParams } from '../surf/surfModel';
 import { BOMBIE_PARAM_RANGES, type BombieParams } from '../bombie/bombieParams';
 import { SOUND_PARAM_RANGES, type SoundParams } from '../sound/soundParams';
+import type { BoardKind } from '../board/boardSpec';
 import { ALL_POSES } from '../surfer/poseNames';
+import { PRESETS, type PresetName, boardsFor } from '../surfer/presets';
 import { SURFER_PARAM_RANGES, type SurferParams } from '../surfer/surferParams';
 import { WEATHER_PRESETS, WEATHER_PRESET_NAMES, WEATHER_RANGES, type WeatherConditions, type WeatherPresetName, presetOf } from '../weather/weather';
 import type { SettingsMode } from './devSettings';
@@ -209,10 +211,14 @@ export const SURFER_BINDINGS = {
   heightNudgeM: { label: 'height nudge (m)', ...SURFER_PARAM_RANGES.heightNudgeM, step: 0.01 },
   pitchNudgeDeg: { label: 'pitch nudge (°)', ...SURFER_PARAM_RANGES.pitchNudgeDeg, step: 0.5 },
 } as const;
+const BOARD_LABELS: Record<BoardKind, string> = { thruster: 'thruster', stepUp: 'step-up', bodyboard: 'bodyboard' };
+/** The crew by nickname and real name (grommet spec §6): Shazza (Sharon), T-Bone (Tom), Grommet (Bradley). */
+export const SURFER_PRESET_OPTIONS = Object.fromEntries((Object.keys(PRESETS) as PresetName[]).map((k) => [`${PRESETS[k].nickname} (${PRESETS[k].realName})`, k]));
+/** The boards the preset may ride (Grommet: only his bodyboard). */
+export const surferBoardOptions = (preset: PresetName): Record<string, BoardKind> => Object.fromEntries(boardsFor(PRESETS[preset]).map((k) => [BOARD_LABELS[k], k]));
 const SURFER_OPTIONS = {
-  preset: { female: 'female', male: 'male' },
+  preset: SURFER_PRESET_OPTIONS,
   stance: { regular: 'regular', goofy: 'goofy' },
-  board: { thruster: 'thruster', 'step-up': 'stepUp', bodyboard: 'bodyboard' },
   outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'bikini bottoms + rash vest': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer', 'boardies + rash vest': 'rashieAndBoardies' },
   pose: Object.fromEntries(ALL_POSES.map((p) => [p, p])),
 };
@@ -257,6 +263,8 @@ export class DevPanel {
   private readonly weatherPreset: ListBladeApi<WeatherPresetName | 'custom'>;
   /** True while syncWeatherPreset() moves the preset list to match the sliders, which is not a pick. */
   private settingPreset = false;
+  /** Rebuilds the Surfer folder's board list for the chosen preset (set up with the folder). */
+  private refreshSurferBoards: () => void = () => {};
 
   constructor(private readonly m: DevPanelModel, h: DevPanelHandlers) {
     // Every condition binding: refresh() also fires these, for a moment applied by a link, pick or reset.
@@ -377,7 +385,17 @@ export class DevPanel {
     bombieFolder.addBinding(m.bombie, 'thresholdFt', BOMBIE_BINDINGS.thresholdFt).on('change', h.onBombie);
     const surferFolder = this.pane.addFolder({ title: 'Surfer', expanded: false });
     surferFolder.addBinding(m.surfer, 'enabled', { label: 'surfer' }).on('change', h.onSurfer);
-    for (const key of ['preset', 'stance', 'board', 'outfit', 'pose'] as const) {
+    for (const key of ['preset', 'stance'] as const) {
+      surferFolder.addBinding(m.surfer, key, { label: key, options: SURFER_OPTIONS[key] }).on('change', h.onSurfer);
+    }
+    // The board list follows the preset: App's onSurfer repairs the board first, then refresh() rebuilds the list.
+    const boardIndex = surferFolder.children.length;
+    let boardBinding = surferFolder.addBinding(m.surfer, 'board', { label: 'board', options: surferBoardOptions(m.surfer.preset) }).on('change', h.onSurfer);
+    this.refreshSurferBoards = (): void => {
+      boardBinding.dispose();
+      boardBinding = surferFolder.addBinding(m.surfer, 'board', { label: 'board', index: boardIndex, options: surferBoardOptions(m.surfer.preset) }).on('change', h.onSurfer);
+    };
+    for (const key of ['outfit', 'pose'] as const) {
       surferFolder.addBinding(m.surfer, key, { label: key, options: SURFER_OPTIONS[key] }).on('change', h.onSurfer);
     }
     readouts.add(surferFolder.addBinding(m.surferStatus, 'outfit', { label: 'wearing', readonly: true, interval: 500 }));
@@ -386,6 +404,7 @@ export class DevPanel {
       surferFolder.addBinding(m.surfer, key, opts).on('change', h.onSurfer);
     }
     surferFolder.addBinding(m.surfer, 'play', { label: 'play (paddle, pop-up)' }).on('change', h.onSurfer);
+    surferFolder.addBinding(m.surfer, 'onLand', { label: 'on land (glasses, dry)' }).on('change', h.onSurfer);
     surferFolder.addBinding(m.surfer, 'balance', { label: 'balance layer' }).on('change', h.onSurfer);
     surferFolder.addButton({ title: 'Place ahead of camera' }).on('click', h.onSurferPlaceAhead);
     surferFolder.addButton({ title: 'Chase view' }).on('click', h.onSurferChase);
@@ -467,6 +486,7 @@ export class DevPanel {
   }
 
   refresh(): void {
+    this.refreshSurferBoards();
     this.syncNightFloorProxy();
     this.syncWindSpeedProxy();
     this.syncWeatherPreset();
