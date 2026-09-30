@@ -2,7 +2,8 @@
 
 **Date:** 2026-09-30
 **Authors:** Andrew (the brief, every answer below), Claude (the design)
-**Status:** Written after a brainstorm with Andrew. Awaiting his review before the implementation plan.
+**Status:** Approved by Andrew and built through plan Task 7. **§3.1–3.3 are superseded by
+`2026-09-30-barrel-from-maths-design.md`** (the barrel from the published equations, and the softened ledge).
 **Builds on:**
 - the barrel and whitewater pile (`2026-09-29-barrel-and-whitewater-design.md`, on this branch): the lip's cross-section
   (`lipProfile.ts`, mirrored in `lipProfileNodes.ts`), `barrelMetrics`, and the pile with its surge;
