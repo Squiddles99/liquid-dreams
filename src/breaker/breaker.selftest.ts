@@ -4,8 +4,8 @@ import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from './breaking';
-import { type ReefField, computeReefField, sampleField } from './reefField';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams, onsetPsi } from './breaking';
+import { type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import { SetWaves } from './SetWaves';
 import { type BreakOptions, breakOptions, sumWaves, toActiveWave } from './setWaveModel';
 import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
@@ -196,7 +196,9 @@ const ALT_BREAK_PARAMS: BreakParams = (() => {
   normalizeBreakParams(p);
   return p;
 })();
-const PARAM_SETS = [['default', DEFAULT_BREAK_PARAMS], ['alt', ALT_BREAK_PARAMS]] as const;
+/** The game rules on ψ away from their defaults: the random dial (each wave's own draw) and the nudge. */
+const DIAL_BREAK_PARAMS: BreakParams = { ...DEFAULT_BREAK_PARAMS, randomDial: 0.15, psiNudge: 0.2 };
+const PARAM_SETS = [['default', DEFAULT_BREAK_PARAMS], ['alt', ALT_BREAK_PARAMS], ['dial', DIAL_BREAK_PARAMS]] as const;
 const f3 = (v: number): string => v.toFixed(3);
 
 /** Tracks the worst value of one comparison, with the dt and point it came from. */
@@ -428,5 +430,31 @@ registerSelfTest({
     }
     const ok = worstOver <= 1e-5 && zeroOff && finite && nonZero > 20;
     return { pass: ok, detail: `worst |h| over its bound ${worstOver.toExponential(2)} m; zero off the pile ${zeroOff}; finite ${finite}; lumps > 2% of the pile ${nonZero}/80` };
+  },
+});
+
+registerSelfTest({
+  name: 'breaker: GPU onset psi0 matches the CPU (the pair texture, level interpolation)',
+  async run(renderer) {
+    const field = getField();
+    const sets = new SetWaves(uniform(0));
+    sets.setField(field);
+    // Where the waves break on the softened ramp too: the peak's ray 150 m seaward.
+    const seaward: [number, number][] = [];
+    { let x = 0, z = 0; for (let d = 0; d <= 150; d += 0.5) { if (Math.abs(d % 10) < 1e-9) seaward.push([x, z]); const s = sampleField(field, x, z); x -= s.dirX * 0.5; z -= s.dirZ * 0.5; } }
+    const points = [...peakRay(field), ...OFF_RAY, ...seaward];
+    let worst = 0, at = '';
+    for (const h of [REF_BIGGEST.heightM, 2 * REF_BIGGEST.heightM, 4.5]) {
+      const { pass, outAttr } = computeAt(points, 1, (xz) => [vec4(sets.onsetPsiAt(xz, float(h)), 0.0, 0.0, 0.0)]);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      points.forEach(([x, z], i) => {
+        const rec = sampleOnset(field, x, z);
+        if (!rec) return;
+        const d = Math.abs(out[i * 4] - onsetPsi(rec, 0, h, DEFAULT_BREAK_PARAMS));
+        if (d > worst) { worst = d; at = `h ${h.toFixed(2)} (${x.toFixed(1)}, ${z.toFixed(1)}) GPU ${out[i * 4].toFixed(5)}`; }
+      });
+    }
+    return { pass: worst < 1e-4, detail: `${points.length} points × 3 heights; worst |Δψ₀| ${worst.toExponential(2)} ${at}` };
   },
 });

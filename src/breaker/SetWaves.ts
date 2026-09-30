@@ -6,8 +6,10 @@ import {
 import { REEF_GRID } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, breakingDepth, normalizeBreakParams } from './breaking';
+import { PSI_NORMAL, sheetShape } from './overturn';
+import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
+import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import type { ReefField } from './reefField';
@@ -30,6 +32,8 @@ const LONG_TAIL_CUTOFF = 3.5;
 const CAN_BREAK_MARGIN = 0.98;
 /** Texels per field node in the onset record: the running maximum, then two levels per texel. */
 const ONSET_TEXELS = 1 + Math.ceil(ONSET_LEVELS / 2);
+/** Texels per field node in the ψ₀ texture: level k's (ψ_k, ψ_{k+1}) at texel k (breakingNodes.onsetPsiNode). */
+const PSI_TEXELS = ONSET_LEVELS - 1;
 
 function floatTexture(width: number, height: number): THREE.DataTexture {
   const data = new Float32Array(width * height * 4);
@@ -74,6 +78,8 @@ export class SetWaves {
   /** The onset record (ReefField.onset), ONSET_TEXELS texels per field node side by side along x: the running maximum,
    * then two levels per texel, (time since onset, amplification) each. One texture, so the record is one binding. */
   private readonly onsetRec = floatTexture(FIELD_NX * ONSET_TEXELS, FIELD_NZ);
+  /** The onset record's ψ₀ per level (ReefField.onset from ONSET_PSI_OFFSET), PSI_TEXELS pairs per node. */
+  private readonly onsetPsiTex = floatTexture(FIELD_NX * PSI_TEXELS, FIELD_NZ);
   private readonly farA = floatTexture(FAR_COUNT, 1);
   private readonly farB = floatTexture(FAR_COUNT, 1);
   private readonly origin = uniform(new THREE.Vector2(REEF_GRID.x0 + REEF_GRID.cellM / 2, REEF_GRID.z0 + REEF_GRID.cellM / 2));
@@ -84,8 +90,8 @@ export class SetWaves {
   private readonly meanOmega = uniform(1);
   /** The field's mean swell travel direction (xz). */
   readonly meanTravel = uniform(new THREE.Vector2(1, 0));
-  private readonly wavesAttr = new THREE.StorageBufferAttribute(new Float32Array(MAX_ACTIVE_WAVES * 8), 4);
-  private readonly waves = storage(this.wavesAttr, 'vec4', MAX_ACTIVE_WAVES * 2).toReadOnly();
+  private readonly wavesAttr = new THREE.StorageBufferAttribute(new Float32Array(MAX_ACTIVE_WAVES * 12), 4);
+  private readonly waves = storage(this.wavesAttr, 'vec4', MAX_ACTIVE_WAVES * 3).toReadOnly();
   /** How many wave slots are filled; 0 in a lull, when sum() skips the field fetches and the loop entirely. */
   readonly activeCount = uniform(0);
   /** The breaking shape's parameters (breakingNodes.ts), uploaded normalized. */
@@ -133,7 +139,15 @@ export class SetWaves {
       fa[i * 4] = f.far.tau[i] - f.far.tauOffset; fa[i * 4 + 1] = f.far.amp[i]; fa[i * 4 + 2] = f.far.hmin[i]; fa[i * 4 + 3] = f.far.k[i];
       fb[i * 4] = f.far.dTauDx[i]; fb[i * 4 + 1] = f.far.depth[i]; fb[i * 4 + 2] = breakingDepth(f.far.hmin[i]); fb[i * 4 + 3] = 0;
     }
-    for (const t of [this.fieldA, this.fieldB, this.fieldC, this.onsetRec, this.farA, this.farB]) t.needsUpdate = true;
+    const pd = this.onsetPsiTex.image.data as Float32Array;
+    for (let i = 0; i < f.tau.length; i++) {
+      const col = i % FIELD_NX, row = (i - col) / FIELD_NX, r = i * ONSET_RECORD_LENGTH + ONSET_PSI_OFFSET;
+      for (let k = 0; k < PSI_TEXELS; k++) {
+        const o = ((row * FIELD_NX + col) * PSI_TEXELS + k) * 4;
+        pd[o] = f.onset[r + k]; pd[o + 1] = f.onset[r + k + 1];
+      }
+    }
+    for (const t of [this.fieldA, this.fieldB, this.fieldC, this.onsetRec, this.onsetPsiTex, this.farA, this.farB]) t.needsUpdate = true;
     this.origin.value.set(f.grid.x0, f.grid.z0);
     this.cell.value = f.grid.cellM;
     this.farP.value = f.far.p;
@@ -158,8 +172,10 @@ export class SetWaves {
       const e = events[i];
       const w = e ? toActiveWave(e) : null;
       const canBreak = w && w.heightM > CAN_BREAK_MARGIN * this.steepeningHeight ? 1 : 0;
-      d.set(w ? [w.arrivalS, w.heightM, w.omega, w.crestLengthM] : [0, 0, 1, 1], i * 8);
-      d.set(w ? [w.travelX, w.travelZ, w.crestOffsetM, canBreak + (w.longTail ? 2 : 0)] : [1, 0, 0, 0], i * 8 + 4);
+      d.set(w ? [w.arrivalS, w.heightM, w.omega, w.crestLengthM] : [0, 0, 1, 1], i * 12);
+      d.set(w ? [w.travelX, w.travelZ, w.crestOffsetM, canBreak + (w.longTail ? 2 : 0)] : [1, 0, 0, 0], i * 12 + 4);
+      // The game rules on its ψ (overturn.effectivePsi): its drain factor and its draw for the dial.
+      d.set(w ? [w.drainFactor ?? 1, w.throwDraw ?? 0, 0, 0] : [1, 0, 0, 0], i * 12 + 8);
     }
     this.activeCount.value = Math.min(events.length, MAX_ACTIVE_WAVES);
     this.wavesAttr.needsUpdate = true;
@@ -167,12 +183,19 @@ export class SetWaves {
 
   /** The "can break" flag uploaded for a wave slot (0 or 1; see setEvents). */
   canBreakFlag(slot: number): number {
-    return (this.wavesAttr.array as Float32Array)[slot * 8 + 7] % 2;
+    return (this.wavesAttr.array as Float32Array)[slot * 12 + 7] % 2;
+  }
+
+  /** The onset record's ψ₀ at xz for a wave of deep-water height heightM (self-tests). Inside an Fn. */
+  onsetPsiAt(xz: N, heightM: N): N {
+    const level = onsetLevelNode(heightM, this.brk);
+    const rec = this.sampleOnset(xz, level.k);
+    return onsetPsiNode(rec.psiLo, rec.psiHi, level);
   }
 
   /** The "long tail" flag uploaded for a wave slot (0 or 1; see setEvents). */
   longTailFlag(slot: number): number {
-    return (this.wavesAttr.array as Float32Array)[slot * 8 + 7] >= 2 ? 1 : 0;
+    return (this.wavesAttr.array as Float32Array)[slot * 12 + 7] >= 2 ? 1 : 0;
   }
 
   /**
@@ -237,7 +260,7 @@ export class SetWaves {
    * k a float) at world xz (bilinear between nodes), and whether xz is on the grid. Three texel columns per node: the
    * running maximum's, and the one or two holding the two levels. Inside an Fn.
    */
-  private sampleOnset(xz: N, k: N): { inside: N; run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N } {
+  private sampleOnset(xz: N, k: N): { inside: N; run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; psiLo: N; psiHi: N } {
     const g = xz.sub(this.origin).div(this.cell).toVar();
     const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThanEqual(this.fieldMax.x)).and(g.y.lessThanEqual(this.fieldMax.y));
     const gc = clamp(g, vec2(0.0), this.fieldMax.sub(0.001));
@@ -252,7 +275,11 @@ export class SetWaves {
     const lo = texel(ki.div(2).add(1)), hi = texel(ki.add(1).div(2).add(1));
     const even = ki.mod(2).equal(int(0));
     const run = texel(int(0)).x;
-    return { inside, run, tbLo: select(even, lo.x, lo.z), ampLo: select(even, lo.y, lo.w), tbHi: select(even, lo.z, hi.x), ampHi: select(even, lo.w, hi.y) };
+    const psi = ((): N => {
+      const load = (dx: number, dz: number): N => textureLoad(this.onsetPsiTex, ivec2(i0.x.add(dx).mul(PSI_TEXELS).add(ki), i0.y.add(dz)), int(0));
+      return mix(mix(load(0, 0), load(1, 0), t.x), mix(load(0, 1), load(1, 1), t.x), t.y).toVar();
+    })();
+    return { inside, run, tbLo: select(even, lo.x, lo.z), ampLo: select(even, lo.y, lo.w), tbHi: select(even, lo.z, hi.x), ampHi: select(even, lo.w, hi.y), psiLo: psi.x, psiHi: psi.y };
   }
 
   /**
@@ -281,8 +308,9 @@ export class SetWaves {
       const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(xz)).toVar();
       const brk = this.brk;
       Loop(MAX_ACTIVE_WAVES, ({ i }: N) => {
-        const a = this.waves.element(i.mul(2));
-        const b = this.waves.element(i.mul(2).add(1));
+        const a = this.waves.element(i.mul(3));
+        const b = this.waves.element(i.mul(3).add(1));
+        const cW = this.waves.element(i.mul(3).add(2));
         // The point's own height (setWaveModel.localHeight); the crest's replaces it once the wave stands up (waveHeightAt).
         const Hown: N = min(a.y.mul(f.amp), f.hmin.mul(BREAKING_RATIO)).toVar();
         // b.w = canBreak + 2·longTail (setEvents).
@@ -323,6 +351,8 @@ export class SetWaves {
           // The whitewater pile's curves and the lip's height (setWaveModel.Crest.lipH: 0 unbroken or off the record).
           const pc = { pile: float(0.0).toVar(), pileReach: float(0.0).toVar(), surge: float(1.0).toVar(), decay: float(1.0).toVar() };
           const lipH = float(0.0).toVar();
+          // The crest's sheet shape from its ψ (setWaveModel.crestAt: overturn.withSheetShape; PSI_NORMAL off the record).
+          const shTrough = float(sheetShape(PSI_NORMAL).troughDrain).toVar(), shSurge = float(sheetShape(PSI_NORMAL).pileSurge).toVar();
           If(breaking, () => {
             // CREST_STEPS Newton steps toward ξ = 0 along the wave's own travel direction b.xy (the same at every point,
             // so the lookup has no seams), each at most half a wavelength, reading the field where the crest lands, so
@@ -348,9 +378,14 @@ export class SetWaves {
             const on = xz.add(f.dir.mul(clamp(xi.mul(this.meanOmega).div(f.k), reachHere.negate(), reachHere))).toVar();
             const level = onsetLevelNode(a.y, brk);
             const rec = this.sampleOnset(on, level.k);
+            // The crest's ψ (setWaveModel.crestAt): PSI_NORMAL off the record, with no game rules.
+            const psi = select(rec.inside, effectivePsiNode(onsetPsiNode(rec.psiLo, rec.psiHi, level), cW.x, cW.y, brk), float(PSI_NORMAL)).toVar();
+            const shape = sheetShapeNode(psi);
+            shTrough.assign(shape.troughDrain); shSurge.assign(shape.pileSurge);
             const onset = onsetTimeNode(rec, level, a.y, brk);
             const rSlurp = breakingRatioNode(a.y.mul(fc.amp), fc.hminSlurp, brk);
-            const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), rSlurp, brk);
+            const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), rSlurp, brk,
+              { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi) });
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
             if (withPile) {
               pc.pile.assign(l.pile); pc.pileReach.assign(l.pileReach); pc.surge.assign(l.surge); pc.decay.assign(l.decay);
@@ -418,7 +453,7 @@ export class SetWaves {
                   boreH: min(a.y.mul(fc.amp), fc.hminBreak.mul(BREAKING_RATIO)).mul(lateral),
                   slope: along, dThetaDAhead: a.z.mul(perAhead), dEnvDAhead: dEnv.mul(lateral).mul(perAhead), crestConfidence: confidence,
                   ...(withPile ? { lipTop, lateral, lipHeight: lipH.mul(lateral) } : {}),
-                }, lc.steep, brk, { drain: lc.drain, collapse: lc.collapse }, withPile ? pc : undefined);
+                }, lc.steep, brk, { drain: lc.drain, collapse: lc.collapse }, withPile ? pc : undefined, { troughDrain: shTrough });
                 eta.addAssign(br.eta.sub(e));
                 slope.addAssign(f.dir.mul(br.dEtaDAhead));
                 foam.assign(max(foam, br.foam));
