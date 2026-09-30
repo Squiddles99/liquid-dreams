@@ -4,7 +4,7 @@ import { type BoardKind, deckYAt, halfWidthAt, layoutFor, makeBoard, uAt } from 
 import { flexDeg } from './ik';
 import { posesFor } from './poseNames';
 import { type PoseDials, poseTargets, sideOf } from './poses';
-import { PRESETS, type Stance } from './presets';
+import { PRESETS, type Stance, boardFor, boardsFor } from './presets';
 import { BONES, LIMITS, PARENT, type SkeletonRest, referenceSkeleton } from './rig';
 import { POSE_PHASE, POSE_ZONE } from './rideState';
 import { type BoardFrame, boardQuaternion, solvePose } from './solvePose';
@@ -17,15 +17,17 @@ const frame = (e: Euler, p = new Vector3(3, 1, -2)): BoardFrame => {
 const FRAMES = [frame(new Euler(0, 0, 0), new Vector3()), frame(new Euler(0.3, 1.1, -0.5)), frame(new Euler(0, 0, 1.22)), frame(new Euler(1.05, 0.4, 0))];
 const LEVELS = [-1, 0, 1];
 const PHASES = [0, 0.25, 0.5, 0.75, 1];
-const RESTS = [referenceSkeleton(PRESETS.female.heightM), referenceSkeleton(PRESETS.male.heightM)];
+/** Each preset with a reference skeleton at its height (grommet spec §7: the sweeps run over his proportions too). */
+const RIDERS = (['female', 'male', 'grommet'] as const).map((name) => ({ name, preset: PRESETS[name], rest: referenceSkeleton(PRESETS[name].heightM) }));
 const KINDS: BoardKind[] = ['thruster', 'stepUp', 'bodyboard'];
 
 describe.each(KINDS)('every %s pose, both stances, both bodies, every dial extreme, every tilt', (kind) => {
   for (const pose of posesFor(kind)) {
     it(pose, () => {
       let ankle = 0, knee = 0, elbow = 0, spine = 0, head = 0, poleSide = Infinity, bad = 0;
-      for (const rest of RESTS) {
-        const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]!);
+      for (const { preset, rest } of RIDERS) {
+        if (!boardsFor(preset).includes(kind)) continue;
+        const spec = boardFor(preset, kind);
         const layout = layoutFor(spec, rest.heightM);
         for (const stance of ['regular', 'goofy'] as Stance[])
           for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) for (const r of LEVELS)
@@ -110,8 +112,9 @@ describe('nothing sinks through the board (Andrew, gate 2: the drop-knee knee we
   for (const kind of KINDS) {
     it(`${kind}: every joint over the deck sits on or above it; knees a kneecap above (4 cm)`, () => {
       const worst: string[] = [];
-      for (const rest of RESTS) {
-        const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]!);
+      for (const { preset, rest } of RIDERS) {
+        if (!boardsFor(preset).includes(kind)) continue;
+        const spec = boardFor(preset, kind);
         const layout = layoutFor(spec, rest.heightM);
         for (const pose of posesFor(kind)) for (const stance of ['regular', 'goofy'] as Stance[])
           for (const c of LEVELS) for (const l of LEVELS) for (const phaseT of PHASES) {
@@ -135,8 +138,8 @@ describe('nothing sinks through the board (Andrew, gate 2: the drop-knee knee we
 describe('drop-knee', () => {
   it('rests the back knee on its spot (within 3 cm of a kneecap above it) for every stance, body and dial', () => {
     let worst = 0;
-    for (const rest of RESTS) {
-      const spec = makeBoard('bodyboard', PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver.bodyboard!);
+    for (const { preset, rest } of RIDERS) {
+      const spec = boardFor(preset, 'bodyboard');
       const layout = layoutFor(spec, rest.heightM);
       const spot = new Vector3(...layout.spots.dkKnee).add(new Vector3(0, 0.085, 0));
       for (const stance of ['regular', 'goofy'] as Stance[]) for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) {
@@ -165,8 +168,9 @@ describe('every limb shows (Andrew, gate 2: the bottom turn buried a hand in his
   for (const kind of KINDS) {
     it(`${kind}: no palm inside a thigh, shin or the torso, for every pose, stance, body, dial and phase`, () => {
       const worst: string[] = [];
-      for (const rest of RESTS) {
-        const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]!);
+      for (const { preset, rest } of RIDERS) {
+        if (!boardsFor(preset).includes(kind)) continue;
+        const spec = boardFor(preset, kind);
         const layout = layoutFor(spec, rest.heightM);
         for (const pose of posesFor(kind)) for (const stance of ['regular', 'goofy'] as Stance[])
           for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) for (const r of LEVELS) for (const phaseT of PHASES) {
@@ -195,8 +199,9 @@ describe('standing knees stay up (Andrew, gate 2: the bottom turn knelt on the d
   const STANDING = ['drop', 'bottomTurn', 'trim', 'kickout', 'barrel'] as const;
   it('every stand-up pose, board, stance, body and dial; and the pop-up once it is up', () => {
     const worst: string[] = [];
-    for (const kind of ['thruster', 'stepUp'] as BoardKind[]) for (const rest of RESTS) {
-      const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]!);
+    for (const kind of ['thruster', 'stepUp'] as BoardKind[]) for (const { preset, rest } of RIDERS) {
+      if (!boardsFor(preset).includes(kind)) continue;
+      const spec = boardFor(preset, kind);
       const layout = layoutFor(spec, rest.heightM);
       for (const pose of [...STANDING, 'popup'] as const) for (const stance of ['regular', 'goofy'] as Stance[])
         for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) {
@@ -219,8 +224,8 @@ describe('standing knees stay up (Andrew, gate 2: the bottom turn knelt on the d
 describe('prone elbows (Andrew, gate 2: the elbow pointed up and pinched, the forearm hanging to the nose)', () => {
   it('a prone rider holds the board with the elbows out and low, never above the shoulders', () => {
     const worst: string[] = [];
-    for (const rest of RESTS) {
-      const spec = makeBoard('bodyboard', PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver.bodyboard!);
+    for (const { preset, rest } of RIDERS) {
+      const spec = boardFor(preset, 'bodyboard');
       const layout = layoutFor(spec, rest.heightM);
       for (const pose of ['prone', 'proneBarrel'] as const) for (const stance of ['regular', 'goofy'] as Stance[])
         for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) for (const r of LEVELS) {
