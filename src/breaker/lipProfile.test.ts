@@ -3,13 +3,13 @@ import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, breakingRatio } from './breaking';
+import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetTime } from './breaking';
 import {
   GRAVITY_MS2, type LipParams, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings, foldDepth,
   landingTime, profileFrame, sampleHome, sampleSegment, settleSpan,
 } from './lipProfile';
 import { PSI_NORMAL } from './overturn';
-import { computeReefField, sampleField } from './reefField';
+import { computeReefField, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, type BreakOptions, breakOptions, type WaveContext, localHeight, sumWaves } from './setWaveModel';
 
 // The app's field (1 m cells, default swell and tide) and the Task 2 sheet: Phase 1 + front sharpening + drain + bore.
@@ -134,9 +134,17 @@ describe('lipProfile', () => {
 
 
   it("the foam zones (Andrew's photo): the lip whitens as it throws, most at its tip, the tube is clean, and foam fills it once the lip lands", () => {
-    const probe = stationAt(0, 0, big, 0);
+    // Where the peak's section breaks (on the softened ramp ~45 m seaward of (0, 0), where the wave has long since
+    // collapsed into a bore by the time it arrives).
+    let bx = 0, bz = 0;
+    for (let d = 0; d < 300; d++) {
+      const s = sampleField(field, bx, bz), nx = bx - s.dirX, nz = bz - s.dirZ, r = sampleOnset(field, nx, nz);
+      if (!r || onsetTime(r, 0, big.heightM, DEFAULT_BREAK_PARAMS) === null) break;
+      bx = nx; bz = nz;
+    }
+    const probe = stationAt(bx, bz, big, 0);
     const f0 = profileFrame(probe.base, probe.input, LIP);
-    const at = (tb: number) => { const { base, input } = stationAt(0, 0, big, tb); return buildProfile(base, input, LIP); };
+    const at = (tb: number) => { const { base, input } = stationAt(bx, bz, big, tb); return buildProfile(base, input, LIP); };
     const segOf = (j: number) => sampleSegment(j).seg;
     const inside = (j: number) => ['face', 'wall', 'under'].includes(segOf(j));
     const outerFrom = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall + PROFILE_SEGMENTS.under + PROFILE_SEGMENTS.cap;

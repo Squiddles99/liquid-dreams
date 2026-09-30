@@ -340,7 +340,7 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
 /** How far back along its ray (cells) a node reads the record: past its own cell, so every node read arrived earlier. */
 const RUN_BACK_CELLS = 2;
 /** How far (fraction) the running maximum dips under a level between rays (≤ 2% measured) and still counts as broken there. */
-const RUN_DIP = 0.03;
+export const RUN_DIP = 0.03;
 
 function computeOnsetRecord(f: {
   grid: GridSpec; tau: Float32Array; amp: Float32Array; hmin: Float32Array; hminBreak: Float32Array; k: Float32Array; dirX: Float32Array;

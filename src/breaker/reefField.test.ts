@@ -4,8 +4,8 @@ import { depthBg } from '../seabed/coastProfile';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
-import { computeReefField, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
-import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, onsetGain, onsetHeight, onsetTime } from './breaking';
+import { RUN_DIP, computeReefField, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
+import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetGain, onsetHeight, onsetTime } from './breaking';
 import { BREAKING_RATIO } from './setWaveModel';
 
 const reef05 = buildBathymetry();
@@ -56,16 +56,22 @@ describe('reef wave field', () => {
   it('a grazing swell (exactly 270°) does not source the whole south edge as a numerical caustic', { timeout: 60_000 }, () => {
     // dirZ is float residue of cos(90°) at exactly 270°; a bare `< 0` edge-source test used to treat that residue's
     // sign as real inflow and source the whole south edge from the far field, capping a line of cells at AMP_CAP.
-    const cappedCount = (fromDeg: number) => {
-      const f = computeReefField({ bed: reef1, periodS: 15, fromDeg, tideM: 0 });
+    const cappedCount = (fromDeg: number, edgeOnly = false) => {
+      const f = computeReefField({ bed: reef1, periodS: 15, fromDeg, tideM: 0 }), { nx } = f.grid;
       let count = 0;
-      for (const v of f.amp) if (v >= AMP_CAP - 1e-6) count++;
+      f.amp.forEach((v, i) => {
+        const c = i % nx, r = (i - c) / nx, edge = r < 3;
+        if (v >= AMP_CAP - 1e-6 && (edge || !edgeOnly)) count++;
+      });
       return count;
     };
     // 269.9° is a real, non-grazing direction: the reef genuinely focuses a cluster of cells to AMP_CAP near the
     // south edge, so a low count at 270° isn't just "nothing ever gets capped there".
     expect(cappedCount(269.9)).toBeGreaterThan(100);
-    expect(cappedCount(270)).toBe(0);
+    // The caustic ran along the grid's south edge; the softened ramp genuinely focuses a grazing swell to two small clusters
+    // (18 cells near (70, 0) and (240, 194), the second touching the shore-side edge), so it is the south edge that must
+    // stay clear.
+    expect(cappedCount(270, true)).toBe(0);
   });
   it('is finite, capped, and never records a shallower hmin than the water it has crossed allows', () => {
     const f = f225;
@@ -203,27 +209,40 @@ describe('the onset record', () => {
       const rec = Float32Array.from(sampleOnset(f, x, z)!);
       if (!(rec[0] >= 1.3 * q)) continue;
       const tau0 = sampleField(f, x, z).tau;
-      // Back up the ray in 0.25 m steps to where the running maximum drops below q: the section broke there. The throw is
-      // the tallest the crest stood (its height capped by the depth, as the sheet's) in the LIP_THROW_S after that.
-      let bx = x, bz = z, prev = { x, z, run: rec[0] };
-      const seen: { tau: number; h: number }[] = [];
-      for (let n = 0; n < 4000; n++) {
-        const s = sampleField(f, bx, bz);
-        seen.push({ tau: s.tau, h: Math.min(s.amp, (BREAKING_RATIO * s.hmin) / heightM) });
-        const nx = bx - s.dirX * 0.25, nz = bz - s.dirZ * 0.25, run = sampleOnset(f, nx, nz)?.[0] ?? 0;
-        if (run < q) {
-          const fr = (q - run) / Math.max(prev.run - run, 1e-9);
-          bx = nx + (prev.x - nx) * fr; bz = nz + (prev.z - nz) * fr;
-          break;
+      // Back up the ray in 0.25 m steps to where the running maximum crossed the level ql: the section broke there. The
+      // record carries the clock through dips of the running maximum under RUN_DIP (on the softened ramp the ratio creeps
+      // past a level for tens of metres), so the march backs through them too and takes the most seaward crossing. The
+      // throw is the tallest the crest stood (its height capped by the depth, as the sheet's) in the LIP_THROW_S after.
+      const march = (ql: number) => {
+        let bx = x, bz = z, prev = { x, z, run: rec[0] }, back = 0, cross: { x: number; z: number; back: number; n: number } | null = null;
+        const seen: { tau: number; h: number }[] = [];
+        for (let n = 0; n < 4000; n++, back += 0.25) {
+          const s = sampleField(f, bx, bz);
+          seen.push({ tau: s.tau, h: Math.min(s.amp, (BREAKING_RATIO * s.hmin) / heightM) });
+          const nx = bx - s.dirX * 0.25, nz = bz - s.dirZ * 0.25, run = sampleOnset(f, nx, nz)?.[0] ?? 0;
+          if (run < ql && prev.run >= ql) {
+            const fr = (ql - run) / Math.max(prev.run - run, 1e-9);
+            cross = { x: nx + (prev.x - nx) * fr, z: nz + (prev.z - nz) * fr, back: back + 0.25 * (1 - fr), n: seen.length };
+          }
+          if (run < ql * (1 - RUN_DIP)) break;
+          prev = { x: nx, z: nz, run }; bx = nx; bz = nz;
         }
-        prev = { x: nx, z: nz, run }; bx = nx; bz = nz;
-      }
-      const ref = sampleField(f, bx, bz), refTb = tau0 - ref.tau;
-      const refThrow = Math.max(Math.min(ref.amp, (BREAKING_RATIO * ref.hmin) / heightM), ...seen.filter((p) => p.tau <= ref.tau + LIP_THROW_S).map((p) => p.h));
+        if (cross) { bx = cross.x; bz = cross.z; back = cross.back; seen.length = cross.n; }
+        const ref = sampleField(f, bx, bz);
+        return { tb: tau0 - ref.tau, back, throw: Math.max(Math.min(ref.amp, (BREAKING_RATIO * ref.hmin) / heightM), ...seen.filter((p) => p.tau <= ref.tau + LIP_THROW_S).map((p) => p.h)) };
+      };
+      const at = march(q), refTb = at.tb, refThrow = at.throw, back = at.back;
+      // The record keeps the onset at fixed levels (×1.44 apart) and reads between the two around q: where the ratio creeps
+      // past them (the softened ramp) it can say no more than that the section broke between those two levels' onsets.
+      const lk = Math.min(ONSET_LEVELS - 2, Math.max(0, Math.floor(Math.log(q / ONSET_LEVEL_Q0) / Math.log(ONSET_LEVEL_RATIO))));
+      const tLo = march(ONSET_LEVEL_Q[lk]).tb, tHi = march(ONSET_LEVEL_Q[lk + 1]).tb;
       const tb = onsetTime(rec, 0, heightM, P)!, amp = onsetHeight(rec, 0, heightM, P)! / heightM;
-      const near = inshore <= 30;
-      const tag = `${heightM} m at (${px}, ${pz}) +${inshore} m`;
-      expect(Math.abs(tb - refTb), `${tag}: time since onset ${tb.toFixed(2)} vs ${refTb.toFixed(2)} s`).toBeLessThan(near ? 0.15 : 0.2 + 0.1 * refTb);
+      // Where it broke and settled: within 30 m of travel of the break (on the softened ramp sections break up to ~130 m
+      // seaward of the ledge, so the distance inshore of the ledge no longer says how far it has run).
+      const near = back <= 30;
+      const tag = `${heightM} m at (${px}, ${pz}) +${inshore} m`, tol = near ? 0.15 : 0.2 + 0.1 * refTb;
+      expect(tb, `${tag}: time since onset ${tb.toFixed(2)} vs the levels' ${tLo.toFixed(2)}–${tHi.toFixed(2)} s (q ${refTb.toFixed(2)})`).toBeGreaterThan(Math.min(tLo, tHi) - tol);
+      expect(tb, `${tag}: time since onset ${tb.toFixed(2)} vs the levels' ${tLo.toFixed(2)}–${tHi.toFixed(2)} s (q ${refTb.toFixed(2)})`).toBeLessThan(Math.max(tLo, tHi) + tol);
       const off = (amp - refThrow) / refThrow;
       expect(off, `${tag}: the throw's height (× the deep-water height) ${amp.toFixed(3)} vs ${refThrow.toFixed(3)}`).toBeGreaterThan(near ? -0.15 : -0.2);
       expect(off, `${tag}: the throw's height (× the deep-water height) ${amp.toFixed(3)} vs ${refThrow.toFixed(3)}`).toBeLessThan(near ? 0.1 : 0.2);

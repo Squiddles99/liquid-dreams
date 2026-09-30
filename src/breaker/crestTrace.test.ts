@@ -30,6 +30,12 @@ const alongLedge = (line: readonly (readonly [number, number])[], x: number, z: 
   return ((x - a[0]) * (b[0] - a[0]) + (z - a[1]) * (b[1] - a[1])) / len;
 };
 
+/** When the peak's section broke (the crest's arrival at (0, 0) less its time since onset there). */
+const peakBreak = (w: ActiveWave): number => {
+  const f = sampleField(field, 0, 0), tb = timeSinceOnset(field, w, 0, 0, ctx, P);
+  return w.arrivalS + f.tau - (tb ?? 0);
+};
+
 describe('crestTrace', () => {
   const big = testWave(REF_BIGGEST.heightM), peeler = testWave(1.8 * HS);
 
@@ -91,8 +97,9 @@ describe('crestTrace', () => {
   });
 
   it('the left peels north along the ledge at 8–20 m/s (time since onset falls toward the shoulder)', () => {
-    // P8: the 1.8·Hs wave peels over the first 100 m. Stations north of the peak on the north ledge's first segment.
-    const t = 6;
+    // P8: the 1.8·Hs wave peels over the first 100 m. Stations north of the peak on the north ledge's first segment,
+    // 6.9 s after the peak broke (it broke 0.9 s before the crest reached (0, 0) on the old ledge, where this was t = 6).
+    const t = peakBreak(peeler) + 6.9;
     const st = live(trace([peeler], t)).filter((s) => s.tb !== null && Number.isFinite(s.tb) && s.tb > 0.05 && s.z < 0);
     const pts = st.map((s) => ({ d: alongLedge(NORTH_LEDGE, s.x, s.z), tb: s.tb as number })).filter((p) => p.d > 5 && p.d < 110);
     expect(pts.length).toBeGreaterThan(10);
@@ -104,18 +111,19 @@ describe('crestTrace', () => {
   });
 
   it('the right closes out: the south ledge’s first 40 m broke within 1.5 s of each other', () => {
-    const w = peeler;
-    let checked = 0;
-    for (const t of [1, 1.5, 2]) {
-      const st = live(trace([w], t)).filter((s) => s.tb !== null && Number.isFinite(s.tb));
-      const onSouth = st.filter((s) => { const d = alongLedge(SOUTH_LEDGE, s.x, s.z); return d > 0 && d < 40 && s.z > 0; });
-      if (onSouth.length < 5) continue;
-      const tbs = onSouth.map((s) => s.tb as number);
-      console.log(`closeout t ${t}: ${onSouth.length} stations, onset spread ${(Math.max(...tbs) - Math.min(...tbs)).toFixed(2)} s`);
-      expect(Math.max(...tbs) - Math.min(...tbs)).toBeLessThan(1.5);
-      checked++;
+    // Each section's break time (its crest's arrival less its time since onset, from the onset record carried along its
+    // ray), at points on the south ledge's first 40 m. On the softened ramp the sections break ~100 m seaward: a trace's
+    // stations projecting onto those 40 m then swept in crest far from the ledge (283 stations, 1.53 s).
+    const w = peeler, [a, b] = [SOUTH_LEDGE[0], SOUTH_LEDGE[1]], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const times: number[] = [];
+    for (let d = 0; d <= 40; d += 2) {
+      const x = a[0] + ((b[0] - a[0]) * d) / len, z = a[1] + ((b[1] - a[1]) * d) / len;
+      const tb = timeSinceOnset(field, w, x, z, ctx, P);
+      if (tb !== null) times.push(w.arrivalS + sampleField(field, x, z).tau - tb);
     }
-    expect(checked).toBeGreaterThan(0);
+    expect(times.length).toBeGreaterThan(15);
+    console.log(`closeout: ${times.length} sections, break spread ${(Math.max(...times) - Math.min(...times)).toFixed(2)} s`);
+    expect(Math.max(...times) - Math.min(...times)).toBeLessThan(1.5);
   });
 
   it('timeSinceOnset: null before breaking, grows with the crest, however long ago it broke', () => {

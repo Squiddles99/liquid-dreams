@@ -23,14 +23,15 @@ const MID12 = peakSetup();
 export const { field, wave, ctx } = MID12;
 
 const P = DEFAULT_BREAK_PARAMS;
-/** The station on the peak's ray whose section has been broken tb seconds (null: 40 m up the ray, unbroken), at ψ. */
+/** The station on the peak's ray whose section has been broken tb seconds (null: 40 m up the ray, unbroken), at ψ. The search
+ * reaches 220 m seaward: on the softened ramp a 12 ft set breaks ~130 m out. */
 export function peakStation(psi: number, tb: number | null, o: { setup?: ReturnType<typeof peakSetup>; offshoreMs?: number } = {}) {
   const { field: f, wave: w, ctx: cx } = o.setup ?? MID12;
   const f00 = sampleField(f, 0, 0);
   const onRay = (s: number) => ({ x: f00.dirX * s, z: f00.dirZ * s });
   const tbAlong = (s: number): number | null => { const p = onRay(s); const rec = sampleOnset(f, p.x, p.z); return rec ? onsetTime(rec, 0, w.heightM, P) : null; };
   let s0 = -40;
-  if (tb !== null) { let lo = -60, hi = 60; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2, v = tbAlong(m); if (v === null || v < tb) lo = m; else hi = m; } s0 = (lo + hi) / 2; }
+  if (tb !== null) { let lo = -220, hi = 60; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2, v = tbAlong(m); if (v === null || v < tb) lo = m; else hi = m; } s0 = (lo + hi) / 2; }
   const p0 = onRay(s0), f0 = sampleField(f, p0.x, p0.z), t = f0.tau;
   const sheet: BreakOptions = { ...breakOptions(f, P, o.offshoreMs ?? 0), force: { psi } };
   const along = (opt: BreakOptions) => (u: number): Vec2 => {

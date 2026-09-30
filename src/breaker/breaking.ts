@@ -382,21 +382,27 @@ const NO_PILE = { pile: 0, pileReach: 0, surge: 1, decay: 1 } as const;
  * follow it, so the shoulders beside a section standing up are drawn in with it (the slurp); the stage and the collapse
  * follow r, so they don't break any earlier.
  * From the landing the section turns into a whitewater pile (breakPoint): its weight, where its top is, its surge and its
- * decay.
+ * decay. plunge is the tube's presence at the crest's ψ (overturn.overturnShape; 0 without one): a section the maths
+ * throws a tube for breaks whole from onset, however slowly its ratio climbs. On the steep ledge the ratio jumped past
+ * the stage's range at once; on the softened ramp it creeps, and the sheet broke a sliver while the lip threw a full tube
+ * (plan 2026-09-30-barrel-from-maths, Task 5).
  */
-export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, rSlurp = r): Lifecycle {
+/** A plunging section breaks whole, and surges as its ψ says, once its ratio has passed breaking by this much (one that
+ * just grazes it stays a partial break). */
+export const PLUNGE_FULL_RATIO = 1.05;
+export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, rSlurp = r, plunge = 0): Lifecycle {
   const own = stageCurves(r, p), pulled = slurp(rSlurp, p);
   const c0 = { drain: Math.max(own.drain, pulled), collapse: own.collapse };
   const steep = Math.max(steepening(r, p), pulled), stage = breakingStage(r, p);
   if (tb === undefined) return { steep, stage, drain: c0.drain, collapse: c0.collapse, ...NO_PILE };
   const t = tb ?? (r >= 1 ? 0 : null);
   if (t === null) return { steep, stage, drain: c0.drain, collapse: 0, ...NO_PILE };
-  const extent = breakingStage(Math.max(r, rMax), p);
+  const extent = Math.max(breakingStage(Math.max(r, rMax), p), plunge * smoothstep(1, PLUNGE_FULL_RATIO, Math.max(r, rMax)));
   const land = landingEstimate(H, p);
   const span = settleSpan(H, p);
   const thrown = smoothstep(0, land, t) * extent;
   const rolled = Math.max(0, t - land - PILE_RISE_S) * PILE_SPEED_MS;
-  const surgeWeight = p.pileSurge * smoothstep(1, SURGE_FULL_RATIO, Math.max(r, rMax));
+  const surgeWeight = p.pileSurge * Math.max(smoothstep(1, SURGE_FULL_RATIO, Math.max(r, rMax)), plunge * smoothstep(1, PLUNGE_FULL_RATIO, Math.max(r, rMax)));
   return {
     steep: Math.max(steep, thrown),
     stage: Math.max(stage, thrown),
