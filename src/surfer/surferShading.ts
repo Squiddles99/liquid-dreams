@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, attribute, float, max, mix, mx_noise_float, normalWorld, pow, smoothstep, step, uniform, uv, vec3 } from 'three/tsl';
+import { abs, attribute, float, max, mix, mx_noise_float, normalWorld, pow, smoothstep, step, uniform, uv, vec2, vec3 } from 'three/tsl';
 import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
 import type { SurferPreset } from './presets';
@@ -14,7 +14,13 @@ export const outfitUniforms = (): OutfitUniforms => ({ spring: uniform(0), steam
 /** Skin, with the outfit's baked masks painting neoprene, lycra, fabric and the boardies' shadow over it (spec §4.3–4.4). */
 export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();
-  const mA: N = attribute('uv1', 'vec2'), mB: N = attribute('uv2', 'vec2'), mC: N = attribute('uv3', 'vec2');
+  // glTF stores texture coordinates with V flipped (v → 1 − v; three's loader keeps it), so each mask packed into
+  // a UV map's second channel comes back as 1 − mask: undo it.
+  const mask = (name: string): N => {
+    const a: N = attribute(name, 'vec2');
+    return vec2(a.x, float(1).sub(a.y));
+  };
+  const mA = mask('uv1'), mB = mask('uv2'), mC = mask('uv3');
   const neo = max(w.spring.mul(mA.x), w.steamer.mul(mA.y));
   const inLycra = step(0.5, w.rashie.mul(mB.x));
   const fabric = max(w.bottoms.mul(mB.y), w.top.mul(mC.x));

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, attribute, float, mix, mx_noise_float, normalWorld, positionWorld, smoothstep, step, uniform, vec3 } from 'three/tsl';
+import { abs, attribute, dot, exp, float, mix, mx_noise_float, normalWorld, positionLocal, positionWorld, smoothstep, step, uniform, vec3 } from 'three/tsl';
 import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
 import { type MeshArrays, PART, buildBoard } from './boardGeometry';
@@ -27,6 +27,8 @@ export class BoardMesh {
     railBand: uniform(0), padU: uniform(0), shininess: uniform(90),
   };
   private key = '';
+  /** Board-frame points (xyz) and radii (w) that shade the deck beneath them: the rider's contact shadow. */
+  private readonly contacts = Array.from({ length: 6 }, () => uniform(new THREE.Vector4(0, -10, 0, 0.001)));
 
   constructor(sky: Sky, sunVisibility?: (xz: N) => N) {
     const m = new THREE.MeshBasicNodeMaterial();
@@ -43,6 +45,16 @@ export class BoardMesh {
     const pad = isDeck.mul(step(buv.x, this.u.padU)).mul(step(abs(buv.y), 0.8));
     albedo = mix(albedo, vec3(0.035, 0.035, 0.04), pad);
     albedo = mix(albedo, vec3(0.1, 0.1, 0.11), isFin);
+    // Contact shadow: the deck darkens under the feet, hands and body, fading as each point rises off the deck.
+    const local: N = positionLocal;
+    let shade: N = float(1);
+    for (const c of this.contacts) {
+      const d = local.xz.sub(c.xz);
+      const near = exp(dot(d, d).div(c.w.mul(c.w)).negate());
+      const low = float(1).sub(smoothstep(0.0, 0.3, c.y.sub(local.y)));
+      shade = shade.mul(float(1).sub(near.mul(low).mul(0.55)));
+    }
+    albedo = albedo.mul(mix(float(1), shade, isDeck));
     const shininess = mix(this.u.shininess, float(8.0), pad);
     m.colorNode = litColor(sky, { albedo, normal: normalWorld, specular: float(0.04), shininess }, sunVisibility);
     this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), m);
@@ -63,5 +75,13 @@ export class BoardMesh {
     this.u.railBand.value = look.railBand;
     this.u.padU.value = look.padLengthM / spec.lengthM;
     this.u.shininess.value = look.shininess;
+  }
+
+  /** Up to six board-frame points (x, y, z) with radii (m) that shade the deck beneath them; the rest are cleared. */
+  setContacts(points: readonly { x: number; y: number; z: number; r: number }[]): void {
+    this.contacts.forEach((u, i) => {
+      const p = points[i];
+      u.value.set(p ? p.x : 0, p ? p.y : -10, p ? p.z : 0, p ? p.r : 0.001);
+    });
   }
 }

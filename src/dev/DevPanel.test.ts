@@ -171,3 +171,15 @@ describe('the Sound folder (Phase 5)', () => {
     }
   });
 });
+
+import { SURFER_PARAM_RANGES } from '../surfer/surferParams';
+import { SURFER_BINDINGS } from './DevPanel';
+
+describe('Surfer folder bindings', () => {
+  it('match normalizeSurferParams’s ranges exactly', () => {
+    for (const k of Object.keys(SURFER_PARAM_RANGES) as (keyof typeof SURFER_PARAM_RANGES)[]) {
+      expect(SURFER_BINDINGS[k].min).toBe(SURFER_PARAM_RANGES[k].min);
+      expect(SURFER_BINDINGS[k].max).toBe(SURFER_PARAM_RANGES[k].max);
+    }
+  });
+});

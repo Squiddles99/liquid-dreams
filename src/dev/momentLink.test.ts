@@ -98,3 +98,21 @@ describe('momentHashProblem (why a non-empty hash opened nothing)', () => {
     expect(momentHashProblem('#something-else')).toMatch(/#m=.*#ref=/);
   });
 });
+
+import { DEFAULT_SURFER_PARAMS } from '../surfer/surferParams';
+
+describe('the surfer in a moment link', () => {
+  const base = decodeMoment(encodeMoment({ conditions: DEFAULT_CONDITIONS, camera: { mode: 'free', position: [1, 2, 3], yawDeg: 90, pitchDeg: 0 }, simTime: 5, paused: true }))!;
+  it('round-trips the surfer settings', () => {
+    const surfer = { ...DEFAULT_SURFER_PARAMS, enabled: true, preset: 'male' as const, pose: 'barrel' as const, x: 12 };
+    expect(decodeMoment(encodeMoment({ ...base, surfer }))!.surfer).toEqual(surfer);
+  });
+  it('leaves an older link without one (the app then turns the surfer off)', () => expect(base.surfer).toBeUndefined());
+  it('repairs a hand-edited surfer instead of rejecting the link (Review Focus 3)', () => {
+    const raw = { v: 1, ...base, surfer: { enabled: true, pose: 'dropKnee', board: 'thruster', x: 'far' } };
+    const hash = `#m=${btoa(JSON.stringify(raw)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+    const m = decodeMoment(hash)!;
+    expect(m.surfer!.pose).toBe('sit');
+    expect(m.surfer!.x).toBe(DEFAULT_SURFER_PARAMS.x);
+  });
+});

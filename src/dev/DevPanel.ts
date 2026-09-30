@@ -19,6 +19,8 @@ import { LAND_PARAM_RANGES, type LandParams } from '../land/landParams';
 import { SURF_PARAM_RANGES, type SurfParams } from '../surf/surfModel';
 import { BOMBIE_PARAM_RANGES, type BombieParams } from '../bombie/bombieParams';
 import { SOUND_PARAM_RANGES, type SoundParams } from '../sound/soundParams';
+import { ALL_POSES } from '../surfer/poseNames';
+import { SURFER_PARAM_RANGES, type SurferParams } from '../surfer/surferParams';
 import { WEATHER_PRESETS, WEATHER_PRESET_NAMES, WEATHER_RANGES, type WeatherConditions, type WeatherPresetName, presetOf } from '../weather/weather';
 import type { SettingsMode } from './devSettings';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS } from './referenceMoments';
@@ -44,6 +46,8 @@ export interface DevPanelModel {
   bombie: BombieParams;
   sound: SoundParams;
   soundStatus: { track: string };
+  surfer: SurferParams;
+  surferStatus: { outfit: string };
   setStatus: { nextSet: string; wave: string; face: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
@@ -74,6 +78,9 @@ export interface DevPanelHandlers {
   onLand(): void;
   onSurf(): void;
   onBombie(): void;
+  onSurfer(): void;
+  onSurferPlaceAhead(): void;
+  onSurferChase(): void;
   onSound(): void;
   onMusicPlayPause(): void;
   onMusicNext(): void;
@@ -188,6 +195,27 @@ export const IMPACT_BINDINGS = {
 export const SURF_BINDINGS = {
   amount: { label: 'surf amount', ...SURF_PARAM_RANGES.amount, step: 0.05 },
 } as const;
+
+/** Surfer folder sliders (spec §6), ranges exactly normalizeSurferParams's (DevPanel.test.ts). */
+export const SURFER_BINDINGS = {
+  phaseT: { label: 'phase', ...SURFER_PARAM_RANGES.phaseT, step: 0.01 },
+  compression: { label: 'compression', ...SURFER_PARAM_RANGES.compression, step: 0.01 },
+  lean: { label: 'lean (heels … toes)', ...SURFER_PARAM_RANGES.lean, step: 0.01 },
+  twist: { label: 'twist', ...SURFER_PARAM_RANGES.twist, step: 0.01 },
+  reach: { label: 'reach', ...SURFER_PARAM_RANGES.reach, step: 0.01 },
+  balanceAmount: { label: 'balance amount', ...SURFER_PARAM_RANGES.balanceAmount, step: 0.05 },
+  x: { label: 'x (m)', ...SURFER_PARAM_RANGES.x, step: 0.1 },
+  z: { label: 'z (m)', ...SURFER_PARAM_RANGES.z, step: 0.1 },
+  heightNudgeM: { label: 'height nudge (m)', ...SURFER_PARAM_RANGES.heightNudgeM, step: 0.01 },
+  pitchNudgeDeg: { label: 'pitch nudge (°)', ...SURFER_PARAM_RANGES.pitchNudgeDeg, step: 0.5 },
+} as const;
+const SURFER_OPTIONS = {
+  preset: { female: 'female', male: 'male' },
+  stance: { regular: 'regular', goofy: 'goofy' },
+  board: { thruster: 'thruster', 'step-up': 'stepUp', bodyboard: 'bodyboard' },
+  outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'bikini bottoms + rash vest': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer' },
+  pose: Object.fromEntries(ALL_POSES.map((p) => [p, p])),
+};
 
 /** Bombie folder sliders (Phase 4c-3 §3.5), ranges exactly normalizeBombieParams's (DevPanel.test.ts). */
 export const BOMBIE_BINDINGS = {
@@ -347,6 +375,19 @@ export class DevPanel {
     bombieFolder.addBinding(m.bombie, 'enabled', { label: 'bombie' }).on('change', h.onBombie);
     bombieFolder.addBinding(m.bombie, 'size', BOMBIE_BINDINGS.size).on('change', h.onBombie);
     bombieFolder.addBinding(m.bombie, 'thresholdFt', BOMBIE_BINDINGS.thresholdFt).on('change', h.onBombie);
+    const surferFolder = this.pane.addFolder({ title: 'Surfer', expanded: false });
+    surferFolder.addBinding(m.surfer, 'enabled', { label: 'surfer' }).on('change', h.onSurfer);
+    for (const key of ['preset', 'stance', 'board', 'outfit', 'pose'] as const) {
+      surferFolder.addBinding(m.surfer, key, { label: key, options: SURFER_OPTIONS[key] }).on('change', h.onSurfer);
+    }
+    readouts.add(surferFolder.addBinding(m.surferStatus, 'outfit', { label: 'wearing', readonly: true, interval: 500 }));
+    surferFolder.addBinding(m.surfer, 'headingDeg', { label: 'heading', min: 0, max: 360, format: withCompass }).on('change', h.onSurfer);
+    for (const [key, opts] of Object.entries(SURFER_BINDINGS) as [keyof typeof SURFER_BINDINGS, (typeof SURFER_BINDINGS)[keyof typeof SURFER_BINDINGS]][]) {
+      surferFolder.addBinding(m.surfer, key, opts).on('change', h.onSurfer);
+    }
+    surferFolder.addBinding(m.surfer, 'balance', { label: 'balance layer' }).on('change', h.onSurfer);
+    surferFolder.addButton({ title: 'Place ahead of camera' }).on('click', h.onSurferPlaceAhead);
+    surferFolder.addButton({ title: 'Chase view' }).on('click', h.onSurferChase);
     const soundFolder = this.pane.addFolder({ title: 'Sound', expanded: false });
     for (const [key, opts] of Object.entries(SOUND_BINDINGS) as [keyof typeof SOUND_BINDINGS, (typeof SOUND_BINDINGS)[keyof typeof SOUND_BINDINGS]][]) {
       soundFolder.addBinding(m.sound, key, opts).on('change', h.onSound);
