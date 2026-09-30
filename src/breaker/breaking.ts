@@ -278,10 +278,10 @@ export function onsetLevelHeight(k: number): number {
   return 1 / (ONSET_LEVEL_Q[k] * onsetGain(DEFAULT_BREAK_PARAMS));
 }
 /** Values per record sample: the running maximum; per level (time since onset, the throw's height ÷ the level's
- * deep-water height); then per level the step where that level broke (reefField.stepAlong, spec 2026-09-30 §3.1). */
+ * deep-water height); then per level ψ₀ where that level broke (reefField.psiReef, spec 2026-09-30-barrel-from-maths). */
 export const ONSET_RECORD_LENGTH = 1 + 3 * ONSET_LEVELS;
-/** Offset of level 0's step in a record sample. */
-export const ONSET_STEP_OFFSET = 1 + 2 * ONSET_LEVELS;
+/** Offset of level 0's ψ₀ in a record sample. */
+export const ONSET_PSI_OFFSET = 1 + 2 * ONSET_LEVELS;
 
 /**
  * ρ per metre of wave height per unit amp/hminBreak: (1 + γδ)/γ, breakingRatio without its floor. The record leaves the
@@ -331,12 +331,12 @@ export function onsetHeight(rec: ArrayLike<number>, offset: number, heightM: num
 }
 
 /**
- * The step where the section broke, for a wave of deep-water height `heightM`: levels k and k + 1 around its breaking
- * level, log-linearly (w = lq − k, clamped). Unlike onsetTime it reads a value whether or not the wave has broken: an
- * unbroken level holds the node's own step (a section breaking there now), which the drain uses before the break.
+ * ψ₀ where the section broke, for a wave of deep-water height `heightM`: levels k and k + 1 around its breaking level,
+ * log-linearly (w = lq − k, clamped). It reads a value whether or not the wave has broken: an unbroken level holds the
+ * node's own ψ₀ (a section breaking there now).
  */
-export function onsetStep(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number {
-  const g = heightM * onsetGain(p), s = offset + ONSET_STEP_OFFSET;
+export function onsetPsi(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number {
+  const g = heightM * onsetGain(p), s = offset + ONSET_PSI_OFFSET;
   if (!(g > 0)) return rec[s];
   const lq = Math.log(1 / (g * ONSET_LEVEL_Q0)) / Math.log(ONSET_LEVEL_RATIO);
   const k = Math.min(ONSET_LEVELS - 2, Math.max(0, Math.floor(lq)));

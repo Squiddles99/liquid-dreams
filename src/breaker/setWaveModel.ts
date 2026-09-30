@@ -1,7 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetStep, onsetTime, pileTop, settledCrestTop, steepeningStart } from './breaking';
+import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetTime, pileTop, settledCrestTop, steepeningStart } from './breaking';
 import { type BarrelShape, barrelShape, breakIntensity, drainBonus, withShape } from './breakIntensity';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
@@ -215,7 +215,7 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   // Its break intensity (spec 2026-09-30 §3.2), read on the point's own ray as the time since onset is. Off the record:
   // the normal anchor.
   const intensity = o.force?.intensity ?? (rec
-    ? breakIntensity({ step: onsetStep(rec, 0, w.heightM, o.params), offshoreMs: o.offshoreMs ?? 0, periodS: (2 * Math.PI) / w.omega, waveBonus: w.drainBonus ?? 0, throwDraw: w.throwDraw ?? 0 }, o.params)
+    ? breakIntensity({ step: onsetPsi(rec, 0, w.heightM, o.params), offshoreMs: o.offshoreMs ?? 0, periodS: (2 * Math.PI) / w.omega, waveBonus: w.drainBonus ?? 0, throwDraw: w.throwDraw ?? 0 }, o.params)
     : 1);
   const params = withShape(o.params, o.force?.shape ?? barrelShape(intensity));
   const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
