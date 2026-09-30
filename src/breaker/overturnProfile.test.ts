@@ -33,7 +33,8 @@ describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)
   it('the face is one smooth concave curve from the trough to the lip: no step, no pocket behind the crest (Andrew, 2026-09-30)', () => {
     for (const psi of [0.025, 0.04, 0.06, 0.08, 0.1, 0.15]) {
       const tau = peakLanding(psi);
-      for (const frac of [0.3, 0.6, 0.9, 1]) {
+      // From FACE_TURN_PROGRESS of the throw (before it, the crest still rounds over into the young curl).
+      for (const frac of [0.3, 0.4, 0.5, 0.6, 0.9, 1]) {
         const { s, p } = prof(psi, frac * tau), pts = p.points;
         let lo = 0;
         for (let j = 0; j < wallStart; j++) if (pts[j][1] < pts[lo][1]) lo = j;
@@ -103,5 +104,27 @@ describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)
       for (const q of p.points) { expect(Number.isFinite(q[0])).toBe(true); expect(Number.isFinite(q[1])).toBe(true); }
     }
     expect(overturnShape(Number.NaN, 7, 0).L).toBeGreaterThan(0);
+  });
+});
+
+describe('the lip finish (Andrew, 2026-10-01): the curl grows as it throws', () => {
+  it('is a point at the crest at the start (no plane from the crest to the trough), grows steadily, and is the tube at impact on landing', () => {
+    for (const psi of [0.035, 0.065, 0.09]) {
+      const tau = peakLanding(psi);
+      // Before the break and at the throw's start the tube is a point at the crest, and the face runs up to it (the old
+      // full-length young tube lay along its axis from the crest down to where it would land: a plane cutting the face).
+      for (const tb of [null, 0]) {
+        const f = prof(psi, tb).p.frame;
+        expect(f.tube.L, `ψ ${psi} tb ${tb}`).toBeLessThan(1e-6);
+        expect(Math.hypot(f.tube.O[0] - f.K[0], f.tube.O[1] - f.K[1])).toBeLessThan(1e-6);
+        expect(Math.hypot(f.P[0] - f.K[0], f.P[1] - f.K[1])).toBeLessThan(1e-6);
+      }
+      // It grows steadily, and at the landing it is the tube at impact.
+      const L = [0.25, 0.5, 0.75, 1].map((k) => prof(psi, k * tau).p.frame.tube.L);
+      for (let i = 1; i < L.length; i++) expect(L[i]).toBeGreaterThan(L[i - 1]);
+      const landed = prof(psi, tau + 0.05).p.frame;
+      expect(landed.tube.L).toBeCloseTo(landed.shape.L, 9);
+      expect(landed.tube.W).toBeCloseTo(landed.shape.W, 9);
+    }
   });
 });
