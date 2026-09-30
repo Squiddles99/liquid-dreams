@@ -56,7 +56,7 @@ wind factors, the Womb's ledge is softened so conditions move waves between Andr
 7. **ψ below 0.02** keeps the smallest tube's shape (ψ = 0.02) and fades the constructed curve out by
    smoothstep(0.01, 0.02, ψ) on the frame's weight: the ribbon becomes the sheet (spilling is B's).
 8. **The sheet's trough drain and explosion surge** have no paper behind them. They carry over from the photo-traced
-   anchors, re-keyed from intensity to ψ at the state points: ψ 0.035 → (0.2194, 0), 0.065 → (0.6352, 0.3),
+   anchors, re-keyed from intensity to ψ at the state points: ψ 0.035 → (0.2194, 0), 0.065 → (0.6544, 0.3),
    0.09 → (0.8178, 0.45), smoothstep-eased between neighbours and held past the ends.
 9. **Off the reef grid (no record)** a crest reads ψ = 0.065 (state 5), with no game-rule modifiers.
 10. **The ramp's shape.** The spec's (1 − u)² creases where it meets the deep flat. The ramp is instead
@@ -324,7 +324,7 @@ export const WIND_AREA_POINTS: readonly (readonly [number, number])[] = [[-0.4, 
 export const WIND_ASPECT_POINTS: readonly (readonly [number, number])[] = [[-0.5, 1.2], [0, 1], [0.75, 0.62]];
 /** The sheet's trough drain and surge at the state points (ψ, troughDrain, pileSurge): Andrew's photo-traced anchors,
  * re-keyed to ψ (no paper covers them; plan ruling 8). */
-export const SHEET_POINTS: readonly (readonly [number, number, number])[] = [[0.035, 0.2194, 0], [0.065, 0.6352, 0.3], [0.09, 0.8178, 0.45]];
+export const SHEET_POINTS: readonly (readonly [number, number, number])[] = [[0.035, 0.2194, 0], [0.065, 0.6544, 0.3], [0.09, 0.8178, 0.45]];
 /** The BreakParams keys each crest sets from its ψ (withSheetShape). */
 export const PER_CREST_BREAK_KEYS = ['troughDrain', 'pileSurge'] as const;
 

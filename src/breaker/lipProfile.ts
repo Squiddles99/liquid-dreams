@@ -71,6 +71,10 @@ export interface ProfileInput {
   r: number;
   /** Time since onset (s): null before the section breaks, Infinity once it is past the hand-back (crestTrace). */
   tb: number | null;
+  /** The crest's ψ (setWaveModel.Crest.psi): the tube's shape. Absent: PSI_NORMAL. */
+  psi?: number;
+  /** The wind's offshore speed (m/s, overturn.offshoreSpeed): the tube's wind factors. Absent: 0. */
+  offshoreMs?: number;
 }
 
 /** Everything about one station's profile that does not depend on the sample: computed once per station. */

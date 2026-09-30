@@ -230,7 +230,7 @@ export function packStations(entries: readonly StationEntry[], out: Float32Array
     const e = entries[i];
     if (!e.gap) prev = e;
     const s: Station = prev;
-    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.intensity, 0], i * STATION_VEC4S * 4);
+    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, 0], i * STATION_VEC4S * 4);
   }
   return n;
 }

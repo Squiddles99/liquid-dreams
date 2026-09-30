@@ -4,7 +4,6 @@ import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
   FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
 } from './breaking';
-import { ANCHORS } from './breakIntensity';
 import { waveNumber } from './dispersion';
 
 const P = DEFAULT_BREAK_PARAMS;
@@ -300,7 +299,7 @@ describe('normalizeBreakParams', () => {
     const p = { ...P };
     normalizeBreakParams(p);
     expect(p).toEqual(P);
-    expect([P.lipReach, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([ANCHORS[1].lipReach, ANCHORS[1].lipThickness, 1.8, 0.7]);
+    expect([P.lipReach, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.7078, 0.2, 1.8, 0.7]);
   });
 });
 

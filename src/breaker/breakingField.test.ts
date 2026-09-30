@@ -681,7 +681,9 @@ describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
     for (const [px, pz] of LEDGE_POINTS) {
       const line = ray(px, pz, 40, 80);
       const { tOn, H } = onsetAt(px, pz, w);
-      const t = tOn + landingEstimate(H, P) + settleSpan(H, P);
+      // Timed by the crest's own drain (its ψ's), as its lip lands.
+      const Pc = crestAt(px, pz, tOn, at(px, pz), w, ctx, sheet)?.params ?? P;
+      const t = tOn + landingEstimate(H, Pc) + settleSpan(H, Pc);
       const { top, j } = topNear(line, t, w);
       const cp = line[j], cc = crestAt(cp.x, cp.z, t, at(cp.x, cp.z), w, ctx, sheet)!;
       // Where the water is, displaced (ahead of the crest it is pulled back up to ~1.5 m: the pile is placed there), in the

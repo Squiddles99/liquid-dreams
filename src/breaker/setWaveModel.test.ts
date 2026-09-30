@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BREAK_PARAMS, breakingRatio } from './breaking';
+import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetPsi } from './breaking';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
-import { type ActiveWave, BREAKING_RATIO, type BreakOptions, type WaveContext, breakOptions, crestAt, localHeight, sumWaves, toActiveWave, waveAt } from './setWaveModel';
+import { type ActiveWave, BREAKING_RATIO, type BreakOptions, type WaveContext, breakOptions, crestAt, localHeight, rayCrestPoint, sumWaves, toActiveWave, waveAt } from './setWaveModel';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { barrelShape } from './breakIntensity';
-import { computeReefField, sampleField } from './reefField';
+import { PSI_NORMAL, drainFactor, sheetShape } from './overturn';
+import { computeReefField, sampleField, sampleOnset } from './reefField';
 
 const omega = (T: number) => (2 * Math.PI) / T;
 
@@ -101,48 +101,49 @@ describe('set-wave model', () => {
   });
 });
 
-describe('break intensity at the crest (condition-driven barrel)', () => {
+describe('ψ at the crest (barrel from the maths)', () => {
   const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
   const ctx: WaveContext = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-  const c12 = cloneConditions(DEFAULT_CONDITIONS); c12.swell.sizeFt = 12;
-  const big = wavesOfSet(1, c12, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
-  const w: ActiveWave = { arrivalS: 0, heightM: big.heightM, omega: ctx.omega, travelX: ctx.travelX, travelZ: ctx.travelZ, crestLengthM: 400, crestOffsetM: 0 };
-  const t = sampleField(field, 0, 0).tau + 0.5;
-  const crestWith = (o: BreakOptions, wave = w) => crestAt(0, 0, t, sampleField(field, 0, 0), wave, ctx, o)!;
+  const c = cloneConditions(DEFAULT_CONDITIONS); c.swell.sizeFt = 12;
+  const big = wavesOfSet(1, c, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+  const w = toActiveWave(big), t = w.arrivalS + sampleField(field, 0, 0).tau + 0.5;
+  const crest = (wave = w, p = DEFAULT_BREAK_PARAMS) => crestAt(0, 0, t, sampleField(field, 0, 0), wave, ctx, breakOptions(field, p))!;
   const lowestAhead = (o: BreakOptions) => {
     const f0 = sampleField(field, 0, 0);
     let m = Infinity;
-    // At t (the 12 ft wave broke ~2 s before the peak, so its lip is landing now; a second later the drain has refilled).
     for (let u = 0; u <= 40; u += 0.5) { const x = f0.dirX * u, z = f0.dirZ * u; m = Math.min(m, sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, o).eta); }
     return m;
   };
-  it('the crest carries its intensity and its own params (the shape at that intensity)', () => {
-    const c = crestWith(breakOptions(field, DEFAULT_BREAK_PARAMS));
-    expect(c.intensity).toBeGreaterThanOrEqual(0);
-    expect(c.intensity).toBeLessThanOrEqual(2);
-    expect(c.params.troughDrain).toBeCloseTo(barrelShape(c.intensity).troughDrain, 12);
-    expect(c.params.gamma).toBe(DEFAULT_BREAK_PARAMS.gamma);
+  it("the crest carries ψ₀ × the game rules, and its own sheet params (the trough drain and surge at its ψ)", () => {
+    const cr = crest();
+    const on = rayCrestPoint(0, 0, t, sampleField(field, 0, 0), w, ctx); // crestAt reads the record on the point's own ray
+    const rec = sampleOnset(field, on.x, on.z)!, psi0 = onsetPsi(rec, 0, w.heightM, DEFAULT_BREAK_PARAMS);
+    expect(cr.psi).toBeCloseTo(psi0 * (w.drainFactor ?? 1), 9);
+    expect(cr.params.troughDrain).toBe(sheetShape(cr.psi).troughDrain);
+    expect(cr.params.pileSurge).toBe(sheetShape(cr.psi).pileSurge);
+    expect(cr.params.gamma).toBe(DEFAULT_BREAK_PARAMS.gamma);
   });
-  // Task 3 rewires intensity to ψ
-  it.skip('offshore wind raises the intensity by 0.5 over the same onshore wind (unclamped here)', () => {
-    const on = crestWith(breakOptions(field, DEFAULT_BREAK_PARAMS, -8)).intensity, off = crestWith(breakOptions(field, DEFAULT_BREAK_PARAMS, 8)).intensity;
-    if (on > 0 && off < 2) expect(off - on).toBeCloseTo(0.5, 6);
-    else expect(off).toBeGreaterThan(on);
+  it('stacking close behind lowers ψ, a lull raises it', () => {
+    const stack = crest({ ...w, drainFactor: drainFactor(0.3 * 15, 15) }).psi, lull = crest({ ...w, drainFactor: drainFactor(Infinity, 15) }).psi;
+    expect(stack).toBeLessThan(lull);
   });
-  it('a heavier intensity drains the water in front deeper', () => {
+  it('the dial at 0 ignores the draw; at 0.15 a draw of 1 is ×1.15', () => {
+    const a = crest({ ...w, throwDraw: 1 }).psi, b = crest({ ...w, throwDraw: 0 }).psi;
+    expect(a).toBe(b);
+    const on = crest({ ...w, throwDraw: 1 }, { ...DEFAULT_BREAK_PARAMS, randomDial: 0.15 }).psi;
+    expect(on).toBeCloseTo(1.15 * b, 9);
+  });
+  it('a heavier ψ drains the water in front deeper', () => {
     const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
-    expect(lowestAhead({ ...o, force: { intensity: 2 } })).toBeLessThan(lowestAhead({ ...o, force: { intensity: 0 } }) - 0.3);
+    expect(lowestAhead({ ...o, force: { psi: 0.09 } })).toBeLessThan(lowestAhead({ ...o, force: { psi: 0.035 } }) - 0.3);
   });
-  // Task 3 rewires intensity to ψ
-  it.skip('the dial at 0 ignores the draw; at 0.3 a draw of 1 adds 0.3', () => {
-    const o0 = breakOptions(field, DEFAULT_BREAK_PARAMS), o3 = breakOptions(field, { ...DEFAULT_BREAK_PARAMS, randomDial: 0.3 });
-    expect(crestWith(o0, { ...w, throwDraw: 1 }).intensity).toBeCloseTo(crestWith(o0, { ...w, throwDraw: -1 }).intensity, 12);
-    const a = crestWith(o3, { ...w, throwDraw: 0 }).intensity, b = crestWith(o3, { ...w, throwDraw: 1 }).intensity;
-    if (a < 1.7) expect(b - a).toBeCloseTo(0.3, 6);
-  });
-  it('off the reef grid the crest reads the normal anchor exactly', () => {
+  it('off the reef grid the crest reads ψ = PSI_NORMAL exactly', () => {
     const x = field.grid.x0 - 50, z = 0, f = sampleField(field, x, z);
-    const c = crestAt(x, z, f.tau, f, w, ctx, breakOptions(field, DEFAULT_BREAK_PARAMS, 8));
-    if (c) expect(c.intensity).toBe(1);
+    const far = crestAt(x, z, f.tau + w.arrivalS, f, w, ctx, breakOptions(field, DEFAULT_BREAK_PARAMS, 8));
+    if (far) expect(far.psi).toBe(PSI_NORMAL);
+  });
+  it('force pins every crest to one ψ (tests and the drawings)', () => {
+    expect(crestAt(0, 0, t, sampleField(field, 0, 0), w, ctx, { ...breakOptions(field, DEFAULT_BREAK_PARAMS), force: { psi: 0.04 } })!.psi).toBe(0.04);
   });
 });
+
