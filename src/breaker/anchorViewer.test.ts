@@ -32,7 +32,7 @@ describe.skipIf(!OUT)('anchor drawings', () => {
     const sides: string[] = [];
     for (const I of [0, 1, 2]) {
       const tau = anchorLanding(I);
-      for (const dt of [-0.5, 0, 0.5]) {
+      for (const dt of [-0.5, 0, 0.5, 1]) {
         const s = anchorStation(I, tau + dt);
         const prof = buildProfile(s.base, s.input, s.lip, s.frameBase), f = prof.frame;
         const sea: Vec2[] = [];
