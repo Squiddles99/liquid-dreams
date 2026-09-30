@@ -158,3 +158,11 @@ export function teethMaterial(sky: Sky, sv?: (xz: N) => N): THREE.MeshBasicNodeM
   m.colorNode = litColor(sky, { albedo: vec3(0.72, 0.68, 0.58), normal: normalWorld, specular: float(0.05), shininess: float(80), wrap: float(0.45) }, sv);
   return m;
 }
+
+/** Glossy plastic (Grommet's black frames): a tight bright highlight on a dark body, not fabric's broad sheen. */
+export function plasticMaterial(sky: Sky, color: [number, number, number], sv?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
+  const m = new THREE.MeshBasicNodeMaterial();
+  m.side = THREE.DoubleSide;
+  m.colorNode = litColor(sky, { albedo: rgb(color), normal: normalWorld, specular: float(0.05), shininess: float(300), wrap: float(0) }, sv);
+  return m;
+}

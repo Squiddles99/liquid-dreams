@@ -15,14 +15,15 @@ SIDES = 8
 N_RIM = 48
 
 
-def _rect(c, s=1.0):
-    """A rounded rectangle around c in the face's plane (a superellipse, exponent 5: flat sides, soft corners)."""
+def _rect(c, inset=0.0):
+    """A rounded rectangle around c in the face's plane (a superellipse, exponent 5: flat sides, soft corners), drawn
+    `inset` metres inside the rim's centreline."""
     out = []
     for k in range(N_RIM):
         a = 2 * math.pi * k / N_RIM
         ca, sa = math.cos(a), math.sin(a)
-        x = math.copysign(abs(ca) ** 0.4, ca) * LENS_W * s
-        z = math.copysign(abs(sa) ** 0.4, sa) * LENS_H * s
+        x = math.copysign(abs(ca) ** 0.4, ca) * (LENS_W - inset)
+        z = math.copysign(abs(sa) ** 0.4, sa) * (LENS_H - inset)
         out.append(c + Vector((x, 0, z)))
     return out
 
@@ -76,7 +77,8 @@ def _mesh(L, fwd, name):
         _tube(bm, _rect(c), RIM_R, True)
         # The lens: a fan, bulged 2 mm forward in the middle.
         mid = bm.verts.new(c + Vector((0, -0.002, 0)))
-        ring = [bm.verts.new(p) for p in _rect(c, 0.96)]
+        # Tucked under the rim's inner edge: a lens reaching into the rim draws its tint over the black plastic.
+        ring = [bm.verts.new(p) for p in _rect(c, RIM_R * 0.5)]
         for k in range(N_RIM):
             bm.faces.new((mid, ring[(k + 1) % N_RIM], ring[k]))
         # The arm: from the rim's top outer corner, out past the temple, back to just above the ear, then down behind it.
