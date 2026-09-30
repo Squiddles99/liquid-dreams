@@ -1162,7 +1162,7 @@ export class App {
     // Brings the sky's tables up to date first, then marches the clouds through them.
     this.clouds.update(this.renderer, this.sunDir, this.camera.position, this.clock.simTime);
     this.cloudMeter.update(this.renderer, realDt, this.sunDir.y, this.clouds.hasClouds);
-    this.picture.setCloud(this.cloudMeter.stops, this.cloudMeter.sunVisible);
+    this.picture.setCloud(this.cloudMeter.stops, this.cloudMeter.sunVisible, this.cloudMeter.gains);
     this.land.update(this.renderer, sun.direction, this.camera.position);
     this.updateBeach();
     this.sky.followCamera(this.camera.position);
