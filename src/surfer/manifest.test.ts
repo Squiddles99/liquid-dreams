@@ -75,3 +75,20 @@ describe('the grommet build (grommet spec §2, §5, §7)', () => {
     expect(pos.max[1]).toBeCloseTo(1.52, 2);
   });
 });
+
+describe("Grommet's mop (grommet spec §3)", () => {
+  const gltf = glbJson('public/surfer/grommet.glb');
+  const hair = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'hair'));
+  const pos = gltf.accessors[hair.primitives[0].attributes.POSITION];
+  const man: SurferManifest = JSON.parse(readFileSync('public/surfer/grommet.manifest.json', 'utf8'));
+  it('stands well out from his head: wider than his ears by 5 cm or more, up to 7 cm or more above the head joint', () => {
+    const ears = man.landmarks!.ears, head = man.bones.find((b) => b.name === 'head')!;
+    expect(pos.max[0] - ears[0][0]).toBeGreaterThan(0.05);
+    expect(ears[1][0] - pos.min[0]).toBeGreaterThan(0.05);
+    expect(pos.max[1] - head.head[1]).toBeGreaterThan(0.07 + 0.17);
+  });
+  it('keeps the curls above his glasses in front', () => {
+    const lowFront = pos.min[1];
+    expect(lowFront).toBeGreaterThan(man.landmarks!.nose[1] - 0.2);
+  });
+});
