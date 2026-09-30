@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { glbFloats } from './glbData';
 import { PRESETS } from './presets';
 import { BONES, type SurferManifest, manifestProblems } from './rig';
 
@@ -90,5 +91,54 @@ describe("Grommet's mop (grommet spec §3)", () => {
   it('keeps the curls above his glasses in front', () => {
     const lowFront = pos.min[1];
     expect(lowFront).toBeGreaterThan(man.landmarks!.nose[1] - 0.2);
+  });
+});
+
+describe("Grommet's glasses and teeth (grommet spec §4)", () => {
+  const path = 'public/surfer/grommet.glb', gltf = glbJson(path);
+  const man: SurferManifest = JSON.parse(readFileSync('public/surfer/grommet.manifest.json', 'utf8'));
+  const L = man.landmarks!;
+  const meshNamed = (n: string): any => gltf.meshes[gltf.nodes.find((x: any) => x.name === n).mesh];
+  const pointsOf = (mesh: any, material: string): number[][] => mesh.primitives.filter((p: any) => gltf.materials[p.material].name === material).flatMap((p: any) => {
+    const f = glbFloats(path, gltf, p.attributes.POSITION), out: number[][] = [];
+    for (let i = 0; i < f.length; i += 3) out.push([f[i], f[i + 1], f[i + 2]]);
+    return out;
+  });
+  it('centres a round lens 5 cm across in front of each eye (within 1 cm of its axis)', () => {
+    const lens = pointsOf(meshNamed('grommet_glasses'), 'lens');
+    for (const eye of L.eyes) {
+      const mine = lens.filter((p) => Math.sign(p[0]) === Math.sign(eye[0]));
+      const c = [0, 1, 2].map((k) => mine.reduce((s, p) => s + p[k], 0) / mine.length);
+      expect(Math.hypot(c[0] - eye[0], c[1] - eye[1])).toBeLessThan(0.01);
+      expect(c[2]).toBeGreaterThan(eye[2] + 0.015);
+      const span = Math.max(...mine.map((p) => p[0])) - Math.min(...mine.map((p) => p[0]));
+      expect(span).toBeGreaterThan(0.045);
+      expect(span).toBeLessThan(0.055);
+    }
+  });
+  it('runs the arms back to his ears', () => {
+    const frame = pointsOf(meshNamed('grommet_glasses'), 'glasses');
+    for (const ear of L.ears) {
+      const reach = Math.min(...frame.map((p) => Math.hypot(p[0] - ear[0], p[1] - ear[1], p[2] - ear[2])));
+      expect(reach).toBeLessThan(0.025);
+    }
+  });
+  it('puts the buck teeth in his mouth: behind the lip’s front, ahead of the mouth’s centre', () => {
+    const teeth = pointsOf(meshNamed('grommet_teeth'), 'teeth');
+    const front = Math.max(...teeth.map((p) => p[2]));
+    expect(front).toBeLessThan(L.lipFront[2] - 0.0005);
+    expect(front).toBeGreaterThan(L.mouth[2]);
+  });
+  it('skins the glasses and teeth only to the head', () => {
+    const head = gltf.skins[0].joints.findIndex((j: number) => gltf.nodes[j].name === 'head');
+    for (const n of ['grommet_glasses', 'grommet_teeth']) {
+      for (const p of meshNamed(n).primitives) {
+        const j = glbFloats(path, gltf, p.attributes.WEIGHTS_0);
+        const idx = gltf.accessors[p.attributes.JOINTS_0];
+        expect(idx, n).toBeDefined();
+        for (let i = 0; i < j.length; i += 4) expect(j[i], n).toBeCloseTo(1, 3);
+      }
+    }
+    expect(head).toBeGreaterThanOrEqual(0);
   });
 });

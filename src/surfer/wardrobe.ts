@@ -22,6 +22,9 @@ export const OUTFIT_LABELS: Record<Outfit, string> = {
   boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', rashieAndBottoms: 'bikini bottoms + rash vest', shortArmSteamer: 'short-arm steamer', rashieAndBoardies: 'boardies + rash vest',
 };
 
+/** On land (the dune, the select screen) Grommet dries off and puts his glasses on (grommet spec §6). */
+export const landLook = (onLand: boolean): { wet: number; glasses: boolean } => ({ wet: onLand ? 0 : 1, glasses: onLand });
+
 /** Whether the outfit wears the boardies mesh (the male and Grommet builds carry one). */
 export const showsBoardies = (o: Outfit): boolean => o === 'boardies' || o === 'rashieAndBoardies';
 

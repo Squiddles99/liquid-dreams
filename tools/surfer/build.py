@@ -9,12 +9,14 @@ sys.path.append(os.path.dirname(__file__))
 import bodymap  # noqa: E402
 import export  # noqa: E402
 import face  # noqa: E402
+import glasses  # noqa: E402
 import hair  # noqa: E402
 import mpfb_bridge  # noqa: E402
 import previews  # noqa: E402
 import rig_trim  # noqa: E402
 import sculpt  # noqa: E402
 import skin  # noqa: E402
+import teeth  # noqa: E402
 import wardrobe  # noqa: E402
 
 preset_path, out_dir, preview_dir = sys.argv[sys.argv.index("--") + 1:][:3]
@@ -47,6 +49,12 @@ face.colour_eyes(eye_obj, L)
 rig_trim.single_material(hair_obj, "hair")
 rig_trim.single_material(eye_obj, "eyes")
 parts = [body, hair_obj, eye_obj]
+if preset.get("glasses"):
+    parts.append(glasses.build(rig, body, L, name))
+if preset.get("teeth"):
+    tooth = teeth.build(rig, L, name)
+    rig_trim.single_material(tooth, "teeth")
+    parts.append(tooth)
 if preset["boardies"]:
     shorts = wardrobe.boardies(body, rig, coords, weights, preset["heightM"], name)
     rig_trim.single_material(shorts, "boardies")
@@ -60,4 +68,5 @@ for outfit in preset["outfits"]:
     previews.dress(parts, preset, outfit)
     previews.sheet(name, preset["heightM"], preview_dir, outfit)
     previews.sheet(name, preset["heightM"], preview_dir, outfit, close=True)
+previews.sheet(name, preset["heightM"], preview_dir, preset["outfits"][0], frame="face")
 print(f"built {name}: {sum(len(p.vertices) - 2 for p in body.data.polygons)} body triangles")

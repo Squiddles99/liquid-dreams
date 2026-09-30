@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, attribute, float, max, mix, mx_noise_float, normalize, normalWorld, positionWorld, pow, smoothstep, step, uniform, uv, vec2, vec3 } from 'three/tsl';
+import { abs, attribute, cameraPosition, float, max, mix, mx_noise_float, normalize, normalWorld, positionWorld, pow, smoothstep, step, uniform, uv, vec2, vec3 } from 'three/tsl';
 import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
 import type { SurferPreset } from './presets';
@@ -92,5 +92,24 @@ export function fabricMaterial(sky: Sky, color: [number, number, number], sv?: (
   const m = new THREE.MeshBasicNodeMaterial();
   m.side = THREE.DoubleSide;
   m.colorNode = litColor(sky, { albedo: rgb(color), normal: normalWorld, specular: float(0.03), shininess: float(20), wrap: float(0.1) }, sv);
+  return m;
+}
+
+/** Clear glass: little colour, the sky's reflection and a crisp highlight, stronger toward grazing angles. */
+export function lensMaterial(sky: Sky, sv?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
+  const m = new THREE.MeshBasicNodeMaterial();
+  m.transparent = true;
+  m.depthWrite = false;
+  m.side = THREE.DoubleSide;
+  const facing = abs(normalWorld.dot(normalize(cameraPosition.sub(positionWorld))));
+  m.colorNode = litColor(sky, { albedo: vec3(0.02, 0.025, 0.03), normal: normalWorld, specular: float(0.9), shininess: float(400), wrap: float(0) }, sv);
+  m.opacityNode = mix(float(0.55), float(0.12), facing);
+  return m;
+}
+
+/** Off-white teeth, a little translucent at the tips (a touch of wrap lighting). */
+export function teethMaterial(sky: Sky, sv?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
+  const m = new THREE.MeshBasicNodeMaterial();
+  m.colorNode = litColor(sky, { albedo: vec3(0.72, 0.68, 0.58), normal: normalWorld, specular: float(0.05), shininess: float(80), wrap: float(0.45) }, sv);
   return m;
 }

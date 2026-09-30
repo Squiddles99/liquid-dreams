@@ -348,6 +348,21 @@
    ]
   },
   {
+   "name": "grommet_glasses",
+   "triangles": 1412,
+   "materials": [
+    "glasses",
+    "lens"
+   ]
+  },
+  {
+   "name": "grommet_teeth",
+   "triangles": 264,
+   "materials": [
+    "teeth"
+   ]
+  },
+  {
    "name": "grommet_boardies",
    "triangles": 1105,
    "materials": [
