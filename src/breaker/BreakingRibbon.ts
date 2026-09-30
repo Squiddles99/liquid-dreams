@@ -1,7 +1,7 @@
 import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 import * as THREE from 'three/webgpu';
 import {
-  Break, Fn, If, Loop, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
+  Break, Fn, If, Loop, abs, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
   storage, uniform, varying, varyingProperty, vec2, vec3, vec4,
 } from 'three/tsl';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
@@ -18,7 +18,8 @@ import type { BreakParams } from './breaking';
 import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
 import { PROFILE_SAMPLES, PROFILE_SEGMENTS } from './lipProfile';
 import {
-  FRAME_PROFILE_VEC4S, FRAME_VEC4S, createLipUniforms, encodeTb, packFrameNodes, profileFrameNode, profilePointNode, sampleHomeNode, unpackFrameNodes, updateLipUniforms,
+  FRAME_KNOT_VEC4, FRAME_VEC4S, createLipUniforms, encodeTb, packFrameNodes, profileFrameNode, profilePointNode, readFrameNodes, sampleHomeNode, sampleTargetNode,
+  updateLipUniforms,
 } from './lipProfileNodes';
 
 type N = any;
@@ -331,8 +332,8 @@ export class BreakingRibbon {
    * from the sheet (0 on the front and back segments). Skirts take their edge's.
    */
   readonly details: THREE.StorageBufferAttribute;
-  /** Per station: the frame as FRAME_VEC4S vec4s, lipProfileNodes.FRAME_LAYOUT order then the base samples Fb and the
-   * landing guess (FRAME_BASE_OFFSET) (self-tests and diagnostics). */
+  /** Per station: the frame as FRAME_VEC4S vec4s, lipProfileNodes.FRAME_LAYOUT order (the tube, the throw, the pile's
+   * knots). */
   readonly frames: THREE.StorageBufferAttribute;
   /** How many station rows are live this frame (the draw range covers these). */
   stationCount = 0;
@@ -342,6 +343,8 @@ export class BreakingRibbon {
   /** stationCount on the GPU: the normal pass's runs end at it. */
   private readonly rows = uniform(0);
   private readonly lip;
+  /** The wind's offshore speed (m/s): setOffshore. */
+  private readonly offshoreMs = uniform(0);
   private readonly framePass: THREE.ComputeNode;
   private readonly vertexPass: THREE.ComputeNode;
   private readonly developPass: THREE.ComputeNode;
@@ -416,6 +419,11 @@ export class BreakingRibbon {
 
   setParams(p: BreakParams): void {
     updateLipUniforms(this.lip, p);
+  }
+
+  /** The wind's offshore speed (m/s, overturn.offshoreSpeed): the tube's wind factors (Feddersen et al. 2023). */
+  setOffshore(ms: number): void {
+    this.offshoreMs.value = Number.isFinite(ms) ? ms : 0;
   }
 
   setOverlays(o: DebugOverlays): void {
@@ -603,6 +611,16 @@ export class BreakingRibbon {
     return material;
   }
 
+  /**
+   * A surface read as one WGSL function, called from each site: inlined, every call site of the frame pass (about a
+   * dozen, the tube's impact search and the face's join among them) carried the whole displacement, and its shader
+   * grew to ~850 kB.
+   */
+  private surfaceFn(surface: (xz: N) => N, name: string): (xz: N) => N {
+    const fn = Fn(([xz]: N[]) => vec3(surface(xz))).setLayout({ name, type: 'vec3', inputs: [{ name: 'xz', type: 'vec2' }] });
+    return (xz: N) => fn(xz);
+  }
+
   private stationsNode(): N {
     return storage(this.stationsAttr, 'vec4', MAX_STATIONS * STATION_VEC4S).toReadOnly();
   }
@@ -618,14 +636,19 @@ export class BreakingRibbon {
       const S = a.xy, n = a.zw;
       // base(u) = (d·n + u, d.y) with d the smooth sheet without the pile at S + n·u: the displaced point's component
       // along n.
-      const frameSurface = this.surface.frameBase ?? this.surface.smooth;
-      const baseAt = (u: N): N => {
+      const cS = stations.element(i.mul(STATION_VEC4S).add(2)).toVar();
+      const smooth = this.surfaceFn(this.surface.smooth, 'ribbonSmooth');
+      const frameSurface = this.surface.frameBase ? this.surfaceFn(this.surface.frameBase, 'ribbonFrameBase') : smooth;
+      const along = (surface: (xz: N) => N) => (u: N): N => {
         const uu = float(u).toVar();
         const xz = S.add(n.mul(uu)).toVar();
-        const d = vec3(frameSurface(xz)).toVar();
+        const d = vec3(surface(xz)).toVar();
         return vec2(dot(d.xz, n).add(uu), d.y);
       };
-      const f = profileFrameNode(baseAt, { H: b.x, c: b.y, r: b.z, tb: b.w }, this.lip);
+      // The frame on the sheet without the pile (the lip is thrown from the wave as it stood); the pile's lift from the
+      // sheet with it (lipProfile.buildProfile).
+      const f = profileFrameNode(along(frameSurface), along(smooth), { H: b.x, c: b.y, r: b.z, tb: b.w, psi: cS.z, offshoreMs: this.offshoreMs }, this.lip,
+        (k, v) => { frames.element(i.mul(FRAME_VEC4S).add(FRAME_KNOT_VEC4).add(k)).assign(v); });
       packFrameNodes(f).forEach((v, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).assign(v));
     })().compute(MAX_STATIONS) as THREE.ComputeNode;
   }
@@ -648,15 +671,21 @@ export class BreakingRibbon {
       const j = local.sub(1).clamp(int(0), int(LAST)).toVar();
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const gap = stations.element(i.mul(STATION_VEC4S).add(2)).x.toVar();
-      const fv = Array.from({ length: FRAME_PROFILE_VEC4S }, (_, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).toVar());
-      const f = unpackFrameNodes(fv);
+      const f = readFrameNodes((k) => frames.element(i.mul(FRAME_VEC4S).add(k)));
       const S = a.xy, n = a.zw;
       const tHat = vec2(n.y.negate(), n.x).toVar();
       const home = sampleHomeNode(j, f).toVar();
       const xzHome = S.add(n.mul(home)).toVar();
-      const d = vec3(this.surface.smooth(xzHome)).toVar();
+      const smooth = this.surfaceFn(this.surface.smooth, 'ribbonSmooth');
+      const d = vec3(smooth(xzHome)).toVar();
       const baseHome = vec2(home.add(dot(d.xz, n)), d.y);
-      const p = profilePointNode(j, f, baseHome, home);
+      // Where the sample settles as the curl collapses (lipProfile.sampleTarget): the base there, read again only where
+      // it has left its home (after the landing).
+      const st = sampleTargetNode(j, f, home);
+      const target = float(st.target).toVar();
+      const dT = vec3(smooth(S.add(n.mul(target)))).toVar();
+      const baseTarget = vec2(target.add(dot(dT.xz, n)), dT.y).toVar();
+      const p = profilePointNode(j, f, baseTarget, home, st.c);
       const pos = vec2(p.pos).toVar();
       const lipness = float(p.lipness).toVar();
       // The profile's u along n; the lateral displacement at home carried unchanged along t̂.
@@ -694,7 +723,7 @@ export class BreakingRibbon {
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const S = a.xy, n = a.zw;
       const tHat = vec2(n.y.negate(), n.x).toVar();
-      const f = unpackFrameNodes(Array.from({ length: FRAME_PROFILE_VEC4S }, (_, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).toVar()));
+      const f = readFrameNodes((k) => frames.element(i.mul(FRAME_VEC4S).add(k)));
       const uFront = float(f.uFront).toVar(), uBack = float(f.uBack).toVar(), weight = float(f.weight).toVar();
       /** Profile sample jj's (u along n, y), chop-free. */
       const UY = (jj: N): N => {

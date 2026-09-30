@@ -132,6 +132,23 @@ describe('lipProfile', () => {
     }
   });
 
+  it('its edges are the sheet with a pile standing above the crest at both edges', () => {
+    // A synthetic cross-section steep enough to throw, and whitewater standing 0.8 m over it at both
+    // edges (the pile's knots include uBack and uFront).
+    const frameBase = (u: number): Vec2 => [u + 0.3 * Math.sin(u * 0.2), 2.6 * Math.exp(-((u / 2.5) ** 2)) - 1.6];
+    const tau = profileFrame(frameBase, { H: 4, c: 8, r: 1.4, tb: 0, psi: PSI_NORMAL }, LIP).tauLand;
+    for (const tb of [0.5 * tau, tau + 0.2, tau + 0.8]) {
+      const input = { H: 4, c: 8, r: 1.4, tb, psi: PSI_NORMAL };
+      const f = profileFrame(frameBase, input, LIP);
+      const bump = (u: number, at: number): number => 0.8 * Math.exp(-(((u - at) / 3) ** 2));
+      const piled = (u: number): Vec2 => { const b = frameBase(u); return [b[0], b[1] + bump(u, f.uBack) + bump(u, f.uFront)]; };
+      const p = buildProfile(piled, input, LIP, frameBase);
+      expect(p.frame.weight).toBeGreaterThan(0.5);
+      expect(near(p.points[0], piled(p.frame.uFront))).toBe(true);
+      expect(near(p.points.at(-1) as Vec2, piled(p.frame.uBack))).toBe(true);
+    }
+  });
+
 
   it("the foam zones (Andrew's photo): the lip whitens as it throws, most at its tip, the tube is clean, and foam fills it once the lip lands", () => {
     // Where the peak's section breaks (on the softened ramp ~45 m seaward of (0, 0), where the wave has long since
