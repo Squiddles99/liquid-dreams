@@ -82,13 +82,13 @@ export interface BarrelShape {
 export const PER_CREST_BREAK_KEYS: readonly (keyof BarrelShape)[] = ['throwStrength', 'lipThickness', 'wallBack', 'troughDrain', 'pileSurge'];
 
 /**
- * The anchors (gentle, normal, heavy), calibrated in Task 6 against the spec's measured targets (barrelAnchors.test.ts).
- * Until then these are first guesses.
+ * The anchors (gentle, normal, heavy), calibrated 2026-09-30 by barrelAnchors.test.ts against the spec's measured
+ * targets (§3.3: the biggest 12 ft set wave on the peak, at the lip's landing).
  */
 export const ANCHORS: readonly [BarrelShape, BarrelShape, BarrelShape] = [
-  { throwStrength: 0.45, lipThickness: 0.1, wallBack: 0.1, troughDrain: 0.3, pileSurge: 0 },
-  { throwStrength: 0.6, lipThickness: 0.25, wallBack: 0.25, troughDrain: 0.7, pileSurge: 0.3 },
-  { throwStrength: 0.9, lipThickness: 0.3, wallBack: 0.1, troughDrain: 0.9, pileSurge: 0.45 },
+  { throwStrength: 0.7303, lipThickness: 0.1, wallBack: 0.7412, troughDrain: 0.2229, pileSurge: 0 },
+  { throwStrength: 1.0696, lipThickness: 0.2, wallBack: 0.0282, troughDrain: 0.638, pileSurge: 0.3 },
+  { throwStrength: 1.2571, lipThickness: 0.3, wallBack: -0.3, troughDrain: 0.8178, pileSurge: 0.45 },
 ];
 
 /** The shape at `intensity`: anchor k at k, smoothstep-eased between neighbours (zero slope at each anchor). */

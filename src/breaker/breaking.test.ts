@@ -4,6 +4,7 @@ import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
   FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
 } from './breaking';
+import { ANCHORS } from './breakIntensity';
 import { waveNumber } from './dispersion';
 
 const P = DEFAULT_BREAK_PARAMS;
@@ -284,7 +285,7 @@ describe('normalizeBreakParams', () => {
     expect([low.throwStrength, low.lipThickness, low.collapseTime, low.ribbonOnset]).toEqual([0.1, 0.03, 0.3, 0.3]);
     const bad = { ...P, throwStrength: Number.NaN, lipThickness: Infinity, collapseTime: -Infinity, ribbonOnset: Number.NaN };
     normalizeBreakParams(bad);
-    expect([bad.throwStrength, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([0.6, 0.25, 1.8, 0.7]);
+    expect([bad.throwStrength, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([DEFAULT_BREAK_PARAMS.throwStrength, DEFAULT_BREAK_PARAMS.lipThickness, 1.8, 0.7]);
   });
   it('fills the pile and churn fields a saved setting from before them lacks, and clamps them', () => {
     const old = { ...P } as Partial<BreakParams>;
@@ -299,7 +300,7 @@ describe('normalizeBreakParams', () => {
     const p = { ...P };
     normalizeBreakParams(p);
     expect(p).toEqual(P);
-    expect([P.throwStrength, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.6, 0.25, 1.8, 0.7]);
+    expect([P.throwStrength, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([ANCHORS[1].throwStrength, ANCHORS[1].lipThickness, 1.8, 0.7]);
   });
 });
 

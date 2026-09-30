@@ -63,7 +63,7 @@ describe('breakIntensity', () => {
   it('normalizes the new params into range', () => {
     const p = { ...DEFAULT_BREAK_PARAMS, wallBack: 9, intensityNudge: -9, randomDial: 9 };
     normalizeBreakParams(p);
-    expect(p.wallBack).toBe(0.5);
+    expect(p.wallBack).toBe(1);
     expect(p.intensityNudge).toBe(-1);
     expect(p.randomDial).toBe(0.3);
   });

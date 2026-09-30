@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { If, atan, cos, float, length, max, min, mix, normalize, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
 import { type BreakParams, RIBBON_FULL_OFFSET, normalizeBreakParams, steepeningStart } from './breaking';
 import {
-  BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_MARGIN_M, FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_GROW_PROGRESS, LIP_SPRAY, LIP_SPRAY_FROM, LIP_SPRAY_PROGRESS,
+  BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_MARGIN_M, FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, LANDING_FOAM_RISE, LANDING_REFINE, LAND_CLEARANCE_M, LIP_GROW_PROGRESS, LIP_SPRAY, LIP_SPRAY_FROM, LIP_SPRAY_PROGRESS,
   MAX_THICKNESS_OF_RADIUS, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID, TIP_THICKNESS_RATIO,
   WALL_HEIGHT, sampleSegment,
 } from './lipProfile';
@@ -175,9 +175,9 @@ const norm2 = (v: N): N => {
 const landingTimeNode = (drop: N): N => sqrt(max(drop, 0.05).mul(2 / GRAVITY_MS2));
 
 /**
- * profileFrame on the GPU. `baseAt(u)` returns the base's vec2(u, y) at undisplaced u (it is called four times, in
- * profileFrame's order: 0, uFoot, uFoot − 0.1, the landing guess; each result is made a var here, so each base sample
- * is evaluated once). Must be called inside an Fn.
+ * profileFrame on the GPU. `baseAt(u)` returns the base's displaced vec2(x, y) at undisplaced u (it is called
+ * 4 + LANDING_REFINE times, in profileFrame's order: 0, uFoot, uFoot − 0.1, the landing guess, then each landing
+ * refinement; each result is made a var here, so each base sample is evaluated once). Must be called inside an Fn.
  */
 export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, u: LipUniforms): ProfileFrameNodes {
   const H = float(input.H).toVar(), c = float(input.c).toVar(), r = float(input.r).toVar(), tb = float(input.tb).toVar();
@@ -192,6 +192,15 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   const tipBelow = float(TIP_THICKNESS_RATIO).mul(u.lipThickness).mul(H);
   const tauLand = landingTimeNode(K.y.sub(max(F.y, landing0.y)).sub(tipBelow)).toVar();
   const vj = max(u.throwStrength.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)).toVar();
+  // The water where the lip then lands (lipProfile.profileFrame): each step moves u by the miss in x.
+  const uLand = uFoot.add(K.x.add(vj0.mul(tau0)).sub(F.x)).toVar();
+  const land = vec2(landing0).toVar();
+  for (let i = 0; i < LANDING_REFINE; i++) {
+    uLand.addAssign(K.x.add(vj.mul(tauLand)).sub(land.x));
+    land.assign(baseAt(uLand));
+    tauLand.assign(landingTimeNode(K.y.sub(max(F.y, land.y)).sub(tipBelow)));
+    vj.assign(max(u.throwStrength.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)));
+  }
   const pre = tb.lessThan(0.0);
   const t = select(pre, float(0.0), min(max(tb, 0.0), tauLand)).toVar();
   const prog = t.div(tauLand).toVar();

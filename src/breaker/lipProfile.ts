@@ -46,6 +46,8 @@ export const MAX_THICKNESS_OF_RADIUS = 0.8;
 /** The tube's back wall W stands p.wallBack·H behind the crest at full throw (per crest, from its intensity), at this
  * fraction of the way from the trough up to the lip's root. */
 export const WALL_HEIGHT = 0.45;
+/** The landing time is refined this many times, each reading the water where the previous estimate lands the lip. */
+export const LANDING_REFINE = 3;
 /** After the collapse ends the ribbon fades out (hands back to the sheet) over this long (s). */
 export const HAND_BACK_S = 0.5;
 /** The foam from the lip's landing rises over this fraction of the collapse. */
@@ -128,8 +130,18 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: 
   const vj0 = Math.max(p.throwStrength * c, (F[0] - K[0] + LAND_CLEARANCE_M) / tau0);
   const landing0 = base(uFoot + (K[0] + vj0 * tau0 - F[0]));
   const tipBelow = TIP_THICKNESS_RATIO * p.lipThickness * H;
-  const tauLand = landingTime(K[1] - Math.max(F[1], landing0[1]) - tipBelow);
-  const vj = Math.max(p.throwStrength * c, (F[0] - K[0] + LAND_CLEARANCE_M) / tauLand);
+  let tauLand = landingTime(K[1] - Math.max(F[1], landing0[1]) - tipBelow);
+  let vj = Math.max(p.throwStrength * c, (F[0] - K[0] + LAND_CLEARANCE_M) / tauLand);
+  // The water is read where the lip then lands. base(u) is displaced from u (by metres over a drained trough, where the
+  // water is drawn back), so each step moves u by the miss in x; the first estimate read the water ~1.5 m behind the
+  // landing, 0.3 m lower, and the tip's underside went into the water just before it landed.
+  let uLand = uFoot + (K[0] + vj0 * tau0 - F[0]), land = landing0;
+  for (let i = 0; i < LANDING_REFINE; i++) {
+    uLand += K[0] + vj * tauLand - land[0];
+    land = base(uLand);
+    tauLand = landingTime(K[1] - Math.max(F[1], land[1]) - tipBelow);
+    vj = Math.max(p.throwStrength * c, (F[0] - K[0] + LAND_CLEARANCE_M) / tauLand);
+  }
   const t = tb === null ? 0 : Math.min(Math.max(tb, 0), tauLand);
   const prog = t / tauLand;
   const reach = vj * t;

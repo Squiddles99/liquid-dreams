@@ -156,7 +156,7 @@ export const BREAK_BINDINGS = {
   ribbonOnset: { label: 'ribbon onset ρ', min: 0.3, max: 0.9, step: 0.01 },
   pileHalfM: { label: 'pile half distance (m)', min: 10, max: 150, step: 1 },
   pileSurge: { label: 'pile surge (× lip)', min: 0, max: 0.6, step: 0.01 },
-  wallBack: { label: 'wall back (×H, per crest)', min: -0.3, max: 0.5, step: 0.01 },
+  wallBack: { label: 'wall back (×H, per crest)', min: -0.3, max: 1, step: 0.01 },
   intensityNudge: { label: 'intensity nudge', min: -1, max: 1, step: 0.05 },
   randomDial: { label: 'random dial', min: 0, max: 0.3, step: 0.01 },
   churnSize: { label: 'churn size (× pile)', min: 0, max: 0.4, step: 0.01 },
