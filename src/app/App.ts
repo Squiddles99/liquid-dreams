@@ -168,8 +168,8 @@ export class App {
   readonly rainStreaks = new RainStreaks(this.sky);
   /** Lightning: the flash in the clouds, the bolt (weather W2). */
   readonly lightning = new LightningView(this.sky);
-  /** The strikes that fired this frame (the thunder, weather W2). */
-  private strikesFired: Strike[] = [];
+  /** Strikes fired since the sound last took them (their thunder, weather W2). */
+  private strikesPending: Strike[] = [];
   readonly ocean = new OceanSimulation(this.simParams);
   readonly seabed = new Seabed(buildBathymetry(this.reefParams));
   /** The land behind the Womb (Phase 4a spec 2026-09-28-the-view-back-design.md); landless until its file loads. */
@@ -745,7 +745,9 @@ export class App {
       bursts, bombieSize: this.bombieParams.size,
       surf: this.surf.state, waterlineX: this.land.height?.waterlineAt(cam.z) ?? null, waterY: this.probe.heightAt(0),
       plants: this.plantsNear, rocks: this.rocksNear,
+      rain: this.cloudMeter.rainHere, strikes: this.strikesPending,
     }, { position: cam, forward: this.camera.getWorldDirection(this.soundDir), up: { x: 0, y: 1, z: 0 } }, realDt);
+    this.strikesPending = [];
   }
 
   /**
@@ -1186,8 +1188,8 @@ export class App {
     const facing = Math.min(1, Math.max(0, 0.3 - 0.7 * this.camera.getWorldDirection(this.viewDir).dot(fall)));
     this.rainLensWet = this.underwater ? 0 : rainLensStep(this.rainLensWet, this.cloudMeter.rainHere, facing, realDt);
     this.lensWater.rain(this.rainLensWet);
-    this.strikesFired = this.lightning.update(this.conditions.seed, this.conditions.weather.storm, this.clock.simTime,
-      lowLayer(this.conditions.weather).baseM, this.camera.position).fired;
+    this.strikesPending.push(...this.lightning.update(this.conditions.seed, this.conditions.weather.storm, this.clock.simTime,
+      lowLayer(this.conditions.weather).baseM, this.camera.position).fired);
     this.land.update(this.renderer, sun.direction, this.camera.position);
     this.updateBeach();
     this.sky.followCamera(this.camera.position);
