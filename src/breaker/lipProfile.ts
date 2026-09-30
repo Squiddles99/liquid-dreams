@@ -97,9 +97,55 @@ export interface ProfileFrame {
   rho: number;
   W: Vec2;
   R: Vec2;
+  /** Where the lip lands, as the base's undisplaced u (the landing refinement's last sample). */
+  uLand: number;
+  /** The whitewater pile's lift under the curl (pileLift): absent, none (the frame's own sheet is the profile's). */
+  lift?: PileLift;
+}
+
+/**
+ * The whitewater pile's lift under the curl, at PILE_LIFT_KNOTS: at each knot the sheet with the pile minus the sheet
+ * without it (the frame's), both displaced, keyed by the frame sheet's x. Once the lip lands the pile rises under it (up
+ * to ~2.5 m in half a second); the front and back of the profile ride on it (they are the sheet with the pile), so the
+ * curl between them rides on it too: otherwise a step stood where the back joins the lip's root, and the risen water
+ * folded through the landed tip (Andrew, 2026-09-30). Zero before the pile rises, so the throw is the wave as it stood.
+ */
+export interface PileLift {
+  x: number[];
+  dx: number[];
+  dy: number[];
+}
+/** The knots' u, as fractions of the frame's: behind the crest, the crest, half way to the foot, the foot, the landing,
+ * half way to the front edge, the front edge. */
+export function pileLiftKnots(f: ProfileFrame): number[] {
+  return [f.uBack, 0, 0.5 * f.uFoot, f.uFoot, f.uLand, 0.5 * (f.uLand + f.uFront), f.uFront];
+}
+export function pileLift(base: (u: number) => Vec2, frameBase: (u: number) => Vec2, f: ProfileFrame): PileLift {
+  const out: PileLift = { x: [], dx: [], dy: [] };
+  for (const u of pileLiftKnots(f)) {
+    const a = base(u), b = frameBase(u);
+    out.x.push(b[0]); out.dx.push(a[0] - b[0]); out.dy.push(a[1] - b[1]);
+  }
+  return out;
+}
+/** The lift at x: linear between the knots (sorted by x here), constant past the ends. */
+export function liftAt(l: PileLift, x: number): Vec2 {
+  const order = l.x.map((_, i) => i).sort((a, b) => l.x[a] - l.x[b]);
+  const first = order[0], last = order[order.length - 1];
+  if (x <= l.x[first]) return [l.dx[first], l.dy[first]];
+  if (x >= l.x[last]) return [l.dx[last], l.dy[last]];
+  for (let k = 0; k + 1 < order.length; k++) {
+    const i = order[k], j = order[k + 1];
+    if (x <= l.x[j]) {
+      const w = l.x[j] > l.x[i] ? (x - l.x[i]) / (l.x[j] - l.x[i]) : 1;
+      return [l.dx[i] + w * (l.dx[j] - l.dx[i]), l.dy[i] + w * (l.dy[j] - l.dy[i])];
+    }
+  }
+  return [l.dx[last], l.dy[last]];
 }
 
 const lerp2 = (a: Vec2, b: Vec2, t: number): Vec2 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+const add2 = (a: Vec2, b: Vec2): Vec2 => [a[0] + b[0], a[1] + b[1]];
 const norm2 = (v: Vec2): Vec2 => { const l = Math.hypot(v[0], v[1]); return l > 1e-9 ? [v[0] / l, v[1] / l] : [0, 1]; };
 
 function hermite(p0: Vec2, t0: Vec2, p1: Vec2, t1: Vec2, s: number): Vec2 {
@@ -164,7 +210,7 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: 
   const uFront = Math.max(uFoot, K[0] + vj * tauLand) + LAND_CLEARANCE_M + EDGE_MARGIN_M;
   return {
     K, F, tF, uFoot, uFront, uBack: -(BACK_EDGE_H * H + EDGE_MARGIN_M), tauLand, vj, prog, reach, eRoot,
-    weight: steep * (1 - collapse), collapse, landing, rho: ribbonWeight(r, tb, settleFrom, span, p), W, R,
+    weight: steep * (1 - collapse), collapse, landing, rho: ribbonWeight(r, tb, settleFrom, span, p), W, R, uLand,
   };
 }
 
@@ -280,7 +326,12 @@ export function profilePoint(j: number, f: ProfileFrame, baseHome: Vec2): Profil
   const curlFoam = seg === 'outer' || seg === 'cap' ? Math.max(landed, spray * air)
     : seg === 'face' || seg === 'wall' || seg === 'under' ? landed - air
       : landed;
-  return { pos: lerp2(baseHome, c.pos, f.weight), thickness: c.thickness * f.weight, curlFoam, lipness: c.lipness * f.weight };
+  // The curl rides the whitewater pile (PileLift); the front and back are the sheet with it already. The lip's surfaces
+  // take the lift at the outer arc's x for their σ, so the thin lip is lifted whole, never sheared through itself.
+  const onSheet = seg === 'front' || seg === 'back';
+  const liftX = seg === 'under' ? outer(f, s)[0] : seg === 'cap' ? outer(f, 1)[0] : seg === 'outer' ? outer(f, 1 - s)[0] : c.pos[0];
+  const lifted: Vec2 = !onSheet && f.lift ? add2(c.pos, liftAt(f.lift, liftX)) : c.pos;
+  return { pos: lerp2(baseHome, lifted, f.weight), thickness: c.thickness * f.weight, curlFoam, lipness: c.lipness * f.weight };
 }
 
 export interface Profile {
@@ -299,6 +350,7 @@ export interface Profile {
  */
 export function buildProfile(base: (u: number) => Vec2, input: ProfileInput, p: LipParams, frameBase: (u: number) => Vec2 = base): Profile {
   const frame = profileFrame(frameBase, input, p);
+  if (frameBase !== base) frame.lift = pileLift(base, frameBase, frame);
   const out: Profile = { frame, points: [], homes: [], thickness: [], curlFoam: [], lipness: [] };
   for (let j = 0; j < PROFILE_SAMPLES; j++) {
     const home = sampleHome(j, frame);

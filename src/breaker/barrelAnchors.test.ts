@@ -4,7 +4,7 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetTime } from './breaking';
 import { ANCHORS, type BarrelShape, PER_CREST_BREAK_KEYS, barrelShape, withShape } from './breakIntensity';
-import { type ProfileInput, type Vec2, barrelMetrics, buildProfile, crossings, profileFrame } from './lipProfile';
+import { PROFILE_SEGMENTS, type ProfileInput, type Vec2, barrelMetrics, buildProfile, crossings, profileFrame } from './lipProfile';
 import { computeReefField, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, type BreakOptions, breakOptions, localHeight, sumWaves } from './setWaveModel';
 
@@ -82,6 +82,22 @@ describe('the anchors (spec 2026-09-30 §3.3)', () => {
       for (const frac of [0.05, 0.25, 0.5, 0.75, 0.95, 0.999]) {
         const s = anchorStation(I, frac * tau);
         expect(crossings(buildProfile(s.base, s.input, s.lip, s.frameBase).points), `I ${I} frac ${frac}`).toBe(0);
+      }
+    }
+  });
+  it('as the whitewater pile rises under the landed lip, the curl rides it: no folds, and no step where it joins the wave (Andrew, 2026-09-30)', () => {
+    // The pile rises over PILE_RISE_S (0.5 s) after the landing. Later in the collapse the curl still folds as it slides
+    // back to its homes (pre-existing, a separate fix).
+    for (const I of [0, 1, 2]) {
+      const tau = anchorLanding(I);
+      for (const dt of [0.1, 0.25, 0.4, 0.5]) {
+        const s = anchorStation(I, tau + dt), pts = buildProfile(s.base, s.input, s.lip, s.frameBase).points;
+        expect(crossings(pts), `I ${I} +${dt} s: crossings`).toBe(0);
+        // The back (on the sheet with the pile) starts where the lip's outer arc ends at its root: no bigger a jump than
+        // the arc's own last step (before the fix, the pile's full height: 1.35–2.45 m at +0.5 s).
+        const r = pts.length - PROFILE_SEGMENTS.back - 1;
+        const jump = Math.hypot(pts[r + 1][0] - pts[r][0], pts[r + 1][1] - pts[r][1]), prev = Math.hypot(pts[r][0] - pts[r - 1][0], pts[r][1] - pts[r - 1][1]);
+        expect(jump, `I ${I} +${dt} s: step at the crest`).toBeLessThanOrEqual(1.2 * prev + 0.02);
       }
     }
   });
