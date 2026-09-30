@@ -107,7 +107,7 @@ function faceZones(albedo: N, p: SurferPreset, z: SkinZones, lips: N): N {
  * `detail`, where the build wrote landmarks (closeup spec §4.2): pores, subsurface-tinted wrap, the face's zones,
  * brow strands, glossy lips and Grommet's freckles; and the wetness (0 dry … 1 wet) that glosses the skin.
  */
-export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: (xz: N) => N, detail?: { zones: SkinZones | null; wet: THREE.UniformNode<'float', number>; pores?: THREE.UniformNode<'float', number> }): THREE.MeshBasicNodeMaterial {
+export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: (xz: N) => N, detail?: { zones: SkinZones | null; wet: THREE.UniformNode<'float', number>; pores?: THREE.UniformNode<'float', number>; lens?: LensPull | null }): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();
   // glTF stores texture coordinates with V flipped (v → 1 − v; three's loader keeps it), so each mask packed into
   // a UV map's second channel comes back as 1 − mask: undo it.
@@ -165,6 +165,7 @@ export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: 
   // Red light reaches furthest past the terminator (the skin's subsurface), cloth wraps alike.
   const scatter = mix(vec3(1.0, 0.55, 0.4), vec3(1, 1, 1), covered);
   m.colorNode = litColor(sky, { albedo, normal, specular, shininess, wrap, scatter }, sv);
+  if (detail?.lens) m.positionNode = lensPulled(detail.lens);
   return m;
 }
 
@@ -220,10 +221,38 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   return m;
 }
 
+/**
+ * Grommet's minus lenses make what's behind them look smaller (closeup spec §4.2, ruling 3): while his glasses are on,
+ * the eyes, lashes and lid skin inside each lens's footprint are drawn 10% toward the lens's axis (through the eye,
+ * straight ahead), fading to nothing under the thick frames. Worked in the rest pose's space and turned with the head:
+ * everything it moves follows the head alone.
+ */
+export interface LensPull {
+  eyes: [V3, V3];
+  eyeRadius: number;
+  /** 1 with the glasses on, 0 off. */
+  on: THREE.UniformNode<'float', number>;
+  /** The head's turn from its rest pose (world). */
+  turn: THREE.UniformNode<'mat3', THREE.Matrix3>;
+}
+export const LENS_MINIFY = 0.1;
+
+function lensPulled(l: LensPull): N {
+  const P: N = positionGeometry;
+  const c = mix(vec3(...l.eyes[1]), vec3(...l.eyes[0]), step(0.0, P.x));
+  const dx = P.x.sub(c.x), dy = P.y.sub(c.y);
+  const inside = float(1).sub(smoothstep(0.017, 0.023, abs(dx))).mul(float(1).sub(smoothstep(0.011, 0.016, abs(dy))));
+  // Only the front of the face and the front of the eyeballs (what the lens covers), not the back of the head.
+  const front = smoothstep(c.z.add(l.eyeRadius * 0.2), c.z.add(l.eyeRadius * 0.6), P.z);
+  const f = inside.mul(front).mul(l.on).mul(LENS_MINIFY);
+  return positionLocal.add(l.turn.mul(vec3(dx.mul(f).negate(), dy.mul(f).negate(), 0)));
+}
+
 /** What the eye shader needs of a rider's eyes (closeup spec §4.2): their centres and radius, and the gaze. */
 export interface EyeLook {
   zones: SkinZones | null;
   gaze: THREE.UniformNode<'vec2', THREE.Vector2>;
+  lens?: LensPull | null;
 }
 
 /**
@@ -277,6 +306,7 @@ export function eyesMaterial(sky: Sky, p: SurferPreset, sv?: (xz: N) => N, look?
   // The cornea: a clear bulge over the iris, so its highlight sits a little forward of the ball's.
   const normal = normalize(normalWorld.add(normalize(cameraPosition.sub(positionWorld)).mul(iris.mul(0.08))));
   m.colorNode = litColor(sky, { albedo, normal, specular: float(0.05), shininess: float(700), wrap: float(0.35) }, sv);
+  if (look.lens) m.positionNode = lensPulled(look.lens);
   return m;
 }
 
@@ -304,7 +334,7 @@ export function lensMaterial(sky: Sky, sv?: (xz: N) => N): THREE.MeshBasicNodeMa
  * (tools/surfer/face.py): R root → tip, G along the lid, B 1 upper / 0 lower. Each lash is a stripe along the lid that
  * tapers to its tip, a little clumped and uneven, alpha-tested; near black with a warm tint.
  */
-export function lashesMaterial(sky: Sky, sv?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
+export function lashesMaterial(sky: Sky, sv?: (xz: N) => N, lens?: LensPull | null): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();
   m.side = THREE.DoubleSide;
   const c: N = attribute('color', 'vec4');
@@ -320,6 +350,7 @@ export function lashesMaterial(sky: Sky, sv?: (xz: N) => N): THREE.MeshBasicNode
   m.opacityNode = lash.mul(float(1).sub(smoothstep(reach.sub(0.1), reach, t)));
   m.alphaTest = 0.5;
   m.colorNode = litColor(sky, { albedo: vec3(0.018, 0.012, 0.009), normal: normalWorld, specular: float(0.04), shininess: float(60), wrap: float(0.4) }, sv);
+  if (lens) m.positionNode = lensPulled(lens);
   return m;
 }
 
