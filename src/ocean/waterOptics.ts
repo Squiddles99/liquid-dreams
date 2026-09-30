@@ -13,6 +13,9 @@ export interface WaterOpticsParams {
   /** Diffuse skylight through a thin lip, seen from beneath it (the tube's ceiling), as a fraction of the transmission's
    * scale (the sun-backlit part is 1). */
   lipSkyTransmission: number;
+  /** Diffuse skylight through the lip seen from the side (the lineup, down the line), as a fraction of the transmission's
+   * scale; from beneath it is lipSkyTransmission. */
+  lipSideSkylight: number;
   baseRoughness: number;
   foamAlbedo: number;
 }
@@ -24,6 +27,7 @@ export const DEFAULT_WATER_OPTICS: WaterOpticsParams = {
   transmissionThicknessM: 2,
   transmissionIntensity: 0.6,
   lipSkyTransmission: 0.5,
+  lipSideSkylight: 0.6,
   baseRoughness: 0.02,
   foamAlbedo: 0.85,
 };
@@ -36,6 +40,15 @@ export function waterAlbedo(p: WaterOpticsParams): Rgb {
 /** Colour of sunlight after passing through a crest: exp(−a·thickness). */
 export function transmissionColour(p: WaterOpticsParams): Rgb {
   return [0, 1, 2].map((i) => Math.exp(-p.absorptionPerM[i] * p.transmissionThicknessM)) as Rgb;
+}
+
+/** The lip thickness (m) at which the light through it has come transmissionThicknessM through the water. */
+export const LIP_REFERENCE_THICKNESS_M = 0.3;
+
+/** The colour of light through a lip `thicknessM` thick: exp(−a·transmissionThicknessM·thickness / LIP_REFERENCE_THICKNESS_M). */
+export function lipTransmissionColour(p: WaterOpticsParams, thicknessM: number): Rgb {
+  const path = (p.transmissionThicknessM * Math.max(thicknessM, 0)) / LIP_REFERENCE_THICKNESS_M;
+  return [0, 1, 2].map((i) => Math.exp(-p.absorptionPerM[i] * path)) as Rgb;
 }
 
 /** Slope variance of cascades whose normals have faded at this distance (widens the sun glitter instead). */

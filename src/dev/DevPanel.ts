@@ -50,7 +50,7 @@ export interface DevPanelModel {
   soundStatus: { track: string };
   surfer: SurferParams;
   surferStatus: { outfit: string };
-  setStatus: { nextSet: string; wave: string; face: string };
+  setStatus: { nextSet: string; wave: string; face: string; psi: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
 }
@@ -154,15 +154,17 @@ export const BREAK_BINDINGS = {
   delta: { label: 'drain δ (criterion)', min: 0, max: 2, step: 0.05 },
   stageSpan: { label: 'stage span Δ', min: 0.2, max: 4, step: 0.05 },
   beta: { label: 'bore height β', min: 0.1, max: 0.8, step: 0.01 },
-  troughDrain: { label: 'trough drain', min: 0, max: 1, step: 0.01 },
   hFloorM: { label: 'depth floor h₀ (m)', min: 0.05, max: 2, step: 0.05 },
   faceWidth: { label: 'face width (×H)', min: 0.1, max: 3, step: 0.05 },
   drainEnd: { label: 'drain full (× Δ past ρ 1)', min: 0.01, max: 1, step: 0.01 },
   collapseStart: { label: 'collapse from (× Δ past ρ 1)', min: 0, max: 0.95, step: 0.01 },
-  throwStrength: { label: 'throw strength (×c)', min: 0.1, max: 1.5, step: 0.01 },
-  lipThickness: { label: 'lip thickness (×H)', min: 0.03, max: 0.3, step: 0.005 },
   collapseTime: { label: 'collapse time (×τ land)', min: 0.3, max: 3, step: 0.05 },
   ribbonOnset: { label: 'ribbon onset ρ', min: 0.3, max: 0.9, step: 0.01 },
+  pileHalfM: { label: 'pile half distance (m)', min: 10, max: 150, step: 1 },
+  psiNudge: { label: 'ψ nudge (×)', min: -0.5, max: 0.5, step: 0.01 },
+  randomDial: { label: 'random dial', min: 0, max: 0.15, step: 0.01 },
+  churnSize: { label: 'churn size (× pile)', min: 0, max: 0.4, step: 0.01 },
+  churnSpeed: { label: 'churn speed', min: 0, max: 3, step: 0.05 },
 } as const;
 
 /** Debug overlay toggles (Reef folder), one per DebugOverlays field, checked by DevPanel.test.ts. */
@@ -337,6 +339,7 @@ export class DevPanel {
       sets.addBinding(m.setStatus, 'nextSet', { label: 'next set', readonly: true, interval: 250 }),
       sets.addBinding(m.setStatus, 'wave', { label: 'at the peak', readonly: true, interval: 250 }),
       sets.addBinding(m.setStatus, 'face', { label: 'face at the peak', readonly: true, interval: 250 }),
+      sets.addBinding(m.setStatus, 'psi', { label: 'barrel at the peak', readonly: true, interval: 250 }),
     ]);
     sets.addButton({ title: 'Call a set now (N)' }).on('click', h.onCallSet);
     sets.addBinding(m.sets, 'meanIntervalS', { label: 'mean interval (s)', min: 120, max: 3600, step: 10 }).on('change', h.onSets);
@@ -425,7 +428,7 @@ export class DevPanel {
     const reef = this.pane.addFolder({ title: 'Reef', expanded: false });
     reef.addBinding(m.reef, 'ledgeDepthM', { label: 'ledge depth (m)', min: 2, max: 12, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'deepDepthM', { label: 'deep water (m)', min: 8, max: 25, step: 0.5 }).on('change', h.onReef);
-    reef.addBinding(m.reef, 'ledgeWidthM', { label: 'ledge width (m)', min: 3, max: 40, step: 1 }).on('change', h.onReef);
+    reef.addBinding(m.reef, 'ledgeWidthM', { label: 'ledge ramp width (m)', min: 40, max: 300, step: 5 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'shelfDepthM', { label: 'shelf depth (m)', min: 1, max: 8, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'headReliefM', { label: 'reef head relief (m)', min: 0, max: 4, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'minDepthM', { label: 'shallowest (m)', min: 0.3, max: 4, step: 0.1 }).on('change', h.onReef);
@@ -453,6 +456,7 @@ export class DevPanel {
     water.addBinding(m.water, 'transmissionThicknessM', { min: 0.2, max: 6, step: 0.1 }).on('change', h.onWater);
     water.addBinding(m.water, 'transmissionIntensity', { min: 0, max: 3, step: 0.01 }).on('change', h.onWater);
     water.addBinding(m.water, 'lipSkyTransmission', { label: 'lip skylight', min: 0, max: 2, step: 0.01 }).on('change', h.onWater);
+    water.addBinding(m.water, 'lipSideSkylight', { label: 'lip side skylight', min: 0, max: 2, step: 0.01 }).on('change', h.onWater);
     water.addBinding(m.water, 'baseRoughness', { min: 0.005, max: 0.2, step: 0.001 }).on('change', h.onWater);
     water.addBinding(m.water, 'foamAlbedo', { min: 0, max: 1, step: 0.01 }).on('change', h.onWater);
 

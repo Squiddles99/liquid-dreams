@@ -1,7 +1,8 @@
 import type { WaveEvent } from '../swell/sets';
 import { type BreakParams, breakingRatio, breakingStage, faceHeight } from './breaking';
 import { type ReefField, sampleField } from './reefField';
-import { localHeight, toActiveWave } from './setWaveModel';
+import { psiStateLabel } from './overturn';
+import { breakOptions, crestAt, localHeight, toActiveWave } from './setWaveModel';
 
 const M_PER_FT = 0.3048;
 
@@ -32,4 +33,20 @@ export function formatPeakFace(face: PeakFace | null, hasField: boolean): string
   if (!hasField) return 'waiting for the reef field';
   if (!face) return 'no wave at the peak';
   return `${face.faceM.toFixed(1)} m (${Math.round(face.faceM / M_PER_FT)} ft) face, ${face.stage > 0 ? 'breaking' : 'not breaking'}`;
+}
+
+/** The ψ of the wave at the peak now (its crest within half a period of it), as the sheet reads it; null if none. */
+export function peakPsi(field: ReefField | null, events: readonly WaveEvent[], t: number, p: BreakParams, offshoreMs: number): number | null {
+  if (!field || !p.enabled) return null;
+  const e = events.find((w) => Math.abs(w.arrivalS - t) <= w.periodS / 2);
+  if (!e) return null;
+  const w = toActiveWave(e), ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+  return crestAt(0, 0, t, sampleField(field, 0, 0), w, ctx, breakOptions(field, p, offshoreMs))?.psi ?? null;
+}
+
+/** "ψ 0.065, cylinder (5)" for the Sets folder. */
+export function formatPeakPsi(psi: number | null, hasField: boolean): string {
+  if (!hasField) return 'waiting for the reef field';
+  if (psi === null) return 'no wave at the peak';
+  return `ψ ${psi.toFixed(3)}, ${psiStateLabel(psi)}`;
 }

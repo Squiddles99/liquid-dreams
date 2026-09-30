@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
+import { PER_CREST_BREAK_KEYS } from '../breaker/overturn';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { CONDITION_RANGES, sanitizeConditions } from '../conditions/sanitize';
 import { msToKmh } from '../conditions/units';
@@ -78,7 +79,8 @@ describe('Break folder sliders', () => {
   // Every BreakParams field normalizeBreakParams clamps to a numeric range gets a slider here (only the `enabled`
   // toggle is excluded); a slider missing from BREAK_BINDINGS would let a field go untuned from the panel with no
   // test failure to say so.
-  const clampedKeys = (Object.keys(DEFAULT_BREAK_PARAMS) as (keyof BreakParams)[]).filter((k) => k !== 'enabled');
+  // The per-crest keys (overturn.PER_CREST_BREAK_KEYS) are set from each crest's ψ, not the panel.
+  const clampedKeys = (Object.keys(DEFAULT_BREAK_PARAMS) as (keyof BreakParams)[]).filter((k) => k !== 'enabled' && !(PER_CREST_BREAK_KEYS as readonly string[]).includes(k));
   it('has a slider for every BreakParams field normalizeBreakParams clamps', () => {
     expect(Object.keys(BREAK_BINDINGS).sort()).toEqual([...clampedKeys].sort());
   });

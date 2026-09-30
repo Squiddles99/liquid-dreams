@@ -1,6 +1,7 @@
+import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 import * as THREE from 'three/webgpu';
 import {
-  Break, Fn, If, Loop, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
+  Break, Fn, If, Loop, abs, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
   storage, uniform, varying, varyingProperty, vec2, vec3, vec4,
 } from 'three/tsl';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
@@ -17,7 +18,8 @@ import type { BreakParams } from './breaking';
 import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
 import { PROFILE_SAMPLES, PROFILE_SEGMENTS } from './lipProfile';
 import {
-  FRAME_PROFILE_VEC4S, FRAME_VEC4S, createLipUniforms, encodeTb, packFrameNodes, profileFrameNode, profilePointNode, sampleHomeNode, unpackFrameNodes, updateLipUniforms,
+  FRAME_KNOT_VEC4, FRAME_VEC4S, createLipUniforms, encodeTb, packFrameNodes, profileFrameNode, profilePointNode, readFrameNodes, sampleHomeNode, sampleTargetNode,
+  updateLipUniforms,
 } from './lipProfileNodes';
 
 type N = any;
@@ -38,6 +40,9 @@ export interface RibbonSurface {
    * only (no FFT), so the GPU can be compared with the CPU model. */
   smooth: BaseSurfaceNode;
   chop: BaseSurfaceNode;
+  /** The smooth sheet without the whitewater pile: the frame (where the lip lands, when, how fast it throws) is measured
+   * on it (lipProfile.buildProfile's frameBase). Absent: `smooth`. */
+  frameBase?: BaseSurfaceNode;
   /** Called by BreakingRibbon.setStations with the frame's camera (the fades' distance is measured from it). */
   setCamera?(camera: THREE.Vector3): void;
 }
@@ -143,7 +148,8 @@ export function developedU(
   const last = arc.length - 1;
   return arc.map((a, j) => {
     const fromFront = uFront - a, fromBack = uBack + (total - a);
-    const dev = fromBack + (fromFront - fromBack) * (1 - smoothstepCpu(DEVELOP_BLEND[0], DEVELOP_BLEND[1], j));
+    const wFront = 1 - smoothstepCpu(DEVELOP_BLEND[0], DEVELOP_BLEND[1], j);
+    const dev = fromFront * wFront + fromBack * (1 - wFront); // exactly each edge's own at its end
     if (!blend) return dev;
     const home = blend.homes[j];
     return j === 0 || j === last ? home : home * (1 - blend.weight) + dev * blend.weight;
@@ -225,7 +231,7 @@ export function packStations(entries: readonly StationEntry[], out: Float32Array
     const e = entries[i];
     if (!e.gap) prev = e;
     const s: Station = prev;
-    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, 0, 0], i * STATION_VEC4S * 4);
+    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, 0], i * STATION_VEC4S * 4);
   }
   return n;
 }
@@ -257,6 +263,10 @@ export function modelRibbonSurface(model: WaterSurfaceModel): ModelRibbonSurface
       return model.displacement(xz, (c) => (c === CHOP_CASCADE ? float(0.0) : l(c)));
     },
     chop: (xz) => model.fftCascadeDisplacement(xz, CHOP_CASCADE, lod(xz)(CHOP_CASCADE)),
+    frameBase: (xz) => {
+      const l = lod(xz);
+      return model.displacement(xz, (c) => (c === CHOP_CASCADE ? float(0.0) : l(c)), false);
+    },
     setCamera: (c) => { cameraXZ.value.set(c.x, c.z); },
   };
 }
@@ -322,8 +332,8 @@ export class BreakingRibbon {
    * from the sheet (0 on the front and back segments). Skirts take their edge's.
    */
   readonly details: THREE.StorageBufferAttribute;
-  /** Per station: the frame as FRAME_VEC4S vec4s, lipProfileNodes.FRAME_LAYOUT order then the base samples Fb and the
-   * landing guess (FRAME_BASE_OFFSET) (self-tests and diagnostics). */
+  /** Per station: the frame as FRAME_VEC4S vec4s, lipProfileNodes.FRAME_LAYOUT order (the tube, the throw, the pile's
+   * knots). */
   readonly frames: THREE.StorageBufferAttribute;
   /** How many station rows are live this frame (the draw range covers these). */
   stationCount = 0;
@@ -333,6 +343,8 @@ export class BreakingRibbon {
   /** stationCount on the GPU: the normal pass's runs end at it. */
   private readonly rows = uniform(0);
   private readonly lip;
+  /** The wind's offshore speed (m/s): setOffshore. */
+  private readonly offshoreMs = uniform(0);
   private readonly framePass: THREE.ComputeNode;
   private readonly vertexPass: THREE.ComputeNode;
   private readonly developPass: THREE.ComputeNode;
@@ -407,6 +419,11 @@ export class BreakingRibbon {
 
   setParams(p: BreakParams): void {
     updateLipUniforms(this.lip, p);
+  }
+
+  /** The wind's offshore speed (m/s, overturn.offshoreSpeed): the tube's wind factors (Feddersen et al. 2023). */
+  setOffshore(ms: number): void {
+    this.offshoreMs.value = Number.isFinite(ms) ? ms : 0;
   }
 
   setOverlays(o: DebugOverlays): void {
@@ -516,20 +533,27 @@ export class BreakingRibbon {
     // the undisplaced point, as the sheet measures its undisplaced grid).
     const home: N = attribute('ribbonHome', 'vec4');
     const radial = length(home.xy.sub(this.cameraXZ));
-    material.positionNode = vec3(pos.x, model.seabed.tide.add(pos.y).sub(radial.mul(radial).div(2 * EARTH_RADIUS_M)), pos.z);
     const vNormal: N = varying(attribute('ribbonNormal', 'vec4').xyz);
     const vExtra: N = varying(attribute('ribbonExtra', 'vec4'));
     const vHome: N = varying(home);
     const vDetail: N = varying(attribute('ribbonDetail', 'vec4').xy);
     const vConstructed: N = varying(attribute('ribbonDetail', 'vec4').w);
-    // The sheet's set-wave foam weight, foam frame and analytic slope at the home, from one set-wave sum per vertex (the
-    // sheet's own vertex-stage sum); the slope reaches the fragment through a varying property, as the sheet's does.
+    // The sheet at the home, from one set-wave sum per vertex (the sheet's own vertex-stage sum): its foam, foam frame,
+    // analytic slope and pile reach the fragment through varying properties, and the pile's churn lifts the vertex as it
+    // lifts the sheet there, so the ribbon's edges stay on the sheet.
     const vSetSlope: N = varyingProperty('vec2', 'vRibbonSetSlope');
-    const vSetFoam: N = varying(Fn(() => {
+    const vSetFoam: N = varyingProperty('float', 'vRibbonSetFoam');
+    const vPile: N = varyingProperty('float', 'vRibbonPile');
+    const vFrame: N = varyingProperty('vec2', 'vRibbonFrame');
+    const churn = Fn(() => {
       const b = model.sets.breakSampleNode(home.xy);
       vSetSlope.assign(b.slope);
-      return sheetFoamWeight(b.foam, foamMap ? foamMap.sampleNode(home.xy) : null);
-    })());
+      vSetFoam.assign(sheetFoamWeight(b.foam, foamMap ? foamMap.sampleNode(home.xy) : null));
+      vPile.assign(b.pile);
+      vFrame.assign(b.foamFrame);
+      return churnHeightNode(b.pile, b.foamFrame, model.sets.time, model.sets.churn);
+    })();
+    material.positionNode = vec3(pos.x, model.seabed.tide.add(pos.y).add(churn).sub(radial.mul(radial).div(2 * EARTH_RADIUS_M)), pos.z);
 
     const toCamera = cameraPosition.sub(positionWorld);
     const distance = length(toCamera);
@@ -537,21 +561,28 @@ export class BreakingRibbon {
     const thickness = vExtra.x, lipness = saturate(vExtra.y), curlFoam = vExtra.z, rho = vExtra.w;
     const fft = model.fftSlopes(vDetail, distance, this.slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness) : float(1.0)));
     const shadingNormal = ribbonShadingNormal({
-      geometric: vNormal, tangent: vec3(vHome.z, 0.0, vHome.w), fft, setSlope: vSetSlope, constructed: vConstructed, viewDir,
+      geometric: vNormal, tangent: vec3(vHome.z, 0.0, vHome.w), fft,
+      setSlope: vSetSlope.add(churnSlopeNode(vPile, vFrame, model.sets.meanTravel, model.sets.time, model.sets.churn)), constructed: vConstructed, viewDir,
     });
     const normal = shadingNormal.normal.toVar();
     // The tube's ceiling only where the curve departs from the sheet (the sheet has none).
     const underside = float(1.0).sub(smoothstep(-0.3, 0.3, shadingNormal.geometric.y)).mul(saturate(vConstructed));
-    const lip = float(1.0).sub(smoothstep(0.05, 0.6, thickness)).mul(lipness);
-    // The curl's landing foam fades with ρ, so by the hand-back (and at the along-crest ends) the foam is the sheet's.
-    const foamLook = setFoamPattern(max(vSetFoam, curlFoam.mul(rho)), waterFoamFrame(vHome.xy, model.sets.meanTravel), model.sim.time);
+    // The whole lip transmits (spec 2026-09-29 §3.3): its colour comes from its thickness (shadeWater's lipThickness), so
+    // the thick root glows deeper blue-green, not dark: keyed to thin lips only, a thick lip read as opaque plastic.
+    const lip = lipness;
+    // The curl's foam is signed (lipProfile.ProfilePoint.curlFoam): its own foam by max, and the clean tube (< 0) hiding the
+    // sheet's foam by that share; both fade with ρ, so by the hand-back the foam is the sheet's.
+    const curlOwn = saturate(curlFoam).mul(rho), clean = saturate(curlFoam.negate()).mul(rho);
+    // Read at the developed coordinate (as the chop is): at the home the whole thrown lip maps onto a strip of the sheet a
+    // few metres wide, and the pattern smeared into bands down the lip. At the edges the two are the same point.
+    const foamLook = setFoamPattern(max(vSetFoam.mul(float(1.0).sub(clean)), curlOwn), waterFoamFrame(vDetail, model.sets.meanTravel), model.sim.time);
     // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
     // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
     const sunVis = shading.sunlight ? shading.sunlight.visibilityNode(positionWorld.xz) : undefined;
     const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
-      { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, underside,
+      { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, lipThickness: thickness, underside,
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
         landReflection: shading.skyline ? (r: N) => shading.skyline!.reflectionNode(positionWorld, r, sky) : undefined },
@@ -595,6 +626,16 @@ export class BreakingRibbon {
     return material;
   }
 
+  /**
+   * A surface read as one WGSL function, called from each site: inlined, every call site of the frame pass (about a
+   * dozen, the tube's impact search and the face's join among them) carried the whole displacement, and its shader
+   * grew to ~850 kB.
+   */
+  private surfaceFn(surface: (xz: N) => N, name: string): (xz: N) => N {
+    const fn = Fn(([xz]: N[]) => vec3(surface(xz))).setLayout({ name, type: 'vec3', inputs: [{ name: 'xz', type: 'vec2' }] });
+    return (xz: N) => fn(xz);
+  }
+
   private stationsNode(): N {
     return storage(this.stationsAttr, 'vec4', MAX_STATIONS * STATION_VEC4S).toReadOnly();
   }
@@ -608,14 +649,21 @@ export class BreakingRibbon {
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const b = stations.element(i.mul(STATION_VEC4S).add(1)).toVar();
       const S = a.xy, n = a.zw;
-      // base(u) = (d·n + u, d.y) with d the smooth sheet at S + n·u: the displaced point's component along n.
-      const baseAt = (u: N): N => {
+      // base(u) = (d·n + u, d.y) with d the smooth sheet without the pile at S + n·u: the displaced point's component
+      // along n.
+      const cS = stations.element(i.mul(STATION_VEC4S).add(2)).toVar();
+      const smooth = this.surfaceFn(this.surface.smooth, 'ribbonSmooth');
+      const frameSurface = this.surface.frameBase ? this.surfaceFn(this.surface.frameBase, 'ribbonFrameBase') : smooth;
+      const along = (surface: (xz: N) => N) => (u: N): N => {
         const uu = float(u).toVar();
         const xz = S.add(n.mul(uu)).toVar();
-        const d = vec3(this.surface.smooth(xz)).toVar();
+        const d = vec3(surface(xz)).toVar();
         return vec2(dot(d.xz, n).add(uu), d.y);
       };
-      const f = profileFrameNode(baseAt, { H: b.x, c: b.y, r: b.z, tb: b.w }, this.lip);
+      // The frame on the sheet without the pile (the lip is thrown from the wave as it stood); the pile's lift from the
+      // sheet with it (lipProfile.buildProfile).
+      const f = profileFrameNode(along(frameSurface), along(smooth), { H: b.x, c: b.y, r: b.z, tb: b.w, psi: cS.z, offshoreMs: this.offshoreMs }, this.lip,
+        (k, v) => { frames.element(i.mul(FRAME_VEC4S).add(FRAME_KNOT_VEC4).add(k)).assign(v); });
       packFrameNodes(f).forEach((v, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).assign(v));
     })().compute(MAX_STATIONS) as THREE.ComputeNode;
   }
@@ -638,15 +686,23 @@ export class BreakingRibbon {
       const j = local.sub(1).clamp(int(0), int(LAST)).toVar();
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const gap = stations.element(i.mul(STATION_VEC4S).add(2)).x.toVar();
-      const fv = Array.from({ length: FRAME_PROFILE_VEC4S }, (_, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).toVar());
-      const f = unpackFrameNodes(fv);
+      const f = readFrameNodes((k) => frames.element(i.mul(FRAME_VEC4S).add(k)));
       const S = a.xy, n = a.zw;
       const tHat = vec2(n.y.negate(), n.x).toVar();
       const home = sampleHomeNode(j, f).toVar();
       const xzHome = S.add(n.mul(home)).toVar();
-      const d = vec3(this.surface.smooth(xzHome)).toVar();
+      const smooth = this.surfaceFn(this.surface.smooth, 'ribbonSmooth');
+      const d = vec3(smooth(xzHome)).toVar();
       const baseHome = vec2(home.add(dot(d.xz, n)), d.y);
-      const p = profilePointNode(j, f, baseHome, home);
+      // Where the sample settles as the curl collapses (lipProfile.sampleTarget): the base there, read again only where
+      // it has left its home (after the landing).
+      const st = sampleTargetNode(j, f, home);
+      const target = float(st.target).toVar();
+      // At home (every sample until the lip lands, and the edges always) the base at the target is the one at home.
+      const dT = vec3(d).toVar();
+      If(target.notEqual(home), () => { dT.assign(smooth(S.add(n.mul(target)))); });
+      const baseTarget = vec2(target.add(dot(dT.xz, n)), dT.y).toVar();
+      const p = profilePointNode(j, f, baseTarget, home, st.c);
       const pos = vec2(p.pos).toVar();
       const lipness = float(p.lipness).toVar();
       // The profile's u along n; the lateral displacement at home carried unchanged along t̂.
@@ -684,7 +740,7 @@ export class BreakingRibbon {
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const S = a.xy, n = a.zw;
       const tHat = vec2(n.y.negate(), n.x).toVar();
-      const f = unpackFrameNodes(Array.from({ length: FRAME_PROFILE_VEC4S }, (_, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).toVar()));
+      const f = readFrameNodes((k) => frames.element(i.mul(FRAME_VEC4S).add(k)));
       const uFront = float(f.uFront).toVar(), uBack = float(f.uBack).toVar(), weight = float(f.weight).toVar();
       /** Profile sample jj's (u along n, y), chop-free. */
       const UY = (jj: N): N => {
@@ -707,7 +763,7 @@ export class BreakingRibbon {
         prev.assign(q);
         const fromFront = uFront.sub(arc), fromBack = uBack.add(total.sub(arc));
         const wFront = float(1.0).sub(smoothstep(DEVELOP_BLEND[0], DEVELOP_BLEND[1], float(j)));
-        const developed = fromBack.add(fromFront.sub(fromBack).mul(wFront));
+        const developed = fromFront.mul(wFront).add(fromBack.mul(float(1.0).sub(wFront)));
         const k = i.mul(V).add(j).add(1).toVar();
         const left = details.element(k).toVar(); // (home xz, home u, constructed) from the vertex pass
         // Blended toward the home by the frame's weight (the sheet's own coordinate where the profile is the sheet's);

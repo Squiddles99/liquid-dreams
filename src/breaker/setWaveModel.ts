@@ -1,13 +1,13 @@
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { type BreakParams, type Lifecycle, ONSET_LAGS, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetRatio, onsetTime, steepeningStart } from './breaking';
+import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetTime, pileTop, settledCrestTop, steepeningStart } from './breaking';
+import { PSI_MIN, PSI_NONE, PSI_NORMAL, drainFactor, effectivePsi, withSheetShape } from './overturn';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
-import { type ReefField, sampleField, sampleOnset } from './reefField';
+import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
 
-/** A wave breaks when its height reaches about 0.78 × depth; Phase 1 caps it there (the "fade"). */
-export const BREAKING_RATIO = 0.78;
+export { BREAKING_RATIO };
 /**
  * The set-wave surface stays this far above the seabed: η ≥ −(still-water depth − this). The drain and the sharpening are
  * sized from the crest's height, so on a reef flat beside a big crest they would otherwise draw the water below the bed.
@@ -29,6 +29,10 @@ export const ENVELOPE_WIDTH = 0.7;
  * zero slope at the crest.
  */
 export const LONG_TAIL_WIDTH = 0.8;
+/** Envelope widths |ξ|/width beyond which a wave is nothing at a point: exp(−1.52⁶) ≈ 5e-6 for the tight envelope… */
+export const ENVELOPE_CUTOFF = 1.52;
+/** …and exp(−3.5²) ≈ 5e-6 for a long tail's Gaussian. */
+export const LONG_TAIL_CUTOFF = 3.5;
 /** Largest second-harmonic ratio (Stokes breaks down in very shallow water). */
 export const STOKES_CAP = 0.35;
 /** k × horizontal amplitude never exceeds this (keeps the along-ray Jacobian positive). */
@@ -51,6 +55,10 @@ export interface ActiveWave {
   crestOffsetM: number;
   /** The Gaussian envelope (LONG_TAIL_WIDTH) instead of the tight one: this wave leaves water for the next to step on. */
   longTail?: boolean;
+  /** The wave's drain factor on its ψ (overturn.drainFactor, a game rule); absent: 1. */
+  drainFactor?: number;
+  /** The wave's random draw for the dial, in [−1, 1]; absent: 0. */
+  throwDraw?: number;
 }
 
 /** The field's mean swell (the field was computed for this frequency and direction). */
@@ -70,6 +78,9 @@ export interface SetWaveResult {
   slopeZ: number;
   /** Whitewater placeholder weight [0, 1] (max over waves). */
   foam: number;
+  /** The whitewater pile's height (m) where it is the surface (max over waves): the render's churn scale. 0 without
+   * breaking. */
+  pile: number;
   /** Largest crest stage among the waves here [0, 1], each weighted by its crest lookup's confidence (a readout only:
    * a wave far past its crest reads 0 instead of whatever stage its unconverged lookup landed on). */
   stage: number;
@@ -83,21 +94,31 @@ export interface BreakOptions {
   /** The onset record at any world point (reefField.sampleOnset), null where there is none. Absent: none anywhere, so
    * every crest breaks on its ratio alone (breaking.lifecycle with tb undefined). */
   onset?: (x: number, z: number) => ArrayLike<number> | null;
+  /** The record ψ's weight at x, z (reefField.psiEdgeFade: 0 at the grid's edge); absent 1. */
+  edgeFade?: (x: number, z: number) => number;
+  /** false: the sheet without the whitewater pile, which is the ribbon frame's sheet (the lip is thrown from the wave as it
+   * stood, not from the whitewater rising under it). Absent: with it. */
+  pile?: boolean;
+  /** The wind's offshore speed (m/s; overturn.offshoreSpeed, negative onshore). Absent: 0. */
+  offshoreMs?: number;
+  /** Tests and the drawings: every crest takes this ψ. */
+  force?: { psi: number };
 }
 
-/** Breaking on `field` with `params`: the field and its onset record, as the render reads them. */
-export function breakOptions(field: ReefField, params: BreakParams): BreakOptions {
-  const rec = new Float32Array(ONSET_LAGS);
-  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec) };
+/** Breaking on `field` with `params` and the wind's offshore speed: the field and its onset record, as the render reads them. */
+export function breakOptions(field: ReefField, params: BreakParams, offshoreMs = 0): BreakOptions {
+  const rec = new Float32Array(ONSET_RECORD_LENGTH);
+  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec), edgeFade: (x, z) => psiEdgeFade(field.grid, x, z), offshoreMs };
 }
 
-const ZERO: SetWaveResult = { eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0 };
+const ZERO: SetWaveResult = { eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0, pile: 0 };
 
 export function toActiveWave(e: WaveEvent): ActiveWave {
   const d = travelDirectionXZ(e.fromDeg);
   return {
     arrivalS: e.arrivalS, heightM: e.heightM, omega: (2 * Math.PI) / e.periodS,
     travelX: d.x, travelZ: d.z, crestLengthM: e.crestLengthM, crestOffsetM: e.crestOffsetM, longTail: e.longTail,
+    drainFactor: drainFactor(e.gapS, e.periodS), throwDraw: e.throwDraw,
   };
 }
 
@@ -110,6 +131,18 @@ export function waveEnvelope(xi: number, w: ActiveWave): { env: number; dEnv: nu
   }
   const width = ENVELOPE_WIDTH * T, r = xi / width, env = Math.exp(-(r ** 6));
   return { env, dEnv: ((-6 * r ** 5) / width) * env };
+}
+
+/**
+ * Whether ξ is past w's envelope cutoff (ENVELOPE_CUTOFF, LONG_TAIL_CUTOFF behind a long tail's crest): there the wave is
+ * nothing, stage included (waveAtCrest). Its height there is under 5e-6 of the wave's, but its crest lookup can still land
+ * squarely on its crest a period or more on, broken: counted, a wave long gone reported its crest's stage (the GPU skips
+ * such waves, so the two disagreed by up to 1 at the grid's edge).
+ */
+export function beyondEnvelope(xi: number, w: ActiveWave): boolean {
+  const T = (2 * Math.PI) / w.omega;
+  const r = w.longTail && xi > 0 ? xi / (LONG_TAIL_WIDTH * T) : xi / (ENVELOPE_WIDTH * T);
+  return !(Math.abs(r) < (w.longTail && xi > 0 ? LONG_TAIL_CUTOFF : ENVELOPE_CUTOFF));
 }
 
 export function localHeight(w: ActiveWave, f: FieldSample): number {
@@ -150,6 +183,13 @@ export interface Crest {
    * grows from an eighth to a quarter period (a wave far past its crest). The reported stage, the front sharpening and
    * the crest's height (waveHeightAt) are weighted by it. */
   confidence: number;
+  /** The height the section stood at while it threw (breaking.onsetHeight): the pile's lip. null before it breaks or without
+   * a record. */
+  lipH: number | null;
+  /** The crest's ψ (overturn.effectivePsi of the record's ψ₀; PSI_NORMAL off the record). */
+  psi: number;
+  /** The params its shape uses: o.params with the trough drain and surge at its ψ (overturn.withSheetShape). */
+  params: BreakParams;
 }
 
 /**
@@ -186,8 +226,20 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   const on = rayCrestPoint(x, z, t, f, w, ctx);
   const rec = o.onset?.(on.x, on.z);
   const tb = rec ? onsetTime(rec, 0, w.heightM, o.params) : undefined;
-  const lc = lifecycle(r, tb, localHeight(w, fc), o.params, rec ? onsetRatio(rec, 0, w.heightM, o.params) : r);
-  return { x: cx, z: cz, f: fc, r, s: lc.stage, tb, lc, confidence };
+  const rMax = rec ? onsetRatio(rec, 0, w.heightM, o.params) : r;
+  // The lip too, on the point's own ray: carried along the rays, it is the same all along one (under 1% at most ledge
+  // points). Read at the lookup's crest instead, it slid along the crest's lip gradient (the peak's lip falls 20% in 7 m).
+  const lipH = rec ? onsetHeight(rec, 0, w.heightM, o.params) : null;
+  // Its ψ (spec 2026-09-30-barrel-from-maths §3), read on the point's own ray as the time since onset is. Off the
+  // record: PSI_NORMAL, with no game rules (plan ruling 9).
+  // Near the grid's edge it eases to PSI_NORMAL (reefField.psiEdgeFade), so a crest crossing the edge keeps its shape.
+  const psi = o.force?.psi ?? (rec
+    ? PSI_NORMAL + (effectivePsi(onsetPsi(rec, 0, w.heightM, o.params), { drain: w.drainFactor ?? 1, draw: w.throwDraw ?? 0 }, o.params) - PSI_NORMAL) * (o.edgeFade?.(on.x, on.z) ?? 1)
+    : PSI_NORMAL);
+  const params = withSheetShape(o.params, psi);
+  const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
+  const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp, smoothstep(PSI_NONE, PSI_MIN, psi));
+  return { x: cx, z: cz, f: fc, r, s: lc.stage, tb, lc, confidence, lipH, psi, params };
 }
 
 /**
@@ -197,7 +249,7 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
  * exactly. SetWaves uses it per wave to skip the GPU's crest search and breaking (a pure optimisation; the CPU model
  * does not need it and its results are the same either way).
  */
-export function fieldBreakingHeight(f: ReefField, p: BreakParams): number {
+export function fieldBreakingHeight(f: ReefField, p: BreakParams, depths: Float32Array = f.hminBreak): number {
   const { nx, nz } = f.grid;
   // Between nodes the sample's amp/depth is a ratio of two interpolations of positive amp_i and amp_i/q_i, a weighted mean
   // of the q_i = amp_i/depth_i: at most their largest. (Pairing the largest amp with the smallest depth, which grows with
@@ -207,7 +259,7 @@ export function fieldBreakingHeight(f: ReefField, p: BreakParams): number {
   let best = Infinity;
   for (let r = 0; r + 1 < nz; r++) for (let c = 0; c + 1 < nx; c++) {
     const i = r * nx + c, j = i + nx;
-    const q = (k: number): number => f.amp[k] / f.hminBreak[k];
+    const q = (k: number): number => f.amp[k] / depths[k];
     best = Math.min(best, bound(Math.max(q(i), q(i + 1), q(j), q(j + 1)), Math.max(f.amp[i], f.amp[i + 1], f.amp[j], f.amp[j + 1])));
   }
   for (let i = 0; i + 1 < f.far.count; i++) {
@@ -223,10 +275,11 @@ export function fieldBreakingHeight(f: ReefField, p: BreakParams): number {
  * breaks. ρ is proportional to the height (ρ(λH) = λ·ρ(H)), so a wave no taller than λ × fieldBreakingHeight (so no
  * taller than λ × every point's own breaking height, where ρ = 1) has ρ ≤ λ at every crest: with λ =
  * steepeningStart it has no sharpening and no stage anywhere, so its surface is Phase 1 exactly. SetWaves flags waves
- * against it (see fieldBreakingHeight).
+ * against it (see fieldBreakingHeight). Over the slurp's depths (FieldSample.hminSlurp ≤ hminBreak): the slurp pulls a
+ * shoulder in from where its slurp ratio reaches steepeningStart, which comes first.
  */
 export function fieldSteepeningHeight(f: ReefField, p: BreakParams): number {
-  return steepeningStart(p) * fieldBreakingHeight(f, p);
+  return steepeningStart(p) * fieldBreakingHeight(f, p, f.hminSlurp);
 }
 
 /** The breaking stage of w's crest nearest (x, z) (0 when breaking is off). */
@@ -237,6 +290,7 @@ export function crestStage(x: number, z: number, t: number, f: FieldSample, w: A
 /** One wave at one point, given its crest (null, or neither steepening nor breaking: the Phase 1 wave exactly). */
 export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, crest: Crest | null, o?: BreakOptions): SetWaveResult {
   const xi = phaseXi(x, z, t, f, w, ctx);
+  if (beyondEnvelope(xi, w)) return { ...ZERO };
   const H = waveHeightAt(w, f, crest, xi);
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;
@@ -258,33 +312,50 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const dXiDs = -f.k / ctx.omega;
   const jacobian = Math.max(0.2, 1 + (hAmp * w.omega * Math.cos(theta) + pitch * dEtaDXi) * dXiDs);
   const slopeAlong = (dEtaDXi * dXiDs) / jacobian;
-  const out: SetWaveResult = { eta, dx: f.dirX * dh, dz: f.dirZ * dh, slopeX: f.dirX * slopeAlong, slopeZ: f.dirZ * slopeAlong, foam: 0, stage: crest ? crest.s * crest.confidence : 0 };
-  if (!o || !crest || !(crest.lc.stage > 0 || crest.lc.steep > 0)) return out;
+  const out: SetWaveResult = { eta, dx: f.dirX * dh, dz: f.dirZ * dh, slopeX: f.dirX * slopeAlong, slopeZ: f.dirZ * slopeAlong, foam: 0, stage: crest ? crest.s * crest.confidence : 0, pile: 0 };
+  if (!o || !crest || !(crest.lc.stage > 0 || crest.lc.steep > 0 || crest.lc.drain > 0)) return out;
   // The crest's frame (height, Stokes ratio, wavenumber, lean, bore depth) sets the shape's scale for the whole
   // cross-section; this point's own unbroken position and height are what get steepened, drained and settled.
-  const fc = crest.f;
-  const Hc = localHeight(w, fc);
-  const ac = (Hc / 2) * lateral;
-  const sigmaC = Math.max(Math.tanh(fc.k * fc.depth), 0.05);
-  const Bc = Math.min(STOKES_CAP, (fc.k * (Hc / 2) * (3 - sigmaC * sigmaC)) / (4 * sigmaC * sigmaC * sigmaC));
-  const nearBreakingC = smoothstep(0.3, BREAKING_RATIO, Hc / Math.max(fc.hmin, MIN_DEPTH_M));
-  const pitchC = Math.min(PITCH_MAX * nearBreakingC, PITCH_KA_CAP / Math.max(fc.k * ac, 1e-4));
-  const etaCrest = ac * (1 + Bc);
+  const cf = crestFrame(w, crest, lateral, o);
   // Measured, not inferred from ξ: the wave speed changes across the ledge, and every point of one cross-section must
-  // agree on where its crest is.
-  const v0 = (x - crest.x) * f.dirX + (z - crest.z) * f.dirZ;
+  // agree on where its crest is. Along the bisector of the point's own ray and the crest's direction. Along the point's
+  // own ray alone, where the rays fan out over the inside reef (45° within 8 m) a point 6 m ahead of its crest measured
+  // 1 m, took the crest's height and foam among drained neighbours, and stood as a white-topped spike 0.68 m above
+  // everything 4 m around it (Andrew's "rock"). Along the crest's direction alone, the peak's meeting line (where the two
+  // ledges' rays meet and the direction swings 40° in 2 m) creased the settled water behind it (0.22 m in 0.5 m).
+  const sx = f.dirX + crest.f.dirX, sz = f.dirZ + crest.f.dirZ, sl = Math.hypot(sx, sz);
+  const bx = sl > 0 ? sx / sl : 1, bz = sl > 0 ? sz / sl : 0;
+  const facing = f.dirX * bx + f.dirZ * bz;
+  const v0 = (x - crest.x) * bx + (z - crest.z) * bz;
   // Per metre of the displaced surface along travel (ahead): Phase 1's derivatives along s, over its Jacobian.
   const perAhead = dXiDs / jacobian;
   const b = breakPoint({
-    theta, env: env * lateral, uUnbroken: v0 + dh, eta, uCrest: pitchC * etaCrest, etaCrest, H: Hc * lateral, k: fc.k, hmin: fc.hminBreak,
-    boreH: Math.min(w.heightM * fc.amp, BREAKING_RATIO * fc.hminBreak) * lateral,
+    theta, env: env * lateral, uUnbroken: v0 + dh * facing, eta, uCrest: cf.pitchC * cf.etaCrest, etaCrest: cf.etaCrest, H: cf.Hc * lateral, k: crest.f.k,
+    hmin: crest.f.hminBreak, boreH: cf.boreH, lipTop: cf.lipTop, lipHeight: cf.lipHeight, lateral,
     slope: slopeAlong, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead, crestConfidence: crest.confidence,
-  }, crest.lc, o.params);
+  }, crest.lc, crest.params);
   out.eta = b.eta;
   out.slopeX += f.dirX * b.dEtaDAhead;
   out.slopeZ += f.dirZ * b.dEtaDAhead;
   out.foam = b.foam;
+  out.pile = b.pile;
   return out;
+}
+
+/** The crest's frame for one wave (waveAtCrest's second half): its height, lean and crest height, the bore it settles to,
+ * and the pile's lip, with the lateral taper `lateral`. */
+function crestFrame(w: ActiveWave, crest: Crest, lateral: number, o: BreakOptions) {
+  const fc = crest.f;
+  const Hc = localHeight(w, fc);
+  const ac = (Hc / 2) * lateral;
+  const sigmaC = Math.max(Math.tanh(fc.k * fc.depth), 0.05);
+  const stokes = (height: number): number => Math.min(STOKES_CAP, (fc.k * (height / 2) * (3 - sigmaC * sigmaC)) / (4 * sigmaC * sigmaC * sigmaC));
+  const nearBreakingC = smoothstep(0.3, BREAKING_RATIO, Hc / Math.max(fc.hmin, MIN_DEPTH_M));
+  const pitchC = Math.min(PITCH_MAX * nearBreakingC, PITCH_KA_CAP / Math.max(fc.k * ac, 1e-4));
+  const etaCrest = ac * (1 + stokes(Hc));
+  const boreH = Math.min(w.heightM * fc.amp, BREAKING_RATIO * fc.hminBreak) * lateral;
+  const lipH = o.pile !== false && crest.lipH ? crest.lipH : 0;
+  return { Hc, pitchC, etaCrest, boreH, lipTop: (lipH / 2) * (1 + stokes(lipH)) * lateral, lipHeight: lipH * lateral };
 }
 
 /** The crest's height reaches this far from the crest in phase: fully within CREST_HEIGHT_REACH[0] periods, gone by [1]. */
@@ -325,9 +396,26 @@ export function waveAt(x: number, z: number, t: number, f: FieldSample, w: Activ
   return waveAtCrest(x, z, t, f, w, ctx, crestAt(x, z, t, f, w, ctx, o), o);
 }
 
+/**
+ * The whitewater pile's top above still water at w's crest nearest (x, z), its own height (the lip, surged and decayed,
+ * breaking.pileTop before its floor) and its floor (the settled bore's top): null where there is no pile (unbroken, off
+ * the record, or the lip no higher than the floor). Tests and diagnostics: the sheet stands at `top` at the pile's top
+ * once the curl has collapsed.
+ */
+export function crestPileTop(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, o: BreakOptions): { top: number; own: number; floor: number } | null {
+  const crest = crestAt(x, z, t, f, w, ctx, o);
+  if (!crest || crest.lipH === null || !(crest.lc.pile > 0)) return null;
+  const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, Math.hypot(x, z));
+  const q = (2 * (-x * w.travelZ + z * w.travelX - w.crestOffsetM)) / w.crestLengthM;
+  const lateral = 1 + (Math.exp(-(q * q * q * q)) - 1) * wFar;
+  const cf = crestFrame(w, crest, lateral, o);
+  const floor = settledCrestTop(cf.etaCrest, cf.Hc * lateral, crest.f.hminBreak, lateral, o.params);
+  return cf.lipTop > floor ? { top: pileTop(cf.lipTop, floor, crest.lc), own: cf.lipTop * crest.lc.surge * crest.lc.decay, floor } : null;
+}
+
 function accumulate(out: SetWaveResult, r: SetWaveResult): void {
   out.eta += r.eta; out.dx += r.dx; out.dz += r.dz; out.slopeX += r.slopeX; out.slopeZ += r.slopeZ;
-  out.foam = Math.max(out.foam, r.foam); out.stage = Math.max(out.stage, r.stage);
+  out.foam = Math.max(out.foam, r.foam); out.stage = Math.max(out.stage, r.stage); out.pile = Math.max(out.pile, r.pile);
 }
 
 /** The lowest the summed set-wave η may go at a point with this field sample: SEABED_CLEARANCE_M above the bed. */

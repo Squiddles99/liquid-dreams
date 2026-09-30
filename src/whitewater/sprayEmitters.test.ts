@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
-import { minRibbonHeight } from '../breaker/crestTrace';
-import { computeReefField } from '../breaker/reefField';
-import { fieldBreakingHeight } from '../breaker/setWaveModel';
+import { minRibbonHeight, timeSinceOnset, traceStations } from '../breaker/crestTrace';
+import { computeReefField, sampleField } from '../breaker/reefField';
+import { fieldBreakingHeight, toActiveWave } from '../breaker/setWaveModel';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
@@ -10,12 +10,30 @@ import { IMPACT_KIND } from './particleKinds';
 import { SprayPool, birthInto, stepPool } from './sprayStep';
 import {
   DEFAULT_SPRAY_PARAMS, type EmitterInput, IMPACT_MAX_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, sprayCanEmit, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
-  sprayEmitters, sprayReplayTicks, windToVector,
+  spitBirths, sprayEmitters, sprayReplayTicks, windToVector,
 } from './sprayEmitters';
 
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
 const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
 const BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+/** The time the checks count from: the wave's first break anywhere on the reef (a section's crest arrival less its time
+ * since onset, the earliest over the whole reef grid) plus the 0.9 s the peak broke before reaching (0, 0) on the old
+ * ledge, where it broke first. On the softened ramp (barrel-from-maths plan, Task 5) the biggest default wave breaks ~45 m
+ * seaward, seconds before it reaches the peak, and sections west and north of the peak's ray break up to 2 s before it. */
+const BREAKS = ((): { first: number; last: number } => {
+  const w = toActiveWave(BIGGEST);
+  let first = Infinity, last = -Infinity;
+  const g = field.grid;
+  for (let x = g.x0; x <= g.x0 + (g.nx - 1) * g.cellM; x += 5) for (let z = g.z0; z <= g.z0 + (g.nz - 1) * g.cellM; z += 5) {
+    const tb = timeSinceOnset(field, w, x, z, ctx, DEFAULT_BREAK_PARAMS);
+    if (tb !== null) { const t = w.arrivalS + sampleField(field, x, z).tau - tb; first = Math.min(first, t); last = Math.max(last, t); }
+  }
+  return { first, last };
+})();
+const BREAK_CLOCK = BREAKS.first + 0.9;
+/** Long after: 5 s past the last section's break (on the old ledge the check stood 12 s after the peak's arrival, ~5 s
+ * past the north ledge's last break; on the ramp the wave breaks along its crest for ~18 s). */
+const LONG_AFTER = BREAKS.last + 5;
 const OFFSHORE = { speedMs: 22 / 3.6, fromDeg: 57 };
 const MIN_H = minRibbonHeight(fieldBreakingHeight(field, DEFAULT_BREAK_PARAMS), DEFAULT_BREAK_PARAMS);
 const input = (t: number, over: Partial<EmitterInput> = {}): EmitterInput => ({
@@ -153,10 +171,10 @@ describe('the births', () => {
 describe('the impact explosion', () => {
   const imp = (t: number, over: Partial<EmitterInput> = {}) => breakEmitters(input(t, { impactAmount: 1, ...over })).impact.filter((e) => e.waveId === BIGGEST.id);
   it('impact emitters only in the landing window: none before the lip lands, none long after', () => {
-    const counts = [-1, 0, 0.3, 0.6, 0.9, 1.2, 1.6, 2, 3, 5].map((dt) => imp(BIGGEST.arrivalS + dt).length);
+    const counts = [-1, 0, 0.3, 0.6, 0.9, 1.2, 1.6, 2, 3, 5].map((dt) => imp(BREAK_CLOCK + dt).length);
     expect(Math.max(...counts)).toBeGreaterThan(3);
     expect(counts[0]).toBe(0);
-    expect(imp(BIGGEST.arrivalS + 12).length).toBe(0);
+    expect(imp(LONG_AFTER).length).toBe(0);
   });
   it('impact happens with no wind (a glassy day still explodes) while the spray does not', () => {
     let any = 0;
@@ -229,5 +247,48 @@ describe('the Bombie’s spray (4c-3)', () => {
     expect(bombieImpactEmitters({ ...b, ageS: 1.6 }, 30, 0, 1)).toEqual([]);
     expect(bombieImpactEmitters(null, 30, 0, 1)).toEqual([]);
     expect(bombieImpactEmitters(b, 30, 0, 2)[0].H).toBeGreaterThan(e[0].H);
+  });
+});
+
+describe("the barrel's spit (Andrew: foam, spit and spray)", () => {
+  const spitAt = (t: number, over: Partial<EmitterInput> = {}) => breakEmitters(input(t, { impactAmount: 1, ...over })).spit.filter((e) => e.waveId === BIGGEST.id);
+  const DTS = [-0.5, 0, 0.3, 0.6, 0.9, 1.2, 1.6, 2, 2.5, 3, 4, 5];
+  it('while a section barrels the tube spits, with or without wind; none before the break, none long after, none with the explosion off', () => {
+    const counts = DTS.map((dt) => spitAt(BREAK_CLOCK + dt, { wind: { speedMs: 0, fromDeg: 57 } }).length);
+    expect(Math.max(...counts)).toBeGreaterThan(0);
+    expect(spitAt(BREAK_CLOCK - 3).length).toBe(0);
+    expect(spitAt(LONG_AFTER).length).toBe(0);
+    for (const dt of DTS) expect(spitAt(BREAK_CLOCK + dt, { impactAmount: 0 }).length).toBe(0);
+  });
+  it('it blows along the crest, out of the open end (toward the sections that have not broken yet), from inside the tube', () => {
+    let seen = 0;
+    for (const dt of DTS) {
+      const t = BIGGEST.arrivalS + dt;
+      const stations = traceStations(field, wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave), t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M });
+      const tbNear = (x: number, z: number): number => {
+        let best = Infinity, tb = -1;
+        for (const s of stations) { if (s.gap) continue; const d = Math.hypot(s.x - x, s.z - z); if (d < best) { best = d; tb = s.tb ?? -1; } }
+        return best < 3 ? tb : -1;
+      };
+      for (const e of spitAt(t)) {
+        seen++;
+        expect(Math.hypot(e.dx, e.dz)).toBeCloseTo(1, 6);
+        expect(Math.abs(e.dx * e.nx + e.dz * e.nz), 'along the crest, not across it').toBeLessThan(0.35);
+        const ahead = tbNear(e.x + e.dx * 6, e.z + e.dz * 6), behind = tbNear(e.x - e.dx * 6, e.z - e.dz * 6);
+        if (ahead >= 0 && behind >= 0) expect(ahead, 'the open end is less far through its break').toBeLessThan(behind);
+        expect(e.speed).toBeGreaterThan(5);
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+  it('spit births jet out along their direction, capped and deterministic', () => {
+    const one = { x: 0, y: 1, z: 0, dx: 0, dz: 1, speed: 15, nx: 1, nz: 0, radius: 1.5, strength: 1, lip: 1, waveId: 1, arc: 0 };
+    let along = 0, up = 0, n = 0;
+    for (let k = 0; k < 100; k++) for (const b of spitBirths([one], k)) { along += b.vz; up += Math.abs(b.vy); n++; }
+    expect(n).toBeGreaterThan(50);
+    expect(along / n).toBeGreaterThan(10);
+    expect(up / n).toBeLessThan(0.3 * (along / n));
+    expect(spitBirths([one], 7)).toEqual(spitBirths([one], 7));
+    expect(spitBirths(Array.from({ length: 400 }, (_, i) => ({ ...one, arc: i, strength: 3 })), 3).length).toBeLessThanOrEqual(SPRAY_BIRTH_CAP);
   });
 });
