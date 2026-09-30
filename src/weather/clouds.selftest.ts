@@ -3,6 +3,7 @@ import { Fn, cos, float, fract, instanceIndex, int, ivec2, select, sin, sqrt, st
 import { fmt, registerSelfTest } from '../dev/selfTest';
 import { Sky } from '../sky/Sky';
 import { cloudDensity, coverageDensity, lowLayer } from './cloudModel';
+import { cloudLight } from './cloudNodes';
 import { rainRate } from './rainModel';
 import { rainRipplesNode } from './rainRipples';
 import { meterLuminance } from './cloudMeter';
@@ -432,7 +433,6 @@ registerSelfTest({
       return mean(v);
     };
     const raw = await rough(clouds.rawMap), sharp = await rough(sky.skyMap);
-    void W;
     return { pass: sharp < 0.5 * raw && raw > 0, detail: `texel-scale roughness: marched ${raw.toFixed(4)}, shown ${sharp.toFixed(4)}` };
   },
 });
@@ -449,5 +449,48 @@ registerSelfTest({
     const dry = await sample(0), wet = await sample(0.6);
     const lit = Array.from(wet).filter((v) => v > 1e-3).length / n;
     return { pass: dry.every((v) => v === 0) && lit > 0.05 && wet.every(Number.isFinite), detail: `dry max ${Math.max(...dry)}; rain 0.6: ${(lit * 100).toFixed(0)}% of points on a ring` };
+  },
+});
+
+// ---- W2 final review ----
+
+registerSelfTest({
+  name: 'clouds: the deck darkening leaves a dry sky exactly as it was, and darkens a storm (W2 review I1)',
+  async run(renderer) {
+    const n = 512;
+    const zenithBand = (sky: Sky) => readFloats(renderer, n, (i: N) => {
+      const c = texture(sky.skyMap, vec2(float(i).add(0.5).div(n), 0.9)).level(float(0));
+      return c.x.add(c.y).add(c.z);
+    });
+    const withAndWithout = async (w: Readonly<WeatherConditions>) => {
+      const { sky, clouds } = await skyRig(renderer, w);
+      const on = await zenithBand(sky);
+      clouds.u.columnOn.value = 0;
+      const r = await skyRig(renderer, w);
+      const off = await zenithBand(r.sky);
+      clouds.u.columnOn.value = 1;
+      return { on: mean(on), off: mean(off), same: on.every((v, i) => v === off[i]) };
+    };
+    const grey = await withAndWithout(WEATHER_PRESETS.grey), overcast = await withAndWithout(WEATHER_PRESETS.overcast);
+    const storm = await withAndWithout(WEATHER_PRESETS.storm);
+    return {
+      pass: grey.same && overcast.same && storm.on < 0.7 * storm.off,
+      detail: `grey unchanged ${grey.same}, overcast unchanged ${overcast.same}; storm ${(storm.on / storm.off).toFixed(2)}× without the darkening`,
+    };
+  },
+});
+
+registerSelfTest({
+  name: 'clouds: the rain curtains in the sky are lit as the rain haze over the land is (W2 review I3: no step at the skyline)',
+  async run(renderer) {
+    const { sky, clouds } = await skyRig(renderer, WEATHER_PRESETS.storm);
+    const light = cloudLight(clouds.u, sky.luts, sky.uniforms, sky.clearSkyIrradiance, sky.hazeLight);
+    const v = await readFloats(renderer, 6, (i: N) => {
+      const k = i.mod(uint(3));
+      const pick = (c: N): N => select(k.equal(uint(0)), c.x, select(k.equal(uint(1)), c.y, c.z));
+      return select(i.lessThan(uint(3)), pick(light.curtain), pick(sky.hazeLight));
+    });
+    const worst = Math.max(...[0, 1, 2].map((c) => Math.abs(v[c] - v[c + 3]) / Math.max(v[c + 3], 1e-9)));
+    return { pass: worst < 1e-4, detail: `curtain ${fmt(v.slice(0, 3))} vs haze ${fmt(v.slice(3))}` };
   },
 });

@@ -57,7 +57,7 @@ export class Clouds {
     this.shadow = new CloudShadow(this.u, this.field);
     sky.attachRain((xz) => rainExtinctionNode(this.field.rainRate(xz)));
     // Lit by the clear sky above them (the cloudy sky light is what's left under them: using it would feed back).
-    const light = cloudLight(this.u, sky.luts, sky.uniforms, sky.clearSkyIrradiance);
+    const light = cloudLight(this.u, sky.luts, sky.uniforms, sky.clearSkyIrradiance, sky.hazeLight);
     const { width: W, height: H } = SKY_MAP;
     const blocks = W / 4;
     this.rawMap = new THREE.StorageTexture(W, H);
