@@ -347,7 +347,7 @@
   },
   {
    "name": "male_hair",
-   "triangles": 9000,
+   "triangles": 16000,
    "materials": [
     "hair"
    ]
@@ -357,6 +357,13 @@
    "triangles": 2944,
    "materials": [
     "eyes"
+   ]
+  },
+  {
+   "name": "male_hairDry",
+   "triangles": 20400,
+   "materials": [
+    "hairDry"
    ]
   },
   {
