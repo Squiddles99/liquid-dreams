@@ -1,13 +1,26 @@
 import * as THREE from 'three/webgpu';
-import { asin, atan, clamp, exp, max, normalize, texture, uniform, vec3 } from 'three/tsl';
+import { PI, asin, atan, clamp, exp, float, fract, max, normalize, select, sqrt, storage, texture, uniform, vec2, vec3, vec4 } from 'three/tsl';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, extinctionPerKm } from './atmosphereParams';
 import { type AtmosphereUniforms, createAtmosphereUniforms, nightFloorRadiance, skyViewUvFromAngles, updateAtmosphereUniforms } from './atmosphereNodes';
 import { AtmosphereLuts } from './AtmosphereLuts';
 import { createSkyDome } from './SkyDome';
+import { SKY_MAP, SKY_MAP_SMALL } from '../weather/skyMapLayout';
 
 type N = any;
 
 export const SUN_ANGULAR_RADIUS_RAD = 0.00465;
+
+function skyMapTexture(width: number, height: number): THREE.StorageTexture {
+  const t = new THREE.StorageTexture(width, height);
+  t.type = THREE.HalfFloatType;
+  t.format = THREE.RGBAFormat;
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  t.generateMipmaps = false;
+  return t;
+}
 const MIN_SUN_CHANGE_RAD = (0.25 * Math.PI) / 180;
 
 export class Sky {
@@ -20,6 +33,16 @@ export class Sky {
   readonly seaLevelExtinction = uniform(new THREE.Vector3());
   readonly aerialScale = uniform(1);
   readonly dome: THREE.Mesh;
+  /**
+   * The clouds around the camera (spec 2026-09-30 §4.4), written by weather/Clouds: rgb, their light; a, how much of the
+   * atmosphere behind them they hide. A zeroed texture (no clouds yet, or none at all) reads as the clear sky.
+   */
+  readonly skyMap = skyMapTexture(SKY_MAP.width, SKY_MAP.height);
+  /** The 4× smaller copy that reflections and the sky light read. */
+  readonly skyMapSmall = skyMapTexture(SKY_MAP_SMALL.width, SKY_MAP_SMALL.height);
+  /** [0].x: the sun's transmittance through the clouds from the camera (the sun disk, the exposure meter). */
+  readonly cloudSunAttr = new THREE.StorageBufferAttribute(new Float32Array([1, 1, 1, 1]), 4);
+  readonly cloudSun = storage(this.cloudSunAttr, 'vec4', 1).toReadOnly();
   private params: AtmosphereParams;
   private readonly lastSun = new THREE.Vector3(0, -2, 0);
   private staticDirty = true;
@@ -68,12 +91,31 @@ export class Sky {
     }
   }
 
-  /** Sky radiance along a world-space direction (node). */
-  radiance(dir: N): N {
+  /** The clear atmosphere's radiance along a world-space direction (node). */
+  atmosphereRadiance(dir: N): N {
     const elevation = asin(clamp(dir.y, -1.0, 1.0));
     const azimuth = atan(dir.z, dir.x).sub(this.sunAzimuthAngle);
     return texture(this.luts.skyView, skyViewUvFromAngles(elevation, azimuth)).rgb
       .add(nightFloorRadiance(this.uniforms));
+  }
+
+  /**
+   * Sky radiance along a world-space direction (node): the atmosphere behind the clouds, plus their light. `sharp`
+   * reads the full sky map (the dome); otherwise the small one (reflections, the sky light), which rough water's
+   * many normals would alias on.
+   */
+  radiance(dir: N, sharp = false): N {
+    const elevation = asin(clamp(dir.y, 0.0, 1.0));
+    const uv = vec2(fract(atan(dir.z, dir.x).div(PI.mul(2.0))), sqrt(elevation.div(PI.mul(0.5))));
+    const c = texture(sharp ? this.skyMap : this.skyMapSmall, uv).level(float(0));
+    // Below the horizon no cloud stands between the eye and the (dome's) atmosphere.
+    const clouds = select(dir.y.greaterThanEqual(0.0), c, vec4(0.0));
+    return this.atmosphereRadiance(dir).mul(float(1.0).sub(clouds.a)).add(clouds.rgb);
+  }
+
+  /** The sun's transmittance through the clouds from the camera (node). */
+  get cloudSunTransmittance(): N {
+    return this.cloudSun.element(0).x;
   }
 
   /** Near-sea-level aerial perspective along a ray from the camera. */

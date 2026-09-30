@@ -46,6 +46,7 @@ import { Seabed, WATERLINE_STEP_M } from '../seabed/Seabed';
 import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
+import { Clouds } from '../weather/Clouds';
 import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesBetween, wavesNear } from '../swell/sets';
 import { CoastalSurf } from '../surf/CoastalSurf';
 import { DEFAULT_SURF_PARAMS, type SurfParams, normalizeSurfParams } from '../surf/surfModel';
@@ -152,6 +153,8 @@ export class App {
    */
   private readonly profile = new CustomProfile(this.restoreSettings());
   readonly sky = new Sky(this.atmosphereParams);
+  /** The weather's clouds (spec 2026-09-30), marched into the sky's map before any material reads it. */
+  readonly clouds = new Clouds(this.sky);
   readonly ocean = new OceanSimulation(this.simParams);
   readonly seabed = new Seabed(buildBathymetry(this.reefParams));
   /** The land behind the Womb (Phase 4a spec 2026-09-28-the-view-back-design.md); landless until its file loads. */
@@ -1144,6 +1147,8 @@ export class App {
 
     const sun = sunForConditions(this.conditions);
     this.sunDir.set(...sun.direction);
+    this.clouds.setWeather(this.conditions.weather, this.conditions.seed);
+    this.clouds.update(this.renderer, this.sunDir, this.camera.position, this.clock.simTime);
     this.sky.update(this.renderer, this.sunDir, this.camera.position.y);
     this.land.update(this.renderer, sun.direction, this.camera.position);
     this.updateBeach();
