@@ -12,6 +12,7 @@ import { STAND_PROBE_FIRST, boardFrameFrom, chaseCamera, probePoints, stableLook
 import { poseTargets } from './poses';
 import { PRESETS, type PresetName, boardFor, boardLookFor } from './presets';
 import { POSE_PHASE, POSE_ZONE, type RideState } from './rideState';
+import { applyFaceParams, idleContextFor, restingFace } from './faceControl';
 import { type BoardFrame, boardQuaternion, solvePose } from './solvePose';
 import { Surfer } from './Surfer';
 import { type SurferParams, playPhase } from './surferParams';
@@ -20,6 +21,7 @@ import { OUTFIT_LABELS, outfitFor } from './wardrobe';
 
 type N = any;
 const DEG = Math.PI / 180;
+const UP = new THREE.Vector3(0, 1, 0);
 
 /** The stand (spec §6): the chosen surfer on the chosen board, on the water at a chosen spot, in the chosen pose. */
 export class SurferStand {
@@ -33,6 +35,8 @@ export class SurferStand {
   private frame: BoardFrame | null = null;
   /** The board's vertical acceleration for the balance layer's knees; 0 while paused or after a jump. */
   private readonly heaveFilter = new HeaveFilter();
+  private lastSim: number | null = null;
+  private readonly sky: Sky;
   private heave = 0;
 
   constructor(sky: Sky, sunVisibility?: (xz: N) => N) {
@@ -47,6 +51,7 @@ export class SurferStand {
     this.leash = new THREE.Mesh(g, m);
     this.leash.frustumCulled = false;
     this.group.add(this.leash);
+    this.sky = sky;
     this.loader = new KeyedLoader((name) => Surfer.load(PRESETS[name], sky, sunVisibility), (name, e) => console.warn(`The ${name} surfer failed to load; the stand shows the board only.`, e));
     this.group.visible = false;
   }
@@ -91,10 +96,26 @@ export class SurferStand {
       t.hands[lead].pos.add(bal.lead);
       t.hands[trail].pos.add(bal.trail);
     }
+    // Idle life (closeup spec §5.2): ticked by the sim's clock (a paused capture holds the face still), turning the
+    // head's look by its idle offsets about the head (last frame's), squinting as the sun meets the eyes.
+    const dt = this.lastSim === null ? 0 : Math.min(0.1, Math.max(0, simTime - this.lastSim));
+    this.lastSim = simTime;
+    const lookAt = stableLookAt(frame, t.look);
+    const head = s.boneWorldPosition('head', new THREE.Vector3());
+    const facing = lookAt.clone().sub(head).normalize();
+    const ctx = idleContextFor(p.pose, p.onLand, facing.dot(this.sky.sunDirection.value));
+    const face = applyFaceParams(p.idle ? s.idle.tick(dt, ctx) : restingFace(), p);
+    s.setFace(face);
+    if (face.headYawDeg !== 0 || face.headPitchDeg !== 0) {
+      const v = lookAt.clone().sub(head).applyAxisAngle(UP, face.headYawDeg * DEG);
+      const side = v.clone().cross(UP);
+      if (side.lengthSq() > 1e-9) v.applyAxisAngle(side.normalize(), face.headPitchDeg * DEG);
+      lookAt.copy(head).add(v);
+    }
     const state: RideState = {
       board: frame, speedMs: 0, railAngleRad: p.lean * 35 * DEG, compression: dials.compression,
       zone: POSE_ZONE[p.pose], phase: POSE_PHASE[p.pose], phaseT,
-      lookAt: stableLookAt(frame, t.look),
+      lookAt,
     };
     const solved = solvePose(s.rest, t, state.board, state.lookAt);
     s.applyPose(solved);

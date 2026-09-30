@@ -25,6 +25,10 @@ export const OUTFIT_LABELS: Record<Outfit, string> = {
 /** On land (the dune, the select screen) Grommet dries off and puts his glasses on (grommet spec §6). */
 export const landLook = (onLand: boolean): { wet: number; glasses: boolean } => ({ wet: onLand ? 0 : 1, glasses: onLand });
 
+/** Which hair shows (closeup spec §4.1): the dry style on land where the build made one, else the wet hair (Grommet's
+ * curls dry in the shader). */
+export const hairShown = (onLand: boolean, hasDry: boolean): 'dry' | 'wet' => (onLand && hasDry ? 'dry' : 'wet');
+
 /** Whether the outfit wears the boardies mesh (the male and Grommet builds carry one). */
 export const showsBoardies = (o: Outfit): boolean => o === 'boardies' || o === 'rashieAndBoardies';
 

@@ -8,10 +8,12 @@ import type { Outfit, SurferPreset } from './presets';
 import { BONES, type BoneName, type SkeletonRest, type SurferManifest, assertManifest, restFromManifest } from './rig';
 import type { SolvedPose } from './solvePose';
 import { type OutfitUniforms, bodyMaterial, eyesMaterial, fabricMaterial, hairMaterial, lashesMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
+import { FACE_CHANNELS, type FaceState, IdleLife, MOODS } from './idleLife';
 import { skinZones } from './skinDetail';
-import { landLook, outfitMasks, showsBoardies } from './wardrobe';
+import { hairShown, landLook, outfitMasks, showsBoardies } from './wardrobe';
 
 type N = any;
+const DEG = Math.PI / 180;
 
 /** One loaded surfer (spec §3.2): the skinned body, its materials, and the pose applied to its bones. */
 export class Surfer {
@@ -27,6 +29,16 @@ export class Surfer {
   readonly wet = uniform(1);
   /** Grommet's glasses (the frame and the lenses), shown only on land. */
   private readonly glasses: THREE.Object3D[] = [];
+  /** The wet hair (in the water) and the dry style (on land, where the build made one; closeup spec §4.1). */
+  private readonly hairWet: THREE.Object3D[] = [];
+  private readonly hairDry: THREE.Object3D[] = [];
+  /** Where the eyes look, in radians off the head's look (yaw, pitch; closeup spec §5.1): the eye shader draws the iris
+   * toward it. */
+  readonly gaze = uniform(new THREE.Vector2());
+  /** Each morphing mesh's slot for each face channel, by its own morph dictionary (Review Focus 1). */
+  private readonly morphs: { mesh: THREE.Mesh; slots: [channel: number, morph: number][] }[] = [];
+  /** This rider's idle face (closeup spec §5.1), seeded per rider. */
+  readonly idle: IdleLife;
 
   static async load(preset: SurferPreset, sky: Sky, sunVisibility?: (xz: N) => N): Promise<Surfer> {
     const base = import.meta.env.BASE_URL;
@@ -42,6 +54,7 @@ export class Surfer {
   }
 
   private constructor(scene: THREE.Object3D, manifest: SurferManifest, readonly preset: SurferPreset, sky: Sky, sv?: (xz: N) => N) {
+    this.idle = new IdleLife({ female: 101, male: 202, grommet: 303 }[preset.name], MOODS[preset.name]);
     this.group.add(scene);
     this.group.updateMatrixWorld(true);
     scene.traverse((o) => {
@@ -58,6 +71,7 @@ export class Surfer {
     const materials: Record<string, () => THREE.Material> = {
       body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones: skinZones(manifest), wet: this.wet }),
       hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
+      hairDry: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
       eyes: () => eyesMaterial(sky, preset, sv),
       boardies: () => fabricMaterial(sky, preset.boardies, sv),
       glasses: () => plasticMaterial(sky, [0.012, 0.012, 0.014], sv), // black plastic
@@ -79,6 +93,16 @@ export class Surfer {
       mesh.frustumCulled = false;
       if (mats.some((mt) => mt.name === 'boardies')) this.boardies = mesh;
       if (mats.some((mt) => mt.name === 'glasses' || mt.name === 'lens')) this.glasses.push(mesh);
+      if (mats.some((mt) => mt.name === 'hair')) this.hairWet.push(mesh);
+      if (mats.some((mt) => mt.name === 'hairDry')) this.hairDry.push(mesh);
+      const dict = mesh.morphTargetDictionary;
+      if (dict) {
+        const slots: [number, number][] = [];
+        FACE_CHANNELS.forEach((c, i) => {
+          if (dict[c] !== undefined) slots.push([i, dict[c]]);
+        });
+        if (slots.length) this.morphs.push({ mesh, slots });
+      }
     });
     // Swim fins ride the feet: placed in the rest pose at the sole, then held in each foot bone's frame. The pocket fits
     // this body's foot: the toes reach ~1.58× the ankle-to-toe-joint distance ahead of the ankle (both built bodies).
@@ -111,6 +135,18 @@ export class Surfer {
     const look = landLook(on);
     this.wet.value = look.wet;
     for (const g of this.glasses) g.visible = look.glasses;
+    const dry = hairShown(on, this.hairDry.length > 0) === 'dry';
+    for (const h of this.hairWet) h.visible = !dry;
+    for (const h of this.hairDry) h.visible = dry;
+  }
+
+  /** The face's morph weights on every mesh that has them, and the gaze for the eyes (closeup spec §5.2). */
+  setFace(f: FaceState): void {
+    for (const { mesh, slots } of this.morphs) {
+      const w = mesh.morphTargetInfluences!;
+      for (const [c, m] of slots) w[m] = f[FACE_CHANNELS[c]];
+    }
+    this.gaze.value.set(f.gazeYawDeg * DEG, f.gazePitchDeg * DEG);
   }
 
   setSwimFins(on: boolean): void {

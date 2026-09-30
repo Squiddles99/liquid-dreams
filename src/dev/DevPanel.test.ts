@@ -175,13 +175,14 @@ describe('the Sound folder (Phase 5)', () => {
 });
 
 import { SURFER_PARAM_RANGES } from '../surfer/surferParams';
-import { SURFER_BINDINGS } from './DevPanel';
+import { FACE_BINDINGS, SURFER_BINDINGS } from './DevPanel';
 
 describe('Surfer folder bindings', () => {
   it('match normalizeSurferParams’s ranges exactly', () => {
+    const all: Record<string, { min: number; max: number }> = { ...SURFER_BINDINGS, ...FACE_BINDINGS };
     for (const k of Object.keys(SURFER_PARAM_RANGES) as (keyof typeof SURFER_PARAM_RANGES)[]) {
-      expect(SURFER_BINDINGS[k].min).toBe(SURFER_PARAM_RANGES[k].min);
-      expect(SURFER_BINDINGS[k].max).toBe(SURFER_PARAM_RANGES[k].max);
+      expect(all[k].min, k).toBe(SURFER_PARAM_RANGES[k].min);
+      expect(all[k].max, k).toBe(SURFER_PARAM_RANGES[k].max);
     }
   });
 });
