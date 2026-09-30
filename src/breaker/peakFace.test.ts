@@ -3,7 +3,7 @@ import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
-import { formatPeakFace, peakFace } from './peakFace';
+import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from './peakFace';
 import { computeReefField } from './reefField';
 
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
@@ -33,5 +33,16 @@ describe('the face-height readout at the peak', () => {
     const face = peakFace(field, set, biggest.arrivalS, { ...DEFAULT_BREAK_PARAMS, enabled: false })!;
     expect(face.stage).toBe(0);
     expect(formatPeakFace(face, true)).toMatch(/not breaking$/);
+  });
+  it('reads the ψ of the wave at the peak and names its state', () => {
+    const c = cloneConditions(DEFAULT_CONDITIONS); c.swell.sizeFt = 12;
+    const events = wavesOfSet(1, c, DEFAULT_SET_PARAMS);
+    const big = events.reduce((a, b) => (b.heightM > a.heightM ? b : a));
+    const psi = peakPsi(field, events, big.arrivalS, DEFAULT_BREAK_PARAMS, 3)!;
+    expect(psi).toBeGreaterThan(0);
+    expect(formatPeakPsi(0.065, true)).toBe('ψ 0.065, cylinder (5)');
+    expect(formatPeakPsi(0.035, true)).toBe('ψ 0.035, oval (4)');
+    expect(formatPeakPsi(null, true)).toBe('no wave at the peak');
+    expect(formatPeakPsi(0.05, false)).toBe('waiting for the reef field');
   });
 });
