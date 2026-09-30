@@ -330,7 +330,13 @@ export function profilePoint(j: number, f: ProfileFrame, baseHome: Vec2): Profil
   // take the lift at the outer arc's x for their σ, so the thin lip is lifted whole, never sheared through itself.
   const onSheet = seg === 'front' || seg === 'back';
   const liftX = seg === 'under' ? outer(f, s)[0] : seg === 'cap' ? outer(f, 1)[0] : seg === 'outer' ? outer(f, 1 - s)[0] : c.pos[0];
-  const lifted: Vec2 = !onSheet && f.lift ? add2(c.pos, liftAt(f.lift, liftX)) : c.pos;
+  // Above the face, no higher than the crest's own lift (the root's, the back's join): the pile stands tallest under the
+  // tube (at the foot), and lifting the lip by it there stood a horn over the wave (Andrew, 2026-09-30). The face and
+  // tube floor rise with the whitewater; the lip over them stays under the wave's back.
+  // The face blends from its foot's full lift (the front's join) to the capped lift where it meets the wall.
+  const l = !onSheet && f.lift ? liftAt(f.lift, liftX) : null;
+  const capped = l ? Math.min(l[1], liftAt(f.lift!, f.K[0])[1]) : 0;
+  const lifted: Vec2 = l ? add2(c.pos, [l[0], seg === 'face' ? l[1] + (capped - l[1]) * s : capped]) : c.pos;
   return { pos: lerp2(baseHome, lifted, f.weight), thickness: c.thickness * f.weight, curlFoam, lipness: c.lipness * f.weight };
 }
 
