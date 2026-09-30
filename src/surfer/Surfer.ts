@@ -5,7 +5,7 @@ import { toGeometry } from '../board/BoardMesh';
 import { buildSwimFin } from '../board/swimFinGeometry';
 import type { Sky } from '../sky/Sky';
 import type { Outfit, SurferPreset } from './presets';
-import { BONES, type BoneName, type SkeletonRest, type SurferManifest, restFromManifest } from './rig';
+import { BONES, type BoneName, type SkeletonRest, type SurferManifest, assertManifest, restFromManifest } from './rig';
 import type { SolvedPose } from './solvePose';
 import { type OutfitUniforms, bodyMaterial, eyesMaterial, fabricMaterial, hairMaterial, outfitUniforms } from './surferShading';
 import { outfitMasks } from './wardrobe';
@@ -32,6 +32,7 @@ export class Surfer {
         return r.json() as Promise<SurferManifest>;
       }),
     ]);
+    assertManifest(manifest, preset.manifestUrl);
     return new Surfer(gltf.scene, manifest, preset, sky, sunVisibility);
   }
 

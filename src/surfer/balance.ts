@@ -26,3 +26,34 @@ export function balanceAt(seed: number, t: number, amount: number, heaveAccel: n
   const lead = new Vector3(axis(), axis(), axis()), trail = new Vector3(axis(), axis(), axis());
   return { lead, trail, compression: Math.min(HEAVE_MAX, Math.max(-HEAVE_MAX, heaveAccel * HEAVE_GAIN * a)) };
 }
+
+const HEAVE_OMEGA = 4;
+const HEAVE_TAU_S = 0.15;
+
+/**
+ * The board's vertical acceleration as the knees feel it (spec §3.6): the probe's heights arrive in steps (a readback
+ * every 1–3 frames), and their raw second difference swung by tens of m/s² (final review). A low-pass (τ 0.15 s) feeds
+ * a critically damped spring (ω 4 rad/s) whose acceleration follows a swell's within ~0.1 m/s² and changes smoothly.
+ * Starts from rest, and resets when time stands still (paused) or jumps (a moment link).
+ */
+export class HeaveFilter {
+  private y1 = 0;
+  private ys = 0;
+  private vs = 0;
+  private lastT = Number.NaN;
+
+  update(y: number, t: number): number {
+    const dt = t - this.lastT;
+    this.lastT = t;
+    if (!(dt > 1e-4 && dt < 0.5) || !Number.isFinite(y)) {
+      this.y1 = this.ys = Number.isFinite(y) ? y : 0;
+      this.vs = 0;
+      return 0;
+    }
+    this.y1 += (y - this.y1) * (1 - Math.exp(-dt / HEAVE_TAU_S));
+    const a = HEAVE_OMEGA * HEAVE_OMEGA * (this.y1 - this.ys) - 2 * HEAVE_OMEGA * this.vs;
+    this.vs += a * dt;
+    this.ys += this.vs * dt;
+    return a;
+  }
+}

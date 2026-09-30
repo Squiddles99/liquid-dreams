@@ -46,6 +46,20 @@ export function boardFrameFrom(p: Placement, halfLen: number, halfWidth: number,
 }
 
 /** A rough chase view (spec §6): behind and above the board, looking along its heading at the rider's chest. */
+/**
+ * Where the eyes aim, 10 m out: the pose's board-frame look turned by the board's heading only, so the gaze holds level
+ * while the board pitches and rolls under the rider (spec §3.6; it used to swing with the board).
+ */
+export function stableLookAt(frame: BoardFrame, look: Vector3): Vector3 {
+  const fwd = new Vector3(frame.forward.x, 0, frame.forward.z);
+  if (fwd.lengthSq() < 1e-10) fwd.set(1, 0, 0);
+  fwd.normalize();
+  const up = new Vector3(0, 1, 0), right = fwd.clone().cross(up);
+  const dir = fwd.multiplyScalar(look.x).add(up.multiplyScalar(look.y)).add(right.multiplyScalar(look.z));
+  if (dir.lengthSq() < 1e-10) dir.set(frame.forward.x, 0, frame.forward.z);
+  return frame.position.clone().add(dir.normalize().multiplyScalar(10));
+}
+
 export function chaseCamera(frame: BoardFrame, headingDeg: number): CameraPose {
   const { fwd } = headingAxes(headingDeg);
   const pos: [number, number, number] = [frame.position.x - fwd[0] * CHASE_BACK_M, frame.position.y + CHASE_UP_M, frame.position.z - fwd[1] * CHASE_BACK_M];

@@ -6,9 +6,9 @@ import type { CameraPose } from '../dev/momentLink';
 import type { HeightProbe } from '../ocean/HeightProbe';
 import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
-import { balanceAt } from './balance';
+import { HeaveFilter, balanceAt } from './balance';
 import { LEASH_POINTS, LEASH_SIDES, leashCurve, tubeIndices, tubePositions } from './leash';
-import { STAND_PROBE_FIRST, boardFrameFrom, chaseCamera, probePoints } from './placement';
+import { STAND_PROBE_FIRST, boardFrameFrom, chaseCamera, probePoints, stableLookAt } from './placement';
 import { poseTargets } from './poses';
 import { PRESETS, type PresetName, boardFor, boardLookFor } from './presets';
 import { POSE_PHASE, POSE_ZONE, type RideState } from './rideState';
@@ -31,8 +31,8 @@ export class SurferStand {
   private readonly loader: KeyedLoader<PresetName, Surfer>;
   private surfer: Surfer | null = null;
   private frame: BoardFrame | null = null;
-  private heights: number[] = [];
-  private lastT = Number.NaN;
+  /** The board's vertical acceleration for the balance layer's knees; 0 while paused or after a jump. */
+  private readonly heaveFilter = new HeaveFilter();
   private heave = 0;
 
   constructor(sky: Sky, sunVisibility?: (xz: N) => N) {
@@ -60,7 +60,7 @@ export class SurferStand {
     probePoints(p, halfLen, halfWidth).forEach(([x, z], i) => probe.setProbe(STAND_PROBE_FIRST + i, x, z));
     const frame = boardFrameFrom(p, halfLen, halfWidth, [0, 1, 2, 3].map((i) => probe.heightAt(STAND_PROBE_FIRST + i)), tideM);
     this.frame = frame;
-    this.trackHeave(frame.position.y, simTime);
+    this.heave = this.heaveFilter.update(frame.position.y, simTime);
     const Qb = boardQuaternion(frame);
     this.board.mesh.position.copy(frame.position);
     this.board.mesh.quaternion.copy(Qb);
@@ -93,7 +93,7 @@ export class SurferStand {
     const state: RideState = {
       board: frame, speedMs: 0, railAngleRad: p.lean * 35 * DEG, compression: dials.compression,
       zone: POSE_ZONE[p.pose], phase: POSE_PHASE[p.pose], phaseT,
-      lookAt: frame.position.clone().add(t.look.clone().normalize().multiplyScalar(10).applyQuaternion(Qb)),
+      lookAt: stableLookAt(frame, t.look),
     };
     const solved = solvePose(s.rest, t, state.board, state.lookAt);
     s.applyPose(solved);
@@ -120,19 +120,4 @@ export class SurferStand {
     return this.frame ? chaseCamera(this.frame, headingDeg) : null;
   }
 
-  /** The board's vertical acceleration (smoothed) for the balance layer's knees; 0 while paused or after a jump. */
-  private trackHeave(y: number, t: number): void {
-    const dt = t - this.lastT;
-    this.lastT = t;
-    if (!(dt > 1e-4 && dt < 0.5)) {
-      this.heights = [y];
-      this.heave = 0;
-      return;
-    }
-    this.heights = [...this.heights.slice(-2), y];
-    if (this.heights.length === 3) {
-      const [a, b, c] = this.heights;
-      this.heave += 0.2 * ((c - 2 * b + a) / (dt * dt) - this.heave);
-    }
-  }
 }
