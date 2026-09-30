@@ -1,4 +1,5 @@
 import type { BreakParams } from '../breaker/breaking';
+import { barrelShape, offshoreSpeed, withShape } from '../breaker/breakIntensity';
 import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
 import { type Station, type StationEntry, traceStations } from '../breaker/crestTrace';
 import { GRAVITY_MS2, type ProfileFrame, type Vec2, profileFrame } from '../breaker/lipProfile';
@@ -225,9 +226,10 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
   const wantImpact = impactAmount > 0;
   if (!wantSpray && !wantImpact) return { spray, impact, spit };
   const waves = i.events.map(toActiveWave);
-  const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M });
+  const offshoreMs = offshoreSpeed(i.wind.speedMs, i.wind.fromDeg, ctx.travelX, ctx.travelZ);
+  const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M, offshoreMs });
   // The lip is thrown from the wave as it stood: the frame reads the sheet without the whitewater pile (as the ribbon's).
-  const opts: BreakOptions = { ...breakOptions(field, params), pile: false };
+  const opts: BreakOptions = { ...breakOptions(field, params, offshoreMs), pile: false };
   const frames: (ProfileFrame | null)[] = stations.map(() => null);
   for (const [si, s] of stations.entries()) {
     if (s.gap || s.tb === null || !Number.isFinite(s.tb)) continue;
@@ -241,7 +243,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       const r = sumWaves(x, z, i.t, sampleField(field, x, z), own, ctx, opts);
       return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
     };
-    const f = profileFrame(base, { H: s.H, c: s.c, r: s.r, tb: s.tb }, params);
+    const f = profileFrame(base, { H: s.H, c: s.c, r: s.r, tb: s.tb }, withShape(params, barrelShape(s.intensity)));
     if (wantImpact) frames[si] = f;
     const waveId = i.events[s.wave].id, arc = Math.round(s.arc / SPRAY_SPACING_M);
     if (wind > 0 && f.prog > 0 && f.prog < 1 && f.weight * f.rho > MIN_EMIT_WEIGHT) {
