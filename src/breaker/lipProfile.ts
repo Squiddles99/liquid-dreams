@@ -43,9 +43,8 @@ export const LIP_GROW_PROGRESS = 0.3;
 /** The underside is the outer arc offset inward; its thickness never exceeds this fraction of the arc's smallest radius
  * of curvature (v_j²/g, at the root), so the offset curve never folds. */
 export const MAX_THICKNESS_OF_RADIUS = 0.8;
-/** The tube's back wall W: this many H behind the crest at full throw (a round tube, spec 2026-09-29 §3.1)… */
-export const WALL_BACK_H = 0.25;
-/** …at this fraction of the way from the trough up to the lip's root. */
+/** The tube's back wall W stands p.wallBack·H behind the crest at full throw (per crest, from its intensity), at this
+ * fraction of the way from the trough up to the lip's root. */
 export const WALL_HEIGHT = 0.45;
 /** After the collapse ends the ribbon fades out (hands back to the sheet) over this long (s). */
 export const HAND_BACK_S = 0.5;
@@ -56,7 +55,7 @@ export const LANDING_FOAM_RISE = 0.3;
 export const BACK_OFF_DROP_H: readonly [number, number] = [0.3, 0.6];
 
 /** The BreakParams the profile reads (breaking.ts documents each). */
-export type LipParams = Pick<BreakParams, 'throwStrength' | 'lipThickness' | 'collapseTime' | 'ribbonOnset' | 'faceWidth' | 'troughDrain' | 'delta'>;
+export type LipParams = Pick<BreakParams, 'throwStrength' | 'lipThickness' | 'wallBack' | 'collapseTime' | 'ribbonOnset' | 'faceWidth' | 'troughDrain' | 'delta'>;
 
 /** What the profile needs from its station. */
 export interface ProfileInput {
@@ -148,7 +147,7 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: 
   const grow = smoothstep(0, LIP_GROW_PROGRESS, prog);
   const eRoot = Math.max(MIN_LIP_THICKNESS_M, Math.min(p.lipThickness * H, (MAX_THICKNESS_OF_RADIUS * vj * vj) / GRAVITY_MS2)) * grow;
   const R: Vec2 = [K[0], K[1] - eRoot];
-  const W: Vec2 = [K[0] - WALL_BACK_H * H * prog, F[1] + WALL_HEIGHT * (R[1] - F[1])];
+  const W: Vec2 = [K[0] - p.wallBack * H * prog, F[1] + WALL_HEIGHT * (R[1] - F[1])];
   // Beyond where the lip will land (fixed over the throw, so the front edge doesn't move).
   const uFront = Math.max(uFoot, K[0] + vj * tauLand) + LAND_CLEARANCE_M + EDGE_MARGIN_M;
   return {

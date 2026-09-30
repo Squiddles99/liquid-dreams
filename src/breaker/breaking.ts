@@ -39,6 +39,13 @@ export interface BreakParams {
   pileHalfM: number;
   /** How far the pile surges above the lip right after the landing, on the heaviest breaks (× the lip; 0 on a shoulder). */
   pileSurge: number;
+  /** The tube's back wall stands this many H behind the crest at full throw (negative: ahead). Per crest: set from its
+   * intensity (breakIntensity.withShape), as are throwStrength, lipThickness, troughDrain and pileSurge. */
+  wallBack: number;
+  /** An overall offset on every crest's break intensity (the Break panel). */
+  intensityNudge: number;
+  /** The random dial: each wave's throw moves by up to ± this much intensity (its seeded draw); 0 is pure physics. */
+  randomDial: number;
   /** The pile's churn (render only; the CPU model ignores it): lumps up to this fraction of the pile's height… */
   churnSize: number;
   /** …churning at this rate (× CHURN_RATE_PER_S, pileChurn.ts). */
@@ -62,6 +69,9 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   ribbonOnset: 0.7,
   pileHalfM: 50,
   pileSurge: 0.3,
+  wallBack: 0.25,
+  intensityNudge: 0,
+  randomDial: 0,
   churnSize: 0.2,
   churnSpeed: 1,
 };
@@ -115,6 +125,9 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.ribbonOnset = clampTo(p.ribbonOnset, 0.3, 0.9, d.ribbonOnset);
   p.pileHalfM = clampTo(p.pileHalfM, 10, 150, d.pileHalfM);
   p.pileSurge = clampTo(p.pileSurge, 0, 0.6, d.pileSurge);
+  p.wallBack = clampTo(p.wallBack, -0.3, 0.5, d.wallBack);
+  p.intensityNudge = clampTo(p.intensityNudge, -1, 1, d.intensityNudge);
+  p.randomDial = clampTo(p.randomDial, 0, 0.3, d.randomDial);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }

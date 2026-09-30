@@ -4,7 +4,7 @@ import { type BreakParams, RIBBON_FULL_OFFSET, normalizeBreakParams, steepeningS
 import {
   BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_MARGIN_M, FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_GROW_PROGRESS, LIP_SPRAY, LIP_SPRAY_FROM, LIP_SPRAY_PROGRESS,
   MAX_THICKNESS_OF_RADIUS, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID, TIP_THICKNESS_RATIO,
-  WALL_BACK_H, WALL_HEIGHT, sampleSegment,
+  WALL_HEIGHT, sampleSegment,
 } from './lipProfile';
 
 type N = any;
@@ -76,7 +76,7 @@ function sampleTable(): N {
 /** One uniform per BreakParams number the profile reads, plus the steepening's start (breaking.steepeningStart). */
 export function createLipUniforms(p: BreakParams) {
   const u = {
-    throwStrength: uniform(0), lipThickness: uniform(0), collapseTime: uniform(1), ribbonOnset: uniform(0), faceWidth: uniform(1), steepFrom: uniform(0),
+    throwStrength: uniform(0), lipThickness: uniform(0), wallBack: uniform(0.25), collapseTime: uniform(1), ribbonOnset: uniform(0), faceWidth: uniform(1), steepFrom: uniform(0),
     drainGrowth: uniform(1),
   };
   updateLipUniforms(u, p);
@@ -90,6 +90,7 @@ export function updateLipUniforms(u: LipUniforms, params: BreakParams): void {
   normalizeBreakParams(p);
   u.throwStrength.value = p.throwStrength;
   u.lipThickness.value = p.lipThickness;
+  u.wallBack.value = p.wallBack;
   u.collapseTime.value = p.collapseTime;
   u.ribbonOnset.value = p.ribbonOnset;
   u.faceWidth.value = p.faceWidth;
@@ -208,7 +209,7 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   const grow = smoothstep(0.0, LIP_GROW_PROGRESS, prog);
   const eRoot = max(MIN_LIP_THICKNESS_M, min(u.lipThickness.mul(H), vj.mul(vj).mul(MAX_THICKNESS_OF_RADIUS / GRAVITY_MS2))).mul(grow).toVar();
   const R = vec2(K.x, K.y.sub(eRoot)).toVar();
-  const W = vec2(K.x.sub(H.mul(WALL_BACK_H).mul(prog)), F.y.add(R.y.sub(F.y).mul(WALL_HEIGHT))).toVar();
+  const W = vec2(K.x.sub(H.mul(u.wallBack).mul(prog)), F.y.add(R.y.sub(F.y).mul(WALL_HEIGHT))).toVar();
   const uFront = max(uFoot, K.x.add(vj.mul(tauLand))).add(LAND_CLEARANCE_M + EDGE_MARGIN_M).toVar();
   const uBack = H.mul(BACK_EDGE_H).add(EDGE_MARGIN_M).negate().toVar();
   // ribbonWeight
