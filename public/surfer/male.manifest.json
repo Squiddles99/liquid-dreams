@@ -335,14 +335,14 @@
   },
   {
    "name": "male_hair",
-   "triangles": 7000,
+   "triangles": 9000,
    "materials": [
     "hair"
    ]
   },
   {
    "name": "male_eyes",
-   "triangles": 336,
+   "triangles": 1440,
    "materials": [
     "eyes"
    ]

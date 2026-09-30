@@ -21,6 +21,10 @@ export interface SurferPreset {
   skin: RGB;
   /** 0–1: how much darker the sun has made the skin. */
   tan: number;
+  /** Eyebrows and lips, painted from the body's colour layer (tools/surfer/face.py). */
+  brows: RGB;
+  lips: RGB;
+  iris: RGB;
   hairRoot: RGB;
   hairTip: RGB;
   fabric: RGB;
@@ -41,7 +45,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
       stepUp: { lengthIn: 76, widthIn: 19, thicknessIn: 2.5 },
       bodyboard: { lengthIn: 40, widthIn: 21, thicknessIn: 2.625 },
     },
-    skin: [0.52, 0.34, 0.24], tan: 0.35, hairRoot: [0.16, 0.1, 0.05], hairTip: [0.62, 0.5, 0.32],
+    skin: [0.52, 0.34, 0.24], tan: 0.35, brows: [0.16, 0.1, 0.055], lips: [0.42, 0.15, 0.14], iris: [0.12, 0.2, 0.22], hairRoot: [0.13, 0.085, 0.04], hairTip: [0.52, 0.4, 0.23],
     fabric: [0.55, 0.12, 0.1], rashie: [0.02, 0.12, 0.55], neopreneAccent: [0.1, 0.35, 0.45], boardies: [0.1, 0.2, 0.4],
     boardLooks: { bodyboard: { deck: [0.05, 0.25, 0.45], rail: [0.04, 0.19, 0.35] } },
   },
@@ -54,7 +58,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
       stepUp: { lengthIn: 80, widthIn: 19.5, thicknessIn: 2.625 },
       bodyboard: { lengthIn: 42, widthIn: 21.5, thicknessIn: 2.625 },
     },
-    skin: [0.46, 0.3, 0.2], tan: 0.45, hairRoot: [0.12, 0.08, 0.04], hairTip: [0.55, 0.43, 0.27],
+    skin: [0.46, 0.3, 0.2], tan: 0.45, brows: [0.07, 0.045, 0.028], lips: [0.34, 0.17, 0.14], iris: [0.14, 0.08, 0.035], hairRoot: [0.12, 0.08, 0.04], hairTip: [0.55, 0.43, 0.27],
     fabric: [0.1, 0.1, 0.12], rashie: [0.05, 0.05, 0.06], neopreneAccent: [0.45, 0.2, 0.05], boardies: [0.08, 0.28, 0.3],
     boardLooks: { bodyboard: { deck: [0.35, 0.05, 0.05], rail: [0.25, 0.04, 0.04] } },
   },

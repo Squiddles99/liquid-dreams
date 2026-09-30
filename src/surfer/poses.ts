@@ -338,13 +338,15 @@ function dropKnee(ctx: PoseContext, r: Rider): PoseTargets {
   const fs = spot(ctx, 'dkFoot'), ks = spot(ctx, 'dkKnee');
   // Kneeling, leaning toward the toes is the chest bending forward: the hips stay level over the knee.
   const comp = clamp01(0.5 + d.compression), lean = clamp(d.lean, -1, 1) * LEAN_MAX;
-  // Built from the knee out (gate 2: the knee went through the board): the kneecap rests on its spot, the shin lies back
-  // along the deck rising a little, and the back hip sits over the knee, leaning toward the front foot.
+  // Built from the knee out (gate 2: the knee went through the board): the kneecap rests on its spot and the back hip
+  // sits over the knee, leaning toward the front foot.
   const knee = add(ks, sc(Y(), 0.085));
-  const ankle = add(knee, sc(V(-Math.cos(0.18), Math.sin(0.18), 0), r.m.shinLen));
+  // The shin lies level along the deck and off the tail (tilted up, the finned foot floated high behind the board).
+  const ankle = add(knee, sc(V(-1, 0, 0), r.m.shinLen));
   const toFront = V(fs.x - ks.x, 0, fs.z - ks.z).normalize();
   // The lean tilts the upper body only; the back hip stays over the knee, or it drags the knee off its spot.
-  const backHip = add(knee, sc(add(sc(Y(), 0.85), sc(toFront, 0.4)).normalize(), r.m.thighLen * (0.97 - 0.08 * comp)));
+  // Exactly a thigh from the knee (so the IK puts the knee back on its spot); compression leans the hips toward the front foot.
+  const backHip = add(knee, sc(add(sc(Y(), 0.85), sc(toFront, 0.3 + 0.35 * comp)).normalize(), r.m.thighLen * 0.998));
   const pelvis = add(backHip, sc(toFront, r.m.hipHalf), sc(Y(), r.m.hipDrop));
   const backLeg: FootTarget = { ankle, toe: add(ankle, V(-r.m.footLenH, -0.02, 0)), pole: knee.clone().sub(add(sc(backHip, 0.5), sc(ankle, 0.5))).normalize(), instep: V(0, -1, 0) };
   const k = reachK(ctx), nx = L / 2 - 0.05;

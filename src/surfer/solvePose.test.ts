@@ -131,3 +131,20 @@ describe('nothing sinks through the board (Andrew, gate 2: the drop-knee knee we
     });
   }
 });
+
+describe('drop-knee', () => {
+  it('rests the back knee on its spot (within 3 cm of a kneecap above it) for every stance, body and dial', () => {
+    let worst = 0;
+    for (const rest of RESTS) {
+      const spec = makeBoard('bodyboard', PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver.bodyboard);
+      const layout = layoutFor(spec, rest.heightM);
+      const spot = new Vector3(...layout.spots.dkKnee).add(new Vector3(0, 0.085, 0));
+      for (const stance of ['regular', 'goofy'] as Stance[]) for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) {
+        const t = poseTargets('dropKnee', { spec, layout, rest, stance, dials: { compression: c, lean: l, twist: tw, reach: 0 }, phaseT: 0 });
+        const s = solvePose(rest, t, FRAMES[0], null);
+        worst = Math.max(worst, s.joint[stance === 'regular' ? 'shin_r' : 'shin_l'].distanceTo(spot));
+      }
+    }
+    expect(worst).toBeLessThan(0.03);
+  });
+});

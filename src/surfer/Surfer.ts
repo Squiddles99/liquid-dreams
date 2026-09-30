@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { uniform } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { toGeometry } from '../board/BoardMesh';
 import { buildSwimFin } from '../board/swimFinGeometry';
@@ -17,6 +18,8 @@ export class Surfer {
   readonly rest: SkeletonRest;
   private readonly bones = {} as Record<BoneName, THREE.Bone>;
   private readonly outfit: OutfitUniforms = outfitUniforms();
+  /** The head's centre in the world, for lighting the hair as one volume (surferShading.hairMaterial). */
+  private readonly headCentre = uniform(new THREE.Vector3());
   private readonly fins: THREE.Mesh[] = [];
   private boardies: THREE.Object3D | null = null;
 
@@ -45,8 +48,8 @@ export class Surfer {
     this.rest = restFromManifest(manifest, restQ);
     const materials: Record<string, () => THREE.Material> = {
       body: () => bodyMaterial(sky, preset, this.outfit, sv),
-      hair: () => hairMaterial(sky, preset, sv),
-      eyes: () => eyesMaterial(sky, sv),
+      hair: () => hairMaterial(sky, preset, this.headCentre, sv),
+      eyes: () => eyesMaterial(sky, preset, sv),
       boardies: () => fabricMaterial(sky, preset.boardies, sv),
     };
     scene.traverse((o) => {
@@ -88,6 +91,9 @@ export class Surfer {
 
   /** The solver's rotations onto the bones; the pelvis also moves (its parent, root, stays at rest at the origin). */
   applyPose(p: SolvedPose): void {
+    // The head's centre: 9 cm up and 1 cm forward of the head joint, turned with the head (its world rotation over rest).
+    const turn = p.world.head.clone().multiply(this.rest.restQ.head.clone().invert());
+    this.headCentre.value.copy(p.joint.head).add(new THREE.Vector3(0, 0.09, 0.01).applyQuaternion(turn));
     for (const b of BONES) if (b !== 'root') this.bones[b].quaternion.copy(p.local[b]);
     this.bones.pelvis.position.copy(p.pelvisWorld.clone().sub(p.joint.root).applyQuaternion(p.world.root.clone().invert()));
   }
