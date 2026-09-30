@@ -106,7 +106,12 @@ export interface SurferManifest {
   name: string;
   heightM: number;
   bones: ManifestBone[];
-  meshes: { name: string; triangles: number; materials: string[] }[];
+  /** `morphs`: the mesh's morph target names, in order (closeup spec §4.1). */
+  meshes: { name: string; triangles: number; materials: string[]; morphs?: string[] }[];
+  /** Body triangles weighted to the head (kept whole through decimation; closeup spec §4.1). */
+  headTriangles?: number;
+  /** Build-time checks (closeup spec §4.1): the closed lids cover the eyes. */
+  checks?: { blinkCovers: boolean };
   blender: string;
   mpfb: string;
   /** Face landmarks in the rest pose (glTF axes, metres), for the glasses fit and the skin detail (grommet spec §4, §5). */
@@ -124,6 +129,8 @@ export interface SurferLandmarks {
   mouth: Vec3;
   lipFront: Vec3;
   teethFront: Vec3;
+  /** The eyeballs' radius (fitted to MPFB's eye helper; closeup spec §4.1). */
+  eyeRadius?: number;
 }
 
 /** Everything wrong with a manifest's skeleton against the contract (empty = fine). */

@@ -328,14 +328,25 @@
  "meshes": [
   {
    "name": "female_body",
-   "triangles": 21000,
+   "triangles": 26756,
    "materials": [
     "body"
+   ],
+   "morphs": [
+    "blinkL",
+    "blinkR",
+    "jawOpen",
+    "smile",
+    "browsUp",
+    "browsInner",
+    "squint",
+    "nostrils",
+    "breathe"
    ]
   },
   {
    "name": "female_hair",
-   "triangles": 11908,
+   "triangles": 11912,
    "materials": [
     "hair"
    ]
@@ -349,5 +360,52 @@
   }
  ],
  "blender": "5.2.2 LTS",
- "mpfb": "2.0.17"
+ "mpfb": "2.0.17",
+ "landmarks": {
+  "eyes": [
+   [
+    0.03204,
+    1.52527,
+    0.11732
+   ],
+   [
+    -0.03204,
+    1.52527,
+    0.11732
+   ]
+  ],
+  "ears": [
+   [
+    0.09808,
+    1.51609,
+    0.0277
+   ],
+   [
+    -0.09808,
+    1.51609,
+    0.0277
+   ]
+  ],
+  "nose": [
+   0.0,
+   1.48997,
+   0.1666
+  ],
+  "mouth": [
+   0.0,
+   1.45978,
+   0.11463
+  ],
+  "lipFront": [
+   0.0,
+   1.46568,
+   0.15859
+  ],
+  "teethFront": [
+   0.0,
+   1.47556,
+   0.13938
+  ]
+ },
+ "headTriangles": 8088
 }

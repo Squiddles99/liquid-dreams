@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { glbFloats } from './glbData';
+import { FACE_CHANNELS } from './idleLife';
 import { PRESETS } from './presets';
 import { BONES, type SurferManifest, manifestProblems } from './rig';
 
@@ -23,11 +24,22 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       expect(gltf.skins.length).toBe(1);
       expect(gltf.skins[0].joints.map((i: number) => gltf.nodes[i].name).sort()).toEqual([...BONES].sort());
     });
-    it('keeps the body within budget (≤ 24k triangles, ≤ 4 materials; ≤ 40k in all)', () => {
+    it('keeps the body within budget (≤ 30k triangles, ≤ 4 materials; ≤ 150k in all, the hair cards most of it; closeup ruling 2)', () => {
       const body = man.meshes.find((m) => m.materials.includes('body'))!;
-      expect(body.triangles).toBeLessThanOrEqual(24000);
+      expect(body.triangles).toBeLessThanOrEqual(30000);
       expect(body.materials.length).toBeLessThanOrEqual(4);
-      expect(man.meshes.reduce((s, m) => s + m.triangles, 0)).toBeLessThanOrEqual(40000);
+      expect(man.meshes.reduce((s, m) => s + m.triangles, 0)).toBeLessThanOrEqual(150000);
+    });
+    it('carries the nine face morphs on every body primitive, by name (closeup spec §4.1)', () => {
+      const body = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'body'));
+      expect(body.extras?.targetNames).toEqual([...FACE_CHANNELS]);
+      for (const p of body.primitives) expect(p.targets?.length).toBe(FACE_CHANNELS.length);
+      // At rest, every morph is off: a default weight of 1 had her resting with every expression on at once.
+      expect((body.weights ?? []).every((w: number) => w === 0)).toBe(true);
+      expect(man.meshes.find((m) => m.materials.includes('body'))!.morphs).toEqual([...FACE_CHANNELS]);
+    });
+    it('keeps the head at full resolution (≥ 5,000 triangles weighted to the head)', () => {
+      expect(man.headTriangles).toBeGreaterThanOrEqual(5000);
     });
     it('carries the wardrobe masks on the body (TEXCOORD_1–3), and hair and eyes', () => {
       const matName = (i: number): string => gltf.materials[i].name;

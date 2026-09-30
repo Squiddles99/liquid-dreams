@@ -328,9 +328,20 @@
  "meshes": [
   {
    "name": "male_body",
-   "triangles": 21000,
+   "triangles": 26756,
    "materials": [
     "body"
+   ],
+   "morphs": [
+    "blinkL",
+    "blinkR",
+    "jawOpen",
+    "smile",
+    "browsUp",
+    "browsInner",
+    "squint",
+    "nostrils",
+    "breathe"
    ]
   },
   {
@@ -349,12 +360,70 @@
   },
   {
    "name": "male_boardies",
-   "triangles": 1189,
+   "triangles": 1240,
    "materials": [
     "boardies"
+   ],
+   "morphs": [
+    "blinkL",
+    "blinkR",
+    "jawOpen",
+    "smile",
+    "browsUp",
+    "browsInner",
+    "squint",
+    "nostrils",
+    "breathe"
    ]
   }
  ],
  "blender": "5.2.2 LTS",
- "mpfb": "2.0.17"
+ "mpfb": "2.0.17",
+ "landmarks": {
+  "eyes": [
+   [
+    0.03237,
+    1.65923,
+    0.14006
+   ],
+   [
+    -0.03237,
+    1.65923,
+    0.14006
+   ]
+  ],
+  "ears": [
+   [
+    0.09492,
+    1.65383,
+    0.04024
+   ],
+   [
+    -0.09492,
+    1.65383,
+    0.04024
+   ]
+  ],
+  "nose": [
+   0.0,
+   1.61729,
+   0.18436
+  ],
+  "mouth": [
+   -0.0,
+   1.58432,
+   0.13622
+  ],
+  "lipFront": [
+   0.0,
+   1.58917,
+   0.17803
+  ],
+  "teethFront": [
+   0.0,
+   1.59944,
+   0.16028
+  ]
+ },
+ "headTriangles": 8088
 }
