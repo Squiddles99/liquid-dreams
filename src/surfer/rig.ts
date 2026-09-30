@@ -142,3 +142,10 @@ export function restFromManifest(m: SurferManifest, restQ: Record<BoneName, Quat
   for (const b of m.bones) if ((BONES as readonly string[]).includes(b.name)) joint[b.name as BoneName] = new Vector3(...b.head);
   return { heightM: m.heightM, joint, restQ };
 }
+
+/** Throws (naming the file) when a body's manifest breaks the skeleton contract, so the loader's warn-once path handles a
+ * stale build instead of the pose solver failing every frame (final review). */
+export function assertManifest(m: SurferManifest, url: string): void {
+  const problems = manifestProblems(m);
+  if (problems.length) throw new Error(`${url}: ${problems.join('; ')}`);
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SINK_M, boardFrameFrom, chaseCamera, placeAhead, probePoints } from './placement';
+import { Vector3 } from 'three/webgpu';
+import { SINK_M, boardFrameFrom, chaseCamera, placeAhead, probePoints, stableLookAt } from './placement';
 
 const P = { x: 10, z: -5, headingDeg: 90, heightNudgeM: 0, pitchNudgeDeg: 0 };
 
@@ -34,5 +35,21 @@ describe('the stand’s placement', () => {
   });
   it('places the board 6 m ahead of the camera, nose along its view', () => {
     expect(placeAhead({ mode: 'free', position: [0, 3, 0], yawDeg: 90, pitchDeg: -10 })).toEqual({ x: 6, z: 0, headingDeg: 90 });
+  });
+});
+
+describe('the gaze holds against the board (spec §3.6; final review: it pitched and rolled with the board)', () => {
+  const flat = boardFrameFrom(P, 0.9, 0.25, [0.4, 0.4, 0.4, 0.4], 0);
+  // Nose up 0.3 m over the board and the right rail 0.2 m down: pitched and rolled.
+  const tilted = boardFrameFrom(P, 0.9, 0.25, [0.7, 0.1, 0.2, 0.6], 0);
+  it('looks the same way on a pitched, rolled board as on a flat one with the same heading', () => {
+    const look = new Vector3(1, -0.4, 0.3);
+    const a = stableLookAt(flat, look).sub(flat.position).normalize(), b = stableLookAt(tilted, look).sub(tilted.position).normalize();
+    expect(a.distanceTo(b)).toBeLessThan(1e-9);
+  });
+  it('keeps the pose’s own look up/down level with the horizon, 10 m out', () => {
+    const d = stableLookAt(tilted, new Vector3(1, 0, 0)).sub(tilted.position);
+    expect(d.y).toBeCloseTo(0, 9);
+    expect(d.length()).toBeCloseTo(10, 9);
   });
 });
