@@ -55,6 +55,8 @@ export function createCloudUniforms() {
     flatShape: uniform(0.5),
     flatDetail: uniform(0),
     flatRainCell: uniform(0.5),
+    /** Self-test hook: 0 turns the deck darkening off (to show a dry sky is untouched by it). */
+    columnOn: uniform(1),
     /** The preset's rain rate under its rain cells (0 dry: nothing below changes). */
     rain: uniform(0),
   };
@@ -198,9 +200,11 @@ export interface CloudLight {
   sunAt(h: N): N;
   /** Skylight (RGB radiance) on the cloud at fraction hFrac through its layer: bases darker than tops. */
   ambientAt(hFrac: N): N;
+  /** The light the rain curtains scatter (RGB radiance). */
+  curtain: N;
 }
 
-export function cloudLight(u: CloudUniforms, luts: AtmosphereLuts, atm: AtmosphereUniforms, skyIrradiance: N): CloudLight {
+export function cloudLight(u: CloudUniforms, luts: AtmosphereLuts, atm: AtmosphereUniforms, skyIrradiance: N, hazeLight: N): CloudLight {
   return {
     sunAt(h) {
       const hKm = h.mul(0.001);
@@ -213,6 +217,8 @@ export function cloudLight(u: CloudUniforms, luts: AtmosphereLuts, atm: Atmosphe
     ambientAt(hFrac) {
       return skyIrradiance.div(PI).mul(mix(0.5, 1.2, saturate(hFrac)));
     },
+    // The curtains scatter the same light as the rain haze over the land (Sky.hazeLight), not the clear sky above the cloud.
+    curtain: hazeLight,
   };
 }
 
@@ -275,7 +281,9 @@ function marchLayer(
       // still get the sky from the side, so it counts as the low cloud covers the sky.
       const tauUp = kind === 'low' ? u.sigmaLow.mul(COLUMN_DENSITY).mul(top.sub(h)) : float(0.0);
       const thick = min(float(1.0), float(1 + DIFFUSION_K * THIN_DECK_TAU).div(tauUp.mul(DIFFUSION_K).add(1.0)));
-      const column = mix(float(1.0), thick, smoothstep(0.5, 1.0, u.lowCover));
+      // Only for raining decks (nimbostratus, storms): a dry sky stays exactly as approved (W2 review I1: a grey
+      // deck's 800 m already darkened by a quarter, a look Andrew had signed off at the W1 merge).
+      const column = mix(float(1.0), thick, smoothstep(0.5, 1.0, u.lowCover).mul(smoothstep(0.0, 0.1, u.rain)).mul(u.columnOn));
       const inScatter = sunLight.add(light.ambientAt(hFrac)).mul(column);
       L.addAssign(inScatter.mul(T).mul(float(1.0).sub(stepT)));
       depthSum.addAssign(t.mul(T).mul(float(1.0).sub(stepT)));
@@ -309,7 +317,7 @@ export function marchSkyNode(u: CloudUniforms, field: CloudField, light: CloudLi
       const T = float(1.0).toVar();
       const L = vec3(0.0).toVar();
       const depthSum = float(0.0).toVar();
-      const inScatter = light.ambientAt(float(0.0)).mul(1.2);
+      const inScatter = light.curtain;
       Loop(SHAFT_STEPS, ({ i }: N) => {
         // Midpoints, not the per-texel jitter: over km-long steps the jitter showed as grain on the clouds behind.
         const a0 = float(i).div(SHAFT_STEPS), a = float(i).add(0.5).div(SHAFT_STEPS), b = float(i).add(1.0).div(SHAFT_STEPS);

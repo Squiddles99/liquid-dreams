@@ -80,6 +80,14 @@ export class Sky {
     return this.luts.skyLightRead.element(0).xyz.add(this.flashIrradiance);
   }
 
+  /**
+   * The light haze and rain scatter from the sky around them (RGB radiance node): the cloudy sky light, so the rain
+   * haze over the land and the rain curtains in the sky read as one (W2 review I3).
+   */
+  get hazeLight(): N {
+    return this.skyIrradiance.div(PI).mul(0.9);
+  }
+
   /** The clear sky's irradiance, above the clouds (RGB node): what lights the clouds themselves. */
   get clearSkyIrradiance(): N {
     return this.luts.skyLightRead.element(2).xyz;
@@ -129,7 +137,7 @@ export class Sky {
     const g = 0.6;
     const phase = float((1 - g * g) / (4 * Math.PI)).div(pow(max(float(1 + g * g).sub(cosT.mul(2 * g)), 1e-4), 1.5));
     const sunThrough = this.cloudSunTransmittance.mul(exp(this.fogDepth(max(this.sunDirection.y, 0.0), float(1e6)).negate()));
-    return this.skyIrradiance.div(PI).mul(0.9).add(this.sunIlluminance.mul(sunThrough).mul(phase));
+    return this.hazeLight.add(this.sunIlluminance.mul(sunThrough).mul(phase));
   }
 
   /** Re-integrate the sky light after the clouds changed (the sun did not). */
