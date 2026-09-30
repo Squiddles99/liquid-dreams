@@ -4,7 +4,7 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetTime } from './breaking';
 import { ANCHORS, type BarrelShape, PER_CREST_BREAK_KEYS, barrelShape, withShape } from './breakIntensity';
-import { PROFILE_SEGMENTS, type ProfileInput, type Vec2, barrelMetrics, buildProfile, crossings, profileFrame } from './lipProfile';
+import { PROFILE_SEGMENTS, type ProfileInput, type Vec2, barrelMetrics, buildProfile, crossings, profileFrame, sampleTarget } from './lipProfile';
 import { computeReefField, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, type BreakOptions, breakOptions, localHeight, sumWaves } from './setWaveModel';
 
@@ -121,6 +121,35 @@ describe('the anchors (spec 2026-09-30 §3.3)', () => {
         // No horn: the curl never stands above both the lip as it landed and the whitewater under it.
         const mound = Math.max(...prof.homes.map((u) => s.base(u)[1]));
         expect(Math.max(...pts.map((q) => q[1])), `I ${I} +${dt} s: horn`).toBeLessThanOrEqual(Math.max(standing, mound) + 0.2);
+      }
+    }
+  });
+  it('after the lip lands its tip stays in the water, and the tube floor rises with no hump (Andrew, 2026-09-30: normal +0.5 s)', () => {
+    const n = PROFILE_SEGMENTS, capStart = n.front + n.face + n.wall + n.under, faceStart = n.front, wallStart = n.front + n.face;
+    /** The most the floor falls on the way from the foot to the wall (a hump or a pocket; gentle's long floor sags a little). */
+    const dip = (pts: readonly Vec2[]) => { let top = -Infinity, d = 0; for (let j = faceStart; j <= wallStart; j++) { top = Math.max(top, pts[j][1]); d = Math.max(d, top - pts[j][1]); } return d; };
+    for (const I of [0, 1, 2]) {
+      const tau = anchorLanding(I), L = anchorStation(I, tau);
+      const dip0 = dip(buildProfile(L.base, L.input, L.lip, L.frameBase).points);
+      for (const dt of [0.25, 0.5, 0.75, 1, 1.5]) {
+        const s = anchorStation(I, tau + dt), prof = buildProfile(s.base, s.input, s.lip, s.frameBase), pts = prof.points, f = prof.frame;
+        if (f.weight < 0.2) continue; // settled into the whitewater: the tip is the sheet
+        // The water under the tip: the sheet at the tip's x (the sheet is single-valued in x out there).
+        const cap = pts.slice(capStart, capStart + n.cap), tipX = cap.reduce((a, q) => a + q[0], 0) / cap.length;
+        let lo = f.uFoot, hi = f.uFront + 5;
+        for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (s.base(mid)[0] < tipX) lo = mid; else hi = mid; }
+        const water = s.base(lo)[1], bottom = Math.min(...cap.map((q) => q[1]));
+        // It lands on the higher of the foot and the water where it lands (profileFrame), so it may stand that far above.
+        const landed = Math.max(0, f.F[1] - s.frameBase(f.uLand)[1]);
+        expect(bottom - water - landed, `I ${I} +${dt} s: tip above the water, beyond where it landed (m)`).toBeLessThanOrEqual(0.25);
+        const landX = f.K[0] + f.vj * f.tauLand;
+        expect(landX - tipX, `I ${I} +${dt} s: tip drawn back from where it landed (m)`).toBeLessThanOrEqual(0.5);
+        // The floor (the face, foot to wall) rises with the whitewater as it stood at the landing: no hump, no pocket at the
+        // wall's base. Gentle's floor runs ~8 m back under the wave's back, and the whitewater rises at the front of the tube,
+        // so it tilts back as it fills (shown to Andrew by eye, not pinned here).
+        // As the curl settles the floor takes the whitewater's own shape under it (the sheet where it settles).
+        const mound = pts.map((_, j) => s.base(sampleTarget(j, f))), dipMound = dip(mound);
+        if (I > 0) expect(dip(pts), `I ${I} +${dt} s: the floor's dip (m; ${dip0.toFixed(2)} at the landing, ${dipMound.toFixed(2)} under it)`).toBeLessThanOrEqual(Math.max(dip0, dipMound) + 0.1);
       }
     }
   });

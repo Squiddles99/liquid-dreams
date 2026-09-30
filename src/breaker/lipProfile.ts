@@ -111,6 +111,8 @@ export interface ProfileFrame {
  * folded through the landed tip (Andrew, 2026-09-30). Zero before the pile rises, so the throw is the wave as it stood.
  */
 export interface PileLift {
+  /** The knots' undisplaced u (the collapse target's lookup, uAtX). */
+  u: number[];
   x: number[];
   dx: number[];
   dy: number[];
@@ -121,10 +123,10 @@ export function pileLiftKnots(f: ProfileFrame): number[] {
   return [f.uBack, 0, 0.5 * f.uFoot, f.uFoot, f.uLand, 0.5 * (f.uLand + f.uFront), f.uFront];
 }
 export function pileLift(base: (u: number) => Vec2, frameBase: (u: number) => Vec2, f: ProfileFrame): PileLift {
-  const out: PileLift = { x: [], dx: [], dy: [] };
+  const out: PileLift = { u: [], x: [], dx: [], dy: [] };
   for (const u of pileLiftKnots(f)) {
     const a = base(u), b = frameBase(u);
-    out.x.push(b[0]); out.dx.push(a[0] - b[0]); out.dy.push(a[1] - b[1]);
+    out.u.push(u); out.x.push(b[0]); out.dx.push(a[0] - b[0]); out.dy.push(a[1] - b[1]);
   }
   return out;
 }
@@ -142,6 +144,19 @@ export function liftAt(l: PileLift, x: number): Vec2 {
     }
   }
   return [l.dx[last], l.dy[last]];
+}
+
+/**
+ * The u whose sheet (with the pile) stands at x: linear between the knots (by their x on that sheet, x + dx), clamped to
+ * the end knots. The collapse target of a curl point: the landed curl sinks straight down into the whitewater under it.
+ */
+export function uAtX(l: PileLift, x: number): number {
+  const n = l.u.length, X = (i: number) => l.x[i] + l.dx[i];
+  if (x <= X(0)) return l.u[0];
+  for (let i = 0; i + 1 < n; i++) {
+    if (x <= X(i + 1)) return X(i + 1) > X(i) ? l.u[i] + ((x - X(i)) / (X(i + 1) - X(i))) * (l.u[i + 1] - l.u[i]) : l.u[i + 1];
+  }
+  return l.u[n - 1];
 }
 
 const lerp2 = (a: Vec2, b: Vec2, t: number): Vec2 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
@@ -310,7 +325,48 @@ function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; t
   }
 }
 
-/** Sample j of the profile, given its frame and the base at its home (base(sampleHome(j, f))). */
+/**
+ * Sample j as it stands while the curl does, riding the whitewater pile (PileLift) up to the crest's own rise: the whole
+ * wave's surge lifts the curl, the water in front and the back, and the rest of the mound (the pile standing above the
+ * crest's rise, tallest under the tube and at its foot) fills in as the curl collapses (profilePoint's settling onto the
+ * sheet). The front and back are the sheet less that rest, so they join the curl at every stage and are the sheet
+ * exactly where the pile rises no more than the crest (at the edges). Andrew, 2026-09-30: under the curl, the whitewater
+ * mound rises with the collapse. Lifting the curl by the whole pile stood a horn over the wave; the floor lifted by it
+ * humped and pocketed, and by +0.75 s the pile at the foot stood as tall as the crest, through the standing tube.
+ *
+ * The lip's surfaces take the lift at the outer arc's x for their σ, so the thin lip is lifted whole, never sheared
+ * through itself; the floor (the face) runs evenly from its foot's lift to the wall's.
+ */
+function riding(j: number, f: ProfileFrame, c: Vec2): Vec2 {
+  if (!f.lift) return c;
+  const { seg, s } = sampleSegment(j);
+  const crest = liftAt(f.lift, f.K[0])[1];
+  const capped = (x: number): Vec2 => { const l = liftAt(f.lift!, x); return [l[0], Math.min(l[1], crest)]; };
+  if (seg === 'front' || seg === 'back') return [c[0], c[1] - Math.max(0, liftAt(f.lift, c[0])[1] - crest)];
+  if (seg === 'face') return add2(c, lerp2(capped(f.F[0]), capped(f.W[0]), s));
+  const liftX = seg === 'under' ? outer(f, s)[0] : seg === 'cap' ? outer(f, 1)[0] : seg === 'outer' ? outer(f, 1 - s)[0] : c[0];
+  return add2(c, capped(liftX));
+}
+
+/** Over this part of the collapse the curl's settling point slides along the sheet from under it back to its home. */
+export const HOME_SETTLE: readonly [number, number] = [0.8, 1];
+
+/**
+ * The u where sample j settles as the curl collapses: its home before the lip lands; once it lands, blending in with the
+ * landing foam, the sheet straight under the point (uAtX), so the landed tip stays in the water it landed in and the curl
+ * sinks into the whitewater. Settling to the homes drew the tip back up through the air toward the crest (Andrew,
+ * 2026-09-30, normal +0.5 s). At the end of the collapse (HOME_SETTLE, the curl nearly flat on the sheet) it slides back
+ * to the home, so the settled ribbon is the sheet at its own homes, as the hand-back needs.
+ */
+export function sampleTarget(j: number, f: ProfileFrame): number {
+  const home = sampleHome(j, f), { seg } = sampleSegment(j);
+  const w = f.landing * (1 - smoothstep(HOME_SETTLE[0], HOME_SETTLE[1], f.collapse));
+  if (seg === 'front' || seg === 'back' || !f.lift || w <= 0) return home;
+  const p = riding(j, f, constructed(j, f, [0, 0]).pos);
+  return home + (uAtX(f.lift, p[0]) - home) * w;
+}
+
+/** Sample j of the profile, given its frame and the base where it settles (base(sampleTarget(j, f))). */
 export function profilePoint(j: number, f: ProfileFrame, baseHome: Vec2): ProfilePoint {
   const c = constructed(j, f, baseHome);
   const { seg, s } = sampleSegment(j);
@@ -326,17 +382,7 @@ export function profilePoint(j: number, f: ProfileFrame, baseHome: Vec2): Profil
   const curlFoam = seg === 'outer' || seg === 'cap' ? Math.max(landed, spray * air)
     : seg === 'face' || seg === 'wall' || seg === 'under' ? landed - air
       : landed;
-  // The curl rides the whitewater pile (PileLift); the front and back are the sheet with it already. The lip's surfaces
-  // take the lift at the outer arc's x for their σ, so the thin lip is lifted whole, never sheared through itself.
-  const onSheet = seg === 'front' || seg === 'back';
-  const liftX = seg === 'under' ? outer(f, s)[0] : seg === 'cap' ? outer(f, 1)[0] : seg === 'outer' ? outer(f, 1 - s)[0] : c.pos[0];
-  // Above the face, no higher than the crest's own lift (the root's, the back's join): the pile stands tallest under the
-  // tube (at the foot), and lifting the lip by it there stood a horn over the wave (Andrew, 2026-09-30). The face and
-  // tube floor rise with the whitewater; the lip over them stays under the wave's back.
-  // The face blends from its foot's full lift (the front's join) to the capped lift where it meets the wall.
-  const l = !onSheet && f.lift ? liftAt(f.lift, liftX) : null;
-  const capped = l ? Math.min(l[1], liftAt(f.lift!, f.K[0])[1]) : 0;
-  const lifted: Vec2 = l ? add2(c.pos, [l[0], seg === 'face' ? l[1] + (capped - l[1]) * s : capped]) : c.pos;
+  const lifted = riding(j, f, c.pos);
   return { pos: lerp2(baseHome, lifted, f.weight), thickness: c.thickness * f.weight, curlFoam, lipness: c.lipness * f.weight };
 }
 
@@ -356,11 +402,11 @@ export interface Profile {
  */
 export function buildProfile(base: (u: number) => Vec2, input: ProfileInput, p: LipParams, frameBase: (u: number) => Vec2 = base): Profile {
   const frame = profileFrame(frameBase, input, p);
-  if (frameBase !== base) frame.lift = pileLift(base, frameBase, frame);
+  frame.lift = pileLift(base, frameBase, frame);
   const out: Profile = { frame, points: [], homes: [], thickness: [], curlFoam: [], lipness: [] };
   for (let j = 0; j < PROFILE_SAMPLES; j++) {
     const home = sampleHome(j, frame);
-    const pt = profilePoint(j, frame, base(home));
+    const pt = profilePoint(j, frame, base(sampleTarget(j, frame)));
     out.points.push(pt.pos); out.homes.push(home); out.thickness.push(pt.thickness); out.curlFoam.push(pt.curlFoam); out.lipness.push(pt.lipness);
   }
   return out;
