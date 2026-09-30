@@ -73,3 +73,78 @@ def sheet(name, height, out_dir, label):
     out.file_format = "PNG"
     out.save()
     os.remove(tmp)
+import json  # noqa: E402
+
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+OUTFITS = json.load(open(os.path.join(REPO, "src", "surfer", "outfitMasks.json"), encoding="utf-8"))
+WEIGHTS = ("spring", "steamer", "vest", "bottoms", "top", "boardies")
+
+
+def _sock(node, identifier, outputs=False):
+    return next(s for s in (node.outputs if outputs else node.inputs) if s.identifier == identifier)
+
+
+def _body_material(mat, preset):
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
+    nt.links.new(bsdf.outputs[0], out.inputs[0])
+
+    def sep(layer):
+        uvn = nt.nodes.new("ShaderNodeUVMap")
+        uvn.uv_map = layer
+        s = nt.nodes.new("ShaderNodeSeparateXYZ")
+        nt.links.new(uvn.outputs[0], s.inputs[0])
+        return s
+
+    a, b, c = sep("mask_a"), sep("mask_b"), sep("mask_c")
+    w = {}
+    for key in WEIGHTS:
+        v = nt.nodes.new("ShaderNodeValue")
+        v.name = f"w_{key}"
+        w[key] = v.outputs[0]
+
+    def math(op, x, y):
+        n = nt.nodes.new("ShaderNodeMath")
+        n.operation = op
+        for sock, val in ((n.inputs[0], x), (n.inputs[1], y)):
+            if isinstance(val, float):
+                sock.default_value = val
+            else:
+                nt.links.new(val, sock)
+        return n.outputs[0]
+
+    def mix(fac, col_a, col_b):
+        n = nt.nodes.new("ShaderNodeMix")
+        n.data_type = "RGBA"
+        nt.links.new(fac, _sock(n, "Factor_Float"))
+        for ident, col in (("A_Color", col_a), ("B_Color", col_b)):
+            if isinstance(col, tuple):
+                _sock(n, ident).default_value = (*col, 1)
+            else:
+                nt.links.new(col, _sock(n, ident))
+        return _sock(n, "Result_Color", outputs=True)
+
+    neo = math("MAXIMUM", math("MAXIMUM", math("MULTIPLY", w["spring"], a.outputs[0]), math("MULTIPLY", w["steamer"], a.outputs[1])), math("MULTIPLY", w["vest"], b.outputs[0]))
+    fabric = math("MAXIMUM", math("MULTIPLY", w["bottoms"], b.outputs[1]), math("MULTIPLY", w["top"], c.outputs[0]))
+    under = math("MULTIPLY", w["boardies"], c.outputs[1])
+    col = mix(math("GREATER_THAN", fabric, 0.5), tuple(preset["preview"]["skin"]), tuple(preset["preview"]["fabric"]))
+    col = mix(math("GREATER_THAN", under, 0.5), col, tuple(preset["preview"]["boardies"]))
+    col = mix(math("GREATER_THAN", neo, 0.5), col, (0.02, 0.02, 0.025))
+    nt.links.new(col, bsdf.inputs["Base Color"])
+
+
+def dress(parts, preset, outfit):
+    body = parts[0]
+    mat = body.material_slots[0].material
+    if "w_spring" not in mat.node_tree.nodes:
+        _body_material(mat, preset)
+    for key in WEIGHTS:
+        mat.node_tree.nodes[f"w_{key}"].outputs[0].default_value = float(OUTFITS[outfit][key])
+    for p in parts[1:]:
+        if p.name.endswith("_boardies"):
+            p.hide_render = outfit != "boardies"
+            p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["boardies"], 1)
+        elif p.name.endswith("_hair"):
+            p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["hair"], 1)
