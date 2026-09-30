@@ -30,6 +30,17 @@ export interface SurferParams {
   headingDeg: number;
   heightNudgeM: number;
   pitchNudgeDeg: number;
+  /** Idle life (closeup spec §5): blinks, gaze, breathing, the mood's smile, the head looking around. */
+  idle: boolean;
+  /** The Face folder's dials override the idle face's blink, smile, jaw, brows, squint and gaze (the gate, testing). */
+  faceManual: boolean;
+  faceBlink: number;
+  faceSmile: number;
+  faceJaw: number;
+  faceBrows: number;
+  faceSquint: number;
+  gazeYawDeg: number;
+  gazePitchDeg: number;
 }
 
 /** In the lineup where Andrew waits (DEFAULT_LINEUP_POSITION), nose out to sea toward the south-west swell. */
@@ -37,6 +48,7 @@ export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
   enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, onLand: false,
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
   x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
+  idle: true, faceManual: false, faceBlink: 0, faceSmile: 0, faceJaw: 0, faceBrows: 0, faceSquint: 0, gazeYawDeg: 0, gazePitchDeg: 0,
 };
 
 export const SURFER_PARAM_RANGES = {
@@ -50,6 +62,13 @@ export const SURFER_PARAM_RANGES = {
   z: { min: -400, max: 400 },
   heightNudgeM: { min: -3, max: 3 },
   pitchNudgeDeg: { min: -45, max: 45 },
+  faceBlink: { min: 0, max: 1 },
+  faceSmile: { min: 0, max: 1 },
+  faceJaw: { min: 0, max: 1 },
+  faceBrows: { min: 0, max: 1 },
+  faceSquint: { min: 0, max: 1 },
+  gazeYawDeg: { min: -8, max: 8 },
+  gazePitchDeg: { min: -5, max: 5 },
 } as const;
 
 /** One paddle stroke (both arms; two kicks a stroke on the bodyboard), and the pop-up played through before it holds. */
@@ -73,6 +92,8 @@ export function normalizeSurferParams(p: SurferParams): void {
   p.balance = p.balance !== false;
   p.play = p.play !== false;
   p.onLand = p.onLand === true;
+  p.idle = p.idle !== false;
+  p.faceManual = p.faceManual === true;
   p.preset = oneOf(p.preset, ['female', 'male', 'grommet'] as const, d.preset);
   p.stance = oneOf(p.stance, ['regular', 'goofy'] as const, d.stance);
   const boards = boardsFor(PRESETS[p.preset]);

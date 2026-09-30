@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRESETS } from './presets';
-import { OUTFIT_LABELS, outfitFor, outfitMasks, presetOutfits, landLook, seasonOf, showsBoardies } from './wardrobe';
+import { OUTFIT_LABELS, hairShown, outfitFor, outfitMasks, presetOutfits, landLook, seasonOf, showsBoardies } from './wardrobe';
 
 describe('wardrobe (Andrew’s months, spec §4.3)', () => {
   it.each([
@@ -52,5 +52,11 @@ describe('on land (grommet spec §6)', () => {
   it('dries off and puts the glasses on; in the water it’s wet with the glasses off', () => {
     expect(landLook(true)).toEqual({ wet: 0, glasses: true });
     expect(landLook(false)).toEqual({ wet: 1, glasses: false });
+  });
+  it('shows the dry hairstyle on land where there is one, else the wet hair (closeup spec §4.1; Review Focus 5)', () => {
+    expect(hairShown(true, true)).toBe('dry');
+    expect(hairShown(true, false)).toBe('wet');
+    expect(hairShown(false, true)).toBe('wet');
+    expect(hairShown(false, false)).toBe('wet');
   });
 });
