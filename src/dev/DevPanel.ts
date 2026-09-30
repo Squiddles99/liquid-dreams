@@ -1,5 +1,5 @@
 import { type BladeApi, type ListBladeApi, Pane } from 'tweakpane';
-import { type BreakParams, LIP_REACH_RANGE } from '../breaker/breaking';
+import type { BreakParams } from '../breaker/breaking';
 import { compassPoint } from '../conditions/compass';
 import { CONDITION_RANGES } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
@@ -149,12 +149,9 @@ export const BREAK_BINDINGS = {
   faceWidth: { label: 'face width (×H)', min: 0.1, max: 3, step: 0.05 },
   drainEnd: { label: 'drain full (× Δ past ρ 1)', min: 0.01, max: 1, step: 0.01 },
   collapseStart: { label: 'collapse from (× Δ past ρ 1)', min: 0, max: 0.95, step: 0.01 },
-  lipReach: { label: 'lip lands (face 0–1, then H past foot)', min: LIP_REACH_RANGE[0], max: LIP_REACH_RANGE[1], step: 0.01 },
-  lipThickness: { label: 'lip thickness (×H)', min: 0.03, max: 0.3, step: 0.005 },
   collapseTime: { label: 'collapse time (×τ land)', min: 0.3, max: 3, step: 0.05 },
   ribbonOnset: { label: 'ribbon onset ρ', min: 0.3, max: 0.9, step: 0.01 },
   pileHalfM: { label: 'pile half distance (m)', min: 10, max: 150, step: 1 },
-  wallBack: { label: 'wall back (×H, per crest)', min: -0.3, max: 1, step: 0.01 },
   psiNudge: { label: 'ψ nudge (×)', min: -0.5, max: 0.5, step: 0.01 },
   randomDial: { label: 'random dial', min: 0, max: 0.15, step: 0.01 },
   churnSize: { label: 'churn size (× pile)', min: 0, max: 0.4, step: 0.01 },

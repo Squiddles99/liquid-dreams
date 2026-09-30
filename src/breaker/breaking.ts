@@ -26,11 +26,6 @@ export interface BreakParams {
    * it breaks); the wave settles to its bore from ρ = 1 + collapseStart·Δ to 1 + COLLAPSE_END·Δ. */
   drainEnd: number;
   collapseStart: number;
-  /** Where the lip lands (lipProfile.profileFrame): below 1, that far down the face (crest 0, the wave's foot 1); above,
-   * (lipReach − 1)·H beyond the foot, in the trough (top to bottom). The throw's speed follows. */
-  lipReach: number;
-  /** The lip's thickness at its root (× H). */
-  lipThickness: number;
   /** The curl collapses over collapseTime × τ_land after the lip lands. */
   collapseTime: number;
   /** The ribbon fades in from this breaking ratio, full at ribbonOnset + RIBBON_FULL_OFFSET; the sheet's front sharpening
@@ -40,9 +35,6 @@ export interface BreakParams {
   pileHalfM: number;
   /** How far the pile surges above the lip right after the landing, on the heaviest breaks (× the lip; 0 on a shoulder). */
   pileSurge: number;
-  /** The tube's back wall stands this many H behind the crest at full throw (negative: ahead). (The trough drain and surge
-   * are set per crest from its ψ: overturn.withSheetShape.) */
-  wallBack: number;
   /** Nudge on the crest's ψ (a factor 1 + psiNudge), in [−0.5, 0.5]; 0 by default (spec 2026-09-30-barrel-from-maths §5). */
   psiNudge: number;
   /** The random dial: each wave's ψ moves by up to ± this fraction (its seeded draw); 0 is pure physics. */
@@ -52,10 +44,6 @@ export interface BreakParams {
   /** …churning at this rate (× CHURN_RATE_PER_S, pileChurn.ts). */
   churnSpeed: number;
 }
-
-/** lipReach's range: from a lip hitting 40% of the way down the face (below that it barely leaves the crest, a spilling
- * wave rather than a barrel, and the tube folds) to one landing 2.5 H beyond the wave's foot. */
-export const LIP_REACH_RANGE: readonly [number, number] = [0.4, 3.5];
 
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
   enabled: true,
@@ -68,13 +56,10 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   faceWidth: 0.5,
   drainEnd: 0.4,
   collapseStart: 0.5,
-  lipReach: 0.7078,
-  lipThickness: 0.2,
   collapseTime: 1.8,
   ribbonOnset: 0.7,
   pileHalfM: 50,
   pileSurge: 0.3,
-  wallBack: 0.5511,
   psiNudge: 0,
   randomDial: 0,
   churnSize: 0.2,
@@ -124,13 +109,10 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.faceWidth = clampTo(p.faceWidth, 0.1, 3, d.faceWidth);
   p.drainEnd = clampTo(p.drainEnd, 0.01, 1, d.drainEnd);
   p.collapseStart = clampTo(p.collapseStart, 0, 0.95, d.collapseStart);
-  p.lipReach = clampTo(p.lipReach, LIP_REACH_RANGE[0], LIP_REACH_RANGE[1], d.lipReach);
-  p.lipThickness = clampTo(p.lipThickness, 0.03, 0.3, d.lipThickness);
   p.collapseTime = clampTo(p.collapseTime, 0.3, 3, d.collapseTime);
   p.ribbonOnset = clampTo(p.ribbonOnset, 0.3, 0.9, d.ribbonOnset);
   p.pileHalfM = clampTo(p.pileHalfM, 10, 150, d.pileHalfM);
   p.pileSurge = clampTo(p.pileSurge, 0, 0.6, d.pileSurge);
-  p.wallBack = clampTo(p.wallBack, -0.3, 1, d.wallBack);
   p.psiNudge = clampTo(p.psiNudge, -0.5, 0.5, d.psiNudge);
   p.randomDial = clampTo(p.randomDial, 0, 0.15, d.randomDial);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);

@@ -1,5 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { type BreakParams, GRAVITY_MS2, RIBBON_FULL_OFFSET, landingEstimate, landingTime, settleSpan, steepening } from './breaking';
+import { type Overturn, PSI_MIN, PSI_NONE, PSI_NORMAL, overturnShape, windUC } from './overturn';
+import { type Tube, tubeAxes, tubeBackMostX, tubeLower, tubeTopXi, tubeUpper, tubeUpperArc, tubeUpperNormal } from './tube';
 
 export { GRAVITY_MS2, landingTime, settleSpan };
 
@@ -35,21 +37,25 @@ export const LAND_CLEARANCE_M = 0.3;
 export const EDGE_MARGIN_M = 2;
 /** The back edge: this many H behind the crest, plus EDGE_MARGIN_M. */
 export const BACK_EDGE_H = 0.5;
-export const MIN_LIP_THICKNESS_M = 0.02;
-/** The lip's thickness at the tip, as a fraction of its thickness at the root (Andrew's photo: a thick lip all the way out). */
+/** The lip's thickness at the tip, as a fraction of its thickness over the tube's top, in the air (× (1 − the throw's
+ * progress): 0 as it lands, where it meets the water). Andrew's photo: a thick lip all the way out. */
 export const TIP_THICKNESS_RATIO = 0.4;
-/** The lip grows to its full thickness over this fraction of the throw (at onset it has no length, so no thickness). */
-export const LIP_GROW_PROGRESS = 0.3;
-/** The underside is the outer arc offset inward; its thickness never exceeds this fraction of the arc's smallest radius
- * of curvature (v_j²/g, at the root), so the offset curve never folds. */
-export const MAX_THICKNESS_OF_RADIUS = 0.8;
-/** The tube's back wall W stands p.wallBack·H behind the crest at full throw (per crest, from its intensity), at this
- * fraction of the way from the trough up to the lip's root. */
-export const WALL_HEIGHT = 0.45;
-/** The landing time is refined this many times, each reading the water where the previous estimate lands the lip. */
-export const LANDING_REFINE = 3;
-/** …and then this many times for where the bottom of the tilted tip is (profileFrame). */
-export const TIP_LAND_REFINE = 3;
+/** The tip grows its thickness in over this fraction of the throw (at onset the lip has no length, so no thickness). */
+export const TIP_GROW_PROGRESS = 0.3;
+/** The tube's round back sits this many H ahead of the crest's vertical (Pick & Feddersen Fig. 6b: just ahead of it). */
+export const TUBE_BACK_AHEAD_H = 0.03;
+/** The lip thins from its thickest (over the tube's top) to its tip as (1 − u)^LIP_TAPER_POWER (plan ruling 4). */
+export const LIP_TAPER_POWER = 0.8;
+/** Where the lip lands beyond the wave's foot, the face below it rejoins the sheet at least this far past it (m). */
+export const FACE_JOIN_MIN_M = 1;
+/** Of ψ's fade-in (PSI_NONE to PSI_MIN, over which the tube grows from nothing), the share over which it is also blended in. */
+export const PRESENCE_FADE = 0.3;
+/** Steps placing that join in the sheet's displaced x. */
+export const FACE_JOIN_STEPS = 3;
+/** The outer samples' share on the lip's band (the rest run level from the tube's top to the crest). */
+export const OUTER_LIP_SHARE = 0.85;
+/** The face leaves the landing point toward the tube's lower side this far back along it (ξ). */
+export const FACE_DIR_STEP = 0.02;
 /** After the collapse ends the ribbon fades out (hands back to the sheet) over this long (s). */
 export const HAND_BACK_S = 0.5;
 /** The foam from the lip's landing rises over this fraction of the collapse. */
@@ -59,7 +65,7 @@ export const LANDING_FOAM_RISE = 0.3;
 export const BACK_OFF_DROP_H: readonly [number, number] = [0.3, 0.6];
 
 /** The BreakParams the profile reads (breaking.ts documents each). */
-export type LipParams = Pick<BreakParams, 'lipReach' | 'lipThickness' | 'wallBack' | 'collapseTime' | 'ribbonOnset' | 'faceWidth' | 'troughDrain' | 'delta'>;
+export type LipParams = Pick<BreakParams, 'collapseTime' | 'ribbonOnset' | 'faceWidth' | 'troughDrain' | 'delta'>;
 
 /** What the profile needs from its station. */
 export interface ProfileInput {
@@ -79,36 +85,45 @@ export interface ProfileInput {
 
 /** Everything about one station's profile that does not depend on the sample: computed once per station. */
 export interface ProfileFrame {
+  /** The crest top on the frame's sheet (u = 0). */
   K: Vec2;
+  /** Where the face leaves the sheet (u = uFoot): the wave's foot, or past the landing if the lip lands beyond it; the
+   * sheet's direction there, back up toward the crest. */
   F: Vec2;
-  /** Unit tangent of the base at F, pointing back toward the crest (the direction the curve runs). */
   tF: Vec2;
   uFoot: number;
   uFront: number;
   uBack: number;
+  /** The free fall from the crest top to the landing point (s); the throw's progress t/τ_land in [0, 1]. */
   tauLand: number;
-  vj: number;
-  /** Throw progress t/τ_land, clamped to [0, 1]. */
   prog: number;
-  /** How far the lip has thrown (m, ahead of K). */
-  reach: number;
-  /** Root thickness (m), grown in over the throw. */
-  eRoot: number;
-  /** The weight of the constructed curve against the base: steep × (1 − collapse). */
+  /** The constructed curve's share against the sheet: steep × (1 − collapse) × the tube's presence (its first PRESENCE_FADE). */
   weight: number;
   collapse: number;
   /** Landing foam [0, 1]. */
   landing: number;
   /** Ribbon weight ρ [0, 1] (0: the station is dropped). */
   rho: number;
-  W: Vec2;
-  R: Vec2;
-  /** Where the lip lands, as the base's undisplaced u (the landing refinement's last sample; the foot where it hits the face). */
+  /** The pile's landing knot (PileLift): the face's join. */
   uLand: number;
-  /** The height the tip's underside lands at (m): the face where it hits it, else the higher of the foot and the water. */
-  landY: number;
-  /** Whether the lip hits the face (true) or clears the wave's foot and lands in the trough, top to bottom. */
-  onFace: boolean;
+  /** The fits' wave height (m): the crest's height above the water the lip lands on (impactHeight). */
+  HI: number;
+  /** The tube at impact (overturn.overturnShape at HI), and as it stands now (its width grown to W·prog, clipped at P.y). */
+  shape: Overturn;
+  tube: Tube;
+  /** The upper side's top (ξ), the lip's tip now (ξ), where it lands (ξ: 1, or where the water cuts the tube). */
+  xiTop: number;
+  xiTip: number;
+  xiEnd: number;
+  /** The lip's thickness over the tube's top, and at its tip now (m). */
+  tTop: number;
+  tipE: number;
+  /** The lip's tip now (on the tube's upper side) and where it lands. */
+  tip: Vec2;
+  P: Vec2;
+  /** The tip's mean speed across (m/s) and how far ahead of the crest it is now (m): the emitters read them. */
+  vj: number;
+  reach: number;
   /** The whitewater pile's lift under the curl (pileLift): absent, none (the frame's own sheet is the profile's). */
   lift?: PileLift;
 }
@@ -127,10 +142,11 @@ export interface PileLift {
   dx: number[];
   dy: number[];
 }
-/** The knots' u, as fractions of the frame's: behind the crest, the crest, half way to the foot, the foot, the landing,
- * half way to the front edge, the front edge. */
+/** The knots' u, as fractions of the frame's: behind the crest, the crest, half way to the nearer of the foot and the
+ * landing, that one, the farther, half way to the front edge, the front edge (in order along u, as uAtX reads them). */
 export function pileLiftKnots(f: ProfileFrame): number[] {
-  return [f.uBack, 0, 0.5 * f.uFoot, f.uFoot, f.uLand, 0.5 * (f.uLand + f.uFront), f.uFront];
+  const a = Math.min(f.uFoot, f.uLand), b = Math.max(f.uFoot, f.uLand);
+  return [f.uBack, 0, 0.5 * a, a, b, 0.5 * (b + f.uFront), f.uFront];
 }
 export function pileLift(base: (u: number) => Vec2, frameBase: (u: number) => Vec2, f: ProfileFrame): PileLift {
   const out: PileLift = { u: [], x: [], dx: [], dy: [] };
@@ -188,46 +204,52 @@ export function ribbonWeight(r: number, tb: number | null, settleFrom: number, s
 }
 
 /**
- * The station's frame, from four base points: the crest K = base(0), the foot F = base(uFoot), base(uFoot − 0.1) for the
- * face's tangent there, and the sheet where the lip lands. The lip lands when the underside of its tip reaches the
- * higher of the foot and the water at the landing spot.
+ * The station's frame (spec 2026-09-30-barrel-from-maths §3.2–3.3): the tube at impact from ψ, H and the wind, placed
+ * with its round back just ahead of the crest and its top the lip's thickness under it; where the lip lands (the tube's
+ * point, or where its upper side first reaches the water in front); the free-fall clock; and the throw's progress, over
+ * which the tube's width grows and the tip runs along its upper side (plan rulings 1–5).
  */
 export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: LipParams): ProfileFrame {
   const { H, c, r, tb } = input;
+  const psi = input.psi ?? PSI_NORMAL, uc = windUC(input.offshoreMs ?? 0, c);
   // The wave's own foot: where the sheet's front sharpening has sunk to the trough.
   const uFootWave = FOOT_WIDTHS * p.faceWidth * H;
   const K = base(0), F0 = base(uFootWave);
-  const tipBelow = TIP_THICKNESS_RATIO * p.lipThickness * H;
-  // Where the lip lands (p.lipReach): on the face that far down it (crest 0, the wave's foot 1), the tube's foot moving up
-  // to where it hits; beyond 1, (lipReach − 1)·H past the foot, in the trough, top to bottom. Andrew, 2026-09-30: only an
-  // ideal day throws top to bottom; usually the lip hits half to two thirds of the way down the face. The throw's speed
-  // follows from where it lands. (Thrown at a set speed, the lip either grazed the top of the face or sailed past its
-  // steep middle to the flat below: the face under a real lip draws up as it throws, and the sheet here stands still.)
-  const onFace = p.lipReach < 1;
-  const uFoot = onFace ? faceAt(base, K[1] - p.lipReach * (K[1] - F0[1]), uFootWave) : uFootWave;
-  const F = onFace ? base(uFoot) : F0, Fb = base(uFoot - 0.1);
-  const tF = norm2([Fb[0] - F[0], Fb[1] - F[1]]);
-  const xLand = onFace ? F[0] : F0[0] + (p.lipReach - 1) * H;
-  // The water is read where the lip lands. base(u) is displaced from u (by metres over a drained trough, where the water
-  // is drawn back), so each step moves u by the miss in x.
-  let uLand = uFoot + (xLand - F[0]), land = onFace ? F : base(uLand);
-  for (let i = 0; !onFace && i < LANDING_REFINE; i++) { uLand += xLand - land[0]; land = base(uLand); }
-  const landY = Math.max(F[1], land[1]);
-  // It lands when the bottom of its round tip (the cap: diameter the tip's thickness, centred half of it inside the arc's
-  // normal) reaches landY; on the face, right over the landing point. The tilted tip's bottom sits back and up from the
-  // arc (a steep lip's thickness lies mostly across, not down): taking the thickness as straight down stood the landed tip
-  // 0.2–0.3 m over the water, and on the face the cap's back grazed the rising face before it landed.
-  let tauLand = Math.max(landingTime(K[1] - landY - tipBelow), 1e-3);
-  let vj = Math.max(xLand - K[0], 0.05) / tauLand;
-  for (let i = 0; i < TIP_LAND_REFINE; i++) {
-    const eTip = TIP_THICKNESS_RATIO * Math.min(p.lipThickness * H, (MAX_THICKNESS_OF_RADIUS * vj * vj) / GRAVITY_MS2);
-    const n = norm2([(GRAVITY_MS2 * tauLand) / vj, 1]);
-    tauLand = Math.max(landingTime(K[1] - landY - 0.5 * eTip * (1 + n[1])), 1e-3);
-    vj = Math.max((onFace ? xLand + 0.5 * eTip * n[0] : xLand) - K[0], 0.05) / tauLand;
+  // Below PSI_MIN the tube fades out (plan ruling 7): it shrinks to nothing at PSI_NONE, and is drawn fainter only over
+  // the first PRESENCE_FADE of that, where it is already tiny (a full-size lip half blended into the sheet folded: its two
+  // surfaces blend toward different sheet points).
+  const HI = impactHeight(base, K, H, psi, uc) * smoothstep(PSI_NONE, PSI_MIN, psi);
+  const shape = overturnShape(psi, HI, uc);
+  const { d, n } = tubeAxes(shape.theta);
+  const at0: Tube = { O: [0, 0], d, n, L: shape.L, W: shape.W, clipY: -Infinity };
+  const xiTop = tubeTopXi(at0), top0 = tubeUpper(at0, xiTop);
+  const tTop = (shape.AJ * (1 + LIP_TAPER_POWER)) / Math.max(tubeUpperArc(at0, xiTop, 1), 1e-3);
+  const O0: Vec2 = [K[0] + TUBE_BACK_AHEAD_H * H - tubeBackMostX(at0), K[1] - tTop - top0[1]];
+  // The lip lands on the water (impactHeight sized the tube so its point meets it). A point still hanging over the water
+  // drops onto it, the lip over the tube's top thickening by as much (plan ruling 3); one under it lands on the face,
+  // which hollows to meet it.
+  const point0 = tubeUpper({ ...at0, O: O0 }, 1), under = sheetYAt(base, K, point0[0]);
+  const drop = Math.max(0, point0[1] - under);
+  const full: Tube = { ...at0, O: [O0[0], O0[1] - drop] };
+  const xiEnd = 1;
+  const P = tubeUpper(full, xiEnd);
+  const tauLand = landingTime(K[1] - P[1]);
+  // The face leaves the sheet at the wave's foot, or FACE_JOIN_MIN_M past where the lip lands beyond it (in the sheet's
+  // displaced x: over the drained trough the water is drawn back, so u alone put the join behind the landing).
+  let uFoot = uFootWave, F = F0;
+  if (P[0] > F0[0] - FACE_JOIN_MIN_M) {
+    const x = P[0] + FACE_JOIN_MIN_M;
+    uFoot += x - F0[0];
+    for (let i = 0; i < FACE_JOIN_STEPS; i++) { F = base(uFoot); uFoot += x - F[0]; }
+    F = base(uFoot);
   }
+  const Fb = base(uFoot - 0.1);
+  const tF = norm2([Fb[0] - F[0], Fb[1] - F[1]]);
   const t = tb === null ? 0 : Math.min(Math.max(tb, 0), tauLand);
   const prog = t / tauLand;
-  const reach = vj * t;
+  const tube: Tube = { ...full, W: shape.W * prog, clipY: P[1] };
+  const xiTip = prog * prog * xiEnd;
+  const tip = tubeUpper(tube, xiTip);
   // Before the break the constructed curve follows the sheet's sharpening, but only inside the ribbon: the sharpening
   // starts before the ribbon fades in (SHEET_SHARPENING_LEAD), and there the sheet draws it itself.
   const steep = tb === null
@@ -238,28 +260,63 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: 
   // lip has landed.
   const settleFrom = Math.max(tauLand, landingEstimate(H, p));
   const collapse = tb === null ? 0 : smoothstep(settleFrom, settleFrom + span, tb);
-  const landing = tb === null ? 0 : smoothstep(tauLand, tauLand + LANDING_FOAM_RISE * span, tb);
-  const grow = smoothstep(0, LIP_GROW_PROGRESS, prog);
-  const eRoot = Math.max(MIN_LIP_THICKNESS_M, Math.min(p.lipThickness * H, (MAX_THICKNESS_OF_RADIUS * vj * vj) / GRAVITY_MS2)) * grow;
-  const R: Vec2 = [K[0], K[1] - eRoot];
-  const W: Vec2 = [K[0] - p.wallBack * H * prog, F[1] + WALL_HEIGHT * (R[1] - F[1])];
-  // Beyond where the lip will land (fixed over the throw, so the front edge doesn't move).
-  // (Past the wave's own foot too: the front carries the face below a lip that hits it, down to the trough.)
-  const uFront = Math.max(uFootWave, K[0] + vj * tauLand) + LAND_CLEARANCE_M + EDGE_MARGIN_M;
+  // No tube (ψ below PSI_NONE), no curl to land: its weight and its landing (foam, settling) fade in together.
+  const present = smoothstep(PSI_NONE, PSI_NONE + PRESENCE_FADE * (PSI_MIN - PSI_NONE), psi);
+  const landing = tb === null ? 0 : smoothstep(tauLand, tauLand + LANDING_FOAM_RISE * span, tb) * present;
   return {
-    K, F, tF, uFoot, uFront, uBack: -(BACK_EDGE_H * H + EDGE_MARGIN_M), tauLand, vj, prog, reach, eRoot,
-    weight: steep * (1 - collapse), collapse, landing, rho: ribbonWeight(r, tb, settleFrom, span, p), W, R, uLand, landY, onFace,
+    K, F, tF, uFoot, uFront: uFoot + LAND_CLEARANCE_M + EDGE_MARGIN_M, uBack: -(BACK_EDGE_H * H + EDGE_MARGIN_M),
+    tauLand, prog, weight: steep * (1 - collapse) * present, collapse, landing, rho: ribbonWeight(r, tb, settleFrom, span, p),
+    uLand: uFoot, HI, shape, tube, xiTop, xiTip, xiEnd, tTop: tTop + drop, tipE: TIP_THICKNESS_RATIO * (tTop + drop) * (1 - prog) * smoothstep(0, TIP_GROW_PROGRESS, prog), tip, P,
+    vj: (P[0] - K[0]) / tauLand, reach: tip[0] - K[0],
   };
 }
 
-/** The face's point at a height is found by this many bisections of its u between the crest and the wave's foot. */
-export const FACE_AT_BISECT = 12;
+/** impactHeight's scan (× the wave's H: the first place the tube's point comes down onto the water) and bisections. */
+export const IMPACT_SCAN: readonly number[] = [1, 1.25, 1.5, 1.75, 2];
+export const IMPACT_BISECT = 10;
 
-/** The u on the face (crest 0 to the wave's foot) where the sheet stands at height y (the face falls monotonically). */
-export function faceAt(base: (u: number) => Vec2, y: number, uFootWave: number): number {
-  let lo = 0, hi = uFootWave;
-  for (let k = 0; k < FACE_AT_BISECT; k++) { const mid = (lo + hi) / 2; if (base(mid)[1] > y) lo = mid; else hi = mid; }
+/**
+ * The fits' wave height H_I for this crest: Pick & Feddersen normalise by the crest's height above the water the jet
+ * lands on (their H_I, the maximum elevation over the still water in front of a solitary wave). Here the water in front
+ * is drawn down by the drain, 1.2–1.4 H under the crest on a heavy wave, so the sheet's own H sized a tube whose point
+ * hung metres above it. Every length of the tube (and the lip's thickness over its top) scales with H_I, so its point
+ * runs out along one line from the crest as H_I grows: H_I is where that point first comes down onto the sheet, scanned
+ * up over IMPACT_SCAN × H and bisected. A point already under the water at the sheet's H (a steep tube landing on the
+ * face: there the wave's own height is the one over the water it lands on) keeps H, and the face hollows to meet it
+ * (spec §3.2: the face below the landing point carries the tube's floor on down). Still over the water at 2 H: the
+ * sheet's H, and profileFrame drops the tube onto it (plan ruling 3).
+ */
+export function impactHeight(base: (u: number) => Vec2, K: Vec2, H: number, psi: number, uc: number): number {
+  if (!(H > 0)) return H;
+  const unit = overturnShape(psi, 1, uc), { d, n } = tubeAxes(unit.theta);
+  const t1: Tube = { O: [0, 0], d, n, L: unit.L, W: unit.W, clipY: -Infinity };
+  const xiTop = tubeTopXi(t1), top1 = tubeUpper(t1, xiTop), pt1 = tubeUpper(t1, 1);
+  const tTop1 = (unit.AJ * (1 + LIP_TAPER_POWER)) / Math.max(tubeUpperArc(t1, xiTop, 1), 1e-9);
+  const px = pt1[0] - tubeBackMostX(t1), py = pt1[1] - top1[1] - tTop1, x0 = K[0] + TUBE_BACK_AHEAD_H * H;
+  const above = (hi: number): number => K[1] + hi * py - sheetYAt(base, K, x0 + hi * px);
+  let lo = -1, hi = -1, prev = above(IMPACT_SCAN[0] * H);
+  for (let i = 1; i < IMPACT_SCAN.length && lo < 0; i++) {
+    const g = above(IMPACT_SCAN[i] * H);
+    if (prev > 0 && g <= 0) { lo = IMPACT_SCAN[i - 1] * H; hi = IMPACT_SCAN[i] * H; }
+    prev = g;
+  }
+  if (lo < 0) return H;
+  for (let i = 0; i < IMPACT_BISECT; i++) { const m = (lo + hi) / 2; if (above(m) > 0) lo = m; else hi = m; }
   return (lo + hi) / 2;
+}
+
+/** The frame sheet's undisplaced u at x (the sheet is single-valued in x in front of the crest): u from x − K.x, four
+ * steps of u += x − base(u).x (base(u) is displaced from u). */
+export function sheetUAt(base: (u: number) => Vec2, K: Vec2, x: number): number {
+  let u = x - K[0], q = base(u);
+  for (let i = 0; i < 4; i++) { u += x - q[0]; q = base(u); }
+  return u;
+}
+/** The frame sheet's height at x: the same four steps, read at the last u. */
+export function sheetYAt(base: (u: number) => Vec2, K: Vec2, x: number): number {
+  let u = x - K[0], q = base(u);
+  for (let i = 0; i < 4; i++) { u += x - q[0]; q = base(u); }
+  return q[1];
 }
 
 /** Which segment sample j is in, and its position s ∈ [0, 1) within it (s = j' / count; the back's last sample is 1). */
@@ -288,24 +345,13 @@ export function sampleHome(j: number, f: ProfileFrame): number {
   }
 }
 
-/** The outer surface of the lip at arc parameter σ ∈ [0, 1] (root to tip): the ballistic arc from K. */
-function outer(f: ProfileFrame, sigma: number): Vec2 {
-  const du = f.reach * sigma, tp = du / f.vj;
-  return [f.K[0] + du, f.K[1] - 0.5 * GRAVITY_MS2 * tp * tp];
-}
-/** The arc's outward (upper) unit normal at σ. */
-function outerNormal(f: ProfileFrame, sigma: number): Vec2 {
-  const tp = (f.reach * sigma) / f.vj;
-  return norm2([(GRAVITY_MS2 * tp) / f.vj, 1]);
-}
-/** Lip thickness at σ: eRoot at the root, TIP_THICKNESS_RATIO of it at the tip, never below the minimum once grown. */
-export function lipThicknessAt(f: ProfileFrame, sigma: number): number {
-  const e = f.eRoot * (1 - (1 - TIP_THICKNESS_RATIO) * sigma);
-  return f.eRoot > 0 ? Math.max(e, MIN_LIP_THICKNESS_M * smoothstep(0, LIP_GROW_PROGRESS, f.prog)) : 0;
-}
-function under(f: ProfileFrame, sigma: number): Vec2 {
-  const o = outer(f, sigma), n = outerNormal(f, sigma), e = lipThicknessAt(f, sigma);
-  return [o[0] - n[0] * e, o[1] - n[1] * e];
+/** The lip's thickness at ξ on its band (the tube's top to its tip): t_top there, the tip's now at the tip, tapering as
+ * (1 − u)^LIP_TAPER_POWER between; t_top behind the top; the tip's alone before the tip has reached the top. */
+export function lipThicknessAt(f: ProfileFrame, xi: number): number {
+  if (f.xiTip <= f.xiTop) return f.tipE;
+  if (xi <= f.xiTop) return f.tTop;
+  const u = Math.min(1, (xi - f.xiTop) / (f.xiTip - f.xiTop));
+  return f.tipE + (f.tTop - f.tipE) * (1 - u) ** LIP_TAPER_POWER;
 }
 
 export interface ProfilePoint {
@@ -330,31 +376,56 @@ export const LIP_SPRAY_PROGRESS: readonly [number, number] = [0.2, 0.7];
 /** …from nothing at this fraction of the way from the lip's root to its tip. */
 export const LIP_SPRAY_FROM = 0.3;
 
-/** The constructed (unblended) point for sample j. */
-function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; thickness: number; lipness: number } {
+/** The face's tangent arriving at P (length Lf), going back: see constructed's face. */
+function faceArrival(f: ProfileFrame, Lf: number): Vec2 {
+  const back = tubeLower(f.tube, f.xiEnd * (1 - FACE_DIR_STEP));
+  const dP = norm2([back[0] - f.P[0], back[1] - f.P[1]]);
+  // Angles measured going back (toward −x), up positive.
+  const ang = (v: Vec2): number => Math.atan2(v[1], -v[0]);
+  const aF = ang(f.tF), aC = ang([f.P[0] - f.F[0], f.P[1] - f.F[1]]), aL = ang(dP);
+  const a = Math.max(2 * aC - aF, aL);
+  return [-Math.cos(a) * Lf, Math.sin(a) * Lf];
+}
+
+/** The constructed (unblended) point for sample j, its lip thickness, lipness, and the x its lift is read at. */
+function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; thickness: number; lipness: number; liftX: number } {
   const { seg, s } = sampleSegment(j);
+  const on = (pos: Vec2, thickness = 0, lipness = 0, liftX = pos[0]) => ({ pos, thickness, lipness, liftX });
   switch (seg) {
     case 'front':
     case 'back':
-      return { pos: baseHome, thickness: 0, lipness: 0 };
+      return on(baseHome);
     case 'face': {
-      const L = Math.hypot(f.W[0] - f.F[0], f.W[1] - f.F[1]);
-      return { pos: hermite(f.F, [f.tF[0] * L, f.tF[1] * L], f.W, [0, L], s), thickness: 0, lipness: 0 };
+      // From where the face leaves the sheet up to where the lip lands: one concave curve. It arrives along the tube's lower
+      // side where that is steeper than the arc mirroring the foot's direction about the chord; else along that arc, and
+      // the face meets the tube's floor at the lip's contact point (the Longuet-Higgins floor runs back from its point at
+      // the tilt less the cusp's half angle, ~26° in state 4, shallower than the face under it).
+      const Lf = Math.hypot(f.P[0] - f.F[0], f.P[1] - f.F[1]);
+      return on(hermite(f.F, [f.tF[0] * Lf, f.tF[1] * Lf], f.P, faceArrival(f, Lf), s));
     }
-    case 'wall': {
-      const L = Math.max(Math.hypot(f.R[0] - f.W[0], f.R[1] - f.W[1]), 0.05);
-      return { pos: hermite(f.W, [0, L], f.R, [L * f.prog, L * (1 - f.prog)], s), thickness: 0, lipness: 0 };
+    case 'wall': // the tube's lower side, from where the lip lands back up to its round end
+      return on(s === 0 ? f.P : tubeLower(f.tube, f.xiEnd * (1 - s)));
+    case 'under': { // the tube's upper side, the lip's underside, from the round end out to the tip
+      const xi = s * f.xiTip, pt = tubeUpper(f.tube, xi);
+      return on(pt, lipThicknessAt(f, xi), 1, pt[0]);
     }
-    case 'under':
-      return { pos: under(f, s), thickness: lipThicknessAt(f, s), lipness: 1 };
-    case 'cap': {
-      const P = outer(f, 1), n = outerNormal(f, 1), e = lipThicknessAt(f, 1);
-      const cx = P[0] - (n[0] * e) / 2, cy = P[1] - (n[1] * e) / 2;
-      const a = Math.atan2(-n[1], -n[0]) + Math.PI * s;
-      return { pos: [cx + (Math.cos(a) * e) / 2, cy + (Math.sin(a) * e) / 2], thickness: e, lipness: 1 };
+    case 'cap': { // round the tip, from the underside to the outer surface
+      const no = tubeUpperNormal(f.tube, f.xiTip), e = f.tipE;
+      const cx = f.tip[0] + (no[0] * e) / 2, cy = f.tip[1] + (no[1] * e) / 2;
+      const a = Math.atan2(-no[1], -no[0]) + Math.PI * s;
+      return on([cx + (Math.cos(a) * e) / 2, cy + (Math.sin(a) * e) / 2], e, 1, f.tip[0]);
     }
-    default: // outer, tip → root
-      return { pos: outer(f, 1 - s), thickness: lipThicknessAt(f, 1 - s), lipness: 1 };
+    default: { // outer: the lip's band from the tip back to the tube's top, then level to the crest
+      if (f.xiTip > f.xiTop && s <= OUTER_LIP_SHARE) {
+        const xi = f.xiTip + (f.xiTop - f.xiTip) * (s / OUTER_LIP_SHARE);
+        const u = tubeUpper(f.tube, xi), no = tubeUpperNormal(f.tube, xi), e = lipThicknessAt(f, xi);
+        return on([u[0] + no[0] * e, u[1] + no[1] * e], e, 1, u[0]);
+      }
+      const fromXi = f.xiTip > f.xiTop ? f.xiTop : f.xiTip, e = f.xiTip > f.xiTop ? f.tTop : f.tipE;
+      const u = tubeUpper(f.tube, fromXi), no = tubeUpperNormal(f.tube, fromXi), a: Vec2 = [u[0] + no[0] * e, u[1] + no[1] * e];
+      const k = f.xiTip > f.xiTop ? (s - OUTER_LIP_SHARE) / (1 - OUTER_LIP_SHARE) : s;
+      return on(lerp2(a, f.K, k), e * (1 - k), 1, u[0] + (f.K[0] - u[0]) * k);
+    }
   }
 }
 
@@ -367,18 +438,17 @@ function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; t
  * mound rises with the collapse. Lifting the curl by the whole pile stood a horn over the wave; the floor lifted by it
  * humped and pocketed, and by +0.75 s the pile at the foot stood as tall as the crest, through the standing tube.
  *
- * The lip's surfaces take the lift at the outer arc's x for their σ, so the thin lip is lifted whole, never sheared
- * through itself; the floor (the face) runs evenly from its foot's lift to the wall's.
+ * The lip's surfaces take the lift at the tube's upper side's x (liftX), so the thin lip is lifted whole, never sheared
+ * through itself; the floor (the face) runs evenly from its foot's lift to the landing's.
  */
-function riding(j: number, f: ProfileFrame, c: Vec2): Vec2 {
-  if (!f.lift) return c;
+function riding(j: number, f: ProfileFrame, c: { pos: Vec2; liftX: number }): Vec2 {
+  if (!f.lift) return c.pos;
   const { seg, s } = sampleSegment(j);
   const crest = liftAt(f.lift, f.K[0])[1];
   const capped = (x: number): Vec2 => { const l = liftAt(f.lift!, x); return [l[0], Math.min(l[1], crest)]; };
-  if (seg === 'front' || seg === 'back') return [c[0], c[1] - Math.max(0, liftAt(f.lift, c[0])[1] - crest)];
-  if (seg === 'face') return add2(c, lerp2(capped(f.F[0]), capped(f.W[0]), s));
-  const liftX = seg === 'under' ? outer(f, s)[0] : seg === 'cap' ? outer(f, 1)[0] : seg === 'outer' ? outer(f, 1 - s)[0] : c[0];
-  return add2(c, capped(liftX));
+  if (seg === 'front' || seg === 'back') return [c.pos[0], c.pos[1] - Math.max(0, liftAt(f.lift, c.pos[0])[1] - crest)];
+  if (seg === 'face') return add2(c.pos, lerp2(capped(f.F[0]), capped(f.P[0]), s));
+  return add2(c.pos, capped(c.liftX));
 }
 
 /** Over this part of the collapse the curl's settling point slides along the sheet from under it back to its home. */
@@ -395,7 +465,7 @@ export function sampleTarget(j: number, f: ProfileFrame): number {
   const home = sampleHome(j, f), { seg } = sampleSegment(j);
   const w = f.landing * (1 - smoothstep(HOME_SETTLE[0], HOME_SETTLE[1], f.collapse));
   if (seg === 'front' || seg === 'back' || !f.lift || w <= 0) return home;
-  const p = riding(j, f, constructed(j, f, [0, 0]).pos);
+  const p = riding(j, f, constructed(j, f, [0, 0]));
   return home + (uAtX(f.lift, p[0]) - home) * w;
 }
 
@@ -405,17 +475,17 @@ export function profilePoint(j: number, f: ProfileFrame, baseHome: Vec2): Profil
   const { seg, s } = sampleSegment(j);
   // Landing foam: the curl (wall, lip) and the front out to just past where the lip lands.
   const home = sampleHome(j, f);
-  const landAt = f.K[0] + f.vj * f.tauLand;
+  const landAt = f.P[0];
   const region = seg === 'back' ? 0 : seg === 'front' ? 1 - smoothstep(landAt, landAt + 1.5, home) : seg === 'face' ? 0.5 : 1;
   const landed = f.landing * region;
-  // In the air: the outside's spray (by σ, the root 0 to the tip 1; the cap is the tip), and the tube's inside clean.
-  const sigma = seg === 'outer' ? 1 - s : seg === 'cap' ? 1 : 0;
+  // In the air: the outside's spray (by σ, the tube's top 0 to the tip 1; the cap is the tip), and the tube's inside clean.
+  const sigma = seg === 'outer' ? (f.xiTip > 0 ? Math.max(0, Math.min(1, 1 - s / OUTER_LIP_SHARE)) : 0) : seg === 'cap' ? 1 : 0;
   const spray = LIP_SPRAY * smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog) * smoothstep(LIP_SPRAY_FROM, 1, sigma);
   const air = f.weight * (1 - f.landing);
   const curlFoam = seg === 'outer' || seg === 'cap' ? Math.max(landed, spray * air)
     : seg === 'face' || seg === 'wall' || seg === 'under' ? landed - air
       : landed;
-  const lifted = riding(j, f, c.pos);
+  const lifted = riding(j, f, c);
   return { pos: lerp2(baseHome, lifted, f.weight), thickness: c.thickness * f.weight, curlFoam, lipness: c.lipness * f.weight };
 }
 
@@ -445,59 +515,20 @@ export function buildProfile(base: (u: number) => Vec2, input: ProfileInput, p: 
   return out;
 }
 
-/** The barrel's proportions at one moment (spec 2026-09-29 §3.1; tests and the gallery). Lengths are × H. */
-export interface BarrelMetrics {
-  /** The lip's thickness at its root (× H), and at its tip as a fraction of the root. */
-  rootThickness: number;
-  tipRatio: number;
-  /** Where the lip lands, ahead of the crest (× H). */
-  landAhead: number;
-  /** How far down the face it lands: 0 the crest, 1 the lowest water in front. */
-  landDown: number;
-  /** 1: it clears the wave's foot and lands in the trough, top to bottom; 0: it hits the face. */
-  topToBottom: number;
-  /** The tube's width at half its height (the wall to the underside of the falling lip) ÷ its height (the foot to the
-   * lip's underside at the root). NaN until the lip has fallen below half the tube's height. */
-  tubeRatio: number;
-  /** How far the back wall stands behind the crest (× H). */
-  wallBack: number;
-  /** How far the water in front of the face is drawn below still water (× H). */
-  troughBelow: number;
-  /** The most the wall bulges behind the straight line from W to the lip's root R (m; > 0: concave up into the lip). */
-  wallBulge: number;
-}
-
-export function barrelMetrics(p: Profile, H: number): BarrelMetrics {
-  const f = p.frame, n = PROFILE_SEGMENTS;
-  const faceStart = n.front, wallStart = n.front + n.face, wallEnd = wallStart + n.wall, capEnd = wallEnd + n.under + n.cap;
-  let wallX = Infinity, trough = Infinity, bulge = -Infinity;
-  for (let j = faceStart; j < wallEnd; j++) wallX = Math.min(wallX, p.points[j][0]);
-  for (let j = 0; j < wallStart; j++) trough = Math.min(trough, p.points[j][1]);
-  for (let j = wallStart; j < wallEnd; j++) {
-    const [x, y] = p.points[j];
-    const chordX = f.W[0] + ((f.R[0] - f.W[0]) * (y - f.W[1])) / (f.R[1] - f.W[1] || 1e-9);
-    bulge = Math.max(bulge, chordX - x);
-  }
-  const mid = (f.F[1] + f.R[1]) / 2;
-  const crossAt = (a: number, b: number): number => {
-    for (let j = a; j < b; j++) {
-      const [x0, y0] = p.points[j], [x1, y1] = p.points[j + 1];
-      if ((y0 - mid) * (y1 - mid) <= 0 && y0 !== y1) return x0 + ((x1 - x0) * (mid - y0)) / (y1 - y0);
-    }
-    return NaN;
-  };
-  const width = crossAt(wallEnd, capEnd - 1) - crossAt(faceStart, wallEnd - 1);
-  return {
-    rootThickness: f.eRoot / H,
-    tipRatio: f.eRoot > 0 ? lipThicknessAt(f, 1) / f.eRoot : 0,
-    landAhead: (f.vj * f.tauLand) / H,
-    landDown: (f.K[1] - f.landY) / (f.K[1] - trough),
-    topToBottom: f.onFace ? 0 : 1,
-    tubeRatio: width / (f.R[1] - f.F[1]),
-    wallBack: (f.K[0] - wallX) / H,
-    troughBelow: -trough / H,
-    wallBulge: bulge,
-  };
+/** The tube's measurements off a profile at the lip's landing (tests): its area (the wall and underside samples, closed),
+ * width ÷ length and tilt about its farthest point from where the lip lands, and the lip's band area. */
+export function tubeMetrics(p: Profile): { area: number; aspect: number; tiltDeg: number; lipArea: number } {
+  const n = PROFILE_SEGMENTS, w0 = n.front + n.face, u0 = w0 + n.wall, c0 = u0 + n.under, o0 = c0 + n.cap;
+  const shoelace = (q: readonly Vec2[]): number => { let a = 0; for (let i = 0; i < q.length; i++) { const x = q[i], y = q[(i + 1) % q.length]; a += x[0] * y[1] - y[0] * x[1]; } return Math.abs(a) / 2; };
+  const tube = p.points.slice(w0, c0), P = p.frame.P;
+  let far = tube[0], best = -1;
+  for (const q of tube) { const d = Math.hypot(q[0] - P[0], q[1] - P[1]); if (d > best) { best = d; far = q; } }
+  const ax: Vec2 = norm2([far[0] - P[0], far[1] - P[1]]), across: Vec2 = [-ax[1], ax[0]];
+  const w = tube.map((q) => (q[0] - P[0]) * across[0] + (q[1] - P[1]) * across[1]);
+  // The lip's band: its underside from over the tube's top out to the tip, then its outer surface from the tip back.
+  const fromTop = Math.ceil((n.under * p.frame.xiTop) / Math.max(p.frame.xiTip, 1e-9));
+  const band = [...p.points.slice(u0 + Math.min(fromTop, n.under - 1), c0), ...p.points.slice(o0, o0 + Math.round(n.outer * OUTER_LIP_SHARE) + 1)];
+  return { area: shoelace(tube), aspect: (Math.max(...w) - Math.min(...w)) / best, tiltDeg: (Math.atan2(ax[1], -ax[0]) * 180) / Math.PI, lipArea: shoelace(band) };
 }
 
 /**

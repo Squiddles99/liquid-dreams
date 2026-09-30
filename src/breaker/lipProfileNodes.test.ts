@@ -40,24 +40,24 @@ describe('lipProfileNodes sample tables', () => {
     expect(packed.length).toBe(FRAME_LAYOUT.length);
     expect(FRAME_LAYOUT.length).toBeLessThanOrEqual(4 * FRAME_VEC4S);
     const read = (name: (typeof FRAME_LAYOUT)[number]): number => packed[FRAME_LAYOUT.indexOf(name)];
-    expect([read('K.x'), read('K.y'), read('tF.x'), read('tF.y'), read('R.y'), read('W.x')]).toEqual([f.K[0], f.K[1], f.tF[0], f.tF[1], f.R[1], f.W[0]]);
+    expect([read('K.x'), read('K.y'), read('tF.x'), read('tF.y'), read('R.y'), read('W.x')]).toEqual([f.K[0], f.K[1], f.tF[0], f.tF[1], f.K[1] - f.tTop, f.P[0]]);
     expect([read('uFoot'), read('uFront'), read('uBack'), read('tauLand'), read('vj'), read('prog'), read('reach')]).toEqual([f.uFoot, f.uFront, f.uBack, f.tauLand, f.vj, f.prog, f.reach]);
-    expect([read('eRoot'), read('weight'), read('collapse'), read('landing'), read('rho')]).toEqual([f.eRoot, f.weight, f.collapse, f.landing, f.rho]);
+    expect([read('eRoot'), read('weight'), read('collapse'), read('landing'), read('rho')]).toEqual([f.tTop, f.weight, f.collapse, f.landing, f.rho]);
   });
 
   it('lip uniforms mirror the normalized params, with the steepening start as the ratio it starts at', () => {
     const u = createLipUniforms(DEFAULT_BREAK_PARAMS);
-    expect([u.lipReach.value, u.lipThickness.value, u.collapseTime.value, u.ribbonOnset.value, u.faceWidth.value]).toEqual([
-      DEFAULT_BREAK_PARAMS.lipReach, DEFAULT_BREAK_PARAMS.lipThickness, DEFAULT_BREAK_PARAMS.collapseTime, DEFAULT_BREAK_PARAMS.ribbonOnset, DEFAULT_BREAK_PARAMS.faceWidth,
+    expect([u.collapseTime.value, u.ribbonOnset.value, u.faceWidth.value]).toEqual([
+      DEFAULT_BREAK_PARAMS.collapseTime, DEFAULT_BREAK_PARAMS.ribbonOnset, DEFAULT_BREAK_PARAMS.faceWidth,
     ]);
     expect(u.steepFrom.value).toBe(steepeningStart(DEFAULT_BREAK_PARAMS));
-    const bad = { ...DEFAULT_BREAK_PARAMS, collapseTime: 0, ribbonOnset: 5, lipReach: Number.NaN };
+    const bad = { ...DEFAULT_BREAK_PARAMS, collapseTime: 0, ribbonOnset: 5, faceWidth: Number.NaN };
     const copy = { ...bad };
     updateLipUniforms(u, bad);
     expect(bad).toEqual(copy);
     expect(u.collapseTime.value).toBeGreaterThan(0);
     expect(u.steepFrom.value).toBeLessThan(1);
-    expect(u.lipReach.value).toBe(DEFAULT_BREAK_PARAMS.lipReach);
+    expect(u.faceWidth.value).toBe(DEFAULT_BREAK_PARAMS.faceWidth);
   });
 
   it('packs the tables for the GPU as vec4(a, b, c, s), vec4(segment, 0, 0, 0) per sample', () => {
