@@ -78,6 +78,11 @@ export class SunlightMap implements SunlightSource {
     })().compute(s.nx * s.nz) as THREE.ComputeNode;
   }
 
+  /** Builds the passes while the game loads (App.prewarm): the march first runs on the frame the land arrives. */
+  async compileAsync(renderer: THREE.WebGPURenderer): Promise<void> {
+    await renderer.compileComputeAsync([this.clearPass, this.marchPass]);
+  }
+
   /** The land's march heights (sunlight.buildMarchHeights); the next update() rebuilds. */
   setHeights(h: Float32Array): void {
     (this.heights.image.data as Float32Array).set(h);
