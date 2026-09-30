@@ -38,7 +38,7 @@ npx electron . --no-force-gpu --probe=<dir>   # the same, without asking for the
 2. **Moment links point at `app://game/#m=…`,** which nothing outside the app can open. Either share only the `#m=` code, or register a `liquiddreams://` link.
 3. **Player-facing mode:** the dev panel and stats show by default (H hides them).
 4. **"Click or press a key for sound"** isn't needed in the wrapper, because the window allows autoplay.
-5. **The first break freezes the game.** The first ~6 s after load stutter while shaders compile. Then, about 40 s in, there's a ~1.3–2.8 s freeze, probably three.js building shaders for foam, spray and impact when the first wave breaks (CPU 171 ms per frame vs GPU 3.4 ms). Same Chromium, so it most likely happens in the browser too. Fix it in the game by compiling those materials during loading.
+5. ~~**The first break freezes the game.**~~ Fixed on main (9fedd0d): the ribbon and the Bombie's white water are now built while loading. The ~6 s of shader stutter right after load remains.
 6. **Security:** add a Content-Security-Policy (Electron warns about it in development).
 7. **Packaging:** installer or zip (electron-builder or Electron Forge), Steamworks (steamworks.js), Steam Cloud for the settings file.
 8. **Not tested yet:** mouse-look pointer lock, and sound actually audible (only checked as served), in the Electron window.
