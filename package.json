@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:surfers": "node tools/surfer/buildSurfers.ts"
   },
   "dependencies": {
     "stats-gl": "4.2.3",
