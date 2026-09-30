@@ -13,11 +13,18 @@ export interface WeatherConditions {
   midCover: number;
   /** Cirrus / cirrostratus, about 9 km. */
   highCover: number;
-  /** Rain rate under the rain cells: 0 none, 0.2 drizzle, 0.5 steady rain, 1 downpour (falling rain: phase W2). */
+  /**
+   * Rain rate under the rain cells: 0 none, 0.2 drizzle, 0.5 steady rain, 1 downpour (falling rain: phase W2). The
+   * cells pass through: the grey sky above them is often dry at the lineup, and most rain falls once the clouds have
+   * crossed the coast, over the land (Andrew, 2026-09-30).
+   */
   rain: number;
   /** Lightning and thunder under the tallest cells (phase W2). */
   storm: number;
-  /** Low-level visibility (km) from haze, mist, fog and rain; 60 adds nothing to the clear atmosphere's own haze. */
+  /**
+   * The air's visibility (km) between showers: haze, mist, fog; 60 adds nothing to the clear atmosphere's own haze.
+   * Falling rain lowers it further only where it falls (W2).
+   */
   visibilityKm: number;
   /** How deep that haze is (m): ~60 for sea mist lying on the water, ~1500 for rain haze. */
   fogTopM: number;
@@ -27,7 +34,7 @@ export interface WeatherConditions {
 }
 
 export const WEATHER_PRESET_NAMES = [
-  'clear', 'fair', 'scattered', 'broken', 'high cloud', 'overcast', 'drizzle', 'showers', 'rain', 'storm', 'sea mist',
+  'clear', 'fair', 'scattered', 'broken', 'high cloud', 'overcast', 'grey', 'drizzle', 'showers', 'rain', 'storm', 'sea mist',
 ] as const;
 export type WeatherPresetName = (typeof WEATHER_PRESET_NAMES)[number];
 
@@ -62,10 +69,13 @@ export const WEATHER_PRESETS: Readonly<Record<WeatherPresetName, Readonly<W>>> =
   'broken': w(0.65, 0.2, 800, 0.1, 0.1, 0, 0, 40, 1500, 280, 12),
   'high cloud': w(0.05, 0.3, 1200, 0.12, 0.6, 0, 0, 40, 1500, 300, 20),
   'overcast': w(0.95, 0.1, 700, 0.4, 0.3, 0, 0, 25, 1500, 280, 12),
-  'drizzle': w(1, 0.05, 400, 0.6, 0.3, 0.2, 0, 5, 1200, 270, 12),
+  // The low grey deck: very often dry at the lineup, the rain falling once the cloud is over the land.
+  'grey': w(1, 0.15, 450, 0.5, 0.2, 0, 0, 20, 1500, 280, 12),
+  // The rain skies' visibility is the dry air between showers; the rain itself will lower it where it falls (W2).
+  'drizzle': w(1, 0.05, 400, 0.6, 0.3, 0.2, 0, 12, 1200, 270, 12),
   'showers': w(0.45, 0.85, 800, 0.1, 0.2, 0.6, 0.1, 40, 1500, 250, 15),
-  'rain': w(1, 0.3, 350, 0.9, 0.5, 0.5, 0, 3, 1500, 320, 18),
-  'storm': w(0.85, 1, 500, 0.6, 0.4, 1, 1, 2, 1500, 300, 22),
+  'rain': w(1, 0.3, 350, 0.9, 0.5, 0.5, 0, 10, 1500, 320, 18),
+  'storm': w(0.85, 1, 500, 0.6, 0.4, 1, 1, 8, 1500, 300, 22),
   'sea mist': w(0, 0.3, 1000, 0, 0.15, 0, 0, 0.8, 60, 270, 5),
 });
 

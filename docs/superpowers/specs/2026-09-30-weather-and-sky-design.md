@@ -83,6 +83,7 @@ don't move. Cost if wrong: one default value.
 | broken | Broken stratocumulus with gaps of blue |
 | high cloud | Pre-frontal cirrus: a watery sun |
 | overcast | Grey stratocumulus deck, flat light |
+| grey | The low grey deck with no rain: very common at the Capes, the rain falling only once the cloud is over the land (added after Andrew's review) |
 | drizzle | Low overcast, fine drizzle, 5 km visibility |
 | showers | Post-frontal cumulus and cumulonimbus with sun between, rain curtains on the horizon |
 | rain | Frontal nimbostratus, steady rain, 3 km visibility |
@@ -174,6 +175,14 @@ They are not raymarched per pixel on screen. The dome, every reflection and the 
 - The underwater view keeps its own optics, but its light comes from the new, dimmer surface light.
 
 ### 4.8 Precipitation (Phase W2)
+
+**Where it rains (Andrew, 2026-09-30):** the grey rain sky is very often dry at the lineup; rain falls from passing
+cells, mostly after the clouds cross the coastline. So:
+- The rain rate at a point is the preset's `rain` × the rain-cell mask (drifting with the clouds) × a coastal factor.
+  The factor is low over the sea and rises across the coast and over the dunes (convergence and the ridge's lift).
+- At the lineup, rain comes and goes as cells pass. You often see curtains falling on the land and on the horizon while
+  the lineup stays dry under the same grey sky.
+- The presets' `visibilityKm` is the dry air between showers. Falling rain lowers it only where and while it falls.
 
 - **Rain shafts:** under rain cells, the cloud march includes grey precipitation curtains from cloud base to sea. You
   see them standing on the horizon on shower days, and walking toward you.

@@ -4,7 +4,7 @@ import { WEATHER_PRESETS, WEATHER_PRESET_NAMES, WEATHER_RANGES, presetOf, saniti
 describe('weather presets', () => {
   it('run from clear to sea mist, one per name', () => {
     expect(WEATHER_PRESET_NAMES[0]).toBe('clear');
-    expect(WEATHER_PRESET_NAMES).toHaveLength(11);
+    expect(WEATHER_PRESET_NAMES).toHaveLength(12);
     expect(Object.keys(WEATHER_PRESETS).sort()).toEqual([...WEATHER_PRESET_NAMES].sort());
   });
 
@@ -24,6 +24,16 @@ describe('weather presets', () => {
     const c = WEATHER_PRESETS.clear;
     expect([c.lowCover, c.midCover, c.highCover, c.rain, c.storm]).toEqual([0, 0, 0, 0, 0]);
     expect(c.visibilityKm).toBe(WEATHER_RANGES.visibilityKm.max);
+  });
+
+  it("have a grey sky with no rain: the Capes' low grey deck is very often dry at the lineup (Andrew)", () => {
+    const g = WEATHER_PRESETS.grey;
+    expect(g.lowCover).toBe(1);
+    expect(g.rain).toBe(0);
+  });
+
+  it("give the rain skies their dry, between-showers visibility: rain lowers it only where it falls (W2), mostly over the land", () => {
+    for (const name of ['drizzle', 'rain', 'storm'] as const) expect(WEATHER_PRESETS[name].visibilityKm, name).toBeGreaterThanOrEqual(8);
   });
 
   it('are told apart by presetOf, and an edited preset is custom (null)', () => {
