@@ -78,8 +78,13 @@ export class Surfer {
     this.headCentre.value.copy(this.rest.joint.head).add(new THREE.Vector3(0, 0.09, 0.01));
     const zones = skinZones(manifest);
     const lens = preset.name === 'grommet' && zones ? { eyes: zones.eyes, eyeRadius: zones.eyeRadius, on: this.lensOn, turn: this.headTurn } : null;
+    let hasAo = false;
+    scene.traverse((o) => {
+      // Builds since step 2 pack the body's occlusion with the scalp in COLOR_0.r (tools/surfer/face.py).
+      if ((o as THREE.Mesh).isMesh && manifest.headTriangles !== undefined) hasAo = true;
+    });
     const materials: Record<string, () => THREE.Material> = {
-      body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones, wet: this.wet, pores: this.pores, lens }),
+      body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones, wet: this.wet, pores: this.pores, lens, ao: hasAo }),
       hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
       hairDry: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
       eyes: () => eyesMaterial(sky, preset, sv, { zones, gaze: this.gaze, lens }),
