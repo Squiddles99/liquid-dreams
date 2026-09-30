@@ -69,7 +69,7 @@ export const WEATHER_PRESETS: Readonly<Record<WeatherPresetName, Readonly<W>>> =
   'broken': w(0.65, 0.2, 800, 0.1, 0.1, 0, 0, 40, 1500, 280, 12),
   'high cloud': w(0.05, 0.3, 1200, 0.12, 0.6, 0, 0, 40, 1500, 300, 20),
   'overcast': w(0.95, 0.1, 700, 0.4, 0.3, 0, 0, 25, 1500, 280, 12),
-  // The low grey deck: very often dry at the lineup, the rain falling once the cloud is over the land.
+  // The low grey deck with no rain: very common at the Capes (Andrew). The rain presets rain, mostly over the land.
   'grey': w(1, 0.15, 450, 0.5, 0.2, 0, 0, 20, 1500, 280, 12),
   // The rain skies' visibility is the dry air between showers; the rain itself will lower it where it falls (W2).
   'drizzle': w(1, 0.05, 400, 0.6, 0.3, 0.2, 0, 12, 1200, 270, 12),
