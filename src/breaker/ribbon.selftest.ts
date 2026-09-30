@@ -117,7 +117,7 @@ const isEdge = (j: number): boolean => SEGMENT_OF_SAMPLE[j] === SEGMENT_ID.front
 
 /** The ψ the mirror test forces on every station (states 4, 5, 6 and a slab past the fits), and its times: from before the
  * peak breaks (it breaks seconds before the biggest wave reaches (0, 0) on the softened ramp) through the landing. */
-const MIRROR_PSI = [0.03, 0.065, 0.09, 0.2];
+const MIRROR_PSI = [0, 0.005, 0.03, 0.065, 0.09, 0.2];
 const MIRROR_DTS = [-5, -3.5, -2, 0.6];
 /** Every MIRROR_STRIDE-th live station is compared (the CPU reference is ~300 sheet evaluations a station). */
 const MIRROR_STRIDE = 3;
@@ -133,7 +133,7 @@ registerSelfTest({
     const frame = new Worst();
     frame.value = -Infinity;
     const perField = FRAME_LAYOUT.map(() => 0);
-    let stations = 0, deadLive = 0, broken = 0, landed = 0, worstDetail = '';
+    let stations = 0, deadLive = 0, nonFinite = 0, broken = 0, landed = 0, worstDetail = '';
     const segBad = [0, 0, 0, 0, 0, 0, 0], segWorst = [0, 0, 0, 0, 0, 0, 0];
     const failures: string[] = [];
     for (const psi of MIRROR_PSI) for (const dt of MIRROR_DTS) {
@@ -164,6 +164,7 @@ registerSelfTest({
           }
           (isEdge(j) ? edge : constructed).see(dj, `${where} j ${j}`);
           if (gp[k + 3] !== 0) deadLive++;
+          if (![gp[k], gp[k + 1], gp[k + 2], ge[k], ge[k + 1], ge[k + 2], ge[k + 3]].every(Number.isFinite)) nonFinite++;
           const cx = [prof.thickness[j], prof.lipness[j], prof.curlFoam[j], prof.frame.rho];
           thick.see(Math.abs(ge[k] - cx[0]), `${where} j ${j} GPU ${ge[k].toFixed(4)} CPU ${cx[0].toFixed(4)}`);
           const xm = cx.map((c, m) => (m === 0 ? 0 : Math.abs(ge[k + m] - c))), xw = xm.indexOf(Math.max(...xm));
@@ -187,14 +188,14 @@ registerSelfTest({
     // Bounds: the constructed samples are the mirror (5 mm). The edge samples and the skirts are pure sheet evaluations,
     // so they measure the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest): 1 cm. The lip's thickness is a length on
     // the profile, bounded as the constructed points (5 mm); the unitless extras (lipness, curl foam, ρ) 2e-3.
-    const ok = stations > 0 && broken > 0 && landed > 0 && deadLive === 0 && constructed.value < 5e-3 && Math.max(edge.value, skirt.value) < 1e-2 &&
+    const ok = stations > 0 && broken > 0 && landed > 0 && deadLive === 0 && nonFinite === 0 && constructed.value < 5e-3 && Math.max(edge.value, skirt.value) < 1e-2 &&
       frame.value <= 0 && thick.value < 5e-3 && extras.value < 2e-3;
     const fields = FRAME_LAYOUT.map((n, m) => `${n} ${perField[m].toExponential(1)}`).join(', ');
     return {
       pass: ok,
       detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${broken} in the throw, ${landed} landed); worst |Δpos| (m) constructed ${constructed} (< 5e-3), ` +
         `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); ` +
-        `live rows flagged dead ${deadLive}. Samples off > 5 mm by segment (front..back) ${segBad.join('/')}, worst ${segWorst.map((v) => v.toFixed(3)).join('/')}. Worst constructed: ${worstDetail}. Per frame field |Δ|: ${fields}. Frame failures: ${failures.join(' | ') || 'none'}`,
+        `live rows flagged dead ${deadLive}, non-finite samples ${nonFinite} (0). Samples off > 5 mm by segment (front..back) ${segBad.join('/')}, worst ${segWorst.map((v) => v.toFixed(3)).join('/')}. Worst constructed: ${worstDetail}. Per frame field |Δ|: ${fields}. Frame failures: ${failures.join(' | ') || 'none'}`,
     };
   },
 });

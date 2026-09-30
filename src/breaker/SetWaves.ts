@@ -12,7 +12,7 @@ import { churnHeightNode } from '../whitewater/pileChurn';
 import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
-import type { ReefField } from './reefField';
+import { PSI_EDGE_FADE_M, type ReefField } from './reefField';
 import {
   BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_WIDTH, FOLD_LIMIT, LONG_TAIL_WIDTH, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
   TAPER_FAR_M, TAPER_NEAR_M, fieldSteepeningHeight, toActiveWave,
@@ -260,7 +260,7 @@ export class SetWaves {
    * k a float) at world xz (bilinear between nodes), and whether xz is on the grid. Three texel columns per node: the
    * running maximum's, and the one or two holding the two levels. Inside an Fn.
    */
-  private sampleOnset(xz: N, k: N): { inside: N; run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; psiLo: N; psiHi: N } {
+  private sampleOnset(xz: N, k: N): { inside: N; run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; psiLo: N; psiHi: N; edgeFade: N } {
     const g = xz.sub(this.origin).div(this.cell).toVar();
     const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThanEqual(this.fieldMax.x)).and(g.y.lessThanEqual(this.fieldMax.y));
     const gc = clamp(g, vec2(0.0), this.fieldMax.sub(0.001));
@@ -279,7 +279,10 @@ export class SetWaves {
       const load = (dx: number, dz: number): N => textureLoad(this.onsetPsiTex, ivec2(i0.x.add(dx).mul(PSI_TEXELS).add(ki), i0.y.add(dz)), int(0));
       return mix(mix(load(0, 0), load(1, 0), t.x), mix(load(0, 1), load(1, 1), t.x), t.y).toVar();
     })();
-    return { inside, run, tbLo: select(even, lo.x, lo.z), ampLo: select(even, lo.y, lo.w), tbHi: select(even, lo.z, hi.x), ampHi: select(even, lo.w, hi.y), psiLo: psi.x, psiHi: psi.y };
+    // The record ψ's weight (reefField.psiEdgeFade): 0 at the grid's edge, 1 from PSI_EDGE_FADE_M inside.
+    const edgeM = min(min(g.x, g.y), min(this.fieldMax.x.sub(g.x), this.fieldMax.y.sub(g.y))).mul(this.cell);
+    const edgeFade = smoothstep(0.0, PSI_EDGE_FADE_M, edgeM);
+    return { inside, run, tbLo: select(even, lo.x, lo.z), ampLo: select(even, lo.y, lo.w), tbHi: select(even, lo.z, hi.x), ampHi: select(even, lo.w, hi.y), psiLo: psi.x, psiHi: psi.y, edgeFade };
   }
 
   /**
@@ -378,8 +381,9 @@ export class SetWaves {
             const on = xz.add(f.dir.mul(clamp(xi.mul(this.meanOmega).div(f.k), reachHere.negate(), reachHere))).toVar();
             const level = onsetLevelNode(a.y, brk);
             const rec = this.sampleOnset(on, level.k);
-            // The crest's ψ (setWaveModel.crestAt): PSI_NORMAL off the record, with no game rules.
-            const psi = select(rec.inside, effectivePsiNode(onsetPsiNode(rec.psiLo, rec.psiHi, level), cW.x, cW.y, brk), float(PSI_NORMAL)).toVar();
+            // The crest's ψ (setWaveModel.crestAt): PSI_NORMAL off the record, with no game rules; easing to it at the grid's edge.
+            const psiRec = mix(float(PSI_NORMAL), effectivePsiNode(onsetPsiNode(rec.psiLo, rec.psiHi, level), cW.x, cW.y, brk), rec.edgeFade);
+            const psi = select(rec.inside, psiRec, float(PSI_NORMAL)).toVar();
             const shape = sheetShapeNode(psi);
             shTrough.assign(shape.troughDrain); shSurge.assign(shape.pileSurge);
             const onset = onsetTimeNode(rec, level, a.y, brk);

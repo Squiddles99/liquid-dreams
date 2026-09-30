@@ -36,6 +36,11 @@ describe('the tube (Longuet-Higgins outline in its own axes)', () => {
     let s = 0; for (let i = 0; i < 2000; i++) { const a = tubeUpper(t, 0.2 + (0.8 * i) / 2000), b = tubeUpper(t, 0.2 + (0.8 * (i + 1)) / 2000); s += Math.hypot(b[0] - a[0], b[1] - a[1]); }
     expect(tubeUpperArc(t, 0.2, 1)).toBeCloseTo(s, 1);
   });
+  it("a tube of no size (ψ at or below PSI_NONE) has its upper normal along the tube's n, not zero (the cap's angle reads it)", () => {
+    const { d, n } = tubeAxes(0.8);
+    const t: Tube = { O: [1, 2], d, n, L: 0, W: 0, clipY: -Infinity };
+    for (const xi of [0, 0.5, 1]) expect(tubeUpperNormal(t, xi)).toEqual(n);
+  });
   it('the lower side never dips below clipY; the water cut is where the upper side first reaches it', () => {
     const c: Tube = { ...t, clipY: tubeUpper(t, 1)[1] + 0.5 };
     for (let i = 0; i <= 100; i++) expect(tubeLower(c, i / 100)[1]).toBeGreaterThanOrEqual(c.clipY);

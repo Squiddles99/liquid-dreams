@@ -8,6 +8,7 @@ import { DEFAULT_BREAK_PARAMS } from './breaking';
 import {
   MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, stationPsi, timeSinceOnset, traceStations,
 } from './crestTrace';
+import { PSI_NORMAL } from './overturn';
 import { computeReefField, sampleField } from './reefField';
 import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi } from './setWaveModel';
 import { cloneConditions } from '../conditions/defaults';
@@ -165,3 +166,21 @@ describe('station ψ (barrel from the maths)', () => {
   });
 });
 
+describe("the crest's ψ at the reef grid's edge (final review I2)", () => {
+  it('eases to PSI_NORMAL at the edge, so a crest crossing it keeps its shape', () => {
+    const g = field.grid, w = testWave(REF_BIGGEST.heightM), input = { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0 };
+    const x1 = g.x0 + (g.nx - 1) * g.cellM, z1 = g.z0 + (g.nz - 1) * g.cellM;
+    let worst = 0, inner = 0;
+    for (let k = 1; k < 20; k++) {
+      const x = g.x0 + ((x1 - g.x0) * k) / 20, z = g.z0 + ((z1 - g.z0) * k) / 20;
+      // Just inside each of the four edges against just outside: the jump across the edge.
+      for (const [a, b] of [[[x, g.z0 + 0.01], [x, g.z0 - 0.01]], [[x, z1 - 0.01], [x, z1 + 0.01]], [[g.x0 + 0.01, z], [g.x0 - 0.01, z]], [[x1 - 0.01, z], [x1 + 0.01, z]]] as const) {
+        worst = Math.max(worst, Math.abs(stationPsi(field, w, a[0], a[1], input) - stationPsi(field, w, b[0], b[1], input)));
+      }
+      // Deep inside, the record's own ψ is untouched.
+      inner = Math.max(inner, Math.abs(stationPsi(field, w, x, z, input) - PSI_NORMAL));
+    }
+    expect(worst).toBeLessThan(1e-3);
+    expect(inner).toBeGreaterThan(0.01);
+  });
+});

@@ -6,9 +6,10 @@ import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetTime } from './breaking';
 import {
   GRAVITY_MS2, type LipParams, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings, foldDepth,
-  landingTime, profileFrame, sampleHome, sampleSegment, settleSpan,
+  IMPACT_BISECT, IMPACT_SCAN, impactHeight, landingTime, profileFrame, sampleHome, sampleSegment, settleSpan,
 } from './lipProfile';
 import { PSI_NORMAL } from './overturn';
+import { peakLanding, peakStation } from './peakStation.fixture';
 import { computeReefField, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, type BreakOptions, breakOptions, type WaveContext, localHeight, sumWaves } from './setWaveModel';
 
@@ -132,6 +133,18 @@ describe('lipProfile', () => {
     }
   });
 
+  it('solves H_I with a warm-started sheet read: the first read cold (5 reads), the rest from the last u (3 reads each)', () => {
+    let bisected = 0;
+    for (const psi of [0.03, 0.045, 0.06, 0.08, 0.1]) {
+      const st = peakStation(psi, peakLanding(psi));
+      let reads = 0;
+      const counted = (u: number): Vec2 => { reads++; return st.frameBase(u); };
+      const HI = impactHeight(counted, st.frameBase(0), st.input.H, psi, 0);
+      if (HI > st.input.H) bisected++;
+      expect(reads, `ψ ${psi}`).toBeLessThanOrEqual(5 + (IMPACT_SCAN.length + IMPACT_BISECT - 1) * 3);
+    }
+    expect(bisected).toBeGreaterThan(0);
+  });
   it('its edges are the sheet with a pile standing above the crest at both edges', () => {
     // A synthetic cross-section steep enough to throw, and whitewater standing 0.8 m over it at both
     // edges (the pile's knots include uBack and uFront).

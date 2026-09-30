@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Fn, float, instanceIndex, storage, uniform, vec2, vec4 } from 'three/tsl';
-import { DEFAULT_CONDITIONS } from '../conditions/defaults';
+import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
@@ -456,5 +456,52 @@ registerSelfTest({
       });
     }
     return { pass: worst < 1e-4, detail: `${points.length} points × 3 heights; worst |Δψ₀| ${worst.toExponential(2)} ${at}` };
+  },
+});
+
+registerSelfTest({
+  name: "breaker: at the reef grid's edge the GPU sheet eases the crest's ψ to PSI_NORMAL as the CPU does (12 ft)",
+  async run(renderer) {
+    const field = getField(), g = field.grid;
+    const time = uniform(0);
+    const sets = new SetWaves(time);
+    sets.setField(field);
+    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+    // Just inside the north and south edges, where the reef record's ψ is far from PSI_NORMAL (final review I2).
+    const z1 = g.z0 + (g.nz - 1) * g.cellM, points: [number, number][] = [];
+    for (let x = 80; x <= 230; x += 30) for (const d of [2, 8, 15, 22]) points.push([x, z1 - d], [x, g.z0 + d]);
+    const { pass, outAttr } = computeAt(points, 2, (xz) => {
+      const b = sets.breakSampleNode(xz);
+      return [vec4(b.disp, b.foam), vec4(b.stage, b.pile, 0.0, 0.0)];
+    });
+    const c12 = cloneConditions(DEFAULT_CONDITIONS);
+    c12.swell.sizeFt = 12;
+    const big = wavesOfSet(1, c12, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    const o: BreakOptions = breakOptions(field, DEFAULT_BREAK_PARAMS);
+    const disp = new Worst(true, 0), stage = new Worst(true, 0);
+    let breaking = 0, stageAt = '';
+    for (let dt = -40; dt <= 40; dt += 4) {
+      const t = big.arrivalS + dt;
+      time.value = t;
+      const events = wavesNear(t, c12, DEFAULT_SET_PARAMS);
+      sets.setEvents(events);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      const waves = events.map(toActiveWave);
+      points.forEach(([x, z], i) => {
+        const c = sumWaves(x, z, t, sampleField(field, x, z), waves, ctx, o);
+        const gg = out.slice(i * 8, i * 8 + 8);
+        disp.see(Math.max(Math.abs(gg[0] - c.dx), Math.abs(gg[1] - c.eta), Math.abs(gg[2] - c.dz)), dt, i, '');
+        if (Math.abs(gg[4] - c.stage) > stage.value) stageAt = `(${x}, ${z.toFixed(1)}) dt ${dt}: GPU stage ${gg[4].toFixed(3)} foam ${gg[3].toFixed(3)} pile ${gg[5].toFixed(3)}; CPU stage ${c.stage.toFixed(3)} foam ${c.foam.toFixed(3)} pile ${c.pile.toFixed(3)}`;
+        stage.see(Math.abs(gg[4] - c.stage), dt, i, '');
+        if (c.stage > 0.1) breaking++;
+      });
+    }
+    // The ψ's fade shows in the displacement (the sheet's shape). The reported stage is compared as a diagnostic only:
+    // near the edge the crest lookup lands on crests 60 m away, and its confidence weighting differs between the CPU and
+    // the GPU there (a separate finding, not the ψ's).
+    const ok = breaking > 0 && disp.value < 0.05;
+    return { pass: ok, detail: `${points.length} points within 22 m of the grid's north and south edges × dt −40…40 s (12 ft); ${breaking} breaking samples (> 0); worst |Δdisp| ${disp} m (< 0.05); diagnostic |Δstage| ${stage} [${stageAt}]` };
   },
 });

@@ -3,7 +3,7 @@ import { If, Loop, atan, clamp, cos, dot, float, int, length, max, min, mix, pow
 import { type BreakParams, RIBBON_FULL_OFFSET, normalizeBreakParams, steepeningStart } from './breaking';
 import {
   BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_LOWER_FADE, EDGE_MARGIN_M, FACE_CONCAVE_MARGIN, FACE_CONCAVE_STEPS, FACE_CONCAVE_STEP_H, FACE_DIR_STEP, FACE_JOIN_MIN_M, FACE_JOIN_STEPS,
-  FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
+  FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
   LIP_SPRAY_PROGRESS, LIP_TAPER_POWER, OUTER_LIP_SHARE, PRESENCE_FADE, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID,
   TIP_GROW_PROGRESS, TIP_THICKNESS_RATIO, TUBE_BACK_AHEAD_H, sampleSegment,
 } from './lipProfile';
@@ -224,7 +224,8 @@ export function tubeUpperNormalNode(t: TubeNodes, xi: N): N {
   const l = length(T);
   const lSafe = select(l.greaterThan(0.0), l, float(1.0));
   const nr = vec2(T.y.negate(), T.x).div(lSafe).toVar();
-  return select(dot(nr, t.n).lessThan(0.0), nr.negate(), nr);
+  // A tube of no size: the tube's own n (tube.tubeUpperNormal).
+  return select(l.greaterThan(0.0), select(dot(nr, t.n).lessThan(0.0), nr.negate(), nr), vec2(t.n));
 }
 /** tube's ternary search for the maximum of a unimodal f on [a, b], TUBE_SEARCH_STEPS steps. */
 function argmaxNode(f: (x: N) => N, a: number, b: number): N {
@@ -297,7 +298,23 @@ function unitReachNode(psi: N, uc: N): { px: N; py: N } {
 function impactHeightNode(baseAt: (u: N) => N, K: N, H: N, psi: N, uc: N): N {
   const { px, py } = unitReachNode(psi, uc);
   const x0 = K.x.add(H.mul(TUBE_BACK_AHEAD_H)).toVar();
-  const above = (hi: N): N => K.y.add(hi.mul(py)).sub(sheetYAtNode(baseAt, K, x0.add(hi.mul(px))));
+  // lipProfile.impactHeight's warm-started sheet reads: the first cold (four steps), the rest SHEET_WARM_STEPS from the
+  // last read's u.
+  const wu = float(0.0).toVar(), wx = float(0.0).toVar(), warm = float(0.0).toVar();
+  const yAt = (x: N): N => {
+    const xx = float(x).toVar();
+    const uu = select(warm.greaterThan(0.5), wu.add(xx.sub(wx)), xx.sub(K.x)).toVar(), q = vec2(0.0).toVar();
+    const steps = select(warm.greaterThan(0.5), int(SHEET_WARM_STEPS), int(4)).toVar();
+    Loop(5, ({ i }: N) => {
+      If(i.lessThanEqual(steps), () => {
+        q.assign(baseAt(uu));
+        If(i.lessThan(steps), () => { uu.addAssign(xx.sub(q.x)); });
+      });
+    });
+    wu.assign(uu); wx.assign(xx); warm.assign(1.0);
+    return q.y;
+  };
+  const above = (hi: N): N => K.y.add(hi.mul(py)).sub(yAt(x0.add(hi.mul(px))));
   const nScan = IMPACT_SCAN.length;
   const lo = float(-1.0).toVar(), hi = float(-1.0).toVar(), prev = float(0.0).toVar(), prevAt = float(0.0).toVar();
   const found = float(0.0).toVar();
@@ -305,7 +322,8 @@ function impactHeightNode(baseAt: (u: N) => N, K: N, H: N, psi: N, uc: N): N {
     const scanning = i.lessThan(int(nScan));
     // The scan's factor at step i (IMPACT_SCAN is evenly spaced from 1 to 2: 1 + i/4), or the bisection's midpoint.
     const at = select(scanning, H.mul(float(i).mul((IMPACT_SCAN[nScan - 1] - IMPACT_SCAN[0]) / (nScan - 1)).add(IMPACT_SCAN[0])), lo.add(hi).mul(0.5)).toVar();
-    If(scanning.or(found.greaterThan(0.5)), () => {
+    // As the CPU: the scan stops at its crossing, and the bisection reads only once one is found.
+    If(scanning.and(found.lessThan(0.5)).or(scanning.not().and(found.greaterThan(0.5))), () => {
       const g = above(at).toVar();
       If(scanning, () => {
         If(i.greaterThan(int(0)).and(found.lessThan(0.5)).and(prev.greaterThan(0.0)).and(g.lessThanEqual(0.0)), () => {
