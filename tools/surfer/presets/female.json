@@ -1,7 +1,7 @@
 {
   "name": "female",
   "heightM": 1.65,
-  "bodyTriangles": 21000,
+  "bodyTriangles": 27000,
   "macro": {
     "gender": 0.0,
     "age": 0.34375,

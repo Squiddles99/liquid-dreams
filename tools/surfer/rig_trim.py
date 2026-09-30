@@ -106,6 +106,7 @@ def scale_to_height(body, rig, height_m, points):
                     p[kk] = pp * f
         elif p is not None:
             points[k] = p * f
+    return f
 
 
 def trim(rig, body):
@@ -156,15 +157,36 @@ def trim(rig, body):
         pb.matrix_basis.identity()
 
 
-def decimate(body, triangles):
+def _head_weight(body):
+    g = body.vertex_groups.get("head")
+    return [next((e.weight for e in v.groups if g is not None and e.group == g.index), 0.0) for v in body.data.vertices]
+
+
+def head_triangles(body):
+    """Triangles whose vertices all follow the head (weight > 0.5)."""
+    w = _head_weight(body)
+    return sum(len(p.vertices) - 2 for p in body.data.polygons if all(w[i] > 0.5 for i in p.vertices))
+
+
+def decimate(body, triangles, keep_head=True):
+    """Collapse down to about `triangles`, taking nothing from the head when keep_head (closeup spec §4.1): the
+    modifier's vertex group weights where it may collapse, and the head's are zero."""
     now = sum(len(p.vertices) - 2 for p in body.data.polygons)
     if now <= triangles:
         return
     activate(body)
     mod = body.modifiers.new("decimate", "DECIMATE")
     mod.ratio = triangles / now
+    if keep_head:
+        g = body.vertex_groups.new(name="decimate")
+        for v, w in zip(body.data.vertices, _head_weight(body)):
+            g.add([v.index], 0.0 if w > 0.05 else 1.0, "REPLACE")
+        mod.vertex_group = g.name
+        mod.vertex_group_factor = 1000.0
     bpy.ops.object.modifier_move_to_index(modifier=mod.name, index=0)
     bpy.ops.object.modifier_apply(modifier=mod.name)
+    if keep_head:
+        body.vertex_groups.remove(body.vertex_groups["decimate"])
 
 
 def limit_weights(obj):

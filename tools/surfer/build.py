@@ -8,6 +8,7 @@ import bpy
 sys.path.append(os.path.dirname(__file__))
 import bodymap  # noqa: E402
 import export  # noqa: E402
+import expressions  # noqa: E402
 import face  # noqa: E402
 import glasses  # noqa: E402
 import hair  # noqa: E402
@@ -29,9 +30,10 @@ mpfb_bridge.apply_targets(body, preset.get("face", {}))
 rig = mpfb_bridge.add_game_rig(body)
 body.name, rig.name = f"{name}_body", f"{name}_armature"
 rig_trim.bake_shape(body)
+expressions.load(body)
 rig_trim.apply_transforms(rig, [body])
 landmarks = rig_trim.delete_helpers(body)
-rig_trim.scale_to_height(body, rig, preset["heightM"], landmarks)
+expressions.scale(body, rig_trim.scale_to_height(body, rig, preset["heightM"], landmarks))
 sculpt.smooth_anatomy(body, preset["heightM"], preset.get("smooth", []))
 rig_trim.trim(rig, body)
 rig_trim.decimate(body, preset["bodyTriangles"])
@@ -40,6 +42,10 @@ rig_trim.single_material(body, "body")
 coords = bodymap.bone_coords(body, rig)
 L = bodymap.landmarks(body, rig, preset["heightM"], landmarks, coords)
 weights = bodymap.bone_weights(body, rig)
+expressions.breathe(body, weights)
+print(f"morph deltas (mm): " + ", ".join(f"{m} {1000 * expressions.max_delta(body, m):.1f}" for m in expressions.MORPHS))
+expressions.to_shape_keys(body)
+head_tris = rig_trim.head_triangles(body)
 wardrobe.paint_masks(body, weights, preset["heightM"])
 face.paint(body, weights, L, preset.get("browWeight", 1.0))
 spots = skin.pimples(body, coords, L, preset["pimpleSeed"]) if "pimpleSeed" in preset else []
@@ -61,7 +67,7 @@ if preset["boardies"]:
     parts.append(shorts)
 
 export.glb(rig, parts, os.path.join(out_dir, f"{name}.glb"))
-export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version(), L, spots)
+export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version(), L, spots, head_tris)
 previews.clay(body)
 previews.sheet(name, preset["heightM"], preview_dir, "clay")
 for outfit in preset["outfits"]:

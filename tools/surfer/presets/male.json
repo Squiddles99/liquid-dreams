@@ -1,7 +1,7 @@
 {
   "name": "male",
   "heightM": 1.78,
-  "bodyTriangles": 21000,
+  "bodyTriangles": 27000,
   "macro": {
     "gender": 1.0,
     "age": 0.34375,

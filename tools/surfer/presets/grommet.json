@@ -1,7 +1,7 @@
 {
   "name": "grommet",
   "heightM": 1.52,
-  "bodyTriangles": 18000,
+  "bodyTriangles": 25000,
   "macro": {
     "gender": 1.0,
     "age": 0.23,

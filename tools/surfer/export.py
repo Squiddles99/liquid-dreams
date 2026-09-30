@@ -11,19 +11,20 @@ def glb(rig, meshes, path):
         m.select_set(True)
     bpy.context.view_layer.objects.active = rig
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_yup=True,
-                              export_skins=True, export_animations=False, export_morph=False,
+                              export_skins=True, export_animations=False, export_morph=True, export_morph_normal=True,
                               export_texcoords=True, export_normals=True, export_materials="EXPORT",
                               export_vertex_color="ACTIVE")
 
 
-def manifest(rig, meshes, preset, path, mpfb_version, L=None, pimples=()):
+def manifest(rig, meshes, preset, path, mpfb_version, L=None, pimples=(), head_triangles=None, checks=None):
     def gl(v):  # Blender (x, y, z) → glTF (x, z, -y)
         return [round(v.x, 5), round(v.z, 5), round(-v.y, 5)]
     data = {
         "name": preset["name"],
         "heightM": preset["heightM"],
         "bones": [{"name": b.name, "parent": b.parent.name if b.parent else None, "head": gl(b.head_local), "tail": gl(b.tail_local)} for b in rig.data.bones],
-        "meshes": [{"name": m.name, "triangles": sum(len(p.vertices) - 2 for p in m.data.polygons), "materials": [s.material.name for s in m.material_slots if s.material]} for m in meshes],
+        "meshes": [{"name": m.name, "triangles": sum(len(p.vertices) - 2 for p in m.data.polygons), "materials": [s.material.name for s in m.material_slots if s.material]}
+                   | ({"morphs": [k.name for k in m.data.shape_keys.key_blocks[1:]]} if m.data.shape_keys else {}) for m in meshes],
         "blender": bpy.app.version_string,
         "mpfb": mpfb_version,
     }
@@ -35,6 +36,10 @@ def manifest(rig, meshes, preset, path, mpfb_version, L=None, pimples=()):
                 "mouth": gl(L["mouth"]), "lipFront": gl(L["lip_front"]),
                 "teethFront": gl(L["upper_teeth"]["front"]) if L.get("upper_teeth") else gl(L["mouth"]),
             }
+    if head_triangles is not None:
+        data["headTriangles"] = head_triangles
+    if checks is not None:
+        data["checks"] = checks
     if pimples:
         data["skin"] = {"pimples": [gl(c) + [round(r, 5)] for c, r in pimples]}
     with open(path, "w", encoding="utf-8") as f:
