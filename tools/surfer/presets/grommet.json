@@ -16,7 +16,7 @@
   },
   "boardies": true,
   "glasses": true,
-  "teeth": true,
+  "teeth": "buck",
   "pimpleSeed": 1313,
   "outfits": [
     "rashieAndBoardies",
@@ -79,5 +79,10 @@
     "mouth-upperlip-middle-up": 1.0,
     "mouth-lowerlip-middle-down": 0.4
   },
-  "browWeight": 1.3
+  "browWeight": 1.3,
+  "lashes": {
+    "upper": 0.008,
+    "lower": 0.0042,
+    "curl": 0.0025
+  }
 }

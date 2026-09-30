@@ -51,5 +51,11 @@
     "crotch"
   ],
   "face": {},
-  "browWeight": 1.6
+  "browWeight": 1.6,
+  "teeth": "even",
+  "lashes": {
+    "upper": 0.0085,
+    "lower": 0.0045,
+    "curl": 0.0025
+  }
 }

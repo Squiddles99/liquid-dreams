@@ -159,6 +159,8 @@ def dress(parts, preset, outfit):
         _body_material(mat, preset)
     for key in WEIGHTS:
         mat.node_tree.nodes[f"w_{key}"].outputs[0].default_value = float(OUTFITS[outfit][key])
+    if len(body.material_slots) > 1 and body.material_slots[1].material.name == "lashes":
+        body.material_slots[1].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.02, 0.015, 0.012, 1)
     for p in parts[1:]:
         if p.name.endswith("_boardies"):
             p.hide_render = outfit not in ("boardies", "rashieAndBoardies")
@@ -175,4 +177,4 @@ def dress(parts, preset, outfit):
                 else:
                     bsdf.inputs["Base Color"].default_value = (*preset["preview"]["glasses"], 1)
         elif p.name.endswith("_teeth"):
-            p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["teeth"], 1)
+            p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"].get("teeth", (0.8, 0.77, 0.68)), 1)

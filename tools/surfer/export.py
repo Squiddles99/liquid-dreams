@@ -35,6 +35,7 @@ def manifest(rig, meshes, preset, path, mpfb_version, L=None, pimples=(), head_t
                 "eyes": [gl(e) for e in eyes], "ears": [gl(L["ears"]["l"]), gl(L["ears"]["r"])], "nose": gl(L["nose"]),
                 "mouth": gl(L["mouth"]), "lipFront": gl(L["lip_front"]),
                 "teethFront": gl(L["upper_teeth"]["front"]) if L.get("upper_teeth") else gl(L["mouth"]),
+                "eyeRadius": round(L.get("eye_radius", 0.0115), 5),
             }
     if head_triangles is not None:
         data["headTriangles"] = head_triangles

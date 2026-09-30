@@ -7,7 +7,9 @@ def pimples(body, coords, L, seed):
     rng = random.Random(seed)
     eye_z, mouth = L["eye_z"], L["mouth"]
     front_y = min(p.y for p in L["eyes"].values() if p is not None)
-    head = [v for v, (b, _) in zip(body.data.vertices, coords) if b == "head" and v.co.y < front_y + 0.01 and v.normal.y < -0.4]
+    lash = body.data.attributes.get("lash")
+    head = [v for v, (b, _) in zip(body.data.vertices, coords) if b == "head" and v.co.y < front_y + 0.01 and v.normal.y < -0.4
+            and (lash is None or lash.data[v.index].value <= 0)]
     zones = [
         (3, lambda c: eye_z + 0.025 < c.z < eye_z + 0.06 and abs(c.x) < 0.035),                              # forehead
         (2, lambda c: mouth.z - 0.04 < c.z < mouth.z - 0.015 and abs(c.x) < 0.02),                             # chin

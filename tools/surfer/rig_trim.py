@@ -62,29 +62,81 @@ def group_centroid(body, name):
     return sum(pts, Vector()) / len(pts) if pts else None
 
 
+def _group_verts(body, name, threshold=0.5):
+    g = body.vertex_groups.get(name)
+    if g is None:
+        return []
+    return [v for v in body.data.vertices if any(e.group == g.index and e.weight > threshold for e in v.groups)]
+
+
+LASH_GROUPS = ("helper-l-eyelashes-1", "helper-l-eyelashes-2", "helper-r-eyelashes-1", "helper-r-eyelashes-2")
+
+
 def delete_helpers(body):
-    """Keep only the 'body' vertex group's vertices. Returns the eye centres, the mouth and the upper teeth
-    (centre and front), read from the helpers first."""
+    """Keep the 'body' vertex group's vertices and the lash strips (material slot 1, 'lashes'; closeup spec §4.1).
+    Returns what's read from the helpers first: the eyes (centres, and the eyeball's radius fitted behind the cornea),
+    the mouth, the upper teeth (centre and front), and the lower teeth (centre, front, and each helper point with its
+    jaw-open motion). The 'lips' group becomes the float attribute `lipmask`; the lashes are marked `lash` (1 upper,
+    0.5 lower)."""
     names = [g.name for g in body.vertex_groups]
     if "body" not in names:
         raise SystemExit(f"the basemesh has no 'body' vertex group; it has {names}")
-    eyes = {side: group_centroid(body, f"helper-{side}-eye") for side in ("l", "r")}
+    eyes, eye_radius = {}, []
+    for side in ("l", "r"):
+        pts = [v.co.copy() for v in _group_verts(body, f"helper-{side}-eye")]
+        if not pts:
+            eyes[side] = None
+            continue
+        # The helper is an eyeball with a cornea bulging in front (-y): its width and height give the ball's radius,
+        # and the ball's back sits at the helper's back.
+        xs, ys, zs = [p.x for p in pts], [p.y for p in pts], [p.z for p in pts]
+        r = (max(xs) - min(xs) + max(zs) - min(zs)) / 4
+        eyes[side] = Vector(((min(xs) + max(xs)) / 2, max(ys) - r, (min(zs) + max(zs)) / 2))
+        eye_radius.append(r)
     teeth = [group_centroid(body, g) for g in ("helper-upper-teeth", "helper-lower-teeth")]
     teeth = [t for t in teeth if t is not None]
-    ut = body.vertex_groups.get("helper-upper-teeth")
-    upper = None
-    if ut is not None:
-        pts = [v.co.copy() for v in body.data.vertices if any(e.group == ut.index and e.weight > 0.5 for e in v.groups)]
-        if pts:
-            upper = {"centre": sum(pts, Vector()) / len(pts), "front": min(pts, key=lambda p: p.y)}
+
+    def row(name, with_motion=False):
+        vs = _group_verts(body, name)
+        if not vs:
+            return None
+        pts = [v.co.copy() for v in vs]
+        out = {"centre": sum(pts, Vector()) / len(pts), "front": min(pts, key=lambda p: p.y)}
+        jaw = body.data.attributes.get("xp_jawOpen")
+        if with_motion and jaw is not None:
+            out["points"] = [(v.co.copy(), jaw.data[v.index].vector.copy()) for v in vs]
+        return out
+
+    upper, lower = row("helper-upper-teeth"), row("helper-lower-teeth", with_motion=True)
+    # The lips (MPFB's 'lips' group) as a float mask the face paint reads after the trim drops the group.
+    lipmask = body.data.attributes.new("lipmask", "FLOAT", "POINT")
+    lg = body.vertex_groups.get("lips")
+    if lg is not None:
+        for v in body.data.vertices:
+            lipmask.data[v.index].value = next((e.weight for e in v.groups if e.group == lg.index), 0.0)
+    lash = body.data.attributes.new("lash", "FLOAT", "POINT")
+    lash_idx = set()
+    for gname in LASH_GROUPS:
+        for v in _group_verts(body, gname, 0.01):
+            lash.data[v.index].value = 1.0 if gname.endswith("-2") else 0.5
+            lash_idx.add(v.index)
     gi = body.vertex_groups["body"].index
-    keep = {v.index for v in body.data.vertices if any(e.group == gi and e.weight > 0.5 for e in v.groups)}
+    keep = {v.index for v in body.data.vertices if any(e.group == gi and e.weight > 0.5 for e in v.groups)} | lash_idx
+    # Two material slots: the skin, and the lashes (faces made only of lash vertices).
+    body.data.materials.clear()
+    for n in ("body", "lashes"):
+        mat = bpy.data.materials.get(n) or bpy.data.materials.new(n)
+        mat.use_nodes = True
+        body.data.materials.append(mat)
+    for poly in body.data.polygons:
+        poly.material_index = 1 if all(i in lash_idx for i in poly.vertices) else 0
     bm = bmesh.new()
     bm.from_mesh(body.data)
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.index not in keep], context="VERTS")
     bm.to_mesh(body.data)
     bm.free()
-    return {"eyes": eyes, "mouth": sum(teeth, Vector()) / len(teeth) if teeth else None, "upper_teeth": upper}
+    return {"eyes": eyes, "eye_radius": sum(eye_radius) / len(eye_radius) if eye_radius else 0.012,
+            "mouth": sum(teeth, Vector()) / len(teeth) if teeth else None, "upper_teeth": upper, "lower_teeth": lower}
 
 
 def scale_to_height(body, rig, height_m, points):
@@ -102,7 +154,9 @@ def scale_to_height(body, rig, height_m, points):
     for k, p in points.items():
         if isinstance(p, dict):
             for kk, pp in p.items():
-                if pp is not None:
+                if isinstance(pp, list):
+                    p[kk] = [(a * f, b * f) for a, b in pp]
+                elif pp is not None:
                     p[kk] = pp * f
         elif p is not None:
             points[k] = p * f
@@ -193,6 +247,17 @@ def limit_weights(obj):
     activate(obj)
     bpy.ops.object.vertex_group_limit_total(group_select_mode="ALL", limit=4)
     bpy.ops.object.vertex_group_normalize_all(group_select_mode="ALL", lock_active=False)
+
+
+def materials(obj, names):
+    """Name the object's material slots in order, keeping each face's slot (the body: skin, then lashes)."""
+    for i, n in enumerate(names):
+        mat = bpy.data.materials.get(n) or bpy.data.materials.new(n)
+        mat.use_nodes = True
+        if i < len(obj.data.materials):
+            obj.data.materials[i] = mat
+        else:
+            obj.data.materials.append(mat)
 
 
 def single_material(obj, name):

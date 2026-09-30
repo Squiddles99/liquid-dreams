@@ -69,5 +69,11 @@
     "head-oval": 0.5,
     "head-fat-decr": 0.2
   },
-  "browWeight": 1.0
+  "browWeight": 1.0,
+  "teeth": "even",
+  "lashes": {
+    "upper": 0.0105,
+    "lower": 0.0055,
+    "curl": 0.0035
+  }
 }

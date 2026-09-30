@@ -3,8 +3,11 @@
 The layer is exported as COLOR_0 (linear floats), and the game's body shader reads its four channels as masks:
   R  scalp: hair colour under the hair cards, so gaps between them show hair, not skin, with a soft hairline
   G  eyebrows
-  B  lips
+  B  lips (MPFB's 'lips' group, feathered one ring out)
   A  lash line (the upper lid's rim, like eyeliner)
+  B and A together: the inside of the mouth (dark, wet red)
+On the lashes (material slot 1) the same layer carries the lash coordinates instead: R root → tip, G along the lid
+(inner corner → outer), B 1 upper / 0 lower (closeup spec §4.1).
 Blender axes: +x the character's left, -y the front of the face, +z up.
 """
 import math
@@ -57,12 +60,21 @@ def _lash(co, eye, eye_y):
     return max(0.0, 1.0 - abs(r - 1.0) / 0.22) * _ramp(dz, 0.0, 0.3)
 
 
-def _lips(co, mouth):
-    """An ellipse over the mouth, only on the front surface (the lips sit ahead of the teeth)."""
-    if co.y > mouth.y - 0.004:
-        return 0.0
-    r = math.hypot((co.x - mouth.x) / 0.026, (co.z - mouth.z) / 0.0115)
-    return _ramp(-r, -1.0, 0.25)
+def _lip_mask(body):
+    """MPFB's 'lips' group (a float attribute since the helpers went), feathered: each vertex takes the mean of itself
+    and its neighbours, twice, so the lip line is soft rather than stepped."""
+    a = body.data.attributes.get("lipmask")
+    if a is None:
+        return [0.0] * len(body.data.vertices)
+    m = [e.value for e in a.data]
+    nbrs = [[] for _ in m]
+    for e in body.data.edges:
+        i, j = e.vertices
+        nbrs[i].append(j)
+        nbrs[j].append(i)
+    for _ in range(2):
+        m = [(m[i] * 2 + sum(m[j] for j in nb)) / (2 + len(nb)) if nb else m[i] for i, nb in enumerate(nbrs)]
+    return m
 
 
 def _mouth_inside(v, mouth, lip_front, tree):
@@ -73,12 +85,60 @@ def _mouth_inside(v, mouth, lip_front, tree):
     co = v.co
     if mouth is None or lip_front is None or co.y < lip_front.y + 0.003:
         return 0.0
-    if abs(co.x - mouth.x) > 0.025 or abs(co.z - mouth.z) > 0.012:
+    if abs(co.x - mouth.x) > 0.027 or abs(co.z - mouth.z) > 0.02:
         return 0.0
     if abs(co.x - mouth.x) < 0.015 and co.y > lip_front.y + 0.02:
         return 1.0
-    hit, _, _, _ = tree.ray_cast(co + v.normal * 0.0005, v.normal, 0.02)
-    return 1.0 if hit is not None and abs(hit.z - mouth.z) < 0.012 and hit.y > lip_front.y + 0.001 else 0.0
+    # 4 cm: with the jaw open the cavity's far walls are further than the closed mouth's 2 cm.
+    hit, _, _, _ = tree.ray_cast(co + v.normal * 0.0005, v.normal, 0.04)
+    return 1.0 if hit is not None and abs(hit.z - mouth.z) < 0.02 and hit.y > lip_front.y + 0.001 else 0.0
+
+
+def _lash_coords(body, L):
+    """Per lash vertex: (root → tip, along the lid from the inner corner, 1 upper / 0 lower), per strip."""
+    a = body.data.attributes.get("lash")
+    if a is None:
+        return {}
+    strips = {}
+    for v in body.data.vertices:
+        kind = a.data[v.index].value
+        if kind <= 0:
+            continue
+        side = "l" if v.co.x > 0 else "r"
+        strips.setdefault((side, kind > 0.75), []).append(v)
+    out = {}
+    for (side, upper), vs in strips.items():
+        c = L["eyes"][side]
+        out_dir = 1.0 if side == "l" else -1.0
+        d = {v.index: (v.co - c).length for v in vs}
+        ang = {v.index: math.atan2(v.co.z - c.z, (v.co.x - c.x) * out_dir) for v in vs}
+        dmin, dmax = min(d.values()), max(d.values())
+        amin, amax = min(ang.values()), max(ang.values())
+        for v in vs:
+            t = (d[v.index] - dmin) / max(dmax - dmin, 1e-6)
+            along = (ang[v.index] - amin) / max(amax - amin, 1e-6)
+            # The upper strip's angle runs outer (0 rad) → inner (π): flip so 0 is the inner corner either way.
+            out[v.index] = (t, 1.0 - along if upper else along, 1.0 if upper else 0.0)
+    return out
+
+
+def shape_lashes(body, L, lashes):
+    """Lengthen and curl the lash strips (closeup spec §4.1): each vertex pushed out from the eye by its share of the
+    extra length, and the tips curled away from the eye (up for the upper lashes, down for the lower)."""
+    coords = _lash_coords(body, L)
+    up = lashes.get("upper", 0.009)
+    low = lashes.get("lower", 0.005)
+    curl = lashes.get("curl", 0.003)
+    for v in body.data.vertices:
+        if v.index not in coords:
+            continue
+        t, _, upper = coords[v.index]
+        side = "l" if v.co.x > 0 else "r"
+        c = L["eyes"][side]
+        radial = (v.co - c).normalized()
+        extra = (up if upper else low) - 0.007  # the helper strips are ~7 mm long
+        v.co = v.co + radial * (max(0.0, extra) * t) + Vector((0, -0.25, 1.0 if upper else -1.0)).normalized() * (curl * t * t)
+    body.data.update()
 
 
 def paint(body, weights, L, brow_weight=1.0):
@@ -87,14 +147,21 @@ def paint(body, weights, L, brow_weight=1.0):
     eye_y = min((p.y for p in eye_pts), default=centre.y - 0.08)
     layer = body.data.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="POINT")
     tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    lips_m = _lip_mask(body)
+    lash_uv = _lash_coords(body, L)
     for v, row in zip(body.data.vertices, weights):
+        if v.index in lash_uv:
+            t, along, upper = lash_uv[v.index]
+            layer.data[v.index].color = (t, along, upper, 1.0)
+            continue
         head = sum(w for b, _, w in row if b == "head")
         co = v.co
         scalp = _scalp(co, centre, eye_z) * head
         brow = max((_brow(co, p, eye_y, brow_weight) for p in eye_pts), default=0.0) * head
         lash = max((_lash(co, p, eye_y) for p in eye_pts), default=0.0) * head
-        lash = max(lash, _mouth_inside(v, mouth, L.get("lip_front"), tree) * head)
-        lips = _lips(co, mouth) * head if mouth is not None else 0.0
+        inside = _mouth_inside(v, mouth, L.get("lip_front"), tree) * head
+        lips = max(min(1.0, lips_m[v.index] * 1.15), inside) * head
+        lash = lash * (1.0 - inside) + inside
         layer.data[v.index].color = (scalp, brow, lips, lash)
     body.data.color_attributes.active_color = layer
 

@@ -171,7 +171,8 @@ def eyes(rig, L, name):
     bm = bmesh.new()
     for side, fallback in (("l", 1), ("r", -1)):
         c = L["eyes"].get(side) or (L["head_centre"] + Vector((0.032 * fallback, -0.085, L["eye_z"] - L["head_centre"].z)))
-        geom = bmesh.ops.create_uvsphere(bm, u_segments=24, v_segments=16, radius=0.0115)
+        # Fitted to MPFB's eye helper (closeup spec §4.1): the old 11.5 mm spheres sat small and sunken in the socket.
+        geom = bmesh.ops.create_uvsphere(bm, u_segments=32, v_segments=24, radius=L.get("eye_radius", 0.0115))
         bmesh.ops.translate(bm, verts=geom["verts"], vec=c)
     me = bpy.data.meshes.new(f"{name}_eyes")
     bm.to_mesh(me)

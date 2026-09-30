@@ -113,3 +113,44 @@ def to_shape_keys(body):
 def max_delta(body, morph):
     a = body.data.attributes.get(PREFIX + morph)
     return max((e.vector.length for e in a.data), default=0.0) if a is not None else 0.0
+
+
+def blink_check(body, L):
+    """With both blinks at 1, rays at each eye from in front (a grid across the opening) must meet the closed lid's skin
+    before the eyeball; with them at 0, rays at the pupil must reach the eyeball. The lashes don't count as cover."""
+    from mathutils.bvhtree import BVHTree
+    keys = body.data.shape_keys.key_blocks
+
+    def skin_tree():
+        deps = bpy.context.evaluated_depsgraph_get()
+        ev = body.evaluated_get(deps)
+        me = ev.to_mesh()
+        verts = [v.co.copy() for v in me.vertices]
+        polys = [list(p.vertices) for p in me.polygons if p.material_index == 0]
+        ev.to_mesh_clear()
+        return BVHTree.FromPolygons(verts, polys)
+
+    r = L.get("eye_radius", 0.012)
+
+    def front_of_ball(c, dx, dz):
+        return c.y - (max(r * r - dx * dx - dz * dz, 0.0)) ** 0.5
+
+    def lid_first(tree, c, dx, dz):
+        o = Vector((c.x + dx, c.y - 0.06, c.z + dz))
+        hit, _, _, _ = tree.ray_cast(o, Vector((0, 1, 0)), 0.1)
+        return hit is not None and hit.y < front_of_ball(c, dx, dz) - 0.0002
+
+    eyes = [c for c in L["eyes"].values() if c is not None]
+    for k in ("blinkL", "blinkR"):
+        keys[k].value = 1.0
+    closed = skin_tree()
+    grid = [(dx * r, dz * r) for dx in (-0.55, -0.3, 0, 0.3, 0.55) for dz in (-0.35, 0, 0.35)]
+    missed = [(round(dx / r, 2), round(dz / r, 2)) for c in eyes for dx, dz in grid if not lid_first(closed, c, dx, dz)]
+    if missed:
+        print(f"blink check: eye radius {r * 1000:.1f} mm; rays not covered (in radii): {missed}")
+    covers = not missed
+    for k in ("blinkL", "blinkR"):
+        keys[k].value = 0.0
+    opened = skin_tree()
+    open_ = all(not lid_first(opened, c, dx, dz) for c in eyes for dx, dz in ((0, 0), (0.15 * r, 0), (-0.15 * r, 0)))
+    return {"blinkCovers": covers, "eyesOpen": open_}

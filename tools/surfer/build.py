@@ -38,7 +38,7 @@ sculpt.smooth_anatomy(body, preset["heightM"], preset.get("smooth", []))
 rig_trim.trim(rig, body)
 rig_trim.decimate(body, preset["bodyTriangles"])
 rig_trim.limit_weights(body)
-rig_trim.single_material(body, "body")
+rig_trim.materials(body, ["body", "lashes"])
 coords = bodymap.bone_coords(body, rig)
 L = bodymap.landmarks(body, rig, preset["heightM"], landmarks, coords)
 weights = bodymap.bone_weights(body, rig)
@@ -47,6 +47,7 @@ print(f"morph deltas (mm): " + ", ".join(f"{m} {1000 * expressions.max_delta(bod
 expressions.to_shape_keys(body)
 head_tris = rig_trim.head_triangles(body)
 wardrobe.paint_masks(body, weights, preset["heightM"])
+face.shape_lashes(body, L, preset.get("lashes", {}))
 face.paint(body, weights, L, preset.get("browWeight", 1.0))
 spots = skin.pimples(body, coords, L, preset["pimpleSeed"]) if "pimpleSeed" in preset else []
 hair_obj = hair.build(body, rig, preset["hair"], L, coords, name)
@@ -58,7 +59,7 @@ parts = [body, hair_obj, eye_obj]
 if preset.get("glasses"):
     parts.append(glasses.build(rig, body, L, name))
 if preset.get("teeth"):
-    tooth = teeth.build(rig, L, name)
+    tooth = teeth.build(rig, L, name, "buck" if preset["teeth"] in (True, "buck") else "even")
     rig_trim.single_material(tooth, "teeth")
     parts.append(tooth)
 if preset["boardies"]:
@@ -66,8 +67,10 @@ if preset["boardies"]:
     rig_trim.single_material(shorts, "boardies")
     parts.append(shorts)
 
+checks = expressions.blink_check(body, L)
+print(f"checks: {checks}")
 export.glb(rig, parts, os.path.join(out_dir, f"{name}.glb"))
-export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version(), L, spots, head_tris)
+export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version(), L, spots, head_tris, checks)
 previews.clay(body)
 previews.sheet(name, preset["heightM"], preview_dir, "clay")
 for outfit in preset["outfits"]:
