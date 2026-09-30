@@ -15,6 +15,7 @@ import math
 import bpy
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
+from mathutils.kdtree import KDTree
 
 
 def _ramp(x, edge, width):
@@ -49,8 +50,19 @@ def _brow(co, eye, eye_y, weight):
     return min(_ramp(co.z, mid - half, 0.003), _ramp(-co.z, -(mid + half), 0.003)) * ends
 
 
+def _liner(roots):
+    """The lash line (closeup spec §4.2): skin within ~2 mm of the upper lashes' roots, darkest at them. `roots`: a
+    KD tree of the upper lash strips' root vertices (the lashes grow from the lid's rim)."""
+    def at(co):
+        if roots is None:
+            return 0.0
+        _, _, d = roots.find(co)
+        return max(0.0, 1.0 - d / 0.0022) if d is not None else 0.0
+    return at
+
+
 def _lash(co, eye, eye_y):
-    """The upper lid's rim: a thin arc along the top of the eye opening."""
+    """The upper lid's rim: a thin arc along the top of the eye opening (the old builds, before the lashes)."""
     if co.y > eye_y - 0.004:
         return 0.0
     dx, dz = (co.x - eye.x) / 0.016, (co.z - eye.z) / 0.009
@@ -149,6 +161,14 @@ def paint(body, weights, L, brow_weight=1.0):
     tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
     lips_m = _lip_mask(body)
     lash_uv = _lash_coords(body, L)
+    root_pts = [body.data.vertices[i].co.copy() for i, (t, _, upper) in lash_uv.items() if upper > 0.5 and t < 0.12]
+    roots = None
+    if root_pts:
+        roots = KDTree(len(root_pts))
+        for i, p in enumerate(root_pts):
+            roots.insert(p, i)
+        roots.balance()
+    liner = _liner(roots)
     for v, row in zip(body.data.vertices, weights):
         if v.index in lash_uv:
             t, along, upper = lash_uv[v.index]
@@ -158,7 +178,7 @@ def paint(body, weights, L, brow_weight=1.0):
         co = v.co
         scalp = _scalp(co, centre, eye_z) * head
         brow = max((_brow(co, p, eye_y, brow_weight) for p in eye_pts), default=0.0) * head
-        lash = max((_lash(co, p, eye_y) for p in eye_pts), default=0.0) * head
+        lash = (liner(co) if roots is not None else max((_lash(co, p, eye_y) for p in eye_pts), default=0.0)) * head
         inside = _mouth_inside(v, mouth, L.get("lip_front"), tree) * head
         lips = max(min(1.0, lips_m[v.index] * 1.15), inside) * head
         lash = lash * (1.0 - inside) + inside

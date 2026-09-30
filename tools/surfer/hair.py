@@ -48,13 +48,14 @@ def _short(root, n, centre, crown, rng):
 
 
 def _to_tie(root, n, centre, tie):
-    r_min, pts = (root - centre).length + 0.004, [root + n * 0.002]
+    # Wet and slicked: within 1.5–3 mm of the scalp (farther stood the cards off it in a ledge at the hairline).
+    r_min, pts = (root - centre).length + 0.0015, [root + n * 0.001]
     for _ in range(12):
         to = tie - pts[-1]
         if to.length < 0.012:
             break
         d = (to.normalized() * 0.8 + n * 0.2).normalized()
-        pts.append(_hug(pts[-1] + d * min(0.03, to.length), centre, r_min, r_min + 0.006))
+        pts.append(_hug(pts[-1] + d * min(0.03, to.length), centre, r_min, r_min + 0.0035))
     if len(pts) < 3:
         pts.append(tie.copy())
     return pts

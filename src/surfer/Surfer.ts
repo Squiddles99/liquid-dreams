@@ -39,6 +39,10 @@ export class Surfer {
   private readonly morphs: { mesh: THREE.Mesh; slots: [channel: number, morph: number][] }[] = [];
   /** This rider's idle face (closeup spec §5.1), seeded per rider. */
   readonly idle: IdleLife;
+  /** 1 pores on, 0 off (the pores self-test compares). */
+  readonly pores = uniform(1);
+  /** The face's landmarks from the build (glTF axes, metres, rest pose; all three riders since step 2). */
+  readonly landmarks: SurferManifest['landmarks'];
 
   static async load(preset: SurferPreset, sky: Sky, sunVisibility?: (xz: N) => N): Promise<Surfer> {
     const base = import.meta.env.BASE_URL;
@@ -54,6 +58,7 @@ export class Surfer {
   }
 
   private constructor(scene: THREE.Object3D, manifest: SurferManifest, readonly preset: SurferPreset, sky: Sky, sv?: (xz: N) => N) {
+    this.landmarks = manifest.landmarks;
     this.idle = new IdleLife({ female: 101, male: 202, grommet: 303 }[preset.name], MOODS[preset.name]);
     this.group.add(scene);
     this.group.updateMatrixWorld(true);
@@ -69,10 +74,10 @@ export class Surfer {
     // first pose: the wet curls' pull would drag the hair toward the feet.
     this.headCentre.value.copy(this.rest.joint.head).add(new THREE.Vector3(0, 0.09, 0.01));
     const materials: Record<string, () => THREE.Material> = {
-      body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones: skinZones(manifest), wet: this.wet }),
+      body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones: skinZones(manifest), wet: this.wet, pores: this.pores }),
       hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
       hairDry: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
-      eyes: () => eyesMaterial(sky, preset, sv),
+      eyes: () => eyesMaterial(sky, preset, sv, { zones: skinZones(manifest), gaze: this.gaze }),
       boardies: () => fabricMaterial(sky, preset.boardies, sv),
       glasses: () => plasticMaterial(sky, [0.012, 0.012, 0.014], sv), // black plastic
       lens: () => lensMaterial(sky, sv),
