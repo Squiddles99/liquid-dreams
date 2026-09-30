@@ -102,6 +102,10 @@ const henyeyGreenstein = (cosT: N, g: number | N): N => {
 
 /** The share of sunlight a thick cloud sends back out as diffuse light, per steradian-ish (tuned by eye, spec §4.2). */
 export const DIFFUSE_SCATTER = 0.25;
+/** The average density (of the maximum) through a deck's column above a sample. */
+const COLUMN_DENSITY = 0.35;
+/** A thin stratocumulus deck's optical depth above its base (~500 m): the skylight the ambient term already gives. */
+const THIN_DECK_TAU = 17;
 /** Two-stream diffusion through a cloud of asymmetry g = 0.85: transmission ≈ 1 / (1 + 0.75 (1 − g) τ). */
 const DIFFUSION_K = 0.75 * (1 - 0.85);
 
@@ -265,7 +269,14 @@ function marchLayer(
       const tau = kind === 'low' ? sunDepthNode(u, field, xz, h) : ext.mul(300.0);
       const hFrac = h.sub(base).div(top.sub(base));
       const sunLight = light.sunAt(h).mul(multiScatterNode(tau, cosT));
-      const inScatter = sunLight.add(light.ambientAt(hFrac));
+      // Under a deck, the light reaching a sample has come down through the cloud above it (two-stream transmission,
+      // 1/(1 + 0.75(1 − g)τ)), relative to a thin stratocumulus deck's (τ ≈ THIN_DECK_TAU, which the ambient term was
+      // tuned for): the same for a thin deck, half under a nimbostratus, a tenth under a storm's tower. Isolated cumulus
+      // still get the sky from the side, so it counts as the low cloud covers the sky.
+      const tauUp = kind === 'low' ? u.sigmaLow.mul(COLUMN_DENSITY).mul(top.sub(h)) : float(0.0);
+      const thick = min(float(1.0), float(1 + DIFFUSION_K * THIN_DECK_TAU).div(tauUp.mul(DIFFUSION_K).add(1.0)));
+      const column = mix(float(1.0), thick, smoothstep(0.5, 1.0, u.lowCover));
+      const inScatter = sunLight.add(light.ambientAt(hFrac)).mul(column);
       L.addAssign(inScatter.mul(T).mul(float(1.0).sub(stepT)));
       depthSum.addAssign(t.mul(T).mul(float(1.0).sub(stepT)));
       T.mulAssign(stepT);
