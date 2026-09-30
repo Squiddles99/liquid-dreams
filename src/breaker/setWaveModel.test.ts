@@ -78,7 +78,7 @@ describe('set-wave model', () => {
     expect(waveAt(0, 0, 100, f, wave(15, 0), ctxFor(15))).toEqual({ eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0, pile: 0 });
   });
   it('converts set events into active waves', () => {
-    const w = toActiveWave({ id: 1, slot: 0, indexInSet: 0, waveCount: 5, arrivalS: 42, heightM: 2.5, periodS: 14, fromDeg: 225, crestLengthM: 350, crestOffsetM: 10, longTail: true });
+    const w = toActiveWave({ id: 1, slot: 0, indexInSet: 0, waveCount: 5, arrivalS: 42, heightM: 2.5, periodS: 14, fromDeg: 225, crestLengthM: 350, crestOffsetM: 10, longTail: true, gapS: Infinity, throwDraw: 0 });
     expect(w.omega).toBeCloseTo((2 * Math.PI) / 14, 12);
     expect(w.travelX).toBeCloseTo(Math.SQRT1_2, 9);
     expect(w.travelZ).toBeCloseTo(-Math.SQRT1_2, 9);
