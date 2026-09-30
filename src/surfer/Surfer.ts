@@ -57,7 +57,7 @@ export class Surfer {
       hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
       eyes: () => eyesMaterial(sky, preset, sv),
       boardies: () => fabricMaterial(sky, preset.boardies, sv),
-      glasses: () => fabricMaterial(sky, [0.08, 0.04, 0.02], sv),
+      glasses: () => fabricMaterial(sky, [0.012, 0.012, 0.014], sv), // black plastic
       lens: () => lensMaterial(sky, sv),
       teeth: () => teethMaterial(sky, sv),
     };
