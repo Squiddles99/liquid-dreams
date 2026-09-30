@@ -147,7 +147,8 @@ export function developedU(
   const last = arc.length - 1;
   return arc.map((a, j) => {
     const fromFront = uFront - a, fromBack = uBack + (total - a);
-    const dev = fromBack + (fromFront - fromBack) * (1 - smoothstepCpu(DEVELOP_BLEND[0], DEVELOP_BLEND[1], j));
+    const wFront = 1 - smoothstepCpu(DEVELOP_BLEND[0], DEVELOP_BLEND[1], j);
+    const dev = fromFront * wFront + fromBack * (1 - wFront); // exactly each edge's own at its end
     if (!blend) return dev;
     const home = blend.homes[j];
     return j === 0 || j === last ? home : home * (1 - blend.weight) + dev * blend.weight;
@@ -716,7 +717,7 @@ export class BreakingRibbon {
         prev.assign(q);
         const fromFront = uFront.sub(arc), fromBack = uBack.add(total.sub(arc));
         const wFront = float(1.0).sub(smoothstep(DEVELOP_BLEND[0], DEVELOP_BLEND[1], float(j)));
-        const developed = fromBack.add(fromFront.sub(fromBack).mul(wFront));
+        const developed = fromFront.mul(wFront).add(fromBack.mul(float(1.0).sub(wFront)));
         const k = i.mul(V).add(j).add(1).toVar();
         const left = details.element(k).toVar(); // (home xz, home u, constructed) from the vertex pass
         // Blended toward the home by the frame's weight (the sheet's own coordinate where the profile is the sheet's);

@@ -3,9 +3,9 @@ import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, breakingRatio } from './breaking';
+import { DEFAULT_BREAK_PARAMS, LIP_REACH_RANGE, breakingRatio } from './breaking';
 import {
-  GRAVITY_MS2, type LipParams, barrelMetrics, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings,
+  GRAVITY_MS2, type LipParams, barrelMetrics, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings, foldDepth,
   landingTime, profileFrame, sampleHome, sampleSegment, settleSpan,
 } from './lipProfile';
 import { ANCHORS } from './breakIntensity';
@@ -70,12 +70,15 @@ describe('lipProfile', () => {
     expect(homes.at(-1)).toBeCloseTo(f.uBack, 9);
   });
 
-  it('the biggest default wave at the peak lands its lip 0.6–1.5 s after onset, ahead of the face', () => {
+  it('the biggest default wave at the peak lands its lip 0.6–1.5 s after onset, on the face (a normal day: not top to bottom)', () => {
     const { base, input } = stationAt(0, 0, big, 0);
     const f = profileFrame(base, input, LIP);
     expect(f.tauLand).toBeGreaterThan(0.6);
     expect(f.tauLand).toBeLessThan(1.5);
-    expect(f.K[0] + f.vj * f.tauLand).toBeGreaterThanOrEqual(f.F[0] + 0.3 - 1e-9);
+    expect(f.onFace).toBe(true);
+    // The tube's foot is where it hits: part way down the face, and the tip lands over it.
+    expect(f.F[1]).toBeLessThan(f.K[1]);
+    expect(Math.abs(f.K[0] + f.vj * f.tauLand - f.F[0])).toBeLessThanOrEqual(0.5);
     console.log(`peak: H ${input.H.toFixed(2)} τ_land ${f.tauLand.toFixed(3)} s, vj ${f.vj.toFixed(2)} m/s (c ${input.c.toFixed(2)}), reach ${(f.vj * f.tauLand).toFixed(2)} m, foot ${f.uFoot.toFixed(2)} m, drop ${(f.K[1] - f.F[1]).toFixed(2)} m`);
   });
 
@@ -97,7 +100,7 @@ describe('lipProfile', () => {
       if (breakingRatio(h * f.amp, f.hmin, DEFAULT_BREAK_PARAMS) >= 1) cases.push({ x, z, h, p: LIP });
     }
     expect(cases.length).toBeGreaterThanOrEqual(10);
-    for (const p of [{ ...LIP, throwStrength: 0.1 }, { ...LIP, throwStrength: 1 }, { ...LIP, lipThickness: 0.03 }, { ...LIP, lipThickness: 0.3 }, { ...LIP, faceWidth: 0.1 }, { ...LIP, faceWidth: 3 }]) {
+    for (const p of [{ ...LIP, lipReach: LIP_REACH_RANGE[0] }, { ...LIP, lipReach: 1 }, { ...LIP, lipThickness: 0.03 }, { ...LIP, lipThickness: 0.3 }, { ...LIP, faceWidth: 0.1 }, { ...LIP, faceWidth: 3 }]) {
       cases.push({ x: 0, z: 0, h: REF_BIGGEST.heightM, p });
     }
     let worst = 0;
@@ -107,7 +110,9 @@ describe('lipProfile', () => {
       const tau = profileFrame(probe.base, probe.input, c.p).tauLand;
       for (const frac of [0, 0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 0.95, 0.999]) {
         const { base, input } = stationAt(c.x, c.z, w, frac * tau, c.p.faceWidth);
-        const n = crossings(buildProfile(base, input, c.p).points);
+        const pts = buildProfile(base, input, c.p).points;
+        // At contact the round tip meets a sloping face by a few cm (barrelAnchors.test).
+        const n = frac < 0.99 ? crossings(pts) : foldDepth(pts) > 0.05 ? 1 : 0;
         worst = Math.max(worst, n);
         if (n) console.log(`crossing at (${c.x},${c.z}) h ${c.h.toFixed(2)} frac ${frac} ${JSON.stringify(c.p)}`);
       }

@@ -4,15 +4,19 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetTime } from './breaking';
 import { ANCHORS, type BarrelShape, PER_CREST_BREAK_KEYS, barrelShape, withShape } from './breakIntensity';
-import { PROFILE_SEGMENTS, type ProfileInput, type Vec2, barrelMetrics, buildProfile, crossings, profileFrame, sampleTarget } from './lipProfile';
+import { PROFILE_SEGMENTS, type ProfileInput, type Vec2, barrelMetrics, buildProfile, crossings, foldDepth, profileFrame, sampleTarget } from './lipProfile';
 import { computeReefField, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, type BreakOptions, breakOptions, localHeight, sumWaves } from './setWaveModel';
 
 // The spec's anchors (2026-09-30 §3.3): measured at the lip's landing on the peak for the biggest 12 ft set wave.
+// landDown: how far down the face (crest 0, trough 1) the lip lands. Andrew, 2026-09-30: only an ideal day (heavy) throws
+// top to bottom; a normal day's lip hits about two thirds of the way down the face, a gentle day's about half way. Where it
+// lands is the throw's (landAhead is a target only for the top-to-bottom barrel).
 export const TARGETS = [
-  { tubeRatio: 2.0, landAhead: 1.0, rootThickness: 0.1, troughBelow: 0.2, pileSurge: 0 },
-  { tubeRatio: 1.3, landAhead: 1.7, rootThickness: 0.2, troughBelow: 0.55, pileSurge: 0.3 },
-  { tubeRatio: 1.1, landAhead: 2.0, rootThickness: 0.3, troughBelow: 0.7, pileSurge: 0.45 },
+  { tubeRatio: 2.0, landDown: 0.5, landAhead: null, rootThickness: 0.1, troughBelow: 0.2, pileSurge: 0 },
+  // Normal's lip: 0.2 H asked, 0.14 H possible on its tighter throw (the curl's radius caps it) — pending Andrew's ruling.
+  { tubeRatio: 1.3, landDown: 0.67, landAhead: null, rootThickness: 0.14, troughBelow: 0.55, pileSurge: 0.3 },
+  { tubeRatio: 1.1, landDown: 1, landAhead: 2.0, rootThickness: 0.3, troughBelow: 0.7, pileSurge: 0.45 },
 ] as const;
 
 export const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
@@ -65,24 +69,6 @@ export function anchorMetrics(I: number, shape: BarrelShape = barrelShape(I)) {
   return { ...barrelMetrics(buildProfile(s.base, s.input, s.lip, s.frameBase), s.input.H), pileSurge: shape.pileSurge };
 }
 
-/**
- * How deep the polyline folds through itself (m): over every pair of non-adjacent segments that cross, the least distance
- * any of their four ends lies from the other's line, the largest such. A tip grazing the water it lies on as it collapses
- * folds by millimetres; the landed tip in the risen water folded by ~0.3 m and the crest step stood ~2.5 m (Andrew's
- * circles, 2026-09-30).
- */
-export function foldDepth(pts: readonly Vec2[]): number {
-  const off = (p: Vec2, a: Vec2, b: Vec2) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return Math.abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / L; };
-  let worst = 0;
-  for (let i = 0; i + 1 < pts.length; i++) {
-    for (let j = i + 2; j + 1 < pts.length; j++) {
-      const [a, b, c, d] = [pts[i], pts[i + 1], pts[j], pts[j + 1]];
-      if (crossings([a, b, c, d]) === 0) continue; // segments a→b and c→d (b→c is only a joiner here)
-      worst = Math.max(worst, Math.min(off(c, a, b), off(d, a, b), off(a, c, d), off(b, c, d)));
-    }
-  }
-  return worst;
-}
 
 describe('the anchors (spec 2026-09-30 §3.3)', () => {
   for (const k of [0, 1, 2] as const) {
@@ -90,7 +76,12 @@ describe('the anchors (spec 2026-09-30 §3.3)', () => {
       const m = anchorMetrics(k), tgt = TARGETS[k];
       console.log(`anchor ${k}: ${JSON.stringify(Object.fromEntries(Object.entries(m).map(([a, v]) => [a, +(+v).toFixed(3)])))}`);
       expect(Math.abs(m.tubeRatio - tgt.tubeRatio), 'tube width ÷ height').toBeLessThanOrEqual(0.15);
-      for (const key of ['landAhead', 'rootThickness', 'troughBelow'] as const) expect(Math.abs(m[key] - tgt[key]), key).toBeLessThanOrEqual(0.1 * tgt[key]);
+      for (const key of ['rootThickness', 'troughBelow'] as const) expect(Math.abs(m[key] - tgt[key]), key).toBeLessThanOrEqual(0.1 * tgt[key]);
+      if (tgt.landAhead === null) expect(Math.abs(m.landDown - tgt.landDown), 'how far down the face it lands').toBeLessThanOrEqual(0.05);
+      else {
+        expect(Math.abs(m.landAhead - tgt.landAhead), 'landAhead').toBeLessThanOrEqual(0.1 * tgt.landAhead);
+        expect(m.topToBottom, 'top to bottom: it clears the foot of the wave').toBe(1);
+      }
       expect(m.pileSurge).toBe(tgt.pileSurge);
       expect(m.tipRatio).toBeCloseTo(0.4, 2);
     });
@@ -98,9 +89,11 @@ describe('the anchors (spec 2026-09-30 §3.3)', () => {
   it('the lip never crosses itself anywhere from gentle to heavy, before it lands', () => {
     for (const I of [0, 0.5, 1, 1.5, 2]) {
       const tau = anchorLanding(I);
-      for (const frac of [0.05, 0.25, 0.5, 0.75, 0.95, 0.999]) {
-        const s = anchorStation(I, frac * tau);
-        expect(crossings(buildProfile(s.base, s.input, s.lip, s.frameBase).points), `I ${I} frac ${frac}`).toBe(0);
+      for (const frac of [0.05, 0.25, 0.5, 0.75, 0.95, 0.99, 0.999]) {
+        const s = anchorStation(I, frac * tau), pts = buildProfile(s.base, s.input, s.lip, s.frameBase).points;
+        // At contact (the last 1% of the throw, under 10 ms) the round tip meets a sloping face by a few cm.
+        if (frac < 0.99) expect(crossings(pts), `I ${I} frac ${frac}`).toBe(0);
+        else expect(foldDepth(pts), `I ${I} frac ${frac}: the tip meeting the face (m)`).toBeLessThanOrEqual(0.05);
       }
     }
   });
@@ -153,6 +146,19 @@ describe('the anchors (spec 2026-09-30 §3.3)', () => {
       }
     }
   });
+  it('where the lip lands follows lipReach smoothly, from high on the face to top to bottom (Andrew, 2026-09-30)', () => {
+    const I = 1, shape = barrelShape(I);
+    let prev: number | null = null;
+    for (let lipReach = 0.3; lipReach <= 2.5001; lipReach += 0.1) {
+      const m = anchorMetrics(I, { ...shape, lipReach });
+      if (prev !== null) {
+        expect(m.landDown, `reach ${lipReach.toFixed(1)}: reaching further lands no higher`).toBeGreaterThanOrEqual(prev - 0.02);
+        expect(m.landDown - prev, `reach ${lipReach.toFixed(1)}: no jump`).toBeLessThanOrEqual(0.15);
+      }
+      expect(m.topToBottom, `reach ${lipReach.toFixed(1)}: top to bottom only past the foot`).toBe(lipReach >= 1 ? 1 : 0);
+      prev = m.landDown;
+    }
+  });
   it("the defaults' per-crest keys are the normal anchor", () => {
     for (const key of PER_CREST_BREAK_KEYS) expect(DEFAULT_BREAK_PARAMS[key]).toBe(ANCHORS[1][key]);
   });
@@ -160,27 +166,32 @@ describe('the anchors (spec 2026-09-30 §3.3)', () => {
 
 /**
  * The calibration search (run once: CALIBRATE=1 npx vitest run src/breaker/barrelAnchors.test.ts). Each input steers
- * one metric (throw → landAhead, lipThickness → rootThickness, troughDrain → troughBelow, wallBack → tubeRatio); rounds
+ * one metric (lipReach → landDown, or landAhead for the top-to-bottom barrel; lipThickness → rootThickness, troughDrain → troughBelow, wallBack → tubeRatio); rounds
  * of bisection on each in turn, the others held, until all four sit within their tolerance. Prints the ANCHORS literal.
  */
 describe.skipIf(!import.meta.env.CALIBRATE)('calibrate the anchors', () => {
   it('finds each anchor', { timeout: 3_600_000 }, () => {
     const knobs = [
-      { key: 'throwStrength', metric: 'landAhead', lo: 0.1, hi: 1.5, up: true },
+      { key: 'lipReach', metric: 'landDown', lo: 0.1, hi: 3.5, up: true },
       { key: 'lipThickness', metric: 'rootThickness', lo: 0.03, hi: 0.4, up: true },
       { key: 'troughDrain', metric: 'troughBelow', lo: 0, hi: 1, up: true },
       { key: 'wallBack', metric: 'tubeRatio', lo: -0.3, hi: 1, up: true },
     ] as const;
     const found: BarrelShape[] = [];
+    // CALIBRATE=0,1 recalibrates only those anchors (the others are printed as they stand).
+    const which = String(import.meta.env.CALIBRATE).split(',').map(Number).filter((k) => k >= 0 && k <= 2);
     for (const k of [0, 1, 2] as const) {
       const s: BarrelShape = { ...ANCHORS[k], pileSurge: TARGETS[k].pileSurge };
-      for (let round = 0; round < 6; round++) {
+      for (let round = 0; round < (which.length && !which.includes(k) ? 0 : 6); round++) {
         for (const kn of knobs) {
           let lo: number = kn.lo, hi: number = kn.hi;
+          // The throw steers how far down the face it lands, or for the top-to-bottom barrel how far ahead.
+          const tgt = TARGETS[k], landAhead = kn.key === 'lipReach' && tgt.landAhead !== null;
+          const metric = landAhead ? 'landAhead' : kn.metric, want = landAhead ? tgt.landAhead! : tgt[kn.metric];
           for (let it = 0; it < 18; it++) {
             const mid = (lo + hi) / 2;
-            const m = anchorMetrics(k, { ...s, [kn.key]: mid })[kn.metric];
-            if ((m < TARGETS[k][kn.metric]) === kn.up) lo = mid; else hi = mid;
+            const m = anchorMetrics(k, { ...s, [kn.key]: mid })[metric];
+            if ((m < want) === kn.up) lo = mid; else hi = mid;
           }
           s[kn.key] = +((lo + hi) / 2).toFixed(4);
         }

@@ -26,8 +26,9 @@ export interface BreakParams {
    * it breaks); the wave settles to its bore from ρ = 1 + collapseStart·Δ to 1 + COLLAPSE_END·Δ. */
   drainEnd: number;
   collapseStart: number;
-  /** The lip leaves the crest at throwStrength × crest speed (relative to the wave), floored so it lands clear of the face. */
-  throwStrength: number;
+  /** Where the lip lands (lipProfile.profileFrame): below 1, that far down the face (crest 0, the wave's foot 1); above,
+   * (lipReach − 1)·H beyond the foot, in the trough (top to bottom). The throw's speed follows. */
+  lipReach: number;
   /** The lip's thickness at its root (× H). */
   lipThickness: number;
   /** The curl collapses over collapseTime × τ_land after the lip lands. */
@@ -40,7 +41,7 @@ export interface BreakParams {
   /** How far the pile surges above the lip right after the landing, on the heaviest breaks (× the lip; 0 on a shoulder). */
   pileSurge: number;
   /** The tube's back wall stands this many H behind the crest at full throw (negative: ahead). Per crest: set from its
-   * intensity (breakIntensity.withShape), as are throwStrength, lipThickness, troughDrain and pileSurge. */
+   * intensity (breakIntensity.withShape), as are lipReach, lipThickness, troughDrain and pileSurge. */
   wallBack: number;
   /** An overall offset on every crest's break intensity (the Break panel). */
   intensityNudge: number;
@@ -52,24 +53,28 @@ export interface BreakParams {
   churnSpeed: number;
 }
 
+/** lipReach's range: from a lip hitting 40% of the way down the face (below that it barely leaves the crest, a spilling
+ * wave rather than a barrel, and the tube folds) to one landing 2.5 H beyond the wave's foot. */
+export const LIP_REACH_RANGE: readonly [number, number] = [0.4, 3.5];
+
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
   enabled: true,
   gamma: 0.78,
   delta: 1.0,
   hFloorM: 0.3,
   stageSpan: 0.7,
-  troughDrain: 0.638,
+  troughDrain: 0.6544,
   beta: 0.4,
   faceWidth: 0.5,
   drainEnd: 0.4,
   collapseStart: 0.5,
-  throwStrength: 1.0696,
+  lipReach: 0.7078,
   lipThickness: 0.2,
   collapseTime: 1.8,
   ribbonOnset: 0.7,
   pileHalfM: 50,
   pileSurge: 0.3,
-  wallBack: 0.0282,
+  wallBack: 0.5511,
   intensityNudge: 0,
   randomDial: 0,
   churnSize: 0.2,
@@ -119,7 +124,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.faceWidth = clampTo(p.faceWidth, 0.1, 3, d.faceWidth);
   p.drainEnd = clampTo(p.drainEnd, 0.01, 1, d.drainEnd);
   p.collapseStart = clampTo(p.collapseStart, 0, 0.95, d.collapseStart);
-  p.throwStrength = clampTo(p.throwStrength, 0.1, 1.5, d.throwStrength);
+  p.lipReach = clampTo(p.lipReach, LIP_REACH_RANGE[0], LIP_REACH_RANGE[1], d.lipReach);
   p.lipThickness = clampTo(p.lipThickness, 0.03, 0.3, d.lipThickness);
   p.collapseTime = clampTo(p.collapseTime, 0.3, 3, d.collapseTime);
   p.ribbonOnset = clampTo(p.ribbonOnset, 0.3, 0.9, d.ribbonOnset);

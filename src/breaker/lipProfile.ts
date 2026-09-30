@@ -48,6 +48,8 @@ export const MAX_THICKNESS_OF_RADIUS = 0.8;
 export const WALL_HEIGHT = 0.45;
 /** The landing time is refined this many times, each reading the water where the previous estimate lands the lip. */
 export const LANDING_REFINE = 3;
+/** …and then this many times for where the bottom of the tilted tip is (profileFrame). */
+export const TIP_LAND_REFINE = 3;
 /** After the collapse ends the ribbon fades out (hands back to the sheet) over this long (s). */
 export const HAND_BACK_S = 0.5;
 /** The foam from the lip's landing rises over this fraction of the collapse. */
@@ -57,7 +59,7 @@ export const LANDING_FOAM_RISE = 0.3;
 export const BACK_OFF_DROP_H: readonly [number, number] = [0.3, 0.6];
 
 /** The BreakParams the profile reads (breaking.ts documents each). */
-export type LipParams = Pick<BreakParams, 'throwStrength' | 'lipThickness' | 'wallBack' | 'collapseTime' | 'ribbonOnset' | 'faceWidth' | 'troughDrain' | 'delta'>;
+export type LipParams = Pick<BreakParams, 'lipReach' | 'lipThickness' | 'wallBack' | 'collapseTime' | 'ribbonOnset' | 'faceWidth' | 'troughDrain' | 'delta'>;
 
 /** What the profile needs from its station. */
 export interface ProfileInput {
@@ -97,8 +99,12 @@ export interface ProfileFrame {
   rho: number;
   W: Vec2;
   R: Vec2;
-  /** Where the lip lands, as the base's undisplaced u (the landing refinement's last sample). */
+  /** Where the lip lands, as the base's undisplaced u (the landing refinement's last sample; the foot where it hits the face). */
   uLand: number;
+  /** The height the tip's underside lands at (m): the face where it hits it, else the higher of the foot and the water. */
+  landY: number;
+  /** Whether the lip hits the face (true) or clears the wave's foot and lands in the trough, top to bottom. */
+  onFace: boolean;
   /** The whitewater pile's lift under the curl (pileLift): absent, none (the frame's own sheet is the profile's). */
   lift?: PileLift;
 }
@@ -184,24 +190,36 @@ export function ribbonWeight(r: number, tb: number | null, settleFrom: number, s
  */
 export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: LipParams): ProfileFrame {
   const { H, c, r, tb } = input;
-  const uFoot = FOOT_WIDTHS * p.faceWidth * H;
-  const K = base(0), F = base(uFoot), Fb = base(uFoot - 0.1);
-  const tF = norm2([Fb[0] - F[0], Fb[1] - F[1]]);
-  const tau0 = landingTime(K[1] - F[1]);
-  const vj0 = Math.max(p.throwStrength * c, (F[0] - K[0] + LAND_CLEARANCE_M) / tau0);
-  const landing0 = base(uFoot + (K[0] + vj0 * tau0 - F[0]));
+  // The wave's own foot: where the sheet's front sharpening has sunk to the trough.
+  const uFootWave = FOOT_WIDTHS * p.faceWidth * H;
+  const K = base(0), F0 = base(uFootWave);
   const tipBelow = TIP_THICKNESS_RATIO * p.lipThickness * H;
-  let tauLand = landingTime(K[1] - Math.max(F[1], landing0[1]) - tipBelow);
-  let vj = Math.max(p.throwStrength * c, (F[0] - K[0] + LAND_CLEARANCE_M) / tauLand);
-  // The water is read where the lip then lands. base(u) is displaced from u (by metres over a drained trough, where the
-  // water is drawn back), so each step moves u by the miss in x; the first estimate read the water ~1.5 m behind the
-  // landing, 0.3 m lower, and the tip's underside went into the water just before it landed.
-  let uLand = uFoot + (K[0] + vj0 * tau0 - F[0]), land = landing0;
-  for (let i = 0; i < LANDING_REFINE; i++) {
-    uLand += K[0] + vj * tauLand - land[0];
-    land = base(uLand);
-    tauLand = landingTime(K[1] - Math.max(F[1], land[1]) - tipBelow);
-    vj = Math.max(p.throwStrength * c, (F[0] - K[0] + LAND_CLEARANCE_M) / tauLand);
+  // Where the lip lands (p.lipReach): on the face that far down it (crest 0, the wave's foot 1), the tube's foot moving up
+  // to where it hits; beyond 1, (lipReach − 1)·H past the foot, in the trough, top to bottom. Andrew, 2026-09-30: only an
+  // ideal day throws top to bottom; usually the lip hits half to two thirds of the way down the face. The throw's speed
+  // follows from where it lands. (Thrown at a set speed, the lip either grazed the top of the face or sailed past its
+  // steep middle to the flat below: the face under a real lip draws up as it throws, and the sheet here stands still.)
+  const onFace = p.lipReach < 1;
+  const uFoot = onFace ? faceAt(base, K[1] - p.lipReach * (K[1] - F0[1]), uFootWave) : uFootWave;
+  const F = onFace ? base(uFoot) : F0, Fb = base(uFoot - 0.1);
+  const tF = norm2([Fb[0] - F[0], Fb[1] - F[1]]);
+  const xLand = onFace ? F[0] : F0[0] + (p.lipReach - 1) * H;
+  // The water is read where the lip lands. base(u) is displaced from u (by metres over a drained trough, where the water
+  // is drawn back), so each step moves u by the miss in x.
+  let uLand = uFoot + (xLand - F[0]), land = onFace ? F : base(uLand);
+  for (let i = 0; !onFace && i < LANDING_REFINE; i++) { uLand += xLand - land[0]; land = base(uLand); }
+  const landY = Math.max(F[1], land[1]);
+  // It lands when the bottom of its round tip (the cap: diameter the tip's thickness, centred half of it inside the arc's
+  // normal) reaches landY; on the face, right over the landing point. The tilted tip's bottom sits back and up from the
+  // arc (a steep lip's thickness lies mostly across, not down): taking the thickness as straight down stood the landed tip
+  // 0.2–0.3 m over the water, and on the face the cap's back grazed the rising face before it landed.
+  let tauLand = Math.max(landingTime(K[1] - landY - tipBelow), 1e-3);
+  let vj = Math.max(xLand - K[0], 0.05) / tauLand;
+  for (let i = 0; i < TIP_LAND_REFINE; i++) {
+    const eTip = TIP_THICKNESS_RATIO * Math.min(p.lipThickness * H, (MAX_THICKNESS_OF_RADIUS * vj * vj) / GRAVITY_MS2);
+    const n = norm2([(GRAVITY_MS2 * tauLand) / vj, 1]);
+    tauLand = Math.max(landingTime(K[1] - landY - 0.5 * eTip * (1 + n[1])), 1e-3);
+    vj = Math.max((onFace ? xLand + 0.5 * eTip * n[0] : xLand) - K[0], 0.05) / tauLand;
   }
   const t = tb === null ? 0 : Math.min(Math.max(tb, 0), tauLand);
   const prog = t / tauLand;
@@ -210,7 +228,7 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: 
   // starts before the ribbon fades in (SHEET_SHARPENING_LEAD), and there the sheet draws it itself.
   const steep = tb === null
     ? steepening(r, p) * smoothstep(p.ribbonOnset, p.ribbonOnset + RIBBON_FULL_OFFSET, r)
-    : smoothstep(BACK_OFF_DROP_H[0] * H, BACK_OFF_DROP_H[1] * H, K[1] - F[1]);
+    : smoothstep(BACK_OFF_DROP_H[0] * H, BACK_OFF_DROP_H[1] * H, K[1] - F0[1]);
   const span = settleSpan(H, p);
   // The curl collapses as the sheet under it does (breaking.lifecycle, from landingEstimate), but never before its own
   // lip has landed.
@@ -222,11 +240,22 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, p: 
   const R: Vec2 = [K[0], K[1] - eRoot];
   const W: Vec2 = [K[0] - p.wallBack * H * prog, F[1] + WALL_HEIGHT * (R[1] - F[1])];
   // Beyond where the lip will land (fixed over the throw, so the front edge doesn't move).
-  const uFront = Math.max(uFoot, K[0] + vj * tauLand) + LAND_CLEARANCE_M + EDGE_MARGIN_M;
+  // (Past the wave's own foot too: the front carries the face below a lip that hits it, down to the trough.)
+  const uFront = Math.max(uFootWave, K[0] + vj * tauLand) + LAND_CLEARANCE_M + EDGE_MARGIN_M;
   return {
     K, F, tF, uFoot, uFront, uBack: -(BACK_EDGE_H * H + EDGE_MARGIN_M), tauLand, vj, prog, reach, eRoot,
-    weight: steep * (1 - collapse), collapse, landing, rho: ribbonWeight(r, tb, settleFrom, span, p), W, R, uLand,
+    weight: steep * (1 - collapse), collapse, landing, rho: ribbonWeight(r, tb, settleFrom, span, p), W, R, uLand, landY, onFace,
   };
+}
+
+/** The face's point at a height is found by this many bisections of its u between the crest and the wave's foot. */
+export const FACE_AT_BISECT = 12;
+
+/** The u on the face (crest 0 to the wave's foot) where the sheet stands at height y (the face falls monotonically). */
+export function faceAt(base: (u: number) => Vec2, y: number, uFootWave: number): number {
+  let lo = 0, hi = uFootWave;
+  for (let k = 0; k < FACE_AT_BISECT; k++) { const mid = (lo + hi) / 2; if (base(mid)[1] > y) lo = mid; else hi = mid; }
+  return (lo + hi) / 2;
 }
 
 /** Which segment sample j is in, and its position s ∈ [0, 1) within it (s = j' / count; the back's last sample is 1). */
@@ -419,6 +448,10 @@ export interface BarrelMetrics {
   tipRatio: number;
   /** Where the lip lands, ahead of the crest (× H). */
   landAhead: number;
+  /** How far down the face it lands: 0 the crest, 1 the lowest water in front. */
+  landDown: number;
+  /** 1: it clears the wave's foot and lands in the trough, top to bottom; 0: it hits the face. */
+  topToBottom: number;
   /** The tube's width at half its height (the wall to the underside of the falling lip) ÷ its height (the foot to the
    * lip's underside at the root). NaN until the lip has fallen below half the tube's height. */
   tubeRatio: number;
@@ -454,6 +487,8 @@ export function barrelMetrics(p: Profile, H: number): BarrelMetrics {
     rootThickness: f.eRoot / H,
     tipRatio: f.eRoot > 0 ? lipThicknessAt(f, 1) / f.eRoot : 0,
     landAhead: (f.vj * f.tauLand) / H,
+    landDown: (f.K[1] - f.landY) / (f.K[1] - trough),
+    topToBottom: f.onFace ? 0 : 1,
     tubeRatio: width / (f.R[1] - f.F[1]),
     wallBack: (f.K[0] - wallX) / H,
     troughBelow: -trough / H,
@@ -484,4 +519,23 @@ export function crossings(pts: readonly Vec2[]): number {
     }
   }
   return n;
+}
+
+/**
+ * How deep the polyline folds through itself (m): over every pair of non-adjacent segments that cross, the least distance
+ * any of their four ends lies from the other's line, the largest such. A tip grazing the water it lies on as it collapses
+ * folds by millimetres; the landed tip in the risen water folded by ~0.3 m and the crest step stood ~2.5 m (Andrew's
+ * circles, 2026-09-30). Test helper.
+ */
+export function foldDepth(pts: readonly Vec2[]): number {
+  const off = (p: Vec2, a: Vec2, b: Vec2) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return Math.abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / L; };
+  let worst = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    for (let j = i + 2; j + 1 < pts.length; j++) {
+      const [a, b, c, d] = [pts[i], pts[i + 1], pts[j], pts[j + 1]];
+      if (crossings([a, b, c, d]) === 0) continue; // segments a→b and c→d (b→c is only a joiner here)
+      worst = Math.max(worst, Math.min(off(c, a, b), off(d, a, b), off(a, c, d), off(b, c, d)));
+    }
+  }
+  return worst;
 }
