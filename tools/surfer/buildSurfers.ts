@@ -42,7 +42,7 @@ if (process.argv.includes('--probe')) {
   run(blender, join(tools, 'probe_api.py'), [join(tools, 'api-probe.txt')]);
 } else {
   const onlyAt = process.argv.indexOf('--only');
-  const names = onlyAt > 0 ? [process.argv[onlyAt + 1]] : ['female', 'male'];
+  const names = onlyAt > 0 ? [process.argv[onlyAt + 1]] : ['female', 'male', 'grommet'];
   mkdirSync(resolve('public/surfer'), { recursive: true });
   mkdirSync(join(tools, 'previews'), { recursive: true });
   for (const name of names) run(blender, join(tools, 'build.py'), [join(tools, 'presets', `${name}.json`), resolve('public/surfer'), join(tools, 'previews')]);

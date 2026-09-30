@@ -50,17 +50,29 @@ def clay(obj):
             bsdf.inputs["Base Color"].default_value = (0.6, 0.6, 0.6, 1)
 
 
-def sheet(name, height, out_dir, label, close=False):
-    """8 views around the body; close=True frames the hips (for judging a cut) and names the file <label>-close."""
+FRAMES = {
+    # (distance, target height and camera height, as fractions of the height; the file's suffix)
+    "body": (2.9, 0.52, 0.55, ""),
+    "hips": (0.75, 0.52, 0.52, "-close"),
+}
+
+
+def sheet(name, height, out_dir, label, close=False, frame=None):
+    """8 views around the body. frame="hips" (or close=True) frames the hips for judging a cut, <label>-close;
+    frame="face" frames the head for the gate's close-ups, <label>-face."""
     scene, cam = _setup()
-    dist, target = (height * 0.75, Vector((0, 0, height * 0.52))) if close else (height * 2.9, Vector((0, 0, height * 0.52)))
-    if close:
-        label = f"{label}-close"
+    frame = frame or ("hips" if close else "body")
+    if frame == "face":
+        dist, target, cam_z, suffix = 0.55, Vector((0, 0, height * 0.93)), height * 0.93, "-face"
+    else:
+        d, t, z, suffix = FRAMES[frame]
+        dist, target, cam_z = height * d, Vector((0, 0, height * t)), height * z
+    label = f"{label}{suffix}"
     grid = np.zeros((VIEW_H * 2, VIEW_W * 4, 4), dtype=np.float32)
     tmp = os.path.join(out_dir, "_view.png")
     for i in range(8):
         a = math.radians(45 * i)
-        cam.location = Vector((dist * math.sin(a), -dist * math.cos(a), height * (0.52 if close else 0.55)))
+        cam.location = Vector((dist * math.sin(a), -dist * math.cos(a), cam_z))
         cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
         scene.render.filepath = tmp
         bpy.ops.render.render(write_still=True)
@@ -149,7 +161,18 @@ def dress(parts, preset, outfit):
         mat.node_tree.nodes[f"w_{key}"].outputs[0].default_value = float(OUTFITS[outfit][key])
     for p in parts[1:]:
         if p.name.endswith("_boardies"):
-            p.hide_render = outfit != "boardies"
+            p.hide_render = outfit not in ("boardies", "rashieAndBoardies")
             p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["boardies"], 1)
         elif p.name.endswith("_hair"):
             p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["hair"], 1)
+        elif p.name.endswith("_glasses"):
+            for slot in p.material_slots:
+                bsdf = slot.material.node_tree.nodes["Principled BSDF"]
+                if slot.material.name == "lens":
+                    bsdf.inputs["Alpha"].default_value = 0.15
+                    if hasattr(slot.material, "surface_render_method"):
+                        slot.material.surface_render_method = "BLENDED"
+                else:
+                    bsdf.inputs["Base Color"].default_value = (*preset["preview"]["glasses"], 1)
+        elif p.name.endswith("_teeth"):
+            p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["teeth"], 1)
