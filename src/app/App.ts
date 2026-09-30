@@ -35,7 +35,7 @@ import { DEFAULT_DEBUG_OVERLAYS, type DebugOverlays, OceanSurface } from '../oce
 import { DEFAULT_SPECTRUM_PARAMS, type OceanSpectrumParams, spectrumInputsKey } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS, type WaterOpticsParams } from '../ocean/waterOptics';
 import { nextUnderwater } from '../ocean/underwaterOptics';
-import { LensWater } from '../render/lensWater';
+import { LensWater, rainLensStep } from '../render/lensWater';
 import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
@@ -48,7 +48,7 @@ import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmo
 import { Sky } from '../sky/Sky';
 import { Clouds } from '../weather/Clouds';
 import { CloudMeter } from '../weather/cloudMeter';
-import { RainStreaks } from '../weather/RainStreaks';
+import { RAIN_FALL_MS, RainStreaks } from '../weather/RainStreaks';
 import { travelDirectionXZ } from '../conditions/directions';
 import { combineSunlight } from '../weather/CloudShadow';
 import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesBetween, wavesNear } from '../swell/sets';
@@ -228,6 +228,9 @@ export class App {
   /** After a moment jump, the first crossing is the jump itself, not the camera breaking the surface: no water on the lens. */
   private lensQuiet = false;
   private lensClockS = 0;
+  /** The rain's wetness on the lens (weather W2: rainLensStep). */
+  private rainLensWet = 0;
+  private readonly rainFall = new THREE.Vector3();
   /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
   readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
@@ -1170,6 +1173,11 @@ export class App {
     this.picture.setCloud(this.cloudMeter.stops, this.cloudMeter.sunVisible, this.cloudMeter.gains);
     const windTo = travelDirectionXZ(this.conditions.wind.directionDeg), windMs = this.conditions.wind.speedMs;
     this.rainStreaks.update(this.clock.simTime, windTo.x * windMs, windTo.z * windMs, this.cloudMeter.rainHere, this.underwater);
+    // Rain on the lens: more when looking up or into the slanting rain (the fall's reverse direction).
+    const fall = this.rainFall.set(windTo.x * windMs, -RAIN_FALL_MS, windTo.z * windMs).normalize();
+    const facing = Math.min(1, Math.max(0, 0.3 - 0.7 * this.camera.getWorldDirection(this.viewDir).dot(fall)));
+    this.rainLensWet = this.underwater ? 0 : rainLensStep(this.rainLensWet, this.cloudMeter.rainHere, facing, realDt);
+    this.lensWater.rain(this.rainLensWet);
     this.land.update(this.renderer, sun.direction, this.camera.position);
     this.updateBeach();
     this.sky.followCamera(this.camera.position);
