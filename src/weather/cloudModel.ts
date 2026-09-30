@@ -1,3 +1,4 @@
+import { travelDirectionXZ } from '../conditions/directions';
 import type { WeatherConditions } from './weather';
 
 /**
@@ -16,6 +17,11 @@ export const LOW_THICKNESS_KNOTS: ReadonlyArray<readonly [convection: number, th
 
 /** How much the detail noise eats into the cloud's edges (Nubis-style erosion). */
 export const DETAIL_EROSION = 0.3;
+/**
+ * The density's gain after erosion: a cumulus is opaque through its body (σ ~ 0.05–0.1 /m) and soft only in a thin
+ * fringe. Without it the body stayed a thin haze and a backlit cloud glowed instead of going dark with bright rims.
+ */
+export const DENSITY_GAIN = 4;
 
 const saturate = (x: number): number => Math.min(1, Math.max(0, x));
 const smoothstep = (e0: number, e1: number, x: number): number => {
@@ -55,38 +61,58 @@ export function heightProfile(hFrac: number, convection: number): number {
  * everywhere (overcast), whatever the noise.
  */
 export function coverageDensity(n: number, cover: number): number {
-  return saturate((n - 1 + 1.25 * cover) / 0.25);
+  return saturate((n - 1 + 1.5 * cover) / 0.5);
 }
 
+/** A cell this weak only fills this fraction of the layer: cells rise from low edges to a tall core (domes). */
+export const WEAK_CELL_HEIGHT = 0.3;
+
 /**
- * The cloud's density (0..1) from its height profile, the weather map's noise, the 3D shape noise and the detail
- * noise (all 0..1): the shape is cut back where coverage is thin (so cells shrink toward their edges), then eroded
- * by the detail at its fringes.
+ * The cloud's density (0..1) at hFrac through the layer, from the weather map's noise, the 3D shape noise and the
+ * detail noise (all 0..1): a weak cell only fills the lower part of the layer (domes, not slabs), the shape is cut
+ * back where coverage is thin (so cells shrink toward their edges), then eroded by the detail at its fringes.
  */
-export function cloudDensity(profile: number, coverageNoise: number, shapeNoise: number, detailNoise: number, cover: number): number {
+export function cloudDensity(hFrac: number, convection: number, coverageNoise: number, shapeNoise: number, detailNoise: number, cover: number): number {
   const wc = coverageDensity(coverageNoise, cover);
   if (wc <= 0) return 0;
+  const profile = heightProfile(hFrac / (WEAK_CELL_HEIGHT + (1 - WEAK_CELL_HEIGHT) * wc), convection);
   const shaped = saturate((shapeNoise * profile - (1 - wc)) / wc) * wc;
   const e = detailNoise * DETAIL_EROSION;
-  return saturate((shaped - e) / (1 - e));
-}
-
-/** Distance along a ray from radius r0 (vertical component dirY) to a sphere of radius rho around it (inside it). */
-function exitDistance(r0: number, dirY: number, rho: number): number {
-  // (rho − r0)(rho + r0) instead of rho² − r0²: in float32 (the GPU mirror) the squares lose the metres.
-  const disc = (r0 * dirY) ** 2 + (rho - r0) * (rho + r0);
-  return -r0 * dirY + Math.sqrt(Math.max(disc, 0));
+  return saturate((DENSITY_GAIN * (shaped - e)) / (1 - e));
 }
 
 /**
- * The ray's path [enter, exit] (m) through the shell between baseM and topM over a curved earth, from a camera at
- * camHeightM looking along a direction whose vertical component is dirY. Null when the ray meets the ground first,
- * or the camera is above the shell.
+ * Height (m) above the sea of a point t metres along a ray from a camera camHeightM up, rising dirY per metre, over a
+ * curved earth: the camera's height, the climb, and the earth's drop away beneath the ray, t²(1 − dirY²)/2R. The
+ * exact sphere needs (R + h)² ~ 4e13, which float32 (the GPU mirror) rounds to kilometres; this form keeps metres
+ * (within a metre of the exact sphere at cloud heights, out to 150 km).
+ */
+export function heightAlong(camHeightM: number, dirY: number, t: number, earthRadiusM: number): number {
+  return camHeightM + dirY * t + (t * t * (1 - dirY * dirY)) / (2 * earthRadiusM);
+}
+
+/** The distance at which heightAlong reaches heightM (above the camera), in the form without cancellation. */
+function reachDistance(camHeightM: number, dirY: number, heightM: number, earthRadiusM: number): number {
+  const k = (1 - dirY * dirY) / (2 * earthRadiusM);
+  const rise = heightM - camHeightM;
+  return (2 * rise) / (dirY + Math.sqrt(Math.max(dirY * dirY + 4 * k * rise, 0)));
+}
+
+/**
+ * The ray's path [enter, exit] (m) through the shell between baseM and topM (heightAlong's curved earth), from a
+ * camera camHeightM up looking along a direction whose vertical component is dirY. Null when the ray meets the sea
+ * first, or the camera is above the shell.
  */
 export function shellInterval(camHeightM: number, dirY: number, baseM: number, topM: number, earthRadiusM: number): [number, number] | null {
-  const r0 = earthRadiusM + camHeightM;
   if (camHeightM >= topM) return null;
-  if (dirY < 0 && (r0 * dirY) ** 2 - camHeightM * (2 * earthRadiusM + camHeightM) >= 0) return null;
-  const enter = camHeightM < baseM ? exitDistance(r0, dirY, earthRadiusM + baseM) : 0;
-  return [enter, exitDistance(r0, dirY, earthRadiusM + topM)];
+  const k = (1 - dirY * dirY) / (2 * earthRadiusM);
+  if (dirY < 0 && dirY * dirY >= 4 * k * camHeightM) return null;
+  const enter = camHeightM < baseM ? reachDistance(camHeightM, dirY, baseM, earthRadiusM) : 0;
+  return [enter, reachDistance(camHeightM, dirY, topM, earthRadiusM)];
+}
+
+/** How far (m, world xz) the clouds have drifted after simTimeS: downwind, at the wind aloft's speed. */
+export function cloudDrift(w: Readonly<WeatherConditions>, simTimeS: number): { x: number; z: number } {
+  const d = travelDirectionXZ(w.windAloftDeg);
+  return { x: d.x * w.windAloftMs * simTimeS, z: d.z * w.windAloftMs * simTimeS };
 }

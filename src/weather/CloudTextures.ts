@@ -73,10 +73,11 @@ export class CloudTextures {
       // A plane through the 3D noise, off its lattice planes (where gradient noise is 0).
       const q = vec3(vec2(xy).add(0.5).div(WEATHER_SIZE), 0.37);
       const s = this.seed;
-      // R, where cloud may grow: cumulus cells ~2.7 km apart (Worley) broken up by fBm, stretched toward uniform so
-      // lowCover reads roughly as the fraction of sky covered.
+      // R, where cloud may grow: cumulus cells ~2.7 km apart (Worley) broken up by fBm.
       const cells = worley(q, 48, s).mul(0.55).add(fbm(q, 16, 3, s, perlin).mul(0.45));
-      const coverage = smoothstep(0.2, 0.75, cells);
+      // Flattened toward uniform through an approximate normal CDF (measured: median 0.48, spread ~0.2 after the
+      // smoothstep), so a cover of c lets cloud grow over about c of the sky rather than its top few percent.
+      const coverage = smoothstep(-2.2, 2.2, smoothstep(0.1, 0.9, cells).sub(0.48).div(0.2));
       // G, the kind: a slow (16 km) swing between flatter and more towering cloud across the sky.
       const kind = perlin(q, 8, s.add(uint(11)));
       // B, the rain cells: the strongest few of ~5 km cells.
