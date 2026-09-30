@@ -71,6 +71,8 @@ registerSelfTest({
     const cases: [number[], number[]][] = [
       [[-25, 0, 45], [1, 0.02, 0]], [[-25, 0, 45], [1, 0.3, 0]], [[-25, 0, 45], [-1, 0.02, 0]],
       [[100, 0, 0], [1, 0.1, 0.1]], [[-25, 0, 45], [0.2, 0.01, -1]],
+      // Below the horizon (the widened edge), and between two bearings at the north and south tips (the blend).
+      [[-25, 0, 45], [0.999, -0.03, 0]], [[-25, 0, 45], [-0.165, 0.004, -0.986]], [[-25, 0, 45], [-0.026, 0.0, 1]],
     ];
     const n = cases.length;
     const pAttr = new THREE.StorageBufferAttribute(new Float32Array(cases.flatMap(([p]) => [...p, 0])), 4);
