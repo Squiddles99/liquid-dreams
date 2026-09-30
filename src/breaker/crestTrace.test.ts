@@ -9,7 +9,8 @@ import {
   MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, timeSinceOnset, traceStations,
 } from './crestTrace';
 import { computeReefField, sampleField } from './reefField';
-import { type ActiveWave, type WaveContext, fieldBreakingHeight, phaseXi } from './setWaveModel';
+import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi } from './setWaveModel';
+import { cloneConditions } from '../conditions/defaults';
 
 const P = DEFAULT_BREAK_PARAMS;
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
@@ -131,5 +132,24 @@ describe('crestTrace', () => {
     expect(far).toBeGreaterThan(8);
     expect(Number.isFinite(further)).toBe(true);
     expect(further).toBeGreaterThan(far);
+  });
+});
+
+describe('station intensity (condition-driven barrel)', () => {
+  const c12 = cloneConditions(DEFAULT_CONDITIONS); c12.swell.sizeFt = 12;
+  const big = wavesOfSet(1, c12, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+  const w = testWave(big.heightM);
+  const t = sampleField(field, 0, 0).tau + 0.5;
+  it("each station's intensity is the sheet's crest intensity there (the lip lands on water drained for its own shape)", () => {
+    const input = { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: 0, offshoreMs: 5 };
+    const o = breakOptions(field, DEFAULT_BREAK_PARAMS, 5);
+    const stations = traceStations(field, [w], t, ctx, input).filter((e): e is Station => !e.gap);
+    expect(stations.length).toBeGreaterThan(20);
+    let worst = 0;
+    for (const s of stations.filter((_, i) => i % 7 === 0)) {
+      const c = crestAt(s.x, s.z, t, sampleField(field, s.x, s.z), w, ctx, o);
+      if (c) worst = Math.max(worst, Math.abs(c.intensity - s.intensity));
+    }
+    expect(worst).toBeLessThan(0.05);
   });
 });
