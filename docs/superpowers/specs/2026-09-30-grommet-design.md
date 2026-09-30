@@ -25,7 +25,8 @@ This is step 1 of the front-door roadmap:
 **Andrew's brief:** about 13 and "really goofy":
 - buck teeth, pimples, freckles;
 - red hair, which he picked as **a wild curly mop**;
-- glasses on land but not in the water, which he picked as **big round frames**;
+- glasses on land but not in the water, which he picked as **thick black rectangular frames** (option A; first
+  written up here as the round frames by mistake, corrected 2026-10-01);
 - shorter than Shazza and T-Bone;
 - bodyboard only, one board.
 
@@ -75,8 +76,8 @@ gross-out, sitting in the same grounded style as the other two.
 ## 4. The glasses and the teeth (section 3)
 
 - **Glasses:** a new `tools/surfer/glasses.py`.
-  - Big round frames: lenses about 5 cm across, thick dark-brown plastic rims (Ruling: brown over black, softer
-    against the ginger and freckles), a keyhole bridge, and arms back over the ears.
+  - Thick black rectangular frames, heavy and nerdy, a strong line across the face: rounded-rectangle lenses about
+    5 × 3.6 cm, thick black plastic rims, a straight bridge, and arms back over the ears.
   - Fitted to his eye and ear landmarks from the build (`bodymap.landmarks`, with an `ears` landmark added), skinned
     entirely to `head`.
   - Lenses are a separate material: clear, with a sky reflection and a crisp specular highlight.
@@ -177,7 +178,7 @@ All three are drawn in the body shader (`surferShading.bodyMaterial`), pinned to
 
 ## 9. Rulings
 
-1. His glasses rims are dark brown, not black.
+1. (Withdrawn 2026-10-01: Andrew picked black rectangular frames; the brown rims were for the round frames.)
 2. Shazza's and T-Bone's hair only dries in its shading for now, not in shape.
 3. His bodyboard is about 38 × 20 × 2.5 in.
 4. The existing preset keys stay `female` and `male`; names are shown from the new `nickname` / `realName` fields.

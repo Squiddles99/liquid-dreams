@@ -9,7 +9,9 @@ Blender axes: +x the character's left, -y the front of the face, +z up.
 """
 import math
 
+import bpy
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 
 def _ramp(x, edge, width):
@@ -63,11 +65,20 @@ def _lips(co, mouth):
     return _ramp(-r, -1.0, 0.25)
 
 
-def _mouth_inside(co, mouth, lip_front):
-    """Behind the lips (3 mm or more behind the lip's front), within the mouth's width and height: the dark inside."""
+def _mouth_inside(v, mouth, lip_front, tree):
+    """The dark inside of the mouth, so parted lips never show skin behind them. A vertex 3 mm or more behind the lip's
+    front, within the mouth's width and height, is inside when its normal looks back into the face (a ray along it hits
+    the mouth's far wall, behind the lip, within 2 cm) or it's deep in the mouth (2 cm back, near the midline). The
+    outer skin around the mouth (cheeks, philtrum, chin) looks out into the air."""
+    co = v.co
     if mouth is None or lip_front is None or co.y < lip_front.y + 0.003:
         return 0.0
-    return 1.0 if abs(co.x - mouth.x) < 0.025 and abs(co.z - mouth.z) < 0.015 else 0.0
+    if abs(co.x - mouth.x) > 0.025 or abs(co.z - mouth.z) > 0.012:
+        return 0.0
+    if abs(co.x - mouth.x) < 0.015 and co.y > lip_front.y + 0.02:
+        return 1.0
+    hit, _, _, _ = tree.ray_cast(co + v.normal * 0.0005, v.normal, 0.02)
+    return 1.0 if hit is not None and abs(hit.z - mouth.z) < 0.012 and hit.y > lip_front.y + 0.001 else 0.0
 
 
 def paint(body, weights, L, brow_weight=1.0):
@@ -75,13 +86,14 @@ def paint(body, weights, L, brow_weight=1.0):
     eye_pts = [p for p in eyes.values() if p is not None]
     eye_y = min((p.y for p in eye_pts), default=centre.y - 0.08)
     layer = body.data.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="POINT")
+    tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
     for v, row in zip(body.data.vertices, weights):
         head = sum(w for b, _, w in row if b == "head")
         co = v.co
         scalp = _scalp(co, centre, eye_z) * head
         brow = max((_brow(co, p, eye_y, brow_weight) for p in eye_pts), default=0.0) * head
         lash = max((_lash(co, p, eye_y) for p in eye_pts), default=0.0) * head
-        lash = max(lash, _mouth_inside(co, mouth, L.get("lip_front")) * head)
+        lash = max(lash, _mouth_inside(v, mouth, L.get("lip_front"), tree) * head)
         lips = _lips(co, mouth) * head if mouth is not None else 0.0
         layer.data[v.index].color = (scalp, brow, lips, lash)
     body.data.color_attributes.active_color = layer

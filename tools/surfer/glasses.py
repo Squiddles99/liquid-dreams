@@ -1,5 +1,6 @@
-"""Grommet's big round glasses (grommet spec §4): thick round rims, a keyhole bridge, arms back over the ears, lenses;
-skinned to the head. Blender axes: +x the character's left, -y the front, +z up."""
+"""Grommet's glasses (grommet spec §4; Andrew's pick A): thick black rectangular frames, heavy and nerdy, a strong line
+across the face: rounded-rectangle rims, a straight bridge, arms back over the ears, lenses; skinned to the head.
+Blender axes: +x the character's left, -y the front, +z up."""
 import math
 
 import bmesh
@@ -7,9 +8,23 @@ import bpy
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
-LENS_R = 0.025   # 5 cm across
-RIM_R = 0.0028   # the rim's thickness
+LENS_W = 0.025   # half-width: 5 cm across
+LENS_H = 0.018   # half-height: 3.6 cm tall
+RIM_R = 0.0034   # the rim's thickness: heavy
 SIDES = 8
+N_RIM = 48
+
+
+def _rect(c, s=1.0):
+    """A rounded rectangle around c in the face's plane (a superellipse, exponent 5: flat sides, soft corners)."""
+    out = []
+    for k in range(N_RIM):
+        a = 2 * math.pi * k / N_RIM
+        ca, sa = math.cos(a), math.sin(a)
+        x = math.copysign(abs(ca) ** 0.4, ca) * LENS_W * s
+        z = math.copysign(abs(sa) ** 0.4, sa) * LENS_H * s
+        out.append(c + Vector((x, 0, z)))
+    return out
 
 
 def _tube(bm, pts, r, closed):
@@ -32,7 +47,7 @@ def _tube(bm, pts, r, closed):
 
 def build(rig, body, L, name):
     """The frames sit ~12 mm in front of the cornea, nudged forward in 2 mm steps (up to 4 cm from the eye's centre)
-    until no frame vertex is inside his head; big 5 cm lenses reach his brow."""
+    until no frame vertex is inside his head."""
     tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
     for step in range(9):
         fwd = 0.0235 + 0.002 * step
@@ -58,23 +73,22 @@ def _mesh(L, fwd, name):
     bm = bmesh.new()
     for s, sign in (("l", 1), ("r", -1)):
         c = centres[s]
-        rim = [c + Vector((math.cos(a) * LENS_R, 0, math.sin(a) * LENS_R)) for a in (2 * math.pi * k / 32 for k in range(32))]
-        _tube(bm, rim, RIM_R, True)
+        _tube(bm, _rect(c), RIM_R, True)
         # The lens: a fan, bulged 2 mm forward in the middle.
         mid = bm.verts.new(c + Vector((0, -0.002, 0)))
-        ring = [bm.verts.new(c + Vector((math.cos(a) * LENS_R * 0.97, 0, math.sin(a) * LENS_R * 0.97))) for a in (2 * math.pi * k / 32 for k in range(32))]
-        for k in range(32):
-            bm.faces.new((mid, ring[(k + 1) % 32], ring[k]))
-        # The arm: from the rim's outer edge, out past the temple, back to just above the ear, then down behind it.
-        start = c + Vector((sign * LENS_R, 0, 0.008))
+        ring = [bm.verts.new(p) for p in _rect(c, 0.96)]
+        for k in range(N_RIM):
+            bm.faces.new((mid, ring[(k + 1) % N_RIM], ring[k]))
+        # The arm: from the rim's top outer corner, out past the temple, back to just above the ear, then down behind it.
+        start = c + Vector((sign * LENS_W, 0, LENS_H * 0.55))
         ear = ears[s]
         temple = start.lerp(ear, 0.45) + Vector((sign * 0.006, 0, 0.004))
         top = ear + Vector((-sign * 0.004, 0.005, 0.012))
         behind = ear + Vector((-sign * 0.006, 0.022, -0.015))
         _tube(bm, [start, temple, start.lerp(top, 0.8), top, top.lerp(behind, 0.5), behind], RIM_R * 0.8, False)
-    # The keyhole bridge: an arc between the rims' inner edges, lifted 4 mm in the middle.
-    a, b = centres["r"] + Vector((LENS_R, 0, 0.012)), centres["l"] + Vector((-LENS_R, 0, 0.012))
-    _tube(bm, [a.lerp(b, s) + Vector((0, -0.002, 0.004 * math.sin(math.pi * s))) for s in (i / 8 for i in range(9))], RIM_R * 0.9, False)
+    # The bridge: a straight bar between the rims' inner edges, high on the nose.
+    a, b = centres["r"] + Vector((LENS_W, 0, LENS_H * 0.45)), centres["l"] + Vector((-LENS_W, 0, LENS_H * 0.45))
+    _tube(bm, [a.lerp(b, s) + Vector((0, -0.001, 0)) for s in (i / 6 for i in range(7))], RIM_R * 0.9, False)
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
