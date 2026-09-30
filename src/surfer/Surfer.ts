@@ -62,14 +62,16 @@ export class Surfer {
       mesh.frustumCulled = false;
       if (name === 'boardies') this.boardies = mesh;
     });
-    // Swim fins ride the feet: placed in the rest pose at the sole, then held in each foot bone's frame.
-    const finGeo = toGeometry(buildSwimFin());
+    // Swim fins ride the feet: placed in the rest pose at the sole, then held in each foot bone's frame. The pocket fits
+    // this body's foot: the toes reach ~1.58× the ankle-to-toe-joint distance ahead of the ankle (both built bodies).
+    const toeJoint = this.rest.joint.toe_l.clone().sub(this.rest.joint.foot_l);
+    const finGeo = toGeometry(buildSwimFin(1.58 * Math.hypot(toeJoint.x, toeJoint.z)));
     const finMat = fabricMaterial(sky, [0.03, 0.03, 0.035], sv);
     for (const s of ['l', 'r'] as const) {
       const foot = this.bones[`foot_${s}`];
       const ankle = this.rest.joint[`foot_${s}`];
       const fin = new THREE.Mesh(finGeo, finMat);
-      const world = new THREE.Matrix4().makeTranslation(ankle.x, 0.012, ankle.z);
+      const world = new THREE.Matrix4().makeTranslation(ankle.x, 0, ankle.z);
       fin.matrix.copy(foot.matrixWorld.clone().invert().multiply(world));
       fin.matrixAutoUpdate = false;
       fin.visible = false;

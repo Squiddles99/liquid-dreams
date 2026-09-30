@@ -13,6 +13,8 @@ export interface SurferParams {
   pose: PoseName;
   /** 0–1 through a cycle or the pop-up's beats. */
   phaseT: number;
+  /** Run the phase from the clock (the paddle stroke and kicks, the pop-up) instead of the slider. */
+  play: boolean;
   /** The four dials, as offsets around the pose's own values (spec §3.5). */
   compression: number;
   lean: number;
@@ -30,7 +32,7 @@ export interface SurferParams {
 
 /** In the lineup where Andrew waits (DEFAULT_LINEUP_POSITION), nose out to sea toward the south-west swell. */
 export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
-  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0,
+  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true,
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
   x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
 };
@@ -48,12 +50,26 @@ export const SURFER_PARAM_RANGES = {
   pitchNudgeDeg: { min: -45, max: 45 },
 } as const;
 
+/** One paddle stroke (both arms; two kicks a stroke on the bodyboard), and the pop-up played through before it holds. */
+export const PADDLE_CYCLE_S = 1.6;
+export const POPUP_S = 1.8;
+const POPUP_LOOP_S = 3.2;
+
+/** The pose's phase while playing: the paddle cycles, the pop-up plays, holds standing, and goes again; a still pose
+ * keeps the slider's phase. */
+export function playPhase(pose: PoseName, simTime: number, sliderT: number): number {
+  if (pose === 'paddle') return (((simTime / PADDLE_CYCLE_S) % 1) + 1) % 1;
+  if (pose === 'popup') return Math.min(1, ((((simTime % POPUP_LOOP_S) + POPUP_LOOP_S) % POPUP_LOOP_S) / POPUP_S));
+  return sliderT;
+}
+
 const oneOf = <T extends string>(v: unknown, options: readonly T[], fallback: T): T => (options.includes(v as T) ? (v as T) : fallback);
 
 export function normalizeSurferParams(p: SurferParams): void {
   const d = DEFAULT_SURFER_PARAMS;
   p.enabled = p.enabled === true;
   p.balance = p.balance !== false;
+  p.play = p.play !== false;
   p.preset = oneOf(p.preset, ['female', 'male'] as const, d.preset);
   p.stance = oneOf(p.stance, ['regular', 'goofy'] as const, d.stance);
   p.board = oneOf(p.board, ['thruster', 'stepUp', 'bodyboard'] as const, d.board);

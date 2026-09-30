@@ -102,18 +102,43 @@ const byLeg = (r: Rider, lead: FootTarget, trail: FootTarget): Record<Limb, Foot
 
 type Body = Omit<PoseTargets, 'hands' | 'look'>;
 
+/** The knee's pole, lifted so the knee comes out level with the hip-ankle midpoint (less `drop`) when the leg leans:
+ * the IK bends the knee along the pole's part square to the hip-ankle line, and for a leg leaning over the rail a level
+ * pole's square part points down, kneeling the rider on the deck (gate 2). */
+function levelPole(p: Vector3, hip: Vector3, ankle: Vector3, drop = 0, fallback?: Vector3): Vector3 {
+  const a = hip.clone().sub(ankle).normalize();
+  const level = (d: Vector3): Vector3 => {
+    const n = d.clone().normalize(), lift = (a.y * n.dot(a) - n.y) / Math.max(0.2, 1 - a.y * a.y);
+    return add(n, sc(Y(), lift - drop)).normalize();
+  };
+  const want = level(p);
+  if (!fallback) return want;
+  // When the wanted direction runs along the leg (a crouched back leg whose hip is well ahead of its ankle), it no
+  // longer says which way the knee goes: blend to the fallback (the toes).
+  const square = want.clone().sub(sc(a, want.dot(a))).length(), w = clamp01((square - 0.25) / 0.35);
+  return add(sc(level(fallback), 1 - w), sc(want, w)).normalize();
+}
+
 interface StandOpts {
   compression: number;
   /** -1 … 1: toward the heels … toward the toes. */
   lean: number;
   bend: number;
   twistToNose: number;
+  /** How far below level the back knee drops (the pig-dog's, toward the deck). */
+  backDrop?: number;
+  /** Lower than full compression (the pig-dog's bum nearly on the back heel), as a fraction of the leg's height. */
+  depth?: number;
   pelvisShift?: number;
   backSpot?: Vector3;
   backPole?: Vector3;
 }
 
-/** Both feet on their spots, knees toward the toes and the nose, hips opened 20° toward the nose. */
+/** Both feet on their spots, the front knee toward the toes and the nose, the back knee turned in toward the front foot
+ * (pointed at the toes, a crouch pushed it out over the rail and down to the deck), hips opened 20° toward the nose. The lean tilts the
+ * hips and chest fully but carries the pelvis only 45% of the way over the rail: flat-footed on a flat board the hips
+ * can't hang out over the water (gate 2: that knelt the back knee on the deck); the rest of a turn's lean is the board
+ * on its rail. */
 function standing(ctx: PoseContext, r: Rider, o: StandOpts): Body {
   const d = ctx.dials;
   const compression = clamp01(o.compression + d.compression);
@@ -122,14 +147,14 @@ function standing(ctx: PoseContext, r: Rider, o: StandOpts): Body {
   const up = add(sc(Y(), Math.cos(lean)), sc(r.f, Math.sin(lean))).normalize();
   const spread = Math.max(0, front.distanceTo(back) / 2 - r.m.hipHalf);
   const vert = Math.sqrt(Math.max(r.m.legLen ** 2 - spread ** 2, (0.5 * r.m.legLen) ** 2));
-  const h = r.m.ankleH + vert * (0.97 - 0.42 * compression) + r.m.hipDrop;
-  const pelvis = add(sc(front, 0.5), sc(back, 0.5), sc(X(), o.pelvisShift ?? 0), sc(up, h));
+  const h = r.m.ankleH + vert * (0.97 - 0.42 * compression - (o.depth ?? 0)) + r.m.hipDrop;
+  const pelvis = add(sc(front, 0.5), sc(back, 0.5), sc(X(), o.pelvisShift ?? 0), sc(Y(), h * Math.cos(lean)), sc(r.f, 0.45 * h * Math.sin(lean)));
   const forward = add(sc(r.f, Math.cos(0.35)), sc(X(), Math.sin(0.35))).normalize();
-  const knee = add(r.f, sc(X(), 0.35));
+  const knee = add(r.f, sc(X(), 0.35)), backKnee = add(sc(r.f, 0.6), sc(X(), 0.8));
   return {
     pelvis, pelvisUp: up, pelvisForward: forward,
     chest: { bend: o.bend, twist: r.twistSign * (o.twistToNose + d.twist * TWIST_DIAL), side: 0 },
-    feet: byLeg(r, footOnDeck(r, front, 30, knee), footOnDeck(r, back, 8, o.backPole ?? knee)),
+    feet: byLeg(r, footOnDeck(r, front, 30, knee), footOnDeck(r, back, 8, levelPole(o.backPole ?? backKnee, pelvis, add(back, sc(Y(), r.m.ankleH)), o.backDrop, o.backPole ? undefined : r.f))),
   };
 }
 
@@ -147,8 +172,8 @@ function drop(ctx: PoseContext, r: Rider): PoseTargets {
 function bottomTurn(ctx: PoseContext, r: Rider): PoseTargets {
   const k = reachK(ctx), toWave = r.side === 'frontside' ? 1 : -1;
   return {
-    ...standing(ctx, r, { compression: 0.85, lean: 0.55 * toWave, bend: 0.5, twistToNose: 0.5, pelvisShift: -0.03 }),
-    hands: byArm(r, chestHand(r.lead, 0.5 * k, 0.1, 0.35), chestHand(r.trail, 0.3 * k, -0.45, 0.1)),
+    ...standing(ctx, r, { compression: 0.75, lean: 0.7 * toWave, bend: 0.5, twistToNose: 0.5, pelvisShift: -0.03 }),
+    hands: byArm(r, chestHand(r.lead, 0.55 * k, 0.05, 0.3), chestHand(r.trail, 0.5 * k, -0.3, -0.1)),
     look: add(X(), sc(r.w, 0.6), sc(Y(), 0.2)),
   };
 }
@@ -156,8 +181,8 @@ function bottomTurn(ctx: PoseContext, r: Rider): PoseTargets {
 function trim(ctx: PoseContext, r: Rider): PoseTargets {
   const k = reachK(ctx);
   return {
-    ...standing(ctx, r, { compression: 0.3, lean: 0, bend: 0.2, twistToNose: 0.25 }),
-    hands: byArm(r, chestHand(r.lead, 0.35 * k, -0.3, 0.15), chestHand(r.trail, 0.3 * k, -0.35, 0.05)),
+    ...standing(ctx, r, { compression: 0.55, lean: 0, bend: 0.3, twistToNose: 0.25 }),
+    hands: byArm(r, chestHand(r.lead, 0.4 * k, 0, 0.4), chestHand(r.trail, 0.38 * k, -0.3, -0.15)),
     look: add(X(), sc(r.w, 0.15)),
   };
 }
@@ -167,17 +192,17 @@ function barrel(ctx: PoseContext, r: Rider): PoseTargets {
   const trailInFace = (up: number): HandTarget => boardHand(add(back, sc(r.w, 0.45), sc(Y(), up), sc(X(), -0.1)), add(sc(Y(), 0.4), sc(X(), -1)));
   if (r.side === 'frontside') {
     return {
-      ...standing(ctx, r, { compression: 0.9, lean: 0.25, bend: 0.55, twistToNose: 0.3 }),
-      hands: byArm(r, chestHand(r.lead, 0.35 * k, -0.05, 0.35), trailInFace(0.35)),
+      ...standing(ctx, r, { compression: 0.95, lean: 0.25, bend: 0.6, twistToNose: 0.3 }),
+      hands: byArm(r, chestHand(r.lead, 0.42 * k, -0.05, 0.4), trailInFace(0.35)),
       look: add(X(), sc(Y(), 0.05)),
     };
   }
   // The pig-dog: the back knee dropped toward the nose, the leading hand on the outside rail.
-  const front = spot(ctx, 'front'), gx = front.x + 0.12, outside = r.f.z * (halfWidthAtX(ctx, gx) - 0.02);
+  const front = spot(ctx, 'front'), gx = front.x + 0.28, outside = r.f.z * (halfWidthAtX(ctx, gx) - 0.02);
   return {
-    ...standing(ctx, r, { compression: 1, lean: -0.2, bend: 0.7, twistToNose: -0.1, backPole: add(X(), sc(Y(), -0.35), sc(r.f, 0.2)) }),
-    hands: byArm(r, boardHand(V(gx, deckAt(ctx, gx, outside) + 0.01, outside), add(Y(), sc(r.f, 0.5))), trailInFace(0.45)),
-    look: add(X(), sc(Y(), 0.1), sc(r.w, 0.1)),
+    ...standing(ctx, r, { compression: 1, depth: 0.1, lean: 0, bend: 0.85, twistToNose: -0.1, backPole: add(X(), sc(r.f, 0.25)), backDrop: 0.5 }),
+    hands: byArm(r, boardHand(V(gx, deckAt(ctx, gx, outside) + 0.01, outside), add(Y(), sc(r.f, 0.5))), trailInFace(0.75)),
+    look: add(X(), sc(Y(), 0.3), sc(r.w, 0.1)),
   };
 }
 
@@ -224,19 +249,36 @@ function sit(ctx: PoseContext): PoseTargets {
   };
 }
 
-/** Lying along the board, head to the nose: the character's +Y is +x, its front faces down, its left is the left rail. */
-function proneBody(ctx: PoseContext, r: Rider, chestX: number, bend: number, legsDown: number): Body {
+/** Lying along the board, head to the nose: the character's +Y is +x, its front faces down, its left is the left rail.
+ * `finsUp` (0…1, per leg) bends the knee and lifts the shin behind, up to 80° (a bodyboarder riding: fins in the air). */
+function proneBody(ctx: PoseContext, r: Rider, chestX: number, bend: number, legsDown: number, finsUp: Record<Limb, number> = { l: 0, r: 0 }): Body {
   const pelvisX = chestX - r.m.torso;
   const pelvis = V(pelvisX, deckAt(ctx, pelvisX) + 0.1, 0);
   const legDir = V(-1, -legsDown, 0).normalize();
   // In the water (a bodyboarder's legs) the knees can bend; lying along a surfboard they stay near straight, or they
   // would sag through the deck.
   const reach = legsDown > 0.2 ? 0.96 : 0.995;
-  const foot = (k: number): FootTarget => {
-    const ankle = add(pelvis, sc(X(), -r.m.hipDrop), sc(legDir, reach * r.m.legLen), V(0, 0, k * r.m.hipHalf));
-    return { ankle, toe: add(ankle, V(-r.m.footLenH, -0.03, 0)), pole: V(0, -1, 0), instep: V(0, -1, 0) };
+  const foot = (k: number, up: number): FootTarget => {
+    const hip = add(pelvis, sc(X(), -r.m.hipDrop), V(0, 0, k * r.m.hipHalf));
+    if (up <= 0) {
+      const ankle = add(hip, sc(legDir, reach * r.m.legLen));
+      return { ankle, toe: add(ankle, V(-r.m.footLenH, -0.03, 0)), pole: V(0, -1, 0), instep: V(0, -1, 0) };
+    }
+    // The thigh trails level off the hips; the shin lifts behind it, the foot pointed on along the shin.
+    const a = up * 80 * DEG, shin = V(-Math.cos(a), Math.sin(a), 0), knee = add(hip, sc(X(), -r.m.thighLen * 0.995));
+    const ankle = add(knee, sc(shin, r.m.shinLen * 0.995));
+    return { ankle, toe: add(ankle, sc(shin, r.m.footLenH)), pole: V(0, -1, 0), instep: V(-Math.sin(a), -Math.cos(a), 0) };
   };
-  return { pelvis, pelvisUp: X(), pelvisForward: V(0, -1, 0), chest: { bend, twist: 0, side: 0 }, feet: { l: foot(-1), r: foot(1) } };
+  return { pelvis, pelvisUp: X(), pelvisForward: V(0, -1, 0), chest: { bend, twist: 0, side: 0 }, feet: { l: foot(-1, finsUp.l), r: foot(1, finsUp.r) } };
+}
+
+/** One leg's flutter kick at phase `phi` (radians): k = -1 the left leg, +1 the right. */
+function kickFoot(r: Rider, pelvis: Vector3, k: number, phi: number): FootTarget {
+  const hip = add(pelvis, sc(X(), -r.m.hipDrop), V(0, 0, k * r.m.hipHalf));
+  const thigh = 0.3 + 0.18 * Math.sin(phi), bend = 0.2 + 0.25 * (0.5 + 0.5 * Math.cos(phi)), shin = thigh - bend;
+  const knee = add(hip, sc(V(-Math.cos(thigh), -Math.sin(thigh), 0), r.m.thighLen * 0.995));
+  const along = V(-Math.cos(shin), -Math.sin(shin), 0), ankle = add(knee, sc(along, r.m.shinLen * 0.995));
+  return { ankle, toe: add(ankle, sc(along, r.m.footLenH)), pole: V(0, -1, 0), instep: V(Math.sin(shin), -Math.cos(shin), 0) };
 }
 
 function paddle(ctx: PoseContext, r: Rider): PoseTargets {
@@ -248,13 +290,10 @@ function paddle(ctx: PoseContext, r: Rider): PoseTargets {
     const x = chestX + 0.15 + 0.38 * Math.cos(phi);
     return boardHand(V(x, deckAt(ctx, x) + 0.06 - 0.3 * Math.sin(phi), k * (halfWidthAtX(ctx, x) + 0.08)), V(0, 1, 0.8 * k));
   };
-  if (bb) {
-    for (const [a, ph] of [['l', 0], ['r', Math.PI]] as const) {
-      const dy = 0.12 * Math.sin(4 * Math.PI * ctx.phaseT + ph);
-      b.feet[a].ankle.y += dy;
-      b.feet[a].toe.y += dy;
-    }
-  }
+  // The bodyboarder's flutter kick (gate 2, Andrew: "needs to kick his fins to move"), two a stroke, legs alternating:
+  // each thigh swings from the hip, the knee bends on the way up and straightens through the down-kick, the foot pointed
+  // so the fin carries on from the shin.
+  if (bb) for (const [a, k, ph] of [['l', -1, 0], ['r', 1, Math.PI]] as const) b.feet[a] = kickFoot(r, b.pelvis, k, 4 * Math.PI * ctx.phaseT + ph);
   return { ...b, hands: { l: arm('l'), r: arm('r') }, look: add(X(), sc(Y(), 0.15)) };
 }
 
@@ -320,14 +359,15 @@ function popup(ctx: PoseContext, r: Rider): PoseTargets {
 /** Bodyboard, prone: the inside (wave-side, left) hand on the rail, the other on the nose's corner. */
 function prone(ctx: PoseContext, r: Rider, pit: boolean): PoseTargets {
   const L = ctx.spec.lengthM, chestX = ctx.layout.spots.chest[0];
-  const b = proneBody(ctx, r, chestX, pit ? -0.15 : -0.35, 0.3);
+  const b = proneBody(ctx, r, chestX, pit ? -0.4 : -0.45, 0.3, pit ? { l: 0, r: 0.6 } : { l: 0.7, r: 0.8 });
   if (pit) b.pelvisForward = add(V(0, -1, 0), sc(r.w, 0.35)).normalize();
   const rx = chestX + (pit ? 0.1 : 0.2), nx = L / 2 - 0.04;
   return {
     ...b,
     hands: {
-      l: boardHand(V(rx, deckAt(ctx, rx) + 0.02, -(halfWidthAtX(ctx, rx) - 0.02)), V(0, 1, -1)),
-      r: boardHand(V(nx, deckAt(ctx, nx) + 0.02, halfWidthAtX(ctx, nx) - 0.06), V(0, 1, 1)),
+      // Elbows out to the side and down toward the rails (gate 2: pointed up, the elbow pinched and the forearm hung).
+      l: boardHand(V(rx, deckAt(ctx, rx) + 0.02, -(halfWidthAtX(ctx, rx) - 0.02)), V(-0.4, -0.5, -1)),
+      r: boardHand(V(nx, deckAt(ctx, nx) + 0.02, halfWidthAtX(ctx, nx) - 0.06), V(-0.4, -0.5, 1)),
     },
     look: pit ? add(X(), sc(Y(), 0.08)) : add(X(), sc(Y(), 0.1), sc(r.w, 0.2)),
   };
@@ -349,12 +389,12 @@ function dropKnee(ctx: PoseContext, r: Rider): PoseTargets {
   const backHip = add(knee, sc(add(sc(Y(), 0.85), sc(toFront, 0.3 + 0.35 * comp)).normalize(), r.m.thighLen * 0.998));
   const pelvis = add(backHip, sc(toFront, r.m.hipHalf), sc(Y(), r.m.hipDrop));
   const backLeg: FootTarget = { ankle, toe: add(ankle, V(-r.m.footLenH, -0.02, 0)), pole: knee.clone().sub(add(sc(backHip, 0.5), sc(ankle, 0.5))).normalize(), instep: V(0, -1, 0) };
-  const k = reachK(ctx), nx = L / 2 - 0.05;
+  const k = reachK(ctx), hx = L / 2 - 0.08, rail = r.f.z * (halfWidthAtX(ctx, hx) - 0.05);
   return {
     pelvis, pelvisUp: Y(), pelvisForward: add(sc(r.f, Math.cos(0.35)), sc(X(), Math.sin(0.35))).normalize(),
-    chest: { bend: 0.4 + lean, twist: r.twistSign * (0.3 + d.twist * TWIST_DIAL), side: 0 },
+    chest: { bend: 0.5 + lean, twist: r.twistSign * (0.3 + d.twist * TWIST_DIAL), side: 0 },
     feet: byLeg(r, footOnDeck(r, fs, 20, add(r.f, sc(X(), 0.5))), backLeg),
-    hands: byArm(r, boardHand(V(nx, deckAt(ctx, nx) + 0.02, 0), add(Y(), sc(X(), -0.5))), chestHand(r.trail, 0.4 * k, -0.1, -0.15)),
+    hands: byArm(r, boardHand(V(hx, deckAt(ctx, hx, rail) + 0.02, rail), add(Y(), sc(r.f, 0.5))), chestHand(r.trail, 0.5 * k, 0, -0.15)),
     look: add(X(), sc(r.w, 0.2)),
   };
 }
