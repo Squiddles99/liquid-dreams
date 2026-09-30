@@ -1,0 +1,81 @@
+{
+  "name": "grommet",
+  "heightM": 1.52,
+  "bodyTriangles": 18000,
+  "macro": {
+    "gender": 1.0,
+    "age": 0.23,
+    "muscle": 0.35,
+    "weight": 0.3,
+    "proportions": 0.5,
+    "height": 0.3
+  },
+  "hair": {
+    "style": "short",
+    "seed": 13
+  },
+  "boardies": true,
+  "glasses": true,
+  "teeth": true,
+  "pimpleSeed": 1313,
+  "outfits": [
+    "rashieAndBoardies",
+    "springsuit",
+    "shortArmSteamer"
+  ],
+  "preview": {
+    "skin": [
+      0.62,
+      0.45,
+      0.36
+    ],
+    "hair": [
+      0.6,
+      0.2,
+      0.04
+    ],
+    "fabric": [
+      0.1,
+      0.1,
+      0.12
+    ],
+    "boardies": [
+      0.02,
+      0.03,
+      0.12
+    ],
+    "rashie": [
+      0.22,
+      0.6,
+      0.02
+    ],
+    "glasses": [
+      0.08,
+      0.04,
+      0.02
+    ],
+    "teeth": [
+      0.85,
+      0.82,
+      0.72
+    ]
+  },
+  "smooth": [
+    "crotch"
+  ],
+  "face": {
+    "chin-jaw-drop-incr": 0.25,
+    "mouth-trans-forward": 0.3,
+    "mouth-upperlip-volume-incr": 0.3,
+    "chin-prognathism-decr": 0.4,
+    "chin-prominent-decr": 0.3,
+    "l-ear-wing-incr": 0.6,
+    "r-ear-wing-incr": 0.6,
+    "nose-scale-vert-incr": 0.25,
+    "nose-scale-depth-incr": 0.2,
+    "nose-point-up": 0.4,
+    "l-eye-scale-incr": 0.3,
+    "r-eye-scale-incr": 0.3
+  },
+  "browWeight": 1.3
+}

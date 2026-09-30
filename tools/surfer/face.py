@@ -63,6 +63,13 @@ def _lips(co, mouth):
     return _ramp(-r, -1.0, 0.25)
 
 
+def _mouth_inside(co, mouth, lip_front):
+    """Behind the lips (3 mm or more behind the lip's front), within the mouth's width and height: the dark inside."""
+    if mouth is None or lip_front is None or co.y < lip_front.y + 0.003:
+        return 0.0
+    return 1.0 if abs(co.x - mouth.x) < 0.025 and abs(co.z - mouth.z) < 0.015 else 0.0
+
+
 def paint(body, weights, L, brow_weight=1.0):
     centre, eye_z, eyes, mouth = L["head_centre"], L["eye_z"], L["eyes"], L.get("mouth")
     eye_pts = [p for p in eyes.values() if p is not None]
@@ -74,6 +81,7 @@ def paint(body, weights, L, brow_weight=1.0):
         scalp = _scalp(co, centre, eye_z) * head
         brow = max((_brow(co, p, eye_y, brow_weight) for p in eye_pts), default=0.0) * head
         lash = max((_lash(co, p, eye_y) for p in eye_pts), default=0.0) * head
+        lash = max(lash, _mouth_inside(co, mouth, L.get("lip_front")) * head)
         lips = _lips(co, mouth) * head if mouth is not None else 0.0
         layer.data[v.index].color = (scalp, brow, lips, lash)
     body.data.color_attributes.active_color = layer

@@ -63,13 +63,20 @@ def group_centroid(body, name):
 
 
 def delete_helpers(body):
-    """Keep only the 'body' vertex group's vertices. Returns the eye centres, read from the eye helpers first."""
+    """Keep only the 'body' vertex group's vertices. Returns the eye centres, the mouth and the upper teeth
+    (centre and front), read from the helpers first."""
     names = [g.name for g in body.vertex_groups]
     if "body" not in names:
         raise SystemExit(f"the basemesh has no 'body' vertex group; it has {names}")
     eyes = {side: group_centroid(body, f"helper-{side}-eye") for side in ("l", "r")}
     teeth = [group_centroid(body, g) for g in ("helper-upper-teeth", "helper-lower-teeth")]
     teeth = [t for t in teeth if t is not None]
+    ut = body.vertex_groups.get("helper-upper-teeth")
+    upper = None
+    if ut is not None:
+        pts = [v.co.copy() for v in body.data.vertices if any(e.group == ut.index and e.weight > 0.5 for e in v.groups)]
+        if pts:
+            upper = {"centre": sum(pts, Vector()) / len(pts), "front": min(pts, key=lambda p: p.y)}
     gi = body.vertex_groups["body"].index
     keep = {v.index for v in body.data.vertices if any(e.group == gi and e.weight > 0.5 for e in v.groups)}
     bm = bmesh.new()
@@ -77,7 +84,7 @@ def delete_helpers(body):
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.index not in keep], context="VERTS")
     bm.to_mesh(body.data)
     bm.free()
-    return {"eyes": eyes, "mouth": sum(teeth, Vector()) / len(teeth) if teeth else None}
+    return {"eyes": eyes, "mouth": sum(teeth, Vector()) / len(teeth) if teeth else None, "upper_teeth": upper}
 
 
 def scale_to_height(body, rig, height_m, points):

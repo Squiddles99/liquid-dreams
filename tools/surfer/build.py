@@ -14,6 +14,7 @@ import mpfb_bridge  # noqa: E402
 import previews  # noqa: E402
 import rig_trim  # noqa: E402
 import sculpt  # noqa: E402
+import skin  # noqa: E402
 import wardrobe  # noqa: E402
 
 preset_path, out_dir, preview_dir = sys.argv[sys.argv.index("--") + 1:][:3]
@@ -39,6 +40,7 @@ L = bodymap.landmarks(body, rig, preset["heightM"], landmarks, coords)
 weights = bodymap.bone_weights(body, rig)
 wardrobe.paint_masks(body, weights, preset["heightM"])
 face.paint(body, weights, L, preset.get("browWeight", 1.0))
+spots = skin.pimples(body, coords, L, preset["pimpleSeed"]) if "pimpleSeed" in preset else []
 hair_obj = hair.build(body, rig, preset["hair"], L, coords, name)
 eye_obj = hair.eyes(rig, L, name)
 face.colour_eyes(eye_obj, L)
@@ -51,7 +53,7 @@ if preset["boardies"]:
     parts.append(shorts)
 
 export.glb(rig, parts, os.path.join(out_dir, f"{name}.glb"))
-export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version())
+export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version(), L, spots)
 previews.clay(body)
 previews.sheet(name, preset["heightM"], preview_dir, "clay")
 for outfit in preset["outfits"]:
