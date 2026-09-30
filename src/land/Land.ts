@@ -3,7 +3,7 @@ import type { DebugOverlays } from '../ocean/OceanSurface';
 import type { Sky } from '../sky/Sky';
 import { type LandFile, decodeLandFile } from './landData';
 import { LandHeight } from './landHeight';
-import { buildLandMesh } from './landMesh';
+import { type LandMeshData, buildLandMesh } from './landMesh';
 import { DEFAULT_LAND_PARAMS, type LandParams, beachProfileFor, normalizeLandParams } from './landParams';
 import { type LandLookUniforms, type PatchHole, createLandLookUniforms, createLandMaterial } from './landShading';
 import { SkylineTable } from './SkylineTable';
@@ -18,6 +18,18 @@ async function fetchLand(): Promise<Uint8Array> {
   const r = await fetch(LAND_URL);
   if (!r.ok) throw new Error(`land file: HTTP ${r.status} for ${LAND_URL}`);
   return new Uint8Array(await r.arrayBuffer());
+}
+
+/** The mesh data as a geometry: the stand-in and the loaded land lay theirs out alike (Land.standIn). */
+function landGeometry(d: Omit<LandMeshData, 'triangles'>): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(d.positions, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(d.normals, 3));
+  g.setAttribute('cover', new THREE.BufferAttribute(d.cover, 4));
+  g.setAttribute('detail', new THREE.BufferAttribute(d.detail, 3));
+  g.setAttribute('zones', new THREE.BufferAttribute(d.zones, 4));
+  g.setIndex(new THREE.BufferAttribute(d.indices, 1));
+  return g;
 }
 
 /**
@@ -38,6 +50,7 @@ export class Land {
   /** The look uniforms (the Land folder), shared with the fine ground patch. */
   readonly look: LandLookUniforms = createLandLookUniforms();
   private readonly sky: Sky;
+  private standInGeometry: THREE.BufferGeometry | null = null;
   private sunVisibility: ((xz: N) => N) | undefined;
   private wetHeight: ((xz: N) => N) | undefined;
   private hole: PatchHole | undefined;
@@ -81,6 +94,23 @@ export class Land {
   }
 
 
+  /**
+   * A mesh drawn with the land's material over one degenerate triangle laid out like the loaded land (the same
+   * attributes, sizes and array types): App.prewarm draws it while loading, so three builds the land's material then. It
+   * keys a build on the layout, not the vertices, so the land reuses that build when it arrives instead of freezing the
+   * frame it shows. The stand-in's geometry is never disposed: three drops a build once nothing drawn uses it, and after
+   * a beach-shape rebuild disposes the old land, the stand-in is what keeps it.
+   */
+  standIn(): THREE.Mesh {
+    this.standInGeometry ??= landGeometry({
+      positions: new Float32Array(9), normals: new Float32Array(9), cover: new Float32Array(12), detail: new Float32Array(9), zones: new Float32Array(12),
+      indices: Uint32Array.from([0, 1, 2]),
+    });
+    const m = new THREE.Mesh(this.standInGeometry, this.mesh.material);
+    m.frustumCulled = false;
+    return m;
+  }
+
   async load(fetchBytes: () => Promise<Uint8Array> = fetchLand): Promise<void> {
     const file = decodeLandFile(await fetchBytes());
     this.file = file;
@@ -91,16 +121,8 @@ export class Land {
   rebuild(): void {
     if (!this.file) return;
     this.height = new LandHeight(this.file, beachProfileFor(this.params));
-    const d = buildLandMesh(this.height);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(d.positions, 3));
-    g.setAttribute('normal', new THREE.BufferAttribute(d.normals, 3));
-    g.setAttribute('cover', new THREE.BufferAttribute(d.cover, 4));
-    g.setAttribute('detail', new THREE.BufferAttribute(d.detail, 3));
-    g.setAttribute('zones', new THREE.BufferAttribute(d.zones, 4));
-    g.setIndex(new THREE.BufferAttribute(d.indices, 1));
     this.mesh.geometry.dispose();
-    this.mesh.geometry = g;
+    this.mesh.geometry = landGeometry(buildLandMesh(this.height));
     this.mesh.visible = true;
     const lh = this.height;
     this.sunlight.setHeights(buildMarchHeights((x, z) => lh.heightAt(x, z)));
