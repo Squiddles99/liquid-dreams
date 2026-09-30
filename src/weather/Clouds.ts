@@ -3,6 +3,7 @@ import { Fn, PI, cos, float, instanceIndex, ivec2, sin, storage, textureLoad, te
 import { travelDirectionXZ } from '../conditions/directions';
 import type { Sky } from '../sky/Sky';
 import { cloudDrift, lowLayer } from './cloudModel';
+import { fogExtinctionPerM, fogOpticalDepth } from './fog';
 import { type CloudField, cloudField, cloudLight, createCloudUniforms, marchSkyNode, sunTransmittanceNode } from './cloudNodes';
 import { hash3 } from './cloudNoiseNodes';
 import { CloudShadow } from './CloudShadow';
@@ -121,6 +122,7 @@ export class Clouds {
     const d = travelDirectionXZ(w.windAloftDeg);
     u.windDir.value.set(d.x, d.z);
     this.textures.setSeed(seed);
+    this.sky.setFog(fogExtinctionPerM(w.visibilityKm), w.fogTopM);
     this.dirty = true;
   }
 
@@ -135,6 +137,9 @@ export class Clouds {
   }
 
   update(renderer: THREE.WebGPURenderer, sunDir: THREE.Vector3, camera: THREE.Vector3, simTimeS: number): void {
+    // The haze dims the sun reaching the sea (a sun in sea mist is a pale disk); below the horizon the atmosphere rules.
+    const w = this.weather;
+    this.shadow.fogSun.value = sunDir.y > 0.01 ? Math.exp(-fogOpticalDepth(0, sunDir.y, 1e6, fogExtinctionPerM(w.visibilityKm), w.fogTopM)) : 1;
     if (!this.hasClouds) {
       if (this.active || !this.cleared) {
         renderer.compute(this.clearPasses);

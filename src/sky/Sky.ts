@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, asin, atan, clamp, exp, float, fract, max, normalize, select, sqrt, storage, texture, uniform, vec2, vec3, vec4 } from 'three/tsl';
+import { PI, abs, asin, atan, clamp, dot, exp, float, fract, max, mix, normalize, pow, select, sqrt, storage, texture, uniform, vec2, vec3, vec4 } from 'three/tsl';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, extinctionPerKm } from './atmosphereParams';
 import { type AtmosphereUniforms, createAtmosphereUniforms, nightFloorRadiance, skyViewUvFromAngles, updateAtmosphereUniforms } from './atmosphereNodes';
 import { AtmosphereLuts } from './AtmosphereLuts';
@@ -39,6 +39,9 @@ export class Sky {
   /** Sea-level extinction per km (RGB), for aerial perspective. */
   readonly seaLevelExtinction = uniform(new THREE.Vector3());
   readonly aerialScale = uniform(1);
+  /** The weather's haze (spec 2026-09-30 §4.7): sea-level extinction (per m) beyond the clear air's, and its depth (m). */
+  readonly fogSigma0 = uniform(0);
+  readonly fogTopM = uniform(1500);
   readonly dome: THREE.Mesh;
   /** [0].x: the sun's transmittance through the clouds from the camera (the sun disk, the exposure meter). */
   readonly cloudSunAttr = new THREE.StorageBufferAttribute(new Float32Array([1, 1, 1, 1]), 4);
@@ -69,6 +72,35 @@ export class Sky {
   /** The clear sky's irradiance, above the clouds (RGB node): what lights the clouds themselves. */
   get clearSkyIrradiance(): N {
     return this.luts.skyLightRead.element(2).xyz;
+  }
+
+  /** The weather's haze: extra sea-level extinction (per m, weather/fog.fogExtinctionPerM) and how deep it lies (m). */
+  setFog(sigma0: number, topM: number): void {
+    this.fogSigma0.value = sigma0;
+    this.fogTopM.value = topM;
+  }
+
+  /** The haze's optical depth from the camera along a ray rising dirY per metre, over distanceM (fog.fogOpticalDepth). */
+  fogDepth(dirY: N, distanceM: N): N {
+    const H = this.fogTopM.div(3.0);
+    const camH = this.luts.cameraHeightKm.mul(1000.0);
+    const base = this.fogSigma0.mul(exp(camH.div(H).negate()));
+    // Clamped so a long ray down toward the sea can't overflow exp; the series keeps a level ray exact in float32.
+    const x = max(dirY.mul(distanceM).div(H), -60.0);
+    const shape = select(abs(x).lessThan(1e-4), float(1.0).sub(x.mul(0.5)), float(1.0).sub(exp(x.negate())).div(x));
+    return base.mul(distanceM).mul(shape);
+  }
+
+  /**
+   * The light the haze itself scatters toward the eye along dir: the (cloudy) sky's light, and the sun through the
+   * clouds and the haze above, strongly forward (the glow around a sun in mist).
+   */
+  fogRadiance(dir: N): N {
+    const cosT = dot(dir, this.sunDirection);
+    const g = 0.6;
+    const phase = float((1 - g * g) / (4 * Math.PI)).div(pow(max(float(1 + g * g).sub(cosT.mul(2 * g)), 1e-4), 1.5));
+    const sunThrough = this.cloudSunTransmittance.mul(exp(this.fogDepth(max(this.sunDirection.y, 0.0), float(1e6)).negate()));
+    return this.skyIrradiance.div(PI).mul(0.9).add(this.sunIlluminance.mul(sunThrough).mul(phase));
   }
 
   /** Re-integrate the sky light after the clouds changed (the sun did not). */
@@ -120,7 +152,9 @@ export class Sky {
     const c = texture(sharp ? this.skyMap : this.skyMapSmall, uv).level(float(0));
     // Below the horizon no cloud stands between the eye and the (dome's) atmosphere.
     const clouds = select(dir.y.greaterThanEqual(0.0), c, vec4(0.0));
-    return this.atmosphereRadiance(dir).mul(float(1.0).sub(clouds.a)).add(clouds.rgb);
+    const sky = this.atmosphereRadiance(dir).mul(float(1.0).sub(clouds.a)).add(clouds.rgb);
+    // The haze between the eye and the sky (none when the weather adds none: mix(fog, sky, 1) is exactly the sky).
+    return mix(this.fogRadiance(dir), sky, exp(this.fogDepth(max(dir.y, 0.0), float(1e5)).negate()));
   }
 
   /** The sun's transmittance through the clouds from the camera (node). */
@@ -132,7 +166,8 @@ export class Sky {
   applyAerialPerspective(color: N, distanceM: N, rayDir: N): N {
     const transmittance = exp(this.seaLevelExtinction.mul(distanceM.mul(0.001).mul(this.aerialScale)).negate());
     const horizonDir = normalize(vec3(rayDir.x, max(rayDir.y, 0.02), rayDir.z));
-    return color.mul(transmittance).add(this.radiance(horizonDir).mul(vec3(1.0).sub(transmittance)));
+    const aerial = color.mul(transmittance).add(this.radiance(horizonDir).mul(vec3(1.0).sub(transmittance)));
+    return mix(this.fogRadiance(rayDir), aerial, exp(this.fogDepth(rayDir.y, distanceM).negate()));
   }
 
   followCamera(position: THREE.Vector3): void {
