@@ -19,6 +19,7 @@ import { LAND_PARAM_RANGES, type LandParams } from '../land/landParams';
 import { SURF_PARAM_RANGES, type SurfParams } from '../surf/surfModel';
 import { BOMBIE_PARAM_RANGES, type BombieParams } from '../bombie/bombieParams';
 import { SOUND_PARAM_RANGES, type SoundParams } from '../sound/soundParams';
+import { WEATHER_PRESETS, WEATHER_PRESET_NAMES, WEATHER_RANGES, type WeatherConditions, type WeatherPresetName, presetOf } from '../weather/weather';
 import type { SettingsMode } from './devSettings';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS } from './referenceMoments';
 
@@ -108,6 +109,26 @@ export const CONDITION_BINDINGS = {
   windDirectionDeg: { label: 'from', ...CONDITION_RANGES.windDirectionDeg, format: withCompass },
   tideM: { label: 'tide (m)', ...CONDITION_RANGES.tideM, format: fixed(2) },
 };
+
+/** The Weather folder's sliders: exactly the sanitised ranges, no step (a loaded moment's values round-trip). */
+export const WEATHER_BINDINGS: Record<keyof WeatherConditions, { label: string; min: number; max: number; format: (v: number) => string }> = {
+  lowCover: { label: 'low cloud cover', ...WEATHER_RANGES.lowCover, format: fixed(2) },
+  convection: { label: 'convection (flat → towering)', ...WEATHER_RANGES.convection, format: fixed(2) },
+  lowBaseM: { label: 'cloud base (m)', ...WEATHER_RANGES.lowBaseM, format: fixed(0) },
+  midCover: { label: 'mid cloud cover', ...WEATHER_RANGES.midCover, format: fixed(2) },
+  highCover: { label: 'high cloud cover', ...WEATHER_RANGES.highCover, format: fixed(2) },
+  rain: { label: 'rain', ...WEATHER_RANGES.rain, format: fixed(2) },
+  storm: { label: 'storm', ...WEATHER_RANGES.storm, format: fixed(2) },
+  visibilityKm: { label: 'visibility (km)', ...WEATHER_RANGES.visibilityKm, format: fixed(1) },
+  fogTopM: { label: 'haze depth (m)', ...WEATHER_RANGES.fogTopM, format: fixed(0) },
+  windAloftDeg: { label: 'clouds from', ...WEATHER_RANGES.windAloftDeg, format: withCompass },
+  windAloftMs: { label: 'clouds speed (m/s)', ...WEATHER_RANGES.windAloftMs, format: fixed(1) },
+};
+
+export const WEATHER_PRESET_OPTIONS: { text: string; value: WeatherPresetName | 'custom' }[] = [
+  ...WEATHER_PRESET_NAMES.map((n) => ({ text: n, value: n })),
+  { text: 'custom', value: 'custom' },
+];
 
 /**
  * The live wind-speed widget (bound to windSpeedProxy below, not to conditions.wind.speedMs directly): edited
@@ -209,6 +230,9 @@ export class DevPanel {
   /** True while setReference() moves the reference list, which is not a pick. */
   private settingReference = false;
   private readonly reference: ListBladeApi<string>;
+  private readonly weatherPreset: ListBladeApi<WeatherPresetName | 'custom'>;
+  /** True while syncWeatherPreset() moves the preset list to match the sliders, which is not a pick. */
+  private settingPreset = false;
 
   constructor(private readonly m: DevPanelModel, h: DevPanelHandlers) {
     // Every condition binding: refresh() also fires these, for a moment applied by a link, pick or reset.
@@ -256,6 +280,25 @@ export class DevPanel {
         onConditions();
       });
     wind.addBinding(m.conditions.wind, 'directionDeg', CONDITION_BINDINGS.windDirectionDeg).on('change', onConditions);
+
+    const weather = this.pane.addFolder({ title: 'Weather' });
+    this.weatherPreset = weather.addBlade({
+      view: 'list', label: 'sky', options: WEATHER_PRESET_OPTIONS, value: presetOf(m.conditions.weather) ?? 'custom',
+    }) as ListBladeApi<WeatherPresetName | 'custom'>;
+    this.weatherPreset.on('change', (e) => {
+      if (this.settingPreset || e.value === 'custom') return;
+      // A pick writes the preset into the bound object (the sliders hold it) and shows it.
+      Object.assign(m.conditions.weather, WEATHER_PRESETS[e.value]);
+      this.refresh();
+      onConditions();
+    });
+    for (const k of Object.keys(WEATHER_BINDINGS) as (keyof WeatherConditions)[]) {
+      weather.addBinding(m.conditions.weather, k, WEATHER_BINDINGS[k]).on('change', () => {
+        if (this.refreshing) return;
+        this.syncWeatherPreset();
+        onConditions();
+      });
+    }
 
     const sets = this.pane.addFolder({ title: 'Sets' });
     const readouts = new Set<BladeApi>([
@@ -389,6 +432,7 @@ export class DevPanel {
   refresh(): void {
     this.syncNightFloorProxy();
     this.syncWindSpeedProxy();
+    this.syncWeatherPreset();
     const outer = this.refreshing; // handlers may refresh again from inside a refresh
     this.refreshing = true;
     try {
@@ -415,6 +459,18 @@ export class DevPanel {
 
   private syncNightFloorProxy(): void {
     this.nightFloorProxy.log10 = Math.log10(Math.max(this.m.atmosphere.nightFloor, 10 ** NIGHT_FLOOR_LOG10_MIN));
+  }
+
+  /** Show the preset the weather sliders now match, or custom, without it counting as a pick. */
+  private syncWeatherPreset(): void {
+    const name = presetOf(this.m.conditions.weather) ?? 'custom';
+    if (this.weatherPreset.value === name) return;
+    this.settingPreset = true;
+    try {
+      this.weatherPreset.value = name;
+    } finally {
+      this.settingPreset = false;
+    }
   }
 
   private syncWindSpeedProxy(): void {

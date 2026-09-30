@@ -1,5 +1,6 @@
 import { DEFAULT_CONDITIONS } from './defaults';
 import type { Conditions } from './types';
+import { WEATHER_PRESETS, type WeatherConditions, sanitizeWeather } from '../weather/weather';
 
 /** Valid range of every numeric condition the panel edits. Directions wrap into [0, 360) rather than clamp. */
 export const CONDITION_RANGES = {
@@ -27,8 +28,11 @@ function isValidDate(s: unknown): s is string {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
 
-/** Turn untrusted input (moment links, panel edits) into valid Conditions. Never throws. */
-export function sanitizeConditions(input: unknown): Conditions {
+/**
+ * Turn untrusted input (moment links, panel edits) into valid Conditions. Never throws. Conditions saved before weather
+ * existed get `legacyWeather`: clear for a link (the sky it was made under), the default for a stored profile.
+ */
+export function sanitizeConditions(input: unknown, legacyWeather: Readonly<WeatherConditions> = WEATHER_PRESETS.clear): Conditions {
   const d = DEFAULT_CONDITIONS, R = CONDITION_RANGES;
   const o = obj(input);
   const swell = obj(o.swell);
@@ -48,5 +52,6 @@ export function sanitizeConditions(input: unknown): Conditions {
     },
     tideM: clampTo(num(o.tideM, d.tideM), R.tideM),
     seed: typeof seed === 'number' && Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff ? seed : d.seed,
+    weather: sanitizeWeather(o.weather, legacyWeather),
   };
 }

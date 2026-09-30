@@ -1,3 +1,5 @@
+import type { WeatherConditions } from '../weather/weather';
+
 export interface SwellConditions {
   /** Surfer feet, measured from the back of the wave (canonical unit). */
   sizeFt: number;
@@ -24,4 +26,6 @@ export interface Conditions {
   tideM: number;
   /** uint32 seed for every random process. */
   seed: number;
+  /** The sky: cloud, rain, visibility (spec 2026-09-30). */
+  weather: WeatherConditions;
 }

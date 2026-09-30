@@ -2,6 +2,8 @@ import type { Burst } from '../bombie/bombieModel';
 import type { CameraMode } from '../dev/momentLink';
 import type { SurfState } from '../surf/surfModel';
 import { type HitEvent, type HitTick, HitTracker, type Point3, airCutoffHz } from './hits';
+import type { Strike } from '../weather/rainModel';
+import { type ThunderEvent, rainSound, thunderEvent } from './weatherSound';
 import { Follower, ROAR_ATTACK_S, ROAR_RELEASE_S, bombieRumble, lapping, roarSource, scrubLevel, swashSound, washLevel, washPosition, windSound } from './levels';
 
 /** One frame of the game, as the sound needs it (Phase 5 spec §3.2). */
@@ -26,6 +28,10 @@ export interface SoundInput {
   waterY: number | null;
   plantDensity: number;
   nearRocks: boolean;
+  /** The rain falling at the camera (0..1, weather W2). */
+  rain?: number;
+  /** Lightning strikes since the last frame (weather W2): each one's thunder follows. */
+  strikes?: readonly Strike[];
 }
 
 export interface Placed extends Point3 {
@@ -45,6 +51,8 @@ export interface SoundFrame {
   swash: { level: number; drawBack: number; pebbles: number };
   underwater: boolean;
   effectsOn: boolean;
+  rain: { level: number; brightness: number };
+  thunder: ThunderEvent[];
 }
 
 export class SoundModel {
@@ -87,6 +95,8 @@ export class SoundModel {
       swash: { level: sw.level, drawBack: sw.drawBack, pebbles: sw.pebbles },
       underwater: i.underwater,
       effectsOn: !i.paused && !i.hidden,
+      rain: rainSound(i.rain ?? 0, i.underwater),
+      thunder: (i.strikes ?? []).map(thunderEvent),
     };
     this.prev = { simTime: i.simTime, waterY: i.waterY, rate, swash: sw.raw };
     return frame;

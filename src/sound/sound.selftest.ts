@@ -10,7 +10,7 @@ function frame(over: Partial<SoundFrame> = {}): SoundFrame {
   return {
     hits: [], roar: { ...AT, level: 0, brightness: 1 }, wash: { ...AT, level: 0 }, rumble: { ...AT, level: 0 },
     wind: { level: 0, brightness: 0.5 }, scrub: 0, lapping: { level: 0, rate: 6 }, swash: { level: 0, drawBack: 0, pebbles: 0 },
-    underwater: false, effectsOn: true, ...over,
+    underwater: false, effectsOn: true, rain: { level: 0, brightness: 0 }, thunder: [], ...over,
   };
 }
 
@@ -24,7 +24,7 @@ async function render(f: SoundFrame, seconds = 1.5): Promise<Float32Array> {
   // part every 50 ms of the render (the hits only once).
   for (let t = 0.05; t < seconds - 0.05; t += 0.05) {
     void ctx.suspend(t).then(() => {
-      e.apply({ ...f, hits: [] });
+      e.apply({ ...f, hits: [], thunder: [] });
       void ctx.resume();
     });
   }
@@ -56,6 +56,7 @@ registerSelfTest({
       ['swash', { swash: { level: 1, drawBack: 1, pebbles: 1 } }],
       ['hum', { underwater: true }],
       ['hit', { hits: [HIT] }],
+      ['rain', { rain: { level: 1, brightness: 0.8 } }],
     ];
     let pass = true;
     const out: string[] = [];
@@ -108,5 +109,16 @@ registerSelfTest({
     } finally {
       void ctx.close();
     }
+  },
+});
+
+registerSelfTest({
+  name: "sound: thunder is silent until the flash's sound arrives, then rumbles",
+  async run() {
+    // A strike 686 m away: heard 2 s after the flash.
+    const th = { delayS: 686 / 343, x: -800, y: 200, z: 0, level: 1, cutoffHz: 1500, crack: true };
+    const a = await render(frame({ thunder: [th] }), 4);
+    const before = rms(a.subarray(0, Math.floor(RATE * 1.8))), after = rms(a, Math.floor(RATE * 2.05));
+    return { pass: before < 1e-4 && after > 1e-3 && a.every(Number.isFinite), detail: `rms before ${before.toExponential(2)}, after ${after.toExponential(2)}` };
   },
 });
