@@ -12,7 +12,8 @@ def glb(rig, meshes, path):
     bpy.context.view_layer.objects.active = rig
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_yup=True,
                               export_skins=True, export_animations=False, export_morph=False,
-                              export_texcoords=True, export_normals=True, export_materials="EXPORT")
+                              export_texcoords=True, export_normals=True, export_materials="EXPORT",
+                              export_vertex_color="ACTIVE")
 
 
 def manifest(rig, meshes, preset, path, mpfb_version):

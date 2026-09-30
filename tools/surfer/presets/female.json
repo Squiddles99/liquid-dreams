@@ -52,5 +52,22 @@
   "smooth": [
     "crotch",
     "nipples"
-  ]
+  ],
+  "face": {
+    "l-eye-scale-incr": 0.35,
+    "r-eye-scale-incr": 0.35,
+    "nose-scale-horiz-decr": 0.35,
+    "nose-point-width-decr": 0.3,
+    "nose-volume-decr": 0.25,
+    "nose-point-up": 0.2,
+    "mouth-lowerlip-volume-incr": 0.35,
+    "mouth-upperlip-volume-incr": 0.3,
+    "mouth-cupidsbow-incr": 0.3,
+    "l-cheek-bones-incr": 0.3,
+    "r-cheek-bones-incr": 0.3,
+    "chin-width-decr": 0.3,
+    "head-oval": 0.5,
+    "head-fat-decr": 0.2
+  },
+  "browWeight": 1.0
 }

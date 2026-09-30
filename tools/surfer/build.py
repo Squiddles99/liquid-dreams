@@ -8,6 +8,7 @@ import bpy
 sys.path.append(os.path.dirname(__file__))
 import bodymap  # noqa: E402
 import export  # noqa: E402
+import face  # noqa: E402
 import hair  # noqa: E402
 import mpfb_bridge  # noqa: E402
 import previews  # noqa: E402
@@ -21,6 +22,7 @@ name = preset["name"]
 
 bpy.ops.wm.read_homefile(use_empty=True)
 body = mpfb_bridge.create_human(preset["macro"])
+mpfb_bridge.apply_targets(body, preset.get("face", {}))
 rig = mpfb_bridge.add_game_rig(body)
 body.name, rig.name = f"{name}_body", f"{name}_armature"
 rig_trim.bake_shape(body)
@@ -36,8 +38,10 @@ coords = bodymap.bone_coords(body, rig)
 L = bodymap.landmarks(body, rig, preset["heightM"], landmarks, coords)
 weights = bodymap.bone_weights(body, rig)
 wardrobe.paint_masks(body, weights, preset["heightM"])
+face.paint(body, weights, L, preset.get("browWeight", 1.0))
 hair_obj = hair.build(body, rig, preset["hair"], L, coords, name)
 eye_obj = hair.eyes(rig, L, name)
+face.colour_eyes(eye_obj, L)
 rig_trim.single_material(hair_obj, "hair")
 rig_trim.single_material(eye_obj, "eyes")
 parts = [body, hair_obj, eye_obj]

@@ -51,6 +51,16 @@ def create_human(macro):
                                      feet_on_ground=True, scale=0.1, macro_detail_dict=details)
 
 
+def apply_targets(basemesh, targets):
+    """Load MPFB's detail targets (face shape) as weighted shape keys; build.py bakes them in with the macros."""
+    _, TargetService = _services()
+    for name, weight in targets.items():
+        path = TargetService.target_full_path(name)
+        if not path:
+            raise SystemExit(f"MPFB has no target '{name}' (see its data/targets folder)")
+        TargetService.load_target(basemesh, path, weight=weight, name=name)
+
+
 def add_game_rig(basemesh):
     HumanService, _ = _services()
     return HumanService.add_builtin_rig(basemesh, "game_engine", import_weights=True)

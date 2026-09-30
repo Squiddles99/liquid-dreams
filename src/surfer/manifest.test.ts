@@ -36,5 +36,12 @@ for (const name of ['female', 'male'] as const) {
       for (const m of ['hair', 'eyes']) expect(all).toContain(m);
       expect(all.includes('boardies')).toBe(name === 'male');
     });
+    it('carries the face paint on the body and the iris on the eyes (COLOR_0; gate 2)', () => {
+      const matName = (i: number): string => gltf.materials[i].name;
+      for (const m of ['body', 'eyes']) {
+        const mesh = gltf.meshes.find((x: any) => x.primitives.some((p: any) => matName(p.material) === m));
+        for (const p of mesh.primitives) expect(p.attributes.COLOR_0, m).toBeDefined();
+      }
+    });
   });
 }

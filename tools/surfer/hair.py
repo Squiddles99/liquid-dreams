@@ -109,16 +109,16 @@ def build(body, rig, style, L, coords, name):
     cards = []
     if style["style"] == "short":
         crown = centre + Vector((0, L["head_radius"] * 0.35, L["head_radius"] * 0.9))
-        for _ in range(700):
+        for _ in range(900):
             root, n = pick()
-            cards.append((_short(root, n, centre, crown, rng), 0.014))
+            cards.append((_short(root, n, centre, crown, rng), 0.02))
     elif style["style"] == "ponytail":
         tie = centre + Vector((0, L["head_radius"] * 0.95, -0.01))
-        for _ in range(850):
+        for _ in range(1000):
             root, n = pick()
-            cards.append((_to_tie(root, n, centre, tie), 0.018))
-        for _ in range(90):
-            cards.append((_pony(tie, rng), 0.028))
+            cards.append((_to_tie(root, n, centre, tie), 0.03))
+        for _ in range(110):
+            cards.append((_pony(tie, rng), 0.036))
     else:
         raise SystemExit(f"unknown hair style {style['style']}")
     return _cards_object(cards, centre, rig, f"{name}_hair")
@@ -128,7 +128,7 @@ def eyes(rig, L, name):
     bm = bmesh.new()
     for side, fallback in (("l", 1), ("r", -1)):
         c = L["eyes"].get(side) or (L["head_centre"] + Vector((0.032 * fallback, -0.085, L["eye_z"] - L["head_centre"].z)))
-        geom = bmesh.ops.create_uvsphere(bm, u_segments=12, v_segments=8, radius=0.0115)
+        geom = bmesh.ops.create_uvsphere(bm, u_segments=24, v_segments=16, radius=0.0115)
         bmesh.ops.translate(bm, verts=geom["verts"], vec=c)
     me = bpy.data.meshes.new(f"{name}_eyes")
     bm.to_mesh(me)

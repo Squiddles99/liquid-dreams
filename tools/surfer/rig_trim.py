@@ -68,6 +68,8 @@ def delete_helpers(body):
     if "body" not in names:
         raise SystemExit(f"the basemesh has no 'body' vertex group; it has {names}")
     eyes = {side: group_centroid(body, f"helper-{side}-eye") for side in ("l", "r")}
+    teeth = [group_centroid(body, g) for g in ("helper-upper-teeth", "helper-lower-teeth")]
+    teeth = [t for t in teeth if t is not None]
     gi = body.vertex_groups["body"].index
     keep = {v.index for v in body.data.vertices if any(e.group == gi and e.weight > 0.5 for e in v.groups)}
     bm = bmesh.new()
@@ -75,7 +77,7 @@ def delete_helpers(body):
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.index not in keep], context="VERTS")
     bm.to_mesh(body.data)
     bm.free()
-    return eyes
+    return {"eyes": eyes, "mouth": sum(teeth, Vector()) / len(teeth) if teeth else None}
 
 
 def scale_to_height(body, rig, height_m, points):
@@ -91,7 +93,11 @@ def scale_to_height(body, rig, height_m, points):
         eb.tail *= f
     bpy.ops.object.mode_set(mode="OBJECT")
     for k, p in points.items():
-        if p is not None:
+        if isinstance(p, dict):
+            for kk, pp in p.items():
+                if pp is not None:
+                    p[kk] = pp * f
+        elif p is not None:
             points[k] = p * f
 
 

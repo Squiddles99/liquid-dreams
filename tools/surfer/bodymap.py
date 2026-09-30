@@ -16,7 +16,8 @@ def bone_coords(body, rig):
     return out
 
 
-def landmarks(body, rig, height, eyes, coords):
+def landmarks(body, rig, height, found, coords):
+    eyes = found["eyes"]
     head = rig.data.bones["head"]
     centre = head.head_local + (head.tail_local - head.head_local) * 0.45
     eye_z = sum(p.z for p in eyes.values() if p is not None) / max(1, sum(p is not None for p in eyes.values()))
@@ -24,7 +25,7 @@ def landmarks(body, rig, height, eyes, coords):
         eye_z = head.head_local.z + 0.075 * height / 1.7
     top = [v.co for v, (b, _) in zip(body.data.vertices, coords) if b == "head" and v.co.z > eye_z]
     radius = sum((c - centre).length for c in top) / max(1, len(top))
-    return {"height": height, "head_centre": centre, "head_radius": radius, "eye_z": eye_z, "eyes": eyes}
+    return {"height": height, "head_centre": centre, "head_radius": radius, "eye_z": eye_z, "eyes": eyes, "mouth": found["mouth"]}
 
 
 def bone_weights(body, rig):
