@@ -187,7 +187,7 @@ built for the session's swell direction.
 - **Intensity:**
   - Offshore > calm > onshore, and long period > short.
   - A wave after a long gap scores higher than one close behind.
-  - Normal set spacing adds nothing.
+  - Normal set spacing adds almost nothing (under 0.05).
   - With the dial at 0, the same session gives the same waves every time.
   - The calibration points hold on the real field.
 - **Shape:**
