@@ -183,3 +183,15 @@ describe('Surfer folder bindings', () => {
     }
   });
 });
+
+import { SURFER_PRESET_OPTIONS, surferBoardOptions } from './DevPanel';
+
+describe('the Surfer folder names the crew and lists only what each can ride (grommet spec §6)', () => {
+  it('labels the presets by nickname and real name', () => {
+    expect(SURFER_PRESET_OPTIONS).toEqual({ 'Shazza (Sharon)': 'female', 'T-Bone (Tom)': 'male', 'Grommet (Bradley)': 'grommet' });
+  });
+  it('lists the whole quiver for Shazza and T-Bone, only the bodyboard for Grommet', () => {
+    expect(Object.values(surferBoardOptions('male'))).toEqual(['thruster', 'stepUp', 'bodyboard']);
+    expect(surferBoardOptions('grommet')).toEqual({ bodyboard: 'bodyboard' });
+  });
+});

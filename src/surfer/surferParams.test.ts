@@ -44,3 +44,18 @@ describe('play (Andrew, gate 2: the bodyboarder needs to kick his fins to move)'
     expect(playPhase('trim', 12.3, 0.3)).toBe(0.3);
   });
 });
+
+describe('Grommet in settings and links (grommet Review Focus 1)', () => {
+  it('repairs Grommet on a surfboard to his bodyboard and a pose that exists on it', () => {
+    const p = sanitizeSurferParams({ preset: 'grommet', board: 'thruster', pose: 'bottomTurn' });
+    expect([p.preset, p.board, p.pose]).toEqual(['grommet', 'bodyboard', 'sit']);
+  });
+  it('keeps a valid bodyboard pose for him', () => {
+    expect(sanitizeSurferParams({ preset: 'grommet', board: 'bodyboard', pose: 'dropKnee' }).pose).toBe('dropKnee');
+  });
+  it('reads onLand as a boolean, off by default and for junk', () => {
+    expect(DEFAULT_SURFER_PARAMS.onLand).toBe(false);
+    expect(sanitizeSurferParams({ onLand: true }).onLand).toBe(true);
+    expect(sanitizeSurferParams({ onLand: 'yes' }).onLand).toBe(false);
+  });
+});
