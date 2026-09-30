@@ -16,6 +16,7 @@ import { DEFAULT_LAND_PARAMS } from '../land/landParams';
 import { DEFAULT_SURF_PARAMS } from '../surf/surfModel';
 import { DEFAULT_BOMBIE_PARAMS } from '../bombie/bombieParams';
 import { DEFAULT_SOUND_PARAMS } from '../sound/soundParams';
+import { DEFAULT_SURFER_PARAMS } from '../surfer/surferParams';
 import { WEATHER_PRESETS } from '../weather/weather';
 import {
   BREAKING_MODEL, CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
@@ -69,6 +70,7 @@ function defaults(): DevSettings {
     surf: DEFAULT_SURF_PARAMS,
     bombie: DEFAULT_BOMBIE_PARAMS,
     sound: DEFAULT_SOUND_PARAMS,
+    surfer: DEFAULT_SURFER_PARAMS,
   });
 }
 

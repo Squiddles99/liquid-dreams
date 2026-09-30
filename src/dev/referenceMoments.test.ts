@@ -4,6 +4,7 @@ import { msToKmh, surferFeetToHs } from '../conditions/units';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { decodeMoment, encodeMoment } from './momentLink';
 import { WEATHER_PRESETS } from '../weather/weather';
+import { sanitizeSurferParams } from '../surfer/surferParams';
 import { DEFAULT_MOMENT_NAME, REFERENCE_MOMENTS, defaultMoment, findReferenceMoment, referenceKind } from './referenceMoments';
 
 describe('reference moments', () => {
@@ -18,6 +19,7 @@ describe('reference moments', () => {
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'looking-down', 'reef-overhead',
       'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
       'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach', 'up-the-dune', 'bombie-from-the-lineup', 'bombie-close',
+      'surfer-lineup-sit', 'surfer-pocket-pigdog', 'surfer-pocket-frontside',
     ]);
   });
   it('round-trip through moment links', () => {
@@ -38,6 +40,21 @@ describe('reference moments', () => {
   });
   it('autumn-glass has no wind', () => {
     expect(findReferenceMoment('autumn-glass')?.conditions.wind.speedMs).toBe(0);
+  });
+  it("carry a surfer only as the sanitiser would leave it (the stand's moments)", () => {
+    const withSurfer = REFERENCE_MOMENTS.filter((r) => r.moment.surfer);
+    expect(withSurfer.map((r) => r.name)).toEqual(['surfer-lineup-sit', 'surfer-pocket-pigdog', 'surfer-pocket-frontside']);
+    for (const r of withSurfer) expect(r.moment.surfer, r.name).toEqual(sanitizeSurferParams(r.moment.surfer));
+  });
+  it('put each pocket moment on its side of the Womb: regular on the step-up backside, goofy on the thruster frontside', () => {
+    expect(findReferenceMoment('surfer-pocket-pigdog')!.surfer).toMatchObject({ enabled: true, stance: 'regular', board: 'stepUp', pose: 'barrel' });
+    expect(findReferenceMoment('surfer-pocket-frontside')!.surfer).toMatchObject({ enabled: true, stance: 'goofy', board: 'thruster', pose: 'barrel' });
+    expect(findReferenceMoment('surfer-lineup-sit')!.surfer).toMatchObject({ enabled: true, pose: 'sit' });
+  });
+  it('findReferenceMoment copies the surfer too', () => {
+    const a = findReferenceMoment('surfer-lineup-sit')!;
+    a.surfer!.x = 99;
+    expect(findReferenceMoment('surfer-lineup-sit')!.surfer!.x).not.toBe(99);
   });
   it('findReferenceMoment returns independent copies', () => {
     const a = findReferenceMoment('sunset');
@@ -92,6 +109,7 @@ describe('reference moment kinds', () => {
       'set-arriving', 'set-on-the-reef', 'low-tide-set', 'high-tide-set', 'overview', 'reef-overhead', 'looking-down',
       'barrel-peeling', 'closeout-right', 'the-drain', 'behind-the-wave', 'lip-close-up',
       'in-the-shade', 'sunbreak', 'surf-from-the-lineup', 'on-the-beach', 'up-the-dune', 'bombie-from-the-lineup', 'bombie-close',
+      'surfer-lineup-sit', 'surfer-pocket-pigdog', 'surfer-pocket-frontside',
     ]);
     for (const r of REFERENCE_MOMENTS.filter((m) => !viewOrSet.has(m.name))) {
       expect(r.kind).toBe('time');
