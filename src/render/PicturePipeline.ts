@@ -47,6 +47,8 @@ export class PicturePipeline {
   params: PictureParams;
   private readonly pipeline: THREE.RenderPipeline;
   private readonly exposure = uniform(1);
+  /** The eye's adaptation to the light under cloud (weather/cloudMeter.adaptationGains): 1 under a clear sky. */
+  private readonly whiteBalance = uniform(new THREE.Vector3(1, 1, 1));
   private readonly lift = uniform(0);
   private readonly gamma = uniform(1);
   private readonly gain = uniform(1);
@@ -56,6 +58,8 @@ export class PicturePipeline {
   private readonly bloomNode: any;
   private sunElevationDeg = 45;
   private forwardDotSun = -1;
+  private cloudStops = 0;
+  private sunVisible = 1;
   private underwater = false;
   /** Water on the lens as the camera breaks the surface (LensWater, via setLensWater). */
   private readonly lens = createLensWaterUniforms();
@@ -67,7 +71,7 @@ export class PicturePipeline {
     // disk past it, overflowing bloom's HalfFloat targets, and PBR Neutral turns Infinity into NaN.
     // The scene through the lens: exactly the pass while the lens is dry, bent and blurred while it is wet.
     const throughLens: N = wetLensSampleNode(scenePass.getTextureNode('output'), this.lens);
-    const exposed = min(throughLens.rgb.mul(this.exposure), vec3(HDR_MAX));
+    const exposed = min(throughLens.rgb.mul(this.exposure).mul(this.whiteBalance), vec3(HDR_MAX));
     this.bloomNode = bloom(vec4(exposed, 1.0), params.bloomStrength, params.bloomRadius, params.bloomThreshold);
     const hdr: N = exposed.add(this.bloomNode.rgb);
     // three typings gap: the tone-mapping Fns return an untyped Node, which mix() rejects.
@@ -104,6 +108,14 @@ export class PicturePipeline {
     this.updateExposure();
   }
 
+  /** Under cloud: the stops the meter opens up by, the sun's transmittance, and the eye's colour adaptation (weather/cloudMeter). */
+  setCloud(stops: number, sunVisible: number, gains: readonly [number, number, number] = [1, 1, 1]): void {
+    this.cloudStops = stops;
+    this.sunVisible = sunVisible;
+    this.whiteBalance.value.set(gains[0], gains[1], gains[2]);
+    this.updateExposure();
+  }
+
   /** The eye is below the water surface: the exposure opens up (exposure.withUnderwater). */
   setUnderwater(on: boolean): void {
     this.underwater = on;
@@ -135,6 +147,7 @@ export class PicturePipeline {
   private updateExposure(): void {
     this.exposure.value = withUnderwater(computeExposure(
       this.sunElevationDeg, this.params.baseExposure, this.params.evOffset, this.params.autoExposure, this.forwardDotSun,
+      this.cloudStops, this.sunVisible,
     ), this.underwater);
   }
 }

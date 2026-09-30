@@ -1,5 +1,6 @@
 // Every *.selftest.ts module registers itself on import. Later tasks add imports here.
 import '../sky/sky.selftest';
+import '../weather/clouds.selftest';
 import '../ocean/fft.selftest';
 import '../ocean/ocean.selftest';
 import '../ocean/probe.selftest';

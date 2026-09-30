@@ -16,6 +16,7 @@ import { DEFAULT_LAND_PARAMS } from '../land/landParams';
 import { DEFAULT_SURF_PARAMS } from '../surf/surfModel';
 import { DEFAULT_BOMBIE_PARAMS } from '../bombie/bombieParams';
 import { DEFAULT_SOUND_PARAMS } from '../sound/soundParams';
+import { WEATHER_PRESETS } from '../weather/weather';
 import {
   BREAKING_MODEL, CustomProfile, DEV_SETTINGS_KEY, type DevSettings, type SettingsStorage, assignParams, carryOverPick, clearDevSettings, cloneDevSettings,
   loadDevSettings, mergeProfile, pickMoment, referenceNameFromHash, saveDevSettings,
@@ -76,7 +77,7 @@ function tweaked(): DevSettings {
   const s = defaults();
   s.mode = 'default';
   s.reference = 'golden-hour';
-  s.conditions = { date: '2026-04-20', timeOfDay: 16.5, swell: { sizeFt: 6, periodS: 17, directionDeg: 240 }, wind: { speedMs: 7, directionDeg: 200 }, tideM: 0.6, seed: 77 };
+  s.conditions = { date: '2026-04-20', timeOfDay: 16.5, swell: { sizeFt: 6, periodS: 17, directionDeg: 240 }, wind: { speedMs: 7, directionDeg: 200 }, tideM: 0.6, seed: 77, weather: { ...WEATHER_PRESETS.storm } };
   s.camera = { mode: 'free', position: [10, 30, -5], yawDeg: 123, pitchDeg: -30 };
   s.spectrum.windSpread = 9;
   s.spectrum.backgroundSwellFactor = 0.3;
@@ -151,6 +152,12 @@ describe('dev settings persistence', () => {
     const got = loadDevSettings(store(raw), defaults());
     expect(got?.overlays.ribbonTint).toBe(false);
     expect(got?.overlays.crestLines).toBe(true);
+  });
+
+  it('gives a profile stored before weather existed the default weather (it predates weather, it did not pick clear)', () => {
+    const raw = JSON.parse(JSON.stringify(defaults()));
+    delete raw.conditions.weather;
+    expect(loadDevSettings(store(raw), defaults())?.conditions.weather).toEqual(DEFAULT_CONDITIONS.weather);
   });
 
   it('returns null for an empty store', () => {
@@ -309,16 +316,16 @@ describe('assignParams', () => {
 describe('reference picks', () => {
   // "current": the live conditions/camera on screen. "stored": Andrew's own profile, distinct from current so a
   // test can tell which basis a pick actually used.
-  const current = { date: '2026-01-02', timeOfDay: 14, swell: { sizeFt: 7, periodS: 18, directionDeg: 250 }, wind: { speedMs: 9, directionDeg: 190 }, tideM: -0.8, seed: 5 };
+  const current = { date: '2026-01-02', timeOfDay: 14, swell: { sizeFt: 7, periodS: 18, directionDeg: 250 }, wind: { speedMs: 9, directionDeg: 190 }, tideM: -0.8, seed: 5, weather: { ...WEATHER_PRESETS.showers } };
   const here: CameraPose = { mode: 'free', position: [12, 40, -8], yawDeg: 45, pitchDeg: -25 };
-  const storedConditions = { date: '2026-02-03', timeOfDay: 9, swell: { sizeFt: 8.2, periodS: 16, directionDeg: 230 }, wind: { speedMs: 4, directionDeg: 180 }, tideM: 0.2, seed: 11 };
+  const storedConditions = { date: '2026-02-03', timeOfDay: 9, swell: { sizeFt: 8.2, periodS: 16, directionDeg: 230 }, wind: { speedMs: 4, directionDeg: 180 }, tideM: 0.2, seed: 11, weather: { ...WEATHER_PRESETS['sea mist'] } };
   const storedCamera: CameraPose = { mode: 'lineup', position: [-25, 0.8, 45], yawDeg: 270, pitchDeg: -2 };
   const stored = { conditions: storedConditions, camera: storedCamera };
   const picked = (): Moment => findReferenceMoment('golden-hour')!; // a 'time' moment
   const pickedView = (): Moment => findReferenceMoment('reef-overhead')!; // a 'view' moment
   const pickedSet = (): Moment => findReferenceMoment('set-arriving')!; // a 'set' moment
 
-  it('carry over: date and time from the pick, swell, wind, tide and seed from the current conditions', () => {
+  it('carry over: date and time from the pick, swell, wind, tide, seed and weather from the current conditions', () => {
     const m = carryOverPick(current, here, picked());
     expect(m.conditions).toEqual({ ...current, date: picked().conditions.date, timeOfDay: picked().conditions.timeOfDay });
     expect(m.conditions.swell).not.toBe(current.swell);
