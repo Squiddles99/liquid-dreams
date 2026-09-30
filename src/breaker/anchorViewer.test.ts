@@ -38,7 +38,7 @@ describe.skipIf(!OUT)('anchor drawings', () => {
         const sea: Vec2[] = [];
         for (let u = -20; u <= 30; u += 0.25) sea.push(s.base(u));
         const tg = TARGETS[I];
-        sides.push(`<figure><figcaption><b>${NAMES[I]} (${I})</b>, ${dt === 0 ? 'the lip landing' : `${dt > 0 ? '+' : ''}${dt} s from landing`}. Target: tube ${tg.tubeRatio}, lands ${tg.landAhead} H, lip ${tg.rootThickness} H, trough ${tg.troughBelow} H.</figcaption>${panel(-20, 30, -8, 11, 16, (X, Y) => {
+        sides.push(`<figure><figcaption><b>${NAMES[I]} (${I})</b>, ${dt === 0 ? 'the lip landing' : `${dt > 0 ? '+' : ''}${dt} s from landing`}. Target: tube ${tg.tubeRatio}, lands ${tg.landAhead === null ? `${tg.landDown} of the way down the face` : `${tg.landAhead} H ahead, top to bottom`}, lip ${tg.rootThickness} H, trough ${tg.troughBelow} H.</figcaption>${panel(-20, 30, -8, 11, 16, (X, Y) => {
           let overlay = '';
           if (I === 1 && dt === 0) overlay = target.map(([u, y]) => `<circle cx="${X(u)}" cy="${Y(y)}" r="1.2" fill="#ff7a00" fill-opacity="0.55"/>`).join('');
           if (I === 2 && dt === 0) {
@@ -101,7 +101,7 @@ describe.skipIf(!OUT)('anchor drawings', () => {
     }
     fs.writeFileSync(OUT, `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Barrel Anchors</title>
 <style>body{font:13px/1.45 system-ui,sans-serif;margin:16px;background:#fff;color:#222}figure{margin:0 0 14px}svg{max-width:100%;height:auto;border:1px solid #ccc;display:block}</style>
-<h2>The three anchors side on</h2><p>The biggest 12 ft wave on the peak's ray, crest at 0 m, true scale, at the crest point whose lip is landing. Orange dots on the normal landing: Andrew's 29 Sep markup. Magenta on the heavy landing: the cyan tube's mouth, scaled to this tube.</p>
+<h2>The three anchors side on</h2><p>The biggest 12 ft wave on the peak's ray, crest at 0 m, true scale, at the crest point whose lip is landing. Orange dots on the normal landing: Andrew's 29 Sep markup (top to bottom, before the 30 Sep ruling that only heavy throws top to bottom). Magenta on the heavy landing: the cyan tube's mouth, scaled to this tube.</p>
 ${sides.join('\n')}<h2>From in front: the end of the lip where it peels</h2>${fronts.join('\n')}</html>`);
   });
 });

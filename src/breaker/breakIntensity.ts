@@ -72,23 +72,25 @@ export function breakIntensity(i: IntensityInput, p: Pick<BreakParams, 'intensit
 
 /** The shape inputs intensity sets (BreakParams' per-crest keys). */
 export interface BarrelShape {
-  throwStrength: number;
+  lipReach: number;
   lipThickness: number;
   /** The tube's back wall stands this many H behind the crest at full throw (negative: ahead of it). */
   wallBack: number;
   troughDrain: number;
   pileSurge: number;
 }
-export const PER_CREST_BREAK_KEYS: readonly (keyof BarrelShape)[] = ['throwStrength', 'lipThickness', 'wallBack', 'troughDrain', 'pileSurge'];
+export const PER_CREST_BREAK_KEYS: readonly (keyof BarrelShape)[] = ['lipReach', 'lipThickness', 'wallBack', 'troughDrain', 'pileSurge'];
 
 /**
  * The anchors (gentle, normal, heavy), calibrated 2026-09-30 by barrelAnchors.test.ts against the spec's measured
- * targets (§3.3: the biggest 12 ft set wave on the peak, at the lip's landing).
+ * targets (§3.3: the biggest 12 ft set wave on the peak, at the lip's landing). Gentle and normal recalibrated the same
+ * day when Andrew ruled that only heavy throws top to bottom (gentle's lip hits half way down the face, normal's two
+ * thirds): normal's 0.2 H lip is trimmed to 0.14 H by the curl's radius (MAX_THICKNESS_OF_RADIUS) on that tighter throw.
  */
 export const ANCHORS: readonly [BarrelShape, BarrelShape, BarrelShape] = [
-  { throwStrength: 0.7303, lipThickness: 0.1, wallBack: 0.7412, troughDrain: 0.2229, pileSurge: 0 },
-  { throwStrength: 1.0696, lipThickness: 0.2, wallBack: 0.0282, troughDrain: 0.638, pileSurge: 0.3 },
-  { throwStrength: 1.2571, lipThickness: 0.3, wallBack: -0.3, troughDrain: 0.8178, pileSurge: 0.45 },
+  { lipReach: 0.5278, lipThickness: 0.1, wallBack: 0.4062, troughDrain: 0.219, pileSurge: 0 },
+  { lipReach: 0.7078, lipThickness: 0.2, wallBack: 0.5511, troughDrain: 0.6544, pileSurge: 0.3 },
+  { lipReach: 2.235, lipThickness: 0.3, wallBack: -0.3, troughDrain: 0.8178, pileSurge: 0.45 },
 ];
 
 /** The shape at `intensity`: anchor k at k, smoothstep-eased between neighbours (zero slope at each anchor). */
@@ -98,11 +100,11 @@ export function barrelShape(intensity: number, anchors: readonly BarrelShape[] =
   const t = smoothstep(0, 1, I - k);
   const a = anchors[k], b = anchors[k + 1];
   const out = {} as BarrelShape;
-  for (const key of PER_CREST_BREAK_KEYS) out[key] = a[key] + (b[key] - a[key]) * t;
+  for (const key of PER_CREST_BREAK_KEYS) out[key] = a[key] * (1 - t) + b[key] * t; // exactly each anchor at its intensity
   return out;
 }
 
 /** `p` with its per-crest keys from shape `s` (a copy). */
 export function withShape(p: BreakParams, s: BarrelShape): BreakParams {
-  return { ...p, throwStrength: s.throwStrength, lipThickness: s.lipThickness, wallBack: s.wallBack, troughDrain: s.troughDrain, pileSurge: s.pileSurge };
+  return { ...p, lipReach: s.lipReach, lipThickness: s.lipThickness, wallBack: s.wallBack, troughDrain: s.troughDrain, pileSurge: s.pileSurge };
 }

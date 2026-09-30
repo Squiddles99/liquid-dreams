@@ -47,17 +47,17 @@ describe('lipProfileNodes sample tables', () => {
 
   it('lip uniforms mirror the normalized params, with the steepening start as the ratio it starts at', () => {
     const u = createLipUniforms(DEFAULT_BREAK_PARAMS);
-    expect([u.throwStrength.value, u.lipThickness.value, u.collapseTime.value, u.ribbonOnset.value, u.faceWidth.value]).toEqual([
-      DEFAULT_BREAK_PARAMS.throwStrength, DEFAULT_BREAK_PARAMS.lipThickness, DEFAULT_BREAK_PARAMS.collapseTime, DEFAULT_BREAK_PARAMS.ribbonOnset, DEFAULT_BREAK_PARAMS.faceWidth,
+    expect([u.lipReach.value, u.lipThickness.value, u.collapseTime.value, u.ribbonOnset.value, u.faceWidth.value]).toEqual([
+      DEFAULT_BREAK_PARAMS.lipReach, DEFAULT_BREAK_PARAMS.lipThickness, DEFAULT_BREAK_PARAMS.collapseTime, DEFAULT_BREAK_PARAMS.ribbonOnset, DEFAULT_BREAK_PARAMS.faceWidth,
     ]);
     expect(u.steepFrom.value).toBe(steepeningStart(DEFAULT_BREAK_PARAMS));
-    const bad = { ...DEFAULT_BREAK_PARAMS, collapseTime: 0, ribbonOnset: 5, throwStrength: Number.NaN };
+    const bad = { ...DEFAULT_BREAK_PARAMS, collapseTime: 0, ribbonOnset: 5, lipReach: Number.NaN };
     const copy = { ...bad };
     updateLipUniforms(u, bad);
     expect(bad).toEqual(copy);
     expect(u.collapseTime.value).toBeGreaterThan(0);
     expect(u.steepFrom.value).toBeLessThan(1);
-    expect(u.throwStrength.value).toBe(DEFAULT_BREAK_PARAMS.throwStrength);
+    expect(u.lipReach.value).toBe(DEFAULT_BREAK_PARAMS.lipReach);
   });
 
   it('packs the tables for the GPU as vec4(a, b, c, s), vec4(segment, 0, 0, 0) per sample', () => {

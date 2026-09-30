@@ -76,7 +76,7 @@ function sampleTable(): N {
 /** One uniform per BreakParams number the profile reads, plus the steepening's start (breaking.steepeningStart). */
 export function createLipUniforms(p: BreakParams) {
   const u = {
-    throwStrength: uniform(0), lipThickness: uniform(0), wallBack: uniform(0.25), collapseTime: uniform(1), ribbonOnset: uniform(0), faceWidth: uniform(1), steepFrom: uniform(0),
+    lipReach: uniform(0), lipThickness: uniform(0), wallBack: uniform(0.25), collapseTime: uniform(1), ribbonOnset: uniform(0), faceWidth: uniform(1), steepFrom: uniform(0),
     drainGrowth: uniform(1),
   };
   updateLipUniforms(u, p);
@@ -88,7 +88,7 @@ export type LipUniforms = ReturnType<typeof createLipUniforms>;
 export function updateLipUniforms(u: LipUniforms, params: BreakParams): void {
   const p = { ...params };
   normalizeBreakParams(p);
-  u.throwStrength.value = p.throwStrength;
+  u.lipReach.value = p.lipReach;
   u.lipThickness.value = p.lipThickness;
   u.wallBack.value = p.wallBack;
   u.collapseTime.value = p.collapseTime;
@@ -187,11 +187,11 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   const Fb = vec2(baseAt(uFoot.sub(0.1))).toVar();
   const tF = norm2(Fb.sub(F)).toVar();
   const tau0 = landingTimeNode(K.y.sub(F.y)).toVar();
-  const vj0 = max(u.throwStrength.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tau0)).toVar();
+  const vj0 = max(u.lipReach.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tau0)).toVar();
   const landing0 = vec2(baseAt(uFoot.add(K.x.add(vj0.mul(tau0)).sub(F.x)))).toVar();
   const tipBelow = float(TIP_THICKNESS_RATIO).mul(u.lipThickness).mul(H);
   const tauLand = landingTimeNode(K.y.sub(max(F.y, landing0.y)).sub(tipBelow)).toVar();
-  const vj = max(u.throwStrength.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)).toVar();
+  const vj = max(u.lipReach.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)).toVar();
   // The water where the lip then lands (lipProfile.profileFrame): each step moves u by the miss in x.
   const uLand = uFoot.add(K.x.add(vj0.mul(tau0)).sub(F.x)).toVar();
   const land = vec2(landing0).toVar();
@@ -199,7 +199,7 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
     uLand.addAssign(K.x.add(vj.mul(tauLand)).sub(land.x));
     land.assign(baseAt(uLand));
     tauLand.assign(landingTimeNode(K.y.sub(max(F.y, land.y)).sub(tipBelow)));
-    vj.assign(max(u.throwStrength.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)));
+    vj.assign(max(u.lipReach.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)));
   }
   const pre = tb.lessThan(0.0);
   const t = select(pre, float(0.0), min(max(tb, 0.0), tauLand)).toVar();
