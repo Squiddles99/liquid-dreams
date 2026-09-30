@@ -18,9 +18,10 @@ export function registerSelfTest(t: SelfTest): void {
   tests.push(t);
 }
 
-export async function runSelfTests(renderer: THREE.WebGPURenderer): Promise<SelfTestResult[]> {
+/** Runs every registered test, or (`?selftest=clouds`) only those whose name contains `filter`. */
+export async function runSelfTests(renderer: THREE.WebGPURenderer, filter = ''): Promise<SelfTestResult[]> {
   const results: SelfTestResult[] = [];
-  for (const t of tests) {
+  for (const t of tests.filter((x) => x.name.includes(filter))) {
     let r: SelfTestResult;
     try {
       r = { name: t.name, ...(await t.run(renderer)) };
