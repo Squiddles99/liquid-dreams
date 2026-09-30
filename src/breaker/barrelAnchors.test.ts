@@ -13,7 +13,9 @@ import { type ActiveWave, type BreakOptions, breakOptions, localHeight, sumWaves
 // top to bottom; a normal day's lip hits about two thirds of the way down the face, a gentle day's about half way. Where it
 // lands is the throw's (landAhead is a target only for the top-to-bottom barrel).
 export const TARGETS = [
-  { tubeRatio: 2.0, landDown: 0.5, landAhead: null, rootThickness: 0.1, troughBelow: 0.2, pileSurge: 0 },
+  // Gentle: a small round tube right under the crest, its lip thrown short and falling steeply onto the face half way down
+  // (Andrew's side-by-side sketch, 2026-09-30; it was 2:1, a long slot reaching back under the wave's back).
+  { tubeRatio: 1.0, landDown: 0.5, landAhead: null, rootThickness: 0.1, troughBelow: 0.2, pileSurge: 0 },
   // Normal's lip: 0.2 H asked, 0.14 H possible on its tighter throw (the curl's radius caps it) — pending Andrew's ruling.
   { tubeRatio: 1.3, landDown: 0.67, landAhead: null, rootThickness: 0.14, troughBelow: 0.55, pileSurge: 0.3 },
   { tubeRatio: 1.1, landDown: 1, landAhead: 2.0, rootThickness: 0.3, troughBelow: 0.7, pileSurge: 0.45 },

@@ -85,10 +85,10 @@ export const PER_CREST_BREAK_KEYS: readonly (keyof BarrelShape)[] = ['lipReach',
  * The anchors (gentle, normal, heavy), calibrated 2026-09-30 by barrelAnchors.test.ts against the spec's measured
  * targets (§3.3: the biggest 12 ft set wave on the peak, at the lip's landing). Gentle and normal recalibrated the same
  * day when Andrew ruled that only heavy throws top to bottom (gentle's lip hits half way down the face, normal's two
- * thirds): normal's 0.2 H lip is trimmed to 0.14 H by the curl's radius (MAX_THICKNESS_OF_RADIUS) on that tighter throw.
+ * thirds; gentle's tube round, under the crest, from Andrew's sketch): normal's 0.2 H lip is trimmed to 0.14 H by the curl's radius (MAX_THICKNESS_OF_RADIUS) on that tighter throw.
  */
 export const ANCHORS: readonly [BarrelShape, BarrelShape, BarrelShape] = [
-  { lipReach: 0.5278, lipThickness: 0.1, wallBack: 0.4062, troughDrain: 0.219, pileSurge: 0 },
+  { lipReach: 0.5283, lipThickness: 0.1, wallBack: 0.0578, troughDrain: 0.2194, pileSurge: 0 },
   { lipReach: 0.7078, lipThickness: 0.2, wallBack: 0.5511, troughDrain: 0.6544, pileSurge: 0.3 },
   { lipReach: 2.235, lipThickness: 0.3, wallBack: -0.3, troughDrain: 0.8178, pileSurge: 0.45 },
 ];
