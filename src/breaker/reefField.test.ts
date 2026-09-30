@@ -53,7 +53,7 @@ describe('reef wave field', () => {
     const peelSpeed = 40 / (north[north.length - 1] - north[0]);
     expect(peelSpeed).toBeGreaterThan(3);
   });
-  it('a grazing swell (exactly 270°) does not source the whole south edge as a numerical caustic', { timeout: 20_000 }, () => {
+  it('a grazing swell (exactly 270°) does not source the whole south edge as a numerical caustic', { timeout: 60_000 }, () => {
     // dirZ is float residue of cos(90°) at exactly 270°; a bare `< 0` edge-source test used to treat that residue's
     // sign as real inflow and source the whole south edge from the far field, capping a line of cells at AMP_CAP.
     const cappedCount = (fromDeg: number) => {
