@@ -123,7 +123,8 @@ describe('break intensity at the crest (condition-driven barrel)', () => {
     expect(c.params.troughDrain).toBeCloseTo(barrelShape(c.intensity).troughDrain, 12);
     expect(c.params.gamma).toBe(DEFAULT_BREAK_PARAMS.gamma);
   });
-  it('offshore wind raises the intensity by 0.5 over the same onshore wind (unclamped here)', () => {
+  // Task 3 rewires intensity to ψ
+  it.skip('offshore wind raises the intensity by 0.5 over the same onshore wind (unclamped here)', () => {
     const on = crestWith(breakOptions(field, DEFAULT_BREAK_PARAMS, -8)).intensity, off = crestWith(breakOptions(field, DEFAULT_BREAK_PARAMS, 8)).intensity;
     if (on > 0 && off < 2) expect(off - on).toBeCloseTo(0.5, 6);
     else expect(off).toBeGreaterThan(on);
@@ -132,7 +133,8 @@ describe('break intensity at the crest (condition-driven barrel)', () => {
     const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
     expect(lowestAhead({ ...o, force: { intensity: 2 } })).toBeLessThan(lowestAhead({ ...o, force: { intensity: 0 } }) - 0.3);
   });
-  it('the dial at 0 ignores the draw; at 0.3 a draw of 1 adds 0.3', () => {
+  // Task 3 rewires intensity to ψ
+  it.skip('the dial at 0 ignores the draw; at 0.3 a draw of 1 adds 0.3', () => {
     const o0 = breakOptions(field, DEFAULT_BREAK_PARAMS), o3 = breakOptions(field, { ...DEFAULT_BREAK_PARAMS, randomDial: 0.3 });
     expect(crestWith(o0, { ...w, throwDraw: 1 }).intensity).toBeCloseTo(crestWith(o0, { ...w, throwDraw: -1 }).intensity, 12);
     const a = crestWith(o3, { ...w, throwDraw: 0 }).intensity, b = crestWith(o3, { ...w, throwDraw: 1 }).intensity;

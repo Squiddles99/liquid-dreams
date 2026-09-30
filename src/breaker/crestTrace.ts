@@ -1,5 +1,5 @@
 import { breakIntensity } from './breakIntensity';
-import { type BreakParams, ONSET_RECORD_LENGTH, breakingRatio, landingEstimate, onsetStep, onsetTime } from './breaking';
+import { type BreakParams, ONSET_RECORD_LENGTH, breakingRatio, landingEstimate, onsetPsi, onsetTime } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { HAND_BACK_S } from './lipProfile';
 import { type ReefField, sampleField, sampleOnset } from './reefField';
@@ -112,7 +112,7 @@ export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: nu
 export function stationIntensity(field: ReefField, w: ActiveWave, x: number, z: number, input: TraceInput): number {
   const rec = sampleOnset(field, x, z, onsetScratch);
   if (!rec) return 1;
-  return breakIntensity({ step: onsetStep(rec, 0, w.heightM, input.params), offshoreMs: input.offshoreMs ?? 0, periodS: (2 * Math.PI) / w.omega, waveBonus: w.drainBonus ?? 0, throwDraw: w.throwDraw ?? 0 }, input.params);
+  return breakIntensity({ step: onsetPsi(rec, 0, w.heightM, input.params), offshoreMs: input.offshoreMs ?? 0, periodS: (2 * Math.PI) / w.omega, waveBonus: w.drainBonus ?? 0, throwDraw: w.throwDraw ?? 0 }, input.params);
 }
 
 /** Whether a station still draws: before breaking, from the ribbon's onset ratio; after, until the (estimated) hand-back. */
