@@ -24,6 +24,13 @@ function skyMapTexture(width: number, height: number): THREE.StorageTexture {
 const MIN_SUN_CHANGE_RAD = (0.25 * Math.PI) / 180;
 
 export class Sky {
+  /**
+   * The clouds around the camera (spec 2026-09-30 §4.4), written by weather/Clouds: rgb, their light; a, how much of the
+   * atmosphere behind them they hide. A zeroed texture (no clouds yet, or none at all) reads as the clear sky.
+   */
+  readonly skyMap = skyMapTexture(SKY_MAP.width, SKY_MAP.height);
+  /** The 4× smaller copy that reflections and the sky light read. */
+  readonly skyMapSmall = skyMapTexture(SKY_MAP_SMALL.width, SKY_MAP_SMALL.height);
   readonly uniforms: AtmosphereUniforms;
   readonly luts: AtmosphereLuts;
   readonly sunDirection = uniform(new THREE.Vector3(0, 1, 0));
@@ -33,13 +40,6 @@ export class Sky {
   readonly seaLevelExtinction = uniform(new THREE.Vector3());
   readonly aerialScale = uniform(1);
   readonly dome: THREE.Mesh;
-  /**
-   * The clouds around the camera (spec 2026-09-30 §4.4), written by weather/Clouds: rgb, their light; a, how much of the
-   * atmosphere behind them they hide. A zeroed texture (no clouds yet, or none at all) reads as the clear sky.
-   */
-  readonly skyMap = skyMapTexture(SKY_MAP.width, SKY_MAP.height);
-  /** The 4× smaller copy that reflections and the sky light read. */
-  readonly skyMapSmall = skyMapTexture(SKY_MAP_SMALL.width, SKY_MAP_SMALL.height);
   /** [0].x: the sun's transmittance through the clouds from the camera (the sun disk, the exposure meter). */
   readonly cloudSunAttr = new THREE.StorageBufferAttribute(new Float32Array([1, 1, 1, 1]), 4);
   readonly cloudSun = storage(this.cloudSunAttr, 'vec4', 1).toReadOnly();
@@ -51,7 +51,7 @@ export class Sky {
   constructor(params: AtmosphereParams = DEFAULT_ATMOSPHERE) {
     this.params = { ...params };
     this.uniforms = createAtmosphereUniforms(this.params);
-    this.luts = new AtmosphereLuts(this.uniforms);
+    this.luts = new AtmosphereLuts(this.uniforms, { map: this.skyMapSmall, sunAzimuth: this.sunAzimuthAngle });
     this.seaLevelExtinction.value.set(...extinctionPerKm(0, this.params));
     this.dome = createSkyDome(this);
   }
@@ -61,9 +61,19 @@ export class Sky {
     return this.luts.skyLightRead.element(1).xyz;
   }
 
-  /** Sky irradiance on a horizontal surface (RGB node). */
+  /** Sky irradiance on a horizontal surface, through the clouds (RGB node). */
   get skyIrradiance(): N {
     return this.luts.skyLightRead.element(0).xyz;
+  }
+
+  /** The clear sky's irradiance, above the clouds (RGB node): what lights the clouds themselves. */
+  get clearSkyIrradiance(): N {
+    return this.luts.skyLightRead.element(2).xyz;
+  }
+
+  /** Re-integrate the sky light after the clouds changed (the sun did not). */
+  refreshSkyLight(renderer: THREE.WebGPURenderer): void {
+    this.luts.renderSkyLight(renderer);
   }
 
   setParams(p: AtmosphereParams): void {

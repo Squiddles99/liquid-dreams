@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, PI, cos, dot, exp, float, instanceIndex, length, max, min, normalize, saturate, select, sin,
+  Fn, If, Loop, PI, cos, dot, exp, float, fract, instanceIndex, length, max, min, normalize, saturate, select, sin,
   smoothstep, sqrt, storage, texture, textureStore, uint, uniform, uvec2, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
@@ -20,6 +20,13 @@ const SKY_VIEW_STEPS = 32;
 const IRRADIANCE_ELEVATION_SAMPLES = 16;
 const IRRADIANCE_AZIMUTH_SAMPLES = 32;
 
+/** What the sky-light integration needs to see the clouds: the small sky map and the sun's world azimuth. */
+export interface SkyLightClouds {
+  map: THREE.Texture;
+  /** atan2(sun.z, sun.x): the sky-view LUT's azimuths are measured from it, the sky map's from world +x. */
+  sunAzimuth: N;
+}
+
 function lutTexture(width: number, height: number, wrapS: THREE.Wrapping = THREE.ClampToEdgeWrapping): THREE.StorageTexture {
   const t = new THREE.StorageTexture(width, height);
   t.type = THREE.HalfFloatType;
@@ -36,18 +43,28 @@ export class AtmosphereLuts {
   readonly transmittance = lutTexture(TRANSMITTANCE_LUT.width, TRANSMITTANCE_LUT.height);
   readonly multiScattering = lutTexture(MULTI_SCATTERING_LUT.width, MULTI_SCATTERING_LUT.height);
   readonly skyView = lutTexture(SKY_VIEW_LUT.width, SKY_VIEW_LUT.height, THREE.RepeatWrapping);
-  /** [0] = sky irradiance on a horizontal surface, [1] = sun illuminance at the surface. RGB in .xyz. */
-  readonly skyLightAttr = new THREE.StorageBufferAttribute(new Float32Array(8), 4);
-  readonly skyLightRead = storage(this.skyLightAttr, 'vec4', 2).toReadOnly();
+  /**
+   * [0] = sky irradiance on a horizontal surface, through the clouds; [1] = sun illuminance at the surface (above the
+   * clouds: their shadow is the sunlight map's); [2] = the clear sky's irradiance (what lights the clouds). RGB in .xyz.
+   */
+  readonly skyLightAttr = new THREE.StorageBufferAttribute(new Float32Array(12), 4);
+  readonly skyLightRead = storage(this.skyLightAttr, 'vec4', 3).toReadOnly();
   /** Sun elevation in radians. The sky-view LUT is built in a frame where the sun has azimuth 0. */
   readonly sunElevation = uniform(0.3);
   readonly cameraHeightKm = uniform(0.002);
   private readonly staticPasses: THREE.ComputeNode[];
   private readonly dynamicPasses: THREE.ComputeNode[];
+  private readonly skyLightPass: THREE.ComputeNode;
 
-  constructor(private readonly u: AtmosphereUniforms) {
+  constructor(private readonly u: AtmosphereUniforms, private readonly clouds?: SkyLightClouds) {
     this.staticPasses = [this.buildTransmittancePass(), this.buildMultiScatteringPass()];
-    this.dynamicPasses = [this.buildSkyViewPass(), this.buildSkyLightPass()];
+    this.skyLightPass = this.buildSkyLightPass();
+    this.dynamicPasses = [this.buildSkyViewPass(), this.skyLightPass];
+  }
+
+  /** Re-integrate the sky light alone (the clouds changed, the sun did not). */
+  renderSkyLight(renderer: THREE.WebGPURenderer): void {
+    renderer.compute(this.skyLightPass);
   }
 
   renderStatic(renderer: THREE.WebGPURenderer): void {
@@ -185,23 +202,37 @@ export class AtmosphereLuts {
 
   private buildSkyLightPass(): THREE.ComputeNode {
     const u = this.u;
-    const skyLight = storage(this.skyLightAttr, 'vec4', 2);
+    const skyLight = storage(this.skyLightAttr, 'vec4', 3);
+    const clouds = this.clouds;
     const dEl = Math.PI / 2 / IRRADIANCE_ELEVATION_SAMPLES;
     const dAz = (2 * Math.PI) / IRRADIANCE_AZIMUTH_SAMPLES;
     return Fn(() => {
       const irradiance = vec3(0.0).toVar();
+      const clearIrradiance = vec3(0.0).toVar();
       Loop({ start: 0, end: IRRADIANCE_ELEVATION_SAMPLES, name: 'i' } as N, { start: 0, end: IRRADIANCE_AZIMUTH_SAMPLES, name: 'j' } as N, ({ i, j }: N) => {
         const e = float(i).add(0.5).mul(dEl);
         const a = float(j).add(0.5).mul(dAz);
         const radiance = texture(this.skyView, skyViewUvFromAngles(e, a)).level(float(0)).rgb;
-        irradiance.addAssign(radiance.mul(sin(e)).mul(cos(e)).mul(dEl * dAz));
+        const w = sin(e).mul(cos(e)).mul(dEl * dAz);
+        clearIrradiance.addAssign(radiance.mul(w));
+        if (clouds) {
+          // The clouds in front of this part of the sky (Sky.radiance's composite): what the sea and land actually see.
+          const uv = vec2(fract(a.add(clouds.sunAzimuth).div(2 * Math.PI)), sqrt(e.div(Math.PI / 2)));
+          const c = texture(clouds.map, uv).level(float(0));
+          irradiance.addAssign(radiance.mul(float(1.0).sub(c.a)).add(c.rgb).mul(w));
+        } else {
+          irradiance.addAssign(radiance.mul(w));
+        }
       });
+      // The faint night floor, outside the loop as it always was (so a clear sky's light is exactly unchanged).
       irradiance.addAssign(nightFloorRadiance(u).mul(PI));
+      clearIrradiance.addAssign(nightFloorRadiance(u).mul(PI));
       const muSun = sin(this.sunElevation);
       const visible = smoothstep(-0.0093, 0.0093, muSun); // sun disk crossing the horizon (±0.53°)
       const sun = this.transmittanceAt(u.groundRadius.add(this.cameraHeightKm), muSun).mul(u.sunIlluminance).mul(visible);
       skyLight.element(0).assign(vec4(irradiance, 1.0));
       skyLight.element(1).assign(vec4(sun, 1.0));
+      skyLight.element(2).assign(vec4(clearIrradiance, 1.0));
     })().compute(1, [1]) as THREE.ComputeNode;
   }
 }

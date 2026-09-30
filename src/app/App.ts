@@ -47,6 +47,7 @@ import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
 import { Clouds } from '../weather/Clouds';
+import { CloudMeter } from '../weather/cloudMeter';
 import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesBetween, wavesNear } from '../swell/sets';
 import { CoastalSurf } from '../surf/CoastalSurf';
 import { DEFAULT_SURF_PARAMS, type SurfParams, normalizeSurfParams } from '../surf/surfModel';
@@ -155,6 +156,8 @@ export class App {
   readonly sky = new Sky(this.atmosphereParams);
   /** The weather's clouds (spec 2026-09-30), marched into the sky's map before any material reads it. */
   readonly clouds = new Clouds(this.sky);
+  /** The exposure's cloud term: meters the light under the clouds (spec 2026-09-30 §4.6). */
+  readonly cloudMeter = new CloudMeter(this.sky.luts.skyLightAttr, this.sky.cloudSunAttr);
   readonly ocean = new OceanSimulation(this.simParams);
   readonly seabed = new Seabed(buildBathymetry(this.reefParams));
   /** The land behind the Womb (Phase 4a spec 2026-09-28-the-view-back-design.md); landless until its file loads. */
@@ -1149,6 +1152,8 @@ export class App {
     this.sunDir.set(...sun.direction);
     this.clouds.setWeather(this.conditions.weather, this.conditions.seed);
     this.clouds.update(this.renderer, this.sunDir, this.camera.position, this.clock.simTime);
+    this.cloudMeter.update(this.renderer, realDt, this.sunDir.y, this.clouds.hasClouds);
+    this.picture.setCloud(this.cloudMeter.stops, this.cloudMeter.sunVisible);
     this.sky.update(this.renderer, this.sunDir, this.camera.position.y);
     this.land.update(this.renderer, sun.direction, this.camera.position);
     this.updateBeach();
