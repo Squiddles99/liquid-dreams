@@ -25,7 +25,7 @@ describe.each(KINDS)('every %s pose, both stances, both bodies, every dial extre
     it(pose, () => {
       let ankle = 0, knee = 0, elbow = 0, spine = 0, head = 0, poleSide = Infinity, bad = 0;
       for (const rest of RESTS) {
-        const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]);
+        const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]!);
         const layout = layoutFor(spec, rest.heightM);
         for (const stance of ['regular', 'goofy'] as Stance[])
           for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) for (const r of LEVELS)
@@ -64,7 +64,7 @@ describe.each(KINDS)('every %s pose, both stances, both bodies, every dial extre
 });
 
 describe('stance', () => {
-  const rest = referenceSkeleton(1.78), spec = makeBoard('thruster', PRESETS.male.quiver.thruster), layout = layoutFor(spec, 1.78);
+  const rest = referenceSkeleton(1.78), spec = makeBoard('thruster', PRESETS.male.quiver.thruster!), layout = layoutFor(spec, 1.78);
   const dials = { compression: 0, lean: 0, twist: 0, reach: 0 };
   it('puts the left foot forward for regular and the right for goofy', () => {
     const reg = poseTargets('trim', { spec, layout, rest, stance: 'regular', dials, phaseT: 0 });
@@ -83,7 +83,7 @@ describe('the rotations drive a real hierarchy (what Surfer.applyPose relies on)
     const ref = referenceSkeleton(1.65);
     const q = (i: number): Quaternion => new Quaternion().setFromEuler(new Euler(0.3 * i, -0.2 * i, 0.1 * i));
     const rest: SkeletonRest = { ...ref, restQ: Object.fromEntries(BONES.map((b, i) => [b, q(i)])) as SkeletonRest['restQ'] };
-    const spec = makeBoard('stepUp', PRESETS.female.quiver.stepUp);
+    const spec = makeBoard('stepUp', PRESETS.female.quiver.stepUp!);
     const t = poseTargets('barrel', { spec, layout: layoutFor(spec, 1.65), rest, stance: 'regular', dials: { compression: 0, lean: 0, twist: 0, reach: 0 }, phaseT: 0 });
     const s = solvePose(rest, t, FRAMES[1], null);
     // Three stores each bone's rest offset in its parent's rest frame: restQ[p]⁻¹ · (joint − parentJoint).
@@ -111,7 +111,7 @@ describe('nothing sinks through the board (Andrew, gate 2: the drop-knee knee we
     it(`${kind}: every joint over the deck sits on or above it; knees a kneecap above (4 cm)`, () => {
       const worst: string[] = [];
       for (const rest of RESTS) {
-        const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]);
+        const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]!);
         const layout = layoutFor(spec, rest.heightM);
         for (const pose of posesFor(kind)) for (const stance of ['regular', 'goofy'] as Stance[])
           for (const c of LEVELS) for (const l of LEVELS) for (const phaseT of PHASES) {
@@ -136,7 +136,7 @@ describe('drop-knee', () => {
   it('rests the back knee on its spot (within 3 cm of a kneecap above it) for every stance, body and dial', () => {
     let worst = 0;
     for (const rest of RESTS) {
-      const spec = makeBoard('bodyboard', PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver.bodyboard);
+      const spec = makeBoard('bodyboard', PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver.bodyboard!);
       const layout = layoutFor(spec, rest.heightM);
       const spot = new Vector3(...layout.spots.dkKnee).add(new Vector3(0, 0.085, 0));
       for (const stance of ['regular', 'goofy'] as Stance[]) for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) {
@@ -166,7 +166,7 @@ describe('every limb shows (Andrew, gate 2: the bottom turn buried a hand in his
     it(`${kind}: no palm inside a thigh, shin or the torso, for every pose, stance, body, dial and phase`, () => {
       const worst: string[] = [];
       for (const rest of RESTS) {
-        const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]);
+        const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]!);
         const layout = layoutFor(spec, rest.heightM);
         for (const pose of posesFor(kind)) for (const stance of ['regular', 'goofy'] as Stance[])
           for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) for (const r of LEVELS) for (const phaseT of PHASES) {
@@ -196,7 +196,7 @@ describe('standing knees stay up (Andrew, gate 2: the bottom turn knelt on the d
   it('every stand-up pose, board, stance, body and dial; and the pop-up once it is up', () => {
     const worst: string[] = [];
     for (const kind of ['thruster', 'stepUp'] as BoardKind[]) for (const rest of RESTS) {
-      const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]);
+      const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]!);
       const layout = layoutFor(spec, rest.heightM);
       for (const pose of [...STANDING, 'popup'] as const) for (const stance of ['regular', 'goofy'] as Stance[])
         for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) {
@@ -220,7 +220,7 @@ describe('prone elbows (Andrew, gate 2: the elbow pointed up and pinched, the fo
   it('a prone rider holds the board with the elbows out and low, never above the shoulders', () => {
     const worst: string[] = [];
     for (const rest of RESTS) {
-      const spec = makeBoard('bodyboard', PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver.bodyboard);
+      const spec = makeBoard('bodyboard', PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver.bodyboard!);
       const layout = layoutFor(spec, rest.heightM);
       for (const pose of ['prone', 'proneBarrel'] as const) for (const stance of ['regular', 'goofy'] as Stance[])
         for (const c of LEVELS) for (const l of LEVELS) for (const tw of LEVELS) for (const r of LEVELS) {
