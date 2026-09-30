@@ -32,17 +32,19 @@ def _is_scalp(co, centre, eye_z, inset=0.0):
 
 
 def _short(root, n, centre, crown, rng):
-    """Short, wet and messy: combed away from the crown and down, lying on the scalp in loose clumps."""
+    """Short, wet and messy: pushed back off the face (the front and top combed back over the crown, the sides and back
+    down), lying on the scalp in loose clumps."""
     length = rng.uniform(0.04, 0.08)
     noise = _unit(rng)
     r_min = (root - centre).length + 0.003
+    front = root.y < crown.y
     pts = [root + n * 0.002]
     for _ in range(5):
         p = pts[-1]
         out = (p - centre).normalized()
-        comb = p - crown
+        comb = Vector((0, 1, 0.15)) if front else p - crown
         comb = (comb - out * comb.dot(out)).normalized() if comb.length > 1e-6 else noise
-        d = comb * 0.6 + DOWN * 0.3 + noise * 0.25
+        d = comb * 0.6 + DOWN * (0.1 if front else 0.3) + noise * 0.25
         d = (d - out * d.dot(out) * 0.8).normalized()
         pts.append(_hug(p + d * (length / 5), centre, r_min, r_min + 0.012))
     return pts

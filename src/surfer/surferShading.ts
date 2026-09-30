@@ -74,6 +74,11 @@ function frecklesAndSpots(albedo: N, p: SurferPreset, z: SkinZones): N {
 function faceZones(albedo: N, p: SurferPreset, z: SkinZones, lips: N): N {
   const P: N = positionGeometry;
   const r = z.eyeRadius;
+  // Skin is never one colour: a centimetre-scale mottle (±5%, a touch redder where darker) and a warmer, yellower
+  // forehead; without it the face reads as painted plastic.
+  const mottle = mx_noise_float(P.mul(38.0)).mul(0.6).add(mx_noise_float(P.mul(110.0)).mul(0.4));
+  albedo = albedo.mul(vec3(1, 1, 1).add(vec3(0.035, 0.05, 0.06).mul(mottle)));
+  albedo = mix(albedo, albedo.mul(vec3(1.03, 1.01, 0.93)), gauss(P, z.forehead, 0.05).mul(0.8));
   // Blush: the cheeks' apples, the nose tip, the ears.
   const blush = clamp(max(gauss(P, z.cheeks[0], 0.022), gauss(P, z.cheeks[1], 0.022)).add(gauss(P, z.nose, 0.011).mul(0.55)).add(max(gauss(P, z.earTops[0], 0.02), gauss(P, z.earTops[1], 0.02)).mul(0.5)), 0, 1).mul(p.blush);
   let out: N = mix(albedo, albedo.mul(vec3(1.1, 0.74, 0.7)), blush.mul(0.55));
