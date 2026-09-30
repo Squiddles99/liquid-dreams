@@ -1,7 +1,7 @@
 # Grommet: Design
 
-**Date:** 2026-09-30 · **Branch:** `grommet` (worktree `ld-surfer`) · **Status:** brainstormed with Andrew; sections
-1–5 approved in chat; written spec awaiting his review. Calls marked **Ruling** are mine, made while writing it up; each
+**Date:** 2026-09-30 · **Branch:** `grommet` (worktree `ld-surfer`) · **Status:** built 2026-10-01; Grommet's gate
+signed off by Andrew. Calls marked **Ruling** are mine, made while writing it up; each
 is his to overturn.
 
 ## 1. What Andrew asked for, and what we agreed
