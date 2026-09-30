@@ -52,12 +52,26 @@ def vest(b, t, co, H):
     return 0.0
 
 
+# Measured from the body by paint_masks before any rule runs (Blender axes: +x the left, -y the front, +z up).
+LANDMARKS = {"crotch_z": 0.0}
+BIKINI_W = 0.02  # a sharper ramp than the suits': the side straps are only 2 cm wide
+
+
 def bikini_bottoms(b, t, co, H):
-    if b == "pelvis":
-        return below(co.z, 0.535 * H, W_Z)
-    if b == "thigh":
-        return below(t, 0.06, W_T)
-    return 0.0
+    """Andrew's gate-1 cut: low rise, legs cut high to the hip, 2 cm side straps, a cheeky back.
+
+    Covered between the waistband and a lower edge that climbs from the crotch outward: steeply at the front (the high
+    cut), less steeply at the back (the cheeky cut), never above the strap's lower edge.
+    """
+    if b not in ("pelvis", "thigh", "spine_01"):
+        return 0.0
+    crotch = LANDMARKS["crotch_z"]
+    top = crotch + 0.05 * H
+    back = max(0.0, min(1.0, 0.5 + co.y / 0.06))  # 0 at the front, 1 at the back
+    slope = 0.62 * (1 - back) + 0.6 * back  # the lower edge's climb per metre out from the midline
+    gusset = 0.03 * (1 - back) + 0.02 * back  # half-width of the gusset before it starts to climb
+    lower = min(crotch + slope * max(0.0, abs(co.x) - gusset) - 0.01, top - 0.02)
+    return min(below(co.z, top, BIKINI_W), above(co.z, lower, BIKINI_W))
 
 
 def bikini_top(b, t, co, H):
@@ -83,7 +97,16 @@ def blended(rule, row, co, H):
 RULES = [springsuit, short_arm_steamer, vest, bikini_bottoms, bikini_top, under_boardies]
 
 
+def measure(body, H):
+    """The crotch: the lowest point on the body's midline between the knees and the waist."""
+    mid = [v.co.z for v in body.data.vertices if abs(v.co.x) < 0.015 and 0.4 * H < v.co.z < 0.55 * H]
+    if not mid:
+        raise SystemExit("no midline vertices between 0.4 H and 0.55 H: can't find the crotch")
+    LANDMARKS["crotch_z"] = min(mid)
+
+
 def paint_masks(body, weights, H):
+    measure(body, H)
     vals = [[blended(rule, row, v.co, H) for rule in RULES] for v, row in zip(body.data.vertices, weights)]
     for layer, (i, j) in (("mask_a", (0, 1)), ("mask_b", (2, 3)), ("mask_c", (4, 5))):
         uv = body.data.uv_layers.new(name=layer)
