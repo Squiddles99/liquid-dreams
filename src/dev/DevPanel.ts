@@ -391,7 +391,12 @@ export class DevPanel {
     // The board list follows the preset: App's onSurfer repairs the board first, then refresh() rebuilds the list.
     const boardIndex = surferFolder.children.length;
     let boardBinding = surferFolder.addBinding(m.surfer, 'board', { label: 'board', options: surferBoardOptions(m.surfer.preset) }).on('change', h.onSurfer);
+    // Only when the preset changed: a board pick refreshes the panel from inside its own change event, and disposing
+    // the binding there throws in Tweakpane (the folder's handler still runs) and loses the save.
+    let listedFor = m.surfer.preset;
     this.refreshSurferBoards = (): void => {
+      if (m.surfer.preset === listedFor) return;
+      listedFor = m.surfer.preset;
       boardBinding.dispose();
       boardBinding = surferFolder.addBinding(m.surfer, 'board', { label: 'board', index: boardIndex, options: surferBoardOptions(m.surfer.preset) }).on('change', h.onSurfer);
     };
