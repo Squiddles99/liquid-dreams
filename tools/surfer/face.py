@@ -1,7 +1,9 @@
 """The face and scalp painted into the body's colour layer (gate 2, Andrew: "not pretty enough", "hair looks horrible").
 
 The layer is exported as COLOR_0 (linear floats), and the game's body shader reads its four channels as masks:
-  R  scalp: hair colour under the hair cards, so gaps between them show hair, not skin, with a soft hairline
+  R  0.5 + 0.5 × scalp on the scalp (hair colour under the hair cards, so gaps between them show hair, not skin, with
+     a soft hairline); 0.5 × the baked occlusion everywhere else (closeup spec §4.2: WebGPU's 8 vertex buffers are all
+     taken, and the scalp's occlusion never shows under the hair)
   G  eyebrows
   B  lips (MPFB's 'lips' group, feathered one ring out)
   A  lash line (the upper lid's rim, like eyeliner)
@@ -153,7 +155,7 @@ def shape_lashes(body, L, lashes):
     body.data.update()
 
 
-def paint(body, weights, L, brow_weight=1.0):
+def paint(body, weights, L, brow_weight=1.0, ao=None):
     centre, eye_z, eyes, mouth = L["head_centre"], L["eye_z"], L["eyes"], L.get("mouth")
     eye_pts = [p for p in eyes.values() if p is not None]
     eye_y = min((p.y for p in eye_pts), default=centre.y - 0.08)
@@ -182,7 +184,8 @@ def paint(body, weights, L, brow_weight=1.0):
         inside = _mouth_inside(v, mouth, L.get("lip_front"), tree) * head
         lips = max(min(1.0, lips_m[v.index] * 1.15), inside) * head
         lash = lash * (1.0 - inside) + inside
-        layer.data[v.index].color = (scalp, brow, lips, lash)
+        occ = ao[v.index] if ao is not None else 1.0
+        layer.data[v.index].color = (0.5 + 0.5 * scalp if scalp > 0.001 else 0.5 * occ, brow, lips, lash)
     body.data.color_attributes.active_color = layer
 
 

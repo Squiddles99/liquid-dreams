@@ -48,11 +48,11 @@ expressions.to_shape_keys(body)
 head_tris = rig_trim.head_triangles(body)
 wardrobe.paint_masks(body, weights, preset["heightM"])
 face.shape_lashes(body, L, preset.get("lashes", {}))
-face.paint(body, weights, L, preset.get("browWeight", 1.0))
-spots = skin.pimples(body, coords, L, preset["pimpleSeed"]) if "pimpleSeed" in preset else []
-hair_obj = hair.build(body, rig, preset["hair"], L, coords, name)
 eye_obj = hair.eyes(rig, L, name)
 face.colour_eyes(eye_obj, L)
+face.paint(body, weights, L, preset.get("browWeight", 1.0), skin.bake_ao(body, [eye_obj]))
+spots = skin.pimples(body, coords, L, preset["pimpleSeed"]) if "pimpleSeed" in preset else []
+hair_obj = hair.build(body, rig, preset["hair"], L, coords, name)
 rig_trim.single_material(hair_obj, "hair")
 hair.bake_ao(hair_obj, body, L["head_centre"], reach=preset["hair"].get("aoReach", 0.045))
 dry_obj = None

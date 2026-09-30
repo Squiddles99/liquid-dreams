@@ -19,7 +19,7 @@ export interface Mood {
 }
 
 export const MOODS: Record<PresetName, Mood> = {
-  female: { smile: 0.3, drift: 0.06, burst: 0.3 },
+  female: { smile: 0.24, drift: 0.05, burst: 0.3 },
   male: { smile: 0.15, drift: 0.06, burst: 0.3 },
   grommet: { smile: 0.5, drift: 0.08, burst: 0.35 },
 };
@@ -189,7 +189,7 @@ export class IdleLife {
 
     return {
       blinkL: blink, blinkR: blink,
-      jawOpen: clamp01(0.03 + e * 0.3 * wave),
+      jawOpen: clamp01(e * 0.3 * wave),
       smile,
       browsUp,
       browsInner: clamp01(e * 0.25),

@@ -269,6 +269,9 @@ def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump):
         if falling_from is None and p.z > eye_z - 0.02:
             # Over the head: away from the part and down, a little back; hugging the scalp with some volume.
             comb = (Vector((side * 0.85, -0.1, -0.85)) if front else Vector((side * 0.8, 0.45, -0.7))) + jitter
+            # In front of the face, sweep sideways only, until clear of it (a lock across her cheek otherwise).
+            if p.y < centre.y - 0.03 and abs(p.x) < 0.078 and p.z < eye_z + 0.045:
+                comb = Vector((side, 0.25, 0.0))
             d = (comb - out * comb.dot(out)).normalized()
             q = _hug(p + d * seg, centre, r0 + 0.002, r0 + 0.008)
         else:
