@@ -1,6 +1,6 @@
 import { Euler, Quaternion, Vector3 } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
-import { type BoardKind, layoutFor, makeBoard } from '../board/boardSpec';
+import { type BoardKind, deckYAt, halfWidthAt, layoutFor, makeBoard, uAt } from '../board/boardSpec';
 import { flexDeg } from './ik';
 import { posesFor } from './poseNames';
 import { type PoseDials, poseTargets, sideOf } from './poses';
@@ -103,4 +103,31 @@ describe('ride state', () => {
   it('gives every pose a phase and a zone', () => {
     for (const k of KINDS) for (const p of posesFor(k)) expect([POSE_PHASE[p], POSE_ZONE[p]].every(Boolean)).toBe(true);
   });
+});
+
+describe('nothing sinks through the board (Andrew, gate 2: the drop-knee knee went through the bodyboard)', () => {
+  const inside = (spec: ReturnType<typeof makeBoard>, x: number, z: number): boolean => Math.abs(x) < spec.lengthM / 2 && Math.abs(z) < halfWidthAt(spec, uAt(spec, x));
+  for (const kind of KINDS) {
+    it(`${kind}: every joint over the deck sits on or above it; knees a kneecap above (4 cm)`, () => {
+      const worst: string[] = [];
+      for (const rest of RESTS) {
+        const spec = makeBoard(kind, PRESETS[rest.heightM < 1.7 ? 'female' : 'male'].quiver[kind]);
+        const layout = layoutFor(spec, rest.heightM);
+        for (const pose of posesFor(kind)) for (const stance of ['regular', 'goofy'] as Stance[])
+          for (const c of LEVELS) for (const l of LEVELS) for (const phaseT of PHASES) {
+            const t = poseTargets(pose, { spec, layout, rest, stance, dials: { compression: c, lean: l, twist: 0, reach: 0 }, phaseT });
+            const s = solvePose(rest, t, FRAMES[0], null); // flat board at the origin: world = board frame
+            for (const b of BONES) {
+              const p = s.joint[b];
+              if (b === 'root' || !inside(spec, p.x, p.z)) continue; // root is the skeleton's origin, not a body part
+              const clearance = p.y - deckYAt(spec, p.x, p.z), need = b.startsWith('shin') ? 0.04 : -0.005;
+              if (clearance < need) worst.push(`${pose}/${stance}/c${c}/l${l}/t${phaseT}: ${b} ${(clearance * 100).toFixed(1)} cm`);
+            }
+          }
+      }
+      const tally: Record<string, number> = {};
+      for (const w of worst) { const k = w.split(':')[0].split('/')[0] + ' ' + w.split(': ')[1].split(' ')[0]; tally[k] = (tally[k] ?? 0) + 1; }
+      expect(JSON.stringify(tally), `${worst.length} joints through the deck; e.g. ${worst.slice(0, 3).join('; ')}`).toBe('{}');
+    });
+  }
 });

@@ -229,8 +229,11 @@ function proneBody(ctx: PoseContext, r: Rider, chestX: number, bend: number, leg
   const pelvisX = chestX - r.m.torso;
   const pelvis = V(pelvisX, deckAt(ctx, pelvisX) + 0.1, 0);
   const legDir = V(-1, -legsDown, 0).normalize();
+  // In the water (a bodyboarder's legs) the knees can bend; lying along a surfboard they stay near straight, or they
+  // would sag through the deck.
+  const reach = legsDown > 0.2 ? 0.96 : 0.995;
   const foot = (k: number): FootTarget => {
-    const ankle = add(pelvis, sc(X(), -r.m.hipDrop), sc(legDir, 0.96 * r.m.legLen), V(0, 0, k * r.m.hipHalf));
+    const ankle = add(pelvis, sc(X(), -r.m.hipDrop), sc(legDir, reach * r.m.legLen), V(0, 0, k * r.m.hipHalf));
     return { ankle, toe: add(ankle, V(-r.m.footLenH, -0.03, 0)), pole: V(0, -1, 0), instep: V(0, -1, 0) };
   };
   return { pelvis, pelvisUp: X(), pelvisForward: V(0, -1, 0), chest: { bend, twist: 0, side: 0 }, feet: { l: foot(-1), r: foot(1) } };
@@ -239,7 +242,7 @@ function proneBody(ctx: PoseContext, r: Rider, chestX: number, bend: number, leg
 function paddle(ctx: PoseContext, r: Rider): PoseTargets {
   const L = ctx.spec.lengthM, bb = ctx.spec.kind === 'bodyboard';
   const chestX = bb ? ctx.layout.spots.chest[0] : L / 2 - 0.3 * L;
-  const b = proneBody(ctx, r, chestX, -0.45, bb ? 0.35 : 0.08);
+  const b = proneBody(ctx, r, chestX, -0.45, bb ? 0.35 : -0.03);
   const arm = (a: Limb): HandTarget => {
     const k = a === 'l' ? -1 : 1, phi = 2 * Math.PI * (ctx.phaseT + (a === 'r' ? 0.5 : 0));
     const x = chestX + 0.15 + 0.38 * Math.cos(phi);
@@ -293,9 +296,10 @@ function popup(ctx: PoseContext, r: Rider): PoseTargets {
     l: boardHand(V(chestX - 0.02, deckAt(ctx, chestX) + 0.01, -0.16), V(-1, 1, -1)),
     r: boardHand(V(chestX - 0.02, deckAt(ctx, chestX) + 0.01, 0.16), V(-1, 1, 1)),
   });
-  const prone = proneBody(ctx, r, chestX, -0.25, 0.08);
+  const prone = proneBody(ctx, r, chestX, -0.25, -0.03);
   const k0: PoseTargets = { ...prone, hands: handsUnder(), look: add(X(), sc(Y(), 0.15)) };
-  const k1: PoseTargets = { ...k0, pelvis: add(prone.pelvis, sc(Y(), 0.08)), chest: { bend: -1, twist: 0, side: 0 } };
+  // The press-up lifts the hips too, so the knees clear the deck as the feet swing through.
+  const k1: PoseTargets = { ...k0, pelvis: add(prone.pelvis, sc(Y(), 0.2)), chest: { bend: -1, twist: 0, side: 0 } };
   const stand = standing(ctx, r, { compression: 0.8, lean: 0, bend: 0.45, twistToNose: 0.35, pelvisShift: 0.05 });
   const k3: PoseTargets = { ...stand, hands: byArm(r, chestToBoard(stand, r, chestHand(r.lead, 0.42, -0.05, 0.3)), chestToBoard(stand, r, chestHand(r.trail, 0.38, -0.2, -0.05))), look: add(X(), sc(Y(), -0.4), sc(r.w, 0.3)) };
   const back = spot(ctx, 'back'), front = spot(ctx, 'front');
@@ -305,7 +309,8 @@ function popup(ctx: PoseContext, r: Rider): PoseTargets {
     pelvis: add(sc(back, 0.5), sc(front, 0.5), sc(Y(), 0.42 + r.m.hipDrop)),
     pelvisUp: add(X(), Y()).normalize(), pelvisForward: add(V(0, -1, 0), r.f).normalize(),
     chest: { bend: 0.9, twist: 0, side: 0 },
-    feet: byLeg(r, { ankle: add(swing, sc(Y(), r.m.ankleH)), toe: add(swing, sc(r.f, r.m.footLenH), sc(Y(), r.m.toeH)), pole: knee.clone().normalize(), instep: Y() }, footOnDeck(r, back, 8, knee)),
+    // The swinging leg's knee drives up toward the chest (pole up), not down at the deck.
+    feet: byLeg(r, { ankle: add(swing, sc(Y(), r.m.ankleH)), toe: add(swing, sc(r.f, r.m.footLenH), sc(Y(), r.m.toeH)), pole: add(Y(), r.f).normalize(), instep: Y() }, footOnDeck(r, back, 8, knee)),
     hands: handsUnder(),
     look: k3.look.clone(),
   };
@@ -331,15 +336,21 @@ function prone(ctx: PoseContext, r: Rider, pit: boolean): PoseTargets {
 function dropKnee(ctx: PoseContext, r: Rider): PoseTargets {
   const d = ctx.dials, L = ctx.spec.lengthM;
   const fs = spot(ctx, 'dkFoot'), ks = spot(ctx, 'dkKnee');
+  // Kneeling, leaning toward the toes is the chest bending forward: the hips stay level over the knee.
   const comp = clamp01(0.5 + d.compression), lean = clamp(d.lean, -1, 1) * LEAN_MAX;
-  const up = add(sc(Y(), Math.cos(lean)), sc(r.f, Math.sin(lean))).normalize();
-  const pelvis = add(sc(fs, 0.45), sc(ks, 0.55), sc(up, r.m.thighLen * (0.85 - 0.25 * comp) + r.m.hipDrop));
-  const ankle = add(ks, sc(X(), -0.95 * r.m.shinLen), sc(Y(), 0.12));
-  const backLeg: FootTarget = { ankle, toe: add(ankle, V(-r.m.footLenH, -0.02, 0)), pole: add(ks, sc(Y(), 0.05)).sub(add(sc(pelvis, 0.5), sc(ankle, 0.5))).normalize(), instep: V(0, -1, 0) };
+  // Built from the knee out (gate 2: the knee went through the board): the kneecap rests on its spot, the shin lies back
+  // along the deck rising a little, and the back hip sits over the knee, leaning toward the front foot.
+  const knee = add(ks, sc(Y(), 0.085));
+  const ankle = add(knee, sc(V(-Math.cos(0.18), Math.sin(0.18), 0), r.m.shinLen));
+  const toFront = V(fs.x - ks.x, 0, fs.z - ks.z).normalize();
+  // The lean tilts the upper body only; the back hip stays over the knee, or it drags the knee off its spot.
+  const backHip = add(knee, sc(add(sc(Y(), 0.85), sc(toFront, 0.4)).normalize(), r.m.thighLen * (0.97 - 0.08 * comp)));
+  const pelvis = add(backHip, sc(toFront, r.m.hipHalf), sc(Y(), r.m.hipDrop));
+  const backLeg: FootTarget = { ankle, toe: add(ankle, V(-r.m.footLenH, -0.02, 0)), pole: knee.clone().sub(add(sc(backHip, 0.5), sc(ankle, 0.5))).normalize(), instep: V(0, -1, 0) };
   const k = reachK(ctx), nx = L / 2 - 0.05;
   return {
-    pelvis, pelvisUp: up, pelvisForward: add(sc(r.f, Math.cos(0.35)), sc(X(), Math.sin(0.35))).normalize(),
-    chest: { bend: 0.4, twist: r.twistSign * (0.3 + d.twist * TWIST_DIAL), side: 0 },
+    pelvis, pelvisUp: Y(), pelvisForward: add(sc(r.f, Math.cos(0.35)), sc(X(), Math.sin(0.35))).normalize(),
+    chest: { bend: 0.4 + lean, twist: r.twistSign * (0.3 + d.twist * TWIST_DIAL), side: 0 },
     feet: byLeg(r, footOnDeck(r, fs, 20, add(r.f, sc(X(), 0.5))), backLeg),
     hands: byArm(r, boardHand(V(nx, deckAt(ctx, nx) + 0.02, 0), add(Y(), sc(X(), -0.5))), chestHand(r.trail, 0.4 * k, -0.1, -0.15)),
     look: add(X(), sc(r.w, 0.2)),
@@ -348,18 +359,25 @@ function dropKnee(ctx: PoseContext, r: Rider): PoseTargets {
 
 function bodyboardBail(ctx: PoseContext, r: Rider): PoseTargets {
   const L = ctx.spec.lengthM, hx = ctx.layout.spots.hips[0], nx = L / 2 - 0.05;
-  const pelvis = V(hx - 0.2, deckAt(ctx, hx) - 0.15, 0);
-  const legDir = V(-0.6, -0.8, 0).normalize();
+  // Rolled off beside the board on the wave side, low in the water, pushing it away by the near rail (gate 2: the old
+  // bail put the upper body under the board).
+  void hx;
+  void nx;
+  const side = r.w.z; // -1: the left rail
+  const railZ = side * halfWidthAtX(ctx, 0);
+  const pelvis = V(-0.2, deckAt(ctx, 0) - 0.18, railZ + side * 0.38);
+  const legDir = V(-0.5, -0.85, side * 0.15).normalize();
   const foot = (k: number): FootTarget => {
-    const a = add(pelvis, sc(X(), -r.m.hipDrop), sc(legDir, 0.9 * r.m.legLen), V(0, 0, k * r.m.hipHalf));
+    const a = add(pelvis, sc(legDir, 0.9 * r.m.legLen), V(0.12 * k, 0, 0));
     return { ankle: a, toe: add(a, sc(legDir, r.m.footLenH)), pole: V(0, -1, 0), instep: V(0, -1, 0) };
   };
+  const onRail = (x: number): HandTarget => boardHand(V(x, deckAt(ctx, x, railZ - side * 0.03) + 0.025, railZ - side * 0.03), V(0, -1, side));
   return {
-    pelvis, pelvisUp: add(X(), V(0, -0.6, 0)).normalize(), pelvisForward: V(0, -1, 0),
-    chest: { bend: 0.2, twist: 0, side: 0 },
-    feet: { l: foot(-1), r: foot(1) },
-    hands: { l: boardHand(V(nx, deckAt(ctx, nx) + 0.02, -0.12), V(0, 1, -1)), r: boardHand(V(nx, deckAt(ctx, nx) + 0.02, 0.12), V(0, 1, 1)) },
-    look: add(X(), sc(Y(), -0.2)),
+    pelvis, pelvisUp: add(X(), sc(Y(), 0.6), sc(r.w, -0.3)).normalize(), pelvisForward: V(0, 0, -side),
+    chest: { bend: 0.3, twist: 0, side: 0 },
+    feet: { l: foot(1), r: foot(-1) },
+    hands: { l: onRail(0.12), r: onRail(-0.12) },
+    look: add(sc(r.w, -1), sc(Y(), -0.2)),
   };
 }
 
