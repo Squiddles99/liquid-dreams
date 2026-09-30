@@ -1,6 +1,6 @@
 import type { BoardKind } from '../board/boardSpec';
 import { type PoseName, posesFor } from './poseNames';
-import { PRESETS, type PresetName, type Stance } from './presets';
+import { PRESETS, type PresetName, type Stance, boardsFor } from './presets';
 import { type OutfitChoice, presetOutfits } from './wardrobe';
 
 /** The Surfer folder (spec §6), persisted with the look and carried by moment links. */
@@ -15,6 +15,8 @@ export interface SurferParams {
   phaseT: number;
   /** Run the phase from the clock (the paddle stroke and kicks, the pop-up) instead of the slider. */
   play: boolean;
+  /** On land (the dune, the select screen): Grommet's glasses on, hair and skin dry (grommet spec §6). */
+  onLand: boolean;
   /** The four dials, as offsets around the pose's own values (spec §3.5). */
   compression: number;
   lean: number;
@@ -32,7 +34,7 @@ export interface SurferParams {
 
 /** In the lineup where Andrew waits (DEFAULT_LINEUP_POSITION), nose out to sea toward the south-west swell. */
 export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
-  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true,
+  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, onLand: false,
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
   x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
 };
@@ -70,9 +72,11 @@ export function normalizeSurferParams(p: SurferParams): void {
   p.enabled = p.enabled === true;
   p.balance = p.balance !== false;
   p.play = p.play !== false;
-  p.preset = oneOf(p.preset, ['female', 'male'] as const, d.preset);
+  p.onLand = p.onLand === true;
+  p.preset = oneOf(p.preset, ['female', 'male', 'grommet'] as const, d.preset);
   p.stance = oneOf(p.stance, ['regular', 'goofy'] as const, d.stance);
-  p.board = oneOf(p.board, ['thruster', 'stepUp', 'bodyboard'] as const, d.board);
+  const boards = boardsFor(PRESETS[p.preset]);
+  p.board = oneOf(p.board, boards, boards[0]);
   p.pose = oneOf(p.pose, posesFor(p.board), 'sit');
   p.outfit = oneOf(p.outfit, ['season', ...presetOutfits(PRESETS[p.preset])] as const, 'season');
   for (const k of Object.keys(SURFER_PARAM_RANGES) as (keyof typeof SURFER_PARAM_RANGES)[]) {

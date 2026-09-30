@@ -25,7 +25,18 @@ def landmarks(body, rig, height, found, coords):
         eye_z = head.head_local.z + 0.075 * height / 1.7
     top = [v.co for v, (b, _) in zip(body.data.vertices, coords) if b == "head" and v.co.z > eye_z]
     radius = sum((c - centre).length for c in top) / max(1, len(top))
-    return {"height": height, "head_centre": centre, "head_radius": radius, "eye_z": eye_z, "eyes": eyes, "mouth": found["mouth"]}
+    head_pts = [v.co.copy() for v, (b, _) in zip(body.data.vertices, coords) if b == "head"]  # copies: v.co is a view the later mesh edits invalidate
+    ears = {}
+    for side, s in (("l", 1), ("r", -1)):
+        band = [p for p in head_pts if eye_z - 0.03 < p.z < eye_z + 0.015 and p.y > centre.y - 0.01 and p.x * s > 0]
+        ears[side] = max(band, key=lambda p: p.x * s) if band else centre + Vector((0.07 * s, 0, eye_z - centre.z))
+    nose_band = [p for p in head_pts if abs(p.x) < 0.01 and eye_z - 0.05 < p.z < eye_z - 0.005]
+    nose = min(nose_band, key=lambda p: p.y) if nose_band else None
+    mouth = found["mouth"]
+    lip_band = [p for p in head_pts if mouth is not None and abs(p.x - mouth.x) < 0.008 and abs(p.z - mouth.z - 0.004) < 0.006]
+    lip_front = min(lip_band, key=lambda p: p.y) if lip_band else None
+    return {"height": height, "head_centre": centre, "head_radius": radius, "eye_z": eye_z, "eyes": eyes, "mouth": mouth,
+            "ears": ears, "nose": nose, "lip_front": lip_front, "upper_teeth": found.get("upper_teeth")}
 
 
 def bone_weights(body, rig):

@@ -16,7 +16,7 @@ def glb(rig, meshes, path):
                               export_vertex_color="ACTIVE")
 
 
-def manifest(rig, meshes, preset, path, mpfb_version):
+def manifest(rig, meshes, preset, path, mpfb_version, L=None, pimples=()):
     def gl(v):  # Blender (x, y, z) → glTF (x, z, -y)
         return [round(v.x, 5), round(v.z, 5), round(-v.y, 5)]
     data = {
@@ -27,5 +27,15 @@ def manifest(rig, meshes, preset, path, mpfb_version):
         "blender": bpy.app.version_string,
         "mpfb": mpfb_version,
     }
+    if L is not None:
+        eyes = [L["eyes"].get(s) for s in ("l", "r")]
+        if all(e is not None for e in eyes) and all(L.get(k) is not None for k in ("nose", "lip_front", "mouth")):
+            data["landmarks"] = {
+                "eyes": [gl(e) for e in eyes], "ears": [gl(L["ears"]["l"]), gl(L["ears"]["r"])], "nose": gl(L["nose"]),
+                "mouth": gl(L["mouth"]), "lipFront": gl(L["lip_front"]),
+                "teethFront": gl(L["upper_teeth"]["front"]) if L.get("upper_teeth") else gl(L["mouth"]),
+            }
+    if pimples:
+        data["skin"] = {"pimples": [gl(c) + [round(r, 5)] for c, r in pimples]}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=1)

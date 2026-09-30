@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRESETS } from './presets';
-import { OUTFIT_LABELS, outfitFor, outfitMasks, presetOutfits, seasonOf } from './wardrobe';
+import { OUTFIT_LABELS, outfitFor, outfitMasks, presetOutfits, landLook, seasonOf, showsBoardies } from './wardrobe';
 
 describe('wardrobe (Andrew’s months, spec §4.3)', () => {
   it.each([
@@ -30,5 +30,27 @@ describe('wardrobe (Andrew’s months, spec §4.3)', () => {
     expect(outfitMasks('rashieAndBottoms')).toEqual({ spring: 0, steamer: 0, rashie: 1, bottoms: 1, top: 0, boardies: 0 });
     expect(outfitMasks('boardies').boardies).toBe(1);
     for (const o of Object.keys(OUTFIT_LABELS) as (keyof typeof OUTFIT_LABELS)[]) expect(Object.values(outfitMasks(o)).some((v) => v === 1)).toBe(true);
+  });
+});
+
+describe("Grommet's wardrobe (grommet spec §6)", () => {
+  it('is boardies with a rash vest in summer, a springsuit either side, a short-arm steamer in winter', () => {
+    expect(outfitFor(PRESETS.grommet, 'season', '2026-01-10')).toBe('rashieAndBoardies');
+    expect(outfitFor(PRESETS.grommet, 'season', '2026-05-10')).toBe('springsuit');
+    expect(outfitFor(PRESETS.grommet, 'season', '2026-08-10')).toBe('shortArmSteamer');
+  });
+  it('paints the rash vest and shows the boardies mesh for rashieAndBoardies', () => {
+    expect(outfitMasks('rashieAndBoardies')).toEqual({ spring: 0, steamer: 0, rashie: 1, bottoms: 0, top: 0, boardies: 1 });
+    expect(showsBoardies('rashieAndBoardies')).toBe(true);
+    expect(showsBoardies('boardies')).toBe(true);
+    expect(showsBoardies('springsuit')).toBe(false);
+    expect(OUTFIT_LABELS.rashieAndBoardies).toBe('boardies + rash vest');
+  });
+});
+
+describe('on land (grommet spec §6)', () => {
+  it('dries off and puts the glasses on; in the water it’s wet with the glasses off', () => {
+    expect(landLook(true)).toEqual({ wet: 0, glasses: true });
+    expect(landLook(false)).toEqual({ wet: 1, glasses: false });
   });
 });
