@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { DEFAULT_OCEAN_SIM } from '../ocean/OceanSimulation';
 import { DEFAULT_DEBUG_OVERLAYS } from '../ocean/OceanSurface';
@@ -310,6 +310,13 @@ describe('assignParams', () => {
     expect(arr).toEqual([1, 2, 3]);
     source.absorptionPerM[0] = 9;
     expect(arr[0]).toBe(1);
+  });
+  it('a stored look from before the maths barrel (the old shape sliders) loads and changes no crest', () => {
+    const p = { ...DEFAULT_BREAK_PARAMS };
+    assignParams(p, { ...DEFAULT_BREAK_PARAMS, throwStrength: 1.2, lipReach: 0.7, lipThickness: 0.2, wallBack: 0.5, intensityNudge: 0.3 } as unknown as BreakParams);
+    normalizeBreakParams(p);
+    expect(p).toEqual(DEFAULT_BREAK_PARAMS);
+    for (const k of ['lipReach', 'lipThickness', 'wallBack', 'intensityNudge']) expect(k in p, k).toBe(false);
   });
 });
 

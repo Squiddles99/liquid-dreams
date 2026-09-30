@@ -276,15 +276,15 @@ describe('normalizeBreakParams', () => {
     expect(p.faceWidth).toBeGreaterThan(0);
   });
   it('clamps the new fields and repairs non-finite ones', () => {
-    const high = { ...P, lipReach: 5, lipThickness: 1, collapseTime: 10, ribbonOnset: 2 };
+    const high = { ...P, collapseTime: 10, ribbonOnset: 2 };
     normalizeBreakParams(high);
-    expect([high.lipReach, high.lipThickness, high.collapseTime, high.ribbonOnset]).toEqual([3.5, 0.3, 3, 0.9]);
-    const low = { ...P, lipReach: 0, lipThickness: 0, collapseTime: 0, ribbonOnset: 0 };
+    expect([high.collapseTime, high.ribbonOnset]).toEqual([3, 0.9]);
+    const low = { ...P, collapseTime: 0, ribbonOnset: 0 };
     normalizeBreakParams(low);
-    expect([low.lipReach, low.lipThickness, low.collapseTime, low.ribbonOnset]).toEqual([0.4, 0.03, 0.3, 0.3]);
-    const bad = { ...P, lipReach: Number.NaN, lipThickness: Infinity, collapseTime: -Infinity, ribbonOnset: Number.NaN };
+    expect([low.collapseTime, low.ribbonOnset]).toEqual([0.3, 0.3]);
+    const bad = { ...P, collapseTime: -Infinity, ribbonOnset: Number.NaN };
     normalizeBreakParams(bad);
-    expect([bad.lipReach, bad.lipThickness, bad.collapseTime, bad.ribbonOnset]).toEqual([DEFAULT_BREAK_PARAMS.lipReach, DEFAULT_BREAK_PARAMS.lipThickness, 1.8, 0.7]);
+    expect([bad.collapseTime, bad.ribbonOnset]).toEqual([1.8, 0.7]);
   });
   it('fills the pile and churn fields a saved setting from before them lacks, and clamps them', () => {
     const old = { ...P } as Partial<BreakParams>;
@@ -299,7 +299,7 @@ describe('normalizeBreakParams', () => {
     const p = { ...P };
     normalizeBreakParams(p);
     expect(p).toEqual(P);
-    expect([P.lipReach, P.lipThickness, P.collapseTime, P.ribbonOnset]).toEqual([0.7078, 0.2, 1.8, 0.7]);
+    expect([P.collapseTime, P.ribbonOnset]).toEqual([1.8, 0.7]);
   });
 });
 

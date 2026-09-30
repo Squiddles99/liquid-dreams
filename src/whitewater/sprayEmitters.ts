@@ -247,8 +247,8 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
     if (wantImpact) frames[si] = f;
     const waveId = i.events[s.wave].id, arc = Math.round(s.arc / SPRAY_SPACING_M);
     if (wind > 0 && f.prog > 0 && f.prog < 1 && f.weight * f.rho > MIN_EMIT_WEIGHT) {
-      const tp = f.reach / f.vj;
-      const u = f.K[0] + f.reach, y = f.K[1] - 0.5 * GRAVITY_MS2 * tp * tp;
+      // The lip's tip now (lipProfile.profileFrame: on the tube's upper side).
+      const u = f.tip[0], y = f.tip[1];
       spray.push({
         x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz,
         strength: f.weight * f.rho * wind * i.amount, lip: Math.min(1, f.weight * f.rho), waveId, arc,
@@ -256,7 +256,8 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
     }
     if (wantImpact && f.tauLand <= s.tb && s.tb < f.tauLand + IMPACT_WINDOW_S && f.rho > MIN_EMIT_WEIGHT) {
       // Where the lip lands: its tip at τ_land (the landing criterion defines τ_land by the tip reaching the water).
-      const u = f.K[0] + f.vj * f.tauLand, y = f.K[1] - 0.5 * GRAVITY_MS2 * f.tauLand * f.tauLand;
+      // Where the lip lands.
+      const u = f.P[0], y = f.P[1];
       impact.push({
         x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz, H: s.H,
         strength: Math.min(1, s.H / 2) * f.rho * impactAmount, lip: Math.min(1, f.rho), waveId, arc,

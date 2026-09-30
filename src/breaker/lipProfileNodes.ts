@@ -2,10 +2,18 @@ import * as THREE from 'three/webgpu';
 import { If, atan, cos, float, length, max, min, mix, normalize, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
 import { type BreakParams, RIBBON_FULL_OFFSET, normalizeBreakParams, steepeningStart } from './breaking';
 import {
-  BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_MARGIN_M, FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, LANDING_FOAM_RISE, LANDING_REFINE, LAND_CLEARANCE_M, LIP_GROW_PROGRESS, LIP_SPRAY, LIP_SPRAY_FROM, LIP_SPRAY_PROGRESS,
-  MAX_THICKNESS_OF_RADIUS, MIN_LIP_THICKNESS_M, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID, TIP_THICKNESS_RATIO,
-  WALL_HEIGHT, sampleSegment,
+  BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_MARGIN_M, FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM, LIP_SPRAY_PROGRESS,
+  PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID, TIP_THICKNESS_RATIO, sampleSegment,
 } from './lipProfile';
+
+// The ballistic lip's constants, which lipProfile.ts no longer has: this mirror is stale (the lip before the barrel from
+// the maths) until Task 8 of docs/superpowers/plans/2026-09-30-barrel-from-maths.md rewrites it to the tube.
+const LANDING_REFINE = 3;
+const LIP_GROW_PROGRESS = 0.3;
+const MAX_THICKNESS_OF_RADIUS = 0.8;
+const MIN_LIP_THICKNESS_M = 0.02;
+const WALL_HEIGHT = 0.45;
+const STALE_LIP_THICKNESS = 0.2;
 
 type N = any;
 
@@ -76,7 +84,7 @@ function sampleTable(): N {
 /** One uniform per BreakParams number the profile reads, plus the steepening's start (breaking.steepeningStart). */
 export function createLipUniforms(p: BreakParams) {
   const u = {
-    lipReach: uniform(0), lipThickness: uniform(0), wallBack: uniform(0.25), collapseTime: uniform(1), ribbonOnset: uniform(0), faceWidth: uniform(1), steepFrom: uniform(0),
+    collapseTime: uniform(1), ribbonOnset: uniform(0), faceWidth: uniform(1), steepFrom: uniform(0),
     drainGrowth: uniform(1),
   };
   updateLipUniforms(u, p);
@@ -88,9 +96,6 @@ export type LipUniforms = ReturnType<typeof createLipUniforms>;
 export function updateLipUniforms(u: LipUniforms, params: BreakParams): void {
   const p = { ...params };
   normalizeBreakParams(p);
-  u.lipReach.value = p.lipReach;
-  u.lipThickness.value = p.lipThickness;
-  u.wallBack.value = p.wallBack;
   u.collapseTime.value = p.collapseTime;
   u.ribbonOnset.value = p.ribbonOnset;
   u.faceWidth.value = p.faceWidth;
@@ -135,11 +140,12 @@ export const FRAME_LAYOUT = [
   'uBack', 'tauLand', 'vj', 'prog', 'reach', 'eRoot', 'weight', 'collapse', 'landing', 'rho',
 ] as const;
 
-/** The CPU frame in FRAME_LAYOUT order (for comparing with the GPU's). */
+/** The CPU frame in FRAME_LAYOUT order (for comparing with the GPU's). Stale until Task 8: W is the landing point P, R
+ * the lip's root under the crest (K.y − tTop), eRoot the lip's thickness over the tube's top. */
 export function packFrameCpu(f: ProfileFrame): number[] {
   return [
-    f.K[0], f.K[1], f.F[0], f.F[1], f.tF[0], f.tF[1], f.W[0], f.W[1], f.R[0], f.R[1], f.uFoot, f.uFront,
-    f.uBack, f.tauLand, f.vj, f.prog, f.reach, f.eRoot, f.weight, f.collapse, f.landing, f.rho,
+    f.K[0], f.K[1], f.F[0], f.F[1], f.tF[0], f.tF[1], f.P[0], f.P[1], f.K[0], f.K[1] - f.tTop, f.uFoot, f.uFront,
+    f.uBack, f.tauLand, f.vj, f.prog, f.reach, f.tTop, f.weight, f.collapse, f.landing, f.rho,
   ];
 }
 
@@ -180,6 +186,7 @@ const landingTimeNode = (drop: N): N => sqrt(max(drop, 0.05).mul(2 / GRAVITY_MS2
  * refinement; each result is made a var here, so each base sample is evaluated once). Must be called inside an Fn.
  */
 export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, u: LipUniforms): ProfileFrameNodes {
+  // Task 8 rewrites this mirror to the tube from the maths.
   const H = float(input.H).toVar(), c = float(input.c).toVar(), r = float(input.r).toVar(), tb = float(input.tb).toVar();
   const uFoot = float(FOOT_WIDTHS).mul(u.faceWidth).mul(H).toVar();
   const K = vec2(baseAt(float(0.0))).toVar();
@@ -187,11 +194,11 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   const Fb = vec2(baseAt(uFoot.sub(0.1))).toVar();
   const tF = norm2(Fb.sub(F)).toVar();
   const tau0 = landingTimeNode(K.y.sub(F.y)).toVar();
-  const vj0 = max(u.lipReach.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tau0)).toVar();
+  const vj0 = max(c, F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tau0)).toVar();
   const landing0 = vec2(baseAt(uFoot.add(K.x.add(vj0.mul(tau0)).sub(F.x)))).toVar();
-  const tipBelow = float(TIP_THICKNESS_RATIO).mul(u.lipThickness).mul(H);
+  const tipBelow = float(TIP_THICKNESS_RATIO).mul(STALE_LIP_THICKNESS).mul(H);
   const tauLand = landingTimeNode(K.y.sub(max(F.y, landing0.y)).sub(tipBelow)).toVar();
-  const vj = max(u.lipReach.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)).toVar();
+  const vj = max(c, F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)).toVar();
   // The water where the lip then lands (lipProfile.profileFrame): each step moves u by the miss in x.
   const uLand = uFoot.add(K.x.add(vj0.mul(tau0)).sub(F.x)).toVar();
   const land = vec2(landing0).toVar();
@@ -199,7 +206,7 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
     uLand.addAssign(K.x.add(vj.mul(tauLand)).sub(land.x));
     land.assign(baseAt(uLand));
     tauLand.assign(landingTimeNode(K.y.sub(max(F.y, land.y)).sub(tipBelow)));
-    vj.assign(max(u.lipReach.mul(c), F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)));
+    vj.assign(max(c, F.x.sub(K.x).add(LAND_CLEARANCE_M).div(tauLand)));
   }
   const pre = tb.lessThan(0.0);
   const t = select(pre, float(0.0), min(max(tb, 0.0), tauLand)).toVar();
@@ -216,9 +223,9 @@ export function profileFrameNode(baseAt: (u: N) => N, input: ProfileInputNodes, 
   const collapse = select(pre, float(0.0), smoothstep(settleFrom, settleFrom.add(span), tb)).toVar();
   const landing = select(pre, float(0.0), smoothstep(tauLand, tauLand.add(span.mul(LANDING_FOAM_RISE)), tb)).toVar();
   const grow = smoothstep(0.0, LIP_GROW_PROGRESS, prog);
-  const eRoot = max(MIN_LIP_THICKNESS_M, min(u.lipThickness.mul(H), vj.mul(vj).mul(MAX_THICKNESS_OF_RADIUS / GRAVITY_MS2))).mul(grow).toVar();
+  const eRoot = max(MIN_LIP_THICKNESS_M, min(H.mul(STALE_LIP_THICKNESS), vj.mul(vj).mul(MAX_THICKNESS_OF_RADIUS / GRAVITY_MS2))).mul(grow).toVar();
   const R = vec2(K.x, K.y.sub(eRoot)).toVar();
-  const W = vec2(K.x.sub(H.mul(u.wallBack).mul(prog)), F.y.add(R.y.sub(F.y).mul(WALL_HEIGHT))).toVar();
+  const W = vec2(K.x, F.y.add(R.y.sub(F.y).mul(WALL_HEIGHT))).toVar();
   const uFront = max(uFoot, K.x.add(vj.mul(tauLand))).add(LAND_CLEARANCE_M + EDGE_MARGIN_M).toVar();
   const uBack = H.mul(BACK_EDGE_H).add(EDGE_MARGIN_M).negate().toVar();
   // ribbonWeight
