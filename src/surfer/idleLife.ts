@@ -184,7 +184,7 @@ export class IdleLife {
     const browsUp = pulse(this.browStart, 0.25, 0.6, 0.5) * 0.45;
 
     // Squinting into the sun, eased over ~0.5 s.
-    const squintWant = smooth((ctx.sunFacing - 0.3) / 0.6) * 0.7;
+    const squintWant = smooth((ctx.sunFacing - 0.3) / 0.6) * 0.4;
     this.squint += (squintWant - this.squint) * (1 - Math.exp(-dt / 0.5));
 
     return {
