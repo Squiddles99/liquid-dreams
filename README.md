@@ -14,6 +14,7 @@ A surfing game built for the love of it. The first (and only) break is **The Wom
 - **On foot:** walk the beach among the dune-toe rocks and up into the heath, with its shrubs, pigface and rice-flower.
 - **Ellensbrook Bombie:** about 450 m south-west, it goes off on its own waves on big days (6 ft and up). It's atmospheric background, not surfable.
 - **The surfers:** Shazza and T-Bone, late teens, built from MakeHuman's licence-free bodies, with a thruster, a step-up and a bodyboard. They dress for the season (boardies and bikinis in summer, springsuits and a rash vest either side, steamers in winter) and hold every key pose, backside and frontside. For now they're posed on the water with the dev panel's Surfer folder; riding comes next.
+- **Grommet:** Bradley, 13, the crew's bodyboarder: a wild ginger mop, big round glasses (on land only), buck teeth, freckles and pimples. He rides only his bodyboard.
 - **Sound:**
   - lip impacts heard a beat after you see them, the white water's roar, and the shore break;
   - the Bombie's boom, wind in the scrub, lapping and swash;
@@ -76,7 +77,9 @@ Settings are remembered between visits.
   - the volumes: master, waves, ambience, near water and music;
   - mute;
   - the track playing, with music play/pause and next track.
-- **Surfer:** show the surfer, then pick the female or male surfer (Shazza or T-Bone), regular or goofy, the board, the outfit (or the season's) and the pose.
+- **Surfer:** show the surfer, then pick who (Shazza (Sharon), T-Bone (Tom) or Grommet (Bradley)), regular or goofy, the board, the outfit (or the season's) and the pose.
+  - The board list shows only what that rider can ride: Grommet rides only his bodyboard, and a surfboard in an old link or setting switches to it.
+  - **On land** puts Grommet's glasses on and dries everyone's skin and hair (his curls loosen); off, they're wet from the water.
   - The "wearing" readout says what the season picked.
   - Heading turns the board, and the dials offset the pose: phase, compression, lean, twist and reach.
   - Play runs the paddle stroke (and the bodyboard's kick) and the pop-up from the clock; turn it off to scrub the phase by hand.
