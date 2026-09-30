@@ -3,12 +3,12 @@ import type { DebugOverlays } from '../ocean/OceanSurface';
 import type { Sky } from '../sky/Sky';
 import { type LandFile, decodeLandFile } from './landData';
 import { LandHeight } from './landHeight';
-import { type LandMeshData, buildLandMesh } from './landMesh';
+import { type LandBuild, type LandBuilder, buildLand, buildOffThread } from './landBuild';
+import type { LandMeshData } from './landMesh';
 import { DEFAULT_LAND_PARAMS, type LandParams, beachProfileFor, normalizeLandParams } from './landParams';
 import { type LandLookUniforms, type PatchHole, createLandLookUniforms, createLandMaterial } from './landShading';
 import { SkylineTable } from './SkylineTable';
 import { SunlightMap } from './SunlightMap';
-import { buildMarchHeights } from './sunlight';
 
 type N = any;
 
@@ -111,21 +111,33 @@ export class Land {
     return m;
   }
 
-  async load(fetchBytes: () => Promise<Uint8Array> = fetchLand): Promise<void> {
-    const file = decodeLandFile(await fetchBytes());
+  /**
+   * Fetches the file and builds the land off the main thread (`build`: a worker in the game), then shows it. If the
+   * beach shape changed while it built, it builds again here with the new shape.
+   */
+  async load(fetchBytes: () => Promise<Uint8Array> = fetchLand, build: LandBuilder = buildOffThread): Promise<void> {
+    const bytes = await fetchBytes();
+    const file = decodeLandFile(bytes);
+    const profile = beachProfileFor(this.params);
+    const built = await build(bytes, profile);
     this.file = file;
-    this.rebuild();
+    if (JSON.stringify(beachProfileFor(this.params)) !== JSON.stringify(profile)) this.rebuild();
+    else this.show(new LandHeight(file, profile), built);
   }
 
-  /** Recompose the height and rebuild the mesh from the current beach params. */
+  /** Recompose the height and rebuild the mesh from the current beach params (on this thread: the beach-shape sliders). */
   rebuild(): void {
     if (!this.file) return;
-    this.height = new LandHeight(this.file, beachProfileFor(this.params));
+    const height = new LandHeight(this.file, beachProfileFor(this.params));
+    this.show(height, buildLand(height));
+  }
+
+  private show(height: LandHeight, built: LandBuild): void {
+    this.height = height;
     this.mesh.geometry.dispose();
-    this.mesh.geometry = landGeometry(buildLandMesh(this.height));
+    this.mesh.geometry = landGeometry(built.mesh);
     this.mesh.visible = true;
-    const lh = this.height;
-    this.sunlight.setHeights(buildMarchHeights((x, z) => lh.heightAt(x, z)));
+    this.sunlight.setHeights(built.march);
     this.version++;
   }
 

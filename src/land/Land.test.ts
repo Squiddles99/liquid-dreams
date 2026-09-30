@@ -5,7 +5,8 @@ import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
 import { readBakedLand } from './bakedLand.testutil';
 import { Land } from './Land';
-import { DEFAULT_LAND_PARAMS } from './landParams';
+import { type LandBuild, buildInThread } from './landBuild';
+import { DEFAULT_LAND_PARAMS, beachProfileFor } from './landParams';
 
 describe('Land', () => {
   it('stays landless (mesh hidden, no height) when the file is bad, and the promise rejects', async () => {
@@ -40,4 +41,30 @@ describe('Land', () => {
     await land.load(async () => readBakedLand());
     expect(layout(standIn.geometry)).toEqual(layout(land.mesh.geometry));
   }, 30_000);
+
+  it("shows the builder's mesh and march heights once loaded (the worker's, in the game)", async () => {
+    const land = new Land(new Sky(DEFAULT_ATMOSPHERE));
+    let built: LandBuild | null = null;
+    const profiles: unknown[] = [];
+    await land.load(async () => readBakedLand(), async (bytes, profile) => {
+      profiles.push(profile);
+      built = await buildInThread(bytes, profile);
+      return built;
+    });
+    expect(profiles).toEqual([beachProfileFor(DEFAULT_LAND_PARAMS)]);
+    expect(land.mesh.visible).toBe(true);
+    expect(land.mesh.geometry.getAttribute('position').array).toBe(built!.mesh.positions);
+    expect(land.height).not.toBeNull();
+  }, 30_000);
+  it('rebuilds with the new beach shape when it changed while the builder was busy', async () => {
+    const land = new Land(new Sky(DEFAULT_ATMOSPHERE));
+    let built: LandBuild | null = null;
+    await land.load(async () => readBakedLand(), async (bytes, profile) => {
+      built = await buildInThread(bytes, profile);
+      expect(land.setParams({ ...DEFAULT_LAND_PARAMS, beachWidthM: 35 })).toBe(false); // no file yet: nothing to rebuild
+      return built;
+    });
+    expect(land.mesh.geometry.getAttribute('position').array).not.toBe(built!.mesh.positions);
+    expect(land.height?.profile.dryWidthM).toBe(35);
+  }, 60_000);
 });
