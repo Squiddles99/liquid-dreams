@@ -14,7 +14,7 @@ import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import { PSI_EDGE_FADE_M, type ReefField } from './reefField';
 import {
-  BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, FOLD_LIMIT, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
+  BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, FOLD_LIMIT, LEAN_FRONT_MIN, LEAN_RATIO, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
   TAPER_FAR_M, TAPER_NEAR_M, fieldSteepeningHeight, toActiveWave,
 } from './setWaveModel';
 
@@ -338,6 +338,8 @@ export class SetWaves {
           const cPos = xz.toVar();
           const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), hminBreak: f.hminBreak.toVar(), hminSlurp: f.hminBreak.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
           const confidence = float(0.0).toVar(), rC = float(0.0).toVar();
+          // The front's lean (setWaveModel.leanWeight): 0 without a crest.
+          const lean = float(0.0).toVar();
           const lc = { steep: float(0.0).toVar(), stage: float(0.0).toVar(), drain: float(0.0).toVar(), collapse: float(0.0).toVar() };
           // The whitewater pile's curves and the lip's height (setWaveModel.Crest.lipH: 0 unbroken or off the record).
           const pc = { pile: float(0.0).toVar(), pileReach: float(0.0).toVar(), surge: float(1.0).toVar(), decay: float(1.0).toVar() };
@@ -376,9 +378,12 @@ export class SetWaves {
             shTrough.assign(shape.troughDrain); shSurge.assign(shape.pileSurge);
             const onset = onsetTimeNode(rec, level, a.y, brk);
             const rSlurp = breakingRatioNode(a.y.mul(fc.amp), fc.hminSlurp, brk);
+            // × (1 − collapse), assigned with the lifecycle below.
+            lean.assign(smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], rSlurp).mul(confidence));
             const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), rSlurp, brk,
               { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi) });
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
+            lean.assign(lean.mul(float(1.0).sub(l.collapse)));
             if (withPile) {
               pc.pile.assign(l.pile); pc.pileReach.assign(l.pileReach); pc.surge.assign(l.surge); pc.decay.assign(l.decay);
               lipH.assign(select(rec.inside.and(onset.broken), onset.lipH, float(0.0)));
@@ -392,13 +397,20 @@ export class SetWaves {
           const A = H.mul(0.5);
           const B = min(float(STOKES_CAP), stokesPerA.mul(A));
           const aE = A.mul(env).mul(lateral);
-          const shape = cos(theta).add(B.mul(cos(theta.mul(2.0))));
+          // setWaveModel.leanPhase: the front (−π < θ < 0) squeezed into its last share φ, the trough's level ahead of it.
+          const phi = float(1.0).sub(lean.mul(1 - LEAN_FRONT_MIN));
+          const thetaN: N = theta;
+          const inFront: N = lean.greaterThan(0.0).and(thetaN.lessThan(0.0)).and(thetaN.greaterThan(-Math.PI));
+          const squeezed: N = thetaN.greaterThanEqual(phi.mul(-Math.PI));
+          const th: N = select(inFront, select(squeezed, thetaN.div(phi), float(-Math.PI)), thetaN).toVar();
+          const dth: N = select(inFront, select(squeezed, float(1.0).div(phi), float(0.0)), float(1.0)).toVar();
+          const shape = cos(th).add(B.mul(cos(th.mul(2.0))));
           const e = aE.mul(shape).toVar();
           const hAmp = min(aE, float(FOLD_LIMIT).div(f.k));
           const nearBreaking = smoothstep(0.3, BREAKING_RATIO, H.div(max(f.hmin, MIN_DEPTH_M)));
           const pitch = min(nearBreaking.mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(f.k.mul(aE), 1e-4)));
           const d = hAmp.mul(sin(theta)).add(pitch.mul(e)).toVar();
-          const dEtaDXi = A.mul(lateral).mul(dEnv.mul(shape).sub(env.mul(a.z).mul(sin(theta).add(B.mul(2.0).mul(sin(theta.mul(2.0)))))));
+          const dEtaDXi = A.mul(lateral).mul(dEnv.mul(shape).sub(env.mul(a.z).mul(dth).mul(sin(th).add(B.mul(2.0).mul(sin(th.mul(2.0)))))));
           const jacobian = max(float(1.0).add(hAmp.mul(a.z).mul(cos(theta)).add(pitch.mul(dEtaDXi)).mul(dXiDs)), 0.2);
           const along = dEtaDXi.mul(dXiDs).div(jacobian).toVar();
           // Per metre of the displaced surface along travel (ahead): Phase 1's derivatives along s, over its Jacobian.
@@ -440,11 +452,15 @@ export class SetWaves {
                 const bisDir = select(bisL.greaterThan(0.0), bis.div(max(bisL, 1e-9)), vec2(1.0, 0.0));
                 const facing = dot(f.dir, bisDir);
                 const v0 = dot(xz.sub(cPos), bisDir);
+                // The unleaned wave (setWaveModel.waveAtCrest): breaking drains it, and takes the lower of it and the leaned.
+                const shapeU = cos(theta).add(B.mul(cos(theta.mul(2.0))));
+                const alongU = A.mul(lateral).mul(dEnv.mul(shapeU).sub(env.mul(a.z).mul(sin(theta).add(B.mul(2.0).mul(sin(theta.mul(2.0))))))).mul(dXiDs).div(jacobian);
                 const br = breakPointNode({
-                  theta, env: env.mul(lateral), uUnbroken: v0.add(d.mul(facing)), eta: e, uCrest: pitchC.mul(etaCrest), etaCrest, H: Hl, k: fc.k, hmin: fc.hminBreak,
+                  theta, env: env.mul(lateral), uUnbroken: v0.add(d.mul(facing)), eta: aE.mul(shapeU), uCrest: pitchC.mul(etaCrest), etaCrest, H: Hl, k: fc.k, hmin: fc.hminBreak,
                   boreH: min(a.y.mul(fc.amp), fc.hminBreak.mul(BREAKING_RATIO)).mul(lateral),
-                  slope: along, dThetaDAhead: a.z.mul(perAhead), dEnvDAhead: dEnv.mul(lateral).mul(perAhead), crestConfidence: confidence,
+                  slope: alongU, dThetaDAhead: a.z.mul(perAhead), dEnvDAhead: dEnv.mul(lateral).mul(perAhead), crestConfidence: confidence,
                   ...(withPile ? { lipTop, lateral, lipHeight: lipH.mul(lateral) } : {}),
+                  lean: { eta: e, slope: along, on: inFront },
                 }, lc.steep, brk, { drain: lc.drain, collapse: lc.collapse }, withPile ? pc : undefined, { troughDrain: shTrough });
                 eta.addAssign(br.eta.sub(e));
                 slope.addAssign(f.dir.mul(br.dEtaDAhead));

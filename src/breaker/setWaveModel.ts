@@ -35,6 +35,42 @@ export const FOLD_LIMIT = 0.6;
 export const PITCH_MAX = 0.3;
 /** …bounded so that pitch × k × A ≤ this. */
 export const PITCH_KA_CAP = 0.12;
+/**
+ * The front's lean (Andrew, 2026-10-01): as a wave shoals over the ledge its front shortens toward the crest, so its
+ * trough moves in to the face's foot. From LEAN_RATIO[0] to LEAN_RATIO[1] of the crest's slurp ratio (Crest.rSlurp,
+ * which is ≥ its own), the Phase 1 front (−π < θ < 0) is squeezed into its last share φ of the half wavelength, φ from 1
+ * to LEAN_FRONT_MIN, and ahead of that the water lies at the trough's level (leanPhase). Before it, the face sharpening
+ * lowered only the top of the face (SHARPEN_DEPTH), and only in the last two seconds or so: the lower half of the long
+ * Phase 1 front stood as a shelf between the drain's hollow at the foot and the trough half a wavelength ahead, so a
+ * surfer in front was drawn down, lifted 2.5–3 m by it (Andrew's "first swell" filling the drain), then drawn into the
+ * hollow before the face arrived. Now the water in front is drawn steadily down until the face reaches it, and its
+ * lowest point is at the foot as the wave breaks. Full by ρ = 1, where the wave breaks; from ρ 0.5 the shoaling wave's
+ * front is already leaning (its face 2–4 s before the break stands 17–28°, as before: the squeeze is in the lower front).
+ */
+export const LEAN_RATIO: readonly [number, number] = [0.5, 1];
+export const LEAN_FRONT_MIN = 0.3;
+
+/**
+ * The lean's weight at a crest: by its slurp ratio, × the lookup's confidence, × (1 − its collapse): it is the shoaling
+ * wave's, and once a section has settled to its bore (whitewater, the pile on it) the lean lets go. Kept on over the
+ * inside reef, where the rays fan out, the squeeze (1/LEAN_FRONT_MIN) amplified the phase's ripples there into 0.5 m
+ * spikes on the bore's face. 0 without a crest.
+ */
+export function leanWeight(crest: Crest | null): number {
+  return crest ? smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rSlurp) * crest.confidence * (1 - crest.lc.collapse) : 0;
+}
+
+/**
+ * The leaned phase th for Phase 1's shape cos(th) + B·cos(2th), and dth/dθ: on the front (−π < θ < 0) with φ = 1 −
+ * lean·(1 − LEAN_FRONT_MIN), θ/φ over its last share (θ ≥ −φπ), the trough (−π) ahead of that; θ itself elsewhere. C1:
+ * the shape's slope is 0 at θ = 0 and at the trough either way.
+ */
+export function leanPhase(theta: number, lean: number): { th: number; dth: number } {
+  if (!(lean > 0) || !(theta < 0) || !(theta > -Math.PI)) return { th: theta, dth: 1 };
+  const phi = 1 - lean * (1 - LEAN_FRONT_MIN);
+  return theta >= -phi * Math.PI ? { th: theta / phi, dth: 1 / phi } : { th: -Math.PI, dth: 0 };
+}
+
 /** Crest ends taper between these distances from the peak (the crest spans the whole reef near it). */
 export const TAPER_NEAR_M = 250;
 export const TAPER_FAR_M = 500;
@@ -160,6 +196,8 @@ export interface Crest {
   f: FieldSample;
   /** The crest's breaking ratio: the sheet's front sharpening steepens with it, before the wave breaks. */
   r: number;
+  /** Its ratio over the slurp's breaking depth (≥ r): the front's lean follows it (leanWeight). */
+  rSlurp: number;
   /** The crest's breaking stage (lc.stage). */
   s: number;
   /** Time since the section at the crest broke (breaking.onsetTime): null before, undefined without a record there. */
@@ -226,7 +264,7 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   const params = withSheetShape(o.params, psi);
   const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
   const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp, smoothstep(PSI_NONE, PSI_MIN, psi));
-  return { x: cx, z: cz, f: fc, r, s: lc.stage, tb, lc, confidence, lipH, psi, params };
+  return { x: cx, z: cz, f: fc, r, rSlurp, s: lc.stage, tb, lc, confidence, lipH, psi, params };
 }
 
 /**
@@ -257,16 +295,16 @@ export function fieldBreakingHeight(f: ReefField, p: BreakParams, depths: Float3
 }
 
 /**
- * The smallest wave height (m) that can shape the sheet anywhere the field is sampled: steepeningStart(p) (ribbonOnset +
- * RIBBON_FULL_OFFSET) × fieldBreakingHeight. The front sharpening acts from that breaking ratio on, before the wave
- * breaks. ρ is proportional to the height (ρ(λH) = λ·ρ(H)), so a wave no taller than λ × fieldBreakingHeight (so no
- * taller than λ × every point's own breaking height, where ρ = 1) has ρ ≤ λ at every crest: with λ =
- * steepeningStart it has no sharpening and no stage anywhere, so its surface is Phase 1 exactly. SetWaves flags waves
+ * The smallest wave height (m) that can shape the sheet anywhere the field is sampled: λ × fieldBreakingHeight, λ the
+ * smaller of the front's lean start (LEAN_RATIO[0]) and steepeningStart(p) (ribbonOnset + RIBBON_FULL_OFFSET), where the
+ * front sharpening acts from, before the wave breaks. ρ is proportional to the height (ρ(λH) = λ·ρ(H)), so a wave no
+ * taller than λ × fieldBreakingHeight (so no taller than λ × every point's own breaking height, where ρ = 1) has ρ ≤ λ
+ * at every crest: no lean, no sharpening and no stage anywhere, so its surface is Phase 1 exactly. SetWaves flags waves
  * against it (see fieldBreakingHeight). Over the slurp's depths (FieldSample.hminSlurp ≤ hminBreak): the slurp pulls a
- * shoulder in from where its slurp ratio reaches steepeningStart, which comes first.
+ * shoulder in, and leans it, from where its slurp ratio reaches them, which comes first.
  */
 export function fieldSteepeningHeight(f: ReefField, p: BreakParams): number {
-  return steepeningStart(p) * fieldBreakingHeight(f, p, f.hminSlurp);
+  return Math.min(steepeningStart(p), LEAN_RATIO[0]) * fieldBreakingHeight(f, p, f.hminSlurp);
 }
 
 /** The breaking stage of w's crest nearest (x, z) (0 when breaking is off). */
@@ -289,13 +327,16 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const lateral = 1 + (Math.exp(-(q * q * q * q)) - 1) * wFar;
   const theta = w.omega * xi;
   const aE = A * env * lateral;
-  const shape = Math.cos(theta) + B * Math.cos(2 * theta);
+  // The front's lean (LEAN_RATIO): the trough moves in to the face's foot as the wave shoals.
+  const { th, dth } = leanPhase(theta, leanWeight(crest));
+  const leaning = th !== theta || dth !== 1;
+  const shape = Math.cos(th) + B * Math.cos(2 * th);
   const eta = aE * shape;
   const hAmp = Math.min(aE, FOLD_LIMIT / f.k);
   const nearBreaking = smoothstep(0.3, BREAKING_RATIO, H / Math.max(f.hmin, MIN_DEPTH_M));
   const pitch = Math.min(PITCH_MAX * nearBreaking, PITCH_KA_CAP / Math.max(f.k * aE, 1e-4));
   const dh = hAmp * Math.sin(theta) + pitch * eta;
-  const dEtaDXi = A * lateral * (dEnv * shape - env * w.omega * (Math.sin(theta) + 2 * B * Math.sin(2 * theta)));
+  const dEtaDXi = A * lateral * (dEnv * shape - env * w.omega * dth * (Math.sin(th) + 2 * B * Math.sin(2 * th)));
   const dXiDs = -f.k / ctx.omega;
   const jacobian = Math.max(0.2, 1 + (hAmp * w.omega * Math.cos(theta) + pitch * dEtaDXi) * dXiDs);
   const slopeAlong = (dEtaDXi * dXiDs) / jacobian;
@@ -316,10 +357,14 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const v0 = (x - crest.x) * bx + (z - crest.z) * bz;
   // Per metre of the displaced surface along travel (ahead): Phase 1's derivatives along s, over its Jacobian.
   const perAhead = dXiDs / jacobian;
+  // Where the front leans, breaking also needs the unleaned wave (breakPoint: the drained hollow is the unleaned one's).
+  const shapeU = Math.cos(theta) + B * Math.cos(2 * theta);
+  const slopeU = leaning ? (A * lateral * (dEnv * shapeU - env * w.omega * (Math.sin(theta) + 2 * B * Math.sin(2 * theta))) * dXiDs) / jacobian : slopeAlong;
   const b = breakPoint({
-    theta, env: env * lateral, uUnbroken: v0 + dh * facing, eta, uCrest: cf.pitchC * cf.etaCrest, etaCrest: cf.etaCrest, H: cf.Hc * lateral, k: crest.f.k,
+    theta, env: env * lateral, uUnbroken: v0 + dh * facing, eta: leaning ? aE * shapeU : eta, uCrest: cf.pitchC * cf.etaCrest, etaCrest: cf.etaCrest, H: cf.Hc * lateral, k: crest.f.k,
     hmin: crest.f.hminBreak, boreH: cf.boreH, lipTop: cf.lipTop, lipHeight: cf.lipHeight, lateral,
-    slope: slopeAlong, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead, crestConfidence: crest.confidence,
+    slope: slopeU, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead, crestConfidence: crest.confidence,
+    lean: leaning ? { eta, slope: slopeAlong } : undefined,
   }, crest.lc, crest.params);
   out.eta = b.eta;
   out.slopeX += f.dirX * b.dEtaDAhead;
