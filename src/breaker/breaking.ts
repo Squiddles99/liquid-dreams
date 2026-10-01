@@ -675,8 +675,20 @@ export interface BreakPointInput {
   lean?: { eta: number; slope: number };
 }
 
-/** The leaned front meets the drained hollow over this many H (a smooth minimum's k), so the join has no crease. */
+/**
+ * The leaned front meets the drained hollow over this many H, so the join has no crease: where the leaned wave lies d
+ * under the unleaned one the sheet goes down by leanRamp(d) (0 for d ≤ 0, d²/2k up to k, d − k/2 beyond), so it is the
+ * unleaned wave exactly where that is the lower or they are equal (at the crest, and where the lean ends at the
+ * trough), and the leaned one k/2 higher where it is clearly lower. A smooth minimum dipped k/4 below both where they
+ * are equal: a 1.5 cm step along every leaning crest (θ = 0⁻ leans, 0 does not).
+ */
 export const LEAN_BLEND_H = 0.02;
+
+/** How far the sheet goes down toward a leaned wave lying d under it, and its slope ∂/∂d ([0, 1]); LEAN_BLEND_H. */
+export function leanRamp(d: number, k: number): { value: number; dD: number } {
+  if (!(d > 0)) return { value: 0, dD: 0 };
+  return d < k ? { value: (d * d) / (2 * k), dD: d / k } : { value: d - k / 2, dD: 1 };
+}
 
 export interface BreakPointResult {
   /** The final height (replaces the Phase 1 height). */
@@ -695,7 +707,7 @@ export interface BreakPointResult {
  * the cross-section), eta = (η − D − R)·S, and what breaking adds is eta − η = η·(S − 1) − (D + R)·S, differentiated
  * term by term along ahead; and the whitewater pile on top (spec 2026-09-29 §3.2), which lifts it toward the pile's height
  * by a smooth maximum.
- * Where the front leans (i.lean) the sheet is the lower of two, by a smooth minimum (LEAN_BLEND_H·H): the unleaned wave
+ * Where the front leans (i.lean) the sheet is the lower of two, joined over LEAN_BLEND_H·H (leanRamp): the unleaned wave
  * sharpened and drained as above (so the drained hollow at the foot is where Andrew's traced anchors put it, 0.2 / 0.55 /
  * 0.7 H below still water), and the leaned wave sharpened, undrained (beyond the hollow, the trough the lean brings in to
  * the foot: the shelf the unleaned front left there, the "first swell", is gone). Drained on the leaned wave instead, the
@@ -722,9 +734,9 @@ export function breakPoint(i: BreakPointInput, lc: Lifecycle, p: BreakParams): B
     const dropL = sharpenDrop(ahead, i.lean.eta, i.etaCrest, i.H, i.k, sharpen, p);
     const dDropL = sharpenDropSlope(ahead, i.lean.eta, i.lean.slope, i.etaCrest, i.H, i.k, sharpen, p);
     const leaned = (i.lean.eta - dropL) * scale, slopeLeaned = (i.lean.slope - dDropL) * scale;
-    const m = smoothMax(-base, -leaned, LEAN_BLEND_H * i.H);
-    base = -m.value;
-    slopeBase = m.dA * slopeBase + (1 - m.dA) * slopeLeaned;
+    const r = leanRamp(base - leaned, LEAN_BLEND_H * i.H);
+    base -= r.value;
+    slopeBase -= r.dD * (slopeBase - slopeLeaned);
   }
   const dBase = slopeBase - (i.lean?.slope ?? i.slope);
   const out: BreakPointResult = { eta: base, foam: foamWeight(i.theta, ahead, i.H, i.env, c, p), dEtaDAhead: dBase, pile: 0 };
