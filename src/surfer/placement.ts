@@ -66,6 +66,52 @@ export function chaseCamera(frame: BoardFrame, headingDeg: number): CameraPose {
   return { mode: 'free', position: pos, yawDeg: headingDeg, pitchDeg: -Math.atan2(CHASE_UP_M - 1.0, CHASE_BACK_M) / DEG };
 }
 
+/** Thong soles under the feet when walking (tools/surfer/clothes.py builds them 12 mm thick). */
+export const SOLE_M = 0.012;
+
+/**
+ * Feet on the land (walking spec §4): a level frame at the spot, turned to the heading, on the land's height (or the
+ * fallback while the land loads), lifted by the soles; the water isn't probed.
+ */
+export function groundFrame(p: Placement, groundY: number | null, fallbackY: number, liftM: number): BoardFrame {
+  const { fwd } = headingAxes(p.headingDeg);
+  const y = (groundY !== null && Number.isFinite(groundY) ? groundY : fallbackY) + liftM + p.heightNudgeM;
+  return { position: new Vector3(p.x, y, p.z), forward: new Vector3(fwd[0], 0, fwd[1]), up: new Vector3(0, 1, 0) };
+}
+
+export interface LandSurface {
+  heightAt(x: number, z: number): number;
+  waterlineAt(z: number): number;
+}
+export interface LandSpot {
+  x: number;
+  z: number;
+  headingDeg: number;
+}
+/** The Womb's lineup z (DEFAULT_SURFER_PARAMS.z): "above the Womb" is straight inland of it. */
+export const WOMB_Z = 45;
+
+/**
+ * Named spots on land (walking spec §4): the dune crest above the Womb, facing inland (east, toward the camera), and the
+ * dry sand in front of it, facing the sea; sampled along the line inland of the lineup.
+ */
+export function landSpots(land: LandSurface, beach: { wetWidthM: number; dryWidthM: number }, z = WOMB_Z): { duneCrest: LandSpot; beach: LandSpot } {
+  const xs = land.waterlineAt(z), toe = xs + beach.wetWidthM + beach.dryWidthM;
+  let crest = toe, top = -Infinity;
+  for (let x = toe; x <= toe + 250; x += 0.5) {
+    const h = land.heightAt(x, z);
+    if (h > top) {
+      crest = x;
+      top = h;
+    } else if (top - h > 1.5) break; // past the crest: the land falls away behind it
+  }
+  // Onto ground flat enough to stand on (under 0.15 across a stride), stepping back toward the sea off a sharp top.
+  const slope = (x: number): number => Math.abs(land.heightAt(x + 1, z) - land.heightAt(x - 1, z)) / 2;
+  let x = crest;
+  for (let i = 0; i < 16 && slope(x) > 0.15; i++) x -= 0.5;
+  return { duneCrest: { x, z, headingDeg: 90 }, beach: { x: xs + beach.wetWidthM + 0.6 * beach.dryWidthM, z, headingDeg: 270 } };
+}
+
 export function placeAhead(c: CameraPose): { x: number; z: number; headingDeg: number } {
   const { fwd } = headingAxes(c.yawDeg);
   const tidy = (v: number): number => Math.round(v * 1e6) / 1e6 || 0; // `|| 0` turns -0 into 0
