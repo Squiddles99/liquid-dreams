@@ -116,6 +116,23 @@ describe('the carry (walking spec §4): the board under the arm, every rider, bo
   });
 });
 
+describe('the free hand waves (the reach dial on land: the gang, stoked; Andrew: "the surf’s up!")', () => {
+  for (const c of cases().filter((x) => x.kind !== 'stepUp')) {
+    it(c.tag, () => {
+      const spec = boardFor(PRESETS[c.name], c.kind), free: Limb = c.side === 'l' ? 'r' : 'l';
+      const t = poseTargets('carry', { spec, layout: layoutFor(spec, c.rest.heightM), rest: c.rest, stance: 'regular', dials: { ...DIALS, reach: 1 }, phaseT: 0, carrySide: c.side });
+      const s = solvePose(c.rest, t, ground, toW(c.rest.joint.head).add(t.look.clone().applyQuaternion(Qg).multiplyScalar(10)));
+      // Up beside the head, out to the side, clear of the head and the board.
+      expect(s.joint[`hand_${free}`].y).toBeGreaterThan(s.joint.head.y);
+      expect(s.joint[`hand_${free}`].distanceTo(s.joint.head)).toBeGreaterThan(0.15);
+      const boxes = boardBoxes(carriedBoard(t.carry!, ground, s), spec);
+      expect(distanceToBoxes(s.joint[`upperarm_${free}`], s.joint[`hand_${free}`], boxes)).toBeGreaterThan(0.1);
+      // The carrying arm and the board are as they were.
+      expect(s.joint[`hand_${c.side}`].distanceTo(toW(t.carry!.hand))).toBeLessThan(0.02);
+    });
+  }
+});
+
 describe('feet on the ground (final review: a level frame on a cross-slope buried one foot and floated the other)', () => {
   it('sets each foot on the ground under it, the frame where it is', () => {
     const rest = referenceSkeleton(1.52), spec = boardFor(PRESETS.grommet, 'bodyboard');
