@@ -15,8 +15,20 @@ It runs Blender in the background with the scripts in this folder:
    helper, teeth, hair cards (wet, and a dry style on land) and boardies are added (`wardrobe.py`, `face.py`,
    `skin.py`, `hair.py`, `teeth.py`). A ray check writes `checks.blinkCovers` to the manifest: the closed lids must
    cover the eyes.
-7. Out come `public/surfer/<name>.glb`, `public/surfer/<name>.manifest.json`, and turntable sheets in `previews/`
-   (git-ignored).
+7. The walking clothes (walking spec `docs/superpowers/specs/2026-10-01-walking-clothes-design.md`), from each
+   preset's `walking` block:
+   - `clothes.py`: the tee, a shell of the body hung straight down from the widest point above it (`geom.curtain`),
+     smoothed over a smoothed copy of the body (so small bumps don't print), with clean bisected hems, Shazza's knotted
+     at the hip; her denim cutoffs and bikini straps; thongs; the hats (the scalp above a band, cleared from the real
+     head) with a third hair mesh pressed under them (`hair.py` styles `capped` and `bucket`).
+   - `packs.py`: each rider's pack and straps over the tee, and Shazza's towel, T-Bone's wetsuit, Grommet's fins.
+   - The dry hair is built after them and drapes over them.
+   Ray checks write `checks.garmentsOutside` (no garment vertex inside the body) and `checks.hatHairUnder` (no hat hair
+   through the hat or over its brim) to the manifest.
+8. Out come `public/surfer/<name>.glb`, `public/surfer/<name>.manifest.json`, and turntable sheets in `previews/`
+   (git-ignored): each outfit, the walking clothes, and the walking head close (the hats).
+9. After a full build, `pile.py` makes `public/surfer/beachPile.glb` (and its manifest): the crew's clothes and packs
+   dropped on the sand, from the three riders' glbs, with materials `pile_<part>_<preset>`.
 
 The `.glb` files are committed, so `npm run dev`, `npm test` and the launcher never need Blender. Only rebuilding the
 surfers does.
@@ -31,7 +43,8 @@ Built with **Blender 5.2.2 LTS** and **MPFB 2.0.17** (see `api-probe.txt`).
 ## Commands
 
 - `npm run build:surfers`: both surfers.
-- `npm run build:surfers -- --only male`: one surfer.
+- `npm run build:surfers -- --only male`: one surfer (the pile isn't remade).
+- `npm run build:surfers -- --pile`: only the beach pile, from the riders already built.
 - `npm run build:surfers -- --probe`: writes `api-probe.txt`, which records what this Blender and MPFB offer (the macro
   keys, the vertex groups and the rig's bones). Run it after updating either.
 - Blender is found in `C:\Program Files\Blender Foundation\Blender <version>\`. Set `BLENDER_PATH` to `blender.exe` if
