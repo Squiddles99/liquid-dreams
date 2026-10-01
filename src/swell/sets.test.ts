@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import {
-  CALL_SET_LEAD_S, DEFAULT_SET_PARAMS, LONG_TAIL_CHANCE, MAX_ACTIVE_WAVES, WAVE_WINDOW_AFTER_S, WAVE_WINDOW_BEFORE_S,
+  CALL_SET_LEAD_S, DEFAULT_SET_PARAMS, MAX_ACTIVE_WAVES, WAVE_WINDOW_AFTER_S, WAVE_WINDOW_BEFORE_S,
   callSetTime, nextSetArrivalS, normalizeSetParams, setStartS, straysAfterSet, wavesNear, wavesOfSet,
   type WaveEvent, wavesBetween,
 } from './sets';
@@ -55,22 +55,8 @@ describe('set timeline', () => {
       expect(w.heightM).toBeLessThanOrEqual(hs * p.heightFactorMax * (1 + 2 * p.waveHeightJitter) + 1e-9);
     }
   });
-  it('about one set wave in twelve leaves a long tail, never a set’s last wave or a stray, from its own stream', () => {
-    let tails = 0, eligible = 0;
-    for (let k = 0; k < 500; k++) {
-      const set = wavesOfSet(k, c, p);
-      set.forEach((w, i) => {
-        if (i === set.length - 1) { expect(w.longTail).toBe(false); return; }
-        eligible++;
-        if (w.longTail) tails++;
-      });
-      for (const s of straysAfterSet(k, c, p)) expect(s.longTail).toBe(false);
-    }
-    expect(tails / eligible).toBeGreaterThan(LONG_TAIL_CHANCE * 0.7);
-    expect(tails / eligible).toBeLessThan(LONG_TAIL_CHANCE * 1.3);
-  });
-  it('the long-tail draw leaves every other value of a set as it was (moments and links keep their waves)', () => {
-    // Set 7 before long tails existed: arrival, height, period, direction.
+  it('set 7 keeps its waves (moments and links keep their waves): long tails came and went on their own stream', () => {
+    // Set 7 before long tails existed (2026-09) and after they were removed (2026-10-01): arrival, height, period, direction.
     const before = [
       [6899.703634344041, 1.766931265481613, 14.869197402731515, 227.4528657440096],
       [6914.625778103946, 2.118789523277451, 15.00914928072598, 226.6081442590803],
@@ -174,7 +160,7 @@ describe('wavesBetween', () => {
 
 describe('the set timeline stays put', () => {
   it('adding the throw draw and the gap leaves every other value of a set and its strays as it was', () => {
-    const pick = (w: WaveEvent) => ({ id: w.id, arrivalS: +w.arrivalS.toFixed(6), heightM: +w.heightM.toFixed(6), periodS: +w.periodS.toFixed(6), fromDeg: +w.fromDeg.toFixed(6), crestLengthM: +w.crestLengthM.toFixed(3), crestOffsetM: +w.crestOffsetM.toFixed(3), longTail: w.longTail });
+    const pick = (w: WaveEvent) => ({ id: w.id, arrivalS: +w.arrivalS.toFixed(6), heightM: +w.heightM.toFixed(6), periodS: +w.periodS.toFixed(6), fromDeg: +w.fromDeg.toFixed(6), crestLengthM: +w.crestLengthM.toFixed(3), crestOffsetM: +w.crestOffsetM.toFixed(3) });
     const all = [1, 2].flatMap((slot) => [...wavesOfSet(slot, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS), ...straysAfterSet(slot, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS)]);
     expect(all.map(pick)).toMatchInlineSnapshot(`
       [
@@ -185,7 +171,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 227.871434,
           "heightM": 1.75528,
           "id": 64,
-          "longTail": true,
           "periodS": 14.604369,
         },
         {
@@ -195,7 +180,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 223.814987,
           "heightM": 2.235003,
           "id": 65,
-          "longTail": false,
           "periodS": 15.247412,
         },
         {
@@ -205,7 +189,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 224.726223,
           "heightM": 2.283031,
           "id": 66,
-          "longTail": false,
           "periodS": 15.116214,
         },
         {
@@ -215,7 +198,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 221.939184,
           "heightM": 1.664907,
           "id": 67,
-          "longTail": false,
           "periodS": 15.12678,
         },
         {
@@ -225,7 +207,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 228.76911,
           "heightM": 2.341198,
           "id": 68,
-          "longTail": false,
           "periodS": 15.172427,
         },
         {
@@ -235,7 +216,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 221.040722,
           "heightM": 2.002701,
           "id": 69,
-          "longTail": false,
           "periodS": 14.505866,
         },
         {
@@ -245,7 +225,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 226.977551,
           "heightM": 1.638581,
           "id": 70,
-          "longTail": false,
           "periodS": 14.489902,
         },
         {
@@ -255,7 +234,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 226.115449,
           "heightM": 2.170544,
           "id": 71,
-          "longTail": false,
           "periodS": 15.301902,
         },
         {
@@ -265,7 +243,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 223.92009,
           "heightM": 1.103631,
           "id": 96,
-          "longTail": false,
           "periodS": 15.019401,
         },
         {
@@ -275,7 +252,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 225.8108,
           "heightM": 2.225917,
           "id": 128,
-          "longTail": false,
           "periodS": 14.92051,
         },
         {
@@ -285,7 +261,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 222.522179,
           "heightM": 2.163654,
           "id": 129,
-          "longTail": false,
           "periodS": 15.695873,
         },
         {
@@ -295,7 +270,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 224.30329,
           "heightM": 3.172913,
           "id": 130,
-          "longTail": false,
           "periodS": 14.843674,
         },
         {
@@ -305,7 +279,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 225.892682,
           "heightM": 2.655796,
           "id": 131,
-          "longTail": false,
           "periodS": 15.267188,
         },
         {
@@ -315,7 +288,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 224.25146,
           "heightM": 2.348641,
           "id": 132,
-          "longTail": false,
           "periodS": 14.755169,
         },
         {
@@ -325,7 +297,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 221.048811,
           "heightM": 1.68232,
           "id": 133,
-          "longTail": false,
           "periodS": 15.319954,
         },
         {
@@ -335,7 +306,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 223.750652,
           "heightM": 2.249946,
           "id": 134,
-          "longTail": false,
           "periodS": 14.432573,
         },
         {
@@ -345,7 +315,6 @@ describe('the set timeline stays put', () => {
           "fromDeg": 222.275557,
           "heightM": 1.151531,
           "id": 160,
-          "longTail": false,
           "periodS": 14.638017,
         },
       ]

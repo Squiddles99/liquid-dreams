@@ -1,6 +1,6 @@
 import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, smoothstep, uniform } from 'three/tsl';
 import {
-  type BreakParams, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
+  type BreakParams, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
   HOLLOW_REACH_Q, MIN_BREAKING_HEIGHT_M, MIN_STAGE_SPAN, PILE_BACK_H, PILE_BLEND_H, PILE_FOAM_EDGE, PILE_FOAM_THIN, PILE_FRONT_H,
   PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, PLUNGE_FULL_RATIO, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S,
   normalizeBreakParams, onsetGain, steepeningStart,
@@ -178,6 +178,9 @@ export interface BreakPointNodes {
   lipTop?: N;
   lateral?: N;
   lipHeight?: N;
+  /** breaking.BreakPointInput.lean: the leaned Phase 1 height and slope, used where `on` (eta and slope are then the
+   * unleaned wave's). Absent: no lean. */
+  lean?: { eta: N; slope: N; on: N };
 }
 
 /** The whitewater pile's curves (breaking.Lifecycle's pile terms). */
@@ -202,12 +205,16 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const dSink = a.mul(g).mul(2.0).div(width.mul(width));
   const fade = smoothstepDown(quarter.mul(2.0), quarter, a);
   const dFade = smoothstepSlope(quarter, quarter.mul(2.0), a).negate();
-  const above = i.eta.sub(i.etaCrest.sub(i.H.mul(SHARPEN_DEPTH)));
-  const m = max(above, 0.0);
-  const dM = select(above.greaterThan(0.0), i.slope, float(0.0));
   const sharpen = steep.mul(i.crestConfidence);
-  const drop = sharpen.mul(sink).mul(fade).mul(m);
-  const dDrop = sharpen.mul(dSink.mul(fade).mul(m).add(sink.mul(dFade).mul(m)).add(sink.mul(fade).mul(dM)));
+  const floorH = i.etaCrest.sub(i.H.mul(SHARPEN_DEPTH));
+  /** sharpenDrop and its slope for a height `eta` with slope `slope` along ahead. */
+  const dropOf = (eta: N, slope: N): { drop: N; dDrop: N } => {
+    const above = eta.sub(floorH);
+    const m = max(above, 0.0);
+    const dM = select(above.greaterThan(0.0), slope, float(0.0));
+    return { drop: sharpen.mul(sink).mul(fade).mul(m), dDrop: sharpen.mul(dSink.mul(fade).mul(m).add(sink.mul(dFade).mul(m)).add(sink.mul(fade).mul(dM))) };
+  };
+  const { drop, dDrop } = dropOf(i.eta, i.slope);
   // drainDepth × drainShape × env, and its slope (drainShapeSlope): the hollow at the foot. It reuses the sharpening's
   // sink (the same face width); behind the crest a = 0, where the sink and its slope vanish, so both are exactly 0.
   const depth = (sh?.troughDrain ?? u.troughDrain).mul(u.delta).mul(i.H).mul(drain);
@@ -232,8 +239,26 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const trail = float(1.0).sub(smoothstep(Math.PI / 2, Math.PI, i.theta))
     .mul(float(1.0).sub(smoothstep(i.H.mul(FOAM_DENSE_BEHIND_H), i.H.mul(FOAM_TRAIL_H), ahead.negate())));
   const foam = land.mul(i.env).mul(front).mul(trail);
-  const base = i.eta.sub(drop).sub(drained).mul(scale);
-  const dBase = i.slope.mul(scale.sub(1.0)).sub(dDrop.add(dDrained).mul(scale));
+  // The unleaned wave sharpened and drained, and its whole slope along ahead.
+  const baseU = i.eta.sub(drop).sub(drained).mul(scale);
+  const slopeU = i.slope.sub(dDrop).sub(dDrained).mul(scale);
+  let base: N = baseU, slopeBase: N = slopeU, phase1Slope: N = i.slope;
+  if (i.lean) {
+    // breaking.breakPoint: where the front leans, down toward the leaned wave sharpened, undrained, where it lies lower
+    // (breaking.leanRamp, k = LEAN_BLEND_H·H).
+    const l = dropOf(i.lean.eta, i.lean.slope);
+    const leaned = i.lean.eta.sub(l.drop).mul(scale);
+    const slopeL = i.lean.slope.sub(l.dDrop).mul(scale);
+    const kL = i.H.mul(LEAN_BLEND_H);
+    const dL = baseU.sub(leaned);
+    const dPos = max(dL, 0.0);
+    const ramp = select(dL.lessThan(kL), dPos.mul(dPos).div(kL.mul(2.0)), dL.sub(kL.mul(0.5)));
+    const rampD = clamp(dL.div(kL), 0.0, 1.0);
+    base = select(i.lean.on, baseU.sub(ramp), baseU).toVar();
+    slopeBase = select(i.lean.on, slopeU.sub(rampD.mul(slopeU.sub(slopeL))), slopeU).toVar();
+    phase1Slope = select(i.lean.on, i.lean.slope, i.slope);
+  }
+  const dBase = slopeBase.sub(phase1Slope);
   if (!pc || i.lipTop === undefined || i.lateral === undefined || i.lipHeight === undefined) return { eta: base, foam, dEtaDAhead: dBase, pile: float(0.0) };
   // The whitewater pile (breaking.breakPoint, term by term): the sheet lifted toward the pile's top T by a smooth
   // maximum, weighted by its shape g around its top (PILE_LAND_H·size·pileReach ahead) and by nearness to its crest.
@@ -263,7 +288,7 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   return {
     eta: base.add(w.mul(lift)),
     foam: max(foam, pileFoam),
-    dEtaDAhead: dBase.add(crestWeight.mul(dNear.mul(pg).add(nearC.mul(dg))).mul(lift)).add(w.mul(mDA.sub(1.0)).mul(i.slope.add(dBase))),
+    dEtaDAhead: dBase.add(crestWeight.mul(dNear.mul(pg).add(nearC.mul(dg))).mul(lift)).add(w.mul(mDA.sub(1.0)).mul(slopeBase)),
     pile: w.mul(float(1.0).sub(mDA)).mul(T),
   };
 }
