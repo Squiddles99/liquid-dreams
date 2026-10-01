@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SURFER_PARAMS, PADDLE_CYCLE_S, POPUP_S, SURFER_PARAM_RANGES, carrySideOf, normalizeSurferParams, playPhase, sanitizeSurferParams } from './surferParams';
+import { DEFAULT_SURFER_PARAMS, PADDLE_CYCLE_S, POPUP_S, SURFER_PARAM_RANGES, balanceApplies, carrySideOf, landedAt, normalizeSurferParams, playPhase, sanitizeSurferParams } from './surferParams';
 
 describe('surfer params', () => {
   it('start off, on the female surfer sitting on the thruster in the lineup', () => {
@@ -93,5 +93,31 @@ describe('on land (walking spec §4; Review Focus 1)', () => {
     const side = (preset: 'female' | 'male' | 'grommet', carrySide: 'auto' | 'l' | 'r' = 'auto'): string => carrySideOf(sanitizeSurferParams({ preset, carrySide }));
     expect([side('female'), side('male'), side('grommet')]).toEqual(['l', 'r', 'l']);
     expect(side('male', 'l')).toBe('l');
+  });
+});
+
+describe('the balance layer (final review)', () => {
+  it('rides the water only: standing on land nothing moves the hands (it pulled the carrying hand off the board)', () => {
+    expect(balanceApplies({ ...DEFAULT_SURFER_PARAMS, balance: true, onLand: false })).toBe(true);
+    expect(balanceApplies({ ...DEFAULT_SURFER_PARAMS, balance: true, onLand: true })).toBe(false);
+    expect(balanceApplies({ ...DEFAULT_SURFER_PARAMS, balance: false, onLand: false })).toBe(false);
+  });
+});
+
+describe('on land only where there is land (final review: an old onLand link at the lineup sat on the seabed)', () => {
+  const walking = { ...DEFAULT_SURFER_PARAMS, onLand: true, outfit: 'walking' as const, pose: 'carry' as const };
+  it('stands on the sand where the ground is above the water', () => {
+    expect(landedAt(walking, 3.2, 0.4)).toEqual(walking);
+  });
+  it('floats in the water instead, out of the walking clothes and the carry, seaward of the waterline or before the land loads', () => {
+    for (const g of [-4, 0.41, null, Number.NaN]) {
+      const p = landedAt(walking, g, 0.4);
+      expect([p.onLand, p.outfit, p.pose], String(g)).toEqual([false, 'season', 'sit']);
+    }
+    expect(landedAt({ ...walking, pose: 'trim' }, -4, 0.4).pose).toBe('trim');
+  });
+  it('leaves a rider in the water alone', () => {
+    const p = { ...DEFAULT_SURFER_PARAMS };
+    expect(landedAt(p, -4, 0.4)).toBe(p);
   });
 });

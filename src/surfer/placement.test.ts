@@ -97,6 +97,17 @@ describe('the named spots on land (walking spec §4)', () => {
     expect(Math.abs(s.x - (toe + 88))).toBeLessThanOrEqual(3);
     expect(Math.abs(cliff.heightAt(s.x + 1) - cliff.heightAt(s.x - 1)) / 2).toBeLessThan(0.15);
   });
+  it('steps along the lip to ground that is flat both ways (final review: the real lip slopes 0.24 across the line)', () => {
+    const lipX = toe + 80;
+    const cliff = (x: number): number => (x < toe ? 0 : x < lipX ? 0.5 * (x - toe) : 40 + 0.05 * (x - lipX));
+    // A cross-slope of 0.25 within 3 m of the line inland of the lineup, flat beyond it.
+    const cross = (z: number): number => 0.25 * Math.max(-3, Math.min(3, z - 45));
+    const ridge = { heightAt: (x: number, z: number) => cliff(x) + cross(z), waterlineAt: () => 190 };
+    const s = landSpots(ridge, beach).duneCrest;
+    const gx = (ridge.heightAt(s.x + 1, s.z) - ridge.heightAt(s.x - 1, s.z)) / 2, gz = (ridge.heightAt(s.x, s.z + 1) - ridge.heightAt(s.x, s.z - 1)) / 2;
+    expect(Math.hypot(gx, gz)).toBeLessThan(0.15);
+    expect(Math.abs(s.x - lipX)).toBeLessThanOrEqual(8);
+  });
   it('takes the far end of land that rises all the way, and the toe of flat land', () => {
     expect(landSpots(land((x) => 0.1 * x), beach).duneCrest.x).toBe(toe + 250);
     expect(landSpots(land(() => 3), beach).duneCrest.x).toBe(toe);

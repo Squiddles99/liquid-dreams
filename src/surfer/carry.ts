@@ -1,5 +1,6 @@
 import { Vector3 } from 'three/webgpu';
 import { type BoardSpec, bottomYAt, deckYAt, halfWidthAt, uAt } from '../board/boardSpec';
+import type { FootTarget } from './poses';
 import type { Limb } from './rig';
 import { type BoardFrame, type SolvedPose, boardQuaternion } from './solvePose';
 
@@ -7,6 +8,9 @@ import { type BoardFrame, type SolvedPose, boardQuaternion } from './solvePose';
 export const LIMB_RADIUS = { thigh: 0.045, shin: 0.032, torso: 0.075, upperarm: 0.026, forearm: 0.022 } as const;
 /** The palm and fingers past the hand joint, as a fraction of height: how far the fingers reach round a rail. */
 export const HAND_REACH = 0.075;
+
+/** The build's materials on a rider's back: the pack, its straps, and what's strapped to it (tools/surfer/packs.py). */
+export const PACK_PARTS = ['pack', 'packTrim', 'neoprene', 'fins', 'towel'] as const;
 
 /** The carry's board (walking spec §4), from the pose. */
 export interface CarryBoard {
@@ -87,4 +91,21 @@ export function distanceToBoxes(a: Vector3, b: Vector3, boxes: readonly Box[]): 
     for (const box of boxes) best = Math.min(best, pointBox(p, box));
   }
   return best;
+}
+
+/**
+ * Each foot on the ground under it (final review: a level frame on a cross-slope buried one foot and floated the other):
+ * the ankle and toe targets (frame-relative, the frame level) raised or lowered by the ground under the ankle, plus the
+ * soles, less the frame's height. Where the ground is unknown the foot stays.
+ */
+export function feetOnGround(feet: Record<Limb, FootTarget>, frame: BoardFrame, ground: (x: number, z: number) => number | null, liftM: number): void {
+  const Q = boardQuaternion(frame);
+  for (const s of ['l', 'r'] as const) {
+    const w = feet[s].ankle.clone().applyQuaternion(Q).add(frame.position);
+    const g = ground(w.x, w.z);
+    if (g === null || !Number.isFinite(g)) continue;
+    const dy = g + liftM - frame.position.y;
+    feet[s].ankle.y += dy;
+    feet[s].toe.y += dy;
+  }
 }

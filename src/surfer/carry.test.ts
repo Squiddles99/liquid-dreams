@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { Quaternion, Vector3 } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { layoutFor } from '../board/boardSpec';
-import { HAND_REACH, LIMB_RADIUS, boardBoxes, carriedBoard, distanceToBoxes } from './carry';
+import { type Box, HAND_REACH, LIMB_RADIUS, PACK_PARTS, boardBoxes, carriedBoard, distanceToBoxes, feetOnGround } from './carry';
+import { glbFloats, glbJson } from './glbData';
 import { flexDeg } from './ik';
 import { groundFrame } from './placement';
 import { poseTargets } from './poses';
@@ -99,10 +100,96 @@ describe('the carry (walking spec §4): the board under the arm, every rider, bo
     }
   });
 
+  it('keeps its own copy of the hand’s target: whatever moves the hand target (the balance layer) moves the board with it (final review)', () => {
+    const c = cases()[0], spec = boardFor(PRESETS[c.name], c.kind);
+    const t = poseTargets('carry', { spec, layout: layoutFor(spec, c.rest.heightM), rest: c.rest, stance: 'regular', dials: DIALS, phaseT: 0, carrySide: c.side });
+    const before = t.carry!.hand.clone();
+    t.hands[c.side].pos.add(new Vector3(0, 0.03, 0.02));
+    expect(t.carry!.hand.distanceTo(before)).toBe(0);
+  });
+
   it('follows the hand, not the feet', () => {
     const c = cases()[0], { t, s } = solveCarry(c);
     const before = carriedBoard(t.carry!, ground, s).position.clone();
     s.joint[`hand_${c.side}`].add(new Vector3(0, 0.05, 0));
     expect(carriedBoard(t.carry!, ground, s).position.clone().sub(before).y).toBeCloseTo(0.05, 9);
   });
+});
+
+describe('feet on the ground (final review: a level frame on a cross-slope buried one foot and floated the other)', () => {
+  it('sets each foot on the ground under it, the frame where it is', () => {
+    const rest = referenceSkeleton(1.52), spec = boardFor(PRESETS.grommet, 'bodyboard');
+    const frame = groundFrame({ x: 10, z: 5, headingDeg: 90, heightNudgeM: 0, pitchNudgeDeg: 0 }, 1, 0, 0.012);
+    const t = poseTargets('carry', { spec, layout: layoutFor(spec, 1.52), rest, stance: 'regular', dials: DIALS, phaseT: 0, carrySide: 'l' });
+    const slope = (x: number, z: number): number => 1 + 0.3 * (z - 5); // rising toward his right (+z facing east)
+    const before = { l: t.feet.l.ankle.y, r: t.feet.r.ankle.y };
+    feetOnGround(t.feet, frame, slope, 0.012);
+    const Q = boardQuaternion(frame);
+    for (const s of ['l', 'r'] as const) {
+      const w = t.feet[s].ankle.clone().applyQuaternion(Q).add(frame.position);
+      expect(t.feet[s].ankle.y - before[s], s).toBeCloseTo(slope(w.x, w.z) + 0.012 - frame.position.y, 2);
+    }
+    expect(t.feet.r.ankle.y).toBeGreaterThan(t.feet.l.ankle.y + 0.04);
+    feetOnGround(t.feet, frame, () => null, 0);
+  });
+});
+
+/** How deep a point is inside the board (0 outside). */
+function depthIn(p: Vector3, boxes: readonly Box[]): number {
+  let deepest = 0;
+  for (const b of boxes) {
+    const d = p.clone().sub(b.centre);
+    let inside = Infinity;
+    for (let k = 0; k < 3; k++) inside = Math.min(inside, b.half[k] - Math.abs(d.dot(b.axes[k])));
+    deepest = Math.max(deepest, inside);
+  }
+  return deepest;
+}
+
+/** A rider's pack and what's on it, rest pose (glTF axes), from the built glb. */
+function packPoints(name: PresetName, parts: readonly string[] = PACK_PARTS): number[][] {
+  const path = `public/surfer/${name}.glb`, gltf = glbJson(path), out: number[][] = [];
+  for (const m of gltf.meshes) for (const p of m.primitives) {
+    if (!parts.includes(gltf.materials[p.material].name)) continue;
+    const f = glbFloats(path, gltf, p.attributes.POSITION);
+    for (let i = 0; i < f.length; i += 3) out.push([f[i], f[i + 1], f[i + 2]]);
+  }
+  return out;
+}
+
+describe('the carried board clear of the rider’s own pack (final review: it cut through straps, sleeve and bag)', () => {
+  for (const name of NAMES) for (const kind of boardsFor(PRESETS[name])) for (const side of ['l', 'r'] as Limb[]) {
+    it(`${name} ${kind} ${side}`, () => {
+      const rest = builtRest(name), spec = boardFor(PRESETS[name], kind);
+      const bag = packPoints(name, PACK_PARTS.filter((m) => m !== 'packTrim')), straps = packPoints(name, ['packTrim']);
+      expect(bag.length).toBeGreaterThan(100);
+      const t = poseTargets('carry', { spec, layout: layoutFor(spec, rest.heightM), rest, stance: 'regular', dials: DIALS, phaseT: 0, carrySide: side });
+      const s = solvePose(rest, t, ground, toW(rest.joint.head).add(t.look.clone().applyQuaternion(Qg).multiplyScalar(10)));
+      const boxes = boardBoxes(carriedBoard(t.carry!, ground, s), spec);
+      // The pack rides spine_03 (its straps over the shoulders half the clavicles: about a centimetre off here).
+      const R = s.world.spine_03, at = rest.joint.spine_03;
+      const deepest = (pts: number[][]): number => Math.max(0, ...pts.map((q) => depthIn(new Vector3(...q).sub(at).applyQuaternion(R).add(s.joint.spine_03), boxes)));
+      // The bag, the wetsuit, the fins and the towel stay out of the board.
+      expect(deepest(bag), 'deepest bag point inside the board (m)').toBeLessThan(0.005);
+      // The straps under the arm are pressed flat by the board against the tee and the ribs (ruling), never through it:
+      // no deeper than the strap stands off the skin.
+      expect(deepest(straps), 'deepest strap point inside the board (m)').toBeLessThan(0.035);
+      expect(s.joint[`hand_${side}`].distanceTo(toW(t.carry!.hand)), 'hand to target').toBeLessThan(0.02);
+      // And everything else still holds with the board moved out for the pack.
+      const H = rest.heightM, pressed = 0.005 / H, free: Limb = side === 'l' ? 'r' : 'l';
+      const clear: [BoneName, BoneName, number][] = [
+        ['pelvis', 'spine_03', LIMB_RADIUS.torso - pressed], [`thigh_${side}`, `shin_${side}`, LIMB_RADIUS.thigh],
+        [`upperarm_${side}`, `forearm_${side}`, LIMB_RADIUS.upperarm - pressed], [`forearm_${side}`, `hand_${side}`, LIMB_RADIUS.forearm - pressed],
+        [`upperarm_${free}`, `forearm_${free}`, LIMB_RADIUS.upperarm],
+      ];
+      for (const [a, b, r] of clear) expect(distanceToBoxes(s.joint[a], s.joint[b], boxes), `${a}–${b}`).toBeGreaterThanOrEqual(r * H);
+      if (kind !== 'bodyboard') {
+        const board = carriedBoard(t.carry!, ground, s), Qb = boardQuaternion(board);
+        const rail = new Vector3(0, 0, 1).applyQuaternion(Qb), fwd = board.forward.clone().normalize(), lower = rail.y < 0 ? 1 : -1;
+        const on = board.position.clone().add(rail.multiplyScalar(lower * spec.maxWidthM / 2)).add(board.up.clone().multiplyScalar(spec.thicknessM / 2));
+        const rel = s.joint[`hand_${side}`].clone().sub(on);
+        expect(rel.sub(fwd.clone().multiplyScalar(rel.dot(fwd))).length(), 'hand to the lower rail').toBeLessThan(HAND_REACH * H + 0.02);
+      }
+    });
+  }
 });

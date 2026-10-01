@@ -18,6 +18,7 @@ STYLES = {
     "school": {"size": (0.30, 0.38, 0.22), "flap": False, "pocket": True, "bulge": 0.025},
 }
 STRAP_W, STRAP_T = 0.04, 0.006
+TAPER = 0.38  # the bag's top nearly two fifths narrower than its middle
 
 
 def _mats(obj, names):
@@ -102,6 +103,12 @@ def build(body, rig, wear, H, style_name, name):
         for s in (1, -1):
             for zz in (-h / 4, h / 4):
                 trims.append(_box(bm, centre + Vector((s * (w / 2 + 0.004), 0, zz)), (0.008, d * 0.9, 0.025), 0.002, mat=1, segments=1))
+    # Tapered toward the top, as rucksacks are: the board tucked under the arm runs past the bag's top corners (square,
+    # they reached 3 cm into it; final review).
+    for v in bm.verts:  # the bag, its flap, pocket and side straps
+        u = (v.co.z - centre.z) / (h / 2)
+        if u > 0:
+            v.co.x = centre.x + (v.co.x - centre.x) * (1 - TAPER * min(1.25, u) ** 1.2)
     # The shoulder straps: from the bag's top inner corners over the shoulders, down the front of the chest, back under
     # the arms to its bottom corners; kept 1 cm off the body and the tee.
     neck = rig.data.bones["neck"].head_local
@@ -173,7 +180,7 @@ def _cylinder(bm, centre, axis, radius, length, segments=20, rings=8, flat=1.0):
 def towel(rig, H, box, name):
     """Shazza's rolled towel strapped under the rucksack (walking spec §2): COLOR_0.r stripes for the shader."""
     centre, (w, h, d) = box
-    obj = _detail(rig, H, name, "towel", "towel", lambda bm: _cylinder(bm, centre + Vector((0, 0.01, -h / 2 - 0.058)), Vector((1, 0, 0)), 0.06, 0.34))
+    obj = _detail(rig, H, name, "towel", "towel", lambda bm: _cylinder(bm, centre + Vector((0, 0.01, -h / 2 - 0.058)), Vector((1, 0, 0)), 0.06, 0.30))  # no wider than the bag: a board carried on either side clears it
     col = obj.data.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="POINT")
     for i, v in enumerate(obj.data.vertices):
         stripe = 1.0 if math.sin(v.co.x * 2 * math.pi / 0.06) > 0.2 else 0.0
@@ -183,37 +190,38 @@ def towel(rig, H, box, name):
 
 
 def wetsuit(rig, H, box, wear_tree, name):
-    """T-Bone's wetsuit (walking spec §2): rolled on top of his pack, one sleeve hanging down its right side through the
-    strap to his hip."""
+    """T-Bone's wetsuit (walking spec §2): rolled on top of his pack, one sleeve hanging down its back through a strap
+    (down its side it cut through a board carried on that side; final review)."""
     centre, (w, h, d) = box
 
     def build(bm):
         _cylinder(bm, centre + Vector((0, 0.005, h / 2 + 0.065)), Vector((1, 0, 0)), 0.068, 0.30)
-        start = centre + Vector((-0.13, 0.0, h / 2 + 0.05))
-        guess = [start, centre + Vector((-w / 2 - 0.03, -0.02, h / 4)), centre + Vector((-w / 2 - 0.04, -d / 2, -h / 4)),
-                 centre + Vector((-w / 2 - 0.05, -d / 2 - 0.03, -h / 2 - 0.12))]
+        start = centre + Vector((0.11, 0.02, h / 2 + 0.05))
+        guess = [start, centre + Vector((0.09, d / 2 + 0.04, h / 4)), centre + Vector((0.07, d / 2 + 0.05, -h / 4)),
+                 centre + Vector((0.06, d / 2 + 0.06, -h / 2 - 0.12))]
         pts = [geom.push_out(wear_tree, p, 0.04) for p in _catmull(guess)]
         geom.tube(bm, pts, 0.04, False, sides=12, flat=0.45)
     return _detail(rig, H, name, "wetsuit", "neoprene", build)
 
 
 def fins(rig, H, box, name):
-    """Grommet's swim fins (walking spec §2): two, clipped flat to his school bag's right side, blades down."""
+    """Grommet's swim fins (walking spec §2): two, clipped flat side by side to the back of his school bag, blades down
+    (on its side they cut through a board carried on that side; final review)."""
     centre, (w, h, d) = box
+    back = centre.y + d / 2 + STYLES["school"]["bulge"]
 
     def build(bm):
-        for k, off in enumerate((0.012, 0.028)):
-            x = centre.x - w / 2 - off
-            base = centre + Vector((0, 0, h / 2 - 0.05))
-            x0 = x - centre.x
-            # The blade: a tapered slab 45 cm long, 20 cm wide at the tip, 12 at the pocket; down the bag's side.
-            pts = [base + Vector((x0, 0.0, -0.45 * t)) for t in (0.0, 0.25, 0.5, 0.75, 1.0)]
+        for k, x0 in enumerate((-0.055, 0.055)):
+            base = Vector((centre.x + x0, back + 0.012 + 0.008 * k, centre.z + h / 2 - 0.05))
+            # The blade: a tapered slab 45 cm long, 20 cm wide at the tip, 12 at the pocket; down the bag's back.
+            pts = [base + Vector((0, 0, -0.45 * t)) for t in (0.0, 0.25, 0.5, 0.75, 1.0)]
             for i in range(len(pts) - 1):
                 a, b = pts[i], pts[i + 1]
                 wa, wb = 0.06 + 0.04 * (i / 4), 0.06 + 0.04 * ((i + 1) / 4)
-                quad = [bm.verts.new(a + Vector((0, -wa, 0))), bm.verts.new(a + Vector((0, wa, 0))),
-                        bm.verts.new(b + Vector((0, wb, 0))), bm.verts.new(b + Vector((0, -wb, 0)))]
+                wa, wb = min(wa, 0.065), min(wb, 0.065)  # side by side within the bag's width
+                quad = [bm.verts.new(a + Vector((-wa, 0, 0))), bm.verts.new(a + Vector((wa, 0, 0))),
+                        bm.verts.new(b + Vector((wb, 0, 0))), bm.verts.new(b + Vector((-wb, 0, 0)))]
                 bm.faces.new(quad)
-            _cylinder(bm, base + Vector((x0 - 0.02, 0, -0.04)), Vector((0, 0, 1)), 0.035, 0.12, segments=12, rings=3, flat=0.6)
+            _cylinder(bm, base + Vector((0, 0.02, -0.04)), Vector((0, 0, 1)), 0.035, 0.12, segments=12, rings=3, flat=0.6)
         bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=0.01)
     return _detail(rig, H, name, "fins", "fins", build)

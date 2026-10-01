@@ -486,7 +486,7 @@ function carry(ctx: PoseContext, r: Rider): PoseTargets {
   } as Record<Limb, HandTarget>;
   return {
     pelvis, pelvisUp: Y(), pelvisForward: X(), chest: { bend: 0.04, twist: 0, side: 0 },
-    feet, hands, look: add(X(), sc(Y(), -0.03)), carry: { side, board, hand: wrist },
+    feet, hands, look: add(X(), sc(Y(), -0.03)), carry: { side, board, hand: wrist.clone() }, // its own copy: moving the hand target mustn't move the anchor
   };
 }
 
