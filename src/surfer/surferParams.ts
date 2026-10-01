@@ -1,5 +1,5 @@
 import type { BoardKind } from '../board/boardSpec';
-import { type PoseName, posesFor } from './poseNames';
+import { type PoseName, posesOn } from './poseNames';
 import { PRESETS, type PresetName, type Stance, boardsFor } from './presets';
 import { type OutfitChoice, presetOutfits } from './wardrobe';
 
@@ -17,6 +17,15 @@ export interface SurferParams {
   play: boolean;
   /** On land (the dune, the select screen): Grommet's glasses on, hair and skin dry (grommet spec §6). */
   onLand: boolean;
+  /** The crew's clothes and packs dropped on the sand where they changed (walking spec §5), and where. */
+  pile: boolean;
+  /** The gang mockup (walking spec §6): all three at the stand's spot, walking, carrying their boards. */
+  gang: boolean;
+  pileX: number;
+  pileZ: number;
+  pileHeadingDeg: number;
+  /** The arm the board goes under in the carry (walking spec §4): `auto` is the rider's own. */
+  carrySide: 'auto' | 'l' | 'r';
   /** The four dials, as offsets around the pose's own values (spec §3.5). */
   compression: number;
   lean: number;
@@ -45,7 +54,8 @@ export interface SurferParams {
 
 /** In the lineup where Andrew waits (DEFAULT_LINEUP_POSITION), nose out to sea toward the south-west swell. */
 export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
-  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, onLand: false,
+  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, onLand: false, carrySide: 'auto',
+  pile: false, gang: false, pileX: 219, pileZ: 47, pileHeadingDeg: 0,
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
   x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
   idle: true, faceManual: false, faceBlink: 0, faceSmile: 0, faceJaw: 0, faceBrows: 0, faceSquint: 0, gazeYawDeg: 0, gazePitchDeg: 0,
@@ -60,6 +70,8 @@ export const SURFER_PARAM_RANGES = {
   balanceAmount: { min: 0, max: 2 },
   x: { min: -400, max: 400 },
   z: { min: -400, max: 400 },
+  pileX: { min: -400, max: 400 },
+  pileZ: { min: -400, max: 400 },
   heightNudgeM: { min: -3, max: 3 },
   pitchNudgeDeg: { min: -45, max: 45 },
   faceBlink: { min: 0, max: 1 },
@@ -92,20 +104,46 @@ export function normalizeSurferParams(p: SurferParams): void {
   p.balance = p.balance !== false;
   p.play = p.play !== false;
   p.onLand = p.onLand === true;
+  p.pile = p.pile === true;
+  p.gang = p.gang === true;
   p.idle = p.idle !== false;
   p.faceManual = p.faceManual === true;
   p.preset = oneOf(p.preset, ['female', 'male', 'grommet'] as const, d.preset);
   p.stance = oneOf(p.stance, ['regular', 'goofy'] as const, d.stance);
   const boards = boardsFor(PRESETS[p.preset]);
   p.board = oneOf(p.board, boards, boards[0]);
-  p.pose = oneOf(p.pose, posesFor(p.board), 'sit');
+  // The carry and the walking clothes only on land (Review Focus 1): no carried board or glasses in the water.
+  p.pose = oneOf(p.pose, posesOn(p.board, p.onLand), 'sit');
   p.outfit = oneOf(p.outfit, ['season', ...presetOutfits(PRESETS[p.preset])] as const, 'season');
+  if (p.outfit === 'walking' && !p.onLand) p.outfit = 'season';
+  p.carrySide = oneOf(p.carrySide, ['auto', 'l', 'r'] as const, 'auto');
   for (const k of Object.keys(SURFER_PARAM_RANGES) as (keyof typeof SURFER_PARAM_RANGES)[]) {
     const r = SURFER_PARAM_RANGES[k], v = p[k];
     p[k] = typeof v === 'number' && Number.isFinite(v) ? Math.min(r.max, Math.max(r.min, v)) : d[k];
   }
   p.headingDeg = typeof p.headingDeg === 'number' && Number.isFinite(p.headingDeg) ? ((p.headingDeg % 360) + 360) % 360 : d.headingDeg;
+  p.pileHeadingDeg = typeof p.pileHeadingDeg === 'number' && Number.isFinite(p.pileHeadingDeg) ? ((p.pileHeadingDeg % 360) + 360) % 360 : d.pileHeadingDeg;
 }
+
+/** Land must stand this far above the water to stand on. */
+const DRY_M = 0.05;
+
+/**
+ * On land only where there is land (final review): where the ground is above the water the params stand as they are;
+ * seaward of the waterline, or before the land has loaded, the rider floats in the water as before, out of the walking
+ * clothes and the carry (no glasses or carried board in the water).
+ */
+export function landedAt(p: SurferParams, groundY: number | null, tideM: number): SurferParams {
+  if (!p.onLand || (groundY !== null && Number.isFinite(groundY) && groundY > tideM + DRY_M)) return p;
+  return { ...p, onLand: false, pose: p.pose === 'carry' ? 'sit' : p.pose, outfit: p.outfit === 'walking' ? 'season' : p.outfit };
+}
+
+/** The balance layer moves the hands with the board's motion: on the water only (on land it pulled the carrying hand
+ * off the board; final review). */
+export const balanceApplies = (p: SurferParams): boolean => p.balance && !p.onLand;
+
+/** The carrying arm: the panel's pick, or the rider's own (Shazza and Grommet left, T-Bone right). */
+export const carrySideOf = (p: SurferParams): 'l' | 'r' => (p.carrySide === 'auto' ? PRESETS[p.preset].walking.carrySide : p.carrySide);
 
 /** Surfer params from untrusted input (links, stored settings): known keys only, then normalised. */
 export function sanitizeSurferParams(raw: unknown): SurferParams {

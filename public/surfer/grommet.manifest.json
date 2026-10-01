@@ -394,6 +394,49 @@
     "nostrils",
     "breathe"
    ]
+  },
+  {
+   "name": "grommet_tee",
+   "triangles": 4078,
+   "materials": [
+    "tee"
+   ]
+  },
+  {
+   "name": "grommet_thongs",
+   "triangles": 624,
+   "materials": [
+    "thongs"
+   ]
+  },
+  {
+   "name": "grommet_bucketHat",
+   "triangles": 2144,
+   "materials": [
+    "bucketHat"
+   ]
+  },
+  {
+   "name": "grommet_hairHat",
+   "triangles": 13480,
+   "materials": [
+    "hairHat"
+   ]
+  },
+  {
+   "name": "grommet_pack",
+   "triangles": 1596,
+   "materials": [
+    "pack",
+    "packTrim"
+   ]
+  },
+  {
+   "name": "grommet_fins",
+   "triangles": 464,
+   "materials": [
+    "fins"
+   ]
   }
  ],
  "blender": "5.2.2 LTS",
@@ -448,7 +491,9 @@
  "headTriangles": 8456,
  "checks": {
   "blinkCovers": true,
-  "eyesOpen": true
+  "eyesOpen": true,
+  "garmentsOutside": true,
+  "hatHairUnder": true
  },
  "skin": {
   "pimples": [

@@ -3,7 +3,20 @@ import { type BoardDims, type BoardKind, type BoardSpec, makeBoard } from '../bo
 
 export type PresetName = 'female' | 'male' | 'grommet';
 export type Stance = 'regular' | 'goofy';
-export type Outfit = 'boardies' | 'bikini' | 'springsuit' | 'rashieAndBottoms' | 'shortArmSteamer' | 'rashieAndBoardies';
+export type Outfit = 'boardies' | 'bikini' | 'springsuit' | 'rashieAndBottoms' | 'shortArmSteamer' | 'rashieAndBoardies' | 'walking';
+/** What the body wears in the water: every outfit but the walking clothes. */
+export type SurfOutfit = Exclude<Outfit, 'walking'>;
+export type WalkingPart = 'tee' | 'shorts' | 'straps' | 'hat' | 'hatTrim' | 'pack' | 'packTrim' | 'thongs' | 'towel' | 'neoprene' | 'fins';
+/** The walk from the carpark (walking spec §2): clothes over the swimwear, a hat, a pack, thongs. */
+export interface WalkingLook {
+  /** The swimwear under the clothes (Andrew: the boys walk in the exact boardies they surf in). */
+  under: SurfOutfit;
+  hat: 'cap' | 'bucket' | null;
+  /** The arm the board goes under by default (the panel can override). */
+  carrySide: 'l' | 'r';
+  /** Linear-RGB albedos, tuned at the gate. */
+  colors: Partial<Record<WalkingPart, RGB>>;
+}
 
 /** One of the three riders (spec §1, §4; grommet spec §6): the build numbers live in tools/surfer/presets/<name>.json. */
 export interface SurferPreset {
@@ -18,7 +31,8 @@ export interface SurferPreset {
   /** Relative to the site's base URL (public/). */
   glbUrl: string;
   manifestUrl: string;
-  outfits: { summer: Outfit; shoulder: Outfit; winter: Outfit };
+  outfits: { summer: SurfOutfit; shoulder: SurfOutfit; winter: SurfOutfit };
+  walking: WalkingLook;
   /** The boards this rider may ride (Grommet: only his bodyboard). */
   quiver: Partial<Record<BoardKind, BoardDims>>;
   /** Linear-RGB albedos. */
@@ -60,6 +74,8 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     name: 'female', label: 'Female', nickname: 'Shazza', realName: 'Sharon', heightM: 1.65, weightKg: 55, defaultStance: 'regular',
     glbUrl: 'surfer/female.glb', manifestUrl: 'surfer/female.manifest.json',
     outfits: { summer: 'bikini', shoulder: 'rashieAndBottoms', winter: 'shortArmSteamer' },
+    // A washed sage tee knotted at the hip, mid-blue denim cutoffs, her bikini's straps; a canvas rucksack and towel.
+    walking: { under: 'bikini', hat: null, carrySide: 'l', colors: { tee: [0.3, 0.38, 0.28], shorts: [0.12, 0.2, 0.38], straps: [0.55, 0.12, 0.1], pack: [0.45, 0.36, 0.22], packTrim: [0.18, 0.1, 0.05], thongs: [0.55, 0.18, 0.22], towel: [0.7, 0.35, 0.08] } },
     quiver: {
       thruster: { lengthIn: 70, widthIn: 18.75, thicknessIn: 2.3125 },
       stepUp: { lengthIn: 76, widthIn: 19, thicknessIn: 2.5 },
@@ -75,6 +91,8 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     name: 'male', label: 'Male', nickname: 'T-Bone', realName: 'Tom', heightM: 1.78, weightKg: 68, defaultStance: 'goofy',
     glbUrl: 'surfer/male.glb', manifestUrl: 'surfer/male.manifest.json',
     outfits: { summer: 'boardies', shoulder: 'springsuit', winter: 'shortArmSteamer' },
+    // A faded charcoal tee, a navy and white trucker cap; a worn black surf pack with a wetsuit hanging off it.
+    walking: { under: 'boardies', hat: 'cap', carrySide: 'r', colors: { tee: [0.07, 0.07, 0.075], hat: [0.02, 0.03, 0.09], hatTrim: [0.75, 0.75, 0.72], pack: [0.04, 0.04, 0.045], packTrim: [0.3, 0.05, 0.03], thongs: [0.03, 0.03, 0.03], neoprene: [0.02, 0.02, 0.025], towel: [0.1, 0.25, 0.55] } },
     quiver: {
       thruster: { lengthIn: 72, widthIn: 19.25, thicknessIn: 2.4375 },
       stepUp: { lengthIn: 80, widthIn: 19.5, thicknessIn: 2.625 },
@@ -90,6 +108,8 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     name: 'grommet', label: 'Grommet', nickname: 'Grommet', realName: 'Bradley', heightM: 1.52, weightKg: 40, defaultStance: 'regular',
     glbUrl: 'surfer/grommet.glb', manifestUrl: 'surfer/grommet.manifest.json',
     outfits: { summer: 'rashieAndBoardies', shoulder: 'springsuit', winter: 'shortArmSteamer' },
+    // A big sun-faded tee in his bodyboard's yellow, a khaki bucket hat; a stuffed navy school bag with his fins on it.
+    walking: { under: 'boardies', hat: 'bucket', carrySide: 'l', colors: { tee: [0.75, 0.55, 0.02], hat: [0.35, 0.3, 0.17], pack: [0.02, 0.03, 0.12], packTrim: [0.5, 0.05, 0.03], thongs: [0.02, 0.15, 0.45], fins: [0.03, 0.03, 0.035] } },
     quiver: { bodyboard: { lengthIn: 38, widthIn: 20, thicknessIn: 2.5 } },
     // A redhead's fair skin (tuned at the gate), ginger brows, green-hazel eyes, carrot-ginger hair.
     skin: [0.62, 0.45, 0.36], tan: 0.1, brows: [0.32, 0.13, 0.04], lips: [0.5, 0.3, 0.25], iris: [0.1, 0.2, 0.1], hairRoot: [0.28, 0.07, 0.02], hairTip: [0.72, 0.28, 0.06],

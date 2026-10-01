@@ -10,9 +10,13 @@ import { BOMBIE_X, BOMBIE_Z, type BombieWaves, type Burst, burstAt, burstWidthM,
 import { BombieMesh } from '../bombie/BombieMesh';
 import { surferFeetToHs } from '../conditions/units';
 import { DEFAULT_BOMBIE_PARAMS, type BombieParams, normalizeBombieParams } from '../bombie/bombieParams';
-import { placeAhead } from '../surfer/placement';
+import { landSpots, placeAhead } from '../surfer/placement';
 import { DEFAULT_SURFER_PARAMS, type SurferParams, normalizeSurferParams } from '../surfer/surferParams';
 import { SurferStand } from '../surfer/SurferStand';
+import { BeachPile } from '../surfer/BeachPile';
+import { GangLineup } from '../surfer/GangLineup';
+import { gangCamera, gangTrack } from '../surfer/gang';
+import { type Clearing, clearOf } from '../heath/clearings';
 import { DEFAULT_SOUND_PARAMS, type SoundParams, normalizeSoundParams } from '../sound/soundParams';
 import { SoundSystem } from '../sound/SoundSystem';
 import { ticksToHear } from '../sound/hits';
@@ -191,6 +195,19 @@ export class App {
   readonly patch: GroundPatch;
   readonly rocks: Rocks;
   private rockField: RockField | null = null;
+  /** The beach pile (walking spec §5): loaded the first time the panel shows it. */
+  private beachPile: BeachPile | null = null;
+  /** The gang mockup (walking spec §6). */
+  readonly gang: GangLineup;
+  /** Heath trampled clear where riders stand on land and where the pile lies, and its key for relaying the plants. */
+  private clearings: Clearing[] = [];
+  private clearingKey = '';
+  private pileLoading = false;
+  /** The ground a rider stands on (walking spec §4): the land, or the top of a rock on it; null until the land loads. */
+  private readonly groundAt = (x: number, z: number): number | null => {
+    const lh = this.land.height;
+    return lh ? Math.max(lh.heightAt(x, z), this.rockField?.topAt(x, z) ?? -Infinity) : null;
+  };
   private readonly patchTracker = new PatchTracker();
   private patchGrids: ReturnType<typeof buildPatchGrids> | undefined;
   /** The rocks near the camera, relaid when it has moved ROCK_RELAY_M (or the field changed). */
@@ -319,6 +336,8 @@ export class App {
     for (const m of this.rocks.meshes) this.scene.add(m);
     this.surferStand = new SurferStand(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     this.scene.add(this.surferStand.group);
+    this.gang = new GangLineup(this.sky, (xz) => this.sunlight.visibilityNode(xz));
+    this.scene.add(this.gang.group);
     void this.land.load().then(() => this.onLandBuilt(), (e: unknown) => {
       console.warn(`The land didn't load (${e instanceof Error ? e.message : String(e)}); running without it.`);
     });
@@ -393,6 +412,39 @@ export class App {
           Object.assign(this.surferParams, placeAhead(this.rig.getPose()));
           this.panel.refresh();
           this.scheduleSave();
+        },
+        onSurferSpot: (spot) => {
+          const lh = this.land.height;
+          if (!lh) {
+            console.warn('The land has not loaded yet: no spots on it to stand at.');
+            return;
+          }
+          const at = landSpots(lh, lh.profile)[spot];
+          Object.assign(this.surferParams, { enabled: true, onLand: true, outfit: 'walking', pose: 'carry', x: at.x, z: at.z, headingDeg: at.headingDeg, heightNudgeM: 0 });
+          normalizeSurferParams(this.surferParams);
+          this.panel.refresh();
+          this.scheduleSave();
+        },
+        onSurferPile: (where) => {
+          const lh = this.land.height;
+          let at: { x: number; z: number; headingDeg: number } = placeAhead(this.rig.getPose());
+          if (where === 'beach') {
+            if (!lh) {
+              console.warn('The land has not loaded yet: no beach spot to put the pile beside.');
+              return;
+            }
+            const b = landSpots(lh, lh.profile).beach;
+            at = { x: b.x, z: b.z + 2, headingDeg: 0 };
+          }
+          Object.assign(this.surferParams, { pile: true, pileX: at.x, pileZ: at.z, pileHeadingDeg: at.headingDeg });
+          normalizeSurferParams(this.surferParams);
+          this.panel.refresh();
+          this.scheduleSave();
+        },
+        onGangCamera: () => {
+          const sp = this.surferParams, g = this.groundAt(sp.x, sp.z) ?? this.conditions.tideM;
+          const ahead = gangCamera(sp, g);
+          this.rig.setPose(gangCamera(sp, g, 5.5, this.groundAt(ahead.position[0], ahead.position[2]) ?? -Infinity), this.conditions.tideM);
         },
         onSurferChase: () => {
           const pose = this.surferStand.chasePose(this.surferParams.headingDeg);
@@ -862,8 +914,11 @@ export class App {
     // sits on the surface drawn under it). With density 0 the painted heath stands near the camera again.
     this.plantFloor.value = this.landParams.bushDensity > 0 ? 1 : 0;
     const patchKey = c ? `${c[0]},${c[1]}` : 'off';
-    if (!this.plantsAt || patchKey !== this.plantPatchKey || Math.hypot(cam.x - this.plantsAt[0], cam.z - this.plantsAt[1]) > PLANT_RELAY_M) {
-      this.plantsNear = this.plantField.near(cam.x, cam.z);
+    const clearingKey = this.clearings.map((k) => `${k.x.toFixed(1)},${k.z.toFixed(1)}`).join(';');
+    if (!this.plantsAt || patchKey !== this.plantPatchKey || clearingKey !== this.clearingKey || Math.hypot(cam.x - this.plantsAt[0], cam.z - this.plantsAt[1]) > PLANT_RELAY_M) {
+      this.clearingKey = clearingKey;
+      // Riders on land and the pile trample the heath clear around them (walking spec §6).
+      this.plantsNear = clearOf(this.plantField.near(cam.x, cam.z), this.clearings);
       this.plantStats = this.plants.update(this.plantsNear, cam.x, cam.z, { cx: c ? c[0] : 0, cz: c ? c[1] : 0, on: !!c });
       this.plantsAt = [cam.x, cam.z];
       this.plantPatchKey = patchKey;
@@ -1303,7 +1358,21 @@ export class App {
       this.setStatus.face = formatPeakFace(peakFace(this.field, events, this.clock.simTime, this.breakParams), this.field !== null);
       this.setStatus.psi = formatPeakPsi(peakPsi(this.field, events, this.clock.simTime, this.breakParams, this.offshoreMs), this.field !== null);
     }
-    this.surferStand.update(this.surferParams, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM);
+    const sp = this.surferParams;
+    this.surferStand.update({ ...sp, enabled: sp.enabled && !sp.gang }, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
+    this.gang.update(sp, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
+    this.clearings = [
+      ...(sp.gang ? [...this.gang.spots.map((g) => ({ x: g.x, z: g.z, r: 1.2 })), ...gangTrack(sp)] : sp.enabled && sp.onLand ? [{ x: sp.x, z: sp.z, r: 1.2 }] : []),
+      ...(sp.pile ? [{ x: sp.pileX, z: sp.pileZ, r: 1.1 }] : []),
+    ];
+    if (this.surferParams.pile && !this.beachPile && !this.pileLoading) {
+      this.pileLoading = true;
+      BeachPile.load(this.sky, (xz) => this.sunlight.visibilityNode(xz)).then(
+        (p) => { this.beachPile = p; this.scene.add(p.group); },
+        (e) => console.warn('The beach pile failed to load; it stays off.', e),
+      );
+    }
+    this.beachPile?.update(this.surferParams, this.conditions.tideM, this.groundAt);
     const probeXZ = this.rig.probeXZ;
     this.probe.setProbe(0, probeXZ.x, probeXZ.z);
     this.probe.update(this.renderer);

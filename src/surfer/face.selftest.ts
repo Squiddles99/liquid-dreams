@@ -74,9 +74,13 @@ registerSelfTest({
     const glasses = s.group.getObjectByProperty('name', 'grommet_glasses')!;
     s.setOnLand(false);
     const bare = await eyePixels(renderer, s);
+    // His glasses come with the walking clothes (walking spec §4); the hat and the rest aren't what's measured.
+    s.setOutfit('walking');
     s.setOnLand(true);
     glasses.visible = false; // the frames and lenses themselves aren't counted, only what the eye looks like
+    for (const m of ['bucketHat', 'hairHat']) for (const mesh of s.meshesWith(m)) mesh.visible = false;
     const behind = await eyePixels(renderer, s);
+    s.setOutfit('rashieAndBoardies');
     s.setOnLand(false);
     return { pass: bare > 400 && behind < 0.9 * bare, detail: `his eye ${bare} px bare → ${behind} px behind the lens (${((100 * behind) / bare).toFixed(0)}%)` };
   },

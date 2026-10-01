@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three/webgpu';
-import { SINK_M, boardFrameFrom, chaseCamera, placeAhead, probePoints, stableLookAt } from './placement';
+import { SINK_M, SOLE_M, boardFrameFrom, chaseCamera, groundFrame, landSpots, placeAhead, probePoints, stableLookAt } from './placement';
 
 const P = { x: 10, z: -5, headingDeg: 90, heightNudgeM: 0, pitchNudgeDeg: 0 };
 
@@ -51,5 +51,65 @@ describe('the gaze holds against the board (spec §3.6; final review: it pitched
     const d = stableLookAt(tilted, new Vector3(1, 0, 0)).sub(tilted.position);
     expect(d.y).toBeCloseTo(0, 9);
     expect(d.length()).toBeCloseTo(10, 9);
+  });
+});
+
+describe('standing on land (walking spec §4)', () => {
+  it('stands level on the land’s height, lifted by the soles, turned to the heading', () => {
+    const f = groundFrame(P, 7.2, 0.3, SOLE_M);
+    expect(f.position.y).toBeCloseTo(7.212, 9);
+    expect([f.position.x, f.position.z]).toEqual([10, -5]);
+    expect(f.up.y).toBe(1);
+    expect(f.forward.x).toBeCloseTo(1, 9);
+    expect(f.forward.y).toBe(0);
+    expect(groundFrame({ ...P, heightNudgeM: 0.5 }, 7.2, 0.3, 0).position.y).toBeCloseTo(7.7, 9);
+  });
+  it('stands at the fallback while the land loads, never NaN (Review Focus 3)', () => {
+    expect(groundFrame(P, null, 0.3, 0).position.y).toBe(0.3);
+    expect(groundFrame(P, Number.NaN, 0.3, 0).position.y).toBe(0.3);
+  });
+});
+
+describe('the named spots on land (walking spec §4)', () => {
+  const beach = { wetWidthM: 12, dryWidthM: 28 }, toe = 190 + 40;
+  const land = (h: (x: number) => number) => ({ heightAt: (x: number) => h(x), waterlineAt: () => 190 });
+  const dune = land((x) => (x < toe ? 15 : x <= 300 ? 15 + 0.1 * (x - toe) : 22 - 0.05 * (x - 300)));
+  it('finds the dune crest straight inland of the lineup, facing inland (east)', () => {
+    const s = landSpots(dune, beach);
+    expect(Math.abs(s.duneCrest.x - 300)).toBeLessThanOrEqual(1);
+    expect(s.duneCrest.headingDeg).toBe(90);
+    expect(s.duneCrest.z).toBe(45);
+  });
+  it('puts the beach spot on the dry sand, facing the sea', () => {
+    const s = landSpots(dune, beach, -10);
+    expect(s.beach).toEqual({ x: 190 + 12 + 0.6 * 28, z: -10, headingDeg: 270 });
+  });
+  it('steps off a sharp top onto ground flat enough to stand on (Review Focus 4)', () => {
+    const spike = land((x) => (x < 300 ? 10 + 0.02 * (x - toe) : x <= 301 ? 16 : 16 - 0.1 * (x - 301)));
+    const x = landSpots(spike, beach).duneCrest.x;
+    expect(Math.abs(spike.heightAt(x + 1) - spike.heightAt(x - 1)) / 2).toBeLessThan(0.15);
+  });
+  it('finds the lip of a dune cliff that the heath climbs on from (the Womb’s: no crest, the land keeps rising)', () => {
+    // A steep face (0.5) for 80 m from the toe, then a gentle climb (0.12) inland, as the real dune above the Womb.
+    // A 2 m step at the toe first (the sand's bumps): not the cliff's lip.
+    const cliff = land((x) => (x < toe ? 0 : x < toe + 4 ? 0.5 * (x - toe) : x < toe + 8 ? 2 : x < toe + 88 ? 2 + 0.5 * (x - toe - 8) : 42 + 0.12 * (x - toe - 88)));
+    const s = landSpots(cliff, beach).duneCrest;
+    expect(Math.abs(s.x - (toe + 88))).toBeLessThanOrEqual(3);
+    expect(Math.abs(cliff.heightAt(s.x + 1) - cliff.heightAt(s.x - 1)) / 2).toBeLessThan(0.15);
+  });
+  it('steps along the lip to ground that is flat both ways (final review: the real lip slopes 0.24 across the line)', () => {
+    const lipX = toe + 80;
+    const cliff = (x: number): number => (x < toe ? 0 : x < lipX ? 0.5 * (x - toe) : 40 + 0.05 * (x - lipX));
+    // A cross-slope of 0.25 within 3 m of the line inland of the lineup, flat beyond it.
+    const cross = (z: number): number => 0.25 * Math.max(-3, Math.min(3, z - 45));
+    const ridge = { heightAt: (x: number, z: number) => cliff(x) + cross(z), waterlineAt: () => 190 };
+    const s = landSpots(ridge, beach).duneCrest;
+    const gx = (ridge.heightAt(s.x + 1, s.z) - ridge.heightAt(s.x - 1, s.z)) / 2, gz = (ridge.heightAt(s.x, s.z + 1) - ridge.heightAt(s.x, s.z - 1)) / 2;
+    expect(Math.hypot(gx, gz)).toBeLessThan(0.15);
+    expect(Math.abs(s.x - lipX)).toBeLessThanOrEqual(8);
+  });
+  it('takes the far end of land that rises all the way, and the toe of flat land', () => {
+    expect(landSpots(land((x) => 0.1 * x), beach).duneCrest.x).toBe(toe + 250);
+    expect(landSpots(land(() => 3), beach).duneCrest.x).toBe(toe);
   });
 });
