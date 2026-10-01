@@ -231,7 +231,8 @@ export const surferBoardOptions = (preset: PresetName): Record<string, BoardKind
 const SURFER_OPTIONS = {
   preset: SURFER_PRESET_OPTIONS,
   stance: { regular: 'regular', goofy: 'goofy' },
-  outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'bikini bottoms + rash vest': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer', 'boardies + rash vest': 'rashieAndBoardies' },
+  outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'bikini bottoms + rash vest': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer', 'boardies + rash vest': 'rashieAndBoardies', 'walking clothes': 'walking' },
+  carrySide: { auto: 'auto', left: 'l', right: 'r' },
   pose: Object.fromEntries(ALL_POSES.map((p) => [p, p])),
 };
 
@@ -422,7 +423,8 @@ export class DevPanel {
       surferFolder.addBinding(m.surfer, key, opts).on('change', h.onSurfer);
     }
     surferFolder.addBinding(m.surfer, 'play', { label: 'play (paddle, pop-up)' }).on('change', h.onSurfer);
-    surferFolder.addBinding(m.surfer, 'onLand', { label: 'on land (glasses, dry)' }).on('change', h.onSurfer);
+    surferFolder.addBinding(m.surfer, 'onLand', { label: 'on land (dry; carry, walking clothes)' }).on('change', h.onSurfer);
+    surferFolder.addBinding(m.surfer, 'carrySide', { label: 'carry side', options: SURFER_OPTIONS.carrySide }).on('change', h.onSurfer);
     surferFolder.addBinding(m.surfer, 'balance', { label: 'balance layer' }).on('change', h.onSurfer);
     const face = surferFolder.addFolder({ title: 'Face', expanded: false });
     face.addBinding(m.surfer, 'idle', { label: 'idle life' }).on('change', h.onSurfer);

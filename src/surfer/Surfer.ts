@@ -10,7 +10,7 @@ import type { SolvedPose } from './solvePose';
 import { type OutfitUniforms, bodyMaterial, eyesMaterial, fabricMaterial, hairMaterial, lashesMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
 import { FACE_CHANNELS, type FaceState, IdleLife, MOODS } from './idleLife';
 import { skinZones } from './skinDetail';
-import { hairShown, landLook, outfitMasks, showsBoardies } from './wardrobe';
+import { bodyOutfit, hairShown, landLook, outfitMasks, showsBoardies } from './wardrobe';
 
 type N = any;
 const DEG = Math.PI / 180;
@@ -139,19 +139,24 @@ export class Surfer {
     this.setOnLand(false);
   }
 
+  /** The outfit worn, for the land look (glasses, hair) set after it. */
+  private wearing: Outfit = 'boardies';
+
   setOutfit(o: Outfit): void {
-    const m = outfitMasks(o);
+    this.wearing = o;
+    const under = bodyOutfit(this.preset, o), m = outfitMasks(under);
     for (const k of Object.keys(m) as (keyof typeof m)[]) this.outfit[k].value = m[k];
-    if (this.boardies) this.boardies.visible = showsBoardies(o);
+    if (this.boardies) this.boardies.visible = showsBoardies(under);
   }
 
-  /** On land: glasses on (only Grommet has any), hair and skin dry; in the water: wet, glasses off (grommet spec §6). */
+  /** On land or in clothes: hair and skin dry; the glasses (only Grommet has any) only with the walking clothes; in the
+   * water: wet (grommet spec §6, walking spec §4). Set after the outfit. */
   setOnLand(on: boolean): void {
-    const look = landLook(on);
+    const look = landLook(on, this.wearing);
     this.wet.value = look.wet;
     for (const g of this.glasses) g.visible = look.glasses;
     this.lensOn.value = look.glasses && this.glasses.length > 0 ? 1 : 0;
-    const dry = hairShown(on, this.hairDry.length > 0) === 'dry';
+    const dry = hairShown(on, this.wearing, { dry: this.hairDry.length > 0, hat: false }) === 'dry';
     for (const h of this.hairWet) h.visible = !dry;
     for (const h of this.hairDry) h.visible = dry;
   }
