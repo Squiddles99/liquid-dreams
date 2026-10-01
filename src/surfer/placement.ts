@@ -95,8 +95,8 @@ export const WOMB_Z = 45;
  * Named spots on land (walking spec §4): the dune crest above the Womb, facing inland (east, toward the camera), and the
  * dry sand in front of it, facing the sea; sampled along the line inland of the lineup. The crest is the lip of the dune
  * cliff, where its steep face (steeper than 0.3, 8 m up at least) gives way (the Womb's has no crest: the heath climbs on from its lip),
- * else the top of a rise that falls away again, else the highest ground in 250 m; then the nearest ground flat enough
- * to stand on (under 0.15 across a stride).
+ * else the top of a rise that falls away again, else the highest ground in 250 m; then the nearest ground within 8 m flat
+ * enough to stand on both ways (a grade under 0.15 across a stride).
  */
 export function landSpots(land: LandSurface, beach: { wetWidthM: number; dryWidthM: number }, z = WOMB_Z): { duneCrest: LandSpot; beach: LandSpot } {
   const xs = land.waterlineAt(z), toe = xs + beach.wetWidthM + beach.dryWidthM;
@@ -116,12 +116,22 @@ export function landSpots(land: LandSurface, beach: { wetWidthM: number; dryWidt
       top = h;
     } else if (top - h > 1.5) break; // past the top of a rise: the land falls away
   }
-  let x = crest;
-  for (let d = 0; d <= 8; d += 0.5) {
-    if (slope(crest + d) < 0.15) { x = crest + d; break; }
-    if (slope(crest - d) < 0.15) { x = crest - d; break; }
+  // The nearest ground within 8 m that is flat both ways (the lip can slope across the line; final review).
+  const grade = (x: number, zz: number): number =>
+    Math.hypot(land.heightAt(x + 1, zz) - land.heightAt(x - 1, zz), land.heightAt(x, zz + 1) - land.heightAt(x, zz - 1)) / 2;
+  let spot = { x: crest, z };
+  search: for (let r = 0; r <= 8; r += 0.5) {
+    const steps = Math.max(1, Math.round((2 * Math.PI * r) / 0.5));
+    for (let k = 0; k < steps; k++) {
+      const a = (2 * Math.PI * k) / steps, x = crest + r * Math.cos(a), zz = z + r * Math.sin(a);
+      if (grade(x, zz) < 0.15) {
+        spot = { x, z: zz };
+        break search;
+      }
+    }
   }
-  return { duneCrest: { x, z, headingDeg: 90 }, beach: { x: xs + beach.wetWidthM + 0.6 * beach.dryWidthM, z, headingDeg: 270 } };
+  const tidy = (v: number): number => Math.round(v * 100) / 100;
+  return { duneCrest: { x: tidy(spot.x), z: tidy(spot.z), headingDeg: 90 }, beach: { x: xs + beach.wetWidthM + 0.6 * beach.dryWidthM, z, headingDeg: 270 } };
 }
 
 export function placeAhead(c: CameraPose): { x: number; z: number; headingDeg: number } {

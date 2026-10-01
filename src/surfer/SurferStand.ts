@@ -8,7 +8,7 @@ import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
 import { HeaveFilter, balanceAt } from './balance';
 import { LEASH_POINTS, LEASH_SIDES, leashCurve, tubeIndices, tubePositions } from './leash';
-import { carriedBoard } from './carry';
+import { carriedBoard, feetOnGround } from './carry';
 import { SOLE_M, STAND_PROBE_FIRST, boardFrameFrom, chaseCamera, groundFrame, probePoints, stableLookAt } from './placement';
 import { poseTargets } from './poses';
 import { PRESETS, type PresetName, boardFor, boardLookFor } from './presets';
@@ -16,7 +16,7 @@ import { POSE_PHASE, POSE_ZONE, type RideState } from './rideState';
 import { applyFaceParams, idleContextFor, restingFace, sunFacing } from './faceControl';
 import { type BoardFrame, boardQuaternion, solvePose } from './solvePose';
 import { Surfer } from './Surfer';
-import { type SurferParams, carrySideOf, playPhase } from './surferParams';
+import { type SurferParams, balanceApplies, carrySideOf, landedAt, playPhase } from './surferParams';
 import { KeyedLoader } from './surferLoader';
 import { OUTFIT_LABELS, outfitFor, wearsClothes, wearsSwimFins } from './wardrobe';
 
@@ -61,9 +61,11 @@ export class SurferStand {
    * `ground` (walking spec §4): the land's height at (x, z), or null while it loads; on land the stand stands there (the
    * board on the sand, or carried under the arm) and doesn't probe the water.
    */
-  update(p: SurferParams, simTime: number, dateISO: string, seed: number, probe: HeightProbe, tideM: number, ground?: (x: number, z: number) => number | null): void {
-    this.group.visible = p.enabled;
-    if (!p.enabled) return;
+  update(asked: SurferParams, simTime: number, dateISO: string, seed: number, probe: HeightProbe, tideM: number, ground?: (x: number, z: number) => number | null): void {
+    this.group.visible = asked.enabled;
+    if (!asked.enabled) return;
+    const groundY = asked.onLand ? ground?.(asked.x, asked.z) ?? null : null;
+    const p = landedAt(asked, groundY, tideM);
     const preset = PRESETS[p.preset], spec = boardFor(preset, p.board), layout = layoutFor(spec, preset.heightM);
     this.board.setBoard(spec, boardLookFor(preset, p.board));
     const halfLen = spec.lengthM / 2, halfWidth = spec.maxWidthM / 2;
@@ -71,7 +73,7 @@ export class SurferStand {
     let frame: BoardFrame;
     if (p.onLand) {
       // The feet on the sand, lifted by the thongs' soles when walking; other poses ride a board lying on the sand.
-      frame = groundFrame(p, ground?.(p.x, p.z) ?? null, tideM, carrying && wearsClothes(outfit) ? SOLE_M : 0);
+      frame = groundFrame(p, groundY, tideM, carrying && wearsClothes(outfit) ? SOLE_M : 0);
     } else {
       probePoints(p, halfLen, halfWidth).forEach(([x, z], i) => probe.setProbe(STAND_PROBE_FIRST + i, x, z));
       frame = boardFrameFrom(p, halfLen, halfWidth, [0, 1, 2, 3].map((i) => probe.heightAt(STAND_PROBE_FIRST + i)), tideM);
@@ -98,10 +100,12 @@ export class SurferStand {
     s.setOnLand(p.onLand);
     this.status.outfit = OUTFIT_LABELS[outfit];
 
-    const bal = p.balance ? balanceAt(seed, simTime, p.balanceAmount, this.heave) : null;
+    const bal = balanceApplies(p) ? balanceAt(seed, simTime, p.balanceAmount, this.heave) : null;
     const dials = { compression: p.compression + (bal?.compression ?? 0), lean: p.lean, twist: p.twist, reach: p.reach };
     const phaseT = p.play ? playPhase(p.pose, simTime, p.phaseT) : p.phaseT;
     const t = poseTargets(p.pose, { spec, layout, rest: s.rest, stance: p.stance, dials, phaseT, carrySide: carrySideOf(p) });
+    // Standing on the sand, each foot on the ground under it (a level frame on a slope buried one).
+    if (carrying && ground) feetOnGround(t.feet, frame, ground, wearsClothes(outfit) ? SOLE_M : 0);
     if (bal) {
       const lead = p.stance === 'regular' ? 'l' : 'r', trail = lead === 'l' ? 'r' : 'l';
       t.hands[lead].pos.add(bal.lead);

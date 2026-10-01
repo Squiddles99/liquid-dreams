@@ -125,6 +125,23 @@ export function normalizeSurferParams(p: SurferParams): void {
   p.pileHeadingDeg = typeof p.pileHeadingDeg === 'number' && Number.isFinite(p.pileHeadingDeg) ? ((p.pileHeadingDeg % 360) + 360) % 360 : d.pileHeadingDeg;
 }
 
+/** Land must stand this far above the water to stand on. */
+const DRY_M = 0.05;
+
+/**
+ * On land only where there is land (final review): where the ground is above the water the params stand as they are;
+ * seaward of the waterline, or before the land has loaded, the rider floats in the water as before, out of the walking
+ * clothes and the carry (no glasses or carried board in the water).
+ */
+export function landedAt(p: SurferParams, groundY: number | null, tideM: number): SurferParams {
+  if (!p.onLand || (groundY !== null && Number.isFinite(groundY) && groundY > tideM + DRY_M)) return p;
+  return { ...p, onLand: false, pose: p.pose === 'carry' ? 'sit' : p.pose, outfit: p.outfit === 'walking' ? 'season' : p.outfit };
+}
+
+/** The balance layer moves the hands with the board's motion: on the water only (on land it pulled the carrying hand
+ * off the board; final review). */
+export const balanceApplies = (p: SurferParams): boolean => p.balance && !p.onLand;
+
 /** The carrying arm: the panel's pick, or the rider's own (Shazza and Grommet left, T-Bone right). */
 export const carrySideOf = (p: SurferParams): 'l' | 'r' => (p.carrySide === 'auto' ? PRESETS[p.preset].walking.carrySide : p.carrySide);
 
