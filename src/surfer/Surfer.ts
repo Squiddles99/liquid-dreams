@@ -34,6 +34,8 @@ export class Surfer {
   /** The wet hair (in the water) and the dry style (on land, where the build made one; closeup spec §4.1). */
   private readonly hairWet: THREE.Object3D[] = [];
   private readonly hairDry: THREE.Object3D[] = [];
+  /** The hair pressed under the hat (walking spec §3), shown only walking in it. */
+  private readonly hairHat: THREE.Object3D[] = [];
   /** Where the eyes look, in radians off the head's look (yaw, pitch; closeup spec §5.1): the eye shader draws the iris
    * toward it. */
   readonly gaze = uniform(new THREE.Vector2());
@@ -103,7 +105,11 @@ export class Surfer {
       denim: () => fabricMaterial(sky, walk.shorts ?? grey, sv),
       straps: () => fabricMaterial(sky, walk.straps ?? preset.fabric, sv),
       thongs: () => fabricMaterial(sky, walk.thongs ?? grey, sv),
+      cap: () => fabricMaterial(sky, walk.hat ?? grey, sv),
+      capFront: () => fabricMaterial(sky, walk.hatTrim ?? grey, sv),
+      bucketHat: () => fabricMaterial(sky, walk.hat ?? grey, sv),
     };
+    materials.hairHat = () => hairMaterial(sky, preset, this.headCentre, sv, this.wet);
     Object.assign(materials, WALKING);
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -125,6 +131,7 @@ export class Surfer {
       if (mats.some((mt) => mt.name === 'glasses' || mt.name === 'lens')) this.glasses.push(mesh);
       if (mats.some((mt) => mt.name === 'hair')) this.hairWet.push(mesh);
       if (mats.some((mt) => mt.name === 'hairDry')) this.hairDry.push(mesh);
+      if (mats.some((mt) => mt.name === 'hairHat')) this.hairHat.push(mesh);
       const dict = mesh.morphTargetDictionary;
       if (dict) {
         const slots: [number, number][] = [];
@@ -172,9 +179,10 @@ export class Surfer {
     this.wet.value = look.wet;
     for (const g of this.glasses) g.visible = look.glasses;
     this.lensOn.value = look.glasses && this.glasses.length > 0 ? 1 : 0;
-    const dry = hairShown(on, this.wearing, { dry: this.hairDry.length > 0, hat: false }) === 'dry';
-    for (const h of this.hairWet) h.visible = !dry;
-    for (const h of this.hairDry) h.visible = dry;
+    const shown = hairShown(on, this.wearing, { dry: this.hairDry.length > 0, hat: this.hairHat.length > 0 });
+    for (const h of this.hairWet) h.visible = shown === 'wet';
+    for (const h of this.hairDry) h.visible = shown === 'dry';
+    for (const h of this.hairHat) h.visible = shown === 'hat';
   }
 
   /** The face's morph weights on every mesh that has them, and the gaze for the eyes (closeup spec §5.2). */

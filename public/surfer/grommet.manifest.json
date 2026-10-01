@@ -408,6 +408,20 @@
    "materials": [
     "thongs"
    ]
+  },
+  {
+   "name": "grommet_bucketHat",
+   "triangles": 2144,
+   "materials": [
+    "bucketHat"
+   ]
+  },
+  {
+   "name": "grommet_hairHat",
+   "triangles": 13480,
+   "materials": [
+    "hairHat"
+   ]
   }
  ],
  "blender": "5.2.2 LTS",
@@ -463,7 +477,8 @@
  "checks": {
   "blinkCovers": true,
   "eyesOpen": true,
-  "garmentsOutside": true
+  "garmentsOutside": true,
+  "hatHairUnder": true
  },
  "skin": {
   "pimples": [

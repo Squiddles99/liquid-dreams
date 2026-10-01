@@ -402,6 +402,21 @@
    ]
   },
   {
+   "name": "male_cap",
+   "triangles": 1580,
+   "materials": [
+    "cap",
+    "capFront"
+   ]
+  },
+  {
+   "name": "male_hairHat",
+   "triangles": 13000,
+   "materials": [
+    "hairHat"
+   ]
+  },
+  {
    "name": "male_hairDry",
    "triangles": 20400,
    "materials": [
@@ -462,6 +477,7 @@
  "checks": {
   "blinkCovers": true,
   "eyesOpen": true,
-  "garmentsOutside": true
+  "garmentsOutside": true,
+  "hatHairUnder": true
  }
 }
