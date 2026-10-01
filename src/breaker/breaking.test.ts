@@ -166,6 +166,21 @@ describe('the sheet shape (sampled cross-sections)', () => {
     const i = wavePoint(3.4, 3, 6, 15);
     expect(breakPoint(i, lifecycle(0.5, undefined, 1, P), P)).toEqual({ eta: i.eta, foam: 0, dEtaDAhead: 0, pile: 0 });
   });
+  it('a leaned wave that is the unleaned one changes nothing (at the crest and where the lean ends: no step there)', () => {
+    // A smooth minimum of the two dipped k/4 below both where they were equal: a 1.5 cm step along every leaning crest.
+    for (const [H, hmin, T] of CASES) for (const r of [0.95, 1.2, 1.85]) for (const v0 of [0.3, 1, 3]) {
+      const i = wavePoint(v0, H, hmin, T, true), lc = lifecycle(r, undefined, 1, P);
+      expect(breakPoint({ ...i, lean: { eta: i.eta, slope: i.slope } }, lc, P)).toEqual(breakPoint(i, lc, P));
+    }
+  });
+  it('where the leaned wave lies lower the sheet follows it, LEAN_BLEND_H·H/2 above; where it lies higher, the drained one', () => {
+    const [H, hmin, T] = CASES[0], i = wavePoint(2, H, hmin, T, true), lc = lifecycle(1.2, undefined, 1, P);
+    const plain = breakPoint(i, lc, P).eta;
+    expect(breakPoint({ ...i, lean: { eta: i.eta + 1, slope: i.slope } }, lc, P).eta).toBe(plain);
+    const low = breakPoint({ ...i, lean: { eta: plain - 3, slope: i.slope } }, lc, P).eta;
+    expect(low).toBeLessThan(plain - 2);
+    expect(low).toBeGreaterThan(plain - 3 - 1e-9);
+  });
   it("breakPoint's dEtaDAhead matches a central difference of its eta along ahead", () => {
     const d = 1e-4;
     for (const [H, hmin, T] of CASES) for (const [s, r] of [[0, 0.8], [0, 0.95], [0.2, 1.2], [0.5, 1.5], [0.85, 1.85], [1, 2.5]]) {
