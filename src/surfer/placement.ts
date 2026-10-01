@@ -93,22 +93,34 @@ export const WOMB_Z = 45;
 
 /**
  * Named spots on land (walking spec §4): the dune crest above the Womb, facing inland (east, toward the camera), and the
- * dry sand in front of it, facing the sea; sampled along the line inland of the lineup.
+ * dry sand in front of it, facing the sea; sampled along the line inland of the lineup. The crest is the lip of the dune
+ * cliff, where its steep face (steeper than 0.3, 8 m up at least) gives way (the Womb's has no crest: the heath climbs on from its lip),
+ * else the top of a rise that falls away again, else the highest ground in 250 m; then the nearest ground flat enough
+ * to stand on (under 0.15 across a stride).
  */
 export function landSpots(land: LandSurface, beach: { wetWidthM: number; dryWidthM: number }, z = WOMB_Z): { duneCrest: LandSpot; beach: LandSpot } {
   const xs = land.waterlineAt(z), toe = xs + beach.wetWidthM + beach.dryWidthM;
-  let crest = toe, top = -Infinity;
+  const slope = (x: number, r = 1): number => Math.abs(land.heightAt(x + r, z) - land.heightAt(x - r, z)) / (2 * r);
+  const base = land.heightAt(toe, z);
+  let crest = toe, top = -Infinity, face = 0;
   for (let x = toe; x <= toe + 250; x += 0.5) {
-    const h = land.heightAt(x, z);
+    const h = land.heightAt(x, z), s = slope(x, 5); // over 10 m: the face's small terraces aren't its lip
+    face = Math.max(face, s);
+    // A lip only once the face has climbed a cliff (8 m): the sand's bumps at the toe have little lips of their own.
+    if (face > 0.3 && h > base + 8 && s < Math.min(0.2, 0.4 * face)) {
+      crest = x; // the cliff's lip
+      break;
+    }
     if (h > top) {
       crest = x;
       top = h;
-    } else if (top - h > 1.5) break; // past the crest: the land falls away behind it
+    } else if (top - h > 1.5) break; // past the top of a rise: the land falls away
   }
-  // Onto ground flat enough to stand on (under 0.15 across a stride), stepping back toward the sea off a sharp top.
-  const slope = (x: number): number => Math.abs(land.heightAt(x + 1, z) - land.heightAt(x - 1, z)) / 2;
   let x = crest;
-  for (let i = 0; i < 16 && slope(x) > 0.15; i++) x -= 0.5;
+  for (let d = 0; d <= 8; d += 0.5) {
+    if (slope(crest + d) < 0.15) { x = crest + d; break; }
+    if (slope(crest - d) < 0.15) { x = crest - d; break; }
+  }
   return { duneCrest: { x, z, headingDeg: 90 }, beach: { x: xs + beach.wetWidthM + 0.6 * beach.dryWidthM, z, headingDeg: 270 } };
 }
 

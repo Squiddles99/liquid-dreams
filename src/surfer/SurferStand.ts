@@ -8,16 +8,17 @@ import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
 import { HeaveFilter, balanceAt } from './balance';
 import { LEASH_POINTS, LEASH_SIDES, leashCurve, tubeIndices, tubePositions } from './leash';
-import { STAND_PROBE_FIRST, boardFrameFrom, chaseCamera, probePoints, stableLookAt } from './placement';
+import { carriedBoard } from './carry';
+import { SOLE_M, STAND_PROBE_FIRST, boardFrameFrom, chaseCamera, groundFrame, probePoints, stableLookAt } from './placement';
 import { poseTargets } from './poses';
 import { PRESETS, type PresetName, boardFor, boardLookFor } from './presets';
 import { POSE_PHASE, POSE_ZONE, type RideState } from './rideState';
 import { applyFaceParams, idleContextFor, restingFace, sunFacing } from './faceControl';
 import { type BoardFrame, boardQuaternion, solvePose } from './solvePose';
 import { Surfer } from './Surfer';
-import { type SurferParams, playPhase } from './surferParams';
+import { type SurferParams, carrySideOf, playPhase } from './surferParams';
 import { KeyedLoader } from './surferLoader';
-import { OUTFIT_LABELS, outfitFor } from './wardrobe';
+import { OUTFIT_LABELS, outfitFor, wearsClothes, wearsSwimFins } from './wardrobe';
 
 type N = any;
 const DEG = Math.PI / 180;
@@ -56,14 +57,25 @@ export class SurferStand {
     this.group.visible = false;
   }
 
-  update(p: SurferParams, simTime: number, dateISO: string, seed: number, probe: HeightProbe, tideM: number): void {
+  /**
+   * `ground` (walking spec §4): the land's height at (x, z), or null while it loads; on land the stand stands there (the
+   * board on the sand, or carried under the arm) and doesn't probe the water.
+   */
+  update(p: SurferParams, simTime: number, dateISO: string, seed: number, probe: HeightProbe, tideM: number, ground?: (x: number, z: number) => number | null): void {
     this.group.visible = p.enabled;
     if (!p.enabled) return;
     const preset = PRESETS[p.preset], spec = boardFor(preset, p.board), layout = layoutFor(spec, preset.heightM);
     this.board.setBoard(spec, boardLookFor(preset, p.board));
     const halfLen = spec.lengthM / 2, halfWidth = spec.maxWidthM / 2;
-    probePoints(p, halfLen, halfWidth).forEach(([x, z], i) => probe.setProbe(STAND_PROBE_FIRST + i, x, z));
-    const frame = boardFrameFrom(p, halfLen, halfWidth, [0, 1, 2, 3].map((i) => probe.heightAt(STAND_PROBE_FIRST + i)), tideM);
+    const outfit = outfitFor(preset, p.outfit, dateISO), carrying = p.onLand && p.pose === 'carry';
+    let frame: BoardFrame;
+    if (p.onLand) {
+      // The feet on the sand, lifted by the thongs' soles when walking; other poses ride a board lying on the sand.
+      frame = groundFrame(p, ground?.(p.x, p.z) ?? null, tideM, carrying && wearsClothes(outfit) ? SOLE_M : 0);
+    } else {
+      probePoints(p, halfLen, halfWidth).forEach(([x, z], i) => probe.setProbe(STAND_PROBE_FIRST + i, x, z));
+      frame = boardFrameFrom(p, halfLen, halfWidth, [0, 1, 2, 3].map((i) => probe.heightAt(STAND_PROBE_FIRST + i)), tideM);
+    }
     this.frame = frame;
     this.heave = this.heaveFilter.update(frame.position.y, simTime);
     const Qb = boardQuaternion(frame);
@@ -76,21 +88,20 @@ export class SurferStand {
       this.surfer = s;
       if (s) this.group.add(s.group);
     }
-    this.leash.visible = s !== null;
+    this.leash.visible = s !== null && !carrying;
     if (!s) {
       this.board.setContacts([]);
       return;
     }
-    const outfit = outfitFor(preset, p.outfit, dateISO);
     s.setOutfit(outfit);
-    s.setSwimFins(p.board === 'bodyboard');
+    s.setSwimFins(wearsSwimFins(p.board, p.onLand));
     s.setOnLand(p.onLand);
     this.status.outfit = OUTFIT_LABELS[outfit];
 
     const bal = p.balance ? balanceAt(seed, simTime, p.balanceAmount, this.heave) : null;
     const dials = { compression: p.compression + (bal?.compression ?? 0), lean: p.lean, twist: p.twist, reach: p.reach };
     const phaseT = p.play ? playPhase(p.pose, simTime, p.phaseT) : p.phaseT;
-    const t = poseTargets(p.pose, { spec, layout, rest: s.rest, stance: p.stance, dials, phaseT });
+    const t = poseTargets(p.pose, { spec, layout, rest: s.rest, stance: p.stance, dials, phaseT, carrySide: carrySideOf(p) });
     if (bal) {
       const lead = p.stance === 'regular' ? 'l' : 'r', trail = lead === 'l' ? 'r' : 'l';
       t.hands[lead].pos.add(bal.lead);
@@ -119,6 +130,14 @@ export class SurferStand {
     };
     const solved = solvePose(s.rest, t, state.board, state.lookAt);
     s.applyPose(solved);
+    if (carrying && t.carry) {
+      // The board under the arm (walking spec §4): placed from the solved hand, not the feet; no deck contacts, no leash.
+      const held = carriedBoard(t.carry, frame, solved);
+      this.board.mesh.position.copy(held.position);
+      this.board.mesh.quaternion.copy(boardQuaternion(held));
+      this.board.setContacts([]);
+      return;
+    }
     const toBoardFrame = Qb.clone().invert();
     const contact = (b: keyof typeof solved.joint, r: number): { x: number; y: number; z: number; r: number } => {
       const q = solved.joint[b].clone().sub(frame.position).applyQuaternion(toBoardFrame);

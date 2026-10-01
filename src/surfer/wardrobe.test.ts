@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRESETS, type SurfOutfit } from './presets';
-import { OUTFIT_LABELS, bodyOutfit, hairShown, outfitFor, outfitMasks, presetOutfits, landLook, seasonOf, showsBoardies, wearsClothes } from './wardrobe';
+import { OUTFIT_LABELS, bodyOutfit, hairShown, wearsSwimFins, outfitFor, outfitMasks, presetOutfits, landLook, seasonOf, showsBoardies, wearsClothes } from './wardrobe';
 
 describe('wardrobe (Andrew’s months, spec §4.3)', () => {
   it.each([
@@ -87,5 +87,13 @@ describe('the walking clothes (walking spec §2, §4)', () => {
       expect(showsBoardies(bodyOutfit(p, 'walking'))).toBe(true);
     }
     expect(bodyOutfit(PRESETS.male, 'springsuit')).toBe('springsuit');
+  });
+});
+
+describe('swim fins (walking spec §2)', () => {
+  it('go on his feet on the bodyboard in the water, and stay clipped to his bag on land', () => {
+    expect(wearsSwimFins('bodyboard', false)).toBe(true);
+    expect(wearsSwimFins('bodyboard', true)).toBe(false);
+    expect(wearsSwimFins('thruster', false)).toBe(false);
   });
 });

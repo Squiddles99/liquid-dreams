@@ -83,6 +83,8 @@ export interface DevPanelHandlers {
   onSurfer(): void;
   onSurferPlaceAhead(): void;
   onSurferChase(): void;
+  /** Stands the rider at a named spot on land (walking spec §4), walking, carrying the board. */
+  onSurferSpot(spot: 'duneCrest' | 'beach'): void;
   onSound(): void;
   onMusicPlayPause(): void;
   onMusicNext(): void;
@@ -434,6 +436,9 @@ export class DevPanel {
     }
     surferFolder.addButton({ title: 'Place ahead of camera' }).on('click', h.onSurferPlaceAhead);
     surferFolder.addButton({ title: 'Chase view' }).on('click', h.onSurferChase);
+    const land = surferFolder.addFolder({ title: 'On land', expanded: false });
+    land.addButton({ title: 'dune crest (above the Womb)' }).on('click', () => h.onSurferSpot('duneCrest'));
+    land.addButton({ title: 'beach (in front of the Womb)' }).on('click', () => h.onSurferSpot('beach'));
     const soundFolder = this.pane.addFolder({ title: 'Sound', expanded: false });
     for (const [key, opts] of Object.entries(SOUND_BINDINGS) as [keyof typeof SOUND_BINDINGS, (typeof SOUND_BINDINGS)[keyof typeof SOUND_BINDINGS]][]) {
       soundFolder.addBinding(m.sound, key, opts).on('change', h.onSound);

@@ -1,4 +1,5 @@
 import MASKS from './outfitMasks.json';
+import type { BoardKind } from '../board/boardSpec';
 import type { Outfit, SurfOutfit, SurferPreset } from './presets';
 
 export type Season = 'summer' | 'shoulder' | 'winter';
@@ -37,6 +38,9 @@ export function hairShown(onLand: boolean, o: Outfit, has: { dry: boolean; hat: 
   if (o === 'walking' && has.hat) return 'hat';
   return (onLand || o === 'walking') && has.dry ? 'dry' : 'wet';
 }
+
+/** Swim fins on the feet: bodyboarding in the water; on land they're clipped to his bag (walking spec §2). */
+export const wearsSwimFins = (board: BoardKind, onLand: boolean): boolean => board === 'bodyboard' && !onLand;
 
 /** Whether the outfit wears the boardies mesh (the male and Grommet builds carry one). */
 export const showsBoardies = (o: SurfOutfit): boolean => o === 'boardies' || o === 'rashieAndBoardies';
