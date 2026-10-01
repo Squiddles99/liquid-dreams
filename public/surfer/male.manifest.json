@@ -360,13 +360,6 @@
    ]
   },
   {
-   "name": "male_hairDry",
-   "triangles": 20400,
-   "materials": [
-    "hairDry"
-   ]
-  },
-  {
    "name": "male_teeth",
    "triangles": 704,
    "materials": [
@@ -392,6 +385,27 @@
     "squint",
     "nostrils",
     "breathe"
+   ]
+  },
+  {
+   "name": "male_tee",
+   "triangles": 3448,
+   "materials": [
+    "tee"
+   ]
+  },
+  {
+   "name": "male_thongs",
+   "triangles": 624,
+   "materials": [
+    "thongs"
+   ]
+  },
+  {
+   "name": "male_hairDry",
+   "triangles": 20400,
+   "materials": [
+    "hairDry"
    ]
   }
  ],
@@ -447,6 +461,7 @@
  "headTriangles": 8456,
  "checks": {
   "blinkCovers": true,
-  "eyesOpen": true
+  "eyesOpen": true,
+  "garmentsOutside": true
  }
 }

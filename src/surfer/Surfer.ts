@@ -10,7 +10,7 @@ import type { SolvedPose } from './solvePose';
 import { type OutfitUniforms, bodyMaterial, eyesMaterial, fabricMaterial, hairMaterial, lashesMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
 import { FACE_CHANNELS, type FaceState, IdleLife, MOODS } from './idleLife';
 import { skinZones } from './skinDetail';
-import { bodyOutfit, hairShown, landLook, outfitMasks, showsBoardies } from './wardrobe';
+import { bodyOutfit, hairShown, landLook, outfitMasks, showsBoardies, wearsClothes } from './wardrobe';
 
 type N = any;
 const DEG = Math.PI / 180;
@@ -27,6 +27,8 @@ export class Surfer {
   private boardies: THREE.Object3D | null = null;
   /** 0 dry … 1 wet: darkens and glosses the skin and hair, and tightens Grommet's curls (grommet spec §3). */
   readonly wet = uniform(1);
+  /** The walking clothes, hats, packs and thongs (walking spec §3): shown only in the walking outfit. */
+  private readonly walking: THREE.Object3D[] = [];
   /** Grommet's glasses (the frame and the lenses), shown only on land. */
   private readonly glasses: THREE.Object3D[] = [];
   /** The wet hair (in the water) and the dry style (on land, where the build made one; closeup spec §4.1). */
@@ -94,6 +96,15 @@ export class Surfer {
       teeth: () => teethMaterial(sky, sv),
       lashes: () => lashesMaterial(sky, sv, lens),
     };
+    // The walking parts (walking spec §3); the cloth's own shading lands with the stand's land path (plan Task 7).
+    const walk = preset.walking.colors, grey: [number, number, number] = [0.3, 0.3, 0.3];
+    const WALKING: Record<string, () => THREE.Material> = {
+      tee: () => fabricMaterial(sky, walk.tee ?? grey, sv),
+      denim: () => fabricMaterial(sky, walk.shorts ?? grey, sv),
+      straps: () => fabricMaterial(sky, walk.straps ?? preset.fabric, sv),
+      thongs: () => fabricMaterial(sky, walk.thongs ?? grey, sv),
+    };
+    Object.assign(materials, WALKING);
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -107,6 +118,10 @@ export class Surfer {
       mesh.material = Array.isArray(mesh.material) ? made : made[0];
       mesh.frustumCulled = false;
       if (mats.some((mt) => mt.name === 'boardies')) this.boardies = mesh;
+      if (mats.some((mt) => mt.name in WALKING)) {
+        this.walking.push(mesh);
+        mesh.visible = false; // until the walking outfit is chosen
+      }
       if (mats.some((mt) => mt.name === 'glasses' || mt.name === 'lens')) this.glasses.push(mesh);
       if (mats.some((mt) => mt.name === 'hair')) this.hairWet.push(mesh);
       if (mats.some((mt) => mt.name === 'hairDry')) this.hairDry.push(mesh);
@@ -144,6 +159,7 @@ export class Surfer {
 
   setOutfit(o: Outfit): void {
     this.wearing = o;
+    for (const w of this.walking) w.visible = wearsClothes(o);
     const under = bodyOutfit(this.preset, o), m = outfitMasks(under);
     for (const k of Object.keys(m) as (keyof typeof m)[]) this.outfit[k].value = m[k];
     if (this.boardies) this.boardies.visible = showsBoardies(under);
