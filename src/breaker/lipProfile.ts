@@ -68,6 +68,16 @@ export const LANDING_FOAM_RISE = 0.3;
 /** While the curl is small (to this share of the throw) the face arrives along the crest's direction, turning into the
  * tube's: the crest still rounds over into the young curl. From here on the face is concave. */
 export const FACE_TURN_PROGRESS = 0.3;
+/**
+ * The ribbon is the water until its section breaks, and its curl peels out of it over this share of the throw (the
+ * constructed curve's weight × smoothstep(0, LIP_EMERGE_PROGRESS, prog)). Andrew, 2026-10-02, 12 ft: a second swell down
+ * the left's shoulder. The shoulders ahead of the peel faded the constructed curve in before they broke (from the
+ * ribbon's onset): a face from the foot to the crest with the curl folded into the crest, blended with the sheet at the
+ * samples' homes. Since the front leans (setWaveModel.LEAN_RATIO) the water's face stands steeper than that curve, and
+ * the blend of two different places stood up to 2 m off the water: two bright creases down the shoulder, the ribbon's
+ * face and the sheet's. From here on the curve is the growing curl's (its tube already scaled by the throw).
+ */
+export const LIP_EMERGE_PROGRESS = 0.3;
 /** The crest's direction is read this far behind it (m). */
 export const CREST_DIR_STEP = 0.1;
 /** A broken section whose crest stands less than BACK_OFF_DROP_H[1]·H above its foot (it has run into deeper water and
@@ -280,11 +290,9 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   const xiTip = prog * xiEnd;
   const tip = tubeUpper(tube, xiTip);
   const Kb = base(-CREST_DIR_STEP), aK = Math.atan2(Kb[1] - K[1], -(Kb[0] - K[0]));
-  // Before the break the constructed curve follows the sheet's sharpening, but only inside the ribbon: the sharpening
-  // starts before the ribbon fades in (SHEET_SHARPENING_LEAD), and there the sheet draws it itself.
-  const steep = tb === null
-    ? steepening(r, p) * smoothstep(p.ribbonOnset, p.ribbonOnset + RIBBON_FULL_OFFSET, r)
-    : smoothstep(BACK_OFF_DROP_H[0] * H, BACK_OFF_DROP_H[1] * H, K[1] - F0[1]);
+  // Before the break the ribbon is the water (LIP_EMERGE_PROGRESS); from it, its curl peels out as it throws, backed off
+  // where the crest stands barely above the foot.
+  const steep = tb === null ? 0 : smoothstep(BACK_OFF_DROP_H[0] * H, BACK_OFF_DROP_H[1] * H, K[1] - F0[1]) * smoothstep(0, LIP_EMERGE_PROGRESS, prog);
   const span = settleSpan(H, p);
   // The curl collapses as the sheet under it does (breaking.lifecycle, from landingEstimate), but never before its own
   // lip has landed.
