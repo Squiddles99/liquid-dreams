@@ -3,7 +3,7 @@ import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetPsi, onsetTime } from './brea
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import {
-  type ActiveWave, BREAKING_RATIO, type BreakOptions, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, LONG_TAIL_CUTOFF, LONG_TAIL_WIDTH, type WaveContext, beyondEnvelope,
+  type ActiveWave, BREAKING_RATIO, type BreakOptions, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, type WaveContext, beyondEnvelope,
   breakOptions, crestAt, localHeight, phaseXi, rayCrestPoint, sumWaves, toActiveWave, waveAt,
 } from './setWaveModel';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
@@ -58,6 +58,20 @@ describe('set-wave model', () => {
     const crest = waveAt(0, 0, 100, f, wave(15, 2), ctxFor(15)).eta;
     expect(Math.abs(waveAt(0, 0, 145, f, wave(15, 2), ctxFor(15)).eta)).toBeLessThan(0.05 * crest);
   });
+  it('each swell line is one wave (Andrew, 2026-10-01): a period behind any set wave, it stands under 1% of its crest', () => {
+    // A "long tail" wave (one in twelve) used to leave a 21% crest a period behind it: in front of the next wave, a first
+    // swell that filled its drain before it broke.
+    const c = cloneConditions(DEFAULT_CONDITIONS); c.swell.sizeFt = 12;
+    const f = field1D(30, 15)(0);
+    let checked = 0;
+    for (let slot = 0; slot < 300; slot++) for (const e of wavesOfSet(slot, c, DEFAULT_SET_PARAMS)) {
+      const w = toActiveWave(e), T = (2 * Math.PI) / w.omega, ctx: WaveContext = { omega: w.omega, travelX: w.travelX, travelZ: w.travelZ };
+      const crest = waveAt(0, 0, w.arrivalS, f, w, ctx).eta;
+      expect(Math.abs(waveAt(0, 0, w.arrivalS + T, f, w, ctx).eta)).toBeLessThan(0.01 * crest);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
   it('tapers the crest ends far out, not near the reef', () => {
     const T = 15, k = waveNumber(omega(T), 30);
     const at = (x: number, z: number) => ({ tau: x * (k / omega(T)), amp: 1, hmin: 30, hminBreak: 30, hminSlurp: 30, k, dirX: 1, dirZ: 0, depth: 30 });
@@ -86,11 +100,10 @@ describe('set-wave model', () => {
     expect(waveAt(0, 0, 100, f, wave(15, 0), ctxFor(15))).toEqual({ eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0, pile: 0 });
   });
   it('converts set events into active waves', () => {
-    const w = toActiveWave({ id: 1, slot: 0, indexInSet: 0, waveCount: 5, arrivalS: 42, heightM: 2.5, periodS: 14, fromDeg: 225, crestLengthM: 350, crestOffsetM: 10, longTail: true, gapS: Infinity, throwDraw: 0 });
+    const w = toActiveWave({ id: 1, slot: 0, indexInSet: 0, waveCount: 5, arrivalS: 42, heightM: 2.5, periodS: 14, fromDeg: 225, crestLengthM: 350, crestOffsetM: 10, gapS: Infinity, throwDraw: 0 });
     expect(w.omega).toBeCloseTo((2 * Math.PI) / 14, 12);
     expect(w.travelX).toBeCloseTo(Math.SQRT1_2, 9);
     expect(w.travelZ).toBeCloseTo(-Math.SQRT1_2, 9);
-    expect(w.longTail).toBe(true);
   });
   it('the crest carries its breaking ratio, and is found before the wave breaks (the sheet steepens from r = ribbonOnset + 0.2)', () => {
     const f = field1D(8, 15, 1.2, 6);
@@ -120,13 +133,12 @@ describe('ψ at the crest (barrel from the maths)', () => {
     const found = crestAt(x, z, tt, f, w, ctx, o)!;
     expect(found.s * found.confidence).toBeGreaterThan(0.9);
     expect(waveAt(x, z, tt, f, w, ctx, o)).toEqual({ eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0, pile: 0 });
-    // The cutoff's edges: the tight envelope either side, the long tail's Gaussian behind its crest only.
-    const T = (2 * Math.PI) / w.omega, tight = ENVELOPE_CUTOFF * ENVELOPE_WIDTH * T, tail = { ...w, longTail: true };
+    // The cutoff's edges, either side of the crest.
+    const T = (2 * Math.PI) / w.omega, tight = ENVELOPE_CUTOFF * ENVELOPE_WIDTH * T;
     expect(beyondEnvelope(0.99 * tight, w)).toBe(false);
     expect(beyondEnvelope(1.01 * tight, w)).toBe(true);
-    expect(beyondEnvelope(-1.01 * tight, tail)).toBe(true);
-    expect(beyondEnvelope(1.01 * tight, tail)).toBe(false);
-    expect(beyondEnvelope(1.01 * LONG_TAIL_CUTOFF * LONG_TAIL_WIDTH * T, tail)).toBe(true);
+    expect(beyondEnvelope(-0.99 * tight, w)).toBe(false);
+    expect(beyondEnvelope(-1.01 * tight, w)).toBe(true);
   });
   it("the crest carries ψ₀ × the game rules, and its own sheet params (the trough drain and surge at its ψ)", () => {
     const cr = crest();

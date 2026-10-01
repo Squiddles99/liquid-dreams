@@ -74,8 +74,6 @@ export interface WaveEvent {
   crestLengthM: number;
   /** Sideways offset (m) of the crest's centre from the ray through the peak (matters in deep water only). */
   crestOffsetM: number;
-  /** This wave leaves water a period behind it for the next to step on (setWaveModel.LONG_TAIL_WIDTH). */
-  longTail: boolean;
   /** Seconds since the wave before it reached the peak: Infinity for the first of its set and for strays (after a lull). */
   gapS: number;
   /** This wave's draw for the throw's random dial, in [−1, 1] (its own stream: every other value stays as it was). */
@@ -95,10 +93,7 @@ const MAX_SLOT_SEARCH_ITERATIONS = 10_000;
 
 const SET_SALT = 7000;
 const STRAY_SALT = 9000;
-const TAIL_SALT = 11000;
 const THROW_SALT = 13000;
-/** The share of set waves (all but each set's last, which has no wave behind it) that leave a long tail. */
-export const LONG_TAIL_CHANCE = 1 / 12;
 const uniformIn = (u: number, lo: number, hi: number): number => lo + u * (hi - lo);
 const signed = (u: number): number => u * 2 - 1;
 const throwDrawOf = (c: Conditions, id: number): number => signed(createRng(deriveSeed(c.seed, THROW_SALT + id)).next());
@@ -137,8 +132,6 @@ export function wavesOfSet(slot: number, c: Conditions, p: SetParams): WaveEvent
       fromDeg: c.swell.directionDeg + signed(rng.next()) * p.directionJitterDeg,
       crestLengthM: uniformIn(rng.next(), p.crestLengthMinM, p.crestLengthMaxM),
       crestOffsetM: signed(rng.next()) * 60,
-      // Its own stream, so the draw leaves every other value of the set as it was.
-      longTail: i < count - 1 && createRng(deriveSeed(c.seed, TAIL_SALT + slot * 64 + i)).next() < LONG_TAIL_CHANCE,
       gapS: i === 0 ? Infinity : t - waves[i - 1].arrivalS,
       throwDraw: throwDrawOf(c, slot * 64 + i),
     });
@@ -170,7 +163,6 @@ export function straysAfterSet(slot: number, c: Conditions, p: SetParams): WaveE
       fromDeg: c.swell.directionDeg + signed(rng.next()) * p.directionJitterDeg,
       crestLengthM: uniformIn(rng.next(), p.crestLengthMinM, p.crestLengthMaxM),
       crestOffsetM: signed(rng.next()) * 60,
-      longTail: false,
       gapS: Infinity,
       throwDraw: throwDrawOf(c, slot * 64 + 32 + n),
     });

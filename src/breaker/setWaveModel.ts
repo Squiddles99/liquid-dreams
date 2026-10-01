@@ -19,20 +19,14 @@ export const SEABED_CLEARANCE_M = 0.05;
  * crest one period either side of every wave, and set waves come a period apart: each rode on the one before (crests up
  * to 1.77× their height, no drain between them; Andrew). Over 300 sets the tallest crest is now 1.035× its own height,
  * and the faces (crest to the trough ahead) average 1.30× the wave's height, as before (1.31×): the deeper troughs make
- * up for the crest the leftovers used to add, so waves look as big as they did.
+ * up for the crest the leftovers used to add, so waves look as big as they did. Every wave has it: each swell line is one
+ * wave (Andrew, 2026-10-01). One in twelve used to keep the Gaussian behind its crest (a "long tail", for the odd
+ * Shipsterns-style step); its leftover crest stood a period behind it, in front of the next wave, and filled that wave's
+ * drain before it broke.
  */
 export const ENVELOPE_WIDTH = 0.7;
-/**
- * A long-tail wave (WaveEvent.longTail, about one in twelve) keeps that Gaussian behind its crest (ξ > 0), exp(−(ξ /
- * (LONG_TAIL_WIDTH·T))²): the water it leaves a period behind is what the next wave steps on (the occasional
- * Shipsterns-style step). Ahead of its crest it is tight, so it leaves the wave in front alone. Both halves are 1 with
- * zero slope at the crest.
- */
-export const LONG_TAIL_WIDTH = 0.8;
-/** Envelope widths |ξ|/width beyond which a wave is nothing at a point: exp(−1.52⁶) ≈ 5e-6 for the tight envelope… */
+/** Envelope widths |ξ|/width beyond which a wave is nothing at a point: exp(−1.52⁶) ≈ 5e-6. */
 export const ENVELOPE_CUTOFF = 1.52;
-/** …and exp(−3.5²) ≈ 5e-6 for a long tail's Gaussian. */
-export const LONG_TAIL_CUTOFF = 3.5;
 /** Largest second-harmonic ratio (Stokes breaks down in very shallow water). */
 export const STOKES_CAP = 0.35;
 /** k × horizontal amplitude never exceeds this (keeps the along-ray Jacobian positive). */
@@ -53,8 +47,6 @@ export interface ActiveWave {
   travelZ: number;
   crestLengthM: number;
   crestOffsetM: number;
-  /** The Gaussian envelope (LONG_TAIL_WIDTH) instead of the tight one: this wave leaves water for the next to step on. */
-  longTail?: boolean;
   /** The wave's drain factor on its ψ (overturn.drainFactor, a game rule); absent: 1. */
   drainFactor?: number;
   /** The wave's random draw for the dial, in [−1, 1]; absent: 0. */
@@ -117,32 +109,27 @@ export function toActiveWave(e: WaveEvent): ActiveWave {
   const d = travelDirectionXZ(e.fromDeg);
   return {
     arrivalS: e.arrivalS, heightM: e.heightM, omega: (2 * Math.PI) / e.periodS,
-    travelX: d.x, travelZ: d.z, crestLengthM: e.crestLengthM, crestOffsetM: e.crestOffsetM, longTail: e.longTail,
+    travelX: d.x, travelZ: d.z, crestLengthM: e.crestLengthM, crestOffsetM: e.crestOffsetM,
     drainFactor: drainFactor(e.gapS, e.periodS), throwDraw: e.throwDraw,
   };
 }
 
-/** A wave's envelope at ξ (s since its crest passed) and d/dξ: tight (ENVELOPE_WIDTH), Gaussian behind a long tail's crest. */
+/** A wave's envelope at ξ (s since its crest passed) and d/dξ (ENVELOPE_WIDTH). */
 export function waveEnvelope(xi: number, w: ActiveWave): { env: number; dEnv: number } {
   const T = (2 * Math.PI) / w.omega;
-  if (w.longTail && xi > 0) {
-    const width = LONG_TAIL_WIDTH * T, env = Math.exp(-((xi / width) ** 2));
-    return { env, dEnv: ((-2 * xi) / (width * width)) * env };
-  }
   const width = ENVELOPE_WIDTH * T, r = xi / width, env = Math.exp(-(r ** 6));
   return { env, dEnv: ((-6 * r ** 5) / width) * env };
 }
 
 /**
- * Whether ξ is past w's envelope cutoff (ENVELOPE_CUTOFF, LONG_TAIL_CUTOFF behind a long tail's crest): there the wave is
+ * Whether ξ is past w's envelope cutoff (ENVELOPE_CUTOFF): there the wave is
  * nothing, stage included (waveAtCrest). Its height there is under 5e-6 of the wave's, but its crest lookup can still land
  * squarely on its crest a period or more on, broken: counted, a wave long gone reported its crest's stage (the GPU skips
  * such waves, so the two disagreed by up to 1 at the grid's edge).
  */
 export function beyondEnvelope(xi: number, w: ActiveWave): boolean {
   const T = (2 * Math.PI) / w.omega;
-  const r = w.longTail && xi > 0 ? xi / (LONG_TAIL_WIDTH * T) : xi / (ENVELOPE_WIDTH * T);
-  return !(Math.abs(r) < (w.longTail && xi > 0 ? LONG_TAIL_CUTOFF : ENVELOPE_CUTOFF));
+  return !(Math.abs(xi / (ENVELOPE_WIDTH * T)) < ENVELOPE_CUTOFF);
 }
 
 export function localHeight(w: ActiveWave, f: FieldSample): number {
