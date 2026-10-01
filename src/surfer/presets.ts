@@ -92,7 +92,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     glbUrl: 'surfer/male.glb', manifestUrl: 'surfer/male.manifest.json',
     outfits: { summer: 'boardies', shoulder: 'springsuit', winter: 'shortArmSteamer' },
     // A faded charcoal tee, a navy and white trucker cap; a worn black surf pack with a wetsuit hanging off it.
-    walking: { under: 'boardies', hat: 'cap', carrySide: 'r', colors: { tee: [0.07, 0.07, 0.075], hat: [0.02, 0.03, 0.09], hatTrim: [0.75, 0.75, 0.72], pack: [0.04, 0.04, 0.045], packTrim: [0.3, 0.05, 0.03], thongs: [0.03, 0.03, 0.03], neoprene: [0.02, 0.02, 0.025] } },
+    walking: { under: 'boardies', hat: 'cap', carrySide: 'r', colors: { tee: [0.07, 0.07, 0.075], hat: [0.02, 0.03, 0.09], hatTrim: [0.75, 0.75, 0.72], pack: [0.04, 0.04, 0.045], packTrim: [0.3, 0.05, 0.03], thongs: [0.03, 0.03, 0.03], neoprene: [0.02, 0.02, 0.025], towel: [0.1, 0.25, 0.55] } },
     quiver: {
       thruster: { lengthIn: 72, widthIn: 19.25, thicknessIn: 2.4375 },
       stepUp: { lengthIn: 80, widthIn: 19.5, thicknessIn: 2.625 },

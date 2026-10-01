@@ -2,6 +2,7 @@
 //   npm run build:surfers              both surfers → public/surfer/, previews → tools/surfer/previews/
 //   npm run build:surfers -- --probe   what this Blender + MPFB offers → tools/surfer/api-probe.txt
 //   npm run build:surfers -- --only male
+//   npm run build:surfers -- --pile      the beach pile only, from the built riders
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -45,5 +46,8 @@ if (process.argv.includes('--probe')) {
   const names = onlyAt > 0 ? [process.argv[onlyAt + 1]] : ['female', 'male', 'grommet'];
   mkdirSync(resolve('public/surfer'), { recursive: true });
   mkdirSync(join(tools, 'previews'), { recursive: true });
-  for (const name of names) run(blender, join(tools, 'build.py'), [join(tools, 'presets', `${name}.json`), resolve('public/surfer'), join(tools, 'previews')]);
+  const pileOnly = process.argv.includes('--pile');
+  if (!pileOnly) for (const name of names) run(blender, join(tools, 'build.py'), [join(tools, 'presets', `${name}.json`), resolve('public/surfer'), join(tools, 'previews')]);
+  // The beach pile (walking spec §5) is made from the three riders' glbs: after a full build, or alone with --pile.
+  if (pileOnly || onlyAt < 0) run(blender, join(tools, 'pile.py'), [resolve('public/surfer'), resolve('public/surfer/beachPile.glb'), join(tools, 'previews')]);
 }

@@ -1,18 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { glbFloats, glbValues } from './glbData';
+import { glbFloats, glbJson, glbValues } from './glbData';
 import { FACE_CHANNELS } from './idleLife';
 import { PRESETS } from './presets';
 import { BONES, type SurferManifest, manifestProblems } from './rig';
-
-/** The JSON chunk of a .glb (the binary glTF container: 12-byte header, then a JSON chunk). */
-export function glbJson(path: string): any {
-  const b = readFileSync(path);
-  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
-  if (v.getUint32(0, true) !== 0x46546c67) throw new Error(`${path} is not a GLB`);
-  if (v.getUint32(16, true) !== 0x4e4f534a) throw new Error(`${path}: the first chunk is not JSON`);
-  return JSON.parse(new TextDecoder().decode(b.subarray(20, 20 + v.getUint32(12, true))));
-}
 
 for (const name of ['female', 'male', 'grommet'] as const) {
   describe(`the ${name} surfer build`, () => {

@@ -13,6 +13,7 @@ import { DEFAULT_BOMBIE_PARAMS, type BombieParams, normalizeBombieParams } from 
 import { landSpots, placeAhead } from '../surfer/placement';
 import { DEFAULT_SURFER_PARAMS, type SurferParams, normalizeSurferParams } from '../surfer/surferParams';
 import { SurferStand } from '../surfer/SurferStand';
+import { BeachPile } from '../surfer/BeachPile';
 import { DEFAULT_SOUND_PARAMS, type SoundParams, normalizeSoundParams } from '../sound/soundParams';
 import { SoundSystem } from '../sound/SoundSystem';
 import { ticksToHear } from '../sound/hits';
@@ -191,6 +192,9 @@ export class App {
   readonly patch: GroundPatch;
   readonly rocks: Rocks;
   private rockField: RockField | null = null;
+  /** The beach pile (walking spec §5): loaded the first time the panel shows it. */
+  private beachPile: BeachPile | null = null;
+  private pileLoading = false;
   /** The ground a rider stands on (walking spec §4): the land, or the top of a rock on it; null until the land loads. */
   private readonly groundAt = (x: number, z: number): number | null => {
     const lh = this.land.height;
@@ -407,6 +411,22 @@ export class App {
           }
           const at = landSpots(lh, lh.profile)[spot];
           Object.assign(this.surferParams, { enabled: true, onLand: true, outfit: 'walking', pose: 'carry', x: at.x, z: at.z, headingDeg: at.headingDeg, heightNudgeM: 0 });
+          normalizeSurferParams(this.surferParams);
+          this.panel.refresh();
+          this.scheduleSave();
+        },
+        onSurferPile: (where) => {
+          const lh = this.land.height;
+          let at: { x: number; z: number; headingDeg: number } = placeAhead(this.rig.getPose());
+          if (where === 'beach') {
+            if (!lh) {
+              console.warn('The land has not loaded yet: no beach spot to put the pile beside.');
+              return;
+            }
+            const b = landSpots(lh, lh.profile).beach;
+            at = { x: b.x, z: b.z + 2, headingDeg: 0 };
+          }
+          Object.assign(this.surferParams, { pile: true, pileX: at.x, pileZ: at.z, pileHeadingDeg: at.headingDeg });
           normalizeSurferParams(this.surferParams);
           this.panel.refresh();
           this.scheduleSave();
@@ -1321,6 +1341,14 @@ export class App {
       this.setStatus.psi = formatPeakPsi(peakPsi(this.field, events, this.clock.simTime, this.breakParams, this.offshoreMs), this.field !== null);
     }
     this.surferStand.update(this.surferParams, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
+    if (this.surferParams.pile && !this.beachPile && !this.pileLoading) {
+      this.pileLoading = true;
+      BeachPile.load(this.sky, (xz) => this.sunlight.visibilityNode(xz)).then(
+        (p) => { this.beachPile = p; this.scene.add(p.group); },
+        (e) => console.warn('The beach pile failed to load; it stays off.', e),
+      );
+    }
+    this.beachPile?.update(this.surferParams, this.conditions.tideM, this.groundAt);
     const probeXZ = this.rig.probeXZ;
     this.probe.setProbe(0, probeXZ.x, probeXZ.z);
     this.probe.update(this.renderer);

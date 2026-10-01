@@ -1,0 +1,88 @@
+{
+ "parts": [
+  {
+   "name": "pile_towel_f",
+   "part": "towel",
+   "preset": "female"
+  },
+  {
+   "name": "pile_towel_m",
+   "part": "towel",
+   "preset": "male"
+  },
+  {
+   "name": "female_pack",
+   "part": "pack",
+   "preset": "female"
+  },
+  {
+   "name": "male_pack",
+   "part": "pack",
+   "preset": "male"
+  },
+  {
+   "name": "grommet_pack",
+   "part": "pack",
+   "preset": "grommet"
+  },
+  {
+   "name": "grommet_fins",
+   "part": "fins",
+   "preset": "grommet"
+  },
+  {
+   "name": "pile_tee_female",
+   "part": "tee",
+   "preset": "female"
+  },
+  {
+   "name": "pile_tee_male",
+   "part": "tee",
+   "preset": "male"
+  },
+  {
+   "name": "pile_tee_grommet",
+   "part": "tee",
+   "preset": "grommet"
+  },
+  {
+   "name": "pile_shorts",
+   "part": "shorts",
+   "preset": "female"
+  },
+  {
+   "name": "male_cap",
+   "part": "hat",
+   "preset": "male"
+  },
+  {
+   "name": "grommet_bucketHat",
+   "part": "hat",
+   "preset": "grommet"
+  },
+  {
+   "name": "female_thongs",
+   "part": "thongs",
+   "preset": "female"
+  },
+  {
+   "name": "male_thongs",
+   "part": "thongs",
+   "preset": "male"
+  },
+  {
+   "name": "grommet_thongs",
+   "part": "thongs",
+   "preset": "grommet"
+  },
+  {
+   "name": "grommet_glasses",
+   "part": "glasses",
+   "preset": "grommet"
+  }
+ ],
+ "footprint": [
+  1.597,
+  1.188
+ ]
+}
