@@ -73,7 +73,7 @@ describe('standing on land (walking spec §4)', () => {
 describe('the named spots on land (walking spec §4)', () => {
   const beach = { wetWidthM: 12, dryWidthM: 28 }, toe = 190 + 40;
   const land = (h: (x: number) => number) => ({ heightAt: (x: number) => h(x), waterlineAt: () => 190 });
-  const dune = land((x) => (x < toe ? 0.05 * (x - 190) : x <= 300 ? 15 + 0.1 * (x - toe) : 22 - 0.05 * (x - 300)));
+  const dune = land((x) => (x < toe ? 15 : x <= 300 ? 15 + 0.1 * (x - toe) : 22 - 0.05 * (x - 300)));
   it('finds the dune crest straight inland of the lineup, facing inland (east)', () => {
     const s = landSpots(dune, beach);
     expect(Math.abs(s.duneCrest.x - 300)).toBeLessThanOrEqual(1);
@@ -88,6 +88,14 @@ describe('the named spots on land (walking spec §4)', () => {
     const spike = land((x) => (x < 300 ? 10 + 0.02 * (x - toe) : x <= 301 ? 16 : 16 - 0.1 * (x - 301)));
     const x = landSpots(spike, beach).duneCrest.x;
     expect(Math.abs(spike.heightAt(x + 1) - spike.heightAt(x - 1)) / 2).toBeLessThan(0.15);
+  });
+  it('finds the lip of a dune cliff that the heath climbs on from (the Womb’s: no crest, the land keeps rising)', () => {
+    // A steep face (0.5) for 80 m from the toe, then a gentle climb (0.12) inland, as the real dune above the Womb.
+    // A 2 m step at the toe first (the sand's bumps): not the cliff's lip.
+    const cliff = land((x) => (x < toe ? 0 : x < toe + 4 ? 0.5 * (x - toe) : x < toe + 8 ? 2 : x < toe + 88 ? 2 + 0.5 * (x - toe - 8) : 42 + 0.12 * (x - toe - 88)));
+    const s = landSpots(cliff, beach).duneCrest;
+    expect(Math.abs(s.x - (toe + 88))).toBeLessThanOrEqual(3);
+    expect(Math.abs(cliff.heightAt(s.x + 1) - cliff.heightAt(s.x - 1)) / 2).toBeLessThan(0.15);
   });
   it('takes the far end of land that rises all the way, and the toe of flat land', () => {
     expect(landSpots(land((x) => 0.1 * x), beach).duneCrest.x).toBe(toe + 250);

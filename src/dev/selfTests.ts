@@ -23,3 +23,4 @@ import '../surfer/grommet.selftest';
 import '../surfer/face.selftest';
 import '../surfer/surfer.selftest';
 import '../sound/sound.selftest';
+import '../surfer/walking.selftest';

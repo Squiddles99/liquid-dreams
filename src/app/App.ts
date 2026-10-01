@@ -10,7 +10,7 @@ import { BOMBIE_X, BOMBIE_Z, type BombieWaves, type Burst, burstAt, burstWidthM,
 import { BombieMesh } from '../bombie/BombieMesh';
 import { surferFeetToHs } from '../conditions/units';
 import { DEFAULT_BOMBIE_PARAMS, type BombieParams, normalizeBombieParams } from '../bombie/bombieParams';
-import { placeAhead } from '../surfer/placement';
+import { landSpots, placeAhead } from '../surfer/placement';
 import { DEFAULT_SURFER_PARAMS, type SurferParams, normalizeSurferParams } from '../surfer/surferParams';
 import { SurferStand } from '../surfer/SurferStand';
 import { DEFAULT_SOUND_PARAMS, type SoundParams, normalizeSoundParams } from '../sound/soundParams';
@@ -191,6 +191,11 @@ export class App {
   readonly patch: GroundPatch;
   readonly rocks: Rocks;
   private rockField: RockField | null = null;
+  /** The ground a rider stands on (walking spec §4): the land, or the top of a rock on it; null until the land loads. */
+  private readonly groundAt = (x: number, z: number): number | null => {
+    const lh = this.land.height;
+    return lh ? Math.max(lh.heightAt(x, z), this.rockField?.topAt(x, z) ?? -Infinity) : null;
+  };
   private readonly patchTracker = new PatchTracker();
   private patchGrids: ReturnType<typeof buildPatchGrids> | undefined;
   /** The rocks near the camera, relaid when it has moved ROCK_RELAY_M (or the field changed). */
@@ -391,6 +396,18 @@ export class App {
         },
         onSurferPlaceAhead: () => {
           Object.assign(this.surferParams, placeAhead(this.rig.getPose()));
+          this.panel.refresh();
+          this.scheduleSave();
+        },
+        onSurferSpot: (spot) => {
+          const lh = this.land.height;
+          if (!lh) {
+            console.warn('The land has not loaded yet: no spots on it to stand at.');
+            return;
+          }
+          const at = landSpots(lh, lh.profile)[spot];
+          Object.assign(this.surferParams, { enabled: true, onLand: true, outfit: 'walking', pose: 'carry', x: at.x, z: at.z, headingDeg: at.headingDeg, heightNudgeM: 0 });
+          normalizeSurferParams(this.surferParams);
           this.panel.refresh();
           this.scheduleSave();
         },
@@ -1303,7 +1320,7 @@ export class App {
       this.setStatus.face = formatPeakFace(peakFace(this.field, events, this.clock.simTime, this.breakParams), this.field !== null);
       this.setStatus.psi = formatPeakPsi(peakPsi(this.field, events, this.clock.simTime, this.breakParams, this.offshoreMs), this.field !== null);
     }
-    this.surferStand.update(this.surferParams, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM);
+    this.surferStand.update(this.surferParams, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
     const probeXZ = this.rig.probeXZ;
     this.probe.setProbe(0, probeXZ.x, probeXZ.z);
     this.probe.update(this.renderer);

@@ -7,9 +7,10 @@ import type { Sky } from '../sky/Sky';
 import type { Outfit, SurferPreset } from './presets';
 import { BONES, type BoneName, type SkeletonRest, type SurferManifest, assertManifest, restFromManifest } from './rig';
 import type { SolvedPose } from './solvePose';
-import { type OutfitUniforms, bodyMaterial, eyesMaterial, fabricMaterial, hairMaterial, lashesMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
+import { type Cloth, type OutfitUniforms, bodyMaterial, clothMaterial, eyesMaterial, fabricMaterial, hairMaterial, lashesMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
 import { FACE_CHANNELS, type FaceState, IdleLife, MOODS } from './idleLife';
 import { skinZones } from './skinDetail';
+import { SOLE_M } from './placement';
 import { bodyOutfit, hairShown, landLook, outfitMasks, showsBoardies, wearsClothes } from './wardrobe';
 
 type N = any;
@@ -27,6 +28,8 @@ export class Surfer {
   private boardies: THREE.Object3D | null = null;
   /** 0 dry … 1 wet: darkens and glosses the skin and hair, and tightens Grommet's curls (grommet spec §3). */
   readonly wet = uniform(1);
+  /** Every mesh by the build's material name (the walking self-tests colour parts by it). */
+  private readonly byMaterial = new Map<string, THREE.Mesh[]>();
   /** The walking clothes, hats, packs and thongs (walking spec §3): shown only in the walking outfit. */
   private readonly walking: THREE.Object3D[] = [];
   /** Grommet's glasses (the frame and the lenses), shown only on land. */
@@ -87,7 +90,7 @@ export class Surfer {
       // Builds since step 2 pack the body's occlusion with the scalp in COLOR_0.r (tools/surfer/face.py).
       if ((o as THREE.Mesh).isMesh && manifest.headTriangles !== undefined) hasAo = true;
     });
-    const materials: Record<string, () => THREE.Material> = {
+    const materials: Record<string, (mesh: THREE.Mesh) => THREE.Material> = {
       body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones, wet: this.wet, pores: this.pores, lens, ao: hasAo }),
       hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
       hairDry: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
@@ -98,21 +101,23 @@ export class Surfer {
       teeth: () => teethMaterial(sky, sv),
       lashes: () => lashesMaterial(sky, sv, lens),
     };
-    // The walking parts (walking spec §3); the cloth's own shading lands with the stand's land path (plan Task 7).
+    // The walking parts (walking spec §3): each material's colour and cloth; a missing colour is grey, never a throw.
     const walk = preset.walking.colors, grey: [number, number, number] = [0.3, 0.3, 0.3];
-    const WALKING: Record<string, () => THREE.Material> = {
-      tee: () => fabricMaterial(sky, walk.tee ?? grey, sv),
-      denim: () => fabricMaterial(sky, walk.shorts ?? grey, sv),
-      straps: () => fabricMaterial(sky, walk.straps ?? preset.fabric, sv),
-      thongs: () => fabricMaterial(sky, walk.thongs ?? grey, sv),
-      cap: () => fabricMaterial(sky, walk.hat ?? grey, sv),
-      capFront: () => fabricMaterial(sky, walk.hatTrim ?? grey, sv),
-      bucketHat: () => fabricMaterial(sky, walk.hat ?? grey, sv),
-      pack: () => fabricMaterial(sky, walk.pack ?? grey, sv),
-      packTrim: () => fabricMaterial(sky, walk.packTrim ?? grey, sv),
-      towel: () => fabricMaterial(sky, walk.towel ?? grey, sv),
-      neoprene: () => fabricMaterial(sky, walk.neoprene ?? grey, sv),
-      fins: () => fabricMaterial(sky, walk.fins ?? grey, sv),
+    const cloth = (color: [number, number, number] | undefined, kind: Cloth) => (mesh: THREE.Mesh): THREE.Material =>
+      clothMaterial(sky, color ?? grey, kind, sv, mesh.geometry.hasAttribute('color'));
+    const WALKING: Record<string, (mesh: THREE.Mesh) => THREE.Material> = {
+      tee: cloth(walk.tee, 'cotton'),
+      denim: cloth(walk.shorts, 'denim'),
+      straps: cloth(walk.straps ?? preset.fabric, 'cotton'),
+      thongs: cloth(walk.thongs, 'rubber'),
+      cap: cloth(walk.hat, 'cotton'),
+      capFront: cloth(walk.hatTrim, 'cotton'),
+      bucketHat: cloth(walk.hat, 'cotton'),
+      pack: cloth(walk.pack, 'canvas'),
+      packTrim: cloth(walk.packTrim, 'canvas'),
+      towel: cloth(walk.towel, 'towel'),
+      neoprene: cloth(walk.neoprene, 'neoprene'),
+      fins: cloth(walk.fins, 'rubber'),
     };
     materials.hairHat = () => hairMaterial(sky, preset, this.headCentre, sv, this.wet);
     Object.assign(materials, WALKING);
@@ -124,8 +129,15 @@ export class Surfer {
       const made = mats.map((mt) => {
         const make = materials[mt.name];
         if (!make) throw new Error(`${preset.glbUrl}: unexpected material "${mt.name}"`);
-        return make();
+        const made = make(mesh);
+        made.name = mt.name;
+        return made;
       });
+      for (const mt of mats) {
+        const list = this.byMaterial.get(mt.name) ?? [];
+        list.push(mesh);
+        this.byMaterial.set(mt.name, list);
+      }
       mesh.material = Array.isArray(mesh.material) ? made : made[0];
       mesh.frustumCulled = false;
       if (mats.some((mt) => mt.name === 'boardies')) this.boardies = mesh;
@@ -168,6 +180,16 @@ export class Surfer {
 
   /** The outfit worn, for the land look (glasses, hair) set after it. */
   private wearing: Outfit = 'boardies';
+
+  /** The meshes carrying the build's material `name` (empty when this build has none). */
+  meshesWith(name: string): readonly THREE.Mesh[] {
+    return this.byMaterial.get(name) ?? [];
+  }
+
+  /** How far the soles lift the feet: the thongs, worn with the walking clothes. */
+  get walkingLift(): number {
+    return wearsClothes(this.wearing) && this.walking.length > 0 ? SOLE_M : 0;
+  }
 
   setOutfit(o: Outfit): void {
     this.wearing = o;
