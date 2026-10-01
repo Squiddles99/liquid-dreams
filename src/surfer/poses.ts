@@ -1,8 +1,10 @@
 import { Vector3 } from 'three/webgpu';
 import { type BoardLayout, type BoardSpec, type SpotName, deckYAt, halfWidthAt, uAt } from '../board/boardSpec';
+import { type CarryBoard, HAND_REACH, LIMB_RADIUS } from './carry';
 import type { PoseName } from './poseNames';
 import type { Stance } from './presets';
 import { type Limb, type RiderMeasures, type SkeletonRest, measures } from './rig';
+import type { BoardFrame } from './solvePose';
 
 /** Offsets around each pose's own values; 0 everywhere shows the pose as designed (spec §3.5). */
 export interface PoseDials {
@@ -42,6 +44,8 @@ export interface PoseTargets {
   hands: Record<Limb, HandTarget>;
   /** Where the eyes go, as a board-frame direction. */
   look: Vector3;
+  /** The carry (walking spec §4): the board under the arm, placed from the solved hand. */
+  carry?: CarryBoard;
 }
 export interface PoseContext {
   spec: BoardSpec;
@@ -50,6 +54,8 @@ export interface PoseContext {
   stance: Stance;
   dials: PoseDials;
   phaseT: number;
+  /** The carry's arm (walking spec §4); the right when unset. */
+  carrySide?: Limb;
 }
 
 const DEG = Math.PI / 180;
@@ -423,6 +429,67 @@ function bodyboardBail(ctx: PoseContext, r: Rider): PoseTargets {
   };
 }
 
+/** The carried board's nose, below level (Andrew's reference photo, 2026-10-01: level to a touch up; tuned at the gate). */
+const CARRY_NOSE_DOWN = 0;
+/** How far below the shoulder joint the top rail sits, in the armpit (a fraction of height). */
+const CARRY_ARMPIT = 0.065;
+/** The deck's clearance from the thigh at the lower rail, and how far inside the shoulder joint the top rail tucks (m). */
+const CARRY_HIP_CLEAR = 0.025, CARRY_TUCK = 0.055;
+
+/**
+ * On land (walking spec §4), in the ground frame (+x the heading): standing relaxed, weight on the leg away from the
+ * board, the board on its rail under the carrying arm with the deck to the hip, the upper arm out over the top rail (it
+ * tucks under the armpit), the forearm down the board's bottom face and the fingers round the lower rail (Andrew: the
+ * forearm on the outside); the free arm hangs. The stand anchors the board to the solved hand.
+ */
+function carry(ctx: PoseContext, r: Rider): PoseTargets {
+  const side: Limb = ctx.carrySide ?? 'r', free: Limb = side === 'l' ? 'r' : 'l', k = side === 'l' ? -1 : 1;
+  const rest = ctx.rest, H = rest.heightM, m = r.m, spec = ctx.spec;
+  const foot = (s: Limb, fwd: number, out: number): FootTarget => {
+    const sz = s === 'l' ? -1 : 1, at = V(fwd, 0, sz * (m.hipHalf + out));
+    const dir = V(Math.cos(0.15), 0, sz * Math.sin(0.15));
+    return { ankle: add(at, sc(Y(), m.ankleH)), toe: add(at, sc(dir, m.footLenH), sc(Y(), m.toeH)), pole: V(1, 0, sz * 0.15).normalize(), instep: Y() };
+  };
+  const feet = { [side]: foot(side, 0.06, 0.03), [free]: foot(free, 0, 0) } as Record<Limb, FootTarget>;
+  const pelvis = V(0.01, m.ankleH + 0.992 * m.legLen + m.hipDrop, -k * 0.025);
+
+  // The board on its rail (Andrew's reference photo): the top rail tucked into the armpit under the upper arm, the deck
+  // leaning in at the top and clear of the hip at the bottom; the wrist on the bottom face a hand's reach above the lower
+  // rail (the fingers round it), or as low up the face as the arm reaches (the bodyboard: wider than his reach).
+  const t = spec.thicknessM, halfW = spec.maxWidthM / 2;
+  const sh = rest.joint[`upperarm_${side}`], latS = Math.abs(sh.x), yS = sh.y;
+  const topY = yS - CARRY_ARMPIT * H, topLat = latS - CARRY_TUCK;
+  const botLat = m.hipHalf + LIMB_RADIUS.thigh * H + CARRY_HIP_CLEAR + t / 2;
+  const drop = Math.sqrt(Math.max(1e-6, (2 * halfW) ** 2 - (botLat - topLat) ** 2));
+  const botY = topY - drop;
+  // Along the board's width, lower rail → top rail; the deck's normal square to it, toward the body.
+  const w = V(0, topY - botY, k * (topLat - botLat)).normalize();
+  const n = V(0, -w.z, w.y);
+  if (n.z * k > 0) n.negate();
+  const lowerRail = V(0.02, botY, k * botLat);
+  const onFace = (along: number): Vector3 => add(lowerRail, sc(w, along), sc(n, -(t / 2 + LIMB_RADIUS.forearm * H)));
+  const shoulder = V(0, yS, k * latS), reachMax = 0.97 * (m.upperArmLen + m.forearmLen);
+  let along = 0.8 * HAND_REACH * H;
+  while (along < 2 * halfW && onFace(along).distanceTo(shoulder) > reachMax) along += 0.005;
+  const wrist = onFace(along);
+  // The board's origin is the middle of its bottom face, its up (the deck's normal) toward the body.
+  const mid = add(sc(lowerRail, 0.5), sc(V(0.02, topY, k * topLat), 0.5));
+  const board: BoardFrame = {
+    position: add(mid, sc(n, -t / 2)),
+    forward: V(Math.cos(CARRY_NOSE_DOWN), -Math.sin(CARRY_NOSE_DOWN), 0),
+    up: n,
+  };
+  const fsh = rest.joint[`upperarm_${free}`], reach = m.upperArmLen + m.forearmLen;
+  const hands = {
+    [side]: boardHand(wrist, V(0, 0.3, k)),
+    [free]: boardHand(V(0.03, fsh.y - 0.96 * reach, -k * (Math.abs(fsh.x) + 0.06)), V(-1, 0, -k * 0.2)),
+  } as Record<Limb, HandTarget>;
+  return {
+    pelvis, pelvisUp: Y(), pelvisForward: X(), chest: { bend: 0.04, twist: 0, side: 0 },
+    feet, hands, look: add(X(), sc(Y(), -0.03)), carry: { side, board, hand: wrist },
+  };
+}
+
 /** The pose's targets in the board frame (spec §3.5). */
 export function poseTargets(pose: PoseName, ctx: PoseContext): PoseTargets {
   const r = rider(ctx), bb = ctx.spec.kind === 'bodyboard';
@@ -439,6 +506,6 @@ export function poseTargets(pose: PoseName, ctx: PoseContext): PoseTargets {
     case 'prone': return prone(ctx, r, false);
     case 'proneBarrel': return prone(ctx, r, true);
     case 'dropKnee': return dropKnee(ctx, r);
-    case 'carry': return sit(ctx); // the carry's targets land in Task 3
+    case 'carry': return carry(ctx, r);
   }
 }
