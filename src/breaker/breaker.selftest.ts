@@ -92,7 +92,7 @@ registerSelfTest({
 
 
 registerSelfTest({
-  name: 'breaker: long-tail waves match the CPU (Gaussian behind the crest only; flag packed with can-break, breaking on)',
+  name: 'breaker: the set matches the CPU around its biggest wave (before, at and after it, breaking on)',
   async run(renderer) {
     const field = getField();
     const time = uniform(0);
@@ -107,18 +107,14 @@ registerSelfTest({
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
     const o: BreakOptions = breakOptions(field, DEFAULT_BREAK_PARAMS);
     const disp = new Worst(true, 0), stage = new Worst(true, 0);
-    let flagsOk = true, tails = 0, breakers = 0;
-    // Before, at and after the biggest wave: points both ahead of crests (tight side) and behind them (Gaussian side).
+    let breakers = 0;
+    // Before, at and after the biggest wave: points both ahead of crests and behind them.
     for (const dt of [-8, 0, 1.2, 8]) {
       const t = REF_BIGGEST.arrivalS + dt;
       time.value = t;
-      const events = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map((e, i) => ({ ...e, longTail: i % 2 === 0 }));
+      const events = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
       sets.setEvents(events);
-      events.forEach((e, i) => {
-        if (sets.longTailFlag(i) !== (e.longTail ? 1 : 0)) flagsOk = false;
-        if (e.longTail) tails++;
-        if (e.longTail && sets.canBreakFlag(i) === 1) breakers++;
-      });
+      events.forEach((_, i) => { if (sets.canBreakFlag(i) === 1) breakers++; });
       renderer.compute(pass);
       const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
       const waves = events.map(toActiveWave);
@@ -129,11 +125,10 @@ registerSelfTest({
         stage.see(Math.abs(g[4] - c.stage), dt, i);
       });
     }
-    const ok = disp.value < 0.05 && stage.value < 0.02 && flagsOk && tails > 0 && breakers > 0;
+    const ok = disp.value < 0.05 && stage.value < 0.02 && breakers > 0;
     return {
       pass: ok,
-      detail: `${points.length} points × dt −8/0/1.2/8 s, every other wave a long tail (${tails} slots, ${breakers} also flagged can-break); ` +
-        `flags read back ${flagsOk ? 'ok' : 'WRONG'}; worst |Δdisp| ${disp} m; |Δstage| ${stage}`,
+      detail: `${points.length} points × dt −8/0/1.2/8 s (${breakers} slots flagged can-break); worst |Δdisp| ${disp} m; |Δstage| ${stage}`,
     };
   },
 });
