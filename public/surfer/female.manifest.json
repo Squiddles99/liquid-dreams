@@ -360,13 +360,6 @@
    ]
   },
   {
-   "name": "female_hairDry",
-   "triangles": 124578,
-   "materials": [
-    "hairDry"
-   ]
-  },
-  {
    "name": "female_teeth",
    "triangles": 704,
    "materials": [
@@ -374,6 +367,56 @@
    ],
    "morphs": [
     "jawOpen"
+   ]
+  },
+  {
+   "name": "female_tee",
+   "triangles": 3844,
+   "materials": [
+    "tee"
+   ]
+  },
+  {
+   "name": "female_cutoffs",
+   "triangles": 940,
+   "materials": [
+    "denim"
+   ]
+  },
+  {
+   "name": "female_straps",
+   "triangles": 592,
+   "materials": [
+    "straps"
+   ]
+  },
+  {
+   "name": "female_thongs",
+   "triangles": 680,
+   "materials": [
+    "thongs"
+   ]
+  },
+  {
+   "name": "female_pack",
+   "triangles": 1784,
+   "materials": [
+    "pack",
+    "packTrim"
+   ]
+  },
+  {
+   "name": "female_towel",
+   "triangles": 356,
+   "materials": [
+    "towel"
+   ]
+  },
+  {
+   "name": "female_hairDry",
+   "triangles": 124582,
+   "materials": [
+    "hairDry"
    ]
   }
  ],
@@ -429,6 +472,7 @@
  "headTriangles": 8456,
  "checks": {
   "blinkCovers": true,
-  "eyesOpen": true
+  "eyesOpen": true,
+  "garmentsOutside": true
  }
 }

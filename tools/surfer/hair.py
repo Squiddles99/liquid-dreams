@@ -73,15 +73,15 @@ def _pony(tie, rng):
     return pts
 
 
-def _curl(root, n, centre, eye_z, rng):
+def _curl(root, n, centre, eye_z, rng, squash=1.0, down=0.25):
     """One springy lock: a loose spiral out from the scalp (6–9 cm), shorter over the forehead so it stops above the
     glasses. 1.3–3 turns sampled 16 times (too few points per turn drew zig-zag shards, not curls); the radius opens
     from the root, and nothing dips inside the scalp."""
     fringe = root.y < centre.y - 0.02 and root.z < eye_z + 0.11
-    length = rng.uniform(0.035, 0.05) if fringe else rng.uniform(0.06, 0.09)
-    radius, pitch, phase = rng.uniform(0.008, 0.013), rng.uniform(0.03, 0.045), rng.uniform(0, 2 * math.pi)
+    length = squash * (rng.uniform(0.035, 0.05) if fringe else rng.uniform(0.06, 0.09))
+    radius, pitch, phase = squash * rng.uniform(0.008, 0.013), rng.uniform(0.03, 0.045), rng.uniform(0, 2 * math.pi)
     noise = _unit(rng)
-    d = (n * (0.35 if fringe else 0.75) + DOWN * (0.65 if fringe else 0.25) + noise * 0.25).normalized()
+    d = (n * (0.35 if fringe else 1.0 - down) + DOWN * (0.65 if fringe else down) + noise * 0.25).normalized()
     e1 = d.orthogonal().normalized()
     e2 = d.cross(e1)
     r_min = (root - centre).length + 0.002
@@ -159,7 +159,7 @@ def _cards_object(cards, centre, rig, name, skin=None, seed=0):
     return obj
 
 
-def build(body, rig, style, L, coords, name):
+def build(body, rig, style, L, coords, name, avoid=()):
     rng = random.Random(style["seed"])
     centre, eye_z = L["head_centre"], L["eye_z"]
     inset = style.get("inset", 0.0)
@@ -186,7 +186,7 @@ def build(body, rig, style, L, coords, name):
     elif style["style"] == "waves":
         # Dry, long and loose (closeup spec §3): parted near the middle, over the scalp, then falling past the
         # shoulders in loose beach waves, draped over the body rather than through it.
-        tree = _body_tree(body)
+        tree = _body_tree(body, avoid)
         neck_z = rig.data.bones["neck"].head_local.z
         part_x = style.get("partX", 0.006)
         # Locks: every card belongs to the nearest of ~70 clump centres on the scalp and shares its wave, so the waves
@@ -217,9 +217,81 @@ def build(body, rig, style, L, coords, name):
         for _ in range(300):
             lock = rng.choice(locks)
             cards.append((_frizz(lock[rng.randint(8, 15)], centre, rng), 0.006))
+    elif style["style"] in ("capped", "bucket"):
+        # Pressed under a hat (walking spec §3): roots from just under the band down to the hairline (none at the front
+        # under a cap's peak), growing down out from under the band; nothing above the band stands off the scalp
+        # further than the hat lets it.
+        band, normal = style["below"]
+        cap = style["style"] == "capped"
+        pool = [v for v in scalp if (v.co - band).dot(normal) < 0.015 and (not cap or v.co.y > centre.y - 0.03)]
+        if len(pool) < 50:
+            raise SystemExit(f"only {len(pool)} scalp vertices under the hat's band")
+
+        def pick_under():
+            v = rng.choice(pool)
+            return v.co + _unit(rng) * 0.003, v.normal.copy()
+        if cap:
+            for _ in range(1300):
+                root, n = pick_under()
+                cards.append((_under_cap(root, n, centre, rng), rng.uniform(0.011, 0.015)))
+        else:
+            locks = []
+            for _ in range(420):
+                root, n = pick_under()
+                locks.append(_curl(root, n, centre, eye_z, rng, squash=0.7, down=0.55))
+                cards.append((locks[-1], rng.uniform(0.011, 0.014)))
+            for _ in range(220):
+                lock = rng.choice(locks)
+                cards.append((_frizz(lock[rng.randint(8, 15)], centre, rng), 0.006))
+        # Inside the hat: a strand point above the band is pulled in under the hat's inner surface (along the ray from
+        # the head's centre), or down under the band where that ray misses the hat (at its very edge).
+        hat = BVHTree.FromObject(style["hat"], bpy.context.evaluated_depsgraph_get())
+        for pts, _w in cards:
+            for i, p in enumerate(pts):
+                h = (p - band).dot(normal)
+                if h <= 0:
+                    continue
+                q = p - centre
+                hit, _, _, dist = hat.ray_cast(centre, q.normalized(), 1.0)
+                if hit is None:
+                    pts[i] = p - normal * (h + 0.001)
+                elif q.length > dist - 0.003:
+                    pts[i] = centre + q.normalized() * (dist - 0.003)
+        # Under the brim (or the cap's peak): a point with the hat below it and nothing above it would show through the
+        # brim's top: it goes under it, clear by more than half a card's width.
+        up_, down_ = Vector((0, 0, 1)), Vector((0, 0, -1))
+        for pts, _w in cards:
+            for i, p in enumerate(pts):
+                if hat.ray_cast(p, up_, 0.25)[0] is not None:
+                    continue
+                hit, _, _, _ = hat.ray_cast(p, down_, 0.08)
+                if hit is not None:
+                    pts[i] = hit - Vector((0, 0, 0.012))
+        obj = _cards_object(cards, centre, rig, f"{name}_hairHat", seed=style["seed"])
+        for v in obj.data.vertices:  # and the cards' edges, which their width carries past the strand
+            if hat.ray_cast(v.co, up_, 0.25)[0] is None:
+                hit, _, _, _ = hat.ray_cast(v.co, down_, 0.08)
+                if hit is not None:
+                    v.co = hit - Vector((0, 0, 0.006))
+        return obj
     else:
         raise SystemExit(f"unknown hair style {style['style']}")
     return _cards_object(cards, centre, rig, f"{name}_hair" + ("Dry" if style.get("dry") else ""), seed=style["seed"])
+
+
+def _under_cap(root, n, centre, rng):
+    """Short hair under a cap (walking spec §3): out from under the band, down and a little back, close to the head."""
+    length = rng.uniform(0.03, 0.06)
+    noise = _unit(rng)
+    r0 = (root - centre).length
+    pts = [root + n * 0.002]
+    for _ in range(5):
+        p = pts[-1]
+        out = (p - centre).normalized()
+        d = DOWN * 0.8 + Vector((0, 0.35, 0)) + noise * 0.35
+        d = (d - out * d.dot(out) * 0.7).normalized()
+        pts.append(_hug(p + d * (length / 5), centre, r0 + 0.002, r0 + 0.012))
+    return pts
 
 
 def _tousled(root, n, centre, crown, eye_z, rng):
@@ -243,8 +315,16 @@ def _tousled(root, n, centre, crown, eye_z, rng):
     return pts
 
 
-def _body_tree(body):
-    return BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+def _body_tree(body, avoid=()):
+    """What long hair falls outside of: the skin, and `avoid` (the walking clothes) when given."""
+    if not avoid:
+        return BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    verts, polys = [], []
+    for o in (body, *avoid):
+        base = len(verts)
+        verts += [v.co.copy() for v in o.data.vertices]
+        polys += [[i + base for i in p.vertices] for p in o.data.polygons if o is not body or p.material_index == 0]
+    return BVHTree.FromPolygons(verts, polys)
 
 
 def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump):

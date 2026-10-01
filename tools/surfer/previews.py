@@ -152,24 +152,44 @@ def _body_material(mat, preset):
     nt.links.new(col, bsdf.inputs["Base Color"])
 
 
+# The walking parts by their objects' suffixes (tools/surfer/clothes.py, packs.py), for the walking sheets.
+WALKING = ("_tee", "_cutoffs", "_straps", "_thongs", "_cap", "_bucketHat", "_hairHat", "_pack", "_towel", "_wetsuit", "_fins")
+
+
 def dress(parts, preset, outfit):
     body = parts[0]
     mat = body.material_slots[0].material
     if "w_spring" not in mat.node_tree.nodes:
         _body_material(mat, preset)
+    walking = outfit == "walking"
+    under = preset["walking"]["under"] if walking else outfit
     for key in WEIGHTS:
-        mat.node_tree.nodes[f"w_{key}"].outputs[0].default_value = float(OUTFITS[outfit][key])
+        mat.node_tree.nodes[f"w_{key}"].outputs[0].default_value = float(OUTFITS[under][key])
+    colours = preset.get("walking", {}).get("preview", {})
+    for p in parts[1:]:
+        if p.name.endswith(WALKING):
+            p.hide_render = not walking
+            for slot in p.material_slots:
+                bsdf = slot.material.node_tree.nodes.get("Principled BSDF")
+                if bsdf and slot.material.name in colours:
+                    bsdf.inputs["Base Color"].default_value = (*colours[slot.material.name], 1)
+    outfit = under
     if len(body.material_slots) > 1 and body.material_slots[1].material.name == "lashes":
         body.material_slots[1].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.02, 0.015, 0.012, 1)
     for p in parts[1:]:
         if p.name.endswith("_boardies"):
             p.hide_render = outfit not in ("boardies", "rashieAndBoardies")
             p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["boardies"], 1)
+        elif p.name.endswith(WALKING):
+            continue
         elif p.name.endswith("_hairDry"):
-            p.hide_render = True  # the sheets show the wet look; the dry one is judged in the game
+            p.hide_render = not (walking and not any(q.name.endswith("_hairHat") for q in parts))  # wet sheets; dry walking
+            p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["hair"], 1)
         elif p.name.endswith("_hair"):
+            p.hide_render = walking and any(q.name.endswith(("_hairDry", "_hairHat")) for q in parts)
             p.material_slots[0].material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*preset["preview"]["hair"], 1)
         elif p.name.endswith("_glasses"):
+            p.hide_render = not walking  # in his bag in the water (walking spec §4)
             for slot in p.material_slots:
                 bsdf = slot.material.node_tree.nodes["Principled BSDF"]
                 if slot.material.name == "lens":

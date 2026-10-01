@@ -1,18 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { glbFloats, glbValues } from './glbData';
+import { glbFloats, glbJson, glbValues } from './glbData';
 import { FACE_CHANNELS } from './idleLife';
 import { PRESETS } from './presets';
 import { BONES, type SurferManifest, manifestProblems } from './rig';
-
-/** The JSON chunk of a .glb (the binary glTF container: 12-byte header, then a JSON chunk). */
-export function glbJson(path: string): any {
-  const b = readFileSync(path);
-  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
-  if (v.getUint32(0, true) !== 0x46546c67) throw new Error(`${path} is not a GLB`);
-  if (v.getUint32(16, true) !== 0x4e4f534a) throw new Error(`${path}: the first chunk is not JSON`);
-  return JSON.parse(new TextDecoder().decode(b.subarray(20, 20 + v.getUint32(12, true))));
-}
 
 for (const name of ['female', 'male', 'grommet'] as const) {
   describe(`the ${name} surfer build`, () => {
@@ -47,7 +38,7 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       expect(man.headTriangles).toBeGreaterThanOrEqual(5000);
     });
     it('closes the lids over the eyes at a blink, and opens them at rest (the build’s ray check; closeup spec §4.1)', () => {
-      expect(man.checks).toEqual({ blinkCovers: true, eyesOpen: true });
+      expect(man.checks).toMatchObject({ blinkCovers: true, eyesOpen: true });
     });
     it('writes the face landmarks, with eyeballs fitted to MPFB’s eye helper (14–17.5 mm once scaled to height)', () => {
       expect(man.landmarks).toBeDefined();
@@ -219,3 +210,94 @@ describe("Grommet's glasses and teeth (grommet spec §4)", () => {
     expect(head).toBeGreaterThanOrEqual(0);
   });
 });
+
+/** Every vertex of the primitives with `material`: its position and the bones it follows (weight > 0.01). */
+function skinned(path: string, gltf: any, material: string): { pos: number[]; bones: string[] }[] {
+  const joints: string[] = gltf.skins[0].joints.map((i: number) => gltf.nodes[i].name);
+  const out: { pos: number[]; bones: string[] }[] = [];
+  for (const mesh of gltf.meshes) for (const p of mesh.primitives) {
+    if (gltf.materials[p.material].name !== material) continue;
+    const pos = glbFloats(path, gltf, p.attributes.POSITION), j = glbValues(path, gltf, p.attributes.JOINTS_0), w = glbValues(path, gltf, p.attributes.WEIGHTS_0);
+    for (let i = 0; i < pos.length / 3; i++) {
+      const bones: string[] = [];
+      for (let k = 0; k < 4; k++) if (w[4 * i + k] > 0.01) bones.push(joints[j[4 * i + k]]);
+      out.push({ pos: [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], bones });
+    }
+  }
+  return out;
+}
+const side = (names: string[]): string[] => names.flatMap((n) => [`${n}_l`, `${n}_r`]);
+
+for (const name of ['female', 'male', 'grommet'] as const) {
+  describe(`the ${name} walking clothes (walking spec §3, §7)`, () => {
+    const path = `public/surfer/${name}.glb`, gltf = glbJson(path);
+    const man: SurferManifest = JSON.parse(readFileSync(`public/surfer/${name}.manifest.json`, 'utf8'));
+    const mats = man.meshes.flatMap((m) => m.materials), H = man.heightM;
+    const bone = (n: string): number[] => man.bones.find((b) => b.name === n)!.head;
+    it('has the tee and thongs; Shazza her cutoffs and bikini straps; the boys their own boardies (Andrew)', () => {
+      for (const m of ['tee', 'thongs']) expect(mats, m).toContain(m);
+      expect(mats.includes('denim')).toBe(name === 'female');
+      expect(mats.includes('straps')).toBe(name === 'female');
+      expect(mats.includes('boardies')).toBe(name !== 'female');
+    });
+    it('keeps every tee and shorts vertex outside the body (the build’s ray check)', () => {
+      expect(man.checks).toMatchObject({ garmentsOutside: true });
+    });
+    it('skins each garment only to its own bones', () => {
+      const allowed: Record<string, string[]> = {
+        tee: ['pelvis', 'spine_01', 'spine_02', 'spine_03', 'neck', ...side(['clavicle', 'upperarm', 'forearm'])],
+        denim: ['pelvis', 'spine_01', 'spine_02', ...side(['thigh'])],
+        straps: ['spine_03', 'neck', ...side(['clavicle'])],
+        thongs: side(['foot', 'toe']),
+      };
+      for (const [m, ok] of Object.entries(allowed)) {
+        if (!mats.includes(m)) continue;
+        const bad = skinned(path, gltf, m).flatMap((v) => v.bones).filter((b) => !ok.includes(b));
+        expect([...new Set(bad)], m).toEqual([]);
+      }
+    });
+    it('hangs the tee from the chest to below the waist, not hugging it', () => {
+      const tee = skinned(path, gltf, 'tee').map((v) => v.pos);
+      const lowest = Math.min(...tee.map((p) => p[1]));
+      if (name === 'grommet') {
+        const boardies = skinned(path, gltf, 'boardies').map((v) => v.pos);
+        expect(lowest).toBeLessThan(Math.max(...boardies.map((p) => p[1])) - 0.03); // past the top of his boardies
+      } else expect(lowest).toBeLessThan(bone('pelvis')[1] - (name === 'female' ? 0.04 * H : 0)); // her oversized tee longer
+      const front = (lo: number, hi: number): number => Math.max(...tee.filter((p) => p[1] > lo * H && p[1] < hi * H && Math.abs(p[0]) < 0.08).map((p) => p[2]));
+      expect(front(0.56, 0.62), 'the front at the waist vs the chest').toBeGreaterThan(front(0.69, 0.74) - 0.01);
+    });
+    it('puts 12 mm thong soles under the feet', () => {
+      const y = Math.min(...skinned(path, gltf, 'thongs').map((v) => v.pos[1]));
+      expect(Math.abs(y + 0.012)).toBeLessThan(0.002);
+    });
+    const hats = name === 'male' ? ['cap', 'capFront'] : name === 'grommet' ? ['bucketHat'] : [];
+    it('wears his hat over hair pressed under it (T-Bone a trucker cap, Grommet a bucket hat; Shazza none)', () => {
+      for (const m of ['cap', 'capFront', 'bucketHat']) expect(mats.includes(m), m).toBe(hats.includes(m));
+      expect(mats.includes('hairHat')).toBe(hats.length > 0);
+      if (!hats.length) return;
+      expect(man.checks).toMatchObject({ hatHairUnder: true });
+      for (const m of [...hats, 'hairHat']) expect([...new Set(skinned(path, gltf, m).flatMap((v) => v.bones))], m).toEqual(['head']);
+      const hat = hats.flatMap((m) => skinned(path, gltf, m).map((v) => v.pos)), hair = skinned(path, gltf, 'hairHat').map((v) => v.pos);
+      const eyes = man.landmarks!.eyes, eyeY = (eyes[0][1] + eyes[1][1]) / 2, eyeZ = (eyes[0][2] + eyes[1][2]) / 2;
+      // Over the face, the hat (crown, peak or brim) stays above the eyes and the glasses.
+      const overFace = hat.filter((p) => Math.abs(p[0]) < 0.04 && p[2] > eyeZ - 0.01);
+      expect(overFace.length).toBeGreaterThan(0);
+      expect(Math.min(...overFace.map((p) => p[1]))).toBeGreaterThan(eyeY + 0.015);
+      expect(Math.max(...hair.map((p) => p[1]))).toBeLessThan(Math.max(...hat.map((p) => p[1])));
+    });
+    const extra = { female: 'towel', male: 'neoprene', grommet: 'fins' }[name];
+    it(`carries the pack on the back, straps over the shoulders, with the ${extra} (walking spec §2, §3)`, () => {
+      for (const m of ['pack', 'packTrim', extra]) expect(mats, m).toContain(m);
+      for (const m of ['pack', 'packTrim', extra]) {
+        const bad = skinned(path, gltf, m).flatMap((v) => v.bones).filter((b) => !['spine_03', 'clavicle_l', 'clavicle_r'].includes(b));
+        expect([...new Set(bad)], m).toEqual([]);
+      }
+      const spine = bone('spine_03'), pack = skinned(path, gltf, 'pack').map((v) => v.pos);
+      // Behind the back (glTF +z is the front): its face to the body is behind the spine, and it sits up the back.
+      expect(Math.max(...pack.map((p) => p[2]))).toBeLessThan(spine[2] - 0.04 * H);
+      expect(Math.max(...pack.map((p) => p[1]))).toBeGreaterThan(spine[1]);
+      // The straps come over the shoulders to the front of the chest.
+      expect(Math.max(...skinned(path, gltf, 'packTrim').map((v) => v.pos[2]))).toBeGreaterThan(spine[2] + 0.06);
+    });
+  });
+}

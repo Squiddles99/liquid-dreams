@@ -83,6 +83,12 @@ export interface DevPanelHandlers {
   onSurfer(): void;
   onSurferPlaceAhead(): void;
   onSurferChase(): void;
+  /** Stands the rider at a named spot on land (walking spec §4), walking, carrying the board. */
+  onSurferSpot(spot: 'duneCrest' | 'beach'): void;
+  /** Puts the beach pile (walking spec §5) ahead of the camera or beside the beach spot, and shows it. */
+  onSurferPile(where: 'ahead' | 'beach'): void;
+  /** The camera for the gang mockup (walking spec §6): in front of them, a little below their chests. */
+  onGangCamera(): void;
   onSound(): void;
   onMusicPlayPause(): void;
   onMusicNext(): void;
@@ -213,6 +219,11 @@ export const SURFER_BINDINGS = {
   heightNudgeM: { label: 'height nudge (m)', ...SURFER_PARAM_RANGES.heightNudgeM, step: 0.01 },
   pitchNudgeDeg: { label: 'pitch nudge (°)', ...SURFER_PARAM_RANGES.pitchNudgeDeg, step: 0.5 },
 } as const;
+/** The On land sub-folder's sliders (walking spec §4, §5), ranges exactly normalizeSurferParams's (DevPanel.test.ts). */
+export const SURFER_LAND_BINDINGS = {
+  pileX: { label: 'pile x (m)', ...SURFER_PARAM_RANGES.pileX, step: 0.1 },
+  pileZ: { label: 'pile z (m)', ...SURFER_PARAM_RANGES.pileZ, step: 0.1 },
+} as const;
 /** The Face sub-folder's dials (closeup spec §5.2), ranges exactly normalizeSurferParams's (DevPanel.test.ts). */
 export const FACE_BINDINGS = {
   faceBlink: { label: 'blink', ...SURFER_PARAM_RANGES.faceBlink, step: 0.01 },
@@ -231,7 +242,8 @@ export const surferBoardOptions = (preset: PresetName): Record<string, BoardKind
 const SURFER_OPTIONS = {
   preset: SURFER_PRESET_OPTIONS,
   stance: { regular: 'regular', goofy: 'goofy' },
-  outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'bikini bottoms + rash vest': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer', 'boardies + rash vest': 'rashieAndBoardies' },
+  outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'bikini bottoms + rash vest': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer', 'boardies + rash vest': 'rashieAndBoardies', 'walking clothes': 'walking' },
+  carrySide: { auto: 'auto', left: 'l', right: 'r' },
   pose: Object.fromEntries(ALL_POSES.map((p) => [p, p])),
 };
 
@@ -422,7 +434,8 @@ export class DevPanel {
       surferFolder.addBinding(m.surfer, key, opts).on('change', h.onSurfer);
     }
     surferFolder.addBinding(m.surfer, 'play', { label: 'play (paddle, pop-up)' }).on('change', h.onSurfer);
-    surferFolder.addBinding(m.surfer, 'onLand', { label: 'on land (glasses, dry)' }).on('change', h.onSurfer);
+    surferFolder.addBinding(m.surfer, 'onLand', { label: 'on land (dry; carry, walking clothes)' }).on('change', h.onSurfer);
+    surferFolder.addBinding(m.surfer, 'carrySide', { label: 'carry side', options: SURFER_OPTIONS.carrySide }).on('change', h.onSurfer);
     surferFolder.addBinding(m.surfer, 'balance', { label: 'balance layer' }).on('change', h.onSurfer);
     const face = surferFolder.addFolder({ title: 'Face', expanded: false });
     face.addBinding(m.surfer, 'idle', { label: 'idle life' }).on('change', h.onSurfer);
@@ -432,6 +445,18 @@ export class DevPanel {
     }
     surferFolder.addButton({ title: 'Place ahead of camera' }).on('click', h.onSurferPlaceAhead);
     surferFolder.addButton({ title: 'Chase view' }).on('click', h.onSurferChase);
+    const land = surferFolder.addFolder({ title: 'On land', expanded: false });
+    land.addButton({ title: 'dune crest (above the Womb)' }).on('click', () => h.onSurferSpot('duneCrest'));
+    land.addButton({ title: 'beach (in front of the Womb)' }).on('click', () => h.onSurferSpot('beach'));
+    land.addBinding(m.surfer, 'gang', { label: 'the gang (mockup)' }).on('change', h.onSurfer);
+    land.addButton({ title: 'Gang camera' }).on('click', h.onGangCamera);
+    land.addBinding(m.surfer, 'pile', { label: 'beach pile' }).on('change', h.onSurfer);
+    land.addButton({ title: 'Place pile ahead of camera' }).on('click', () => h.onSurferPile('ahead'));
+    land.addButton({ title: 'Pile beside the beach spot' }).on('click', () => h.onSurferPile('beach'));
+    for (const [key, opts] of Object.entries(SURFER_LAND_BINDINGS) as [keyof typeof SURFER_LAND_BINDINGS, (typeof SURFER_LAND_BINDINGS)[keyof typeof SURFER_LAND_BINDINGS]][]) {
+      land.addBinding(m.surfer, key, opts).on('change', h.onSurfer);
+    }
+    land.addBinding(m.surfer, 'pileHeadingDeg', { label: 'pile heading', min: 0, max: 360, format: withCompass }).on('change', h.onSurfer);
     const soundFolder = this.pane.addFolder({ title: 'Sound', expanded: false });
     for (const [key, opts] of Object.entries(SOUND_BINDINGS) as [keyof typeof SOUND_BINDINGS, (typeof SOUND_BINDINGS)[keyof typeof SOUND_BINDINGS]][]) {
       soundFolder.addBinding(m.sound, key, opts).on('change', h.onSound);

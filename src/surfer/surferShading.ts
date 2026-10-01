@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, atan, attribute, fract, screenCoordinate, cameraPosition, clamp, cos, cross, dFdx, dFdy, dot, exp, float, fwidth, length, max, min, mix, mx_noise_float, mx_worley_noise_float, normalize, normalWorld, positionGeometry, positionLocal, positionWorld, pow, sign, sin, smoothstep, sqrt, step, uniform, uv, vec2, vec3 } from 'three/tsl';
+import { abs, atan, attribute, fract, screenCoordinate, cameraPosition, clamp, cos, cross, dFdx, dFdy, dot, exp, float, fwidth, length, max, min, mix, mx_noise_float, mx_worley_noise_float, normalize, normalWorld, positionGeometry, positionLocal, positionWorld, pow, sign, sin, smoothstep, sqrt, step, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
 import type { SurferPreset } from './presets';
@@ -344,6 +344,58 @@ export function fabricMaterial(sky: Sky, color: [number, number, number], sv?: (
   const m = new THREE.MeshBasicNodeMaterial();
   m.side = THREE.DoubleSide;
   m.colorNode = litColor(sky, { albedo: rgb(color), normal: normalWorld, specular: float(0.03), shininess: float(20), wrap: float(0.1) }, sv);
+  return m;
+}
+
+export type Cloth = 'cotton' | 'denim' | 'canvas' | 'neoprene' | 'rubber' | 'towel';
+/** Per cloth: the weave's threads per metre (0 none), how deep the baked creases read (m), the sheen, the light's wrap. */
+const CLOTH: Record<Cloth, { weave: number; crease: number; specular: number; shininess: number; wrap: number }> = {
+  cotton: { weave: 900, crease: 0.004, specular: 0.03, shininess: 12, wrap: 0.25 },
+  denim: { weave: 1100, crease: 0.003, specular: 0.03, shininess: 14, wrap: 0.15 },
+  canvas: { weave: 650, crease: 0.002, specular: 0.04, shininess: 16, wrap: 0.15 },
+  neoprene: { weave: 0, crease: 0.002, specular: 0.07, shininess: 40, wrap: 0.1 },
+  rubber: { weave: 0, crease: 0, specular: 0.05, shininess: 30, wrap: 0.05 },
+  towel: { weave: 420, crease: 0, specular: 0.02, shininess: 8, wrap: 0.3 },
+};
+
+/**
+ * The walking clothes, hats and packs (walking spec §3). COLOR_0 from the build (tools/surfer/clothes.py, packs.py):
+ * r the crease height (the towel: its stripes), g occlusion, b the distance to the hem (0 at it). Everything is pinned
+ * to the rest-pose surface (positionGeometry), so folds and weave ride with the cloth:
+ * - a weave visible up close, faded out by its own derivative before it can shimmer;
+ * - the baked creases as a bump, with a little fine fold noise;
+ * - the baked occlusion darkening the under-layers;
+ * - denim faded on the raised folds and frayed at the hem (threads alpha-tested, dithered with no MSAA);
+ * - neoprene and rubber with a soft sheen and no weave.
+ * `baked` false (a part built without COLOR_0): no creases, open, no hem.
+ */
+export function clothMaterial(sky: Sky, color: [number, number, number], cloth: Cloth, sv?: (xz: N) => N, baked = true): THREE.MeshBasicNodeMaterial {
+  const k = CLOTH[cloth];
+  const m = new THREE.MeshBasicNodeMaterial();
+  m.side = THREE.DoubleSide;
+  const c: N = baked ? attribute('color', 'vec4') : vec4(0.5, 1, 1, 1);
+  const P: N = positionGeometry;
+  let albedo: N = rgb(color);
+  if (k.weave > 0) {
+    const f = k.weave * 2 * Math.PI;
+    const weave = sin(P.x.add(P.z).mul(f)).mul(sin(P.y.sub(P.z.mul(0.7)).mul(f * 0.97))).mul(0.5).add(0.5);
+    const fade = float(1).sub(smoothstep(0.3, 0.8, length(fwidth(P)).mul(k.weave)));
+    albedo = albedo.mul(float(1).sub(weave.mul(0.14).mul(fade)));
+  }
+  if (cloth === 'towel') albedo = mix(albedo, vec3(0.86, 0.83, 0.76), c.x);
+  if (cloth === 'denim') {
+    // Faded on the raised folds and at the frayed hem, as worn denim goes.
+    albedo = albedo.mul(c.x.mul(0.35).add(0.85));
+    albedo = mix(albedo, vec3(0.62, 0.66, 0.7), float(1).sub(c.z).mul(0.45));
+    const threads = mx_noise_float(vec3(P.x.mul(380.0), P.y.mul(28.0), P.z.mul(380.0))).mul(0.5).add(0.5);
+    const ign = fract(fract(screenCoordinate.x.mul(0.06711056).add(screenCoordinate.y.mul(0.00583715))).mul(52.9829189));
+    m.opacityNode = step(ign.mul(0.3).add(0.35), c.z.mul(1.6).add(threads.mul(0.45)));
+    m.alphaTest = 0.5;
+  }
+  albedo = albedo.mul(mix(float(0.5), float(1), c.y));
+  const h = k.crease > 0 ? c.x.sub(0.5).mul(k.crease).add(mx_noise_float(P.mul(70.0)).mul(0.0004)) : float(0);
+  const normal = k.crease > 0 ? bumpNormal(normalWorld, h) : normalWorld;
+  m.colorNode = litColor(sky, { albedo, normal, specular: float(k.specular), shininess: float(k.shininess), wrap: float(k.wrap) }, sv);
   return m;
 }
 
