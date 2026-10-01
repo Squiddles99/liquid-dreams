@@ -73,7 +73,8 @@ describe('lipProfile', () => {
 
   it('the biggest default wave at the peak lands its lip 0.4–1.5 s after onset (a free fall from the crest)', () => {
     const { base, input } = stationAt(0, 0, big, 0);
-    const f = profileFrame(base, { ...input, psi: PSI_NORMAL }, LIP);
+    // Read at the landing: the frame's P is the curl's point as it stands, the landing point once it has landed.
+    const f = profileFrame(base, { ...input, psi: PSI_NORMAL, tb: profileFrame(base, { ...input, psi: PSI_NORMAL }, LIP).tauLand }, LIP);
     expect(f.tauLand).toBeGreaterThan(0.4);
     expect(f.tauLand).toBeLessThan(1.5);
     expect(Math.abs(f.tauLand - Math.sqrt((2 * (f.K[1] - f.P[1])) / GRAVITY_MS2))).toBeLessThan(1e-9);
