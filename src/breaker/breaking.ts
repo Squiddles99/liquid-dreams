@@ -667,13 +667,34 @@ export interface BreakPointInput {
    * it lands. The crest's own H spikes along the crest where the reef focuses the swell, and the pile's long back drew
    * those spikes as ridges behind the crest. */
   lipHeight: number;
+  /**
+   * Where the front leans (setWaveModel.LEAN_RATIO, leanPhase): the leaned Phase 1 height here and its slope along ahead.
+   * eta and slope above are then the unleaned wave's. The result is relative to the leaned one (it is the Phase 1 the
+   * caller has); absent, the unleaned is Phase 1.
+   */
+  lean?: { eta: number; slope: number };
+}
+
+/**
+ * The leaned front meets the drained hollow over this many H, so the join has no crease: where the leaned wave lies d
+ * under the unleaned one the sheet goes down by leanRamp(d) (0 for d ≤ 0, d²/2k up to k, d − k/2 beyond), so it is the
+ * unleaned wave exactly where that is the lower or they are equal (at the crest, and where the lean ends at the
+ * trough), and the leaned one k/2 higher where it is clearly lower. A smooth minimum dipped k/4 below both where they
+ * are equal: a 1.5 cm step along every leaning crest (θ = 0⁻ leans, 0 does not).
+ */
+export const LEAN_BLEND_H = 0.02;
+
+/** How far the sheet goes down toward a leaned wave lying d under it, and its slope ∂/∂d ([0, 1]); LEAN_BLEND_H. */
+export function leanRamp(d: number, k: number): { value: number; dD: number } {
+  if (!(d > 0)) return { value: 0, dD: 0 };
+  return d < k ? { value: (d * d) / (2 * k), dD: d / k } : { value: d - k / 2, dD: 1 };
 }
 
 export interface BreakPointResult {
   /** The final height (replaces the Phase 1 height). */
   eta: number;
   foam: number;
-  /** ∂(eta − the Phase 1 height)/∂ahead: what breaking adds to the Phase 1 slope along travel. */
+  /** ∂(eta − the Phase 1 height)/∂ahead: what breaking adds to the Phase 1 slope along travel (the leaned one's, i.lean). */
   dEtaDAhead: number;
   /** The pile's height (m) where it is the surface, 0 elsewhere: the churn's scale (render). */
   pile: number;
@@ -686,10 +707,16 @@ export interface BreakPointResult {
  * the cross-section), eta = (η − D − R)·S, and what breaking adds is eta − η = η·(S − 1) − (D + R)·S, differentiated
  * term by term along ahead; and the whitewater pile on top (spec 2026-09-29 §3.2), which lifts it toward the pile's height
  * by a smooth maximum.
+ * Where the front leans (i.lean) the sheet is the lower of two, joined over LEAN_BLEND_H·H (leanRamp): the unleaned wave
+ * sharpened and drained as above (so the drained hollow at the foot is where Andrew's traced anchors put it, 0.2 / 0.55 /
+ * 0.7 H below still water), and the leaned wave sharpened, undrained (beyond the hollow, the trough the lean brings in to
+ * the foot: the shelf the unleaned front left there, the "first swell", is gone). Drained on the leaned wave instead, the
+ * water at 12 ft stood 0.85–0.93 H below still water; drained less to match, the hollow stood too high wherever the leaned
+ * trough is not a full H under the crest (a settling crest, a shoulder) and the lip cut through the water there.
  */
 export function breakPoint(i: BreakPointInput, lc: Lifecycle, p: BreakParams): BreakPointResult {
   const steep = lc.steep;
-  if (!(steep > 0 || lc.stage > 0 || lc.drain > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { eta: i.eta, foam: 0, dEtaDAhead: 0, pile: 0 };
+  if (!(steep > 0 || lc.stage > 0 || lc.drain > 0) || !(i.H > MIN_BREAKING_HEIGHT_M)) return { eta: i.lean?.eta ?? i.eta, foam: 0, dEtaDAhead: 0, pile: 0 };
   const c: StageCurves = { drain: lc.drain, collapse: lc.collapse };
   const ahead = i.uUnbroken - i.uCrest;
   const sharpen = steep * i.crestConfidence;
@@ -700,8 +727,18 @@ export function breakPoint(i: BreakPointInput, lc: Lifecycle, p: BreakParams): B
   const drain = depth * shape * i.env;
   const dDrain = depth * (drainShapeSlope(ahead, i.theta, i.dThetaDAhead, i.H, i.k, p) * i.env + shape * i.dEnvDAhead);
   const scale = boreScale(i.boreH, i.hmin, c.collapse, p);
-  const base = (i.eta - drop - drain) * scale;
-  const dBase = i.slope * (scale - 1) - (dDrop + dDrain) * scale;
+  let base = (i.eta - drop - drain) * scale;
+  // The base's whole slope along ahead (Phase 1's included).
+  let slopeBase = (i.slope - dDrop - dDrain) * scale;
+  if (i.lean) {
+    const dropL = sharpenDrop(ahead, i.lean.eta, i.etaCrest, i.H, i.k, sharpen, p);
+    const dDropL = sharpenDropSlope(ahead, i.lean.eta, i.lean.slope, i.etaCrest, i.H, i.k, sharpen, p);
+    const leaned = (i.lean.eta - dropL) * scale, slopeLeaned = (i.lean.slope - dDropL) * scale;
+    const r = leanRamp(base - leaned, LEAN_BLEND_H * i.H);
+    base -= r.value;
+    slopeBase -= r.dD * (slopeBase - slopeLeaned);
+  }
+  const dBase = slopeBase - (i.lean?.slope ?? i.slope);
   const out: BreakPointResult = { eta: base, foam: foamWeight(i.theta, ahead, i.H, i.env, c, p), dEtaDAhead: dBase, pile: 0 };
   // The whitewater pile (spec §3.2): the sheet lifted toward the pile's top T, most at its top (PILE_LAND_H·H ahead once
   // the curl has collapsed), fading over its front and back: eta = base + w·(smoothMax(base, T) − base), w = weight·g(v).
@@ -721,7 +758,7 @@ export function breakPoint(i: BreakPointInput, lc: Lifecycle, p: BreakParams): B
     const lift = m.value - base, w = weight * g;
     out.eta = base + w * lift;
     // d/dahead: the base's slope, + (weight·g)′·lift, + w·(dA − 1)·(the base's whole slope, Phase 1's included).
-    out.dEtaDAhead = dBase + crestWeight * (dNear * g + near * dg) * lift + w * (m.dA - 1) * (i.slope + dBase);
+    out.dEtaDAhead = dBase + crestWeight * (dNear * g + near * dg) * lift + w * (m.dA - 1) * slopeBase;
     out.pile = w * (1 - m.dA) * T;
     out.foam = Math.max(out.foam, weight * smoothstep(PILE_FOAM_EDGE[0], PILE_FOAM_EDGE[1], g) * (1 - m.dA) * (PILE_FOAM_THIN + (1 - PILE_FOAM_THIN) * lc.decay));
   }

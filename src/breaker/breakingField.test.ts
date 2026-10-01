@@ -3,14 +3,15 @@ import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
-import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
+import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, PILE_LAND_H, PILE_RISE_S, breakingHeightThreshold, landingEstimate, onsetTime, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
 import { type Station, traceStations } from './crestTrace';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
+import { offshoreSpeed } from './overturn';
 import { type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import {
-  type ActiveWave, type BreakOptions, breakOptions, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestPileTop, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
+  type ActiveWave, type BreakOptions, breakOptions, LEAN_RATIO, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestPileTop, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
   phaseXi, seabedFloor, sumWaves, toActiveWave, waveAt, waveAtCrest,
 } from './setWaveModel';
 
@@ -92,7 +93,9 @@ describe('breaking reduces to Phase 1', () => {
   });
   it('a lone wave in deep water, before it reaches the ledge, is exactly the Phase 1 wave', () => {
     const w = testWave(REF_BIGGEST.heightM);
-    const crest = ray(0, 0, 100, 0)[0]; // 100 m seaward of the peak, on its ray
+    // 140 m seaward of the peak, on its ray: 12.8 m deep, ρ 0.30. (At 100 m, 9.5 m deep on the ramp, ρ is 0.53: the
+    // shoaling front has begun to lean there, LEAN_RATIO.)
+    const crest = ray(0, 0, 140, 0)[0];
     for (let du = -50; du <= 50; du += 5) for (const side of [-30, 0, 30]) {
       const x = crest.x + at(0, 0).dirX * du - at(0, 0).dirZ * side, z = crest.z + at(0, 0).dirZ * du + at(0, 0).dirX * side;
       expect(waveAt(x, z, crest.tau, at(x, z), w, ctx, sheet)).toEqual(waveAt(x, z, crest.tau, at(x, z), w, ctx));
@@ -128,9 +131,9 @@ describe('the field breaking height (SetWaves skips the GPU breaking below its s
       const w = testWave(1.01 * n.T), o = optsFor(field, p);
       expect(crestStage(n.x, n.z, at(n.x, n.z).tau, at(n.x, n.z), w, ctx, o)).toBeGreaterThan(0);
     });
-    it(`its steepening share (steepeningStart of it) bounds the sheet: a wave no taller is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
+    it(`its shaping share (the front's lean or the sharpening, whichever starts first) bounds the sheet: a wave no taller is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
       const hs = fieldSteepeningHeight(field, p);
-      expect(hs).toBeCloseTo(steepeningStart(p) * fieldBreakingHeight(field, p, field.hminSlurp), 12);
+      expect(hs).toBeCloseTo(Math.min(steepeningStart(p), LEAN_RATIO[0]) * fieldBreakingHeight(field, p, field.hminSlurp), 12);
       const w = [testWave(hs)], o = optsFor(field, p);
       for (let x = -400; x <= 300; x += 12.5) for (let z = -600; z <= 300; z += 12.5) for (const t of [-20, -5, 0, 4, 12]) {
         expect(sumWaves(x, z, t, at(x, z), w, ctx, o)).toEqual(sumWaves(x, z, t, at(x, z), w, ctx));
@@ -659,9 +662,10 @@ describe('breaking stays finite and bounded', () => {
 });
 
 describe('set waves do not stack on the wave ahead (Andrew)', () => {
-  it('100 m seaward of the peak each crest is its own height (≤ 1.08×), and the wave behind a long tail steps on it', { timeout: 60_000 }, () => {
+  it('100 m seaward of the peak each crest is its own height (≤ 1.08×): no wave steps on the one before', { timeout: 60_000 }, () => {
     // The Phase 1 surface of whole sets against each wave alone, at its crest: the old Gaussian envelope left 21% of a
-    // wave a period behind it, and the next wave's crest stood 1.13–1.50× its own height on it.
+    // wave a period behind it, and the next wave's crest stood 1.13–1.50× its own height on it. The long tails (one wave
+    // in twelve kept it) went too (Andrew, 2026-10-01: each swell line is one wave).
     const p0 = ray(0, 0, 100, 0)[0];
     const f = at(p0.x, p0.z);
     const crestOf = (waves: ActiveWave[], w: ActiveWave): number => {
@@ -669,21 +673,18 @@ describe('set waves do not stack on the wave ahead (Andrew)', () => {
       for (let dt = -2; dt <= 2; dt += 0.05) best = Math.max(best, sumWaves(p0.x, p0.z, w.arrivalS + f.tau + dt, f, waves, ctx).eta);
       return best;
     };
-    let clean = 0, worstClean = 0, stepped = 0, bestStep = 0;
+    let clean = 0, worstClean = 0;
     for (let k = 0; k < 120; k++) {
       const events = wavesOfSet(k, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
       const waves = events.map(toActiveWave);
       waves.forEach((w, i) => {
         const ratio = crestOf(waves, w) / crestOf([w], w);
-        if (i > 0 && events[i - 1].longTail) { stepped++; bestStep = Math.max(bestStep, ratio); return; }
         clean++;
         worstClean = Math.max(worstClean, ratio);
       });
     }
     expect(clean).toBeGreaterThan(400);
-    expect(worstClean, 'the tallest crest over its own height, behind a tight wave').toBeLessThanOrEqual(1.08);
-    expect(stepped, 'long tails happen').toBeGreaterThan(10);
-    expect(bestStep, 'a wave behind a long tail stands on its leftover').toBeGreaterThan(1.15);
+    expect(worstClean, 'the tallest crest over its own height').toBeLessThanOrEqual(1.08);
   });
 });
 
@@ -925,5 +926,73 @@ describe('no isolated spikes on the inside reef (Andrew\'s "rock", 12 ft)', () =
       }
     }
     expect(worst, where).toBeLessThan(0.5);
+  });
+});
+
+describe('the water in front of the break is drawn steadily down (Andrew, 2026-10-01, 12 ft)', () => {
+  // His moment: 12 ft, 15 s from 225°, 3 m/s from 80°, tide 0, seed 2002, t 1407.7 s; set 1's second wave breaks in front
+  // of his camera at (−70.5, 23.7). The face sharpening lowered only the top of the face, so the lower half of the
+  // swell's long front stood as a shelf between the drain's hollow at the foot and the trough half a wavelength ahead: a
+  // surfer in front was drawn down 3 m, lifted 2.5 m by it (his "first swell"), then drawn into the hollow before the face.
+  const c = cloneConditions(DEFAULT_CONDITIONS);
+  c.swell = { sizeFt: 12, periodS: 15, directionDeg: 225 }; c.wind = { speedMs: 3, directionDeg: 80 }; c.tideM = 0; c.seed = 2002;
+  const o = breakOptions(field, DEFAULT_BREAK_PARAMS, offshoreSpeed(3, 80, field.far.dirX, field.far.dirZ));
+  const t0 = 1407.708, cam = at(-70.49, 23.7);
+  const point = (u: number) => ({ x: -70.49 + cam.dirX * u, z: 23.7 + cam.dirZ * u });
+  const height = (u: number, t: number) => { const { x, z } = point(u); return sumWaves(x, z, t, at(x, z), wavesNear(t, c, DEFAULT_SET_PARAMS).map(toActiveWave), ctx, o); };
+  /** The surface along the line at t, in displaced metres along it: [u, η]. */
+  const profile = (t: number): [number, number][] => {
+    const out: [number, number][] = [];
+    for (let u = -110; u <= 30; u += 0.5) { const h = height(u, t); out.push([u + h.dx * cam.dirX + h.dz * cam.dirZ, h.eta]); }
+    return out;
+  };
+  const breaker = toActiveWave(wavesOfSet(1, c, DEFAULT_SET_PARAMS)[1]);
+  it('a surfer sitting 20–40 m in front of where it breaks is never lifted more than 0.6 m before the face reaches them (was 2.9 m), 0.25 m by this wave', { timeout: 120_000 }, () => {
+    // What is left: the wave before's back trough filling in as it passes (0.4 m at 40 m, over 3 s, 2.4–2.9 m below still
+    // water), and this wave's own trough level drifting by ~0.15 m as its flat trough slides past (the shoaling swell's
+    // trough level varies along the ray as the reef focuses it); then this wave's draw takes over.
+    for (const [u, alone] of [-40, -30, -20].flatMap((v) => [[v, false], [v, true]] as [number, boolean][])) {
+      // Up to the face (the water past +1.5 m: the shelf never stood above +0.5 m), then up to the lowest water before it.
+      const series: number[] = [];
+      let faceAt = NaN;
+      // From 9 s before his moment: the wave before (broken 15 s earlier) has passed all three spots by then.
+      for (let dt = -9; dt <= 2.6; dt += 0.1) {
+        const y = alone ? (() => { const { x, z } = point(u); return sumWaves(x, z, t0 + dt, at(x, z), [breaker], ctx, o).eta; })() : height(u, t0 + dt).eta;
+        if (y > 1.5) { faceAt = dt; break; }
+        series.push(y);
+      }
+      const bottom = series.indexOf(Math.min(...series));
+      let low = Infinity, rise = 0;
+      for (const y of series.slice(0, bottom + 1)) { rise = Math.max(rise, y - low); low = Math.min(low, y); }
+      expect(faceAt, `the face reaches the surfer at ${u} m`).toBeGreaterThan(-2);
+      expect(rise, `lifted before the face, ${u} m along the line${alone ? ', this wave alone' : ''}`).toBeLessThan(alone ? 0.25 : 0.6);
+    }
+  });
+  it('as it breaks the lowest water in front is at the foot of the face, and from there it only rises (no shelf, no rim)', { timeout: 120_000 }, () => {
+    for (const dt of [0, 0.5, 1]) {
+      const prof = profile(t0 + dt);
+      const top = prof.reduce((a, b) => (b[1] > a[1] ? b : a));
+      const ahead = prof.filter(([u]) => u > top[0] && u < top[0] + 45);
+      const low = ahead.reduce((a, b) => (b[1] < a[1] ? b : a));
+      const f = crestAt(point(top[0]).x, point(top[0]).z, t0 + dt, at(point(top[0]).x, point(top[0]).z), breaker, ctx, o)!;
+      const H = localHeight(breaker, f.f);
+      expect(low[0] - top[0], `the lowest water's distance ahead of the crest, +${dt} s (H ${H.toFixed(1)} m)`).toBeLessThan(2 * H);
+      let dip = 0, hi = -Infinity;
+      for (const [u, y] of ahead) if (u > low[0]) { hi = Math.max(hi, y); dip = Math.max(dip, hi - y); }
+      // The shelf stood 1.46 m. What is left is the leaned trough's own level, which follows the shoaling swell's trough:
+      // it varies by up to ~0.2 m along the ray 30–45 m ahead as the reef focuses the swell.
+      expect(dip, `a rim ahead of the foot (water falling again further ahead), +${dt} s`).toBeLessThan(0.3);
+    }
+  });
+  it('the drained trough at the foot lies 0.5–0.75 H below still water once the lip has landed (this wave: ψ 0.088, thrown out)', { timeout: 120_000 }, () => {
+    for (const dt of [0.5, 1, 1.5]) {
+      const prof = profile(t0 + dt);
+      const top = prof.reduce((a, b) => (b[1] > a[1] ? b : a));
+      const low = prof.filter(([u]) => u > top[0] && u < top[0] + 45).reduce((a, b) => (b[1] < a[1] ? b : a));
+      const f = crestAt(point(top[0]).x, point(top[0]).z, t0 + dt, at(point(top[0]).x, point(top[0]).z), breaker, ctx, o)!;
+      const H = localHeight(breaker, f.f);
+      expect(-low[1] / H, `below still water ÷ H, +${dt} s`).toBeGreaterThan(0.5);
+      expect(-low[1] / H, `below still water ÷ H, +${dt} s`).toBeLessThan(0.75);
+    }
   });
 });
