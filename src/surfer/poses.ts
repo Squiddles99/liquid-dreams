@@ -479,10 +479,14 @@ function carry(ctx: PoseContext, r: Rider): PoseTargets {
     forward: V(Math.cos(CARRY_NOSE_DOWN), -Math.sin(CARRY_NOSE_DOWN), 0),
     up: n,
   };
-  const fsh = rest.joint[`upperarm_${free}`], reach = m.upperArmLen + m.forearmLen;
+  const fsh = rest.joint[`upperarm_${free}`], reach = m.upperArmLen + m.forearmLen, wave = clamp01(ctx.dials.reach);
   const hands = {
     [side]: boardHand(wrist, V(0, 0.3, k)),
-    [free]: boardHand(V(0.03, fsh.y - 0.96 * reach, -k * (Math.abs(fsh.x) + 0.06)), V(-1, 0, -k * 0.2)),
+    // The free arm hangs; the reach dial raises it to a wave beside the head (stoked: the surf's up).
+    [free]: boardHand(
+      V(0.03, fsh.y - 0.96 * reach, -k * (Math.abs(fsh.x) + 0.06)).lerp(V(0.06, fsh.y + 0.55 * reach, -k * (Math.abs(fsh.x) + 0.2)), wave),
+      V(-1, 0, -k * 0.2).lerp(V(0, -0.6, -k), wave).normalize(),
+    ),
   } as Record<Limb, HandTarget>;
   return {
     pelvis, pelvisUp: Y(), pelvisForward: X(), chest: { bend: 0.04, twist: 0, side: 0 },
