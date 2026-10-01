@@ -65,6 +65,11 @@ export const FACE_DIR_STEP = 0.02;
 export const HAND_BACK_S = 0.5;
 /** The foam from the lip's landing rises over this fraction of the collapse. */
 export const LANDING_FOAM_RISE = 0.3;
+/** While the curl is small (to this share of the throw) the face arrives along the crest's direction, turning into the
+ * tube's: the crest still rounds over into the young curl. From here on the face is concave. */
+export const FACE_TURN_PROGRESS = 0.3;
+/** The crest's direction is read this far behind it (m). */
+export const CREST_DIR_STEP = 0.1;
 /** A broken section whose crest stands less than BACK_OFF_DROP_H[1]·H above its foot (it has run into deeper water and
  * the sheet has stopped sharpening it) relaxes back to the sheet, fully by BACK_OFF_DROP_H[0]·H. */
 export const BACK_OFF_DROP_H: readonly [number, number] = [0.3, 0.6];
@@ -111,9 +116,12 @@ export interface ProfileFrame {
   rho: number;
   /** The pile's landing knot (PileLift): the face's join. */
   uLand: number;
+  /** The crest's direction going back (the angle up from −x): the young curl's face arrives along it. */
+  aK: number;
   /** The fits' wave height (m): the crest's height above the water the lip lands on (impactHeight). */
   HI: number;
-  /** The tube at impact (overturn.overturnShape at HI), and as it stands now (its width grown to W·prog, clipped at P.y). */
+  /** The tube at impact (overturn.overturnShape at HI), and as it stands now: the curl growing as it throws (scaled by
+   * prog about an origin sliding from the crest to its place, clipped at the landing's height). */
   shape: Overturn;
   tube: Tube;
   /** The upper side's top (ξ), the lip's tip now (ξ), where it lands (ξ: 1, or where the water cuts the tube). */
@@ -123,7 +131,8 @@ export interface ProfileFrame {
   /** The lip's thickness over the tube's top, and at its tip now (m). */
   tTop: number;
   tipE: number;
-  /** The lip's tip now (on the tube's upper side) and where it lands. */
+  /** The lip's tip now (on the tube's upper side), and the curl's point now: where the face runs up to, where the lip
+   * lands once it has landed. */
   tip: Vec2;
   P: Vec2;
   /** The tip's mean speed across (m/s) and how far ahead of the crest it is now (m): the emitters read them. */
@@ -260,9 +269,17 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   const tF = norm2([Fb[0] - F[0], Fb[1] - F[1]]);
   const t = tb === null ? 0 : Math.min(Math.max(tb, 0), tauLand);
   const prog = t / tauLand;
-  const tube: Tube = { ...full, W: shape.W * prog, clipY: P[1] };
-  const xiTip = prog * prog * xiEnd;
+  // The curl grows as it throws (the lip finish, Andrew 2026-10-01): the tube at impact scaled by the throw's progress,
+  // about an origin sliding from the crest to its place, and the face running up to its point. At the start it is the
+  // crest itself; at the landing, the tube at impact. Drawn full size from the start, the thin young tube lay along its
+  // axis from the crest down to where it would land: a flat shoulder ahead of the break, a square corner along the peel
+  // and a notch under the crest. The tip keeps its path from the origin (prog² of the tube's length).
+  const g = prog;
+  const tube: Tube = { ...full, O: [K[0] + (full.O[0] - K[0]) * g, K[1] + (full.O[1] - K[1]) * g], L: full.L * g, W: full.W * g, clipY: P[1] };
+  const Pnow = tubeUpper(tube, xiEnd);
+  const xiTip = prog * xiEnd;
   const tip = tubeUpper(tube, xiTip);
+  const Kb = base(-CREST_DIR_STEP), aK = Math.atan2(Kb[1] - K[1], -(Kb[0] - K[0]));
   // Before the break the constructed curve follows the sheet's sharpening, but only inside the ribbon: the sharpening
   // starts before the ribbon fades in (SHEET_SHARPENING_LEAD), and there the sheet draws it itself.
   const steep = tb === null
@@ -279,7 +296,7 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   return {
     K, F, tF, uFoot, uFront: uFoot + LAND_CLEARANCE_M + EDGE_MARGIN_M, uBack: -(BACK_EDGE_H * H + EDGE_MARGIN_M),
     tauLand, prog, weight: steep * (1 - collapse) * present, collapse, landing, rho: ribbonWeight(r, tb, settleFrom, span, p),
-    uLand: uFoot, HI, shape, tube, xiTop, xiTip, xiEnd, tTop: tTop + drop, tipE: TIP_THICKNESS_RATIO * (tTop + drop) * (1 - prog) * smoothstep(0, TIP_GROW_PROGRESS, prog), tip, P,
+    uLand: uFoot, aK, HI, shape, tube, xiTop, xiTip, xiEnd, tTop: (tTop + drop) * g, tipE: TIP_THICKNESS_RATIO * (tTop + drop) * g * (1 - prog) * smoothstep(0, TIP_GROW_PROGRESS, prog), tip, P: Pnow,
     vj: (P[0] - K[0]) / tauLand, reach: tip[0] - K[0],
   };
 }
@@ -408,7 +425,9 @@ function faceArrival(f: ProfileFrame, Lf: number): Vec2 {
   // Angles measured going back (toward −x), up positive.
   const ang = (v: Vec2): number => Math.atan2(v[1], -v[0]);
   const aF = ang(f.tF), aC = ang([f.P[0] - f.F[0], f.P[1] - f.F[1]]), aL = ang(dP);
-  const a = Math.max(2 * aC - aF, aL);
+  // The young curl's face arrives along the crest (its point is the crest at the throw's start: the crest still rounds
+  // over into the curl), turning into the tube's by FACE_TURN_PROGRESS of the throw, concave from there.
+  const a = f.aK + (Math.max(2 * aC - aF, aL) - f.aK) * smoothstep(0, FACE_TURN_PROGRESS, f.prog);
   return [-Math.cos(a) * Lf, Math.sin(a) * Lf];
 }
 
