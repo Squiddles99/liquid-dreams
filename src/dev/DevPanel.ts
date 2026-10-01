@@ -87,6 +87,8 @@ export interface DevPanelHandlers {
   onSurferSpot(spot: 'duneCrest' | 'beach'): void;
   /** Puts the beach pile (walking spec §5) ahead of the camera or beside the beach spot, and shows it. */
   onSurferPile(where: 'ahead' | 'beach'): void;
+  /** The camera for the gang mockup (walking spec §6): in front of them, a little below their chests. */
+  onGangCamera(): void;
   onSound(): void;
   onMusicPlayPause(): void;
   onMusicNext(): void;
@@ -446,6 +448,8 @@ export class DevPanel {
     const land = surferFolder.addFolder({ title: 'On land', expanded: false });
     land.addButton({ title: 'dune crest (above the Womb)' }).on('click', () => h.onSurferSpot('duneCrest'));
     land.addButton({ title: 'beach (in front of the Womb)' }).on('click', () => h.onSurferSpot('beach'));
+    land.addBinding(m.surfer, 'gang', { label: 'the gang (mockup)' }).on('change', h.onSurfer);
+    land.addButton({ title: 'Gang camera' }).on('click', h.onGangCamera);
     land.addBinding(m.surfer, 'pile', { label: 'beach pile' }).on('change', h.onSurfer);
     land.addButton({ title: 'Place pile ahead of camera' }).on('click', () => h.onSurferPile('ahead'));
     land.addButton({ title: 'Pile beside the beach spot' }).on('click', () => h.onSurferPile('beach'));

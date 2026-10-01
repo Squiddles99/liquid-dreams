@@ -157,6 +157,11 @@ export class SurferStand {
     (this.leash.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
   }
 
+  /** The rider on the stand, once loaded. */
+  get rider(): Surfer | null {
+    return this.surfer;
+  }
+
   chasePose(headingDeg: number): CameraPose | null {
     return this.frame ? chaseCamera(this.frame, headingDeg) : null;
   }
