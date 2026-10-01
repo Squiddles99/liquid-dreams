@@ -398,8 +398,23 @@
    ]
   },
   {
+   "name": "female_pack",
+   "triangles": 1784,
+   "materials": [
+    "pack",
+    "packTrim"
+   ]
+  },
+  {
+   "name": "female_towel",
+   "triangles": 356,
+   "materials": [
+    "towel"
+   ]
+  },
+  {
    "name": "female_hairDry",
-   "triangles": 124580,
+   "triangles": 124582,
    "materials": [
     "hairDry"
    ]

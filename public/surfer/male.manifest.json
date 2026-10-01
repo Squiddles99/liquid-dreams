@@ -417,6 +417,21 @@
    ]
   },
   {
+   "name": "male_pack",
+   "triangles": 1540,
+   "materials": [
+    "pack",
+    "packTrim"
+   ]
+  },
+  {
+   "name": "male_wetsuit",
+   "triangles": 808,
+   "materials": [
+    "neoprene"
+   ]
+  },
+  {
    "name": "male_hairDry",
    "triangles": 20400,
    "materials": [

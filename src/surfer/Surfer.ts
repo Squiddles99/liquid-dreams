@@ -108,6 +108,11 @@ export class Surfer {
       cap: () => fabricMaterial(sky, walk.hat ?? grey, sv),
       capFront: () => fabricMaterial(sky, walk.hatTrim ?? grey, sv),
       bucketHat: () => fabricMaterial(sky, walk.hat ?? grey, sv),
+      pack: () => fabricMaterial(sky, walk.pack ?? grey, sv),
+      packTrim: () => fabricMaterial(sky, walk.packTrim ?? grey, sv),
+      towel: () => fabricMaterial(sky, walk.towel ?? grey, sv),
+      neoprene: () => fabricMaterial(sky, walk.neoprene ?? grey, sv),
+      fins: () => fabricMaterial(sky, walk.fins ?? grey, sv),
     };
     materials.hairHat = () => hairMaterial(sky, preset, this.headCentre, sv, this.wet);
     Object.assign(materials, WALKING);
