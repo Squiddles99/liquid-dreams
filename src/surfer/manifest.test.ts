@@ -279,5 +279,20 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       const y = Math.min(...skinned(path, gltf, 'thongs').map((v) => v.pos[1]));
       expect(Math.abs(y + 0.012)).toBeLessThan(0.002);
     });
+    const hats = name === 'male' ? ['cap', 'capFront'] : name === 'grommet' ? ['bucketHat'] : [];
+    it('wears his hat over hair pressed under it (T-Bone a trucker cap, Grommet a bucket hat; Shazza none)', () => {
+      for (const m of ['cap', 'capFront', 'bucketHat']) expect(mats.includes(m), m).toBe(hats.includes(m));
+      expect(mats.includes('hairHat')).toBe(hats.length > 0);
+      if (!hats.length) return;
+      expect(man.checks).toMatchObject({ hatHairUnder: true });
+      for (const m of [...hats, 'hairHat']) expect([...new Set(skinned(path, gltf, m).flatMap((v) => v.bones))], m).toEqual(['head']);
+      const hat = hats.flatMap((m) => skinned(path, gltf, m).map((v) => v.pos)), hair = skinned(path, gltf, 'hairHat').map((v) => v.pos);
+      const eyes = man.landmarks!.eyes, eyeY = (eyes[0][1] + eyes[1][1]) / 2, eyeZ = (eyes[0][2] + eyes[1][2]) / 2;
+      // Over the face, the hat (crown, peak or brim) stays above the eyes and the glasses.
+      const overFace = hat.filter((p) => Math.abs(p[0]) < 0.04 && p[2] > eyeZ - 0.01);
+      expect(overFace.length).toBeGreaterThan(0);
+      expect(Math.min(...overFace.map((p) => p[1]))).toBeGreaterThan(eyeY + 0.015);
+      expect(Math.max(...hair.map((p) => p[1]))).toBeLessThan(Math.max(...hat.map((p) => p[1])));
+    });
   });
 }

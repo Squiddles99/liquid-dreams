@@ -393,6 +393,157 @@ def _hull(pts):
     return lower[:-1] + upper[:-1]
 
 
+def hat_band(L, style):
+    """Where a hat sits (walking spec §3): a plane through the forehead and the back of the head, tilted down at the back
+    (a cap a little lower than the bucket hat). Returns (a point on it, its upward normal): above the band is
+    (p - point)·normal > 0."""
+    c, eye_z, r = L["head_centre"], L["eye_z"], L["head_radius"]
+    front, back = (eye_z + 0.05, eye_z - 0.005) if style == "cap" else (eye_z + 0.055, eye_z + 0.0)
+    f, b = Vector((0, c.y - r, front)), Vector((0, c.y + r, back))
+    along = (b - f).normalized()
+    normal = Vector((0, -along.z, along.y))
+    if normal.z < 0:
+        normal = -normal
+    return f, normal
+
+
+def _crown(body, rig, coords, L, band, push, name):
+    """The hat's crown: the scalp above the band, cleanly cut along it, smoothed and pushed out `push` (hair pressed
+    flat under it), following the head only."""
+    point, normal = band
+    verts = body.data.vertices
+    obj = _copy_region(body, rig, lambda i: coords[i][0] == "head" and (verts[i].co - point).dot(normal) > -0.03, name)
+    _cut(obj, [(point, -normal, None)])
+    rest = [(v.co.copy(), v.normal.copy()) for v in obj.data.vertices]
+    for v, (co, nrm) in zip(obj.data.vertices, rest):
+        v.co = co + nrm * push
+    # Cleared from the real head: a smoothed copy shrinks a round head by mm, which let the pressed hair through.
+    _settle(obj, BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get()), push, iterations=6)
+    obj.vertex_groups.clear()
+    obj.vertex_groups.new(name="head").add(range(len(obj.data.vertices)), 1.0, "REPLACE")
+    return obj
+
+
+def _band_loop(bm, centre):
+    """The crown's open edge, ordered around the head."""
+    loop = [v for v in bm.verts if v.is_boundary]
+    return sorted(loop, key=lambda v: math.atan2(v.co.y - centre.y, v.co.x - centre.x))
+
+
+def _brim(bm, edge, centre, depth, drop, rows=4, roll=0.0, closed=False):
+    """A brim out from the crown's edge: each edge vertex walks `depth(v)` outward (horizontally from the head's axis)
+    and `drop(v, s)` down; quads between neighbours; the last row rolled down `roll`."""
+    grid = []
+    for v in edge:
+        out = Vector((v.co.x - centre.x, v.co.y - centre.y, 0)).normalized()
+        col = [v]
+        for k in range(1, rows + 1):
+            s = k / rows
+            p = v.co + out * depth(v) * s - Vector((0, 0, drop(v, s) + (roll if k == rows else 0.0)))
+            col.append(bm.verts.new(p))
+        grid.append(col)
+    n = len(grid)
+    for i in range(n if closed else n - 1):
+        a, b = grid[i], grid[(i + 1) % n]
+        for k in range(rows):
+            bm.faces.new((a[k], b[k], b[k + 1], a[k + 1]))
+    return [v for col in grid for v in col[1:]]
+
+
+def _finish_hat(obj, bm, thickness, front_faces=None):
+    """Thickness on every face, normals out, COLOR_0 (fold noise, open, no hem); `front_faces` (by centre) take the
+    second material."""
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=thickness)
+    if front_faces is not None:
+        for f in bm.faces:
+            f.material_index = 1 if front_faces(f.calc_center_median()) else 0
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.vertex_groups.clear()
+    obj.vertex_groups.new(name="head").add(range(len(obj.data.vertices)), 1.0, "REPLACE")
+    _colors(obj, [_fold(v.co, 20.0) for v in obj.data.vertices], [1.0] * len(obj.data.vertices))
+
+
+def cap(body, rig, coords, L, band, name):
+    """T-Bone's trucker cap (walking spec §3): a crown pressed 7 mm over his hair, the white foam front panels and the
+    navy mesh behind, a curved peak 7 cm deep tilted 10° down, its edges curved down."""
+    c = L["head_centre"]
+    obj = _crown(body, rig, coords, L, band, 0.007, f"{name}_cap")
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    loop = _band_loop(bm, c)
+    front = sorted([v for v in loop if v.co.y < c.y - 0.02 and abs(v.co.x - c.x) < 0.075], key=lambda v: v.co.x)
+    tilt = math.radians(10)
+
+    def depth(v):
+        return max(0.025, 0.075 * math.sqrt(max(0.0, 1 - ((v.co.x - c.x) / 0.085) ** 2)))
+
+    def drop(v, s):
+        return depth(v) * s * math.tan(tilt) + 0.02 * ((v.co.x - c.x) / 0.075) ** 2 * s
+    _brim(bm, front, c, depth, drop)
+    obj.data.materials.clear()  # the copy came with the body's
+    for m in ("cap", "capFront"):
+        mat = bpy.data.materials.get(m) or bpy.data.materials.new(m)
+        mat.use_nodes = True
+        obj.data.materials.append(mat)
+    point, normal = band
+    _finish_hat(obj, bm, 0.003, front_faces=lambda p: p.y < c.y - 0.035 and (p - point).dot(normal) > 0.004 and abs(p.x - c.x) < 0.07)
+    return obj
+
+
+def bucket_hat(body, rig, coords, L, band, name):
+    """Grommet's bucket hat (walking spec §3): a soft crown 1.2 cm over his pressed curls, sagging a few mm, and a brim
+    5.5 cm wide sloping 30° down all round with a rolled edge."""
+    c = L["head_centre"]
+    obj = _crown(body, rig, coords, L, band, 0.012, f"{name}_bucketHat")
+    for v in obj.data.vertices:  # soft cloth: a little sag
+        v.co.z -= 0.003 * (0.5 + 0.5 * noise.noise(v.co * 25.0))
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    loop = _band_loop(bm, c)
+    slope = math.tan(math.radians(30))
+    _brim(bm, loop, c, lambda v: 0.055, lambda v, s: 0.055 * s * slope, roll=0.006, closed=True)
+    mat = bpy.data.materials.get("bucketHat") or bpy.data.materials.new("bucketHat")
+    mat.use_nodes = True
+    obj.data.materials.clear()  # the copy came with the body's
+    obj.data.materials.append(mat)
+    _finish_hat(obj, bm, 0.003)
+    return obj
+
+
+HAT_EDGE = 0.008  # half the widest hair card
+
+
+def hat_hair_check(hair_obj, hat_obj, band, centre):
+    """True when every hat-hair vertex is below the band (or within half a card's width of it) or inside the hat (a ray from the head's centre through it hits
+    the hat beyond it) (walking spec §7)."""
+    point, normal = band
+    tree = BVHTree.FromObject(hat_obj, bpy.context.evaluated_depsgraph_get())
+    out, misses, heights, gaps = 0, 0, [], []
+    over = 0  # over the brim or the peak: the hat below, nothing above
+    for v in hair_obj.data.vertices:
+        if tree.ray_cast(v.co, Vector((0, 0, 1)), 0.25)[0] is None:
+            hit, _, _, dist = tree.ray_cast(v.co, Vector((0, 0, -1)), 0.08)
+            if hit is not None and dist > 0.002:
+                over += 1
+        h = (v.co - point).dot(normal)
+        if h <= HAT_EDGE:  # a card's edge may lip out from under the band, as pressed hair does
+            continue
+        d = v.co - centre
+        hit, _, _, dist = tree.ray_cast(centre, d.normalized(), 1.0)
+        if hit is None or dist < d.length:
+            out += 1
+            misses += hit is None
+            heights.append(h)
+            if hit is not None:
+                gaps.append(d.length - dist)
+    print(f"hat hair over the brim: {over} vertices")
+    print(f"hat hair through the hat: {out} vertices ({misses} with no hat on the ray); heights above the band "
+          f"{min(heights, default=0):.4f}..{max(heights, default=0):.4f}; past the hat by up to {max(gaps, default=0):.4f}")
+    return out == 0 and over == 0
+
+
 def bake_ao(obj, others, reach=0.04, rays=10, seed=9):
     """Occlusion per garment vertex into COLOR_0.g (walking spec §3; step 2's method): rays over the hemisphere about
     the normal against the garment, the body and `others`; the under-layers, the armpits and the hem's inside darken."""

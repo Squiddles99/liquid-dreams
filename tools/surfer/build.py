@@ -88,6 +88,17 @@ if walk:
     feet = clothes.thongs(body, rig, coords, name)
     rig_trim.single_material(feet, "thongs")
     parts.append(feet)
+# The hat and the hair pressed under it (walking spec §3).
+hat_hair = hat = band = None
+if walk and walk.get("hat"):
+    band = clothes.hat_band(L, walk["hat"])
+    hat = (clothes.cap if walk["hat"] == "cap" else clothes.bucket_hat)(body, rig, coords, L, band, name)
+    clothes.bake_ao(hat, [body])
+    parts.append(hat)
+    hat_hair = hair.build(body, rig, {"style": "capped" if walk["hat"] == "cap" else "bucket", "seed": preset["hair"]["seed"] + 5, "below": band, "hat": hat}, L, coords, name)
+    rig_trim.single_material(hat_hair, "hairHat")
+    hair.bake_ao(hat_hair, body, L["head_centre"], reach=0.02)
+    parts.append(hat_hair)
 # The dry hair on land, draped over the walking clothes as well as the body (it fell inside the tee at the back).
 if preset.get("dryHair"):
     dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=garments)
@@ -98,6 +109,8 @@ if preset.get("dryHair"):
 checks = expressions.blink_check(body, L)
 if walk:
     checks["garmentsOutside"] = clothes.outside_check(garments, body)
+if hat_hair is not None:
+    checks["hatHairUnder"] = clothes.hat_hair_check(hat_hair, hat, band, L["head_centre"])
 print(f"checks: {checks}")
 export.glb(rig, parts, os.path.join(out_dir, f"{name}.glb"))
 export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version(), L, spots, head_tris, checks)
@@ -108,4 +121,7 @@ for outfit in preset["outfits"] + (["walking"] if walk else []):
     previews.sheet(name, preset["heightM"], preview_dir, outfit)
     previews.sheet(name, preset["heightM"], preview_dir, outfit, close=True)
 previews.sheet(name, preset["heightM"], preview_dir, preset["outfits"][0], frame="face")
+if walk:  # the hats on the hair, close (walking spec §7's gate)
+    previews.dress(parts, preset, "walking")
+    previews.sheet(name, preset["heightM"], preview_dir, "walking", frame="face")
 print(f"built {name}: {sum(len(p.vertices) - 2 for p in body.data.polygons)} body triangles")
