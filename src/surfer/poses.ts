@@ -439,5 +439,6 @@ export function poseTargets(pose: PoseName, ctx: PoseContext): PoseTargets {
     case 'prone': return prone(ctx, r, false);
     case 'proneBarrel': return prone(ctx, r, true);
     case 'dropKnee': return dropKnee(ctx, r);
+    case 'carry': return sit(ctx); // the carry's targets land in Task 3
   }
 }

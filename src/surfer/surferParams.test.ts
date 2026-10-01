@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SURFER_PARAMS, PADDLE_CYCLE_S, POPUP_S, SURFER_PARAM_RANGES, normalizeSurferParams, playPhase, sanitizeSurferParams } from './surferParams';
+import { DEFAULT_SURFER_PARAMS, PADDLE_CYCLE_S, POPUP_S, SURFER_PARAM_RANGES, carrySideOf, normalizeSurferParams, playPhase, sanitizeSurferParams } from './surferParams';
 
 describe('surfer params', () => {
   it('start off, on the female surfer sitting on the thruster in the lineup', () => {
@@ -74,5 +74,24 @@ describe('Grommet in settings and links (grommet Review Focus 1)', () => {
     expect(DEFAULT_SURFER_PARAMS.onLand).toBe(false);
     expect(sanitizeSurferParams({ onLand: true }).onLand).toBe(true);
     expect(sanitizeSurferParams({ onLand: 'yes' }).onLand).toBe(false);
+  });
+});
+
+describe('on land (walking spec §4; Review Focus 1)', () => {
+  it('carries the board only on land, on any board', () => {
+    expect(sanitizeSurferParams({ pose: 'carry', onLand: false }).pose).toBe('sit');
+    expect(sanitizeSurferParams({ pose: 'carry', onLand: true }).pose).toBe('carry');
+    expect(sanitizeSurferParams({ preset: 'grommet', board: 'bodyboard', pose: 'carry', onLand: true }).pose).toBe('carry');
+  });
+  it('wears the walking clothes only on land', () => {
+    expect(sanitizeSurferParams({ outfit: 'walking', onLand: false }).outfit).toBe('season');
+    expect(sanitizeSurferParams({ outfit: 'walking', onLand: true }).outfit).toBe('walking');
+  });
+  it('takes the carry side from the rider unless the panel picks one; old links and junk get auto', () => {
+    expect(sanitizeSurferParams({}).carrySide).toBe('auto');
+    expect(sanitizeSurferParams({ carrySide: 'up' }).carrySide).toBe('auto');
+    const side = (preset: 'female' | 'male' | 'grommet', carrySide: 'auto' | 'l' | 'r' = 'auto'): string => carrySideOf(sanitizeSurferParams({ preset, carrySide }));
+    expect([side('female'), side('male'), side('grommet')]).toEqual(['l', 'r', 'l']);
+    expect(side('male', 'l')).toBe('l');
   });
 });

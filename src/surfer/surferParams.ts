@@ -1,5 +1,5 @@
 import type { BoardKind } from '../board/boardSpec';
-import { type PoseName, posesFor } from './poseNames';
+import { type PoseName, posesOn } from './poseNames';
 import { PRESETS, type PresetName, type Stance, boardsFor } from './presets';
 import { type OutfitChoice, presetOutfits } from './wardrobe';
 
@@ -17,6 +17,8 @@ export interface SurferParams {
   play: boolean;
   /** On land (the dune, the select screen): Grommet's glasses on, hair and skin dry (grommet spec §6). */
   onLand: boolean;
+  /** The arm the board goes under in the carry (walking spec §4): `auto` is the rider's own. */
+  carrySide: 'auto' | 'l' | 'r';
   /** The four dials, as offsets around the pose's own values (spec §3.5). */
   compression: number;
   lean: number;
@@ -45,7 +47,7 @@ export interface SurferParams {
 
 /** In the lineup where Andrew waits (DEFAULT_LINEUP_POSITION), nose out to sea toward the south-west swell. */
 export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
-  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, onLand: false,
+  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, onLand: false, carrySide: 'auto',
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
   x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
   idle: true, faceManual: false, faceBlink: 0, faceSmile: 0, faceJaw: 0, faceBrows: 0, faceSquint: 0, gazeYawDeg: 0, gazePitchDeg: 0,
@@ -98,14 +100,20 @@ export function normalizeSurferParams(p: SurferParams): void {
   p.stance = oneOf(p.stance, ['regular', 'goofy'] as const, d.stance);
   const boards = boardsFor(PRESETS[p.preset]);
   p.board = oneOf(p.board, boards, boards[0]);
-  p.pose = oneOf(p.pose, posesFor(p.board), 'sit');
+  // The carry and the walking clothes only on land (Review Focus 1): no carried board or glasses in the water.
+  p.pose = oneOf(p.pose, posesOn(p.board, p.onLand), 'sit');
   p.outfit = oneOf(p.outfit, ['season', ...presetOutfits(PRESETS[p.preset])] as const, 'season');
+  if (p.outfit === 'walking' && !p.onLand) p.outfit = 'season';
+  p.carrySide = oneOf(p.carrySide, ['auto', 'l', 'r'] as const, 'auto');
   for (const k of Object.keys(SURFER_PARAM_RANGES) as (keyof typeof SURFER_PARAM_RANGES)[]) {
     const r = SURFER_PARAM_RANGES[k], v = p[k];
     p[k] = typeof v === 'number' && Number.isFinite(v) ? Math.min(r.max, Math.max(r.min, v)) : d[k];
   }
   p.headingDeg = typeof p.headingDeg === 'number' && Number.isFinite(p.headingDeg) ? ((p.headingDeg % 360) + 360) % 360 : d.headingDeg;
 }
+
+/** The carrying arm: the panel's pick, or the rider's own (Shazza and Grommet left, T-Bone right). */
+export const carrySideOf = (p: SurferParams): 'l' | 'r' => (p.carrySide === 'auto' ? PRESETS[p.preset].walking.carrySide : p.carrySide);
 
 /** Surfer params from untrusted input (links, stored settings): known keys only, then normalised. */
 export function sanitizeSurferParams(raw: unknown): SurferParams {
