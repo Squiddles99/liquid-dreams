@@ -19,6 +19,8 @@ export interface SurferParams {
   onLand: boolean;
   /** The crew's clothes and packs dropped on the sand where they changed (walking spec §5), and where. */
   pile: boolean;
+  /** The gang mockup (walking spec §6): all three at the stand's spot, walking, carrying their boards. */
+  gang: boolean;
   pileX: number;
   pileZ: number;
   pileHeadingDeg: number;
@@ -53,7 +55,7 @@ export interface SurferParams {
 /** In the lineup where Andrew waits (DEFAULT_LINEUP_POSITION), nose out to sea toward the south-west swell. */
 export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
   enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, onLand: false, carrySide: 'auto',
-  pile: false, pileX: 219, pileZ: 47, pileHeadingDeg: 0,
+  pile: false, gang: false, pileX: 219, pileZ: 47, pileHeadingDeg: 0,
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
   x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
   idle: true, faceManual: false, faceBlink: 0, faceSmile: 0, faceJaw: 0, faceBrows: 0, faceSquint: 0, gazeYawDeg: 0, gazePitchDeg: 0,
@@ -103,6 +105,7 @@ export function normalizeSurferParams(p: SurferParams): void {
   p.play = p.play !== false;
   p.onLand = p.onLand === true;
   p.pile = p.pile === true;
+  p.gang = p.gang === true;
   p.idle = p.idle !== false;
   p.faceManual = p.faceManual === true;
   p.preset = oneOf(p.preset, ['female', 'male', 'grommet'] as const, d.preset);
