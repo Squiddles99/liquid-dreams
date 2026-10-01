@@ -85,6 +85,8 @@ export interface DevPanelHandlers {
   onSurferChase(): void;
   /** Stands the rider at a named spot on land (walking spec §4), walking, carrying the board. */
   onSurferSpot(spot: 'duneCrest' | 'beach'): void;
+  /** Puts the beach pile (walking spec §5) ahead of the camera or beside the beach spot, and shows it. */
+  onSurferPile(where: 'ahead' | 'beach'): void;
   onSound(): void;
   onMusicPlayPause(): void;
   onMusicNext(): void;
@@ -214,6 +216,11 @@ export const SURFER_BINDINGS = {
   z: { label: 'z (m)', ...SURFER_PARAM_RANGES.z, step: 0.1 },
   heightNudgeM: { label: 'height nudge (m)', ...SURFER_PARAM_RANGES.heightNudgeM, step: 0.01 },
   pitchNudgeDeg: { label: 'pitch nudge (°)', ...SURFER_PARAM_RANGES.pitchNudgeDeg, step: 0.5 },
+} as const;
+/** The On land sub-folder's sliders (walking spec §4, §5), ranges exactly normalizeSurferParams's (DevPanel.test.ts). */
+export const SURFER_LAND_BINDINGS = {
+  pileX: { label: 'pile x (m)', ...SURFER_PARAM_RANGES.pileX, step: 0.1 },
+  pileZ: { label: 'pile z (m)', ...SURFER_PARAM_RANGES.pileZ, step: 0.1 },
 } as const;
 /** The Face sub-folder's dials (closeup spec §5.2), ranges exactly normalizeSurferParams's (DevPanel.test.ts). */
 export const FACE_BINDINGS = {
@@ -439,6 +446,13 @@ export class DevPanel {
     const land = surferFolder.addFolder({ title: 'On land', expanded: false });
     land.addButton({ title: 'dune crest (above the Womb)' }).on('click', () => h.onSurferSpot('duneCrest'));
     land.addButton({ title: 'beach (in front of the Womb)' }).on('click', () => h.onSurferSpot('beach'));
+    land.addBinding(m.surfer, 'pile', { label: 'beach pile' }).on('change', h.onSurfer);
+    land.addButton({ title: 'Place pile ahead of camera' }).on('click', () => h.onSurferPile('ahead'));
+    land.addButton({ title: 'Pile beside the beach spot' }).on('click', () => h.onSurferPile('beach'));
+    for (const [key, opts] of Object.entries(SURFER_LAND_BINDINGS) as [keyof typeof SURFER_LAND_BINDINGS, (typeof SURFER_LAND_BINDINGS)[keyof typeof SURFER_LAND_BINDINGS]][]) {
+      land.addBinding(m.surfer, key, opts).on('change', h.onSurfer);
+    }
+    land.addBinding(m.surfer, 'pileHeadingDeg', { label: 'pile heading', min: 0, max: 360, format: withCompass }).on('change', h.onSurfer);
     const soundFolder = this.pane.addFolder({ title: 'Sound', expanded: false });
     for (const [key, opts] of Object.entries(SOUND_BINDINGS) as [keyof typeof SOUND_BINDINGS, (typeof SOUND_BINDINGS)[keyof typeof SOUND_BINDINGS]][]) {
       soundFolder.addBinding(m.sound, key, opts).on('change', h.onSound);
