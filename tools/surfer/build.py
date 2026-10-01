@@ -14,6 +14,7 @@ import face  # noqa: E402
 import glasses  # noqa: E402
 import hair  # noqa: E402
 import mpfb_bridge  # noqa: E402
+import packs  # noqa: E402
 import previews  # noqa: E402
 import rig_trim  # noqa: E402
 import sculpt  # noqa: E402
@@ -99,9 +100,26 @@ if walk and walk.get("hat"):
     rig_trim.single_material(hat_hair, "hairHat")
     hair.bake_ao(hat_hair, body, L["head_centre"], reach=0.02)
     parts.append(hat_hair)
+# The pack and what's on it (walking spec §2, §3), over the tee.
+carried = []
+if walk and walk.get("pack"):
+    pack, box = packs.build(body, rig, garments, preset["heightM"], walk["pack"], name)
+    clothes._colors(pack, [clothes._fold(v.co, 16.0) for v in pack.data.vertices], [1.0] * len(pack.data.vertices))
+    carried.append(pack)
+    if walk["pack"] == "rucksack":
+        carried.append(packs.towel(rig, preset["heightM"], box, name))
+    elif walk["pack"] == "surf":
+        carried.append(packs.wetsuit(rig, preset["heightM"], box, packs._clear_tree([body, *garments, pack]), name))
+    else:
+        carried.append(packs.fins(rig, preset["heightM"], box, name))
+    for c in carried:
+        if "Color" not in c.data.color_attributes:
+            clothes._colors(c, [clothes._fold(v.co, 16.0) for v in c.data.vertices], [1.0] * len(c.data.vertices))
+        clothes.bake_ao(c, [body, *garments, *[x for x in carried if x is not c]])
+    parts += carried
 # The dry hair on land, draped over the walking clothes as well as the body (it fell inside the tee at the back).
 if preset.get("dryHair"):
-    dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=garments)
+    dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=[*garments, *carried])
     rig_trim.single_material(dry_obj, "hairDry")
     hair.bake_ao(dry_obj, body, L["head_centre"], reach=preset["dryHair"].get("aoReach", 0.045))
     parts.append(dry_obj)

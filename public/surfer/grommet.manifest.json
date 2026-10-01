@@ -422,6 +422,21 @@
    "materials": [
     "hairHat"
    ]
+  },
+  {
+   "name": "grommet_pack",
+   "triangles": 1596,
+   "materials": [
+    "pack",
+    "packTrim"
+   ]
+  },
+  {
+   "name": "grommet_fins",
+   "triangles": 464,
+   "materials": [
+    "fins"
+   ]
   }
  ],
  "blender": "5.2.2 LTS",

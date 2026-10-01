@@ -294,5 +294,19 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       expect(Math.min(...overFace.map((p) => p[1]))).toBeGreaterThan(eyeY + 0.015);
       expect(Math.max(...hair.map((p) => p[1]))).toBeLessThan(Math.max(...hat.map((p) => p[1])));
     });
+    const extra = { female: 'towel', male: 'neoprene', grommet: 'fins' }[name];
+    it(`carries the pack on the back, straps over the shoulders, with the ${extra} (walking spec §2, §3)`, () => {
+      for (const m of ['pack', 'packTrim', extra]) expect(mats, m).toContain(m);
+      for (const m of ['pack', 'packTrim', extra]) {
+        const bad = skinned(path, gltf, m).flatMap((v) => v.bones).filter((b) => !['spine_03', 'clavicle_l', 'clavicle_r'].includes(b));
+        expect([...new Set(bad)], m).toEqual([]);
+      }
+      const spine = bone('spine_03'), pack = skinned(path, gltf, 'pack').map((v) => v.pos);
+      // Behind the back (glTF +z is the front): its face to the body is behind the spine, and it sits up the back.
+      expect(Math.max(...pack.map((p) => p[2]))).toBeLessThan(spine[2] - 0.04 * H);
+      expect(Math.max(...pack.map((p) => p[1]))).toBeGreaterThan(spine[1]);
+      // The straps come over the shoulders to the front of the chest.
+      expect(Math.max(...skinned(path, gltf, 'packTrim').map((v) => v.pos[2]))).toBeGreaterThan(spine[2] + 0.06);
+    });
   });
 }
