@@ -8,6 +8,8 @@ import bpy
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
+import geom
+
 LENS_W = 0.025   # half-width: 5 cm across
 LENS_H = 0.018   # half-height: 3.6 cm tall
 RIM_R = 0.0034   # the rim's thickness: heavy
@@ -29,21 +31,7 @@ def _rect(c, inset=0.0):
 
 
 def _tube(bm, pts, r, closed):
-    """Sweep a circle of radius r along pts, the frame carried along each point so it never flips."""
-    n, rings, u = len(pts), [], None
-    for i, p in enumerate(pts):
-        a, b = (pts[(i + 1) % n], pts[i - 1]) if closed else (pts[min(i + 1, n - 1)], pts[max(i - 1, 0)])
-        t = (a - b).normalized()
-        u = t.orthogonal().normalized() if u is None else (u - t * u.dot(t)).normalized()
-        v = t.cross(u)
-        rings.append([bm.verts.new(p + (u * math.cos(2 * math.pi * k / SIDES) + v * math.sin(2 * math.pi * k / SIDES)) * r) for k in range(SIDES)])
-    for i in range(n if closed else n - 1):
-        r0, r1 = rings[i], rings[(i + 1) % n]
-        for k in range(SIDES):
-            bm.faces.new((r0[k], r0[(k + 1) % SIDES], r1[(k + 1) % SIDES], r1[k]))
-    if not closed:
-        bm.faces.new(list(reversed(rings[0])))
-        bm.faces.new(rings[-1])
+    geom.tube(bm, pts, r, closed, sides=SIDES)
 
 
 def build(rig, body, L, name):

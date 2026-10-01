@@ -64,5 +64,63 @@
     "style": "tousled",
     "seed": 17,
     "inset": 0.008
+  },
+  "walking": {
+    "tee": {
+      "fit": "plain",
+      "push": [
+        0.012,
+        0.022
+      ],
+      "hemAboveCrotch": 0.05,
+      "sleeveT": 0.5
+    },
+    "shorts": "boardies",
+    "straps": false,
+    "hat": "cap",
+    "pack": "surf",
+    "under": "boardies",
+    "preview": {
+      "tee": [
+        0.07,
+        0.07,
+        0.075
+      ],
+      "thongs": [
+        0.03,
+        0.03,
+        0.03
+      ],
+      "cap": [
+        0.02,
+        0.03,
+        0.09
+      ],
+      "capFront": [
+        0.75,
+        0.75,
+        0.72
+      ],
+      "pack": [
+        0.04,
+        0.04,
+        0.045
+      ],
+      "packTrim": [
+        0.3,
+        0.05,
+        0.03
+      ],
+      "neoprene": [
+        0.02,
+        0.02,
+        0.025
+      ],
+      "hairHat": [
+        0.3,
+        0.22,
+        0.12
+      ]
+    }
   }
 }

@@ -159,7 +159,7 @@ def _cards_object(cards, centre, rig, name, skin=None, seed=0):
     return obj
 
 
-def build(body, rig, style, L, coords, name):
+def build(body, rig, style, L, coords, name, avoid=()):
     rng = random.Random(style["seed"])
     centre, eye_z = L["head_centre"], L["eye_z"]
     inset = style.get("inset", 0.0)
@@ -186,7 +186,7 @@ def build(body, rig, style, L, coords, name):
     elif style["style"] == "waves":
         # Dry, long and loose (closeup spec §3): parted near the middle, over the scalp, then falling past the
         # shoulders in loose beach waves, draped over the body rather than through it.
-        tree = _body_tree(body)
+        tree = _body_tree(body, avoid)
         neck_z = rig.data.bones["neck"].head_local.z
         part_x = style.get("partX", 0.006)
         # Locks: every card belongs to the nearest of ~70 clump centres on the scalp and shares its wave, so the waves
@@ -243,8 +243,16 @@ def _tousled(root, n, centre, crown, eye_z, rng):
     return pts
 
 
-def _body_tree(body):
-    return BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+def _body_tree(body, avoid=()):
+    """What long hair falls outside of: the skin, and `avoid` (the walking clothes) when given."""
+    if not avoid:
+        return BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    verts, polys = [], []
+    for o in (body, *avoid):
+        base = len(verts)
+        verts += [v.co.copy() for v in o.data.vertices]
+        polys += [[i + base for i in p.vertices] for p in o.data.polygons if o is not body or p.material_index == 0]
+    return BVHTree.FromPolygons(verts, polys)
 
 
 def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump):

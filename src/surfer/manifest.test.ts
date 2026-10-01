@@ -47,7 +47,7 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       expect(man.headTriangles).toBeGreaterThanOrEqual(5000);
     });
     it('closes the lids over the eyes at a blink, and opens them at rest (the build’s ray check; closeup spec §4.1)', () => {
-      expect(man.checks).toEqual({ blinkCovers: true, eyesOpen: true });
+      expect(man.checks).toMatchObject({ blinkCovers: true, eyesOpen: true });
     });
     it('writes the face landmarks, with eyeballs fitted to MPFB’s eye helper (14–17.5 mm once scaled to height)', () => {
       expect(man.landmarks).toBeDefined();
@@ -219,3 +219,65 @@ describe("Grommet's glasses and teeth (grommet spec §4)", () => {
     expect(head).toBeGreaterThanOrEqual(0);
   });
 });
+
+/** Every vertex of the primitives with `material`: its position and the bones it follows (weight > 0.01). */
+function skinned(path: string, gltf: any, material: string): { pos: number[]; bones: string[] }[] {
+  const joints: string[] = gltf.skins[0].joints.map((i: number) => gltf.nodes[i].name);
+  const out: { pos: number[]; bones: string[] }[] = [];
+  for (const mesh of gltf.meshes) for (const p of mesh.primitives) {
+    if (gltf.materials[p.material].name !== material) continue;
+    const pos = glbFloats(path, gltf, p.attributes.POSITION), j = glbValues(path, gltf, p.attributes.JOINTS_0), w = glbValues(path, gltf, p.attributes.WEIGHTS_0);
+    for (let i = 0; i < pos.length / 3; i++) {
+      const bones: string[] = [];
+      for (let k = 0; k < 4; k++) if (w[4 * i + k] > 0.01) bones.push(joints[j[4 * i + k]]);
+      out.push({ pos: [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], bones });
+    }
+  }
+  return out;
+}
+const side = (names: string[]): string[] => names.flatMap((n) => [`${n}_l`, `${n}_r`]);
+
+for (const name of ['female', 'male', 'grommet'] as const) {
+  describe(`the ${name} walking clothes (walking spec §3, §7)`, () => {
+    const path = `public/surfer/${name}.glb`, gltf = glbJson(path);
+    const man: SurferManifest = JSON.parse(readFileSync(`public/surfer/${name}.manifest.json`, 'utf8'));
+    const mats = man.meshes.flatMap((m) => m.materials), H = man.heightM;
+    const bone = (n: string): number[] => man.bones.find((b) => b.name === n)!.head;
+    it('has the tee and thongs; Shazza her cutoffs and bikini straps; the boys their own boardies (Andrew)', () => {
+      for (const m of ['tee', 'thongs']) expect(mats, m).toContain(m);
+      expect(mats.includes('denim')).toBe(name === 'female');
+      expect(mats.includes('straps')).toBe(name === 'female');
+      expect(mats.includes('boardies')).toBe(name !== 'female');
+    });
+    it('keeps every tee and shorts vertex outside the body (the build’s ray check)', () => {
+      expect(man.checks).toMatchObject({ garmentsOutside: true });
+    });
+    it('skins each garment only to its own bones', () => {
+      const allowed: Record<string, string[]> = {
+        tee: ['pelvis', 'spine_01', 'spine_02', 'spine_03', 'neck', ...side(['clavicle', 'upperarm', 'forearm'])],
+        denim: ['pelvis', 'spine_01', 'spine_02', ...side(['thigh'])],
+        straps: ['spine_03', 'neck', ...side(['clavicle'])],
+        thongs: side(['foot', 'toe']),
+      };
+      for (const [m, ok] of Object.entries(allowed)) {
+        if (!mats.includes(m)) continue;
+        const bad = skinned(path, gltf, m).flatMap((v) => v.bones).filter((b) => !ok.includes(b));
+        expect([...new Set(bad)], m).toEqual([]);
+      }
+    });
+    it('hangs the tee from the chest to below the waist, not hugging it', () => {
+      const tee = skinned(path, gltf, 'tee').map((v) => v.pos);
+      const lowest = Math.min(...tee.map((p) => p[1]));
+      if (name === 'grommet') {
+        const boardies = skinned(path, gltf, 'boardies').map((v) => v.pos);
+        expect(lowest).toBeLessThan(Math.max(...boardies.map((p) => p[1])) - 0.03); // past the top of his boardies
+      } else expect(lowest).toBeLessThan(bone('pelvis')[1] - (name === 'female' ? 0.04 * H : 0)); // her oversized tee longer
+      const front = (lo: number, hi: number): number => Math.max(...tee.filter((p) => p[1] > lo * H && p[1] < hi * H && Math.abs(p[0]) < 0.08).map((p) => p[2]));
+      expect(front(0.56, 0.62), 'the front at the waist vs the chest').toBeGreaterThan(front(0.69, 0.74) - 0.01);
+    });
+    it('puts 12 mm thong soles under the feet', () => {
+      const y = Math.min(...skinned(path, gltf, 'thongs').map((v) => v.pos[1]));
+      expect(Math.abs(y + 0.012)).toBeLessThan(0.002);
+    });
+  });
+}
