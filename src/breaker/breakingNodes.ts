@@ -244,17 +244,18 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const slopeU = i.slope.sub(dDrop).sub(dDrained).mul(scale);
   let base: N = baseU, slopeBase: N = slopeU, phase1Slope: N = i.slope;
   if (i.lean) {
-    // breaking.breakPoint: where the front leans, the lower of that and the leaned wave sharpened, undrained, by a smooth
-    // minimum (smoothMax of the negatives, k = LEAN_BLEND_H·H).
+    // breaking.breakPoint: where the front leans, down toward the leaned wave sharpened, undrained, where it lies lower
+    // (breaking.leanRamp, k = LEAN_BLEND_H·H).
     const l = dropOf(i.lean.eta, i.lean.slope);
     const leaned = i.lean.eta.sub(l.drop).mul(scale);
     const slopeL = i.lean.slope.sub(l.dDrop).mul(scale);
     const kL = i.H.mul(LEAN_BLEND_H);
-    const hL = max(kL.sub(abs(baseU.sub(leaned))), 0.0).div(kL);
-    const minV = min(baseU, leaned).sub(hL.mul(hL).mul(kL).div(4.0));
-    const wU = clamp(leaned.sub(baseU).div(kL.mul(2.0)).add(0.5), 0.0, 1.0);
-    base = select(i.lean.on, minV, baseU).toVar();
-    slopeBase = select(i.lean.on, wU.mul(slopeU).add(float(1.0).sub(wU).mul(slopeL)), slopeU).toVar();
+    const dL = baseU.sub(leaned);
+    const dPos = max(dL, 0.0);
+    const ramp = select(dL.lessThan(kL), dPos.mul(dPos).div(kL.mul(2.0)), dL.sub(kL.mul(0.5)));
+    const rampD = clamp(dL.div(kL), 0.0, 1.0);
+    base = select(i.lean.on, baseU.sub(ramp), baseU).toVar();
+    slopeBase = select(i.lean.on, slopeU.sub(rampD.mul(slopeU.sub(slopeL))), slopeU).toVar();
     phase1Slope = select(i.lean.on, i.lean.slope, i.slope);
   }
   const dBase = slopeBase.sub(phase1Slope);
