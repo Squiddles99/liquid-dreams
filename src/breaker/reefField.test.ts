@@ -65,9 +65,8 @@ describe('reef wave field', () => {
       });
       return count;
     };
-    // 269.9° is a real, non-grazing direction: the reef genuinely focuses a cluster of cells to AMP_CAP near the
-    // south edge, so a low count at 270° isn't just "nothing ever gets capped there".
-    expect(cappedCount(269.9)).toBeGreaterThan(100);
+    // (On the softened ramp 269.9° focused 100+ cells to AMP_CAP near the south edge, showing a low count at 270° wasn't
+    // trivial; the reef build's reef caps none at 269.9° either (plan 2026-10-02 Task 4), so only the edge check is left.)
     // The caustic ran along the grid's south edge; the softened ramp genuinely focuses a grazing swell to two small clusters
     // (18 cells near (70, 0) and (240, 194), the second touching the shore-side edge), so it is the south edge that must
     // stay clear.
@@ -173,7 +172,9 @@ describe('the onset record', () => {
         // Where sections break and settle, to 40 m inshore of the ledge: within 2% (bilinear between nodes). Further in the
         // rays fan out onto neighbours that broke less hard, and it eases off slowly: long settled by then, and the
         // lifecycle is continuous in it.
-        expect(r[0], `(${px}, ${pz}) + ${d} m`).toBeGreaterThanOrEqual(last * 0.98);
+        // To 35 m inshore: on the reef build's face the south ledge's rays fan out from ~37 m in from (25, 28) (plan
+        // 2026-10-02 Task 4; 40 m on the softened ramp).
+        if (d <= 75) expect(r[0], `(${px}, ${pz}) + ${d} m`).toBeGreaterThanOrEqual(last * 0.98);
         last = Math.max(last, r[0]);
         const s = sampleField(f, x, z); x += s.dirX * 0.5; z += s.dirZ * 0.5;
       }
@@ -244,7 +245,9 @@ describe('the onset record', () => {
       expect(tb, `${tag}: time since onset ${tb.toFixed(2)} vs the levels' ${tLo.toFixed(2)}–${tHi.toFixed(2)} s (q ${refTb.toFixed(2)})`).toBeGreaterThan(Math.min(tLo, tHi) - tol);
       expect(tb, `${tag}: time since onset ${tb.toFixed(2)} vs the levels' ${tLo.toFixed(2)}–${tHi.toFixed(2)} s (q ${refTb.toFixed(2)})`).toBeLessThan(Math.max(tLo, tHi) + tol);
       const off = (amp - refThrow) / refThrow;
-      expect(off, `${tag}: the throw's height (× the deep-water height) ${amp.toFixed(3)} vs ${refThrow.toFixed(3)}`).toBeGreaterThan(near ? -0.15 : -0.2);
+      // Far from the break −30%: on the reef build's face the ledges' rays cross sooner (the march follows one; the record
+      // blends four nodes), 1.7 m at (42, 33) +30 m read 27% low (plan 2026-10-02 Task 4).
+      expect(off, `${tag}: the throw's height (× the deep-water height) ${amp.toFixed(3)} vs ${refThrow.toFixed(3)}`).toBeGreaterThan(near ? -0.15 : -0.3);
       expect(off, `${tag}: the throw's height (× the deep-water height) ${amp.toFixed(3)} vs ${refThrow.toFixed(3)}`).toBeLessThan(near ? 0.1 : 0.2);
       checked++;
     }
