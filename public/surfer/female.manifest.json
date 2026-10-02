@@ -442,7 +442,7 @@
   },
   {
    "name": "female_hairDry",
-   "triangles": 62788,
+   "triangles": 64652,
    "materials": [
     "hairDry"
    ]
@@ -495,15 +495,29 @@
    1.48323,
    0.14015
   ],
-  "eyeRadius": 0.0156
+  "eyeRadius": 0.0156,
+  "nipples": [
+   [
+    0.09805,
+    1.18285,
+    0.14409
+   ],
+   [
+    -0.09805,
+    1.18285,
+    0.14409
+   ]
+  ]
  },
  "headTriangles": 8456,
  "checks": {
   "blinkCovers": true,
   "eyesOpen": true,
+  "hairCoverWet": 0.2,
+  "hairCoverDry": 0.57,
   "upperLipMm": 8.07,
   "upperLipSculptedMm": 5.65,
-  "hairTurnSpreadCm": 1.8,
+  "hairTurnSpreadCm": 1.79,
   "hairTurnBlendCm": 5.0,
   "sideburnAboveEyeCm": 0.71,
   "hairFaceFrontness": 0.729,

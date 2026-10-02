@@ -140,7 +140,10 @@ export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: 
   if (z) face = faceZones(face, p, z, lips);
   if (detail?.ao) face = face.mul(mix(float(0.55), float(1), cavity));
   const underHair = smoothstep(0.25, 0.75, detail?.ao ? scalp : paint.x);
-  face = mix(face, rgb(p.hairRoot).mul(0.55), underHair);
+  // The painted scalp is the hair's own mid shade with fine streaks running back from the hairline, so the hair's
+  // edge blends into it; the root colour darkened (T-Bone's near black under golden hair) drew a wig's edge.
+  const scalpStreak = mx_noise_float(vec3(P.x.mul(900.0), P.y.mul(120.0), P.z.mul(120.0))).mul(0.18).add(0.82);
+  face = mix(face, mix(rgb(p.hairRoot), rgb(p.hairTip), 0.35).mul(0.7).mul(scalpStreak), underHair);
   // Brows as fine hairs: the painted band broken by streaks running along it.
   const streak = z ? smoothstep(-0.25, 0.45, mx_noise_float(vec3(P.x.mul(380.0), P.y.mul(2600.0), P.z.mul(2600.0)))).mul(0.5).add(0.5) : float(1);
   face = mix(face, rgb(p.brows), smoothstep(0.3, 0.7, paint.y).mul(0.92).mul(streak));
@@ -150,6 +153,16 @@ export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: 
   face = mix(face, vec3(0.015, 0.012, 0.012), lashLine.mul(0.85));
   face = mix(face, vec3(0.1, 0.028, 0.028), inside);
   if (z && (p.freckles > 0 || p.sunburn > 0)) face = frecklesAndSpots(face, p, z);
+  if (z?.nipples) {
+    // The areolas, a rosier brown than the skin, soft at the edge, and the nipple darker at the middle (Andrew: T-Bone
+    // had none); under any top, the cloth paints over them.
+    const r = z.areolaRadius;
+    const d = min(length(P.sub(vec3(...z.nipples[0]))), length(P.sub(vec3(...z.nipples[1]))));
+    const areola = float(1).sub(smoothstep(r * 0.7, r, d));
+    const nipple = float(1).sub(smoothstep(r * 0.22, r * 0.38, d));
+    face = mix(face, face.mul(vec3(0.82, 0.64, 0.58)), areola.mul(0.75));
+    face = mix(face, face.mul(vec3(0.78, 0.6, 0.55)), nipple.mul(0.6));
+  }
   let albedo: N = mix(face, rgb(p.fabric), inFabric);
   albedo = mix(albedo, rgb(p.boardies), inUnder);
   albedo = mix(albedo, rgb(p.rashie), inLycra);
@@ -490,16 +503,35 @@ export function lashesMaterial(sky: Sky, sv?: (xz: N) => N, lens?: LensPull | nu
   m.side = THREE.DoubleSide;
   const c: N = attribute('color', 'vec4');
   const t = c.x, along = c.y, upper = c.z;
-  // Upper: dense and clumped, full in the middle of the lid; lower: sparse, short and fine.
-  const count = mix(float(16), float(120), upper);
-  const clump = mx_noise_float(vec3(along.mul(14.0), 1.3, upper.mul(5.0))).mul(0.5).add(0.5);
-  const jitter = mx_noise_float(vec3(along.mul(count).floor(), 3.1, upper.mul(5.0))).mul(0.25);
-  const cell = along.mul(count).add(jitter).fract();
-  const width = mix(float(0.85), float(0.12), pow(t, 0.7)).mul(mix(float(0.35), float(1.0), upper)).mul(clump.mul(0.4).add(0.8));
-  const lash = float(1).sub(smoothstep(width.mul(0.5), width.mul(0.5).add(0.06), abs(cell.sub(0.5))));
+  // Upper: dense and clumped, full in the middle of the lid; lower: sparse, short and fine. A solid dark line at the lid
+  // where they root; every lash's edge anti-aliased and blended (Andrew: even, hard-edged strokes read as a comb; the
+  // renderer has no MSAA).
+  // Two rows of lashes, offset, each in clumps of 3–5 gathered toward the clump's tip and leaning its own way, every lash
+  // its own length (55–100%) and thinning to its tip: the tips ragged and the gaps never in line (one even row of
+  // equal strokes is the comb).
   const reach = smoothstep(0.0, 0.2, along).mul(smoothstep(1.0, 0.75, along)).mul(0.4).add(0.6).mul(mix(float(0.4), float(1.0), upper));
-  m.opacityNode = lash.mul(float(1).sub(smoothstep(reach.sub(0.1), reach, t)));
-  m.alphaTest = 0.5;
+  const row = (seed: number, density: number, lenScale: number): N => {
+    const clumps = mix(float(5), float(26), upper).mul(density);
+    const cp = along.mul(clumps).add(seed), cid = cp.floor();
+    const lean = mx_noise_float(vec3(cid.mul(1.7), 2.2 + seed, upper.mul(3.0))).mul(0.4);
+    const gather = pow(t, 1.3).mul(0.7);
+    const local = mix(cp.fract(), lean.mul(t).add(0.5), gather);
+    const per = mix(float(3), float(5), upper);
+    const sid = cid.mul(per).add(local.mul(per).floor());
+    const jitter = mx_noise_float(vec3(sid, 3.1 + seed, upper.mul(5.0))).mul(0.2);
+    const cell = local.mul(per).add(jitter).fract();
+    const len = mx_noise_float(vec3(sid.mul(0.77), 6.3 + seed, upper.mul(2.0))).mul(0.45).add(0.775).mul(lenScale).mul(reach);
+    const width = mix(float(0.8), float(0.08), pow(t.div(max(len, 0.05)).min(1.0), 0.5)).mul(mix(float(0.35), float(1.0), upper));
+    const aa = max(fwidth(cell).mul(0.75), 0.02);
+    const strand = float(1).sub(smoothstep(width.mul(0.5).sub(aa), width.mul(0.5).add(aa), abs(cell.sub(0.5))));
+    return strand.mul(float(1).sub(smoothstep(len.sub(0.12), len, t)));
+  };
+  const lidLine = float(1).sub(smoothstep(mix(float(0.06), float(0.14), upper), mix(float(0.16), float(0.3), upper), t));
+  const lash = max(max(row(0.0, 1.0, 1.0), row(0.37, 1.31, 0.8)), lidLine);
+  m.opacityNode = lash.mul(mix(float(0.75), float(1.0), upper));
+  m.transparent = true;
+  m.depthWrite = false;
+  m.alphaTest = 0.01;
   m.colorNode = litColor(sky, { albedo: vec3(0.018, 0.012, 0.009), normal: normalWorld, specular: float(0.04), shininess: float(60), wrap: float(0.4) }, sv);
   if (lens) m.positionNode = lensPulled(lens);
   return m;
