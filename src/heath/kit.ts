@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { smoothstep } from '../math/smoothstep';
 import { BAND_FADE_M, MID_M, NEAR_M } from './plantRing';
@@ -48,7 +49,7 @@ export async function loadKit(base = import.meta.env.BASE_URL + KIT_URL): Promis
       if (!r.ok) throw new Error(`heath kit: ${r.status} fetching the manifest`);
       return r.json() as Promise<KitManifest>;
     }),
-    new GLTFLoader().loadAsync(base + 'heathKit.glb'),
+    new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath(import.meta.env.BASE_URL + 'draco/')).loadAsync(base + 'heathKit.glb'),
     new THREE.TextureLoader().loadAsync(base + 'heathAtlas.png'),
   ]);
   atlas.colorSpace = THREE.SRGBColorSpace;

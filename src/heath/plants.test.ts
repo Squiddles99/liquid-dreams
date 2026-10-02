@@ -105,10 +105,11 @@ describe('plant placement', () => {
     expect(share('tall')).toBeGreaterThan(0.02);
     expect(share('tall')).toBeLessThan(0.12);
   });
-  it('puts dune-rise shrubs only where the cover has bushes, daisy and green only', () => {
+  it('puts dune-rise shrubs only where the cover has bushes: daisy, green and coast cushion bush', () => {
     const rise = plants.filter((p) => { const c = coverHere(p.x, p.z); return c.bushes > c.heath - c.bushes; });
     expect(rise.length).toBeGreaterThan(20);
-    for (const p of rise) expect(['daisy', 'green', 'pigface', 'rice']).toContain(p.kind);
+    for (const p of rise) expect(['daisy', 'green', 'cushion', 'pigface', 'rice', 'spinach']).toContain(p.kind);
+    expect(rise.some((p) => p.kind === 'cushion')).toBe(true);
   });
   it('sizes each plant within its kind\'s range and seats it below both surfaces', () => {
     for (const p of plants.slice(0, 400)) {

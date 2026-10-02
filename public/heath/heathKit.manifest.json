@@ -16,23 +16,23 @@
     }
    ],
    "boundsUnit": [
-    1.0935,
-    1.0798,
-    0.9829
+    1.0794,
+    1.1183,
+    1.0009
    ],
    "leafColour": [
-    0.2,
-    0.225,
-    0.17
+    0.32,
+    0.35,
+    0.27
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.992,
-    "nodes": 600,
+    "branchesInsideHull": 0.983,
+    "nodes": 591,
     "leavesAttached": 0.0,
-    "silhouetteTop": 0.879,
-    "silhouetteSide": 0.918,
-    "outsideHull": 0.0046,
+    "silhouetteTop": 0.974,
+    "silhouetteSide": 0.972,
+    "outsideHull": 0.0108,
     "badNormals": 0,
     "badNormalsL1": 0,
     "aoMin": 0.15,
@@ -45,31 +45,31 @@
    "lods": [
     {
      "name": "plant_daisy_1_L0",
-     "triangles": 6670
+     "triangles": 7960
     },
     {
      "name": "plant_daisy_1_L1",
-     "triangles": 788
+     "triangles": 792
     }
    ],
    "boundsUnit": [
-    0.8792,
-    0.9825,
-    1.0087
+    0.9597,
+    1.0575,
+    1.0034
    ],
    "leafColour": [
-    0.2,
-    0.225,
-    0.17
+    0.32,
+    0.35,
+    0.27
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.996,
-    "nodes": 546,
+    "branchesInsideHull": 0.994,
+    "nodes": 520,
     "leavesAttached": 0.0,
-    "silhouetteTop": 0.88,
-    "silhouetteSide": 0.929,
-    "outsideHull": 0.0023,
+    "silhouetteTop": 0.981,
+    "silhouetteSide": 0.989,
+    "outsideHull": 0.0104,
     "badNormals": 0,
     "badNormalsL1": 0,
     "aoMin": 0.15,
@@ -82,31 +82,31 @@
    "lods": [
     {
      "name": "plant_daisy_2_L0",
-     "triangles": 6640
+     "triangles": 7960
     },
     {
      "name": "plant_daisy_2_L1",
-     "triangles": 788
+     "triangles": 792
     }
    ],
    "boundsUnit": [
-    1.013,
-    1.0399,
-    0.8344
+    1.044,
+    1.0674,
+    0.8842
    ],
    "leafColour": [
-    0.2,
-    0.225,
-    0.17
+    0.32,
+    0.35,
+    0.27
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.994,
-    "nodes": 535,
+    "branchesInsideHull": 0.993,
+    "nodes": 543,
     "leavesAttached": 0.0,
-    "silhouetteTop": 0.855,
-    "silhouetteSide": 0.942,
-    "outsideHull": 0.0026,
+    "silhouetteTop": 0.976,
+    "silhouetteSide": 0.979,
+    "outsideHull": 0.0104,
     "badNormals": 0,
     "badNormalsL1": 0,
     "aoMin": 0.15,
@@ -119,31 +119,31 @@
    "lods": [
     {
      "name": "plant_daisy_3_L0",
-     "triangles": 6510
+     "triangles": 7960
     },
     {
      "name": "plant_daisy_3_L1",
-     "triangles": 792
+     "triangles": 788
     }
    ],
    "boundsUnit": [
-    1.0019,
-    1.0129,
-    0.8386
+    0.9957,
+    1.0804,
+    0.9184
    ],
    "leafColour": [
-    0.2,
-    0.225,
-    0.17
+    0.32,
+    0.35,
+    0.27
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.996,
-    "nodes": 530,
+    "branchesInsideHull": 0.98,
+    "nodes": 539,
     "leavesAttached": 0.0,
-    "silhouetteTop": 0.872,
-    "silhouetteSide": 0.945,
-    "outsideHull": 0.0025,
+    "silhouetteTop": 0.966,
+    "silhouetteSide": 0.998,
+    "outsideHull": 0.0142,
     "badNormals": 0,
     "badNormalsL1": 0,
     "aoMin": 0.15,
@@ -317,9 +317,9 @@
     0.9515
    ],
    "leafColour": [
-    0.1,
-    0.12,
-    0.07
+    0.11,
+    0.135,
+    0.085
    ],
    "checks": {
     "pipeModel": true,
@@ -354,9 +354,9 @@
     0.9828
    ],
    "leafColour": [
-    0.1,
-    0.12,
-    0.07
+    0.11,
+    0.135,
+    0.085
    ],
    "checks": {
     "pipeModel": true,
@@ -391,9 +391,9 @@
     0.9434
    ],
    "leafColour": [
-    0.1,
-    0.12,
-    0.07
+    0.11,
+    0.135,
+    0.085
    ],
    "checks": {
     "pipeModel": true,
@@ -428,9 +428,9 @@
     0.8605
    ],
    "leafColour": [
-    0.1,
-    0.12,
-    0.07
+    0.11,
+    0.135,
+    0.085
    ],
    "checks": {
     "pipeModel": true,
@@ -456,27 +456,27 @@
     },
     {
      "name": "plant_pigface_0_L1",
-     "triangles": 780
+     "triangles": 792
     }
    ],
    "boundsUnit": [
-    0.894,
-    1.0255,
-    1.0065
+    0.8772,
+    1.0442,
+    1.007
    ],
    "leafColour": [
-    0.14,
-    0.24,
-    0.05
+    0.16,
+    0.3,
+    0.06
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.99,
-    "nodes": 313,
+    "nodes": 721,
     "leavesAttached": 0.0,
-    "silhouetteTop": 0.786,
-    "silhouetteSide": 0.548,
-    "outsideHull": 0.0049,
+    "silhouetteTop": 0.87,
+    "silhouetteSide": 0.653,
+    "outsideHull": 0.0108,
     "badNormals": 0,
     "badNormalsL1": 0,
     "aoMin": 0.15,
@@ -493,27 +493,27 @@
     },
     {
      "name": "plant_pigface_1_L1",
-     "triangles": 784
+     "triangles": 788
     }
    ],
    "boundsUnit": [
-    0.9549,
-    1.0189,
-    0.8714
+    0.9725,
+    0.9952,
+    0.8848
    ],
    "leafColour": [
-    0.14,
-    0.24,
-    0.05
+    0.16,
+    0.3,
+    0.06
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.994,
-    "nodes": 312,
+    "branchesInsideHull": 0.991,
+    "nodes": 704,
     "leavesAttached": 0.0,
-    "silhouetteTop": 0.778,
-    "silhouetteSide": 0.562,
-    "outsideHull": 0.0041,
+    "silhouetteTop": 0.886,
+    "silhouetteSide": 0.714,
+    "outsideHull": 0.0143,
     "badNormals": 0,
     "badNormalsL1": 0,
     "aoMin": 0.15,
@@ -530,27 +530,27 @@
     },
     {
      "name": "plant_pigface_2_L1",
-     "triangles": 786
+     "triangles": 788
     }
    ],
    "boundsUnit": [
-    0.8574,
-    0.994,
-    0.8179
+    0.8742,
+    1.0315,
+    0.8101
    ],
    "leafColour": [
-    0.14,
-    0.24,
-    0.05
+    0.16,
+    0.3,
+    0.06
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.993,
-    "nodes": 284,
+    "branchesInsideHull": 0.989,
+    "nodes": 642,
     "leavesAttached": 0.0,
-    "silhouetteTop": 0.798,
-    "silhouetteSide": 0.569,
-    "outsideHull": 0.005,
+    "silhouetteTop": 0.873,
+    "silhouetteSide": 0.731,
+    "outsideHull": 0.0123,
     "badNormals": 0,
     "badNormalsL1": 0,
     "aoMin": 0.15,
@@ -567,27 +567,27 @@
     },
     {
      "name": "plant_pigface_3_L1",
-     "triangles": 788
+     "triangles": 784
     }
    ],
    "boundsUnit": [
-    0.861,
-    1.0173,
-    0.884
+    0.8339,
+    0.9965,
+    0.9412
    ],
    "leafColour": [
-    0.14,
-    0.24,
-    0.05
+    0.16,
+    0.3,
+    0.06
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.991,
-    "nodes": 329,
+    "branchesInsideHull": 0.985,
+    "nodes": 666,
     "leavesAttached": 0.0,
-    "silhouetteTop": 0.762,
-    "silhouetteSide": 0.543,
-    "outsideHull": 0.0044,
+    "silhouetteTop": 0.896,
+    "silhouetteSide": 0.737,
+    "outsideHull": 0.0128,
     "badNormals": 0,
     "badNormalsL1": 0,
     "aoMin": 0.15,
@@ -889,6 +889,302 @@
     "aoMin": 0.15,
     "aoMax": 1.0
    }
+  },
+  {
+   "kind": "cushion",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "plant_cushion_0_L0",
+     "triangles": 5960
+    },
+    {
+     "name": "plant_cushion_0_L1",
+     "triangles": 768
+    }
+   ],
+   "boundsUnit": [
+    1.1366,
+    1.138,
+    1.1353
+   ],
+   "leafColour": [
+    0.58,
+    0.6,
+    0.56
+   ],
+   "checks": {
+    "pipeModel": true,
+    "branchesInsideHull": 0.995,
+    "nodes": 579,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.998,
+    "silhouetteSide": 0.993,
+    "outsideHull": 0.0253,
+    "badNormals": 0,
+    "badNormalsL1": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
+   }
+  },
+  {
+   "kind": "cushion",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "plant_cushion_1_L0",
+     "triangles": 5960
+    },
+    {
+     "name": "plant_cushion_1_L1",
+     "triangles": 792
+    }
+   ],
+   "boundsUnit": [
+    1.02,
+    1.1084,
+    1.0872
+   ],
+   "leafColour": [
+    0.58,
+    0.6,
+    0.56
+   ],
+   "checks": {
+    "pipeModel": true,
+    "branchesInsideHull": 0.996,
+    "nodes": 518,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.997,
+    "silhouetteSide": 0.991,
+    "outsideHull": 0.0231,
+    "badNormals": 0,
+    "badNormalsL1": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
+   }
+  },
+  {
+   "kind": "cushion",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "plant_cushion_2_L0",
+     "triangles": 5960
+    },
+    {
+     "name": "plant_cushion_2_L1",
+     "triangles": 792
+    }
+   ],
+   "boundsUnit": [
+    1.0941,
+    1.1178,
+    1.0571
+   ],
+   "leafColour": [
+    0.58,
+    0.6,
+    0.56
+   ],
+   "checks": {
+    "pipeModel": true,
+    "branchesInsideHull": 0.996,
+    "nodes": 554,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.997,
+    "silhouetteSide": 0.994,
+    "outsideHull": 0.0246,
+    "badNormals": 0,
+    "badNormalsL1": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
+   }
+  },
+  {
+   "kind": "cushion",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "plant_cushion_3_L0",
+     "triangles": 5960
+    },
+    {
+     "name": "plant_cushion_3_L1",
+     "triangles": 788
+    }
+   ],
+   "boundsUnit": [
+    1.1855,
+    1.2076,
+    1.0078
+   ],
+   "leafColour": [
+    0.58,
+    0.6,
+    0.56
+   ],
+   "checks": {
+    "pipeModel": true,
+    "branchesInsideHull": 0.994,
+    "nodes": 544,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.993,
+    "silhouetteSide": 0.992,
+    "outsideHull": 0.0342,
+    "badNormals": 0,
+    "badNormalsL1": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
+   }
+  },
+  {
+   "kind": "spinach",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "plant_spinach_0_L0",
+     "triangles": 5136
+    },
+    {
+     "name": "plant_spinach_0_L1",
+     "triangles": 788
+    }
+   ],
+   "boundsUnit": [
+    1.012,
+    1.0507,
+    1.0191
+   ],
+   "leafColour": [
+    0.17,
+    0.27,
+    0.07
+   ],
+   "checks": {
+    "pipeModel": true,
+    "branchesInsideHull": 1.0,
+    "nodes": 318,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.968,
+    "silhouetteSide": 0.891,
+    "outsideHull": 0.0206,
+    "badNormals": 0,
+    "badNormalsL1": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
+   }
+  },
+  {
+   "kind": "spinach",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "plant_spinach_1_L0",
+     "triangles": 5948
+    },
+    {
+     "name": "plant_spinach_1_L1",
+     "triangles": 786
+    }
+   ],
+   "boundsUnit": [
+    0.9496,
+    1.3142,
+    0.9312
+   ],
+   "leafColour": [
+    0.17,
+    0.27,
+    0.07
+   ],
+   "checks": {
+    "pipeModel": true,
+    "branchesInsideHull": 0.997,
+    "nodes": 328,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.973,
+    "silhouetteSide": 0.9,
+    "outsideHull": 0.0245,
+    "badNormals": 0,
+    "badNormalsL1": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
+   }
+  },
+  {
+   "kind": "spinach",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "plant_spinach_2_L0",
+     "triangles": 4854
+    },
+    {
+     "name": "plant_spinach_2_L1",
+     "triangles": 792
+    }
+   ],
+   "boundsUnit": [
+    1.0044,
+    1.4683,
+    0.9111
+   ],
+   "leafColour": [
+    0.17,
+    0.27,
+    0.07
+   ],
+   "checks": {
+    "pipeModel": true,
+    "branchesInsideHull": 0.994,
+    "nodes": 308,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.97,
+    "silhouetteSide": 0.897,
+    "outsideHull": 0.0201,
+    "badNormals": 0,
+    "badNormalsL1": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
+   }
+  },
+  {
+   "kind": "spinach",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "plant_spinach_3_L0",
+     "triangles": 5640
+    },
+    {
+     "name": "plant_spinach_3_L1",
+     "triangles": 788
+    }
+   ],
+   "boundsUnit": [
+    0.9536,
+    1.3575,
+    0.9111
+   ],
+   "leafColour": [
+    0.17,
+    0.27,
+    0.07
+   ],
+   "checks": {
+    "pipeModel": true,
+    "branchesInsideHull": 0.991,
+    "nodes": 321,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.945,
+    "silhouetteSide": 0.891,
+    "outsideHull": 0.0133,
+    "badNormals": 0,
+    "badNormalsL1": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
+   }
   }
  ],
  "items": [],
@@ -949,6 +1245,90 @@
     0.250244,
     0.249756,
     0.312256
+   ],
+   "spray_cushion_0": [
+    0.750244,
+    0.125244,
+    0.812256,
+    0.187256
+   ],
+   "spray_cushion_1": [
+    0.812744,
+    0.125244,
+    0.874756,
+    0.187256
+   ],
+   "spray_cushion_2": [
+    0.875244,
+    0.125244,
+    0.937256,
+    0.187256
+   ],
+   "card_cushion_0_0": [
+    0.000244,
+    0.687744,
+    0.062256,
+    0.749756
+   ],
+   "card_cushion_0_1": [
+    0.062744,
+    0.687744,
+    0.124756,
+    0.749756
+   ],
+   "card_cushion_0_2": [
+    0.125244,
+    0.687744,
+    0.187256,
+    0.749756
+   ],
+   "card_cushion_0_3": [
+    0.187744,
+    0.687744,
+    0.249756,
+    0.749756
+   ],
+   "spray_spinach_0": [
+    0.250244,
+    0.187744,
+    0.312256,
+    0.249756
+   ],
+   "spray_spinach_1": [
+    0.312744,
+    0.187744,
+    0.374756,
+    0.249756
+   ],
+   "spray_spinach_2": [
+    0.375244,
+    0.187744,
+    0.437256,
+    0.249756
+   ],
+   "card_spinach_0_0": [
+    0.000244,
+    0.812744,
+    0.062256,
+    0.874756
+   ],
+   "card_spinach_0_1": [
+    0.062744,
+    0.812744,
+    0.124756,
+    0.874756
+   ],
+   "card_spinach_0_2": [
+    0.125244,
+    0.812744,
+    0.187256,
+    0.874756
+   ],
+   "card_spinach_0_3": [
+    0.187744,
+    0.812744,
+    0.249756,
+    0.874756
    ],
    "spray_green_0": [
     0.250244,
@@ -1284,6 +1664,54 @@
     0.343994,
     0.968994,
     0.374756,
+    0.999756
+   ],
+   "canopy_cushion_0": [
+    0.437744,
+    0.937744,
+    0.468506,
+    0.968506
+   ],
+   "canopy_cushion_1": [
+    0.468994,
+    0.937744,
+    0.499756,
+    0.968506
+   ],
+   "canopy_cushion_2": [
+    0.437744,
+    0.968994,
+    0.468506,
+    0.999756
+   ],
+   "canopy_cushion_3": [
+    0.468994,
+    0.968994,
+    0.499756,
+    0.999756
+   ],
+   "canopy_spinach_0": [
+    0.562744,
+    0.937744,
+    0.593506,
+    0.968506
+   ],
+   "canopy_spinach_1": [
+    0.593994,
+    0.937744,
+    0.624756,
+    0.968506
+   ],
+   "canopy_spinach_2": [
+    0.562744,
+    0.968994,
+    0.593506,
+    0.999756
+   ],
+   "canopy_spinach_3": [
+    0.593994,
+    0.968994,
+    0.624756,
     0.999756
    ]
   }

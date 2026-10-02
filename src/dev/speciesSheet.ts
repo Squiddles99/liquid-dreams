@@ -9,7 +9,7 @@ import { landSpots } from '../surfer/placement';
  * (no heath there to clutter it), at its mean size, from 2.5 m and 0.8 m, at 08:30 and 12:30; each frame posted to the
  * local snapshot receiver as `sheet-<kind>-<hour>-<distance>`. Dev builds only (`?sheet=species`).
  */
-export async function captureSpeciesSheet(app: App, post: (name: string, frame: Blob) => Promise<void>): Promise<string[]> {
+export async function captureSpeciesSheet(app: App, post: (name: string, frame: Blob) => Promise<void>, only?: readonly string[]): Promise<string[]> {
   for (let i = 0; i < 300 && !app.land.height; i++) await new Promise((r) => setTimeout(r, 1000));
   const lh = app.land.height!;
   const kit = await loadKit();
@@ -20,7 +20,7 @@ export async function captureSpeciesSheet(app: App, post: (name: string, frame: 
   const x = spot.x + 3, z = spot.z + 6;
   const names: string[] = [];
   try {
-    for (const kind of PLANT_KINDS) {
+    for (const kind of PLANT_KINDS.filter((k) => !only || only.includes(k))) {
       const s = PLANT_SPECS[kind];
       const width = (s.widthM[0] + s.widthM[1]) / 2, height = (s.heightM[0] + s.heightM[1]) / 2;
       const y = lh.heightAt(x, z);

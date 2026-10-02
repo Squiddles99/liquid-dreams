@@ -7,8 +7,8 @@ import { coarseMeshHeightAt } from '../land/landMesh';
 import { smoothstep } from '../math/smoothstep';
 
 /** The heath's plants (spec 2026-09-28-the-heath-design.md §3.1). */
-export type PlantKind = 'daisy' | 'green' | 'tall' | 'pigface' | 'rice' | 'dead';
-export const PLANT_KINDS: readonly PlantKind[] = ['daisy', 'green', 'tall', 'pigface', 'rice', 'dead'];
+export type PlantKind = 'daisy' | 'green' | 'tall' | 'pigface' | 'rice' | 'dead' | 'cushion' | 'spinach';
+export const PLANT_KINDS: readonly PlantKind[] = ['daisy', 'green', 'tall', 'pigface', 'rice', 'dead', 'cushion', 'spinach'];
 export const PLANT_SHAPES = 4;
 export const PLANT_LODS = 3;
 /** Icosphere subdivisions per level of detail: 320, 80 and 20 triangles. */
@@ -22,6 +22,10 @@ export const PLANT_SPECS: Record<PlantKind, { heightM: [number, number]; widthM:
   rice: { heightM: [0.3, 0.5], widthM: [0.5, 1] },
   /** A dead shrub's grey skeleton (dune-up-close §4.2: Andrew's flora photo shows them between the living). */
   dead: { heightM: [0.5, 1.2], widthM: [0.6, 1.6] },
+  /** Coast cushion bush (Leucophyta brownii): a silver-white wiry mound (gate 1: Andrew's photo 8). */
+  cushion: { heightM: [0.3, 0.7], widthM: [0.5, 1.2] },
+  /** Sea spinach (Tetragonia decumbens): a low fleshy green mat (gate 1: photo 6). */
+  spinach: { heightM: [0.08, 0.2], widthM: [0.8, 2.0] },
 };
 
 /**
@@ -38,6 +42,8 @@ const FORM: Record<PlantKind, { lobes: number; bumps: number; scallop: number }>
   pigface: { lobes: 0.15, bumps: 0.08, scallop: 0.18 },
   rice: { lobes: 0.12, bumps: 0.12, scallop: 0 },
   dead: { lobes: 0.35, bumps: 0.18, scallop: 0 },
+  cushion: { lobes: 0.12, bumps: 0.06, scallop: 0 },
+  spinach: { lobes: 0.15, bumps: 0.08, scallop: 0.12 },
 };
 
 /** The displaced (unnormalised) position of the unit-sphere point p for this kind and shape; the bottom cut at PLANT_CUT. */
@@ -135,6 +141,8 @@ export const PLANT_ALBEDO: Record<PlantKind, [number, number, number]> = {
   rice: [0.12, 0.16, 0.07],
   /** Weathered grey wood. */
   dead: [0.16, 0.155, 0.14],
+  cushion: [0.3, 0.31, 0.28],
+  spinach: [0.16, 0.22, 0.07],
 };
 
 /**
@@ -186,8 +194,10 @@ export function cellPlants(ci: number, cj: number, land: LandHeight, rocks: Rock
     if (r(2) >= keep * pass) continue;
     let kind: PlantKind;
     if (dead) kind = 'dead';
-    else if (!shrub) kind = r(3) < 0.5 ? 'pigface' : 'rice';
-    else if (riseW > heathW) kind = r(3) < 0.54 ? 'daisy' : 'green';
+    // The low plants: sea spinach shares the pigface's ground within 120 m of the water (gate 1).
+    else if (!shrub) kind = d < 120 && r(11) < 0.35 ? 'spinach' : r(3) < 0.5 ? 'pigface' : 'rice';
+    // The dune rise: coast cushion bush's silver mounds among the daisy and fanflower (gate 1).
+    else if (riseW > heathW) kind = r(11) < 0.12 ? 'cushion' : r(3) < 0.54 ? 'daisy' : 'green';
     else {
       const tall = 0.04 + 0.06 * smoothstep(90, 300, d);
       kind = r(3) < tall ? 'tall' : r(3) < tall + 0.5 ? 'daisy' : 'green';
