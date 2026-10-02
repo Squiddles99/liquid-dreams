@@ -286,18 +286,22 @@ export class PlantField {
 }
 
 /** A plant in the fine patch's shadow picture (spec §3.5): lighter than a rock; the low plants only darken their contact. */
-export function plantCaster(p: Plant): ShadowCaster {
-  return { x: p.x, z: p.z, radius: p.width / 2, height: p.height, strength: 0.6, ringOnly: p.kind === 'pigface' || p.kind === 'rice', maxLenM: 4 };
+export function plantCaster(p: Plant, silhouettes?: ReadonlyMap<string, Uint8Array>): ShadowCaster {
+  const c: ShadowCaster = { x: p.x, z: p.z, radius: p.width / 2, height: p.height, strength: 0.6, ringOnly: p.kind === 'pigface' || p.kind === 'rice', maxLenM: 4 };
+  // A kit plant's own canopy from above (dune-up-close §4.5): dappled shade, and the floor darker under its crown.
+  const alpha = silhouettes?.get(`${p.kind}_${p.shape}`);
+  if (alpha) c.silhouette = { alpha, n: Math.round(Math.sqrt(alpha.length)), yaw: p.yaw };
+  return c;
 }
 
 /**
  * The plants in the fine patch's shadow picture: those within SUN_SHADOW_RANGE_M of the camera. With every plant in the
  * square casting (a low sun's shadows 12 m long), a rebuild on the heath took 12–35 ms (final review I1).
  */
-export function patchCasters(plants: readonly Plant[], _centre: [number, number], camX: number, camZ: number): ShadowCaster[] {
+export function patchCasters(plants: readonly Plant[], _centre: [number, number], camX: number, camZ: number, silhouettes?: ReadonlyMap<string, Uint8Array>): ShadowCaster[] {
   const out: ShadowCaster[] = [];
   for (const p of plants) {
-    if (Math.hypot(p.x - camX, p.z - camZ) <= SUN_SHADOW_RANGE_M) out.push(plantCaster(p));
+    if (Math.hypot(p.x - camX, p.z - camZ) <= SUN_SHADOW_RANGE_M) out.push(plantCaster(p, silhouettes));
   }
   return out;
 }
