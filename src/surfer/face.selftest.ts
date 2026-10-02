@@ -125,6 +125,10 @@ registerSelfTest({
     eyes.visible = true;
     let solid = 0, n = 0;
     for (let x = 30; x < 66; x++) {
+      // Not the part (the image's middle columns): a centre part shows a line of scalp between the combed-apart halves,
+      // and with the body hidden that line is see-through (dune select spec §13.1). What this measures is the roots'
+      // fade read the right way round, either side of it.
+      if (Math.abs(x - size / 2) < 3) continue;
       let top = -1;
       for (let y = size - 1; y >= 0; y--) if (px[4 * (y * size + x) + 3] > 0.5) { top = y; break; }
       if (top < 8) continue;
