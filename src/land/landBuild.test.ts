@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readBakedLand } from './bakedLand.testutil';
-import { type LandBuild, offThreadBuilder } from './landBuild';
+import { type LandBuild, buildLand, offThreadBuilder } from './landBuild';
+import { decodeLandFile } from './landData';
+import { LandHeight } from './landHeight';
+import { routeTracks } from './tracks';
 import { DEFAULT_LAND_PARAMS, beachProfileFor } from './landParams';
 
 /** A stand-in Worker: answers each request with `answer`, or fails. */
@@ -45,3 +48,17 @@ describe('building the land off the main thread', () => {
 
 });
 
+
+describe('the tracks come with the build (dune-up-close §4.1)', () => {
+  it('routes them on the real land within 500 ms, and they survive the worker boundary (Review Focus 1)', () => {
+    const lh = new LandHeight(decodeLandFile(readBakedLand()), beachProfileFor(DEFAULT_LAND_PARAMS));
+    const t0 = performance.now();
+    const t = routeTracks(lh, lh.fineZRange());
+    const ms = performance.now() - t0;
+    console.log(`routeTracks on the baked land: ${ms.toFixed(0)} ms, Cape to Cape ${t.pieces[0].points.length} points, junction (${t.junction.x.toFixed(1)}, ${t.junction.z.toFixed(1)})`);
+    expect(ms).toBeLessThan(500);
+    const b = buildLand(lh);
+    expect(b.tracks.pieces.map((p) => p.name)).toEqual(['capeToCape', 'beachPath']);
+    expect(structuredClone(b.tracks)).toEqual(b.tracks);
+  }, 30_000);
+});

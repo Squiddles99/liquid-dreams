@@ -69,7 +69,7 @@ export function buildPatchGrids(land: LandHeight, centre: [number, number], prev
   for (let j = 0; j < m; j++) {
     for (let i = 0; i < m; i++) {
       const o = old(i - 1, j - 1);
-      hm[j * m + i] = o >= 0 ? prev!.raw[o] : land.heightAt(cornerX + i - 1, cornerZ + j - 1);
+      hm[j * m + i] = o >= 0 ? prev!.raw[o] : land.baseHeightAt(cornerX + i - 1, cornerZ + j - 1);
     }
   }
   for (let j = 0; j < n; j++) {

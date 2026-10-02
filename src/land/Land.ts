@@ -8,6 +8,7 @@ import type { LandMeshData } from './landMesh';
 import { DEFAULT_LAND_PARAMS, type LandParams, beachProfileFor, normalizeLandParams } from './landParams';
 import { type LandLookUniforms, type PatchHole, createLandLookUniforms, createLandMaterial } from './landShading';
 import { SkylineTable } from './SkylineTable';
+import { TrackNetwork } from './tracks';
 import { SunlightMap } from './SunlightMap';
 
 type N = any;
@@ -133,6 +134,7 @@ export class Land {
   }
 
   private show(height: LandHeight, built: LandBuild): void {
+    height.setTracks(new TrackNetwork(built.tracks));
     this.height = height;
     this.mesh.geometry.dispose();
     this.mesh.geometry = landGeometry(built.mesh);
