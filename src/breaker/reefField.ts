@@ -25,6 +25,8 @@ export interface ReefField {
   hminBreak: Float32Array;
   /** The drain's breaking depth: amp / the slurp's gain (slurpAlongCrest; FieldSample.hminSlurp). */
   hminSlurp: Float32Array;
+  /** The front's lean's breaking depth (≤ hminSlurp): amp / the gain its front feels ahead, slurped (gainAhead; FieldSample.hminLean). */
+  hminLean: Float32Array;
   k: Float32Array;
   dirX: Float32Array;
   dirZ: Float32Array;
@@ -140,6 +142,31 @@ export function slurpAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Float
       if (m >= w * aMax) break; // nothing further along can beat it
       m = Math.max(m, w * at(col + j * tx, row + j * tz), w * at(col - j * tx, row - j * tz));
     }
+    out[i] = m;
+  }
+  return out;
+}
+
+/** The front's lean reads the gain ahead along the ray in steps this long (m). */
+const AHEAD_STEP_M = 2;
+
+/**
+ * The gain a wave's front feels ahead of its crest (Andrew's "bump", 2026-10-02): the largest of a(s) × (1 − s/L) for s
+ * from 0 to L = half the local wavelength (π/k) along the ray, so the reef counts in full under the crest and not at all
+ * at the front's far end. The front's lean (setWaveModel.leanWeight) reads it: on the reef build's 1:3 face a crest's own
+ * ratio climbed into the lean's window only in its last second, so its unleaned front reached the water ahead first
+ * and lifted it 0.5–2.7 m before the lean and the drain pulled it down into the face. The front spans half a
+ * wavelength ahead of the crest, and where there is reef under it, it leans: the trough has moved in to the face's foot
+ * by the time the front would have reached a surfer in front.
+ */
+export function gainAhead(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, k: Float32Array, grid: GridSpec): Float32Array {
+  const { nx, cellM } = grid;
+  const out = new Float32Array(a.length);
+  const at = bilinearCells(a, grid);
+  for (let i = 0; i < a.length; i++) {
+    const col = i % nx, row = (i - col) / nx, L = Math.PI / k[i], tx = dirX[i] / cellM, tz = dirZ[i] / cellM;
+    let m = a[i];
+    for (let s = AHEAD_STEP_M; s < L; s += AHEAD_STEP_M) m = Math.max(m, at(col + tx * s, row + tz * s) * (1 - s / L));
     out[i] = m;
   }
   return out;
@@ -322,6 +349,12 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const slurp = slurpAlongCrest(smoothGain, dirX, dirZ, grid, SLURP_REACH_M);
   const hminSlurp = new Float32Array(n);
   for (let i = 0; i < n; i++) hminSlurp[i] = slurp[i] > 0 ? Math.min(hminBreak[i], amp[i] / slurp[i]) : hminBreak[i];
+  // The front's lean: the gain its front feels ahead (gainAhead), slurped along the crest as the drain's is, so the
+  // shoulders beside a section about to stand up lean with it (at the peak's first break, 23 m outside the ledge, its own
+  // ratio is ~1 and its slurp no longer reached 45–100 m along the north shoulder; Andrew, 2026-10-02).
+  const leanGain = slurpAlongCrest(gainAhead(smoothGain, dirX, dirZ, k, grid), dirX, dirZ, grid, SLURP_REACH_M);
+  const hminLean = new Float32Array(n);
+  for (let i = 0; i < n; i++) hminLean[i] = Math.min(hminSlurp[i], leanGain[i] > 0 ? amp[i] / leanGain[i] : hminSlurp[i]);
   // ψ₀ at every node (plan 2026-10-02): from the reef's step there, lightly smoothed along the crest (STEP_SMOOTHING_M) so
   // small reef bumps don't make the lip ragged; the same at every level (the record keeps the one where each level broke).
   const depthAt = bilinearCells(depth, grid);
@@ -334,7 +367,7 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const psiHere = new Float32Array(n * ONSET_LEVELS);
   for (let i = 0; i < n; i++) psiHere.fill(psiFromStep(step[i]), i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
   const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere });
-  return { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
+  return { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
 }
 
 /**
@@ -458,7 +491,7 @@ function sampleInside(f: ReefField, x: number, z: number): FieldSample {
   const dirX = bilinear(f.dirX, g, x, z), dirZ = bilinear(f.dirZ, g, x, z);
   const len = Math.hypot(dirX, dirZ) || 1;
   return {
-    tau: bilinear(f.tau, g, x, z), amp: bilinear(f.amp, g, x, z), hmin: bilinear(f.hmin, g, x, z), hminBreak: bilinear(f.hminBreak, g, x, z), hminSlurp: bilinear(f.hminSlurp, g, x, z),
+    tau: bilinear(f.tau, g, x, z), amp: bilinear(f.amp, g, x, z), hmin: bilinear(f.hmin, g, x, z), hminBreak: bilinear(f.hminBreak, g, x, z), hminSlurp: bilinear(f.hminSlurp, g, x, z), hminLean: bilinear(f.hminLean, g, x, z),
     k: bilinear(f.k, g, x, z), dirX: dirX / len, dirZ: dirZ / len, depth: bilinear(f.depth, g, x, z),
   };
 }

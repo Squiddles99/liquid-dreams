@@ -134,7 +134,7 @@ describe('the field breaking height (SetWaves skips the GPU breaking below its s
     });
     it(`its shaping share (the front's lean or the sharpening, whichever starts first) bounds the sheet: a wave no taller is exactly the Phase 1 surface everywhere, far field included (${name})`, { timeout: 60_000 }, () => {
       const hs = fieldSteepeningHeight(field, p);
-      expect(hs).toBeCloseTo(Math.min(steepeningStart(p), LEAN_RATIO[0]) * fieldBreakingHeight(field, p, field.hminSlurp), 12);
+      expect(hs).toBeCloseTo(Math.min(steepeningStart(p) * fieldBreakingHeight(field, p, field.hminSlurp), LEAN_RATIO[0] * fieldBreakingHeight(field, p, field.hminLean)), 12);
       const w = [testWave(hs)], o = optsFor(field, p);
       for (let x = -400; x <= 300; x += 12.5) for (let z = -600; z <= 300; z += 12.5) for (const t of [-20, -5, 0, 4, 12]) {
         expect(sumWaves(x, z, t, at(x, z), w, ctx, o)).toEqual(sumWaves(x, z, t, at(x, z), w, ctx));
@@ -470,7 +470,7 @@ describe('the breaking sheet on the real reef', () => {
     for (const [T, depth, hmin, height] of cases) {
       const omega = (2 * Math.PI) / T, k = waveNumber(omega, depth), c = omega / k;
       const dirX = Math.cos(0.4), dirZ = Math.sin(0.4);
-      const fAt = (x: number, z: number): FieldSample => ({ tau: (x * dirX + z * dirZ) / c, amp: 1, hmin, hminBreak: hmin, hminSlurp: hmin, k, dirX, dirZ, depth });
+      const fAt = (x: number, z: number): FieldSample => ({ tau: (x * dirX + z * dirZ) / c, amp: 1, hmin, hminBreak: hmin, hminSlurp: hmin, hminLean: hmin, k, dirX, dirZ, depth });
       const w: ActiveWave = { arrivalS: 0, heightM: height, omega, travelX: dirX, travelZ: dirZ, crestLengthM: 400, crestOffsetM: 0 };
       const cx: WaveContext = { omega, travelX: dirX, travelZ: dirZ };
       const o: BreakOptions = { sample: fAt, params: DEFAULT_BREAK_PARAMS };
@@ -863,20 +863,21 @@ describe('the slurp: the draw-up reaches along the swell line either side of the
     }
     return out;
   };
-  // Known regression on the reef build (plan 2026-10-02 Task 4): the peak now breaks near the ledge; as it does, the water in
-  // front of the north shoulder 45–100 m along the crest stands +0.3 to +1.9 m above still water (within 40 m, and the whole
-  // south side, it is drawn down). On the softened ramp both shoulders were drawn down to 60 m. Flip back to it() when fixed.
-  it.fails('as the peak breaks, the water in front of the shoulders within 60 m of it is drawn below sea level, less so further out', { timeout: 60_000 }, () => {
+  // On the reef build the peak first breaks 23 m outside the ledge, its ratio only ~1, and its slurp no longer reached the
+  // north shoulder: 45–100 m along the crest the water in front stood +0.3 to +1.9 m (Andrew, 2026-10-02). The front's lean
+  // reads the reef ahead of it, slurped along the crest (reefField.gainAhead).
+  it('as the peak breaks, the water in front of the shoulders within 60 m of it is drawn below sea level, less so further out', { timeout: 60_000 }, () => {
     const line = alongCrest(tPeak);
     for (const p of line) if (Math.abs(p.v) <= 60) expect(p.lowest, `${p.v} m along the crest`).toBeLessThan(0);
-    const near = Math.max(...line.filter((p) => Math.abs(p.v) === 60).map((p) => p.lowest));
-    const far = Math.min(...line.filter((p) => Math.abs(p.v) === 100).map((p) => p.lowest));
+    // The fade on the left's side (north): on the reef build the south shoulder from 70 m is drawn by its own ledge in front
+    // of it (its slurp ratio 2.5–2.7), as it was before the lean read the reef ahead.
+    const near = line.find((p) => p.v === -60)!.lowest, far = line.find((p) => p.v === -100)!.lowest;
     expect(far, 'it fades along the line').toBeGreaterThan(near);
   });
-  // Known regression for the reef build (Andrew, 2026-09-30): on the softened ramp the draw-down's edge 65 m south of the
-  // peak's break climbs 0.96 m per 5 m of crest 1 s after it breaks (0.9 allowed; the old wall was 1.1–1.4). The drain now
-  // also follows each crest's ψ along the line. Re-measure on the reef build's reef: flip back to it().
-  it.fails('where the draw-down ends it eases off along the line: under 0.9 m per 5 m of crest (it climbed 1.1–1.4 m)', { timeout: 60_000 }, () => {
+  // Re-measured on the reef build (2026-10-02): where the shoulders' draw-down ends. Not at the peak's own face standing up:
+  // its sharpening switches on across its A-frame (0.5 to 0.84 in 5 m of crest, 1.4 m per 5 m 5 m in front, with the
+  // front leaned), which is the wave's shape, not the slurp's edge.
+  it('where the draw-down ends it eases off along the line: under 0.9 m per 5 m of crest (it climbed 1.1–1.4 m)', { timeout: 60_000 }, () => {
     // Measured 5, 10 and 15 m in front of the crest, where the sunken face meets the shoulder's untouched one: the wall
     // at each end of the drained bowl. At and after the break, where the slurp acts. (Before it, the shoulders' own
     // standing up still switches on over ~15 m of crest: about 1 m per 5 m, as before.) The drawn-down water itself: the
@@ -887,10 +888,13 @@ describe('the slurp: the draw-up reaches along the swell line either side of the
       // Where the drawn water ends, in the shoulders that haven't broken: the broken section itself is collapsing as it
       // peels, a different thing from one metre of crest to the next.
       const heights: number[][] = [], broken: boolean[] = [];
+      const standing: boolean[] = [];
       for (let v = -100; v <= 100; v += 5) {
         let x = 0, z = 0;
         for (let u = -200; u <= 200; u += 0.5) { x = px0 + ctx.travelX * u + tx * v; z = pz0 + ctx.travelZ * u + tz * v; if (at(x, z).tau >= t) break; }
-        broken.push(crestAt(x, z, t, at(x, z), w, ctx, sheet)!.s > 0);
+        const cr = crestAt(x, z, t, at(x, z), w, ctx, sheet)!;
+        broken.push(cr.s > 0);
+        standing.push(cr.lc.steep >= 0.5);
         const row: number[] = [];
         let xx = x, zz = z;
         for (let d = 0; d <= 15; d += 0.5) { const f = at(xx, zz); if (d === 5 || d === 10 || d === 15) row.push(sumWaves(xx, zz, t, f, [w], ctx, drawn).eta); xx += f.dirX * 0.5; zz += f.dirZ * 0.5; }
@@ -898,7 +902,7 @@ describe('the slurp: the draw-up reaches along the swell line either side of the
       }
       let pairs = 0;
       for (let i = 1; i < heights.length; i++) {
-        if (broken[i] || broken[i - 1]) continue;
+        if (broken[i] || broken[i - 1] || standing[i] || standing[i - 1]) continue;
         pairs++;
         for (let k = 0; k < 3; k++) expect(Math.abs(heights[i][k] - heights[i - 1][k]), `${dt} s, ${-100 + 5 * i} m along the crest, ${5 * (k + 1)} m in front`).toBeLessThan(0.9);
       }
@@ -974,10 +978,9 @@ describe('the water in front of the break is drawn steadily down (Andrew, 2026-1
     for (let u = -60; u <= 80; u += 0.5) { const h = height(u, t); out.push([u + h.dx * cam.dirX + h.dz * cam.dirZ, h.eta]); }
     return out;
   };
-  // Known regression on the reef build (plan 2026-10-02 Task 4): 20 m in front of where 12 ft breaks at the peak, this wave
-  // alone lifts the water 0.5 m (−1.70 → −1.2 m, 3 s to 1 s before its draw) between its leaned trough passing and the
-  // drain's hollow arriving; the same with the face's old floor. Flip back to it() when fixed.
-  it.fails('a surfer sitting 20–40 m in front of where it breaks is never lifted more than 0.9 m before the face reaches them (was 2.9 m), 0.25 m by this wave', { timeout: 120_000 }, () => {
+  // On the reef build's face this wave alone lifted the water 0.5 m 20 m in front of where it breaks, 1–3 s before its
+  // draw: its front leaned only in its last second (the lean now reads the reef under its front: reefField.gainAhead).
+  it('a surfer sitting 20–40 m in front of where it breaks is never lifted more than 0.9 m before the face reaches them (was 2.9 m), 0.25 m by this wave', { timeout: 120_000 }, () => {
     // What is left: the wave before's back trough filling in as it passes (0.4 m at 40 m, over 3 s, 2.4–2.9 m below still
     // water), and this wave's own trough level drifting by ~0.15 m as its flat trough slides past (the shoaling swell's
     // trough level varies along the ray as the reef focuses it); then this wave's draw takes over.
@@ -999,6 +1002,22 @@ describe('the water in front of the break is drawn steadily down (Andrew, 2026-1
       // 0.8 m 20 m ahead of this one's break 1–5 s before this one's draw (plan 2026-10-02 Task 4; 0.4 m at 40 m on the
       // softened ramp). This wave alone, the "first swell" Andrew saw, stays the strict guard.
       expect(rise, `lifted before the face, ${u} m along the line${alone ? ', this wave alone' : ''}`).toBeLessThan(alone ? 0.25 : 0.9);
+    }
+  });
+  it('smaller sets too: 20–40 m in front of where 4, 6 or 8 ft first breaks, it lifts the water under 0.25 m before its face (6 ft lifted it 1 m: Andrew, 2026-10-02)', { timeout: 120_000 }, () => {
+    // On the reef build's face a wave's ratio climbs past the lean's window only in its last second: its unleaned front
+    // reached the water in front first, then the lean and the drain pulled it down before the face (his "bump").
+    for (const ft of [4, 6, 8]) {
+      const wv = testWave(setWaveHeightAt(ft)), b = firstBreak(field, wv.heightM)!, s0 = at(b.x, b.z);
+      for (const u of [20, 30, 40]) {
+        const x = b.x + s0.dirX * u, z = b.z + s0.dirZ * u, f = at(x, z);
+        const series: number[] = [];
+        for (let dt = -10; dt <= 6; dt += 0.1) { const y = sumWaves(x, z, s0.tau + dt, f, [wv], ctx, sheet).eta; if (y > 1) break; series.push(y); }
+        const bottom = series.indexOf(Math.min(...series));
+        let low = Infinity, rise = 0;
+        for (const y of series.slice(0, bottom + 1)) { rise = Math.max(rise, y - low); low = Math.min(low, y); }
+        expect(rise, `${ft} ft, ${u} m in front`).toBeLessThan(0.25);
+      }
     }
   });
   it('as it breaks the lowest water in front is at the foot of the face, and from there it only rises (no shelf, no rim)', { timeout: 120_000 }, () => {

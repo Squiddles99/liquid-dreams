@@ -69,7 +69,7 @@ export class SetWaves {
   hasField = false;
   private readonly fieldA = floatTexture(FIELD_NX, FIELD_NZ);
   private readonly fieldB = floatTexture(FIELD_NX, FIELD_NZ);
-  /** The slurp's breaking depth (ReefField.hminSlurp) in x: read only where the crest lookup lands. */
+  /** The slurp's breaking depth (ReefField.hminSlurp) in x, the lean's (hminLean) in y: read only where the crest lookup lands. */
   private readonly fieldC = floatTexture(FIELD_NX, FIELD_NZ);
   /** The onset record (ReefField.onset), ONSET_TEXELS texels per field node side by side along x: the running maximum,
    * then two levels per texel, (time since onset, amplification) each. One texture, so the record is one binding. */
@@ -123,7 +123,7 @@ export class SetWaves {
       b[i * 4] = f.dirX[i]; b[i * 4 + 1] = f.dirZ[i]; b[i * 4 + 2] = f.depth[i]; b[i * 4 + 3] = f.hminBreak[i];
     }
     const sc = this.fieldC.image.data as Float32Array;
-    for (let i = 0; i < f.tau.length; i++) sc[i * 4] = f.hminSlurp[i];
+    for (let i = 0; i < f.tau.length; i++) { sc[i * 4] = f.hminSlurp[i]; sc[i * 4 + 1] = f.hminLean[i]; }
     const od = this.onsetRec.image.data as Float32Array;
     for (let i = 0; i < f.tau.length; i++) {
       const col = i % FIELD_NX, row = (i - col) / FIELD_NX, o = (row * FIELD_NX + col) * ONSET_TEXELS * 4, r = i * ONSET_RECORD_LENGTH;
@@ -196,7 +196,7 @@ export class SetWaves {
    * would otherwise emit the reads inside every branch that uses them (44 loads per sample instead of 12), and it loads
    * the far field only outside the grid (8 loads per sample inside it).
    */
-  sample(xz: N, hoist = false, slurp = false): { tau: N; amp: N; hmin: N; hminBreak: N; hminSlurp: N; k: N; dir: N; depth: N } {
+  sample(xz: N, hoist = false, slurp = false): { tau: N; amp: N; hmin: N; hminBreak: N; hminSlurp: N; hminLean: N; k: N; dir: N; depth: N } {
     const v = (n: N): N => (hoist ? n.toVar() : n);
     const g = v(xz.sub(this.origin).div(this.cell));
     const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThanEqual(this.fieldMax.x)).and(g.y.lessThanEqual(this.fieldMax.y));
@@ -239,6 +239,8 @@ export class SetWaves {
       hminBreak: select(useGrid, b.w, fb.z),
       // The coast has no slurp: its depth is the breaking depth (coastFarField.farSample).
       hminSlurp: c ? select(useGrid, c.x, fb.z) : select(useGrid, b.w, fb.z),
+      // The front's lean's depth (ReefField.hminLean), as the slurp's; the coast's is its breaking depth too.
+      hminLean: c ? select(useGrid, c.y, fb.z) : select(useGrid, b.w, fb.z),
       k: max(select(useGrid, a.w, fa.w), 1e-4),
       dir: select(useGrid, edgeDir, farDir),
       depth: select(useGrid, b.z, fb.y),
@@ -336,7 +338,7 @@ export class SetWaves {
           // setWaveModel.crestAt, before the Phase 1 terms: the height comes from the crest once the wave stands up.
           // Defaults: no crest, so no sharpening, stage or crest height.
           const cPos = xz.toVar();
-          const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), hminBreak: f.hminBreak.toVar(), hminSlurp: f.hminBreak.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
+          const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), hminBreak: f.hminBreak.toVar(), hminSlurp: f.hminBreak.toVar(), hminLean: f.hminBreak.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
           const confidence = float(0.0).toVar(), rC = float(0.0).toVar();
           // The front's lean (setWaveModel.leanWeight): 0 without a crest.
           const lean = float(0.0).toVar();
@@ -357,7 +359,7 @@ export class SetWaves {
               const crossing = max(dot(fc.dir, b.xy).add(wm), CREST_MIN_CROSSING);
               cPos.addAssign(b.xy.mul(clamp(xiC.mul(this.meanOmega).div(fc.k).div(crossing), reach.negate(), reach)));
               const sc = this.sample(cPos, true, step === CREST_STEPS - 1);
-              fc.tau.assign(sc.tau); fc.amp.assign(sc.amp); fc.hmin.assign(sc.hmin); fc.hminBreak.assign(sc.hminBreak); fc.hminSlurp.assign(sc.hminSlurp);
+              fc.tau.assign(sc.tau); fc.amp.assign(sc.amp); fc.hmin.assign(sc.hmin); fc.hminBreak.assign(sc.hminBreak); fc.hminSlurp.assign(sc.hminSlurp); fc.hminLean.assign(sc.hminLean);
               fc.k.assign(sc.k); fc.dir.assign(sc.dir); fc.depth.assign(sc.depth);
             }
             rC.assign(breakingRatioNode(a.y.mul(fc.amp), fc.hminBreak, brk));
@@ -379,7 +381,7 @@ export class SetWaves {
             const onset = onsetTimeNode(rec, level, a.y, brk);
             const rSlurp = breakingRatioNode(a.y.mul(fc.amp), fc.hminSlurp, brk);
             // × (1 − collapse), assigned with the lifecycle below.
-            lean.assign(smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], rSlurp).mul(confidence));
+            lean.assign(smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], breakingRatioNode(a.y.mul(fc.amp), fc.hminLean, brk)).mul(confidence));
             const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), rSlurp, brk,
               { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi) });
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
