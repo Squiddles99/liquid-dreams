@@ -74,6 +74,11 @@ describe('TrackNetwork', () => {
     const mid = t.sinkAt(x + LATTICE_M / 2, z);
     expect(mid).toBeCloseTo((t.sinkExact(x, z) + t.sinkExact(x + LATTICE_M, z)) / 2, 6);
   });
+  it('gives the same sink with its far-from-the-tracks shortcut as without (every 7 cm over 40 m round the junction)', () => {
+    for (let x = j.x - 20; x < j.x + 20; x += 0.07) {
+      for (const z of [j.z - 7.3, j.z, j.z + 2.1, j.z + 11]) expect(t.sinkAt(x, z)).toBe(t.sinkAtSlow(x, z));
+    }
+  });
   it('puts the stand spot in the clearing, seaward of the junction, facing inland', () => {
     const s = t.standSpot();
     expect(t.inClearing(s.x, s.z)).toBe(true);

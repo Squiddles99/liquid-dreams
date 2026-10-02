@@ -137,6 +137,19 @@ const ALBEDO: Record<PlantKind, [number, number, number]> = {
   dead: [0.16, 0.155, 0.14],
 };
 
+/**
+ * Where a plant's base is drawn: the true ground inside the fine patch, blending to the coarse mesh over its outer 4 m,
+ * the coarse mesh beyond it or with the patch hidden.
+ */
+export function plantSeatY(p: Plant, patch: { cx: number; cz: number; on: boolean }): number {
+  let w = 0;
+  if (patch.on) {
+    const t = Math.min(1, Math.max(0, (32 - Math.max(Math.abs(p.x - patch.cx), Math.abs(p.z - patch.cz))) / 4));
+    w = t * t * (3 - 2 * t); // smoothstep(0, 4, distance inside the patch's edge): the patch's own height blend
+  }
+  return p.yCoarse + (p.yTrue - p.yCoarse) * w;
+}
+
 export function plantScale(distance: number): number {
   return 1 - smoothstep(PLANT_FULL_M, PLANT_GONE_M, distance);
 }
@@ -223,20 +236,28 @@ export class PlantField {
     this.cells.clear();
   }
 
-  near(camX: number, camZ: number): Plant[] {
+  /** The plants of cell (ci, cj), cached. */
+  cell(ci: number, cj: number): Plant[] {
+    const key = (ci + 0x8000) * 0x10000 + (cj + 0x8000);
+    let c = this.cells.get(key);
+    if (!c) {
+      c = cellPlants(ci, cj, this.land, this.rocks, this.density);
+      this.cells.set(key, c);
+    }
+    return c;
+  }
+
+  near(camX: number, camZ: number, radiusM = PLANT_GONE_M): Plant[] {
     const out: Plant[] = [];
-    const n = Math.ceil(PLANT_GONE_M / PLANT_CELL_M), cj0 = Math.floor(camZ / PLANT_CELL_M);
+    const n = Math.ceil(radiusM / PLANT_CELL_M), cj0 = Math.floor(camZ / PLANT_CELL_M);
     for (let dj = -n; dj <= n; dj++) {
       const cj = cj0 + dj, cz = (cj + 0.5) * PLANT_CELL_M, dz = cz - camZ;
-      const reach = PLANT_GONE_M * PLANT_GONE_M - dz * dz;
+      const reach = radiusM * radiusM - dz * dz;
       if (reach < 0) continue;
       const half = Math.sqrt(reach);
       const x0 = Math.max(camX - half, this.land.waterlineAt(cz) + PLANT_MIN_D - PLANT_CELL_M), x1 = camX + half;
       for (let ci = Math.ceil(x0 / PLANT_CELL_M - 0.5); (ci + 0.5) * PLANT_CELL_M <= x1; ci++) {
-        const key = (ci + 0x8000) * 0x10000 + (cj + 0x8000);
-        let c = this.cells.get(key);
-        if (!c) { c = cellPlants(ci, cj, this.land, this.rocks, this.density); this.cells.set(key, c); }
-        for (const p of c) out.push(p);
+        for (const p of this.cell(ci, cj)) out.push(p);
       }
     }
     if (this.cells.size > PLANT_CACHE_CELLS) {
