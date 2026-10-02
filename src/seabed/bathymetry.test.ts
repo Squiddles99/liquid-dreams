@@ -130,7 +130,7 @@ describe('the reef seaward of the ledges (spec 2026-10-02 §3)', () => {
     for (let v = p.faceWidthM + 1; v < p.slopeEndM - 2; v += 7) expect(g(v)).toBeCloseTo(g(p.faceWidthM + 1), 9);
   });
   it('degenerate params (dev panel) stay finite and never shallow seaward (plan Review Focus 3)', () => {
-    for (const q of [{ ...p, faceWidthM: 0 }, { ...p, slopeEndM: p.faceWidthM }, { ...p, slopeEndM: 0, faceWidthM: 0 }]) {
+    for (const q of [{ ...p, faceWidthM: 0 }, { ...p, slopeEndM: p.faceWidthM }, { ...p, slopeEndM: 0, faceWidthM: 0 }, { ...p, ledgeDepthM: 12, faceBaseDepthM: 7 }, { ...p, faceBaseDepthM: 22, slopeDepthM: 15 }]) {
       let prev = -Infinity;
       for (let v = 0; v < 300; v += 1) { const d = reefProfileDepth(v, q); expect(Number.isFinite(d)).toBe(true); expect(d).toBeGreaterThanOrEqual(prev - 1e-9); prev = d; }
     }
