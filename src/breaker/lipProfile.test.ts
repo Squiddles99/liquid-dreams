@@ -6,7 +6,7 @@ import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetTime } from './breaking';
 import {
   GRAVITY_MS2, type LipParams, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileInput, type Vec2, buildProfile, crossings, foldDepth,
-  IMPACT_BISECT, IMPACT_SCAN, impactHeight, landingTime, profileFrame, sampleHome, sampleSegment, settleSpan,
+  IMPACT_BISECT, IMPACT_SCAN, LIP_EMERGE_PROGRESS, impactHeight, landingTime, profileFrame, sampleHome, sampleSegment, settleSpan,
 } from './lipProfile';
 import { PSI_NORMAL } from './overturn';
 import { peakLanding, peakStation } from './peakStation.fixture';
@@ -46,6 +46,30 @@ const near = (a: Vec2, b: Vec2, tol = 1e-9) => Math.hypot(a[0] - b[0], a[1] - b[
 
 describe('lipProfile', () => {
   const big = testWave(REF_BIGGEST.heightM);
+  it('before its section breaks the ribbon is the water: every point on the sheet at its home (Andrew, 2026-10-02: a second swell on the shoulder)', () => {
+    // The shoulders ahead of the peel faded the constructed curve in before they broke: a face from the foot to the
+    // crest, the curl folded into the crest, blended with the sheet at the samples' homes. The leaned front stands steeper
+    // than that face, and the blend of two different places bulged 2 m off the water: a second swell down the shoulder.
+    for (const [x, z] of [[0, 0], [20, -40], [35, -90]] as const) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 3 * HS]) {
+      const { base, frameBase, input } = stationAt(x, z, testWave(h), null);
+      for (const r of [0.75, 0.85, 0.95, 0.99, 1.2]) {
+        const pr = buildProfile(base, { ...input, r }, LIP, frameBase);
+        pr.points.forEach((pt, j) => expect(near(pt, base(pr.homes[j]), 1e-9), `(${x}, ${z}) h ${h.toFixed(1)} ρ ${r} sample ${j}`).toBe(true));
+      }
+    }
+  });
+  it('the lip peels out of the water over the throw: barely off it as it starts, the whole curl by LIP_EMERGE_PROGRESS', () => {
+    const probe = stationAt(0, 0, big, 0);
+    const tau = profileFrame(probe.frameBase, probe.input, LIP).tauLand;
+    const off = (tb: number) => {
+      const { base, frameBase, input } = stationAt(0, 0, big, tb);
+      const pr = buildProfile(base, input, LIP, frameBase);
+      return { off: Math.max(...pr.points.map((pt, j) => Math.hypot(pt[0] - base(pr.homes[j])[0], pt[1] - base(pr.homes[j])[1]))), weight: pr.frame.weight };
+    };
+    expect(off(0).off).toBeLessThan(1e-9);
+    expect(off(0.02 * tau).off).toBeLessThan(0.1);
+    expect(off(LIP_EMERGE_PROGRESS * tau).weight).toBeCloseTo(1, 6);
+  });
   it('as the whitewater rises under the curl the lip keeps falling: it never pulls back or flips up level', () => {
     const probe = stationAt(0, 0, big, 0);
     const tau = profileFrame(probe.base, probe.input, LIP).tauLand;
@@ -59,6 +83,30 @@ describe('lipProfile', () => {
       const now = tipAt(tau + extra);
       expect(now.reach, `${extra} s after landing: the lip's reach`).toBeGreaterThanOrEqual(0.95 * landed.reach);
       expect(now.y, `${extra} s after landing: the lip tip's height`).toBeLessThanOrEqual(landed.y + 0.1 * big.heightM);
+    }
+  });
+  it("the face's join moves smoothly with the wave: no jump of a whole concave step (it jumped 0.15 H)", { timeout: 60_000 }, () => {
+    // The join stepped out toward the trough in whole FACE_CONCAVE_STEP_H steps while the sheet there stood steeper than
+    // the face's chord: where a wave sat on that line, a hair's change in it moved the face's foot 0.15 H, and the GPU's
+    // f32 and the CPU took different sides of it (ribbon self-test, after the face's floor ran down from one width). On the
+    // ledge: at the peak the lip's landing itself still switches from the face to the trough at one height (impactHeight's
+    // root; 0.99 H on the old face, 0.49 H now), a separate jump.
+    for (const [x0, z0] of [[11, -30], [21.9, -60]] as const) {
+      const sheet: BreakOptions = { ...SHEET, force: { psi: 0.09 }, pile: false };
+      const f0 = sampleField(field, x0, z0);
+      let prev = NaN, worst = 0, where = '';
+      for (let k = 0; k <= 150; k++) {
+        const w = testWave(REF_BIGGEST.heightM * (0.8 + k * 0.004)), t = f0.tau + 0.4;
+        const base = (u: number): Vec2 => {
+          const x = x0 + f0.dirX * u, z = z0 + f0.dirZ * u, s = sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, sheet);
+          return [u + s.dx * f0.dirX + s.dz * f0.dirZ, s.eta];
+        };
+        const H = localHeight(w, f0);
+        const fr = profileFrame(base, { H, c: ctx.omega / f0.k, r: breakingRatio(w.heightM * f0.amp, f0.hmin, DEFAULT_BREAK_PARAMS), tb: 0.4, psi: 0.09 }, LIP);
+        if (Number.isFinite(prev) && Math.abs(fr.uFoot / H - prev) > worst) { worst = Math.abs(fr.uFoot / H - prev); where = `${w.heightM.toFixed(2)} m`; }
+        prev = fr.uFoot / H;
+      }
+      expect(worst, `(${x0}, ${z0}): the largest jump in the join (× H), at ${where}`).toBeLessThan(0.03);
     }
   });
   it('has PROFILE_SAMPLES samples whose homes run monotonically from the front edge to the back edge', () => {
@@ -85,7 +133,7 @@ describe('lipProfile', () => {
   it('never crosses itself before the lip lands (peak, ledge points, bigger waves, ψ and face-width ends)', () => {
     const cases: { x: number; z: number; h: number; p: LipParams; psi?: number }[] = [];
     // Only where the crest has broken (r ≥ 1): a time since onset means the section broke.
-    for (const [x, z] of [[0, 0], [20, -40], [35, -90], [15, 16], [50, 36]] as const) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 3 * HS]) {
+    for (const [x, z] of [[0, 0], [20, -40], [35, -90], [15, 16], [50, 36]] as const) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 2.4 * HS, 3 * HS]) {
       const f = sampleField(field, x, z);
       if (breakingRatio(h * f.amp, f.hmin, DEFAULT_BREAK_PARAMS) >= 1) cases.push({ x, z, h, p: LIP });
     }
@@ -101,8 +149,9 @@ describe('lipProfile', () => {
       for (const frac of [0, 0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 0.95, 0.999]) {
         const { base, frameBase, input } = stationAt(c.x, c.z, w, frac * tau, c.p.faceWidth);
         const pts = buildProfile(base, withPsi(input), c.p, frameBase).points;
-        // At contact the round tip meets the water by a few cm.
-        const n = frac < 0.99 ? crossings(pts) : foldDepth(pts) > 0.05 ? 1 : 0;
+        // At contact the round tip meets the water by a few cm. In the air a fold under 1 mm is no fold: the faintest tube
+        // (ψ 0.015, 6 cm across) peeling out of the water (LIP_EMERGE_PROGRESS) crossed itself by 0.05 mm.
+        const n = frac < 0.99 ? (foldDepth(pts) > 1e-3 ? crossings(pts) : 0) : foldDepth(pts) > 0.05 ? 1 : 0;
         worst = Math.max(worst, n);
         if (n) console.log(`crossing at (${c.x},${c.z}) h ${c.h.toFixed(2)} ψ ${c.psi ?? PSI_NORMAL} frac ${frac} faceWidth ${c.p.faceWidth}`);
       }

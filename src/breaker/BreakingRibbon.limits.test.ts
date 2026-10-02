@@ -104,7 +104,8 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
   const passes = ['framePass', 'vertexPass', 'developPass', 'chopPass', 'normalPass'] as const;
 
   for (const [label, ribbon] of [['production', production], ['self-test rig', selfTestRig]] as const) {
-    it(`${label}: every compute pass binds at most ${MAX_STORAGE_BUFFERS_PER_STAGE} storage buffers`, () => {
+    // Generating every pass's WGSL takes a few seconds: over the default 5 s when the whole suite shares the machine.
+    it(`${label}: every compute pass binds at most ${MAX_STORAGE_BUFFERS_PER_STAGE} storage buffers`, { timeout: 30_000 }, () => {
       const counts = Object.fromEntries(passes.map((p) => [p, storageBindings(computeWgsl((ribbon as unknown as Record<string, THREE.ComputeNode>)[p]))]));
       console.log(`${label} storage buffers per pass: ${JSON.stringify(counts)}`);
       for (const p of passes) expect(counts[p], p).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
