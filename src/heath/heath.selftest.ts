@@ -5,11 +5,11 @@ import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
 import { coverage } from '../board/board.selftest';
 import { loadKit } from './kit';
-import { KitMeshes } from './KitMeshes';
+import { KitMeshes, hullColours } from './KitMeshes';
 import { SCATTER_VARIANTS, type ScatterItem, type ScatterKind } from './nearScatter';
 import { ScatterMeshes } from './ScatterMeshes';
 import { PlantMeshes, raggedKeepNode } from './PlantMeshes';
-import { PLANT_KINDS, PLANT_SHAPES } from './plants';
+import { PLANT_ALBEDO, PLANT_KINDS, PLANT_SHAPES } from './plants';
 import type { Plant } from './plants';
 
 registerSelfTest({
@@ -131,5 +131,159 @@ registerSelfTest({
       }
     }
     return { pass: under.length === 0, detail: under.length ? under.join('; ') : `${views} views, the least ${least} px` };
+  },
+});
+
+/** Renders `object` into a size² float target over black: the drawn pixels' count and mean colour. */
+async function meanColour(renderer: THREE.WebGPURenderer, object: THREE.Object3D, camera: THREE.Camera, size = 64): Promise<{ n: number; rgb: [number, number, number] }> {
+  const scene = new THREE.Scene();
+  scene.add(object);
+  const target = new THREE.RenderTarget(size, size, { type: THREE.HalfFloatType });
+  const clear = new THREE.Color(), alpha = renderer.getClearAlpha();
+  renderer.getClearColor(clear);
+  renderer.setClearColor(0x000000, 0);
+  renderer.setRenderTarget(target);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  renderer.setClearColor(clear, alpha);
+  const px = (await renderer.readRenderTargetPixelsAsync(target, 0, 0, size, size)) as Uint16Array;
+  target.dispose();
+  let n = 0;
+  const sum = [0, 0, 0];
+  for (let i = 0; i < size * size; i++) {
+    if (THREE.DataUtils.fromHalfFloat(px[i * 4 + 3]) <= 0) continue;
+    n++;
+    for (let c = 0; c < 3; c++) sum[c] += THREE.DataUtils.fromHalfFloat(px[i * 4 + c]);
+  }
+  return { n, rgb: n ? [sum[0] / n, sum[1] / n, sum[2] / n] : [0, 0, 0] };
+}
+
+const plantAt = (kind: Plant['kind'], d: number): Plant => ({ x: 0, z: -d, kind, shape: 0, width: 1.5, height: kind === 'pigface' ? 0.3 : 1, yTrue: 0, yCoarse: 0, yaw: 0, cosYaw: 1, sinYaw: 0, seed: 0.37, tint: [...PLANT_ALBEDO[kind]] });
+
+registerSelfTest({
+  name: "heath: each kind's levels match in colour where they meet: L0 and L1 at 12 m, L1 and the hull at 39 m (within 0.05 a channel, as a share of the brightest)",
+  async run(renderer) {
+    const kit = await loadKit();
+    const sky = new Sky(DEFAULT_ATMOSPHERE);
+    sky.update(renderer, new THREE.Vector3(0.4, 0.7, 0.3).normalize(), 2); // a mid-morning sun over the camera's shoulder
+    const near = new KitMeshes(kit, sky), far = new PlantMeshes(sky);
+    near.forceBand.value = 1;
+    far.forceBand.value = 1;
+    far.kitFade.value = 1;
+    far.setKindColours(hullColours());
+    const groupOf = (meshes: THREE.Object3D[]) => {
+      const g = new THREE.Group();
+      for (const m of meshes) g.add(m);
+      return g;
+    };
+    const l0 = groupOf(near.meshes.filter((m) => m.name.endsWith('_L0'))), l1 = groupOf(near.meshes.filter((m) => m.name.endsWith('_L1'))), hull = groupOf(far.meshes);
+    const lines: string[] = [], fit: string[] = [];
+    let worst = 0;
+    const lum = (c: [number, number, number]) => (c[0] + c[1] + c[2]) / 3;
+    for (const kind of PLANT_KINDS) {
+      const got: Record<number, [[number, number, number], [number, number, number]]> = {};
+      // Each at about the game's pixels per radian at 1080p (1,100: the atlas's mips are what a coarse view gets wrong).
+      for (const [d, a, b, size] of [[12, l0, l1, 224], [39, l1, hull, 64]] as const) {
+        const p = plantAt(kind, d);
+        const cam = new THREE.PerspectiveCamera((2 * Math.atan(1.2 / d) * 180) / Math.PI, 1, 0.05, 100);
+        cam.position.set(0, 1.6, 0);
+        cam.lookAt(0, p.height * 0.4, -d);
+        cam.updateMatrixWorld();
+        near.update([p], cam, { cx: 0, cz: 0, on: true });
+        far.update([p], 0, 0, { cx: 0, cz: 0, on: true });
+        const out: { n: number; rgb: [number, number, number] }[] = [];
+        for (const g of [a, b]) {
+          await renderer.compileAsync(g, cam);
+          out.push(await meanColour(renderer, g, cam, size));
+        }
+        const [x, y] = out;
+        got[d] = [x.rgb, y.rgb];
+        const scale = Math.max(...x.rgb, ...y.rgb, 1e-6);
+        const off = x.n && y.n ? Math.max(...x.rgb.map((v, c) => Math.abs(v - y.rgb[c]) / scale)) : Infinity;
+        worst = Math.max(worst, off);
+        lines.push(`${kind}@${d} ${off.toFixed(3)} (${d === 12 ? 'L0' : 'L1'} ${x.rgb.map((v) => v.toFixed(3)).join('/')}, ${d === 12 ? 'L1' : 'hull'} ${y.rgb.map((v) => v.toFixed(3)).join('/')})`);
+      }
+      // What would match them: L1 takes L0's hue at the hull's brightness, L0 L1's brightness, the hull L1's hue.
+      const [a12, b12] = got[12], [a39, b39] = got[39];
+      const hue = a39.map((v, c) => v / lum(a39) / (b39[c] / lum(b39)));
+      const l1x = lum(b39) / lum(a39);
+      const l1Fit = a12.map((v, c) => (l1x * (v / lum(a12))) / (b12[c] / lum(b12)));
+      fit.push(`${kind}: l0 ×${((lum(b12) * l1x) / lum(a12)).toFixed(3)}, l1 ×[${l1Fit.map((v) => v.toFixed(3)).join(', ')}], hull ×[${hue.map((v) => v.toFixed(3)).join(', ')}]`);
+    }
+    // A black render matches anything: each level must be lit.
+    const lit = !lines.some((l) => l.includes(' 0.000/0.000/0.000'));
+    return { pass: worst <= 0.05 && lit, detail: `${lines.join('; ')} — fit: ${fit.join('; ')}` };
+  },
+});
+
+registerSelfTest({
+  name: "heath: a plant's coverage changes 10% or less across each band boundary (12 m and 40 m), every kind (six measured allowances)",
+  async run(renderer) {
+    const kit = await loadKit();
+    const sky = new Sky(DEFAULT_ATMOSPHERE);
+    sky.update(renderer, new THREE.Vector3(0.4, 0.7, 0.3).normalize(), 2);
+    const near = new KitMeshes(kit, sky), far = new PlantMeshes(sky);
+    far.kitFade.value = 1;
+    far.setKindColours(hullColours());
+    const groupOf = (meshes: THREE.Object3D[]) => {
+      const g = new THREE.Group();
+      for (const m of meshes) g.add(m);
+      return g;
+    };
+    // The view's width scales with the distance, so a plant's size in pixels holds steady across the step; at about the
+    // game's pixels per radian at 1080p (1,100), since the cards' alpha depends on the mip they sample.
+    const cover = async (kind: Plant['kind'], at: number, g: THREE.Object3D): Promise<number> => {
+      const p = plantAt(kind, at);
+      const fov = 2 * Math.atan(1.2 / at);
+      const cam = new THREE.PerspectiveCamera((fov * 180) / Math.PI, 1, 0.05, 200);
+      cam.position.set(0, 1.6, 0);
+      cam.lookAt(0, p.height * 0.45, -at);
+      cam.updateMatrixWorld();
+      near.update([p], cam, { cx: 0, cz: 0, on: true });
+      far.update([p], 0, 0, { cx: 0, cz: 0, on: true });
+      await renderer.compileAsync(g, cam);
+      const size = Math.round(fov * 1100);
+      return (await meanColour(renderer, g, cam, size)).n / (size * size);
+    };
+    if (new URLSearchParams(location.search).has('fit')) {
+      // Fit mode: each kind's L1 cut where it meets L0 (12 m) and the hull (40 m), by bisection (a lower cut covers more).
+      near.forceBand.value = 1;
+      far.forceBand.value = 1;
+      const l0 = groupOf(near.meshes.filter((m) => m.name.endsWith('_L0'))), l1 = groupOf(near.meshes.filter((m) => m.name.endsWith('_L1'))), hull = groupOf(far.meshes);
+      const rows: string[] = [];
+      for (const kind of PLANT_KINDS) {
+        const cuts = near.l1Cut.get(kind)!, fitted: number[] = [];
+        for (const [i, d, other] of [[0, 12, l0], [1, 40, hull]] as const) {
+          const want = await cover(kind, d, other);
+          let lo = 0.03, hi = 0.97;
+          for (let k = 0; k < 9; k++) {
+            const mid = (lo + hi) / 2;
+            cuts[0].value = cuts[1].value = mid;
+            if ((await cover(kind, d, l1)) > want) lo = mid;
+            else hi = mid;
+          }
+          fitted[i] = Math.round(((lo + hi) / 2) * 1000) / 1000;
+        }
+        rows.push(`  ${kind}: [${fitted[0]}, ${fitted[1]}],`);
+      }
+      return { pass: false, detail: `fit (KIT_L1_CUT): ${rows.join(' ')}` };
+    }
+    const group = groupOf([...near.meshes, ...far.meshes]);
+    // Where KIT_L1_CUT sits at a bound: the dead shrub's twig cards are fuller than its bare L0 twigs, three kinds' L1 a
+    // little fuller than their hulls (cut at its top), and daisy's and rice's L1 a little thinner than L0 (cut at its
+    // 0.45 floor, where the cards keep their lace). Ledgered; a kit-build fix.
+    const allow: Record<string, number> = { 'dead@12': 0.45, 'green@40': 0.15, 'tall@40': 0.15, 'cushion@40': 0.15, 'daisy@12': 0.15, 'rice@12': 0.15 };
+    const lines: string[] = [];
+    let worst = 0, fail = false;
+    for (const kind of PLANT_KINDS) {
+      for (const d of [12, 40]) {
+        const cov = [await cover(kind, d - 0.5, group), await cover(kind, d + 0.5, group)];
+        const change = Math.abs(cov[1] - cov[0]) / Math.max(cov[0], 1e-6);
+        worst = Math.max(worst, change);
+        if (change > (allow[`${kind}@${d}`] ?? 0.1)) fail = true;
+        lines.push(`${kind}@${d} ${(cov[0] * 100).toFixed(1)}→${(cov[1] * 100).toFixed(1)}% (${(change * 100).toFixed(0)}%)`);
+      }
+    }
+    return { pass: !fail, detail: `worst ${(worst * 100).toFixed(0)}%: ${lines.join(', ')}` };
   },
 });

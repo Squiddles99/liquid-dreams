@@ -11,6 +11,7 @@ import numpy as np
 from mathutils import Vector
 
 import atlas_layout as AL
+from bleed import bleed
 import leaves
 import tufts as tufts_mod
 
@@ -232,6 +233,8 @@ def build(scene, tmp, out_dir, species, canopy_objs):
         sil = np.concatenate([np.ones_like(px[..., :3]), alpha], axis=2)
         _paste(atlas, name, sil)
         tiles[name] = AL.tile(name)
+    # The clear texels take their leaves' colour, so the mips don't fade leaves toward black (bleed.py).
+    bleed(atlas, AL.CELL)
     img = bpy.data.images.new("heathAtlas", AL.SIZE, AL.SIZE, alpha=True)
     img.pixels = atlas[::-1].ravel().tolist()
     img.filepath_raw = os.path.join(out_dir, "heathAtlas.png")

@@ -47,6 +47,10 @@ export class PlantMeshes {
   private readonly dirty: [number, number][] = [];
   /** 1 once the kit draws the near and mid bands: the hulls then draw only beyond 40 m (spec §3.1). */
   readonly kitFade = uniform(0);
+  /** Each kind's colour multiplier (setKindColours). */
+  private readonly kindScale = new Map(PLANT_KINDS.map((k) => [k, uniform(new THREE.Vector3(1, 1, 1))]));
+  /** The self-tests' switch: 1 draws every hull whatever its band. */
+  readonly forceBand = uniform(0);
   /** Plants that found their mesh full (dev readout). */
   dropped = 0;
   private readonly time = uniform(0);
@@ -213,6 +217,11 @@ export class PlantMeshes {
     for (const m of this.meshes) m.visible = on;
   }
 
+  /** Each kind's colour multiplier (the kit's KIT_CALIBRATION hull colours: dune-up-close §4.2); 1 until the kit loads. */
+  setKindColours(scales: Readonly<Partial<Record<PlantKind, readonly [number, number, number]>>>): void {
+    for (const [kind, s] of Object.entries(scales) as [PlantKind, readonly [number, number, number]][]) this.kindScale.get(kind)?.value.set(s[0], s[1], s[2]);
+  }
+
   private material(sky: Sky, kind: PlantKind, sunVisibility?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
     const m = new THREE.MeshBasicNodeMaterial();
     const local: N = attribute('position', 'vec3'); // the unit plant: y 0 at the base, 1 at the top
@@ -239,14 +248,14 @@ export class PlantMeshes {
     const keep = raggedKeepNode(edgeN.add(smoothstep(80.0, 100.0, dist)), facing);
     // Once the kit draws the near and mid bands (dune-up-close §3.1), a hull keeps only its share of the shared dither:
     // beyond 40 m, fading in across 3 m as the kit's L1 fades out.
-    const [, wFar] = bandWeightNodes(positionWorld);
+    const [, wFar] = bandWeightNodes(base);
     const ours: N = bandDitherNode(seed).greaterThanEqual(float(1.0).sub(wFar));
-    m.maskNode = keep.and(ours.or(this.kitFade.lessThan(0.5)));
+    m.maskNode = keep.and(ours.or(this.kitFade.lessThan(0.5)).or(this.forceBand.greaterThan(0.5)));
 
     const near = float(1.0).sub(smoothstep(20.0, 60.0, dist));
     const leaf = mx_noise_float(positionWorld.mul(10.0)).mul(0.5).add(0.5);
     const fine = mx_noise_float(positionWorld.mul(40.0)).mul(0.5).add(0.5);
-    let albedo: N = attribute('plantTint', 'vec3').mul(mix(float(1.0), leaf.mul(0.6).add(0.7), near)).mul(mix(float(1.0), fine.mul(0.2).add(0.9), near));
+    let albedo: N = attribute('plantTint', 'vec3').mul(this.kindScale.get(kind)!).mul(mix(float(1.0), leaf.mul(0.6).add(0.7), near)).mul(mix(float(1.0), fine.mul(0.2).add(0.9), near));
     if (kind === 'pigface') albedo = mix(albedo, PIGFACE_TIPS, smoothstep(0.62, 0.72, leaf).mul(smoothstep(0.4, 0.9, local.y)).mul(0.8));
     if (kind === 'rice') albedo = mix(albedo, RICE_PINK, smoothstep(0.7, 0.8, fine).mul(smoothstep(0.3, 0.7, local.y)));
 

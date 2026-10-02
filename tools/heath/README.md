@@ -21,6 +21,19 @@ The dune up close's plants and ground, built offline (spec `docs/superpowers/spe
    Blender 5.2.2 LTS.
 3. **The checks.** The manifest records each variant's checks (triangle caps, leaves on twigs, the silhouette against
    the hull, normals, AO). `src/heath/kit.test.ts` asserts them.
+4. **The colour bleed.** `bleed.py` fills each atlas cell's clear texels with its leaves' colour, so the GPU's mips keep
+   a leaf's colour at a distance (without it they faded toward black). `python tools/heath/bleed.py --check
+   public/heath/heathAtlas.png` checks an atlas.
+
+## After a rebuild: re-calibrate
+
+The near, mid and far plants are matched in colour and coverage by two tables in `src/heath/KitMeshes.ts`, measured
+on the GPU. After rebuilding the kit, re-measure them:
+
+- `KIT_L1_CUT`: open `http://localhost:5177/?selftest=heath:%20a%20plant's%20coverage&fit=1`, and paste the table it
+  prints (keep each value at 0.45 or more).
+- `KIT_CALIBRATION`: open `?selftest=heath:%20each%20kind`; its "fit" multiplies the table's values. Fold it in and
+  run again until it passes (two or three rounds).
 
 ## Licence
 
