@@ -54,11 +54,12 @@ function bilinear(g: PatchGrids, arr: Float32Array, ch: number, stride: number, 
   return (v(i, j) * (1 - tx) + v(i + 1, j) * tx) * (1 - tz) + (v(i, j + 1) * (1 - tx) + v(i + 1, j + 1) * tx) * tz;
 }
 
-/** The fine patch's surface at (x, z) exactly as the GPU draws it (Task 17): base heights, relief, less the tracks' sink. */
+/** The fine patch's surface at (x, z) exactly as the GPU draws it: base heights, the relief, less the tracks' sink. */
 export function patchSurfaceAt(g: PatchGrids, layers: GroundLayersCpu, tracks: TrackNetwork | null, x: number, z: number): number {
   const half = PATCH_SIZE_M / 2, cx = g.cornerX + half, cz = g.cornerZ + half;
   const edge = 1 - smoothstep(half - PATCH_FADE_M, half, Math.max(Math.abs(x - cx), Math.abs(z - cz)));
   const cover = [0, 1, 2, 3].map((c) => bilinear(g, g.cover, c, 4, x, z)) as [number, number, number, number];
   const worn = tracks ? tracks.wornAt(x, z) : 0;
-  return bilinear(g, g.heights, 0, 1, x, z) + reliefAt(layers, cover, worn, x, z, edge) - (tracks ? tracks.sinkAt(x, z) : 0);
+  // The sink fades out at the edge with the relief: the coarse land the patch meets there has none (no step).
+  return bilinear(g, g.heights, 0, 1, x, z) + reliefAt(layers, cover, worn, x, z, edge) - (tracks ? tracks.sinkAt(x, z) * edge : 0);
 }

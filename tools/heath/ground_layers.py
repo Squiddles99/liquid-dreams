@@ -94,11 +94,11 @@ def build():
     # Track: packed tan-brown soil (Andrew's Earth views), scuffed.
     track = 0.6 * band_noise(0.01, 0.05) + 0.4 * band_noise(0.4, 1.5)
     heights.append(track)
-    colours.append(np.array([0.36, 0.27, 0.17])[None, None] * (0.9 + 0.2 * track[..., None]))
+    colours.append(np.array([0.25, 0.175, 0.105])[None, None] * (0.88 + 0.24 * track[..., None]))  # darker: the aerial views' tan-brown
     # One bare footprint (depressed: low height), track-coloured; the decals darken it.
     fp = foot()
     heights.append(1 - fp)
-    colours.append(np.array([0.33, 0.25, 0.16])[None, None] * (1 - 0.15 * fp[..., None]))
+    colours.append(np.array([0.23, 0.16, 0.1])[None, None] * (1 - 0.15 * fp[..., None]))
     return heights, colours
 
 
