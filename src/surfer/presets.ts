@@ -84,7 +84,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     skin: [0.52, 0.37, 0.3], tan: 0.35, brows: [0.085, 0.055, 0.032], lips: [0.48, 0.25, 0.22], iris: [0.1, 0.19, 0.24], hairRoot: [0.2, 0.14, 0.075], hairTip: [0.56, 0.44, 0.26],
     fabric: [0.55, 0.12, 0.1], rashie: [0.02, 0.12, 0.55], neopreneAccent: [0.1, 0.35, 0.45], boardies: [0.1, 0.2, 0.4],
     freckles: 0, sunburn: 0, curlTighten: 0,
-    blush: 0.45, eyeShadow: 0.5, stubble: 0, lipGloss: 0.45, irisMm: 6.1, pupilMm: 2.1,
+    blush: 0.45, eyeShadow: 0.5, stubble: 0, lipGloss: 0.25, irisMm: 6.1, pupilMm: 2.1,
     boardLooks: { bodyboard: { deck: [0.05, 0.25, 0.45], rail: [0.04, 0.19, 0.35] } },
   },
   male: {

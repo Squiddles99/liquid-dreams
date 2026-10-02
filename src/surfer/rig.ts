@@ -111,7 +111,22 @@ export interface SurferManifest {
   /** Body triangles weighted to the head (kept whole through decimation; closeup spec §4.1). */
   headTriangles?: number;
   /** Build-time checks (closeup spec §4.1): the closed lids cover the eyes, and the open lids don't. */
-  checks?: { blinkCovers: boolean; eyesOpen: boolean };
+  checks?: {
+    blinkCovers: boolean;
+    eyesOpen: boolean;
+    garmentsOutside?: boolean;
+    hatHairUnder?: boolean;
+    /** Long dry hair (dune select spec §13.1): the spread of the locks' turn heights, the turn's blend, and how far the
+     * fall's cards beside the face face forward (mean |forward · normal|). */
+    hairTurnSpreadCm?: number;
+    hairTurnBlendCm?: number;
+    hairFaceFrontness?: number;
+    /** The hairline (§13.1): the sideburn's lowest root above the eyes, less the roots' inset (cm). */
+    sideburnAboveEyeCm?: number;
+    /** The upper lip's height above the mouth line before and after the build thins it (mm; §13.1). */
+    upperLipMm?: number;
+    upperLipSculptedMm?: number;
+  };
   blender: string;
   mpfb: string;
   /** Face landmarks in the rest pose (glTF axes, metres), for the glasses fit and the skin detail (grommet spec §4, §5). */
