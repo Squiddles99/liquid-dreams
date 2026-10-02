@@ -31,6 +31,13 @@ export const WET_ARRIVALS = 6;
 export const SURF_BEHIND_M = 5;
 export const SURF_AHEAD_M = 30;
 export const BURST_S = 1.5;
+/**
+ * A bore's white water builds over its first BORE_RAMP_S after it breaks (Andrew 2026-10-02): the break runs along the coast as τ
+ * does, so a bore that came on at full strength ended its line square where the break had just reached.
+ */
+export const BORE_RAMP_S = 1.5;
+/** A bore's trail fades out over this far seaward of the break line: no foam where the bore never was (Andrew: no wedge out the back). */
+export const TRAIL_FADE_M = 4;
 export const LIFT_REACH_M = 40;
 /** The bore front's width (m) and brightness gain: even a between-sets front reads as solid white water (tuned in captures). */
 export const FRONT_M = 4;
@@ -167,9 +174,9 @@ export function surfFoam(d: number, z: number, t: number, s: SurfState): number 
     const n = nL - k, H = heightOf(s.table, n), age = t - (n * T + tau), df = W - BORE_SPEED_MS * age;
     if (k < 2) recent += (0.5 * H) / H_REF_M;
     if (df < e) continue; // the bore has reached the water's edge (it is swash now)
-    const str = boreStrength(H, df - e, W - e);
+    const str = boreStrength(H, df - e, W - e) * smoothstep(0, BORE_RAMP_S, age);
     const front = Math.exp(-(((d - df) / FRONT_M) ** 2));
-    const trail = d > df ? TRAIL_WEIGHT * Math.exp(-(d - df) / TRAIL_M) : 0;
+    const trail = d > df ? TRAIL_WEIGHT * Math.exp(-(d - df) / TRAIL_M) * (1 - smoothstep(W, W + TRAIL_FADE_M, d)) : 0;
     const burst = age < BURST_S ? (1 - age / BURST_S) * Math.exp(-(((d - W) / 6) ** 2)) : 0;
     foam = Math.max(foam, str * (FRONT_GAIN * front + trail + burst));
   }
