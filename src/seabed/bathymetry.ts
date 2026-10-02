@@ -43,7 +43,7 @@ function insidePolygon(px: number, pz: number, poly: readonly Pt[]): boolean {
 }
 
 /** Distance to the ledge lines (positive inside the shelf, negative outside). Only the ledges count as edges. */
-function ledgeSignedDistance(x: number, z: number): number {
+export function ledgeSignedDistance(x: number, z: number): number {
   let d = Infinity;
   for (const line of [NORTH_LEDGE, SOUTH_LEDGE]) {
     for (let i = 0; i + 1 < line.length; i++) d = Math.min(d, segmentDistance(x, z, line[i], line[i + 1]));
