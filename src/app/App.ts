@@ -77,6 +77,8 @@ import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { Land } from '../land/Land';
 import { GroundPatch } from '../beach/GroundPatchMesh';
 import { buildTracksMask, loadGroundLayers } from '../beach/groundDetail';
+import { type GroundLayersCpu, loadGroundLayersCpu, patchSurfaceAt } from '../beach/groundHeights';
+import { Footprints, printsNear } from '../beach/Footprints';
 import { PATCH_SIZE_M, PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
 import { Rocks } from '../beach/RockMeshes';
 import { LOD_RANGES_M, PLANT_CELL_M, PLANT_GONE_M, PlantField, patchCasters, type Plant, plantLod, plantSeatY } from '../heath/plants';
@@ -225,6 +227,10 @@ export class App {
   /** The heath's plants (Phase 4c-2): from the land once it loads, refreshed every PLANT_RELAY_M. */
   readonly plants: PlantMeshes;
   private tracksMask: Float32Array<ArrayBuffer> | undefined;
+  /** The footprints along the tracks (dune-up-close §4.3), laid every 2 m while the patch shows. */
+  readonly footprints: Footprints;
+  private groundLayersCpu: GroundLayersCpu | null = null;
+  private printsAt: [number, number] | null = null;
   private tracksMaskAt: [number, number] | null = null;
   /** Dev readout: the last tracks mask's CPU time (ms; dune-up-close §5: ≤ 0.5). */
   tracksMaskMs = 0;
@@ -359,8 +365,11 @@ export class App {
     this.rocks = new Rocks(this.sky, (xz) => this.sunlight.visibilityNode(xz), { seabed: this.seabed, optics: this.waterOptics });
     this.plants = new PlantMeshes(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     for (const m of this.plants.meshes) this.scene.add(m);
-    // The ground layers (dune-up-close §4.3): until they load the patch draws as it did.
+    // The ground layers (dune-up-close §4.3): until they load the patch draws as it did. The footprints draw with them.
     loadGroundLayers(this.patch.layers).catch((e) => console.warn('The ground layers failed to load; the patch keeps its plain look.', e));
+    fetch(import.meta.env.BASE_URL + 'heath/groundLayers.height.bin').then((r) => r.arrayBuffer()).then((b) => { this.groundLayersCpu = loadGroundLayersCpu(b); this.printsAt = null; }, () => undefined);
+    this.footprints = new Footprints(this.patch.layers);
+    this.scene.add(this.footprints.mesh);
     // The kit loads alongside the land; until it arrives the hulls draw every band.
     loadKit().then(
       (kit) => {
@@ -978,6 +987,14 @@ export class App {
     }
     this.layPlants(cam.x, cam.z, c, patchKey);
     this.plants.tick(this.clock.simTime, this.conditions.wind.speedMs);
+    // The footprints: every 2 m, and on a recentre (they sit on the patch's surface).
+    const tracks = lh.trackNetwork;
+    if (c && tracks && this.patchGrids && this.groundLayersCpu && (moved || !this.printsAt || Math.hypot(cam.x - this.printsAt[0], cam.z - this.printsAt[1]) > 2)) {
+      const g = this.patchGrids, layersCpu = this.groundLayersCpu;
+      this.footprints.update(printsNear(tracks, cam.x, cam.z, 20), (x, z) => patchSurfaceAt(g, layersCpu, tracks, x, z));
+      this.printsAt = [cam.x, cam.z];
+    }
+    this.footprints.setVisible(!!c);
     if (this.kitMeshes) {
       this.kitMeshes.update(this.plantsNear, this.camera, { cx: c ? c[0] : 0, cz: c ? c[1] : 0, on: !!c });
       this.kitMeshes.tick(this.clock.simTime, this.conditions.wind.speedMs);
