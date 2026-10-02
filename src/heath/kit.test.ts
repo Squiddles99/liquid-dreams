@@ -16,6 +16,25 @@ describe('the heath kit (dune-up-close §4.2, §7.1)', () => {
       }
     }
   });
+  const L0_CAP: Record<string, number> = { daisy: 8000, green: 8000, tall: 8000, pigface: 6000, rice: 3000, dead: 2000 };
+  it("keeps L0 within its caps, leaves on twigs, the silhouette its hull's, normals sound, AO in range (§7.1)", () => {
+    for (const e of m.variants) {
+      const id = `${e.kind} ${e.variant}`;
+      // A dead shrub is bare twigs: a third of its hull's outline. Pigface's fingers stand 5–10 cm off trailing stems
+      // under a 17 cm hull: three-quarters of it from above, half from the side (Rulings, Task 10).
+      const top = e.kind === 'dead' ? 0.3 : e.kind === 'pigface' ? 0.75 : 0.85;
+      const side = e.kind === 'dead' ? 0.3 : e.kind === 'pigface' ? 0.5 : 0.85;
+      expect(e.lods[0].triangles, id).toBeLessThanOrEqual(L0_CAP[e.kind]);
+      expect(e.checks.leavesAttached, id).toBeLessThanOrEqual(0.01);
+      expect(e.checks.silhouetteTop, id).toBeGreaterThanOrEqual(top);
+      expect(e.checks.silhouetteSide, id).toBeGreaterThanOrEqual(side);
+      expect(e.checks.outsideHull, id).toBeLessThanOrEqual(0.05);
+      expect(e.checks.badNormals, id).toBe(0);
+      expect(e.checks.aoMin, id).toBeGreaterThanOrEqual(0.15);
+      expect(e.checks.aoMax, id).toBeLessThanOrEqual(1);
+      if (e.kind !== 'dead') expect(Math.max(...e.leafColour), id).toBeGreaterThan(0.02);
+    }
+  });
   it('grows branches that obey the pipe model and stay inside their hull (§7.1)', () => {
     for (const e of m.variants) {
       expect(e.checks.pipeModel, `${e.kind} ${e.variant}`).toBe(true);
