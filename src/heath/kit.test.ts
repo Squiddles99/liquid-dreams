@@ -68,6 +68,10 @@ describe('the heath kit (dune-up-close §4.2, §7.1)', () => {
 });
 
 describe('the heath kit on disk (dune-up-close §7.1)', () => {
+  it("ships the Draco decoder with its Apache-2.0 licence and a note of where it's from", () => {
+    expect(existsSync('public/draco/LICENSE') && readFileSync('public/draco/LICENSE', 'utf8')).toMatch(/Apache License\s+Version 2\.0/);
+    expect(existsSync('public/draco/README.md') && readFileSync('public/draco/README.md', 'utf8')).toMatch(/google\/draco/);
+  });
   it('keeps public/heath under 30 MB', () => {
     const total = readdirSync('public/heath').reduce((a, f) => a + statSync(join('public/heath', f)).size, 0);
     expect(total).toBeLessThanOrEqual(30 * 1024 * 1024);
