@@ -1187,7 +1187,930 @@
    }
   }
  ],
- "items": [],
+ "items": [
+  {
+   "kind": "tuft_clubrush",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "tuft_clubrush_0_L0",
+     "triangles": 976
+    },
+    {
+     "name": "tuft_clubrush_0_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.3873,
+    0.6662,
+    0.3873
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_clubrush",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "tuft_clubrush_1_L0",
+     "triangles": 1018
+    },
+    {
+     "name": "tuft_clubrush_1_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.3578,
+    0.7024,
+    0.3578
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_clubrush",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "tuft_clubrush_2_L0",
+     "triangles": 912
+    },
+    {
+     "name": "tuft_clubrush_2_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.3997,
+    0.6921,
+    0.3997
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_clubrush",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "tuft_clubrush_3_L0",
+     "triangles": 862
+    },
+    {
+     "name": "tuft_clubrush_3_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.3616,
+    0.7138,
+    0.3616
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_swordsedge",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "tuft_swordsedge_0_L0",
+     "triangles": 311
+    },
+    {
+     "name": "tuft_swordsedge_0_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.4262,
+    0.8455,
+    0.4262
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_swordsedge",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "tuft_swordsedge_1_L0",
+     "triangles": 418
+    },
+    {
+     "name": "tuft_swordsedge_1_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.4654,
+    0.8378,
+    0.4654
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_swordsedge",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "tuft_swordsedge_2_L0",
+     "triangles": 356
+    },
+    {
+     "name": "tuft_swordsedge_2_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.4756,
+    0.8362,
+    0.4756
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_swordsedge",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "tuft_swordsedge_3_L0",
+     "triangles": 303
+    },
+    {
+     "name": "tuft_swordsedge_3_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.47,
+    0.818,
+    0.47
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_tussock",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "tuft_tussock_0_L0",
+     "triangles": 515
+    },
+    {
+     "name": "tuft_tussock_0_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.3695,
+    0.5396,
+    0.3695
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_tussock",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "tuft_tussock_1_L0",
+     "triangles": 530
+    },
+    {
+     "name": "tuft_tussock_1_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.3645,
+    0.5204,
+    0.3645
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_tussock",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "tuft_tussock_2_L0",
+     "triangles": 535
+    },
+    {
+     "name": "tuft_tussock_2_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.3996,
+    0.544,
+    0.3996
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "tuft_tussock",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "tuft_tussock_3_L0",
+     "triangles": 515
+    },
+    {
+     "name": "tuft_tussock_3_L1",
+     "triangles": 4
+    }
+   ],
+   "boundsUnit": [
+    0.3767,
+    0.5493,
+    0.3767
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_twig",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "item_twig_0_L0",
+     "triangles": 366
+    }
+   ],
+   "boundsUnit": [
+    0.1738,
+    0.0118,
+    0.1919
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_twig",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "item_twig_1_L0",
+     "triangles": 366
+    }
+   ],
+   "boundsUnit": [
+    0.0902,
+    0.0119,
+    0.0839
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_twig",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "item_twig_2_L0",
+     "triangles": 288
+    }
+   ],
+   "boundsUnit": [
+    0.1189,
+    0.0118,
+    0.1226
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_twig",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "item_twig_3_L0",
+     "triangles": 276
+    }
+   ],
+   "boundsUnit": [
+    0.0708,
+    0.0118,
+    0.0707
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_twig",
+   "variant": 4,
+   "lods": [
+    {
+     "name": "item_twig_4_L0",
+     "triangles": 270
+    }
+   ],
+   "boundsUnit": [
+    0.1019,
+    0.0118,
+    0.0892
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_twig",
+   "variant": 5,
+   "lods": [
+    {
+     "name": "item_twig_5_L0",
+     "triangles": 318
+    }
+   ],
+   "boundsUnit": [
+    0.0648,
+    0.012,
+    0.0609
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_leaves_daisy",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "item_leaves_daisy_0_L0",
+     "triangles": 2
+    }
+   ],
+   "boundsUnit": [
+    0.086,
+    0.0152,
+    0.0858
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_leaves_daisy",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "item_leaves_daisy_1_L0",
+     "triangles": 2
+    }
+   ],
+   "boundsUnit": [
+    0.0921,
+    0.0142,
+    0.0918
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_leaves_daisy",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "item_leaves_daisy_2_L0",
+     "triangles": 2
+    }
+   ],
+   "boundsUnit": [
+    0.1063,
+    0.0105,
+    0.1065
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_leaves_daisy",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "item_leaves_daisy_3_L0",
+     "triangles": 2
+    }
+   ],
+   "boundsUnit": [
+    0.1618,
+    0.0175,
+    0.1615
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_leaves_tall",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "item_leaves_tall_0_L0",
+     "triangles": 2
+    }
+   ],
+   "boundsUnit": [
+    0.0961,
+    0.0118,
+    0.0965
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_leaves_tall",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "item_leaves_tall_1_L0",
+     "triangles": 2
+    }
+   ],
+   "boundsUnit": [
+    0.0981,
+    0.0163,
+    0.0972
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_leaves_tall",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "item_leaves_tall_2_L0",
+     "triangles": 2
+    }
+   ],
+   "boundsUnit": [
+    0.1575,
+    0.0208,
+    0.1579
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_leaves_tall",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "item_leaves_tall_3_L0",
+     "triangles": 2
+    }
+   ],
+   "boundsUnit": [
+    0.168,
+    0.0173,
+    0.1674
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_shell",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "item_shell_0_L0",
+     "triangles": 72
+    }
+   ],
+   "boundsUnit": [
+    0.0325,
+    0.0109,
+    0.026
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_shell",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "item_shell_1_L0",
+     "triangles": 84
+    }
+   ],
+   "boundsUnit": [
+    0.0288,
+    0.0096,
+    0.0236
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_shell",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "item_shell_2_L0",
+     "triangles": 84
+    }
+   ],
+   "boundsUnit": [
+    0.0193,
+    0.0064,
+    0.0158
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_shell",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "item_shell_3_L0",
+     "triangles": 108
+    }
+   ],
+   "boundsUnit": [
+    0.0214,
+    0.0071,
+    0.0174
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_shell",
+   "variant": 4,
+   "lods": [
+    {
+     "name": "item_shell_4_L0",
+     "triangles": 108
+    }
+   ],
+   "boundsUnit": [
+    0.0306,
+    0.0101,
+    0.0248
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_shell",
+   "variant": 5,
+   "lods": [
+    {
+     "name": "item_shell_5_L0",
+     "triangles": 60
+    }
+   ],
+   "boundsUnit": [
+    0.0139,
+    0.0047,
+    0.0117
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_stone",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "item_stone_0_L0",
+     "triangles": 80
+    }
+   ],
+   "boundsUnit": [
+    0.085,
+    0.0611,
+    0.0796
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_stone",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "item_stone_1_L0",
+     "triangles": 80
+    }
+   ],
+   "boundsUnit": [
+    0.0322,
+    0.0231,
+    0.031
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_stone",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "item_stone_2_L0",
+     "triangles": 80
+    }
+   ],
+   "boundsUnit": [
+    0.06,
+    0.0483,
+    0.063
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_stone",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "item_stone_3_L0",
+     "triangles": 80
+    }
+   ],
+   "boundsUnit": [
+    0.0378,
+    0.0291,
+    0.036
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_stone",
+   "variant": 4,
+   "lods": [
+    {
+     "name": "item_stone_4_L0",
+     "triangles": 80
+    }
+   ],
+   "boundsUnit": [
+    0.0878,
+    0.0647,
+    0.0819
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  },
+  {
+   "kind": "item_stone",
+   "variant": 5,
+   "lods": [
+    {
+     "name": "item_stone_5_L0",
+     "triangles": 80
+    }
+   ],
+   "boundsUnit": [
+    0.0759,
+    0.059,
+    0.079
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {
+    "badNormals": 0
+   }
+  }
+ ],
  "atlas": {
   "file": "heathAtlas.png",
   "size": 2048,
@@ -1521,6 +2444,132 @@
     0.125244,
     0.249756,
     0.187256
+   ],
+   "misc_0": [
+    0.750244,
+    0.812744,
+    0.812256,
+    0.874756
+   ],
+   "misc_1": [
+    0.812744,
+    0.812744,
+    0.874756,
+    0.874756
+   ],
+   "misc_2": [
+    0.875244,
+    0.812744,
+    0.937256,
+    0.874756
+   ],
+   "misc_3": [
+    0.937744,
+    0.812744,
+    0.999756,
+    0.874756
+   ],
+   "misc_4": [
+    0.000244,
+    0.875244,
+    0.062256,
+    0.937256
+   ],
+   "misc_5": [
+    0.062744,
+    0.875244,
+    0.124756,
+    0.937256
+   ],
+   "misc_6": [
+    0.125244,
+    0.875244,
+    0.187256,
+    0.937256
+   ],
+   "misc_7": [
+    0.187744,
+    0.875244,
+    0.249756,
+    0.937256
+   ],
+   "misc_8": [
+    0.250244,
+    0.875244,
+    0.312256,
+    0.937256
+   ],
+   "misc_9": [
+    0.312744,
+    0.875244,
+    0.374756,
+    0.937256
+   ],
+   "misc_10": [
+    0.375244,
+    0.875244,
+    0.437256,
+    0.937256
+   ],
+   "misc_11": [
+    0.437744,
+    0.875244,
+    0.499756,
+    0.937256
+   ],
+   "tuftcard_clubrush_0": [
+    0.000244,
+    0.812744,
+    0.062256,
+    0.874756
+   ],
+   "tuftcard_clubrush_1": [
+    0.062744,
+    0.812744,
+    0.124756,
+    0.874756
+   ],
+   "tuftcard_clubrush_2": [
+    0.125244,
+    0.812744,
+    0.187256,
+    0.874756
+   ],
+   "tuftcard_swordsedge_0": [
+    0.250244,
+    0.812744,
+    0.312256,
+    0.874756
+   ],
+   "tuftcard_swordsedge_1": [
+    0.312744,
+    0.812744,
+    0.374756,
+    0.874756
+   ],
+   "tuftcard_swordsedge_2": [
+    0.375244,
+    0.812744,
+    0.437256,
+    0.874756
+   ],
+   "tuftcard_tussock_0": [
+    0.500244,
+    0.812744,
+    0.562256,
+    0.874756
+   ],
+   "tuftcard_tussock_1": [
+    0.562744,
+    0.812744,
+    0.624756,
+    0.874756
+   ],
+   "tuftcard_tussock_2": [
+    0.625244,
+    0.812744,
+    0.687256,
+    0.874756
    ],
    "canopy_daisy_0": [
     0.000244,
