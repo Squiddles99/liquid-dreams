@@ -85,6 +85,30 @@ describe('lipProfile', () => {
       expect(now.y, `${extra} s after landing: the lip tip's height`).toBeLessThanOrEqual(landed.y + 0.1 * big.heightM);
     }
   });
+  it("the face's join moves smoothly with the wave: no jump of a whole concave step (it jumped 0.15 H)", { timeout: 60_000 }, () => {
+    // The join stepped out toward the trough in whole FACE_CONCAVE_STEP_H steps while the sheet there stood steeper than
+    // the face's chord: where a wave sat on that line, a hair's change in it moved the face's foot 0.15 H, and the GPU's
+    // f32 and the CPU took different sides of it (ribbon self-test, after the face's floor ran down from one width). On the
+    // ledge: at the peak the lip's landing itself still switches from the face to the trough at one height (impactHeight's
+    // root; 0.99 H on the old face, 0.49 H now), a separate jump.
+    for (const [x0, z0] of [[11, -30], [21.9, -60]] as const) {
+      const sheet: BreakOptions = { ...SHEET, force: { psi: 0.09 }, pile: false };
+      const f0 = sampleField(field, x0, z0);
+      let prev = NaN, worst = 0, where = '';
+      for (let k = 0; k <= 150; k++) {
+        const w = testWave(REF_BIGGEST.heightM * (0.8 + k * 0.004)), t = f0.tau + 0.4;
+        const base = (u: number): Vec2 => {
+          const x = x0 + f0.dirX * u, z = z0 + f0.dirZ * u, s = sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, sheet);
+          return [u + s.dx * f0.dirX + s.dz * f0.dirZ, s.eta];
+        };
+        const H = localHeight(w, f0);
+        const fr = profileFrame(base, { H, c: ctx.omega / f0.k, r: breakingRatio(w.heightM * f0.amp, f0.hmin, DEFAULT_BREAK_PARAMS), tb: 0.4, psi: 0.09 }, LIP);
+        if (Number.isFinite(prev) && Math.abs(fr.uFoot / H - prev) > worst) { worst = Math.abs(fr.uFoot / H - prev); where = `${w.heightM.toFixed(2)} m`; }
+        prev = fr.uFoot / H;
+      }
+      expect(worst, `(${x0}, ${z0}): the largest jump in the join (× H), at ${where}`).toBeLessThan(0.03);
+    }
+  });
   it('has PROFILE_SAMPLES samples whose homes run monotonically from the front edge to the back edge', () => {
     const { base, input } = stationAt(0, 0, big, 0.3);
     const f = profileFrame(base, input, LIP);

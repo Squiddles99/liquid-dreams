@@ -376,15 +376,24 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
       If(i.lessThan(int(FACE_JOIN_STEPS)), () => { uFoot.addAssign(x.sub(F.x)); });
     });
   });
-  // The join steps out toward the trough until the sheet there is flatter than the face's chord.
+  // The join steps out toward the trough until the sheet there is flatter than the face's chord, then back along the last
+  // step to where it meets the chord's angle (lipProfile.profileFrame).
   const Fb = vec2(baseAt(uFoot.sub(0.1))).toVar();
   const going = float(1.0).toVar();
+  const e = angBack(Fb.sub(F)).sub(angBack(P.sub(F)).sub(FACE_CONCAVE_MARGIN)).toVar(), ePrev = float(0.0).toVar();
   Loop(FACE_CONCAVE_STEPS, () => {
-    If(going.greaterThan(0.5).and(angBack(Fb.sub(F)).greaterThan(angBack(P.sub(F)).sub(FACE_CONCAVE_MARGIN))), () => {
+    If(going.greaterThan(0.5).and(e.greaterThan(0.0)), () => {
       uFoot.addAssign(H.mul(FACE_CONCAVE_STEP_H));
       F.assign(baseAt(uFoot));
       Fb.assign(baseAt(uFoot.sub(0.1)));
+      ePrev.assign(e);
+      e.assign(angBack(Fb.sub(F)).sub(angBack(P.sub(F)).sub(FACE_CONCAVE_MARGIN)));
     }).Else(() => { going.assign(0.0); });
+  });
+  If(ePrev.greaterThan(0.0).and(e.lessThanEqual(0.0)), () => {
+    uFoot.subAssign(H.mul(FACE_CONCAVE_STEP_H).mul(e.negate().div(ePrev.sub(e))));
+    F.assign(baseAt(uFoot));
+    Fb.assign(baseAt(uFoot.sub(0.1)));
   });
   const tF = norm2(Fb.sub(F)).toVar();
   const pre = tb.lessThan(0.0);
