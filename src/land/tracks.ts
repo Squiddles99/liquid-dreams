@@ -332,6 +332,12 @@ export class TrackNetwork {
     return this.sinkAtSlow(x, z);
   }
 
+  /** The worn mask as the GPU draws it: bilinear between worn() on the LATTICE_M lattice (0 far from every track). */
+  wornAt(x: number, z: number): number {
+    if (this.nearest(x, z).d > SINK_REACH_M + 2 * LATTICE_M && this.ellipse(x, z) > 1 + (CLEARING_SINK_EDGE_M + 2 * LATTICE_M) / Math.min(CLEARING_SEMI_M[0], CLEARING_SEMI_M[1])) return 0;
+    return this.lattice(x, z, (a, b) => this.worn(a, b));
+  }
+
   /** sinkAt without its shortcut (the tests check the two agree). */
   sinkAtSlow(x: number, z: number): number {
     return this.lattice(x, z, (a, b) => this.sinkExact(a, b));
