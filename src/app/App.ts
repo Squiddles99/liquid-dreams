@@ -76,7 +76,8 @@ import {
 import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { Land } from '../land/Land';
 import { GroundPatch } from '../beach/GroundPatchMesh';
-import { PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
+import { buildTracksMask, loadGroundLayers } from '../beach/groundDetail';
+import { PATCH_SIZE_M, PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
 import { Rocks } from '../beach/RockMeshes';
 import { LOD_RANGES_M, PLANT_CELL_M, PLANT_GONE_M, PlantField, patchCasters, type Plant, plantLod, plantSeatY } from '../heath/plants';
 import { BAND_FADE_M, type CellChange, CellQueue, MID_M, PlantRing, cellKey, layBudgetMs } from '../heath/plantRing';
@@ -223,6 +224,10 @@ export class App {
   private readonly shadowSun = new THREE.Vector3(0, -1, 0);
   /** The heath's plants (Phase 4c-2): from the land once it loads, refreshed every PLANT_RELAY_M. */
   readonly plants: PlantMeshes;
+  private tracksMask: Float32Array<ArrayBuffer> | undefined;
+  private tracksMaskAt: [number, number] | null = null;
+  /** Dev readout: the last tracks mask's CPU time (ms; dune-up-close §5: ≤ 0.5). */
+  tracksMaskMs = 0;
   /** The kit's real plants near the camera (dune-up-close §3.1): once the kit has loaded, the near and mid bands. */
   kitMeshes: KitMeshes | null = null;
   private plantField: PlantField | null = null;
@@ -354,6 +359,8 @@ export class App {
     this.rocks = new Rocks(this.sky, (xz) => this.sunlight.visibilityNode(xz), { seabed: this.seabed, optics: this.waterOptics });
     this.plants = new PlantMeshes(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     for (const m of this.plants.meshes) this.scene.add(m);
+    // The ground layers (dune-up-close §4.3): until they load the patch draws as it did.
+    loadGroundLayers(this.patch.layers).catch((e) => console.warn('The ground layers failed to load; the patch keeps its plain look.', e));
     // The kit loads alongside the land; until it arrives the hulls draw every band.
     loadKit().then(
       (kit) => {
@@ -894,6 +901,7 @@ export class App {
   private invalidateBeach(): void {
     this.patchTracker.centre = null;
     this.patchGrids = undefined;
+    this.tracksMaskAt = null; // the tracks may have changed with the land: build the mask afresh
     this.rocksAt = null;
     this.plantsAt = null;
     this.hullsStale = true;
@@ -949,6 +957,12 @@ export class App {
     if (moved && c) {
       this.patchGrids = buildPatchGrids(lh, c, this.patchGrids);
       this.patch.setGrids(this.patchGrids);
+      // The tracks worn into the patch (dune-up-close §4.3): their mask and sink over its square.
+      const t0 = performance.now(), mx = c[0] - PATCH_SIZE_M / 2, mz = c[1] - PATCH_SIZE_M / 2;
+      this.tracksMask = buildTracksMask(lh.trackNetwork, mx, mz, undefined, this.tracksMaskAt ? { mask: this.tracksMask!, cornerX: this.tracksMaskAt[0], cornerZ: this.tracksMaskAt[1] } : undefined);
+      this.tracksMaskAt = [mx, mz];
+      this.patch.setTracksMask(this.tracksMask, mx, mz);
+      this.tracksMaskMs = performance.now() - t0;
     }
     // The plants (Phase 4c-2): relaid every PLANT_RELAY_M, and whenever the patch recentres, shows or hides (each plant
     // sits on the surface drawn under it). With density 0 the painted heath stands near the camera again.

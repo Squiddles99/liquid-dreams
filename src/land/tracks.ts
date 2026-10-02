@@ -323,6 +323,28 @@ export class TrackNetwork {
   }
 
   /**
+   * Whether anything of the tracks reaches the 4 m cell (gx, gz) (cells of BUCKET_M from the origin): a corridor's
+   * segments (each is filed in every cell within its reach plus a metre), or the clearing with its soft edge. Where
+   * not, worn and the sink are 0 throughout the cell.
+   */
+  touchesCell(gx: number, gz: number): boolean {
+    if (this.buckets.has((gx + 0x8000) * 0x10000 + (gz + 0x8000))) return true;
+    const j = this.data.junction, reach = CLEARING_SEMI_M[0] + CLEARING_SINK_EDGE_M + 1;
+    const cx = Math.max(gx * BUCKET_M, Math.min(j.x, (gx + 1) * BUCKET_M)), cz = Math.max(gz * BUCKET_M, Math.min(j.z, (gz + 1) * BUCKET_M));
+    return Math.hypot(cx - j.x, cz - j.z) < reach;
+  }
+
+  /** worn() and sinkExact() at once, with one nearest-corridor search (the tracks mask: 65,000 texels a recentre). */
+  wornSinkExact(x: number, z: number, out: [number, number] = [0, 0]): [number, number] {
+    const n = this.nearest(x, z), e = this.ellipse(x, z), r = Math.min(CLEARING_SEMI_M[0], CLEARING_SEMI_M[1]);
+    const corridorWorn = Number.isFinite(n.d) ? 1 - smoothstep(n.halfWidthM, n.halfWidthM * SHOULDER, n.d) : 0;
+    const corridorSink = Number.isFinite(n.d) ? SINK_M * (1 - smoothstep(0, SINK_REACH_M, n.d)) : 0;
+    out[0] = Math.max(corridorWorn, 1 - smoothstep(1, 1 + CLEARING_EDGE_M / r, e));
+    out[1] = Math.max(corridorSink, CLEARING_SINK_M * (1 - smoothstep(1, 1 + CLEARING_SINK_EDGE_M / r, e)));
+    return out;
+  }
+
+  /**
    * The sink as the GPU draws it: bilinear between sinkExact on the LATTICE_M lattice. Far from every track (beyond the
    * sink's reach plus a lattice cell) it is 0 without sampling the lattice: heightAt calls this everywhere, and the four
    * samples tripled its cost.
