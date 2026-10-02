@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { TrackNetwork, routeTracks } from '../land/tracks';
 import { testLand } from '../land/testLand';
-import { MAX_PRINTS, printsNear } from './Footprints';
+import * as THREE from 'three/webgpu';
+import { Footprints, MAX_PRINTS, printsNear } from './Footprints';
+import { emptyGroundLayerTextures } from './groundDetail';
 
 describe('printsNear (dune-up-close §4.3)', () => {
   const net = new TrackNetwork(routeTracks(testLand(), [-300, 300]));
@@ -36,3 +38,24 @@ describe('printsNear (dune-up-close §4.3)', () => {
     expect(printsNear(net, j.x, j.z, 3).filter((q) => net.inClearing(q.x, q.z)).length).toBeGreaterThan(15);
   });
 });
+
+describe('Footprints (dune-up-close §4.3)', () => {
+  it('lays each print on a slope along its surface: toe and heel on the ground, not one buried and one floating', () => {
+    const f = new Footprints(emptyGroundLayerTextures());
+    const surfaceAt = (x: number, z: number): number => 0.44 * x - 0.2 * z + 3;
+    for (const [yaw, left] of [[0.4, true], [2.2, false]] as const) {
+      f.update([{ x: 1, z: 2, yaw, left, age: 0 }], surfaceAt);
+      const m = new THREE.Matrix4();
+      f.mesh.getMatrixAt(0, m);
+      // The decal's quad lies in its local xz plane: its toe, heel and sides.
+      for (const [lx, lz] of [[0, 0.14], [0, -0.14], [0.055, 0], [-0.055, 0]]) {
+        const w = new THREE.Vector3(lx, 0, lz).applyMatrix4(m);
+        expect(Math.abs(w.y - surfaceAt(w.x, w.z) - 0.003)).toBeLessThan(0.001);
+      }
+      // Still pointing its yaw across the ground.
+      const fwd = new THREE.Vector3(0, 0, 1).transformDirection(m);
+      expect(Math.atan2(fwd.x, fwd.z)).toBeCloseTo(yaw, 1);
+    }
+  });
+});
+
