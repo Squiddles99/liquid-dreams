@@ -340,6 +340,23 @@ function skinned(path: string, gltf: any, material: string): { pos: number[]; bo
 }
 const side = (names: string[]): string[] => names.flatMap((n) => [`${n}_l`, `${n}_r`]);
 
+/** Each vertex of a material's primitives: its rest position and its skin weights by bone. */
+function weighted(path: string, gltf: any, material: string): { pos: number[]; w: Record<string, number> }[] {
+  const joints: string[] = gltf.skins[0].joints.map((i: number) => gltf.nodes[i].name);
+  const out: { pos: number[]; w: Record<string, number> }[] = [];
+  for (const mesh of gltf.meshes) for (const p of mesh.primitives) {
+    if (gltf.materials[p.material].name !== material) continue;
+    const pos = glbFloats(path, gltf, p.attributes.POSITION), j = glbValues(path, gltf, p.attributes.JOINTS_0), w = glbValues(path, gltf, p.attributes.WEIGHTS_0);
+    for (let i = 0; i < pos.length / 3; i++) {
+      const ws: Record<string, number> = {};
+      for (let k = 0; k < 4; k++) if (w[4 * i + k] > 0) ws[joints[j[4 * i + k]]] = (ws[joints[j[4 * i + k]]] ?? 0) + w[4 * i + k];
+      out.push({ pos: [pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]], w: ws });
+    }
+  }
+  return out;
+}
+const dist2 = (a: number[], b: number[]): number => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+
 for (const name of ['female', 'male', 'grommet'] as const) {
   describe(`the ${name} walking clothes (walking spec §3, §7)`, () => {
     const path = `public/surfer/${name}.glb`, gltf = glbJson(path);
@@ -374,9 +391,35 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       if (name === 'grommet') {
         const boardies = skinned(path, gltf, 'boardies').map((v) => v.pos);
         expect(lowest).toBeLessThan(Math.max(...boardies.map((p) => p[1])) - 0.03); // past the top of his boardies
+        // Big by its length and how it hangs, not blown up off him (Andrew: too puffy): the sleeves' and the chest's
+        // median gap to the body. Round 1: 3.5 and 2.6 cm (Shazza's oversized tee 1.8 and 1.6).
+        const body = skinned(path, gltf, 'body').map((v) => v.pos);
+        const gap = (q: number[]): number => Math.sqrt(Math.min(...body.map((p) => dist2(p, q))));
+        const med = (a: number[]): number => a.sort((x, y) => x - y)[Math.floor(a.length / 2)];
+        const all = skinned(path, gltf, 'tee');
+        expect(med(all.filter((v) => v.bones.some((b) => b.startsWith('upperarm'))).map((v) => gap(v.pos))), 'sleeves').toBeLessThan(0.022);
+        expect(med(all.filter((v) => v.bones.includes('spine_03')).map((v) => gap(v.pos))), 'chest').toBeLessThan(0.02);
       } else expect(lowest).toBeLessThan(bone('pelvis')[1] - (name === 'female' ? 0.04 * H : 0)); // her oversized tee longer
       const front = (lo: number, hi: number): number => Math.max(...tee.filter((p) => p[1] > lo * H && p[1] < hi * H && Math.abs(p[0]) < 0.08).map((p) => p[2]));
       expect(front(0.56, 0.62), 'the front at the waist vs the chest').toBeGreaterThan(front(0.69, 0.74) - 0.01);
+    });
+    it("rides the pack's shoulder straps on the tee: each strap's front skinned as the tee under it (Andrew: the strap vanished)", () => {
+      // The straps were skinned to the spine and clavicles while the tee's shoulders follow the upper arms: lifting the
+      // arm to carry the board, the tee rose over the strap and swallowed it. In front of the spine (the straps over the
+      // shoulders and down the chest; glTF's +z is forward), each strap vertex's weights match the nearest tee vertex's
+      // within 0.25 (L1).
+      const tee = weighted(path, gltf, 'tee'), spineZ = bone('spine_03')[2];
+      const straps = weighted(path, gltf, 'packTrim').filter((v) => v.pos[2] > spineZ + 0.02 && v.pos[1] > 0.6 * H);
+      expect(straps.length).toBeGreaterThan(50);
+      let off = 0;
+      for (const v of straps) {
+        let best = tee[0];
+        for (const t of tee) if (dist2(t.pos, v.pos) < dist2(best.pos, v.pos)) best = t;
+        const bones = new Set([...Object.keys(v.w), ...Object.keys(best.w)]);
+        const l1 = [...bones].reduce((s, b) => s + Math.abs((v.w[b] ?? 0) - (best.w[b] ?? 0)), 0);
+        if (l1 > 0.25) off++;
+      }
+      expect(off / straps.length, 'share of strap vertices not skinned as the tee').toBeLessThan(0.05);
     });
     it('puts 12 mm thong soles under the feet', () => {
       const y = Math.min(...skinned(path, gltf, 'thongs').map((v) => v.pos[1]));
@@ -401,7 +444,9 @@ for (const name of ['female', 'male', 'grommet'] as const) {
     it(`carries the pack on the back, straps over the shoulders, with the ${extra} (walking spec §2, §3)`, () => {
       for (const m of ['pack', 'packTrim', extra]) expect(mats, m).toContain(m);
       for (const m of ['pack', 'packTrim', extra]) {
-        const bad = skinned(path, gltf, m).flatMap((v) => v.bones).filter((b) => !['spine_03', 'clavicle_l', 'clavicle_r'].includes(b));
+        // The straps (packTrim) ride on the tee, so they take its bones; the bag and what's on it, the spine's.
+        const ok = m === 'packTrim' ? ['pelvis', 'spine_01', 'spine_02', 'spine_03', 'neck', ...side(['clavicle', 'upperarm', 'forearm'])] : ['spine_03', 'clavicle_l', 'clavicle_r'];
+        const bad = skinned(path, gltf, m).flatMap((v) => v.bones).filter((b) => !ok.includes(b));
         expect([...new Set(bad)], m).toEqual([]);
       }
       const spine = bone('spine_03'), pack = skinned(path, gltf, 'pack').map((v) => v.pos);
