@@ -464,18 +464,23 @@ function smoothstepSlope(e0: number, e1: number, x: number): number {
  */
 export const SHARPEN_DEPTH = 0.7;
 /**
- * …at the steep top of the face. Past two face widths ahead (where the sink is full) the floor runs on down to the
- * wave's own trough (etaCrest − H) over this many more face widths, a smooth concave sweep: a level floor cut a flat
- * terrace into every front still above it, and the face dropped twice, to the terrace and later into the trough (Andrew,
- * 2026-10-02, "the step in front"). The trench the full-depth floor dug (above) ran half a wavelength ahead; this one ends
- * at the foot, where the lean (setWaveModel.LEAN_RATIO) has brought the trough in. Over 4 face widths the lowest water at
- * 12 ft sat 20 m ahead of the foot; over 1, the drained trough stood 0.77 H below still water.
+ * …at the steep top of the face. From SHARPEN_FLOOR_START face widths ahead the floor runs on down to the wave's own
+ * trough (etaCrest − H) over SHARPEN_FLOOR_REACH more, a smooth concave sweep: a level floor cut a flat terrace into
+ * every front still above it, and the face dropped twice, to the terrace and later into the trough (Andrew, 2026-10-02,
+ * "the step in front"). The trench the full-depth floor dug (above) ran half a wavelength ahead; this one ends at the
+ * foot, where the lean (setWaveModel.LEAN_RATIO) has brought the trough in. Over 4 face widths the lowest water at 12 ft
+ * sat 20 m ahead of the foot; over 1, the drained trough stood 0.77 H below still water. Started at two face widths
+ * (where the sink is full), the face held level from about 1.5 to 2 widths and then fell again: a shelf at the foot as
+ * it broke at the peak (0.1 m per metre between stretches of 0.4 at 12 ft; Andrew's Gate 2 cuts). From one width, where
+ * the sink is two-thirds in, the face only gets gentler down to the foot (ending at 3.5 widths, the drained trough at
+ * 12 ft just touched 0.75 H; at 3.75 it is back under).
  */
-export const SHARPEN_FLOOR_REACH = 1.5;
+export const SHARPEN_FLOOR_START = 1;
+export const SHARPEN_FLOOR_REACH = 2.75;
 
 /** How far below the crest (× H) the sharpened face is cut at `ahead` m: SHARPEN_DEPTH, running down to 1 (the trough). */
 function sharpenFloor(ahead: number, width: number): { depth: number; dDepth: number } {
-  const a0 = 2 * width, a1 = (2 + SHARPEN_FLOOR_REACH) * width;
+  const a0 = SHARPEN_FLOOR_START * width, a1 = (SHARPEN_FLOOR_START + SHARPEN_FLOOR_REACH) * width;
   return { depth: SHARPEN_DEPTH + (1 - SHARPEN_DEPTH) * smoothstep(a0, a1, ahead), dDepth: (1 - SHARPEN_DEPTH) * smoothstepSlope(a0, a1, ahead) };
 }
 

@@ -162,6 +162,24 @@ describe('the face before it breaks (Andrew, 2026-10-02: "the step in front")', 
       expect(worst * 0.5, `${up} m up, ${dt} s: terrace length (m)`).toBeLessThan(3);
     }
   });
+  it('as it breaks at the peak (6 and 12 ft) the face only gets gentler from its steepest down to its lowest water: no shelf at the foot', () => {
+    // The sharpening held the face at a level below the crest out to two face widths ahead and only then ran it down to the
+    // trough: at 12 ft it flattened to 0.1 m per metre 7–9 m ahead, then fell again at 0.4 (seen in the Gate 2 cuts).
+    for (const ft of [6, 12]) {
+      const w = testWave(setWaveHeightAt(ft)), b = firstBreak(field, w.heightM)!, s0 = at(b.x, b.z);
+      for (const dt of [0, 1]) {
+        const eta: number[] = [];
+        for (let u = -5; u <= 45; u += 0.5) { const x = b.x + s0.dirX * u, z = b.z + s0.dirZ * u; eta.push(sumWaves(x, z, s0.tau + dt, at(x, z), [w], ctx, sheet).eta); }
+        const top = eta.indexOf(Math.max(...eta));
+        let low = top; for (let j = top; j < eta.length; j++) if (eta[j] < eta[low]) low = j;
+        const fall = eta.slice(top + 1, low + 1).map((y, j) => (eta[top + j] - y) / 0.5);
+        const steepest = fall.indexOf(Math.max(...fall));
+        let gentlest = Infinity, worst = 0;
+        for (const f of fall.slice(steepest)) { gentlest = Math.min(gentlest, f); worst = Math.max(worst, f - gentlest); }
+        expect(worst, `${ft} ft, +${dt} s: how much the face steepens again below a gentler stretch (m per m)`).toBeLessThan(0.1);
+      }
+    }
+  });
 });
 
 describe('where and when the A-frame breaks (default swell, mid tide)', () => {

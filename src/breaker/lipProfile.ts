@@ -270,11 +270,19 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
     F = base(uFoot);
   }
   // The face must leave the sheet where the sheet is flatter than the face's chord up to the landing, or it bulges
-  // (a lip landing just short of the foot, on the softened ramp): step the join out toward the trough.
+  // (a lip landing just short of the foot, on the softened ramp): step the join out toward the trough, and back along the
+  // last step to where the sheet meets the chord's angle (linear in the steepness to spare): in whole steps a hair's change
+  // in the wave moved the join a whole step (0.15 H), and the GPU and the CPU took either side of it.
   let Fb = base(uFoot - 0.1);
   const ang = (v: Vec2): number => Math.atan2(v[1], -v[0]);
-  for (let i = 0; i < FACE_CONCAVE_STEPS && ang([Fb[0] - F[0], Fb[1] - F[1]]) > ang([P[0] - F[0], P[1] - F[1]]) - FACE_CONCAVE_MARGIN; i++) {
+  const steeper = (): number => ang([Fb[0] - F[0], Fb[1] - F[1]]) - (ang([P[0] - F[0], P[1] - F[1]]) - FACE_CONCAVE_MARGIN);
+  let e = steeper(), ePrev = 0;
+  for (let i = 0; i < FACE_CONCAVE_STEPS && e > 0; i++) {
     uFoot += FACE_CONCAVE_STEP_H * H; F = base(uFoot); Fb = base(uFoot - 0.1);
+    ePrev = e; e = steeper();
+  }
+  if (ePrev > 0 && e <= 0) {
+    uFoot -= FACE_CONCAVE_STEP_H * H * (-e / (ePrev - e)); F = base(uFoot); Fb = base(uFoot - 0.1);
   }
   const tF = norm2([Fb[0] - F[0], Fb[1] - F[1]]);
   const t = tb === null ? 0 : Math.min(Math.max(tb, 0), tauLand);
