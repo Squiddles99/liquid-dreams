@@ -4,7 +4,8 @@ when it is built and the atlas is drawn into the same rectangles afterwards. UVs
 - row 0: bark, dead bark (whole cells);
 - rows 1–3: leaf sprays, 4 per kind (L0's leaves: rendered sprays of real leaf meshes);
 - rows 4–12: L1's leaf-cluster cards, 4 per kind × variant;
-- row 13–14: tuft cards (the near scatter), 4 per tuft species;
+- rows 13–14: tuft cards (the near scatter), 4 per tuft species; then misc_<k>, the scatter's colour tiles (dry
+  leaves, shell, stone, the tufts' colour strips);
 - row 15: canopy silhouettes, 64 px, four to a cell.
 """
 
@@ -38,6 +39,9 @@ def tile(name):
     if name.startswith("tuftcard_"):  # tuftcard_<tuft>_<v>  (tuft without its "tuft_" prefix)
         _, tuft, v = name.split("_")
         idx = TUFTS.index("tuft_" + tuft) * 4 + int(v)
+        return _cell(idx % N, 13 + idx // N)
+    if name.startswith("misc_"):  # misc_<k>: the scatter's colour tiles, after the tuft cards in rows 13–14
+        idx = len(TUFTS) * 4 + int(name.split("_")[1])
         return _cell(idx % N, 13 + idx // N)
     if name.startswith("canopy_"):  # canopy_<kind>_<v>
         _, kind, v = name.split("_")

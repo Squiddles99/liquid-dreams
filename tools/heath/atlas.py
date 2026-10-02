@@ -12,6 +12,7 @@ from mathutils import Vector
 
 import atlas_layout as AL
 import leaves
+import tufts as tufts_mod
 
 
 def _setup(scene, res):
@@ -178,6 +179,50 @@ def build(scene, tmp, out_dir, species, canopy_objs):
         fl = species.FLOWER[kind]
         _paste(atlas, f"spray_{kind}_3", _solid(fl["colour"]))
         tiles[f"spray_{kind}_3"] = AL.tile(f"spray_{kind}_3")
+    # The near scatter (§4.4): dry fallen-leaf clumps (misc_0 daisy, misc_1 tea-tree), shell (misc_2), stone (misc_3),
+    # each tuft's colour strip (misc_4.. : its greens across u, a brown band for heads, straw at the right; darker at
+    # the base, v 1), and each tuft's L1 cards from its own blades.
+    for k, (kind, dry) in enumerate((("daisy", (0.27, 0.24, 0.18)), ("tall", (0.24, 0.2, 0.14)))):
+        o = _cluster(species.SPRAY_LEAF[kind], dry, species.SPRAY_LEAF[kind]["count"] * 14, (0.4, 0.4), rng, twig=False, spread=0.45)
+        _camera(scene, Vector((0, 0, 0)), 0.42, 0.42)
+        _paste(atlas, f"misc_{k}", _render(scene, [o], os.path.join(tmp, f"misc_{k}.png")))
+        bpy.data.objects.remove(o)
+    _paste(atlas, "misc_2", _solid((0.72, 0.68, 0.6)))
+    stone = _bark(nrng, True)
+    stone[..., :3] = stone[..., :3] * 0.0 + (np.array([0.42, 0.4, 0.36]) * (0.75 + 0.5 * nrng.random((AL.CELL, AL.CELL, 1)))) ** (1 / 2.2)
+    _paste(atlas, "misc_3", stone)
+    for t, name in enumerate(tufts_mod.TUFTS):
+        sp = tufts_mod.TUFTS[name]
+        strip = np.ones((AL.CELL, AL.CELL, 4), dtype=np.float32)
+        u = np.linspace(0, 1, AL.CELL)[None, :, None]
+        v = np.linspace(0, 1, AL.CELL)[:, None, None]  # 0 at the top (the tip), 1 at the base
+        green = np.array(sp["colour"])[None, None] * (0.8 + 0.5 * u / 0.7)
+        brown = np.array((sp["heads"] or (0, (0.17, 0.1, 0.06)))[1])[None, None] * np.ones_like(u)
+        straw = np.array((0.3, 0.27, 0.17))[None, None] * np.ones_like(u)
+        c = np.where(u < 0.7, green, np.where(u < 0.8, brown, straw)) * (1.0 - 0.45 * v)
+        strip[..., :3] = np.clip(c, 0, 1) ** (1 / 2.2)
+        _paste(atlas, f"misc_{4 + t}", strip)
+        for k in range(3):
+            bm = bmesh.new()
+            col = bm.loops.layers.float_color.new("Col")
+
+            def add(tris, colour, flags, bm=bm, col=col):
+                for (a, _), (b, _), (c3, _) in tris:
+                    f = bm.faces.new([bm.verts.new(p) for p in (a, b, c3)])
+                    for lp in f.loops:
+                        lp[col] = (*colour, 1.0)
+
+            tufts_mod.tuft(add, name, random.Random(t * 97 + k))
+            o = _mesh("tuftcard", bm)
+            top = max(vv.co.z for vv in o.data.vertices)
+            _camera(scene, Vector((0, 0, top / 2)), top * 1.05, top * 1.05, look_down=False)
+            _paste(atlas, f"tuftcard_{name[5:]}_{k}", _render(scene, [o], os.path.join(tmp, f"tuftcard_{name}_{k}.png")))
+            bpy.data.objects.remove(o)
+    for k in range(12):
+        tiles[f"misc_{k}"] = AL.tile(f"misc_{k}")
+    for name in tufts_mod.TUFTS:
+        for k in range(3):
+            tiles[f"tuftcard_{name[5:]}_{k}"] = AL.tile(f"tuftcard_{name[5:]}_{k}")
     # Canopy silhouettes: each variant's L0 from above, alpha only (64 px).
     _setup(scene, AL.CELL // 2)
     for name, (o, half_w) in canopy_objs.items():

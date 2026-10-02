@@ -17,6 +17,8 @@ import kitio  # noqa: E402
 import leaves  # noqa: E402
 import lods  # noqa: E402
 import species  # noqa: E402
+import items  # noqa: E402
+import tufts  # noqa: E402
 from species import BRANCH, CARD_LEAF, FLOWER, L0_CAP, LEAF, SPECIES, VARIANTS  # noqa: E402
 
 
@@ -180,6 +182,87 @@ def build_variant(kind, v, hull, spec):
 
 PLANT_KIND_SEED = {k: i + 1 for i, k in enumerate(SPECIES)}
 
+TUFT_L0_CAP = 1200
+
+
+def build_scatter():
+    """The near scatter's tufts (L0 blades, L1 crossed cards) and ground items (L0), in metres (spec §4.4)."""
+    objs, entries = [], []
+
+    def finish(name, bm, made=(), extra=()):
+        o = mesh_object(name, bm)
+        smooth_normals(o, list(made), list(extra))
+        return o
+
+    def entry(kind, v, lods):
+        co = [vv.co for o in lods for vv in o.data.vertices]
+        return {"kind": kind, "variant": v, "lods": [{"name": o.name, "triangles": triangles(o)} for o in lods],
+                "boundsUnit": [round(max(abs(c.x) for c in co), 4), round(max(c.z for c in co), 4), round(max(abs(c.y) for c in co), 4)],
+                "leafColour": [0, 0, 0], "checks": {"badNormals": sum(bad_normals(o.data) for o in lods)}}
+
+    for t, name in enumerate(tufts.TUFTS):
+        for v in range(tufts.TUFT_VARIANTS):
+            rng = random.Random(1000 + t * 31 + v)
+            bm = bmesh.new()
+            uv = bm.loops.layers.uv.new("UVMap")
+            col = bm.loops.layers.float_color.new("Col")
+            normals = []
+
+            def add(tris, colour, flags, bm=bm, uv=uv, col=col, normals=normals, rng=rng, t=t):
+                flutter, kindflag = flags
+                straw = colour[0] > 0.25
+                column = 0.9 if straw else 0.75 if kindflag >= 1.0 else rng.uniform(0.05, 0.65)
+                leaves.add_tris(bm, [((p, (column, v_)),) * 1 + ((q, (column, w_)),) + ((r, (column, x_)),) for (p, (_, v_)), (q, (_, w_)), (r, (_, x_)) in tris],
+                                uv, col, (1.0, 0.0, flutter, 0.5 if kindflag < 1.0 else 1.0), Vector((1, 1, 1)), normals,
+                                lambda a, b: atlas_uv(f"misc_{4 + t}", a, b))
+
+            tufts.tuft(add, name, rng)
+            # The AO's root darkening and the wind's stiffness come from the height: blades bend from their base.
+            for lp_face in bm.faces:
+                for lp in lp_face.loops:
+                    h = min(1.0, lp.vert.co.z / 0.8)
+                    c = list(lp[col])
+                    lp[col] = (0.35 + 0.65 * min(1.0, h * 3), h, c[2], c[3])
+            l0 = finish(f"{name}_{v}_L0", bm, (), normals)
+            # L1: two crossed cards, the tuft's height, its atlas card.
+            top = max(vv.co.z for vv in l0.data.vertices)
+            w = max(max(abs(vv.co.x) for vv in l0.data.vertices), max(abs(vv.co.y) for vv in l0.data.vertices))
+            bm = bmesh.new()
+            uv = bm.loops.layers.uv.new("UVMap")
+            col = bm.loops.layers.float_color.new("Col")
+            n1 = []
+            for ax in (Vector((1, 0, 0)), Vector((0, 1, 0))):
+                a0, a1, b1, b0 = -ax * w, ax * w, ax * w + Vector((0, 0, top)), -ax * w + Vector((0, 0, top))
+                tris = [((a0, (0, 1)), (a1, (1, 1)), (b1, (1, 0))), ((a0, (0, 1)), (b1, (1, 0)), (b0, (0, 0)))]
+                leaves.add_tris(bm, tris, uv, col, (1.0, 0.6, rng.random(), 0.5), Vector((1, 1, 1)), n1,
+                                lambda a, b, k=v % 3: atlas_uv(f"tuftcard_{name[5:]}_{k}", a, b))
+            l1 = finish(f"{name}_{v}_L1", bm, (), n1)
+            objs += [l0, l1]
+            entries.append(entry(name, v, [l0, l1]))
+
+    def bark_uv(name, a, b):
+        return atlas_uv(name, a, b)
+
+    for kind, count in items.ITEM_VARIANTS.items():
+        for v in range(count):
+            rng = random.Random(2000 + hash(kind) % 1000 + v)
+            bm = bmesh.new()
+            uv = bm.loops.layers.uv.new("UVMap")
+            col = bm.loops.layers.float_color.new("Col")
+            made, extra = [], []
+            if kind == "item_twig":
+                made = items.twig(bm, uv, col, rng, bark_uv)
+            elif kind.startswith("item_leaves"):
+                extra = items.leaf_clump(bm, uv, col, rng, bark_uv, "misc_0" if kind.endswith("daisy") else "misc_1")
+            elif kind == "item_shell":
+                extra = items.shell(bm, uv, col, rng, bark_uv)
+            else:
+                extra = items.stone(bm, uv, col, rng, bark_uv)
+            o = finish(f"{kind}_{v}_L0", bm, made, extra)
+            objs.append(o)
+            entries.append(entry(kind, v, [o]))
+    return objs, entries
+
 
 def preview(objs, path, scale=(1, 1, 1)):
     """A side view of the L0 (Workbench, orthographic) at the kind's real proportions (the unit plant scaled back by
@@ -234,11 +317,13 @@ def main():
                 preview(objs[:1], os.path.join(previews, f"{kind}_{v}_L0.png"), (1 / s.x, 1 / s.y, 1 / s.z))
             variants.append({"kind": kind, "variant": v, "lods": [{"name": o.name, "triangles": triangles(o)} for o in objs],
                              "boundsUnit": bounds(objs), "leafColour": list(colour), "checks": checks})
+    items_objs, items_manifest = build_scatter()
+    objects += items_objs
     tiles = atlas.build(bpy.context.scene, previews, out_dir, species, canopy)
     for o in bpy.context.scene.objects:
         o.hide_render = False
     kitio.export(objects, os.path.join(out_dir, "heathKit.glb"))
-    kitio.write_manifest(os.path.join(out_dir, "heathKit.manifest.json"), variants, [],
+    kitio.write_manifest(os.path.join(out_dir, "heathKit.manifest.json"), variants, items_manifest,
                          {"file": "heathAtlas.png", "size": 2048, "tiles": {k: [round(x, 6) for x in t] for k, t in tiles.items()}})
     print(f"heath kit: {len(variants)} variants, {sum(triangles(o) for o in objects)} triangles")
 

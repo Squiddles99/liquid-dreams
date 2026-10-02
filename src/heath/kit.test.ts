@@ -45,6 +45,19 @@ describe('the heath kit (dune-up-close §4.2, §7.1)', () => {
     }
     expect(existsSync('public/heath/heathAtlas.png')).toBe(true);
   });
+  it('builds the tufts within 1,200 triangles at L0 and the ground items within their sizes (§4.4, §7.1)', () => {
+    for (const e of m.items) {
+      const id = `${e.kind} ${e.variant}`;
+      if (e.kind.startsWith('tuft_')) expect(e.lods[0].triangles, id).toBeLessThanOrEqual(1200);
+      const [bx, , bz] = e.boundsUnit;
+      if (e.kind === 'item_twig') expect(Math.max(bx, bz) * 2, id).toBeLessThanOrEqual(0.42);
+      if (e.kind === 'item_stone') expect(Math.max(bx, bz) * 2, id).toBeLessThanOrEqual(0.21);
+      expect(e.checks.badNormals, id).toBe(0);
+    }
+    for (const k of ['tuft_clubrush', 'tuft_swordsedge', 'tuft_tussock', 'item_twig', 'item_leaves_daisy', 'item_leaves_tall', 'item_shell', 'item_stone']) {
+      expect(m.items.some((e: { kind: string }) => e.kind === k), k).toBe(true);
+    }
+  });
   it('grows branches that obey the pipe model and stay inside their hull (§7.1)', () => {
     for (const e of m.variants) {
       expect(e.checks.pipeModel, `${e.kind} ${e.variant}`).toBe(true);
