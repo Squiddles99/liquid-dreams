@@ -183,7 +183,7 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
     });
     it('the ground patch, the rocks and the land with its hole stay within the limits', () => {
       const patch = new GroundPatch(sky, createLandLookUniforms(), { sunVisibility: (xz) => sunlight.visibilityNode(xz) });
-      const rocks = new Rocks(sky, (xz) => sunlight.visibilityNode(xz));
+      const rocks = new Rocks(sky, (xz) => sunlight.visibilityNode(xz), undefined, patch.layers);
       const land = new Land(sky);
       land.setSunVisibility((xz) => sunlight.visibilityNode(xz));
       land.setHole(patch.hole);

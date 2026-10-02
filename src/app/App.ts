@@ -362,7 +362,7 @@ export class App {
       plantFloor: this.plantFloor,
     });
     this.land.setHole(this.patch.hole);
-    this.rocks = new Rocks(this.sky, (xz) => this.sunlight.visibilityNode(xz), { seabed: this.seabed, optics: this.waterOptics });
+    this.rocks = new Rocks(this.sky, (xz) => this.sunlight.visibilityNode(xz), { seabed: this.seabed, optics: this.waterOptics }, this.patch.layers);
     this.plants = new PlantMeshes(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     for (const m of this.plants.meshes) this.scene.add(m);
     // The ground layers (dune-up-close §4.3): until they load the patch draws as it did. The footprints draw with them.
