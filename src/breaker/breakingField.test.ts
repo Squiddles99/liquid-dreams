@@ -4,6 +4,7 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
+import { setWaveHeight as setWaveHeightAt } from './reefReport';
 import { DEFAULT_BREAK_PARAMS, PILE_LAND_H, PILE_RISE_S, breakingHeightThreshold, landingEstimate, onsetTime, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
 import { type Station, traceStations } from './crestTrace';
 import { waveNumber } from './dispersion';
@@ -140,6 +141,27 @@ describe('the field breaking height (SetWaves skips the GPU breaking below its s
       }
     });
   }
+});
+
+describe('the face before it breaks (Andrew, 2026-10-02: "the step in front")', () => {
+  it('runs from the crest down into the lowest water in one curve: no flat terrace partway down (6 ft, the north ledge)', () => {
+    const w = testWave(setWaveHeightAt(6));
+    for (const up of [40, 80]) for (const dt of [-3, -2, -1]) {
+      const [px, pz] = along(NORTH_LEDGE, up, up)[1];
+      const line = ray(px, pz, 70, 40), t = at(px, pz).tau + dt;
+      const eta = line.map((p) => sumWaves(p.x, p.z, t, at(p.x, p.z), [w], ctx, sheet).eta);
+      const top = eta.indexOf(Math.max(...eta));
+      let low = top; for (let j = top; j < eta.length; j++) if (eta[j] < eta[low]) low = j;
+      // A terrace: 3 m or more (6 samples) where the surface falls less than 2 cm per sample while still 0.25 H above the
+      // lowest water ahead.
+      let run = 0, worst = 0;
+      for (let j = top + 1; j <= low; j++) {
+        const flat = eta[j - 1] - eta[j] < 0.02 && eta[j] - eta[low] > 0.25 * w.heightM;
+        run = flat ? run + 1 : 0; worst = Math.max(worst, run);
+      }
+      expect(worst * 0.5, `${up} m up, ${dt} s: terrace length (m)`).toBeLessThan(3);
+    }
+  });
 });
 
 describe('where and when the A-frame breaks (default swell, mid tide)', () => {
