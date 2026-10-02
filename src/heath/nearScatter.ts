@@ -84,6 +84,8 @@ export function cellScatter(ci: number, cj: number, ctx: ScatterContext): Scatte
     }
     if (!kind) continue;
     if (kind.startsWith('tuft_') && tracks?.onTrack(x, z)) continue;
+    // Nothing grows on the open beach or in the swash, even by the boulders there (gate 2: sedges stood in the water).
+    if (kind.startsWith('tuft_') && d < dryEnd - 4) continue;
     const s = ctx.surfaceAt(x, z);
     const tx = (ctx.surfaceAt(x, z + 0.25) - ctx.surfaceAt(x, z - 0.25)) / 0.5, tz = (ctx.surfaceAt(x + 0.25, z) - ctx.surfaceAt(x - 0.25, z)) / 0.5;
     const lean = kind.startsWith('tuft_') ? 0.5 : 1;
