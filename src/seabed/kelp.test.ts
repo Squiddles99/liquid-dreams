@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   KELP_CELL_M, KELP_FADE_M, KELP_GRID_N, type KelpState, kelpCanopyHeight, kelpCellOfSlot, kelpInWindow, kelpSlot, kelpSteadyLean,
-  kelpStep, kelpWindowFade, kelpWindowMin, KELP_HEIGHT_M,
+  kelpStep, kelpWindowFade, kelpWindowMin, KELP_HEIGHT_M, KELP_NOISE_SIZE, kelpNoiseData,
 } from './kelp';
 
 const DT = 0.05; // the foam's 20 Hz tick
@@ -82,5 +82,30 @@ describe('the lean grid around the camera (spec §4.3)', () => {
     expect(kelpWindowFade(0, 0, mx, mz)).toBe(1);
     expect(kelpWindowFade(mx * KELP_CELL_M + KELP_FADE_M / 2, 0, mx, mz)).toBeCloseTo(0.5, 1);
     expect(kelpWindowFade(mx * KELP_CELL_M - 3, 0, mx, mz)).toBe(0);
+  });
+});
+
+describe('the canopy\'s noise texture (final review I3: baked once, not computed per pixel)', () => {
+  const N = KELP_NOISE_SIZE;
+  const tex = kelpNoiseData();
+  const at = (c: number, x: number, y: number): number => tex[4 * (((y + N) % N) * N + ((x + N) % N)) + c];
+  it('four independent channels, spread around 0.5 within [0, 1]', () => {
+    for (let c = 0; c < 4; c++) {
+      let sum = 0, lo = 1, hi = 0;
+      for (let i = 0; i < N * N; i++) { const v = tex[4 * i + c]; sum += v; lo = Math.min(lo, v); hi = Math.max(hi, v); }
+      expect(sum / (N * N)).toBeGreaterThan(0.4);
+      expect(sum / (N * N)).toBeLessThan(0.6);
+      expect(lo).toBeGreaterThanOrEqual(0);
+      expect(hi).toBeLessThanOrEqual(1);
+      expect(hi - lo).toBeGreaterThan(0.7);
+    }
+    expect(at(0, 10, 10)).not.toBeCloseTo(at(1, 10, 10), 3);
+  });
+  it('tiles seamlessly and is smooth (no step between neighbouring texels, across the wrap too)', () => {
+    let worst = 0;
+    for (let c = 0; c < 4; c++) for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      worst = Math.max(worst, Math.abs(at(c, x + 1, y) - at(c, x, y)), Math.abs(at(c, x, y + 1) - at(c, x, y)));
+    }
+    expect(worst).toBeLessThan(0.25);
   });
 });

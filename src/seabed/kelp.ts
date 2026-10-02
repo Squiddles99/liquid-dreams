@@ -88,3 +88,32 @@ export function kelpWindowFade(x: number, z: number, minX: number, minZ: number)
   const edge = Math.min(x - x0, x0 + size - x, z - z0, z0 + size - z);
   return smoothstep(0, KELP_FADE_M, edge);
 }
+
+/** The canopy's noise texture: KELP_NOISE_SIZE² texels, KELP_NOISE_CELLS lattice cells a side, tiling (final review I3). */
+export const KELP_NOISE_SIZE = 256;
+export const KELP_NOISE_CELLS = 32;
+
+/**
+ * Four independent smooth value noises (RGBA, each in [0, 1]) on a tiling KELP_NOISE_CELLS² lattice, upsampled with
+ * smoothstep weights: the canopy samples it (hardware-filtered, repeating) instead of evaluating 3D noise per pixel, which
+ * cost ~3.5 ms a frame at the take-off. Fixed seed: the reef's look never changes with Conditions.seed.
+ */
+export function kelpNoiseData(): Float32Array {
+  const N = KELP_NOISE_SIZE, C = KELP_NOISE_CELLS, per = N / C;
+  let s = 0x2f6e2b1;
+  const rand = (): number => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+  const lattice = Array.from({ length: 4 }, () => Float32Array.from({ length: C * C }, rand));
+  const out = new Float32Array(N * N * 4);
+  const sm = (t: number): number => t * t * (3 - 2 * t);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const fx = x / per, fy = y / per, cx = Math.floor(fx), cy = Math.floor(fy), tx = sm(fx - cx), ty = sm(fy - cy);
+    const x0 = cx % C, x1 = (cx + 1) % C, y0 = cy % C, y1 = (cy + 1) % C;
+    for (let c = 0; c < 4; c++) {
+      const L = lattice[c];
+      const a = L[y0 * C + x0] + (L[y0 * C + x1] - L[y0 * C + x0]) * tx;
+      const b = L[y1 * C + x0] + (L[y1 * C + x1] - L[y1 * C + x0]) * tx;
+      out[4 * (y * N + x) + c] = a + (b - a) * ty;
+    }
+  }
+  return out;
+}
