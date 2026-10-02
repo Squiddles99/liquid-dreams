@@ -347,7 +347,7 @@
   },
   {
    "name": "grommet_hair",
-   "triangles": 14700,
+   "triangles": 14520,
    "materials": [
     "hair"
    ]
@@ -357,6 +357,13 @@
    "triangles": 2944,
    "materials": [
     "eyes"
+   ]
+  },
+  {
+   "name": "grommet_hairCurl",
+   "triangles": 127404,
+   "materials": [
+    "hairCurl"
    ]
   },
   {
@@ -418,9 +425,16 @@
   },
   {
    "name": "grommet_hairHat",
-   "triangles": 13480,
+   "triangles": 7620,
    "materials": [
     "hairHat"
+   ]
+  },
+  {
+   "name": "grommet_hairHatCurl",
+   "triangles": 64836,
+   "materials": [
+    "hairHatCurl"
    ]
   },
   {
@@ -492,6 +506,9 @@
  "checks": {
   "blinkCovers": true,
   "eyesOpen": true,
+  "curlBendRatio": 1.041,
+  "frizzMaxCm": 1.38,
+  "frizzChordRatio": 0.782,
   "garmentsOutside": true,
   "hatHairUnder": true
  },

@@ -6,6 +6,21 @@ import { FACE_CHANNELS } from './idleLife';
 import { PRESETS } from './presets';
 import { BONES, type SurferManifest, manifestProblems } from './rig';
 
+/** The share of a primitive's vertices that sit on another's point with a normal more than 8° off it: flat-shaded
+ * facets split every corner (most of them); a smooth surface none, bar where two tubes happen to cross. */
+function normalSplit(path: string, gltf: any, prim: any): number {
+  const pos = glbValues(path, gltf, prim.attributes.POSITION), nor = glbValues(path, gltf, prim.attributes.NORMAL);
+  const seen = new Map<string, number>();
+  let split = 0;
+  for (let i = 0; i < pos.length / 3; i++) {
+    const key = `${Math.round(pos[3 * i] * 2e4)},${Math.round(pos[3 * i + 1] * 2e4)},${Math.round(pos[3 * i + 2] * 2e4)}`;
+    const j = seen.get(key);
+    if (j === undefined) { seen.set(key, i); continue; }
+    if (nor[3 * i] * nor[3 * j] + nor[3 * i + 1] * nor[3 * j + 1] + nor[3 * i + 2] * nor[3 * j + 2] < 0.99) split++;
+  }
+  return split / (pos.length / 3);
+}
+
 for (const name of ['female', 'male', 'grommet'] as const) {
   describe(`the ${name} surfer build`, () => {
     const man: SurferManifest = JSON.parse(readFileSync(`public/surfer/${name}.manifest.json`, 'utf8'));
@@ -209,18 +224,8 @@ describe("Shazza's hair (closeup spec §3)", () => {
     for (const mesh of gltf.meshes) for (const prim of mesh.primitives) {
       const mat = gltf.materials[prim.material].name as string;
       if (!mat.endsWith('Braid')) continue;
-      const pos = glbValues('public/surfer/female.glb', gltf, prim.attributes.POSITION);
-      const nor = glbValues('public/surfer/female.glb', gltf, prim.attributes.NORMAL);
-      const seen = new Map<string, number>();
-      let worst = 1;
-      for (let i = 0; i < pos.length / 3; i++) {
-        const key = `${Math.round(pos[3 * i] * 2e4)},${Math.round(pos[3 * i + 1] * 2e4)},${Math.round(pos[3 * i + 2] * 2e4)}`;
-        const j = seen.get(key);
-        if (j === undefined) { seen.set(key, i); continue; }
-        worst = Math.min(worst, nor[3 * i] * nor[3 * j] + nor[3 * i + 1] * nor[3 * j + 1] + nor[3 * i + 2] * nor[3 * j + 2]);
-      }
       // Flat shading splits every corner into four vertices with their faces' normals (~30° apart round a 12-sided tube).
-      expect(worst, `${mat}: the most two normals at one point differ (cos)`).toBeGreaterThan(0.99);
+      expect(normalSplit('public/surfer/female.glb', gltf, prim), `${mat}: the share of split normals`).toBeLessThan(0.001);
     }
   });
   it('her upper lip is thinned by the build: at least a fifth shorter than MPFB leaves it (dune select spec §13.1)', () => {
@@ -234,8 +239,10 @@ describe("Shazza's hair (closeup spec §3)", () => {
 
 describe("Grommet's mop (grommet spec §3)", () => {
   const gltf = glbJson('public/surfer/grommet.glb');
-  const hair = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'hair'));
-  const pos = gltf.accessors[hair.primitives[0].attributes.POSITION];
+  // The mop in the water: the ringlets (hairCurl) over the short under-layer and the frizz (hair).
+  const prims = gltf.meshes.flatMap((m: any) => m.primitives).filter((p: any) => ['hair', 'hairCurl'].includes(gltf.materials[p.material].name));
+  const bounds = prims.map((p: any) => gltf.accessors[p.attributes.POSITION]);
+  const pos = { min: [0, 1, 2].map((k) => Math.min(...bounds.map((b: any) => b.min[k]))), max: [0, 1, 2].map((k) => Math.max(...bounds.map((b: any) => b.max[k]))) };
   const man: SurferManifest = JSON.parse(readFileSync('public/surfer/grommet.manifest.json', 'utf8'));
   it('stands well out from his head: wider than his ears by 5 cm or more, up to 7 cm or more above the head joint', () => {
     const ears = man.landmarks!.ears, head = man.bones.find((b) => b.name === 'head')!;
@@ -246,6 +253,24 @@ describe("Grommet's mop (grommet spec §3)", () => {
   it('keeps the curls above his glasses in front', () => {
     const lowFront = pos.min[1];
     expect(lowFront).toBeGreaterThan(man.landmarks!.nose[1] - 0.2);
+  });
+  it('grows round ringlets, in the water and under his hat: solid coiled tubes, never folding (Andrew: wood shavings)', () => {
+    // Round 1's curls were flat cards 11–14 mm wide wound round a 2 cm spiral: they read as wood shavings. Now each
+    // ringlet is a smooth tube coiled round its own axis; its tightest bend over its own radius stays at 1 or more.
+    const mats = gltf.materials.map((m: any) => m.name);
+    expect(mats).toContain('hairCurl');
+    expect(mats).toContain('hairHatCurl');
+    expect(man.checks!.curlBendRatio).toBeGreaterThanOrEqual(1);
+    for (const mesh of gltf.meshes) for (const prim of mesh.primitives) {
+      const mat = gltf.materials[prim.material].name as string;
+      if (mat.endsWith('Curl')) expect(normalSplit('public/surfer/grommet.glb', gltf, prim), `${mat}: the share of split normals`).toBeLessThan(0.001);
+    }
+  });
+  it('frizzes in short wisps that curl back, not long straight spikes (Andrew: the hedgehog)', () => {
+    // Round 1: 300 straight wisps 1.5–3 cm long, out from the head's centre, dark at the root against the sky.
+    // Now each wisp is under 1.5 cm, and curls: its ends no further apart than 0.8 of its length.
+    expect(man.checks!.frizzMaxCm).toBeLessThanOrEqual(1.5);
+    expect(man.checks!.frizzChordRatio).toBeLessThanOrEqual(0.8);
   });
 });
 
