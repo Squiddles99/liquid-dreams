@@ -192,6 +192,35 @@ describe('every limb shows (Andrew, gate 2: the bottom turn buried a hand in his
   }
 });
 
+describe("sitting, the arms come down clear of the boardies (Andrew: T-Bone's wrists went through his shorts)", () => {
+  // The boardies' leg reaches 13 cm from the thigh's axis on a 1.78 m rider (manifest.test pins it; it was 14.6, and
+  // the wrists 12.3 cm out went through it): every point along each forearm stays 13.5 cm clear, down to the hem (62%).
+  it('no point along either forearm inside a boardies leg, every board, stance, body and dial', () => {
+    const worst: string[] = [];
+    for (const { name, preset, rest } of RIDERS) {
+      if (name === 'female') continue; // her cutoffs and bikini; the boardies are the boys'
+      const clear = 0.135 * rest.heightM / 1.78;
+      for (const kind of KINDS) {
+        if (!boardsFor(preset).includes(kind) || !posesFor(kind).includes('sit')) continue;
+        const spec = boardFor(preset, kind), layout = layoutFor(spec, rest.heightM);
+        for (const stance of ['regular', 'goofy'] as Stance[]) for (const c of LEVELS) for (const tw of LEVELS) {
+          const t = poseTargets('sit', { spec, layout, rest, stance, dials: { compression: c, lean: 0, twist: tw, reach: 0 }, phaseT: 0 });
+          const J = solvePose(rest, t, FRAMES[0], null).joint as Record<string, Vector3>;
+          for (const arm of ['l', 'r'] as const) for (const f of [0.25, 0.5, 0.75, 1]) {
+            const p = J[`forearm_${arm}`].clone().lerp(J[`hand_${arm}`], f);
+            for (const leg of ['l', 'r'] as const) {
+              const { d, u } = toSegment(p, J[`thigh_${leg}`], J[`shin_${leg}`]);
+              if (u > 0.62) continue;
+              if (d < clear) worst.push(`${name}/${kind}/${stance}/c${c}/tw${tw}: forearm_${arm} ${f} ${(100 * d).toFixed(1)} cm from the ${leg} thigh`);
+            }
+          }
+        }
+      }
+    }
+    expect(worst.length, worst.slice(0, 4).join('; ')).toBe(0);
+  });
+});
+
 describe('standing knees stay up (Andrew, gate 2: the bottom turn knelt on the deck)', () => {
   // Standing as designed, a knee stays a good 15 cm off the deck; at the dials' extremes (full compression on a full
   // lean) a crouched back knee comes down, as in his photos, but its kneecap stays clear of the deck (8 cm to the joint).

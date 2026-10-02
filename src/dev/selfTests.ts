@@ -21,6 +21,7 @@ import '../bombie/bombie.selftest';
 import '../board/board.selftest';
 import '../surfer/grommet.selftest';
 import '../surfer/face.selftest';
+import '../surfer/hair.selftest';
 import '../surfer/surfer.selftest';
 import '../sound/sound.selftest';
 import '../surfer/walking.selftest';

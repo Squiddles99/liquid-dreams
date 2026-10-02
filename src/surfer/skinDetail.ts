@@ -23,6 +23,9 @@ export interface SkinZones {
   lipFront: V3;
   /** The outermost points of the ears (left, right). */
   ears: [V3, V3];
+  /** The nipples (left, right), or null for an older build; and the areolas' radius (Shazza's larger). */
+  nipples: [V3, V3] | null;
+  areolaRadius: number;
 }
 
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -50,5 +53,7 @@ export function skinZones(m: SurferManifest): SkinZones | null {
     mouth: L.mouth,
     lipFront: L.lipFront,
     ears: L.ears,
+    nipples: L.nipples ?? null,
+    areolaRadius: (m.name === 'female' ? 0.016 : 0.011) * (m.heightM / 1.75),
   };
 }

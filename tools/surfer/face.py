@@ -19,19 +19,18 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.kdtree import KDTree
 
+import hairline
+
 
 def _ramp(x, edge, width):
     """0 below edge - width / 2, 1 above edge + width / 2."""
     return max(0.0, min(1.0, 0.5 + (x - edge) / width))
 
 
-def _scalp(co, centre, eye_z):
-    # The hairline: well above the brow at the front, above the ears at the sides, down to the nape at the back.
-    back = _ramp(co.y, centre.y, 0.06)
-    line = (eye_z + 0.065) * (1 - back) + (eye_z - 0.05) * back
-    if abs(co.x) > 0.055 and 0.15 < back < 0.85:
-        line = max(line, eye_z + 0.025)  # clear of the ears
-    return _ramp(co.z, line, 0.015)
+def _scalp(co, centre, eye_z, ear=(95.0, 0.023)):
+    # The hairline (hairline.py, shared with the hair's roots): above the brow at the forehead, down the temples into a
+    # sideburn, over the ears, down to the nape; softened over 1.5 cm.
+    return _ramp(co.z, hairline.line_z(co, centre, eye_z, *ear), 0.015)
 
 
 def _brow(co, eye, eye_y, weight):
@@ -91,14 +90,22 @@ def _lip_mask(body):
     return m
 
 
-def _mouth_inside(v, mouth, lip_front, tree):
+def _mouth_inside(v, mouth, lip_front, tree, lip_bottom=None):
     """The dark inside of the mouth, so parted lips never show skin behind them. A vertex 3 mm or more behind the lip's
     front, within the mouth's width and height, is inside when its normal looks back into the face (a ray along it hits
     the mouth's far wall, behind the lip, within 2 cm) or it's deep in the mouth (2 cm back, near the midline). The
-    outer skin around the mouth (cheeks, philtrum, chin) looks out into the air."""
+    outer skin around the mouth (cheeks, philtrum, chin) looks out into the air.
+
+    Below the lower lip's bottom edge (`lip_bottom`), the mouth's inside is only the pocket behind the lip, with the lip
+    in front of it: Grommet's lower lip juts over his chin, and the chin tucked under it passed the normal's ray (it
+    hit the lip's underside), painting two dark dots under his lip. A ray straight forward from the chin meets air."""
     co = v.co
     if mouth is None or lip_front is None or co.y < lip_front.y + 0.003:
         return 0.0
+    if lip_bottom is not None and co.z < lip_bottom:
+        ahead, _, _, _ = tree.ray_cast(co + Vector((0, -0.0005, 0)), Vector((0, -1, 0)), 0.03)
+        if ahead is None:
+            return 0.0
     if abs(co.x - mouth.x) > 0.027 or abs(co.z - mouth.z) > 0.02:
         return 0.0
     if abs(co.x - mouth.x) < 0.015 and co.y > lip_front.y + 0.02:
@@ -171,11 +178,14 @@ def shape_lashes(body, L, lashes):
 
 def paint(body, weights, L, brow_weight=1.0, ao=None):
     centre, eye_z, eyes, mouth = L["head_centre"], L["eye_z"], L["eyes"], L.get("mouth")
+    ear = hairline.ear_params(L)
     eye_pts = [p for p in eyes.values() if p is not None]
     eye_y = min((p.y for p in eye_pts), default=centre.y - 0.08)
     layer = body.data.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="POINT")
     tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
     lips_m = _lip_mask(body)
+    lip_zs = [v.co.z for v, row in zip(body.data.vertices, weights) if lips_m[v.index] * 1.15 >= 0.5 and any(b == "head" and w > 0.5 for b, _, w in row)]
+    lip_bottom = min(lip_zs) if lip_zs else None
     lash_uv = _lash_coords(body, L)
     root_pts = [body.data.vertices[i].co.copy() for i, (t, _, upper) in lash_uv.items() if upper > 0.5 and t < 0.12]
     roots = None
@@ -192,10 +202,10 @@ def paint(body, weights, L, brow_weight=1.0, ao=None):
             continue
         head = sum(w for b, _, w in row if b == "head")
         co = v.co
-        scalp = _scalp(co, centre, eye_z) * head
+        scalp = _scalp(co, centre, eye_z, ear) * head
         brow = max((_brow(co, p, eye_y, brow_weight) for p in eye_pts), default=0.0) * head
         lash = (liner(co) if roots is not None else max((_lash(co, p, eye_y) for p in eye_pts), default=0.0)) * head
-        inside = _mouth_inside(v, mouth, L.get("lip_front"), tree) * head
+        inside = _mouth_inside(v, mouth, L.get("lip_front"), tree, lip_bottom) * head
         lips = max(min(1.0, lips_m[v.index] * 1.15), inside) * head
         lash = lash * (1.0 - inside) + inside
         occ = ao[v.index] if ao is not None else 1.0

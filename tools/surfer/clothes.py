@@ -175,7 +175,7 @@ def tee(body, rig, coords, weights, H, L, spec, name):
     out = []
     for (co, nrm), (b, t) in zip(rest, gc):
         if b == "upperarm":
-            loose = (0.02 if big else 0.01) + 0.01 * _smooth(sleeve_t - 0.25, sleeve_t, t)
+            loose = (0.012 if big else 0.01) + 0.01 * _smooth(sleeve_t - 0.25, sleeve_t, t)  # big: it hangs, not puffed (Andrew)
             p = co + nrm * (push0 + loose)
         else:
             push = push0 + (push1 - push0) * _smooth(chest_z, hem_z, co.z)
