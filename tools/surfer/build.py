@@ -122,7 +122,7 @@ if walk and walk.get("pack"):
     parts += carried
 # The dry hair on land, draped over the walking clothes as well as the body (it fell inside the tee at the back).
 if preset.get("dryHair"):
-    dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=[*garments, *carried])
+    dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=[*garments, *carried], thin=carried)
     rig_trim.single_material(dry_obj, "hairDry")
     dry_checks = dict(hair.last_checks)
     parts += hair.last_extras
@@ -141,6 +141,9 @@ if "braids" in wet_checks or "braids" in dry_checks:
     checks["braidEndDropCm"] = dry_checks.get("braidEndDropCm", []) + wet_checks.get("braidEndDropCm", [])
     checks["braidEndsInFront"] = bool(dry_checks.get("braidEndsInFront", True) and wet_checks.get("braidEndsInFront", True))
     checks["braidsOutside"] = dry_checks.get("braidInside", 0) == 0 and wet_checks.get("braidInside", 0) == 0
+    for key in ("braidPathTurnDeg", "braidTwistDeg", "braidStrandTurnDeg"):
+        checks[key] = max(c[key] for c in (dry_checks, wet_checks) if key in c)
+    checks["braidBendRatio"] = min(c["braidBendRatio"] for c in (dry_checks, wet_checks) if "braidBendRatio" in c)
     print(f"braid vertices inside the body: dry {dry_checks.get('braidInside')}, wet {wet_checks.get('braidInside')}")
 if walk:
     checks["garmentsOutside"] = clothes.outside_check(garments, body)

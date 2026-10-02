@@ -222,7 +222,7 @@ def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False, 
     return obj
 
 
-def build(body, rig, style, L, coords, name, avoid=()):
+def build(body, rig, style, L, coords, name, avoid=(), thin=()):
     last_checks.clear()
     last_extras.clear()
     rng = random.Random(style["seed"])
@@ -278,7 +278,7 @@ def build(body, rig, style, L, coords, name, avoid=()):
         last_checks.update(hairline.stats([v.co for v in scalp], centre, eye_z, ear[0], inset))
         return _cards_object(cards, centre, rig, f"{name}_hairDry", skin=_long_skin(rig), seed=style["seed"], face_turn=True)
     elif style["style"] == "braids":
-        return _braids(body, rig, style, L, name, scalp, pick, rng, centre, eye_z, avoid)
+        return _braids(body, rig, style, L, name, scalp, pick, rng, centre, eye_z, avoid, thin)
     elif style["style"] == "ponytail":
         # Wet and slicked back to the tie: many fine cards (closeup spec §3), so the combed lines read as hair.
         tie = centre + Vector((0, L["head_radius"] * 0.95, -0.01))
@@ -364,7 +364,7 @@ def _to_braid(root, n, centre, eye_z, ear, path, frames, rng, tree, wet):
     front of it), then down behind the ear into the braid, ending somewhere in the braid's cross-section."""
     # Into the braid's first few centimetres, spread through its cross-section, so the locks merge into it rather than
     # bunching at one point (a lump behind the ear otherwise).
-    j = rng.randrange(0, 7)
+    j = rng.randrange(0, max(1, round(0.02 / braids.STEP)))
     start, (t, nb, bb) = path[j], frames[j]
     r0 = (root - centre).length
     hug = (r0 + 0.002, r0 + (0.004 if wet else 0.008))
@@ -402,20 +402,30 @@ def _to_braid(root, n, centre, eye_z, ear, path, frames, rng, tree, wet):
     return pts
 
 
-def _braids(body, rig, style, L, name, scalp, pick, rng, centre, eye_z, avoid):
-    """Shazza's low pigtail braids (dune select spec §13.2): see braids.py."""
+def _braids(body, rig, style, L, name, scalp, pick, rng, centre, eye_z, avoid, thin=()):
+    """Shazza's low pigtail braids (dune select spec §13.2): see braids.py. `thin`: those of `avoid` that are carried
+    gear (the pack and its straps, the towel), which the braid's line keeps clear of unsigned."""
     wet = not style.get("dry")
     tree = _body_tree(body, avoid)
+    solid = _body_tree(body, [a for a in avoid if a not in thin])
+    thin_tree = None
+    if thin:
+        tv, tp = [], []
+        for o in thin:
+            base = len(tv)
+            tv += [v.co.copy() for v in o.data.vertices]
+            tp += [[i + base for i in p.vertices] for p in o.data.polygons]
+        thin_tree = BVHTree.FromPolygons(tv, tp)
     body_tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
     part_x = style.get("partX", 0.006)
     neck_z = rig.data.bones["neck"].head_local.z
     trng = random.Random(style["seed"] + 101)
     cards, roles, outs = [], [], []
     paths, frames, ends, ties, tubes = {}, {}, {}, [], []
-    drop, front = [], True
+    drop, front, bends = [], True, []
     for side in ("l", "r"):
-        path, clav = braids.braid_path(side, L, rig, tree, wet)
-        fr = braids._frames(path, tree)
+        path, clav = braids.braid_path(side, L, rig, solid, wet, thin_tree)
+        fr = braids._frames(path, rig.data.bones["neck"].head_local)
         paths[side], frames[side] = path, fr
         strands, radii, phases = braids.plait(path, fr, wet)
         # Each plait strand a solid tube in a lock's straight core strands, running along it as a plait's hair does; the
@@ -432,6 +442,9 @@ def _braids(body, rig, style, L, name, scalp, pick, rng, centre, eye_z, avoid):
         cards += tail
         outs += tail_outs
         roles += ["tail"] * len(tail)
+        bends.append((braids.max_turn_deg(path), braids.max_frame_twist_deg(fr), max(braids.max_turn_deg(x) for x in strands),
+                      min(braids.min_bend_ratio(x, radii) for x in strands)))
+        print(f"braid {side} {'wet' if wet else 'dry'}: path {bends[-1][0]:.1f}°, weave {bends[-1][1]:.1f}°, strand {bends[-1][2]:.1f}°, bend/radius {bends[-1][3]:.2f}")
         drop.append(round(100 * (clav.z - path[-1].z), 1))  # clav: the clavicle's head (braids.braid_path)
         front = front and path[-1].y < clav.y
     n_braid = len(cards)
@@ -455,7 +468,7 @@ def _braids(body, rig, style, L, name, scalp, pick, rng, centre, eye_z, avoid):
     # The checks: two braids, where their ends hang, in front of the shoulders, and none of the braid inside the body.
     # The plait's strands and staves stand out from the centreline toward the body too; where the neck curves in, a
     # few came inside the skin: pushed out to 1 mm clear.
-    braid_lines = [pts for pts, _w in cards[:n_braid]] + [tv for tv, _q, _u, _c in tubes]
+    braid_lines = [pts for pts, _w in cards[:n_braid]] + [tv for tv, _q, _u, _c, _n in tubes]
     for pts in braid_lines:
         for i, p in enumerate(pts):
             loc, normal, _, _ = body_tree.find_nearest(p)
@@ -468,7 +481,9 @@ def _braids(body, rig, style, L, name, scalp, pick, rng, centre, eye_z, avoid):
             if loc is not None and (p - loc).dot(normal) < -0.001:
                 inside += 1
     last_checks.clear()
-    last_checks.update({"braids": 2, "braidEndDropCm": drop, "braidEndsInFront": front, "braidInside": inside})
+    last_checks.update({"braids": 2, "braidEndDropCm": drop, "braidEndsInFront": front, "braidInside": inside,
+                        "braidPathTurnDeg": round(max(b[0] for b in bends), 2), "braidTwistDeg": round(max(b[1] for b in bends), 2),
+                        "braidStrandTurnDeg": round(max(b[2] for b in bends), 2), "braidBendRatio": round(min(b[3] for b in bends), 2)})
     # The loose face-framing pieces keep §13.1's checks (dry): each turns into its fall at its own height, blended; and
     # the hairline comes down into a sideburn.
     if turns:
