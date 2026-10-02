@@ -78,7 +78,8 @@ import { Land } from '../land/Land';
 import { GroundPatch } from '../beach/GroundPatchMesh';
 import { PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
 import { Rocks } from '../beach/RockMeshes';
-import { PlantField, patchCasters, type Plant } from '../heath/plants';
+import { LOD_RANGES_M, PLANT_CELL_M, PLANT_GONE_M, PlantField, patchCasters, type Plant, plantLod, plantSeatY } from '../heath/plants';
+import { type CellChange, CellQueue, PlantRing, cellKey, layBudgetMs } from '../heath/plantRing';
 import { PlantMeshes } from '../heath/PlantMeshes';
 import { uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
@@ -93,8 +94,12 @@ const REEF_REBUILD_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 500;
 /** The rocks are relaid (from the cached cells) once the camera has moved this far (Phase 4c-1). */
 const ROCK_RELAY_M = 2;
-/** The plants are relaid once the camera has moved this far (Phase 4c-2 §3.7). */
+/** The near plants' list (sound, shadows, the kit) is redone once the camera has moved this far (Phase 4c-2 §3.7). */
 const PLANT_RELAY_M = 3;
+/** The near plants' list reaches this far (the kit's mid band and its fade: dune-up-close §3.1). */
+const NEAR_LIST_M = 43;
+/** The plant rings re-diff once the camera has moved this far. */
+const RING_MOVE_M = 2;
 /** The crest trace's timing readout is an exponential moving average with this weight on each new frame. */
 const TRACE_MS_ALPHA = 0.1;
 
@@ -219,6 +224,20 @@ export class App {
   private plantField: PlantField | null = null;
   private plantsNear: Plant[] = [];
   private plantsAt: [number, number] | null = null;
+  /**
+   * The far plants, laid cell by cell (dune-up-close §4.5): the cells within 200 m (inside `hullInnerM`, the kit's
+   * bands, once the kit draws them), and rings at the hulls' level-of-detail distances, whose crossings re-lay a cell.
+   */
+  private hullInnerM = 0;
+  private hullRing = new PlantRing(PLANT_GONE_M, 0);
+  private readonly lodRings = LOD_RANGES_M.map((r) => new PlantRing(r));
+  private readonly plantQueue = new CellQueue();
+  /** Where the rings were last moved: they re-diff after RING_MOVE_M (diffing ~8,000 cells every frame cost ~1 ms). */
+  private ringsAt: [number, number] | null = null;
+  /** The far plants must be laid afresh (the land, the density, the rocks or the clearings changed). */
+  private hullsStale = true;
+  /** Dev readout: the slowest frame's cell laying (ms) since the last reset. */
+  plantLayWorstMs = 0;
   /** The plant layout's patch state at the last refresh (a patch recentre or show/hide re-seats the plants). */
   private plantPatchKey = '';
   /** 1 while the plants stand near the camera: the painted heath fades to its floor there. */
@@ -862,6 +881,7 @@ export class App {
     this.patchGrids = undefined;
     this.rocksAt = null;
     this.plantsAt = null;
+    this.hullsStale = true;
   }
 
   /** The sound's frame (Phase 5): the spray ticks since the last frame, the Bombie's bursts, the camera and what's around it. */
@@ -918,14 +938,14 @@ export class App {
     this.plantFloor.value = this.landParams.bushDensity > 0 ? 1 : 0;
     const patchKey = c ? `${c[0]},${c[1]}` : 'off';
     const clearingKey = this.clearings.map((k) => `${k.x.toFixed(1)},${k.z.toFixed(1)}`).join(';');
+    if (clearingKey !== this.clearingKey) this.hullsStale = true;
     if (!this.plantsAt || patchKey !== this.plantPatchKey || clearingKey !== this.clearingKey || Math.hypot(cam.x - this.plantsAt[0], cam.z - this.plantsAt[1]) > PLANT_RELAY_M) {
       this.clearingKey = clearingKey;
       // Riders on land and the pile trample the heath clear around them (walking spec §6).
-      this.plantsNear = clearOf(this.plantField.near(cam.x, cam.z), this.clearings);
-      this.plantStats = this.plants.update(this.plantsNear, cam.x, cam.z, { cx: c ? c[0] : 0, cz: c ? c[1] : 0, on: !!c });
+      this.plantsNear = clearOf(this.plantField.near(cam.x, cam.z, NEAR_LIST_M), this.clearings);
       this.plantsAt = [cam.x, cam.z];
-      this.plantPatchKey = patchKey;
     }
+    this.layPlants(cam.x, cam.z, c, patchKey);
     this.plants.tick(this.clock.simTime, this.conditions.wind.speedMs);
     if (c && (moved || this.sunDir.angleTo(this.shadowSun) > (0.5 * Math.PI) / 180)) {
       const inSquare = (x: number, z: number): boolean => Math.abs(x - c[0]) < 42 && Math.abs(z - c[1]) < 42;
@@ -933,6 +953,57 @@ export class App {
       this.patch.setShadows(buildGroundShadows(casters, c[0] - 32, c[1] - 32, [this.sunDir.x, this.sunDir.y, this.sunDir.z]));
       this.shadowSun.copy(this.sunDir);
     }
+  }
+
+  /**
+   * The far plants, cell by cell (dune-up-close §4.5): the ring's entering and leaving cells, cells crossing a level-of-
+   * detail distance, and on a patch recentre or show/hide the cells over the patch (each plant sits on the surface drawn
+   * under it), laid within layBudgetMs a frame.
+   */
+  private layPlants(x: number, z: number, c: [number, number] | null, patchKey: string): void {
+    const field = this.plantField;
+    if (!field) return;
+    if (this.hullsStale) {
+      this.hullsStale = false;
+      this.plants.clear();
+      this.plantQueue.clear();
+      this.hullRing = new PlantRing(PLANT_GONE_M, this.hullInnerM);
+      for (const r of this.lodRings) r.reset();
+      this.ringsAt = null;
+    }
+    if (!this.ringsAt || Math.hypot(x - this.ringsAt[0], z - this.ringsAt[1]) >= RING_MOVE_M) {
+      this.ringsAt = [x, z];
+      // The ring orders its changes (the near adds, the drops, the rest); a level-of-detail crossing re-lays its cell.
+      this.plantQueue.push(...this.hullRing.move(x, z));
+      for (const r of this.lodRings) for (const ch of r.move(x, z)) if (this.hullRing.has(ch.key)) this.plantQueue.push({ ...ch, add: true });
+    }
+    if (patchKey !== this.plantPatchKey) {
+      // The cells over the old and the new patch re-seat (their plants blend between the patch's surface and the mesh's).
+      for (const sq of [this.plantPatchKey, patchKey]) {
+        if (sq === 'off' || sq === '') continue;
+        const [px, pz] = sq.split(',').map(Number);
+        for (let ci = Math.floor((px - 36) / PLANT_CELL_M); ci <= Math.floor((px + 36) / PLANT_CELL_M); ci++) {
+          for (let cj = Math.floor((pz - 36) / PLANT_CELL_M); cj <= Math.floor((pz + 36) / PLANT_CELL_M); cj++) {
+            const key = cellKey(ci, cj);
+            if (this.hullRing.has(key)) this.plantQueue.push({ key, ci, cj, add: true });
+          }
+        }
+      }
+      this.plantPatchKey = patchKey;
+    }
+    const patch = { cx: c ? c[0] : 0, cz: c ? c[1] : 0, on: !!c };
+    const t0 = performance.now();
+    this.plantQueue.drain((ch) => {
+      if (!ch.add || !this.hullRing.has(ch.key)) {
+        this.plants.removeCell(ch.key);
+        return;
+      }
+      const d = Math.hypot((ch.ci + 0.5) * PLANT_CELL_M - x, (ch.cj + 0.5) * PLANT_CELL_M - z), lod = plantLod(d);
+      this.plants.addCell(ch.key, clearOf(field.cell(ch.ci, ch.cj), this.clearings), (p) => plantSeatY(p, patch), () => lod);
+    }, layBudgetMs(this.plantQueue.length));
+    this.plantLayWorstMs = Math.max(this.plantLayWorstMs, performance.now() - t0);
+    this.plants.flush();
+    this.plantStats = { drawn: this.plants.drawn, dropped: this.plants.dropped };
   }
 
   /** Beach-shape edits rebuild the mesh (about half a second), debounced like the reef. */

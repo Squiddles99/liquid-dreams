@@ -322,8 +322,18 @@ export class TrackNetwork {
     return Math.max(corridor, CLEARING_SINK_M * this.clearingShare(x, z, CLEARING_SINK_EDGE_M));
   }
 
-  /** The sink as the GPU draws it: bilinear between sinkExact on the LATTICE_M lattice. */
+  /**
+   * The sink as the GPU draws it: bilinear between sinkExact on the LATTICE_M lattice. Far from every track (beyond the
+   * sink's reach plus a lattice cell) it is 0 without sampling the lattice: heightAt calls this everywhere, and the four
+   * samples tripled its cost.
+   */
   sinkAt(x: number, z: number): number {
+    if (this.nearest(x, z).d > SINK_REACH_M + 2 * LATTICE_M && this.ellipse(x, z) > 1 + (CLEARING_SINK_EDGE_M + 2 * LATTICE_M) / Math.min(CLEARING_SEMI_M[0], CLEARING_SEMI_M[1])) return 0;
+    return this.sinkAtSlow(x, z);
+  }
+
+  /** sinkAt without its shortcut (the tests check the two agree). */
+  sinkAtSlow(x: number, z: number): number {
     return this.lattice(x, z, (a, b) => this.sinkExact(a, b));
   }
 
