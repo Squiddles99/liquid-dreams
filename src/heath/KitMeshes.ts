@@ -19,10 +19,10 @@ export function bandDitherNode(seed: N): N {
 }
 
 /** [wNear, wFar] at world position p from the camera: the kit's L0 and the far hull's shares (L1 takes the rest). */
-export function bandWeightNodes(p: N): [N, N] {
+export function bandWeightNodes(p: N, nearM = NEAR_M, farM = MID_M): [N, N] {
   const d: N = length(p.xz.sub(cameraPosition.xz));
   const h = BAND_FADE_M / 2;
-  return [float(1).sub(smoothstep(NEAR_M - h, NEAR_M + h, d)), smoothstep(MID_M - h, MID_M + h, d)];
+  return [float(1).sub(smoothstep(nearM - h, nearM + h, d)), smoothstep(farM - h, farM + h, d)];
 }
 
 /**
@@ -46,7 +46,7 @@ export class KitMeshes {
 
   constructor(kit: Kit, sky: Sky, sunVisibility?: (xz: N) => N) {
     this.kindColour = Object.fromEntries(kit.manifest.variants.filter((v) => v.variant === 0).map((v) => [v.kind, v.leafColour]));
-    const materials = [0, 1].map((lod) => this.material(kit, sky, lod as 0 | 1, sunVisibility));
+    const materials = [0, 1].map((lod) => kitMaterial(kit.atlas, kit.manifest.atlas.size, sky, { lod: lod as 0 | 1, time: this.time, sway: this.sway, forceBand: this.forceBand, sunVisibility }));
     for (const lod of [0, 1] as const) {
       for (const kind of PLANT_KINDS) {
         for (let v = 0; v < PLANT_SHAPES; v++) {
@@ -146,49 +146,67 @@ export class KitMeshes {
     return this.kindColour;
   }
 
-  private material(kit: Kit, sky: Sky, lod: 0 | 1, sunVisibility?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
-    const m = new THREE.MeshBasicNodeMaterial();
-    m.side = THREE.DoubleSide;
-    const col: N = attribute('color', 'vec4'); // AO, root distance, flutter phase, what it is (0 wood, .2 dead, .5 leaf, 1 flower)
-    const uv: N = attribute('uv', 'vec2');
-    const tex: N = texture(kit.atlas, uv);
-    // The atlas's mips average a spray's or a card's alpha toward its coverage (a third, for daisy needles), under the
-    // 0.5 cut: far cards vanished. Raise the alpha with the mip level the pixel samples.
-    const mip: N = max(log2(max(fwidth(uv.x), fwidth(uv.y)).mul(kit.manifest.atlas.size)), 0.0);
-    const alpha: N = tex.a.mul(float(1.0).add(mip.mul(0.35)));
-    const seed: N = attribute('plantSeed', 'float');
-    const leafy: N = step(0.4, col.w);
-    // Wind (spec §4.2): stiff at the root, the tips moving with the root distance cubed; leaves flutter on their own phase.
-    // (positionLocal is already placed by the instance here, so the sway is in metres.)
-    const bend: N = col.y.mul(col.y).mul(col.y).mul(this.sway);
-    const sway: N = vec3(sin(this.time.mul(1.7).add(seed.mul(6.28))), 0.0, sin(this.time.mul(1.3).add(seed.mul(4.1))).mul(0.6)).mul(bend);
-    const flutter: N = normalWorld.mul(sin(this.time.mul(9.0).add(col.z.mul(6.28))).mul(0.004).mul(leafy).mul(this.sway.mul(16.0)));
-    m.positionNode = positionLocal.add(sway).add(flutter);
-    // The band fade (spec §3.1).
-    const [wNear, wFar] = bandWeightNodes(positionWorld);
-    const dither: N = bandDitherNode(seed);
-    const keepBand: N = lod === 0 ? dither.lessThan(wNear) : dither.greaterThanEqual(wNear).and(dither.lessThan(float(1).sub(wFar)));
-    m.maskNode = keepBand.or(this.forceBand.greaterThan(0.5)).and(alpha.greaterThan(0.5));
+}
 
-    // Never normalise a zero normal (NaN): a hair of up keeps it finite.
-    const n: N = normalize(normalWorld.mul(faceDirection).add(vec3(0.0, 1e-4, 0.0)));
-    const l = sky.sunDirection;
-    const toCam: N = cameraPosition.sub(positionWorld);
-    const dist: N = length(toCam);
-    const v: N = toCam.div(max(dist, 1e-3));
-    // Leaves keep half their light inside the crown (silver and fleshy leaves scatter it: gate 1 read them too dark).
-    const ao: N = max(col.x, leafy.mul(0.5));
-    const albedo: N = tex.rgb.mul(attribute('plantTint', 'vec3'));
-    const vis: N = sunVisibility ? sunVisibility(positionWorld.xz) : float(1.0);
-    const wrap: N = max(dot(n, l).add(0.4).div(1.4), 0.0);
-    const sunE: N = sky.sunIlluminance.mul(vis).mul(wrap).mul(ao).mul(step(0.0, l.y));
-    // Light through the leaves when they're backlit (thin-leaf translucency), tinted by the leaf.
-    const through: N = pow(saturate(dot(v.negate(), l)), 4.0).mul(0.35).mul(leafy);
-    const glow: N = sky.sunIlluminance.mul(vis).mul(through).mul(albedo.mul(1.2)).mul(step(0.0, l.y));
-    const skyE: N = sky.skyIrradiance.mul(n.y.mul(0.5).add(0.5)).mul(ao);
-    const bounce: N = sky.sunIlluminance.mul(max(l.y, 0.0)).mul(0.3).mul(float(0.5).sub(n.y.mul(0.5))).mul(ao);
-    const lit: N = albedo.mul(sunE.add(skyE).add(bounce)).add(glow).div(PI);
-    m.colorNode = sky.applyAerialPerspective(lit, dist, v.negate());
-    return m;
-  }
+/** What the kit's material needs beyond the atlas: the wind's clock and strength, the self-tests' switch, the bands. */
+export interface KitMaterialOptions {
+  lod: 0 | 1;
+  time: N;
+  sway: N;
+  forceBand: N;
+  sunVisibility?: (xz: N) => N;
+  /** The band edges: L0 hands to L1 at nearM, L1 to the far hulls (or to nothing) at farM. Default 12 and 40 m. */
+  nearM?: number;
+  farM?: number;
+}
+
+/**
+ * The kit's material (dune-up-close §4.2): the atlas's colour × each instance's tint, its AO, the wind (stiff at the
+ * root, fluttering leaves), wrap lighting with light through backlit leaves, the band dither, and alpha raised with the
+ * mip so far cards don't vanish. The plants, the tufts and the ground items all draw with it.
+ */
+export function kitMaterial(atlas: THREE.Texture, atlasSize: number, sky: Sky, o: KitMaterialOptions): THREE.MeshBasicNodeMaterial {
+  const m = new THREE.MeshBasicNodeMaterial();
+  m.side = THREE.DoubleSide;
+  const col: N = attribute('color', 'vec4'); // AO, root distance, flutter phase, what it is (0 wood, .2 dead, .5 leaf, 1 flower)
+  const uv: N = attribute('uv', 'vec2');
+  const tex: N = texture(atlas, uv);
+  // The atlas's mips average a spray's or a card's alpha toward its coverage (a third, for daisy needles), under the
+  // 0.5 cut: far cards vanished. Raise the alpha with the mip level the pixel samples.
+  const mip: N = max(log2(max(fwidth(uv.x), fwidth(uv.y)).mul(atlasSize)), 0.0);
+  const alpha: N = tex.a.mul(float(1.0).add(mip.mul(0.35)));
+  const seed: N = attribute('plantSeed', 'float');
+  const leafy: N = step(0.4, col.w);
+  // Wind (spec §4.2): stiff at the root, the tips moving with the root distance cubed; leaves flutter on their own phase.
+  // (positionLocal is already placed by the instance here, so the sway is in metres.)
+  const bend: N = col.y.mul(col.y).mul(col.y).mul(o.sway);
+  const sway: N = vec3(sin(o.time.mul(1.7).add(seed.mul(6.28))), 0.0, sin(o.time.mul(1.3).add(seed.mul(4.1))).mul(0.6)).mul(bend);
+  const flutter: N = normalWorld.mul(sin(o.time.mul(9.0).add(col.z.mul(6.28))).mul(0.004).mul(leafy).mul(o.sway.mul(16.0)));
+  m.positionNode = positionLocal.add(sway).add(flutter);
+  // The band fade (spec §3.1).
+  const [wNear, wFar] = bandWeightNodes(positionWorld, o.nearM ?? NEAR_M, o.farM ?? MID_M);
+  const dither: N = bandDitherNode(seed);
+  const keepBand: N = o.lod === 0 ? dither.lessThan(wNear) : dither.greaterThanEqual(wNear).and(dither.lessThan(float(1).sub(wFar)));
+  m.maskNode = keepBand.or(o.forceBand.greaterThan(0.5)).and(alpha.greaterThan(0.5));
+
+  // Never normalise a zero normal (NaN): a hair of up keeps it finite.
+  const n: N = normalize(normalWorld.mul(faceDirection).add(vec3(0.0, 1e-4, 0.0)));
+  const l = sky.sunDirection;
+  const toCam: N = cameraPosition.sub(positionWorld);
+  const dist: N = length(toCam);
+  const v: N = toCam.div(max(dist, 1e-3));
+  // Leaves keep half their light inside the crown (silver and fleshy leaves scatter it: gate 1 read them too dark).
+  const ao: N = max(col.x, leafy.mul(0.5));
+  const albedo: N = tex.rgb.mul(attribute('plantTint', 'vec3'));
+  const vis: N = o.sunVisibility ? o.sunVisibility(positionWorld.xz) : float(1.0);
+  const wrap: N = max(dot(n, l).add(0.4).div(1.4), 0.0);
+  const sunE: N = sky.sunIlluminance.mul(vis).mul(wrap).mul(ao).mul(step(0.0, l.y));
+  // Light through the leaves when they're backlit (thin-leaf translucency), tinted by the leaf.
+  const through: N = pow(saturate(dot(v.negate(), l)), 4.0).mul(0.35).mul(leafy);
+  const glow: N = sky.sunIlluminance.mul(vis).mul(through).mul(albedo.mul(1.2)).mul(step(0.0, l.y));
+  const skyE: N = sky.skyIrradiance.mul(n.y.mul(0.5).add(0.5)).mul(ao);
+  const bounce: N = sky.sunIlluminance.mul(max(l.y, 0.0)).mul(0.3).mul(float(0.5).sub(n.y.mul(0.5))).mul(ao);
+  const lit: N = albedo.mul(sunE.add(skyE).add(bounce)).add(glow).div(PI);
+  m.colorNode = sky.applyAerialPerspective(lit, dist, v.negate());
+  return m;
 }

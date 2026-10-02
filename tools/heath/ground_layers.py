@@ -119,7 +119,9 @@ def main(out):
         means.append([round(float(v), 4) for v in c.reshape(-1, 3).mean(0)])
         srgb = np.where(c <= 0.0031308, 12.92 * c, 1.055 * np.power(c, 1 / 2.4) - 0.055)
         col_rows.append((np.clip(srgb, 0, 1) * 255 + 0.5).astype(np.uint8))
-        n = normals(h, 0.025)
+        # The shading normals from a gentle 6 mm of relief: at 2.5 cm across 2 mm pixels the fine noise read as a
+        # leopard's spots (the vertex relief keeps its 2.5 cm).
+        n = normals(h, 0.006)
         rough = 0.95 - 0.1 * h if i != 2 else 0.8 - 0.2 * h
         nrh = np.clip(np.dstack([n[..., 0] * 0.5 + 0.5, n[..., 1] * 0.5 + 0.5, h, rough]), 0, 1)
         # 512² (4 mm a pixel): the normals' noise compresses poorly; at 1024² this file alone was 12.9 MB.

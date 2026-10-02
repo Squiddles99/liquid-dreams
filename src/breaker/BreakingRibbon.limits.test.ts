@@ -231,7 +231,7 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
         g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 4).fill(1), 4));
         return g;
       };
-      const kit = { manifest: { version: 1 as const, units: 'unit' as const, variants: [], items: [], atlas: { file: '', size: 2048, tiles: {} } }, atlas: new THREE.DataTexture(new Uint8Array(4), 1, 1), geometry: box };
+      const kit = { manifest: { version: 1 as const, units: 'unit' as const, variants: [], items: [], atlas: { file: '', size: 2048, tiles: {} } }, atlas: new THREE.DataTexture(new Uint8Array(4), 1, 1), geometry: box, item: box };
       const k = new KitMeshes(kit, sky, (xz) => sunlight.visibilityNode(xz));
       for (const i of [0, 32]) {
         const w = renderWgsl(k.meshes[i] as unknown as THREE.Mesh);

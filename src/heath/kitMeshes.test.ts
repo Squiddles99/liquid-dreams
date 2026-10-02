@@ -33,7 +33,7 @@ function stubKit(): Kit {
     g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 4).fill(1), 4));
     return g;
   };
-  return { manifest, atlas: new THREE.DataTexture(new Uint8Array(4), 1, 1), geometry };
+  return { manifest, atlas: new THREE.DataTexture(new Uint8Array(4), 1, 1), geometry, item: geometry };
 }
 
 const plant = (x: number, z: number, kind: Plant['kind'] = 'daisy'): Plant =>

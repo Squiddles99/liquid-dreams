@@ -85,6 +85,8 @@ import { LOD_RANGES_M, PLANT_CELL_M, PLANT_GONE_M, PlantField, patchCasters, typ
 import { BAND_FADE_M, type CellChange, CellQueue, MID_M, PlantRing, cellKey, layBudgetMs } from '../heath/plantRing';
 import { PlantMeshes } from '../heath/PlantMeshes';
 import { KitMeshes } from '../heath/KitMeshes';
+import { ScatterMeshes } from '../heath/ScatterMeshes';
+import { SCATTER_CELL_M, type ScatterContext, type ScatterItem, TUFT_RANGE_M, cellScatter } from '../heath/nearScatter';
 import { loadKit } from '../heath/kit';
 import { uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
@@ -234,6 +236,13 @@ export class App {
   private tracksMaskAt: [number, number] | null = null;
   /** Dev readout: the last tracks mask's CPU time (ms; dune-up-close §5: ≤ 0.5). */
   tracksMaskMs = 0;
+  /** The near scatter (dune-up-close §4.4): tufts and the heath's fallen debris, once the kit has loaded. */
+  scatter: ScatterMeshes | null = null;
+  private readonly scatterCells = new Map<number, ScatterItem[]>();
+  private scatterNear: ScatterItem[] = [];
+  private scatterAt: [number, number] | null = null;
+  /** The near plants in 2 m cells (the scatter asks which crown is over a point). */
+  private plantGrid = new Map<number, Plant[]>();
   /** The kit's real plants near the camera (dune-up-close §3.1): once the kit has loaded, the near and mid bands. */
   kitMeshes: KitMeshes | null = null;
   private plantField: PlantField | null = null;
@@ -375,6 +384,8 @@ export class App {
       (kit) => {
         this.kitMeshes = new KitMeshes(kit, this.sky, (xz) => this.sunlight.visibilityNode(xz));
         for (const m of this.kitMeshes.meshes) this.scene.add(m);
+        this.scatter = new ScatterMeshes(kit, this.sky, (xz) => this.sunlight.visibilityNode(xz));
+        for (const m of this.scatter.meshes) this.scene.add(m);
         this.plants.kitFade.value = 1;
         this.hullInnerM = MID_M - BAND_FADE_M;
         this.hullsStale = true;
@@ -911,6 +922,8 @@ export class App {
     this.patchTracker.centre = null;
     this.patchGrids = undefined;
     this.tracksMaskAt = null; // the tracks may have changed with the land: build the mask afresh
+    this.scatterCells.clear();
+    this.scatterAt = null;
     this.rocksAt = null;
     this.plantsAt = null;
     this.hullsStale = true;
@@ -984,6 +997,14 @@ export class App {
       // Riders on land and the pile trample the heath clear around them (walking spec §6).
       this.plantsNear = clearOf(this.plantField.near(cam.x, cam.z, NEAR_LIST_M), this.clearings);
       this.plantsAt = [cam.x, cam.z];
+      this.plantGrid = new Map();
+      for (const p of this.plantsNear) {
+        if (p.kind === 'pigface' || p.kind === 'rice' || p.kind === 'spinach') continue; // the low plants have no crown over the ground
+        const key = (Math.floor(p.x / 2) + 0x8000) * 0x10000 + (Math.floor(p.z / 2) + 0x8000);
+        const cell = this.plantGrid.get(key);
+        if (cell) cell.push(p);
+        else this.plantGrid.set(key, [p]);
+      }
     }
     this.layPlants(cam.x, cam.z, c, patchKey);
     this.plants.tick(this.clock.simTime, this.conditions.wind.speedMs);
@@ -995,6 +1016,7 @@ export class App {
       this.printsAt = [cam.x, cam.z];
     }
     this.footprints.setVisible(!!c);
+    this.updateScatter(c, cam.x, cam.z);
     if (this.kitMeshes) {
       this.kitMeshes.update(this.plantsNear, this.camera, { cx: c ? c[0] : 0, cz: c ? c[1] : 0, on: !!c });
       this.kitMeshes.tick(this.clock.simTime, this.conditions.wind.speedMs);
@@ -1056,6 +1078,58 @@ export class App {
     this.plantLayWorstMs = Math.max(this.plantLayWorstMs, performance.now() - t0);
     this.plants.flush();
     this.plantStats = { drawn: this.plants.drawn, dropped: this.plants.dropped };
+  }
+
+  /**
+   * The near scatter (dune-up-close §4.4): the cells within TUFT_RANGE_M, each laid once and cached, gathered every
+   * metre; drawn while the patch shows (the items sit on its surface).
+   */
+  private updateScatter(c: [number, number] | null, x: number, z: number): void {
+    const s = this.scatter, lh = this.land.height, g = this.patchGrids, layers = this.groundLayersCpu;
+    if (!s || !lh || !c || !g || !layers) {
+      s?.setVisible(false);
+      return;
+    }
+    s.setVisible(true); // with bush density 0 the tufts go (cellScatter) but the debris stays
+    if (!this.scatterAt || Math.hypot(x - this.scatterAt[0], z - this.scatterAt[1]) > 1) {
+      this.scatterAt = [x, z];
+      const tracks = lh.trackNetwork, field = this.rockField;
+      const ctx: ScatterContext = {
+        land: lh,
+        plants: (px, pz) => {
+          for (let a = -1; a <= 1; a++) {
+            for (let b = -1; b <= 1; b++) {
+              for (const p of this.plantGrid.get((Math.floor(px / 2) + a + 0x8000) * 0x10000 + (Math.floor(pz / 2) + b + 0x8000)) ?? []) {
+                if (Math.hypot(p.x - px, p.z - pz) < p.width / 2) return { underCrown: true, crownKind: p.kind };
+              }
+            }
+          }
+          return { underCrown: false, crownKind: null };
+        },
+        surfaceAt: (px, pz) => patchSurfaceAt(g, layers, tracks, px, pz),
+        density: this.landParams.bushDensity,
+        rockNear: (px, pz) => field?.covers(px, pz, 2) ?? false,
+      };
+      const n = Math.ceil(TUFT_RANGE_M / SCATTER_CELL_M), ci0 = Math.floor(x / SCATTER_CELL_M), cj0 = Math.floor(z / SCATTER_CELL_M);
+      const near: ScatterItem[] = [];
+      for (let dj = -n; dj <= n; dj++) {
+        for (let di = -n; di <= n; di++) {
+          const ci = ci0 + di, cj = cj0 + dj;
+          if (Math.hypot((ci + 0.5) * SCATTER_CELL_M - x, (cj + 0.5) * SCATTER_CELL_M - z) > TUFT_RANGE_M + 2) continue;
+          const key = (ci + 0x8000) * 0x10000 + (cj + 0x8000);
+          let items = this.scatterCells.get(key);
+          if (!items) {
+            items = cellScatter(ci, cj, ctx);
+            this.scatterCells.set(key, items);
+          }
+          for (const it of items) near.push(it);
+        }
+      }
+      if (this.scatterCells.size > 4000) this.scatterCells.clear();
+      this.scatterNear = near;
+    }
+    s.update(this.scatterNear, this.camera);
+    s.tick(this.clock.simTime, this.conditions.wind.speedMs);
   }
 
   /** Beach-shape edits rebuild the mesh (about half a second), debounced like the reef. */

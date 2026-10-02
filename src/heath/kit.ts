@@ -28,6 +28,8 @@ export interface KitManifest {
 export interface Kit {
   manifest: KitManifest;
   geometry(kind: string, variant: number, lod: 0 | 1): THREE.BufferGeometry;
+  /** A scatter item's geometry (a tuft at L0 or L1, a ground item at L0), in metres. */
+  item(kind: string, variant: number, lod: 0 | 1): THREE.BufferGeometry;
   atlas: THREE.Texture;
 }
 
@@ -65,6 +67,11 @@ export async function loadKit(base = import.meta.env.BASE_URL + KIT_URL): Promis
     geometry(kind, variant, lod) {
       const g = byName.get(`plant_${kind}_${variant}_L${lod}`);
       if (!g) throw new Error(`heath kit: no mesh plant_${kind}_${variant}_L${lod}`);
+      return g;
+    },
+    item(kind, variant, lod) {
+      const g = byName.get(`${kind}_${variant}_L${lod}`);
+      if (!g) throw new Error(`heath kit: no mesh ${kind}_${variant}_L${lod}`);
       return g;
     },
   };

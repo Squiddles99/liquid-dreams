@@ -83,4 +83,7 @@ def stone(bm, uv, col, rng, uv_of):
     tmp.free()
     normals = []
     leaves.add_tris(bm, tris, uv, col, (1.0, 0.0, 0.0, leaves.WOOD), Vector((1, 1, 1)), normals, lambda a, b: uv_of("misc_3", a, b))
-    return normals
+    # Smooth: each vertex's normal out from the stone's middle (face normals read as a faceted icosphere).
+    centre = Vector((0, 0, 0.3 * size * 0.6))
+    pts = [p for tri in tris for p, _ in tri]
+    return [(p - centre).normalized() if (p - centre).length > 1e-9 else Vector((0, 0, 1)) for p in pts]

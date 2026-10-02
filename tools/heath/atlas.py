@@ -189,7 +189,7 @@ def build(scene, tmp, out_dir, species, canopy_objs):
         bpy.data.objects.remove(o)
     _paste(atlas, "misc_2", _solid((0.72, 0.68, 0.6)))
     stone = _bark(nrng, True)
-    stone[..., :3] = stone[..., :3] * 0.0 + (np.array([0.42, 0.4, 0.36]) * (0.75 + 0.5 * nrng.random((AL.CELL, AL.CELL, 1)))) ** (1 / 2.2)
+    stone[..., :3] = stone[..., :3] * 0.0 + (np.array([0.26, 0.25, 0.22]) * (0.7 + 0.5 * nrng.random((AL.CELL, AL.CELL, 1)))) ** (1 / 2.2)
     _paste(atlas, "misc_3", stone)
     for t, name in enumerate(tufts_mod.TUFTS):
         sp = tufts_mod.TUFTS[name]
