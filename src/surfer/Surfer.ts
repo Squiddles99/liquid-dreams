@@ -133,6 +133,9 @@ export class Surfer {
       // The braids' solid plait strands (§13.2), wet and dry.
       hairBraid: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas, true),
       hairDryBraid: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas, true),
+      // Grommet's ringlets (grommet spec §3): solid coiled tubes, in the water and under his hat.
+      hairCurl: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas, true),
+      hairHatCurl: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas, true),
     };
     // The walking parts (walking spec §3): each material's colour and cloth; a missing colour is grey, never a throw.
     const walk = preset.walking.colors, grey: [number, number, number] = [0.3, 0.3, 0.3];
@@ -185,7 +188,8 @@ export class Surfer {
       if (mats.some((mt) => mt.name === 'hairTie')) (mesh.name.includes('hairDry') ? this.hairDry : this.hairWet).push(mesh);
       if (mats.some((mt) => mt.name === 'hairBraid')) this.hairWet.push(mesh);
       if (mats.some((mt) => mt.name === 'hairDryBraid')) this.hairDry.push(mesh);
-      if (mats.some((mt) => mt.name === 'hairHat')) this.hairHat.push(mesh);
+      if (mats.some((mt) => mt.name === 'hairHat' || mt.name === 'hairHatCurl')) this.hairHat.push(mesh);
+      if (mats.some((mt) => mt.name === 'hairCurl')) this.hairWet.push(mesh);
       const dict = mesh.morphTargetDictionary;
       if (dict) {
         const slots: [number, number][] = [];

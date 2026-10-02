@@ -74,32 +74,6 @@ def _pony(tie, rng):
     return pts
 
 
-def _curl(root, n, centre, eye_z, rng, squash=1.0, down=0.25):
-    """One springy lock: a loose spiral out from the scalp (6–9 cm), shorter over the forehead so it stops above the
-    glasses. 1.3–3 turns sampled 16 times (too few points per turn drew zig-zag shards, not curls); the radius opens
-    from the root, and nothing dips inside the scalp."""
-    fringe = root.y < centre.y - 0.02 and root.z < eye_z + 0.11
-    length = squash * (rng.uniform(0.035, 0.05) if fringe else rng.uniform(0.06, 0.09))
-    radius, pitch, phase = squash * rng.uniform(0.008, 0.013), rng.uniform(0.03, 0.045), rng.uniform(0, 2 * math.pi)
-    noise = _unit(rng)
-    d = (n * (0.35 if fringe else 1.0 - down) + DOWN * (0.65 if fringe else down) + noise * 0.25).normalized()
-    e1 = d.orthogonal().normalized()
-    e2 = d.cross(e1)
-    r_min = (root - centre).length + 0.002
-    pts = []
-    for i in range(16):
-        s = length * i / 15
-        th = phase + 2 * math.pi * s / pitch
-        p = root + n * 0.002 + d * s + (e1 * math.cos(th) + e2 * math.sin(th)) * radius * min(1.0, i / 3)
-        q = p - centre
-        if q.length < r_min:
-            p = centre + q.normalized() * r_min
-        if p.y < centre.y - 0.03 and p.z < eye_z + 0.02:  # in front of the face: stay above the glasses
-            p.z = eye_z + 0.02
-        pts.append(p)
-    return pts
-
-
 # Long dry hair (dune select spec §13.1): each lock (clump) turns from the scalp into the fall at its own height, within
 # ±TURN_SPREAD of the old single line, and the turn is blended over TURN_BLEND (m) of the fall. One shared height had
 # creased every lock along one horizontal line at the brows.
@@ -110,11 +84,139 @@ last_checks = {}
 last_extras = []
 
 
-def _frizz(base, centre, rng):
-    """A short fine wisp off a lock's outer part: breaks the outline so the mop isn't a helmet."""
-    d = ((base - centre).normalized() + _unit(rng) * 0.6).normalized()
-    length = rng.uniform(0.015, 0.03)
-    return [base, base + d * length * 0.5, base + d * length]
+# Grommet's mop (grommet spec §3; Andrew: "wood shavings", "the hedgehog"). Each ringlet is a solid tube of hair coiled
+# round its own axis, as the braids' strands are: round 1's curls were flat cards 11–14 mm wide wound round a 2 cm
+# spiral, sampled 5–8 times a turn, and read as shavings. A ringlet's coil is about 1.3 cm across (COIL_RADIUS out to the
+# tube's middle), its tube 3–4 mm thick, sampled COIL_STEPS a turn; it never bends tighter than the tube is thick.
+COIL_RADIUS = (0.005, 0.0065)
+COIL_PITCH = (0.011, 0.016)  # turns packed close, as a ringlet's are (2 cm apart read as a telephone cord)
+COIL_TUBE = (0.003, 0.0038)
+COIL_STEPS = 13
+MATTED = 700  # the under-layer's cards (260 left bald patches of shiny scalp between the ringlets)
+COIL_RING = 6  # a ringlet's tube: vertices round it (smooth normals round it; 12, as the braids', was 224k triangles)
+
+
+def _coil(root, n, centre, eye_z, rng, squash=1.0, down=0.25, outside=None):
+    """One ringlet: (its centreline, its tube's radius at each point). Out from the scalp (5.5–8 cm, shorter over the
+    forehead so it stops above the glasses), the coil opening over its first 1.8 cm, the tube thinning to its tip.
+
+    Where any of it would dip into the scalp, come down over the glasses, or (`outside(p, r)` > 0) poke out of a hat,
+    the whole ringlet tilts away (out, up or down) and is wound again; what's left after that is lifted, spread
+    smoothly 1 cm along it. Clamping each point alone kinked the coil (its tube folding through itself)."""
+    fringe = root.y < centre.y - 0.02 and root.z < eye_z + 0.11
+    length = squash * (rng.uniform(0.03, 0.045) if fringe else rng.uniform(0.055, 0.08))
+    a = squash * rng.uniform(*COIL_RADIUS)
+    pitch, phase = rng.uniform(*COIL_PITCH), rng.uniform(0, 2 * math.pi)
+    tube = rng.uniform(*COIL_TUBE)
+    a = max(a, 1.6 * tube)  # a coil wound tighter than its tube is thick folds through itself (under the hat, squashed)
+    noise = _unit(rng)
+    # The crown's ringlets stand up off it, and a little longer: a wild mop, not a flat cap.
+    down = down * (1.0 - 0.6 * max(0.0, n.z))
+    if not fringe:
+        length *= 1.0 + 0.15 * max(0.0, n.z) ** 2
+    d = (n * (0.35 if fringe else 1.0 - down) + DOWN * (0.65 if fringe else down) + noise * 0.25).normalized()
+    k = max(10, math.ceil(length / pitch * COIL_STEPS)) + 1
+    r0 = (root - centre).length
+    radii = [tube * (1.0 - 0.65 * (i / (k - 1)) ** 1.5) for i in range(k)]
+    up = Vector((0, 0, 1))
+    for _ in range(10):
+        e1 = d.orthogonal().normalized()
+        e2 = d.cross(e1)
+        pts = []
+        th = phase
+        for i in range(k):
+            s = length * i / (k - 1)
+            opening = min(1.0, s / 0.018)
+            opening = opening * opening * (3 - 2 * opening)
+            if i:  # it winds up to speed as it opens: full speed on a tiny radius wound a corkscrew tighter than the tube
+                th += 2 * math.pi * (length / (k - 1)) / pitch * opening
+            pts.append(root + n * (0.6 * tube) + d * s + (e1 * math.cos(th) + e2 * math.sin(th)) * a * opening)
+        out_need = [max(0.0, r0 + 0.6 * r - (p - centre).length) for p, r in zip(pts, radii)]
+        up_need = [max(0.0, eye_z + 0.02 + r - p.z) if p.y < centre.y - 0.03 else 0.0 for p, r in zip(pts, radii)]
+        hat_need = [outside(p, r) for p, r in zip(pts, radii)] if outside else [0.0]
+        if max(out_need) < 1e-4 and max(up_need) < 1e-4 and max(hat_need) < 1e-4:
+            break
+        d = (d + n * (0.25 if max(out_need) >= 1e-4 else 0) + up * (0.25 if max(up_need) >= 1e-4 else 0)
+             + DOWN * (0.3 if max(hat_need) >= 1e-4 else 0)).normalized()
+    out_lift, up_lift = _spread(out_need, length / (k - 1), 0.01), _spread(up_need, length / (k - 1), 0.01)
+    pts = [p + (p - centre).normalized() * lo + Vector((0, 0, lu)) for p, lo, lu in zip(pts, out_lift, up_lift)]
+    return pts, radii
+
+
+def _spread(need, step, reach):
+    """Each point's need spread smoothly over `reach` either side (a cosine bump); the largest at each point wins."""
+    w = max(1, int(reach / step))
+    out = []
+    for i in range(len(need)):
+        best = 0.0
+        for j in range(max(0, i - w), min(len(need), i + w + 1)):
+            if need[j] > 0:
+                best = max(best, need[j] * math.cos(0.5 * math.pi * abs(i - j) / (w + 1)) ** 2)
+        out.append(best)
+    return out
+
+
+def _curled_frizz(base, out, rng):
+    """A fine wisp off a ringlet: 6–14 mm, curling back on itself through 140–205° (round 1's were straight, 1.5–3 cm,
+    out from the head's centre: spikes)."""
+    length = rng.uniform(0.006, 0.014)
+    turn = rng.uniform(2.4, 3.6)
+    d = (out + _unit(rng) * 0.5).normalized()
+    w = d.cross(_unit(rng)).normalized()
+    R = length / turn
+    return [base + (d * math.sin(turn * j / 6) + w * (1 - math.cos(turn * j / 6))) * R for j in range(7)]
+
+
+def _matted(root, n, centre, rng):
+    """The under-layer between the ringlets' roots: a short crinkled lock lying on the scalp, so no scalp shows
+    between them."""
+    length = rng.uniform(0.02, 0.035)
+    r0 = (root - centre).length
+    out = (root - centre).normalized()
+    d = (DOWN * 0.6 + _unit(rng)).normalized()
+    d = (d - out * d.dot(out)).normalized()
+    side = d.cross(out)
+    ph = rng.uniform(0, 2 * math.pi)
+    pts = []
+    for i in range(10):  # a gentle crinkle, under a wave and finely sampled (1.4 waves on 8 points drew zigzag chevrons)
+        f = i / 9
+        p = root + n * 0.002 + d * (length * f) + side * (0.0025 * math.sin(ph + 5.0 * f))
+        pts.append(_hug(p, centre, r0 + 0.002, r0 + 0.008))
+    return pts
+
+
+def _frizz_checks(wisps):
+    """The frizz's longest wisp (cm) and the most a wisp's ends span of its length (1: straight)."""
+    lengths = [sum((w[i] - w[i - 1]).length for i in range(1, len(w))) for w in wisps]
+    return round(100 * max(lengths), 2), round(max((w[-1] - w[0]).length / L for w, L in zip(wisps, lengths)), 3)
+
+
+def _ringlets(coils, name, rig, material, rng, body, centre, reach, keep=None):
+    """The ringlets as one object of smooth tubes (braids.strand_tube), skinned to the head, with occlusion baked.
+    `keep(vertices)`: whether a ringlet's tube may stay (under a hat: none of it over the brim). Its vertices are never
+    moved after: the tube's smooth normals are stored against its faces, and moving them twisted the normals."""
+    codes = [(i + 0.5) / len(_ATLAS["tiles"]) for i in TILES_BY_ROLE["core"]]
+    tubes = [braids.strand_tube(line, radii, [0.0] * len(line), codes, rng, ring=COIL_RING) for line, radii in coils]
+    if keep is not None:
+        tubes = [t for t in tubes if keep(t[0])]
+        print(f"{name}: {len(tubes)} ringlets of {len(coils)} clear of the hat")
+    obj = braids.build_tubes(tubes, name, rig, lambda _v: {"head": 1.0}, material)
+    bake_ao(obj, body, centre, reach=reach)
+    # The occlusion's few rays a vertex differ round a ring: each ring takes its mean, smoothed along the tube, so a
+    # ringlet darkens where it's buried, not in blocks (per vertex, it drew pale patches down every tube).
+    col = obj.data.color_attributes["Color"]
+    base = 0
+    for tv, _q, _u, _c, _n in tubes:
+        rows = len(tv) // (COIL_RING + 1)
+        mean = [sum(col.data[base + r * (COIL_RING + 1) + j].color[1] for j in range(COIL_RING + 1)) / (COIL_RING + 1) for r in range(rows)]
+        for _ in range(4):
+            mean = [mean[0]] + [(mean[r - 1] + 2 * mean[r] + mean[r + 1]) / 4 for r in range(1, rows - 1)] + [mean[-1]] if rows > 2 else mean
+        for r in range(rows):
+            for j in range(COIL_RING + 1):
+                c = col.data[base + r * (COIL_RING + 1) + j].color
+                col.data[base + r * (COIL_RING + 1) + j].color = (c[0], mean[r], c[2], c[3])
+        base += len(tv)
+    return obj
 
 
 # The strand atlas's tile table (tools/surfer/hair_atlas.py; dune select spec §13.2): each card names one tile in
@@ -148,7 +250,8 @@ def _face_weight(p, centre):
 
 
 def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False, roles=None, wet=False, outs=None):
-    """`roles`: one atlas role per card (core, outer, flyaway, fringe, braid, tail), or None to choose by width and chance.
+    """`roles`: one atlas role per card (core, outer, flyaway, fringe, braid, tail), or None (for all, or a card) to choose
+    by width and chance.
     `outs`: per card, None or the direction it faces at each point (the braids' staves face out from their strand)."""
     verts, faces, uvs, tone, rootd, tile = [], [], [], [], [], []
     trng = random.Random(seed + 101)  # the tiles' own generator, so the cards' tones are drawn as before
@@ -158,7 +261,7 @@ def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False, 
     for ci, (pts, width) in enumerate(cards):
         k, base = len(pts) - 1, len(verts)
         t = rng.random()
-        role = roles[ci] if roles is not None else _role(trng, width, WET_ROLES if wet else DRY_ROLES)
+        role = roles[ci] if roles is not None and roles[ci] is not None else _role(trng, width, WET_ROLES if wet else DRY_ROLES)
         code = (trng.choice(TILES_BY_ROLE[role]) + 0.5) / len(_ATLAS["tiles"])
         along = 0.0
         for i, p in enumerate(pts):
@@ -289,14 +392,25 @@ def build(body, rig, style, L, coords, name, avoid=(), thin=()):
             cards.append((_pony(tie, rng), rng.uniform(0.012, 0.017)))
         roles = ["core"] * 2600 + ["tail"] * 380
     elif style["style"] == "curly":
-        locks = []
-        for _ in range(450):
+        # Ringlets (solid tubes, their own object, material hairCurl) over a matted under-layer, with curled frizz.
+        coils = []
+        for _ in range(180):
             root, n = pick()
-            locks.append(_curl(root, n, centre, eye_z, rng))
-            cards.append((locks[-1], rng.uniform(0.011, 0.014)))
-        for _ in range(300):
-            lock = rng.choice(locks)
-            cards.append((_frizz(lock[rng.randint(8, 15)], centre, rng), 0.006))
+            coils.append(_coil(root, n, centre, eye_z, rng))
+        for _ in range(MATTED):
+            root, n = pick()
+            cards.append((_matted(root, n, centre, rng), rng.uniform(0.014, 0.018)))
+        wisps = []
+        for _ in range(160):
+            line, radii = rng.choice(coils)
+            i = rng.randrange(len(line) // 3, len(line))
+            out = (line[i] - centre).normalized()
+            wisps.append(_curled_frizz(line[i] + out * radii[i], out, rng))
+        cards += [(w, 0.003) for w in wisps]
+        roles = [None] * MATTED + ["flyaway"] * len(wisps)
+        last_checks["curlBendRatio"] = round(min(braids.min_bend_ratio(line, radii) for line, radii in coils), 3)
+        last_checks["frizzMaxCm"], last_checks["frizzChordRatio"] = _frizz_checks(wisps)
+        last_extras.append(_ringlets(coils, f"{name}_hairCurl", rig, "hairCurl", rng, body, centre, style.get("aoReach", 0.03)))
     elif style["style"] in ("capped", "bucket"):
         # Pressed under a hat (walking spec §3): roots from just under the band down to the hairline (none at the front
         # under a cap's peak), growing down out from under the band; nothing above the band stands off the scalp
@@ -314,33 +428,67 @@ def build(body, rig, style, L, coords, name, avoid=(), thin=()):
             for _ in range(1300):
                 root, n = pick_under()
                 cards.append((_under_cap(root, n, centre, rng), rng.uniform(0.011, 0.015)))
-        else:
-            locks = []
-            for _ in range(420):
+        coils = []
+        if not cap:
+            # Grommet's ringlets squashed under the bucket hat (as in the water, shorter and hanging lower).
+            hat_tree = BVHTree.FromObject(style["hat"], bpy.context.evaluated_depsgraph_get())
+
+            def outside(p, r):
+                """How far a ringlet's point (with its tube) is outside the hat above the band, or on top of its brim."""
+                for side in (Vector(), Vector((r, 0, 0)), Vector((-r, 0, 0)), Vector((0, r, 0)), Vector((0, -r, 0))):
+                    if hat_tree.ray_cast(p + side, Vector((0, 0, 1)), 0.25)[0] is None:  # the tube's sides too
+                        hit, _, _, dist = hat_tree.ray_cast(p + side, Vector((0, 0, -1)), 0.08)
+                        if hit is not None:
+                            return dist + 0.012
+                h = (p - band).dot(normal)
+                if h <= 0:
+                    return 0.0
+                q = p - centre
+                hit, _, _, dist = hat_tree.ray_cast(centre, q.normalized(), 1.0)
+                if hit is None:
+                    return h + r
+                return max(0.0, q.length - (dist - r - 0.002))
+            # A ringlet that can't hang clear of the hat (or its brim) however it tilts isn't grown there: another root
+            # is tried (pulling such a ringlet in point by point kinked it).
+            tries = 0
+            while len(coils) < 120 and tries < 1000:
+                tries += 1
                 root, n = pick_under()
-                locks.append(_curl(root, n, centre, eye_z, rng, squash=0.7, down=0.55))
-                cards.append((locks[-1], rng.uniform(0.011, 0.014)))
-            for _ in range(220):
-                lock = rng.choice(locks)
-                cards.append((_frizz(lock[rng.randint(8, 15)], centre, rng), 0.006))
+                pts, radii = _coil(root, n, centre, eye_z, rng, squash=0.7, down=0.55, outside=outside)
+                if max(outside(p, r) for p, r in zip(pts, radii)) < 1e-4:
+                    coils.append((pts, radii))
+            print(f"hat ringlets: {len(coils)} grown of {tries} tried")
+            for _ in range(MATTED // 2):
+                root, n = pick_under()
+                cards.append((_matted(root, n, centre, rng), rng.uniform(0.014, 0.018)))
+            wisps = []
+            for _ in range(110):
+                line, radii = rng.choice(coils)
+                i = rng.randrange(len(line) // 3, len(line))
+                out = (line[i] - centre).normalized()
+                wisps.append(_curled_frizz(line[i] + out * radii[i], out, rng))
+            cards += [(w, 0.003) for w in wisps]
         # Inside the hat: a strand point above the band is pulled in under the hat's inner surface (along the ray from
         # the head's centre), or down under the band where that ray misses the hat (at its very edge).
         hat = BVHTree.FromObject(style["hat"], bpy.context.evaluated_depsgraph_get())
-        for pts, _w in cards:
+        # A ringlet's centreline keeps its tube's radius more clear of the hat than a card's strand does.
+        lines = [(pts, None) for pts, _w in cards] + [(pts, radii) for pts, radii in coils]
+        for pts, radii in lines:
             for i, p in enumerate(pts):
+                clear = 0.003 if radii is None else radii[i] + 0.002
                 h = (p - band).dot(normal)
                 if h <= 0:
                     continue
                 q = p - centre
                 hit, _, _, dist = hat.ray_cast(centre, q.normalized(), 1.0)
                 if hit is None:
-                    pts[i] = p - normal * (h + 0.001)
-                elif q.length > dist - 0.003:
-                    pts[i] = centre + q.normalized() * (dist - 0.003)
+                    pts[i] = p - normal * (h + clear - 0.002)
+                elif q.length > dist - clear:
+                    pts[i] = centre + q.normalized() * (dist - clear)
         # Under the brim (or the cap's peak): a point with the hat below it and nothing above it would show through the
         # brim's top: it goes under it, clear by more than half a card's width.
         up_, down_ = Vector((0, 0, 1)), Vector((0, 0, -1))
-        for pts, _w in cards:
+        for pts, _r in lines:
             for i, p in enumerate(pts):
                 if hat.ray_cast(p, up_, 0.25)[0] is not None:
                     continue
@@ -348,11 +496,19 @@ def build(body, rig, style, L, coords, name, avoid=(), thin=()):
                 if hit is not None:
                     pts[i] = hit - Vector((0, 0, 0.012))
         obj = _cards_object(cards, centre, rig, f"{name}_hairHat", seed=style["seed"])
+        extras = []
+        if coils:
+            last_checks["curlBendRatio"] = round(min(braids.min_bend_ratio(line, radii) for line, radii in coils), 3)
+
+            def clear_of_brim(verts):
+                return all(hat.ray_cast(q, up_, 0.25)[0] is not None or hat.ray_cast(q, down_, 0.08)[0] is None for q in verts)
+            extras.append(_ringlets(coils, f"{name}_hairHatCurl", rig, "hairHatCurl", rng, body, centre, 0.02, keep=clear_of_brim))
         for v in obj.data.vertices:  # and the cards' edges, which their width carries past the strand
             if hat.ray_cast(v.co, up_, 0.25)[0] is None:
                 hit, _, _, _ = hat.ray_cast(v.co, down_, 0.08)
                 if hit is not None:
                     v.co = hit - Vector((0, 0, 0.006))
+        last_extras.extend(extras)
         return obj
     else:
         raise SystemExit(f"unknown hair style {style['style']}")

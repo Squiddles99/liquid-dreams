@@ -139,7 +139,8 @@ export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: 
   let face: N = skin;
   if (z) face = faceZones(face, p, z, lips);
   if (detail?.ao) face = face.mul(mix(float(0.55), float(1), cavity));
-  face = mix(face, rgb(p.hairRoot).mul(0.55), smoothstep(0.25, 0.75, detail?.ao ? scalp : paint.x));
+  const underHair = smoothstep(0.25, 0.75, detail?.ao ? scalp : paint.x);
+  face = mix(face, rgb(p.hairRoot).mul(0.55), underHair);
   // Brows as fine hairs: the painted band broken by streaks running along it.
   const streak = z ? smoothstep(-0.25, 0.45, mx_noise_float(vec3(P.x.mul(380.0), P.y.mul(2600.0), P.z.mul(2600.0)))).mul(0.5).add(0.5) : float(1);
   face = mix(face, rgb(p.brows), smoothstep(0.3, 0.7, paint.y).mul(0.92).mul(streak));
@@ -160,8 +161,10 @@ export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: 
   const tZone = z ? clamp(gauss(P, z.nose, 0.018).add(gauss(P, z.forehead, 0.03).mul(0.6)), 0, 1) : float(0);
   const skinSpec = mix(float(0.018), float(0.028), wet).add(tZone.mul(0.008)), skinShine = mix(float(25), float(60), wet).add(tZone.mul(15));
   const lipSpec = mix(skinSpec, float(0.035 + 0.03 * p.lipGloss), lips), lipShine = mix(skinShine, float(40 + 80 * p.lipGloss), lips);
-  const specular = mix(mix(lipSpec, float(0.03), cloth), float(0.04), inNeo);
-  const shininess = mix(mix(lipShine, float(25), cloth), float(18), inNeo);
+  // The painted scalp under the hair is matte, as hair is: wet skin's shine and the sky's sheen on it read as a bald,
+  // glossy dome between Grommet's ringlets.
+  const specular = mix(mix(mix(lipSpec, float(0.006), underHair), float(0.03), cloth), float(0.04), inNeo);
+  const shininess = mix(mix(mix(lipShine, float(12), underHair), float(25), cloth), float(18), inNeo);
   const wrap = mix(float(0.32), float(0.05), max(inNeo, cloth));
   // Pores on bare skin: strongest on the nose and cheeks, faint on the body, none on the lips or under cloth.
   let normal: N = normalWorld;
@@ -172,7 +175,7 @@ export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: 
   }
   // Red light reaches furthest past the terminator (the skin's subsurface), cloth wraps alike.
   const scatter = mix(vec3(1.0, 0.62, 0.48), vec3(1, 1, 1), covered);
-  m.colorNode = litColor(sky, { albedo, normal, specular, shininess, wrap, scatter }, sv);
+  m.colorNode = litColor(sky, { albedo, normal, specular, shininess, wrap, scatter, sheen: float(1).sub(underHair) }, sv);
   if (detail?.lens) m.positionNode = lensPulled(detail.lens);
   return m;
 }
@@ -238,7 +241,9 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
     // filtering keeps its strands), and isn't far.
     const span = min(abs(dFdx(au)), abs(dFdy(au))).mul(2048);
     const resolved = float(1).sub(smoothstep(1.0, 2.0, span));
-    near = float(1).sub(smoothstep(24.0, 64.0, span));
+    // A solid tube is always its strands (far off, the mips average them): round a thin tube the span flips from face to
+    // face, and switching between the strands and the card's procedural lines drew pale blocks on Grommet's ringlets.
+    near = solid ? float(1) : float(1).sub(smoothstep(24.0, 64.0, span));
     const a: N = texel.w;
     const sharp = saturate(a.sub(0.5).div(max(fwidth(a), 1e-4)).add(0.5));
     const clumps = saturate(a.mul(2.6));
@@ -271,8 +276,11 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   const lock = tone.mul(0.14).add(0.9);
   // With the atlas, the strands carry the shading: each its own shade (B), root → tip along it (G), the ones behind
   // darker (R); the procedural lines fade out as the strands resolve.
-  const strandShade: N = texel ? mix(lines, texel.z.mul(0.3).add(0.85).mul(texel.x.mul(0.3).add(0.7)), near) : lines;
-  const along: N = texel ? mix(v, texel.y, near.mul(0.6)) : v;
+  // A solid tube (a plait's strand, a ringlet) has no holes: where its tile has a gap between clumps, there's more hair
+  // behind, a shade darker. The gap's empty texel read as a root (G 0) and unshaded, painting pale stripes along each tube.
+  const filled: N = texel && solid ? texel.w : float(1);
+  const strandShade: N = texel ? mix(lines, mix(float(0.62), texel.z.mul(0.3).add(0.85).mul(texel.x.mul(0.3).add(0.7)), filled), near) : lines;
+  const along: N = texel ? mix(v, texel.y, near.mul(0.6).mul(filled)) : v;
   const albedo = mix(rgb(p.hairRoot), rgb(p.hairTip), pow(along, mix(float(1.2), float(1.8), tone))).mul(strandShade).mul(lock).mul(mix(float(0.95), float(0.72), w)).mul(mix(float(0.55), float(1.0), ao)); // wet: a shade darker
   // The volume's normal: out from the head; below the head (long hair), out from the fall, not down into the sea.
   const d: N = positionWorld.sub(headCentre);
@@ -288,8 +296,12 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   const H = normalize(L.add(V));
   const kk = (t: N, e: N): N => pow(sqrt(max(float(1).sub(dot(t, H).mul(dot(t, H))), 0.0)), e);
   const lit = smoothstep(-0.1, 0.3, dot(volume, L));
-  const primary = kk(normalize(T.add(volume.mul(0.1))), mix(float(90), float(220), w)).mul(mix(float(0.05), float(0.1), w));
-  const secondary = kk(normalize(T.sub(volume.mul(0.15))), float(28)).mul(0.05);
+  // A solid tube's highlight is the round surface's own, which already runs along it (as on a rod): the strand direction
+  // from screen derivatives is constant across each triangle, and round a tight coil it jumped face to face, drawing
+  // each face's highlight as a pale block down Grommet's ringlets.
+  const nh: N = max(dot(volume, H), 0.0);
+  const primary = solid ? pow(nh, mix(float(40), float(110), w)).mul(mix(float(0.05), float(0.1), w)) : kk(normalize(T.add(volume.mul(0.1))), mix(float(90), float(220), w)).mul(mix(float(0.05), float(0.1), w));
+  const secondary = solid ? pow(nh, float(14)).mul(0.05) : kk(normalize(T.sub(volume.mul(0.15))), float(28)).mul(0.05);
   const sunExtra = vec3(primary, primary, primary).add(albedo.mul(secondary).mul(3.0)).mul(lit).mul(fine.mul(0.6).add(0.6)).mul(ao.mul(ao));
   // Light scattered through the strands (§13.1): blond hair glows on its shade side rather than going black. Not gated by
   // `lit`; weaker wet (the strands clump into one sheet) and in the baked occlusion.

@@ -140,6 +140,11 @@ export interface SurferManifest {
     braidTwistDeg?: number;
     braidStrandTurnDeg?: number;
     braidBendRatio?: number;
+    /** Grommet's mop (grommet spec §3): the ringlets' tightest bend over their own radius (under 1 a tube folds), and
+     * the frizz: its longest wisp (cm) and the most its ends span of its length (1 straight). */
+    curlBendRatio?: number;
+    frizzMaxCm?: number;
+    frizzChordRatio?: number;
   };
   blender: string;
   mpfb: string;

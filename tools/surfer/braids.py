@@ -330,7 +330,7 @@ def transport_frames(line):
     return out
 
 
-def strand_tube(line, radii, phases, tile_codes, rng):
+def strand_tube(line, radii, phases, tile_codes, rng, ring=RING):
     """One strand of the plait as a solid tube (how games build plaits: alpha cards wrapped round a strand read as a
     lattice of ribbons up close). It bulges where the strand crosses over the front. UVs: u round the tube, v along it
     (0 → 1 over its length), into a braid tile the shader wraps round it. Each vertex's normal is the tube's own, round it
@@ -343,17 +343,17 @@ def strand_tube(line, radii, phases, tile_codes, rng):
     for i, p in enumerate(line):
         t, u, v = frames[i]
         r = radii[i] * (0.9 + 0.18 * math.sin(2 * phases[i]))
-        for j in range(RING + 1):  # the seam's column twice, for the UVs
-            a = 2 * math.pi * j / RING
+        for j in range(ring + 1):  # the seam's column twice, for the UVs
+            a = 2 * math.pi * j / ring
             radial = u * math.cos(a) + v * math.sin(a)
             verts.append(p + radial * r)
             nors.append(radial)
-            uvs.append((j / RING, i / (k - 1)))
+            uvs.append((j / ring, i / (k - 1)))
             cols.append((tone, 1.0, 1.0, code))
     for i in range(k - 1):
-        for j in range(RING):
-            a = i * (RING + 1) + j
-            quads.append((a, a + 1, a + RING + 2, a + RING + 1))
+        for j in range(ring):
+            a = i * (ring + 1) + j
+            quads.append((a, a + 1, a + ring + 2, a + ring + 1))
     return verts, quads, uvs, cols, nors
 
 

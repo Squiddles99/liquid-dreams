@@ -94,6 +94,7 @@ if walk:
     parts.append(feet)
 # The hat and the hair pressed under it (walking spec §3).
 hat_hair = hat = band = None
+hat_checks, hat_extras = {}, []
 if walk and walk.get("hat"):
     band = clothes.hat_band(L, walk["hat"])
     hat = (clothes.cap if walk["hat"] == "cap" else clothes.bucket_hat)(body, rig, coords, L, band, name)
@@ -101,8 +102,9 @@ if walk and walk.get("hat"):
     parts.append(hat)
     hat_hair = hair.build(body, rig, {"style": "capped" if walk["hat"] == "cap" else "bucket", "seed": preset["hair"]["seed"] + 5, "below": band, "hat": hat}, L, coords, name)
     rig_trim.single_material(hat_hair, "hairHat")
+    hat_checks, hat_extras = dict(hair.last_checks), list(hair.last_extras)  # Grommet's ringlets (grommet spec §3)
     hair.bake_ao(hat_hair, body, L["head_centre"], reach=0.02)
-    parts.append(hat_hair)
+    parts += [hat_hair, *hat_extras]
 # The pack and what's on it (walking spec §2, §3), over the tee.
 carried = []
 if walk and walk.get("pack"):
@@ -131,6 +133,10 @@ if preset.get("dryHair"):
     parts.append(dry_obj)
 
 checks = expressions.blink_check(body, L)
+# Grommet's mop (grommet spec §3): the ringlets in the water and under the hat, and the frizz.
+if "curlBendRatio" in wet_checks:
+    checks["curlBendRatio"] = min(c["curlBendRatio"] for c in (wet_checks, hat_checks) if "curlBendRatio" in c)
+    checks["frizzMaxCm"], checks["frizzChordRatio"] = wet_checks["frizzMaxCm"], wet_checks["frizzChordRatio"]
 if lip_mm:
     checks["upperLipMm"], checks["upperLipSculptedMm"] = lip_mm
 if preset.get("dryHair"):
@@ -149,7 +155,7 @@ if "braids" in wet_checks or "braids" in dry_checks:
 if walk:
     checks["garmentsOutside"] = clothes.outside_check(garments, body)
 if hat_hair is not None:
-    checks["hatHairUnder"] = clothes.hat_hair_check(hat_hair, hat, band, L["head_centre"])
+    checks["hatHairUnder"] = all(clothes.hat_hair_check(o, hat, band, L["head_centre"]) for o in (hat_hair, *hat_extras))
 print(f"checks: {checks}")
 export.glb(rig, parts, os.path.join(out_dir, f"{name}.glb"))
 export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version(), L, spots, head_tris, checks)
