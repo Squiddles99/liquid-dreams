@@ -50,6 +50,7 @@ describe('plant shapes', () => {
 import { readBakedLand } from '../land/bakedLand.testutil';
 import { decodeLandFile } from '../land/landData';
 import { LandHeight } from '../land/landHeight';
+import { TrackNetwork, routeTracks } from '../land/tracks';
 import { coverAt } from '../land/landCover';
 import { coarseMeshHeightAt } from '../land/landMesh';
 import { RockField } from '../beach/rocks';
@@ -79,7 +80,7 @@ describe('plant placement', () => {
       expect(p.x - land.waterlineAt(p.z)).toBeGreaterThan(45);
     }
   });
-  it('has about one shrub per 3 m² (they nearly touch: capture ruling) and one low plant per 12 m² on full heath, in the specified mix', () => {
+  it('has about one shrub per 1.6 m² (near-closed, as from above: dune-up-close §4.5), one low plant per 12 m² and one dead shrub per 25 m² on full heath, in the specified mix', () => {
     // Plants on full heath (heath − bushes > 0.95) within a 150 m circle, against that area (sampled on a 2 m grid).
     let area = 0;
     for (let x = 60; x <= 360; x += 2) for (let z = -190; z <= 110; z += 2) {
@@ -89,10 +90,13 @@ describe('plant placement', () => {
     }
     const onFull = plants.filter((p) => Math.hypot(p.x - 210, p.z + 40) <= 150 && (() => { const c = coverHere(p.x, p.z); return c.heath - c.bushes > 0.95; })());
     const shrubs = onFull.filter((p) => p.kind === 'daisy' || p.kind === 'green' || p.kind === 'tall');
-    const low = onFull.length - shrubs.length;
+    const dead = onFull.filter((p) => p.kind === 'dead').length;
+    const low = onFull.length - shrubs.length - dead;
     expect(area).toBeGreaterThan(5000);
-    expect(shrubs.length / area).toBeGreaterThan((1 / 3) * 0.75);
-    expect(shrubs.length / area).toBeLessThan((1 / 3) * 1.25);
+    expect(shrubs.length / area).toBeGreaterThan((1 / 1.6) * 0.75);
+    expect(shrubs.length / area).toBeLessThan((1 / 1.6) * 1.25);
+    expect(dead / area).toBeGreaterThan((1 / 25) * 0.75);
+    expect(dead / area).toBeLessThan((1 / 25) * 1.25);
     expect(low / area).toBeGreaterThan((1 / 12) * 0.75);
     expect(low / area).toBeLessThan((1 / 12) * 1.25);
     const share = (k: string) => shrubs.filter((p) => p.kind === k).length / shrubs.length;
@@ -147,6 +151,29 @@ describe('plant placement', () => {
 });
 
 import { plantCaster } from './plants';
+describe('plants and the tracks (dune-up-close §4.5)', () => {
+  const tracked = new LandHeight(decodeLandFile(readBakedLand()));
+  tracked.setTracks(new TrackNetwork(routeTracks(tracked, tracked.fineZRange())));
+  const net = tracked.trackNetwork!;
+  it('plants nothing with its trunk or crown on a corridor, or in the clearing', () => {
+    const j = net.data.junction;
+    const near = new PlantField(tracked, null, 1).near(j.x, j.z).filter((p) => Math.hypot(p.x - j.x, p.z - j.z) < 60);
+    expect(near.length).toBeGreaterThan(200);
+    for (const p of near) {
+      expect(net.inClearing(p.x, p.z)).toBe(false);
+      const n = net.nearest(p.x, p.z);
+      expect(n.d).toBeGreaterThan(n.halfWidthM + p.width / 2 - 1e-9);
+    }
+  });
+  it('grows no dead shrubs on the dune rise', () => {
+    for (const p of new PlantField(tracked, null, 1).near(260, -40)) {
+      if (p.kind !== 'dead') continue;
+      const c = coverHere(p.x, p.z);
+      expect(c.heath - c.bushes).toBeGreaterThan(c.bushes);
+    }
+  });
+});
+
 describe('plants as shadow casters', () => {
   it('shrubs cast at 0.6; pigface and rice-flower cast the ring only', () => {
     const base = { x: 0, z: 0, shape: 0, width: 2, height: 1, yTrue: 0, yCoarse: 0, yaw: 0, cosYaw: 1, sinYaw: 0, seed: 0, tint: [0, 0, 0] as [number, number, number] };
