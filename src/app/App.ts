@@ -391,6 +391,7 @@ export class App {
         for (const m of this.scatter.meshes) this.scene.add(m);
         this.plants.kitFade.value = 1;
         this.plants.setKindColours(hullColours());
+        void this.prewarmKit();
         this.hullInnerM = MID_M - BAND_FADE_M;
         this.hullsStale = true;
       },
@@ -590,7 +591,7 @@ export class App {
     const landStandIn = this.land.standIn();
     this.scene.add(landStandIn);
     try {
-      const shown = [this.ribbon.mesh, this.bombie.mesh, landStandIn, this.patch.mesh, ...this.rocks.meshes, ...this.plants.meshes];
+      const shown = [this.ribbon.mesh, this.bombie.mesh, landStandIn, this.patch.mesh, ...this.rocks.meshes, ...this.plants.meshes, this.footprints.mesh];
       await withOnlyShown(this.scene, shown, async () => this.picture.render(target));
     } finally {
       this.scene.remove(landStandIn);
@@ -600,6 +601,24 @@ export class App {
     await this.spray.compileAsync(this.renderer);
     await this.impact.compileAsync(this.renderer);
     await this.land.sunlight.compileAsync(this.renderer);
+  }
+
+  /**
+   * Builds the kit's and the scatter's materials off screen the moment the kit loads (as prewarm does the rest at
+   * start): rendered once into a throwaway target with only them shown. Their meshes hold whole geometry from the start
+   * (count 0: three builds the pipeline and skips the draw), so nothing is built against an empty buffer.
+   */
+  private async prewarmKit(): Promise<void> {
+    if (!this.kitMeshes || !this.scatter) return;
+    const target = new THREE.RenderTarget(1, 1);
+    const t0 = performance.now();
+    try {
+      this.newNodeFrame();
+      await withOnlyShown(this.scene, [...this.kitMeshes.meshes, ...this.scatter.meshes], async () => this.picture.render(target));
+    } finally {
+      target.dispose();
+    }
+    console.info(`[prewarm] the heath kit: ${(performance.now() - t0).toFixed(0)} ms`);
   }
 
   start(): void {
@@ -1455,26 +1474,38 @@ export class App {
    * Dev automation (gallery captures): render one frame now, even when the page isn't animating (a hidden or
    * occluded window pauses requestAnimationFrame), and return it as a PNG, read back from an offscreen target.
    */
-  async captureFrame(): Promise<Blob | null> {
-    // Rendered into an offscreen target and read back: a hidden or covered window never presents the canvas, so a
-    // canvas toBlob there returns the last frame it did present (captures were silently stale).
-    const { width, height } = this.renderer.domElement;
-    const target = new THREE.RenderTarget(width, height, { type: THREE.UnsignedByteType, depthBuffer: false });
-    const maxFps = this.frameLimiter.maxFps;
-    this.frameLimiter.maxFps = 0;
-    this.captureTarget = target;
-    // Start a new node frame, as the renderer's animation loop does before each frame (Animation.update): passes that
-    // render once per frame (the scene pass) otherwise re-use the last frame's render, so a capture showed the frame
-    // before it (one capture late), or the same frame over and over while the window was hidden.
+  /**
+   * Starts a new node frame, as the renderer's animation loop does before each frame (Animation.update): passes that
+   * render once per frame (the scene pass) otherwise re-use the last frame's render, so a capture showed the frame before
+   * it (one capture late), or the same frame over and over while the window was hidden; and a prewarm mid-game built
+   * nothing.
+   */
+  private newNodeFrame(): void {
     const r = this.renderer as unknown as { _nodes: { nodeFrame: { update(): void; frameId: number } }; info: { frame: number } };
     r._nodes.nodeFrame.update();
     r.info.frame = r._nodes.nodeFrame.frameId;
+  }
+
+  /** Renders one frame into `target` as the animation loop would (a capture's, or the dev budget harness's). */
+  renderInto(target: THREE.RenderTarget): void {
+    const maxFps = this.frameLimiter.maxFps;
+    this.frameLimiter.maxFps = 0;
+    this.captureTarget = target;
+    this.newNodeFrame();
     try {
       this.frame();
     } finally {
       this.captureTarget = null;
       this.frameLimiter.maxFps = maxFps;
     }
+  }
+
+  async captureFrame(): Promise<Blob | null> {
+    // Rendered into an offscreen target and read back: a hidden or covered window never presents the canvas, so a
+    // canvas toBlob there returns the last frame it did present (captures were silently stale).
+    const { width, height } = this.renderer.domElement;
+    const target = new THREE.RenderTarget(width, height, { type: THREE.UnsignedByteType, depthBuffer: false });
+    this.renderInto(target);
     const padded = (await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, width, height)) as Uint8Array;
     target.dispose();
     // The readback's rows are padded to 256 bytes.

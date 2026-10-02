@@ -34,7 +34,7 @@ export function bandWeightNodes(p: N, nearM = NEAR_M, farM = MID_M): [N, N] {
 
 /**
  * The heath's real plants near the camera (dune-up-close §3.1, §4.2): each kind × variant at L0 (every branch and leaf
- * spray, to 12 m) and L1 (thick wood and cluster cards, 12–40 m), instanced; the plants the camera can see, re-laid each
+ * spray, to 10 m) and L1 (thick wood and cluster cards, 10–40 m), instanced; the plants the camera can see, re-laid each
  * frame from the near list.
  */
 export class KitMeshes {
@@ -48,7 +48,7 @@ export class KitMeshes {
   private readonly sway = uniform(0);
   /** 1: every mesh draws its whole plant whatever the band (the self-tests' views of one LOD). */
   readonly forceBand = uniform(0);
-  /** Each kind's L1 alpha cut at 12 m and at 40 m (KIT_L1_CUT's; the self-tests' fit mode moves them). */
+  /** Each kind's L1 alpha cut at NEAR_M and at MID_M (KIT_L1_CUT's; the self-tests' fit mode moves them). */
   readonly l1Cut = new Map<PlantKind, [N, N]>();
   /** Per mesh: its level's colour gain for its kind (KIT_CALIBRATION). */
   private readonly gains: [number, number, number][] = [];
@@ -176,31 +176,31 @@ export class KitMeshes {
  * the corrections still needed ("fit"), which multiply these.
  */
 export const KIT_CALIBRATION: Record<PlantKind, { l0: number; l1: [number, number, number]; hull: [number, number, number] }> = {
-  daisy: { l0: 1.271, l1: [0.733, 0.725, 0.722], hull: [1.01, 0.947, 1.067] },
-  green: { l0: 2.231, l1: [1.292, 1.177, 1.399], hull: [0.786, 1.291, 0.688] },
-  tall: { l0: 1.431, l1: [0.784, 0.752, 0.775], hull: [0.96, 0.926, 1.231] },
-  pigface: { l0: 2.524, l1: [0.817, 0.626, 1.213], hull: [0.873, 1.05, 1.168] },
-  rice: { l0: 1.926, l1: [1.177, 1.066, 1.236], hull: [1.007, 0.957, 1.085] },
-  dead: { l0: 0.663, l1: [0.622, 0.606, 0.584], hull: [1.011, 0.992, 0.995] },
-  cushion: { l0: 1.068, l1: [0.567, 0.568, 0.566], hull: [0.985, 0.99, 1.03] },
-  spinach: { l0: 1.792, l1: [1.127, 1.133, 1.069], hull: [0.951, 1.058, 0.933] },
+  daisy: { l0: 1.26, l1: [0.723, 0.716, 0.714], hull: [1.015, 0.948, 1.058] },
+  green: { l0: 2.271, l1: [1.311, 1.196, 1.421], hull: [0.784, 1.294, 0.686] },
+  tall: { l0: 1.391, l1: [0.773, 0.74, 0.762], hull: [0.961, 0.927, 1.226] },
+  pigface: { l0: 2.587, l1: [0.829, 0.637, 1.23], hull: [0.864, 1.054, 1.18] },
+  rice: { l0: 1.978, l1: [1.218, 1.104, 1.277], hull: [1.008, 0.956, 1.087] },
+  dead: { l0: 0.644, l1: [0.62, 0.605, 0.585], hull: [1.01, 0.992, 0.997] },
+  cushion: { l0: 1.061, l1: [0.562, 0.562, 0.56], hull: [0.985, 0.99, 1.031] },
+  spinach: { l0: 1.448, l1: [0.926, 0.934, 0.88], hull: [0.951, 1.072, 0.888] },
 };
 
 /**
- * Each kind's L1 alpha cut at 12 m and at 40 m (spec §3.1's no pop): L1's cards cover what L0's leaves did where they
+ * Each kind's L1 alpha cut at NEAR_M and at MID_M (spec §3.1's no pop): L1's cards cover what L0's leaves did where they
  * meet, and what the hull does where it takes over (the far heath unchanged). Fitted by the self-test "heath: a plant's
  * coverage changes 10% or less" with ?fit=1 (it bisects each and prints the table). Never under 0.45: lower, a card
  * draws its faint halo too and a lacy shrub turns into a grey lump (daisy and cushion did, at 0.2 and 0.03).
  */
 export const KIT_L1_CUT: Record<PlantKind, [number, number]> = {
   daisy: [0.45, 0.556],
-  green: [0.773, 0.969],
+  green: [0.831, 0.969],
   tall: [0.969, 0.969],
   pigface: [0.969, 0.969],
   rice: [0.45, 0.45],
   dead: [0.969, 0.45],
   cushion: [0.45, 0.969],
-  spinach: [0.679, 0.514],
+  spinach: [0.574, 0.514],
 };
 
 /** Each kind's hull colour multiplier (KIT_CALIBRATION's), for PlantMeshes.setKindColours. */
