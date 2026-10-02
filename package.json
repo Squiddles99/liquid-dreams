@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build:surfers": "node tools/surfer/buildSurfers.ts",
+    "build:heath": "node tools/heath/buildHeath.ts",
     "electron": "npm run build && electron .",
     "electron:dev": "electron . --dev"
   },

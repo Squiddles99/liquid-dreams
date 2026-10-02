@@ -9,6 +9,8 @@ reference/
 # Local tooling
 tools/surfer/previews/
 tools/surfer/__pycache__/
+tools/heath/previews/
+tools/heath/__pycache__/
 *.log
 .DS_Store
 Thumbs.db
