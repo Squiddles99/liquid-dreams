@@ -17,9 +17,12 @@ export interface ScatterItem {
   /** The base, sunk 1–2 cm into the surface. */
   y: number;
   yaw: number;
-  /** Tilts (radians) about x and z, following the ground's slope (half of it for tufts: they stand up). */
-  tiltX: number;
-  tiltZ: number;
+  /**
+   * The item's up, (upX, 1, upZ) normalised: the ground's normal (−∂y/∂x, 1, −∂y/∂z), its lean halved for tufts (they
+   * stand up). The yaw turns the item about it.
+   */
+  upX: number;
+  upZ: number;
   scale: number;
   seed: number;
 }
@@ -87,11 +90,11 @@ export function cellScatter(ci: number, cj: number, ctx: ScatterContext): Scatte
     // Nothing grows on the open beach or in the swash, even by the boulders there (gate 2: sedges stood in the water).
     if (kind.startsWith('tuft_') && d < dryEnd - 4) continue;
     const s = ctx.surfaceAt(x, z);
-    const tx = (ctx.surfaceAt(x, z + 0.25) - ctx.surfaceAt(x, z - 0.25)) / 0.5, tz = (ctx.surfaceAt(x + 0.25, z) - ctx.surfaceAt(x - 0.25, z)) / 0.5;
+    const sx = (ctx.surfaceAt(x + 0.25, z) - ctx.surfaceAt(x - 0.25, z)) / 0.5, sz = (ctx.surfaceAt(x, z + 0.25) - ctx.surfaceAt(x, z - 0.25)) / 0.5;
     const lean = kind.startsWith('tuft_') ? 0.5 : 1;
     out.push({
       kind, variant: Math.floor(r(3) * SCATTER_VARIANTS[kind]) % SCATTER_VARIANTS[kind], x, z,
-      y: s - (0.01 + 0.01 * r(4)), yaw: r(5) * Math.PI * 2, tiltX: Math.atan(tx) * lean, tiltZ: -Math.atan(tz) * lean,
+      y: s - (0.01 + 0.01 * r(4)), yaw: r(5) * Math.PI * 2, upX: -sx * lean, upZ: -sz * lean,
       scale: 0.8 + 0.4 * r(6), seed: r(7),
     });
   }

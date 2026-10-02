@@ -67,6 +67,17 @@ describe('cellScatter (dune-up-close §4.4)', () => {
       expect(g - it.y).toBeLessThanOrEqual(0.02 + 1e-6);
     }
   });
+  it("tilts each item onto the ground's normal, tufts half as much", () => {
+    let sloped = 0;
+    for (const it of items) {
+      const sx = (ctx.surfaceAt(it.x + 0.25, it.z) - ctx.surfaceAt(it.x - 0.25, it.z)) / 0.5, sz = (ctx.surfaceAt(it.x, it.z + 0.25) - ctx.surfaceAt(it.x, it.z - 0.25)) / 0.5;
+      const lean = it.kind.startsWith('tuft_') ? 0.5 : 1;
+      expect(it.upX).toBeCloseTo(-sx * lean, 6);
+      expect(it.upZ).toBeCloseTo(-sz * lean, 6);
+      if (Math.hypot(sx, sz) > 0.1) sloped++;
+    }
+    expect(sloped).toBeGreaterThan(20);
+  });
   it('lays the same items for a cell whatever else is asked', () => {
     const [ci, cj] = cells()[40];
     expect(cellScatter(ci, cj, ctx)).toEqual(cellScatter(ci, cj, context()));
