@@ -87,12 +87,15 @@ export function reefWarp(x: number, z: number): [number, number] {
 /**
  * The reef's depth v m seaward of the ledge line (spec 2026-10-02 §3): the face rising from faceBaseDepthM to the ledge over
  * faceWidthM (smoothstep: flat at both ends, so neither the ledge nor the face's foot is a crease), then a steady
- * deepening to slopeDepthM at slopeEndM, held beyond. Widths are floored at a millimetre (the dev panel can zero them).
+ * deepening to slopeDepthM at slopeEndM, held beyond. Widths are floored at a millimetre and each depth at the one inshore
+ * of it (the dev panel can zero or invert them).
  */
 export function reefProfileDepth(v: number, p: ReefParams): number {
   const x = Math.max(0, v), fw = Math.max(1e-3, p.faceWidthM), se = Math.max(fw + 1e-3, p.slopeEndM);
-  const face = (p.faceBaseDepthM - p.ledgeDepthM) * smoothstep(0, fw, x);
-  const slope = Math.max(0, p.slopeDepthM - p.faceBaseDepthM) * Math.min(1, Math.max(0, (x - fw) / (se - fw)));
+  // Each depth no shallower than the one inshore of it (the panel lets a ledge sit below the face's base).
+  const base = Math.max(p.faceBaseDepthM, p.ledgeDepthM);
+  const face = (base - p.ledgeDepthM) * smoothstep(0, fw, x);
+  const slope = Math.max(0, p.slopeDepthM - base) * Math.min(1, Math.max(0, (x - fw) / (se - fw)));
   return p.ledgeDepthM + face + slope;
 }
 
