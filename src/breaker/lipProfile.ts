@@ -68,6 +68,16 @@ export const LANDING_FOAM_RISE = 0.3;
 /** While the curl is small (to this share of the throw) the face arrives along the crest's direction, turning into the
  * tube's: the crest still rounds over into the young curl. From here on the face is concave. */
 export const FACE_TURN_PROGRESS = 0.3;
+/**
+ * The ribbon is the water until its section breaks, and its curl peels out of it over this share of the throw (the
+ * constructed curve's weight × smoothstep(0, LIP_EMERGE_PROGRESS, prog)). Andrew, 2026-10-02, 12 ft: a second swell down
+ * the left's shoulder. The shoulders ahead of the peel faded the constructed curve in before they broke (from the
+ * ribbon's onset): a face from the foot to the crest with the curl folded into the crest, blended with the sheet at the
+ * samples' homes. Since the front leans (setWaveModel.LEAN_RATIO) the water's face stands steeper than that curve, and
+ * the blend of two different places stood up to 2 m off the water: two bright creases down the shoulder, the ribbon's
+ * face and the sheet's. From here on the curve is the growing curl's (its tube already scaled by the throw).
+ */
+export const LIP_EMERGE_PROGRESS = 0.3;
 /** The crest's direction is read this far behind it (m). */
 export const CREST_DIR_STEP = 0.1;
 /** A broken section whose crest stands less than BACK_OFF_DROP_H[1]·H above its foot (it has run into deeper water and
@@ -260,11 +270,19 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
     F = base(uFoot);
   }
   // The face must leave the sheet where the sheet is flatter than the face's chord up to the landing, or it bulges
-  // (a lip landing just short of the foot, on the softened ramp): step the join out toward the trough.
+  // (a lip landing just short of the foot, on the softened ramp): step the join out toward the trough, and back along the
+  // last step to where the sheet meets the chord's angle (linear in the steepness to spare): in whole steps a hair's change
+  // in the wave moved the join a whole step (0.15 H), and the GPU and the CPU took either side of it.
   let Fb = base(uFoot - 0.1);
   const ang = (v: Vec2): number => Math.atan2(v[1], -v[0]);
-  for (let i = 0; i < FACE_CONCAVE_STEPS && ang([Fb[0] - F[0], Fb[1] - F[1]]) > ang([P[0] - F[0], P[1] - F[1]]) - FACE_CONCAVE_MARGIN; i++) {
+  const steeper = (): number => ang([Fb[0] - F[0], Fb[1] - F[1]]) - (ang([P[0] - F[0], P[1] - F[1]]) - FACE_CONCAVE_MARGIN);
+  let e = steeper(), ePrev = 0;
+  for (let i = 0; i < FACE_CONCAVE_STEPS && e > 0; i++) {
     uFoot += FACE_CONCAVE_STEP_H * H; F = base(uFoot); Fb = base(uFoot - 0.1);
+    ePrev = e; e = steeper();
+  }
+  if (ePrev > 0 && e <= 0) {
+    uFoot -= FACE_CONCAVE_STEP_H * H * (-e / (ePrev - e)); F = base(uFoot); Fb = base(uFoot - 0.1);
   }
   const tF = norm2([Fb[0] - F[0], Fb[1] - F[1]]);
   const t = tb === null ? 0 : Math.min(Math.max(tb, 0), tauLand);
@@ -280,11 +298,9 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   const xiTip = prog * xiEnd;
   const tip = tubeUpper(tube, xiTip);
   const Kb = base(-CREST_DIR_STEP), aK = Math.atan2(Kb[1] - K[1], -(Kb[0] - K[0]));
-  // Before the break the constructed curve follows the sheet's sharpening, but only inside the ribbon: the sharpening
-  // starts before the ribbon fades in (SHEET_SHARPENING_LEAD), and there the sheet draws it itself.
-  const steep = tb === null
-    ? steepening(r, p) * smoothstep(p.ribbonOnset, p.ribbonOnset + RIBBON_FULL_OFFSET, r)
-    : smoothstep(BACK_OFF_DROP_H[0] * H, BACK_OFF_DROP_H[1] * H, K[1] - F0[1]);
+  // Before the break the ribbon is the water (LIP_EMERGE_PROGRESS); from it, its curl peels out as it throws, backed off
+  // where the crest stands barely above the foot.
+  const steep = tb === null ? 0 : smoothstep(BACK_OFF_DROP_H[0] * H, BACK_OFF_DROP_H[1] * H, K[1] - F0[1]) * smoothstep(0, LIP_EMERGE_PROGRESS, prog);
   const span = settleSpan(H, p);
   // The curl collapses as the sheet under it does (breaking.lifecycle, from landingEstimate), but never before its own
   // lip has landed.

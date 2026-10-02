@@ -91,5 +91,5 @@ export function farSample(f: FarField, x: number, z: number): FieldSample {
   // interpolated (as the GPU reads it, baked into farB.z).
   const b0 = breakingDepth(f.hmin[i]), b1 = breakingDepth(f.hmin[i + 1]);
   const hminBreak = b0 + (b1 - b0) * t;
-  return { tau, amp: lerp(f.amp), hmin: lerp(f.hmin), hminBreak, hminSlurp: hminBreak, k: lerp(f.k), dirX, dirZ, depth: lerp(f.depth) };
+  return { tau, amp: lerp(f.amp), hmin: lerp(f.hmin), hminBreak, hminSlurp: hminBreak, hminLean: hminBreak, k: lerp(f.k), dirX, dirZ, depth: lerp(f.depth) };
 }

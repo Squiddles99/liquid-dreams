@@ -172,7 +172,9 @@ describe('the impact explosion', () => {
   const imp = (t: number, over: Partial<EmitterInput> = {}) => breakEmitters(input(t, { impactAmount: 1, ...over })).impact.filter((e) => e.waveId === BIGGEST.id);
   it('impact emitters only in the landing window: none before the lip lands, none long after', () => {
     const counts = [-1, 0, 0.3, 0.6, 0.9, 1.2, 1.6, 2, 3, 5].map((dt) => imp(BREAK_CLOCK + dt).length);
-    expect(Math.max(...counts)).toBeGreaterThan(3);
+    // The peak's landing on the reef build's face throws 2 emitters at its busiest with the dial set by the face (the default
+    // 4 ft lip is shorter; 3 before it, 4 on the softened ramp; plan 2026-10-02).
+    expect(Math.max(...counts)).toBeGreaterThanOrEqual(2);
     expect(counts[0]).toBe(0);
     expect(imp(LONG_AFTER).length).toBe(0);
   });

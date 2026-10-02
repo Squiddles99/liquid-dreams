@@ -37,15 +37,16 @@ export const PITCH_MAX = 0.3;
 export const PITCH_KA_CAP = 0.12;
 /**
  * The front's lean (Andrew, 2026-10-01): as a wave shoals over the ledge its front shortens toward the crest, so its
- * trough moves in to the face's foot. From LEAN_RATIO[0] to LEAN_RATIO[1] of the crest's slurp ratio (Crest.rSlurp,
- * which is ≥ its own), the Phase 1 front (−π < θ < 0) is squeezed into its last share φ of the half wavelength, φ from 1
+ * trough moves in to the face's foot. From LEAN_RATIO[0] to LEAN_RATIO[1] of the crest's lean ratio (Crest.rLean: over
+ * the reef its front feels ahead, ≥ its own and its slurp ratio; reefField.gainAhead), the Phase 1 front (−π < θ < 0) is squeezed into its last share φ of the half wavelength, φ from 1
  * to LEAN_FRONT_MIN, and ahead of that the water lies at the trough's level (leanPhase). Before it, the face sharpening
  * lowered only the top of the face (SHARPEN_DEPTH), and only in the last two seconds or so: the lower half of the long
  * Phase 1 front stood as a shelf between the drain's hollow at the foot and the trough half a wavelength ahead, so a
  * surfer in front was drawn down, lifted 2.5–3 m by it (Andrew's "first swell" filling the drain), then drawn into the
  * hollow before the face arrived. Now the water in front is drawn steadily down until the face reaches it, and its
- * lowest point is at the foot as the wave breaks. Full by ρ = 1, where the wave breaks; from ρ 0.5 the shoaling wave's
- * front is already leaning (its face 2–4 s before the break stands 17–28°, as before: the squeeze is in the lower front).
+ * lowest point is at the foot as the wave breaks. On the reef build's steep face (2026-10-02) the crest's own ratio rose
+ * through the window only in its last second, and the unleaned front lifted the water in front 0.5–2.7 m first (Andrew's
+ * "bump", on every size): the lean ratio reads the reef under the front instead, so it is full 3–4 s before the break.
  */
 export const LEAN_RATIO: readonly [number, number] = [0.5, 1];
 export const LEAN_FRONT_MIN = 0.3;
@@ -57,7 +58,7 @@ export const LEAN_FRONT_MIN = 0.3;
  * spikes on the bore's face. 0 without a crest.
  */
 export function leanWeight(crest: Crest | null): number {
-  return crest ? smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rSlurp) * crest.confidence * (1 - crest.lc.collapse) : 0;
+  return crest ? smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence * (1 - crest.lc.collapse) : 0;
 }
 
 /**
@@ -196,8 +197,10 @@ export interface Crest {
   f: FieldSample;
   /** The crest's breaking ratio: the sheet's front sharpening steepens with it, before the wave breaks. */
   r: number;
-  /** Its ratio over the slurp's breaking depth (≥ r): the front's lean follows it (leanWeight). */
+  /** Its ratio over the slurp's breaking depth (≥ r): the face's sharpening and the drain follow it. */
   rSlurp: number;
+  /** Its ratio over the lean's breaking depth (FieldSample.hminLean, ≥ rSlurp): the front's lean follows it (leanWeight). */
+  rLean: number;
   /** The crest's breaking stage (lc.stage). */
   s: number;
   /** Time since the section at the crest broke (breaking.onsetTime): null before, undefined without a record there. */
@@ -264,7 +267,8 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   const params = withSheetShape(o.params, psi);
   const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
   const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp, smoothstep(PSI_NONE, PSI_MIN, psi));
-  return { x: cx, z: cz, f: fc, r, rSlurp, s: lc.stage, tb, lc, confidence, lipH, psi, params };
+  const rLean = breakingRatio(w.heightM * fc.amp, fc.hminLean, o.params);
+  return { x: cx, z: cz, f: fc, r, rSlurp, rLean, s: lc.stage, tb, lc, confidence, lipH, psi, params };
 }
 
 /**
@@ -300,11 +304,12 @@ export function fieldBreakingHeight(f: ReefField, p: BreakParams, depths: Float3
  * front sharpening acts from, before the wave breaks. ρ is proportional to the height (ρ(λH) = λ·ρ(H)), so a wave no
  * taller than λ × fieldBreakingHeight (so no taller than λ × every point's own breaking height, where ρ = 1) has ρ ≤ λ
  * at every crest: no lean, no sharpening and no stage anywhere, so its surface is Phase 1 exactly. SetWaves flags waves
- * against it (see fieldBreakingHeight). Over the slurp's depths (FieldSample.hminSlurp ≤ hminBreak): the slurp pulls a
- * shoulder in, and leans it, from where its slurp ratio reaches them, which comes first.
+ * against it (see fieldBreakingHeight). Over the slurp's depths (FieldSample.hminSlurp ≤ hminBreak) for the sharpening
+ * and the lean's (hminLean ≤ hminSlurp) for the lean: the slurp pulls a shoulder in, and the reef ahead leans its front,
+ * from where those ratios reach them.
  */
 export function fieldSteepeningHeight(f: ReefField, p: BreakParams): number {
-  return Math.min(steepeningStart(p), LEAN_RATIO[0]) * fieldBreakingHeight(f, p, f.hminSlurp);
+  return Math.min(steepeningStart(p) * fieldBreakingHeight(f, p, f.hminSlurp), LEAN_RATIO[0] * fieldBreakingHeight(f, p, f.hminLean));
 }
 
 /** The breaking stage of w's crest nearest (x, z) (0 when breaking is off). */

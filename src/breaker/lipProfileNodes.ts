@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { If, Loop, atan, clamp, cos, dot, float, int, length, max, min, mix, pow, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
 import { type BreakParams, RIBBON_FULL_OFFSET, normalizeBreakParams, steepeningStart } from './breaking';
 import {
-  BACK_EDGE_H, BACK_OFF_DROP_H, CREST_DIR_STEP, EDGE_LOWER_FADE, EDGE_MARGIN_M, FACE_TURN_PROGRESS, FACE_CONCAVE_MARGIN, FACE_CONCAVE_STEPS, FACE_CONCAVE_STEP_H, FACE_DIR_STEP, FACE_JOIN_MIN_M, FACE_JOIN_STEPS,
+  BACK_EDGE_H, BACK_OFF_DROP_H, CREST_DIR_STEP, EDGE_LOWER_FADE, EDGE_MARGIN_M, FACE_TURN_PROGRESS, LIP_EMERGE_PROGRESS, FACE_CONCAVE_MARGIN, FACE_CONCAVE_STEPS, FACE_CONCAVE_STEP_H, FACE_DIR_STEP, FACE_JOIN_MIN_M, FACE_JOIN_STEPS,
   FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
   LIP_SPRAY_PROGRESS, LIP_TAPER_POWER, OUTER_LIP_SHARE, PRESENCE_FADE, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID,
   TIP_GROW_PROGRESS, TIP_THICKNESS_RATIO, TUBE_BACK_AHEAD_H, sampleSegment,
@@ -376,15 +376,24 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
       If(i.lessThan(int(FACE_JOIN_STEPS)), () => { uFoot.addAssign(x.sub(F.x)); });
     });
   });
-  // The join steps out toward the trough until the sheet there is flatter than the face's chord.
+  // The join steps out toward the trough until the sheet there is flatter than the face's chord, then back along the last
+  // step to where it meets the chord's angle (lipProfile.profileFrame).
   const Fb = vec2(baseAt(uFoot.sub(0.1))).toVar();
   const going = float(1.0).toVar();
+  const e = angBack(Fb.sub(F)).sub(angBack(P.sub(F)).sub(FACE_CONCAVE_MARGIN)).toVar(), ePrev = float(0.0).toVar();
   Loop(FACE_CONCAVE_STEPS, () => {
-    If(going.greaterThan(0.5).and(angBack(Fb.sub(F)).greaterThan(angBack(P.sub(F)).sub(FACE_CONCAVE_MARGIN))), () => {
+    If(going.greaterThan(0.5).and(e.greaterThan(0.0)), () => {
       uFoot.addAssign(H.mul(FACE_CONCAVE_STEP_H));
       F.assign(baseAt(uFoot));
       Fb.assign(baseAt(uFoot.sub(0.1)));
+      ePrev.assign(e);
+      e.assign(angBack(Fb.sub(F)).sub(angBack(P.sub(F)).sub(FACE_CONCAVE_MARGIN)));
     }).Else(() => { going.assign(0.0); });
+  });
+  If(ePrev.greaterThan(0.0).and(e.lessThanEqual(0.0)), () => {
+    uFoot.subAssign(H.mul(FACE_CONCAVE_STEP_H).mul(e.negate().div(ePrev.sub(e))));
+    F.assign(baseAt(uFoot));
+    Fb.assign(baseAt(uFoot.sub(0.1)));
   });
   const tF = norm2(Fb.sub(F)).toVar();
   const pre = tb.lessThan(0.0);
@@ -399,8 +408,9 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
   const aK = atan(Kb.y.sub(K.y), Kb.x.sub(K.x).negate()).toVar();
   // The back-off edges scale with H: floored so a zero-height row (never drawn) can't give smoothstep equal edges.
   const Hs = max(H, 1e-6);
-  const steep: N = select(pre, smoothstep(u.steepFrom, 1.0, r).mul(smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r)),
-    smoothstep(Hs.mul(BACK_OFF_DROP_H[0]), Hs.mul(BACK_OFF_DROP_H[1]), K.y.sub(F0.y)));
+  // lipProfile: the water before the break; from it, the curl peels out over LIP_EMERGE_PROGRESS of the throw.
+  const steep: N = select(pre, float(0.0),
+    smoothstep(Hs.mul(BACK_OFF_DROP_H[0]), Hs.mul(BACK_OFF_DROP_H[1]), K.y.sub(F0.y)).mul(smoothstep(0.0, LIP_EMERGE_PROGRESS, prog)));
   // breaking.landingEstimate and settleSpan on the crest's drain.
   const landEstimate = max(H.mul(drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt().toVar();
   const span = u.collapseTime.mul(landEstimate).toVar();

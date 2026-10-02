@@ -101,13 +101,13 @@ describe('buildOceanSpectra', () => {
     const comps = buildSpectrumComponents(DEFAULT_CONDITIONS, p);
     const target = Math.sqrt(comps.reduce((a, c) => a + c.hs * c.hs, 0));
     expect(s.hsTotal).toBeCloseTo(target, 2);
-    expect(target).toBeGreaterThan(1.6);
+    expect(target).toBeGreaterThan(surferFeetToHs(DEFAULT_CONDITIONS.swell.sizeFt));
   });
   it('autumn glass-off (zero wind) is finite and swell-only', () => {
     const c = cloneConditions(DEFAULT_CONDITIONS);
     c.wind.speedMs = 0;
     const s = buildOceanSpectra(c, { ...DEFAULT_SPECTRUM_PARAMS, backgroundSwellFactor: 1 });
-    expect(s.hsTotal).toBeCloseTo(1.6, 2);
+    expect(s.hsTotal).toBeCloseTo(surferFeetToHs(DEFAULT_CONDITIONS.swell.sizeFt), 2);
     for (const a of s.h0) expect(a.every(Number.isFinite)).toBe(true);
   });
   it('flat calm gives all-zero spectra', () => {

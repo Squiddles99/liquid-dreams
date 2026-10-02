@@ -1,6 +1,6 @@
 import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, smoothstep, uniform } from 'three/tsl';
 import {
-  type BreakParams, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, SHARPEN_DEPTH, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
+  type BreakParams, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
   HOLLOW_REACH_Q, MIN_BREAKING_HEIGHT_M, MIN_STAGE_SPAN, PILE_BACK_H, PILE_BLEND_H, PILE_FOAM_EDGE, PILE_FOAM_THIN, PILE_FRONT_H,
   PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, PLUNGE_FULL_RATIO, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S,
   normalizeBreakParams, onsetGain, steepeningStart,
@@ -206,12 +206,15 @@ export function breakPointNode(i: BreakPointNodes, steep: N, u: BreakUniforms, c
   const fade = smoothstepDown(quarter.mul(2.0), quarter, a);
   const dFade = smoothstepSlope(quarter, quarter.mul(2.0), a).negate();
   const sharpen = steep.mul(i.crestConfidence);
-  const floorH = i.etaCrest.sub(i.H.mul(SHARPEN_DEPTH));
+  // The floor runs from SHARPEN_DEPTH·H below the crest down to the trough past two face widths (breaking.sharpenFloor).
+  const floorA0 = width.mul(SHARPEN_FLOOR_START), floorA1 = width.mul(SHARPEN_FLOOR_START + SHARPEN_FLOOR_REACH);
+  const floorH = i.etaCrest.sub(i.H.mul(float(SHARPEN_DEPTH).add(smoothstep(floorA0, floorA1, a).mul(1 - SHARPEN_DEPTH))));
+  const dFloorH = smoothstepSlope(floorA0, floorA1, a).mul(1 - SHARPEN_DEPTH).mul(i.H);
   /** sharpenDrop and its slope for a height `eta` with slope `slope` along ahead. */
   const dropOf = (eta: N, slope: N): { drop: N; dDrop: N } => {
     const above = eta.sub(floorH);
     const m = max(above, 0.0);
-    const dM = select(above.greaterThan(0.0), slope, float(0.0));
+    const dM = select(above.greaterThan(0.0), slope.add(dFloorH), float(0.0));
     return { drop: sharpen.mul(sink).mul(fade).mul(m), dDrop: sharpen.mul(dSink.mul(fade).mul(m).add(sink.mul(dFade).mul(m)).add(sink.mul(fade).mul(dM))) };
   };
   const { drop, dDrop } = dropOf(i.eta, i.slope);

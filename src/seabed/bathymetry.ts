@@ -4,16 +4,12 @@ import { REEF_SURROUND_DEPTH_M, SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { beachHeight } from '../land/landHeight';
 import { fbm2, valueNoise2 } from './noise';
-import { DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE } from './wombReef';
+import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE, rockReachM } from './wombReef';
 
 /** Weed dominates rock across most of the shelf; baseline coverage before the patchy noise carves gaps. */
 const SHELF_WEED_BASE = 0.78;
 /** Extra weed riding the reef heads themselves, on top of the shelf baseline. */
 const HEAD_WEED_BOOST = 0.18;
-/** Weed coverage right on the exposed ledge face, fading out with distance from the ledge (see LEDGE_FACE_WEED_FADE_M). */
-const LEDGE_FACE_WEED = 0.55;
-/** Distance outside the ledge over which the ledge-face weed fades to bare sand. */
-const LEDGE_FACE_WEED_FADE_M = 4;
 
 export interface Bathymetry {
   grid: GridSpec;
@@ -43,7 +39,7 @@ function insidePolygon(px: number, pz: number, poly: readonly Pt[]): boolean {
 }
 
 /** Distance to the ledge lines (positive inside the shelf, negative outside). Only the ledges count as edges. */
-function ledgeSignedDistance(x: number, z: number): number {
+export function ledgeSignedDistance(x: number, z: number): number {
   let d = Infinity;
   for (const line of [NORTH_LEDGE, SOUTH_LEDGE]) {
     for (let i = 0; i + 1 < line.length; i++) d = Math.min(d, segmentDistance(x, z, line[i], line[i + 1]));
@@ -89,15 +85,36 @@ export function reefWarp(x: number, z: number): [number, number] {
  * full 0.5 m build well under a second.
  */
 /**
- * The seaward ramp's shape: how far from the ledge depth to the deep water at v = (distance seaward of the ledge line) ÷
- * the ramp's width: v², flat at the ledge and steepest at the deep edge (spec 2026-09-30-barrel-from-maths §4). A bigger
- * swell or a lower tide breaks further out, on the steeper part, and throws heavier; a higher tide further in, on the
- * gentler part; a swell too big for the reef breaks past it, on the easing seabed. (Plan ruling 10's v³(4 − 3v), flat at
- * both ends, made the middle sizes the heaviest: 8 ft read ψ₀ 0.115, 12 ft 0.064, 15 ft 0.037.)
+ * The reef's depth v m seaward of the ledge line (spec 2026-10-02 §3): the face rising from faceBaseDepthM to the ledge over
+ * faceWidthM (smoothstep: flat at both ends, so neither the ledge nor the face's foot is a crease), then a steady
+ * deepening to slopeDepthM at slopeEndM, held beyond. Widths are floored at a millimetre and each depth at the one inshore
+ * of it (the dev panel can zero or invert them).
  */
-export function rampShape(v: number): number {
-  const x = Math.min(1, Math.max(0, v));
-  return x * x;
+export function reefProfileDepth(v: number, p: ReefParams): number {
+  const x = Math.max(0, v), fw = Math.max(1e-3, p.faceWidthM), se = Math.max(fw + 1e-3, p.slopeEndM);
+  // Each depth no shallower than the one inshore of it (the panel lets a ledge sit below the face's base).
+  const base = Math.max(p.faceBaseDepthM, p.ledgeDepthM);
+  const face = (base - p.ledgeDepthM) * smoothstep(0, fw, x);
+  const slope = Math.max(0, p.slopeDepthM - base) * Math.min(1, Math.max(0, (x - fw) / (se - fw)));
+  return p.ledgeDepthM + face + slope;
+}
+
+/** Past the reef's slope the bed eases into the coast's own depth, where that is deeper, over this far (m). */
+export const REEF_FAR_EASE_M = 50;
+/** The coast may deepen toward the reef's slope only offshore: not at all inshore of SHORE_X − 140, fully by SHORE_X − 260. */
+const REEF_OFFSHORE_BAND: readonly [number, number] = [SHORE_X - 140, SHORE_X - 260];
+
+/**
+ * The seabed's depth v m seaward of the ledges at x (spec §3): the reef's profile, never deeper than the coast deepened
+ * toward the slope's depth offshore (so south of the peak, near the beach, the bed stays the coast's shallows), then past
+ * the slope easing into the coast's own depth where that is deeper (the open sea's 30 m at the map's west edge). Only
+ * ever deepens seaward along a line from the peak.
+ */
+export function seawardDepth(v: number, x: number, p: ReefParams): number {
+  const bg = depthBg(x);
+  const cap = bg + Math.max(0, p.slopeDepthM - REEF_SURROUND_DEPTH_M) * smoothstep(REEF_OFFSHORE_BAND[0], REEF_OFFSHORE_BAND[1], x);
+  const reef = Math.min(reefProfileDepth(v, p), cap);
+  return reef + Math.max(0, bg - reef) * smoothstep(p.slopeEndM, p.slopeEndM + REEF_FAR_EASE_M, v);
 }
 
 export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridSpec = REEF_GRID): Bathymetry {
@@ -111,6 +128,9 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   // cells): sample it on the same coarse 2 m lattice as sdf/pockets instead and bilinearly interpolate
   // below. Its smallest feature (12 m) is far coarser than 2 m, so this is visually identical.
   const warpDxField = new Float32Array(sx * sz), warpDzField = new Float32Array(sx * sz);
+  // The deep slope's weed patches (its 5 m noise at every 0.5 m cell more than doubled the build): on the same lattice,
+  // 10–20 m down where the water hides the difference.
+  const patchOutField = new Float32Array(sx * sz);
   for (let r = 0; r < sz; r++) for (let c = 0; c < sx; c++) {
     const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M;
     sdf[r * sx + c] = ledgeSignedDistance(x, z);
@@ -118,6 +138,7 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
     const [dx, dz] = reefWarp(x, z);
     warpDxField[r * sx + c] = dx;
     warpDzField[r * sx + c] = dz;
+    patchOutField[r * sx + c] = smoothstep(-0.5, 0.05, fbm2(x / 5, z / 5, REEF_SEED + 3));
   }
   const lattice = (field: Float32Array, x: number, z: number): number => {
     const fx = (x - grid.x0) / SDF_CELL_M, fz = (z - grid.z0) / SDF_CELL_M;
@@ -130,14 +151,12 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
 
   for (let row = 0; row < grid.nz; row++) {
     const z = grid.z0 + row * grid.cellM;
-    // The reef fades back to the plain coast before the map's north edge, so the map joins the far field seamlessly.
-    const edgeFade = smoothstep(-450, -380, z);
+    // The reef fades back to the plain coast before the map's north and south edges, so the map joins the far field seamlessly.
+    const edgeFade = smoothstep(-450, -380, z) * (1 - smoothstep(230, 299, z));
     for (let col = 0; col < grid.nx; col++) {
       const x = grid.x0 + col * grid.cellM;
       const i = row * grid.nx + col;
-      // Around the reef the surrounding deep water can be tuned; it eases back to the coast profile by 280 m out.
-      const nearReef = 1 - smoothstep(150, 280, Math.hypot(x, z));
-      const background = Math.max(0, depthBg(x) + (p.deepDepthM - REEF_SURROUND_DEPTH_M) * nearReef);
+      const background = depthBg(x);
       // Domain-warp the query point: the ledges, the shelf polygon, the reef heads and the sand pockets
       // are all read at p' = p + w(p), so their edges wander naturally instead of following dead-straight
       // lines. depthBg/background above stay on the unwarped coast profile. w is interpolated from the
@@ -150,18 +169,17 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       const sd = lattice(sdf, xw, zw);
       let d: number, s: number, w = 0;
       if (sd < 0) {
-        // Outside the shelf: rise from the reef's deep water (deepDepthM) to the ledge depth over ledgeWidthM (rampShape);
-        // past the ramp the seabed eases on down to the coast's deeper water over another ramp's width. (Ramping straight
-        // into the coast's deepening seabed, 13 m to 28 m within 420 m, kept the steepest part ~1:9 at any width: Andrew's
-        // ruling 2026-09-30, the ramp to 13 m.)
-        const v = -sd / p.ledgeWidthM, deep = Math.min(background, p.deepDepthM);
-        const dLedge = p.ledgeDepthM + (deep - p.ledgeDepthM) * rampShape(v) + (background - deep) * smoothstep(1, 2, v);
-        d = background + (dLedge - background) * edgeFade;
-        const faceSand = smoothstep(0, LEDGE_FACE_WEED_FADE_M, -sd);
-        s = 1 + (faceSand - 1) * edgeFade;
-        // The ledge face itself carries weed: (1 - faceSand) is already 1 at the ledge and 0 by
-        // LEDGE_FACE_WEED_FADE_M out, so it doubles as the face's weed-coverage falloff.
-        w = (1 - faceSand) * LEDGE_FACE_WEED * edgeFade;
+        // Outside the shelf: the reef face, then the steady slope out to the open sea (seawardDepth, spec 2026-10-02 §3).
+        d = background + (seawardDepth(-sd, x, p) - background) * edgeFade;
+        // Seaward the reef's rock runs on down the slope (spec 2026-10-02 §4): weedy rock with scattered sand pockets out to
+        // rockReachM(z) seaward of the ledge line, then the open coast's bed; the map's edges fade to the open coast too.
+        const rock = 1 - smoothstep(rockReachM(zw) - ROCK_EDGE_M, rockReachM(zw) + ROCK_EDGE_M, -sd);
+        const pocketOut = lattice(pockets, xw, zw);
+        const patchOut = lattice(patchOutField, xw, zw);
+        const sReef = pocketOut, wReef = (1 - pocketOut) * DEEP_REEF_WEED * patchOut;
+        const [sOpen, wOpen] = OPEN_COAST_MATERIAL;
+        s = sOpen + (sReef - sOpen) * rock * edgeFade;
+        w = wOpen + (wReef - wOpen) * rock * edgeFade;
       } else {
         // Inside: reef heads and sand pockets on the shelf, also fading out at its inshore (x ≈ 110 m) boundary.
         const reefness = edgeFade * smoothstep(125, 100, x);
@@ -170,17 +188,17 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
         const relief = fbm2(warpX / 11, warpZ / 11, REEF_SEED);
         const heads = smoothstep(0.05, 0.55, relief);
         let interior = Math.max(p.minDepthM, p.shelfDepthM - p.headReliefM * heads);
-        const pocket = Math.max(lattice(pockets, xw, zw), smoothstep(-0.25, -0.55, relief));
+        const pocket = Math.max(lattice(pockets, xw, zw), smoothstep(-0.4, -0.7, relief));
         interior = interior + (p.pocketDepthM - interior) * pocket;
         const dShelf = p.ledgeDepthM + (interior - p.ledgeDepthM) * smoothstep(0, 20, sd);
-        const sShelf = pocket * smoothstep(0, 3, sd) + (1 - smoothstep(0, 3, sd)) * 0.3;
+        const sShelf = pocket * smoothstep(0, 3, sd);
         // Weed dominates rock over most of the shelf; the noise only carves occasional bare-rock gaps,
         // and reef heads carry extra weed of their own.
         const patch = smoothstep(-0.5, 0.05, fbm2(xw / 5, zw / 5, REEF_SEED + 3));
         const wShelf = (1 - pocket) * Math.min(1, SHELF_WEED_BASE + HEAD_WEED_BOOST * heads) * patch * smoothstep(0, 6, sd);
         d = background + (dShelf - background) * reefness;
-        s = 1 + (sShelf - 1) * reefness;
-        w = wShelf * reefness;
+        s = OPEN_COAST_MATERIAL[0] + (sShelf - OPEN_COAST_MATERIAL[0]) * reefness;
+        w = OPEN_COAST_MATERIAL[1] + (wShelf - OPEN_COAST_MATERIAL[1]) * reefness;
       }
       bed[i] = -d;
       sand[i] = s;
