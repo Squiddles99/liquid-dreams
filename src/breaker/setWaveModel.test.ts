@@ -16,7 +16,7 @@ const omega = (T: number) => (2 * Math.PI) / T;
 
 function field1D(depth: number, T: number, amp = 1, hmin = depth): (x: number) => FieldSample {
   const k = waveNumber(omega(T), depth), c = omega(T) / k;
-  return (x) => ({ tau: x / c, amp, hmin, hminBreak: hmin, hminSlurp: hmin, k, dirX: 1, dirZ: 0, depth });
+  return (x) => ({ tau: x / c, amp, hmin, hminBreak: hmin, hminSlurp: hmin, hminLean: hmin, k, dirX: 1, dirZ: 0, depth });
 }
 const ctxFor = (T: number): WaveContext => ({ omega: omega(T), travelX: 1, travelZ: 0 });
 const wave = (T: number, heightM: number, arrivalS = 100): ActiveWave => ({
@@ -32,7 +32,7 @@ describe('set-wave model', () => {
     expect(crest).toBeGreaterThan(0.99);
   });
   it('caps the height at 0.78 × the shallowest depth crossed', () => {
-    const f: FieldSample = { tau: 0, amp: 3, hmin: 2, hminBreak: 2, hminSlurp: 2, k: 0.2, dirX: 1, dirZ: 0, depth: 5 };
+    const f: FieldSample = { tau: 0, amp: 3, hmin: 2, hminBreak: 2, hminSlurp: 2, hminLean: 2, k: 0.2, dirX: 1, dirZ: 0, depth: 5 };
     expect(localHeight(wave(15, 5), f)).toBeCloseTo(BREAKING_RATIO * 2, 12);
     expect(localHeight(wave(15, 0.2), f)).toBeCloseTo(0.6, 12);
   });
@@ -74,7 +74,7 @@ describe('set-wave model', () => {
   });
   it('tapers the crest ends far out, not near the reef', () => {
     const T = 15, k = waveNumber(omega(T), 30);
-    const at = (x: number, z: number) => ({ tau: x * (k / omega(T)), amp: 1, hmin: 30, hminBreak: 30, hminSlurp: 30, k, dirX: 1, dirZ: 0, depth: 30 });
+    const at = (x: number, z: number) => ({ tau: x * (k / omega(T)), amp: 1, hmin: 30, hminBreak: 30, hminSlurp: 30, hminLean: 30, k, dirX: 1, dirZ: 0, depth: 30 });
     const w = wave(T, 2, 0);
     const onAxisFar = waveAt(-800, 0, -800 * (k / omega(T)), at(-800, 0), w, ctxFor(T)).eta;
     const offAxisFar = waveAt(-800, 400, -800 * (k / omega(T)), at(-800, 400), w, ctxFor(T)).eta;
@@ -128,7 +128,9 @@ describe('ψ at the crest (barrel from the maths)', () => {
     // The GPU's repro (breaker self-test "eases the crest", 12 ft, dt +20 s): the set's biggest wave passed (140, 297.25)
     // 19 s ago (envelope 1e-15), yet its crest lookup lands squarely on its crest 60 m on, where it has broken.
     const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
-    const x = 140, z = field.grid.z0 + (field.grid.nz - 1) * field.grid.cellM - 2, tt = w.arrivalS + 20, f = sampleField(field, x, z);
+    // On the reef build's reef the repro's state (past the cutoff, the lookup on a broken crest) holds 24–26 s after the crest
+    // passed there (plan 2026-10-02 Task 4; ~20 s on the softened ramp).
+    const x = 140, z = field.grid.z0 + (field.grid.nz - 1) * field.grid.cellM - 2, f = sampleField(field, x, z), tt = w.arrivalS + f.tau + 25;
     expect(beyondEnvelope(phaseXi(x, z, tt, f, w, ctx), w)).toBe(true);
     const found = crestAt(x, z, tt, f, w, ctx, o)!;
     expect(found.s * found.confidence).toBeGreaterThan(0.9);

@@ -256,7 +256,7 @@ export function onsetLevelHeight(k: number): number {
   return 1 / (ONSET_LEVEL_Q[k] * onsetGain(DEFAULT_BREAK_PARAMS));
 }
 /** Values per record sample: the running maximum; per level (time since onset, the throw's height ÷ the level's
- * deep-water height); then per level ψ₀ where that level broke (reefField.psiReef, spec 2026-09-30-barrel-from-maths). */
+ * deep-water height); then per level ψ₀ where that level broke (reefField.psiFromStep, plan 2026-10-02). */
 export const ONSET_RECORD_LENGTH = 1 + 3 * ONSET_LEVELS;
 /** Offset of level 0's ψ₀ in a record sample. */
 export const ONSET_PSI_OFFSET = 1 + 2 * ONSET_LEVELS;
@@ -463,11 +463,32 @@ function smoothstepSlope(e0: number, e1: number, x: number): number {
  * depth and length. The drain still draws a hollow at the foot.
  */
 export const SHARPEN_DEPTH = 0.7;
+/**
+ * …at the steep top of the face. From SHARPEN_FLOOR_START face widths ahead the floor runs on down to the wave's own
+ * trough (etaCrest − H) over SHARPEN_FLOOR_REACH more, a smooth concave sweep: a level floor cut a flat terrace into
+ * every front still above it, and the face dropped twice, to the terrace and later into the trough (Andrew, 2026-10-02,
+ * "the step in front"). The trench the full-depth floor dug (above) ran half a wavelength ahead; this one ends at the
+ * foot, where the lean (setWaveModel.LEAN_RATIO) has brought the trough in. Over 4 face widths the lowest water at 12 ft
+ * sat 20 m ahead of the foot; over 1, the drained trough stood 0.77 H below still water. Started at two face widths
+ * (where the sink is full), the face held level from about 1.5 to 2 widths and then fell again: a shelf at the foot as
+ * it broke at the peak (0.1 m per metre between stretches of 0.4 at 12 ft; Andrew's Gate 2 cuts). From one width, where
+ * the sink is two-thirds in, the face only gets gentler down to the foot (ending at 3.5 widths, the drained trough at
+ * 12 ft just touched 0.75 H; at 3.75 it is back under).
+ */
+export const SHARPEN_FLOOR_START = 1;
+export const SHARPEN_FLOOR_REACH = 2.75;
+
+/** How far below the crest (× H) the sharpened face is cut at `ahead` m: SHARPEN_DEPTH, running down to 1 (the trough). */
+function sharpenFloor(ahead: number, width: number): { depth: number; dDepth: number } {
+  const a0 = SHARPEN_FLOOR_START * width, a1 = (SHARPEN_FLOOR_START + SHARPEN_FLOOR_REACH) * width;
+  return { depth: SHARPEN_DEPTH + (1 - SHARPEN_DEPTH) * smoothstep(a0, a1, ahead), dDepth: (1 - SHARPEN_DEPTH) * smoothstepSlope(a0, a1, ahead) };
+}
 
 /**
  * The face steepening: how far to lower a point ahead of the crest to sharpen it into a peak. `ahead` is its
  * along-travel position relative to the crest (m), `eta` its height and etaCrest the crest's. Within faceWidth·H ahead
- * the profile stays near the crest height; beyond, it sinks toward etaCrest − SHARPEN_DEPTH·H, fading back to the
+ * the profile stays near the crest height; beyond, it sinks toward etaCrest − SHARPEN_DEPTH·H, running down to the
+ * trough over SHARPEN_FLOOR_REACH face widths, fading back to the
  * unbroken wave by half a wavelength. Behind the crest nothing changes (the back of the wave is its unbroken back).
  * Only heights change, so nothing folds and the height probe's horizontal search is unaffected.
  */
@@ -476,13 +497,13 @@ export function sharpenDrop(ahead: number, eta: number, etaCrest: number, H: num
   const width = p.faceWidth * H;
   const quarter = Math.PI / (2 * k);
   const sink = 1 - Math.exp(-((ahead / width) ** 2));
-  return steep * sink * smoothstep(2 * quarter, quarter, ahead) * Math.max(eta - (etaCrest - SHARPEN_DEPTH * H), 0);
+  return steep * sink * smoothstep(2 * quarter, quarter, ahead) * Math.max(eta - (etaCrest - sharpenFloor(ahead, width).depth * H), 0);
 }
 
 /**
  * ∂sharpenDrop/∂ahead at a fixed crest, where `slope` is ∂eta/∂ahead. With sink = 1 − exp(−(a/w)²), fade =
- * smoothstep(2q, q, a) and m = max(η − (η_c − SHARPEN_DEPTH·H), 0): steep·(sink′·fade·m + sink·fade′·m + sink·fade·m′), m′ = slope
- * where m > 0. 0 behind the crest, and continuous at it: sink and sink′ both vanish at a = 0.
+ * smoothstep(2q, q, a) and m = max(η − (η_c − f(a)·H), 0) (f the floor, sharpenFloor): steep·(sink′·fade·m + sink·fade′·m +
+ * sink·fade·m′), m′ = slope + f′(a)·H where m > 0. 0 behind the crest, and continuous at it: sink and sink′ both vanish at a = 0.
  */
 export function sharpenDropSlope(ahead: number, eta: number, slope: number, etaCrest: number, H: number, k: number, steep: number, p: BreakParams): number {
   if (!(steep > 0) || !(H > 0) || ahead < 0) return 0;
@@ -491,8 +512,9 @@ export function sharpenDropSlope(ahead: number, eta: number, slope: number, etaC
   const g = Math.exp(-((ahead / width) ** 2));
   const sink = 1 - g, dSink = (2 * ahead * g) / (width * width);
   const fade = smoothstep(2 * quarter, quarter, ahead), dFade = smoothstepSlope(2 * quarter, quarter, ahead);
-  const above = eta - (etaCrest - SHARPEN_DEPTH * H);
-  const m = Math.max(above, 0), dM = above > 0 ? slope : 0;
+  const floor = sharpenFloor(ahead, width);
+  const above = eta - (etaCrest - floor.depth * H);
+  const m = Math.max(above, 0), dM = above > 0 ? slope + floor.dDepth * H : 0;
   return steep * (dSink * fade * m + sink * dFade * m + sink * fade * dM);
 }
 

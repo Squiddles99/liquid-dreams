@@ -1,8 +1,10 @@
 import { beachHeight } from '../land/landHeight';
 import { describe, expect, it } from 'vitest';
 import { depthBg } from './coastProfile';
-import { bedHeightAt, buildBathymetry, downsample, rampShape, reefWarp } from './bathymetry';
-import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, REEF_GRID, REEF_WARP, SOUTH_LEDGE } from './wombReef';
+import { bedHeightAt, bedMaterialAt, buildBathymetry, downsample, ledgeSignedDistance, reefProfileDepth, reefWarp, seawardDepth } from './bathymetry';
+import { OPEN_COAST_MATERIAL } from './shoreReef';
+import { SHORE_X } from './coastProfile';
+import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, REEF_GRID, REEF_WARP, SOUTH_LEDGE, rockReachM } from './wombReef';
 
 const bathy = buildBathymetry();
 const depth = (x: number, z: number) => -bedHeightAt(bathy, x, z);
@@ -30,33 +32,6 @@ describe('the Womb reef', () => {
       expect(depth(x, z)).toBeLessThan(DEFAULT_REEF_PARAMS.ledgeDepthM + 1.5);
     }
   });
-  it("drops to deep water seaward of the ledges' ramp and to the south-west", () => {
-    const W = DEFAULT_REEF_PARAMS.ledgeWidthM;
-    expect(depth(-W - 10, 0)).toBeGreaterThan(11);
-    expect(depth(-W - 10, 40)).toBeGreaterThan(11);
-  });
-  it('the seaward ramp: v², flat at the ledge, steepest at the deep edge (spec §4)', () => {
-    expect(rampShape(0)).toBe(0);
-    expect(rampShape(1)).toBe(1);
-    expect(rampShape(2)).toBe(1);
-    const slope = (v: number) => (rampShape(v + 1e-4) - rampShape(v - 1e-4)) / 2e-4;
-    expect(slope(1e-4)).toBeLessThan(1e-3);
-    for (let v = 0.1; v < 0.95; v += 0.1) expect(slope(v + 0.05)).toBeGreaterThan(slope(v));
-  });
-  it('the ledge line stays at the ledge depth, and nothing outside the shelf near the peak is steeper than 1:8', () => {
-    const b = buildBathymetry(), g = b.grid, W = DEFAULT_REEF_PARAMS.ledgeWidthM;
-    const d = (c: number, r: number) => -b.bed[r * g.nx + c];
-    const c0 = Math.round(-g.x0 / g.cellM), r0 = Math.round(-g.z0 / g.cellM);
-    expect(d(c0, r0)).toBeCloseTo(DEFAULT_REEF_PARAMS.ledgeDepthM, 1);
-    let steepest = 0;
-    for (let r = 1; r < g.nz - 1; r++) for (let c = 1; c < g.nx - 1; c++) {
-      const x = g.x0 + c * g.cellM, z = g.z0 + r * g.cellM;
-      // The seaward ramp, not the shelf (nor the shelf's inshore edge at the lagoon, x ≈ 100 m, which this build leaves alone).
-    if (Math.hypot(x, z) > W + 20 || x > 40 || d(c, r) <= DEFAULT_REEF_PARAMS.ledgeDepthM + 0.5) continue;
-      steepest = Math.max(steepest, Math.hypot(d(c + 1, r) - d(c - 1, r), d(c, r + 1) - d(c, r - 1)) / (2 * g.cellM));
-    }
-    expect(steepest).toBeLessThanOrEqual(1 / 8 + 0.02);
-  });
   it('is shallower on the shelf than at the ledge, never shallower than the minimum', () => {
     let sum = 0, n = 0;
     for (let x = 45; x <= 105; x += 5) for (let z = -200; z <= -40; z += 5) {
@@ -65,17 +40,6 @@ describe('the Womb reef', () => {
       sum += d; n++;
     }
     expect(sum / n).toBeLessThan(DEFAULT_REEF_PARAMS.ledgeDepthM);
-  });
-  it('has sand pockets and reef on the shelf, sand in the deep', () => {
-    let sandy = 0, rocky = 0;
-    for (let x = 45; x <= 105; x += 2) for (let z = -200; z <= -20; z += 2) {
-      const i = Math.round((z - REEF_GRID.z0) / REEF_GRID.cellM) * REEF_GRID.nx + Math.round((x - REEF_GRID.x0) / REEF_GRID.cellM);
-      if (bathy.sand[i] > 0.5) sandy++; else rocky++;
-    }
-    expect(sandy).toBeGreaterThan(20);
-    expect(rocky).toBeGreaterThan(sandy);
-    const deepI = Math.round((100 - REEF_GRID.z0) / REEF_GRID.cellM) * REEF_GRID.nx + Math.round((-300 - REEF_GRID.x0) / REEF_GRID.cellM);
-    expect(bathy.sand[deepI]).toBeGreaterThan(0.9);
   });
   it('matches the coast profile at and beyond the map edges (continuity for the far field)', () => {
     for (const z of [-449, 299]) for (const x of [-399, -200, 0, 150]) {
@@ -148,5 +112,106 @@ describe('the Bombie’s mound (4c-3)', () => {
     expect(bedHeightAt(b, BOMBIE_X, BOMBIE_Z)).toBeCloseTo(MOUND_CREST_Y, 3);
     expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z)).toBeLessThan(-20);
     expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M * 0.5, BOMBIE_Z)).toBeGreaterThan(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z));
+  });
+});
+
+describe('the reef seaward of the ledges (spec 2026-10-02 §3)', () => {
+  const p = DEFAULT_REEF_PARAMS;
+  it('the profile: the ledge depth at the ledge, the face base at its width, the slope depth at its end and beyond, never shallowing', () => {
+    expect(reefProfileDepth(0, p)).toBeCloseTo(p.ledgeDepthM, 9);
+    expect(reefProfileDepth(-5, p)).toBeCloseTo(p.ledgeDepthM, 9);
+    expect(reefProfileDepth(p.faceWidthM, p)).toBeCloseTo(p.faceBaseDepthM, 9);
+    expect(reefProfileDepth(p.slopeEndM, p)).toBeCloseTo(p.slopeDepthM, 9);
+    expect(reefProfileDepth(p.slopeEndM + 100, p)).toBeCloseTo(p.slopeDepthM, 9);
+    for (let v = 0; v < 400; v += 0.5) expect(reefProfileDepth(v + 0.5, p)).toBeGreaterThanOrEqual(reefProfileDepth(v, p));
+  });
+  it('the slope beyond the face is steady: the same gradient all the way to its end', () => {
+    const g = (v: number) => reefProfileDepth(v + 1, p) - reefProfileDepth(v, p);
+    for (let v = p.faceWidthM + 1; v < p.slopeEndM - 2; v += 7) expect(g(v)).toBeCloseTo(g(p.faceWidthM + 1), 9);
+  });
+  it('degenerate params (dev panel) stay finite and never shallow seaward (plan Review Focus 3)', () => {
+    for (const q of [{ ...p, faceWidthM: 0 }, { ...p, slopeEndM: p.faceWidthM }, { ...p, slopeEndM: 0, faceWidthM: 0 }, { ...p, ledgeDepthM: 12, faceBaseDepthM: 7 }, { ...p, faceBaseDepthM: 22, slopeDepthM: 15 }]) {
+      let prev = -Infinity;
+      for (let v = 0; v < 300; v += 1) { const d = reefProfileDepth(v, q); expect(Number.isFinite(d)).toBe(true); expect(d).toBeGreaterThanOrEqual(prev - 1e-9); prev = d; }
+    }
+  });
+  it('inshore of the reef the bed stays the coast’s shallows (south of the peak near the beach)', () => {
+    for (const [x, z] of [[150, 200], [170, 120], [120, 250]]) expect(depth(x, z)).toBeCloseTo(depthBg(x), 0);
+  });
+  it('along the peak’s south-west line the bed deepens steadily from the ledge to 300 m out (no step back up > 2 cm)', () => {
+    let prev = depth(0, 0);
+    for (let s = 1; s <= 300; s++) {
+      const d = depth(-s * Math.SQRT1_2, s * Math.SQRT1_2);
+      expect(d, `${s} m out`).toBeGreaterThanOrEqual(prev - 0.02);
+      prev = Math.max(prev, d);
+    }
+  });
+  it('the face and the slope are where the params put them along the peak’s line (±1.5 m: the line leaves the ledge at an angle)', () => {
+    const at = (v: number) => depth(-v * Math.SQRT1_2, v * Math.SQRT1_2);
+    expect(at(p.faceWidthM)).toBeGreaterThan(p.faceBaseDepthM - 1.5);
+    expect(at(p.slopeEndM)).toBeGreaterThan(p.slopeDepthM - 2);
+    expect(at(p.slopeEndM)).toBeLessThan(p.slopeDepthM + 1.5);
+  });
+  it('meets the coast profile at the west, north and south map edges (the far field)', () => {
+    for (const z of [-300, 0, 200]) expect(depth(-399, z)).toBeCloseTo(depthBg(-399), 1);
+    expect(seawardDepth(1000, -1000, p)).toBe(depthBg(-1000));
+    expect(SHORE_X).toBe(190);
+  });
+});
+
+describe('the bed’s material (spec 2026-10-02 §4)', () => {
+  const g = REEF_GRID;
+  const cell = (x: number, z: number) => Math.round((z - g.z0) / g.cellM) * g.nx + Math.round((x - g.x0) / g.cellM);
+  /** On the reef: the shelf, or seaward of the ledges within the rock's reach (and inside the map's edge fades). */
+  const onReef = (x: number, z: number) => { const sd = ledgeSignedDistance(x, z); return z > -380 && z < 230 && x < 100 && (sd >= 0 || -sd <= rockReachM(z) - 25); };
+  it('weedy rock is the default on the reef: under 10% of it is sandy, and it is mostly weed', () => {
+    let n = 0, sandy = 0, weed = 0;
+    for (let x = -300; x <= 98; x += 2) for (let z = -378; z <= 228; z += 2) {
+      if (!onReef(x, z)) continue;
+      const i = cell(x, z); n++; if (bathy.sand[i] > 0.5) sandy++; weed += bathy.weed[i];
+    }
+    expect(sandy / n).toBeLessThan(0.1);
+    expect(weed / n).toBeGreaterThan(0.5);
+  });
+  it('sand lies only in scattered pockets: no sandy patch over 600 m², and at least 6 of them', () => {
+    const X0 = -300, X1 = 98, Z0 = -378, Z1 = 228, S = 2, nx = (X1 - X0) / S + 1, nz = (Z1 - Z0) / S + 1;
+    const sandy = new Uint8Array(nx * nz);
+    for (let r = 0; r < nz; r++) for (let c = 0; c < nx; c++) sandy[r * nx + c] = bathy.sand[cell(X0 + c * S, Z0 + r * S)] > 0.5 ? 1 : 0;
+    const seen = new Uint8Array(nx * nz), areas: number[] = [];
+    for (let i = 0; i < sandy.length; i++) {
+      if (!sandy[i] || seen[i]) continue;
+      let count = 0; const stack = [i]; seen[i] = 1;
+      while (stack.length) {
+        const j = stack.pop()!, c = j % nx, r = (j - c) / nx; count++;
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const cc = c + dc, rr = r + dr, k = rr * nx + cc;
+          if (cc >= 0 && cc < nx && rr >= 0 && rr < nz && sandy[k] && !seen[k]) { seen[k] = 1; stack.push(k); }
+        }
+      }
+      areas.push(count * S * S);
+    }
+    expect(Math.max(0, ...areas)).toBeLessThanOrEqual(600);
+    expect(areas.filter((a) => a >= 40).length).toBeGreaterThanOrEqual(6);
+  });
+  it('the rock runs down the deep slope north of the peak; south of the peak, past the face, the open coast', () => {
+    for (const [x, z] of [[-59, -113], [-109, -113], [-80, -200]]) {
+      const i = cell(x, z);
+      expect(bathy.sand[i], `(${x}, ${z})`).toBeLessThan(0.3);
+      expect(bathy.weed[i], `(${x}, ${z})`).toBeGreaterThan(0.4);
+    }
+    const [s, w] = bedMaterialAt(bathy, -60, 180, undefined, false);
+    expect(s).toBeCloseTo(OPEN_COAST_MATERIAL[0], 1);
+    expect(w).toBeCloseTo(OPEN_COAST_MATERIAL[1], 1);
+  });
+  it('the map’s bed meets the open coast’s at its edges (no seam)', () => {
+    const edge: [number, number][] = [[-399, -300], [-399, 0], [-399, 200], [-200, -449], [0, -449], [-200, 299], [0, 299]];
+    for (const [x, z] of edge) {
+      const [s, w] = bedMaterialAt(bathy, x, z, undefined, false);
+      expect(s, `(${x}, ${z})`).toBeCloseTo(OPEN_COAST_MATERIAL[0], 1);
+      expect(w, `(${x}, ${z})`).toBeCloseTo(OPEN_COAST_MATERIAL[1], 1);
+    }
+  });
+  it('the shore platform meets the reef: no sand strip anywhere between the beach and the reef (regression guard)', () => {
+    for (let z = -440; z <= 290; z += 10) for (let x = 100; x <= 185; x += 5) expect(bedMaterialAt(bathy, x, z)[0], `(${x}, ${z})`).toBeLessThan(0.5);
   });
 });
