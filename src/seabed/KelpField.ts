@@ -80,6 +80,10 @@ export class KelpField {
       this.lastMin = [mx, mz];
       first = false;
     }
+    // The shading reads the window the texture was last written for, not the camera's: on a frame with no tick (paused,
+    // or 2 frames in 3 at 60 fps) a moved camera would otherwise see wrapped cells 128 m away (final review I2).
+    if (this.lastMin) this.map.setWindow(this.lastMin[0], this.lastMin[1]);
+    else this.map.on.value = 0;
     this.map.alpha.value = Math.min(1, Math.max(0, (simTime - tickTime(tickIndex(simTime))) / FOAM_TICK_S));
     this.map.time.value = simTime;
     return plan.ticks.length;
