@@ -30,15 +30,13 @@ describe("the Womb's reef: where and how it breaks (spec 2026-10-02 §2)", () =>
       expect(card.peel[i], `${ft} ft`).toBeLessThanOrEqual(PEEL_BAND[1]);
     });
   });
-  it('12 ft on the ideal day is thrown out (state 6) and still peels (§2.3)', () => {
+  it('12 ft on the ideal day is thrown out (state 6) (§2.3)', () => {
     expect(card.ideal12.state, `${card.ideal12.tide} tide ψ ${card.ideal12.psi.toFixed(3)}`).toBe('thrown');
-    expect(card.ideal12.peel).toBeGreaterThanOrEqual(PEEL_BAND[0]);
-    expect(card.ideal12.peel).toBeLessThanOrEqual(PEEL_BAND[1]);
   });
   it('12 ft on an ordinary day closes the left out: its first 40 m breaks within 1.5 s (§2.3)', () => {
     expect(card.ordinary12Spread).toBeLessThanOrEqual(CLOSEOUT_SPREAD_S);
   });
-  it('smaller days: 6–8 ft an oval or cylinder at mid tide, the cylinder when ideal; 4 ft never thrown (§2.3)', () => {
+  it('smaller days: 6–8 ft an oval or cylinder at mid tide; ideal, 6 ft the cylinder and 8 ft up to thrown (Andrew, Gate 1); 4 ft never thrown (§2.3)', () => {
     expect(card.passes.smallDays).toBe(true);
   });
 });

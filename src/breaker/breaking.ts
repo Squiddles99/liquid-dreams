@@ -256,7 +256,7 @@ export function onsetLevelHeight(k: number): number {
   return 1 / (ONSET_LEVEL_Q[k] * onsetGain(DEFAULT_BREAK_PARAMS));
 }
 /** Values per record sample: the running maximum; per level (time since onset, the throw's height ÷ the level's
- * deep-water height); then per level ψ₀ where that level broke (reefField.psiReef, spec 2026-09-30-barrel-from-maths). */
+ * deep-water height); then per level ψ₀ where that level broke (reefField.psiFromStep, plan 2026-10-02). */
 export const ONSET_RECORD_LENGTH = 1 + 3 * ONSET_LEVELS;
 /** Offset of level 0's ψ₀ in a record sample. */
 export const ONSET_PSI_OFFSET = 1 + 2 * ONSET_LEVELS;
