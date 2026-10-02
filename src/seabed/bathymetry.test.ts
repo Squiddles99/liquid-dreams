@@ -1,7 +1,8 @@
 import { beachHeight } from '../land/landHeight';
 import { describe, expect, it } from 'vitest';
 import { depthBg } from './coastProfile';
-import { bedHeightAt, buildBathymetry, downsample, rampShape, reefWarp } from './bathymetry';
+import { bedHeightAt, buildBathymetry, downsample, reefProfileDepth, reefWarp, seawardDepth } from './bathymetry';
+import { SHORE_X } from './coastProfile';
 import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, REEF_GRID, REEF_WARP, SOUTH_LEDGE } from './wombReef';
 
 const bathy = buildBathymetry();
@@ -29,33 +30,6 @@ describe('the Womb reef', () => {
       expect(depth(x, z)).toBeGreaterThan(DEFAULT_REEF_PARAMS.ledgeDepthM - 1.5);
       expect(depth(x, z)).toBeLessThan(DEFAULT_REEF_PARAMS.ledgeDepthM + 1.5);
     }
-  });
-  it("drops to deep water seaward of the ledges' ramp and to the south-west", () => {
-    const W = DEFAULT_REEF_PARAMS.ledgeWidthM;
-    expect(depth(-W - 10, 0)).toBeGreaterThan(11);
-    expect(depth(-W - 10, 40)).toBeGreaterThan(11);
-  });
-  it('the seaward ramp: v², flat at the ledge, steepest at the deep edge (spec §4)', () => {
-    expect(rampShape(0)).toBe(0);
-    expect(rampShape(1)).toBe(1);
-    expect(rampShape(2)).toBe(1);
-    const slope = (v: number) => (rampShape(v + 1e-4) - rampShape(v - 1e-4)) / 2e-4;
-    expect(slope(1e-4)).toBeLessThan(1e-3);
-    for (let v = 0.1; v < 0.95; v += 0.1) expect(slope(v + 0.05)).toBeGreaterThan(slope(v));
-  });
-  it('the ledge line stays at the ledge depth, and nothing outside the shelf near the peak is steeper than 1:8', () => {
-    const b = buildBathymetry(), g = b.grid, W = DEFAULT_REEF_PARAMS.ledgeWidthM;
-    const d = (c: number, r: number) => -b.bed[r * g.nx + c];
-    const c0 = Math.round(-g.x0 / g.cellM), r0 = Math.round(-g.z0 / g.cellM);
-    expect(d(c0, r0)).toBeCloseTo(DEFAULT_REEF_PARAMS.ledgeDepthM, 1);
-    let steepest = 0;
-    for (let r = 1; r < g.nz - 1; r++) for (let c = 1; c < g.nx - 1; c++) {
-      const x = g.x0 + c * g.cellM, z = g.z0 + r * g.cellM;
-      // The seaward ramp, not the shelf (nor the shelf's inshore edge at the lagoon, x ≈ 100 m, which this build leaves alone).
-    if (Math.hypot(x, z) > W + 20 || x > 40 || d(c, r) <= DEFAULT_REEF_PARAMS.ledgeDepthM + 0.5) continue;
-      steepest = Math.max(steepest, Math.hypot(d(c + 1, r) - d(c - 1, r), d(c, r + 1) - d(c, r - 1)) / (2 * g.cellM));
-    }
-    expect(steepest).toBeLessThanOrEqual(1 / 8 + 0.02);
   });
   it('is shallower on the shelf than at the ledge, never shallower than the minimum', () => {
     let sum = 0, n = 0;
@@ -148,5 +122,49 @@ describe('the Bombie’s mound (4c-3)', () => {
     expect(bedHeightAt(b, BOMBIE_X, BOMBIE_Z)).toBeCloseTo(MOUND_CREST_Y, 3);
     expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z)).toBeLessThan(-20);
     expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M * 0.5, BOMBIE_Z)).toBeGreaterThan(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z));
+  });
+});
+
+describe('the reef seaward of the ledges (spec 2026-10-02 §3)', () => {
+  const p = DEFAULT_REEF_PARAMS;
+  it('the profile: the ledge depth at the ledge, the face base at its width, the slope depth at its end and beyond, never shallowing', () => {
+    expect(reefProfileDepth(0, p)).toBeCloseTo(p.ledgeDepthM, 9);
+    expect(reefProfileDepth(-5, p)).toBeCloseTo(p.ledgeDepthM, 9);
+    expect(reefProfileDepth(p.faceWidthM, p)).toBeCloseTo(p.faceBaseDepthM, 9);
+    expect(reefProfileDepth(p.slopeEndM, p)).toBeCloseTo(p.slopeDepthM, 9);
+    expect(reefProfileDepth(p.slopeEndM + 100, p)).toBeCloseTo(p.slopeDepthM, 9);
+    for (let v = 0; v < 400; v += 0.5) expect(reefProfileDepth(v + 0.5, p)).toBeGreaterThanOrEqual(reefProfileDepth(v, p));
+  });
+  it('the slope beyond the face is steady: the same gradient all the way to its end', () => {
+    const g = (v: number) => reefProfileDepth(v + 1, p) - reefProfileDepth(v, p);
+    for (let v = p.faceWidthM + 1; v < p.slopeEndM - 2; v += 7) expect(g(v)).toBeCloseTo(g(p.faceWidthM + 1), 9);
+  });
+  it('degenerate params (dev panel) stay finite and never shallow seaward (plan Review Focus 3)', () => {
+    for (const q of [{ ...p, faceWidthM: 0 }, { ...p, slopeEndM: p.faceWidthM }, { ...p, slopeEndM: 0, faceWidthM: 0 }]) {
+      let prev = -Infinity;
+      for (let v = 0; v < 300; v += 1) { const d = reefProfileDepth(v, q); expect(Number.isFinite(d)).toBe(true); expect(d).toBeGreaterThanOrEqual(prev - 1e-9); prev = d; }
+    }
+  });
+  it('inshore of the reef the bed stays the coast’s shallows (south of the peak near the beach)', () => {
+    for (const [x, z] of [[150, 200], [170, 120], [120, 250]]) expect(depth(x, z)).toBeCloseTo(depthBg(x), 0);
+  });
+  it('along the peak’s south-west line the bed deepens steadily from the ledge to 300 m out (no step back up > 2 cm)', () => {
+    let prev = depth(0, 0);
+    for (let s = 1; s <= 300; s++) {
+      const d = depth(-s * Math.SQRT1_2, s * Math.SQRT1_2);
+      expect(d, `${s} m out`).toBeGreaterThanOrEqual(prev - 0.02);
+      prev = Math.max(prev, d);
+    }
+  });
+  it('the face and the slope are where the params put them along the peak’s line (±1.5 m: the line leaves the ledge at an angle)', () => {
+    const at = (v: number) => depth(-v * Math.SQRT1_2, v * Math.SQRT1_2);
+    expect(at(p.faceWidthM)).toBeGreaterThan(p.faceBaseDepthM - 1.5);
+    expect(at(p.slopeEndM)).toBeGreaterThan(p.slopeDepthM - 2);
+    expect(at(p.slopeEndM)).toBeLessThan(p.slopeDepthM + 1.5);
+  });
+  it('meets the coast profile at the west, north and south map edges (the far field)', () => {
+    for (const z of [-300, 0, 200]) expect(depth(-399, z)).toBeCloseTo(depthBg(-399), 1);
+    expect(seawardDepth(1000, -1000, p)).toBe(depthBg(-1000));
+    expect(SHORE_X).toBe(190);
   });
 });
