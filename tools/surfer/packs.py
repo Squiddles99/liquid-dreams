@@ -112,6 +112,7 @@ def build(body, rig, wear, H, style_name, name):
     # The shoulder straps: from the bag's top inner corners over the shoulders, down the front of the chest, back under
     # the arms to its bottom corners; kept 1 cm off the body and the tee.
     neck = rig.data.bones["neck"].head_local
+    straps = []
     for s in (1, -1):
         shoulder_hit, _, _, _ = tree.ray_cast(Vector((s * 0.085, neck.y + 0.01, 2.5)), Vector((0, 0, -1)), 3.0)
         if shoulder_hit is None:
@@ -127,7 +128,10 @@ def build(body, rig, wear, H, style_name, name):
         ]
         pts = [geom.push_out(tree, p, 0.01 + STRAP_T) for p in _catmull(guess)]
         trims.append(geom.tube(bm, pts, STRAP_W / 2, False, sides=8, flat=STRAP_T / STRAP_W))
+        straps += trims[-1]
     trim = set().union(*map(set, trims))
+    bm.verts.index_update()
+    strap_idx = {v.index for v in straps}
     for f in bm.faces:
         if any(v in trim for v in f.verts):
             f.material_index = 1
@@ -138,7 +142,40 @@ def build(body, rig, wear, H, style_name, name):
     bm.to_mesh(me)
     bm.free()
     _skin(obj, rig, back_y)
+    tee = next((o for o in wear if o.name.endswith("_tee")), None)
+    if tee is not None:
+        _skin_as(obj, strap_idx, tee, back_y)
     return obj, (centre, (w, h, d))
+
+
+def _skin_as(obj, idx, cloth, back_y):
+    """The straps' vertices `idx` skinned as the nearest vertex of `cloth` under them (the tee), so they ride on it in
+    every pose (Andrew: skinned to the spine and clavicles while the tee's shoulders follow the upper arms, lifting the
+    arm to carry the board raised the tee over the strap and swallowed it); blended back to the pack's own skin over
+    the last 6 cm before the bag, where the straps meet it."""
+    from mathutils.kdtree import KDTree
+    cv = cloth.data.vertices
+    kd = KDTree(len(cv))
+    for v in cv:
+        kd.insert(v.co, v.index)
+    kd.balance()
+    names = {g.index: g.name for g in cloth.vertex_groups}
+    groups = {g.name: g for g in obj.vertex_groups}
+    for v in obj.data.vertices:
+        if v.index not in idx:
+            continue
+        _, j, _ = kd.find(v.co)
+        to = {names[g.group]: g.weight for g in cv[j].groups if g.weight > 1e-4}
+        total = sum(to.values()) or 1.0
+        own = {obj.vertex_groups[g.group].name: g.weight for g in v.groups}
+        f = max(0.0, min(1.0, (back_y - v.co.y) / 0.06)) if back_y is not None else 1.0  # 0 at the bag's face, 1 6 cm in front
+        mixed = {b: (1 - f) * own.get(b, 0.0) + f * to.get(b, 0.0) / total for b in set(own) | set(to)}
+        for b, wgt in mixed.items():
+            g = groups.get(b) or groups.setdefault(b, obj.vertex_groups.new(name=b))
+            if wgt > 1e-4:
+                g.add([v.index], wgt, "REPLACE")
+            else:
+                g.remove([v.index])
 
 
 def _skin(obj, rig, back_y=None):
