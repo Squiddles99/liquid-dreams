@@ -155,8 +155,11 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
     n = normalize(n.sub(vec3(slope, 0.0, 0.0)));
   }
   const albedo0 = wet.mul(wetness.mul(rest)).add(dry.mul(float(1.0).sub(wetness).mul(rest))).add(rock.mul(rF)).add(heathShown.mul(hF));
-  // The tracks: packed tan-brown soil over whatever the cover is; the beach path's gully shows rock steps (§4.1).
-  const albedo = gd ? mix(mix(albedo0, rock, gd.gully), gd.track, gd.trackW) : albedo0;
+  // The tracks: packed tan-brown soil through the heath; on the dune's and the beach's sand a trodden path is the sand
+  // itself, churned a shade darker (gate 2: the soil colour drew a brown stripe down the beach). The beach path's gully
+  // shows rock steps (§4.1).
+  const sandTrack = wet.mul(wetness).add(dry.mul(float(1.0).sub(wetness))).mul(0.9);
+  const albedo = gd ? mix(mix(albedo0, rock, gd.gully), mix(gd.track, sandTrack, rest), gd.trackW) : albedo0;
 
   const vis = sunVisibility ? sunVisibility(p.xz) : float(1.0);
   const back = saturate(dot(v.negate(), l));
