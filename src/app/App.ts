@@ -87,7 +87,7 @@ import { PlantMeshes } from '../heath/PlantMeshes';
 import { KitMeshes } from '../heath/KitMeshes';
 import { ScatterMeshes } from '../heath/ScatterMeshes';
 import { SCATTER_CELL_M, type ScatterContext, type ScatterItem, TUFT_RANGE_M, cellScatter } from '../heath/nearScatter';
-import { loadKit } from '../heath/kit';
+import { canopySilhouettes, loadKit } from '../heath/kit';
 import { uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
 import { buildGroundShadows } from '../beach/rockShadows';
@@ -238,6 +238,8 @@ export class App {
   tracksMaskMs = 0;
   /** The near scatter (dune-up-close §4.4): tufts and the heath's fallen debris, once the kit has loaded. */
   scatter: ScatterMeshes | null = null;
+  /** Each kit variant's canopy from above (alpha), for the plants' dappled shadows (dune-up-close §4.5). */
+  private canopies: ReadonlyMap<string, Uint8Array> | undefined;
   private readonly scatterCells = new Map<number, ScatterItem[]>();
   private scatterNear: ScatterItem[] = [];
   private scatterAt: [number, number] | null = null;
@@ -385,6 +387,7 @@ export class App {
         this.kitMeshes = new KitMeshes(kit, this.sky, (xz) => this.sunlight.visibilityNode(xz));
         for (const m of this.kitMeshes.meshes) this.scene.add(m);
         this.scatter = new ScatterMeshes(kit, this.sky, (xz) => this.sunlight.visibilityNode(xz));
+        canopySilhouettes(kit).then((s) => { this.canopies = s; this.shadowSun.set(0, -1, 0); }, () => undefined);
         for (const m of this.scatter.meshes) this.scene.add(m);
         this.plants.kitFade.value = 1;
         this.hullInnerM = MID_M - BAND_FADE_M;
@@ -1023,7 +1026,7 @@ export class App {
     }
     if (c && (moved || this.sunDir.angleTo(this.shadowSun) > (0.5 * Math.PI) / 180)) {
       const inSquare = (x: number, z: number): boolean => Math.abs(x - c[0]) < 42 && Math.abs(z - c[1]) < 42;
-      const casters = [...this.rocksNear.filter((r) => inSquare(r.x, r.z)), ...patchCasters(this.plantsNear, c, cam.x, cam.z)];
+      const casters = [...this.rocksNear.filter((r) => inSquare(r.x, r.z)), ...patchCasters(this.plantsNear, c, cam.x, cam.z, this.canopies)];
       this.patch.setShadows(buildGroundShadows(casters, c[0] - 32, c[1] - 32, [this.sunDir.x, this.sunDir.y, this.sunDir.z]));
       this.shadowSun.copy(this.sunDir);
     }
