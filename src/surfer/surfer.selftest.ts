@@ -35,8 +35,10 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       else cam.position.set(0, 1.5, 4);
       cam.lookAt(0, kind === 'bodyboard' ? 0.3 : 1, 0);
       const px = await coverage(renderer, s.group, cam);
+      // "Renders": the smallest rider, Shazza crouched in trim, covers about 200 of the 64² pixels (her body 197, her hair
+      // 3), so the mark is half that; without her body she covers 26. At 200 it failed on 2 px of braid (cards to tubes).
       return {
-        pass: restErr < 0.001 && footErr < 0.01 && px > 200,
+        pass: restErr < 0.001 && footErr < 0.01 && px > 100,
         detail: `${kind}: rest joints vs manifest ${(restErr * 1000).toFixed(2)} mm, posed ankles ${(footErr * 100).toFixed(2)} cm, ${px} px`,
       };
     },
