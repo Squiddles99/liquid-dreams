@@ -7,6 +7,7 @@ import '../ocean/probe.selftest';
 import '../ocean/underwater.selftest';
 import '../seabed/seabed.selftest';
 import '../seabed/seabedShading.selftest';
+import '../seabed/kelp.selftest';
 import '../breaker/breaker.selftest';
 import '../breaker/ribbon.selftest';
 import '../breaker/flow.selftest';
