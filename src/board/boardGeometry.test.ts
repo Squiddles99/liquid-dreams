@@ -72,3 +72,12 @@ describe('stance', () => {
     expect(lay.spots.back[0]).toBeCloseTo(-spec.lengthM / 2 + 0.3, 9);
   });
 });
+
+describe("the bodyboard's leash plug", () => {
+  it("is in the top middle of its nose (Andrew)", () => {
+    const bb = makeBoard('bodyboard', { lengthIn: 39, widthIn: 21, thicknessIn: 2.25 });
+    const [x, , z] = layoutFor(bb, 1.42).leashPlug;
+    expect(z).toBeCloseTo(0, 9);
+    expect(x).toBeGreaterThan(bb.lengthM / 2 - 0.08);
+  });
+});

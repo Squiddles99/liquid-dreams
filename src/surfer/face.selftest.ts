@@ -125,6 +125,10 @@ registerSelfTest({
     eyes.visible = true;
     let solid = 0, n = 0;
     for (let x = 30; x < 66; x++) {
+      // Not the part (the image's middle columns): a centre part shows a line of scalp between the combed-apart halves,
+      // and with the body hidden that line is see-through (dune select spec §13.1). What this measures is the roots'
+      // fade read the right way round, either side of it.
+      if (Math.abs(x - size / 2) < 3) continue;
       let top = -1;
       for (let y = size - 1; y >= 0; y--) if (px[4 * (y * size + x) + 3] > 0.5) { top = y; break; }
       if (top < 8) continue;
@@ -134,5 +138,52 @@ registerSelfTest({
       }
     }
     return { pass: n > 100 && solid / n > 0.97, detail: `${((100 * solid) / Math.max(1, n)).toFixed(1)}% of ${n} px just inside the crown's outline covered by hair` };
+  },
+});
+
+/**
+ * The lashes alone, straight on at the left eye, 128 px across 4.7 cm: in the columns between the lashes' ends, the
+ * share that meet lash at least 60% opaque (a solid line at the lid), and of the lash pixels the share partly covered
+ * (soft edges, not an alpha-tested comb).
+ */
+async function lashRead(renderer: THREE.WebGPURenderer, s: Surfer): Promise<{ line: number; soft: number; px: number }> {
+  const eye = v3(s.landmarks!.eyes[0]);
+  const hidden: THREE.Object3D[] = [];
+  s.group.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (mesh.isMesh && (mesh.material as THREE.Material).name !== 'lashes' && mesh.visible) { mesh.visible = false; hidden.push(mesh); }
+  });
+  const n = 128;
+  const px = await renderCloseUp(renderer, s, eye, eye.clone().add(new THREE.Vector3(0, 0, 0.3)), 9, n);
+  for (const o of hidden) o.visible = true;
+  const colMax = new Array(n).fill(0);
+  let lash = 0, partial = 0;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const a = px[4 * (y * n + x) + 3];
+    if (a <= 0.02) continue;
+    lash++;
+    if (a > 0.1 && a < 0.9) partial++;
+    colMax[x] = Math.max(colMax[x], a);
+  }
+  const cols = colMax.map((a, x) => (a > 0.02 ? x : -1)).filter((x) => x >= 0);
+  const span = cols.length ? colMax.slice(cols[0], cols[cols.length - 1] + 1) : [];
+  return { line: span.length ? span.filter((a) => a >= 0.6).length / span.length : 0, soft: lash ? partial / lash : 0, px: lash };
+}
+
+registerSelfTest({
+  name: 'face: the lashes are a soft dark line at the lid, not a comb, for all three (Andrew)',
+  async run(renderer) {
+    const sky = litSky(renderer);
+    const out: string[] = [];
+    let pass = true;
+    for (const name of ['female', 'male', 'grommet'] as const) {
+      const s = await Surfer.load(PRESETS[name], sky);
+      s.setOnLand(false);
+      s.setFace(restingFace());
+      const r = await lashRead(renderer, s);
+      pass &&= r.line >= 0.9 && r.soft >= 0.15 && r.px > 150;
+      out.push(`${name}: solid line ${Math.round(100 * r.line)}% of the lid's columns, soft ${Math.round(100 * r.soft)}% of ${r.px} lash px`);
+    }
+    return { pass, detail: `${out.join('; ')} (line ≥ 90%, soft ≥ 15%)` };
   },
 });

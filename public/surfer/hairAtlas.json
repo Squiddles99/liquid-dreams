@@ -1,0 +1,104 @@
+{
+  "size": 2048,
+  "cols": 8,
+  "rows": 2,
+  "padPx": 8,
+  "tiles": [
+    {
+      "name": "core-a",
+      "role": "core",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "name": "core-b",
+      "role": "core",
+      "col": 1,
+      "row": 0
+    },
+    {
+      "name": "core-c",
+      "role": "core",
+      "col": 2,
+      "row": 0
+    },
+    {
+      "name": "outer-straight",
+      "role": "outer",
+      "col": 3,
+      "row": 0
+    },
+    {
+      "name": "outer-wave",
+      "role": "outer",
+      "col": 4,
+      "row": 0
+    },
+    {
+      "name": "outer-frayed",
+      "role": "outer",
+      "col": 5,
+      "row": 0
+    },
+    {
+      "name": "flyaway-a",
+      "role": "flyaway",
+      "col": 6,
+      "row": 0
+    },
+    {
+      "name": "flyaway-b",
+      "role": "flyaway",
+      "col": 7,
+      "row": 0
+    },
+    {
+      "name": "fringe-a",
+      "role": "fringe",
+      "col": 0,
+      "row": 1
+    },
+    {
+      "name": "fringe-b",
+      "role": "fringe",
+      "col": 1,
+      "row": 1
+    },
+    {
+      "name": "braid-a",
+      "role": "braid",
+      "col": 2,
+      "row": 1
+    },
+    {
+      "name": "braid-b",
+      "role": "braid",
+      "col": 3,
+      "row": 1
+    },
+    {
+      "name": "braid-c",
+      "role": "braid",
+      "col": 4,
+      "row": 1
+    },
+    {
+      "name": "tail-a",
+      "role": "tail",
+      "col": 5,
+      "row": 1
+    },
+    {
+      "name": "tail-b",
+      "role": "tail",
+      "col": 6,
+      "row": 1
+    },
+    {
+      "name": "tail-c",
+      "role": "tail",
+      "col": 7,
+      "row": 1
+    }
+  ]
+}

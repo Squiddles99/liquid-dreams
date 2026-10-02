@@ -111,7 +111,45 @@ export interface SurferManifest {
   /** Body triangles weighted to the head (kept whole through decimation; closeup spec §4.1). */
   headTriangles?: number;
   /** Build-time checks (closeup spec §4.1): the closed lids cover the eyes, and the open lids don't. */
-  checks?: { blinkCovers: boolean; eyesOpen: boolean };
+  checks?: {
+    blinkCovers: boolean;
+    eyesOpen: boolean;
+    garmentsOutside?: boolean;
+    hatHairUnder?: boolean;
+    /** Long dry hair (dune select spec §13.1): the spread of the locks' turn heights, the turn's blend, and how far the
+     * fall's cards beside the face face forward (mean |forward · normal|). */
+    hairTurnSpreadCm?: number;
+    hairTurnBlendCm?: number;
+    hairFaceFrontness?: number;
+    /** The hairline (§13.1): the sideburn's lowest root above the eyes, less the roots' inset (cm). */
+    sideburnAboveEyeCm?: number;
+    /** The upper lip's height above the mouth line before and after the build thins it (mm; §13.1). */
+    upperLipMm?: number;
+    upperLipSculptedMm?: number;
+    /** Shazza's braids (§13.2): how many, dry and wet; each end's drop below its clavicle (cm; dry l, dry r, wet l, wet
+     * r); the ends in front of the shoulders; and no braid vertex inside the body. */
+    braidsDry?: number;
+    braidsWet?: number;
+    braidEndDropCm?: number[];
+    braidEndsInFront?: boolean;
+    braidsOutside?: boolean;
+    /** The braids' smoothness (§13.2): the worst turn between neighbouring points (degrees, 1.5 mm apart) of the
+     * centreline, of the weave's sideways axis, and of a plait strand, over both braids dry and wet; and the tightest a
+     * strand bends, over its tube's radius (under 1 it folds). */
+    braidPathTurnDeg?: number;
+    braidTwistDeg?: number;
+    braidStrandTurnDeg?: number;
+    braidBendRatio?: number;
+    /** Grommet's mop (grommet spec §3): the ringlets' tightest bend over their own radius (under 1 a tube folds), and
+     * the frizz: its longest wisp (cm) and the most its ends span of its length (1 straight). */
+    /** How much of the scalp just inside the hairline (5 mm to 2.5 cm) the hair covers, worst over 10° sectors round
+     * the head (0 … 1), wet and dry. */
+    hairCoverWet?: number;
+    hairCoverDry?: number;
+    curlBendRatio?: number;
+    frizzMaxCm?: number;
+    frizzChordRatio?: number;
+  };
   blender: string;
   mpfb: string;
   /** Face landmarks in the rest pose (glTF axes, metres), for the glasses fit and the skin detail (grommet spec §4, §5). */
@@ -131,6 +169,8 @@ export interface SurferLandmarks {
   teethFront: Vec3;
   /** The eyeballs' radius (fitted to MPFB's eye helper; closeup spec §4.1). */
   eyeRadius?: number;
+  /** The chest's apex each side, where the nipples are painted (left, right). */
+  nipples?: [Vec3, Vec3];
 }
 
 /** Everything wrong with a manifest's skeleton against the contract (empty = fine). */

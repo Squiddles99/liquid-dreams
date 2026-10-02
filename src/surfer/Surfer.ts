@@ -17,6 +17,32 @@ type N = any;
 const DEG = Math.PI / 180;
 
 /** One loaded surfer (spec §3.2): the skinned body, its materials, and the pose applied to its bones. */
+/**
+ * The hair strand atlas (dune select spec §13.2), loaded once and shared by every rider. Data, not colour: no colour
+ * space, rows top-down (the tiles' roots at the top). A failed load leaves the hair on its procedural strands (a warning,
+ * never missing hair).
+ */
+let hairAtlas: Promise<THREE.Texture | null> | null = null;
+export function loadHairAtlas(): Promise<THREE.Texture | null> {
+  hairAtlas ??= new THREE.TextureLoader()
+    .loadAsync(import.meta.env.BASE_URL + 'surfer/hairAtlas.png')
+    .then((t) => {
+      t.flipY = false;
+      t.colorSpace = THREE.NoColorSpace;
+      t.generateMipmaps = true;
+      t.minFilter = THREE.LinearMipmapLinearFilter;
+      t.magFilter = THREE.LinearFilter;
+      t.anisotropy = 8;
+      t.needsUpdate = true;
+      return t;
+    })
+    .catch((e: unknown) => {
+      console.warn('The hair atlas did not load; the hair draws without it.', e);
+      return null;
+    });
+  return hairAtlas;
+}
+
 export class Surfer {
   readonly group = new THREE.Group();
   readonly rest: SkeletonRest;
@@ -54,20 +80,22 @@ export class Surfer {
   /** The face's landmarks from the build (glTF axes, metres, rest pose; all three riders since step 2). */
   readonly landmarks: SurferManifest['landmarks'];
 
-  static async load(preset: SurferPreset, sky: Sky, sunVisibility?: (xz: N) => N): Promise<Surfer> {
+  /** `hairAtlas: false` draws the hair without the strand atlas (the self-tests compare the two). */
+  static async load(preset: SurferPreset, sky: Sky, sunVisibility?: (xz: N) => N, opts: { hairAtlas?: boolean } = {}): Promise<Surfer> {
     const base = import.meta.env.BASE_URL;
-    const [gltf, manifest] = await Promise.all([
+    const [gltf, manifest, atlas] = await Promise.all([
       new GLTFLoader().loadAsync(base + preset.glbUrl),
       fetch(base + preset.manifestUrl).then((r) => {
         if (!r.ok) throw new Error(`${preset.manifestUrl}: HTTP ${r.status}`);
         return r.json() as Promise<SurferManifest>;
       }),
+      opts.hairAtlas === false ? Promise.resolve(null) : loadHairAtlas(),
     ]);
     assertManifest(manifest, preset.manifestUrl);
-    return new Surfer(gltf.scene, manifest, preset, sky, sunVisibility);
+    return new Surfer(gltf.scene, manifest, preset, sky, sunVisibility, atlas);
   }
 
-  private constructor(scene: THREE.Object3D, manifest: SurferManifest, readonly preset: SurferPreset, sky: Sky, sv?: (xz: N) => N) {
+  private constructor(scene: THREE.Object3D, manifest: SurferManifest, readonly preset: SurferPreset, sky: Sky, sv?: (xz: N) => N, atlas: THREE.Texture | null = null) {
     this.landmarks = manifest.landmarks;
     this.idle = new IdleLife({ female: 101, male: 202, grommet: 303 }[preset.name], MOODS[preset.name]);
     this.group.add(scene);
@@ -92,14 +120,22 @@ export class Surfer {
     });
     const materials: Record<string, (mesh: THREE.Mesh) => THREE.Material> = {
       body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones, wet: this.wet, pores: this.pores, lens, ao: hasAo }),
-      hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
-      hairDry: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
+      hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas),
+      hairDry: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas),
       eyes: () => eyesMaterial(sky, preset, sv, { zones, gaze: this.gaze, lens }),
       boardies: () => fabricMaterial(sky, preset.boardies, sv),
       glasses: () => plasticMaterial(sky, [0.012, 0.012, 0.014], sv), // black plastic
       lens: () => lensMaterial(sky, sv),
       teeth: () => teethMaterial(sky, sv),
       lashes: () => lashesMaterial(sky, sv, lens),
+      // Shazza's hair elastics (dune select spec §13.2): dark navy plastic.
+      hairTie: () => plasticMaterial(sky, [0.02, 0.03, 0.09], sv),
+      // The braids' solid plait strands (§13.2), wet and dry.
+      hairBraid: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas, true),
+      hairDryBraid: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas, true),
+      // Grommet's ringlets (grommet spec §3): solid coiled tubes, in the water and under his hat.
+      hairCurl: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas, true),
+      hairHatCurl: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas, true),
     };
     // The walking parts (walking spec §3): each material's colour and cloth; a missing colour is grey, never a throw.
     const walk = preset.walking.colors, grey: [number, number, number] = [0.3, 0.3, 0.3];
@@ -119,7 +155,7 @@ export class Surfer {
       neoprene: cloth(walk.neoprene, 'neoprene'),
       fins: cloth(walk.fins, 'rubber'),
     };
-    materials.hairHat = () => hairMaterial(sky, preset, this.headCentre, sv, this.wet);
+    materials.hairHat = () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas);
     Object.assign(materials, WALKING);
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -148,7 +184,12 @@ export class Surfer {
       if (mats.some((mt) => mt.name === 'glasses' || mt.name === 'lens')) this.glasses.push(mesh);
       if (mats.some((mt) => mt.name === 'hair')) this.hairWet.push(mesh);
       if (mats.some((mt) => mt.name === 'hairDry')) this.hairDry.push(mesh);
-      if (mats.some((mt) => mt.name === 'hairHat')) this.hairHat.push(mesh);
+      // The braids' elastics show and hide with their hair: the dry hair's (…_hairDryTies) or the wet's (…_hairTies).
+      if (mats.some((mt) => mt.name === 'hairTie')) (mesh.name.includes('hairDry') ? this.hairDry : this.hairWet).push(mesh);
+      if (mats.some((mt) => mt.name === 'hairBraid')) this.hairWet.push(mesh);
+      if (mats.some((mt) => mt.name === 'hairDryBraid')) this.hairDry.push(mesh);
+      if (mats.some((mt) => mt.name === 'hairHat' || mt.name === 'hairHatCurl')) this.hairHat.push(mesh);
+      if (mats.some((mt) => mt.name === 'hairCurl')) this.hairWet.push(mesh);
       const dict = mesh.morphTargetDictionary;
       if (dict) {
         const slots: [number, number][] = [];
@@ -158,6 +199,20 @@ export class Surfer {
         if (slots.length) this.morphs.push({ mesh, slots });
       }
     });
+    // The hair's soft edges (dune select spec §13.1): each hair mesh drawn a second time, blended over its opaque core.
+    // Same geometry, skeleton and name, so it shows, hides and skins with the core.
+    for (const [list, name] of [[this.hairWet, 'hair'], [this.hairDry, 'hairDry'], [this.hairHat, 'hairHat']] as const) {
+      for (const mesh of [...list]) {
+        if (((mesh as THREE.Mesh).material as THREE.Material).name !== name) continue; // not the elastics
+        const edges = mesh.clone() as THREE.Mesh;
+        edges.material = hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'edges', atlas);
+        edges.material.name = name;
+        edges.renderOrder = 1;
+        edges.frustumCulled = false;
+        mesh.parent!.add(edges);
+        list.push(edges);
+      }
+    }
     // Swim fins ride the feet: placed in the rest pose at the sole, then held in each foot bone's frame. The pocket fits
     // this body's foot: the toes reach ~1.58× the ankle-to-toe-joint distance ahead of the ankle (both built bodies).
     const toeJoint = this.rest.joint.toe_l.clone().sub(this.rest.joint.foot_l);
