@@ -4,6 +4,7 @@ import { BOMBIE_X, BOMBIE_Z, MOUND_BASE_Y, MOUND_CREST_Y, MOUND_HALF_X_M, MOUND_
 import { DEFAULT_BEACH } from '../land/landHeight';
 import type { Bathymetry } from './bathymetry';
 import { FAR_DEPTH_M, REEF_SURROUND_DEPTH_M, SHORE_FLAT_DEPTH_M, SHORE_X } from './coastProfile';
+import { KelpMap } from './KelpMap';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_AT_MAP_M, SHORE_REEF_EDGE_M, SHORE_REEF_MAP_EASE_M, SHORE_REEF_MAP_Z, SHORE_REEF_MATERIAL, SHORE_REEF_MEAN_M } from './shoreReef';
 
 type N = any;
@@ -68,6 +69,8 @@ function packTexture(b: Bathymetry, target?: THREE.DataTexture): THREE.DataTextu
 
 /** The Womb's seabed on the GPU and CPU, with the tide. One source of truth for water depth. */
 export class Seabed {
+  /** The kelp's lean grid (reef build B): the bed's shading reads it, KelpField writes it. */
+  readonly kelp = new KelpMap();
   readonly tide = uniform(0);
   bathymetry: Bathymetry;
   private readonly tex: THREE.DataTexture;
