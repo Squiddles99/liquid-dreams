@@ -86,7 +86,7 @@ import { BAND_FADE_M, type CellChange, CellQueue, MID_M, PlantRing, cellKey, lay
 import { PlantMeshes } from '../heath/PlantMeshes';
 import { KitMeshes, hullColours } from '../heath/KitMeshes';
 import { ScatterMeshes } from '../heath/ScatterMeshes';
-import { SCATTER_CELL_M, type ScatterContext, type ScatterItem, TUFT_RANGE_M, cellScatter } from '../heath/nearScatter';
+import { ScatterField, type ScatterContext } from '../heath/nearScatter';
 import { canopySilhouettes, loadKit } from '../heath/kit';
 import { uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
@@ -240,9 +240,10 @@ export class App {
   scatter: ScatterMeshes | null = null;
   /** Each kit variant's canopy from above (alpha), for the plants' dappled shadows (dune-up-close §4.5). */
   private canopies: ReadonlyMap<string, Uint8Array> | undefined;
-  private readonly scatterCells = new Map<number, ScatterItem[]>();
-  private scatterNear: ScatterItem[] = [];
+  /** The near scatter's cells, laid nearest first a millisecond a frame (spec §5). */
+  private readonly scatterField = new ScatterField(1);
   private scatterAt: [number, number] | null = null;
+  private scatterPending = 0;
   /** The near plants in 2 m cells (the scatter asks which crown is over a point). */
   private plantGrid = new Map<number, Plant[]>();
   /** The kit's real plants near the camera (dune-up-close §3.1): once the kit has loaded, the near and mid bands. */
@@ -945,7 +946,7 @@ export class App {
     this.patchTracker.centre = null;
     this.patchGrids = undefined;
     this.tracksMaskAt = null; // the tracks may have changed with the land: build the mask afresh
-    this.scatterCells.clear();
+    this.scatterField.clear();
     this.scatterAt = null;
     this.rocksAt = null;
     this.plantsAt = null;
@@ -1114,7 +1115,7 @@ export class App {
       return;
     }
     s.setVisible(true); // with bush density 0 the tufts go (cellScatter) but the debris stays
-    if (!this.scatterAt || Math.hypot(x - this.scatterAt[0], z - this.scatterAt[1]) > 1) {
+    if (!this.scatterAt || this.scatterPending > 0 || Math.hypot(x - this.scatterAt[0], z - this.scatterAt[1]) > 1) {
       this.scatterAt = [x, z];
       const tracks = lh.trackNetwork, field = this.rockField;
       const ctx: ScatterContext = {
@@ -1133,25 +1134,9 @@ export class App {
         density: this.landParams.bushDensity,
         rockNear: (px, pz) => field?.covers(px, pz, 2) ?? false,
       };
-      const n = Math.ceil(TUFT_RANGE_M / SCATTER_CELL_M), ci0 = Math.floor(x / SCATTER_CELL_M), cj0 = Math.floor(z / SCATTER_CELL_M);
-      const near: ScatterItem[] = [];
-      for (let dj = -n; dj <= n; dj++) {
-        for (let di = -n; di <= n; di++) {
-          const ci = ci0 + di, cj = cj0 + dj;
-          if (Math.hypot((ci + 0.5) * SCATTER_CELL_M - x, (cj + 0.5) * SCATTER_CELL_M - z) > TUFT_RANGE_M + 2) continue;
-          const key = (ci + 0x8000) * 0x10000 + (cj + 0x8000);
-          let items = this.scatterCells.get(key);
-          if (!items) {
-            items = cellScatter(ci, cj, ctx);
-            this.scatterCells.set(key, items);
-          }
-          for (const it of items) near.push(it);
-        }
-      }
-      if (this.scatterCells.size > 4000) this.scatterCells.clear();
-      this.scatterNear = near;
+      this.scatterPending = this.scatterField.gather(x, z, ctx);
     }
-    s.update(this.scatterNear, this.camera);
+    s.update(this.scatterField.near, this.camera);
     s.tick(this.clock.simTime, this.conditions.wind.speedMs);
   }
 
