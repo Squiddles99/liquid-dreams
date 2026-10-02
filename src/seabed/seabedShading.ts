@@ -61,7 +61,7 @@ export function seabedRadianceNode(hitPos: N, seabed: Seabed, sky: Sky, u: Water
   const mat = seabed.materialNode(hitPos.xz);
   const detail = mx_noise_float(vec3(hitPos.x.mul(1.7), hitPos.z.mul(1.7), 0.0)).mul(0.5).add(0.5);
   // The weedy part is the kelp canopy (reef build B §4.2), along the ray that met the bed (straight down without one).
-  const weedy = kelpWeedAlbedoNode(hitPos, rayDir ?? vec3(0.0, -1.0, 0.0), seabed.kelp);
+  const weedy = kelpWeedAlbedoNode(hitPos, rayDir ?? vec3(0.0, -1.0, 0.0), seabed.kelp, mat.y);
   const albedo = mix(mix(REEF_ALBEDO, weedy, mat.y), SAND_ALBEDO, mat.x).mul(detail.mul(0.4).add(0.8));
 
   const l = sky.sunDirection;
