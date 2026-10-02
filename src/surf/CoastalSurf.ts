@@ -7,7 +7,7 @@ import { SHORE_X } from '../seabed/coastProfile';
 import { type Seabed, shoreReefWidthNode } from '../seabed/Seabed';
 import type { WaveEvent } from '../swell/sets';
 import {
-  BORE_DECAY, BORE_SPEED_MS, MAX_BORES, BURST_S, DUTY, FRONT_GAIN, FRONT_M, GRAZING_K, GRAZING_MAX, GRAZING_MIN_Y, H_REF_M, LACE_WEIGHT, LIFT_REACH_M, RUNUP_BASE_M, RUNUP_PER_H, SURF_AHEAD_M, SURF_BEHIND_M,
+  BORE_DECAY, BORE_RAMP_S, TRAIL_FADE_M, BORE_SPEED_MS, MAX_BORES, BURST_S, DUTY, FRONT_GAIN, FRONT_M, GRAZING_K, GRAZING_MAX, GRAZING_MIN_Y, H_REF_M, LACE_WEIGHT, LIFT_REACH_M, RUNUP_BASE_M, RUNUP_PER_H, SURF_AHEAD_M, SURF_BEHIND_M,
   SURF_DZ, SURF_NZ, SURF_TABLE, SURF_Z0, SWASH_FRACTION, SWASH_RISE, type SurfParams, type SurfState, TRAIL_M, TRAIL_WEIGHT, WET_ARRIVALS, WET_DRY_S,
   buildHeights, buildTauTable, heightRange, waterEdgeOffset,
 } from './surfModel';
@@ -118,10 +118,11 @@ export class CoastalSurf {
     for (let k = 0; k < MAX_BORES; k++) {
       const n = nL.sub(k), H = this.heightNode(n), age = t.sub(n.mul(T).add(tau)), df = W.sub(age.mul(BORE_SPEED_MS));
       if (k < 2) recent = recent.add(H.mul(0.5 / H_REF_M));
-      const str = H.div(H_REF_M).mul(float(1.0).sub(float(1.0).sub(df.sub(e).div(W.sub(e))).mul(BORE_DECAY)));
+      const str = H.div(H_REF_M).mul(float(1.0).sub(float(1.0).sub(df.sub(e).div(W.sub(e))).mul(BORE_DECAY))).mul(smoothstep(0.0, BORE_RAMP_S, age));
       const u = d.sub(df).div(FRONT_M);
       const front = exp(u.mul(u).negate());
-      const trail = select(d.greaterThan(df), exp(d.sub(df).div(TRAIL_M).negate()).mul(TRAIL_WEIGHT), float(0.0));
+      const fade = float(1.0).sub(smoothstep(W, W.add(TRAIL_FADE_M), d));
+      const trail = select(d.greaterThan(df), exp(d.sub(df).div(TRAIL_M).negate()).mul(TRAIL_WEIGHT).mul(fade), float(0.0));
       const b = d.sub(W).div(6.0);
       const burst = select(age.lessThan(BURST_S), float(1.0).sub(age.div(BURST_S)).mul(exp(b.mul(b).negate())), float(0.0));
       foam = max(foam, select(df.greaterThanEqual(e), str.mul(front.mul(FRONT_GAIN).add(trail).add(burst)), float(0.0)));
