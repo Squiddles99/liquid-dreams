@@ -632,21 +632,63 @@ Andrew: "Shazza's face looks messed up" (the mockup's beat-3 frame). Diagnosed a
   distance.
 - **The skin:** flat in full daylight; it reads plastic at 2 m. The lips are over-full and over-glossy at this light.
 
+**Andrew's second look** (a front close-up, 2026-10-02): "Her top lip is a bit too big and her hair isn't rendering
+correctly." Root causes, found by reading the build and the shader, not guessed:
+
+1. **The hair has no antialiasing to resolve its dithered alpha.**
+   - The renderer runs with `antialias: false` and no TAA.
+   - `hairMaterial` alpha-tests the cards (0.5) and fades their roots, tips and the dry strand lanes with a screen-space
+     hash (interleaved gradient noise).
+   - That technique relies on TAA or MSAA to average the dots. Without it the dots show raw, and the gaps let the bright
+     sky through. Against a sea background (the step-2 gate) it passed; against the sky it reads as streaky stipple.
+   - The cards on the head's shaded side are lit only by the blue sky ambient (`lit` ≈ 0). Seen through the gaps, they
+     make dark blue-grey sheets around the head.
+2. **A straight cut across the side hair at brow height.** In `hair.py`'s `_wave`, every lock switches from hugging the
+   scalp to falling straight down at one height (`eye_z − 0.02`). All the locks crease on the same horizontal line.
+   Below it, the falling cards beside the cheeks hang nearly edge-on to a front camera and thin to slivers. The Blender
+   sheet `female-walking-face.png` shows the same edge, so it's in the geometry, not the shader.
+3. **The top lip:** the face targets add `mouth-cupidsbow-incr 0.5` with nothing reducing the upper lip, and the gloss
+   (0.45) catches the sun on its full curve.
+
 **The fix (this step):**
+- **Hair rendering: two passes** (the standard forward-renderer hair technique without TAA):
+  - **Pass 1:** the opaque core. Alpha ≥ 0.9, alpha-tested, depth-writing, no dither.
+  - **Pass 2:** the soft edges. Alpha below 0.9 (the root fades, tips, strand-lane gaps and card edges) alpha-blended
+    over pass 1, depth-tested, not depth-writing, the cards drawn back to front by their distance from the camera
+    (sorted per frame by card centre; at most a few hundred cards per rider).
+  - The screen-space dither goes.
+  - **The alternative, measured before choosing:** MSAA with alpha-to-coverage on the surfer pass. It's weighed on cost,
+    since the scene pass renders to targets.
+  - **The shaded side gets the hair's own bounce:** an ambient tinted by the hair albedo and the baked AO, not only the
+    sky's blue, so the shade side reads as dark blond, never grey-blue.
+- **Hair geometry:**
+  - Each lock gets its own transition height (seeded, ±3 cm around the ears), so no line is shared.
+  - The turn from scalp to fall blends over about 5 cm instead of switching in one step.
+  - The cards in the fall beside the face are twisted to face forward and out (their normal blended toward the face's
+    forward direction by up to 60°), so they read as hair from the front instead of thinning to slivers.
+  - **The hairline:** short fine fringe and baby-hair cards along it, fading into the painted scalp, so the shell's edge
+    is never seen.
+- **Hair shading:** per-card root-to-tip colour and the two strand highlights are kept. The painted streaks are softened
+  so the strands read through the lighting, not a texture.
+- **The top lip (starting values, tuned at the gate):**
+  - `mouth-upperlip-volume-decr` 0.35;
+  - `mouth-upperlip-height-decr` 0.15;
+  - `mouth-cupidsbow-incr` 0.5 → 0.35;
+  - Shazza's `lipGloss` 0.45 → 0.25 in direct sun.
+  - She is then rebuilt (`npm run build:surfers -- --only female`), and checked beside her gate-2 face so she stays as
+    pretty.
 - **Authored select expressions** per rider, replacing raw dial mixes:
   - `grin` (a natural, symmetric open smile, eyes engaged: a slight squint and cheek raise);
   - `stoked` (the pick);
   - `easy` (the idle's resting look).
-  Each is a tuned blend of MPFB expression units with left/right symmetry enforced (one weight per side, equal), checked
-  front and 3/4 at 0.6 m and 2 m.
-- **A soft dry hairline:** short fine fringe and baby-hair cards along the hairline, alpha-feathered into the scalp, with
-  the shell's edge hidden under them. The strands get per-card root-to-tip colour and an anisotropic highlight (the wet
-  hair's lighting model) instead of painted streaks.
+  Each is a tuned blend of MPFB expression units with left/right symmetry enforced, checked front and 3/4 at 0.6 m and
+  2 m.
 - **Skin in daylight:**
   - a soft wrap (subsurface-like) term;
-  - cavity and AO darkening at the nostrils, lip line, eyelids and hairline;
-  - lip gloss scaled down in direct sun;
-  - Shazza's lip fullness checked against her gate-2 look.
+  - cavity and AO darkening at the nostrils, lip line, eyelids and hairline.
+- **These apply to all three riders** wherever they show dry hair (T-Bone's and Grommet's under their hats too).
+- **A self-test:** at 0.6 m against the sky, the hair's silhouette band has no pixel brighter than the hair's lit
+  albedo by more than the highlight allows (catches sky showing through as stipple).
 - **The gate:** Gate A adds a face sheet per rider (front and 3/4 at 0.6 m and at the beat-3 distance, the three select
   expressions, in morning and midday light), beside the step-2 approved close-ups. Andrew's step-2 brief still holds:
   "Make sure you make the female pretty".
