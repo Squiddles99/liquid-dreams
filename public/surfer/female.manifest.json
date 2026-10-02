@@ -414,7 +414,7 @@
   },
   {
    "name": "female_hairDry",
-   "triangles": 132662,
+   "triangles": 132686,
    "materials": [
     "hairDry"
    ]
@@ -475,10 +475,10 @@
   "eyesOpen": true,
   "upperLipMm": 8.07,
   "upperLipSculptedMm": 5.65,
-  "hairTurnSpreadCm": 1.61,
+  "hairTurnSpreadCm": 1.62,
   "hairTurnBlendCm": 5.0,
   "sideburnAboveEyeCm": 0.71,
-  "hairFaceFrontness": 0.705,
+  "hairFaceFrontness": 0.707,
   "garmentsOutside": true
  }
 }
