@@ -16,4 +16,10 @@ describe('the heath kit (dune-up-close §4.2, §7.1)', () => {
       }
     }
   });
+  it('grows branches that obey the pipe model and stay inside their hull (§7.1)', () => {
+    for (const e of m.variants) {
+      expect(e.checks.pipeModel, `${e.kind} ${e.variant}`).toBe(true);
+      expect(e.checks.branchesInsideHull, `${e.kind} ${e.variant}`).toBeGreaterThanOrEqual(0.95);
+    }
+  });
 });
