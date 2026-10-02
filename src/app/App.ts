@@ -328,7 +328,7 @@ export class App {
       plantFloor: this.plantFloor,
     });
     this.land.setHole(this.patch.hole);
-    this.rocks = new Rocks(this.sky, (xz) => this.sunlight.visibilityNode(xz));
+    this.rocks = new Rocks(this.sky, (xz) => this.sunlight.visibilityNode(xz), { seabed: this.seabed, optics: this.waterOptics });
     this.plants = new PlantMeshes(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     for (const m of this.plants.meshes) this.scene.add(m);
     this.land.setPlantFloor(this.plantFloor);
@@ -605,8 +605,8 @@ export class App {
    */
   /**
    * Switches the view when the eye crosses the water surface (the probe under the camera, one frame behind): the sheet
-   * seen from below, the water volume in place of the sky dome, the ribbon hidden. A crossing redraws the ribbon's
-   * stations so its visibility comes back on surfacing.
+   * seen from below, the water volume in place of the sky dome, the rocks seen through the water, the ribbon hidden. A
+   * crossing redraws the ribbon's stations so its visibility comes back on surfacing.
    */
   private updateUnderwater(): void {
     this.waterVolume.followCamera(this.camera.position);
@@ -622,6 +622,7 @@ export class App {
     this.oceanSurface.setUnderwater(under);
     this.sky.dome.visible = !under;
     this.waterVolume.mesh.visible = under;
+    this.rocks.setUnderwater(under);
     this.picture.setUnderwater(under);
     this.ribbonKey = null;
   }

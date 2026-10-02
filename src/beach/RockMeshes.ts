@@ -1,5 +1,8 @@
 import * as THREE from 'three/webgpu';
-import { PI, attribute, cameraPosition, dot, float, length, max, mix, mx_noise_float, normalWorld, normalize, positionWorld, smoothstep, step } from 'three/tsl';
+import { PI, attribute, cameraPosition, dot, float, length, max, mix, mx_noise_float, normalWorld, normalize, positionWorld, select, smoothstep, step, uniform } from 'three/tsl';
+import { belowBedNode, seenThroughWaterNode } from '../ocean/WaterVolume';
+import type { WaterOpticsUniforms } from '../ocean/waterShading';
+import type { Seabed } from '../seabed/Seabed';
 import type { Sky } from '../sky/Sky';
 import { ROCK_SHAPES, type Rock, rockScale, rockShapeGeometry } from './rocks';
 
@@ -12,13 +15,21 @@ const UNIT_HEIGHT = 1.7;
 /** The sand's albedo seen by a rock's lower hemisphere (dry sand 0.62, less the wet and the shade around it). */
 const GROUND_BOUNCE = 0.45;
 
+/** The water an underwater eye sees the rocks through, and the bed that buries their bases. */
+export interface RockWater {
+  seabed: Seabed;
+  optics: WaterOpticsUniforms;
+}
+
 /**
  * The limestone boulders (Phase 4c-1 §3.3): one InstancedMesh per shape, coloured per instance (body and top: the shore
  * rocks' weed), pitted and grained in world space, lit by the sun (× the land's sunlight map) and the sky (less under the
- * base), with aerial perspective.
+ * base), with aerial perspective; from an underwater eye, through the water, their buried parts hidden.
  */
 export class Rocks {
   readonly meshes: THREE.InstancedMesh[] = [];
+  /** 1 while the eye is underwater (setUnderwater): one material either side, so crossing the surface builds nothing. */
+  readonly underwater = uniform(0);
   private readonly tints: THREE.InstancedBufferAttribute[] = [];
   private readonly topTints: THREE.InstancedBufferAttribute[] = [];
   private readonly m4 = new THREE.Matrix4();
@@ -27,8 +38,8 @@ export class Rocks {
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3();
 
-  constructor(sky: Sky, sunVisibility?: (xz: N) => N) {
-    const material = rockMaterial(sky, sunVisibility);
+  constructor(sky: Sky, sunVisibility?: (xz: N) => N, water?: RockWater) {
+    const material = rockMaterial(sky, sunVisibility, water ? { ...water, on: this.underwater } : undefined);
     for (let i = 0; i < ROCK_SHAPES; i++) {
       const d = rockShapeGeometry(i);
       const g = new THREE.BufferGeometry();
@@ -80,9 +91,13 @@ export class Rocks {
   setVisible(on: boolean): void {
     for (const m of this.meshes) m.visible = on;
   }
+
+  setUnderwater(on: boolean): void {
+    this.underwater.value = on ? 1 : 0;
+  }
 }
 
-function rockMaterial(sky: Sky, sunVisibility?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
+function rockMaterial(sky: Sky, sunVisibility?: (xz: N) => N, water?: RockWater & { on: N }): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();
   // The unit rock's own coordinates (the instancing moves positionLocal into the world).
   const local: N = attribute('position', 'vec3');
@@ -102,6 +117,16 @@ function rockMaterial(sky: Sky, sunVisibility?: (xz: N) => N): THREE.MeshBasicNo
   const bounce = sky.sunIlluminance.mul(max(l.y, 0.0)).add(sky.skyIrradiance).mul(GROUND_BOUNCE).mul(float(0.5).sub(n.y.mul(0.5)));
   const toCam = cameraPosition.sub(positionWorld);
   const dist = length(toCam);
-  m.colorNode = sky.applyAerialPerspective(albedo.mul(sunE.add(skyE).add(bounce)).div(PI), dist, toCam.div(max(dist, 1e-3)).negate());
+  const lit = albedo.mul(sunE.add(skyE).add(bounce)).div(PI);
+  const inAir = sky.applyAerialPerspective(lit, dist, toCam.div(max(dist, 1e-3)).negate());
+  if (!water) {
+    m.colorNode = inAir;
+    return m;
+  }
+  // From underwater the land is hidden and the bed is the water volume's march, which writes no depth: the rocks show
+  // through the water (fading where the reef does, not as bright dots on the far shore) and hide their own buried bases.
+  const under = water.on.greaterThan(0.5);
+  m.colorNode = select(under, seenThroughWaterNode(cameraPosition, positionWorld, lit, water.seabed, sky, water.optics), inAir);
+  m.maskNode = under.not().or(belowBedNode(positionWorld, water.seabed).not());
   return m;
 }

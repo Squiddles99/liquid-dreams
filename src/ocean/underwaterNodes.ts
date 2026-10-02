@@ -1,5 +1,5 @@
 import { PI, acos, cameraPosition, clamp, dot, exp, float, max, min, select, sqrt, smoothstep, vec3 } from 'three/tsl';
-import { WATER_IOR } from '../seabed/waterColumn';
+import { MAX_MARCH_DIST_M, REACH_FADE_DIST_M, WATER_IOR } from '../seabed/waterColumn';
 import { SUN_ANGULAR_RADIUS_RAD, type Sky } from '../sky/Sky';
 
 type N = any;
@@ -25,6 +25,12 @@ export function waterColourAtDepthNode(upwelling: N, ext: N, depth: N): N {
 export function alongPathNode(end: N, inf: N, ext: N, s: N): N {
   const T = exp(ext.mul(s).negate());
   return end.mul(T).add(inf.mul(vec3(1.0).sub(T)));
+}
+
+/** underwaterOptics.throughWater: alongPath, faded into the water's colour over the reef's reach (reachFade). */
+export function throughWaterNode(end: N, inf: N, ext: N, s: N): N {
+  const fade = float(1.0).sub(smoothstep(REACH_FADE_DIST_M, MAX_MARCH_DIST_M, s));
+  return inf.add(alongPathNode(end, inf, ext, s).sub(inf).mul(fade));
 }
 
 /** The eye's depth below the still-water level (m, 0 above it). */

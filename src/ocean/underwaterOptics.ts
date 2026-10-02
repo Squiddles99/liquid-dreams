@@ -1,5 +1,6 @@
 import type { Rgb } from '../sky/atmosphereParams';
-import { WATER_IOR } from '../seabed/waterColumn';
+import { smoothstep } from '../math/smoothstep';
+import { MAX_MARCH_DIST_M, REACH_FADE_DIST_M, WATER_IOR } from '../seabed/waterColumn';
 
 export type Vec3 = [number, number, number];
 
@@ -45,6 +46,16 @@ export function waterColourAtDepth(upwelling: Rgb, ext: Rgb, depthM: number): Rg
 /** Along a path of length s through the water: what is at its end, fading into the water's colour. */
 export function alongPath(end: Rgb, inf: Rgb, ext: Rgb, s: number): Rgb {
   return [0, 1, 2].map((i) => { const T = Math.exp(-ext[i] * s); return end[i] * T + inf[i] * (1 - T); }) as Rgb;
+}
+
+/**
+ * Something s away seen through the water from an underwater eye, as the water volume shows the reef: alongPath, faded
+ * into the water's colour from REACH_FADE_DIST_M to MAX_MARCH_DIST_M (reachFade), so a mesh fades where the reef does.
+ */
+export function throughWater(end: Rgb, inf: Rgb, ext: Rgb, s: number): Rgb {
+  const fade = 1 - smoothstep(REACH_FADE_DIST_M, MAX_MARCH_DIST_M, s);
+  const a = alongPath(end, inf, ext, s);
+  return [0, 1, 2].map((i) => inf[i] + (a[i] - inf[i]) * fade) as Rgb;
 }
 
 /** Whether the eye is underwater, with a ±UNDERWATER_BAND_M band around the water height so riding the surface can't flicker. */
