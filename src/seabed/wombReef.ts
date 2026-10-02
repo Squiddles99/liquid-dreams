@@ -47,8 +47,8 @@ export interface ReefParams {
 
 export const DEFAULT_REEF_PARAMS: ReefParams = {
   ledgeDepthM: 6,
-  faceBaseDepthM: 11.5,
-  faceWidthM: 35,
+  faceBaseDepthM: 14,
+  faceWidthM: 25,
   slopeDepthM: 20,
   slopeEndM: 200,
   shelfDepthM: 4,
