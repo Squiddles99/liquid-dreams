@@ -24,12 +24,13 @@ describe('the Bombie’s waves', () => {
     expect(f[2500]).toBeGreaterThan(0.9); expect(f[2500]).toBeLessThan(1.1);
     expect(f[4990]).toBeGreaterThan(2);
   });
-  it('never breaks below the threshold; a few percent at 6 ft; about half at 12 ft', () => {
+  // With the dial set by the face (2026-10-02) 12 ft carries 2.2× 6 ft's swell (was 2×): it breaks on 50–75% of waves.
+  it('never breaks below the threshold; a few percent at 6 ft; half or more at 12 ft', () => {
     expect(fraction(waves(5.9))).toBe(0);
     expect(fraction(waves(6))).toBeGreaterThan(0.02);
     expect(fraction(waves(6))).toBeLessThan(0.1);
     expect(fraction(waves(12))).toBeGreaterThan(0.35);
-    expect(fraction(waves(12))).toBeLessThan(0.65);
+    expect(fraction(waves(12))).toBeLessThan(0.75);
     expect(fraction(waves(0))).toBe(0);
   });
   it('never breaks on a Womb set wave', () => {

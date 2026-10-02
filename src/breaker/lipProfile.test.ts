@@ -133,7 +133,7 @@ describe('lipProfile', () => {
   it('never crosses itself before the lip lands (peak, ledge points, bigger waves, ψ and face-width ends)', () => {
     const cases: { x: number; z: number; h: number; p: LipParams; psi?: number }[] = [];
     // Only where the crest has broken (r ≥ 1): a time since onset means the section broke.
-    for (const [x, z] of [[0, 0], [20, -40], [35, -90], [15, 16], [50, 36]] as const) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 3 * HS]) {
+    for (const [x, z] of [[0, 0], [20, -40], [35, -90], [15, 16], [50, 36]] as const) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 2.4 * HS, 3 * HS]) {
       const f = sampleField(field, x, z);
       if (breakingRatio(h * f.amp, f.hmin, DEFAULT_BREAK_PARAMS) >= 1) cases.push({ x, z, h, p: LIP });
     }
