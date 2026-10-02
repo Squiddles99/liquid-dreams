@@ -9,6 +9,7 @@ import bpy
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
+import braids
 import hairline
 
 DOWN = Vector((0, 0, -1))
@@ -104,8 +105,9 @@ def _curl(root, n, centre, eye_z, rng, squash=1.0, down=0.25):
 # creased every lock along one horizontal line at the brows.
 TURN_SPREAD = 0.03
 TURN_BLEND = 0.05
-# The last long-hair build's numbers, for the manifest's checks (build.py).
+# The last long-hair build's numbers, for the manifest's checks (build.py), and its extra objects (the braids' elastics).
 last_checks = {}
+last_extras = []
 
 
 def _frizz(base, centre, rng):
@@ -145,8 +147,9 @@ def _face_weight(p, centre):
     return ahead * height
 
 
-def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False, roles=None, wet=False):
-    """`roles`: one atlas role per card (core, outer, flyaway, fringe, braid, tail), or None to choose by width and chance."""
+def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False, roles=None, wet=False, outs=None):
+    """`roles`: one atlas role per card (core, outer, flyaway, fringe, braid, tail), or None to choose by width and chance.
+    `outs`: per card, None or the direction it faces at each point (the braids' staves face out from their strand)."""
     verts, faces, uvs, tone, rootd, tile = [], [], [], [], [], []
     trng = random.Random(seed + 101)  # the tiles' own generator, so the cards' tones are drawn as before
     front_sum, front_n = 0.0, 0
@@ -169,9 +172,11 @@ def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False, 
             flat = max(0.0, min(1.0, ((centre.z - 0.01) - p.z) / 0.08))
             out = Vector((out.x, out.y, out.z * (1 - flat)))
             out = out.normalized() if out.length > 1e-6 else Vector((0, -1, 0))
+            if outs is not None and outs[ci] is not None:
+                out = outs[ci][i]
             # Beside the face, the fall's cards turn toward the front (up to ~50°): flat to the body they hang edge-on to
             # anyone looking at her, thinning to slivers (§13.1).
-            wf = _face_weight(p, centre) * flat if face_turn else 0.0
+            wf = _face_weight(p, centre) * flat if face_turn and (outs is None or outs[ci] is None) else 0.0
             if wf > 0:
                 out = (out + forward * 1.2 * wf).normalized()
             side = tangent.cross(out)
@@ -218,6 +223,8 @@ def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False, 
 
 
 def build(body, rig, style, L, coords, name, avoid=()):
+    last_checks.clear()
+    last_extras.clear()
     rng = random.Random(style["seed"])
     centre, eye_z = L["head_centre"], L["eye_z"]
     inset = style.get("inset", 0.0)
@@ -270,6 +277,8 @@ def build(body, rig, style, L, coords, name, avoid=()):
         last_checks["hairTurnBlendCm"] = round(100 * TURN_BLEND, 1)
         last_checks.update(hairline.stats([v.co for v in scalp], centre, eye_z, ear[0], inset))
         return _cards_object(cards, centre, rig, f"{name}_hairDry", skin=_long_skin(rig), seed=style["seed"], face_turn=True)
+    elif style["style"] == "braids":
+        return _braids(body, rig, style, L, name, scalp, pick, rng, centre, eye_z, avoid)
     elif style["style"] == "ponytail":
         # Wet and slicked back to the tie: many fine cards (closeup spec §3), so the combed lines read as hair.
         tie = centre + Vector((0, L["head_radius"] * 0.95, -0.01))
@@ -348,6 +357,133 @@ def build(body, rig, style, L, coords, name, avoid=()):
     else:
         raise SystemExit(f"unknown hair style {style['style']}")
     return _cards_object(cards, centre, rig, f"{name}_hair" + ("Dry" if style.get("dry") else ""), seed=style["seed"], roles=roles, wet=not style.get("dry"))
+
+
+def _to_braid(root, n, centre, eye_z, ear, path, frames, rng, tree, wet):
+    """A scalp lock combed from its root down to its braid's start: over the scalp (above the ear first, if it roots in
+    front of it), then down behind the ear into the braid, ending somewhere in the braid's cross-section."""
+    # Into the braid's first few centimetres, spread through its cross-section, so the locks merge into it rather than
+    # bunching at one point (a lump behind the ear otherwise).
+    j = rng.randrange(0, 7)
+    start, (t, nb, bb) = path[j], frames[j]
+    r0 = (root - centre).length
+    hug = (r0 + 0.002, r0 + (0.004 if wet else 0.008))
+    s = 1.0 if ear.x > 0 else -1.0
+    targets = []
+    if root.y < ear.y + 0.01 and root.z > ear.z - 0.01:
+        over = ear + Vector((s * 0.004, 0.014, 0.045))
+        targets.append(centre + (over - centre).normalized() * hug[1])
+    a = rng.uniform(0, 2 * math.pi)
+    end = start + (nb * math.cos(a) * 0.6 + bb * math.sin(a)) * rng.uniform(0.0, 0.013)
+    targets.append(end)
+    pts = [root + n * 0.002]
+    seg = 0.012
+    for _ in range(80):
+        p = pts[-1]
+        goal = targets[0]
+        if (goal - p).length < seg * 1.2:
+            if len(targets) == 1:
+                pts.append(goal)
+                break
+            targets.pop(0)
+            continue
+        d = (goal - p).normalized()
+        on_head = (p - centre).length < hug[1] + 0.012 and p.z > ear.z - 0.03
+        if on_head:
+            out = (p - centre).normalized()
+            d = (d - out * d.dot(out) * 0.85).normalized()
+            q = _hug(p + d * seg, centre, hug[0], hug[1] + 0.01)
+        else:
+            q = p + d * seg
+            loc, normal, _, _ = tree.find_nearest(q)
+            if loc is not None and (q - loc).dot(normal) < 0.004:
+                q = loc + normal * 0.004
+        pts.append(q)
+    return pts
+
+
+def _braids(body, rig, style, L, name, scalp, pick, rng, centre, eye_z, avoid):
+    """Shazza's low pigtail braids (dune select spec §13.2): see braids.py."""
+    wet = not style.get("dry")
+    tree = _body_tree(body, avoid)
+    body_tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    part_x = style.get("partX", 0.006)
+    neck_z = rig.data.bones["neck"].head_local.z
+    trng = random.Random(style["seed"] + 101)
+    cards, roles, outs = [], [], []
+    paths, frames, ends, ties, tubes = {}, {}, {}, [], []
+    drop, front = [], True
+    for side in ("l", "r"):
+        path, clav = braids.braid_path(side, L, rig, tree, wet)
+        fr = braids._frames(path, tree)
+        paths[side], frames[side] = path, fr
+        strands, radii, phases = braids.plait(path, fr, wet)
+        # Each plait strand a solid tube in a lock's straight core strands, running along it as a plait's hair does; the
+        # soft cards once wrapped over them read as flat chips up close, so only the flyaways break the outline.
+        core_codes = [(i + 0.5) / len(_ATLAS["tiles"]) for i in TILES_BY_ROLE["core"]]
+        for line, ph in zip(strands, phases):
+            tubes.append(braids.strand_tube(line, radii, ph, core_codes, rng))
+        fl = braids.flyaways(strands, fr, rng, 10 if wet else 22)
+        cards += fl
+        outs += [None] * len(fl)
+        roles += ["flyaway"] * len(fl)
+        bm, tail, tail_outs, tie_at = braids.tie_and_tail(path, fr, rng, wet)
+        ties.append(bm)
+        cards += tail
+        outs += tail_outs
+        roles += ["tail"] * len(tail)
+        drop.append(round(100 * (clav.z - path[-1].z), 1))  # clav: the clavicle's head (braids.braid_path)
+        front = front and path[-1].y < clav.y
+    n_braid = len(cards)
+    turns = []
+    # The scalp: locks to the braids; dry, the loose face-framing pieces from the front hairline to the jaw.
+    for _ in range(2000 if wet else 2200):
+        root, n = pick()
+        side = "l" if root.x >= part_x else "r"
+        if abs(root.x - part_x) < 0.008 and math.sin(root.y * 1531.0 + root.z * 977.0) > 0.35:
+            side = "r" if side == "l" else "l"  # a few lie across the part, so it's soft (§13.1)
+        # The loose face-framing pieces: the front of the hairline either side of the part, falling past the jaw.
+        framing = not wet and root.y < centre.y - 0.04 and root.z < eye_z + 0.1 and abs(root.x - part_x) > 0.01
+        if framing:
+            clump = (root, rng.uniform(0, 2 * math.pi), 0.12, 0.009, rng.uniform(0.22, 0.3), rng.uniform(-TURN_SPREAD, TURN_SPREAD))
+            cards.append((_wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump, turns), rng.uniform(0.008, 0.012)))
+        else:
+            ear = L["ears"][side]
+            cards.append((_to_braid(root, n, centre, eye_z, ear, paths[side], frames[side], rng, tree, wet), rng.uniform(0.009, 0.013)))
+        outs.append(None)
+        roles.append(_role(trng, cards[-1][1], WET_ROLES if wet else DRY_ROLES))
+    # The checks: two braids, where their ends hang, in front of the shoulders, and none of the braid inside the body.
+    # The plait's strands and staves stand out from the centreline toward the body too; where the neck curves in, a
+    # few came inside the skin: pushed out to 1 mm clear.
+    braid_lines = [pts for pts, _w in cards[:n_braid]] + [tv for tv, _q, _u, _c in tubes]
+    for pts in braid_lines:
+        for i, p in enumerate(pts):
+            loc, normal, _, _ = body_tree.find_nearest(p)
+            if loc is not None and (p - loc).dot(normal) < 0.001:
+                pts[i] = loc + normal * 0.001
+    inside = 0
+    for pts in braid_lines:
+        for p in pts:
+            loc, normal, _, _ = body_tree.find_nearest(p)
+            if loc is not None and (p - loc).dot(normal) < -0.001:
+                inside += 1
+    last_checks.clear()
+    last_checks.update({"braids": 2, "braidEndDropCm": drop, "braidEndsInFront": front, "braidInside": inside})
+    # The loose face-framing pieces keep §13.1's checks (dry): each turns into its fall at its own height, blended; and
+    # the hairline comes down into a sideburn.
+    if turns:
+        mean = sum(turns) / len(turns)
+        last_checks["hairTurnSpreadCm"] = round(100 * math.sqrt(sum((t - mean) ** 2 for t in turns) / len(turns)), 2)
+        last_checks["hairTurnBlendCm"] = round(100 * TURN_BLEND, 1)
+    ear = hairline.ear_params(L)
+    last_checks.update(hairline.stats([v.co for v in scalp], centre, eye_z, ear[0], style.get("inset", 0.0)))
+    skin = _long_skin(rig)
+    obj = _cards_object(cards, centre, rig, f"{name}_hair" + ("" if wet else "Dry"), skin=skin, seed=style["seed"], roles=roles, wet=wet, outs=outs, face_turn=not wet)
+    last_extras.clear()
+    tag = "" if wet else "Dry"
+    last_extras.append(braids.build_ties(ties, f"{name}_hair{tag}Ties", rig, skin))
+    last_extras.append(braids.build_tubes(tubes, f"{name}_hair{tag}Braid", rig, skin, f"hair{tag}Braid"))
+    return obj
 
 
 def _under_cap(root, n, centre, rng):

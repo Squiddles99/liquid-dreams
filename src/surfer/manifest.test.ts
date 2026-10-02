@@ -153,6 +153,18 @@ describe("Shazza's hair (closeup spec §3)", () => {
     // stopped the side hair on one flat line 2.5 cm above the eyes: the straight cut Andrew saw.
     expect(man.checks!.sideburnAboveEyeCm).toBeLessThanOrEqual(1.0);
   });
+  it('wears two low pigtail braids, dry and wet: ends on the upper chest, in front of the shoulders, ties on (dune select spec §13.2)', () => {
+    const c = man.checks!;
+    expect([c.braidsDry, c.braidsWet]).toEqual([2, 2]);
+    // How far each braid's end hangs below its clavicle's head (cm), dry and wet, left and right.
+    for (const drop of c.braidEndDropCm!) {
+      expect(drop).toBeGreaterThan(4);
+      expect(drop).toBeLessThan(22);
+    }
+    expect(c.braidEndsInFront).toBe(true);
+    expect(c.braidsOutside).toBe(true);
+    expect(man.meshes.flatMap((m) => m.materials)).toContain('hairTie');
+  });
   it('her upper lip is thinned by the build: at least a fifth shorter than MPFB leaves it (dune select spec §13.1)', () => {
     expect(man.checks!.upperLipSculptedMm).toBeLessThanOrEqual(0.8 * man.checks!.upperLipMm!);
   });

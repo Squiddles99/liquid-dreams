@@ -58,9 +58,10 @@ face.paint(body, weights, L, preset.get("browWeight", 1.0), skin.bake_ao(body, [
 spots = skin.pimples(body, coords, L, preset["pimpleSeed"]) if "pimpleSeed" in preset else []
 hair_obj = hair.build(body, rig, preset["hair"], L, coords, name)
 rig_trim.single_material(hair_obj, "hair")
+wet_checks, wet_extras = dict(hair.last_checks), list(hair.last_extras)  # the braids' (dune select spec §13.2)
 hair.bake_ao(hair_obj, body, L["head_centre"], reach=preset["hair"].get("aoReach", 0.045))
 rig_trim.single_material(eye_obj, "eyes")
-parts = [body, hair_obj, eye_obj]
+parts = [body, hair_obj, eye_obj, *wet_extras]
 if preset.get("glasses"):
     parts.append(glasses.build(rig, body, L, name))
 if preset.get("teeth"):
@@ -124,6 +125,7 @@ if preset.get("dryHair"):
     dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=[*garments, *carried])
     rig_trim.single_material(dry_obj, "hairDry")
     dry_checks = dict(hair.last_checks)
+    parts += hair.last_extras
     hair.bake_ao(dry_obj, body, L["head_centre"], reach=preset["dryHair"].get("aoReach", 0.045))
     parts.append(dry_obj)
 
@@ -131,7 +133,15 @@ checks = expressions.blink_check(body, L)
 if lip_mm:
     checks["upperLipMm"], checks["upperLipSculptedMm"] = lip_mm
 if preset.get("dryHair"):
-    checks.update(dry_checks)  # long dry hair's turn and face numbers (dune select spec §13.1)
+    checks.update({k: v for k, v in dry_checks.items() if not k.startswith("braid")})  # long dry hair's numbers (§13.1)
+# Shazza's braids (§13.2), dry and wet: how many, where the ends hang, and none of them inside the body.
+if "braids" in wet_checks or "braids" in dry_checks:
+    checks["braidsWet"] = wet_checks.get("braids", 0)
+    checks["braidsDry"] = dry_checks.get("braids", 0) if preset.get("dryHair") else 0
+    checks["braidEndDropCm"] = dry_checks.get("braidEndDropCm", []) + wet_checks.get("braidEndDropCm", [])
+    checks["braidEndsInFront"] = bool(dry_checks.get("braidEndsInFront", True) and wet_checks.get("braidEndsInFront", True))
+    checks["braidsOutside"] = dry_checks.get("braidInside", 0) == 0 and wet_checks.get("braidInside", 0) == 0
+    print(f"braid vertices inside the body: dry {dry_checks.get('braidInside')}, wet {wet_checks.get('braidInside')}")
 if walk:
     checks["garmentsOutside"] = clothes.outside_check(garments, body)
 if hat_hair is not None:

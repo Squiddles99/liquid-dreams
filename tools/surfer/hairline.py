@@ -32,8 +32,8 @@ def knots(ear_angle, ear_top_dz):
         (ear_angle - 10.0, 0.014),
         (ear_angle, ear_top_dz + 0.008),  # over the ear
         (ear_angle + 18.0, ear_top_dz),
-        (ear_angle + 38.0, -0.03),
-        (180.0, -0.05),
+        (ear_angle + 38.0, -0.045),
+        (180.0, -0.088),  # the nape, about 9 cm under the eyes (5 cm left the back of the neck bare under braids)
     ]
 
 

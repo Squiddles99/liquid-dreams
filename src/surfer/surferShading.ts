@@ -190,7 +190,11 @@ export const HAIR_CORE = 0.9;
 /** The strand atlas's layout (tools/surfer/hair_atlas.py): 8 × 2 tiles, each padded 8 of its 256 × 1024 px. */
 export const HAIR_ATLAS = { cols: 8, rows: 2, tiles: 16, padU: 8 / 256, padV: 8 / 1024 } as const;
 
-export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.UniformNode<'vec3', THREE.Vector3>, sv?: (xz: N) => N, wet?: THREE.UniformNode<'float', number>, pass: HairPass = 'core', atlas: THREE.Texture | null = null): THREE.MeshBasicNodeMaterial {
+/**
+ * `solid`: the braids' plait strands (§13.2) are solid tubes: always opaque, the atlas giving only their strands' shading,
+ * the braid tile wrapped round each tube (u round it, v along it).
+ */
+export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.UniformNode<'vec3', THREE.Vector3>, sv?: (xz: N) => N, wet?: THREE.UniformNode<'float', number>, pass: HairPass = 'core', atlas: THREE.Texture | null = null, solid = false): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();
   const u: N = uv();
   // Root → tip. glTF stores V as 1 − v (three's loader keeps it), so the cards' v comes back flipped: the root is at
@@ -240,7 +244,9 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
     const clumps = saturate(a.mul(2.6));
     coverage = mix(cardCoverage, mix(clumps, sharp, resolved).mul(fade), near);
   }
-  if (pass === 'core') {
+  if (solid) {
+    // Opaque: no alpha test, no edges pass.
+  } else if (pass === 'core') {
     m.opacityNode = coverage;
     m.alphaTest = HAIR_CORE;
   } else {
@@ -271,7 +277,9 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   // The volume's normal: out from the head; below the head (long hair), out from the fall, not down into the sea.
   const d: N = positionWorld.sub(headCentre);
   const below = smoothstep(0.0, 0.16, d.y.negate());
-  const volume = normalize(vec3(d.x, d.y.mul(float(1).sub(below.mul(0.9))), d.z));
+  const headVolume = normalize(vec3(d.x, d.y.mul(float(1).sub(below.mul(0.9))), d.z));
+  // A plait's solid strands shade by their own surface, so each lobe reads round (§13.2).
+  const volume = solid ? normalize(mix(headVolume, normalWorld, 0.75)) : headVolume;
   // Along the strand: ∂P/∂v from the screen derivatives of the position and the card's UVs.
   const dp1: N = dFdx(positionWorld), dp2: N = dFdy(positionWorld), duv1: N = dFdx(u), duv2: N = dFdy(u);
   const det = duv1.x.mul(duv2.y).sub(duv2.x.mul(duv1.y));

@@ -13,8 +13,9 @@
     "firmness": 0.55
   },
   "hair": {
-    "style": "ponytail",
+    "style": "braids",
     "seed": 11,
+    "partX": 0.006,
     "inset": 0.008,
     "aoReach": 0.018
   },
@@ -104,7 +105,7 @@
     "curl": 0.004
   },
   "dryHair": {
-    "style": "waves",
+    "style": "braids",
     "seed": 21,
     "partX": 0.006,
     "inset": 0.008,
