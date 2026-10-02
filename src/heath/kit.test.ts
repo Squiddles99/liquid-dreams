@@ -35,6 +35,14 @@ describe('the heath kit (dune-up-close §4.2, §7.1)', () => {
       if (e.kind !== 'dead') expect(Math.max(...e.leafColour), id).toBeGreaterThan(0.02);
     }
   });
+  it('keeps L1 within 800 triangles and maps every canopy into the atlas', () => {
+    for (const e of m.variants) {
+      const id = `${e.kind} ${e.variant}`;
+      expect(e.lods[1].triangles, id).toBeLessThanOrEqual(800);
+      expect(m.atlas.tiles[`canopy_${e.kind}_${e.variant}`], id).toHaveLength(4);
+    }
+    expect(existsSync('public/heath/heathAtlas.png')).toBe(true);
+  });
   it('grows branches that obey the pipe model and stay inside their hull (§7.1)', () => {
     for (const e of m.variants) {
       expect(e.checks.pipeModel, `${e.kind} ${e.variant}`).toBe(true);
