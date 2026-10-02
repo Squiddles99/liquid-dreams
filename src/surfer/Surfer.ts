@@ -158,6 +158,19 @@ export class Surfer {
         if (slots.length) this.morphs.push({ mesh, slots });
       }
     });
+    // The hair's soft edges (dune select spec §13.1): each hair mesh drawn a second time, blended over its opaque core.
+    // Same geometry, skeleton and name, so it shows, hides and skins with the core.
+    for (const [list, name] of [[this.hairWet, 'hair'], [this.hairDry, 'hairDry'], [this.hairHat, 'hairHat']] as const) {
+      for (const mesh of [...list]) {
+        const edges = mesh.clone() as THREE.Mesh;
+        edges.material = hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'edges');
+        edges.material.name = name;
+        edges.renderOrder = 1;
+        edges.frustumCulled = false;
+        mesh.parent!.add(edges);
+        list.push(edges);
+      }
+    }
     // Swim fins ride the feet: placed in the rest pose at the sole, then held in each foot bone's frame. The pocket fits
     // this body's foot: the toes reach ~1.58× the ankle-to-toe-joint distance ahead of the ankle (both built bodies).
     const toeJoint = this.rest.joint.toe_l.clone().sub(this.rest.joint.foot_l);

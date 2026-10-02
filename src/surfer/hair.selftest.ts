@@ -58,19 +58,25 @@ registerSelfTest({
   name: "hair: Shazza's dry hair edges are soft, not stippled, at 0.6 m (dune select spec §13.1)",
   async run(renderer) {
     const { withHair, without } = await frontOfHead(renderer);
-    const changed = new Set(hairPixels(withHair, without).map((i) => i / 4));
-    // A stippled edge is coverage flickering pixel to pixel: a hair pixel whose coverage (alpha over ½) disagrees with
-    // at least three of its four neighbours. A soft or solid edge has almost none.
-    const on = (x: number, y: number): boolean => withHair[4 * (y * SIZE + x) + 3] > 0.5;
-    let isolated = 0;
-    for (const p of changed) {
-      const x = p % SIZE, y = (p - x) / SIZE;
-      if (x === 0 || y === 0 || x === SIZE - 1 || y === SIZE - 1) continue;
-      const c = on(x, y);
-      const differ = Number(on(x - 1, y) !== c) + Number(on(x + 1, y) !== c) + Number(on(x, y - 1) !== c) + Number(on(x, y + 1) !== c);
-      if (differ >= 3) isolated++;
-    }
-    const frac = isolated / Math.max(1, changed.size);
-    return { pass: changed.size > 3000 && frac < 0.01, detail: `${isolated} isolated of ${changed.size} hair px (${(100 * frac).toFixed(2)}%)` };
+    // Where the hair is over the sky (nothing else drew there), its coverage is the hair's alpha. An alpha-tested,
+    // dithered edge is all or nothing (nothing under the 0.5 test survives); a soft edge fades through partial coverage.
+    const overSky = hairPixels(withHair, without).filter((i) => without[i + 3] === 0);
+    const partial = overSky.filter((i) => withHair[i + 3] > 0.05 && withHair[i + 3] < 0.5).length;
+    const frac = partial / Math.max(1, overSky.length);
+    // Dithered: exactly 0%. Two-pass at this distance: about 2.7% (most over-sky hair is several cards deep).
+    return { pass: overSky.length > 500 && frac > 0.02, detail: `${partial} of ${overSky.length} hair px over the sky partly covered (${(100 * frac).toFixed(1)}%)` };
+  },
+});
+
+registerSelfTest({
+  name: "hair: Shazza's dry hair glows on its shade side, never black, at 0.6 m (dune select spec §13.1)",
+  async run(renderer) {
+    const { withHair, without } = await frontOfHead(renderer);
+    // The sun is off her right shoulder (image left is her right): the image's right half of the hair is the shade side.
+    const lum = (i: number): number => 0.2126 * withHair[i] + 0.7152 * withHair[i + 1] + 0.0722 * withHair[i + 2];
+    const half = (right: boolean): number[] => hairPixels(withHair, without).filter((i) => withHair[i + 3] > 0.5 && ((i / 4) % SIZE >= SIZE / 2) === right).map(lum).sort((a, b) => a - b);
+    const median = (a: number[]): number => a[a.length >> 1] ?? 0;
+    const lit = median(half(false)), shade = median(half(true));
+    return { pass: shade > 0.25 * lit, detail: `median hair luminance: lit side ${lit.toFixed(3)}, shade side ${shade.toFixed(3)} (${((100 * shade) / Math.max(lit, 1e-6)).toFixed(0)}%)` };
   },
 });

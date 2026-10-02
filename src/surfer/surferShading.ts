@@ -183,7 +183,11 @@ export function bodyMaterial(sky: Sky, p: SurferPreset, w: OutfitUniforms, sv?: 
  * which way don't shade into a patchwork. Two Kajiya–Kay highlights run along the strands, the tangent taken from the
  * cards' UV derivatives: a tight white one and a broader one tinted by the hair.
  */
-export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.UniformNode<'vec3', THREE.Vector3>, sv?: (xz: N) => N, wet?: THREE.UniformNode<'float', number>): THREE.MeshBasicNodeMaterial {
+export type HairPass = 'core' | 'edges';
+/** The hair's two passes (dune select spec §13.1): above this coverage a pixel is the opaque core, below it a blended edge. */
+export const HAIR_CORE = 0.9;
+
+export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.UniformNode<'vec3', THREE.Vector3>, sv?: (xz: N) => N, wet?: THREE.UniformNode<'float', number>, pass: HairPass = 'core'): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();
   const u: N = uv();
   // Root → tip. glTF stores V as 1 − v (three's loader keeps it), so the cards' v comes back flipped: the root is at
@@ -195,11 +199,10 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   const strands = mx_noise_float(vec3(u.x.mul(26.0), v.mul(1.2), 1.7)).mul(0.5).add(0.5);
   const across = abs(u.x.mul(2).sub(1));
   const tip = smoothstep(0.7, 1.0, v);
-  // Roots fade in, so the hairline is the painted scalp's soft edge, not a row of card ends; with no MSAA to spread an
-  // alpha test, the root and tip fades are dithered against a screen-space hash (interleaved gradient noise), so they
-  // read soft rather than as a jagged cut.
+  // Roots fade in, so the hairline is the painted scalp's soft edge, not a row of card ends. The renderer has no MSAA or
+  // TAA, so a dithered fade showed raw as stipple against the sky (§13.1): the hair draws in two passes instead, an
+  // opaque alpha-tested core (coverage ≥ HAIR_CORE, depth-writing) and its soft edges blended over it.
   const root = smoothstep(0.0, 1.0, attribute('color', 'vec4').z.add(strands.mul(0.25)).sub(0.1));
-  const ign = fract(fract(screenCoordinate.x.mul(0.06711056).add(screenCoordinate.y.mul(0.00583715))).mul(52.9829189));
   const fade = root.mul(float(1).sub(tip.mul(strands).mul(0.9)));
   // Dry, each card is a bunch of ~12 strands across with gaps between (layers show through, so it reads as hair, not
   // planks); wet, the strands clump into one slick sheet.
@@ -207,8 +210,17 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   const laneRand = mx_noise_float(vec3(laneId.mul(1.7), attribute('color', 'vec4').x.mul(37.0), 4.1)).mul(0.5).add(0.5);
   const strandGap = smoothstep(laneRand.mul(0.3).add(0.3), laneRand.mul(0.3).add(0.42), abs(lane.fract().sub(0.5)).mul(2.0));
   const solidness = float(1).sub(strandGap.mul(float(1).sub(w)));
-  m.opacityNode = float(1).sub(smoothstep(0.82, 1.0, across.add(strands.mul(0.12)))).mul(solidness).mul(step(ign.mul(0.96).add(0.02), fade));
-  m.alphaTest = 0.5;
+  const coverage = float(1).sub(smoothstep(0.6, 1.0, across.add(strands.mul(0.12)))).mul(solidness).mul(fade);
+  if (pass === 'core') {
+    m.opacityNode = coverage;
+    m.alphaTest = HAIR_CORE;
+  } else {
+    // Only what the core left out; the core's depth hides the edges behind it.
+    m.opacityNode = coverage.mul(float(1).sub(step(HAIR_CORE, coverage)));
+    m.alphaTest = 0.01;
+    m.transparent = true;
+    m.depthWrite = false;
+  }
   m.side = THREE.DoubleSide;
   // Strands live in the colour: fine lines along each card, a darker line where cards overlap, root to bleached tip;
   // dry, each strand of a card its own shade.
@@ -238,8 +250,11 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   const primary = kk(normalize(T.add(volume.mul(0.1))), mix(float(90), float(220), w)).mul(mix(float(0.05), float(0.1), w));
   const secondary = kk(normalize(T.sub(volume.mul(0.15))), float(28)).mul(0.05);
   const sunExtra = vec3(primary, primary, primary).add(albedo.mul(secondary).mul(3.0)).mul(lit).mul(fine.mul(0.6).add(0.6)).mul(ao.mul(ao));
+  // Light scattered through the strands (§13.1): blond hair glows on its shade side rather than going black. Not gated by
+  // `lit`; weaker wet (the strands clump into one sheet) and in the baked occlusion.
+  const scattered = albedo.mul(mix(float(0.16), float(0.06), w)).mul(ao);
   // No Fresnel sky mirror on hair (§13.1): dry, none; wet, a little of the water film's.
-  m.colorNode = litColor(sky, { albedo, normal: volume, specular: mix(float(0.02), float(0.03), w), shininess: mix(float(40), float(120), w), wrap: float(0.25), sunExtra, sheen: w.mul(0.3) }, sv);
+  m.colorNode = litColor(sky, { albedo, normal: volume, specular: mix(float(0.02), float(0.03), w), shininess: mix(float(40), float(120), w), wrap: mix(float(0.5), float(0.25), w), sunExtra: sunExtra.add(scattered), sheen: w.mul(0.3) }, sv);
   // Wet curls pull in toward the head, most at the tips (grommet spec §3), but never inside the scalp (~10 cm from the
   // head's centre; pulling straight to the centre sank them into his skull and left a bald orange cap). The surfer's
   // group sits at the world origin with identity nodes (manifest.test pins it), so the skinned local position and
