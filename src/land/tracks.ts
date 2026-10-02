@@ -1,3 +1,4 @@
+import { smoothstep } from '../math/smoothstep';
 import type { BeachProfile } from './landHeight';
 
 /** The walk to the Womb (dune-up-close spec §4.1): rebuilt by rule on our own terrain, never traced. */
@@ -225,4 +226,134 @@ export function routeTracks(land: RouteLand, zRange: [number, number], lineup = 
     ],
     junction,
   };
+}
+
+/** The clearing's semi-axes: along the Cape to Cape, and across it (an ellipse 7 × 5 m). */
+export const CLEARING_SEMI_M: [number, number] = [3.5, 2.5];
+/** A corridor's worn sink at its centre, the clearing's, and how far the shoulders reach (× the half-width). */
+export const SINK_M = 0.04;
+export const CLEARING_SINK_M = 0.03;
+export const SHOULDER = 1.5;
+/** The GPU's tracks mask samples the sink on this world lattice (the patch snaps to 4 m, so its texels sit on it). */
+export const LATTICE_M = 0.25;
+/** How far the clearing's worn edge softens outside the ellipse (m). */
+const CLEARING_EDGE_M = 0.5;
+/**
+ * The sink's reach: it eases from a corridor's centreline out to SINK_REACH_M, and from the clearing's edge out to
+ * CLEARING_SINK_EDGE_M, wider than the worn shoulders so the ground falls at most 1 cm per 25 cm (spec §7.2; 4 cm over
+ * 1.5 × a 0.45 m half-width could not).
+ */
+export const SINK_REACH_M = 1.5;
+const CLEARING_SINK_EDGE_M = 1.2;
+const BUCKET_M = 4;
+
+interface Segment { ax: number; az: number; bx: number; bz: number; hw: number }
+
+/** The routed tracks, queried: corridors, the clearing, how worn the ground is, the sink, the crew's spot. */
+export class TrackNetwork {
+  private readonly buckets = new Map<number, Segment[]>();
+
+  constructor(readonly data: TrackData) {
+    for (const p of data.pieces) {
+      const reach = Math.max(p.halfWidthM * SHOULDER, SINK_REACH_M) + 1;
+      for (let i = 1; i < p.points.length; i++) {
+        const [ax, az] = p.points[i - 1], [bx, bz] = p.points[i], seg = { ax, az, bx, bz, hw: p.halfWidthM };
+        for (let gx = Math.floor((Math.min(ax, bx) - reach) / BUCKET_M); gx <= Math.floor((Math.max(ax, bx) + reach) / BUCKET_M); gx++) {
+          for (let gz = Math.floor((Math.min(az, bz) - reach) / BUCKET_M); gz <= Math.floor((Math.max(az, bz) + reach) / BUCKET_M); gz++) {
+            const k = (gx + 0x8000) * 0x10000 + (gz + 0x8000);
+            let b = this.buckets.get(k);
+            if (!b) this.buckets.set(k, (b = []));
+            b.push(seg);
+          }
+        }
+      }
+    }
+  }
+
+  /** The nearest corridor (by its edge): the distance to its centreline and its half-width; Infinity with none within reach. */
+  nearest(x: number, z: number): { d: number; halfWidthM: number } {
+    const b = this.buckets.get((Math.floor(x / BUCKET_M) + 0x8000) * 0x10000 + (Math.floor(z / BUCKET_M) + 0x8000));
+    let d = Infinity, hw = 0;
+    for (const s of b ?? []) {
+      const ex = s.bx - s.ax, ez = s.bz - s.az, l2 = ex * ex + ez * ez;
+      const t = l2 > 0 ? Math.min(1, Math.max(0, ((x - s.ax) * ex + (z - s.az) * ez) / l2)) : 0;
+      const q = Math.hypot(x - (s.ax + ex * t), z - (s.az + ez * t));
+      if (q - s.hw < d - hw) {
+        d = q;
+        hw = s.hw;
+      }
+    }
+    return { d, halfWidthM: hw };
+  }
+
+  /** The clearing's elliptical radius at (x, z): under 1 inside. */
+  private ellipse(x: number, z: number): number {
+    const j = this.data.junction, dx = x - j.x, dz = z - j.z;
+    const u = dx * j.along[0] + dz * j.along[1], v = -dx * j.along[1] + dz * j.along[0];
+    return Math.hypot(u / CLEARING_SEMI_M[0], v / CLEARING_SEMI_M[1]);
+  }
+
+  inClearing(x: number, z: number): boolean {
+    return this.ellipse(x, z) < 1;
+  }
+
+  /** Inside a corridor or the clearing. */
+  onTrack(x: number, z: number): boolean {
+    const n = this.nearest(x, z);
+    return n.d <= n.halfWidthM || this.inClearing(x, z);
+  }
+
+  /** The clearing's share at (x, z): 1 inside, easing to 0 by `edgeM` outside. */
+  private clearingShare(x: number, z: number, edgeM = CLEARING_EDGE_M): number {
+    return 1 - smoothstep(1, 1 + edgeM / Math.min(CLEARING_SEMI_M[0], CLEARING_SEMI_M[1]), this.ellipse(x, z));
+  }
+
+  /** How worn the ground is: 1 on a track, easing to 0 at SHOULDER × its half-width (the clearing: by 0.5 m outside). */
+  worn(x: number, z: number): number {
+    const n = this.nearest(x, z);
+    const corridor = Number.isFinite(n.d) ? 1 - smoothstep(n.halfWidthM, n.halfWidthM * SHOULDER, n.d) : 0;
+    return Math.max(corridor, this.clearingShare(x, z));
+  }
+
+  /** The worn sink (m, a depth): SINK_M at a corridor's centre easing out to SINK_REACH_M; CLEARING_SINK_M in the clearing. */
+  sinkExact(x: number, z: number): number {
+    const n = this.nearest(x, z);
+    const corridor = Number.isFinite(n.d) ? SINK_M * (1 - smoothstep(0, SINK_REACH_M, n.d)) : 0;
+    return Math.max(corridor, CLEARING_SINK_M * this.clearingShare(x, z, CLEARING_SINK_EDGE_M));
+  }
+
+  /** The sink as the GPU draws it: bilinear between sinkExact on the LATTICE_M lattice. */
+  sinkAt(x: number, z: number): number {
+    return this.lattice(x, z, (a, b) => this.sinkExact(a, b));
+  }
+
+  protected lattice(x: number, z: number, f: (x: number, z: number) => number): number {
+    const fx = x / LATTICE_M, fz = z / LATTICE_M, i = Math.floor(fx), k = Math.floor(fz), tx = fx - i, tz = fz - k;
+    const s = (a: number, b: number): number => f(a * LATTICE_M, b * LATTICE_M);
+    return (s(i, k) * (1 - tx) + s(i + 1, k) * tx) * (1 - tz) + (s(i, k + 1) * (1 - tx) + s(i + 1, k + 1) * tx) * tz;
+  }
+
+  /** The furthest distance ≤ maxM along (dirX, dirZ) from (x, z) that stays on a track (in 10 cm steps). */
+  reach(x: number, z: number, dirX: number, dirZ: number, maxM: number): number {
+    const l = Math.hypot(dirX, dirZ);
+    let best = 0;
+    for (let k = 1; k * 0.1 <= maxM + 1e-9; k++) {
+      const s = k * 0.1;
+      if (!this.onTrack(x + (dirX / l) * s, z + (dirZ / l) * s)) break;
+      best = s;
+    }
+    return best;
+  }
+
+  /** The crew's spot: 1.2 m across the clearing from the junction, on the sea's side, facing inland (east). */
+  standSpot(): { x: number; z: number; headingDeg: number } {
+    const j = this.data.junction;
+    let ax = -j.along[1], az = j.along[0];
+    if (ax > 0) {
+      ax = -ax;
+      az = -az;
+    }
+    const tidy = (v: number): number => Math.round(v * 100) / 100;
+    return { x: tidy(j.x + ax * 1.2), z: tidy(j.z + az * 1.2), headingDeg: 90 };
+  }
 }
