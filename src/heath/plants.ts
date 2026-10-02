@@ -125,8 +125,8 @@ export interface Plant {
   tint: [number, number, number];
 }
 
-/** 4a's painted palette (landShading.ts), so near and far agree. */
-const ALBEDO: Record<PlantKind, [number, number, number]> = {
+/** 4a's painted palette (landShading.ts), so near and far agree; a plant's tint is this × its jitter. */
+export const PLANT_ALBEDO: Record<PlantKind, [number, number, number]> = {
   // Silvery sage (the flora photo), a touch greener than 4a's painted silver-grey, which read as stone in 3D.
   daisy: [0.17, 0.2, 0.14],
   green: [0.12, 0.16, 0.065],
@@ -203,7 +203,7 @@ export function cellPlants(ci: number, cj: number, land: LandHeight, rocks: Rock
     }
     const height = spec.heightM[0] + (spec.heightM[1] - spec.heightM[0]) * r(5);
     const drop = SINK * height + 0.5 * (width / 2) * grad;
-    const base = ALBEDO[kind], vary = 0.85 + 0.3 * r(6), hue = (r(7) - 0.5) * 0.1;
+    const base = PLANT_ALBEDO[kind], vary = 0.85 + 0.3 * r(6), hue = (r(7) - 0.5) * 0.1;
     out.push({
       x, z, kind, shape: Math.floor(r(8) * PLANT_SHAPES) % PLANT_SHAPES, width, height,
       yTrue: h - drop, yCoarse: coarseMeshHeightAt(land, x, z) - drop,

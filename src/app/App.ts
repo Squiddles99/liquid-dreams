@@ -79,8 +79,10 @@ import { GroundPatch } from '../beach/GroundPatchMesh';
 import { PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
 import { Rocks } from '../beach/RockMeshes';
 import { LOD_RANGES_M, PLANT_CELL_M, PLANT_GONE_M, PlantField, patchCasters, type Plant, plantLod, plantSeatY } from '../heath/plants';
-import { type CellChange, CellQueue, PlantRing, cellKey, layBudgetMs } from '../heath/plantRing';
+import { BAND_FADE_M, type CellChange, CellQueue, MID_M, PlantRing, cellKey, layBudgetMs } from '../heath/plantRing';
 import { PlantMeshes } from '../heath/PlantMeshes';
+import { KitMeshes } from '../heath/KitMeshes';
+import { loadKit } from '../heath/kit';
 import { uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
 import { buildGroundShadows } from '../beach/rockShadows';
@@ -97,7 +99,7 @@ const ROCK_RELAY_M = 2;
 /** The near plants' list (sound, shadows, the kit) is redone once the camera has moved this far (Phase 4c-2 §3.7). */
 const PLANT_RELAY_M = 3;
 /** The near plants' list reaches this far (the kit's mid band and its fade: dune-up-close §3.1). */
-const NEAR_LIST_M = 43;
+const NEAR_LIST_M = 45;
 /** The plant rings re-diff once the camera has moved this far. */
 const RING_MOVE_M = 2;
 /** The crest trace's timing readout is an exponential moving average with this weight on each new frame. */
@@ -221,6 +223,8 @@ export class App {
   private readonly shadowSun = new THREE.Vector3(0, -1, 0);
   /** The heath's plants (Phase 4c-2): from the land once it loads, refreshed every PLANT_RELAY_M. */
   readonly plants: PlantMeshes;
+  /** The kit's real plants near the camera (dune-up-close §3.1): once the kit has loaded, the near and mid bands. */
+  kitMeshes: KitMeshes | null = null;
   private plantField: PlantField | null = null;
   private plantsNear: Plant[] = [];
   private plantsAt: [number, number] | null = null;
@@ -350,6 +354,17 @@ export class App {
     this.rocks = new Rocks(this.sky, (xz) => this.sunlight.visibilityNode(xz), { seabed: this.seabed, optics: this.waterOptics });
     this.plants = new PlantMeshes(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     for (const m of this.plants.meshes) this.scene.add(m);
+    // The kit loads alongside the land; until it arrives the hulls draw every band.
+    loadKit().then(
+      (kit) => {
+        this.kitMeshes = new KitMeshes(kit, this.sky, (xz) => this.sunlight.visibilityNode(xz));
+        for (const m of this.kitMeshes.meshes) this.scene.add(m);
+        this.plants.kitFade.value = 1;
+        this.hullInnerM = MID_M - BAND_FADE_M;
+        this.hullsStale = true;
+      },
+      (e) => console.warn('The heath kit failed to load; the hulls stand in for it.', e),
+    );
     this.land.setPlantFloor(this.plantFloor);
     this.scene.add(this.patch.mesh);
     for (const m of this.rocks.meshes) this.scene.add(m);
@@ -914,11 +929,13 @@ export class App {
       this.patch.setVisible(false);
       this.rocks.setVisible(false);
       this.plants.setVisible(false);
+      this.kitMeshes?.setVisible(false);
       this.plantFloor.value = 0;
       return;
     }
     this.rocks.setVisible(true);
     this.plants.setVisible(true);
+    this.kitMeshes?.setVisible(true);
     const cam = this.camera.position;
     if (!this.rocksAt || Math.hypot(cam.x - this.rocksAt[0], cam.z - this.rocksAt[1]) > ROCK_RELAY_M) {
       this.rocksNear = this.rockField.near(cam.x, cam.z);
@@ -947,6 +964,10 @@ export class App {
     }
     this.layPlants(cam.x, cam.z, c, patchKey);
     this.plants.tick(this.clock.simTime, this.conditions.wind.speedMs);
+    if (this.kitMeshes) {
+      this.kitMeshes.update(this.plantsNear, this.camera, { cx: c ? c[0] : 0, cz: c ? c[1] : 0, on: !!c });
+      this.kitMeshes.tick(this.clock.simTime, this.conditions.wind.speedMs);
+    }
     if (c && (moved || this.sunDir.angleTo(this.shadowSun) > (0.5 * Math.PI) / 180)) {
       const inSquare = (x: number, z: number): boolean => Math.abs(x - c[0]) < 42 && Math.abs(z - c[1]) < 42;
       const casters = [...this.rocksNear.filter((r) => inSquare(r.x, r.z)), ...patchCasters(this.plantsNear, c, cam.x, cam.z)];

@@ -21,6 +21,7 @@ import { CoastalSurf } from '../surf/CoastalSurf';
 import { GroundPatch } from '../beach/GroundPatchMesh';
 import { Rocks } from '../beach/RockMeshes';
 import { PlantMeshes } from '../heath/PlantMeshes';
+import { KitMeshes } from '../heath/KitMeshes';
 import { BombieMesh } from '../bombie/BombieMesh';
 import { createLandLookUniforms } from '../land/landShading';
 
@@ -214,9 +215,27 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
     });
     it('the plants stay within the limits', () => {
       const plants = new PlantMeshes(sky, (xz) => sunlight.visibilityNode(xz));
-      for (const i of [0, 20, 40]) { // the first mesh of each level of detail (meshes are ordered level × kind × shape); LOD 2's 3000 matrices exceed the uniform limit (storage)
+      for (const i of [0, 24, 48]) { // the first mesh of each level of detail (meshes are ordered level × kind × shape: 6 × 4); LOD 2's matrices exceed the uniform limit (storage)
         const w = renderWgsl(plants.meshes[i] as unknown as THREE.Mesh);
         console.log(`plants lod ${i}: vertex sampled ${sampledTextures(w.vertex)} uniform ${uniformBuffers(w.vertex)} storage ${storageBindings(w.vertex)}, fragment sampled ${sampledTextures(w.fragment)} uniform ${uniformBuffers(w.fragment)}`);
+        for (const stage of [w.vertex, w.fragment]) {
+          expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+          expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
+          expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
+        }
+      }
+    });
+    it('the heath kit stays within the limits (dune-up-close §7.2)', () => {
+      const box = (): THREE.BufferGeometry => {
+        const g = new THREE.BoxGeometry(1, 1, 1);
+        g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 4).fill(1), 4));
+        return g;
+      };
+      const kit = { manifest: { version: 1 as const, units: 'unit' as const, variants: [], items: [], atlas: { file: '', size: 2048, tiles: {} } }, atlas: new THREE.DataTexture(new Uint8Array(4), 1, 1), geometry: box };
+      const k = new KitMeshes(kit, sky, (xz) => sunlight.visibilityNode(xz));
+      for (const i of [0, 24]) {
+        const w = renderWgsl(k.meshes[i] as unknown as THREE.Mesh);
+        console.log(`kit lod ${i ? 1 : 0}: vertex sampled ${sampledTextures(w.vertex)} uniform ${uniformBuffers(w.vertex)} storage ${storageBindings(w.vertex)}, fragment sampled ${sampledTextures(w.fragment)} uniform ${uniformBuffers(w.fragment)}`);
         for (const stage of [w.vertex, w.fragment]) {
           expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
           expect(sampledTextures(stage)).toBeLessThanOrEqual(16);

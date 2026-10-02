@@ -3,7 +3,11 @@ import { Fn, float, instanceIndex, select, storage, vec4 } from 'three/tsl';
 import { registerSelfTest } from '../dev/selfTest';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
+import { coverage } from '../board/board.selftest';
+import { loadKit } from './kit';
+import { KitMeshes } from './KitMeshes';
 import { PlantMeshes, raggedKeepNode } from './PlantMeshes';
+import { PLANT_KINDS, PLANT_SHAPES } from './plants';
 import type { Plant } from './plants';
 
 registerSelfTest({
@@ -60,5 +64,37 @@ registerSelfTest({
     const got = n ? [sx / n, sy / n] : [NaN, NaN];
     const off = Math.hypot(got[0] - want[0], got[1] - want[1]);
     return { pass: n > 10 && off < 6, detail: `${n} px, centre (${got.map((v) => v.toFixed(1)).join(', ')}) vs the base's (${want.map((v) => v.toFixed(1)).join(', ')}): ${off.toFixed(1)} px off` };
+  },
+});
+
+registerSelfTest({
+  name: 'heath: every kit variant draws pixels at L0 (5 m) and L1 (25 m)',
+  async run(renderer) {
+    const kit = await loadKit();
+    const meshes = new KitMeshes(kit, new Sky(DEFAULT_ATMOSPHERE));
+    meshes.forceBand.value = 1;
+    const group = new THREE.Group();
+    for (const m of meshes.meshes) group.add(m);
+    const under: string[] = [];
+    let least = Infinity;
+    for (const kind of PLANT_KINDS) {
+      for (let v = 0; v < PLANT_SHAPES; v++) {
+        for (const [d, fov] of [[5, 30], [25, 6]] as const) {
+          const plant: Plant = { x: 0, z: -d, kind, shape: v, width: 1.5, height: kind === 'pigface' ? 0.3 : 1, yTrue: 0, yCoarse: 0, yaw: 0, cosYaw: 1, sinYaw: 0, seed: 0.37, tint: [0.15, 0.18, 0.1] };
+          const cam = new THREE.PerspectiveCamera(fov, 1, 0.05, 100);
+          cam.position.set(0, kind === 'pigface' ? 1.2 : 0.6, 0);
+          cam.lookAt(0, kind === 'pigface' ? 0.1 : 0.45, -d);
+          cam.updateMatrixWorld();
+          meshes.update([plant], cam, { cx: 0, cz: 0, on: true });
+          // Outside the animation loop the node frame only advances in compileAsync, and three uploads instance-matrix
+          // edits once a frame: without it every view after the first drew the first's stale matrices.
+          await renderer.compileAsync(group, cam);
+          const px = await coverage(renderer, group, cam);
+          least = Math.min(least, px);
+          if (px <= 20) under.push(`${kind} ${v} at ${d} m: ${px} px`);
+        }
+      }
+    }
+    return { pass: under.length === 0, detail: under.length ? under.join('; ') : `${PLANT_KINDS.length * PLANT_SHAPES * 2} views, the least ${least} px` };
   },
 });

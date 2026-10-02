@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { PI, abs, attribute, cameraPosition, dot, float, length, max, mix, mx_noise_float, mx_noise_vec3, normalWorld, normalize, positionLocal, positionWorld, pow, reflect, saturate, sin, smoothstep, step, uniform, vec3 } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
+import { bandDitherNode, bandWeightNodes } from './KitMeshes';
 import { LOD_CAPACITY, PLANT_FULL_M, PLANT_GONE_M, PLANT_KINDS, PLANT_LODS, PLANT_SHAPES, type Plant, type PlantKind, plantLod, plantSeatY, plantShapeGeometry } from './plants';
 
 type N = any;
@@ -44,6 +45,8 @@ export class PlantMeshes {
   private readonly cellSlots = new Map<number, SlotRec[]>();
   /** Per mesh, the lowest and highest slot written since the last flush. */
   private readonly dirty: [number, number][] = [];
+  /** 1 once the kit draws the near and mid bands: the hulls then draw only beyond 40 m (spec §3.1). */
+  readonly kitFade = uniform(0);
   /** Plants that found their mesh full (dev readout). */
   dropped = 0;
   private readonly time = uniform(0);
@@ -234,7 +237,11 @@ export class PlantMeshes {
     // Ragged silhouettes, faded out by 100 m (the edge is under a pixel beyond).
     const edgeN = mx_noise_float(positionWorld.mul(5.0)).mul(0.5).add(0.5);
     const keep = raggedKeepNode(edgeN.add(smoothstep(80.0, 100.0, dist)), facing);
-    m.maskNode = keep;
+    // Once the kit draws the near and mid bands (dune-up-close §3.1), a hull keeps only its share of the shared dither:
+    // beyond 40 m, fading in across 3 m as the kit's L1 fades out.
+    const [, wFar] = bandWeightNodes(positionWorld);
+    const ours: N = bandDitherNode(seed).greaterThanEqual(float(1.0).sub(wFar));
+    m.maskNode = keep.and(ours.or(this.kitFade.lessThan(0.5)));
 
     const near = float(1.0).sub(smoothstep(20.0, 60.0, dist));
     const leaf = mx_noise_float(positionWorld.mul(10.0)).mul(0.5).add(0.5);
