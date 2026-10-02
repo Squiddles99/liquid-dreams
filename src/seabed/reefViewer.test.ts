@@ -41,8 +41,8 @@ function sideView(title: string, before: [number, number][], after: [number, num
   const line = (q: [number, number][]) => 'M' + q.filter(([s]) => s >= S0 && s <= S1).map(([s, d]) => `${X(s)},${Y(d)}`).join('L');
   const ticks = [0, 30, 100, 200, 300].map((s) => `<line x1="${X(s)}" y1="${Y(0)}" x2="${X(s)}" y2="${Y(D1)}" stroke="#ccd" stroke-width="0.7"/><text x="${X(s)}" y="${H - 4}" font-size="11" text-anchor="middle">${s} m</text>`).join('');
   const depthTicks = [6, 12, 20].map((d) => `<text x="2" y="${Y(d)}" font-size="11">${d} m</text>`).join('');
-  const m = marks.map((k, i) => `<circle cx="${X(k.s)}" cy="${Y(0)}" r="4" fill="${k.colour}"/><text x="${X(k.s)}" y="${(+Y(0) - 6 - (i % 5) * 11).toFixed(1)}" font-size="10" fill="${k.colour}" text-anchor="middle">${k.label}</text>`).join('');
-  return `<figure><figcaption><b>${title}</b> (left: inshore; right: out to sea; the peak's take-off at 0)</figcaption>
+  const m = marks.map((k) => `<circle cx="${X(k.s)}" cy="${Y(0)}" r="4" fill="${k.colour}"/>`).join('');
+  return `<figure><figcaption><b>${title}</b> (left: inshore; right: out to sea; the take-off at 0; depth drawn 4× taller than true)</figcaption>
   <svg viewBox="0 0 ${W} ${H}" width="${W}" style="max-width:100%;height:auto;background:#eef3f8">${ticks}${depthTicks}
   <path d="${line(after)}L${X(S1)},${Y(D1)}L${X(S0)},${Y(D1)}Z" fill="#5b5446"/>
   <path d="${line(before)}" fill="none" stroke="#999" stroke-width="2" stroke-dasharray="6 4"/>
@@ -60,7 +60,7 @@ describe.skipIf(!VIEW_OUT || !VIEW_BASELINE)('the reef build, drawn for Andrew (
       const f = computeReefField({ bed, periodS: 15, fromDeg: 225, tideM: TIDES[t] });
       for (const ft of [4, 6, 8, 12]) {
         const H = setWaveHeight(ft), at = firstBreak(f, H);
-        if (at) marks.push({ s: at.d, label: `${ft}′ ${t}: ${psiStateLabel(peakPsi(f, H, t === now.card.ideal12.tide && ft === 12))}`, colour: TIDE_COLOUR[t] });
+        if (at) marks.push({ s: at.d, label: `${ft} ft, ${t} tide: breaks ${at.d.toFixed(0)} m out, ${psiStateLabel(peakPsi(f, H, t === now.card.ideal12.tide && ft === 12))}`, colour: TIDE_COLOUR[t] });
       }
     }
     const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Womb Reef Profile</title>
@@ -69,6 +69,7 @@ describe.skipIf(!VIEW_OUT || !VIEW_BASELINE)('the reef build, drawn for Andrew (
 <p>Dots: where each size's biggest set wave first breaks on the peak's line (red low tide, blue mid, green high), with its tube. 12 ft is read after a lull on its best tide (${now.card.ideal12.tide}).</p>
 ${sideView('Along the peak’s line, out to the south-west', before.peakRay, now.peakRay, marks)}
 ${sideView('Along the line 40 m up the north ledge', before.northRay, now.northRay, [])}
+<ul style="columns:2;font-size:13px">${marks.map((k) => `<li style="color:${k.colour}">${k.label}</li>`).join('')}</ul>
 <h3>The numbers</h3><pre style="white-space:pre-wrap">BEFORE
 ${before.text}
 
