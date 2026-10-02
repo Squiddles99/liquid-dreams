@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { Fn, instanceIndex, length, storage, vec3, vec4 } from 'three/tsl';
+import { Fn, float, instanceIndex, length, storage, vec2, vec3, vec4 } from 'three/tsl';
 import { registerSelfTest } from '../dev/selfTest';
 import { WEED_ALBEDO, luminance } from './bedLook';
 import { KELP_HEIGHT_M } from './kelp';
 import { KelpMap } from './KelpMap';
-import { KELP_MIN_DOWN, kelpParallaxNode, kelpWeedAlbedoNode } from './kelpLook';
+import { KELP_MIN_DOWN, kelpCanopyAlbedoNode, kelpParallaxNode, kelpWeedAlbedoNode } from './kelpLook';
 
 async function sample(renderer: THREE.WebGPURenderer, rows: number[][], body: (q: any) => any): Promise<Float32Array> {
   const n = rows.length;
@@ -48,5 +48,29 @@ registerSelfTest({
     pass &&= Number.isFinite(maxShift) && maxShift <= KELP_HEIGHT_M / KELP_MIN_DOWN + 1e-4;
     notes.push(`level/rising rays: shift ≤ ${maxShift.toFixed(2)} m`);
     return { pass, detail: notes.join('; ') };
+  },
+});
+
+registerSelfTest({
+  name: 'kelp: the canopy changes a little for a little lean, through a flow reversal and over a tick, far from the origin (final review C1)',
+  async run(renderer) {
+    // Points 200–240 m from the origin, late in a session (sim time 1400 s): the pattern must sway, not fizz or pop.
+    const rows: number[][] = [];
+    for (let x = 200; x < 240; x += 0.53) for (let z = -20; z < 20; z += 0.61) rows.push([x, z, 0, 0]);
+    const at = async (lx: number, time: number): Promise<number[]> => {
+      const out = await sample(renderer, rows, (q) => vec4(kelpCanopyAlbedoNode(vec3(q.x, -6.0, q.y), vec3(0.0, -1.0, 0.0), vec2(lx, 0.0), float(time), float(1.0)), 0.0));
+      return rows.map((_, k) => luminance([out[k * 4], out[k * 4 + 1], out[k * 4 + 2]]));
+    };
+    const change = (a: number[], b: number[]): number => {
+      let d = 0, m = 0;
+      a.forEach((v, k) => { d += Math.abs(v - b[k]); m += v; });
+      return d / m;
+    };
+    const base = await at(0.5, 1400);
+    const lean = change(base, await at(0.52, 1400));
+    const flip = change(await at(0.02, 1400), await at(-0.02, 1400));
+    const tick = change(base, await at(0.5, 1400.05));
+    const pass = lean < 0.08 && flip < 0.08 && tick < 0.08;
+    return { pass, detail: `mean relative change: lean 0.50→0.52 ${lean.toFixed(3)}; flow reversal ±0.02 ${flip.toFixed(3)}; one tick ${tick.toFixed(3)} (each < 0.08)` };
   },
 });
