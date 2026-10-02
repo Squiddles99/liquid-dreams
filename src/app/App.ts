@@ -15,7 +15,7 @@ import { DEFAULT_SURFER_PARAMS, type SurferParams, normalizeSurferParams } from 
 import { SurferStand } from '../surfer/SurferStand';
 import { BeachPile } from '../surfer/BeachPile';
 import { GangLineup } from '../surfer/GangLineup';
-import { gangCamera, gangTrack } from '../surfer/gang';
+import { gangCamera, gangCameraDistance } from '../surfer/gang';
 import { type Clearing, clearOf } from '../heath/clearings';
 import { DEFAULT_SOUND_PARAMS, type SoundParams, normalizeSoundParams } from '../sound/soundParams';
 import { SoundSystem } from '../sound/SoundSystem';
@@ -443,8 +443,10 @@ export class App {
         },
         onGangCamera: () => {
           const sp = this.surferParams, g = this.groundAt(sp.x, sp.z) ?? this.conditions.tideM;
-          const ahead = gangCamera(sp, g);
-          this.rig.setPose(gangCamera(sp, g, 5.5, this.groundAt(ahead.position[0], ahead.position[2]) ?? -Infinity), this.conditions.tideM);
+          // On the track: never further than the clearing or a corridor reaches (dune-up-close §4.1).
+          const tracks = this.land.height?.trackNetwork, dist = tracks ? gangCameraDistance(tracks, sp) : 5.5;
+          const ahead = gangCamera(sp, g, dist);
+          this.rig.setPose(gangCamera(sp, g, dist, this.groundAt(ahead.position[0], ahead.position[2]) ?? -Infinity), this.conditions.tideM);
         },
         onSurferChase: () => {
           const pose = this.surferStand.chasePose(this.surferParams.headingDeg);
@@ -1363,7 +1365,7 @@ export class App {
     this.surferStand.update({ ...sp, enabled: sp.enabled && !sp.gang }, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
     this.gang.update(sp, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
     this.clearings = [
-      ...(sp.gang ? [...this.gang.spots.map((g) => ({ x: g.x, z: g.z, r: 1.2 })), ...gangTrack(sp)] : sp.enabled && sp.onLand ? [{ x: sp.x, z: sp.z, r: 1.2 }] : []),
+      ...(sp.gang ? this.gang.spots.map((g) => ({ x: g.x, z: g.z, r: 1.2 })) : sp.enabled && sp.onLand ? [{ x: sp.x, z: sp.z, r: 1.2 }] : []),
       ...(sp.pile ? [{ x: sp.pileX, z: sp.pileZ, r: 1.1 }] : []),
     ];
     if (this.surferParams.pile && !this.beachPile && !this.pileLoading) {
