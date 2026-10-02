@@ -238,7 +238,8 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   const primary = kk(normalize(T.add(volume.mul(0.1))), mix(float(90), float(220), w)).mul(mix(float(0.05), float(0.1), w));
   const secondary = kk(normalize(T.sub(volume.mul(0.15))), float(28)).mul(0.05);
   const sunExtra = vec3(primary, primary, primary).add(albedo.mul(secondary).mul(3.0)).mul(lit).mul(fine.mul(0.6).add(0.6)).mul(ao.mul(ao));
-  m.colorNode = litColor(sky, { albedo, normal: volume, specular: mix(float(0.02), float(0.03), w), shininess: mix(float(40), float(120), w), wrap: float(0.25), sunExtra }, sv);
+  // No Fresnel sky mirror on hair (§13.1): dry, none; wet, a little of the water film's.
+  m.colorNode = litColor(sky, { albedo, normal: volume, specular: mix(float(0.02), float(0.03), w), shininess: mix(float(40), float(120), w), wrap: float(0.25), sunExtra, sheen: w.mul(0.3) }, sv);
   // Wet curls pull in toward the head, most at the tips (grommet spec §3), but never inside the scalp (~10 cm from the
   // head's centre; pulling straight to the centre sank them into his skull and left a bald orange cap). The surfer's
   // group sits at the world origin with identity nodes (manifest.test pins it), so the skinned local position and
