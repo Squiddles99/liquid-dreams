@@ -4,16 +4,12 @@ import { REEF_SURROUND_DEPTH_M, SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { beachHeight } from '../land/landHeight';
 import { fbm2, valueNoise2 } from './noise';
-import { DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE } from './wombReef';
+import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE, rockReachM } from './wombReef';
 
 /** Weed dominates rock across most of the shelf; baseline coverage before the patchy noise carves gaps. */
 const SHELF_WEED_BASE = 0.78;
 /** Extra weed riding the reef heads themselves, on top of the shelf baseline. */
 const HEAD_WEED_BOOST = 0.18;
-/** Weed coverage right on the exposed ledge face, fading out with distance from the ledge (see LEDGE_FACE_WEED_FADE_M). */
-const LEDGE_FACE_WEED = 0.55;
-/** Distance outside the ledge over which the ledge-face weed fades to bare sand. */
-const LEDGE_FACE_WEED_FADE_M = 4;
 
 export interface Bathymetry {
   grid: GridSpec;
@@ -168,11 +164,15 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       if (sd < 0) {
         // Outside the shelf: the reef face, then the steady slope out to the open sea (seawardDepth, spec 2026-10-02 §3).
         d = background + (seawardDepth(-sd, x, p) - background) * edgeFade;
-        const faceSand = smoothstep(0, LEDGE_FACE_WEED_FADE_M, -sd);
-        s = 1 + (faceSand - 1) * edgeFade;
-        // The ledge face itself carries weed: (1 - faceSand) is already 1 at the ledge and 0 by
-        // LEDGE_FACE_WEED_FADE_M out, so it doubles as the face's weed-coverage falloff.
-        w = (1 - faceSand) * LEDGE_FACE_WEED * edgeFade;
+        // Seaward the reef's rock runs on down the slope (spec 2026-10-02 §4): weedy rock with scattered sand pockets out to
+        // rockReachM(z) seaward of the ledge line, then the open coast's bed; the map's edges fade to the open coast too.
+        const rock = 1 - smoothstep(rockReachM(zw) - ROCK_EDGE_M, rockReachM(zw) + ROCK_EDGE_M, -sd);
+        const pocketOut = lattice(pockets, xw, zw);
+        const patchOut = smoothstep(-0.5, 0.05, fbm2(xw / 5, zw / 5, REEF_SEED + 3));
+        const sReef = pocketOut, wReef = (1 - pocketOut) * DEEP_REEF_WEED * patchOut;
+        const [sOpen, wOpen] = OPEN_COAST_MATERIAL;
+        s = sOpen + (sReef - sOpen) * rock * edgeFade;
+        w = wOpen + (wReef - wOpen) * rock * edgeFade;
       } else {
         // Inside: reef heads and sand pockets on the shelf, also fading out at its inshore (x ≈ 110 m) boundary.
         const reefness = edgeFade * smoothstep(125, 100, x);
@@ -181,17 +181,17 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
         const relief = fbm2(warpX / 11, warpZ / 11, REEF_SEED);
         const heads = smoothstep(0.05, 0.55, relief);
         let interior = Math.max(p.minDepthM, p.shelfDepthM - p.headReliefM * heads);
-        const pocket = Math.max(lattice(pockets, xw, zw), smoothstep(-0.25, -0.55, relief));
+        const pocket = Math.max(lattice(pockets, xw, zw), smoothstep(-0.4, -0.7, relief));
         interior = interior + (p.pocketDepthM - interior) * pocket;
         const dShelf = p.ledgeDepthM + (interior - p.ledgeDepthM) * smoothstep(0, 20, sd);
-        const sShelf = pocket * smoothstep(0, 3, sd) + (1 - smoothstep(0, 3, sd)) * 0.3;
+        const sShelf = pocket * smoothstep(0, 3, sd);
         // Weed dominates rock over most of the shelf; the noise only carves occasional bare-rock gaps,
         // and reef heads carry extra weed of their own.
         const patch = smoothstep(-0.5, 0.05, fbm2(xw / 5, zw / 5, REEF_SEED + 3));
         const wShelf = (1 - pocket) * Math.min(1, SHELF_WEED_BASE + HEAD_WEED_BOOST * heads) * patch * smoothstep(0, 6, sd);
         d = background + (dShelf - background) * reefness;
-        s = 1 + (sShelf - 1) * reefness;
-        w = wShelf * reefness;
+        s = OPEN_COAST_MATERIAL[0] + (sShelf - OPEN_COAST_MATERIAL[0]) * reefness;
+        w = OPEN_COAST_MATERIAL[1] + (wShelf - OPEN_COAST_MATERIAL[1]) * reefness;
       }
       bed[i] = -d;
       sand[i] = s;

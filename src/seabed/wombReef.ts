@@ -1,3 +1,5 @@
+import { smoothstep } from '../math/smoothstep';
+
 export interface GridSpec {
   /** World x (m) of column 0's cell centre. */
   x0: number;
@@ -63,7 +65,23 @@ export const NORTH_LEDGE: readonly Pt[] = [[0, 0], [41.04, -112.76], [-19.8, -28
 export const SOUTH_LEDGE: readonly Pt[] = [[0, 0], [25, 28], [60, 38], [110, 45]];
 /** Shelf polygon (clockwise in plan view): tip → south ledge → inner-platform edge → north map edge → north ledge. */
 export const SHELF_POLYGON: readonly Pt[] = [[0, 0], [25, 28], [60, 38], [110, 45], [110, -450], [-81.6, -450], [-19.8, -280], [41.04, -112.76]];
-/** Major turquoise sand pockets traced from the corrected satellite images: [cx, cz, rx, rz]. */
+/** Sand pockets traced from Andrew's top-down satellite view (reference/place/womb-correct-topdown-peak-189m-offshore.webp:
+ * 0.41 m/px, the peak at pixel (902, 572)): small scattered patches in the dark reef, [cx, cz, rx, rz] (spec 2026-10-02 §4). */
 export const SAND_POCKETS: readonly (readonly [number, number, number, number])[] = [
-  [20, -40, 18, 10], [45, -160, 22, 12], [50, -110, 26, 14], [70, -200, 24, 12], [20, -250, 17, 10], [62, 17, 17, 8],
+  [40, -21, 8, 5], [71, 3, 7, 5], [-13, -42, 9, 6], [40, -111, 10, 6], [102, -79, 8, 6], [-50, -132, 10, 7], [-83, -173, 9, 6], [11, -177, 8, 6],
 ];
+
+/**
+ * How far seaward of the ledge line the reef's rock runs (m), the rest being the open coast's bed (spec §4): north of the
+ * peak, two to three times the ledge line's own distance offshore (Andrew's satellite views: the dark reef reaches about
+ * 340 m off the beach there); south of the peak only the face (the photos' uniform deep blue south and west of it).
+ */
+export const ROCK_REACH_NORTH_M = 170;
+export const ROCK_REACH_SOUTH_M = 40;
+/** The rock's seaward edge blends over ±ROCK_EDGE_M. */
+export const ROCK_EDGE_M = 20;
+/** Weed cover on the reef's deep slope, before its patch noise. */
+export const DEEP_REEF_WEED = 0.75;
+export function rockReachM(z: number): number {
+  return ROCK_REACH_NORTH_M + (ROCK_REACH_SOUTH_M - ROCK_REACH_NORTH_M) * smoothstep(-30, 40, z);
+}
