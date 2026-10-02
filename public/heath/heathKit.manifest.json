@@ -1,0 +1,612 @@
+{
+ "version": 1,
+ "units": "unit",
+ "variants": [
+  {
+   "kind": "daisy",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "plant_daisy_0_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_daisy_0_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "daisy",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "plant_daisy_1_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_daisy_1_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "daisy",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "plant_daisy_2_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_daisy_2_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "daisy",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "plant_daisy_3_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_daisy_3_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "green",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "plant_green_0_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_green_0_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "green",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "plant_green_1_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_green_1_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "green",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "plant_green_2_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_green_2_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "green",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "plant_green_3_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_green_3_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "tall",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "plant_tall_0_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_tall_0_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "tall",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "plant_tall_1_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_tall_1_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "tall",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "plant_tall_2_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_tall_2_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "tall",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "plant_tall_3_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_tall_3_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "pigface",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "plant_pigface_0_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_pigface_0_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "pigface",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "plant_pigface_1_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_pigface_1_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "pigface",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "plant_pigface_2_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_pigface_2_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "pigface",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "plant_pigface_3_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_pigface_3_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "rice",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "plant_rice_0_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_rice_0_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "rice",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "plant_rice_1_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_rice_1_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "rice",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "plant_rice_2_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_rice_2_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "rice",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "plant_rice_3_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_rice_3_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "dead",
+   "variant": 0,
+   "lods": [
+    {
+     "name": "plant_dead_0_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_dead_0_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "dead",
+   "variant": 1,
+   "lods": [
+    {
+     "name": "plant_dead_1_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_dead_1_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "dead",
+   "variant": 2,
+   "lods": [
+    {
+     "name": "plant_dead_2_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_dead_2_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  },
+  {
+   "kind": "dead",
+   "variant": 3,
+   "lods": [
+    {
+     "name": "plant_dead_3_L0",
+     "triangles": 20
+    },
+    {
+     "name": "plant_dead_3_L1",
+     "triangles": 20
+    }
+   ],
+   "boundsUnit": [
+    0.4472,
+    1.0,
+    0.4253
+   ],
+   "leafColour": [
+    0,
+    0,
+    0
+   ],
+   "checks": {}
+  }
+ ],
+ "items": [],
+ "atlas": {
+  "file": "heathAtlas.png",
+  "size": 2048,
+  "tiles": {}
+ }
+}
