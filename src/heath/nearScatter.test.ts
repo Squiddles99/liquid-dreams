@@ -44,6 +44,13 @@ describe('cellScatter (dune-up-close §4.4)', () => {
     for (const it of items.filter((i) => i.kind === 'tuft_tussock')) expect(it.x - 190).toBeLessThanOrEqual(toe + 2);
     for (const it of items.filter((i) => i.kind === 'item_shell')) expect(it.x - 190).toBeLessThanOrEqual(60);
   });
+  it('grows no tuft on the beach below its back (none in the swash, even by the boulders there)', () => {
+    const dryEnd = route.profile.wetWidthM + route.profile.dryWidthM;
+    const wetRocks: ScatterContext = { ...context(), rockNear: (x) => x - route.waterlineAt(0) < 12 || (x - 190 > 60 && x - 190 < 66) };
+    const tufts = all(wetRocks).filter((i) => i.kind.startsWith('tuft_'));
+    expect(tufts.length).toBeGreaterThan(0);
+    for (const it of tufts) expect(it.x - route.waterlineAt(it.z), it.kind).toBeGreaterThanOrEqual(dryEnd - 4);
+  });
   it('grows sword-sedge only by limestone', () => {
     for (const it of items.filter((i) => i.kind === 'tuft_swordsedge')) expect(ctx.rockNear(it.x, it.z)).toBe(true);
   });
