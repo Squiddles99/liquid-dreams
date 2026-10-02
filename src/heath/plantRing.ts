@@ -1,7 +1,10 @@
 import { PLANT_CELL_M } from './plants';
 
-/** The bands (dune-up-close §3.1): near 0–12 m, mid 12–40 m, far beyond, each boundary cross-faded over 3 m. */
-export const NEAR_M = 12;
+/**
+ * The bands (dune-up-close §3.1): near 0–10 m, mid 10–40 m, far beyond, each boundary cross-faded over 3 m. (The spec's
+ * 12 m near band came in at 10 m in the GPU budget pass: L0 is the costliest per plant.)
+ */
+export const NEAR_M = 10;
 export const MID_M = 40;
 export const BAND_FADE_M = 3;
 /** A ring move's adds within this distance go ahead of its drops. */

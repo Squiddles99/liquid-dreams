@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PLANT_KINDS, PLANT_SHAPES } from './plants';
 
@@ -63,5 +64,12 @@ describe('the heath kit (dune-up-close §4.2, §7.1)', () => {
       expect(e.checks.pipeModel, `${e.kind} ${e.variant}`).toBe(true);
       expect(e.checks.branchesInsideHull, `${e.kind} ${e.variant}`).toBeGreaterThanOrEqual(0.95);
     }
+  });
+});
+
+describe('the heath kit on disk (dune-up-close §7.1)', () => {
+  it('keeps public/heath under 30 MB', () => {
+    const total = readdirSync('public/heath').reduce((a, f) => a + statSync(join('public/heath', f)).size, 0);
+    expect(total).toBeLessThanOrEqual(30 * 1024 * 1024);
   });
 });
