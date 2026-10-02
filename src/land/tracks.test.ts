@@ -79,6 +79,12 @@ describe('TrackNetwork', () => {
       for (const z of [j.z - 7.3, j.z, j.z + 2.1, j.z + 11]) expect(t.sinkAt(x, z)).toBe(t.sinkAtSlow(x, z));
     }
   });
+  it('gives the worn mask on the lattice exactly, bilinear between (the GPU mask)', () => {
+    const p = t.data.pieces[1].points[12];
+    const x = Math.floor(p[0] / LATTICE_M) * LATTICE_M, z = Math.floor(p[1] / LATTICE_M) * LATTICE_M;
+    expect(t.wornAt(x, z)).toBeCloseTo(t.worn(x, z), 9);
+    expect(t.wornAt(x + LATTICE_M / 2, z)).toBeCloseTo((t.worn(x, z) + t.worn(x + LATTICE_M, z)) / 2, 9);
+  });
   it('puts the stand spot in the clearing, seaward of the junction, facing inland', () => {
     const s = t.standSpot();
     expect(t.inClearing(s.x, s.z)).toBe(true);
