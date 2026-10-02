@@ -125,6 +125,9 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   // cells): sample it on the same coarse 2 m lattice as sdf/pockets instead and bilinearly interpolate
   // below. Its smallest feature (12 m) is far coarser than 2 m, so this is visually identical.
   const warpDxField = new Float32Array(sx * sz), warpDzField = new Float32Array(sx * sz);
+  // The deep slope's weed patches (its 5 m noise at every 0.5 m cell more than doubled the build): on the same lattice,
+  // 10–20 m down where the water hides the difference.
+  const patchOutField = new Float32Array(sx * sz);
   for (let r = 0; r < sz; r++) for (let c = 0; c < sx; c++) {
     const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M;
     sdf[r * sx + c] = ledgeSignedDistance(x, z);
@@ -132,6 +135,7 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
     const [dx, dz] = reefWarp(x, z);
     warpDxField[r * sx + c] = dx;
     warpDzField[r * sx + c] = dz;
+    patchOutField[r * sx + c] = smoothstep(-0.5, 0.05, fbm2(x / 5, z / 5, REEF_SEED + 3));
   }
   const lattice = (field: Float32Array, x: number, z: number): number => {
     const fx = (x - grid.x0) / SDF_CELL_M, fz = (z - grid.z0) / SDF_CELL_M;
@@ -168,7 +172,7 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
         // rockReachM(z) seaward of the ledge line, then the open coast's bed; the map's edges fade to the open coast too.
         const rock = 1 - smoothstep(rockReachM(zw) - ROCK_EDGE_M, rockReachM(zw) + ROCK_EDGE_M, -sd);
         const pocketOut = lattice(pockets, xw, zw);
-        const patchOut = smoothstep(-0.5, 0.05, fbm2(xw / 5, zw / 5, REEF_SEED + 3));
+        const patchOut = lattice(patchOutField, xw, zw);
         const sReef = pocketOut, wReef = (1 - pocketOut) * DEEP_REEF_WEED * patchOut;
         const [sOpen, wOpen] = OPEN_COAST_MATERIAL;
         s = sOpen + (sReef - sOpen) * rock * edgeFade;
