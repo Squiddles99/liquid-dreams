@@ -2,6 +2,7 @@ import { smoothstep } from '../math/smoothstep';
 import { SHORE_FLAT_DEPTH_M, SHORE_X, depthBg } from '../seabed/coastProfile';
 import { valueNoise2 } from '../seabed/noise';
 import type { GridSpec, LandFile } from './landData';
+import type { TrackNetwork } from './tracks';
 
 /** The hand-shaped beach (spec §4.3.3, Ruling L2): widths inland of the waterline and heights at their ends (m). */
 export interface BeachProfile {
@@ -127,8 +128,31 @@ export class LandHeight {
     return wf <= 0 ? r : r + (bilinear(fine, this.file.fineHeights, x, z) - r) * wf;
   }
 
-  /** The composed height at (x, z) (m above mean sea level). */
+  private tracks: TrackNetwork | null = null;
+
+  /** The walk to the Womb (dune-up-close §4.1): its worn sink is in heightAt, not in the coarse mesh. */
+  setTracks(t: TrackNetwork | null): void {
+    this.tracks = t;
+  }
+
+  get trackNetwork(): TrackNetwork | null {
+    return this.tracks;
+  }
+
+  /** Where feet and the fine patch stand: the composed height, less the tracks' worn sink. */
   heightAt(x: number, z: number): number {
+    const h = this.baseHeightAt(x, z);
+    return this.tracks ? h - this.tracks.sinkAt(x, z) : h;
+  }
+
+  /** The fine grid's z extent (the Cape to Cape runs its length). */
+  fineZRange(): [number, number] {
+    const g = this.file.fine;
+    return [g.z0, g.z0 + (g.nz - 1) * g.cellM];
+  }
+
+  /** The composed height at (x, z) (m above mean sea level), without the tracks: what the coarse mesh is built from. */
+  baseHeightAt(x: number, z: number): number {
     const p = this.profile, xs = this.waterlineAt(z), d = x - xs;
     const toeEnd = p.wetWidthM + p.dryWidthM + p.toeWidthM;
     let h = beachHeight(d, p);

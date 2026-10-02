@@ -48,7 +48,7 @@ export function buildLandMesh(land: LandHeight): LandMeshData {
     const xAt = (i: number) => box[0] + i * cellM, zAt = (j: number) => box[1] + j * cellM;
     // Heights on this level's full vertex grid, stitched along its outer edge.
     const H = new Float32Array((nx + 1) * (nz + 1));
-    for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) H[j * (nx + 1) + i] = land.heightAt(xAt(i), zAt(j));
+    for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) H[j * (nx + 1) + i] = land.baseHeightAt(xAt(i), zAt(j));
     if (stitch) {
       for (let i = 1; i < nx; i += 2) {
         H[i] = (H[i - 1] + H[i + 1]) / 2;
@@ -65,7 +65,7 @@ export function buildLandMesh(land: LandHeight): LandMeshData {
       if (remap[g] >= 0) return remap[g];
       const x = xAt(i), z = zAt(j), y = H[g];
       const e = cellM;
-      const hx = land.heightAt(x + e, z) - land.heightAt(x - e, z), hz = land.heightAt(x, z + e) - land.heightAt(x, z - e);
+      const hx = land.baseHeightAt(x + e, z) - land.baseHeightAt(x - e, z), hz = land.baseHeightAt(x, z + e) - land.baseHeightAt(x, z - e);
       const len = Math.hypot(hx, 2 * e, hz);
       const ny = (2 * e) / len;
       const c = coverAt(x - land.waterlineAt(z), 1 - ny, x, z, y, land.profile);
@@ -114,10 +114,10 @@ export function coarseMeshHeightAt(land: LandHeight, x: number, z: number): numb
     // On a cell boundary the neighbouring quad gives the same edge: use it where this one was dropped.
     if (dropped(i, j) && fi === i && i > 0 && !dropped(i - 1, j)) i -= 1;
     if (dropped(i, j) && fj === j && j > 0 && !dropped(i, j - 1)) j -= 1;
-    if (dropped(i, j)) return land.heightAt(x, z);
+    if (dropped(i, j)) return land.baseHeightAt(x, z);
     const u = fi - i, v = fj - j;
     const stitch = k + 1 < MESH_LEVELS.length;
-    const raw = (ii: number, jj: number): number => land.heightAt(box[0] + ii * cellM, box[1] + jj * cellM);
+    const raw = (ii: number, jj: number): number => land.baseHeightAt(box[0] + ii * cellM, box[1] + jj * cellM);
     const H = (ii: number, jj: number): number => {
       if (stitch && (jj === 0 || jj === nz) && ii % 2 === 1) return (raw(ii - 1, jj) + raw(ii + 1, jj)) / 2;
       if (stitch && (ii === 0 || ii === nx) && jj % 2 === 1) return (raw(ii, jj - 1) + raw(ii, jj + 1)) / 2;
@@ -131,5 +131,5 @@ export function coarseMeshHeightAt(land: LandHeight, x: number, z: number): numb
     const d = H(i + 1, j + 1);
     return d + (c - d) * (1 - u) + (b - d) * (1 - v);
   }
-  return land.heightAt(x, z);
+  return land.baseHeightAt(x, z);
 }

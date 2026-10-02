@@ -2,16 +2,23 @@ import { decodeLandFile } from './landData';
 import { type BeachProfile, LandHeight } from './landHeight';
 import { type LandMeshData, buildLandMesh } from './landMesh';
 import { buildMarchHeights } from './sunlight';
+import { type TrackData, routeTracks } from './tracks';
 
 /** What the land takes to build from its composed height: the mesh and the sunlight map's march heights. */
 export interface LandBuild {
   mesh: LandMeshData;
   march: Float32Array;
+  /** The tracks, routed on the composed height (plain arrays: they cross the worker boundary). */
+  tracks: TrackData;
 }
 
 /** The land's build, on whichever thread calls it (the mesh alone is 0.5–1.6 s of CPU in the game). */
 export function buildLand(height: LandHeight): LandBuild {
-  return { mesh: buildLandMesh(height), march: buildMarchHeights((x, z) => height.heightAt(x, z)) };
+  return {
+    mesh: buildLandMesh(height),
+    march: buildMarchHeights((x, z) => height.baseHeightAt(x, z)),
+    tracks: routeTracks(height, height.fineZRange()),
+  };
 }
 
 /** Builds the land from the file's bytes and the beach profile (Land.load's builder). */
