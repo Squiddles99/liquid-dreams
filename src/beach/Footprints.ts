@@ -103,15 +103,25 @@ export class Footprints {
     void vec2;
   }
 
-  /** Lays the prints, each at the surface under it. */
+  /**
+   * Lays the prints, each conformed to the surface under it (spec §4.3): tilted to its normal (from the surface a half
+   * print either way), its length along its yaw across the slope, so toe and heel both sit on the ground.
+   */
   update(prints: readonly Print[], surfaceAt: (x: number, z: number) => number): void {
     const a = this.mesh.instanceMatrix.array as Float32Array, ages = this.ages.array as Float32Array;
-    const n = Math.min(prints.length, MAX_PRINTS);
+    const n = Math.min(prints.length, MAX_PRINTS), h = PRINT_LENGTH_M / 2;
     for (let i = 0; i < n; i++) {
-      const p = prints[i], c = Math.cos(p.yaw), s = Math.sin(p.yaw), mx = p.left ? 1 : -1, o = i * 16;
-      a[o] = c * mx; a[o + 1] = 0; a[o + 2] = -s * mx; a[o + 3] = 0;
-      a[o + 4] = 0; a[o + 5] = 1; a[o + 6] = 0; a[o + 7] = 0;
-      a[o + 8] = s; a[o + 9] = 0; a[o + 10] = c; a[o + 11] = 0;
+      const p = prints[i], mx = p.left ? 1 : -1, o = i * 16;
+      const sx = (surfaceAt(p.x + h, p.z) - surfaceAt(p.x - h, p.z)) / (2 * h), sz = (surfaceAt(p.x, p.z + h) - surfaceAt(p.x, p.z - h)) / (2 * h);
+      // Up: the normal. Forward: the yaw's direction lifted onto the slope (y = its rise). Across: up × forward.
+      const ul = Math.hypot(sx, 1, sz), ux = -sx / ul, uy = 1 / ul, uz = -sz / ul;
+      let fx = Math.sin(p.yaw), fz = Math.cos(p.yaw), fy = sx * fx + sz * fz;
+      const fl = Math.hypot(fx, fy, fz);
+      fx /= fl; fy /= fl; fz /= fl;
+      const rx = uy * fz - uz * fy, ry = uz * fx - ux * fz, rz = ux * fy - uy * fx;
+      a[o] = rx * mx; a[o + 1] = ry * mx; a[o + 2] = rz * mx; a[o + 3] = 0;
+      a[o + 4] = ux; a[o + 5] = uy; a[o + 6] = uz; a[o + 7] = 0;
+      a[o + 8] = fx; a[o + 9] = fy; a[o + 10] = fz; a[o + 11] = 0;
       a[o + 12] = p.x; a[o + 13] = surfaceAt(p.x, p.z) + 0.003; a[o + 14] = p.z; a[o + 15] = 1;
       ages[i] = p.age;
     }
