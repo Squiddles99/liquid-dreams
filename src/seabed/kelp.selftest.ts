@@ -70,6 +70,14 @@ registerSelfTest({
     const [, lz] = await readCell(5003, -2996);
     pass &&= Math.abs(lz - kelpSteadyLean(0, -3)[1]) < 0.01;
     notes.push(`after a teleport ${lz.toFixed(3)} (steady ${kelpSteadyLean(0, -3)[1].toFixed(3)})`);
+    // The camera moves 30 cells on a frame with no tick (paused: the same sim time): the texture still holds the old
+    // window, so a cell outside it shows no lean, not the wrapped cell 128 m away (final review I2).
+    u.value.set(1.6, 0);
+    field.advance(renderer, (k0 + 8) / 20, 0, 0, () => {});
+    field.advance(renderer, (k0 + 8) / 20, 30, 0, () => {});
+    const [far] = await readCell(74, 0);
+    pass &&= Math.abs(far) < 0.01;
+    notes.push(`paused, moved 30 cells: a cell outside the stepped window reads ${far.toFixed(3)} (0)`);
     // A backwards step replays (Review Focus 5).
     const sch = new FoamSchedule();
     sch.planTicks(200, 80);
