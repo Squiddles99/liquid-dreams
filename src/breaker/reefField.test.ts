@@ -4,7 +4,7 @@ import { depthBg } from '../seabed/coastProfile';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
-import { RUN_DIP, computeReefField, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
+import { RUN_DIP, computeReefField, gainAhead, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
 import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetGain, onsetHeight, onsetTime } from './breaking';
 import { BREAKING_RATIO } from './setWaveModel';
 
@@ -151,6 +151,27 @@ describe('the breaking depth smoothing (along the crest and along travel)', () =
     for (let row = 24; row <= 36; row++) expect(at(m, 30, row)).toBeCloseTo(5, 5);
     expect(at(m, 30, 38)).toBeCloseTo(1, 5);
     for (let i = 0; i < n; i++) expect(m[i]).toBeGreaterThanOrEqual(spike[i]);
+  });
+});
+
+describe("the front's lean feels the reef ahead (Andrew's bump, 2026-10-02)", () => {
+  it('reads the strongest gain within half a wavelength ahead along the ray, tapering to nothing at its end', () => {
+    // A ray along +x, half a wavelength of 80 m, and reef (gain 4) from x = 100 m on.
+    const grid = { x0: 0, z0: 0, cellM: 1, nx: 200, nz: 3 }, n = grid.nx * grid.nz;
+    const a = new Float32Array(n), dirX = new Float32Array(n).fill(1), dirZ = new Float32Array(n), k = new Float32Array(n).fill(Math.PI / 80);
+    for (let i = 0; i < n; i++) if (i % grid.nx >= 100) a[i] = 4;
+    const g = gainAhead(a, dirX, dirZ, k, grid), row = grid.nx;
+    expect(g[row + 60], 'the reef 40 m ahead').toBeCloseTo(4 * (1 - 40 / 80), 5);
+    expect(g[row + 10], 'the reef 90 m ahead: past its front').toBe(0);
+    expect(g[row + 150], 'on the reef').toBe(4);
+    for (let c = 1; c < 100; c++) expect(g[row + c], `${c} m`).toBeGreaterThanOrEqual(g[row + c - 1]);
+  });
+  it("the lean's depth is never deeper than the slurp's, and over deep water in front of the ledge it is shallower", { timeout: 60_000 }, () => {
+    const f = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0 });
+    for (let i = 0; i < f.hminLean.length; i++) expect(f.hminLean[i]).toBeLessThanOrEqual(f.hminSlurp[i]);
+    const s = sampleField(f, -25, 15);
+    expect(s.depth, '25 m outside the peak').toBeGreaterThan(12);
+    expect(s.hminLean).toBeLessThan(0.5 * s.hminSlurp);
   });
 });
 
