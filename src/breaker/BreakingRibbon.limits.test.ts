@@ -195,6 +195,13 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
         }
       }
     });
+    it('the ground patch has room for the dune-up-close layers (3 fragment and 2 vertex slots; spec §4.3)', () => {
+      const patch = new GroundPatch(sky, createLandLookUniforms(), { sunVisibility: (xz) => sunlight.visibilityNode(xz) });
+      const w = renderWgsl(patch.mesh);
+      console.log(`patch headroom: vertex ${16 - sampledTextures(w.vertex)}, fragment ${16 - sampledTextures(w.fragment)}`);
+      expect(sampledTextures(w.fragment)).toBeLessThanOrEqual(16 - 3);
+      expect(sampledTextures(w.vertex)).toBeLessThanOrEqual(16 - 2);
+    });
     it('the Bombie stays within the limits', () => {
       const b = new BombieMesh(model, sky, (xz) => sunlight.visibilityNode(xz));
       const w = renderWgsl(b.mesh);
