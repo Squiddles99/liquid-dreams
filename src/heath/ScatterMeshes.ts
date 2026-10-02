@@ -19,6 +19,8 @@ const TUFT_L0_M = 12;
 export class ScatterMeshes {
   readonly meshes: THREE.InstancedMesh[] = [];
   private readonly seeds: THREE.InstancedBufferAttribute[] = [];
+  /** Each instance's base: the band weights are the whole item's (KitMeshes' bandWeightNodes). */
+  private readonly origins: THREE.InstancedBufferAttribute[] = [];
   private readonly index = new Map<string, number>();
   private readonly time = uniform(0);
   private readonly sway = uniform(0);
@@ -46,6 +48,9 @@ export class ScatterMeshes {
           const seed = new THREE.InstancedBufferAttribute(new Float32Array(SCATTER_CAPACITY), 1);
           g.setAttribute('plantTint', tint);
           g.setAttribute('plantSeed', seed);
+          const origin = new THREE.InstancedBufferAttribute(new Float32Array(SCATTER_CAPACITY * 3), 3);
+          g.setAttribute('plantOrigin', origin);
+          this.origins.push(origin);
           const mesh = new THREE.InstancedMesh(g, tuft ? (lod === 0 ? tuft0 : tuft1) : item, SCATTER_CAPACITY);
           mesh.name = `scatter_${kind}_${v}_L${lod}`;
           mesh.count = 0;
@@ -88,6 +93,8 @@ export class ScatterMeshes {
         const i = counts[m]++;
         this.meshes[m].setMatrixAt(i, this.m4);
         (this.seeds[m].array as Float32Array)[i] = it.seed;
+        const o3 = this.origins[m].array as Float32Array;
+        o3[i * 3] = it.x; o3[i * 3 + 1] = it.y; o3[i * 3 + 2] = it.z;
       }
       drawn++;
     }
@@ -96,6 +103,7 @@ export class ScatterMeshes {
       if (counts[k] > 0) {
         mesh.instanceMatrix.needsUpdate = true;
         this.seeds[k].needsUpdate = true;
+        this.origins[k].needsUpdate = true;
       }
     });
     return { drawn, culled };

@@ -84,7 +84,7 @@ import { Rocks } from '../beach/RockMeshes';
 import { LOD_RANGES_M, PLANT_CELL_M, PLANT_GONE_M, PlantField, patchCasters, type Plant, plantLod, plantSeatY } from '../heath/plants';
 import { BAND_FADE_M, type CellChange, CellQueue, MID_M, PlantRing, cellKey, layBudgetMs } from '../heath/plantRing';
 import { PlantMeshes } from '../heath/PlantMeshes';
-import { KitMeshes } from '../heath/KitMeshes';
+import { KitMeshes, hullColours } from '../heath/KitMeshes';
 import { ScatterMeshes } from '../heath/ScatterMeshes';
 import { SCATTER_CELL_M, type ScatterContext, type ScatterItem, TUFT_RANGE_M, cellScatter } from '../heath/nearScatter';
 import { canopySilhouettes, loadKit } from '../heath/kit';
@@ -390,6 +390,7 @@ export class App {
         canopySilhouettes(kit).then((s) => { this.canopies = s; this.shadowSun.set(0, -1, 0); }, () => undefined);
         for (const m of this.scatter.meshes) this.scene.add(m);
         this.plants.kitFade.value = 1;
+        this.plants.setKindColours(hullColours());
         this.hullInnerM = MID_M - BAND_FADE_M;
         this.hullsStale = true;
       },
