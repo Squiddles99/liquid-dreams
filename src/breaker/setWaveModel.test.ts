@@ -128,7 +128,9 @@ describe('ψ at the crest (barrel from the maths)', () => {
     // The GPU's repro (breaker self-test "eases the crest", 12 ft, dt +20 s): the set's biggest wave passed (140, 297.25)
     // 19 s ago (envelope 1e-15), yet its crest lookup lands squarely on its crest 60 m on, where it has broken.
     const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
-    const x = 140, z = field.grid.z0 + (field.grid.nz - 1) * field.grid.cellM - 2, tt = w.arrivalS + 20, f = sampleField(field, x, z);
+    // On the reef build's reef the repro's state (past the cutoff, the lookup on a broken crest) holds 24–26 s after the crest
+    // passed there (plan 2026-10-02 Task 4; ~20 s on the softened ramp).
+    const x = 140, z = field.grid.z0 + (field.grid.nz - 1) * field.grid.cellM - 2, f = sampleField(field, x, z), tt = w.arrivalS + f.tau + 25;
     expect(beyondEnvelope(phaseXi(x, z, tt, f, w, ctx), w)).toBe(true);
     const found = crestAt(x, z, tt, f, w, ctx, o)!;
     expect(found.s * found.confidence).toBeGreaterThan(0.9);
