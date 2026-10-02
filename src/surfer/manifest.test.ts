@@ -165,6 +165,37 @@ describe("Shazza's hair (closeup spec §3)", () => {
     expect(c.braidsOutside).toBe(true);
     expect(man.meshes.flatMap((m) => m.materials)).toContain('hairTie');
   });
+  it('the braids hang smoothly: no kink in the line, no flip in the weave, strands curving round each other (dune select spec §13.2)', () => {
+    // The worst turn between neighbouring points, in degrees, over both braids dry and wet, sampled every STEP
+    // (1.5 mm). Round 1 (3.3 mm steps): the line bent 63–74° where it rode over the collar and the strap, the weave's
+    // sideways axis flipped 105–165° (taken from whichever surface was nearest), and the strands turned 150°: the kink
+    // Andrew saw, and blocky lobes. A smooth plait: the line under 5°, the weave under 4°, a strand under 15° a step
+    // (the tightest real curve, 3.7°, is the dry right braid arching over the pack's strap at the nape: a 2.3 cm radius).
+    const c = man.checks!;
+    expect(c.braidPathTurnDeg).toBeLessThan(5);
+    expect(c.braidTwistDeg).toBeLessThan(4);
+    expect(c.braidStrandTurnDeg).toBeLessThan(15);
+    // And a strand never bends tighter than its tube is thick (round 1: 0.6, folding into creases that read as blocks).
+    expect(c.braidBendRatio).toBeGreaterThanOrEqual(1);
+  });
+  it('the braid strands are smooth round tubes: one normal at each point of the surface, not 12 flat facets (dune select spec §13.2)', () => {
+    for (const mesh of gltf.meshes) for (const prim of mesh.primitives) {
+      const mat = gltf.materials[prim.material].name as string;
+      if (!mat.endsWith('Braid')) continue;
+      const pos = glbValues('public/surfer/female.glb', gltf, prim.attributes.POSITION);
+      const nor = glbValues('public/surfer/female.glb', gltf, prim.attributes.NORMAL);
+      const seen = new Map<string, number>();
+      let worst = 1;
+      for (let i = 0; i < pos.length / 3; i++) {
+        const key = `${Math.round(pos[3 * i] * 2e4)},${Math.round(pos[3 * i + 1] * 2e4)},${Math.round(pos[3 * i + 2] * 2e4)}`;
+        const j = seen.get(key);
+        if (j === undefined) { seen.set(key, i); continue; }
+        worst = Math.min(worst, nor[3 * i] * nor[3 * j] + nor[3 * i + 1] * nor[3 * j + 1] + nor[3 * i + 2] * nor[3 * j + 2]);
+      }
+      // Flat shading splits every corner into four vertices with their faces' normals (~30° apart round a 12-sided tube).
+      expect(worst, `${mat}: the most two normals at one point differ (cos)`).toBeGreaterThan(0.99);
+    }
+  });
   it('her upper lip is thinned by the build: at least a fifth shorter than MPFB leaves it (dune select spec §13.1)', () => {
     expect(man.checks!.upperLipSculptedMm).toBeLessThanOrEqual(0.8 * man.checks!.upperLipMm!);
   });

@@ -133,6 +133,13 @@ export interface SurferManifest {
     braidEndDropCm?: number[];
     braidEndsInFront?: boolean;
     braidsOutside?: boolean;
+    /** The braids' smoothness (§13.2): the worst turn between neighbouring points (degrees, 1.5 mm apart) of the
+     * centreline, of the weave's sideways axis, and of a plait strand, over both braids dry and wet; and the tightest a
+     * strand bends, over its tube's radius (under 1 it folds). */
+    braidPathTurnDeg?: number;
+    braidTwistDeg?: number;
+    braidStrandTurnDeg?: number;
+    braidBendRatio?: number;
   };
   blender: string;
   mpfb: string;
