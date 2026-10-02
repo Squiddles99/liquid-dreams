@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
-  type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, MIN_STAGE_SPAN, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
+  type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, MIN_STAGE_SPAN, sharpenDropSlope, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
   FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
 } from './breaking';
 import { waveNumber } from './dispersion';
@@ -160,6 +160,22 @@ describe('the sheet shape (sampled cross-sections)', () => {
     for (const ahead of [0.5, 2]) {
       const expected = steep * (1 - Math.exp(-((ahead / w) ** 2))) * smoothstep(2 * quarter, quarter, ahead) * Math.max(eta - (etaCrest - SHARPEN_DEPTH * H), 0);
       expect(sharpenDrop(ahead, eta, etaCrest, H, k, steep, P)).toBeCloseTo(expected, 12);
+    }
+  });
+  it('the sharpened face runs on down into the trough: no flat terrace below its steep top (Andrew, 2026-10-02)', () => {
+    // A tall unbroken front (always above the floor) on a long wave: the cut surface is the floor itself. It used to stop
+    // flat at SHARPEN_DEPTH·H below the crest: a terrace there, then a second drop where the wave's own front fell below it.
+    const H = 3.5, k = 0.01, etaCrest = 2.8, eta = 10, w = P.faceWidth * H;
+    const surface = (a: number) => eta - sharpenDrop(a, eta, etaCrest, H, k, 1, P);
+    expect(surface((2 + SHARPEN_FLOOR_REACH) * w + 0.5)).toBeCloseTo(etaCrest - H, 2);
+    for (let a = 2 * w; a < (2 + SHARPEN_FLOOR_REACH) * w - 0.05; a += 0.05) expect(surface(a + 0.05)).toBeLessThan(surface(a));
+  });
+  it('sharpenDropSlope is the slope of sharpenDrop along ahead, across the floor’s run down too', () => {
+    const H = 3.5, k = 0.03, etaCrest = 2.8, w = P.faceWidth * H;
+    const etaAt = (a: number) => 2.6 - 0.12 * a, slope = -0.12;
+    for (let a = 0.2; a < (3 + SHARPEN_FLOOR_REACH) * w; a += 0.37) {
+      const fd = (sharpenDrop(a + 1e-4, etaAt(a + 1e-4), etaCrest, H, k, 0.8, P) - sharpenDrop(a - 1e-4, etaAt(a - 1e-4), etaCrest, H, k, 0.8, P)) / 2e-4;
+      expect(sharpenDropSlope(a, etaAt(a), slope, etaCrest, H, k, 0.8, P)).toBeCloseTo(fd, 4);
     }
   });
   it('breakPoint keeps the Phase 1 point when neither steep nor breaking', () => {
