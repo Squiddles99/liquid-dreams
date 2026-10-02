@@ -25,6 +25,10 @@ export const CLOSEOUT_SPREAD_S = 1.5;
 export const PEEL_SPAN_M = 40;
 export const CRITERIA_SIZES_FT = [4, 6, 8, 10, 12] as const;
 export const PEEL_SIZES_FT = [4, 6, 8] as const;
+/** 12 ft at low tide may break this far (m) seaward of the ledges (Andrew, 2026-10-02: too big for low tide). */
+export const LOW_TIDE_12FT_REACH_M = 40;
+/** 12 ft's ideal day: at least this ψ (the biggest cylinder, on the line to thrown out; Andrew accepted 0.079, 2026-10-02). */
+export const THROWN_12_PSI = 0.075;
 const STEP_M = 0.5;
 const INSHORE_REACH_M = 60;
 const SEAWARD_REACH_M = 300;
@@ -158,14 +162,16 @@ export function evaluateReef(fields: Readonly<Record<Tide, ReefField>>, p: Break
     passes: {
       // Every size breaks no further out than 30 m; 6 ft and up break by 60 m inshore (at the take-off, not on the inner shelf).
       breakNearPeak: TIDE_NAMES.every((t) => firstBreakM[t].every((d, i) => d <= BREAK_NEAR_PEAK_M && (CRITERIA_SIZES_FT[i] < 6 || Number.isFinite(d)))),
-      nothingOutside: TIDE_NAMES.every((t) => furthest12[t] === null || furthest12[t]!.v <= BREAK_NEAR_PEAK_M),
+      // 12 ft is too big for low tide (Andrew, 2026-10-01): there it may reach LOW_TIDE_12FT_REACH_M (his ruling, 2026-10-02).
+      nothingOutside: TIDE_NAMES.every((t) => furthest12[t] === null || furthest12[t]!.v <= (t === 'low' ? LOW_TIDE_12FT_REACH_M : BREAK_NEAR_PEAK_M)),
       peelFromPeak: peel.every(inBand) && peelMonotonic.every(Boolean),
       // Spec §2.3 asks state 6 only: with the ideal tide also the ordinary one (mid), the peel can't differ (a lull leaves it).
-      thrown12: ideal12.state === 'thrown',
+      // Andrew accepted the game's 12 ft ideal right on the cylinder/thrown line (2026-10-02): THROWN_12_PSI and up.
+      thrown12: ideal12.psi >= THROWN_12_PSI,
       closeout12: ordinary12Spread <= CLOSEOUT_SPREAD_S,
-      // 6 ft's ideal day is the cylinder; 8 ft's may throw out (Andrew approved it drawn, plan 2026-10-02 Gate 1).
+      // 6–8 ft's ideal day is the cylinder or just thrown out (Andrew approved 8 ft drawn thrown, and the game's 6 ft at 0.081).
       smallDays: [6, 8].every((ft) => ['oval', 'cylinder'].includes(psiState(psi.mid[at(ft)].set)))
-        && psiState(bestLull(at(6))) === 'cylinder' && ['cylinder', 'thrown'].includes(psiState(bestLull(at(8))))
+        && [6, 8].every((ft) => ['cylinder', 'thrown'].includes(psiState(bestLull(at(ft)))))
         && TIDE_NAMES.every((t) => !['thrown', 'slab'].includes(psiState(psi[t][at(4)].set))),
     },
   };
