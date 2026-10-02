@@ -21,6 +21,12 @@ export interface FieldSample {
    * The stage and the collapse read hminBreak: the shoulders don't break any earlier.
    */
   hminSlurp: number;
+  /**
+   * The front's lean's breaking depth (m), ≤ hminSlurp: from the reef its front feels within half a wavelength ahead
+   * (reefField.gainAhead), slurped along the crest, so the front leans before the crest reaches the reef, not in its last
+   * second (setWaveModel.leanWeight).
+   */
+  hminLean: number;
   /** Local wavenumber (rad/m) for the mean period. */
   k: number;
   /** Unit travel direction. */

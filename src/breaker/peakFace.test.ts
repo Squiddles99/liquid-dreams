@@ -11,12 +11,13 @@ const set = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
 const biggest = set.reduce((a, b) => (b.heightM > a.heightM ? b : a));
 
 describe('the face-height readout at the peak', () => {
-  it('reads the biggest default wave as breaking, with a face of 3.5–5 m', () => {
+  it('reads the biggest default wave as breaking, with a face of 3.5–6.5 m', () => {
     const t = biggest.arrivalS;
     const face = peakFace(field, wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS), t, DEFAULT_BREAK_PARAMS)!;
     expect(face.stage).toBeGreaterThan(0);
     expect(face.faceM).toBeGreaterThan(3.5);
-    expect(face.faceM).toBeLessThan(5);
+    // 5.9 m on the reef build's face, which stands the wave up taller at the peak (under 5 m on the softened ramp; plan 2026-10-02 Task 4).
+    expect(face.faceM).toBeLessThan(6.5);
     expect(formatPeakFace(face, true)).toMatch(/^\d+\.\d m \(\d+ ft\) face, breaking$/);
   });
   it('has nothing to read in a lull, with no field yet, or on a flat day', () => {

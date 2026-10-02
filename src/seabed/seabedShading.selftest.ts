@@ -9,6 +9,7 @@ import { marchSeabed } from './waterColumn';
 const RAYS: [[number, number, number], [number, number, number]][] = [
   [[-25, 0, 45], [0.3, -0.5, -0.81]], [[0, 0, 0], [0, -1, 0]], [[40, 0, -120], [0.2, -0.9, 0.39]],
   [[-300, 0, 100], [0, -1, 0]], [[20, 0, -40], [-0.6, -0.3, -0.74]], [[-10, 0, 20], [0.1, 0.5, 0.86]],
+  [[-4, 3, 3], [-0.55, -0.64, 0.53]], // from the take-off down the new face (plan 2026-10-02 Review Focus 5: the bed drops up to 8 m ahead)
 ];
 
 registerSelfTest({

@@ -4,7 +4,7 @@ import { depthBg } from '../seabed/coastProfile';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
-import { RUN_DIP, computeReefField, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
+import { RUN_DIP, computeReefField, gainAhead, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
 import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetGain, onsetHeight, onsetTime } from './breaking';
 import { BREAKING_RATIO } from './setWaveModel';
 
@@ -65,9 +65,8 @@ describe('reef wave field', () => {
       });
       return count;
     };
-    // 269.9° is a real, non-grazing direction: the reef genuinely focuses a cluster of cells to AMP_CAP near the
-    // south edge, so a low count at 270° isn't just "nothing ever gets capped there".
-    expect(cappedCount(269.9)).toBeGreaterThan(100);
+    // (On the softened ramp 269.9° focused 100+ cells to AMP_CAP near the south edge, showing a low count at 270° wasn't
+    // trivial; the reef build's reef caps none at 269.9° either (plan 2026-10-02 Task 4), so only the edge check is left.)
     // The caustic ran along the grid's south edge; the softened ramp genuinely focuses a grazing swell to two small clusters
     // (18 cells near (70, 0) and (240, 194), the second touching the shore-side edge), so it is the south edge that must
     // stay clear.
@@ -155,6 +154,27 @@ describe('the breaking depth smoothing (along the crest and along travel)', () =
   });
 });
 
+describe("the front's lean feels the reef ahead (Andrew's bump, 2026-10-02)", () => {
+  it('reads the strongest gain within half a wavelength ahead along the ray, tapering to nothing at its end', () => {
+    // A ray along +x, half a wavelength of 80 m, and reef (gain 4) from x = 100 m on.
+    const grid = { x0: 0, z0: 0, cellM: 1, nx: 200, nz: 3 }, n = grid.nx * grid.nz;
+    const a = new Float32Array(n), dirX = new Float32Array(n).fill(1), dirZ = new Float32Array(n), k = new Float32Array(n).fill(Math.PI / 80);
+    for (let i = 0; i < n; i++) if (i % grid.nx >= 100) a[i] = 4;
+    const g = gainAhead(a, dirX, dirZ, k, grid), row = grid.nx;
+    expect(g[row + 60], 'the reef 40 m ahead').toBeCloseTo(4 * (1 - 40 / 80), 5);
+    expect(g[row + 10], 'the reef 90 m ahead: past its front').toBe(0);
+    expect(g[row + 150], 'on the reef').toBe(4);
+    for (let c = 1; c < 100; c++) expect(g[row + c], `${c} m`).toBeGreaterThanOrEqual(g[row + c - 1]);
+  });
+  it("the lean's depth is never deeper than the slurp's, and over deep water in front of the ledge it is shallower", { timeout: 60_000 }, () => {
+    const f = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0 });
+    for (let i = 0; i < f.hminLean.length; i++) expect(f.hminLean[i]).toBeLessThanOrEqual(f.hminSlurp[i]);
+    const s = sampleField(f, -25, 15);
+    expect(s.depth, '25 m outside the peak').toBeGreaterThan(12);
+    expect(s.hminLean).toBeLessThan(0.5 * s.hminSlurp);
+  });
+});
+
 describe('the onset record', () => {
   const f = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
   const R = ONSET_RECORD_LENGTH;
@@ -173,7 +193,9 @@ describe('the onset record', () => {
         // Where sections break and settle, to 40 m inshore of the ledge: within 2% (bilinear between nodes). Further in the
         // rays fan out onto neighbours that broke less hard, and it eases off slowly: long settled by then, and the
         // lifecycle is continuous in it.
-        expect(r[0], `(${px}, ${pz}) + ${d} m`).toBeGreaterThanOrEqual(last * 0.98);
+        // To 35 m inshore: on the reef build's face the south ledge's rays fan out from ~37 m in from (25, 28) (plan
+        // 2026-10-02 Task 4; 40 m on the softened ramp).
+        if (d <= 75) expect(r[0], `(${px}, ${pz}) + ${d} m`).toBeGreaterThanOrEqual(last * 0.98);
         last = Math.max(last, r[0]);
         const s = sampleField(f, x, z); x += s.dirX * 0.5; z += s.dirZ * 0.5;
       }
@@ -244,7 +266,9 @@ describe('the onset record', () => {
       expect(tb, `${tag}: time since onset ${tb.toFixed(2)} vs the levels' ${tLo.toFixed(2)}–${tHi.toFixed(2)} s (q ${refTb.toFixed(2)})`).toBeGreaterThan(Math.min(tLo, tHi) - tol);
       expect(tb, `${tag}: time since onset ${tb.toFixed(2)} vs the levels' ${tLo.toFixed(2)}–${tHi.toFixed(2)} s (q ${refTb.toFixed(2)})`).toBeLessThan(Math.max(tLo, tHi) + tol);
       const off = (amp - refThrow) / refThrow;
-      expect(off, `${tag}: the throw's height (× the deep-water height) ${amp.toFixed(3)} vs ${refThrow.toFixed(3)}`).toBeGreaterThan(near ? -0.15 : -0.2);
+      // Far from the break −30%: on the reef build's face the ledges' rays cross sooner (the march follows one; the record
+      // blends four nodes), 1.7 m at (42, 33) +30 m read 27% low (plan 2026-10-02 Task 4).
+      expect(off, `${tag}: the throw's height (× the deep-water height) ${amp.toFixed(3)} vs ${refThrow.toFixed(3)}`).toBeGreaterThan(near ? -0.15 : -0.3);
       expect(off, `${tag}: the throw's height (× the deep-water height) ${amp.toFixed(3)} vs ${refThrow.toFixed(3)}`).toBeLessThan(near ? 0.1 : 0.2);
       checked++;
     }

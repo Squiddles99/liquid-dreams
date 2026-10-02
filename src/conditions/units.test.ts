@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { kmhToMs, msToKmh, surferFeetToHs } from './units';
 
 describe('surferFeetToHs', () => {
-  it('uses the provisional 0.4 m per surfer foot', () => {
-    expect(surferFeetToHs(4)).toBeCloseTo(1.6);
+  it('is set by the breaking face (Andrew, 2026-10-02): 12 ft as before (4.8 m), smaller sizes in proportion to (ft/12)^1.15', () => {
+    expect(surferFeetToHs(12)).toBeCloseTo(4.8, 9);
+    expect(surferFeetToHs(6)).toBeCloseTo(4.8 * 0.5 ** 1.15, 9);
+    expect(surferFeetToHs(4)).toBeCloseTo(4.8 * (1 / 3) ** 1.15, 9);
     expect(surferFeetToHs(0)).toBe(0);
+    for (let ft = 0.5; ft <= 20; ft += 0.5) expect(surferFeetToHs(ft)).toBeGreaterThan(surferFeetToHs(ft - 0.5));
   });
   it('never returns negative heights', () => {
     expect(surferFeetToHs(-2)).toBe(0);
