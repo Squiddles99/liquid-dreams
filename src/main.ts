@@ -40,6 +40,13 @@ async function main(): Promise<void> {
   // Dev builds only: scripted gallery captures (window.liquidDreams.captureFrame()) and the crest trace's timing
   // readout (window.liquidDreams.traceMs, ms per frame, a moving average).
   if (import.meta.env.DEV) (window as unknown as { liquidDreams?: App }).liquidDreams = app;
+  // Dev builds only: the species sheet (dune-up-close gate 1), each frame posted to the local snapshot receiver.
+  if (import.meta.env.DEV && query.get('sheet') === 'species') {
+    const { captureSpeciesSheet } = await import('./dev/speciesSheet');
+    const post = (name: string, frame: Blob) => fetch(`http://127.0.0.1:5199/?name=${name}`, { method: 'POST', body: frame }).then(() => undefined);
+    const names = await captureSpeciesSheet(app, post);
+    document.title = `sheet done: ${names.length}`;
+  }
 }
 
 void main();
