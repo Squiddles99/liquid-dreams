@@ -3,7 +3,7 @@ import { computeFarField, farSample } from '../breaker/coastFarField';
 import { beachHeight } from '../land/landHeight';
 import { shoreReefWidth } from '../seabed/shoreReef';
 import {
-  BORE_SPEED_MS, SURF_DZ, SURF_NZ, SURF_TABLE, SURF_Z0, SWASH_FRACTION, type SurfState, buildHeights, buildTauTable, heightOf, heightRange,
+  BORE_RAMP_S, BORE_SPEED_MS, SURF_DZ, SURF_NZ, SURF_TABLE, SURF_Z0, SWASH_FRACTION, type SurfState, buildHeights, buildTauTable, heightOf, heightRange,
   lullHeight, runupOf, surfFoam, surfFoamFar, swashLevel, swashLift, swashShape, tableAt, waterEdgeOffset, wetLevel,
 } from './surfModel';
 
@@ -88,6 +88,18 @@ describe('the bores', () => {
     const age = 8, df = W - BORE_SPEED_MS * age;
     expect(surfFoam(df, z, tBreak + age, s)).toBeGreaterThan(surfFoam(df - 6, z, tBreak + age, s));
     expect(surfFoam(df, z, tBreak + age, s)).toBeGreaterThan(0.5);
+  });
+  it('a bore\'s white water builds over its first moments, so the line thins out where the break has just reached (Andrew: no hard end)', () => {
+    const tb = 9 * T + tableAt(s.tau, z); // a lull wave
+    const front = (age: number): number => surfFoam(W - BORE_SPEED_MS * age, z, tb + age, s);
+    expect(front(0.05)).toBeLessThan(0.3);
+    expect(front(0.5)).toBeLessThan(front(1.0));
+    expect(front(BORE_RAMP_S + 0.1)).toBeGreaterThan(0.8);
+  });
+  it('no foam trails seaward of where a bore broke (Andrew: no wedge out the back)', () => {
+    const tb = 9 * T + tableAt(s.tau, z);
+    expect(surfFoam(W + 8, z, tb + 3, s)).toBeLessThan(0.03);
+    expect(surfFoam(W - 3, z, tb + 3, s)).toBeGreaterThan(0.1); // the trail behind the front is still there
   });
   it('even a between-sets bore front reads as solid white water (tuned in captures)', () => {
     const tb = 9 * T + tableAt(s.tau, z); // a lull wave
