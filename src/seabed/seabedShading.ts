@@ -1,14 +1,14 @@
 import { Fn, If, Loop, PI, dot, exp, float, max, min, mix, mx_noise_float, normalize, pow, refract, smoothstep, step, vec2, vec3 } from 'three/tsl';
 import { type WaterOpticsUniforms, schlickWater } from '../ocean/waterShading';
 import type { Sky } from '../sky/Sky';
+import { REEF_ALBEDO as REEF_ALBEDO_RGB, SAND_ALBEDO as SAND_ALBEDO_RGB, WEED_ALBEDO as WEED_ALBEDO_RGB } from './bedLook';
 import type { Seabed } from './Seabed';
 import { MARCH_DEPTH_ALLOWANCE_M, MARCH_REFINE, MARCH_STEPS, MAX_MARCH_DEPTH_M, MAX_MARCH_DIST_M, REACH_FADE_DEPTH_M, REACH_FADE_DIST_M, WATER_IOR } from './waterColumn';
 
 type N = any;
 
-const REEF_ALBEDO = vec3(0.09, 0.09, 0.07);
-const SAND_ALBEDO = vec3(0.62, 0.56, 0.44);
-const WEED_ALBEDO = vec3(0.06, 0.08, 0.035);
+// The bed's albedos are bedLook's, shared with the CPU check that the reef reads from the face (spec 2026-10-02 §2.5).
+const REEF_ALBEDO = vec3(...REEF_ALBEDO_RGB), SAND_ALBEDO = vec3(...SAND_ALBEDO_RGB), WEED_ALBEDO = vec3(...WEED_ALBEDO_RGB);
 
 /** vec2(distance along d, hit 0/1): TSL mirror of marchSeabed(). */
 export function marchSeabedNode(p: N, d: N, seabed: Seabed): N {
