@@ -7,7 +7,7 @@ import type { HeightProbe } from '../ocean/HeightProbe';
 import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
 import { HeaveFilter, balanceAt } from './balance';
-import { LEASH_POINTS, LEASH_SIDES, leashCurve, tubeIndices, tubePositions } from './leash';
+import { CUFF_SIDES, LEASH_POINTS, LEASH_SIDES, cuffPositions, leashCuff, leashCurve, leashStart, tubeIndices, tubePositions } from './leash';
 import { carriedBoard, feetOnGround } from './carry';
 import { SOLE_M, STAND_PROBE_FIRST, boardFrameFrom, chaseCamera, groundFrame, probePoints, stableLookAt } from './placement';
 import { poseTargets } from './poses';
@@ -31,6 +31,9 @@ export class SurferStand {
   private readonly board: BoardMesh;
   private readonly leash: THREE.Mesh;
   private readonly leashPos = new Float32Array((LEASH_POINTS + 1) * LEASH_SIDES * 3);
+  /** The cuff the leash is strapped to, round the wrist or the ankle (Andrew). */
+  private readonly cuff: THREE.Mesh;
+  private readonly cuffPos = new Float32Array(2 * CUFF_SIDES * 3);
   private readonly loader: KeyedLoader<PresetName, Surfer>;
   private surfer: Surfer | null = null;
   private frame: BoardFrame | null = null;
@@ -52,6 +55,12 @@ export class SurferStand {
     this.leash = new THREE.Mesh(g, m);
     this.leash.frustumCulled = false;
     this.group.add(this.leash);
+    const cg = new THREE.BufferGeometry();
+    cg.setAttribute('position', new THREE.BufferAttribute(this.cuffPos, 3));
+    cg.setIndex(new THREE.BufferAttribute(tubeIndices(2, CUFF_SIDES), 1));
+    this.cuff = new THREE.Mesh(cg, m);
+    this.cuff.frustumCulled = false;
+    this.group.add(this.cuff);
     this.sky = sky;
     this.loader = new KeyedLoader((name) => Surfer.load(PRESETS[name], sky, sunVisibility), (name, e) => console.warn(`The ${name} surfer failed to load; the stand shows the board only.`, e));
     this.group.visible = false;
@@ -91,6 +100,7 @@ export class SurferStand {
       if (s) this.group.add(s.group);
     }
     this.leash.visible = s !== null && !carrying;
+    this.cuff.visible = this.leash.visible;
     if (!s) {
       this.board.setContacts([]);
       return;
@@ -152,8 +162,13 @@ export class SurferStand {
     // The leash: board frame for the drape, back to world for the tube.
     const inv = Qb.clone().invert();
     const toBoard = (v: THREE.Vector3): THREE.Vector3 => v.clone().sub(frame.position).applyQuaternion(inv);
-    const trail = p.stance === 'regular' ? 'r' : 'l';
-    const end = p.board === 'bodyboard' ? solved.joint.upperarm_r.clone().lerp(solved.joint.forearm_r, 0.5) : solved.joint[`foot_${trail}`];
+    // Strapped on with a cuff (Andrew: a bodyboarder's at the wrist), the leash leaving its side toward the plug.
+    const cuff = leashCuff(p.board, p.stance, solved.joint, preset.heightM);
+    cuffPositions(cuff, this.cuffPos);
+    (this.cuff.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    this.cuff.geometry.computeVertexNormals(); // lit as a band round the limb (24 vertices)
+    const plugWorld = new THREE.Vector3(...layout.leashPlug).applyQuaternion(Qb).add(frame.position);
+    const end = leashStart(cuff, plugWorld);
     const deck = (x: number, z: number): number | null => (Math.abs(x) <= halfLen && Math.abs(z) <= halfWidthAt(spec, uAt(spec, x)) ? deckYAt(spec, x, z) : null);
     const pts = leashCurve(toBoard(end), new THREE.Vector3(...layout.leashPlug), layout.leashLengthM, deck)
       .map((q) => q.applyQuaternion(Qb).add(frame.position));

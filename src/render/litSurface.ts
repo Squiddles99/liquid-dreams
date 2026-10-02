@@ -20,6 +20,12 @@ export interface SurfaceLook {
   scatter?: N;
   /** Extra sunlit radiance factor (vec3), added with the sun's highlight: the hair's anisotropic highlights. */
   sunExtra?: N;
+  /**
+   * How much of the sky the surface mirrors at grazing angles (1, the default, for smooth films). Hair has no such mirror:
+   * its sheen runs along the strands (sunExtra), and a Fresnel sky sheen on cards seen edge-on paints them sky-blue
+   * (dune select spec §13.1).
+   */
+  sheen?: N;
 }
 
 /** Light bounced up off the sea onto undersides (the sea's albedo). */
@@ -43,7 +49,7 @@ export function litColor(sky: Sky, look: SurfaceLook, sunVisibility?: (xz: N) =>
   const fresnel = look.specular.add(float(1.0).sub(look.specular).mul(pow(float(1.0).sub(max(dot(n, v), 0.0)), 5.0)));
   const norm = look.shininess.add(2.0).div(8.0 * Math.PI);
   const sunSpec = sky.sunIlluminance.mul(vis).mul(up).mul(fresnel).mul(norm).mul(pow(max(dot(n, h), 0.0), look.shininess)).mul(max(dot(n, l), 0.0));
-  const skySheen = sky.skyIrradiance.div(PI).mul(fresnel).mul(0.5);
+  const skySheen = sky.skyIrradiance.div(PI).mul(fresnel).mul(0.5).mul(look.sheen ?? float(1.0));
   let color = look.albedo.mul(sunE.add(skyE).add(bounce)).div(PI).add(sunSpec).add(skySheen);
   if (look.sunExtra) color = color.add(sky.sunIlluminance.mul(vis).mul(up).mul(look.sunExtra));
   return sky.applyAerialPerspective(color, dist, v.negate());

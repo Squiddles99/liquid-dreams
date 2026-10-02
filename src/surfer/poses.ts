@@ -250,7 +250,8 @@ function sit(ctx: PoseContext): PoseTargets {
     pelvis: V(px, deck + 0.09 + m.hipDrop, 0), pelvisUp: Y(), pelvisForward: X(),
     chest: { bend: 0.12 + 0.2 * ctx.dials.compression, twist: ctx.dials.twist * TWIST_DIAL, side: 0 },
     feet: { l: foot(-1), r: foot(1) },
-    hands: { l: boardHand(V(px + 0.25, deck + 0.02, -0.14), V(-0.5, 0, -1)), r: boardHand(V(px + 0.25, deck + 0.02, 0.14), V(-0.5, 0, 1)) },
+    // The hands on the deck between the knees (14 cm out, the forearms came down through his boardies' legs; Andrew).
+    hands: { l: boardHand(V(px + 0.32, deck + 0.02, -0.08), V(-0.5, 0, -1)), r: boardHand(V(px + 0.32, deck + 0.02, 0.08), V(-0.5, 0, 1)) },
     look: add(X(), sc(Y(), 0.05)),
   };
 }

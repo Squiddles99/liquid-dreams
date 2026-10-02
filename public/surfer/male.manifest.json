@@ -347,7 +347,7 @@
   },
   {
    "name": "male_hair",
-   "triangles": 16000,
+   "triangles": 22000,
    "materials": [
     "hair"
    ]
@@ -433,7 +433,7 @@
   },
   {
    "name": "male_hairDry",
-   "triangles": 20400,
+   "triangles": 27600,
    "materials": [
     "hairDry"
    ]
@@ -486,12 +486,26 @@
    1.59944,
    0.16028
   ],
-  "eyeRadius": 0.01611
+  "eyeRadius": 0.01611,
+  "nipples": [
+   [
+    0.08491,
+    1.28876,
+    0.15028
+   ],
+   [
+    -0.08491,
+    1.28876,
+    0.15028
+   ]
+  ]
  },
  "headTriangles": 8456,
  "checks": {
   "blinkCovers": true,
   "eyesOpen": true,
+  "hairCoverWet": 0.52,
+  "hairCoverDry": 0.4,
   "garmentsOutside": true,
   "hatHairUnder": true
  }
