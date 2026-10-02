@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { WATER_IOR } from '../seabed/waterColumn';
-import { CRITICAL_ANGLE_RAD, UNDERWATER_BAND_M, alongPath, fresnelFromInside, nextUnderwater, refractOut, waterColourAtDepth } from './underwaterOptics';
+import { MAX_MARCH_DIST_M, REACH_FADE_DIST_M, WATER_IOR } from '../seabed/waterColumn';
+import { CRITICAL_ANGLE_RAD, UNDERWATER_BAND_M, alongPath, fresnelFromInside, nextUnderwater, refractOut, throughWater, waterColourAtDepth } from './underwaterOptics';
 
 const deg = (d: number): number => (d * Math.PI) / 180;
 const DOWN: [number, number, number] = [0, -1, 0];
@@ -47,6 +47,21 @@ describe('underwater optics', () => {
     expect(alongPath(end, up, ext, 0)).toEqual(end);
     const far = alongPath(end, up, ext, 5000);
     for (let i = 0; i < 3; i++) expect(far[i]).toBeCloseTo(up[i], 9);
+  });
+  it('a thing seen through the water fades as the reef does: the path blend within the reach, the water colour at and beyond it', () => {
+    const up: [number, number, number] = [0.001, 0.01, 0.02], ext: [number, number, number] = [0.45, 0.07, 0.02];
+    // A sunlit rock, far brighter than the water: the shore rocks' bottoms 180 m off showed as a row of bright dots.
+    const rock: [number, number, number] = [5, 4, 3];
+    expect(throughWater(rock, up, ext, 0)).toEqual(rock);
+    expect(throughWater(rock, up, ext, REACH_FADE_DIST_M)).toEqual(alongPath(rock, up, ext, REACH_FADE_DIST_M));
+    for (const s of [MAX_MARCH_DIST_M, 120, 180, 250]) expect(throughWater(rock, up, ext, s)).toEqual(up);
+    // Monotonic toward the water colour in between (no seam at the reach's start or end).
+    let prev = throughWater(rock, up, ext, REACH_FADE_DIST_M);
+    for (let s = REACH_FADE_DIST_M; s <= MAX_MARCH_DIST_M; s += 0.5) {
+      const c = throughWater(rock, up, ext, s);
+      for (let i = 0; i < 3; i++) expect(Math.abs(c[i] - up[i])).toBeLessThanOrEqual(Math.abs(prev[i] - up[i]) + 1e-12);
+      prev = c;
+    }
   });
   it('the underwater switch has a ±5 cm band, so a camera riding the surface does not flicker', () => {
     expect(UNDERWATER_BAND_M).toBe(0.05);

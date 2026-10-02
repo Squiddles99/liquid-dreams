@@ -1,16 +1,17 @@
 import * as THREE from 'three/webgpu';
 import { Fn, float, instanceIndex, select, storage, vec3, vec4 } from 'three/tsl';
 import { registerSelfTest } from '../dev/selfTest';
-import { CRITICAL_ANGLE_RAD, alongPath, fresnelFromInside, waterColourAtDepth } from './underwaterOptics';
-import { alongPathNode, fresnelFromInsideNode, waterColourAtDepthNode } from './underwaterNodes';
+import { CRITICAL_ANGLE_RAD, alongPath, fresnelFromInside, throughWater, waterColourAtDepth } from './underwaterOptics';
+import { alongPathNode, fresnelFromInsideNode, throughWaterNode, waterColourAtDepthNode } from './underwaterNodes';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { buildBathymetry } from '../seabed/bathymetry';
 import { Seabed } from '../seabed/Seabed';
 import { Sky } from '../sky/Sky';
 import { createWaterOpticsUniforms } from './waterShading';
 import { DEFAULT_WATER_OPTICS } from './waterOptics';
-import { reefInFrontNode, waterVolumeColourNode } from './WaterVolume';
+import { belowBedNode, reefInFrontNode, seenThroughWaterNode, waterVolumeColourNode } from './WaterVolume';
 import { sunForConditions } from '../astro/sunForConditions';
+import { REEF_WALL_EYE, REEF_WALL_HIDDEN_M, REEF_WALL_LEVEL, REEF_WALL_RISING } from './reefWallProbe';
 
 registerSelfTest({
   name: 'underwater: GPU Fresnel from inside, water colour and path blend match the CPU (sweep across the window rim)',
@@ -93,11 +94,11 @@ registerSelfTest({
     sky.update(renderer, new THREE.Vector3(...sun.direction), 1);
     const seabed = new Seabed(buildBathymetry());
     const u = createWaterOpticsUniforms(DEFAULT_WATER_OPTICS);
-    // 9 m deep over the 13 m shelf, 20 m west of the ledge, which rises to about 6 m deep: level and rising rays east meet
-    // the wall; straight up meets only water (the reference). The last row asks whether the reef hides a surface point
-    // 30 m away along a ray rising 8° east (sentinel colour 100 in, the reef's colour out when it does).
-    const eye: [number, number, number] = [-20, -9, 0];
-    const dirs: [number, number, number][] = [[1, 0, 0], [0.99, 0.14, 0], [0, 1, 0], [0.99, 0.14, 0]];
+    // An eye on the shelf facing a reef head that rises above it (reefWallProbe.ts, checked against the CPU bed): level and
+    // rising rays east meet the wall; straight up meets only water (the reference). The last row asks whether the reef
+    // hides a surface point REEF_WALL_HIDDEN_M away along the rising ray (sentinel colour 100 in, the reef's colour out when it does).
+    const eye = REEF_WALL_EYE;
+    const dirs: [number, number, number][] = [REEF_WALL_LEVEL, REEF_WALL_RISING, [0, 1, 0], REEF_WALL_RISING];
     const n = dirs.length;
     const inAttr = new THREE.StorageBufferAttribute(new Float32Array(dirs.flatMap((d) => [...d, 0])), 4);
     const outAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 4), 4);
@@ -107,7 +108,7 @@ registerSelfTest({
     const pass = Fn(() => {
       const d = input.element(instanceIndex).xyz;
       const volume = waterVolumeColourNode(o, d, seabed, sky, u);
-      const hidden = reefInFrontNode(o, d, float(30.0), vec3(100.0), seabed, sky, u);
+      const hidden = reefInFrontNode(o, d, float(REEF_WALL_HIDDEN_M), vec3(100.0), seabed, sky, u);
       const chosen: any = select(instanceIndex.equal(3), hidden, volume); // three typings gap: select() is typed narrower than its result
       output.element(instanceIndex).assign(vec4(chosen, 1.0));
     })().compute(n) as THREE.ComputeNode;
@@ -121,6 +122,78 @@ registerSelfTest({
     return {
       pass: finite && level && rising && hides,
       detail: `level ${rgb(0).map((v) => v.toExponential(2))} (wall ${level}); rising ${rgb(1).map((v) => v.toExponential(2))} (wall ${rising}); up (water) ${water.map((v) => v.toExponential(2))}; surface behind the reef ${rgb(3).map((v) => v.toExponential(2))} (hidden ${hides})`,
+    };
+  },
+});
+
+registerSelfTest({
+  name: 'underwater: GPU throughWater matches the CPU (the path blend, faded into the water as the reef is)',
+  async run(renderer) {
+    const ss = [0, 5, 20, 56, 60, 68, 75, 79.9, 80, 120, 180, 250];
+    const n = ss.length;
+    const inAttr = new THREE.StorageBufferAttribute(new Float32Array(ss.flatMap((v) => [v, 0, 0, 0])), 4);
+    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 4), 4);
+    const input = storage(inAttr, 'vec4', n).toReadOnly();
+    const output = storage(outAttr, 'vec4', n);
+    const up = vec3(0.001, 0.01, 0.02), ext = vec3(0.45, 0.07, 0.02), end = vec3(5.0, 4.0, 3.0);
+    const pass = Fn(() => {
+      output.element(instanceIndex).assign(vec4(throughWaterNode(end, up, ext, input.element(instanceIndex).x), 0.0));
+    })().compute(n) as THREE.ComputeNode;
+    renderer.compute(pass);
+    const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    let worst = 0;
+    ss.forEach((v, i) => {
+      const c = throughWater([5, 4, 3], [0.001, 0.01, 0.02], [0.45, 0.07, 0.02], v);
+      for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(out[i * 4 + k] - c[k]) / Math.max(c[k], 1e-3));
+    });
+    return { pass: worst < 2e-3, detail: `${n} distances 0–250 m; worst relative error ${worst.toExponential(2)}` };
+  },
+});
+
+registerSelfTest({
+  name: 'underwater: a sunlit rock 180 m off shows as the water (not a bright dot), one 10 m off shows; buried points are below the bed',
+  async run(renderer) {
+    const sky = new Sky();
+    const sun = sunForConditions(DEFAULT_CONDITIONS);
+    sky.update(renderer, new THREE.Vector3(...sun.direction), 1);
+    const seabed = new Seabed(buildBathymetry());
+    const u = createWaterOpticsUniforms(DEFAULT_WATER_OPTICS);
+    // Andrew's 2026-10-02 moment: the eye 3.6 m down at (13.1, 9.0) looking east to the shore, ~180 m off.
+    const eye = vec3(13.09, -3.56, 9.0);
+    // [x, y-or-offset, z, kind]: kind 0 = a sunlit rock point at that position; 1 = a point `offset` above the bed at (x, z).
+    const cases: [number, number, number, number][] = [
+      [193.09, -0.4, 9.0, 0], [23.09, -2.0, 9.0, 0],
+      [190.0, -0.3, 9.0, 1], [190.0, 0.3, 9.0, 1], [205.0, -0.2, 9.0, 1], [205.0, 0.2, 9.0, 1], [0.0, -0.5, 0.0, 1], [0.0, 0.5, 0.0, 1],
+    ];
+    const n = cases.length;
+    const inAttr = new THREE.StorageBufferAttribute(new Float32Array(cases.flat()), 4);
+    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 4), 4);
+    const input = storage(inAttr, 'vec4', n).toReadOnly();
+    const output = storage(outAttr, 'vec4', n);
+    const sunlit = vec3(5.0, 4.0, 3.0);
+    const pass = Fn(() => {
+      const c = input.element(instanceIndex);
+      const atBed = vec3(c.x, seabed.bedHeightNode(c.xz).add(c.y), c.z);
+      const seen = seenThroughWaterNode(eye, vec3(c.x, c.y, c.z), sunlit, seabed, sky, u);
+      const buried = select(belowBedNode(atBed, seabed), float(1.0), float(0.0));
+      const row: any = select(c.w.lessThan(0.5), vec4(seen, 1.0), vec4(buried, 0.0, 0.0, 1.0)); // three typings gap: select() is typed narrower than its result
+      output.element(instanceIndex).assign(row);
+    })().compute(n) as THREE.ComputeNode;
+    renderer.compute(pass);
+    // The water's own colour at the eye (straight up: no reef), what the volume shows beyond the reach.
+    const wAttr = new THREE.StorageBufferAttribute(new Float32Array(4), 4);
+    const wOut = storage(wAttr, 'vec4', 1);
+    renderer.compute(Fn(() => { wOut.element(0).assign(vec4(waterVolumeColourNode(eye, vec3(0.0, 1.0, 0.0), seabed, sky, u), 1.0)); })().compute(1) as THREE.ComputeNode);
+    const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    const water = Array.from(new Float32Array(await renderer.getArrayBufferAsync(wAttr)).slice(0, 3));
+    const rgb = (i: number): number[] => [out[i * 4], out[i * 4 + 1], out[i * 4 + 2]];
+    const close = (c: number[]): boolean => c.every((v, k) => Math.abs(v - water[k]) <= 1e-3 * Math.max(water[k], 1e-4));
+    const finite = out.every(Number.isFinite);
+    const far = close(rgb(0)), near = !close(rgb(1));
+    const buried = [2, 4, 6].every((i) => out[i * 4] === 1), clear = [3, 5, 7].every((i) => out[i * 4] === 0);
+    return {
+      pass: finite && far && near && buried && clear,
+      detail: `water ${water.map((v) => v.toExponential(2))}; rock 180 m ${rgb(0).map((v) => v.toExponential(2))} (= water ${far}); 10 m ${rgb(1).map((v) => v.toExponential(2))} (shows ${near}); below the bed ${buried}, above it ${clear}`,
     };
   },
 });
