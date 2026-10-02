@@ -48,11 +48,13 @@ def leaf(length_px, width_px, angle):
 
 def foot():
     """A bare footprint, 26 cm long, centred in the tile (the decals draw the whole tile)."""
+    # The decal is 11 × 28 cm; the foot fills its tile (x across, y along; toes at y = −1, the tile's top).
     yy, xx = np.mgrid[-1:1:N * 1j, -1:1:N * 1j]
-    sole = np.clip(1 - (xx / 0.26) ** 2 - ((yy + 0.05) / 0.62) ** 2, 0, 1)
-    heel = np.clip(1 - (xx / 0.2) ** 2 - ((yy + 0.45) / 0.22) ** 2, 0, 1)
-    toes = sum(np.clip(1 - ((xx - dx) / 0.055) ** 2 - ((yy - dy) / 0.065) ** 2, 0, 1)
-               for dx, dy in ((-0.16, 0.6), (-0.07, 0.65), (0.02, 0.64), (0.1, 0.6), (0.17, 0.53)))
+    yy = -yy
+    sole = np.clip(1 - (xx / 0.8) ** 2 - ((yy + 0.05) / 0.72) ** 2, 0, 1)
+    heel = np.clip(1 - (xx / 0.62) ** 2 - ((yy + 0.62) / 0.28) ** 2, 0, 1)
+    toes = sum(np.clip(1 - ((xx - dx) / 0.15) ** 2 - ((yy - dy) / 0.1) ** 2, 0, 1)
+               for dx, dy in ((-0.48, 0.74), (-0.2, 0.82), (0.06, 0.82), (0.3, 0.76), (0.52, 0.66)))
     return np.clip(np.maximum(sole, heel) + toes, 0, 1) ** 0.5
 
 

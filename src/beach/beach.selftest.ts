@@ -9,7 +9,9 @@ import { Sky } from '../sky/Sky';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { PATCH_GRID_N, PATCH_HOLE_INSET_M, buildPatchGrids } from './groundPatch';
 import { GroundPatch } from './GroundPatchMesh';
-import { buildTracksMask, loadGroundLayers } from './groundDetail';
+import { buildTracksMask, emptyGroundLayerTextures, loadGroundLayers } from './groundDetail';
+import { Footprints } from './Footprints';
+import { coverage } from '../board/board.selftest';
 import { loadGroundLayersCpu, patchSurfaceAt } from './groundHeights';
 import { TrackNetwork, routeTracks } from '../land/tracks';
 import { PATCH_SIZE_M } from './groundPatch';
@@ -96,5 +98,24 @@ registerSelfTest({
       return `(${x},${z}) gpu ${gpu[k].toFixed(4)} cpu ${cpu.toFixed(4)}`;
     });
     return { pass: worst <= 0.001, detail: `worst ${(worst * 1000).toFixed(2)} mm; ${rows.join('; ')}` };
+  },
+});
+
+registerSelfTest({
+  name: 'beach: footprints draw (a dozen prints on flat ground, seen from 2 m)',
+  async run(renderer) {
+    const layers = emptyGroundLayerTextures();
+    await loadGroundLayers(layers);
+    const f = new Footprints(layers);
+    const prints = Array.from({ length: 12 }, (_, k) => ({ x: (k % 4) * 0.3 - 0.45, z: -2 - Math.floor(k / 4) * 0.4, yaw: 0.2 * k, age: 0.2, left: k % 2 === 0 }));
+    f.update(prints, () => 0);
+    f.setVisible(true);
+    const cam = new THREE.PerspectiveCamera(40, 1, 0.05, 50);
+    cam.position.set(0, 2, 0);
+    cam.lookAt(0, 0, -2.4);
+    cam.updateMatrixWorld();
+    await renderer.compileAsync(f.mesh, cam);
+    const px = await coverage(renderer, f.mesh, cam);
+    return { pass: px > 50, detail: `${px} px of prints` };
   },
 });
