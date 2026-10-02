@@ -100,3 +100,89 @@ export function cellScatter(ci: number, cj: number, ctx: ScatterContext): Scatte
   }
   return out;
 }
+
+/** Cached cells farther than this beyond the tuft range from the camera are dropped. */
+const CACHE_SLACK_M = 30;
+
+/**
+ * The near scatter's cells around the camera (spec §4.4, §5): each laid once by cellScatter and cached; missing cells
+ * laid nearest first within a time budget a frame (a jump, a recentre or a Land edit would otherwise lay the whole
+ * 20 m ring, about 370 cells, in one frame); the cache trimmed by distance, never wiped.
+ */
+export class ScatterField {
+  /** The items within reach, from the cells laid so far. */
+  near: ScatterItem[] = [];
+  private readonly cells = new Map<number, { ci: number; cj: number; items: ScatterItem[] }>();
+  private at: [number, number] = [0, 0];
+  private pending: { ci: number; cj: number; d: number }[] = [];
+
+  constructor(private readonly budgetMs = 1, private readonly now: () => number = () => performance.now()) {}
+
+  /**
+   * Gathers the cells within reach of (x, z): those cached at once, then the missing ones nearest first until the
+   * budget is spent (at least one). Returns the cells still to lay (call again next frame while it's above 0).
+   */
+  gather(x: number, z: number, ctx: ScatterContext): number {
+    this.at = [x, z];
+    const n = Math.ceil(TUFT_RANGE_M / SCATTER_CELL_M), ci0 = Math.floor(x / SCATTER_CELL_M), cj0 = Math.floor(z / SCATTER_CELL_M);
+    const ring: { ci: number; cj: number; d: number }[] = [];
+    for (let dj = -n; dj <= n; dj++) {
+      for (let di = -n; di <= n; di++) {
+        const ci = ci0 + di, cj = cj0 + dj;
+        const d = Math.hypot((ci + 0.5) * SCATTER_CELL_M - x, (cj + 0.5) * SCATTER_CELL_M - z);
+        if (d <= TUFT_RANGE_M + 2) ring.push({ ci, cj, d });
+      }
+    }
+    const missing = ring.filter((c) => !this.cells.has(cellKey(c.ci, c.cj))).sort((a, b) => a.d - b.d);
+    const t0 = this.now();
+    let laid = 0;
+    for (const c of missing) {
+      this.cells.set(cellKey(c.ci, c.cj), { ci: c.ci, cj: c.cj, items: cellScatter(c.ci, c.cj, ctx) });
+      laid++;
+      if (this.now() - t0 >= this.budgetMs) break;
+    }
+    this.pending = missing.slice(laid);
+    const near: ScatterItem[] = [];
+    for (const c of ring) for (const it of this.cells.get(cellKey(c.ci, c.cj))?.items ?? []) near.push(it);
+    this.near = near;
+    for (const [k, c] of this.cells) if (this.distanceM(c, x, z) > TUFT_RANGE_M + CACHE_SLACK_M) this.cells.delete(k);
+    return this.pending.length;
+  }
+
+  /** Forgets every cell (the land, the tracks or the Land folder changed). */
+  clear(): void {
+    this.cells.clear();
+    this.near = [];
+    this.pending = [];
+  }
+
+  get cellCount(): number {
+    return this.cells.size;
+  }
+
+  /** The farthest cached cell from the last gather's spot, the nearest still to lay, and the farthest from (x, z). */
+  farthestLaidM(): number {
+    let m = 0;
+    for (const c of this.cells.values()) m = Math.max(m, this.distanceM(c, this.at[0], this.at[1]));
+    return m;
+  }
+
+  nearestPendingM(): number {
+    return this.pending.length ? this.pending[0].d : Infinity;
+  }
+
+  maxCellDistanceM(x: number, z: number): number {
+    let m = 0;
+    for (const c of this.cells.values()) m = Math.max(m, this.distanceM(c, x, z));
+    return m;
+  }
+
+  private distanceM(c: { ci: number; cj: number }, x: number, z: number): number {
+    return Math.hypot((c.ci + 0.5) * SCATTER_CELL_M - x, (c.cj + 0.5) * SCATTER_CELL_M - z);
+  }
+}
+
+function cellKey(ci: number, cj: number): number {
+  return (ci + 0x8000) * 0x10000 + (cj + 0x8000);
+}
+

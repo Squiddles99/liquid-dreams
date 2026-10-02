@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TrackNetwork, routeTracks } from '../land/tracks';
 import { testLand } from '../land/testLand';
-import { SCATTER_CELL_M, type ScatterContext, type ScatterItem, cellScatter } from './nearScatter';
+import { SCATTER_CELL_M, ScatterField, type ScatterContext, type ScatterItem, TUFT_RANGE_M, cellScatter } from './nearScatter';
 
 const route = testLand();
 const net = new TrackNetwork(routeTracks(route, [-300, 300]));
@@ -88,3 +88,50 @@ describe('cellScatter (dune-up-close §4.4)', () => {
     expect(none.some((i) => i.kind === 'item_stone')).toBe(true);
   });
 });
+
+describe('ScatterField (dune-up-close §4.4, §5: a share per frame)', () => {
+  // A clock that moves 0.25 ms each time it's read: the field reads it after each cell it lays.
+  const clock = (): (() => number) => {
+    let t = 0;
+    return () => (t += 0.25);
+  };
+  const [x0, z0] = net.data.pieces[1].points[30];
+  it('lays the missing cells nearest first, a budget a frame, until the ring is whole', () => {
+    const f = new ScatterField(1, clock());
+    let pending = f.gather(x0, z0, context());
+    const first = f.near.length;
+    expect(pending).toBeGreaterThan(300);
+    const laid = f.cellCount;
+    expect(laid).toBeLessThanOrEqual(5);
+    // Nearest first: every cell laid is at least as near as any still to come.
+    expect(f.farthestLaidM()).toBeLessThanOrEqual(f.nearestPendingM() + 1e-9);
+    let frames = 1;
+    while (pending > 0 && frames < 500) {
+      pending = f.gather(x0, z0, context());
+      frames++;
+    }
+    expect(pending).toBe(0);
+    expect(f.near.length).toBeGreaterThan(first);
+    // The whole ring, as laying every cell at once gives.
+    const n = Math.ceil(TUFT_RANGE_M / SCATTER_CELL_M), ci0 = Math.floor(x0 / SCATTER_CELL_M), cj0 = Math.floor(z0 / SCATTER_CELL_M);
+    let want = 0;
+    for (let dj = -n; dj <= n; dj++) for (let di = -n; di <= n; di++) {
+      const ci = ci0 + di, cj = cj0 + dj;
+      if (Math.hypot((ci + 0.5) * SCATTER_CELL_M - x0, (cj + 0.5) * SCATTER_CELL_M - z0) <= TUFT_RANGE_M + 2) want += cellScatter(ci, cj, context()).length;
+    }
+    expect(f.near.length).toBe(want);
+  });
+  it('keeps its cache to the cells near the camera (trimmed by distance, never wiped)', () => {
+    const f = new ScatterField(1e9);
+    f.gather(x0, z0, context());
+    const before = f.cellCount;
+    f.gather(x0 + 120, z0, context());
+    expect(f.maxCellDistanceM(x0 + 120, z0)).toBeLessThanOrEqual(TUFT_RANGE_M + 32);
+    // Walking back a metre lays nothing new near the camera: its cells are still there.
+    const kept = f.cellCount;
+    f.gather(x0 + 121, z0, context());
+    expect(f.cellCount - kept).toBeLessThan(40);
+    expect(before).toBeGreaterThan(300);
+  });
+});
+
