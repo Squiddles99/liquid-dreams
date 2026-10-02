@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { Fn, If, Loop, cameraPosition, float, max, min, normalize, positionWorld, pow, select, smoothstep, vec2 } from 'three/tsl';
+import { Fn, If, Loop, cameraPosition, float, length, max, min, normalize, positionWorld, pow, select, vec2 } from 'three/tsl';
 import type { Seabed } from '../seabed/Seabed';
 import { seabedRadianceNode } from '../seabed/seabedShading';
-import { MARCH_REFINE, MAX_MARCH_DIST_M, REACH_FADE_DIST_M } from '../seabed/waterColumn';
+import { MARCH_REFINE, MAX_MARCH_DIST_M } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
-import { alongPathNode, waterColourAtDepthNode } from './underwaterNodes';
+import { throughWaterNode, waterColourAtDepthNode } from './underwaterNodes';
 import { type WaterOpticsUniforms, deepWaterUpwelling } from './waterShading';
 
 type N = any;
@@ -63,11 +63,9 @@ function reefOrNode(origin: N, dir: N, maxDist: N, behind: N, seabed: Seabed, sk
   return Fn(() => {
     const out = behind.toVar();
     const march = marchBedAlongNode(origin, dir, maxDist, seabed);
-    const fade = float(1.0).sub(smoothstep(REACH_FADE_DIST_M, MAX_MARCH_DIST_M, march.x));
-    If(march.y.greaterThan(0.5).and(fade.greaterThan(0.0)), () => {
-      const inf = waterColourFrom(origin, seabed, sky, u);
-      const bed = alongPathNode(seabedRadianceNode(origin.add(dir.mul(march.x)), seabed, sky, u, sky.cloudSunTransmittance), inf, u.extinction, march.x);
-      out.assign(inf.add(bed.sub(inf).mul(fade)));
+    If(march.y.greaterThan(0.5).and(march.x.lessThan(MAX_MARCH_DIST_M)), () => {
+      const bed = seabedRadianceNode(origin.add(dir.mul(march.x)), seabed, sky, u, sky.cloudSunTransmittance);
+      out.assign(throughWaterNode(bed, waterColourFrom(origin, seabed, sky, u), u.extinction, march.x));
     });
     return out;
   })();
@@ -93,6 +91,22 @@ export function waterVolumeColourNode(origin: N, dir: N, seabed: Seabed, sky: Sk
  */
 export function reefInFrontNode(origin: N, dir: N, dist: N, surface: N, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms): N {
   return reefOrNode(origin, dir, min(dist, float(MAX_MARCH_DIST_M)), surface, seabed, sky, u);
+}
+
+/**
+ * A mesh's `colour` at `point` as an underwater eye at `origin` sees it: through the water, fading into it where the reef
+ * does (throughWaterNode), so nothing drawn shows beyond the water volume's reach.
+ */
+export function seenThroughWaterNode(origin: N, point: N, colour: N, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms): N {
+  return throughWaterNode(colour, waterColourFrom(origin, seabed, sky, u), u.extinction, length(point.sub(origin)));
+}
+
+/**
+ * Whether `point` lies under the bed the underwater view draws: the volume's march writes no depth, so a mesh must hide
+ * its own buried part from an underwater eye (the land, which does that above water, is hidden below it).
+ */
+export function belowBedNode(point: N, seabed: Seabed): N {
+  return point.y.lessThan(seabed.bedHeightNode(point.xz));
 }
 
 /** The water around an underwater eye: drawn first, in place of the sky dome, wherever the sheet doesn't cover. */
