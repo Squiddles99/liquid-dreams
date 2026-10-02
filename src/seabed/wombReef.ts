@@ -23,13 +23,16 @@ export const REEF_SEED = 1905;
 export const REEF_WARP = { ampM: 5, featureM: 35, detailAmpM: 2, detailFeatureM: 12 };
 
 export interface ReefParams {
-  /** Depth just outside the ledges (the coast profile is 13 m there; this can deepen it locally). */
-  deepDepthM: number;
   /** Still-water depth along both ledges and at the take-off corner (Andrew: about 6 m / 20 ft). */
   ledgeDepthM: number;
-  /** The seaward ramp's width (m): from the deep flat to the ledge line (bathymetry.rampShape). Calibrated so 12 ft at mid
-   * tide reads ψ₀ ≈ 0.065 at the peak (plan 2026-09-30-barrel-from-maths, Task 5). */
-  ledgeWidthM: number;
+  /** The reef face's base: the depth it rises from to the ledge (spec 2026-10-02 §3: about 11–12 m; tuned in plan Task 3). */
+  faceBaseDepthM: number;
+  /** The face's width seaward of the ledge line (m; about 30–40 m). */
+  faceWidthM: number;
+  /** Beyond the face the bed deepens steadily to this depth (m; about 20 m)… */
+  slopeDepthM: number;
+  /** …this far seaward of the ledge line (m; about 200 m), and eases into the open sea past it (bathymetry.seawardDepth). */
+  slopeEndM: number;
   /** Base depth of the shelf interior. */
   shelfDepthM: number;
   /** How far reef heads rise above the shelf base. */
@@ -41,9 +44,11 @@ export interface ReefParams {
 }
 
 export const DEFAULT_REEF_PARAMS: ReefParams = {
-  deepDepthM: 13,
   ledgeDepthM: 6,
-  ledgeWidthM: 145,
+  faceBaseDepthM: 11.5,
+  faceWidthM: 35,
+  slopeDepthM: 20,
+  slopeEndM: 200,
   shelfDepthM: 4,
   headReliefM: 2.5,
   minDepthM: 1.5,
