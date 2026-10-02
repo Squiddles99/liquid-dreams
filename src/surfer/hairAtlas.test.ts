@@ -14,7 +14,8 @@ interface AtlasTable { size: number; cols: number; rows: number; padPx: number; 
 const table: AtlasTable = JSON.parse(readFileSync('public/surfer/hairAtlas.json', 'utf8'));
 const png = decodePng(new Uint8Array(readFileSync('public/surfer/hairAtlas.png')));
 
-describe('the hair strand atlas (dune select spec §13.2)', () => {
+// Decoding the 2048² PNG takes ~0.5 s alone and over 5 s with the whole suite running at once: a longer timeout.
+describe('the hair strand atlas (dune select spec §13.2)', { timeout: 30000 }, () => {
   it('is one 2048² RGBA texture of 8 × 2 tiles, with every role the cards need', async () => {
     const img = await png;
     expect([img.width, img.height, table.size, table.cols, table.rows]).toEqual([2048, 2048, 2048, 8, 2]);
