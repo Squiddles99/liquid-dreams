@@ -150,9 +150,10 @@ def build(scene, tmp, out_dir, species, canopy_objs):
     _paste(atlas, "deadBark", _bark(nrng, True))
     tiles = {"bark": AL.tile("bark"), "deadBark": AL.tile("deadBark")}
     for kind, sp in species.CARD_LEAF.items():
-        lf = species.LEAF[kind]
+        lf = species.LEAF.get(kind, {"colour": species.CARD_COLOUR.get(kind, (0.3, 0.3, 0.3))})
         for k in range(3 if kind in species.SPRAY_LEAF else 0):
-            o = _cluster(sp, lf["colour"], sp["count"], (lf["width"], lf["length"]), rng, spread=0.3)
+            ss = species.SPRAY_LEAF[kind]
+            o = _cluster(ss, lf["colour"], ss["count"], (lf["width"], lf["length"]), rng, spread=0.3)
             _camera(scene, Vector((0, 0, 0)), lf["width"] * 1.02, lf["length"] * 1.02)
             # The card is width × length; the tile is square: render at the length and stretch across.
             scene.render.resolution_x, scene.render.resolution_y = AL.CELL, AL.CELL
@@ -163,7 +164,7 @@ def build(scene, tmp, out_dir, species, canopy_objs):
             tiles[f"spray_{kind}_{k}"] = AL.tile(f"spray_{kind}_{k}")
         # L1's cluster cards: the same leaves, a bigger cluster (40 cm), 4 of them.
         for k in range(4):
-            o = _cluster(sp, lf["colour"], sp["count"] * 24, (0.4, 0.4), rng, twig=False, spread=0.45)
+            o = _cluster(sp, species.CARD_COLOUR.get(kind, lf["colour"]), sp["count"] * 24, (0.4, 0.4), rng, twig=False, spread=0.45)
             _camera(scene, Vector((0, 0, 0)), 0.42, 0.42)
             px = _render(scene, [o], os.path.join(tmp, f"card_{kind}_{k}.png"))
             bpy.data.objects.remove(o)

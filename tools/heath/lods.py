@@ -48,7 +48,7 @@ def l1(bm, sk, scale, uv, col, kind, bases, uv_of_card, bark_uv, rng, cap=800, f
     normals = []
     if not bases:
         return made, normals
-    per = 2 if flat else 4
+    per = 4
     k = max(1, min(len(bases), (cap - wood - 8) // per))
     centres, owner = kmeans(bases, k, rng)
     crown = Vector((0, 0, 0.55))
@@ -59,9 +59,12 @@ def l1(bm, sk, scale, uv, col, kind, bases, uv_of_card, bark_uv, rng, cap=800, f
         r = max(0.06, max((m - centre).length for m in members) + 0.05)
         tile = rng.randrange(4)
         if flat:
+            # A mat (pigface): short crossed upright cards over its stems (lying flat they vanished edge-on at 25 m).
             yaw = rng.uniform(0, math.pi)
-            u, v = Vector((math.cos(yaw), math.sin(yaw), 0)), Vector((-math.sin(yaw), math.cos(yaw), 0))
-            quads = [(centre + Vector((0, 0, 0.02)), u * r, v * r)]
+            u1, u2 = Vector((math.cos(yaw), math.sin(yaw), 0)), Vector((-math.sin(yaw), math.cos(yaw), 0))
+            h = min(r, 0.06)
+            up = Vector((0, 0, h))
+            quads = [(centre + up, u1 * r, up), (centre + up, u2 * r, up)]
         else:
             yaw = rng.uniform(0, math.pi)
             u1, u2 = Vector((math.cos(yaw), math.sin(yaw), 0)), Vector((-math.sin(yaw), math.cos(yaw), 0))

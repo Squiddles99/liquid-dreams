@@ -93,11 +93,15 @@ def add_tris(bm, tris, uv_layer, col_layer, colour, scale, normals, uv_of, bend_
         n = n.normalized() if n.length > 1e-12 else Vector((0, 0, 1))
         vs = [bm.verts.new(p) for p in (ua, ub, uc)]
         for p in (ua, ub, uc):
+            bent = n
             if bend_to is not None:
                 out = p - bend_to
-                normals.append((n * (1 if n.dot(out) >= 0 else -1) + out.normalized()).normalized() if out.length > 1e-9 else n)
-            else:
-                normals.append(n)
+                if out.length > 1e-9:
+                    b = n * (1 if n.dot(out) >= 0 else -1) + out.normalized()
+                    # Never a zero normal (a card facing straight into the crown's middle): the shader's normalise of
+                    # one is NaN, and the vertex goes nowhere (L1 cards vanished or filled the screen).
+                    bent = b.normalized() if b.length > 1e-3 else out.normalized()
+            normals.append(bent)
         f = bm.faces.new(vs)
         for lp, t in zip(f.loops, (ta, tb, tc)):
             lp[uv_layer].uv = uv_of(*t)

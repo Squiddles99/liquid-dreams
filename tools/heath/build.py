@@ -146,6 +146,9 @@ def build_variant(kind, v, hull, spec):
     uv1 = bm.loops.layers.uv.new("UVMap")
     col1 = bm.loops.layers.float_color.new("Col")
     card_kind = kind if kind in CARD_LEAF else None
+    if kind == "dead":
+        # Bare twigs are under a pixel at 25 m: twig-cluster cards over the dead shrub's tips (its L1 vanished).
+        bases = [Vector((n.x / scale.x, n.y / scale.y, n.z / scale.z)) for i, n in enumerate(sk.nodes) if not sk.kids[i]]
     made1, extra1 = lods.l1(bm, sk, scale, uv1, col1, kind, bases if card_kind else [],
                             lambda t, u, vv: atlas_uv(f"card_{card_kind}_0_{t}", u, vv),
                             lambda dead, u, vv: atlas_uv("deadBark" if dead else "bark", u, vv),
@@ -156,7 +159,8 @@ def build_variant(kind, v, hull, spec):
         "pipeModel": grow.pipe_ok(sk), "branchesInsideHull": round(grow.inside_share(sk), 3), "nodes": len(sk.nodes),
         "leavesAttached": leaf_attachment(sk, bases, scale) if bases else 0.0,
         "silhouetteTop": round(leaves.coverage(samples, sk.tree, 2), 3), "silhouetteSide": round(leaves.coverage(samples, sk.tree, 1), 3),
-        "outsideHull": round(outside, 4), "badNormals": bad_normals(o0.data), "aoMin": round(ao_min, 3), "aoMax": round(ao_max, 3),
+        "outsideHull": round(outside, 4), "badNormals": bad_normals(o0.data), "badNormalsL1": bad_normals(o1.data),
+        "aoMin": round(ao_min, 3), "aoMax": round(ao_max, 3),
     }
     return [o0, o1], checks, colour
 

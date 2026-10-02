@@ -48,4 +48,10 @@ FLOWER = {
 }
 
 # L1's cluster cards (atlas.py): the sprays' leaves, and pigface's fingers drawn as fleshy blades from above.
-CARD_LEAF = {**SPRAY_LEAF, "pigface": {"shape": "blade", "length": 0.06, "width": 0.014, "count": 12}}
+CARD_LEAF = {
+    **SPRAY_LEAF,
+    "daisy": {"shape": "needle", "length": 0.024, "width": 0.007, "count": 46},  # thicker for the card: needles alias away
+    "pigface": {"shape": "blade", "length": 0.06, "width": 0.014, "count": 12},
+    "dead": {"shape": "needle", "length": 0.07, "width": 0.01, "count": 22},  # grey twigs, bold enough to survive the mips
+}
+CARD_COLOUR = {"dead": (0.3, 0.29, 0.27)}

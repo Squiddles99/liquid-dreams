@@ -30,6 +30,7 @@ describe('the heath kit (dune-up-close §4.2, §7.1)', () => {
       expect(e.checks.silhouetteSide, id).toBeGreaterThanOrEqual(side);
       expect(e.checks.outsideHull, id).toBeLessThanOrEqual(0.05);
       expect(e.checks.badNormals, id).toBe(0);
+      expect(e.checks.badNormalsL1, id).toBe(0);
       expect(e.checks.aoMin, id).toBeGreaterThanOrEqual(0.15);
       expect(e.checks.aoMax, id).toBeLessThanOrEqual(1);
       if (e.kind !== 'dead') expect(Math.max(...e.leafColour), id).toBeGreaterThan(0.02);

@@ -34,6 +34,7 @@
     "silhouetteSide": 0.918,
     "outsideHull": 0.0046,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -70,6 +71,7 @@
     "silhouetteSide": 0.929,
     "outsideHull": 0.0023,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -106,6 +108,7 @@
     "silhouetteSide": 0.942,
     "outsideHull": 0.0026,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -142,6 +145,7 @@
     "silhouetteSide": 0.945,
     "outsideHull": 0.0025,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -178,6 +182,7 @@
     "silhouetteSide": 0.988,
     "outsideHull": 0.0189,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -214,6 +219,7 @@
     "silhouetteSide": 0.986,
     "outsideHull": 0.0161,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -250,6 +256,7 @@
     "silhouetteSide": 0.991,
     "outsideHull": 0.0229,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -286,6 +293,7 @@
     "silhouetteSide": 0.993,
     "outsideHull": 0.0131,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -322,6 +330,7 @@
     "silhouetteSide": 0.94,
     "outsideHull": 0.0034,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -358,6 +367,7 @@
     "silhouetteSide": 0.933,
     "outsideHull": 0.0026,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -394,6 +404,7 @@
     "silhouetteSide": 0.963,
     "outsideHull": 0.0045,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -430,6 +441,7 @@
     "silhouetteSide": 0.912,
     "outsideHull": 0.0025,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -444,13 +456,13 @@
     },
     {
      "name": "plant_pigface_0_L1",
-     "triangles": 776
+     "triangles": 780
     }
    ],
    "boundsUnit": [
-    0.9089,
-    0.6319,
-    1.0397
+    0.894,
+    1.0255,
+    1.0065
    ],
    "leafColour": [
     0.14,
@@ -466,6 +478,7 @@
     "silhouetteSide": 0.548,
     "outsideHull": 0.0049,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -480,13 +493,13 @@
     },
     {
      "name": "plant_pigface_1_L1",
-     "triangles": 782
+     "triangles": 784
     }
    ],
    "boundsUnit": [
-    0.9926,
-    0.7398,
-    0.8846
+    0.9549,
+    1.0189,
+    0.8714
    ],
    "leafColour": [
     0.14,
@@ -502,6 +515,7 @@
     "silhouetteSide": 0.562,
     "outsideHull": 0.0041,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -520,9 +534,9 @@
     }
    ],
    "boundsUnit": [
-    0.9319,
-    0.686,
-    0.8299
+    0.8574,
+    0.994,
+    0.8179
    ],
    "leafColour": [
     0.14,
@@ -538,6 +552,7 @@
     "silhouetteSide": 0.569,
     "outsideHull": 0.005,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -552,13 +567,13 @@
     },
     {
      "name": "plant_pigface_3_L1",
-     "triangles": 784
+     "triangles": 788
     }
    ],
    "boundsUnit": [
-    0.8613,
-    0.6397,
-    0.9433
+    0.861,
+    1.0173,
+    0.884
    ],
    "leafColour": [
     0.14,
@@ -574,6 +589,7 @@
     "silhouetteSide": 0.543,
     "outsideHull": 0.0044,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -610,6 +626,7 @@
     "silhouetteSide": 0.931,
     "outsideHull": 0.008,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -646,6 +663,7 @@
     "silhouetteSide": 0.913,
     "outsideHull": 0.0151,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -682,6 +700,7 @@
     "silhouetteSide": 0.9,
     "outsideHull": 0.0103,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -718,6 +737,7 @@
     "silhouetteSide": 0.975,
     "outsideHull": 0.0133,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -732,13 +752,13 @@
     },
     {
      "name": "plant_dead_0_L1",
-     "triangles": 252
+     "triangles": 652
     }
    ],
    "boundsUnit": [
-    0.7193,
-    0.9691,
-    0.9534
+    0.8235,
+    1.0381,
+    1.0449
    ],
    "leafColour": [
     0.0,
@@ -754,6 +774,7 @@
     "silhouetteSide": 0.466,
     "outsideHull": 0.0,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -768,13 +789,13 @@
     },
     {
      "name": "plant_dead_1_L1",
-     "triangles": 90
+     "triangles": 370
     }
    ],
    "boundsUnit": [
-    0.8383,
-    0.8685,
-    0.7956
+    0.9265,
+    0.9381,
+    0.9034
    ],
    "leafColour": [
     0.0,
@@ -790,6 +811,7 @@
     "silhouetteSide": 0.42,
     "outsideHull": 0.0,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -804,13 +826,13 @@
     },
     {
      "name": "plant_dead_2_L1",
-     "triangles": 204
+     "triangles": 584
     }
    ],
    "boundsUnit": [
-    0.8557,
-    0.935,
-    0.8275
+    0.9611,
+    1.0053,
+    0.9177
    ],
    "leafColour": [
     0.0,
@@ -826,6 +848,7 @@
     "silhouetteSide": 0.414,
     "outsideHull": 0.0,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -840,13 +863,13 @@
     },
     {
      "name": "plant_dead_3_L1",
-     "triangles": 234
+     "triangles": 590
     }
    ],
    "boundsUnit": [
-    0.695,
-    0.8181,
-    0.8312
+    0.7958,
+    0.8864,
+    0.924
    ],
    "leafColour": [
     0.0,
@@ -862,6 +885,7 @@
     "silhouetteSide": 0.409,
     "outsideHull": 0.0,
     "badNormals": 0,
+    "badNormalsL1": 0,
     "aoMin": 0.15,
     "aoMax": 1.0
    }
@@ -1075,6 +1099,30 @@
     0.437744,
     0.249756,
     0.499756
+   ],
+   "card_dead_0_0": [
+    0.000244,
+    0.562744,
+    0.062256,
+    0.624756
+   ],
+   "card_dead_0_1": [
+    0.062744,
+    0.562744,
+    0.124756,
+    0.624756
+   ],
+   "card_dead_0_2": [
+    0.125244,
+    0.562744,
+    0.187256,
+    0.624756
+   ],
+   "card_dead_0_3": [
+    0.187744,
+    0.562744,
+    0.249756,
+    0.624756
    ],
    "spray_pigface_0": [
     0.750244,
