@@ -17,6 +17,32 @@ type N = any;
 const DEG = Math.PI / 180;
 
 /** One loaded surfer (spec §3.2): the skinned body, its materials, and the pose applied to its bones. */
+/**
+ * The hair strand atlas (dune select spec §13.2), loaded once and shared by every rider. Data, not colour: no colour
+ * space, rows top-down (the tiles' roots at the top). A failed load leaves the hair on its procedural strands (a warning,
+ * never missing hair).
+ */
+let hairAtlas: Promise<THREE.Texture | null> | null = null;
+export function loadHairAtlas(): Promise<THREE.Texture | null> {
+  hairAtlas ??= new THREE.TextureLoader()
+    .loadAsync(import.meta.env.BASE_URL + 'surfer/hairAtlas.png')
+    .then((t) => {
+      t.flipY = false;
+      t.colorSpace = THREE.NoColorSpace;
+      t.generateMipmaps = true;
+      t.minFilter = THREE.LinearMipmapLinearFilter;
+      t.magFilter = THREE.LinearFilter;
+      t.anisotropy = 8;
+      t.needsUpdate = true;
+      return t;
+    })
+    .catch((e: unknown) => {
+      console.warn('The hair atlas did not load; the hair draws without it.', e);
+      return null;
+    });
+  return hairAtlas;
+}
+
 export class Surfer {
   readonly group = new THREE.Group();
   readonly rest: SkeletonRest;
@@ -54,20 +80,22 @@ export class Surfer {
   /** The face's landmarks from the build (glTF axes, metres, rest pose; all three riders since step 2). */
   readonly landmarks: SurferManifest['landmarks'];
 
-  static async load(preset: SurferPreset, sky: Sky, sunVisibility?: (xz: N) => N): Promise<Surfer> {
+  /** `hairAtlas: false` draws the hair without the strand atlas (the self-tests compare the two). */
+  static async load(preset: SurferPreset, sky: Sky, sunVisibility?: (xz: N) => N, opts: { hairAtlas?: boolean } = {}): Promise<Surfer> {
     const base = import.meta.env.BASE_URL;
-    const [gltf, manifest] = await Promise.all([
+    const [gltf, manifest, atlas] = await Promise.all([
       new GLTFLoader().loadAsync(base + preset.glbUrl),
       fetch(base + preset.manifestUrl).then((r) => {
         if (!r.ok) throw new Error(`${preset.manifestUrl}: HTTP ${r.status}`);
         return r.json() as Promise<SurferManifest>;
       }),
+      opts.hairAtlas === false ? Promise.resolve(null) : loadHairAtlas(),
     ]);
     assertManifest(manifest, preset.manifestUrl);
-    return new Surfer(gltf.scene, manifest, preset, sky, sunVisibility);
+    return new Surfer(gltf.scene, manifest, preset, sky, sunVisibility, atlas);
   }
 
-  private constructor(scene: THREE.Object3D, manifest: SurferManifest, readonly preset: SurferPreset, sky: Sky, sv?: (xz: N) => N) {
+  private constructor(scene: THREE.Object3D, manifest: SurferManifest, readonly preset: SurferPreset, sky: Sky, sv?: (xz: N) => N, atlas: THREE.Texture | null = null) {
     this.landmarks = manifest.landmarks;
     this.idle = new IdleLife({ female: 101, male: 202, grommet: 303 }[preset.name], MOODS[preset.name]);
     this.group.add(scene);
@@ -92,8 +120,8 @@ export class Surfer {
     });
     const materials: Record<string, (mesh: THREE.Mesh) => THREE.Material> = {
       body: () => bodyMaterial(sky, preset, this.outfit, sv, { zones, wet: this.wet, pores: this.pores, lens, ao: hasAo }),
-      hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
-      hairDry: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet),
+      hair: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas),
+      hairDry: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas),
       eyes: () => eyesMaterial(sky, preset, sv, { zones, gaze: this.gaze, lens }),
       boardies: () => fabricMaterial(sky, preset.boardies, sv),
       glasses: () => plasticMaterial(sky, [0.012, 0.012, 0.014], sv), // black plastic
@@ -119,7 +147,7 @@ export class Surfer {
       neoprene: cloth(walk.neoprene, 'neoprene'),
       fins: cloth(walk.fins, 'rubber'),
     };
-    materials.hairHat = () => hairMaterial(sky, preset, this.headCentre, sv, this.wet);
+    materials.hairHat = () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas);
     Object.assign(materials, WALKING);
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -163,7 +191,7 @@ export class Surfer {
     for (const [list, name] of [[this.hairWet, 'hair'], [this.hairDry, 'hairDry'], [this.hairHat, 'hairHat']] as const) {
       for (const mesh of [...list]) {
         const edges = mesh.clone() as THREE.Mesh;
-        edges.material = hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'edges');
+        edges.material = hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'edges', atlas);
         edges.material.name = name;
         edges.renderOrder = 1;
         edges.frustumCulled = false;

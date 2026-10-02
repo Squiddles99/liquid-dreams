@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, atan, attribute, fract, screenCoordinate, cameraPosition, clamp, cos, cross, dFdx, dFdy, dot, exp, float, fwidth, length, max, min, mix, mx_noise_float, mx_worley_noise_float, normalize, normalWorld, positionGeometry, positionLocal, positionWorld, pow, sign, sin, smoothstep, sqrt, step, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { abs, atan, attribute, fract, saturate, screenCoordinate, texture, cameraPosition, clamp, cos, cross, dFdx, dFdy, dot, exp, float, fwidth, length, max, min, mix, mx_noise_float, mx_worley_noise_float, normalize, normalWorld, positionGeometry, positionLocal, positionWorld, pow, sign, sin, smoothstep, sqrt, step, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { litColor } from '../render/litSurface';
 import type { Sky } from '../sky/Sky';
 import type { SurferPreset } from './presets';
@@ -187,7 +187,10 @@ export type HairPass = 'core' | 'edges';
 /** The hair's two passes (dune select spec §13.1): above this coverage a pixel is the opaque core, below it a blended edge. */
 export const HAIR_CORE = 0.9;
 
-export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.UniformNode<'vec3', THREE.Vector3>, sv?: (xz: N) => N, wet?: THREE.UniformNode<'float', number>, pass: HairPass = 'core'): THREE.MeshBasicNodeMaterial {
+/** The strand atlas's layout (tools/surfer/hair_atlas.py): 8 × 2 tiles, each padded 8 of its 256 × 1024 px. */
+export const HAIR_ATLAS = { cols: 8, rows: 2, tiles: 16, padU: 8 / 256, padV: 8 / 1024 } as const;
+
+export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.UniformNode<'vec3', THREE.Vector3>, sv?: (xz: N) => N, wet?: THREE.UniformNode<'float', number>, pass: HairPass = 'core', atlas: THREE.Texture | null = null): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();
   const u: N = uv();
   // Root → tip. glTF stores V as 1 − v (three's loader keeps it), so the cards' v comes back flipped: the root is at
@@ -210,7 +213,33 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   const laneRand = mx_noise_float(vec3(laneId.mul(1.7), attribute('color', 'vec4').x.mul(37.0), 4.1)).mul(0.5).add(0.5);
   const strandGap = smoothstep(laneRand.mul(0.3).add(0.3), laneRand.mul(0.3).add(0.42), abs(lane.fract().sub(0.5)).mul(2.0));
   const solidness = float(1).sub(strandGap.mul(float(1).sub(w)));
-  const coverage = float(1).sub(smoothstep(0.6, 1.0, across.add(strands.mul(0.12)))).mul(solidness).mul(fade);
+  const cardCoverage = float(1).sub(smoothstep(0.6, 1.0, across.add(strands.mul(0.12)))).mul(solidness).mul(fade);
+  // The strand atlas (§13.2): this card's tile (COLOR_0.a = (tile + 0.5) / 16) with the card's own UVs mapped into it.
+  // R depth, G root → tip, B the strand's random, A coverage. Close up, the coverage is the strands themselves (alpha
+  // sharpened to the pixel); far off, where a strand is under a pixel wide, mipmapped alpha would thin the hair away, so it
+  // hands back to the card's own solid coverage.
+  let coverage: N = cardCoverage;
+  let texel: N = null, near: N = float(0);
+  if (atlas) {
+    const t: N = attribute('color', 'vec4').w.mul(HAIR_ATLAS.tiles).floor();
+    const col = t.mod(HAIR_ATLAS.cols), row = t.div(HAIR_ATLAS.cols).floor();
+    const au = col.add(HAIR_ATLAS.padU).add(u.x.mul(1 - 2 * HAIR_ATLAS.padU)).div(HAIR_ATLAS.cols);
+    const av = row.add(HAIR_ATLAS.padV).add(v.mul(1 - 2 * HAIR_ATLAS.padV)).div(HAIR_ATLAS.rows);
+    texel = texture(atlas, vec2(au, av));
+    // How many atlas pixels a screen pixel spans across the card. Strands are ~2 atlas px wide, so past ~1.5 they're
+    // under a pixel: what still reads is their clumps and gaps, in the mipmapped coverage, boosted by the inverse of a
+    // tile's mean coverage (~0.3–0.37) so the clumps stay solid and only the gaps let light through. Only when a whole
+    // tile is under ~4 px (span ≥ 64) does the card's own solid coverage take over.
+    // The smaller of the two screen derivatives: a card seen edge-on is compressed one way only (the anisotropic
+    // filtering keeps its strands), and isn't far.
+    const span = min(abs(dFdx(au)), abs(dFdy(au))).mul(2048);
+    const resolved = float(1).sub(smoothstep(1.0, 2.0, span));
+    near = float(1).sub(smoothstep(24.0, 64.0, span));
+    const a: N = texel.w;
+    const sharp = saturate(a.sub(0.5).div(max(fwidth(a), 1e-4)).add(0.5));
+    const clumps = saturate(a.mul(2.6));
+    coverage = mix(cardCoverage, mix(clumps, sharp, resolved).mul(fade), near);
+  }
   if (pass === 'core') {
     m.opacityNode = coverage;
     m.alphaTest = HAIR_CORE;
@@ -234,7 +263,11 @@ export function hairMaterial(sky: Sky, p: SurferPreset, headCentre: THREE.Unifor
   // Wet hair lies slicked in one sheet: its occlusion shows as ridges between the cards, so it counts for less.
   const ao = mix(baked.y, float(1), w.mul(0.65));
   const lock = tone.mul(0.14).add(0.9);
-  const albedo = mix(rgb(p.hairRoot), rgb(p.hairTip), pow(v, mix(float(1.2), float(1.8), tone))).mul(lines).mul(lock).mul(mix(float(0.95), float(0.72), w)).mul(mix(float(0.55), float(1.0), ao)); // wet: a shade darker
+  // With the atlas, the strands carry the shading: each its own shade (B), root → tip along it (G), the ones behind
+  // darker (R); the procedural lines fade out as the strands resolve.
+  const strandShade: N = texel ? mix(lines, texel.z.mul(0.3).add(0.85).mul(texel.x.mul(0.3).add(0.7)), near) : lines;
+  const along: N = texel ? mix(v, texel.y, near.mul(0.6)) : v;
+  const albedo = mix(rgb(p.hairRoot), rgb(p.hairTip), pow(along, mix(float(1.2), float(1.8), tone))).mul(strandShade).mul(lock).mul(mix(float(0.95), float(0.72), w)).mul(mix(float(0.55), float(1.0), ao)); // wet: a shade darker
   // The volume's normal: out from the head; below the head (long hair), out from the fall, not down into the sea.
   const d: N = positionWorld.sub(headCentre);
   const below = smoothstep(0.0, 0.16, d.y.negate());

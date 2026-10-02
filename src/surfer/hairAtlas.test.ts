@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { decodePng } from '../land/png';
+import { glbJson, glbValues } from './glbData';
 
 /**
  * The hair strand atlas (dune select spec §13.2), rasterised by tools/surfer/hair_atlas.py from parametric strands. Channels:
@@ -63,4 +64,30 @@ describe('the hair strand atlas (dune select spec §13.2)', () => {
       expect(sd, `${t.name} strand shades`).toBeGreaterThan(0.12);
     }
   });
+});
+
+describe("every rider's hair cards pick atlas tiles (dune select spec §13.2)", () => {
+  // Each card carries its tile in COLOR_0.a as (tile + 0.5) / 16; its UVs stay card-local and the shader maps them in.
+  for (const name of ['female', 'male', 'grommet'] as const) {
+    it(`${name}: each hair mesh's cards name real tiles, and several of each`, () => {
+      const path = `public/surfer/${name}.glb`;
+      const gltf = glbJson(path);
+      for (const mesh of gltf.meshes) for (const prim of mesh.primitives) {
+        const mat = gltf.materials[prim.material].name as string;
+        if (!['hair', 'hairDry', 'hairHat'].includes(mat)) continue;
+        const col = glbValues(path, gltf, prim.attributes.COLOR_0);
+        const used = new Set<number>();
+        let worst = 0;
+        for (let i = 3; i < col.length; i += 4) {
+          const t = col[i] * 16 - 0.5;
+          worst = Math.max(worst, Math.abs(t - Math.round(t)));
+          used.add(Math.round(t));
+        }
+        expect(worst, `${mat} tile code`).toBeLessThan(0.05);
+        expect(Math.min(...used), mat).toBeGreaterThanOrEqual(0);
+        expect(Math.max(...used), mat).toBeLessThan(table.tiles.length);
+        expect(used.size, `${mat} tiles used`).toBeGreaterThanOrEqual(4);
+      }
+    });
+  }
 });

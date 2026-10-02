@@ -28,22 +28,22 @@ R_ROOT, R_TIP = 0.85, 0.3
 
 # (name, role, kind, strands, seed): the order fixes each tile's place, column by column across the two rows.
 TILES = [
-    ("core-a", "core", "straight", 96, 1),
-    ("core-b", "core", "straight", 110, 2),
-    ("core-c", "core", "wave", 100, 3),
-    ("outer-straight", "outer", "straight", 64, 4),
-    ("outer-wave", "outer", "wave", 64, 5),
-    ("outer-frayed", "outer", "frayed", 70, 6),
-    ("flyaway-a", "flyaway", "flyaway", 22, 7),
-    ("flyaway-b", "flyaway", "flyaway", 30, 8),
-    ("fringe-a", "fringe", "fringe", 40, 9),
-    ("fringe-b", "fringe", "fringe", 52, 10),
-    ("braid-a", "braid", "braid", 90, 11),
-    ("braid-b", "braid", "braid", 100, 12),
-    ("braid-c", "braid", "braid", 80, 13),
-    ("tail-a", "tail", "tail", 100, 14),
-    ("tail-b", "tail", "tail", 90, 15),
-    ("tail-c", "tail", "frayed", 80, 16),
+    ("core-a", "core", "straight", 134, 1),
+    ("core-b", "core", "straight", 154, 2),
+    ("core-c", "core", "wave", 140, 3),
+    ("outer-straight", "outer", "straight", 89, 4),
+    ("outer-wave", "outer", "wave", 89, 5),
+    ("outer-frayed", "outer", "frayed", 98, 6),
+    ("flyaway-a", "flyaway", "flyaway", 30, 7),
+    ("flyaway-b", "flyaway", "flyaway", 42, 8),
+    ("fringe-a", "fringe", "fringe", 56, 9),
+    ("fringe-b", "fringe", "fringe", 72, 10),
+    ("braid-a", "braid", "braid", 125, 11),
+    ("braid-b", "braid", "braid", 140, 12),
+    ("braid-c", "braid", "braid", 112, 13),
+    ("tail-a", "tail", "tail", 140, 14),
+    ("tail-b", "tail", "tail", 160, 15),
+    ("tail-c", "tail", "frayed", 112, 16),
 ]
 
 
@@ -54,9 +54,26 @@ def _noise1(rng, n=4):
     return lambda t: sum(a * math.sin(2 * math.pi * f * t + p) for f, p, a in terms) / total
 
 
-def strand(kind, rng, k, n):
-    """One strand as points (x across the tile 0..1, v root → tip 0..1); returns (points, length fraction)."""
-    x0 = rng.uniform(0.06, 0.94)
+# Strands grow in clumps with gaps between (as real locks do, and as production hair-card textures are drawn): a
+# card is often only 8–30 px wide on screen, where single strands are under a pixel and the texture is read from its
+# mipmaps; evenly spread strands average to flat grey there, while clumps and gaps survive into the small mips.
+CLUMPS = {"straight": 5, "wave": 4, "frayed": 4, "flyaway": 3, "fringe": 4, "braid": 3, "tail": 3}
+
+
+def clump_centres(kind, rng):
+    k = CLUMPS[kind]
+    edges = sorted(rng.uniform(0.0, 1.0) for _ in range(k - 1))
+    cuts = [0.0, *edges, 1.0]
+    return [(0.08 + 0.84 * (a + b) / 2, 0.84 * (b - a) * 0.42) for a, b in zip(cuts, cuts[1:])]
+
+
+def strand(kind, rng, k, n, clumps):
+    """One strand as points (x across the tile 0..1, v root → tip 0..1); returns (points, length fraction). It belongs to
+    one of the tile's clumps: rooted within it and drawn in toward its middle down the length."""
+    cx, half = clumps[k % len(clumps)]
+    off = rng.gauss(0.0, 0.5) * max(half, 0.02)
+    x0 = min(0.95, max(0.05, cx + off))
+    pull = rng.uniform(0.3, 0.6)  # how far toward the clump's middle by the tip
     drift = _noise1(rng)
     length = 1.0
     pts = []
@@ -65,19 +82,19 @@ def strand(kind, rng, k, n):
         length = rng.uniform(0.9, 1.0)
         for i in range(steps + 1):
             t = i / steps
-            pts.append((x0 + 0.03 * drift(t) + 0.02 * (0.5 - x0) * t, t * length))
+            pts.append((x0 - pull * off * t + 0.03 * drift(t), t * length))
     elif kind == "wave":
         length = rng.uniform(0.88, 1.0)
         ph = rng.uniform(-0.4, 0.4)
         for i in range(steps + 1):
             t = i / steps
-            pts.append((x0 + 0.07 * math.sin(2 * math.pi * (1.8 * t) + ph) + 0.02 * drift(t), t * length))
+            pts.append((x0 - pull * off * t + 0.07 * math.sin(2 * math.pi * (1.8 * t) + ph) + 0.02 * drift(t), t * length))
     elif kind == "frayed":
         length = rng.uniform(0.55, 1.0)
         out = rng.uniform(-1, 1)
         for i in range(steps + 1):
             t = i / steps
-            pts.append((x0 + 0.03 * drift(t) + 0.12 * out * t ** 3, t * length))
+            pts.append((x0 - pull * off * t + 0.03 * drift(t) + 0.12 * out * t ** 3, t * length))
     elif kind == "flyaway":
         length = rng.uniform(0.45, 0.95)
         bend = rng.choice([-1, 1]) * rng.uniform(0.15, 0.4)
@@ -89,11 +106,11 @@ def strand(kind, rng, k, n):
         length = rng.uniform(0.7, 1.0)
         for i in range(steps + 1):
             t = i / steps
-            pts.append((x0 + 0.05 * drift(t) + 0.08 * (x0 - 0.5) * t, t * length))
+            pts.append((x0 - pull * off * t + 0.05 * drift(t) + 0.08 * (x0 - 0.5) * t, t * length))
     elif kind == "braid":
         # The surface of a twisted strand of a plait: strands run diagonally (about 30°) and wrap across the tile.
         slope = rng.uniform(0.5, 0.65)
-        x0 = rng.random()  # anywhere: the strands wrap, so the whole tile is covered evenly
+        x0 = (cx + off) % 1.0  # in its band; the bands wrap round the strand's tube
         length = 1.0
         for i in range(steps + 1):
             t = i / steps
@@ -101,7 +118,7 @@ def strand(kind, rng, k, n):
     elif kind == "tail":
         # Below a hair tie: a bundle at the root spraying apart toward uneven tips.
         length = rng.uniform(0.5, 1.0)
-        spread = (x0 - 0.5) * 1.6
+        spread = (x0 - 0.5) * 1.6 - pull * off
         for i in range(steps + 1):
             t = i / steps
             pts.append((0.5 + spread * (0.25 + 0.75 * t) + 0.03 * drift(t), t * length))
@@ -116,8 +133,9 @@ def draw_tile(kind, count, seed):
     root = np.zeros((h, w), np.float32)
     rnd = np.zeros((h, w), np.float32)
     strands = []
+    clumps = clump_centres(kind, rng)
     for k in range(count):
-        pts, length = strand(kind, rng, k, count)
+        pts, length = strand(kind, rng, k, count, clumps)
         strands.append((rng.random(), rng.random(), pts, length))
     strands.sort(key=lambda s: s[0])  # back to front by depth
     for z, r, pts, length in strands:

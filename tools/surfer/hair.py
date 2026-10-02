@@ -1,5 +1,7 @@
 """Hair cards (spec §4.2) grown from the scalp in Python, and simple eyes. The strands are drawn by the game's shader."""
+import json
 import math
+import os
 import random
 
 import bmesh
@@ -113,6 +115,29 @@ def _frizz(base, centre, rng):
     return [base, base + d * length * 0.5, base + d * length]
 
 
+# The strand atlas's tile table (tools/surfer/hair_atlas.py; dune select spec §13.2): each card names one tile in
+# COLOR_0.a as (tile + 0.5) / 16, and the shader maps the card's own UVs into it.
+_ATLAS = json.load(open(os.path.join(os.path.dirname(__file__), "..", "..", "public", "surfer", "hairAtlas.json"), encoding="utf-8"))
+TILES_BY_ROLE = {}
+for _i, _t in enumerate(_ATLAS["tiles"]):
+    TILES_BY_ROLE.setdefault(_t["role"], []).append(_i)
+# A card's role when its maker doesn't name one: most are a lock's core or its outer layer; a few fly away. Wet hair
+# clumps, so its cards are mostly core.
+DRY_ROLES = (("core", 0.55), ("outer", 0.35), ("flyaway", 0.10))
+WET_ROLES = (("core", 0.8), ("outer", 0.2))
+
+
+def _role(rng, width, weights):
+    if width <= 0.007:  # the frizz and wisps
+        return "flyaway"
+    x, acc = rng.random(), 0.0
+    for role, w in weights:
+        acc += w
+        if x < acc:
+            return role
+    return weights[-1][0]
+
+
 def _face_weight(p, centre):
     """How much a point of the fall lies beside the face (0 … 1): in front of the ears, between the brows and the chin."""
     ahead = max(0.0, min(1.0, (centre.y + 0.01 - p.y) / 0.04))
@@ -120,14 +145,18 @@ def _face_weight(p, centre):
     return ahead * height
 
 
-def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False):
-    verts, faces, uvs, tone, rootd = [], [], [], [], []
+def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False, roles=None, wet=False):
+    """`roles`: one atlas role per card (core, outer, flyaway, fringe, braid, tail), or None to choose by width and chance."""
+    verts, faces, uvs, tone, rootd, tile = [], [], [], [], [], []
+    trng = random.Random(seed + 101)  # the tiles' own generator, so the cards' tones are drawn as before
     front_sum, front_n = 0.0, 0
     forward = Vector((0, -1, 0))
     rng = random.Random(seed + 7)
-    for pts, width in cards:
+    for ci, (pts, width) in enumerate(cards):
         k, base = len(pts) - 1, len(verts)
         t = rng.random()
+        role = roles[ci] if roles is not None else _role(trng, width, WET_ROLES if wet else DRY_ROLES)
+        code = (trng.choice(TILES_BY_ROLE[role]) + 0.5) / len(_ATLAS["tiles"])
         along = 0.0
         for i, p in enumerate(pts):
             if i > 0:
@@ -154,6 +183,7 @@ def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False):
             verts += [p - side * half, p + side * half]
             uvs += [(0.0, i / k), (1.0, i / k)]
             tone += [t, t]
+            tile += [code, code]
             rootd += [min(1.0, along / 0.012)] * 2
         for i in range(k):
             a = base + 2 * i
@@ -169,7 +199,7 @@ def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False):
     # COLOR_0.r: one random per card, so the shader can vary each lock's shade (a smooth helmet otherwise).
     col = me.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="POINT")
     for i, t in enumerate(tone):
-        col.data[i].color = (t, 1.0, rootd[i], 1.0)  # R the card's tone, G occlusion (bake_ao), B 0 → 1 over the first 12 mm
+        col.data[i].color = (t, 1.0, rootd[i], tile[i])  # R the card's tone, G occlusion (bake_ao), B 0 → 1 over the first 12 mm, A its atlas tile
     me.color_attributes.active_color = col
     obj = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(obj)
@@ -201,6 +231,7 @@ def build(body, rig, style, L, coords, name, avoid=()):
         return v.co + _unit(rng) * 0.003, v.normal.copy()
 
     cards = []
+    roles = None
     if style["style"] == "short":
         crown = centre + Vector((0, L["head_radius"] * 0.35, L["head_radius"] * 0.9))
         for _ in range(1600):
@@ -247,6 +278,7 @@ def build(body, rig, style, L, coords, name, avoid=()):
             cards.append((_to_tie(root, n, centre, tie), rng.uniform(0.011, 0.015)))
         for _ in range(380):
             cards.append((_pony(tie, rng), rng.uniform(0.012, 0.017)))
+        roles = ["core"] * 2600 + ["tail"] * 380
     elif style["style"] == "curly":
         locks = []
         for _ in range(450):
@@ -315,7 +347,7 @@ def build(body, rig, style, L, coords, name, avoid=()):
         return obj
     else:
         raise SystemExit(f"unknown hair style {style['style']}")
-    return _cards_object(cards, centre, rig, f"{name}_hair" + ("Dry" if style.get("dry") else ""), seed=style["seed"])
+    return _cards_object(cards, centre, rig, f"{name}_hair" + ("Dry" if style.get("dry") else ""), seed=style["seed"], roles=roles, wet=not style.get("dry"))
 
 
 def _under_cap(root, n, centre, rng):
