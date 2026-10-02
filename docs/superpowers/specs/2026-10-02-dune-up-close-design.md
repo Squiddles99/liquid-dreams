@@ -193,7 +193,8 @@ over our own terrain. The cost is grade (steep is dear) plus a preference for ea
 - **Replacing the crest:**
   - `landSpots().duneCrest` becomes the junction clearing. It is renamed `standSpot`, with `duneCrest` kept as a
     deprecated alias until step 4 lands.
-  - The heading faces the lineup.
+  - The heading faces inland, away from the lineup, as `duneCrest`'s does: the gang faces its camera with the break
+    behind them, and the select screen's beats set their own headings.
   - The crest finder (`placement.ts:101–135`) is retired.
   - The gang camera (`gang.ts`) stands on the Cape to Cape behind the riders instead of 5.5 m into the heath.
   - The gang's plant clearings are replaced by the corridors and the clearing.
@@ -441,7 +442,7 @@ These are written into `heathKit.manifest.json` by the Blender build and asserte
   - the junction sees the lineup at 1.6 m over the laid-out plant tops, clearing each by at least 0.2 m;
   - the beach path ends within 5 m in z of `WOMB_Z` at the waterline;
   - the sink in `heightAt` changes by no more than 1 cm per 25 cm;
-  - `standSpot` is in the clearing and faces the lineup.
+  - `standSpot` is in the clearing and faces inland, away from the lineup.
 - **`plants.test.ts` (extended):**
   - each placement's variant is the same whichever band asks;
   - density is within ±25% of target, and closed cover on heath;
