@@ -9,6 +9,7 @@ import '../seabed/seabed.selftest';
 import '../seabed/seabedShading.selftest';
 import '../breaker/breaker.selftest';
 import '../breaker/ribbon.selftest';
+import '../breaker/flow.selftest';
 import '../whitewater/foamField.selftest';
 import '../whitewater/spray.selftest';
 import '../land/land.selftest';

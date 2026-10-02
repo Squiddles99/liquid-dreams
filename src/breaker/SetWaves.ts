@@ -84,6 +84,10 @@ export class SetWaves {
   private readonly farMax = uniform(FAR_COUNT - 1);
   private readonly farP = uniform(0);
   private readonly meanOmega = uniform(1);
+  /** The field's mean angular frequency (rad/s): the flow's ω (flowNodes.ReefFlow). */
+  get omega(): N {
+    return this.meanOmega;
+  }
   /** The field's mean swell travel direction (xz). */
   readonly meanTravel = uniform(new THREE.Vector2(1, 0));
   private readonly wavesAttr = new THREE.StorageBufferAttribute(new Float32Array(MAX_ACTIVE_WAVES * 12), 4);
