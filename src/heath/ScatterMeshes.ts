@@ -28,7 +28,9 @@ export class ScatterMeshes {
   private readonly frustum = new THREE.Frustum();
   private readonly m4 = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
-  private readonly e = new THREE.Euler(0, 0, 0, 'YXZ');
+  private readonly qYaw = new THREE.Quaternion();
+  private readonly up = new THREE.Vector3();
+  private static readonly Y = new THREE.Vector3(0, 1, 0);
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3();
   private readonly sphere = new THREE.Sphere();
@@ -81,8 +83,9 @@ export class ScatterMeshes {
         continue;
       }
       this.s.setScalar(it.scale);
-      this.e.set(it.tiltX, it.yaw, it.tiltZ);
-      this.q.setFromEuler(this.e);
+      // Turned by its yaw about the vertical, then stood up along the ground's normal (its up).
+      this.q.setFromUnitVectors(ScatterMeshes.Y, this.up.set(it.upX, 1, it.upZ).normalize());
+      this.q.multiply(this.qYaw.setFromAxisAngle(ScatterMeshes.Y, it.yaw));
       this.p.set(it.x, it.y, it.z);
       this.m4.compose(this.p, this.q, this.s);
       for (const lod of tuft ? ([0, 1] as const) : ([0] as const)) {

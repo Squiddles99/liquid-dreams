@@ -117,7 +117,7 @@ registerSelfTest({
       for (let v = 0; v < SCATTER_VARIANTS[kind]; v++) {
         // Shells are 1–4 cm: seen from 0.6 m; the other items from 1.5 m.
         for (const [d, fov] of tuft ? ([[4, 20], [16, 6]] as const) : kind === 'item_shell' ? ([[0.6, 12]] as const) : ([[1.5, 12]] as const)) {
-          const it: ScatterItem = { kind, variant: v, x: 0, z: -d, y: 0, yaw: 0.5, tiltX: 0, tiltZ: 0, scale: 1, seed: 0.37 };
+          const it: ScatterItem = { kind, variant: v, x: 0, z: -d, y: 0, yaw: 0.5, upX: 0, upZ: 0, scale: 1, seed: 0.37 };
           const cam = new THREE.PerspectiveCamera(fov, 1, 0.05, 100);
           cam.position.set(0, tuft ? 0.5 : 0.6, 0);
           cam.lookAt(0, tuft ? 0.3 : 0.02, -d);
