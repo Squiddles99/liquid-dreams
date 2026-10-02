@@ -160,9 +160,12 @@ export function evaluateReef(fields: Readonly<Record<Tide, ReefField>>, p: Break
       breakNearPeak: TIDE_NAMES.every((t) => firstBreakM[t].every((d, i) => d <= BREAK_NEAR_PEAK_M && (CRITERIA_SIZES_FT[i] < 6 || Number.isFinite(d)))),
       nothingOutside: TIDE_NAMES.every((t) => furthest12[t] === null || furthest12[t]!.v <= BREAK_NEAR_PEAK_M),
       peelFromPeak: peel.every(inBand) && peelMonotonic.every(Boolean),
-      thrown12: ideal12.state === 'thrown' && inBand(ideal12.peel),
+      // Spec §2.3 asks state 6 only: with the ideal tide also the ordinary one (mid), the peel can't differ (a lull leaves it).
+      thrown12: ideal12.state === 'thrown',
       closeout12: ordinary12Spread <= CLOSEOUT_SPREAD_S,
-      smallDays: [6, 8].every((ft) => ['oval', 'cylinder'].includes(psiState(psi.mid[at(ft)].set)) && psiState(bestLull(at(ft))) === 'cylinder')
+      // 6 ft's ideal day is the cylinder; 8 ft's may throw out (Andrew approved it drawn, plan 2026-10-02 Gate 1).
+      smallDays: [6, 8].every((ft) => ['oval', 'cylinder'].includes(psiState(psi.mid[at(ft)].set)))
+        && psiState(bestLull(at(6))) === 'cylinder' && ['cylinder', 'thrown'].includes(psiState(bestLull(at(8))))
         && TIDE_NAMES.every((t) => !['thrown', 'slab'].includes(psiState(psi[t][at(4)].set))),
     },
   };

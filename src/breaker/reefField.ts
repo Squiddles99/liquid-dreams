@@ -86,27 +86,41 @@ export const SLURP_REACH_M = 100;
 /** The slurp's samples along the crest line are this far apart (m). */
 const SLURP_STEP_M = 2;
 
-/** ψ₀'s seabed slope is the mean over this many still-water depths either side of a node along its ray… */
-export const PSI_SLOPE_HALF_WINDOW = 1;
-/** …its approach depth the deepest still water within this many depths seaward… */
-export const PSI_APPROACH_REACH = 3;
-/** …sampled this far apart (m): the field's cell. */
-export const PSI_SAMPLE_M = 1;
-
 /**
- * ψ₀'s reef parts at a point of still-water depth d0 (plan ruling 11): the mean slope over ±PSI_SLOPE_HALF_WINDOW·d0
- * along its ray (depthAlong(s), s metres ahead; floored at 0: a bottom deepening ahead gives no plunge), and the
- * approach depth h0, the deepest still water within PSI_APPROACH_REACH·d0 seaward, with where it is (sApproach ≤ 0).
+ * ψ₀ from the reef's step (plan 2026-10-02, Andrew's ruling at its Gate 1): Pick & Feddersen's ψ₀ = s / (H₀/h₀)^¼ read the
+ * reef face's slope, and a face steep enough to hold 12 ft at the take-off (about 1:3, far past the fits' 1:10) made every
+ * wave a slab. The step is how hard the reef stands a wave up instead: the still water where it breaks over the
+ * shallowest within STEP_AHEAD depths ahead (Andrew's measure, 2026-09-30: low tide ≈ 2.6, mid 2.2, high 1.9 at the peak).
  */
-export function psiReef(depthAlong: (s: number) => number, d0: number): { slope: number; h0: number; sApproach: number } {
-  const w = PSI_SLOPE_HALF_WINDOW * d0;
-  const slope = w > 0 ? Math.max(0, (depthAlong(-w) - depthAlong(w)) / (2 * w)) : 0;
-  let h0 = d0, sApproach = 0;
-  for (let s = -PSI_SAMPLE_M; s >= -PSI_APPROACH_REACH * d0 - 1e-9; s -= PSI_SAMPLE_M) {
-    const d = depthAlong(s);
-    if (d > h0) { h0 = d; sApproach = s; }
-  }
-  return { slope, h0, sApproach };
+export const STEP_AHEAD = 1.5;
+/**
+ * The step is smoothed along the crest by a Gaussian of this σ (m): light, because the peak is a narrow wedge (at the
+ * breaking depth's σ BREAKING_SMOOTHING_M, 12 ft's ideal ψ fell from 0.089 to 0.074; taking the largest first lifted 6 ft's
+ * ideal day from the cylinder Andrew approved to thrown).
+ */
+export const STEP_SMOOTHING_M = 2;
+/** The step's samples along the ray are this far apart (m): the field's cell. */
+export const STEP_SAMPLE_M = 1;
+/**
+ * Andrew's step anchors (2026-09-30: 1.3 gentle, 1.85 normal, 2.25 heavy) on the sheet's ψ anchors (SHEET_POINTS: oval,
+ * cylinder, thrown); linear between, in proportion below the first, the last segment's slope past the last.
+ */
+export const STEP_PSI_POINTS: readonly (readonly [number, number])[] = [[1.3, 0.035], [1.85, 0.065], [2.25, 0.09]];
+
+/** The step at a point of still-water depth d0 (depthAlong(s): s metres ahead along its ray): never below 1. */
+export function reefStep(depthAlong: (s: number) => number, d0: number): number {
+  if (!(d0 > 0)) return 1;
+  let shallowest = d0;
+  for (let s = STEP_SAMPLE_M; s <= STEP_AHEAD * d0 + 1e-9; s += STEP_SAMPLE_M) shallowest = Math.min(shallowest, depthAlong(s));
+  return shallowest > 0 ? Math.max(1, d0 / shallowest) : 1;
+}
+
+/** ψ₀ for a step (STEP_PSI_POINTS); a non-finite step reads as none (1). */
+export function psiFromStep(step: number): number {
+  const s = Number.isFinite(step) ? step : 1, P = STEP_PSI_POINTS, last = P.length - 1;
+  if (s <= P[0][0]) return (P[0][1] * Math.max(0, s)) / P[0][0];
+  for (let i = 0; i < last; i++) if (s <= P[i + 1][0]) return P[i][1] + ((s - P[i][0]) * (P[i + 1][1] - P[i][1])) / (P[i + 1][0] - P[i][0]);
+  return P[last][1] + ((s - P[last][0]) * (P[last][1] - P[last - 1][1])) / (P[last][0] - P[last - 1][0]);
 }
 
 /** `a` spread along the crest line through each node: the largest of a × exp(−s/reachM) within ±2·reachM. */
@@ -308,21 +322,17 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const slurp = slurpAlongCrest(smoothGain, dirX, dirZ, grid, SLURP_REACH_M);
   const hminSlurp = new Float32Array(n);
   for (let i = 0; i < n; i++) hminSlurp[i] = slurp[i] > 0 ? Math.min(hminBreak[i], amp[i] / slurp[i]) : hminBreak[i];
-  // ψ₀ at every node and level (spec 2026-09-30-barrel-from-maths, plan ruling 11): the slope smoothed along the crest as
-  // the breaking depth is, so small reef bumps don't make the lip ragged; the approach depth and its amplification raw.
-  const depthAt = bilinearCells(depth, grid), ampAt = bilinearCells(amp, grid);
-  const rawSlope = new Float32Array(n), h0 = new Float32Array(n), amp0 = new Float32Array(n);
+  // ψ₀ at every node (plan 2026-10-02): from the reef's step there, lightly smoothed along the crest (STEP_SMOOTHING_M) so
+  // small reef bumps don't make the lip ragged; the same at every level (the record keeps the one where each level broke).
+  const depthAt = bilinearCells(depth, grid);
+  const rawStep = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const col = i % nx, row = (i - col) / nx, dx = dirX[i] / cellM, dz = dirZ[i] / cellM;
-    const r = psiReef((s) => depthAt(col + dx * s, row + dz * s), depth[i]);
-    rawSlope[i] = r.slope; h0[i] = r.h0; amp0[i] = ampAt(col + dx * r.sApproach, row + dz * r.sApproach);
+    rawStep[i] = reefStep((s) => depthAt(col + dx * s, row + dz * s), depth[i]);
   }
-  const slope = smoothAlongCrest(rawSlope, dirX, dirZ, grid, BREAK_SMOOTHING_M);
+  const step = smoothAlongCrest(rawStep, dirX, dirZ, grid, STEP_SMOOTHING_M);
   const psiHere = new Float32Array(n * ONSET_LEVELS);
-  for (let i = 0; i < n; i++) for (let k = 0; k < ONSET_LEVELS; k++) {
-    const H0 = onsetLevelHeight(k) * amp0[i];
-    psiHere[i * ONSET_LEVELS + k] = H0 > 0 && h0[i] > 0 ? slope[i] / (H0 / h0[i]) ** 0.25 : 0;
-  }
+  for (let i = 0; i < n; i++) psiHere.fill(psiFromStep(step[i]), i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
   const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere });
   return { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
 }

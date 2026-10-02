@@ -4,7 +4,8 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, ONSET_LEVELS, ONSET_PSI_OFFSET, ONSET_RECORD_LENGTH, onsetPsi, onsetTime } from './breaking';
-import { computeReefField, psiReef, sampleField, sampleOnset } from './reefField';
+import { STEP_PSI_POINTS, computeReefField, psiFromStep, reefStep, sampleField, sampleOnset } from './reefField';
+import { SHEET_POINTS, psiState } from './overturn';
 
 const bed = downsample(buildBathymetry(), 2);
 const fieldAt = (tideM: number) => computeReefField({ bed, periodS: 15, fromDeg: 225, tideM });
@@ -12,15 +13,22 @@ const biggest = (ft: number) => { const c = cloneConditions(DEFAULT_CONDITIONS);
 const psiAt = (f: ReturnType<typeof fieldAt>, x: number, z: number, h: number) => onsetPsi(sampleOnset(f, x, z)!, 0, h, DEFAULT_BREAK_PARAMS);
 
 describe('ψ₀ in the reef bake (spec 2026-09-30-barrel-from-maths §5, plan ruling 11)', () => {
-  it('psiReef: a planar 1:20 slope reads 0.05; a flat bottom 0; the approach depth is the deepest water seaward', () => {
-    const plane = psiReef((s) => 10 - s / 20, 10);
-    expect(plane.slope).toBeCloseTo(0.05, 6);
-    expect(plane.h0).toBeCloseTo(10 + (3 * 10) / 20, 6);
-    expect(plane.sApproach).toBeCloseTo(-30, 6);
-    const flat = psiReef(() => 13, 13);
-    expect(flat.slope).toBe(0);
-    expect(flat.h0).toBe(13);
-    expect(psiReef((s) => 10 + s / 20, 10).slope).toBe(0); // deepening ahead: floored at 0
+  it('reefStep: the depth here over the shallowest water within 1.5 depths ahead (Andrew’s step, 2026-09-30)', () => {
+    expect(reefStep(() => 13, 13)).toBe(1); // a flat bottom: no step
+    expect(reefStep((s) => (s < 5 ? 12 : 6), 12)).toBeCloseTo(2, 9); // a ledge 5 m ahead, within 18 m: 12 ÷ 6
+    expect(reefStep((s) => (s < 20 ? 12 : 6), 12)).toBe(1); // a ledge past 1.5 depths ahead doesn't count yet
+    expect(reefStep((s) => 10 + s, 10)).toBe(1); // deepening ahead: never below 1
+    expect(reefStep(() => 0.5, 0)).toBe(1); // no water: no step
+  });
+  it('psiFromStep: Andrew’s step anchors (1.3, 1.85, 2.25) land on the sheet’s ψ anchors, oval, cylinder, thrown', () => {
+    expect(STEP_PSI_POINTS.map((p) => p[1])).toEqual(SHEET_POINTS.map((p) => p[0]));
+    STEP_PSI_POINTS.forEach(([step, psi]) => expect(psiFromStep(step)).toBeCloseTo(psi, 9));
+    expect(psiState(psiFromStep(1.3))).toBe('oval');
+    expect(psiState(psiFromStep(1.85))).toBe('cylinder');
+    expect(psiState(psiFromStep(2.25))).toBe('thrown');
+    for (let s = 0.5; s < 3; s += 0.01) expect(psiFromStep(s + 0.01)).toBeGreaterThan(psiFromStep(s)); // a bigger step throws harder
+    expect(psiFromStep(1)).toBeCloseTo(0.035 / 1.3, 9); // below the first anchor, in proportion (as drawn for Andrew)
+    expect(Number.isFinite(psiFromStep(Number.NaN))).toBe(true);
   });
   it('the record keeps a ψ₀ per level after the (time, height) pairs', () => {
     expect(ONSET_PSI_OFFSET).toBe(1 + 2 * ONSET_LEVELS);
