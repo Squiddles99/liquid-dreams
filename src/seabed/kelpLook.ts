@@ -23,18 +23,21 @@ export function kelpWeedAlbedoNode(hitPos: N, rayDir: N, kelp: KelpMap): N {
   const l = length(lean);
   const height = float(KELP_HEIGHT_M).mul(float(1.0).sub(l.mul(KELP_FLATTEN)));
   const top = hitPos.xz.add(kelpParallaxNode(rayDir, height));
-  // Beds about 5 m across.
-  const clump = smoothstep(0.35, 0.65, mx_noise_float(vec3(top.x.mul(0.18), top.y.mul(0.18), 3.7)).mul(0.5).add(0.5));
-  const density = mix(float(0.55), float(1.0), clump);
-  // The fronds' frame: along the lean (x when upright), stretched with it; the tips move downstream.
+  // Plants in clumps about 2 m across, with lit rock between (seen through 6–10 m of water only metre-scale contrast reads:
+  // the first in-game look at the frond-scale pattern alone showed no difference from build A).
+  const clump = smoothstep(0.4, 0.6, mx_noise_float(vec3(top.x.mul(0.45), top.y.mul(0.45), 3.7)).mul(0.5).add(0.5));
+  const density = mix(float(0.25), float(1.0), clump);
+  // The fronds' frame: along the lean (x when upright), stretched with it; the whole canopy's pattern moves downstream
+  // with the tips (about a metre flat), so the clumps visibly sway.
   const dir = select(l.greaterThan(1e-4), lean.div(max(l, 1e-4)), vec2(1.0, 0.0));
-  const p = top.sub(lean.mul(KELP_HEIGHT_M * 0.6));
+  const p = top.sub(lean.mul(KELP_HEIGHT_M * 1.2));
   const along = dot(p, dir).div(l.mul(2.0).add(1.0));
   const across = dot(p, vec2(dir.y.negate(), dir.x));
   const flutter = kelp.time.mul(l.mul(l).mul(1.5).add(0.2));
-  const n = mx_noise_float(vec3(along.mul(2.2), across.mul(4.5), flutter)).mul(0.5).add(0.5);
-  const cover = smoothstep(0.3, 0.45, n.add(density.sub(0.75).mul(0.5)));
-  const fronds = vec3(...WEED_ALBEDO).mul(l.mul(0.3).add(0.85));
+  const n = mx_noise_float(vec3(along.mul(1.0), across.mul(2.2), flutter)).mul(0.5).add(0.5);
+  const cover = smoothstep(0.25, 0.45, n.add(density.sub(0.6).mul(0.9)));
+  // Upright the crowns are dark; lying flat in the draw their fronds' glossy faces turn up to the light.
+  const fronds = vec3(...WEED_ALBEDO).mul(l.mul(0.9).add(0.6));
   const gaps = vec3(...REEF_ALBEDO).mul(KELP_GAP_SHADE);
   return mix(vec3(...WEED_ALBEDO), mix(gaps, fronds, cover), kelp.show);
 }
