@@ -53,3 +53,48 @@ export function tubeIndices(nPoints: number, sides: number): Uint32Array {
   }
   return new Uint32Array(idx);
 }
+
+/** The cuff the leash is strapped to: a neoprene band round the limb, `width` along its `axis`. */
+export interface Cuff { centre: Vector3; axis: Vector3; radius: number; width: number }
+export const CUFF_SIDES = 12;
+
+/**
+ * Where the leash straps on (Andrew: to the wrist): a bodyboarder's right wrist, round the forearm 3 cm above the
+ * wrist joint; a surfer's trailing ankle (regular: the right), round the shin 6 cm above the ankle joint. Sized to the
+ * rider (a 1.75 m rider's wrist ~2.4 cm across the cuff's middle, ankle ~3.6 cm, plus the neoprene).
+ */
+export function leashCuff(board: string, stance: 'regular' | 'goofy', joint: Record<string, Vector3>, heightM: number): Cuff {
+  const k = heightM / 1.75;
+  if (board === 'bodyboard') {
+    const axis = joint.hand_r.clone().sub(joint.forearm_r).normalize();
+    return { centre: joint.hand_r.clone().addScaledVector(axis, -0.03), axis, radius: 0.024 * k + 0.004, width: 0.04 };
+  }
+  const t = stance === 'regular' ? 'r' : 'l';
+  const axis = joint[`foot_${t}`].clone().sub(joint[`shin_${t}`]).normalize();
+  return { centre: joint[`foot_${t}`].clone().addScaledVector(axis, -0.06), axis, radius: 0.036 * k + 0.005, width: 0.05 };
+}
+
+/** Where the leash leaves the cuff: on its side facing `toward` (the plug). */
+export function leashStart(c: Cuff, toward: Vector3): Vector3 {
+  const d = toward.clone().sub(c.centre);
+  d.addScaledVector(c.axis, -d.dot(c.axis));
+  if (d.lengthSq() < 1e-12) d.copy(new Vector3(0, -1, 0)).addScaledVector(c.axis, c.axis.y).normalize();
+  return c.centre.clone().addScaledVector(d.normalize(), c.radius);
+}
+
+/** The cuff's band: two rings of CUFF_SIDES at either edge, written into `out` (2 × CUFF_SIDES × 3). */
+export function cuffPositions(c: Cuff, out: Float32Array): void {
+  const n = new Vector3(0, 1, 0).cross(c.axis);
+  if (n.lengthSq() < 1e-8) n.set(1, 0, 0).cross(c.axis);
+  n.normalize();
+  const b = new Vector3().crossVectors(c.axis, n);
+  for (let r = 0; r < 2; r++) {
+    const along = (r - 0.5) * c.width;
+    for (let k = 0; k < CUFF_SIDES; k++) {
+      const a = (2 * Math.PI * k) / CUFF_SIDES, o = (r * CUFF_SIDES + k) * 3;
+      out[o] = c.centre.x + along * c.axis.x + c.radius * (Math.cos(a) * n.x + Math.sin(a) * b.x);
+      out[o + 1] = c.centre.y + along * c.axis.y + c.radius * (Math.cos(a) * n.y + Math.sin(a) * b.y);
+      out[o + 2] = c.centre.z + along * c.axis.z + c.radius * (Math.cos(a) * n.z + Math.sin(a) * b.z);
+    }
+  }
+}

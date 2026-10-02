@@ -159,7 +159,6 @@ export function layoutFor(s: BoardSpec, riderHeightM: number): BoardLayout {
   const L = s.lengthM, tail = -L / 2, nose = L / 2, bb = s.kind === 'bodyboard';
   const on = (x: number, z = 0): Vec3Tuple => [x, deckYAt(s, x, z), z];
   const back = tail + s.backFootFromTailM;
-  const plugX = nose - 0.12;
   return {
     spots: {
       back: on(back),
@@ -169,7 +168,8 @@ export function layoutFor(s: BoardSpec, riderHeightM: number): BoardLayout {
       dkFoot: on(nose - 0.42 * L),
       dkKnee: on(tail + 0.12),
     },
-    leashPlug: bb ? on(plugX, 0.75 * halfWidthAt(s, uAt(s, plugX))) : on(tail + 0.06),
+    // A bodyboard's plug in the top middle of its nose (Andrew); a surfboard's on the tail.
+    leashPlug: bb ? on(nose - 0.05) : on(tail + 0.06),
     leashLengthM: bb ? 1.0 : L,
   };
 }
