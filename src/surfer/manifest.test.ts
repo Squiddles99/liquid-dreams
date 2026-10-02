@@ -143,6 +143,23 @@ describe("Shazza's hair (closeup spec §3)", () => {
     expect(dry.max[0]).toBeGreaterThan(ears[0][0] + 0.01);
     expect(dry.min[0]).toBeLessThan(ears[1][0] - 0.01);
   });
+  it('dry: the locks turn from the scalp into the fall at their own heights, not along one line (dune select spec §13.1)', () => {
+    // The build's record: the spread (cm) of where each lock starts to fall, and how far the turn is blended (cm).
+    expect(man.checks!.hairTurnSpreadCm).toBeGreaterThan(1.2);
+    expect(man.checks!.hairTurnBlendCm).toBeGreaterThanOrEqual(4);
+  });
+  it('dry: the hairline comes down the temples into a sideburn, not flat at the brows (dune select spec §13.1)', () => {
+    // How far above the eyes the sideburn's roots come down in front of the ear, less their inset (cm). The old rule
+    // stopped the side hair on one flat line 2.5 cm above the eyes: the straight cut Andrew saw.
+    expect(man.checks!.sideburnAboveEyeCm).toBeLessThanOrEqual(1.0);
+  });
+  it('her upper lip is thinned by the build: at least a fifth shorter than MPFB leaves it (dune select spec §13.1)', () => {
+    expect(man.checks!.upperLipSculptedMm).toBeLessThanOrEqual(0.8 * man.checks!.upperLipMm!);
+  });
+  it('dry: the locks beside her face turn to face forward, not edge-on to the camera (dune select spec §13.1)', () => {
+    // The mean |forward · card normal| of the fall's cards in front of her ears: 0.37 lying flat to the body (measured on the step-3 build), 0.69 turned.
+    expect(man.checks!.hairFaceFrontness).toBeGreaterThan(0.45);
+  });
 });
 
 describe("Grommet's mop (grommet spec §3)", () => {

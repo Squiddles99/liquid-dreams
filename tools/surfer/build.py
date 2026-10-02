@@ -37,6 +37,8 @@ rig_trim.apply_transforms(rig, [body])
 landmarks = rig_trim.delete_helpers(body)
 expressions.scale(body, rig_trim.scale_to_height(body, rig, preset["heightM"], landmarks))
 sculpt.smooth_anatomy(body, preset["heightM"], preset.get("smooth", []))
+# The upper lip thinned directly (dune select spec §13.1), where MPFB's targets only nudge it.
+lip_mm = sculpt.upper_lip(body, landmarks["mouth"], preset["upperLip"]) if preset.get("upperLip") else None
 rig_trim.trim(rig, body)
 rig_trim.decimate(body, preset["bodyTriangles"])
 rig_trim.limit_weights(body)
@@ -121,10 +123,15 @@ if walk and walk.get("pack"):
 if preset.get("dryHair"):
     dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=[*garments, *carried])
     rig_trim.single_material(dry_obj, "hairDry")
+    dry_checks = dict(hair.last_checks)
     hair.bake_ao(dry_obj, body, L["head_centre"], reach=preset["dryHair"].get("aoReach", 0.045))
     parts.append(dry_obj)
 
 checks = expressions.blink_check(body, L)
+if lip_mm:
+    checks["upperLipMm"], checks["upperLipSculptedMm"] = lip_mm
+if preset.get("dryHair"):
+    checks.update(dry_checks)  # long dry hair's turn and face numbers (dune select spec §13.1)
 if walk:
     checks["garmentsOutside"] = clothes.outside_check(garments, body)
 if hat_hair is not None:

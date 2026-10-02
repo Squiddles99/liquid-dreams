@@ -19,19 +19,18 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.kdtree import KDTree
 
+import hairline
+
 
 def _ramp(x, edge, width):
     """0 below edge - width / 2, 1 above edge + width / 2."""
     return max(0.0, min(1.0, 0.5 + (x - edge) / width))
 
 
-def _scalp(co, centre, eye_z):
-    # The hairline: well above the brow at the front, above the ears at the sides, down to the nape at the back.
-    back = _ramp(co.y, centre.y, 0.06)
-    line = (eye_z + 0.065) * (1 - back) + (eye_z - 0.05) * back
-    if abs(co.x) > 0.055 and 0.15 < back < 0.85:
-        line = max(line, eye_z + 0.025)  # clear of the ears
-    return _ramp(co.z, line, 0.015)
+def _scalp(co, centre, eye_z, ear=(95.0, 0.023)):
+    # The hairline (hairline.py, shared with the hair's roots): above the brow at the forehead, down the temples into a
+    # sideburn, over the ears, down to the nape; softened over 1.5 cm.
+    return _ramp(co.z, hairline.line_z(co, centre, eye_z, *ear), 0.015)
 
 
 def _brow(co, eye, eye_y, weight):
@@ -171,6 +170,7 @@ def shape_lashes(body, L, lashes):
 
 def paint(body, weights, L, brow_weight=1.0, ao=None):
     centre, eye_z, eyes, mouth = L["head_centre"], L["eye_z"], L["eyes"], L.get("mouth")
+    ear = hairline.ear_params(L)
     eye_pts = [p for p in eyes.values() if p is not None]
     eye_y = min((p.y for p in eye_pts), default=centre.y - 0.08)
     layer = body.data.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="POINT")
@@ -192,7 +192,7 @@ def paint(body, weights, L, brow_weight=1.0, ao=None):
             continue
         head = sum(w for b, _, w in row if b == "head")
         co = v.co
-        scalp = _scalp(co, centre, eye_z) * head
+        scalp = _scalp(co, centre, eye_z, ear) * head
         brow = max((_brow(co, p, eye_y, brow_weight) for p in eye_pts), default=0.0) * head
         lash = (liner(co) if roots is not None else max((_lash(co, p, eye_y) for p in eye_pts), default=0.0)) * head
         inside = _mouth_inside(v, mouth, L.get("lip_front"), tree) * head

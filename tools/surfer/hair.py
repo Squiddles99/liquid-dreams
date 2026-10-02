@@ -7,6 +7,8 @@ import bpy
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
+import hairline
+
 DOWN = Vector((0, 0, -1))
 
 
@@ -20,15 +22,11 @@ def _hug(p, centre, r_min, r_max):
     return centre + q.normalized() * min(max(q.length, r_min), r_max)
 
 
-def _is_scalp(co, centre, eye_z, inset=0.0):
-    # The face is toward -Y in Blender. The hairline sits well above the brow at the front, above the ears at the
-    # sides, and down to the nape at the back. `inset`: roots that far inside it, so the cards' alpha-tested root ends
-    # sit on painted hair and the soft painted hairline is the one that shows (closeup spec §3).
-    if co.y < centre.y - 0.02:
-        return co.z > eye_z + 0.065 + inset
-    if co.y > centre.y + 0.015:
-        return co.z > eye_z - 0.05 + inset
-    return co.z > eye_z + 0.025 + inset
+def _is_scalp(co, centre, eye_z, inset=0.0, ear=(95.0, 0.023)):
+    # The hairline (hairline.py, shared with the painted scalp): well above the brow at the forehead, down the temples
+    # into a sideburn, over the ears and down to the nape. `inset`: roots that far inside it, so the cards' root ends sit
+    # on painted hair and the soft painted hairline is the one that shows (closeup spec §3).
+    return co.z > hairline.line_z(co, centre, eye_z, *ear) + inset
 
 
 def _short(root, n, centre, crown, rng):
@@ -99,6 +97,15 @@ def _curl(root, n, centre, eye_z, rng, squash=1.0, down=0.25):
     return pts
 
 
+# Long dry hair (dune select spec §13.1): each lock (clump) turns from the scalp into the fall at its own height, within
+# ±TURN_SPREAD of the old single line, and the turn is blended over TURN_BLEND (m) of the fall. One shared height had
+# creased every lock along one horizontal line at the brows.
+TURN_SPREAD = 0.03
+TURN_BLEND = 0.05
+# The last long-hair build's numbers, for the manifest's checks (build.py).
+last_checks = {}
+
+
 def _frizz(base, centre, rng):
     """A short fine wisp off a lock's outer part: breaks the outline so the mop isn't a helmet."""
     d = ((base - centre).normalized() + _unit(rng) * 0.6).normalized()
@@ -106,8 +113,17 @@ def _frizz(base, centre, rng):
     return [base, base + d * length * 0.5, base + d * length]
 
 
-def _cards_object(cards, centre, rig, name, skin=None, seed=0):
+def _face_weight(p, centre):
+    """How much a point of the fall lies beside the face (0 … 1): in front of the ears, between the brows and the chin."""
+    ahead = max(0.0, min(1.0, (centre.y + 0.01 - p.y) / 0.04))
+    height = max(0.0, min(1.0, (p.z - (centre.z - 0.17)) / 0.04)) * max(0.0, min(1.0, (centre.z + 0.02 - p.z) / 0.03))
+    return ahead * height
+
+
+def _cards_object(cards, centre, rig, name, skin=None, seed=0, face_turn=False):
     verts, faces, uvs, tone, rootd = [], [], [], [], []
+    front_sum, front_n = 0.0, 0
+    forward = Vector((0, -1, 0))
     rng = random.Random(seed + 7)
     for pts, width in cards:
         k, base = len(pts) - 1, len(verts)
@@ -118,12 +134,22 @@ def _cards_object(cards, centre, rig, name, skin=None, seed=0):
                 along += (p - pts[i - 1]).length
             tangent = (pts[min(i + 1, k)] - pts[max(i - 1, 0)]).normalized()
             # Out from the head's centre on the head; below it (long hair), out from the fall, so the cards lie flat
-            # against the body's outline instead of twisting edge-on.
+            # against the body's outline instead of twisting edge-on. Blended over 8 cm around the old switch (5 cm
+            # under the head's centre), so no line is shared by every card (§13.1).
             out = p - centre
-            if p.z < centre.z - 0.05:
-                out = Vector((out.x, out.y, 0.0))
-            side = tangent.cross(out.normalized() if out.length > 1e-6 else Vector((0, -1, 0)))
+            flat = max(0.0, min(1.0, ((centre.z - 0.01) - p.z) / 0.08))
+            out = Vector((out.x, out.y, out.z * (1 - flat)))
+            out = out.normalized() if out.length > 1e-6 else Vector((0, -1, 0))
+            # Beside the face, the fall's cards turn toward the front (up to ~50°): flat to the body they hang edge-on to
+            # anyone looking at her, thinning to slivers (§13.1).
+            wf = _face_weight(p, centre) * flat if face_turn else 0.0
+            if wf > 0:
+                out = (out + forward * 1.2 * wf).normalized()
+            side = tangent.cross(out)
             side = side.normalized() if side.length > 1e-6 else tangent.orthogonal().normalized()
+            if face_turn and wf > 0.5:
+                front_sum += abs(tangent.cross(side).normalized().dot(forward))
+                front_n += 1
             half = width * 0.5 * (1 - 0.5 * i / k)
             verts += [p - side * half, p + side * half]
             uvs += [(0.0, i / k), (1.0, i / k)]
@@ -132,6 +158,8 @@ def _cards_object(cards, centre, rig, name, skin=None, seed=0):
         for i in range(k):
             a = base + 2 * i
             faces.append((a, a + 2, a + 3, a + 1))
+    if face_turn:
+        last_checks["hairFaceFrontness"] = round(front_sum / max(1, front_n), 3)
     me = bpy.data.meshes.new(name)
     me.from_pydata([tuple(v) for v in verts], [], faces)
     uv = me.uv_layers.new(name="UVMap")
@@ -163,7 +191,8 @@ def build(body, rig, style, L, coords, name, avoid=()):
     rng = random.Random(style["seed"])
     centre, eye_z = L["head_centre"], L["eye_z"]
     inset = style.get("inset", 0.0)
-    scalp = [v for v, (b, _) in zip(body.data.vertices, coords) if b == "head" and _is_scalp(v.co, centre, eye_z, inset)]
+    ear = hairline.ear_params(L)
+    scalp = [v for v, (b, _) in zip(body.data.vertices, coords) if b == "head" and _is_scalp(v.co, centre, eye_z, inset, ear)]
     if len(scalp) < 50:
         raise SystemExit(f"only {len(scalp)} scalp vertices found; check the head landmarks")
 
@@ -191,15 +220,23 @@ def build(body, rig, style, L, coords, name, avoid=()):
         part_x = style.get("partX", 0.006)
         # Locks: every card belongs to the nearest of ~70 clump centres on the scalp and shares its wave, so the waves
         # read as locks rather than a frizz of cards each on its own phase.
+        # Each clump's turn height comes from its own generator, so the clumps' waves and roots are drawn as before.
+        trng = random.Random(style["seed"] + 23)
         clumps = []
         for _ in range(70):
             c, _n = pick()
-            clumps.append((c, rng.uniform(0, 2 * math.pi), rng.uniform(0.1, 0.14), rng.uniform(0.01, 0.017), rng.uniform(0.36, 0.46)))
+            clumps.append((c, rng.uniform(0, 2 * math.pi), rng.uniform(0.1, 0.14), rng.uniform(0.01, 0.017), rng.uniform(0.36, 0.46), trng.uniform(-TURN_SPREAD, TURN_SPREAD)))
+        turns = []
         for _ in range(2400):
             root, n = pick()
             clump = min(clumps, key=lambda cl: (cl[0] - root).length_squared)
-            cards.append((_wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump), rng.uniform(0.009, 0.013)))
-        return _cards_object(cards, centre, rig, f"{name}_hairDry", skin=_long_skin(rig), seed=style["seed"])
+            cards.append((_wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump, turns), rng.uniform(0.009, 0.013)))
+        mean = sum(turns) / max(1, len(turns))
+        last_checks.clear()
+        last_checks["hairTurnSpreadCm"] = round(100 * math.sqrt(sum((t - mean) ** 2 for t in turns) / max(1, len(turns))), 2)
+        last_checks["hairTurnBlendCm"] = round(100 * TURN_BLEND, 1)
+        last_checks.update(hairline.stats([v.co for v in scalp], centre, eye_z, ear[0], inset))
+        return _cards_object(cards, centre, rig, f"{name}_hairDry", skin=_long_skin(rig), seed=style["seed"], face_turn=True)
     elif style["style"] == "ponytail":
         # Wet and slicked back to the tie: many fine cards (closeup spec §3), so the combed lines read as hair.
         tie = centre + Vector((0, L["head_radius"] * 0.95, -0.01))
@@ -327,11 +364,14 @@ def _body_tree(body, avoid=()):
     return BVHTree.FromPolygons(verts, polys)
 
 
-def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump):
+def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump, turns=None):
     """One long dry lock: over the scalp away from the part, then down past the shoulders in a loose helix (a beach
     wave) shared with its clump, pushed out of the body wherever it would pass inside (1 cm clear). Sampled finely in
     the fall (7+ points a wave; fewer drew zig-zags)."""
-    _, phase0, wl0, amp0, len0 = clump
+    _, phase0, wl0, amp0, len0, turn0 = clump
+    # This lock's turn into the fall: its clump's height, a few millimetres apart card to card (§13.1).
+    turn_z = eye_z - 0.02 + turn0 + 0.004 * math.sin(root.x * 913.0 + root.y * 517.0)
+    last_d = None
     length = len0 + rng.uniform(-0.02, 0.02)
     seg = 0.026
     side = 1.0 if root.x >= part_x else -1.0
@@ -348,21 +388,31 @@ def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump):
     while s < length:
         p = pts[-1]
         out = (p - centre).normalized()
-        if falling_from is None and p.z > eye_z - 0.02:
+        # A lock still in front of the face never falls there (across her cheek): it keeps sweeping sideways down to
+        # the old line at least.
+        in_front = p.y < centre.y - 0.03 and abs(p.x) < 0.078
+        if falling_from is None and p.z > (min(turn_z, eye_z - 0.02) if in_front else turn_z):
             # Over the head: away from the part and down, a little back; hugging the scalp with some volume.
             comb = (Vector((side * 0.85, -0.1, -0.85)) if front else Vector((side * 0.8, 0.45, -0.7))) + jitter
             # In front of the face, sweep sideways only, until clear of it (a lock across her cheek otherwise).
             if p.y < centre.y - 0.03 and abs(p.x) < 0.078 and p.z < eye_z + 0.045:
                 comb = Vector((side, 0.25, 0.0))
             d = (comb - out * comb.dot(out)).normalized()
+            last_d = d
             q = _hug(p + d * seg, centre, r0 + 0.002, r0 + 0.008)
         else:
             if falling_from is None:
                 falling_from = s
+                if turns is not None:
+                    turns.append(p.z)
             f = s - falling_from
             flat = Vector((p.x - centre.x, p.y - centre.y, 0))
             flat = flat.normalized() if flat.length > 1e-6 else Vector((side, 0, 0))
             d = (DOWN + flat * 0.12).normalized()
+            # The turn from the scalp's direction into the fall, blended over TURN_BLEND, not in one step (§13.1).
+            if last_d is not None and f < TURN_BLEND:
+                t = f / TURN_BLEND
+                d = (last_d * (1 - t) + d * t).normalized()
             # The wave: a loose S along the body's outline (a beach wave, not a ringlet), from nothing at the ears to
             # full by the shoulders.
             a = amp * min(1.0, f / 0.14)
