@@ -468,9 +468,10 @@ export const SHARPEN_DEPTH = 0.7;
  * wave's own trough (etaCrest − H) over this many more face widths, a smooth concave sweep: a level floor cut a flat
  * terrace into every front still above it, and the face dropped twice, to the terrace and later into the trough (Andrew,
  * 2026-10-02, "the step in front"). The trench the full-depth floor dug (above) ran half a wavelength ahead; this one ends
- * at the foot, where the lean (setWaveModel.LEAN_RATIO) has brought the trough in.
+ * at the foot, where the lean (setWaveModel.LEAN_RATIO) has brought the trough in. Over 4 face widths the lowest water at
+ * 12 ft sat 20 m ahead of the foot; over 1, the drained trough stood 0.77 H below still water.
  */
-export const SHARPEN_FLOOR_REACH = 4;
+export const SHARPEN_FLOOR_REACH = 1.5;
 
 /** How far below the crest (× H) the sharpened face is cut at `ahead` m: SHARPEN_DEPTH, running down to 1 (the trough). */
 function sharpenFloor(ahead: number, width: number): { depth: number; dDepth: number } {
