@@ -693,6 +693,69 @@ correctly." Root causes, found by reading the build and the shader, not guessed:
   expressions, in morning and midday light), beside the step-2 approved close-ups. Andrew's step-2 brief still holds:
   "Make sure you make the female pretty".
 
+### 13.2 Hair v2: a baked strand atlas, and Shazza's braids
+
+Andrew, 2026-10-02, after the §13.1 fixes ("significantly improved"): asked for a shortcut to good hair, then chose the
+free route (Blender's curve hair and our own baked atlas, over the paid Hair Tool or MakeHuman's CC0 hair). With it:
+"Can we make Shazza's hair with low pig tail braids either side please?" Reference photo:
+`reference/surfer/shazza-braids-ref.webp` (git-ignored, never published).
+
+**The strand atlas:**
+- `tools/surfer/hair_atlas.py` grows real strands as Blender curves on flat tiles and renders them orthographically into
+  one 2048² RGBA texture, `public/surfer/hairAtlas.png`. It is ours, made by the build.
+- **Channels:** R coverage (alpha); G root → tip (0 at the root); B a random per strand (its shade); A depth (strands in
+  front 1, behind 0, for self-shadowing).
+- **16 tiles** (256 × 1024 px each, padded 8 px for mipmaps), each a lock of 40–90 strands, about 1 cm wide and the
+  card's length:
+  - straight;
+  - straight dense (a lock's core);
+  - loose wave;
+  - fine flyaways;
+  - frayed tips;
+  - fringe and baby hairs (short);
+  - braid strand (a twisted, plaited bundle's surface);
+  - tails (below a hair tie);
+  - two to three variants of each.
+- Strand thickness is about 70 µm, with tapered tips and random gaps.
+
+**The cards:**
+- They keep today's shapes, but each card picks a tile by its role (core, outer, flyaway, fringe, braid, tail) and maps
+  its UVs into it: u across the tile, v root → tip.
+- A card's tile index and role are written to COLOR_0.a (the free channel).
+
+**The shader (`hairMaterial`):**
+- Coverage is the atlas alpha × the root fade, still in two passes (§13.1). Alpha mips are sharpened by `fwidth`, so
+  distant hair doesn't thin out.
+- Albedo comes from root → tip along the strand plus the per-strand random, replacing the noise lanes.
+- Depth darkens the strands behind.
+- The two highlights keep their strand tangent from the UVs.
+- The atlas is loaded once and shared by all riders.
+
+**Shazza's braids** (dry, and wet in the water: she surfs in the braids she walks down in, Ruling 2026-10-02):
+- **Part and front:** a centre part. The hair is combed down and back over the ears to each braid's start, and the
+  loose face-framing pieces (the curtain locks of §13.1) fall from the front hairline beside her cheeks to the jaw.
+- **The braids:**
+  - Two low braids, one each side, starting behind and below the ear at about jaw height.
+  - They hang forward over the front of the shoulders onto the upper chest, about 25 cm.
+  - Each is three interwoven strands (the classic 3-strand plait: each strand's lateral offset a sine at 120° phases,
+    its depth twice that frequency, so each crosses over the middle in turn).
+  - Each strand is a tube of six cards, so the braid has volume from every side, with flyaways.
+- **The ends:** a small elastic (a torus, 6 mm, material `hairTie`), then a 4 cm loose tail fanning out.
+- **Wet:** the same braids, darker and tighter. The front pieces are slicked back behind the ears.
+- **Skinning:** the braids follow the head, then the neck, then spine_03 and the clavicle on their side. The build
+  pushes them clear of the body, the tee, the bikini straps and the pack straps.
+- **Checks in the manifest:**
+  - both braids exist;
+  - their ends at the upper chest, below the clavicle and above the bust;
+  - no braid or tail vertex inside the body (the outside check);
+  - the elastics present.
+
+**All three riders** get the atlas on their dry and wet hair (T-Bone's short and capped, Grommet's curls and bucket),
+and are rebuilt.
+
+**The gate:** close-up sheets at 0.6 m and 2 m, front, 3/4 and back, dry and wet, for each rider. Shazza's braids go
+beside the reference photo.
+
 - **"Be careful everything renders"** (Andrew's standing rule): every limb is visible and nothing passes through a body or
   a board. This is checked by the pose sweep tests, extended to `selectStand` and its idles.
 
