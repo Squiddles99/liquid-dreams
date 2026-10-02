@@ -140,9 +140,9 @@ def chains(sk):
     return out
 
 
-def tubes(bm, sk, scale, uv_layer, col_layer, sides_base=6, sides_tip=3, min_radius=0.0):
+def tubes(bm, sk, scale, uv_layer, col_layer, sides_base=6, sides_tip=3, min_radius=0.0, uv_of=None):
     """Each chain as a tapered tube (6 sides where thick, 3 at the twigs); radii in metres, `scale` maps them to the unit
-    plant. Vertex colour: (AO 1 until baked, root distance, 0, 0 = wood or 1 = dead wood). Returns the made verts, each
+    plant. Vertex colour: (AO 1 until baked, root distance, 0, 0 = wood or 0.2 = dead wood). Returns the made verts, each
     with its ring centre (for the custom normals)."""
     made = []
     rmin = min(sk.radius)
@@ -178,7 +178,7 @@ def tubes(bm, sk, scale, uv_layer, col_layer, sides_base=6, sides_tip=3, min_rad
             for s in range(sides):
                 f = bm.faces.new((a[s], a[(s + 1) % sides], b[(s + 1) % sides], b[s]))
                 for lp, (uu, vv) in zip(f.loops, ((s / sides, 0), ((s + 1) / sides, 0), ((s + 1) / sides, 1), (s / sides, 1))):
-                    lp[uv_layer].uv = (uu, vv)
                     node = i0 if vv == 0 else i1
-                    lp[col_layer] = (1.0, sk.depth[node], 0.0, 1.0 if sk.dead[node] else 0.0)
+                    lp[uv_layer].uv = uv_of(sk.dead[node], uu, vv) if uv_of else (uu, vv)
+                    lp[col_layer] = (1.0, sk.depth[node], 0.0, 0.2 if sk.dead[node] else 0.0)
     return made

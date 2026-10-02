@@ -8,7 +8,7 @@
    "lods": [
     {
      "name": "plant_daisy_0_L0",
-     "triangles": 3732
+     "triangles": 7960
     },
     {
      "name": "plant_daisy_0_L1",
@@ -16,19 +16,26 @@
     }
    ],
    "boundsUnit": [
-    0.9035,
-    1.0,
-    0.8911
+    0.9735,
+    1.0606,
+    0.9729
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.2,
+    0.225,
+    0.17
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.992,
-    "nodes": 600
+    "nodes": 600,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.879,
+    "silhouetteSide": 0.918,
+    "outsideHull": 0.0046,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -37,7 +44,7 @@
    "lods": [
     {
      "name": "plant_daisy_1_L0",
-     "triangles": 3366
+     "triangles": 6670
     },
     {
      "name": "plant_daisy_1_L1",
@@ -45,19 +52,26 @@
     }
    ],
    "boundsUnit": [
-    0.7815,
+    0.8639,
     1.0,
-    0.8948
+    1.0087
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.2,
+    0.225,
+    0.17
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.996,
-    "nodes": 546
+    "nodes": 546,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.88,
+    "silhouetteSide": 0.929,
+    "outsideHull": 0.0023,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -66,7 +80,7 @@
    "lods": [
     {
      "name": "plant_daisy_2_L0",
-     "triangles": 3060
+     "triangles": 6640
     },
     {
      "name": "plant_daisy_2_L1",
@@ -74,19 +88,26 @@
     }
    ],
    "boundsUnit": [
-    0.8817,
+    0.974,
     1.0,
-    0.7315
+    0.8238
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.2,
+    0.225,
+    0.17
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.994,
-    "nodes": 535
+    "nodes": 535,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.855,
+    "silhouetteSide": 0.942,
+    "outsideHull": 0.0026,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -95,7 +116,7 @@
    "lods": [
     {
      "name": "plant_daisy_3_L0",
-     "triangles": 3258
+     "triangles": 6510
     },
     {
      "name": "plant_daisy_3_L1",
@@ -103,19 +124,26 @@
     }
    ],
    "boundsUnit": [
-    0.8838,
-    1.0,
-    0.7449
+    0.9898,
+    1.0049,
+    0.8386
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.2,
+    0.225,
+    0.17
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.996,
-    "nodes": 530
+    "nodes": 530,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.872,
+    "silhouetteSide": 0.945,
+    "outsideHull": 0.0025,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -124,7 +152,7 @@
    "lods": [
     {
      "name": "plant_green_0_L0",
-     "triangles": 2268
+     "triangles": 4648
     },
     {
      "name": "plant_green_0_L1",
@@ -132,19 +160,26 @@
     }
    ],
    "boundsUnit": [
-    0.7472,
-    1.0,
-    0.7313
+    0.9199,
+    1.1106,
+    0.9022
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.07,
+    0.17,
+    0.03
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.987,
-    "nodes": 372
+    "nodes": 372,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.982,
+    "silhouetteSide": 0.988,
+    "outsideHull": 0.0189,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -153,7 +188,7 @@
    "lods": [
     {
      "name": "plant_green_1_L0",
-     "triangles": 2640
+     "triangles": 5520
     },
     {
      "name": "plant_green_1_L1",
@@ -161,19 +196,26 @@
     }
    ],
    "boundsUnit": [
-    0.7443,
-    1.0,
-    0.7533
+    0.8969,
+    1.0992,
+    0.9013
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.07,
+    0.17,
+    0.03
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.993,
-    "nodes": 429
+    "nodes": 429,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.991,
+    "silhouetteSide": 0.986,
+    "outsideHull": 0.0161,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -182,7 +224,7 @@
    "lods": [
     {
      "name": "plant_green_2_L0",
-     "triangles": 2076
+     "triangles": 4276
     },
     {
      "name": "plant_green_2_L1",
@@ -190,19 +232,26 @@
     }
    ],
    "boundsUnit": [
-    0.7201,
-    1.0,
-    0.8186
+    0.9074,
+    1.0622,
+    0.9758
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.07,
+    0.17,
+    0.03
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.992,
-    "nodes": 372
+    "nodes": 372,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.995,
+    "silhouetteSide": 0.991,
+    "outsideHull": 0.0229,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -211,7 +260,7 @@
    "lods": [
     {
      "name": "plant_green_3_L0",
-     "triangles": 2556
+     "triangles": 5188
     },
     {
      "name": "plant_green_3_L1",
@@ -219,19 +268,26 @@
     }
    ],
    "boundsUnit": [
-    0.8085,
-    1.0,
-    0.8466
+    0.9378,
+    1.0444,
+    1.0001
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.07,
+    0.17,
+    0.03
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.988,
-    "nodes": 410
+    "nodes": 410,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.99,
+    "silhouetteSide": 0.993,
+    "outsideHull": 0.0131,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -240,7 +296,7 @@
    "lods": [
     {
      "name": "plant_tall_0_L0",
-     "triangles": 3240
+     "triangles": 7960
     },
     {
      "name": "plant_tall_0_L1",
@@ -248,19 +304,26 @@
     }
    ],
    "boundsUnit": [
-    0.8796,
-    1.0,
-    0.8673
+    0.9787,
+    1.0473,
+    0.9376
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.1,
+    0.12,
+    0.07
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.987,
-    "nodes": 555
+    "branchesInsideHull": 0.986,
+    "nodes": 492,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.955,
+    "silhouetteSide": 0.94,
+    "outsideHull": 0.0034,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -269,7 +332,7 @@
    "lods": [
     {
      "name": "plant_tall_1_L0",
-     "triangles": 2892
+     "triangles": 7960
     },
     {
      "name": "plant_tall_1_L1",
@@ -277,19 +340,26 @@
     }
    ],
    "boundsUnit": [
-    0.7415,
+    0.863,
     1.0,
-    0.8702
+    0.9828
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.1,
+    0.12,
+    0.07
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.986,
-    "nodes": 505
+    "branchesInsideHull": 0.989,
+    "nodes": 442,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.949,
+    "silhouetteSide": 0.933,
+    "outsideHull": 0.0026,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -298,7 +368,7 @@
    "lods": [
     {
      "name": "plant_tall_2_L0",
-     "triangles": 2754
+     "triangles": 7960
     },
     {
      "name": "plant_tall_2_L1",
@@ -306,19 +376,26 @@
     }
    ],
    "boundsUnit": [
-    0.8892,
+    0.9731,
     1.0,
-    0.8186
+    0.9188
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.1,
+    0.12,
+    0.07
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.987,
-    "nodes": 469
+    "branchesInsideHull": 0.993,
+    "nodes": 441,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.959,
+    "silhouetteSide": 0.963,
+    "outsideHull": 0.0045,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -327,7 +404,7 @@
    "lods": [
     {
      "name": "plant_tall_3_L0",
-     "triangles": 3714
+     "triangles": 7960
     },
     {
      "name": "plant_tall_3_L1",
@@ -335,19 +412,26 @@
     }
    ],
    "boundsUnit": [
-    0.7474,
-    1.0,
-    0.7538
+    0.8161,
+    1.0447,
+    0.8605
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.1,
+    0.12,
+    0.07
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.984,
-    "nodes": 568
+    "branchesInsideHull": 0.979,
+    "nodes": 515,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.851,
+    "silhouetteSide": 0.912,
+    "outsideHull": 0.0025,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -356,7 +440,7 @@
    "lods": [
     {
      "name": "plant_pigface_0_L0",
-     "triangles": 1374
+     "triangles": 5958
     },
     {
      "name": "plant_pigface_0_L1",
@@ -364,19 +448,26 @@
     }
    ],
    "boundsUnit": [
-    0.802,
+    0.894,
     1.0,
-    0.8583
+    1.0065
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.14,
+    0.24,
+    0.05
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.989,
-    "nodes": 265
+    "branchesInsideHull": 0.99,
+    "nodes": 313,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.786,
+    "silhouetteSide": 0.548,
+    "outsideHull": 0.0049,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -385,7 +476,7 @@
    "lods": [
     {
      "name": "plant_pigface_1_L0",
-     "triangles": 1356
+     "triangles": 5958
     },
     {
      "name": "plant_pigface_1_L1",
@@ -393,19 +484,26 @@
     }
    ],
    "boundsUnit": [
-    0.907,
+    0.9549,
     1.0,
-    0.8118
+    0.857
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.14,
+    0.24,
+    0.05
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.97,
-    "nodes": 271
+    "branchesInsideHull": 0.994,
+    "nodes": 312,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.778,
+    "silhouetteSide": 0.562,
+    "outsideHull": 0.0041,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -414,7 +512,7 @@
    "lods": [
     {
      "name": "plant_pigface_2_L0",
-     "triangles": 1170
+     "triangles": 5958
     },
     {
      "name": "plant_pigface_2_L1",
@@ -422,19 +520,26 @@
     }
    ],
    "boundsUnit": [
-    0.8531,
+    0.8574,
     1.0,
-    0.7748
+    0.8099
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.14,
+    0.24,
+    0.05
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.996,
-    "nodes": 237
+    "branchesInsideHull": 0.993,
+    "nodes": 284,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.798,
+    "silhouetteSide": 0.569,
+    "outsideHull": 0.005,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -443,7 +548,7 @@
    "lods": [
     {
      "name": "plant_pigface_3_L0",
-     "triangles": 1206
+     "triangles": 5958
     },
     {
      "name": "plant_pigface_3_L1",
@@ -451,19 +556,26 @@
     }
    ],
    "boundsUnit": [
-    0.792,
+    0.8225,
     1.0,
-    0.8697
+    0.8725
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.14,
+    0.24,
+    0.05
    ],
    "checks": {
     "pipeModel": true,
-    "branchesInsideHull": 0.976,
-    "nodes": 247
+    "branchesInsideHull": 0.991,
+    "nodes": 329,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.762,
+    "silhouetteSide": 0.543,
+    "outsideHull": 0.0044,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -472,7 +584,7 @@
    "lods": [
     {
      "name": "plant_rice_0_L0",
-     "triangles": 1428
+     "triangles": 2960
     },
     {
      "name": "plant_rice_0_L1",
@@ -480,19 +592,26 @@
     }
    ],
    "boundsUnit": [
-    0.8061,
-    1.0,
-    0.8549
+    1.009,
+    1.0976,
+    1.0102
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.12,
+    0.16,
+    0.07
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 1.0,
-    "nodes": 236
+    "nodes": 236,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.904,
+    "silhouetteSide": 0.931,
+    "outsideHull": 0.008,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -501,7 +620,7 @@
    "lods": [
     {
      "name": "plant_rice_1_L0",
-     "triangles": 1350
+     "triangles": 2960
     },
     {
      "name": "plant_rice_1_L1",
@@ -509,19 +628,26 @@
     }
    ],
    "boundsUnit": [
-    0.8953,
-    1.0,
-    0.8186
+    1.07,
+    1.0801,
+    0.9842
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.12,
+    0.16,
+    0.07
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.991,
-    "nodes": 232
+    "nodes": 232,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.923,
+    "silhouetteSide": 0.913,
+    "outsideHull": 0.0151,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -530,7 +656,7 @@
    "lods": [
     {
      "name": "plant_rice_2_L0",
-     "triangles": 1728
+     "triangles": 2960
     },
     {
      "name": "plant_rice_2_L1",
@@ -538,19 +664,26 @@
     }
    ],
    "boundsUnit": [
-    0.8559,
-    1.0,
-    0.8137
+    0.9754,
+    1.1509,
+    0.9931
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.12,
+    0.16,
+    0.07
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 1.0,
-    "nodes": 259
+    "nodes": 259,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.871,
+    "silhouetteSide": 0.9,
+    "outsideHull": 0.0103,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -559,7 +692,7 @@
    "lods": [
     {
      "name": "plant_rice_3_L0",
-     "triangles": 1572
+     "triangles": 2960
     },
     {
      "name": "plant_rice_3_L1",
@@ -567,19 +700,26 @@
     }
    ],
    "boundsUnit": [
-    0.8217,
-    1.0,
-    0.866
+    0.9837,
+    1.0732,
+    1.0696
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.12,
+    0.16,
+    0.07
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 1.0,
-    "nodes": 253
+    "nodes": 253,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.933,
+    "silhouetteSide": 0.975,
+    "outsideHull": 0.0133,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -601,14 +741,21 @@
     0.9534
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.0,
+    0.0,
+    0.0
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.99,
-    "nodes": 292
+    "nodes": 292,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.412,
+    "silhouetteSide": 0.466,
+    "outsideHull": 0.0,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -630,14 +777,21 @@
     0.7956
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.0,
+    0.0,
+    0.0
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.988,
-    "nodes": 253
+    "nodes": 253,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.394,
+    "silhouetteSide": 0.42,
+    "outsideHull": 0.0,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -659,14 +813,21 @@
     0.8275
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.0,
+    0.0,
+    0.0
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.961,
-    "nodes": 257
+    "nodes": 257,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.385,
+    "silhouetteSide": 0.414,
+    "outsideHull": 0.0,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   },
   {
@@ -688,14 +849,21 @@
     0.8312
    ],
    "leafColour": [
-    0,
-    0,
-    0
+    0.0,
+    0.0,
+    0.0
    ],
    "checks": {
     "pipeModel": true,
     "branchesInsideHull": 0.989,
-    "nodes": 262
+    "nodes": 262,
+    "leavesAttached": 0.0,
+    "silhouetteTop": 0.405,
+    "silhouetteSide": 0.409,
+    "outsideHull": 0.0,
+    "badNormals": 0,
+    "aoMin": 0.15,
+    "aoMax": 1.0
    }
   }
  ],

@@ -505,3 +505,22 @@ These are applied when this spec is approved.
   - `src/surfer/placement.ts`, `gang.ts`;
   - `src/app/App.ts`, `src/dev/DevPanel.ts` (the spot button);
   - `package.json` (`build:heath`).
+
+## 10. As built (rulings made overnight, 2026-10-02, under Andrew's delegation)
+
+- **The sink's reach (§4.1, §7.2).** 4 cm sinking to nothing at 1.5 × a 0.45 m half-width can't stay within 1 cm per
+  25 cm. The sink eases out over 1.5 m from a corridor's centreline (1.2 m beyond the clearing). The worn mask keeps
+  the 1.5× shoulders.
+- **Leaves (§4.2 step 3).** Solid leaf meshes of 4–12 triangles can't fill a crown within L0's caps: 2,000 two-centimetre
+  leaves cover about a tenth of a daisy bush's outline. So the leafy kinds carry **leaf sprays** instead, as shipped
+  games do.
+  - Each spray is a card (2 triangles) showing a Blender render of 10–26 of the kind's real leaf meshes on a twig,
+    from the atlas.
+  - The sprays fill whatever triangles the wood and the flowers leave under the cap.
+  - Their normals bend out from the crown's middle, so a bush shades as a mass.
+  - **Pigface** keeps solid fleshy fingers: three-sided pyramids, 5–8 cm.
+  - L0 covers its hull's outline 85–99% from the top and the side.
+  - A dead shrub's bare twigs cover about 40%.
+  - Pigface covers 75% from above and 55% from the side: its fingers stand 5–10 cm off trailing stems under the
+    hull's 17 cm dome.
+
