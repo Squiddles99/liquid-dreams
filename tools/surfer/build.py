@@ -121,6 +121,7 @@ if walk and walk.get("pack"):
         clothes.bake_ao(c, [body, *garments, *[x for x in carried if x is not c]])
     parts += carried
 # The dry hair on land, draped over the walking clothes as well as the body (it fell inside the tee at the back).
+dry_checks = {}  # none for a rider without a dry style (Grommet)
 if preset.get("dryHair"):
     dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=[*garments, *carried], thin=carried)
     rig_trim.single_material(dry_obj, "hairDry")

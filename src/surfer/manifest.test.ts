@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { glbFloats, glbJson, glbValues } from './glbData';
 import { FACE_CHANNELS } from './idleLife';
@@ -25,6 +26,32 @@ for (const name of ['female', 'male', 'grommet'] as const) {
     it('has a dry hairstyle for land where the preset names one (Shazza, T-Bone; Grommet dries his curls in the shader)', () => {
       const dry = man.meshes.filter((m) => m.materials.includes('hairDry'));
       expect(dry.length).toBe(name === 'grommet' ? 0 : 1);
+    });
+    it('paints the inside of the mouth only inside it, not the chin under the lip (closeup spec §4.2)', () => {
+      // COLOR_0: B the lips, B and A together the mouth's dark inside. Grommet's lower lip juts over his chin, and two
+      // chin vertices tucked under it were painted inside (a ray along their normals hit the lip's underside): two dark
+      // dots under his lip (T-Bone had the same pair, smaller). Below the lower lip's edge the mouth's inside is the
+      // pocket behind the lip, with the lip in front of it; the chin has open air in front of it.
+      const path = `public/surfer/${name}.glb`;
+      const ray = new THREE.Raycaster();
+      ray.far = 0.03;
+      const outside: number[][] = [];
+      for (const mesh of gltf.meshes) for (const prim of mesh.primitives) {
+        if (gltf.materials[prim.material].name !== 'body') continue;
+        const pos = glbValues(path, gltf, prim.attributes.POSITION), col = glbValues(path, gltf, prim.attributes.COLOR_0);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+        geo.setIndex(Array.from(glbValues(path, gltf, prim.indices)));
+        const face = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+        let lipBottom = Infinity;
+        for (let i = 0; i < pos.length / 3; i++) if (col[4 * i + 2] >= 0.5 && col[4 * i + 3] < 0.5) lipBottom = Math.min(lipBottom, pos[3 * i + 1]);
+        for (let i = 0; i < pos.length / 3; i++) {
+          if (col[4 * i + 2] < 0.5 || col[4 * i + 3] < 0.5 || pos[3 * i + 1] >= lipBottom) continue;
+          ray.set(new THREE.Vector3(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2] + 0.0005), new THREE.Vector3(0, 0, 1));
+          if (ray.intersectObject(face).length === 0) outside.push([pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]].map((v) => +v.toFixed(4)));
+        }
+      }
+      expect(outside, 'mouth-inside vertices on the chin').toEqual([]);
     });
     it('carries the nine face morphs on every body primitive, by name (closeup spec §4.1)', () => {
       const body = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'body'));
