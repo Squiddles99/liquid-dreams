@@ -10,17 +10,23 @@ import bpy
 from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(__file__))
+import atlas  # noqa: E402
 import atlas_layout  # noqa: E402
 import grow  # noqa: E402
 import kitio  # noqa: E402
 import leaves  # noqa: E402
-from species import BRANCH, FLOWER, L0_CAP, LEAF, SPECIES, VARIANTS  # noqa: E402
+import lods  # noqa: E402
+import species  # noqa: E402
+from species import BRANCH, CARD_LEAF, FLOWER, L0_CAP, LEAF, SPECIES, VARIANTS  # noqa: E402
 
 
 def mesh_object(name, bm):
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
+    if "Col" in me.color_attributes:
+        me.color_attributes.active_color = me.color_attributes["Col"]
+        me.color_attributes.render_color_index = me.color_attributes.find("Col")
     o = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(o)
     return o
@@ -137,9 +143,15 @@ def build_variant(kind, v, hull, spec):
     grown = leaves.grown_tree(hull)
     outside = sum(1 for p in pts if not grow.inside(grown, Vector((p.x, p.y, max(p.z, 0.02))))) / max(1, len(pts))
     bm = bmesh.new()
-    bmesh.ops.create_icosphere(bm, subdivisions=0, radius=0.5)
-    bmesh.ops.translate(bm, verts=bm.verts, vec=(0, 0, 0.5))
+    uv1 = bm.loops.layers.uv.new("UVMap")
+    col1 = bm.loops.layers.float_color.new("Col")
+    card_kind = kind if kind in CARD_LEAF else None
+    made1, extra1 = lods.l1(bm, sk, scale, uv1, col1, kind, bases if card_kind else [],
+                            lambda t, u, vv: atlas_uv(f"card_{card_kind}_0_{t}", u, vv),
+                            lambda dead, u, vv: atlas_uv("deadBark" if dead else "bark", u, vv),
+                            random.Random(PLANT_KIND_SEED[kind] * 131 + v), flat=kind == "pigface")
     o1 = mesh_object(f"plant_{kind}_{v}_L1", bm)
+    smooth_normals(o1, made1, extra1)
     checks = {
         "pipeModel": grow.pipe_ok(sk), "branchesInsideHull": round(grow.inside_share(sk), 3), "nodes": len(sk.nodes),
         "leavesAttached": leaf_attachment(sk, bases, scale) if bases else 0.0,
@@ -194,19 +206,23 @@ def main():
     hull_file, out_dir, previews = argv[:3]
     bpy.ops.wm.read_factory_settings(use_empty=True)
     specs, hulls = kitio.load_hulls(hull_file)
-    objects, variants = [], []
+    objects, variants, canopy = [], [], {}
     for kind in SPECIES:
         for v in range(VARIANTS):
             objs, checks, colour = build_variant(kind, v, hulls[f"{kind}_{v}"], specs.get(kind))
             objects += objs
+            canopy[f"canopy_{kind}_{v}"] = (objs[0], 1.0)
             if v == 0:
                 s = unit_scale(specs[kind])
                 preview(objs[:1], os.path.join(previews, f"{kind}_{v}_L0.png"), (1 / s.x, 1 / s.y, 1 / s.z))
             variants.append({"kind": kind, "variant": v, "lods": [{"name": o.name, "triangles": triangles(o)} for o in objs],
                              "boundsUnit": bounds(objs), "leafColour": list(colour), "checks": checks})
+    tiles = atlas.build(bpy.context.scene, previews, out_dir, species, canopy)
+    for o in bpy.context.scene.objects:
+        o.hide_render = False
     kitio.export(objects, os.path.join(out_dir, "heathKit.glb"))
     kitio.write_manifest(os.path.join(out_dir, "heathKit.manifest.json"), variants, [],
-                         {"file": "heathAtlas.png", "size": 2048, "tiles": {}})
+                         {"file": "heathAtlas.png", "size": 2048, "tiles": {k: [round(x, 6) for x in t] for k, t in tiles.items()}})
     print(f"heath kit: {len(variants)} variants, {sum(triangles(o) for o in objects)} triangles")
 
 

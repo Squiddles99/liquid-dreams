@@ -36,13 +36,16 @@ L0_CAP = {"daisy": 8000, "green": 8000, "tall": 8000, "pigface": 6000, "rice": 3
 
 # The leaves inside each kind's spray (atlas.py): shape, length and width (m), leaves per spray.
 SPRAY_LEAF = {
-    "daisy": {"shape": "needle", "length": 0.02, "width": 0.004, "count": 22},
-    "green": {"shape": "blade", "length": 0.035, "width": 0.014, "count": 10},
-    "tall": {"shape": "oval", "length": 0.022, "width": 0.01, "count": 14},
-    "rice": {"shape": "tiny", "length": 0.01, "width": 0.004, "count": 26},
+    "daisy": {"shape": "needle", "length": 0.022, "width": 0.0045, "count": 46},
+    "green": {"shape": "blade", "length": 0.035, "width": 0.015, "count": 18},
+    "tall": {"shape": "oval", "length": 0.022, "width": 0.011, "count": 30},
+    "rice": {"shape": "tiny", "length": 0.011, "width": 0.0045, "count": 40},
 }
 # Flowers: petals per flower (a star), its radius (m), how many, and the colour (linear).
 FLOWER = {
     "rice": {"petals": 16, "radius": 0.012, "count": 25, "colour": (0.62, 0.42, 0.48)},
     "pigface": {"petals": 24, "radius": 0.025, "count": 6, "colour": (0.55, 0.12, 0.6)},
 }
+
+# L1's cluster cards (atlas.py): the sprays' leaves, and pigface's fingers drawn as fleshy blades from above.
+CARD_LEAF = {**SPRAY_LEAF, "pigface": {"shape": "blade", "length": 0.06, "width": 0.014, "count": 12}}
