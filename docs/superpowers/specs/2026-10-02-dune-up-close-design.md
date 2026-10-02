@@ -49,6 +49,11 @@ This spec makes the dune hold up wherever the camera goes on it. That covers:
   - pink rice-flower cushions;
   - bare grey dead twigs everywhere between the shrubs;
   - a sandy track with limestone showing through.
+
+  Andrew also gave two Google Earth views (layout only, never traced). The heath rises in one long even slope from the
+  back of the beach to a ridge. The Cape to Cape runs along the slope, parallel to the beach, and the clearing is a
+  tan-brown patch on it where several paths branch. Below it, sand blowouts and grey limestone outcrops line the back of
+  the beach. The tracks are tan-brown soil, not white beach sand.
 - **Interaction: worn tracks, no bending.**
   - Sandy footpaths are worn into the heath with footprints in them.
   - Plants keep clear of the tracks.
@@ -88,7 +93,7 @@ This spec makes the dune hold up wherever the camera goes on it. That covers:
 
 **In the junction clearing**, at the select screen's cameras (3.8 m back and 2.3 m up; 2.35 m away at 0.95 m; 2.1 m
 away at 1.35 m):
-- **The clearing:** bare, packed pale sand scuffed with bare-foot and thong prints, a few pitted limestone stones, and
+- **The clearing:** bare, packed tan-brown sandy soil scuffed with bare-foot and thong prints, a few pitted limestone stones, and
   the Cape to Cape running through it.
 - **The heath round it:**
   - waist-high shrubs whose silver-grey and green leaves you can make out;
@@ -101,7 +106,7 @@ away at 1.35 m):
 **Walking the beach path:**
 - the heath closes in on both sides;
 - the path drops into a sandy gully where limestone steps break through and sword-sedge grows against the rock;
-- then the foredune with spinifex;
+- then the foredune with coast tussock-grass;
 - then open sand, prints thinning, to the water's edge.
 
 **From the water and the beach**, the heath looks as it does today or better. The far plants take the near plants'
@@ -195,15 +200,27 @@ over our own terrain. The cost is grade (steep is dear) plus a preference for ea
 
 ### 4.2 The plant kit
 
-**Species.** These are provisional, and confirmed at gate 1 (§6.1) against Andrew's photos.
+**Species.** These are chosen from the Atlas of Living Australia's records near the Womb (-33.898, 114.986): within
+1 km where it has them, otherwise within 5 km, keeping only the coastal limestone heath and leaving out the inland forest
+and orchids. They are provisional, and confirmed at gate 1 (§6.1) against Andrew's close-ups.
 
 | Kind (`plants.ts`) | Species | Read |
 |---|---|---|
 | `daisy` | coastal daisy bush (*Olearia axillaris*) | silver-grey needle leaves 1–2.5 cm; dense twiggy grey stems |
 | `green` | thick-leaved fan-flower (*Scaevola crassifolia*) | bright fleshy leaves 2–4 cm with rounded tips, on a mound |
-| `tall` | coastal wattle (*Acacia cyclops*) | olive strap-shaped leaves (phyllodes) 4–9 cm; 1.5–2.5 m tall |
+| `tall` | coast tea-tree (*Leptospermum laevigatum*), recorded within 1 km | small grey-green oval leaves 1–2.5 cm; twisted, shaggy grey trunks; 1.5–2.5 m tall |
 | `pigface` | pigface (*Carpobrotus virescens*) | stems trailing over the sand; triangular fleshy fingers 4–8 cm, green going orange-red; pink flowers |
 | `rice` | pink rice flower (*Pimelea ferruginea*) | a small cushion of tiny paired leaves; pink-white flower heads |
+
+**Candidate kinds**, added only if gate 1 earns them a place. Each new kind gets its own far hull and placement weights
+in `plants.ts`, like today's five.
+
+| Kind | Species | Read |
+|---|---|---|
+| `hibbertia` | cutleaf hibbertia (*Hibbertia cuneiformis*) | a bright green shrub, wedge-shaped toothed leaves, yellow flowers |
+| `cushion` | coast cushion bush (*Leucophyta brownii*) | a silver-white cushion of wiry stems |
+| `templetonia` | cockies tongue (*Templetonia retusa*) | a grey-green shrub with rounded leaves, on limestone |
+| `spinach` | sea spinach (*Tetragonia decumbens*) | a fleshy mat going orange-red; it may be the orange-green mat in the flora photo |
 
 **Dead wood.**
 - Every shrub variant carries 10–30% bare grey branches.
@@ -222,7 +239,7 @@ over our own terrain. The cost is grade (steep is dear) plus a preference for ea
    |---|---|---|
    | `daisy` | a narrow needle | 4 |
    | `green` | a fleshy round-tipped blade | 8 |
-   | `tall` | a curved strap | 8 |
+   | `tall` | a small oval | 6 |
    | `pigface` | a three-sided prism | 12 |
    | `rice` | a tiny leaf | 4 |
 
@@ -264,7 +281,7 @@ leaves, in place of today's hand-picked colours.
 1. dry sand (today's ripples, grit and shell flecks carry on over it);
 2. dark sandy soil with fine leaf fall;
 3. pitted grey limestone cap rock with dark lichen;
-4. packed track sand;
+4. packed track soil: tan-brown, the colour of the tracks seen from above, not white beach sand;
 5. footprints: an atlas of bare-foot and thong prints, used only by the decals.
 
 **Texture slots.** The layers are two texture arrays, colour and normal-height-roughness. With the tracks mask, the patch
@@ -312,11 +329,11 @@ from the kit. Items sit on `groundHeights`, sunk 1–2 cm, and take a yaw and a 
 |---|---|---|
 | knobby club-rush (*Ficinia nodosa*) | round dark stems 0.3–0.8 m, brown knob heads | between shrubs on heath |
 | coast sword-sedge (*Lepidosperma gladiatum*) | flat blades up to 1 m | in the gully and within 2 m of limestone |
-| beach spinifex (*Spinifex longifolius*) | long silver blades, spiky seed heads | on sand: the foredune and the beach path's sandy end |
+| coast tussock-grass (*Poa poiformis*) | fine blue-grey blades in a dense tussock, 0.3–0.7 m | on sand: the foredune and the beach path's sandy end |
 
 **Ground items:**
 - fallen twigs, 10–40 cm, some branched (`daisy` and `tall` wood);
-- fallen-leaf clumps of `daisy` needles and `tall` phyllodes;
+- fallen-leaf clumps of `daisy` needles and `tall` leaves;
 - shell fragments on sand within 60 m of the waterline;
 - loose pitted limestone stones, 3–20 cm.
 
