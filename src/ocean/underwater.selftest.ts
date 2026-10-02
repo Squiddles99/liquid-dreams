@@ -11,6 +11,7 @@ import { createWaterOpticsUniforms } from './waterShading';
 import { DEFAULT_WATER_OPTICS } from './waterOptics';
 import { belowBedNode, reefInFrontNode, seenThroughWaterNode, waterVolumeColourNode } from './WaterVolume';
 import { sunForConditions } from '../astro/sunForConditions';
+import { REEF_WALL_EYE, REEF_WALL_HIDDEN_M, REEF_WALL_LEVEL, REEF_WALL_RISING } from './reefWallProbe';
 
 registerSelfTest({
   name: 'underwater: GPU Fresnel from inside, water colour and path blend match the CPU (sweep across the window rim)',
@@ -93,11 +94,11 @@ registerSelfTest({
     sky.update(renderer, new THREE.Vector3(...sun.direction), 1);
     const seabed = new Seabed(buildBathymetry());
     const u = createWaterOpticsUniforms(DEFAULT_WATER_OPTICS);
-    // 9 m deep over the 13 m shelf, 20 m west of the ledge, which rises to about 6 m deep: level and rising rays east meet
-    // the wall; straight up meets only water (the reference). The last row asks whether the reef hides a surface point
-    // 30 m away along a ray rising 8° east (sentinel colour 100 in, the reef's colour out when it does).
-    const eye: [number, number, number] = [-20, -9, 0];
-    const dirs: [number, number, number][] = [[1, 0, 0], [0.99, 0.14, 0], [0, 1, 0], [0.99, 0.14, 0]];
+    // An eye on the shelf facing a reef head that rises above it (reefWallProbe.ts, checked against the CPU bed): level and
+    // rising rays east meet the wall; straight up meets only water (the reference). The last row asks whether the reef
+    // hides a surface point REEF_WALL_HIDDEN_M away along the rising ray (sentinel colour 100 in, the reef's colour out when it does).
+    const eye = REEF_WALL_EYE;
+    const dirs: [number, number, number][] = [REEF_WALL_LEVEL, REEF_WALL_RISING, [0, 1, 0], REEF_WALL_RISING];
     const n = dirs.length;
     const inAttr = new THREE.StorageBufferAttribute(new Float32Array(dirs.flatMap((d) => [...d, 0])), 4);
     const outAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 4), 4);
@@ -107,7 +108,7 @@ registerSelfTest({
     const pass = Fn(() => {
       const d = input.element(instanceIndex).xyz;
       const volume = waterVolumeColourNode(o, d, seabed, sky, u);
-      const hidden = reefInFrontNode(o, d, float(30.0), vec3(100.0), seabed, sky, u);
+      const hidden = reefInFrontNode(o, d, float(REEF_WALL_HIDDEN_M), vec3(100.0), seabed, sky, u);
       const chosen: any = select(instanceIndex.equal(3), hidden, volume); // three typings gap: select() is typed narrower than its result
       output.element(instanceIndex).assign(vec4(chosen, 1.0));
     })().compute(n) as THREE.ComputeNode;
