@@ -166,7 +166,7 @@ export function groundDetailNodes(t: GroundLayerTextures, xz: N, cover: N, worn:
     trackW: worn.mul(near),
     // The beach path's gully (§4.1): where it cuts the limestone band its shoulders show rock steps.
     gully: cover.z.mul(smoothstep(0.2, 0.6, worn)).mul(float(1).sub(smoothstep(0.9, 1.0, worn))).mul(near),
-    tilt: tiltN.mul(near),
+    tilt: tiltN.mul(near).mul(0.5),
     near,
   };
 }
