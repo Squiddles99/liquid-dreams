@@ -237,6 +237,39 @@ describe("Shazza's hair (closeup spec §3)", () => {
   });
 });
 
+describe("the boys' boardies hang loose, not belled or briefs under them (Andrew: shorts under his shorts)", () => {
+  for (const name of ['male', 'grommet'] as const) {
+    it(`${name}: the legs stand at most 13 cm (at 1.78 m) from the thigh's axis, 0.3–0.6 of the way down`, () => {
+      // Round 1 flared to 14.6 cm, bells his wrists went through, over briefs-tight hips: two pairs of shorts.
+      const path = `public/surfer/${name}.glb`, gltf = glbJson(path);
+      const man: SurferManifest = JSON.parse(readFileSync(`public/surfer/${name}.manifest.json`, 'utf8'));
+      const bone = (n: string): number[] => man.bones.find((b) => b.name === n)!.head;
+      const a = bone('thigh_l'), b = bone('shin_l'), ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const L2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2;
+      let worst = 0;
+      for (const v of skinned(path, gltf, 'boardies')) {
+        if (v.pos[0] < a[0] - 0.02) continue; // the left leg (and not across the crotch)
+        const q = [v.pos[0] - a[0], v.pos[1] - a[1], v.pos[2] - a[2]], u = (q[0] * ab[0] + q[1] * ab[1] + q[2] * ab[2]) / L2;
+        if (u < 0.3 || u > 0.6) continue;
+        worst = Math.max(worst, Math.hypot(q[0] - u * ab[0], q[1] - u * ab[1], q[2] - u * ab[2]));
+      }
+      expect(worst).toBeLessThanOrEqual(0.13 * man.heightM / 1.78);
+    });
+  }
+});
+
+describe("T-Bone's hairline (dune select spec §13.1; Andrew: like a wig)", () => {
+  const man: SurferManifest = JSON.parse(readFileSync('public/surfer/male.manifest.json', 'utf8'));
+  it('covers his scalp right to the hairline all round, wet and dry: the temples, the sideburns, the nape', () => {
+    // The share of the scalp from 5 mm to 2.5 cm inside the hairline under hair, worst 10° sector. Round 1, wet: the
+    // forehead 10–15% (combed straight back off it from roots 8 mm in, over a near-black painted strip). Card hair has
+    // gaps between its strands: a back of the head that looks full scores 57–100%, and a sector swings ±0.15 with the
+    // cards' random layout, so the floor catches a bare patch, not a thin one (judged by eye at the gate).
+    expect(man.checks!.hairCoverWet).toBeGreaterThanOrEqual(0.35);
+    expect(man.checks!.hairCoverDry).toBeGreaterThanOrEqual(0.35);
+  });
+});
+
 describe("Grommet's mop (grommet spec §3)", () => {
   const gltf = glbJson('public/surfer/grommet.glb');
   // The mop in the water: the ringlets (hairCurl) over the short under-layer and the frizz (hair).

@@ -12,6 +12,7 @@ import export  # noqa: E402
 import expressions  # noqa: E402
 import face  # noqa: E402
 import glasses  # noqa: E402
+import hairline  # noqa: E402
 import hair  # noqa: E402
 import mpfb_bridge  # noqa: E402
 import packs  # noqa: E402
@@ -59,6 +60,12 @@ spots = skin.pimples(body, coords, L, preset["pimpleSeed"]) if "pimpleSeed" in p
 hair_obj = hair.build(body, rig, preset["hair"], L, coords, name)
 rig_trim.single_material(hair_obj, "hair")
 wet_checks, wet_extras = dict(hair.last_checks), list(hair.last_extras)  # the braids' (dune select spec §13.2)
+_ear = hairline.ear_params(L)
+# How much of the scalp inside the hairline the hair covers, worst over 10° sectors (dune select spec §13.1; Andrew:
+# T-Bone's hairline looked like a wig): wet here, dry below.
+_scalp = hairline.scalp_samples(body, coords)
+cover_wet = hairline.coverage(_scalp, hair_obj, L["head_centre"], L["eye_z"], *_ear)
+print(f"hair coverage wet: {cover_wet}")
 hair.bake_ao(hair_obj, body, L["head_centre"], reach=preset["hair"].get("aoReach", 0.045))
 rig_trim.single_material(eye_obj, "eyes")
 parts = [body, hair_obj, eye_obj, *wet_extras]
@@ -128,11 +135,16 @@ if preset.get("dryHair"):
     dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=[*garments, *carried], thin=carried)
     rig_trim.single_material(dry_obj, "hairDry")
     dry_checks = dict(hair.last_checks)
+    cover_dry = hairline.coverage(_scalp, dry_obj, L["head_centre"], L["eye_z"], *_ear)
+    print(f"hair coverage dry: {cover_dry}")
     parts += hair.last_extras
     hair.bake_ao(dry_obj, body, L["head_centre"], reach=preset["dryHair"].get("aoReach", 0.045))
     parts.append(dry_obj)
 
 checks = expressions.blink_check(body, L)
+checks["hairCoverWet"] = min(cover_wet.values())
+if preset.get("dryHair"):
+    checks["hairCoverDry"] = min(cover_dry.values())
 # Grommet's mop (grommet spec §3): the ringlets in the water and under the hat, and the frizz.
 if "curlBendRatio" in wet_checks:
     checks["curlBendRatio"] = min(c["curlBendRatio"] for c in (wet_checks, hat_checks) if "curlBendRatio" in c)

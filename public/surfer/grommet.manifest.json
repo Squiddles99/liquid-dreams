@@ -500,12 +500,25 @@
    1.33954,
    0.15338
   ],
-  "eyeRadius": 0.01554
+  "eyeRadius": 0.01554,
+  "nipples": [
+   [
+    0.07277,
+    1.06735,
+    0.13502
+   ],
+   [
+    -0.07277,
+    1.06735,
+    0.13502
+   ]
+  ]
  },
  "headTriangles": 8456,
  "checks": {
   "blinkCovers": true,
   "eyesOpen": true,
+  "hairCoverWet": 0.21,
   "curlBendRatio": 1.041,
   "frizzMaxCm": 1.38,
   "frizzChordRatio": 0.782,

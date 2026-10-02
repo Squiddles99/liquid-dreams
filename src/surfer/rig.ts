@@ -142,6 +142,10 @@ export interface SurferManifest {
     braidBendRatio?: number;
     /** Grommet's mop (grommet spec §3): the ringlets' tightest bend over their own radius (under 1 a tube folds), and
      * the frizz: its longest wisp (cm) and the most its ends span of its length (1 straight). */
+    /** How much of the scalp just inside the hairline (5 mm to 2.5 cm) the hair covers, worst over 10° sectors round
+     * the head (0 … 1), wet and dry. */
+    hairCoverWet?: number;
+    hairCoverDry?: number;
     curlBendRatio?: number;
     frizzMaxCm?: number;
     frizzChordRatio?: number;
@@ -165,6 +169,8 @@ export interface SurferLandmarks {
   teethFront: Vec3;
   /** The eyeballs' radius (fitted to MPFB's eye helper; closeup spec §4.1). */
   eyeRadius?: number;
+  /** The chest's apex each side, where the nipples are painted (left, right). */
+  nipples?: [Vec3, Vec3];
 }
 
 /** Everything wrong with a manifest's skeleton against the contract (empty = fine). */

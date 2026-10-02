@@ -24,6 +24,25 @@ describe('skin zones from the manifest (grommet spec §5; Review Focus 3)', () =
     expect(PRESETS.female.eyeShadow).toBeGreaterThan(0);
     expect(PRESETS.male.eyeShadow).toBe(0);
   });
+  it('puts nipples on every chest: in front, either side of the midline, at chest height (Andrew: T-Bone had none)', () => {
+    for (const n of ['female', 'male', 'grommet']) {
+      const m = load(n), z = skinZones(m)!, H = m.heightM;
+      const spine = m.bones.find((b) => b.name === 'spine_03')!.head;
+      expect(z.nipples, n).not.toBeNull();
+      const [l, r] = z.nipples!;
+      for (const p of [l, r]) {
+        expect(p[1], `${n} height`).toBeGreaterThan(0.66 * H);
+        expect(p[1], `${n} height`).toBeLessThan(0.78 * H);
+        expect(p[2], `${n} in front`).toBeGreaterThan(spine[2] + 0.06);
+        expect(Math.abs(p[0]), `${n} off the midline`).toBeGreaterThan(0.05 * H / 1.78);
+        expect(Math.abs(p[0]), `${n} off the midline`).toBeLessThan(0.15 * H / 1.78);
+      }
+      expect(l[0]).toBeGreaterThan(0);
+      expect(Math.abs(l[0] + r[0])).toBeLessThan(0.01);
+      expect(z.areolaRadius).toBeGreaterThan(0.008);
+      expect(z.areolaRadius).toBeLessThan(0.02);
+    }
+  });
   it('gives none for a manifest without landmarks (an older build)', () => {
     const m = load('female');
     expect(skinZones({ ...m, landmarks: undefined })).toBeNull();

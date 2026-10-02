@@ -64,3 +64,48 @@ def stats(roots, centre, eye_z, ear_angle, inset=0.0):
     hairline that shows), above the eyes (cm). The old rule stopped the side hair flat at 2.5 cm above the eyes."""
     side = [co.z - eye_z - inset for co in roots if ear_angle - 32 <= angle(co, centre) <= ear_angle - 10]
     return {"sideburnAboveEyeCm": round(100 * min(side or [9.0]), 2)}
+
+def coverage(scalp, hair_obj, centre, eye_z, ear_angle, ear_top_dz, band=(0.005, 0.025)):
+    """How much of the scalp just inside the hairline the hair covers, per 10° sector round the head (0 … 1): of the
+    scalp's points `scalp` ((co, normal) pairs) `band` above the hairline (from 5 mm, past the roots' soft fade, to 2.5
+    cm), the share whose ray out along the normal
+    meets a hair card within 3 cm past the card's faded root (COLOR_0.b ≥ 0.5). T-Bone's wet hair, combed straight back
+    off his temples and stopping above his nape, left both bare under a wig-like edge."""
+    from mathutils.bvhtree import BVHTree
+    import bpy
+    me = hair_obj.data
+    tree = BVHTree.FromObject(hair_obj, bpy.context.evaluated_depsgraph_get())
+    col = me.color_attributes["Color"]
+    ks = knots(ear_angle, ear_top_dz)
+    hit, total = {}, {}
+    for co, n in scalp:
+        a = angle(co, centre)
+        h = co.z - eye_z - height(a, ks)
+        if not band[0] <= h <= band[1]:
+            continue
+        k = min(17, int(a // 10))
+        total[k] = total.get(k, 0) + 1
+        loc, _, fi, _ = tree.ray_cast(co + n * 0.0005, n, 0.03)
+        if loc is not None and fi is not None:
+            vs = me.polygons[fi].vertices
+            if sum(col.data[v].color[2] for v in vs) / len(vs) >= 0.5:
+                hit[k] = hit.get(k, 0) + 1
+    return {k * 10 + 5: round(hit.get(k, 0) / t, 2) for k, t in sorted(total.items()) if t >= 3}
+
+
+def scalp_samples(body, coords, per_face=24, seed=11):
+    """Points on the head's skin, `per_face` random ones on each face of the head (its own vertices are too sparse to
+    judge a 10° sector by), with the face's normal."""
+    import random
+    rng = random.Random(seed)
+    vs = body.data.vertices
+    out = []
+    for f in body.data.polygons:
+        if f.material_index != 0 or any(coords[i][0] != "head" for i in f.vertices):
+            continue
+        pts = [vs[i].co for i in f.vertices]
+        for _ in range(per_face):
+            w = [rng.random() for _ in pts]
+            t = sum(w)
+            out.append((sum((p * (x / t) for p, x in zip(pts[1:], w[1:])), pts[0] * (w[0] / t)), f.normal.copy()))
+    return out

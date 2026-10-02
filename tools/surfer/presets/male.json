@@ -13,7 +13,7 @@
   "hair": {
     "style": "short",
     "seed": 7,
-    "inset": 0.008,
+    "inset": 0.002,
     "aoReach": 0.02
   },
   "boardies": true,
@@ -56,14 +56,14 @@
   "browWeight": 1.6,
   "teeth": "even",
   "lashes": {
-    "upper": 0.0085,
+    "upper": 0.0075,
     "lower": 0.0045,
     "curl": 0.0025
   },
   "dryHair": {
     "style": "tousled",
     "seed": 17,
-    "inset": 0.008
+    "inset": 0.002
   },
   "walking": {
     "tee": {

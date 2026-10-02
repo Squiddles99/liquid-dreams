@@ -39,11 +39,14 @@ def _short(root, n, centre, crown, rng):
     noise = _unit(rng)
     r_min = (root - centre).length + 0.003
     front = root.y < crown.y
+    # The sides comb back and down over the temples and ears (a short back and sides); straight back off them, they
+    # left the temples bare under a wig-like edge (Andrew).
+    side = max(0.0, min(1.0, (abs(root.x - centre.x) - 0.035) / 0.035))
     pts = [root + n * 0.002]
     for _ in range(5):
         p = pts[-1]
         out = (p - centre).normalized()
-        comb = Vector((0, 1, 0.15)) if front else p - crown
+        comb = (Vector((0, 1, 0.15)) * (1 - side) + Vector((0, 0.55, -0.85)) * side) if front else p - crown
         comb = (comb - out * comb.dot(out)).normalized() if comb.length > 1e-6 else noise
         d = comb * 0.6 + DOWN * (0.1 if front else 0.3) + noise * 0.25
         d = (d - out * d.dot(out) * 0.8).normalized()
@@ -344,13 +347,13 @@ def build(body, rig, style, L, coords, name, avoid=(), thin=()):
     roles = None
     if style["style"] == "short":
         crown = centre + Vector((0, L["head_radius"] * 0.35, L["head_radius"] * 0.9))
-        for _ in range(1600):
+        for _ in range(2200):
             root, n = pick()
             cards.append((_short(root, n, centre, crown, rng), rng.uniform(0.012, 0.016)))
     elif style["style"] == "tousled":
         # Dry, short and messy (closeup spec §3): lifted off the scalp, a fringe falling forward to just above the brows.
         crown = centre + Vector((0, L["head_radius"] * 0.35, L["head_radius"] * 0.9))
-        for _ in range(1700):
+        for _ in range(2300):
             root, n = pick()
             cards.append((_tousled(root, n, centre, crown, eye_z, rng), rng.uniform(0.011, 0.015)))
     elif style["style"] == "waves":
@@ -679,16 +682,21 @@ def _tousled(root, n, centre, crown, eye_z, rng):
     noise = _unit(rng)
     lift = rng.uniform(0.008, 0.022)
     r0 = (root - centre).length
+    # The sides fall down over the temples to the sideburns (combed forward off the crown, they left a bare patch in
+    # front of each ear); each fringe lock stops at its own height above the brows (one height drew a bowl cut's line).
+    side = max(0.0, min(1.0, (abs(root.x - centre.x) - 0.035) / 0.035))
+    stop = eye_z + rng.uniform(0.022, 0.042)
     pts = [root + n * 0.002]
     for _ in range(6):
         p = pts[-1]
         out = (p - centre).normalized()
         comb = p - crown
         comb = (comb - out * comb.dot(out)).normalized() if comb.length > 1e-6 else noise
+        comb = comb * (1 - side) + Vector((0, 0.3, -1)).normalized() * side
         d = (comb * 0.55 + DOWN * (0.35 if front else 0.2) + noise * 0.45 + out * 0.25).normalized()
         q = _hug(p + d * (length / 6), centre, r0 + 0.002, r0 + lift)
-        if q.y < centre.y - 0.03 and q.z < eye_z + 0.03:  # the fringe stops above the brows
-            q.z = eye_z + 0.03
+        if q.y < centre.y - 0.03 and q.z < stop:  # the fringe stops above the brows
+            q.z = stop
         pts.append(q)
     return pts
 

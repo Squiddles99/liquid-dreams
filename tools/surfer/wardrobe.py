@@ -4,6 +4,8 @@ import math
 import os
 
 import bmesh
+from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 import bpy
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -139,10 +141,30 @@ def boardies(body, rig, coords, weights, H, name):
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if not all(v.index in inside for v in f.verts)], context="FACES")
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
     bm.normal_update()
+    # Loose, not belled: 1.4 cm off the skin, the legs flaring only 8 mm more to the hem and not at all on the inside of
+    # the thigh (round 1's 3.5 cm bells, flaring inward too, caught the wrists of a rider sitting with his hands on the
+    # board; Andrew).
     for v in bm.verts:
         b, t = coords[v[orig]]
-        flare = 0.035 * max(0.0, min(1.0, (t - 0.35) / 0.27)) if b == "thigh" else 0
-        v.co += v.normal * (0.012 + flare)
+        inward = -v.normal.x * (1 if v.co.x > 0 else -1)  # 1 where the surface faces the other leg
+        flare = 0.008 * max(0.0, min(1.0, (t - 0.35) / 0.27)) * max(0.0, 1.0 - max(0.0, inward) * 1.5) if b == "thigh" else 0
+        v.co += v.normal * (0.014 + flare)
+    # Across the crotch the shorts bridge between the legs instead of hugging the body there (they read as briefs under
+    # a second pair of shorts): the shell smoothed there, a few passes, never back inside the skin.
+    crotch = LANDMARKS["crotch_z"]
+    zone = [v for v in bm.verts if abs(v.co.x) < 0.07 and v.co.z < crotch + 0.07]
+    skin = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    for _ in range(12):
+        moved = {}
+        for v in zone:
+            nb = [e.other_vert(v) for e in v.link_edges]
+            if nb:
+                moved[v] = v.co * 0.5 + sum((n.co for n in nb), Vector()) * (0.5 / len(nb))
+        for v, co in moved.items():
+            loc, nrm, _, _ = skin.find_nearest(co)
+            if loc is not None and (co - loc).dot(nrm) < 0.01:
+                co = loc + nrm * 0.01
+            v.co = co
     bm.to_mesh(dup.data)
     bm.free()
     for layer in [l.name for l in dup.data.uv_layers][1:]:
