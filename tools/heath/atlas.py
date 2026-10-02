@@ -132,9 +132,10 @@ def _bark(rng, light):
 
 
 def _solid(rgb, n=AL.CELL, gradient_to=None):
+    """A flat tile, or `rgb` going to `gradient_to` at the top (v 0, a finger's tip) over its last fifth."""
     out = np.ones((n, n, 4), dtype=np.float32)
     for y in range(n):
-        t = y / (n - 1)
+        t = min(1.0, (y / (n - 1)) / 0.2)
         c = np.array(rgb) if gradient_to is None else np.array(gradient_to) * (1 - t) + np.array(rgb) * t
         out[y, :, :3] = c ** (1 / 2.2)
     return out
@@ -153,7 +154,7 @@ def build(scene, tmp, out_dir, species, canopy_objs):
         lf = species.LEAF.get(kind, {"colour": species.CARD_COLOUR.get(kind, (0.3, 0.3, 0.3))})
         for k in range(3 if kind in species.SPRAY_LEAF else 0):
             ss = species.SPRAY_LEAF[kind]
-            o = _cluster(ss, lf["colour"], ss["count"], (lf["width"], lf["length"]), rng, spread=0.3)
+            o = _cluster(ss, lf["colour"], ss["count"], (lf["width"], lf["length"]), rng, spread=ss.get("spread", 0.3))
             _camera(scene, Vector((0, 0, 0)), lf["width"] * 1.02, lf["length"] * 1.02)
             # The card is width × length; the tile is square: render at the length and stretch across.
             scene.render.resolution_x, scene.render.resolution_y = AL.CELL, AL.CELL
@@ -171,7 +172,7 @@ def build(scene, tmp, out_dir, species, canopy_objs):
             _paste(atlas, f"card_{kind}_0_{k}", px)
             tiles[f"card_{kind}_0_{k}"] = AL.tile(f"card_{kind}_0_{k}")
     # Pigface: its fingers' green going red at the tips (v 0 at the tip), and its magenta flowers; rice's pink heads.
-    _paste(atlas, "spray_pigface_0", _solid((0.14, 0.24, 0.05), gradient_to=(0.42, 0.14, 0.05)))
+    _paste(atlas, "spray_pigface_0", _solid((0.16, 0.3, 0.06), gradient_to=(0.45, 0.12, 0.06)))
     tiles["spray_pigface_0"] = AL.tile("spray_pigface_0")
     for kind in ("pigface", "rice"):
         fl = species.FLOWER[kind]

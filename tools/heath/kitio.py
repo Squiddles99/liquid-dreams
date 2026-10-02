@@ -30,7 +30,11 @@ def export(objects, glb_path):
     bpy.context.view_layer.objects.active = objects[0]
     bpy.ops.export_scene.gltf(filepath=glb_path, export_format="GLB", use_selection=True, export_yup=True,
                               export_texcoords=True, export_normals=True, export_materials="NONE",
-                              export_vertex_color="ACTIVE", export_apply=True)
+                              export_vertex_color="ACTIVE", export_apply=True,
+                              # Draco: the uncompressed kit was 19 MB (the disk budget is 30 MB for public/heath).
+                              export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=7,
+                              export_draco_position_quantization=14, export_draco_normal_quantization=10,
+                              export_draco_texcoord_quantization=12, export_draco_color_quantization=10)
 
 
 def write_manifest(path, variants, items, atlas):

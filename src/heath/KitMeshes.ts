@@ -170,19 +170,21 @@ export class KitMeshes {
     const keepBand: N = lod === 0 ? dither.lessThan(wNear) : dither.greaterThanEqual(wNear).and(dither.lessThan(float(1).sub(wFar)));
     m.maskNode = keepBand.or(this.forceBand.greaterThan(0.5)).and(alpha.greaterThan(0.5));
 
-    const n: N = normalize(normalWorld.mul(faceDirection));
+    // Never normalise a zero normal (NaN): a hair of up keeps it finite.
+    const n: N = normalize(normalWorld.mul(faceDirection).add(vec3(0.0, 1e-4, 0.0)));
     const l = sky.sunDirection;
     const toCam: N = cameraPosition.sub(positionWorld);
     const dist: N = length(toCam);
     const v: N = toCam.div(max(dist, 1e-3));
-    const ao: N = col.x;
+    // Leaves keep half their light inside the crown (silver and fleshy leaves scatter it: gate 1 read them too dark).
+    const ao: N = max(col.x, leafy.mul(0.5));
     const albedo: N = tex.rgb.mul(attribute('plantTint', 'vec3'));
     const vis: N = sunVisibility ? sunVisibility(positionWorld.xz) : float(1.0);
     const wrap: N = max(dot(n, l).add(0.4).div(1.4), 0.0);
     const sunE: N = sky.sunIlluminance.mul(vis).mul(wrap).mul(ao).mul(step(0.0, l.y));
     // Light through the leaves when they're backlit (thin-leaf translucency), tinted by the leaf.
-    const through: N = pow(saturate(dot(v.negate(), l)), 4.0).mul(0.5).mul(leafy);
-    const glow: N = sky.sunIlluminance.mul(vis).mul(through).mul(albedo.mul(2.0)).mul(step(0.0, l.y));
+    const through: N = pow(saturate(dot(v.negate(), l)), 4.0).mul(0.35).mul(leafy);
+    const glow: N = sky.sunIlluminance.mul(vis).mul(through).mul(albedo.mul(1.2)).mul(step(0.0, l.y));
     const skyE: N = sky.skyIrradiance.mul(n.y.mul(0.5).add(0.5)).mul(ao);
     const bounce: N = sky.sunIlluminance.mul(max(l.y, 0.0)).mul(0.3).mul(float(0.5).sub(n.y.mul(0.5))).mul(ao);
     const lit: N = albedo.mul(sunE.add(skyE).add(bounce)).add(glow).div(PI);

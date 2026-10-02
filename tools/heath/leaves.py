@@ -90,7 +90,9 @@ def add_tris(bm, tris, uv_layer, col_layer, colour, scale, normals, uv_of, bend_
     for (a, ta), (b, tb), (c, tc) in tris:
         ua, ub, uc = (Vector((p.x * scale.x, p.y * scale.y, p.z * scale.z)) for p in (a, b, c))
         n = (ub - ua).cross(uc - ua)
-        n = n.normalized() if n.length > 1e-12 else Vector((0, 0, 1))
+        if n.length < 1e-10:
+            continue  # a triangle with no area has no normal (Blender's split normal of it is zero)
+        n = n.normalized()
         vs = [bm.verts.new(p) for p in (ua, ub, uc)]
         for p in (ua, ub, uc):
             bent = n

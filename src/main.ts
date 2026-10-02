@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   if (import.meta.env.DEV && query.get('sheet') === 'species') {
     const { captureSpeciesSheet } = await import('./dev/speciesSheet');
     const post = (name: string, frame: Blob) => fetch(`http://127.0.0.1:5199/?name=${name}`, { method: 'POST', body: frame }).then(() => undefined);
-    const names = await captureSpeciesSheet(app, post);
+    const names = await captureSpeciesSheet(app, post, query.get('kinds')?.split(','));
     document.title = `sheet done: ${names.length}`;
   }
 }

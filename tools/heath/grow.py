@@ -153,6 +153,14 @@ def tubes(bm, sk, scale, uv_layer, col_layer, sides_base=6, sides_tip=3, min_rad
             if len(keep) < 2:
                 continue
             line = keep
+        # Nodes on top of each other (clamped to the ground) make zero-length segments: faces with no normal.
+        dedup = [line[0]]
+        for i in line[1:]:
+            if (sk.nodes[i] - sk.nodes[dedup[-1]]).length > 1e-5:
+                dedup.append(i)
+        if len(dedup) < 2:
+            continue
+        line = dedup
         r0 = sk.radius[line[0]]
         sides = sides_base if r0 > 4 * rmin else sides_tip
         if r0 <= 3 * rmin and len(line) > 3:
@@ -175,8 +183,14 @@ def tubes(bm, sk, scale, uv_layer, col_layer, sides_base=6, sides_tip=3, min_rad
                 ring.append(vert)
             rings.append((i, ring))
         for (i0, a), (i1, b) in zip(rings, rings[1:]):
+            axis_mid = (sk.nodes[i0] + sk.nodes[i1]) * 0.5
             for s in range(sides):
                 f = bm.faces.new((a[s], a[(s + 1) % sides], b[(s + 1) % sides], b[s]))
+                # Facing out of its tube: where a chain doubles back past 90° its faces wound inward, and a custom
+                # normal opposite its face's normal can't be stored (Blender gives it zero).
+                f.normal_update()
+                if f.normal.dot(f.calc_center_median() - axis_mid) < 0:
+                    f.normal_flip()
                 for lp, (uu, vv) in zip(f.loops, ((s / sides, 0), ((s + 1) / sides, 0), ((s + 1) / sides, 1), (s / sides, 1))):
                     node = i0 if vv == 0 else i1
                     lp[uv_layer].uv = uv_of(sk.dead[node], uu, vv) if uv_of else (uu, vv)

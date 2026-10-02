@@ -57,6 +57,16 @@ def smooth_normals(o, made, extra=()):
     for k, n in enumerate(extra):
         normals[len(made) + k] = tuple(n)
     me.normals_split_custom_set_from_vertices(normals)
+    # Blender can't store a custom normal at a few corners of a sharp three-sided tube (its smooth fan spans faces 120°
+    # apart) and gives zero: set those corners to their face's own normal.
+    bad = {i for i, cn in enumerate(me.corner_normals) if not (Vector(cn.vector).length >= 0.5)}
+    if bad:
+        loop_n = [tuple(cn.vector) for cn in me.corner_normals]
+        for p in me.polygons:
+            for li in range(p.loop_start, p.loop_start + p.loop_total):
+                if li in bad:
+                    loop_n[li] = tuple(p.normal)
+        me.normals_split_custom_set(loop_n)
 
 
 def bad_normals(me):
@@ -78,6 +88,9 @@ def foliage(bm, sk, kind, scale, uv, col, rng, budget):
     per = 3 if lf["form"] == "finger" else 2
     room = max(0, (budget - flowers - 40) // per)
     for j, d, n in leaves.place_leaves(sk, nodes, lf, rng)[:room]:
+        if lf.get("upright"):
+            d = (d + Vector((0, 0, lf["upright"]))).normalized()
+            n = (n - d * n.dot(d)).normalized() if (n - d * n.dot(d)).length > 1e-6 else d.orthogonal().normalized()
         base = nodes[j] + d * sk.radius[j]
         bases.append(base)
         length, width = lf["length"] * rng.uniform(0.8, 1.2), lf["width"] * rng.uniform(0.85, 1.15)

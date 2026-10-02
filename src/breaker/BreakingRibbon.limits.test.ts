@@ -215,7 +215,7 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
     });
     it('the plants stay within the limits', () => {
       const plants = new PlantMeshes(sky, (xz) => sunlight.visibilityNode(xz));
-      for (const i of [0, 24, 48]) { // the first mesh of each level of detail (meshes are ordered level × kind × shape: 6 × 4); LOD 2's matrices exceed the uniform limit (storage)
+      for (const i of [0, 32, 64]) { // the first mesh of each level of detail (meshes are ordered level × kind × shape: 8 × 4); LOD 2's matrices exceed the uniform limit (storage)
         const w = renderWgsl(plants.meshes[i] as unknown as THREE.Mesh);
         console.log(`plants lod ${i}: vertex sampled ${sampledTextures(w.vertex)} uniform ${uniformBuffers(w.vertex)} storage ${storageBindings(w.vertex)}, fragment sampled ${sampledTextures(w.fragment)} uniform ${uniformBuffers(w.fragment)}`);
         for (const stage of [w.vertex, w.fragment]) {
@@ -233,7 +233,7 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
       };
       const kit = { manifest: { version: 1 as const, units: 'unit' as const, variants: [], items: [], atlas: { file: '', size: 2048, tiles: {} } }, atlas: new THREE.DataTexture(new Uint8Array(4), 1, 1), geometry: box };
       const k = new KitMeshes(kit, sky, (xz) => sunlight.visibilityNode(xz));
-      for (const i of [0, 24]) {
+      for (const i of [0, 32]) {
         const w = renderWgsl(k.meshes[i] as unknown as THREE.Mesh);
         console.log(`kit lod ${i ? 1 : 0}: vertex sampled ${sampledTextures(w.vertex)} uniform ${uniformBuffers(w.vertex)} storage ${storageBindings(w.vertex)}, fragment sampled ${sampledTextures(w.fragment)} uniform ${uniformBuffers(w.fragment)}`);
         for (const stage of [w.vertex, w.fragment]) {
