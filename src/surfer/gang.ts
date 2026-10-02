@@ -1,4 +1,5 @@
 import type { CameraPose } from '../dev/momentLink';
+import type { TrackNetwork } from '../land/tracks';
 import { type LandSpot, headingAxes } from './placement';
 import type { PresetName } from './presets';
 
@@ -46,9 +47,11 @@ export function gangCamera(centre: LandSpot, groundY: number, distM = 5.5, camer
   };
 }
 
-/** The heath trampled into a track from the line toward the camera (a lookout path): clearings every 1.2 m. */
-export function gangTrack(centre: LandSpot, distM = 5.5): { x: number; z: number; r: number }[] {
-  const { fwd } = headingAxes(centre.headingDeg), out: { x: number; z: number; r: number }[] = [];
-  for (let d = 1.2; d <= distM + 1e-9; d += 1.2) out.push({ x: centre.x + fwd[0] * d, z: centre.z + fwd[1] * d, r: GANG_SPACING_M + 0.75 });
-  return out;
+/**
+ * How far in front of the line the gang camera stands: up to `wantM`, but only as far as the clearing or a corridor
+ * reaches, so it never stands in the heath (dune-up-close §4.1).
+ */
+export function gangCameraDistance(tracks: TrackNetwork, centre: LandSpot, wantM = 5.5): number {
+  const { fwd } = headingAxes(centre.headingDeg);
+  return tracks.reach(centre.x, centre.z, fwd[0], fwd[1], wantM);
 }
