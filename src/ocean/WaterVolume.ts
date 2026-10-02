@@ -64,7 +64,7 @@ function reefOrNode(origin: N, dir: N, maxDist: N, behind: N, seabed: Seabed, sk
     const out = behind.toVar();
     const march = marchBedAlongNode(origin, dir, maxDist, seabed);
     If(march.y.greaterThan(0.5).and(march.x.lessThan(MAX_MARCH_DIST_M)), () => {
-      const bed = seabedRadianceNode(origin.add(dir.mul(march.x)), seabed, sky, u, sky.cloudSunTransmittance);
+      const bed = seabedRadianceNode(origin.add(dir.mul(march.x)), seabed, sky, u, sky.cloudSunTransmittance, dir);
       out.assign(throughWaterNode(bed, waterColourFrom(origin, seabed, sky, u), u.extinction, march.x));
     });
     return out;

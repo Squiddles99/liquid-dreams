@@ -1,14 +1,15 @@
 import { Fn, If, Loop, PI, dot, exp, float, max, min, mix, mx_noise_float, normalize, pow, refract, smoothstep, step, vec2, vec3 } from 'three/tsl';
 import { type WaterOpticsUniforms, schlickWater } from '../ocean/waterShading';
 import type { Sky } from '../sky/Sky';
-import { REEF_ALBEDO as REEF_ALBEDO_RGB, SAND_ALBEDO as SAND_ALBEDO_RGB, WEED_ALBEDO as WEED_ALBEDO_RGB } from './bedLook';
+import { REEF_ALBEDO as REEF_ALBEDO_RGB, SAND_ALBEDO as SAND_ALBEDO_RGB } from './bedLook';
+import { kelpWeedAlbedoNode } from './kelpLook';
 import type { Seabed } from './Seabed';
 import { MARCH_DEPTH_ALLOWANCE_M, MARCH_REFINE, MARCH_STEPS, MAX_MARCH_DEPTH_M, MAX_MARCH_DIST_M, REACH_FADE_DEPTH_M, REACH_FADE_DIST_M, WATER_IOR } from './waterColumn';
 
 type N = any;
 
 // The bed's albedos are bedLook's, shared with the CPU check that the reef reads from the face (spec 2026-10-02 §2.5).
-const REEF_ALBEDO = vec3(...REEF_ALBEDO_RGB), SAND_ALBEDO = vec3(...SAND_ALBEDO_RGB), WEED_ALBEDO = vec3(...WEED_ALBEDO_RGB);
+const REEF_ALBEDO = vec3(...REEF_ALBEDO_RGB), SAND_ALBEDO = vec3(...SAND_ALBEDO_RGB);
 
 /** vec2(distance along d, hit 0/1): TSL mirror of marchSeabed(). */
 export function marchSeabedNode(p: N, d: N, seabed: Seabed): N {
@@ -52,14 +53,16 @@ export function marchSeabedNode(p: N, d: N, seabed: Seabed): N {
  * The lit seabed at a world point: its normal (four height fetches), its material, and the sun and sky reaching it through
  * the water above. Shared by the look-through from above (seabedTerms) and the underwater view (WaterVolume).
  */
-export function seabedRadianceNode(hitPos: N, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms, sunVisibility?: N): N {
+export function seabedRadianceNode(hitPos: N, seabed: Seabed, sky: Sky, u: WaterOpticsUniforms, sunVisibility?: N, rayDir?: N): N {
   const e = 0.5;
   const hx = seabed.bedHeightNode(hitPos.xz.add(vec2(e, 0.0))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(e, 0.0))));
   const hz = seabed.bedHeightNode(hitPos.xz.add(vec2(0.0, e))).sub(seabed.bedHeightNode(hitPos.xz.sub(vec2(0.0, e))));
   const nBed = normalize(vec3(hx.negate().div(2 * e), 1.0, hz.negate().div(2 * e)));
   const mat = seabed.materialNode(hitPos.xz);
   const detail = mx_noise_float(vec3(hitPos.x.mul(1.7), hitPos.z.mul(1.7), 0.0)).mul(0.5).add(0.5);
-  const albedo = mix(mix(REEF_ALBEDO, WEED_ALBEDO, mat.y), SAND_ALBEDO, mat.x).mul(detail.mul(0.4).add(0.8));
+  // The weedy part is the kelp canopy (reef build B §4.2), along the ray that met the bed (straight down without one).
+  const weedy = kelpWeedAlbedoNode(hitPos, rayDir ?? vec3(0.0, -1.0, 0.0), seabed.kelp);
+  const albedo = mix(mix(REEF_ALBEDO, weedy, mat.y), SAND_ALBEDO, mat.x).mul(detail.mul(0.4).add(0.8));
 
   const l = sky.sunDirection;
   const lw = normalize(refract(l.negate(), vec3(0.0, 1.0, 0.0), float(1 / WATER_IOR)));
@@ -96,7 +99,7 @@ export function seabedTerms(i: SeabedShadingInputs, seabed: Seabed, sky: Sky, u:
   const radiance = Fn(() => {
     const out = vec3(0.0).toVar();
     If(march.y.greaterThan(0.5).and(fade.greaterThan(0.0)), () => {
-      out.assign(seabedRadianceNode(i.surfacePos.add(t.mul(march.x)), seabed, sky, u, sunVisibility));
+      out.assign(seabedRadianceNode(i.surfacePos.add(t.mul(march.x)), seabed, sky, u, sunVisibility, t));
     });
     return out;
   })();
