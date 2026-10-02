@@ -69,10 +69,13 @@ describe('wind and scrub', () => {
       expect(Math.abs(valueNoise1(t + 0.01) - n)).toBeLessThan(0.05);
     }
   });
-  it('plant density counts plants within 15 m, full at one per 3 m²', () => {
+  it('plant density counts plants within 15 m, full at one per 1.6 m² (the near-closed heath)', () => {
     expect(plantDensityNear([], 0, 0)).toBe(0);
     const dense: { x: number; z: number }[] = [];
-    for (let x = -20; x <= 20; x += 1.5) for (let z = -20; z <= 20; z += 1.5) dense.push({ x, z });
+    for (let x = -20; x <= 20; x += 1.2) for (let z = -20; z <= 20; z += 1.2) dense.push({ x, z });
+    const sparse: { x: number; z: number }[] = [];
+    for (let x = -20; x <= 20; x += 1.5) for (let z = -20; z <= 20; z += 1.5) sparse.push({ x, z });
+    expect(plantDensityNear(sparse, 0, 0)).toBeLessThan(0.8);
     expect(plantDensityNear(dense, 0, 0)).toBe(1);
     expect(plantDensityNear([{ x: 16, z: 0 }], 0, 0)).toBe(0);
   });
