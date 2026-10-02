@@ -126,6 +126,13 @@ export interface SurferManifest {
     /** The upper lip's height above the mouth line before and after the build thins it (mm; §13.1). */
     upperLipMm?: number;
     upperLipSculptedMm?: number;
+    /** Shazza's braids (§13.2): how many, dry and wet; each end's drop below its clavicle (cm; dry l, dry r, wet l, wet
+     * r); the ends in front of the shoulders; and no braid vertex inside the body. */
+    braidsDry?: number;
+    braidsWet?: number;
+    braidEndDropCm?: number[];
+    braidEndsInFront?: boolean;
+    braidsOutside?: boolean;
   };
   blender: string;
   mpfb: string;

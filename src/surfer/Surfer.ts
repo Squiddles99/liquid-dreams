@@ -128,6 +128,11 @@ export class Surfer {
       lens: () => lensMaterial(sky, sv),
       teeth: () => teethMaterial(sky, sv),
       lashes: () => lashesMaterial(sky, sv, lens),
+      // Shazza's hair elastics (dune select spec §13.2): dark navy plastic.
+      hairTie: () => plasticMaterial(sky, [0.02, 0.03, 0.09], sv),
+      // The braids' solid plait strands (§13.2), wet and dry.
+      hairBraid: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas, true),
+      hairDryBraid: () => hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'core', atlas, true),
     };
     // The walking parts (walking spec §3): each material's colour and cloth; a missing colour is grey, never a throw.
     const walk = preset.walking.colors, grey: [number, number, number] = [0.3, 0.3, 0.3];
@@ -176,6 +181,10 @@ export class Surfer {
       if (mats.some((mt) => mt.name === 'glasses' || mt.name === 'lens')) this.glasses.push(mesh);
       if (mats.some((mt) => mt.name === 'hair')) this.hairWet.push(mesh);
       if (mats.some((mt) => mt.name === 'hairDry')) this.hairDry.push(mesh);
+      // The braids' elastics show and hide with their hair: the dry hair's (…_hairDryTies) or the wet's (…_hairTies).
+      if (mats.some((mt) => mt.name === 'hairTie')) (mesh.name.includes('hairDry') ? this.hairDry : this.hairWet).push(mesh);
+      if (mats.some((mt) => mt.name === 'hairBraid')) this.hairWet.push(mesh);
+      if (mats.some((mt) => mt.name === 'hairDryBraid')) this.hairDry.push(mesh);
       if (mats.some((mt) => mt.name === 'hairHat')) this.hairHat.push(mesh);
       const dict = mesh.morphTargetDictionary;
       if (dict) {
@@ -190,6 +199,7 @@ export class Surfer {
     // Same geometry, skeleton and name, so it shows, hides and skins with the core.
     for (const [list, name] of [[this.hairWet, 'hair'], [this.hairDry, 'hairDry'], [this.hairHat, 'hairHat']] as const) {
       for (const mesh of [...list]) {
+        if (((mesh as THREE.Mesh).material as THREE.Material).name !== name) continue; // not the elastics
         const edges = mesh.clone() as THREE.Mesh;
         edges.material = hairMaterial(sky, preset, this.headCentre, sv, this.wet, 'edges', atlas);
         edges.material.name = name;
