@@ -227,7 +227,9 @@ def build(body, rig, style, L, coords, name, avoid=()):
             c, _n = pick()
             clumps.append((c, rng.uniform(0, 2 * math.pi), rng.uniform(0.1, 0.14), rng.uniform(0.01, 0.017), rng.uniform(0.36, 0.46), trng.uniform(-TURN_SPREAD, TURN_SPREAD)))
         turns = []
-        for _ in range(2400):
+        # 2800 cards: the natural hairline (sideburns, lower temples) gives more scalp than the old stepped one, and
+        # 2400 over it thinned the crown until it showed gaps (the crown self-test, 93.8% → 97% wanted).
+        for _ in range(2800):
             root, n = pick()
             clump = min(clumps, key=lambda cl: (cl[0] - root).length_squared)
             cards.append((_wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump, turns), rng.uniform(0.009, 0.013)))
@@ -375,6 +377,10 @@ def _wave(root, n, centre, eye_z, neck_z, part_x, rng, tree, clump, turns=None):
     length = len0 + rng.uniform(-0.02, 0.02)
     seg = 0.026
     side = 1.0 if root.x >= part_x else -1.0
+    # At the part, about a third of the locks lie across it (seeded by where they root), so the part is soft and never a
+    # see-through seam between two combed-apart halves (the crown self-test with the body hidden).
+    if abs(root.x - part_x) < 0.008 and math.sin(root.y * 1531.0 + root.z * 977.0) > 0.35:
+        side = -side
     # The front of the hairline frames the face: those locks sweep down beside the cheeks, not back behind the ears.
     front = root.y < centre.y - 0.035
     r0 = (root - centre).length
