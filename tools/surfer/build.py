@@ -12,6 +12,7 @@ import export  # noqa: E402
 import expressions  # noqa: E402
 import face  # noqa: E402
 import glasses  # noqa: E402
+import hairline  # noqa: E402
 import hair  # noqa: E402
 import mpfb_bridge  # noqa: E402
 import packs  # noqa: E402
@@ -37,6 +38,8 @@ rig_trim.apply_transforms(rig, [body])
 landmarks = rig_trim.delete_helpers(body)
 expressions.scale(body, rig_trim.scale_to_height(body, rig, preset["heightM"], landmarks))
 sculpt.smooth_anatomy(body, preset["heightM"], preset.get("smooth", []))
+# The upper lip thinned directly (dune select spec §13.1), where MPFB's targets only nudge it.
+lip_mm = sculpt.upper_lip(body, landmarks["mouth"], preset["upperLip"]) if preset.get("upperLip") else None
 rig_trim.trim(rig, body)
 rig_trim.decimate(body, preset["bodyTriangles"])
 rig_trim.limit_weights(body)
@@ -56,9 +59,16 @@ face.paint(body, weights, L, preset.get("browWeight", 1.0), skin.bake_ao(body, [
 spots = skin.pimples(body, coords, L, preset["pimpleSeed"]) if "pimpleSeed" in preset else []
 hair_obj = hair.build(body, rig, preset["hair"], L, coords, name)
 rig_trim.single_material(hair_obj, "hair")
+wet_checks, wet_extras = dict(hair.last_checks), list(hair.last_extras)  # the braids' (dune select spec §13.2)
+_ear = hairline.ear_params(L)
+# How much of the scalp inside the hairline the hair covers, worst over 10° sectors (dune select spec §13.1; Andrew:
+# T-Bone's hairline looked like a wig): wet here, dry below.
+_scalp = hairline.scalp_samples(body, coords)
+cover_wet = hairline.coverage(_scalp, hair_obj, L["head_centre"], L["eye_z"], *_ear)
+print(f"hair coverage wet: {cover_wet}")
 hair.bake_ao(hair_obj, body, L["head_centre"], reach=preset["hair"].get("aoReach", 0.045))
 rig_trim.single_material(eye_obj, "eyes")
-parts = [body, hair_obj, eye_obj]
+parts = [body, hair_obj, eye_obj, *wet_extras]
 if preset.get("glasses"):
     parts.append(glasses.build(rig, body, L, name))
 if preset.get("teeth"):
@@ -91,6 +101,7 @@ if walk:
     parts.append(feet)
 # The hat and the hair pressed under it (walking spec §3).
 hat_hair = hat = band = None
+hat_checks, hat_extras = {}, []
 if walk and walk.get("hat"):
     band = clothes.hat_band(L, walk["hat"])
     hat = (clothes.cap if walk["hat"] == "cap" else clothes.bucket_hat)(body, rig, coords, L, band, name)
@@ -98,8 +109,9 @@ if walk and walk.get("hat"):
     parts.append(hat)
     hat_hair = hair.build(body, rig, {"style": "capped" if walk["hat"] == "cap" else "bucket", "seed": preset["hair"]["seed"] + 5, "below": band, "hat": hat}, L, coords, name)
     rig_trim.single_material(hat_hair, "hairHat")
+    hat_checks, hat_extras = dict(hair.last_checks), list(hair.last_extras)  # Grommet's ringlets (grommet spec §3)
     hair.bake_ao(hat_hair, body, L["head_centre"], reach=0.02)
-    parts.append(hat_hair)
+    parts += [hat_hair, *hat_extras]
 # The pack and what's on it (walking spec §2, §3), over the tee.
 carried = []
 if walk and walk.get("pack"):
@@ -118,17 +130,44 @@ if walk and walk.get("pack"):
         clothes.bake_ao(c, [body, *garments, *[x for x in carried if x is not c]])
     parts += carried
 # The dry hair on land, draped over the walking clothes as well as the body (it fell inside the tee at the back).
+dry_checks = {}  # none for a rider without a dry style (Grommet)
 if preset.get("dryHair"):
-    dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=[*garments, *carried])
+    dry_obj = hair.build(body, rig, {**preset["dryHair"], "dry": True}, L, coords, name, avoid=[*garments, *carried], thin=carried)
     rig_trim.single_material(dry_obj, "hairDry")
+    dry_checks = dict(hair.last_checks)
+    cover_dry = hairline.coverage(_scalp, dry_obj, L["head_centre"], L["eye_z"], *_ear)
+    print(f"hair coverage dry: {cover_dry}")
+    parts += hair.last_extras
     hair.bake_ao(dry_obj, body, L["head_centre"], reach=preset["dryHair"].get("aoReach", 0.045))
     parts.append(dry_obj)
 
 checks = expressions.blink_check(body, L)
+checks["hairCoverWet"] = min(cover_wet.values())
+if preset.get("dryHair"):
+    checks["hairCoverDry"] = min(cover_dry.values())
+# Grommet's mop (grommet spec §3): the ringlets in the water and under the hat, and the frizz.
+if "curlBendRatio" in wet_checks:
+    checks["curlBendRatio"] = min(c["curlBendRatio"] for c in (wet_checks, hat_checks) if "curlBendRatio" in c)
+    checks["frizzMaxCm"], checks["frizzChordRatio"] = wet_checks["frizzMaxCm"], wet_checks["frizzChordRatio"]
+if lip_mm:
+    checks["upperLipMm"], checks["upperLipSculptedMm"] = lip_mm
+if preset.get("dryHair"):
+    checks.update({k: v for k, v in dry_checks.items() if not k.startswith("braid")})  # long dry hair's numbers (§13.1)
+# Shazza's braids (§13.2), dry and wet: how many, where the ends hang, and none of them inside the body.
+if "braids" in wet_checks or "braids" in dry_checks:
+    checks["braidsWet"] = wet_checks.get("braids", 0)
+    checks["braidsDry"] = dry_checks.get("braids", 0) if preset.get("dryHair") else 0
+    checks["braidEndDropCm"] = dry_checks.get("braidEndDropCm", []) + wet_checks.get("braidEndDropCm", [])
+    checks["braidEndsInFront"] = bool(dry_checks.get("braidEndsInFront", True) and wet_checks.get("braidEndsInFront", True))
+    checks["braidsOutside"] = dry_checks.get("braidInside", 0) == 0 and wet_checks.get("braidInside", 0) == 0
+    for key in ("braidPathTurnDeg", "braidTwistDeg", "braidStrandTurnDeg"):
+        checks[key] = max(c[key] for c in (dry_checks, wet_checks) if key in c)
+    checks["braidBendRatio"] = min(c["braidBendRatio"] for c in (dry_checks, wet_checks) if "braidBendRatio" in c)
+    print(f"braid vertices inside the body: dry {dry_checks.get('braidInside')}, wet {wet_checks.get('braidInside')}")
 if walk:
     checks["garmentsOutside"] = clothes.outside_check(garments, body)
 if hat_hair is not None:
-    checks["hatHairUnder"] = clothes.hat_hair_check(hat_hair, hat, band, L["head_centre"])
+    checks["hatHairUnder"] = all(clothes.hat_hair_check(o, hat, band, L["head_centre"]) for o in (hat_hair, *hat_extras))
 print(f"checks: {checks}")
 export.glb(rig, parts, os.path.join(out_dir, f"{name}.glb"))
 export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version(), L, spots, head_tris, checks)

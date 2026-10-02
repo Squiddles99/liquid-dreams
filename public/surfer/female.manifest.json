@@ -347,7 +347,7 @@
   },
   {
    "name": "female_hair",
-   "triangles": 28620,
+   "triangles": 60628,
    "materials": [
     "hair"
    ]
@@ -357,6 +357,20 @@
    "triangles": 2944,
    "materials": [
     "eyes"
+   ]
+  },
+  {
+   "name": "female_hairTies",
+   "triangles": 432,
+   "materials": [
+    "hairTie"
+   ]
+  },
+  {
+   "name": "female_hairBraid",
+   "triangles": 36144,
+   "materials": [
+    "hairBraid"
    ]
   },
   {
@@ -413,8 +427,22 @@
    ]
   },
   {
+   "name": "female_hairDryTies",
+   "triangles": 432,
+   "materials": [
+    "hairTie"
+   ]
+  },
+  {
+   "name": "female_hairDryBraid",
+   "triangles": 40392,
+   "materials": [
+    "hairDryBraid"
+   ]
+  },
+  {
    "name": "female_hairDry",
-   "triangles": 124582,
+   "triangles": 64652,
    "materials": [
     "hairDry"
    ]
@@ -459,20 +487,54 @@
   ],
   "lipFront": [
    0.0,
-   1.4737,
-   0.15743
+   1.47455,
+   0.15475
   ],
   "teethFront": [
    0.0,
    1.48323,
    0.14015
   ],
-  "eyeRadius": 0.0156
+  "eyeRadius": 0.0156,
+  "nipples": [
+   [
+    0.09805,
+    1.18285,
+    0.14409
+   ],
+   [
+    -0.09805,
+    1.18285,
+    0.14409
+   ]
+  ]
  },
  "headTriangles": 8456,
  "checks": {
   "blinkCovers": true,
   "eyesOpen": true,
+  "hairCoverWet": 0.2,
+  "hairCoverDry": 0.57,
+  "upperLipMm": 8.07,
+  "upperLipSculptedMm": 5.65,
+  "hairTurnSpreadCm": 1.79,
+  "hairTurnBlendCm": 5.0,
+  "sideburnAboveEyeCm": 0.71,
+  "hairFaceFrontness": 0.729,
+  "braidsWet": 2,
+  "braidsDry": 2,
+  "braidEndDropCm": [
+   17.0,
+   17.0,
+   16.8,
+   17.6
+  ],
+  "braidEndsInFront": true,
+  "braidsOutside": true,
+  "braidPathTurnDeg": 3.68,
+  "braidTwistDeg": 3.05,
+  "braidStrandTurnDeg": 10.86,
+  "braidBendRatio": 1.03,
   "garmentsOutside": true
  }
 }

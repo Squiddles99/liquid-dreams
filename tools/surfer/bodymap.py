@@ -35,9 +35,25 @@ def landmarks(body, rig, height, found, coords):
     mouth = found["mouth"]
     lip_band = [p for p in head_pts if mouth is not None and abs(p.x - mouth.x) < 0.008 and abs(p.z - mouth.z - 0.004) < 0.006]
     lip_front = min(lip_band, key=lambda p: p.y) if lip_band else None
+    # The nipples: each side's front-most skin on the chest, 6-14 cm (at 1.78 m) off the midline, between 0.69 and
+    # 0.76 of the height (the pecs' or the bust's apex) (Andrew: T-Bone had none).
+    k = height / 1.78
+    nipples = {}
+    for side, s in (("l", 1), ("r", -1)):
+        band = [v.co.copy() for v, (b, _) in zip(body.data.vertices, coords) if b in ("spine_02", "spine_03", "clavicle")
+                and 0.06 * k < v.co.x * s < 0.14 * k and 0.69 * height < v.co.z < 0.76 * height]
+        if band:  # a flat chest's front is shallow: the mean of the skin within 5 mm of its front-most point
+            y0 = min(p.y for p in band)
+            near = [p for p in band if p.y < y0 + 0.005]
+            nipples[side] = sum(near, Vector()) / len(near)
+        else:
+            nipples[side] = None
+    if nipples["l"] is not None and nipples["r"] is not None:  # the body's symmetric: so are they
+        l, r = nipples["l"], nipples["r"]
+        nipples = {"l": Vector(((l.x - r.x) / 2, (l.y + r.y) / 2, (l.z + r.z) / 2)), "r": Vector(((r.x - l.x) / 2, (l.y + r.y) / 2, (l.z + r.z) / 2))}
     return {"height": height, "head_centre": centre, "head_radius": radius, "eye_z": eye_z, "eyes": eyes, "mouth": mouth,
             "ears": ears, "nose": nose, "lip_front": lip_front, "upper_teeth": found.get("upper_teeth"),
-            "lower_teeth": found.get("lower_teeth"), "eye_radius": found.get("eye_radius", 0.0115)}
+            "lower_teeth": found.get("lower_teeth"), "eye_radius": found.get("eye_radius", 0.0115), "nipples": nipples}
 
 
 def bone_weights(body, rig):
