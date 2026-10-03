@@ -51,7 +51,8 @@ export interface CmuClipOptions {
 /**
  * A CMU take as a baked clip for one rider (spec §3.3): each of our bones' world rotation from rest is CMU's for its
  * segment times the rest alignment; the pelvis from the ankles' midpoint is CMU's, scaled to our leg; resampled to
- * `outFps`; a loop's last quarter second eased into its first frame. Root travel is dropped (the board places the rider).
+ * `outFps`; a loop's last quarter second eased into its first frame. Root travel and the room heading are dropped (the
+ * board places and turns the rider).
  */
 export function cmuClip(asf: Asf, frames: AmcFrame[], rest: SkeletonRest, o: CmuClipOptions): BakedClip {
   const A = restAlign(asf, rest);
@@ -59,17 +60,27 @@ export function cmuClip(asf: Asf, frames: AmcFrame[], rest: SkeletonRest, o: Cmu
   const ratio = measures(rest).legLen / (asf.bones.lfemur.length + asf.bones.ltibia.length);
   const cache = new Map<number, AsfPose>();
   const pose = (i: number): AsfPose => { let p = cache.get(i); if (!p) cache.set(i, (p = asfPose(asf, frames[i]))); return p; };
+  // The lead foot: the one further along the way the skater travels (the nose's side; toward its left is regular).
+  const first = pose(s), travel = pose(e).end.root.clone().sub(first.end.root).setY(0);
+  const lead = first.end.ltibia.dot(travel) >= first.end.rtibia.dot(travel) ? 'l' : 'r';
+  const noseSide = o.noseSide === 'auto' ? (lead === 'l' ? 'left' : 'right') : o.noseSide;
+  const leadT = noseSide === 'left' ? 'ltibia' : 'rtibia', trailT = noseSide === 'left' ? 'rtibia' : 'ltibia';
+  const noseAxis = new Vector3(noseSide === 'left' ? 1 : -1, 0, 0);
   const n = Math.max(2, Math.floor(((e - s) / o.fps) * o.outFps) + 1);
   const rots: Record<string, Quaternion[]> = {}, pelvis: Vector3[] = [];
   const pelvisOf = (p: AsfPose): Vector3 => p.end.root.clone().sub(p.end.ltibia.clone().add(p.end.rtibia).multiplyScalar(0.5)).multiplyScalar(ratio);
   for (let k = 0; k < n; k++) {
     const u = s + (k * o.fps) / o.outFps, i0 = Math.min(Math.floor(u), e), i1 = Math.min(i0 + 1, e), f = u - i0;
     const p0 = pose(i0), p1 = pose(i1);
-    pelvis.push(pelvisOf(p0).lerp(pelvisOf(p1), f));
+    // The capture room's heading taken out, frame by frame (the board's heading is the game's): the trail→lead ankle
+    // line turned onto the nose's side of the character frame; the body's turn against its feet stays.
+    const line = p0.end[leadT].clone().lerp(p1.end[leadT], f).sub(p0.end[trailT].clone().lerp(p1.end[trailT], f)).setY(0).normalize();
+    const deYaw = line.dot(noseAxis) < -0.9999 ? new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI) : new Quaternion().setFromUnitVectors(line, noseAxis);
+    pelvis.push(pelvisOf(p0).lerp(pelvisOf(p1), f).applyQuaternion(deYaw));
     for (const b of BONES) {
       if (b === 'root') continue;
       const c = CMU_BONE[b as Body];
-      (rots[b] ??= []).push(p0.rot[c].clone().slerp(p1.rot[c], f).multiply(A[b]));
+      (rots[b] ??= []).push(deYaw.clone().multiply(p0.rot[c].clone().slerp(p1.rot[c], f)).multiply(A[b]));
     }
   }
   if (o.loop) {
@@ -79,11 +90,6 @@ export function cmuClip(asf: Asf, frames: AmcFrame[], rest: SkeletonRest, o: Cmu
       pelvis[k].lerp(pelvis[0], a);
       for (const qs of Object.values(rots)) qs[k].slerp(qs[0], a);
     }
-  }
-  let noseSide = o.noseSide;
-  if (noseSide === 'auto') {
-    const a = pose(s), travel = pose(e).end.root.clone().sub(a.end.root).applyQuaternion(a.rot.root.clone().invert());
-    noseSide = travel.x >= 0 ? 'left' : 'right';
   }
   return {
     loop: o.loop, frames: n, noseSide,
