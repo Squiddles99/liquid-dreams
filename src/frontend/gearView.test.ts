@@ -19,6 +19,18 @@ describe('Grab your gear\'s panel (spec §4.3, §8, §9)', () => {
     expect(v.bars).not.toBeNull();
     expect(gearView(front({ rider: 'female', showSpecs: true }), today, 1).specs).toMatch(/ × .* · .* tail · /);
   });
+  it("offers Natural and Goofy on the Stance tab, the rider's own marked, and says which way each rides the left (Andrew, Gate B)", () => {
+    const v = gearView(front({ rider: 'male', gearTab: 'stance', gearFocus: 0 }), today, 1);
+    expect(v.tab).toBe('stance');
+    expect(v.rows.map((r) => [r.id, r.name, r.detail])).toEqual([['regular', 'Natural', 'Left foot forward'], ['goofy', 'Goofy', 'Right foot forward']]);
+    expect(v.rows.map((r) => r.pick)).toEqual([null, "T-Bone's stance"]);
+    expect(v.rows.map((r) => r.chosen)).toEqual([false, true]);
+    expect(v.note).toBe("The Womb's a left: Natural rides it backside, Goofy frontside.");
+    expect([v.bars, v.specs]).toEqual([null, null]);
+    const g = gearView(front({ rider: 'grommet', gearTab: 'stance', stances: { grommet: 'goofy' } }), today, 1);
+    expect(g.rows.map((r) => r.detail)).toEqual(['Drop-knee, left foot forward', 'Drop-knee, right foot forward']);
+    expect(g.rows.map((r) => r.chosen)).toEqual([false, true]);
+  });
   it('gives Grommet only his bodyboard, his pick', () => {
     const v = gearView(front({ rider: 'grommet' }), today, 1);
     expect(v.rows.map((r) => r.name)).toEqual(['Bodyboard']);

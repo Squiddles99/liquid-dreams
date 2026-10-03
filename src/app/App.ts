@@ -1002,7 +1002,7 @@ export class App {
     window.setTimeout(() => {
       const lineup = DEFAULT_SURFER_PARAMS;
       Object.assign(this.surferParams, {
-        enabled: true, onLand: false, preset: choice.rider, board: choice.board, outfit: choice.outfit, pose: 'sit', gang: false,
+        enabled: true, onLand: false, preset: choice.rider, board: choice.board, outfit: choice.outfit, stance: choice.stance, pose: 'sit', gang: false,
         x: lineup.x, z: lineup.z, headingDeg: lineup.headingDeg, heightNudgeM: 0, expression: 'none',
       });
       normalizeSurferParams(this.surferParams);

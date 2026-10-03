@@ -41,6 +41,7 @@ describe('settings and remembered choices (dune select spec §3, §11; Review Fo
     expect(c.rider).toBe('grommet');
     expect(c.boards).toEqual({ female: 'stepUp' });
     expect(c.outfits).toEqual({ male: 'season' });
+    expect(sanitizeChoices({ stances: { female: 'goofy', male: 'sideways', grommet: 'regular' } }).stances).toEqual({ female: 'goofy', grommet: 'regular' });
     expect(c.setup).toEqual(DEFAULT_CHOICES.setup);
     expect(sanitizeChoices('{broken').rider).toBe('female');
   });

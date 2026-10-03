@@ -1,7 +1,7 @@
 // src/frontend/frontSettings.ts
 import type { BoardKind } from '../board/boardSpec';
 import type { SettingsStorage } from '../dev/devSettings';
-import { PRESETS, type PresetName, boardsFor } from '../surfer/presets';
+import { PRESETS, type PresetName, type Stance, boardsFor } from '../surfer/presets';
 import { type OutfitChoice, presetOutfits } from '../surfer/wardrobe';
 import { WEATHER_PRESET_NAMES } from '../weather/weather';
 import { FIRST_PRESET, FROM_WINDOW, type SessionSetup, TIDE_STOPS, TIME_STOPS, WIND_ROWS, presetById } from './sessionSetup';
@@ -50,9 +50,11 @@ export interface SavedChoices {
   /** A board the player swapped to, per rider (absent: the rider's pick). */
   boards: Partial<Record<PresetName, BoardKind>>;
   outfits: Partial<Record<PresetName, OutfitChoice>>;
+  /** A stance the player swapped to, per rider (absent: the rider's own). */
+  stances: Partial<Record<PresetName, Stance>>;
 }
 
-export const DEFAULT_CHOICES: Readonly<SavedChoices> = { setup: presetById(FIRST_PRESET)!.setup, rider: 'female', boards: {}, outfits: {} };
+export const DEFAULT_CHOICES: Readonly<SavedChoices> = { setup: presetById(FIRST_PRESET)!.setup, rider: 'female', boards: {}, outfits: {}, stances: {} };
 
 export function sanitizeSetup(raw: unknown): SessionSetup {
   const d = DEFAULT_CHOICES.setup;
@@ -76,16 +78,18 @@ export function sanitizeSetup(raw: unknown): SessionSetup {
 const RIDERS: readonly PresetName[] = ['female', 'male', 'grommet'];
 
 export function sanitizeChoices(raw: unknown): SavedChoices {
-  if (!isObj(raw)) return { ...DEFAULT_CHOICES, boards: {}, outfits: {} };
-  const boards: Partial<Record<PresetName, BoardKind>> = {}, outfits: Partial<Record<PresetName, OutfitChoice>> = {};
+  if (!isObj(raw)) return { ...DEFAULT_CHOICES, boards: {}, outfits: {}, stances: {} };
+  const boards: Partial<Record<PresetName, BoardKind>> = {}, outfits: Partial<Record<PresetName, OutfitChoice>> = {}, stances: Partial<Record<PresetName, Stance>> = {};
   for (const n of RIDERS) {
     const b = isObj(raw.boards) ? raw.boards[n] : undefined;
     if (boardsFor(PRESETS[n]).includes(b as BoardKind)) boards[n] = b as BoardKind;
     const o = isObj(raw.outfits) ? raw.outfits[n] : undefined;
     const allowed: OutfitChoice[] = ['season', ...presetOutfits(PRESETS[n]).filter((x) => x !== 'walking')];
     if (allowed.includes(o as OutfitChoice)) outfits[n] = o as OutfitChoice;
+    const st = isObj(raw.stances) ? raw.stances[n] : undefined;
+    if (st === 'regular' || st === 'goofy') stances[n] = st;
   }
-  return { setup: sanitizeSetup(raw.setup), rider: oneOf(raw.rider, RIDERS, DEFAULT_CHOICES.rider), boards, outfits };
+  return { setup: sanitizeSetup(raw.setup), rider: oneOf(raw.rider, RIDERS, DEFAULT_CHOICES.rider), boards, outfits, stances };
 }
 
 /** JSON from storage, or null (missing, unreadable, or a storage that throws). */

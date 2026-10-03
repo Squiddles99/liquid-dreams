@@ -158,11 +158,17 @@ registerSelfTest({
     return withRoot(1920, 1080, (root, l) => {
       const p = new GearPanel(() => {});
       root.appendChild(p.el);
-      p.render(gearView({ ...initialFront(DEFAULT_CHOICES), beat: 'gear' }, new Date('2026-07-10T09:00:00+08:00'), 1), 'xbox', true);
-      const texts = [...p.el.querySelectorAll('span, div')].filter((e) => e.childElementCount === 0 && e.textContent);
-      const tiny = texts.filter((t) => parseFloat(getComputedStyle(t).fontSize) < 18);
-      const outside = texts.filter((t) => { const r = designBox(t, root, l.scale); return r.x + r.w > l.designW - l.safeX + 0.5 || r.y + r.h > l.designH - l.safeY + 0.5; });
-      return { pass: tiny.length === 0 && outside.length === 0 && p.el.querySelectorAll('[data-index]').length === 3, detail: `${tiny.length} small, ${outside.length} outside` };
+      let tiny = 0, outside = 0;
+      const rows: number[] = [];
+      // Each tab: Shazza's two surfboards, her three surf outfits, the two stances.
+      for (const gearTab of ['board', 'outfit', 'stance'] as const) {
+        p.render(gearView({ ...initialFront(DEFAULT_CHOICES), beat: 'gear', gearTab }, new Date('2026-07-10T09:00:00+08:00'), 1), 'xbox', true);
+        const texts = [...p.el.querySelectorAll('span, div')].filter((e) => e.childElementCount === 0 && e.textContent);
+        tiny += texts.filter((t) => parseFloat(getComputedStyle(t).fontSize) < 18).length;
+        outside += texts.filter((t) => { const r = designBox(t, root, l.scale); return r.x + r.w > l.designW - l.safeX + 0.5 || r.y + r.h > l.designH - l.safeY + 0.5; }).length;
+        rows.push(p.el.querySelectorAll('[data-index]').length);
+      }
+      return { pass: tiny === 0 && outside === 0 && rows.join() === '2,3,2', detail: `${tiny} small, ${outside} outside, rows ${rows.join('/')}` };
     });
   },
 });

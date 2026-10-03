@@ -1,6 +1,6 @@
 // src/frontend/riderView.ts
 import { PRESETS, type PresetName } from '../surfer/presets';
-import type { FrontState } from './frontEnd';
+import { type FrontState, stanceOf } from './frontEnd';
 import { RIDER_COPY, RIDER_ORDER, crewNote, ridesLabel, stanceLabel } from './riderCopy';
 
 export interface RiderView {
@@ -18,7 +18,7 @@ export function riderView(s: FrontState): RiderView {
     tabs: RIDER_ORDER.map((n) => ({ rider: n, label: PRESETS[n].nickname.toUpperCase(), focused: n === r })),
     nickname: PRESETS[r].nickname,
     realName: PRESETS[r].realName,
-    rows: [{ label: 'Stance', value: stanceLabel(r) }, { label: 'Rides', value: ridesLabel(r) }, { label: 'Style', value: c.style }, { label: 'Loves', value: c.loves }],
+    rows: [{ label: 'Stance', value: stanceLabel(stanceOf(s, r)) }, { label: 'Rides', value: ridesLabel(r) }, { label: 'Style', value: c.style }, { label: 'Loves', value: c.loves }],
     line: c.pickLine,
     note: crewNote(r),
   };

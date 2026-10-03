@@ -1,6 +1,6 @@
 // src/frontend/ui/slidePanel.ts
 import { PRESETS, type PresetName } from '../../surfer/presets';
-import type { FrontAction, FrontState } from '../frontEnd';
+import { type FrontAction, type FrontState, stanceOf } from '../frontEnd';
 import { glyphFor } from '../glyphs';
 import { riderView } from '../riderView';
 import type { Device } from '../uiInput';
@@ -24,7 +24,8 @@ const place = (el: HTMLElement, gap: number, width = 600): HTMLElement => {
 export class SlidePanel {
   readonly el = document.createElement('div');
   private readonly body = document.createElement('div');
-  private shown: PresetName | null = null;
+  /** The rider and stance on show (a stance swapped in Grab your gear re-renders the panel). */
+  private shown: string | null = null;
   private device: Device = 'keyboard';
 
   constructor(private readonly onPointer: (p: Intent) => void) {
@@ -56,9 +57,10 @@ export class SlidePanel {
   }
 
   render(s: FrontState, calm: boolean): void {
-    if (this.shown === s.rider) return;
+    const key = `${s.rider}:${stanceOf(s, s.rider)}`;
+    if (this.shown === key) return;
     const fade = this.shown !== null && !calm;
-    this.shown = s.rider;
+    this.shown = key;
     const v = riderView(s);
 
     const tabs = place(document.createElement('div'), 0, 640);

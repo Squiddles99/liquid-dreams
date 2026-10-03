@@ -1,6 +1,6 @@
 // src/frontend/riderCopy.ts
 import type { BoardKind } from '../board/boardSpec';
-import { PRESETS, type PresetName, boardsFor } from '../surfer/presets';
+import { PRESETS, type PresetName, type Stance, boardsFor } from '../surfer/presets';
 import { type RowId, type SessionSetup, swellBand } from './sessionSetup';
 
 export type SizeBand = 'small' | 'fun' | 'solid' | 'big';
@@ -98,7 +98,8 @@ export const RIDER_COPY: Record<PresetName, RiderCopy> = {
   },
 };
 
-export const stanceLabel = (name: PresetName): string => (PRESETS[name].defaultStance === 'regular' ? 'Regular' : 'Goofy');
+/** Natural (regular: left foot forward) or Goofy (Andrew's words, Gate B). */
+export const stanceLabel = (stance: Stance): string => (stance === 'regular' ? 'Natural' : 'Goofy');
 
 export function ridesLabel(name: PresetName): string {
   const words = boardsFor(PRESETS[name]).map((k) => RIDES[k]);
