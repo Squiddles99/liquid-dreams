@@ -2,7 +2,9 @@
 import type { SettingsStorage } from '../dev/devSettings';
 import { PRESETS } from '../surfer/presets';
 import { type CoreCue, type FrontEndHost, FrontEndCore } from './frontEndCore';
-import { DEFAULT_FRONT_SETTINGS, FRONT_CHOICES_KEY, FRONT_SETTINGS_KEY, type FrontSettings, loadJson, safeAreaFraction, sanitizeChoices, sanitizeFrontSettings } from './frontSettings';
+import { DEFAULT_FRONT_SETTINGS, FRONT_CHOICES_KEY, FRONT_SETTINGS_KEY, type FrontSettings, loadJson, safeAreaFraction, sanitizeChoices, sanitizeFrontSettings, saveJson } from './frontSettings';
+import { SETTING_ROWS, type SettingRow, stepSetting } from './settingsView';
+import { SettingsPanel } from './ui/settingsPanel';
 import { gearView } from './gearView';
 import { BreakMap } from './ui/breakMap';
 import { ConditionsPanel } from './ui/conditionsPanel';
@@ -52,6 +54,9 @@ export class FrontEnd {
   private beatEls: Record<'conditions' | 'rider' | 'gear', HTMLElement> | null = null;
   private parts: { cond: ConditionsPanel; map: BreakMap; slide: SlidePanel; gear: GearPanel; legend: Legend; line: RiderLine; bottom: HTMLElement } | null = null;
   private shownBeat: string | null = null;
+  /** The Settings overlay while it's open (Back + START), and its focused row. */
+  private settingsPanel: SettingsPanel | null = null;
+  private settingsFocus: SettingRow = 'textScale';
   private size = { w: window.innerWidth, h: window.innerHeight };
   private readonly today = new Date();
 
@@ -92,7 +97,10 @@ export class FrontEnd {
     if (!this.root || !this.core || !this.parts || !this.input) return;
     const now = performance.now(), { actions, device } = this.input.poll(now);
     if (actions.length) this.device = this.settings.glyphs === 'auto' ? device : this.settings.glyphs;
-    for (const a of actions) this.cue(this.core.act(a, now));
+    for (const a of actions) {
+      if (this.settingsPanel) this.settingsAct(a);
+      else this.cue(this.core.act(a, now));
+    }
     this.cue(this.core.update(dtS, now));
     this.render(now);
     if (this.core.state.beat === 'out') this.close();
@@ -104,6 +112,7 @@ export class FrontEnd {
     this.host.stage(null, null);
     this.sound.setFrontEndMusic(false);
     this.root = this.core = this.input = this.parts = this.beatEls = null;
+    this.settingsPanel = null;
     this.shownBeat = null;
   }
 
@@ -122,8 +131,57 @@ export class FrontEnd {
     if (c.settings) this.openSettings();
   }
 
-  /** Task 23 fills this in. */
-  private openSettings(): void {}
+  /** The Settings overlay over everything (spec §11). */
+  private openSettings(): void {
+    if (this.settingsPanel || !this.root) return;
+    this.settingsPanel = new SettingsPanel();
+    this.settingsFocus = 'textScale';
+    this.root.appendChild(this.settingsPanel.el);
+    this.root.classList.add('is-settings');
+    if (this.parts) this.root.appendChild(this.parts.legend.el); // the legend stays above the overlay's scrim
+    this.settingsPanel.render(this.settings, this.settingsFocus);
+  }
+
+  private closeSettings(): void {
+    this.settingsPanel?.el.remove();
+    this.settingsPanel = null;
+    this.root?.classList.remove('is-settings');
+  }
+
+  /** While Settings is open: up and down move the focus (wrapping), left and right change the value, B or the chord closes. */
+  private settingsAct(a: string): void {
+    const panel = this.settingsPanel!, calm = this.settings.calmMenus;
+    if (a === 'back' || a === 'settings') {
+      this.sounds?.play('back');
+      this.closeSettings();
+      return;
+    }
+    if (a === 'up' || a === 'down') {
+      const i = SETTING_ROWS.indexOf(this.settingsFocus), n = SETTING_ROWS.length;
+      this.settingsFocus = SETTING_ROWS[(i + (a === 'down' ? 1 : -1) + n) % n];
+      this.sounds?.play('focus');
+    } else if (a === 'left' || a === 'right') {
+      const dir = a === 'right' ? 1 : -1, r = stepSetting(this.settings, this.settingsFocus, dir);
+      if (r.atEnd) {
+        this.sounds?.play('end');
+        panel.nudge(this.settingsFocus, dir, calm);
+      } else {
+        this.settings = r.settings;
+        this.sounds?.play('value');
+        panel.slide(this.settingsFocus, dir, calm);
+        this.applySettings();
+      }
+    }
+    panel.render(this.settings, this.settingsFocus);
+  }
+
+  /** A settings change: saved, the layout re-applied (text size, safe area), calm passed on, glyphs overridden. */
+  private applySettings(): void {
+    if (this.storage) saveJson(this.storage, FRONT_SETTINGS_KEY, this.settings);
+    this.resize(this.size.w, this.size.h);
+    this.core?.setCalm(this.settings.calmMenus);
+    if (this.settings.glyphs !== 'auto') this.device = this.settings.glyphs;
+  }
 
   private render(now: number): void {
     const s = this.core!.state, p = this.parts!, calm = this.settings.calmMenus;
@@ -142,7 +200,7 @@ export class FrontEnd {
     p.slide.setDevice(this.device);
     p.slide.render(s, calm);
     if (s.beat === 'gear') p.gear.render(gearView(s, this.today, 1), this.device, calm);
-    p.legend.set(legendFor(s), this.device);
+    p.legend.set(this.settingsPanel ? [{ action: 'back', text: 'Back' }] : legendFor(s), this.device);
     p.line.update(now);
     // The mockup's spots: over the sea left of the panel in Grab your gear, over the water in Conditions.
     const pos = s.beat === 'gear' ? { left: '700px', top: '250px' } : { left: '760px', top: '438px' };

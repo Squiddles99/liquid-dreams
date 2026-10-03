@@ -55,3 +55,5 @@
 .fe-tab { color: rgba(247, 236, 210, 0.55); padding-bottom: 8px; border-bottom: 4px solid transparent; }
 .fe-tab.is-focus { color: var(--fe-cream); border-bottom-color: var(--fe-sun); }
 .fe-root.is-calm .fe-row, .fe-root.is-calm .fe-arrow { transition: none; }
+/* Settings open: only the overlay and the legend show; the beat's UI underneath is hidden, not seen through. */
+.fe-root.is-settings > :not(.fe-settings):not(.fe-legend) { visibility: hidden; }
