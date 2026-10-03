@@ -451,6 +451,85 @@ function faceArrival(f: ProfileFrame, Lf: number): Vec2 {
   return [-Math.cos(a) * Lf, Math.sin(a) * Lf];
 }
 
+/**
+ * The face and the tube's back as one hollow curve (Andrew, 2026-10-03, his red line): from where the face leaves the
+ * sheet (F), through where the lip lands (P), up the back wall to the tube's round end (R), where the lip's ceiling
+ * starts, in two Hermite pieces sharing their direction at P and arriving at R along the ceiling's own start. The face
+ * used to rise to P and the tube's floor (its Longuet-Higgins lower side) turn back from there nearly flat: a 62° corner
+ * at 12 ft while the lip was in the air, the step. `piece` 0 is F→P, 1 is P→R; s ∈ [0, 1] along it.
+ */
+export function hollowCurve(f: ProfileFrame, piece: 0 | 1, s: number): Vec2 {
+  const R = tubeUpper(f.tube, 0), R1 = tubeUpper(f.tube, CEILING_START_XI);
+  const dR = norm2([R1[0] - R[0], R1[1] - R[1]]);
+  // A conic (rational quadratic) from F, leaving along the sheet (tF), to R, arriving along the ceiling's start (dR): its
+  // control is where the two lines meet, X, and every such arc turns one way only — hollow by construction. Its weight
+  // picks the arc: 1 (a parabola) while the lip is in the air, then the one through the landing point P as the throw
+  // completes (Andrew's red line: before the landing the face doesn't reach for P, which can stand above it).
+  // The face leaves the foot along the sheet, unless the landing point lies under that line (a wide face's foot out past
+  // the trough, faceWidth 3: the arc passed over P and the landing tip came up through it); then just under P.
+  const above = (f.P[0] - f.F[0]) * f.tF[1] - (f.P[1] - f.F[1]) * f.tF[0];
+  const toP = norm2([f.P[0] - f.F[0], f.P[1] - f.F[1]]), dip = HOLLOW_FOOT_DIP;
+  const tF: Vec2 = above >= 0 ? f.tF : norm2([toP[0] * Math.cos(dip) - toP[1] * Math.sin(dip), toP[0] * Math.sin(dip) + toP[1] * Math.cos(dip)]);
+  const det = tF[0] * dR[1] - tF[1] * dR[0];
+  const rx = R[0] - f.F[0], ry = R[1] - f.F[1];
+  const a = (rx * dR[1] - ry * dR[0]) / det, b = (tF[0] * ry - tF[1] * rx) / det;
+  const w = smoothstep(0, HOLLOW_SETTLE, f.prog);
+  if (!(Math.abs(det) > 1e-6) || !(a > 1e-3) || !(b > 1e-3)) {
+    // The two directions don't meet ahead of both ends: the straight chord (no bend either way), the landing on it.
+    const tP = Math.min(1, Math.max(0, ((f.P[0] - f.F[0]) * rx + (f.P[1] - f.F[1]) * ry) / Math.max(rx * rx + ry * ry, 1e-9)));
+    const tS = 0.5 + (tP - 0.5) * w, t = piece === 0 ? s * tS : tS + s * (1 - tS);
+    return [f.F[0] + rx * t, f.F[1] + ry * t];
+  }
+  // The back wall goes no further behind the tube's round end than HOLLOW_BACK_H × H_I (Andrew's red line: just behind the
+  // crest, no pocket carved into the wave's back). The young tube's ceiling leaves its round end leaning forward, and
+  // arriving along it the arc swung 2.5 m behind the crest; there the face arrives a little steeper than the ceiling leaves.
+  const aMax = (R[0] - HOLLOW_BACK_H * f.HI - f.F[0]) / Math.min(tF[0], -1e-6);
+  const X: Vec2 = [f.F[0] + tF[0] * Math.min(a, aMax), f.F[1] + tF[1] * Math.min(a, aMax)];
+  // P in barycentric coordinates over (F, X, R), kept inside the triangle (a landing point above the chord can't be on a
+  // hollow face: the arc runs along the chord there and the lip drops the last of the way).
+  const bary = (q: Vec2): [number, number, number] => {
+    const v0x = X[0] - f.F[0], v0y = X[1] - f.F[1], qx = q[0] - f.F[0], qy = q[1] - f.F[1];
+    const d = v0x * ry - v0y * rx;
+    const bx = (qx * ry - qy * rx) / d, gr = (v0x * qy - v0y * qx) / d;
+    return [1 - bx - gr, bx, gr];
+  };
+  let [al, be, ga] = bary(f.P);
+  al = Math.max(al, HOLLOW_EPS); be = Math.max(be, HOLLOW_EPS); ga = Math.max(ga, HOLLOW_EPS);
+  const sum = al + be + ga; al /= sum; be /= sum; ga /= sum;
+  const tP = Math.sqrt(ga) / (Math.sqrt(al) + Math.sqrt(ga)), omP = be / (2 * Math.sqrt(al * ga));
+  const om = 1 + (Math.max(omP, HOLLOW_MIN_WEIGHT) - 1) * w, tS = 0.5 + (tP - 0.5) * w;
+  const conic = (t: number): Vec2 => {
+    const u = 1 - t, k0 = u * u, k1 = 2 * om * t * u, k2 = t * t, den = k0 + k1 + k2;
+    return [(k0 * f.F[0] + k1 * X[0] + k2 * R[0]) / den, (k0 * f.F[1] + k1 * X[1] + k2 * R[1]) / den];
+  };
+  if (piece === 0 || s <= 1 - HOLLOW_THROAT) return conic(piece === 0 ? s * tS : tS + s * (1 - tS));
+  // The throat: over the wall's last HOLLOW_THROAT the face rounds over into the ceiling's start (a young curl's ceiling
+  // leaves the round end leaning forward; the arc, kept from swinging behind the crest, arrives steeper than that).
+  const tA = tS + (1 - HOLLOW_THROAT) * (1 - tS), A = conic(tA), A1 = conic(Math.min(1, tA + 1e-4));
+  const dA = norm2([A1[0] - A[0], A1[1] - A[1]]), q = (s - (1 - HOLLOW_THROAT)) / HOLLOW_THROAT;
+  // A parabola between the two directions (where they meet, Y): it turns one way only.
+  const dt = dA[0] * dR[1] - dA[1] * dR[0], ax = R[0] - A[0], ay = R[1] - A[1];
+  const ya = (ax * dR[1] - ay * dR[0]) / dt, yb = (dA[0] * ay - dA[1] * ax) / dt;
+  if (!(Math.abs(dt) > 1e-6) || !(ya > 0) || !(yb > 0)) return lerp2(A, R, q);
+  const Y: Vec2 = [A[0] + dA[0] * ya, A[1] + dA[1] * ya], v = 1 - q;
+  return [v * v * A[0] + 2 * v * q * Y[0] + q * q * R[0], v * v * A[1] + 2 * v * q * Y[1] + q * q * R[1]];
+}
+/** The share of the back wall (its last samples) over which the face rounds over into the ceiling. */
+export const HOLLOW_THROAT = 0.35;
+/** The landing point's barycentric weights are kept at least this (a landing point outside the triangle is clamped in). */
+export const HOLLOW_EPS = 1e-3;
+/** Where the landing point lies under the sheet's line at the foot, the face leaves aimed this far (rad) under it. */
+export const HOLLOW_FOOT_DIP = 0.02;
+/** By this share of the throw the face has settled onto the arc through the landing point (the tip, nearly down, must not
+ * clip a face still on its way there: a wide face, faceWidth 3, crossed at 95%). */
+export const HOLLOW_SETTLE = 0.8;
+/** The hollow face's back wall reaches at most this × H_I behind the tube's round end (~0.4 m at 12 ft: Andrew's red line). */
+export const HOLLOW_BACK_H = 0.04;
+/** The arc is never flatter than this weight: below it the bend gathers into kinks at the foot and the back wall. */
+export const HOLLOW_MIN_WEIGHT = 0.5;
+/** The ceiling's start direction at the tube's round end is read this far along its upper side (√ξ: along the normal). */
+export const CEILING_START_XI = 1e-3;
+
 /** The constructed (unblended) point for sample j, its lip thickness, lipness, and the x its lift is read at. */
 function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; thickness: number; lipness: number; liftX: number } {
   const { seg, s } = sampleSegment(j);
@@ -459,16 +538,10 @@ function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; t
     case 'front':
     case 'back':
       return on(baseHome);
-    case 'face': {
-      // From where the face leaves the sheet up to where the lip lands: one concave curve. It arrives along the tube's lower
-      // side where that is steeper than the arc mirroring the foot's direction about the chord; else along that arc, and
-      // the face meets the tube's floor at the lip's contact point (the Longuet-Higgins floor runs back from its point at
-      // the tilt less the cusp's half angle, ~26° in state 4, shallower than the face under it).
-      const Lf = Math.hypot(f.P[0] - f.F[0], f.P[1] - f.F[1]);
-      return on(hermite(f.F, [f.tF[0] * Lf, f.tF[1] * Lf], f.P, faceArrival(f, Lf), s));
-    }
-    case 'wall': // the tube's lower side, from where the lip lands back up to its round end
-      return on(s === 0 ? f.P : tubeLower(f.tube, f.xiEnd * (1 - s)));
+    case 'face': // from where the face leaves the sheet up to where the lip lands (hollowCurve's first piece)
+      return on(hollowCurve(f, 0, s));
+    case 'wall': // on up the back wall to the tube's round end, where the ceiling starts (hollowCurve's second piece)
+      return on(hollowCurve(f, 1, s));
     case 'under': { // the tube's upper side, the lip's underside, from the round end out to the tip
       const xi = s * f.xiTip, pt = tubeUpper(f.tube, xi);
       return on(pt, lipThicknessAt(f, xi), 1, pt[0]);
@@ -586,12 +659,15 @@ export function buildProfile(base: (u: number) => Vec2, input: ProfileInput, p: 
   return out;
 }
 
-/** The tube's measurements off a profile at the lip's landing (tests): its area (the wall and underside samples, closed),
- * width ÷ length and tilt about its farthest point from where the lip lands, and the lip's band area. */
-export function tubeMetrics(p: Profile): { area: number; aspect: number; tiltDeg: number; lipArea: number } {
+/** The tube's measurements off a profile at the lip's landing (tests): the equations' tube (its Longuet-Higgins lower side
+ * from where the lip lands back to its round end, closed by the drawn underside) — its area, width ÷ length and tilt about
+ * its farthest point from where the lip lands — the lip's band area, and the air the drawn profile encloses (the hollow
+ * face and the underside: Andrew's red line, 2026-10-03, the face is the tube's floor). */
+export function tubeMetrics(p: Profile): { area: number; aspect: number; tiltDeg: number; lipArea: number; airArea: number } {
   const n = PROFILE_SEGMENTS, w0 = n.front + n.face, u0 = w0 + n.wall, c0 = u0 + n.under, o0 = c0 + n.cap;
   const shoelace = (q: readonly Vec2[]): number => { let a = 0; for (let i = 0; i < q.length; i++) { const x = q[i], y = q[(i + 1) % q.length]; a += x[0] * y[1] - y[0] * x[1]; } return Math.abs(a) / 2; };
-  const tube = p.points.slice(w0, c0), P = p.frame.P;
+  const f = p.frame, lower = Array.from({ length: n.wall }, (_, i) => (i === 0 ? f.P : tubeLower(f.tube, f.xiEnd * (1 - i / n.wall))));
+  const tube = [...lower, ...p.points.slice(u0, c0)], P = p.frame.P;
   let far = tube[0], best = -1;
   for (const q of tube) { const d = Math.hypot(q[0] - P[0], q[1] - P[1]); if (d > best) { best = d; far = q; } }
   const ax: Vec2 = norm2([far[0] - P[0], far[1] - P[1]]), across: Vec2 = [-ax[1], ax[0]];
@@ -599,7 +675,7 @@ export function tubeMetrics(p: Profile): { area: number; aspect: number; tiltDeg
   // The lip's band: its underside from over the tube's top out to the tip, then its outer surface from the tip back.
   const fromTop = Math.ceil((n.under * p.frame.xiTop) / Math.max(p.frame.xiTip, 1e-9));
   const band = [...p.points.slice(u0 + Math.min(fromTop, n.under - 1), c0), ...p.points.slice(o0, o0 + Math.round(n.outer * OUTER_LIP_SHARE) + 1)];
-  return { area: shoelace(tube), aspect: (Math.max(...w) - Math.min(...w)) / best, tiltDeg: (Math.atan2(ax[1], -ax[0]) * 180) / Math.PI, lipArea: shoelace(band) };
+  return { area: shoelace(tube), aspect: (Math.max(...w) - Math.min(...w)) / best, tiltDeg: (Math.atan2(ax[1], -ax[0]) * 180) / Math.PI, lipArea: shoelace(band), airArea: shoelace(p.points.slice(w0, c0)) };
 }
 
 /**
