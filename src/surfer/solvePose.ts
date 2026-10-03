@@ -108,7 +108,7 @@ export function solvePose(rest: SkeletonRest, t: PoseTargets, board: BoardFrame,
     J[fa] = fk(fa);
     D[fa] = aimRotation(restDir(fa, h), NEG_Z, ik.end.clone().sub(J[fa]), pole);
     J[h] = fk(h);
-    D[h] = D[fa].clone();
+    D[h] = ht.dir ? aimRotation(restDir(fa, h), NEG_Z, ht.frame === 'board' ? dirW(ht.dir) : ht.dir.clone().applyQuaternion(Ds3), pole) : D[fa].clone();
   }
 
   for (const g of legs) {
