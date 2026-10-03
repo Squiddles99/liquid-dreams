@@ -66,30 +66,66 @@ export const CHASE_UP_M = 3.2;
 export const CHASE_CLEAR_M = 1.8;
 /** Seconds for the camera to settle on a new spot. */
 export const CHASE_TAU_S = 0.35;
+/**
+ * Up and riding (Andrew: "front-on, slightly looking into the barrel"): ahead of the rider along the wave, out in front of
+ * its face, low, looking back at her and the curl behind her.
+ */
+export const FRONT_AHEAD_M = 7;
+export const FRONT_OUT_M = 4;
+export const FRONT_UP_M = 1.4;
+/** The look aims this far behind her along the line, into the curl. */
+export const FRONT_LOOK_BACK_M = 2.5;
 
-/** A chase camera that eases after the board, behind it along its travel (its heading when slow). */
+/**
+ * The ride's camera, easing after the board: paddling, behind it along its travel (its heading when slow); up and riding,
+ * front-on from the shoulder.
+ */
 export class RideCamera {
   private pos: Vector3 | null = null;
   private dir = new Vector3(1, 0, 0);
+  /** Which way along the wave the rider is going (horizontal unit), smoothed so it doesn't flip in a carve. */
+  private line: Vector3 | null = null;
 
   reset(): void {
     this.pos = null;
+    this.line = null;
   }
 
   update(b: RideBody, dt: number, waterY: (x: number, z: number) => number): CameraPose {
-    const sp = speedOf(b);
-    const [fx, fz] = forwardOf(b.headingDeg);
-    const want = sp > 2 ? new Vector3(b.vx / sp, 0, b.vz / sp) : new Vector3(fx, 0, fz);
     const a = this.pos ? 1 - Math.exp(-dt / CHASE_TAU_S) : 1;
-    this.dir.lerp(want, a).normalize();
-    const target = new Vector3(b.x - this.dir.x * CHASE_BACK_M, b.y + CHASE_UP_M, b.z - this.dir.z * CHASE_BACK_M);
-    target.y = Math.max(target.y, waterY(target.x, target.z) + CHASE_CLEAR_M, waterY((target.x + b.x) / 2, (target.z + b.z) / 2) + CHASE_CLEAR_M);
+    const up = b.phase === 'ride' || b.phase === 'popup' || b.phase === 'bail';
+    let target: Vector3, lookAt: Vector3;
+    if (up) {
+      const w = b.water, d = new Vector3(w.dirX, 0, w.dirZ).normalize();
+      // Along the wave: the board's motion (its heading when slow) less its part along the swell's travel.
+      const sp = speedOf(b), [fx, fz] = forwardOf(b.headingDeg);
+      const v = sp > 2 ? new Vector3(b.vx, 0, b.vz) : new Vector3(fx, 0, fz);
+      const along = v.addScaledVector(d, -v.dot(d));
+      if (along.lengthSq() < 1e-6) along.set(-d.z, 0, d.x);
+      along.normalize();
+      if (!this.line) this.line = along.clone();
+      else this.line.lerp(along, 1 - Math.exp(-dt / 0.8)).normalize();
+      const L = this.line;
+      target = new Vector3(b.x, 0, b.z).addScaledVector(L, FRONT_AHEAD_M).addScaledVector(d, FRONT_OUT_M);
+      target.y = waterY(target.x, target.z) + FRONT_UP_M;
+      lookAt = new Vector3(b.x, b.y + 1, b.z).addScaledVector(L, -FRONT_LOOK_BACK_M);
+    } else {
+      this.line = null;
+      const sp = speedOf(b);
+      const [fx, fz] = forwardOf(b.headingDeg);
+      const want = sp > 2 ? new Vector3(b.vx / sp, 0, b.vz / sp) : new Vector3(fx, 0, fz);
+      this.dir.lerp(want, a).normalize();
+      target = new Vector3(b.x - this.dir.x * CHASE_BACK_M, b.y + CHASE_UP_M, b.z - this.dir.z * CHASE_BACK_M);
+      target.y = Math.max(target.y, waterY(target.x, target.z) + CHASE_CLEAR_M, waterY((target.x + b.x) / 2, (target.z + b.z) / 2) + CHASE_CLEAR_M);
+      lookAt = new Vector3(b.x, b.y + 1, b.z);
+    }
     if (!this.pos) this.pos = target.clone();
     else this.pos.lerp(target, a);
-    const look = new Vector3(b.x, b.y + 1, b.z).sub(this.pos);
+    // Never under the water where the camera is now (the face can rise under it while it eases).
+    this.pos.y = Math.max(this.pos.y, waterY(this.pos.x, this.pos.z) + 0.5);
+    const look = lookAt.sub(this.pos);
     const yawDeg = Math.atan2(look.x, -look.z) / DEG;
     const pitchDeg = Math.atan2(look.y, Math.hypot(look.x, look.z)) / DEG;
     return { mode: 'free', position: [this.pos.x, this.pos.y, this.pos.z], yawDeg: ((yawDeg % 360) + 360) % 360, pitchDeg };
   }
 }
-
