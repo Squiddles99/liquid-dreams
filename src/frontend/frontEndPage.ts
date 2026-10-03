@@ -14,6 +14,32 @@ import { SlidePanel } from './ui/slidePanel';
 import { type Device, UiInput } from './uiInput';
 import { UiSounds, hapticPulse } from './uiSounds';
 
+/** Each beat's title and its place in the three (spec §2's titles; the mockup's progress pips). Conditions' title is in its panel. */
+const BEAT_HEAD: Record<'conditions' | 'rider' | 'gear', { title: string | null; pips: number }> = {
+  conditions: { title: null, pips: 1 }, rider: { title: 'Choose your rider', pips: 2 }, gear: { title: 'Grab your gear', pips: 3 },
+};
+
+/** The beat's progress pips (top-left in the safe area) and, for the rider and gear beats, its title under them. */
+function beatHead(beat: 'conditions' | 'rider' | 'gear'): HTMLElement {
+  const head = document.createElement('div'), pips = document.createElement('div');
+  Object.assign(pips.style, { position: 'absolute', left: 'var(--fe-safe-x)', top: 'var(--fe-safe-y)', display: 'flex', gap: '8px' });
+  for (let k = 1; k <= 3; k++) {
+    const i = document.createElement('i');
+    Object.assign(i.style, { display: 'block', width: '34px', height: '5px', background: k <= BEAT_HEAD[beat].pips ? 'var(--fe-sun)' : 'rgba(247, 236, 210, 0.35)' });
+    pips.appendChild(i);
+  }
+  head.appendChild(pips);
+  const title = BEAT_HEAD[beat].title;
+  if (title) {
+    const h = document.createElement('h1');
+    h.className = 'fe-title';
+    Object.assign(h.style, { position: 'absolute', left: 'var(--fe-safe-x)', top: 'calc(var(--fe-safe-y) + 40px)' });
+    h.textContent = title;
+    head.appendChild(h);
+  }
+  return head;
+}
+
 type SoundHooks = { uiOut(): { ctx: BaseAudioContext; out: AudioNode } | null; setFrontEndMusic(on: boolean): void };
 
 export class FrontEnd {
@@ -49,7 +75,7 @@ export class FrontEnd {
     bottom.className = 'fe-scrim-bottom';
     void map.load().then(() => { const s = this.host.standSpot(); if (s) map.setLookout(s); map.setConditions(this.core!.state.setup, true); });
     const wrap = (...els: HTMLElement[]): HTMLElement => { const d = document.createElement('div'); d.append(...els); return d; };
-    this.beatEls = { conditions: wrap(cond.el, map.el), rider: wrap(slide.el), gear: wrap(gear.el) };
+    this.beatEls = { conditions: wrap(cond.el, map.el, beatHead('conditions')), rider: wrap(slide.el, beatHead('rider')), gear: wrap(gear.el, beatHead('gear')) };
     this.root.append(bottom, this.beatEls.conditions, this.beatEls.rider, this.beatEls.gear, line.el, legend.el);
     this.parts = { cond, map, slide, gear, legend, line, bottom };
     this.input = new UiInput(window);
@@ -118,7 +144,8 @@ export class FrontEnd {
     if (s.beat === 'gear') p.gear.render(gearView(s, this.today, 1), this.device, calm);
     p.legend.set(legendFor(s), this.device);
     p.line.update(now);
-    const pos = s.beat === 'gear' ? { left: '120px', top: '200px' } : { left: '760px', top: '520px' };
+    // The mockup's spots: over the sea left of the panel in Grab your gear, over the water in Conditions.
+    const pos = s.beat === 'gear' ? { left: '700px', top: '250px' } : { left: '760px', top: '438px' };
     Object.assign(p.line.el.style, pos);
   }
 }
