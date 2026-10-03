@@ -58,6 +58,8 @@ export interface PoseContext {
   carrySide?: Limb;
   /** Which rider (the select stance's character, dune select spec §13). */
   who?: PresetName;
+  /** Wearing glasses (they come with the walking clothes); Grommet's idle pushes them up only then. Default true. */
+  glasses?: boolean;
 }
 
 const DEG = Math.PI / 180;
@@ -499,6 +501,12 @@ function carry(ctx: PoseContext, r: Rider, tuck = 0): PoseTargets {
 }
 
 /** The pose's targets in the board frame (spec §3.5). */
+/** Each rider's select idle loop (s), dune select spec §13. */
+export const SELECT_IDLE_S: Record<PresetName, number> = { female: 7, male: 6, grommet: 4 };
+
+/** 0 outside (a, b), easing up to 1 at their middle and back down: a gesture inside the loop. */
+const bump = (t: number, a: number, b: number): number => (t <= a || t >= b ? 0 : Math.sin(((t - a) / (b - a)) * Math.PI) ** 2);
+
 /** How close selectStand tucks the board (m): tuned against the thigh and pack clearances. */
 const SELECT_TUCK = 0.012;
 /** The shoulders' counter-lean (rad, toward the carrying side); tuned against the carrying arm's clearance. */
@@ -542,6 +550,24 @@ function selectStand(ctx: PoseContext, r: Rider): PoseTargets {
     const b = t.carry!.board;
     const nose = b.position.clone().add(sc(b.forward.clone().normalize(), ctx.spec.lengthM / 2 - 0.06)).add(sc(b.up.clone().normalize(), ctx.spec.thicknessM));
     hand = boardHand(nose, V(-0.5, 0, -k).normalize());
+  }
+  const ph = ((ctx.phaseT % 1) + 1) % 1, headY = rest.joint.head.y;
+  if (who === 'male') {
+    // T-Bone rolls a shoulder.
+    const roll = bump(ph, 0.15, 0.45);
+    t.chest = { ...t.chest, twist: t.chest.twist + 0.07 * roll, bend: t.chest.bend + 0.03 * roll };
+  } else if (who === 'female') {
+    // Shazza tucks her hair behind her ear: the hand up beside the head (outside it), the elbow out.
+    const tuck = bump(ph, 0.3, 0.62);
+    if (tuck > 0) hand = boardHand(hand.pos.clone().lerp(V(0, headY + 0.015, -k * 0.13), tuck), hand.pole.clone().lerp(V(0, -0.2, -k), tuck).normalize());
+  } else {
+    // Grommet bounces on his toes and pushes his glasses up.
+    const bounce = (0.012 * (1 - Math.cos(ph * 4 * Math.PI))) / 2;
+    for (const l of ['l', 'r'] as const) t.feet[l].ankle.y += bounce;
+    t.pelvis.y += bounce;
+    // Only when he's wearing them: glasses come with the walking clothes (wardrobe landLook), not the Outfit tab's surf outfits.
+    const push = ctx.glasses === false ? 0 : bump(ph, 0.6, 0.78);
+    if (push > 0) hand = boardHand(hand.pos.clone().lerp(V(0.17, headY + 0.03, 0), push), hand.pole.clone().lerp(V(0, -1, -k * 0.3), push).normalize());
   }
   t.hands[free] = hand;
   return t;
