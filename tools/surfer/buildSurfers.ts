@@ -3,6 +3,7 @@
 //   npm run build:surfers -- --probe   what this Blender + MPFB offers → tools/surfer/api-probe.txt
 //   npm run build:surfers -- --only male
 //   npm run build:surfers -- --pile      the beach pile only, from the built riders
+//   npm run build:clips              the motion clips → public/surfer/clips/ (clip slice spec §3.3)
 //   npm run build:surfers -- --atlas     the hair strand atlas only (public/surfer/hairAtlas.*; dune select spec §13.2)
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
@@ -50,6 +51,15 @@ function bakeAtlas(): void {
 }
 
 const blender = findBlender();
+if (process.argv.includes('--clips')) {
+  // The licensed source clips live outside git (spec §3.2): anim-source/ here, or LD_ANIM_SOURCE (a worktree points at main's).
+  const source = process.env.LD_ANIM_SOURCE ?? resolve('anim-source');
+  mkdirSync(resolve('public/surfer/clips'), { recursive: true });
+  mkdirSync(join(tools, 'previews', 'clips'), { recursive: true });
+  run(blender, join(tools, 'clips.py'), [join(tools, 'clips.json'), source, resolve('public/surfer'), join(tools, 'previews', 'clips')]);
+  process.exit(0);
+}
+
 if (process.argv.includes('--atlas')) {
   bakeAtlas();
 } else if (process.argv.includes('--probe')) {

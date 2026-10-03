@@ -121,3 +121,12 @@ describe('on land only where there is land (final review: an old onLand link at 
     expect(landedAt(p, -4, 0.4)).toBe(p);
   });
 });
+
+describe('motion (clip slice spec §4.2)', () => {
+  it('defaults to the clip (Gate C, Andrew) and repairs anything unknown to it', () => {
+    expect(DEFAULT_SURFER_PARAMS.motion).toBe('clip');
+    expect(sanitizeSurferParams({ motion: 'clip' }).motion).toBe('clip');
+    expect(sanitizeSurferParams({ motion: 'mocap' }).motion).toBe('clip');
+    expect(sanitizeSurferParams({ motion: 'code' }).motion).toBe('code');
+  });
+});

@@ -2,6 +2,7 @@ import type { BoardKind } from '../board/boardSpec';
 import { type PoseName, posesOn } from './poseNames';
 import { PRESETS, type PresetName, type Stance, boardsFor } from './presets';
 import { type OutfitChoice, presetOutfits } from './wardrobe';
+import type { Motion } from './motion';
 
 /** The Surfer folder (spec §6), persisted with the look and carried by moment links. */
 export interface SurferParams {
@@ -15,6 +16,8 @@ export interface SurferParams {
   phaseT: number;
   /** Run the phase from the clock (the paddle stroke and kicks, the pop-up) instead of the slider. */
   play: boolean;
+  /** Motion clips where a pose has one (Gate C, Andrew, 2026-10-03), else the hand-made code poses (clip slice §4.2). */
+  motion: Motion;
   /** On land (the dune, the select screen): Grommet's glasses on, hair and skin dry (grommet spec §6). */
   onLand: boolean;
   /** The crew's clothes and packs dropped on the sand where they changed (walking spec §5), and where. */
@@ -54,7 +57,7 @@ export interface SurferParams {
 
 /** In the lineup where Andrew waits (DEFAULT_LINEUP_POSITION), nose out to sea toward the south-west swell. */
 export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
-  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, onLand: false, carrySide: 'auto',
+  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, motion: 'clip', onLand: false, carrySide: 'auto',
   pile: false, gang: false, pileX: 219, pileZ: 47, pileHeadingDeg: 0,
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
   x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
@@ -117,6 +120,7 @@ export function normalizeSurferParams(p: SurferParams): void {
   p.outfit = oneOf(p.outfit, ['season', ...presetOutfits(PRESETS[p.preset])] as const, 'season');
   if (p.outfit === 'walking' && !p.onLand) p.outfit = 'season';
   p.carrySide = oneOf(p.carrySide, ['auto', 'l', 'r'] as const, 'auto');
+  p.motion = oneOf(p.motion, ['code', 'clip'] as const, d.motion);
   for (const k of Object.keys(SURFER_PARAM_RANGES) as (keyof typeof SURFER_PARAM_RANGES)[]) {
     const r = SURFER_PARAM_RANGES[k], v = p[k];
     p[k] = typeof v === 'number' && Number.isFinite(v) ? Math.min(r.max, Math.max(r.min, v)) : d[k];

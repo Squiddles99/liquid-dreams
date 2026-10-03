@@ -1,4 +1,5 @@
-"""Bake the MPFB human into one plain skinned mesh on the 23-bone contract skeleton (spec §3.3)."""
+"""Bake the MPFB human into one plain skinned mesh on the 23-bone contract skeleton (spec §3.3), plus MPFB's 30 finger
+bones (clip slice spec 2026-10-03 §2)."""
 import bmesh
 import bpy
 from mathutils import Vector
@@ -20,6 +21,9 @@ PARENT = {
     "thigh_l": "pelvis", "shin_l": "thigh_l", "foot_l": "shin_l", "toe_l": "foot_l",
     "thigh_r": "pelvis", "shin_r": "thigh_r", "foot_r": "shin_r", "toe_r": "foot_r",
 }
+
+# MPFB's finger bones, kept with their own weights since the clip slice (spec 2026-10-03 §2): a clip curls them.
+FINGERS = [f"{f}_{i:02d}_{s}" for s in "lr" for f in ("thumb", "index", "middle", "ring", "pinky") for i in (1, 2, 3)]
 
 
 def activate(obj):
@@ -166,10 +170,10 @@ def scale_to_height(body, rig, height_m, points):
 def trim(rig, body):
     """Merge the weights of every dropped bone into its nearest kept ancestor, delete it, then rename to the contract."""
     have = {b.name for b in rig.data.bones}
-    missing = [s for s in BONE_MAP if s not in have and s != "Root"]
+    missing = [s for s in [*BONE_MAP, *FINGERS] if s not in have and s != "Root"]
     if missing:
         raise SystemExit(f"the game_engine rig lacks {missing}; it has {sorted(have)}")
-    keep = set(BONE_MAP)
+    keep = set(BONE_MAP) | set(FINGERS)
     for bone in rig.data.bones:
         if bone.name in keep:
             continue
@@ -205,7 +209,7 @@ def trim(rig, body):
         if src != dst:
             rig.data.bones[src].name = dst  # Blender renames the matching vertex groups too
     for g in list(body.vertex_groups):
-        if g.name not in PARENT and g.name != "root":
+        if g.name not in PARENT and g.name != "root" and g.name not in FINGERS:
             body.vertex_groups.remove(g)
     for pb in rig.pose.bones:
         pb.matrix_basis.identity()
