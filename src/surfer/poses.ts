@@ -32,6 +32,8 @@ export interface HandTarget {
   pos: Vector3;
   /** Where the elbow points (same frame). */
   pole: Vector3;
+  /** Where the fingers point (same frame); unset, the hand runs straight on from the forearm. */
+  dir?: Vector3;
 }
 export interface PoseTargets {
   pelvis: Vector3;
@@ -487,7 +489,9 @@ function carry(ctx: PoseContext, r: Rider, tuck = 0): PoseTargets {
   };
   const fsh = rest.joint[`upperarm_${free}`], reach = m.upperArmLen + m.forearmLen, wave = clamp01(ctx.dials.reach);
   const hands = {
-    [side]: boardHand(wrist, V(0, 0.3, k)),
+    // The hand flat on the bottom face, the fingers down it toward the lower rail (Gate A: running straight on from the
+    // forearm, angled in at the board, it cut through the rail).
+    [side]: { ...boardHand(wrist, V(0, 0.3, k)), dir: sc(w, -1) },
     // The free arm hangs; the reach dial raises it to a wave beside the head (stoked: the surf's up).
     [free]: boardHand(
       V(0.03, fsh.y - 0.96 * reach, -k * (Math.abs(fsh.x) + 0.06)).lerp(V(0.06, fsh.y + 0.55 * reach, -k * (Math.abs(fsh.x) + 0.2)), wave),

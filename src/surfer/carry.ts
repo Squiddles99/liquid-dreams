@@ -93,19 +93,45 @@ export function distanceToBoxes(a: Vector3, b: Vector3, boxes: readonly Box[]): 
   return best;
 }
 
+/** The steepest ground a foot tilts to stand flat on (rad); past it the foot stays at this tilt. */
+const FOOT_TILT_MAX = 35 * Math.PI / 180;
+
 /**
- * Each foot on the ground under it (final review: a level frame on a cross-slope buried one foot and floated the other):
- * the ankle and toe targets (frame-relative, the frame level) raised or lowered by the ground under the ankle, plus the
- * soles, less the frame's height. Where the ground is unknown the foot stays.
+ * Each foot flat on the ground under it (final review: a level frame on a cross-slope buried one foot and floated the
+ * other; Gate A: on the dune's slope the soles sank, the whole foot lifted by the ground under the ankle alone). The
+ * ankle rises with the ground under it and the ball with the ground under it, so the foot pitches with the slope, and the
+ * instep turns to the ground's normal (from a third sample beside the foot), so it rolls with it; plus the soles, less the
+ * frame's height (the targets are frame-relative, the frame level). Where the ground is unknown the foot stays.
  */
 export function feetOnGround(feet: Record<Limb, FootTarget>, frame: BoardFrame, ground: (x: number, z: number) => number | null, liftM: number): void {
-  const Q = boardQuaternion(frame);
+  const Q = boardQuaternion(frame), toFrame = Q.clone().invert();
+  const at = (x: number, z: number): number | null => {
+    const g = ground(x, z);
+    return g === null || !Number.isFinite(g) ? null : g;
+  };
   for (const s of ['l', 'r'] as const) {
-    const w = feet[s].ankle.clone().applyQuaternion(Q).add(frame.position);
-    const g = ground(w.x, w.z);
-    if (g === null || !Number.isFinite(g)) continue;
-    const dy = g + liftM - frame.position.y;
-    feet[s].ankle.y += dy;
-    feet[s].toe.y += dy;
+    const f = feet[s];
+    const a = f.ankle.clone().applyQuaternion(Q).add(frame.position), b = f.toe.clone().applyQuaternion(Q).add(frame.position);
+    const gA = at(a.x, a.z);
+    if (gA === null) continue;
+    const gB = at(b.x, b.z) ?? gA;
+    // Beside the ankle, square to the foot (on the ground plane): the third point that gives the ground its roll.
+    const along = new Vector3(b.x - a.x, 0, b.z - a.z);
+    if (along.lengthSq() < 1e-8) along.set(1, 0, 0);
+    along.normalize();
+    const side = new Vector3(-along.z, 0, along.x).multiplyScalar(0.06);
+    const gS = at(a.x + side.x, a.z + side.z) ?? gA;
+    const pA = new Vector3(a.x, gA, a.z), pB = new Vector3(b.x, gB, b.z), pS = new Vector3(a.x + side.x, gS, a.z + side.z);
+    const n = pB.clone().sub(pA).cross(pS.clone().sub(pA)).normalize();
+    if (n.y < 0) n.negate();
+    if (!(n.y > 0) || Number.isNaN(n.x)) n.set(0, 1, 0);
+    const tilt = Math.acos(Math.min(1, n.y));
+    if (tilt > FOOT_TILT_MAX) {
+      const flat = new Vector3(n.x, 0, n.z).normalize();
+      n.copy(flat.multiplyScalar(Math.sin(FOOT_TILT_MAX))).setY(Math.cos(FOOT_TILT_MAX));
+    }
+    f.ankle.y += gA + liftM - frame.position.y;
+    f.toe.y += gB + liftM - frame.position.y;
+    f.instep = n.applyQuaternion(toFrame);
   }
 }

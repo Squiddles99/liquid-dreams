@@ -1,8 +1,9 @@
 // src/surfer/poseTestKit.ts (test-only: imported by *.test.ts files, never by the game)
 import { readFileSync } from 'node:fs';
 import { Quaternion, Vector3 } from 'three/webgpu';
-import { layoutFor } from '../board/boardSpec';
+import { type BoardSpec, halfWidthAt, layoutFor, uAt } from '../board/boardSpec';
 import { type Box, PACK_PARTS, carriedBoard } from './carry';
+import type { BoardFrame, SolvedPose } from './solvePose';
 import { glbFloats, glbJson } from './glbData';
 import { groundFrame } from './placement';
 import type { PoseName } from './poseNames';
@@ -65,4 +66,23 @@ export function packPoints(name: PresetName, parts: readonly string[] = PACK_PAR
     for (let i = 0; i < f.length; i += 3) out.push([f[i], f[i + 1], f[i + 2]]);
   }
   return out;
+}
+
+/**
+ * How far the carrying hand reaches into its board (m; 0 when it lies outside): the hand from the wrist to the fingertips
+ * (10.8% of the rider's height, as the solved hand bone points it), 1.2 cm half thick, against the board's outline and
+ * its bottom face (the side away from the body). Gate A: T-Bone's straight-on hand cut through the lower rail.
+ */
+export function handIntoBoard(s: SolvedPose, rest: SkeletonRest, side: Limb, board: BoardFrame, spec: BoardSpec): number {
+  const h = `hand_${side}` as const, fa = `forearm_${side}` as const;
+  const restDir = rest.joint[h].clone().sub(rest.joint[fa]).normalize();
+  const dir = restDir.applyQuaternion(s.world[h].clone().multiply(rest.restQ[h].clone().invert()));
+  const inv = boardQuaternion(board).invert(), L = 0.108 * rest.heightM;
+  let worst = 0;
+  for (let k = 0; k <= 40; k++) {
+    const q = s.joint[h].clone().add(dir.clone().multiplyScalar((k / 40) * L)).sub(board.position).applyQuaternion(inv);
+    if (Math.abs(q.x) > spec.lengthM / 2 || Math.abs(q.z) > halfWidthAt(spec, uAt(spec, q.x))) continue;
+    worst = Math.max(worst, q.y + 0.012);
+  }
+  return worst;
 }

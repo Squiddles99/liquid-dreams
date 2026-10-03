@@ -5,7 +5,7 @@ import { HAND_REACH, LIMB_RADIUS, PACK_PARTS, boardBoxes, carriedBoard, distance
 import { flexDeg } from './ik';
 import { groundFrame } from './placement';
 import { poseTargets } from './poses';
-import { DIALS, GROUND, NAMES, Qg, builtRest, depthIn, packPoints, solveStand, standCases, toW } from './poseTestKit';
+import { DIALS, GROUND, NAMES, Qg, builtRest, depthIn, handIntoBoard, packPoints, solveStand, standCases, toW } from './poseTestKit';
 import { PRESETS, boardFor, boardsFor } from './presets';
 import { type BoneName, type Limb, referenceSkeleton } from './rig';
 import { boardQuaternion, solvePose } from './solvePose';
@@ -68,6 +68,13 @@ describe('the carry (walking spec §4): the board under the arm, every rider, bo
     });
   }
 
+  it('lays the carrying hand along the board, the fingers clear of it (Gate A: the hand cut through the lower rail)', () => {
+    for (const c of cases()) {
+      const { s, board, spec } = solveCarry(c);
+      expect(handIntoBoard(s, c.rest, c.side, board, spec), c.tag).toBeLessThan(0.001);
+    }
+  });
+
   it('keeps the board still while the head looks around (idle life turns the head ±20°)', () => {
     for (const c of cases()) {
       const a = solveCarry(c, 0).board, b = solveCarry(c, 20).board, d = solveCarry(c, -20).board;
@@ -110,6 +117,24 @@ describe('the free hand waves (the reach dial on land: the gang, stoked; Andrew:
 });
 
 describe('feet on the ground (final review: a level frame on a cross-slope buried one foot and floated the other)', () => {
+  it('stands each foot flat on a slope: the heel and the ball both on the ground, the instep along its normal (Gate A: thongs sank)', () => {
+    const rest = referenceSkeleton(1.78), spec = boardFor(PRESETS.male, 'thruster');
+    const frame = groundFrame({ x: 10, z: 5, headingDeg: 90, heightNudgeM: 0, pitchNudgeDeg: 0 }, 1, 0, 0);
+    const t = poseTargets('carry', { spec, layout: layoutFor(spec, 1.78), rest, stance: 'regular', dials: DIALS, phaseT: 0, carrySide: 'r' });
+    const ankleH = t.feet.l.ankle.y, toeH = t.feet.l.toe.y;
+    // Rising 0.4 m per m along the heading (+x, east) and 0.25 across it.
+    const slope = (x: number, z: number): number => 1 + 0.4 * (x - 10) + 0.25 * (z - 5);
+    feetOnGround(t.feet, frame, slope, 0.012);
+    const Q = boardQuaternion(frame), w = (v: Vector3): Vector3 => v.clone().applyQuaternion(Q).add(frame.position);
+    const n = new Vector3(-0.4, 1, -0.25).normalize();
+    for (const s of ['l', 'r'] as const) {
+      const a = w(t.feet[s].ankle), b = w(t.feet[s].toe);
+      expect(a.y - slope(a.x, a.z), `${s} ankle over its ground`).toBeCloseTo(ankleH + 0.012, 2);
+      expect(b.y - slope(b.x, b.z), `${s} ball over its ground`).toBeCloseTo(toeH + 0.012, 2);
+      expect(t.feet[s].instep.clone().applyQuaternion(Q).angleTo(n), `${s} instep along the ground's normal`).toBeLessThan(0.02);
+    }
+  });
+
   it('sets each foot on the ground under it, the frame where it is', () => {
     const rest = referenceSkeleton(1.52), spec = boardFor(PRESETS.grommet, 'bodyboard');
     const frame = groundFrame({ x: 10, z: 5, headingDeg: 90, heightNudgeM: 0, pitchNudgeDeg: 0 }, 1, 0, 0.012);

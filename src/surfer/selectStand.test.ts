@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { LIMB_RADIUS, PACK_PARTS, boardBoxes, distanceToBoxes } from './carry';
 import { flexDeg } from './ik';
 import { LAND_POSES, isCarryPose, posesOn } from './poseNames';
-import { builtRest, depthIn, packPoints, solveStand, standCases, toW } from './poseTestKit';
+import { builtRest, depthIn, handIntoBoard, packPoints, solveStand, standCases, toW } from './poseTestKit';
 import { PRESETS, boardsFor } from './presets';
 import type { BoneName, Limb } from './rig';
 import { layoutFor } from '../board/boardSpec';
@@ -108,6 +108,12 @@ describe('the select stances\' idles (spec §13: 4–8 s loops with small second
       const wrist = s.joint[`hand_${free}`], dir = wrist.clone().sub(s.joint[`forearm_${free}`]).normalize();
       const tip = wrist.clone().add(dir.multiplyScalar(0.18));
       expect(tip.y - s.joint.head.y, `${c.tag} @${ph.toFixed(2)} fingertips`).toBeLessThan(0.1);
+    }
+  });
+  it('lays the carrying hand along the board through the whole loop (Gate A: it cut through the lower rail)', () => {
+    for (const c of standCases()) for (let ph = 0; ph < 1; ph += 0.1) {
+      const { s, board, spec } = solveStand('selectStand', c, ph);
+      expect(handIntoBoard(s, c.rest, c.side, board, spec), `${c.tag} @${ph.toFixed(1)}`).toBeLessThan(0.001);
     }
   });
   it('rolls T-Bone\'s shoulder', () => {
