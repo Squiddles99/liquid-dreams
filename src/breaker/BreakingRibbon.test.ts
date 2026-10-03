@@ -20,7 +20,7 @@ import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type Vec2, buildProfile } from './li
 import { TB_INFINITY, TB_NULL } from './lipProfileNodes';
 import { REEF_GRID } from '../seabed/wombReef';
 
-const station = (x: number, tb: number | null): Station => ({ gap: false, wave: 0, x, z: -x, arc: x, nx: 0.6, nz: 0.8, H: 2 + x, c: 9, r: 1.2, tb, psi: PSI_NORMAL });
+const station = (x: number, tb: number | null): Station => ({ gap: false, wave: 0, x, z: -x, arc: x, nx: 0.6, nz: 0.8, H: 2 + x, c: 9, r: 1.2, tb, psi: PSI_NORMAL, lipH: null });
 const GAP: StationEntry = { gap: true };
 const ROW = STATION_VEC4S * 4;
 const row = (d: Float32Array, i: number): number[] => Array.from(d.subarray(i * ROW, (i + 1) * ROW));
@@ -232,9 +232,16 @@ describe('BreakingRibbon mesh', () => {
 
 describe('packStations and ψ (barrel from the maths)', () => {
   it('packStations puts the ψ in the third vec4', () => {
-    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 1.37 };
+    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 1.37, lipH: null };
     const out = new Float32Array(12);
     packStations([s], out);
     expect(out[10]).toBeCloseTo(1.37, 6);
+  });
+  it('packStations puts the throw height (lipH) last in the third vec4, 0 before breaking', () => {
+    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 0.07, lipH: 3.6 };
+    const out = new Float32Array(24);
+    packStations([s, { ...s, tb: null, lipH: null }], out);
+    expect(out[11]).toBeCloseTo(3.6, 6);
+    expect(out[23]).toBe(0);
   });
 });

@@ -243,7 +243,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       const r = sumWaves(x, z, i.t, sampleField(field, x, z), own, ctx, opts);
       return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
     };
-    const f = profileFrame(base, { H: s.H, c: s.c, r: s.r, tb: s.tb, psi: s.psi, offshoreMs }, params);
+    const f = profileFrame(base, { H: s.H, c: s.c, r: s.r, tb: s.tb, psi: s.psi, offshoreMs, lipH: s.lipH }, params);
     if (wantImpact) frames[si] = f;
     const waveId = i.events[s.wave].id, arc = Math.round(s.arc / SPRAY_SPACING_M);
     if (wind > 0 && f.prog > 0 && f.prog < 1 && f.weight * f.rho > MIN_EMIT_WEIGHT) {
