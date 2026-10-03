@@ -24,7 +24,9 @@ import { ticksToHear } from '../sound/hits';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
 import { ReefFlow } from '../breaker/flowNodes';
-import { type WaveContext, fieldBreakingHeight, toActiveWave } from '../breaker/setWaveModel';
+import { type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import { RIDE_MESSAGES, RideSession } from '../ride/RideSession';
+import { type WaterFn, flatWater, waterAt } from '../ride/water';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -127,6 +129,11 @@ const browserStorage: SettingsStorage = {
   removeItem: (k) => window.localStorage.removeItem(k),
 };
 
+/** Where G puts you (first-ride spec): on the Womb's takeoff spot, just outside where the set waves stand up. */
+export const RIDE_START = { x: -10, z: 3 };
+/** Seconds of warning before the wave reaches the peak. */
+export const RIDE_LEAD_S = 10;
+
 export class App {
   readonly scene = new THREE.Scene();
   readonly clock = new SimClock();
@@ -163,6 +170,11 @@ export class App {
   /** The surfer on the stand (surfer spec §6): its folder and the board, body and pose on the water. */
   readonly surferParams: SurferParams = { ...DEFAULT_SURFER_PARAMS };
   readonly surferStand: SurferStand;
+  /** The playable ride (first-ride spec): G starts and stops it. */
+  readonly ride = new RideSession(document.body);
+  /** The called set's arrivals at the peak (sim s), and the wave being ridden. */
+  private rideSet: number[] = [];
+  private rideWave = 0;
   readonly bombie: BombieMesh;
   private bombieTauS: number | null = null;
   private bombieTauField: ReefField | null = null;
@@ -545,6 +557,7 @@ export class App {
           const ahead = gangCamera(sp, g, dist);
           this.rig.setPose(gangCamera(sp, g, dist, this.groundAt(ahead.position[0], ahead.position[2]) ?? -Infinity), this.conditions.tideM);
         },
+        onGoSurfing: () => this.toggleRide(),
         onSurferChase: () => {
           const pose = this.surferStand.chasePose(this.surferParams.headingDeg);
           if (pose) this.rig.setPose(pose);
@@ -1029,6 +1042,7 @@ export class App {
     window.setTimeout(() => {
       this.setPaused(false);
       this.chaseAfterPaddle = false;
+      this.stopRide(false);
       this.openFrontEnd();
       fade.style.transition = `opacity ${PADDLE_OUT_MS.fadeIn}ms ease-out`;
       fade.style.opacity = '0';
@@ -1053,7 +1067,8 @@ export class App {
       this.stageFrontEnd(null, null);
       this.input.suspended = false;
       this.rig.setPose(this.startupMoment().camera, this.conditions.tideM);
-      this.chaseAfterPaddle = true;
+      // Straight onto a set wave (first ride): the ride's camera takes over from here.
+      this.startRide();
       this.panel.refresh();
       this.scheduleSave();
       fade.style.transition = `opacity ${PADDLE_OUT_MS.fadeIn}ms ease-out`;
@@ -1380,6 +1395,66 @@ export class App {
   }
 
   /** Jump sim time to just before the next set reaches the peak (reproducible: a moment link records the time). */
+  /** The set waves' surface at sim time t on the CPU (first-ride spec §1); flat at the tide until the reef field loads. */
+  private rideWater(t: number): WaterFn {
+    const field = this.field, ctx = this.waveCtx, tide = this.conditions.tideM;
+    if (!field || !ctx) return flatWater(tide);
+    const waves = wavesNear(t, this.conditions, this.setParams).map(toActiveWave);
+    const o = this.breakParams.enabled ? breakOptions(field, this.breakParams, this.offshoreMs) : undefined;
+    return (x, z) => waterAt(x, z, tide, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
+  }
+
+  /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */
+  toggleRide(): void {
+    if (this.ride.active) this.stopRide(true);
+    else this.startRide();
+  }
+
+  /** Stop surfing: the rider sits where the board was; `toLineup` puts the camera back to the lineup there. */
+  private stopRide(toLineup: boolean): void {
+    if (!this.ride.active) return;
+    const sp = this.surferParams, b = this.ride.body!;
+    Object.assign(sp, { x: b.x, z: b.z, headingDeg: b.headingDeg, pose: 'sit' });
+    normalizeSurferParams(sp);
+    this.ride.end();
+    if (toLineup) {
+      const cam = this.rig.getPose();
+      this.rig.setPose({ ...cam, mode: 'lineup' }, this.rideWater(this.clock.simTime)(cam.position[0], cam.position[2]).y);
+    }
+    this.panel.refresh();
+  }
+
+  /** Paddle out on a called set with the chosen rider (G, or the select screen's Paddle out). */
+  private startRide(): void {
+    const sp = this.surferParams;
+    Object.assign(sp, { enabled: true, onLand: false, gang: false, pose: 'sit' });
+    normalizeSurferParams(sp);
+    this.callSetNow();
+    const t = this.clock.simTime;
+    const set = wavesBetween(t, t + 120, this.conditions, this.setParams).filter((e) => e.arrivalS > t + RIDE_LEAD_S);
+    this.rideSet = set.map((e) => e.arrivalS);
+    // The set's biggest wave first; R goes on through the rest.
+    this.catchSetWave(set.reduce((best, e, i) => (e.heightM > set[best].heightM ? i : best), 0));
+    this.panel.refresh();
+  }
+
+  /** Wave i of the called set (cycling): the clock RIDE_LEAD_S before it reaches the peak, you at the takeoff spot. */
+  private catchSetWave(i: number): void {
+    if (this.rideSet.length === 0) {
+      this.perf.flash('Flat: no sets to ride');
+      this.ride.end();
+      return;
+    }
+    this.rideWave = i % this.rideSet.length;
+    this.clock.setTime(this.rideSet[this.rideWave] - RIDE_LEAD_S);
+    this.ocean.resetFoam();
+    this.invalidateParticles();
+    // Facing the way the swell runs at the takeoff spot.
+    const water = this.rideWater(this.clock.simTime), w = water(RIDE_START.x, RIDE_START.z);
+    this.ride.begin(RIDE_START.x, RIDE_START.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water);
+    this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}: paddle (W) as it lifts you, Space to pop up`);
+  }
+
   private callSetNow(): void {
     const t = callSetTime(this.clock.simTime, this.conditions, this.setParams);
     if (t === null) {
@@ -1739,7 +1814,20 @@ export class App {
         this.reseedLineup = false;
       }
     }
-    this.rig.update(realDt, this.input, this.waterHeightAtCamera());
+    if (this.input.consumePressed('KeyG')) this.toggleRide();
+    if (this.ride.active) {
+      // Riding (first-ride spec): the keys drive the board, and the chase camera follows it.
+      this.input.consumePressed('KeyC');
+      this.input.consumeMouse();
+      const water = this.rideWater(this.clock.simTime);
+      const event = this.ride.step(simDt, this.input, water);
+      if (event === 'reset') this.catchSetWave(this.rideWave + 1);
+      else if (event) this.perf.flash(RIDE_MESSAGES[event]);
+      const pose = this.ride.cameraPose(realDt, water);
+      if (pose) this.rig.setPose(pose);
+    } else {
+      this.rig.update(realDt, this.input, this.waterHeightAtCamera());
+    }
 
     const sun = sunForConditions(this.conditions);
     this.sunDir.set(...sun.direction);
@@ -1790,7 +1878,8 @@ export class App {
       this.setStatus.psi = formatPeakPsi(peakPsi(this.field, events, this.clock.simTime, this.breakParams, this.offshoreMs), this.field !== null);
     }
     const sp = this.surferParams;
-    this.surferStand.update({ ...sp, enabled: sp.enabled && !sp.gang }, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
+    const riding = this.ride.surfer(sp.board === 'bodyboard');
+    this.surferStand.update(riding ? { ...sp, ...riding, gang: false } : { ...sp, enabled: sp.enabled && !sp.gang }, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt, this.ride.boardFrame() ?? undefined);
     if (this.chaseAfterPaddle) {
       const chase = this.surferStand.chasePose(sp.headingDeg);
       if (chase) { this.rig.setPose(chase); this.chaseAfterPaddle = false; }
