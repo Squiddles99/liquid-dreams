@@ -40,6 +40,8 @@ import { PADDLE_OUT_MS } from '../frontend/entry';
 import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
 import { FrontEnd } from '../frontend/frontEndPage';
+import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
+import { PauseMenu } from '../frontend/ui/pauseMenu';
 import { frontEndCheck } from '../dev/frontEndCheck';
 import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
 import { PerfOverlay } from '../dev/perf';
@@ -228,6 +230,10 @@ export class App {
   private frontEnd: FrontEnd | null = null;
   /** Paddle out: put the camera behind the rider once the stand has placed them in the water. */
   private chaseAfterPaddle = false;
+  /** The menu while surfing (Esc or a pad's START): keep surfing, or back to the dune. */
+  private pauseMenu: PauseMenu | null = null;
+  private pausedBeforeMenu = false;
+  private readonly padStart = new PadStartWatch();
   private readonly groundAt = (x: number, z: number): number | null => {
     const lh = this.land.height;
     return lh ? Math.max(lh.heightAt(x, z), this.rockField?.topAt(x, z) ?? -Infinity) : null;
@@ -993,6 +999,40 @@ export class App {
     this.frontEnd.open();
   }
 
+  /** The menu while surfing: the sim holds still and the camera lets go of the mouse until a choice is made. */
+  private openPauseMenu(): void {
+    this.pausedBeforeMenu = this.clock.paused;
+    this.setPaused(true);
+    this.input.suspended = true;
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.pauseMenu = new PauseMenu(this.container, () => this.sound.uiOut(), browserStorage);
+  }
+
+  private closePauseMenu(pick: MenuPick): void {
+    this.pauseMenu?.close();
+    this.pauseMenu = null;
+    if (pick === 'resume') {
+      this.setPaused(this.pausedBeforeMenu);
+      this.input.suspended = false;
+    } else this.backToDune();
+  }
+
+  /** Back to the dune (Andrew, Gate B): fade to black, the front end opens on the crew again, fade back in. */
+  backToDune(): void {
+    const fade = document.createElement('div');
+    Object.assign(fade.style, { position: 'fixed', inset: '0', background: '#000', opacity: '0', zIndex: '6', pointerEvents: 'none', transition: `opacity ${PADDLE_OUT_MS.fadeOut}ms ease-in` });
+    this.container.appendChild(fade);
+    window.setTimeout(() => { fade.style.opacity = '1'; }, 20);
+    window.setTimeout(() => {
+      this.setPaused(false);
+      this.chaseAfterPaddle = false;
+      this.openFrontEnd();
+      fade.style.transition = `opacity ${PADDLE_OUT_MS.fadeIn}ms ease-out`;
+      fade.style.opacity = '0';
+      window.setTimeout(() => fade.remove(), PADDLE_OUT_MS.fadeIn + 50);
+    }, PADDLE_OUT_MS.fadeOut);
+  }
+
   /** Paddle out (spec §3): fade to black, set the session, put the rider on the stand in the water, fade back in. */
   paddleOut(choice: SessionChoice): void {
     const fade = document.createElement('div');
@@ -1608,6 +1648,7 @@ export class App {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.frontEnd?.resize(window.innerWidth, window.innerHeight);
+    this.pauseMenu?.resize(window.innerWidth, window.innerHeight);
   };
 
   /**
@@ -1664,6 +1705,14 @@ export class App {
     this.lastMs = now;
     const simDt = this.clock.tick(realDt);
     this.frontEnd?.update(realDt);
+    // The menu while surfing: Esc or a pad's START opens it (the pad is watched every frame, so a START still held from
+    // paddling out isn't a press).
+    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? [...navigator.getGamepads()] : [];
+    const padStart = this.padStart.poll(pads.map((g) => (g?.connected ? { index: g.index, buttons: g.buttons.map((b) => b.pressed) } : null)));
+    if (this.pauseMenu) {
+      const pick = this.pauseMenu.update();
+      if (pick) this.closePauseMenu(pick);
+    } else if (!this.frontEnd?.isOpen && (this.input.consumePressed('Escape') || padStart)) this.openPauseMenu();
 
     // While the front end has the keys, only H (show/hide the dev tools) reaches the game's hotkeys.
     if (this.frontEnd?.isOpen && this.input.consumePressed(HOTKEYS.toggleDevUi)) this.toggleDevUi();
