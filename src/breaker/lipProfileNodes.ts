@@ -2,8 +2,8 @@ import * as THREE from 'three/webgpu';
 import { If, Loop, abs, atan, clamp, cos, dot, exp, float, int, length, max, min, mix, pow, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
 import { type BreakParams, RIBBON_FULL_OFFSET, TUBE_HOLD_S, TUBE_THROWN_PSI, normalizeBreakParams, steepeningStart } from './breaking';
 import {
-  BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_LOWER_FADE, EDGE_MARGIN_M, LIP_EMERGE_PROGRESS, FACE_JOIN_MIN_M, FACE_JOIN_STEPS, HOLLOW_FLOOR_SOFT, LIP_JET_SHARE,
-  CEILING_START_XI, FOOT_WIDTHS, TUBE_OPEN_POWER, HOLLOW_BACK_H, HOLLOW_EPS, HOLLOW_FOOT_DIP, HOLLOW_MIN_WEIGHT, HOLLOW_SETTLE, HOLLOW_THROAT, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
+  TUBE_SHADE_SOFT_RAD, BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_LOWER_FADE, EDGE_MARGIN_M, LIP_EMERGE_PROGRESS, FACE_JOIN_MIN_M, FACE_JOIN_STEPS, HOLLOW_FLOOR_SOFT, LIP_JET_SHARE,
+  CEILING_START_XI, FOOT_WIDTHS, TUBE_OPEN_POWER, HOLLOW_BACK_H, HOLLOW_EPS, HOLLOW_FOOT_DIP, HOLLOW_MIN_WEIGHT, HOLLOW_SETTLE, HOLLOW_THROAT, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, CLIMB_SOFT, LIP_STREAK, LIP_TIP_BAND, LIP_TOP_BAND,
   LIP_SPRAY_PROGRESS, LIP_TAPER_POWER, OUTER_LIP_SHARE, PRESENCE_FADE, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, type ProfileSegment, SEGMENT_ID,
   TIP_GROW_PROGRESS, TIP_THICKNESS_RATIO, TUBE_BACK_AHEAD_H, sampleSegment,
 } from './lipProfile';
@@ -695,11 +695,27 @@ export function profilePointNode(j: N, f: ProfileFrameNodes, baseTarget: N, home
   const isOuter = seg.equal(float(SEGMENT_ID.outer)), isCap = seg.equal(float(SEGMENT_ID.cap));
   const isInside = seg.equal(float(SEGMENT_ID.face)).or(seg.equal(float(SEGMENT_ID.wall))).or(seg.equal(float(SEGMENT_ID.under)));
   const sigma = select(isOuter, select(f.xiTip.greaterThan(0.0), clamp(float(1.0).sub(sv.div(OUTER_LIP_SHARE)), 0.0, 1.0), float(0.0)), select(isCap, float(1.0), float(0.0)));
-  const spray = smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog).mul(LIP_SPRAY).mul(smoothstep(LIP_SPRAY_FROM, 1.0, sigma));
+  // lipProfile.profilePoint: streaks at the tip and the top edge (the lip's band), foam climbing from where it hit.
+  const band = select(isCap, float(1.0), select(isOuter.and(f.xiTip.greaterThan(0.0)), float(1.0).sub(smoothstep(OUTER_LIP_SHARE, 1.0, sv)), float(0.0)));
+  const streakAt = max(smoothstep(LIP_TIP_BAND, 1.0, sigma), float(1.0).sub(smoothstep(0.0, LIP_TOP_BAND, sigma)));
+  const streak = smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog).mul(LIP_STREAK).mul(streakAt).mul(band).mul(mix(f.weight, float(1.0), f.landing));
+  const climb = smoothstep(0.0, LANDING_FOAM_RISE, f.collapse);
+  const up = smoothstep(float(1.0).sub(climb).sub(CLIMB_SOFT), float(1.0).sub(climb), sigma);
   const air = f.weight.mul(float(1.0).sub(f.landing));
   // The tube's inside stays clean while it is held open and foams as it collapses (lipProfile.profilePoint).
   const filled = landed.mul(smoothstep(0.0, LANDING_FOAM_RISE, f.collapse));
-  const curlFoam = select(isOuter.or(isCap), max(landed, spray.mul(air)), select(isInside, filled.sub(air), landed));
+  const curlFoam = select(isOuter.or(isCap), max(landed.mul(up), streak), select(isInside, filled.sub(air), landed));
   const lifted = ridingNode(seg, sv, f, c);
   return { pos: mix(bt, lifted, f.weight), thickness: c.thickness.mul(f.weight), curlFoam, lipness: c.lipness.mul(f.weight) };
+}
+
+/** lipProfile's fromDown: an angle measured from straight down, in [−π/2, 3π/2). */
+const fromDownNode = (a: N): N => select(a.lessThan(-Math.PI / 2), a.add(2 * Math.PI), a);
+
+/** lipProfile.tubeLightAt: one point's shade, the sun at angle `a`, against the tip T and the lip's root R. */
+export function tubeLightAtNode(p: N, T: N, R: N, a: N): { sLip: N; sBody: N; o: N } {
+  const aT = fromDownNode(atan(T.y.sub(p.y), T.x.sub(p.x))).toVar(), aR = fromDownNode(atan(R.y.sub(p.y), R.x.sub(p.x))).toVar();
+  const lo = min(aT, aR).toVar(), hi = max(aT, aR).toVar(), as = fromDownNode(a).toVar(), e = TUBE_SHADE_SOFT_RAD;
+  const pastLo = smoothstep(lo.sub(e), lo.add(e), as), pastHi = smoothstep(hi.sub(e), hi.add(e), as);
+  return { sLip: pastLo.mul(float(1.0).sub(pastHi)), sBody: pastHi, o: clamp(lo, 0.0, Math.PI).div(Math.PI) };
 }
