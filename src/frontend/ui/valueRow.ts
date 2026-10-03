@@ -9,12 +9,14 @@ export class ValueRow {
   private readonly label = document.createElement('span');
   private readonly value = document.createElement('span');
   private readonly word = document.createElement('span');
+  private readonly text = document.createElement('span');
   private readonly small = document.createElement('span');
   readonly left = document.createElement('span');
   readonly right = document.createElement('span');
   private last = '';
 
-  constructor(readonly row: string, glyph = '') {
+  /** `words`: everything the row can show; the word box takes the longest one's width, so the right arrow never moves. */
+  constructor(readonly row: string, glyph = '', words: readonly string[] = []) {
     this.el.className = 'fe-row';
     this.el.dataset.hit = row;
     this.label.className = 'fe-label';
@@ -32,6 +34,17 @@ export class ValueRow {
       icon.innerHTML = glyph;
       this.value.append(icon);
     }
+    // The sizers sit in the word's grid cell, hidden: the cell is as wide as the longest word, at any text size.
+    Object.assign(this.word.style, { display: 'inline-grid', justifyItems: 'start' });
+    this.text.style.gridArea = '1 / 1';
+    this.word.append(this.text);
+    for (const w of words) {
+      const sizer = document.createElement('span');
+      sizer.className = 'fe-sizer';
+      Object.assign(sizer.style, { gridArea: '1 / 1', visibility: 'hidden' });
+      sizer.textContent = w;
+      this.word.append(sizer);
+    }
     this.value.append(this.word, this.right, this.small);
     this.el.style.gridTemplateColumns = 'calc(150px * (0.5 + 0.5 * var(--fe-text))) 1fr';
     this.el.append(this.label, this.value);
@@ -39,7 +52,7 @@ export class ValueRow {
 
   set(v: Omit<RowView, 'row'>): void {
     this.label.textContent = v.label;
-    this.word.textContent = v.value;
+    this.text.textContent = v.value;
     this.small.textContent = v.small;
     this.el.classList.toggle('is-focus', v.focused);
     this.el.style.marginBottom = v.gapAfter ? '24px' : '0';
@@ -65,6 +78,6 @@ export class ValueRow {
 
   /** Roll the dice: show an in-between value without the slide. */
   flash(value: string): void {
-    this.word.textContent = value;
+    this.text.textContent = value;
   }
 }

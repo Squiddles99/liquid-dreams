@@ -351,7 +351,7 @@ Values written to `Conditions` stay inside `CONDITION_RANGES`.
 
 - **Values:** January … December, wrapping.
 - **The small text** is the season (Summer Dec–Mar, Autumn Apr–May, Winter Jun–Sep, Spring Oct–Nov) plus a hint where it
-  matters: "big swell season" for Jun–Aug, "sea breeze season" for Dec–Feb.
+  matters: "big swells" for Jun–Aug, "sea breezes" for Dec–Feb (shortened at Gate B so the focused row never clips).
 - **The date:** the 15th of the month in the next occurrence of that month (`Conditions.date`).
 
 ### 6.2 Time

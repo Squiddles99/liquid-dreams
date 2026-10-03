@@ -1,7 +1,7 @@
 // src/frontend/ui/conditionsPanel.ts
 import type { FrontAction, FrontEvent, FrontState } from '../frontEnd';
 import { conditionsView, rollFrames, tideCurve } from '../conditionsView';
-import type { RowId } from '../sessionSetup';
+import { type RowId, rowWords } from '../sessionSetup';
 import { SKY_GLYPHS } from './skyGlyphs';
 import { ValueRow } from './valueRow';
 
@@ -48,7 +48,7 @@ export class ConditionsPanel {
     if ([...this.rows.keys()].join() !== ids) {
       this.rows.clear();
       this.list.replaceChildren(...view.map((v) => {
-        const r = new ValueRow(v.row, v.row === 'sky' ? SKY_GLYPHS[s.setup.sky] : '');
+        const r = new ValueRow(v.row, v.row === 'sky' ? SKY_GLYPHS[s.setup.sky] : '', rowWords(v.row));
         this.rows.set(v.row, r);
         return r.el;
       }));

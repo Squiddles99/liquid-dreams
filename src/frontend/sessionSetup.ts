@@ -175,7 +175,7 @@ export function cloudCover(sky: WeatherPresetName): number {
 }
 
 const SEASONS = ['Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Winter', 'Winter', 'Winter', 'Winter', 'Spring', 'Spring', 'Summer'];
-const HINTS: Record<number, string> = { 5: 'big swell season', 6: 'big swell season', 7: 'big swell season', 11: 'sea breeze season', 0: 'sea breeze season', 1: 'sea breeze season' };
+const HINTS: Record<number, string> = { 5: 'big swells', 6: 'big swells', 7: 'big swells', 11: 'sea breezes', 0: 'sea breezes', 1: 'sea breezes' };
 
 /** "5½", "4": feet in halves. */
 const feet = (ft: number): string => (Number.isInteger(ft) ? `${ft}` : `${Math.floor(ft)}½`);
@@ -220,6 +220,21 @@ export function rowDisplay(s: SessionSetup, row: RowId, today: Date): { value: s
       const t = TIDE_STOPS[s.tide];
       return { value: t.label, small: metres(t.m) };
     }
+  }
+}
+
+/** Every word a row can show (the panel sizes the value box to the longest, so its arrows stay put as the words change). */
+export function rowWords(row: RowId): string[] {
+  switch (row) {
+    case 'preset': return [...SESSION_PRESETS.map((p) => p.label), 'Custom'];
+    case 'month': return [...MONTHS];
+    case 'time': return TIME_STOPS.map((t) => t.label);
+    case 'sky': return SKY_ROWS.map((r) => r.label);
+    case 'wind': return WIND_ROWS.map((w) => w.label);
+    case 'swell': return SWELL_BANDS.map((b) => `${b.label} ${b.minFt}–${b.maxFt} ft`);
+    case 'period': return ['Wind swell', 'Mid', 'Groundswell'];
+    case 'from': return FROM_WINDOW.map((f) => FROM_NAMES[f].label);
+    case 'tide': return TIDE_STOPS.map((t) => t.label);
   }
 }
 
