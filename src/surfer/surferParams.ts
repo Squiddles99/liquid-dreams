@@ -16,7 +16,7 @@ export interface SurferParams {
   phaseT: number;
   /** Run the phase from the clock (the paddle stroke and kicks, the pop-up) instead of the slider. */
   play: boolean;
-  /** Hand-made code poses or motion clips where a pose has one (clip slice spec §4.2); code until Gate C rules. */
+  /** Motion clips where a pose has one (Gate C, Andrew, 2026-10-03), else the hand-made code poses (clip slice §4.2). */
   motion: Motion;
   /** On land (the dune, the select screen): Grommet's glasses on, hair and skin dry (grommet spec §6). */
   onLand: boolean;
@@ -57,7 +57,7 @@ export interface SurferParams {
 
 /** In the lineup where Andrew waits (DEFAULT_LINEUP_POSITION), nose out to sea toward the south-west swell. */
 export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
-  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, motion: 'code', onLand: false, carrySide: 'auto',
+  enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, motion: 'clip', onLand: false, carrySide: 'auto',
   pile: false, gang: false, pileX: 219, pileZ: 47, pileHeadingDeg: 0,
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
   x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,

@@ -61,7 +61,7 @@ describe('the clip on the board (clip slice spec §4.1, §5)', () => {
       }
     }
     expect(worst.length, worst.slice(0, 3).join('; ')).toBe(0);
-  });
+  }, 30000); // ~14k solves: ~1 s alone, slower on a busy machine
 
   it('is the same on the board however the board is tilted (Review Focus 5)', () => {
     const s = setup('female', 'thruster', 'regular'), sample = sampleClip(s.clip, 30, 0.4);
