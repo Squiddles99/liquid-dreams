@@ -1,6 +1,7 @@
 // src/frontend/frontEndCore.test.ts
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
+import type { Conditions } from '../conditions/types';
 import { DEFAULT_CHOICES } from './frontSettings';
 import { type FrontEndHost, FrontEndCore } from './frontEndCore';
 
@@ -74,5 +75,24 @@ describe('the front end\'s core (spec §3, §6.10)', () => {
     core.act('start', 0);
     for (let t = 0; t < 3000; t += 16) core.update(0.016, t);
     expect(store.get('liquid-dreams.front-choices.v1')).toContain('"rider":"female"');
+  });
+  it('sends every Conditions row to the world: month, time, sky, wind, swell, period, from and tide each change what the ocean, sky and light are built from (Andrew)', () => {
+    const field: Record<string, (c: Conditions) => unknown> = {
+      month: (c) => c.date, time: (c) => c.timeOfDay, sky: (c) => JSON.stringify(c.weather), wind: (c) => JSON.stringify(c.wind),
+      swell: (c) => c.swell.sizeFt, period: (c) => c.swell.periodS, from: (c) => c.swell.directionDeg, tide: (c) => c.tideM,
+    };
+    for (const row of Object.keys(field)) {
+      let last: Conditions | null = null;
+      const { host } = fakeHost();
+      const core = new FrontEndCore({ ...host, applyConditions: (c) => { last = c; } }, DEFAULT_CHOICES, opts);
+      if (row === 'period') core.act('details', 0);
+      for (let k = 0; k < 12 && core.state.rowFocus !== row; k++) core.act('down', 0);
+      expect(core.state.rowFocus, row).toBe(row);
+      const before = field[row](last!);
+      const end = core.act('right', 10).events.some((e) => e.kind === 'end');
+      if (end) core.act('left', 20);
+      for (let t = 30; t <= 600; t += 16) core.update(0.016, t);
+      expect(field[row](last!), `${row} reaches the world`).not.toEqual(before);
+    }
   });
 });
