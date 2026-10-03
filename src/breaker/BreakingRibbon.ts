@@ -50,7 +50,7 @@ export interface RibbonSurface {
 export const SKIRT_DEPTH_M = 0.3;
 /** PROFILE_SAMPLES plus one skirt vertex at each end (index 0: under the front edge; last: under the back edge). */
 export const VERTS_PER_STATION = PROFILE_SAMPLES + 2;
-/** vec4s per station in the stations buffer: [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, 0, 0] (packStations). */
+/** vec4s per station in the stations buffer: [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, ψ, lipH (0: none)] (packStations). */
 export const STATION_VEC4S = 3;
 /** A sample whose home is more than this inside both edges is `inner` (the footprint's 1 m shrink, spec R9). */
 export const INNER_MARGIN_M = 1;
@@ -231,7 +231,7 @@ export function packStations(entries: readonly StationEntry[], out: Float32Array
     const e = entries[i];
     if (!e.gap) prev = e;
     const s: Station = prev;
-    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, 0], i * STATION_VEC4S * 4);
+    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0], i * STATION_VEC4S * 4);
   }
   return n;
 }
@@ -662,7 +662,7 @@ export class BreakingRibbon {
       };
       // The frame on the sheet without the pile (the lip is thrown from the wave as it stood); the pile's lift from the
       // sheet with it (lipProfile.buildProfile).
-      const f = profileFrameNode(along(frameSurface), along(smooth), { H: b.x, c: b.y, r: b.z, tb: b.w, psi: cS.z, offshoreMs: this.offshoreMs }, this.lip,
+      const f = profileFrameNode(along(frameSurface), along(smooth), { H: b.x, c: b.y, r: b.z, tb: b.w, psi: cS.z, offshoreMs: this.offshoreMs, lipH: cS.w }, this.lip,
         (k, v) => { frames.element(i.mul(FRAME_VEC4S).add(FRAME_KNOT_VEC4).add(k)).assign(v); });
       packFrameNodes(f).forEach((v, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).assign(v));
     })().compute(MAX_STATIONS) as THREE.ComputeNode;

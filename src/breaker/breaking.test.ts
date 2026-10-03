@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, MIN_STAGE_SPAN, sharpenDropSlope, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, TUBE_HOLD_S, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -376,7 +376,7 @@ describe('one clock: the onset record and the lifecycle', () => {
   it('lifecycle without a record is the ratio alone (the curves as before)', () => {
     for (const r of [0.5, 0.8, 1, 1.3, 2, 5]) {
       const c = stageCurves(r, P);
-      expect(lifecycle(r, undefined, 3, P)).toEqual({ steep: steepening(r, P), stage: breakingStage(r, P), drain: c.drain, collapse: c.collapse, pile: 0, pileReach: 0, surge: 1, decay: 1 });
+      expect(lifecycle(r, undefined, 3, P)).toEqual({ steep: steepening(r, P), stage: breakingStage(r, P), drain: c.drain, collapse: c.collapse, pile: 0, pileReach: 0, surge: 1, decay: 1, hold: 0, release: c.collapse });
     }
   });
   it('lifecycle is continuous across the onset, and from there only runs forward', () => {
@@ -392,7 +392,7 @@ describe('one clock: the onset record and the lifecycle', () => {
         for (const k of ['steep', 'stage', 'drain', 'collapse', 'pile', 'pileReach'] as const) expect(lc[k], `${k} at r ${r}, tb ${tb.toFixed(2)}`).toBeGreaterThanOrEqual(prev[k] - 1e-12);
         prev = lc;
       }
-      expect(prev).toEqual({ steep: 1, stage: 1, drain: 1, collapse: 1, pile: 1, pileReach: 1, surge: 1, decay: prev.decay });
+      expect(prev).toEqual({ steep: 1, stage: 1, drain: 1, collapse: 1, pile: 1, pileReach: 1, surge: 1, decay: prev.decay, hold: prev.hold, release: 1 });
       expect(prev.decay, 'the pile has started to decay 6 s on').toBeLessThan(1);
     }
   });
@@ -404,6 +404,16 @@ describe('one clock: the onset record and the lifecycle', () => {
     expect(lifecycle(1.2, land + PILE_RISE_S, H, P, 1.2, 1.2, 1).pile).toBeCloseTo(1, 12);
     expect(lifecycle(1.2, 0.7 * land, H, P, 1.2, 1.2, 1).stage).toBeGreaterThanOrEqual(0.75);
     expect(lifecycle(1.2, land + PILE_RISE_S, H, P, 1.2, 1.2, 0.5).pile).toBeCloseTo(Math.max(breakingStage(1.2, P), 0.5), 12);
+    // A thrown tube is held open TUBE_HOLD_S × how thrown after the landing; the pile rises and the wave settles from then
+    // (Andrew, 2026-10-03), while the front's lean lets go on the landing's own clock (release).
+    const thrown = (tb: number, k: number) => lifecycle(1.2, tb, H, P, 1.2, 1.2, 1, k);
+    expect(thrown(land + TUBE_HOLD_S, 1).pile).toBe(0);
+    expect(thrown(land + TUBE_HOLD_S, 1).collapse).toBe(0);
+    expect(thrown(land + TUBE_HOLD_S, 1).hold).toBeCloseTo(TUBE_HOLD_S, 12);
+    expect(thrown(land + TUBE_HOLD_S + PILE_RISE_S, 1).pile).toBeCloseTo(1, 12);
+    expect(thrown(land + settleSpan(H, P), 1).release).toBeCloseTo(1, 12);
+    expect(thrown(land + 0.5 * TUBE_HOLD_S + PILE_RISE_S, 0.5).pile).toBeCloseTo(1, 12);
+    expect(thrown(land, 0).hold).toBe(0);
     // Just grazing breaking (rMax 1.01): still mostly partial.
     expect(lifecycle(1.01, land + PILE_RISE_S, H, P, 1.01, 1.01, 1).pile).toBeLessThan(0.2);
     // Unbroken, the tube's presence does nothing.
@@ -478,7 +488,7 @@ describe('the whitewater pile (spec 2026-09-29 §3.2)', () => {
     expect(settledCrestTop(1.5, 3, 4, 0.5, P)).toBeCloseTo(0.5 * settledCrestTop(1.5, 3, 4, 1, P), 12);
   });
   it("the pile's top is the lip's height, surged, halving every pileHalfM rolled, never below its floor", () => {
-    const lc = (surge: number, decay: number): Lifecycle => ({ steep: 1, stage: 1, drain: 1, collapse: 1, pile: 1, pileReach: 1, surge, decay });
+    const lc = (surge: number, decay: number): Lifecycle => ({ steep: 1, stage: 1, drain: 1, collapse: 1, pile: 1, pileReach: 1, surge, decay, hold: 0, release: 1 });
     expect(pileTop(2, 0.8, lc(1.3, 1))).toBeCloseTo(2.6, 12);
     expect(pileTop(2, 0.8, lc(1, 0.5))).toBeCloseTo(1, 12); // half the lip's height, pileHalfM on
     expect(pileTop(2, 0.8, lc(1, 0.25))).toBeCloseTo(0.8, 12); // decayed onto the bore
@@ -493,7 +503,7 @@ describe('the whitewater pile (spec 2026-09-29 §3.2)', () => {
       expect(pileShape(v, H).dg).toBeCloseTo((pileShape(v + h, H).g - pileShape(v - h, H).g) / (2 * h), 6);
     }
   });
-  const lcFull: Lifecycle = { steep: 1, stage: 1, drain: 1, collapse: 1, pile: 1, pileReach: 1, surge: 1, decay: 1 };
+  const lcFull: Lifecycle = { steep: 1, stage: 1, drain: 1, collapse: 1, pile: 1, pileReach: 1, surge: 1, decay: 1, hold: 0, release: 1 };
   // A synthetic cross-section: η = 1.5·cos(0.1·a), the crest at a = 0, H 3.
   const inputAt = (a: number, lipTop = 2): BreakPointInput => ({
     theta: -0.1 * a, env: 1, uUnbroken: a, eta: 1.5 * Math.cos(0.1 * a), uCrest: 0, etaCrest: 1.5, H: 3, k: 0.1, hmin: 4, boreH: 3,
@@ -524,7 +534,7 @@ describe('the whitewater pile (spec 2026-09-29 §3.2)', () => {
     }
   });
   it("breakPoint's slope with the pile matches central differences of its height", () => {
-    const lc: Lifecycle = { steep: 1, stage: 1, drain: 1, collapse: 0.5, pile: 0.8, pileReach: 0.6, surge: 1.1, decay: 0.9 };
+    const lc: Lifecycle = { steep: 1, stage: 1, drain: 1, collapse: 0.5, pile: 0.8, pileReach: 0.6, surge: 1.1, decay: 0.9, hold: 0, release: 0.5 };
     // A 3 m lip, and a 12 m one whose back reaches the fade a quarter period behind the crest.
     for (const lipHeight of [3, 12]) {
       const inp = (a: number): BreakPointInput => ({ ...inputAt(a, lipHeight * 0.66), lipHeight });

@@ -1,7 +1,7 @@
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetTime } from './breaking';
+import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetHeight, onsetTime } from './breaking';
 import { type ProfileInput, type Vec2, profileFrame } from './lipProfile';
 import { withSheetShape } from './overturn';
 import { type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
@@ -38,7 +38,8 @@ export function peakStation(psi: number, tb: number | null, o: { setup?: ReturnT
     const x = p0.x + f0.dirX * u, z = p0.z + f0.dirZ * u, r = sumWaves(x, z, t, sampleField(f, x, z), [w], cx, opt);
     return [u + r.dx * f0.dirX + r.dz * f0.dirZ, r.eta];
   };
-  const input: ProfileInput = { H: localHeight(w, f0), c: cx.omega / f0.k, r: breakingRatio(w.heightM * f0.amp, f0.hminBreak, P), tb: tb === null ? null : tbAlong(s0), psi, offshoreMs: o.offshoreMs ?? 0 };
+  const rec = sampleOnset(f, p0.x, p0.z), lipH = rec && tb !== null ? onsetHeight(rec, 0, w.heightM, P) : null;
+  const input: ProfileInput = { H: localHeight(w, f0), c: cx.omega / f0.k, r: breakingRatio(w.heightM * f0.amp, f0.hminBreak, P), tb: tb === null ? null : tbAlong(s0), psi, offshoreMs: o.offshoreMs ?? 0, lipH };
   return { base: along(sheet), frameBase: along({ ...sheet, pile: false }), input, lip: withSheetShape(P, psi), s0 };
 }
 /** The lip's landing time at ψ: the station where tb equals its own τ_land (three fixed-point steps from 1 s). */

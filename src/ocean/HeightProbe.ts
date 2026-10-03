@@ -5,7 +5,8 @@ import type { WaterSurfaceModel } from './waterSurface';
 type N = any;
 
 export const MAX_PROBES = 16;
-const FIXED_POINT_ITERATIONS = 4;
+/** x0 ← x − d(x0) steps (breakingField.test checks they converge through the break). */
+export const FIXED_POINT_ITERATIONS = 4;
 
 /**
  * Merge a readback into the held values: a probe that read back NaN or Infinity keeps its last good height, so a

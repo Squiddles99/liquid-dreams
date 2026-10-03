@@ -4,9 +4,10 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS } from './breaking';
+import { DEFAULT_BREAK_PARAMS, landingEstimate } from './breaking';
+import { HAND_BACK_S } from './lipProfile';
 import {
-  MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, stationPsi, timeSinceOnset, traceStations,
+  CREST_TOLERANCE_S, MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, stationPsi, timeSinceOnset, traceStations,
 } from './crestTrace';
 import { PSI_NORMAL } from './overturn';
 import { computeReefField, sampleField } from './reefField';
@@ -43,7 +44,12 @@ describe('crestTrace', () => {
   it('every station sits on its crest (|ξ| < 2 ms) and a trace takes a few ms at most', () => {
     for (const w of [big, peeler]) for (const t of [-1, 0, 1, 2, 3, 4]) {
       const st = live(trace([w], t));
-      for (const s of st) expect(Math.abs(phaseXi(s.x, s.z, t, sampleField(field, s.x, s.z), w, ctx))).toBeLessThan(2e-3);
+      // Stations kept on only by the tube's hold (TUBE_HOLD_S, 2026-10-03: old bore, its crest flat) within the trace's own
+      // acceptance (CREST_TOLERANCE_S; 7 ms at the peak's bore 4.2 s after it broke); the rest within 2 ms (ruling).
+      for (const s of st) {
+        const old = s.tb !== null && s.tb > landingEstimate(s.H, P) * (1 + P.collapseTime) + HAND_BACK_S;
+        expect(Math.abs(phaseXi(s.x, s.z, t, sampleField(field, s.x, s.z), w, ctx))).toBeLessThan(old ? CREST_TOLERANCE_S : 2e-3);
+      }
     }
     const times: number[] = [];
     for (let i = 0; i < 10; i++) { const t0 = performance.now(); trace([peeler, big], 2); times.push(performance.now() - t0); }
@@ -163,6 +169,26 @@ describe('station ψ (barrel from the maths)', () => {
     }
     expect(worst).toBeLessThan(1e-6);
     expect(worstStored).toBeLessThan(0.003); // stations between keys are interpolated (5% of a normal ψ)
+  });
+});
+
+describe("each station's throw height (spec 2026-10-03 barrel-size, option A)", () => {
+  it("is the sheet's crest lipH there: the tube hangs from the crest the sheet threw", () => {
+    const big = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+    const w = testWave(big.heightM), t = sampleField(field, 0, 0).tau + 0.8;
+    const input = { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: 0 };
+    const o = breakOptions(field, DEFAULT_BREAK_PARAMS, 0);
+    const stations = traceStations(field, [w], t, ctx, input).filter((e): e is Station => !e.gap);
+    let broken = 0, worst = 0;
+    for (const s of stations) {
+      const c = crestAt(s.x, s.z, t, sampleField(field, s.x, s.z), w, ctx, o);
+      if (!c) continue;
+      if (c.lipH === null) { expect(s.lipH).toBeNull(); continue; }
+      broken++;
+      worst = Math.max(worst, Math.abs((s.lipH ?? NaN) - c.lipH));
+    }
+    expect(broken).toBeGreaterThan(5);
+    expect(worst).toBeLessThan(1e-6);
   });
 });
 

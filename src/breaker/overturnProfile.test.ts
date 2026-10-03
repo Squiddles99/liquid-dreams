@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PROFILE_SEGMENTS, buildProfile, crossings, foldDepth, liftAt, sampleTarget, sheetYAt, tubeMetrics } from './lipProfile';
+import { LIP_JET_SHARE, PROFILE_SEGMENTS, buildProfile, crossings, foldDepth, liftAt, sampleTarget, sheetYAt, tubeMetrics } from './lipProfile';
 import { aspectFit, lipAreaFit, overturnShape, tiltFitDeg, tubeAreaFit } from './overturn';
 
 import { peakLanding, peakStation } from './peakStation.fixture';
@@ -8,7 +8,7 @@ const n = PROFILE_SEGMENTS, faceStart = n.front, wallStart = n.front + n.face, w
 const prof = (psi: number, tb: number | null) => { const s = peakStation(psi, tb); return { s, p: buildProfile(s.base, s.input, s.lip, s.frameBase) }; };
 
 describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)', () => {
-  it('at landing the drawn tube is the equations: area ±3%, width ÷ length ±8%, tilt ±3°, lip area ±25%', () => {
+  it('at landing the drawn tube is the equations: area ±3%, width ÷ length ±8%, tilt ±3°, lip area ±25% (of its share of the jet)', () => {
     for (const psi of [0.03, 0.045, 0.06]) {
       // H is the fits' H_I: the crest's height above the water the lip lands on (lipProfile.impactHeight).
       const { p } = prof(psi, peakLanding(psi)), H = p.frame.HI, m = tubeMetrics(p);
@@ -16,7 +16,8 @@ describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)
       expect(Math.abs(m.area / (tubeAreaFit(psi) * H * H) - 1), 'tube area').toBeLessThanOrEqual(0.03);
       expect(Math.abs(m.aspect / aspectFit(psi) - 1), 'width ÷ length').toBeLessThanOrEqual(0.08);
       expect(Math.abs(m.tiltDeg - tiltFitDeg(psi)), 'tilt').toBeLessThanOrEqual(3);
-      expect(Math.abs(m.lipArea / (lipAreaFit(psi) * H * H) - 1), 'lip area').toBeLessThanOrEqual(0.25);
+      // The lip is LIP_JET_SHARE of the fits' jet (spec 2026-10-03 barrel-size, option A: Andrew's 1.5 m lip at 12 ft).
+      expect(Math.abs(m.lipArea / (LIP_JET_SHARE * lipAreaFit(psi) * H * H) - 1), 'lip area').toBeLessThanOrEqual(0.25);
       // The face is the tube's floor (Andrew's red line, 2026-10-03): where the lip lands part-way down the face (state 4),
       // the air it encloses is a thinner oval along the face than the equations' teardrop (ψ 0.03: 0.65 of it; Moideen &
       // Behera 2022 fig. 6). Recorded; never under half.
