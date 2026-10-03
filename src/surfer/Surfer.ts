@@ -9,6 +9,9 @@ import { BONES, type BoneName, type SkeletonRest, type SurferManifest, assertMan
 import type { SolvedPose } from './solvePose';
 import { type Cloth, type OutfitUniforms, bodyMaterial, clothMaterial, eyesMaterial, fabricMaterial, hairMaterial, lashesMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
 import { FACE_CHANNELS, type FaceState, IdleLife, MOODS } from './idleLife';
+
+/** A hand's baked shape (dune select Gate A). */
+export type HandShape = 'relaxed' | 'grip' | 'flat';
 import { skinZones } from './skinDetail';
 import { SOLE_M } from './placement';
 import { bodyOutfit, hairShown, landLook, outfitMasks, showsBoardies, wearsClothes } from './wardrobe';
@@ -68,6 +71,8 @@ export class Surfer {
   /** Where the eyes look, in radians off the head's look (yaw, pitch; closeup spec §5.1): the eye shader draws the iris
    * toward it. */
   readonly gaze = uniform(new THREE.Vector2());
+  /** Each mesh's hand morph slots (dune select Gate A): the rail grip and the open hand, per hand; -1 absent. */
+  private readonly grips: { mesh: THREE.Mesh; gripL: number; gripR: number; flatL: number; flatR: number }[] = [];
   /** Each morphing mesh's slot for each face channel, by its own morph dictionary (Review Focus 1). */
   private readonly morphs: { mesh: THREE.Mesh; slots: [channel: number, morph: number][] }[] = [];
   /** This rider's idle face (closeup spec §5.1), seeded per rider. */
@@ -197,6 +202,9 @@ export class Surfer {
           if (dict[c] !== undefined) slots.push([i, dict[c]]);
         });
         if (slots.length) this.morphs.push({ mesh, slots });
+        if (dict.gripL !== undefined || dict.gripR !== undefined) {
+          this.grips.push({ mesh, gripL: dict.gripL ?? -1, gripR: dict.gripR ?? -1, flatL: dict.flatL ?? -1, flatR: dict.flatR ?? -1 });
+        }
       }
     });
     // The hair's soft edges (dune select spec §13.1): each hair mesh drawn a second time, blended over its opaque core.
@@ -274,6 +282,20 @@ export class Surfer {
       for (const [c, m] of slots) w[m] = f[FACE_CHANNELS[c]];
     }
     this.gaze.value.set(f.gazeYawDeg * DEG, f.gazePitchDeg * DEG);
+  }
+
+  /** Each hand's shape: relaxed (the rest hand), gripping a rail, or open flat on a board's face (a bodyboard's). */
+  setHands(l: HandShape, r: HandShape): void {
+    for (const g of this.grips) {
+      const w = g.mesh.morphTargetInfluences!;
+      const put = (i: number, on: boolean): void => {
+        if (i >= 0) w[i] = on ? 1 : 0;
+      };
+      put(g.gripL, l === 'grip');
+      put(g.flatL, l === 'flat');
+      put(g.gripR, r === 'grip');
+      put(g.flatR, r === 'flat');
+    }
   }
 
   setSwimFins(on: boolean): void {

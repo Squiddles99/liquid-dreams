@@ -1,7 +1,7 @@
 // src/surfer/poseTestKit.ts (test-only: imported by *.test.ts files, never by the game)
 import { readFileSync } from 'node:fs';
 import { Quaternion, Vector3 } from 'three/webgpu';
-import { type BoardSpec, halfWidthAt, layoutFor, uAt } from '../board/boardSpec';
+import { type BoardSpec, bottomYAt, deckYAt, halfWidthAt, layoutFor, uAt } from '../board/boardSpec';
 import { type Box, PACK_PARTS, carriedBoard } from './carry';
 import type { BoardFrame, SolvedPose } from './solvePose';
 import { glbFloats, glbJson } from './glbData';
@@ -85,4 +85,62 @@ export function handIntoBoard(s: SolvedPose, rest: SkeletonRest, side: Limb, boa
     worst = Math.max(worst, q.y + 0.012);
   }
   return worst;
+}
+
+/** A built body's grip data (finger joints from the hand's head, rest and curled), from its manifest. */
+export function gripOf(name: PresetName): NonNullable<SurferManifest['grip']> {
+  const man: SurferManifest = JSON.parse(readFileSync(`public/surfer/${name}.manifest.json`, 'utf8'));
+  if (!man.grip) throw new Error(`${name}'s manifest has no grip data: rebuild the bodies (npm run build:surfers)`);
+  return man.grip;
+}
+
+/** The carrying hand's shape for a board: the rail grip, or open flat on a bodyboard (its rail out of reach). */
+export const handShapeFor = (kind: string): 'grip' | 'flat' => (kind === 'bodyboard' ? 'flat' : 'grip');
+
+/** The hand's fingers in the world (each finger's four joints) in a baked shape, placed by the solved hand. */
+export function gripFingers(s: SolvedPose, rest: SkeletonRest, side: Limb, name: PresetName, shape: 'grip' | 'flat' = 'grip'): Vector3[][] {
+  const h = `hand_${side}` as const, D = s.world[h].clone().multiply(rest.restQ[h].clone().invert());
+  const pts = gripOf(name)[side][shape];
+  if (!pts) throw new Error(`${name}'s manifest has no '${shape}' hand: rebuild the bodies (npm run build:surfers)`);
+  return pts.map((finger) => finger.map((p) => s.joint[h].clone().add(new Vector3(...p).applyQuaternion(D))));
+}
+
+/**
+ * How deep the curled fingers (and the palm, wrist to knuckles) go into the board (m; 0 when clear): every 4 mm along
+ * them, a finger 8 mm in radius (scaled with the rider), against the board's real section (bottom to deck, rail to rail).
+ */
+export function gripIntoBoard(s: SolvedPose, rest: SkeletonRest, side: Limb, name: PresetName, board: BoardFrame, spec: BoardSpec, shape: 'grip' | 'flat' = 'grip'): number {
+  const r = 0.008 * (rest.heightM / 1.78), inv = boardQuaternion(board).invert();
+  const fingers = gripFingers(s, rest, side, name, shape), wrist = s.joint[`hand_${side}`];
+  const segs: [Vector3, Vector3][] = [];
+  for (const f of fingers) {
+    segs.push([wrist, f[0]]);
+    for (let i = 0; i < 3; i++) segs.push([f[i], f[i + 1]]);
+  }
+  let worst = 0;
+  for (const [a, b] of segs) {
+    const n = Math.max(1, Math.ceil(a.distanceTo(b) / 0.004));
+    for (let k = 0; k <= n; k++) {
+      const q = a.clone().lerp(b, k / n).sub(board.position).applyQuaternion(inv);
+      if (Math.abs(q.x) > spec.lengthM / 2) continue;
+      const hw = halfWidthAt(spec, uAt(spec, q.x)), lo = bottomYAt(spec, q.x, q.z), hi = deckYAt(spec, q.x, q.z);
+      const inWidth = hw + r - Math.abs(q.z), above = q.y - (lo - r), below = hi + r - q.y;
+      if (inWidth > 0 && above > 0 && below > 0) worst = Math.max(worst, Math.min(inWidth, above, below));
+    }
+  }
+  return worst;
+}
+
+/**
+ * Which of the index, middle and ring fingertips hook the lower rail: past the rail's middle (its height at the edge, the
+ * deck side of it) and hugging it, within 1.5 cm of its outline or back over the deck. Andrew: "his fingers should be
+ * grasping the rail of the board".
+ */
+export function gripHooks(s: SolvedPose, rest: SkeletonRest, side: Limb, name: PresetName, board: BoardFrame, spec: BoardSpec): boolean[] {
+  const inv = boardQuaternion(board).invert();
+  return gripFingers(s, rest, side, name).slice(0, 3).map((f) => {
+    const tip = f[3].clone().sub(board.position).applyQuaternion(inv), hw = halfWidthAt(spec, uAt(spec, tip.x));
+    const edge = Math.sign(tip.z || -1) * (hw - 0.002), mid = (bottomYAt(spec, tip.x, edge) + deckYAt(spec, tip.x, edge)) / 2;
+    return tip.y >= mid && Math.abs(tip.z) - hw <= 0.015;
+  });
 }

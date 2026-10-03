@@ -68,13 +68,20 @@ for (const name of ['female', 'male', 'grommet'] as const) {
       }
       expect(outside, 'mouth-inside vertices on the chin').toEqual([]);
     });
-    it('carries the nine face morphs on every body primitive, by name (closeup spec §4.1)', () => {
+    it('carries the nine face morphs and the four hand morphs on every body primitive, by name (closeup spec §4.1; Gate A)', () => {
+      const MORPHS = [...FACE_CHANNELS, 'gripL', 'gripR', 'flatL', 'flatR'];
       const body = gltf.meshes.find((m: any) => m.primitives.some((p: any) => gltf.materials[p.material].name === 'body'));
-      expect(body.extras?.targetNames).toEqual([...FACE_CHANNELS]);
-      for (const p of body.primitives) expect(p.targets?.length).toBe(FACE_CHANNELS.length);
+      expect(body.extras?.targetNames).toEqual(MORPHS);
+      for (const p of body.primitives) expect(p.targets?.length).toBe(MORPHS.length);
       // At rest, every morph is off: a default weight of 1 had her resting with every expression on at once.
       expect((body.weights ?? []).every((w: number) => w === 0)).toBe(true);
-      expect(man.meshes.find((m) => m.materials.includes('body'))!.morphs).toEqual([...FACE_CHANNELS]);
+      expect(man.meshes.find((m) => m.materials.includes('body'))!.morphs).toEqual(MORPHS);
+    });
+    it('records both hands curled round a rail and open flat, for the carry tests (Gate A)', () => {
+      for (const side of ['l', 'r'] as const) for (const shape of ['rest', 'grip', 'flat'] as const) {
+        expect(man.grip?.[side][shape]?.length, `${side} ${shape}`).toBe(5);
+        for (const finger of man.grip![side][shape]!) expect(finger.length).toBe(4);
+      }
     });
     it('keeps the head at full resolution (≥ 5,000 triangles weighted to the head)', () => {
       expect(man.headTriangles).toBeGreaterThanOrEqual(5000);

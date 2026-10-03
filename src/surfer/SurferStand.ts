@@ -145,6 +145,10 @@ export class SurferStand {
     };
     const solved = solvePose(s.rest, t, state.board, state.lookAt);
     s.applyPose(solved);
+    // The carrying hand grips its board's rail (dune select Gate A), or lies open on a bodyboard, its rail out of reach;
+    // every other hand is relaxed.
+    const holding = carrying && t.carry ? t.carry.side : null, shape = p.board === 'bodyboard' ? 'flat' : 'grip';
+    s.setHands(holding === 'l' ? shape : 'relaxed', holding === 'r' ? shape : 'relaxed');
     if (carrying && t.carry) {
       // The board under the arm (walking spec §4): placed from the solved hand, not the feet; no deck contacts, no leash.
       const held = carriedBoard(t.carry, frame, solved);

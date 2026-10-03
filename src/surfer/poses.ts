@@ -34,6 +34,8 @@ export interface HandTarget {
   pole: Vector3;
   /** Where the fingers point (same frame); unset, the hand runs straight on from the forearm. */
   dir?: Vector3;
+  /** Where the palm faces (same frame), with `dir`; used when the skeleton knows its palms (SkeletonRest.hand). */
+  palm?: Vector3;
 }
 export interface PoseTargets {
   pelvis: Vector3;
@@ -476,10 +478,18 @@ function carry(ctx: PoseContext, r: Rider, tuck = 0): PoseTargets {
   if (n.z * k > 0) n.negate();
   const lowerRail = V(0.02, botY, k * botLat);
   const onFace = (along: number): Vector3 => add(lowerRail, sc(w, along), sc(n, -(t / 2 + LIMB_RADIUS.forearm * H)));
-  const shoulder = V(0, yS, k * latS), reachMax = 0.97 * (m.upperArmLen + m.forearmLen);
-  let along = 0.8 * HAND_REACH * H;
+  // A hand gripping a rail reaches with the arm straight (Gate A: so the knuckles get to the rail); a bodyboard's rail is out
+  // of reach whatever the arm does, so its hand rests on the face as before.
+  const palmGrips = !!rest.hand && spec.kind !== 'bodyboard';
+  const shoulder = V(0, yS, k * latS), reachMax = (palmGrips ? 0.995 : 0.97) * (m.upperArmLen + m.forearmLen);
+  // A body that knows its palm (Gate A: the fingers grip the rail): the wrist a palm's length up the face, so the knuckles
+  // sit on the rail's edge and the curled fingers hook over it. Otherwise a hand's reach up.
+  const palm = rest.hand?.[side];
+  let along = palm ? palm.palmLen : 0.8 * HAND_REACH * H;
   while (along < 2 * halfW && onFace(along).distanceTo(shoulder) > reachMax) along += 0.005;
   const wrist = onFace(along);
+  // Where the knuckles go: on the face just above the lower rail, a finger's half thickness off it.
+  const knuckles = add(lowerRail, sc(w, Math.min(0.006, along)), sc(n, -(t / 2 + 0.012)));
   // The board's origin is the middle of its bottom face, its up (the deck's normal) toward the body.
   const mid = add(sc(lowerRail, 0.5), sc(V(0.02, topY, k * topLat), 0.5));
   const board: BoardFrame = {
@@ -491,7 +501,9 @@ function carry(ctx: PoseContext, r: Rider, tuck = 0): PoseTargets {
   const hands = {
     // The hand flat on the bottom face, the fingers down it toward the lower rail (Gate A: running straight on from the
     // forearm, angled in at the board, it cut through the rail).
-    [side]: { ...boardHand(wrist, V(0, 0.3, k)), dir: sc(w, -1) },
+    [side]: palm
+      ? { ...boardHand(wrist, V(0, 0.3, k)), dir: knuckles.clone().sub(wrist).normalize(), palm: n.clone() }
+      : { ...boardHand(wrist, V(0, 0.3, k)), dir: sc(w, -1) },
     // The free arm hangs; the reach dial raises it to a wave beside the head (stoked: the surf's up).
     [free]: boardHand(
       V(0.03, fsh.y - 0.96 * reach, -k * (Math.abs(fsh.x) + 0.06)).lerp(V(0.06, fsh.y + 0.55 * reach, -k * (Math.abs(fsh.x) + 0.2)), wave),
