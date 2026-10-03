@@ -24,7 +24,7 @@ export class GearPanel {
   constructor(private readonly onPointer: (p: Intent) => void) {
     const scrim = document.createElement('div');
     scrim.className = 'fe-scrim-right';
-    Object.assign(this.col.style, { position: 'absolute', right: 'var(--fe-safe-x)', top: '150px', width: '600px' });
+    Object.assign(this.col.style, { position: 'absolute', right: 'var(--fe-safe-x)', top: '150px', width: 'calc(600px * (0.6 + 0.4 * var(--fe-text)))' });
     this.el.append(scrim, this.col);
     this.el.addEventListener('pointerover', (e) => {
       const row = (e.target as HTMLElement).closest('[data-index]') as HTMLElement | null;
@@ -65,7 +65,7 @@ export class GearPanel {
       el.className = `fe-row${r.focused ? ' is-focus' : ''}`;
       el.dataset.index = String(i);
       el.dataset.hit = 'row';
-      Object.assign(el.style, { gridTemplateColumns: '1fr auto', minHeight: 'calc(84px * var(--fe-text))', padding: '0 20px', transformOrigin: '100% 50%' });
+      Object.assign(el.style, { gridTemplateColumns: '1fr auto', minHeight: 'calc(84px * min(var(--fe-text), 1.15))', padding: '0 20px', transformOrigin: '100% 50%' });
       const name = document.createElement('span');
       name.className = 'fe-value';
       Object.assign(name.style, { fontSize: 'calc(36px * var(--fe-text))', gap: '12px', minWidth: '0' });

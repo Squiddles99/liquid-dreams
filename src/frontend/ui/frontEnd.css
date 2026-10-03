@@ -27,10 +27,12 @@
 .fe-root.is-opaque .fe-scrim-left { background: linear-gradient(90deg, rgba(7, 13, 17, 0.94) 0, rgba(7, 13, 17, 0.94) 44%, rgba(7, 13, 17, 0) 52%); }
 .fe-root.is-opaque .fe-scrim-right { background: linear-gradient(270deg, rgba(7, 13, 17, 0.94) 0, rgba(7, 13, 17, 0.94) 42%, rgba(7, 13, 17, 0) 50%); }
 
-.fe-title { font: 400 calc(76px * var(--fe-text)) / 1 'Knewave', sans-serif; color: var(--fe-cream); margin: 0 0 32px;
+/* Large text (Settings, up to 200%): body text scales in full; display type (titles, name lockups) and row heights only a
+   little, so every beat still fits its 1080-high design. */
+.fe-title { font: 400 calc(76px * min(var(--fe-text), 1.25)) / 1 'Knewave', sans-serif; color: var(--fe-cream); margin: 0 0 32px;
   text-shadow: 4px 4px 0 var(--fe-teal), 0 2px 18px rgba(0, 0, 0, 0.35); -webkit-text-stroke: 1.5px var(--fe-sun); }
-.fe-row { position: relative; display: grid; grid-template-columns: 150px 1fr auto; align-items: center; column-gap: var(--fe-gutter);
-  min-height: calc(var(--fe-row-h) * var(--fe-text)); padding: 0 18px; border-radius: var(--fe-radius);
+.fe-row { position: relative; display: grid; grid-template-columns: calc(150px * (0.5 + 0.5 * var(--fe-text))) 1fr auto; align-items: center; column-gap: var(--fe-gutter);
+  min-height: calc(var(--fe-row-h) * min(var(--fe-text), 1.15)); padding: 0 18px; border-radius: var(--fe-radius);
   transition: transform 90ms var(--fe-ease-out), background-color 90ms linear; transform-origin: 0 50%; }
 .fe-row + .fe-row { border-top: 1px solid rgba(247, 236, 210, 0.12); }
 .fe-row.is-focus { background: var(--fe-cream); color: var(--fe-ink); transform: scale(1.04); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);

@@ -1,6 +1,7 @@
 // src/frontend/frontEndPage.ts: the front end in the page (class FrontEnd): the DOM, input, sounds and the core.
 import type { SettingsStorage } from '../dev/devSettings';
 import { PRESETS } from '../surfer/presets';
+import type { FrontAction, FrontState } from './frontEnd';
 import { type CoreCue, type FrontEndHost, FrontEndCore } from './frontEndCore';
 import { DEFAULT_FRONT_SETTINGS, FRONT_CHOICES_KEY, FRONT_SETTINGS_KEY, type FrontSettings, loadJson, safeAreaFraction, sanitizeChoices, sanitizeFrontSettings, saveJson } from './frontSettings';
 import { SETTING_ROWS, type SettingRow, stepSetting } from './settingsView';
@@ -64,6 +65,16 @@ export class FrontEnd {
 
   get isOpen(): boolean {
     return this.root !== null;
+  }
+
+  /** The state machine's state while open (dev checks drive the beats with it). */
+  get state(): FrontState | null {
+    return this.core?.state ?? null;
+  }
+
+  /** One action, as if pressed (dev checks). */
+  act(a: FrontAction): void {
+    if (this.core) this.cue(this.core.act(a, performance.now()));
   }
 
   open(): void {
