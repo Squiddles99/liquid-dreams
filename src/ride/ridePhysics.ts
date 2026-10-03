@@ -7,7 +7,7 @@ import type { WaterAt, WaterFn } from './water';
  */
 
 export type RidePhase = 'paddle' | 'popup' | 'ride' | 'bail';
-export type RideEvent = 'caught' | 'popup' | 'tooSoon' | 'wipeout' | 'kickout' | 'reset';
+export type RideEvent = 'caught' | 'popup' | 'tooSoon' | 'wipeout' | 'kickout' | 'reset' | 'aground';
 
 export interface RideControls {
   /** Paddling (prone), or standing tall (riding). */
@@ -76,6 +76,8 @@ export const WIPEOUT_SLOPE = 2.5;
 export const STALL_SPEED = 3;
 export const STALL_S = 0.6;
 export const MAX_SPEED = 18;
+/** Water shallower than this (m) over the bed, the beach or a rock and the board runs aground: it stops there. */
+export const AGROUND_DEPTH_M = 0.3;
 /**
  * The wave carries you (the arcade part): on its front face, standing, the board grips and drags against water moving
  * with the wave at this fraction of its speed, so a rider angled along the face stays on it; over the back, nothing.
@@ -178,12 +180,27 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
     b.vz *= MAX_SPEED / sp;
   }
 
+  const x0 = b.x, z0 = b.z, moving = speedOf(b) > 0.5;
   b.x += b.vx * dt;
   b.z += b.vz * dt;
-  const next = water(b.x, b.z);
+  let next = water(b.x, b.z);
+  if (next.bedY !== undefined && next.bedY > next.y - AGROUND_DEPTH_M) {
+    // Aground (Andrew: he rode all the way up the beach and under it): the board stops short, off its feet.
+    b.x = x0;
+    b.z = z0;
+    b.vx = 0;
+    b.vz = 0;
+    next = water(b.x, b.z);
+    if (b.phase === 'ride' || b.phase === 'popup') {
+      setPhase(b, 'paddle');
+      b.idleT = 10;
+    }
+    if (moving) event = 'aground';
+  }
   if (Number.isFinite(next.y) && Number.isFinite(next.slopeX) && Number.isFinite(next.slopeZ)) b.water = next;
-  b.y = b.water.y;
+  b.y = Math.max(b.water.y, b.water.bedY ?? -Infinity);
 
+  if (event === 'aground') return event;
   // Phases.
   const nw = b.water, speed = speedOf(b);
   const alongWave = (b.vx - nw.ux) * fx + (b.vz - nw.uz) * fz;

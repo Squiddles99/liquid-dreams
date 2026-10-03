@@ -15,6 +15,7 @@ export const RIDE_MESSAGES: Record<RideEvent, string> = {
   wipeout: 'Wiped out!',
   kickout: 'Ride over',
   reset: 'Next wave',
+  aground: 'Washed up on the shallows: R for the next wave',
 };
 
 const HINTS: Record<RideBody['phase'], string> = {
