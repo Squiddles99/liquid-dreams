@@ -49,7 +49,7 @@ export interface DevPanelModel {
   sound: SoundParams;
   soundStatus: { track: string };
   surfer: SurferParams;
-  surferStatus: { outfit: string };
+  surferStatus: { outfit: string; motion: string };
   setStatus: { nextSet: string; wave: string; face: string; psi: string };
   /** The settings switch's value when the panel is built (it only changes through the switch). */
   settingsMode: SettingsMode;
@@ -244,6 +244,7 @@ const SURFER_OPTIONS = {
   stance: { regular: 'regular', goofy: 'goofy' },
   outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'bikini bottoms + rash vest': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer', 'boardies + rash vest': 'rashieAndBoardies', 'walking clothes': 'walking' },
   carrySide: { auto: 'auto', left: 'l', right: 'r' },
+  motion: { 'code poses': 'code', 'motion clip': 'clip' },
   pose: Object.fromEntries(ALL_POSES.map((p) => [p, p])),
 };
 
@@ -428,6 +429,8 @@ export class DevPanel {
     for (const key of ['outfit', 'pose'] as const) {
       surferFolder.addBinding(m.surfer, key, { label: key, options: SURFER_OPTIONS[key] }).on('change', h.onSurfer);
     }
+    surferFolder.addBinding(m.surfer, 'motion', { label: 'motion', options: SURFER_OPTIONS.motion }).on('change', h.onSurfer);
+    readouts.add(surferFolder.addBinding(m.surferStatus, 'motion', { label: 'motion now', readonly: true, interval: 500 }));
     readouts.add(surferFolder.addBinding(m.surferStatus, 'outfit', { label: 'wearing', readonly: true, interval: 500 }));
     surferFolder.addBinding(m.surfer, 'headingDeg', { label: 'heading', min: 0, max: 360, format: withCompass }).on('change', h.onSurfer);
     for (const [key, opts] of Object.entries(SURFER_BINDINGS) as [keyof typeof SURFER_BINDINGS, (typeof SURFER_BINDINGS)[keyof typeof SURFER_BINDINGS]][]) {
