@@ -85,4 +85,27 @@ describe('the barrel sized from the crest it was thrown from (option A)', () => 
     }
     expect(worst, `the largest change in the tube's air between neighbours (${at})`).toBeLessThan(0.1);
   });
+  it("down the line (Andrew, 2026-10-03: not nearly hollow enough): it opens early and stays open after the lip lands", { timeout: 600_000 }, () => {
+    // Full size for 0.7 s (≈ 8 m of crest at the peel's 12 m/s), a quarter of it half way through the throw, closed 1.5 s
+    // after the landing: down the line, a slit. A thrown lip is out before it falls, and the tube behind it stays open
+    // until the whitewater fills it.
+    const base = peakSetup(12, TIDES.mid);
+    const setup = { ...base, wave: { ...base.wave, heightM: setWaveHeight(12) } };
+    const psi = peakPsi(setup.field, setWaveHeight(12), false);
+    let tl = 1;
+    for (let i = 0; i < 4; i++) { const st = peakStation(psi, tl, { setup }); tl = profileFrame(st.frameBase, st.input, st.lip).tauLand; }
+    const air = (tb: number): number => {
+      const st = peakStation(psi, tb, { setup }), p = buildProfile(st.base, st.input, st.lip, st.frameBase), q = p.points.slice(W0, C0 + 1);
+      let a = 0;
+      for (let i = 0; i < q.length; i++) { const u = q[i], v = q[(i + 1) % q.length]; a += u[0] * v[1] - v[0] * u[1]; }
+      return Math.abs(a) / 2;
+    };
+    const landedAir = air(tl), half = air(tl / 2);
+    const held = [0.25, 0.5, 0.75, 1, 1.25, 1.5].map((d) => air(tl + d));
+    console.log(`air: landing ${landedAir.toFixed(1)} m², half way ${half.toFixed(1)}, after the landing ${held.map((a) => a.toFixed(1)).join(' / ')}`);
+    expect(half / landedAir, 'half way through the throw, its share of the air at the landing').toBeGreaterThanOrEqual(0.45);
+    // Ruling: 0.7, not 0.8: held open, the section still runs inshore over the reef top as it peels (its H 6.5 → 4.7 m and
+    // its trough −4.8 → −3.4 m in 1.5 s), and the tube is the wave's.
+    expect(Math.min(...held) / landedAir, 'for 1.5 s after the landing, its least share of the air at the landing').toBeGreaterThanOrEqual(0.7);
+  });
 });

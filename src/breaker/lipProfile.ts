@@ -1,5 +1,5 @@
 import { smoothstep } from '../math/smoothstep';
-import { type BreakParams, GRAVITY_MS2, RIBBON_FULL_OFFSET, landingEstimate, landingTime, settleSpan, steepening } from './breaking';
+import { type BreakParams, GRAVITY_MS2, RIBBON_FULL_OFFSET, TUBE_HOLD_S, TUBE_THROWN_PSI, landingEstimate, landingTime, settleSpan, steepening } from './breaking';
 import { type Overturn, PSI_MIN, PSI_NONE, PSI_NORMAL, overturnShape, sheetShape, windUC } from './overturn';
 import { type Tube, tubeAxes, tubeBackMostX, tubeLower, tubeTopXi, tubeUpper, tubeUpperArc, tubeUpperNormal } from './tube';
 
@@ -285,7 +285,11 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   // crest itself; at the landing, the tube at impact. Drawn full size from the start, the thin young tube lay along its
   // axis from the crest down to where it would land: a flat shoulder ahead of the break, a square corner along the peel
   // and a notch under the crest. The tip keeps its path from the origin (prog² of the tube's length).
-  const g = prog;
+  // It opens out as it is thrown (Andrew, 2026-10-03, down the line: "not nearly hollow enough"): scaled by the throw's
+  // progress the young tube had a quarter of its area half way through, a slit down the line; a thrown lip is out
+  // before it falls. Scaled by 1 − (1 − prog)^TUBE_OPEN_POWER it opens out fast from the start (at a finite rate: a power
+  // of prog popped it to a sixth of its size in the throw's first hundredth) and eases into the landing.
+  const g = 1 - (1 - prog) ** TUBE_OPEN_POWER;
   const tube: Tube = { ...full, O: [Kt[0] + (full.O[0] - Kt[0]) * g, Kt[1] + (full.O[1] - Kt[1]) * g], L: full.L * g, W: full.W * g, clipY: P[1] };
   const Pnow = tubeUpper(tube, xiEnd);
   const xiTip = prog * xiEnd;
@@ -296,7 +300,9 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   const span = settleSpan(H, p);
   // The curl collapses as the sheet under it does (breaking.lifecycle, from landingEstimate), but never before its own
   // lip has landed.
-  const settleFrom = Math.max(tauLand, landingEstimate(H, p));
+  // ...and once landed it stays open TUBE_HOLD_S before the whitewater fills it, as the sheet under it holds (breaking.
+  // lifecycle): closing from the landing, the tube was full size for 0.7 s, 8 m of crest down the line at 12 m/s.
+  const settleFrom = Math.max(tauLand, landingEstimate(H, p)) + TUBE_HOLD_S * smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi);
   const collapse = tb === null ? 0 : smoothstep(settleFrom, settleFrom + span, tb);
   // No tube (ψ below PSI_NONE), no curl to land: its weight and its landing (foam, settling) fade in together.
   const present = smoothstep(PSI_NONE, PSI_NONE + PRESENCE_FADE * (PSI_MIN - PSI_NONE), psi);
@@ -309,6 +315,8 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   };
 }
 
+/** The young tube is the tube at impact scaled by 1 − (1 − prog)^TUBE_OPEN_POWER (about half its area half way through). */
+export const TUBE_OPEN_POWER = 2.2;
 /** impactHeight's scan (× the throw height: the first place the tube's point comes down onto the water) and bisections (13: × the throw height the last step was 2 mm, and the GPU and the CPU took either side of it). */
 export const IMPACT_SCAN: readonly number[] = [1, 1.25, 1.5, 1.75, 2];
 export const IMPACT_BISECT = 13;
@@ -632,8 +640,11 @@ export function profilePoint(j: number, f: ProfileFrame, baseHome: Vec2): Profil
   const sigma = seg === 'outer' ? (f.xiTip > 0 ? Math.max(0, Math.min(1, 1 - s / OUTER_LIP_SHARE)) : 0) : seg === 'cap' ? 1 : 0;
   const spray = LIP_SPRAY * smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog) * smoothstep(LIP_SPRAY_FROM, 1, sigma);
   const air = f.weight * (1 - f.landing);
+  // The tube's inside stays clean while it is held open after the landing, and turns to foam as it collapses (Andrew's
+  // photo, 2026-09-29: full foam once it has imploded).
+  const filled = landed * smoothstep(0, LANDING_FOAM_RISE, f.collapse);
   const curlFoam = seg === 'outer' || seg === 'cap' ? Math.max(landed, spray * air)
-    : seg === 'face' || seg === 'wall' || seg === 'under' ? landed - air
+    : seg === 'face' || seg === 'wall' || seg === 'under' ? filled - air
       : landed;
   const lifted = riding(j, f, c);
   return { pos: lerp2(baseHome, lifted, f.weight), thickness: c.thickness * f.weight, curlFoam, lipness: c.lipness * f.weight };

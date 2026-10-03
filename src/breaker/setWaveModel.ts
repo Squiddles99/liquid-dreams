@@ -1,7 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetTime, pileTop, settledCrestTop, steepeningStart } from './breaking';
+import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetTime, pileTop, settledCrestTop, steepeningStart, TUBE_THROWN_PSI } from './breaking';
 import { PSI_MIN, PSI_NONE, PSI_NORMAL, drainFactor, effectivePsi, withSheetShape } from './overturn';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
@@ -52,13 +52,14 @@ export const LEAN_RATIO: readonly [number, number] = [0.5, 1];
 export const LEAN_FRONT_MIN = 0.3;
 
 /**
- * The lean's weight at a crest: by its slurp ratio, × the lookup's confidence, × (1 − its collapse): it is the shoaling
+ * The lean's weight at a crest: by its slurp ratio, × the lookup's confidence, × (1 − its release, the collapse on the
+ * landing's clock without the tube's hold): it is the shoaling
  * wave's, and once a section has settled to its bore (whitewater, the pile on it) the lean lets go. Kept on over the
  * inside reef, where the rays fan out, the squeeze (1/LEAN_FRONT_MIN) amplified the phase's ripples there into 0.5 m
  * spikes on the bore's face. 0 without a crest.
  */
 export function leanWeight(crest: Crest | null): number {
-  return crest ? smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence * (1 - crest.lc.collapse) : 0;
+  return crest ? smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence * (1 - crest.lc.release) : 0;
 }
 
 /**
@@ -266,7 +267,7 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
     : PSI_NORMAL);
   const params = withSheetShape(o.params, psi);
   const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
-  const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp, smoothstep(PSI_NONE, PSI_MIN, psi));
+  const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp, smoothstep(PSI_NONE, PSI_MIN, psi), smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi));
   const rLean = breakingRatio(w.heightM * fc.amp, fc.hminLean, o.params);
   return { x: cx, z: cz, f: fc, r, rSlurp, rLean, s: lc.stage, tb, lc, confidence, lipH, psi, params };
 }

@@ -1,4 +1,4 @@
-import { type BreakParams, ONSET_RECORD_LENGTH, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetTime } from './breaking';
+import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetTime } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
@@ -126,7 +126,7 @@ export function stationLipH(field: ReefField, w: ActiveWave, x: number, z: numbe
 /** Whether a station still draws: before breaking, from the ribbon's onset ratio; after, until the (estimated) hand-back. */
 function alive(s: Station, p: BreakParams): boolean {
   if (s.tb === null) return s.r >= p.ribbonOnset;
-  return s.tb <= landingEstimate(s.H, p) * (1 + p.collapseTime) + HAND_BACK_S + LOOK_BACK_MARGIN_S;
+  return s.tb <= landingEstimate(s.H, p) * (1 + p.collapseTime) + TUBE_HOLD_S + HAND_BACK_S + LOOK_BACK_MARGIN_S;
 }
 
 /** One wave's crest, both ways from its seed, at `factor` × the spacing rule. Empty if the crest isn't on the reef. */

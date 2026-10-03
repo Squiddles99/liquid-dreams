@@ -256,10 +256,15 @@ describe('lipProfile', () => {
     const tip = air.curlFoam[outerFrom], root = air.curlFoam[outerFrom + PROFILE_SEGMENTS.outer - 1];
     expect(tip, 'the tip whitens').toBeGreaterThan(0.3);
     expect(tip, 'more at the tip than the root').toBeGreaterThan(root + 0.2);
-    // Landed: the curl implodes into foam, inside and out.
-    const landed = at(f0.tauLand + 0.5 * settleSpan(probe.input.H, LIP));
-    const wallFoam = landed.curlFoam.filter((_, j) => segOf(j) === 'wall' || segOf(j) === 'under');
-    expect(Math.min(...wallFoam), 'the tube foams once the lip has landed').toBeGreaterThan(0.3);
+    // Landed, the tube held open (TUBE_HOLD_S, Andrew 2026-10-03): its inside stays clean; as it collapses it implodes into
+    // foam, inside and out.
+    const wallOf = (p: ReturnType<typeof at>) => p.curlFoam.filter((_, j) => segOf(j) === 'wall' || segOf(j) === 'under');
+    const held = at(f0.tauLand + 0.5);
+    expect(held.frame.collapse).toBe(0);
+    expect(Math.max(...wallOf(held)), 'the tube held open is clean inside').toBeLessThanOrEqual(0.05);
+    let tb = f0.tauLand;
+    while (at(tb).frame.collapse < 0.5 && tb < 10) tb += 0.1;
+    expect(Math.min(...wallOf(at(tb))), 'the tube foams as it collapses').toBeGreaterThan(0.3);
     expect(Math.max(...at(1.5).curlFoam)).toBeGreaterThan(0.5);
   });
 
