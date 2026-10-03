@@ -20,10 +20,9 @@ export const CLIP_COMPRESSION_DROP = 0.42;
 const BAL_ROLL = 1.5, BAL_ROLL_MAX = 0.06, BAL_PITCH = 0.75, BAL_PITCH_MAX = 0.04;
 /** A clip turned to put its feet along the board is held to ±60° (Review Focus 4): a wrong-footed clip shows as such. */
 const YAW_MAX = 60 * DEG;
-/** How far the look may turn a clip's head past the capture's own (Andrew, Gate C: the full code-pose look on top of the
- * skater's own glance twisted the head over the shoulder): small glances, never a second neck. */
-export const CLIP_LOOK_YAW_MAX = 20 * DEG;
-export const CLIP_LOOK_PITCH_MAX = 15 * DEG;
+/** The chest opened toward the nose on top of a clip, as the code trim's is (Andrew, Gate C): a skater's shoulders face
+ * the rail more squarely than a surfer trimming, and the neck then did all the turning. */
+export const CLIP_CHEST_OPEN = 20 * DEG;
 
 export interface ClipPoseContext {
   spec: BoardSpec;
@@ -103,7 +102,7 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
     turn(q, whole);
     P = P.sub(pivot).applyQuaternion(q).add(pivot);
   }
-  const twist = (regular ? 1 : -1) * clamp(ctx.dials.twist, -1, 1) * CLIP_TWIST_DIAL;
+  const twist = (regular ? 1 : -1) * (CLIP_CHEST_OPEN + clamp(ctx.dials.twist, -1, 1) * CLIP_TWIST_DIAL);
   if (twist !== 0) turn(new Quaternion().setFromAxisAngle(Y.clone().applyQuaternion(D.pelvis), twist), chestShare);
   if (ctx.balance) {
     const { lead: bl, trail: bt } = ctx.balance;
@@ -148,17 +147,19 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
     D[to] = D[ft].clone();
   }
 
-  // The head nudged toward lookAt on top of the clip's own, within CLIP_LOOK_* (the neck takes 40%, as solvePose).
-  const Qb = boardQuaternion(board);
+  // The head looks where the game says, off the chest as in solvePose (the neck takes 40%), not the capture's own neck
+  // (Andrew, Gate C: CMU's skater glances down at the deck; a surfer trimming looks down the line).
+  const Qb = boardQuaternion(board), Ds3 = D.spine_03;
+  let look = new Quaternion();
   if (lookAt) {
-    const dir = lookAt.clone().sub(board.position).applyQuaternion(Qb.clone().invert()).sub(J.head).normalize().applyQuaternion(D.head.clone().invert());
-    const yaw = clamp(Math.atan2(dir.x, dir.z), -CLIP_LOOK_YAW_MAX, CLIP_LOOK_YAW_MAX);
-    const pitch = clamp(Math.asin(clamp(dir.y, -1, 1)), -CLIP_LOOK_PITCH_MAX, CLIP_LOOK_PITCH_MAX);
-    const look = new Quaternion().setFromAxisAngle(Y, yaw).multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -pitch));
-    D.neck = D.neck.clone().multiply(new Quaternion().slerp(look, 0.4));
-    D.head = D.head.clone().multiply(look);
-    J.head = fk('head');
+    const dir = lookAt.clone().sub(board.position).applyQuaternion(Qb.clone().invert()).sub(J.neck).normalize().applyQuaternion(Ds3.clone().invert());
+    const yaw = clamp(Math.atan2(dir.x, dir.z), -LIMITS.headYawMaxDeg * DEG, LIMITS.headYawMaxDeg * DEG);
+    const pitch = clamp(Math.asin(clamp(dir.y, -1, 1)), -LIMITS.headPitchDownDeg * DEG, LIMITS.headPitchUpDeg * DEG);
+    look = new Quaternion().setFromAxisAngle(Y, yaw).multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -pitch));
   }
+  D.neck = Ds3.clone().multiply(new Quaternion().slerp(look, 0.4));
+  J.head = fk('head');
+  D.head = Ds3.clone().multiply(look);
 
   // Board frame → world, in solvePose's shape (root stays the skeleton's origin, as there).
   const toW = (v: Vector3): Vector3 => v.clone().applyQuaternion(Qb).add(board.position);
