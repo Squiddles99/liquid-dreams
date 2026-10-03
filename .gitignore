@@ -22,3 +22,4 @@ Thumbs.db
 # Licensed animation clips: never publish (clip slice spec 2026-10-03 §3.2)
 anim-source/
 public/surfer/clips/
+tools/surfer/previews-before/
