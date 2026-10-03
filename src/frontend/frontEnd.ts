@@ -210,3 +210,10 @@ export function tick(s: FrontState, dtS: number, ctx: Ctx): Out {
   if (t >= 1) return land(s, ctx);
   return { state: { ...s, move: { ...s.move, t } }, events: [] };
 }
+
+/** Focus straight onto a row, rider or gear row (the mouse's hover). A focus tick only when it moves. */
+export function focusTo(s: FrontState, target: { row: RowId } | { rider: PresetName } | { gear: number }): { state: FrontState; events: FrontEvent[] } {
+  if ('row' in target) return target.row === s.rowFocus ? { state: s, events: [] } : { state: { ...s, rowFocus: target.row }, events: [{ kind: 'focus' }] };
+  if ('rider' in target) return target.rider === s.rider ? { state: s, events: [] } : { state: { ...s, rider: target.rider }, events: [{ kind: 'focus' }, { kind: 'riderFocus', rider: target.rider }] };
+  return target.gear === s.gearFocus ? { state: s, events: [] } : { state: { ...s, gearFocus: target.gear }, events: [{ kind: 'focus' }, { kind: 'gear', tab: s.gearTab, focus: target.gear }] };
+}
