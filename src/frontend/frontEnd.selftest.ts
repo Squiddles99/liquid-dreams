@@ -2,9 +2,11 @@
 import { registerSelfTest } from '../dev/selfTest';
 import { initialFront } from './frontEnd';
 import { DEFAULT_CHOICES, DEFAULT_FRONT_SETTINGS } from './frontSettings';
+import { gearView } from './gearView';
 import { FIRST_PRESET, presetById } from './sessionSetup';
 import { BreakMap } from './ui/breakMap';
 import { ConditionsPanel } from './ui/conditionsPanel';
+import { GearPanel } from './ui/gearPanel';
 import { Legend, legendFor } from './ui/legend';
 import { SlidePanel } from './ui/slidePanel';
 import { applyLayout, layoutFor, mountFrontEndRoot } from './ui/layout';
@@ -114,6 +116,21 @@ registerSelfTest({
       const tiny = texts.filter((t) => parseFloat(getComputedStyle(t).fontSize) < 18);
       const outside = texts.filter((t) => { const r = designBox(t, root, l.scale); return r.x + r.w > l.designW - l.safeX + 0.5 || r.y + r.h > l.designH - l.safeY + 0.5; });
       return { pass: Math.abs(b.w - 900) < 1 && Math.abs(b.x + b.w - l.designW) < 1 && tiny.length === 0 && outside.length === 0, detail: `box ${JSON.stringify(b)}, ${tiny.length} small, ${outside.length} outside` };
+    });
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the gear panel\'s rows and bars are inside the safe area and 18 px or more',
+  async run() {
+    return withRoot(1920, 1080, (root, l) => {
+      const p = new GearPanel(() => {});
+      root.appendChild(p.el);
+      p.render(gearView({ ...initialFront(DEFAULT_CHOICES), beat: 'gear' }, new Date('2026-07-10T09:00:00+08:00'), 1), 'xbox', true);
+      const texts = [...p.el.querySelectorAll('span, div')].filter((e) => e.childElementCount === 0 && e.textContent);
+      const tiny = texts.filter((t) => parseFloat(getComputedStyle(t).fontSize) < 18);
+      const outside = texts.filter((t) => { const r = designBox(t, root, l.scale); return r.x + r.w > l.designW - l.safeX + 0.5 || r.y + r.h > l.designH - l.safeY + 0.5; });
+      return { pass: tiny.length === 0 && outside.length === 0 && p.el.querySelectorAll('[data-index]').length === 3, detail: `${tiny.length} small, ${outside.length} outside` };
     });
   },
 });
