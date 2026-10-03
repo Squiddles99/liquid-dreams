@@ -832,7 +832,11 @@ export class BreakingRibbon {
       const l = tubeLightAtNode(q, T, vec2(UY(int(TUBE_ROOT_SAMPLE))).toVar(), atan(this.sun.y, dot(this.sun.xz, n)));
       const inside = j.greaterThanEqual(int(FACE0)).and(j.lessThan(int(UNDER0)));
       const w = select(inside, clamp(f.weight, 0.0, 1.0).mul(smoothstep(0.0, TUBE_TIP_CLEAR_M, length(q.sub(T)))), float(0.0));
-      lights.element(idx).assign(vec4(l.sLip.mul(w), float(1.0).sub(float(1.0).sub(l.o).mul(w)), float(f.tTop).add(f.tipE).mul(0.5), l.sBody.mul(w)));
+      // Open written exactly where the weight is 0, not multiplied by it: at the tip vertex itself (q = T) the angle is
+      // atan2(0, 0), which WGSL leaves undefined (NaN on some drivers), and NaN × 0 is NaN.
+      const tLip = float(f.tTop).add(f.tipE).mul(0.5);
+      lights.element(idx).assign(select(w.greaterThan(0.0),
+        vec4(l.sLip.mul(w), float(1.0).sub(float(1.0).sub(l.o).mul(w)), tLip, l.sBody.mul(w)), vec4(0.0, 1.0, tLip, 0.0)));
     })().compute(MAX_STATIONS * V) as THREE.ComputeNode;
   }
 
