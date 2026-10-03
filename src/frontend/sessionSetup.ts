@@ -222,3 +222,126 @@ export function rowDisplay(s: SessionSetup, row: RowId, today: Date): { value: s
     }
   }
 }
+
+export type Dir = -1 | 1;
+
+/** An edit's outcome: the new setup, whether it changed, and whether the press hit a non-cyclic end (the nudge). */
+export interface EditResult {
+  setup: SessionSetup;
+  changed: boolean;
+  atEnd: boolean;
+}
+
+const wrap = (i: number, n: number): number => ((i % n) + n) % n;
+const same = (setup: SessionSetup): EditResult => ({ setup, changed: false, atEnd: false });
+const end = (setup: SessionSetup): EditResult => ({ setup, changed: false, atEnd: true });
+const to = (setup: SessionSetup): EditResult => ({ setup, changed: true, atEnd: false });
+/** A non-cyclic step through `n` values. */
+const clampStep = (s: SessionSetup, i: number, n: number, dir: Dir, put: (j: number) => SessionSetup): EditResult => {
+  const j = i + dir;
+  return j < 0 || j >= n ? end(s) : to(put(j));
+};
+
+/** Left/right on a row (spec §5.4: month, time stops and the swell direction wrap; the rest stop at their ends). */
+export function stepRow(s: SessionSetup, row: Exclude<RowId, 'preset'>, dir: Dir, _today: Date): EditResult {
+  switch (row) {
+    case 'month':
+      return to({ ...s, month: wrap(s.month + dir, 12) });
+    case 'time':
+      return to({ ...s, timeStop: wrap(s.timeStop + dir, TIME_STOPS.length), timeFineMin: 0 });
+    case 'sky': {
+      const i = SKY_ROWS.findIndex((r) => r.id === s.sky);
+      return clampStep(s, i, SKY_ROWS.length, dir, (j) => ({ ...s, sky: SKY_ROWS[j].id }));
+    }
+    case 'wind':
+      return clampStep(s, s.wind, WIND_ROWS.length, dir, (j) => ({ ...s, wind: j }));
+    case 'swell':
+      return clampStep(s, swellBand(s.swellFt), SWELL_BANDS.length, dir, (j) => ({ ...s, swellFt: SWELL_BANDS[j].ft, periodS: SWELL_BANDS[j].periodS }));
+    case 'period':
+      return clampStep(s, s.periodS - 8, 13, dir, (j) => ({ ...s, periodS: 8 + j }));
+    case 'from': {
+      const i = FROM_WINDOW.indexOf(s.fromDeg as (typeof FROM_WINDOW)[number]);
+      return to({ ...s, fromDeg: FROM_WINDOW[wrap(i + dir, FROM_WINDOW.length)] });
+    }
+    case 'tide':
+      return clampStep(s, s.tide, TIDE_STOPS.length, dir, (j) => ({ ...s, tide: j }));
+  }
+}
+
+/** LT/RT where a row has a finer scale (spec §4.1): time in 15-minute steps, swell in ½ ft steps. */
+export function fineRow(s: SessionSetup, row: Exclude<RowId, 'preset'>, dir: Dir, today: Date): EditResult {
+  if (row === 'swell') {
+    const ft = s.swellFt + dir * 0.5;
+    return ft < 1 || ft > 12 ? end(s) : to({ ...s, swellFt: ft });
+  }
+  if (row !== 'time') return same(s);
+  const date = dateForMonth(s.month, today), { sunriseH, sunsetH } = sunTimes(date);
+  const first = sunriseH + 0.25, last = sunsetH - 1 / 3, now = timeOfDayFor(s, date);
+  const want = now + (dir * 15) / 60;
+  if (want < first - 1e-9 || want > last + 1e-9) return end(s);
+  // Re-anchor on the nearest stop, so the word follows the clock.
+  const stopH = (i: number): number => timeOfDayFor({ ...s, timeStop: i, timeFineMin: 0 }, date);
+  let best = 0;
+  for (let i = 1; i < TIME_STOPS.length; i++) if (Math.abs(stopH(i) - want) < Math.abs(stopH(best) - want)) best = i;
+  return to({ ...s, timeStop: best, timeFineMin: Math.round((want - stopH(best)) * 60) });
+}
+
+/** The next preset (cycling); from Custom, the first or the last. */
+export function stepPreset(currentId: string | null, dir: Dir): string {
+  const ids = SESSION_PRESETS.map((p) => p.id), i = currentId ? ids.indexOf(currentId) : -1;
+  if (i < 0) return dir > 0 ? ids[0] : ids[ids.length - 1];
+  return ids[wrap(i + dir, ids.length)];
+}
+
+/** The skies and winds Random may roll (spec §6.9: never storm, rain or sea mist; never blown out). */
+export const ROLL_SKIES: readonly WeatherPresetName[] = ['clear', 'fair', 'scattered', 'broken', 'high cloud', 'overcast', 'grey', 'drizzle', 'showers'];
+export const ROLL_WINDS: readonly number[] = [0, 1, 2, 3, 4, 5];
+
+/** Why a setup can't be rolled, or null. */
+export function excludedBy(s: SessionSetup): string | null {
+  if (s.sky === 'storm' || s.sky === 'rain' || s.sky === 'sea mist') return 'storm, rain or sea mist';
+  if (s.wind === 6) return 'blown out';
+  if (swellBand(s.swellFt) === 6 && TIDE_STOPS[s.tide].label.startsWith('Low')) return 'huge at low tide';
+  if (swellBand(s.swellFt) === 0 && s.wind === 5) return 'flat-ish and onshore';
+  return null;
+}
+
+/** mulberry32: a small seeded generator, so a roll can be shared by its seed. */
+function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const weighted = (r: () => number, weights: readonly number[]): number => {
+  const total = weights.reduce((a, b) => a + b, 0);
+  let x = r() * total;
+  for (let i = 0; i < weights.length; i++) if ((x -= weights[i]) < 0) return i;
+  return weights.length - 1;
+};
+
+/** Roll the dice (spec §6.9): the month uniformly, then month-weighted climatology, never an excluded combination. */
+export function rollSetup(seed: number): SessionSetup {
+  const r = rng(seed), month = Math.floor(r() * 12);
+  const season = month >= 5 && month <= 8 ? 'winter' : month === 11 || month <= 2 ? 'summer' : 'shoulder';
+  // Swell bands: Flat-ish, Small, Fun, Solid, Pumping, Big, Huge.
+  const band = weighted(r, season === 'winter' ? [0, 0, 0, 0.35, 0.3, 0.25, 0.1] : season === 'summer' ? [0.12, 0.48, 0.4, 0, 0, 0, 0] : [0, 0.2, 0.35, 0.3, 0.15, 0, 0]);
+  // Time stops: First light, Morning, Mid-morning, Midday, Arvo, Late arvo, Sunset.
+  const timeStop = weighted(r, season === 'winter' ? [0.2, 0.3, 0.25, 0.1, 0.08, 0.05, 0.02] : season === 'summer' ? [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.1] : [1, 1, 1, 1, 1, 1, 1]);
+  const arvo = timeStop >= 4;
+  // Winds: Glassy, Light offshore, Strong offshore, Cross-offshore, Cross-shore, Onshore (never Blown out).
+  let wind = weighted(r,
+    season === 'winter' ? [0.15, 0.4, 0.15, 0.15, 0.1, 0.05]
+      : season === 'summer' ? (arvo ? [0, 0.1, 0, 0.2, 0.3, 0.4] : [0.3, 0.35, 0, 0.2, 0.1, 0.05])
+        : [0.2, 0.3, 0.1, 0.2, 0.1, 0.1]);
+  const sky = ROLL_SKIES[weighted(r, season === 'winter' ? [2, 2, 2, 1.5, 1, 1, 1, 0.6, 0.6] : [3, 3, 2, 1, 1, 0.6, 0.4, 0.3, 0.3])];
+  const fromDeg = FROM_WINDOW[weighted(r, season === 'winter' ? [1, 2, 2, 1.5, 0.8] : [1.5, 2, 1, 0.8, 0.5])];
+  let tide = Math.floor(r() * TIDE_STOPS.length);
+  if (band === 6 && TIDE_STOPS[tide].label.startsWith('Low')) tide = 2; // huge breaks outside over the flat at low tide
+  if (band === 0 && wind === 5) wind = 1;
+  return { month, timeStop, timeFineMin: 0, sky, wind, swellFt: SWELL_BANDS[band].ft, periodS: SWELL_BANDS[band].periodS, fromDeg, tide };
+}
