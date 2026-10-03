@@ -47,8 +47,11 @@ describe("the lip's glow: its bubbles scatter light out on every side (spec 2026
     expect(thin[1]).toBeGreaterThan(thin[0]);
     expect(thin[2]).toBeGreaterThan(thin[0]);
   });
-  it('from 0.1 m to 3 m the glow is never darker than the deep water under the same light', () => {
-    for (let t = 0.1; t <= 3; t += 0.1) expect(luma(lipGlow(p, t, 0.5, sun, sky)), `t ${t.toFixed(1)} m`).toBeGreaterThanOrEqual(luma(deepUpwelling(p, 0.5, sun, sky)));
+  it("the glow is faint, as image10's dark teal curtain (Andrew's pick, 2026-10-03): a 1.5 m lip glows under a tenth of the light it would at full scatter, and grows with its thickness", () => {
+    const full = { ...p, lipBubbleScatter: 10 };
+    expect(luma(lipGlow(p, 1.5, 0.5, sun, sky))).toBeLessThan(0.1 * luma(lipGlow(full, 1.5, 0.5, sun, sky)));
+    expect(luma(lipGlow(p, 1.5, 0.5, sun, sky))).toBeGreaterThan(luma(lipGlow(p, 0.3, 0.5, sun, sky)));
+    expect(luma(deepUpwelling(p, 0.5, sun, sky))).toBeGreaterThan(0);
   });
   it('the sun in front still lights it (no backlight)', () => {
     expect(luma(lipGlow(p, 1.5, 0.8, sun, [0, 0, 0]))).toBeGreaterThan(0);

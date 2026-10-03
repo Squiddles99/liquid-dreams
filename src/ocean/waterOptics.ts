@@ -31,7 +31,8 @@ export const DEFAULT_WATER_OPTICS: WaterOpticsParams = {
   transmissionIntensity: 0.6,
   lipSkyTransmission: 0.5,
   lipSideSkylight: 0.6,
-  lipBubbleScatter: 0.5,
+  // Andrew's pick, 2026-10-03: the 8:15 curtain/face 2.49 against image10's 2.0 (0.5 glowed 25×, bright mint).
+  lipBubbleScatter: 0.008,
   baseRoughness: 0.02,
   foamAlbedo: 0.85,
 };
