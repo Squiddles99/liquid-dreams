@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CASCADE_FADES } from './cascadeFades';
-import { DEFAULT_WATER_OPTICS, lipTransmissionColour, transmissionColour, unresolvedSlopeVariance, waterAlbedo } from './waterOptics';
+import { DEFAULT_WATER_OPTICS, deepUpwelling, lipGlow, lipThroughLight, lipTransmissionColour, transmissionColour, tubeLightFactors, unresolvedSlopeVariance, waterAlbedo } from './waterOptics';
 
 describe('water optics', () => {
   it('deep clear water scatters blue', () => {
@@ -34,5 +34,52 @@ describe("the lip's light (spec 2026-09-29 §3.3)", () => {
     for (let i = 0; i < 3; i++) expect(thick[i]).toBeLessThanOrEqual(thin[i]);
     expect(thick[0] / thin[0]).toBeLessThan(thick[1] / thin[1]); // red goes first: deeper blue-green
     expect(lipTransmissionColour(p, 0)).toEqual([1, 1, 1]);
+  });
+});
+
+describe("the lip's glow: its bubbles scatter light out on every side (spec 2026-10-03 lip-and-tube-look §4)", () => {
+  const p = DEFAULT_WATER_OPTICS;
+  const sun: [number, number, number] = [1, 1, 1], sky: [number, number, number] = [0.3, 0.35, 0.45];
+  const luma = (c: readonly number[]): number => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  it('a thinner lip glows more turquoise (green and blue over red)', () => {
+    const thin = lipGlow(p, 0.3, 0.5, sun, sky), thick = lipGlow(p, 1.5, 0.5, sun, sky);
+    expect(thin[1] / thin[0]).toBeLessThan(thick[1] / thick[0]); // thick: red absorbed more, relative to green
+    expect(thin[1]).toBeGreaterThan(thin[0]);
+    expect(thin[2]).toBeGreaterThan(thin[0]);
+  });
+  it("the glow is faint, as image10's dark teal curtain (Andrew's pick, 2026-10-03): a 1.5 m lip glows under a tenth of the light it would at full scatter, and grows with its thickness", () => {
+    const full = { ...p, lipBubbleScatter: 10 };
+    expect(luma(lipGlow(p, 1.5, 0.5, sun, sky))).toBeLessThan(0.1 * luma(lipGlow(full, 1.5, 0.5, sun, sky)));
+    expect(luma(lipGlow(p, 1.5, 0.5, sun, sky))).toBeGreaterThan(luma(lipGlow(p, 0.3, 0.5, sun, sky)));
+    expect(luma(deepUpwelling(p, 0.5, sun, sky))).toBeGreaterThan(0);
+  });
+  it('the sun in front still lights it (no backlight)', () => {
+    expect(luma(lipGlow(p, 1.5, 0.8, sun, [0, 0, 0]))).toBeGreaterThan(0);
+  });
+  it('overcast (no direct sun): the sky alone still lights it', () => {
+    expect(luma(lipGlow(p, 1.5, 0, [0, 0, 0], sky))).toBeGreaterThan(0);
+  });
+  it('the sun behind the lip lights it more than the sun in front at the same angle to its surface', () => {
+    const front = lipGlow(p, 1.5, 0.5, sun, sky).map((c, i) => c + lipThroughLight(p, 1.5, -0.5, 0, sun, sky)[i]);
+    const behind = lipGlow(p, 1.5, 0.5, sun, sky).map((c, i) => c + lipThroughLight(p, 1.5, 0.9, 0, sun, sky)[i]);
+    expect(luma(behind)).toBeGreaterThan(luma(front));
+  });
+});
+
+describe("the tube's light factors (spec 2026-10-03 lip-and-tube-look R3.4)", () => {
+  const p = DEFAULT_WATER_OPTICS;
+  it('fully open: the light is untouched (the sheet and every other surface)', () => {
+    expect(tubeLightFactors(p, 0, 0, 1, 1.5)).toEqual({ sun: [1, 1, 1], sky: [1, 1, 1], glitter: 1 });
+  });
+  it('the sun through the lip takes its colour; behind the wave it is gone; glitter only from the direct sun', () => {
+    const c = lipTransmissionColour(p, 1.5);
+    const lip = tubeLightFactors(p, 1, 0, 1, 1.5);
+    lip.sun.forEach((v, i) => expect(v).toBeCloseTo(c[i], 9));
+    expect(lip.glitter).toBe(0);
+    expect(tubeLightFactors(p, 0, 1, 1, 1.5).sun).toEqual([0, 0, 0]);
+  });
+  it('a closed sky comes only through the lip, tinted and dimmed, never brighter than open sky', () => {
+    const c = lipTransmissionColour(p, 1.5), closed = tubeLightFactors(p, 0, 0, 0, 1.5).sky;
+    closed.forEach((v, i) => { expect(v).toBeCloseTo(c[i] * p.lipSkyTransmission, 9); expect(v).toBeLessThanOrEqual(1); });
   });
 });

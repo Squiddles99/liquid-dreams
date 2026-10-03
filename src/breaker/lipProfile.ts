@@ -457,7 +457,7 @@ export interface ProfilePoint {
   /**
    * The curl's foam, signed (Andrew's photo, 2026-09-29: white water on the lip as it peels, the tube behind it clean,
    * full foam once it has imploded). > 0: foam of its own, composed with the sheet's by max: the lip's outside whitens as
-   * it throws (LIP_SPRAY, most at the tip), and once the lip lands the curl turns to foam (spec D4). < 0: the tube's
+   * it throws (LIP_STREAK, at its tip and top edge), and once the lip lands foam climbs it from the tip as it collapses. < 0: the tube's
    * inside (the face, wall and ceiling under the thrown lip) is clean while the lip is in the air, so the sheet's foam
    * there is hidden by that share.
    */
@@ -466,11 +466,19 @@ export interface ProfilePoint {
   lipness: number;
 }
 
-/** The throwing lip's outside whitens up to this at its tip (its spray), from LIP_SPRAY_PROGRESS[0] to [1] of the throw… */
-export const LIP_SPRAY = 0.6;
+/**
+ * The lip's streaks (Andrew's sketch, 2026-09-29: the lip streaked white along its outer top as it throws; spec
+ * 2026-10-03 lip-and-tube-look §3): at most this much foam, so the foam pattern breaks into streaks, not a sheet. At its
+ * tip (σ from LIP_TIP_BAND) and along its top edge (σ below LIP_TOP_BAND), grown in over LIP_SPRAY_PROGRESS of the throw
+ * and kept through the landing and the hold.
+ */
+export const LIP_STREAK = 0.45;
 export const LIP_SPRAY_PROGRESS: readonly [number, number] = [0.2, 0.7];
-/** …from nothing at this fraction of the way from the lip's root to its tip. */
-export const LIP_SPRAY_FROM = 0.3;
+export const LIP_TIP_BAND = 0.85;
+export const LIP_TOP_BAND = 0.25;
+/** Once landed, foam climbs the curtain from where it hit (σ 1) to its top (σ 0) over the foam's rise (LANDING_FOAM_RISE
+ * of the collapse); its leading edge is this wide in σ. */
+export const CLIMB_SOFT = 0.15;
 
 /**
  * The face and the tube's back as one hollow curve (Andrew, 2026-10-03, his red line): from where the face leaves the
@@ -679,14 +687,21 @@ export function profilePoint(j: number, f: ProfileFrame, baseHome: Vec2): Profil
   const landAt = f.P[0];
   const region = seg === 'back' ? 0 : seg === 'front' ? 1 - smoothstep(landAt, landAt + 1.5, home) : seg === 'face' ? 0.5 : 1;
   const landed = f.landing * region;
-  // In the air: the outside's spray (by σ, the tube's top 0 to the tip 1; the cap is the tip), and the tube's inside clean.
+  // The lip's outside (σ: the tube's top 0 to the tip 1; the cap is the tip): streaks at its tip and along its top edge
+  // while it throws and is held (the lip's band only: the outer samples past OUTER_LIP_SHARE run level to the crest), and
+  // once landed foam climbing from where it hit as the tube collapses (Andrew, 2026-10-03: the solid white lip read as an
+  // opaque pale curtain). The tube's inside stays clean in the air and while held.
   const sigma = seg === 'outer' ? (f.xiTip > 0 ? Math.max(0, Math.min(1, 1 - s / OUTER_LIP_SHARE)) : 0) : seg === 'cap' ? 1 : 0;
-  const spray = LIP_SPRAY * smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog) * smoothstep(LIP_SPRAY_FROM, 1, sigma);
+  const band = seg === 'cap' ? 1 : seg === 'outer' && f.xiTip > 0 ? 1 - smoothstep(OUTER_LIP_SHARE, 1, s) : 0;
+  const streakAt = Math.max(smoothstep(LIP_TIP_BAND, 1, sigma), 1 - smoothstep(0, LIP_TOP_BAND, sigma));
+  const streak = LIP_STREAK * smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog) * streakAt * band * (f.weight + (1 - f.weight) * f.landing);
+  const climb = smoothstep(0, LANDING_FOAM_RISE, f.collapse);
+  const up = smoothstep(1 - climb - CLIMB_SOFT, 1 - climb, sigma);
   const air = f.weight * (1 - f.landing);
   // The tube's inside stays clean while it is held open after the landing, and turns to foam as it collapses (Andrew's
   // photo, 2026-09-29: full foam once it has imploded).
   const filled = landed * smoothstep(0, LANDING_FOAM_RISE, f.collapse);
-  const curlFoam = seg === 'outer' || seg === 'cap' ? Math.max(landed, spray * air)
+  const curlFoam = seg === 'outer' || seg === 'cap' ? Math.max(landed * up, streak)
     : seg === 'face' || seg === 'wall' || seg === 'under' ? filled - air
       : landed;
   const lifted = riding(j, f, c);
@@ -717,6 +732,63 @@ export function buildProfile(base: (u: number) => Vec2, input: ProfileInput, p: 
     out.points.push(pt.pos); out.homes.push(home); out.thickness.push(pt.thickness); out.curlFoam.push(pt.curlFoam); out.lipness.push(pt.lipness);
   }
   return out;
+}
+
+/**
+ * The tube's light (spec 2026-10-03 lip-and-tube-look §5). Side-on from a point in the tube (the profile plane: u along
+ * the station's n, y up), the tip T is the cap's middle sample and the lip's root R the outer sample over the tube's top
+ * (σ 0). Directions below T's (out of the mouth) are open, between T's and R's the lip is in the way (the sun through it
+ * tinted by its thickness), beyond R's the wave's body is (the sun through metres of water: none). Andrew, 2026-10-03:
+ * the tube's inside drew the same flat navy as the face, lit as if the lip were not there.
+ */
+export const TUBE_TIP_SAMPLE = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall + PROFILE_SEGMENTS.under + PROFILE_SEGMENTS.cap / 2;
+export const TUBE_ROOT_SAMPLE = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall + PROFILE_SEGMENTS.under + PROFILE_SEGMENTS.cap
+  + Math.ceil(OUTER_LIP_SHARE * PROFILE_SEGMENTS.outer);
+/** The shade's soft edges (rad). */
+export const TUBE_SHADE_SOFT_RAD = (4 * Math.PI) / 180;
+/** Within this distance (m) of the tip the shade fades out: where the tip lands on the face its angle from the face's
+ * points is undefined (the face/wall sample under it flipped from open to closed in a frame). */
+export const TUBE_TIP_CLEAR_M = 1;
+
+export interface TubeLight {
+  /** The share of the sun reaching the point through the lip [0, 1]. */
+  sLip: number;
+  /** The share of the sun behind the wave's body [0, 1] (sLip + sBody ≤ 1; the rest is direct). */
+  sBody: number;
+  /** The share of the sky's half circle seen out of the mouth [0, 1]. */
+  o: number;
+  /** The lip's mean thickness (m): the colour of light through it. */
+  tLip: number;
+}
+
+/** An angle (rad) measured from straight down: in [−π/2, 3π/2). Nothing the tube's light needs lies straight down (the
+ * water), so the lip's span and the sun never straddle the cut (atan2's ±π cut sat straight behind a point in front of
+ * the tube, where the landed tip is: its open sky flipped from most to none in a frame). */
+const fromDown = (a: number): number => (a < -Math.PI / 2 ? a + 2 * Math.PI : a);
+
+/**
+ * One point's shade, the sun at angle `a` (atan2(l.y, l·n)) seen from p, against the tip T and the lip's root R: the lip
+ * spans the angles between them (inside the tube from the tip up over to the root; in front of it the other way round),
+ * the wave's body lies past its far end, and the sky is open below its near end.
+ */
+export function tubeLightAt(p: Vec2, T: Vec2, R: Vec2, a: number): { sLip: number; sBody: number; o: number } {
+  const aT = fromDown(Math.atan2(T[1] - p[1], T[0] - p[0])), aR = fromDown(Math.atan2(R[1] - p[1], R[0] - p[0]));
+  const lo = Math.min(aT, aR), hi = Math.max(aT, aR), as = fromDown(a), e = TUBE_SHADE_SOFT_RAD;
+  const pastLo = smoothstep(lo - e, lo + e, as), pastHi = smoothstep(hi - e, hi + e, as);
+  return { sLip: pastLo * (1 - pastHi), sBody: pastHi, o: Math.min(Math.max(lo, 0), Math.PI) / Math.PI };
+}
+
+/** Every sample's tube light, the sun `sun` = (l·n, l.y). Only the tube's inside (face, wall) takes it, by the curl's
+ * weight: the ceiling (under) is the lip's own underside, lit as the lip. */
+export function tubeLight(profile: Profile, sun: Vec2): TubeLight[] {
+  const f = profile.frame, T = profile.points[TUBE_TIP_SAMPLE], R = profile.points[TUBE_ROOT_SAMPLE];
+  const a = Math.atan2(sun[1], sun[0]), tLip = 0.5 * (f.tTop + f.tipE), w = Math.max(0, Math.min(1, f.weight));
+  return profile.points.map((q, j) => {
+    const seg = sampleSegment(j).seg;
+    if (w <= 0 || !(seg === 'face' || seg === 'wall')) return { sLip: 0, sBody: 0, o: 1, tLip };
+    const l = tubeLightAt(q, T, R, a), wq = w * smoothstep(0, TUBE_TIP_CLEAR_M, Math.hypot(q[0] - T[0], q[1] - T[1]));
+    return { sLip: l.sLip * wq, sBody: l.sBody * wq, o: 1 - (1 - l.o) * wq, tLip };
+  });
 }
 
 /** The tube's measurements off a profile at the lip's landing (tests): the equations' tube (its Longuet-Higgins lower side

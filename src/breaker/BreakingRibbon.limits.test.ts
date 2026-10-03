@@ -102,7 +102,7 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
     model, sky: new Sky(DEFAULT_ATMOSPHERE), optics: createWaterOpticsUniforms(DEFAULT_WATER_OPTICS),
   });
   const selfTestRig = new BreakingRibbon({ smooth: (xz) => sets.displacementNode(xz), chop: () => vec3(0.0) }, DEFAULT_BREAK_PARAMS);
-  const passes = ['framePass', 'vertexPass', 'developPass', 'chopPass', 'normalPass'] as const;
+  const passes = ['framePass', 'vertexPass', 'developPass', 'lightPass', 'chopPass', 'normalPass'] as const;
 
   for (const [label, ribbon] of [['production', production], ['self-test rig', selfTestRig]] as const) {
     // Generating every pass's WGSL takes a few seconds: over the default 5 s when the whole suite shares the machine.
