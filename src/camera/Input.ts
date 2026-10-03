@@ -8,6 +8,9 @@ export function shouldIgnoreKeyTarget(target: EventTarget | null): boolean {
   return t.isContentEditable === true || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT';
 }
 
+/** Keys that still register while the input is suspended: H shows and hides the dev tools over the front end. */
+const PASS_WHILE_SUSPENDED = new Set(['KeyH']);
+
 export class Input {
   private readonly down = new Set<string>();
   private readonly pressed = new Set<string>();
@@ -87,7 +90,7 @@ export class Input {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    if (this.#suspended || shouldIgnoreKeyTarget(e.target)) return;
+    if ((this.#suspended && !PASS_WHILE_SUSPENDED.has(e.code)) || shouldIgnoreKeyTarget(e.target)) return;
     if (!e.repeat) this.pressed.add(e.code);
     this.down.add(e.code);
     if (e.code === 'Space') e.preventDefault();
