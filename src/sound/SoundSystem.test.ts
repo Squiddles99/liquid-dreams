@@ -42,7 +42,7 @@ function fakeAudio() {
   const decks: string[] = [];
   const audio = {
     context: () => ctx,
-    engine: () => ({ apply: (f: unknown) => { applied.push(f); }, setListener: () => {}, setVolumes: () => {}, setEffectsOn: () => {}, groups: { music: {} as AudioNode } }),
+    engine: () => ({ apply: (f: unknown) => { applied.push(f); }, setListener: () => {}, setVolumes: () => {}, setEffectsOn: () => {}, groups: { music: {} as AudioNode, ui: {} as AudioNode } }),
     deck: (_ctx: unknown, _dest: AudioNode, url: string) => {
       decks.push(url);
       return { play: () => Promise.resolve(), pause: () => {}, fade: () => {}, remainingS: () => 200, onEnded: () => {}, onError: () => {}, dispose: () => {} };
@@ -76,5 +76,24 @@ describe('SoundSystem and the browser’s autoplay rule (final review I1)', () =
     expect(applied).toHaveLength(1);
     expect(decks).toEqual(['u1']);
     expect(s.status.track).toBe('▶ 1/1 One');
+  });
+});
+
+describe('the front end\'s music slot (spec §12)', () => {
+  it('pauses the playlist while the front end is open (no front-end track ships), and plays it again after', () => {
+    const { ctx, audio } = fakeAudio();
+    const tracks = [{ album: 'a', number: 1, title: 'One', url: 'u1' }];
+    const s = new SoundSystem({ ...DEFAULT_SOUND_PARAMS }, tracks, audio);
+    s.gesture();
+    ctx.allow();
+    s.update(scene, listener, 0.016);
+    s.setFrontEndMusic(true);
+    expect(s.status.track).not.toBe('click for sound');
+    expect((s as unknown as { frontEndMusic: boolean }).frontEndMusic).toBe(true);
+    s.setFrontEndMusic(false);
+    expect((s as unknown as { frontEndMusic: boolean }).frontEndMusic).toBe(false);
+  });
+  it('has no UI output until the audio runs', () => {
+    expect(new SoundSystem({ ...DEFAULT_SOUND_PARAMS }, []).uiOut()).toBeNull();
   });
 });

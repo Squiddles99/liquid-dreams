@@ -1,3 +1,4 @@
+import type { GangStaging } from '../frontend/staging';
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
 import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
@@ -34,7 +35,14 @@ import {
   CustomProfile, type DevLookParams, type DevSettings, type SettingsMode, type SettingsStorage, assignParams, clearDevSettings,
   cloneDevSettings, cloneLook, loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
 } from '../dev/devSettings';
-import { captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
+import { HOTKEYS, captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
+import { PADDLE_OUT_MS } from '../frontend/entry';
+import type { SessionChoice } from '../frontend/frontEnd';
+import type { FrontEndHost } from '../frontend/frontEndCore';
+import { FrontEnd } from '../frontend/frontEndPage';
+import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
+import { PauseMenu } from '../frontend/ui/pauseMenu';
+import { frontEndCheck } from '../dev/frontEndCheck';
 import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
 import { PerfOverlay } from '../dev/perf';
 import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
@@ -218,6 +226,14 @@ export class App {
   private clearingKey = '';
   private pileLoading = false;
   /** The ground a rider stands on (walking spec §4): the land, or the top of a rock on it; null until the land loads. */
+  /** The front end (the dune select screen), once opened. */
+  private frontEnd: FrontEnd | null = null;
+  /** Paddle out: put the camera behind the rider once the stand has placed them in the water. */
+  private chaseAfterPaddle = false;
+  /** The menu while surfing (Esc or a pad's START): keep surfing, or back to the dune. */
+  private pauseMenu: PauseMenu | null = null;
+  private pausedBeforeMenu = false;
+  private readonly padStart = new PadStartWatch();
   private readonly groundAt = (x: number, z: number): number | null => {
     const lh = this.land.height;
     return lh ? Math.max(lh.heightAt(x, z), this.rockField?.topAt(x, z) ?? -Infinity) : null;
@@ -423,7 +439,7 @@ export class App {
         overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, sound: this.soundParams, soundStatus: this.sound.status, surfer: this.surferParams, surferStatus: this.surferStand.status, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
-        onConditions: () => this.onConditionsEdited(),
+        onConditions: () => this.applyConditionsEdit(),
         onUserConditionEdit: () => this.profile.own(),
         onSpectrum: () => this.scheduleSpectrumRebuild(),
         onSim: () => this.ocean.setParams(this.simParams),
@@ -485,6 +501,14 @@ export class App {
           Object.assign(this.surferParams, placeAhead(this.rig.getPose()));
           this.panel.refresh();
           this.scheduleSave();
+        },
+        onFrontEnd: () => this.openFrontEnd(),
+        onFrontEndCheck: () => {
+          void frontEndCheck(this).then((r) => {
+            console.table(r.contrast);
+            console.table(r.faces);
+            console.log(`front-end check: ${r.pass ? 'PASS' : 'FAIL'}`);
+          });
         },
         onSurferSpot: (spot) => {
           const lh = this.land.height;
@@ -631,6 +655,12 @@ export class App {
   start(): void {
     this.renderer.setAnimationLoop(this.frame);
     this.sound.arm();
+  }
+
+  /** Stages the crew and holds the camera (the front end; null releases them). */
+  stageFrontEnd(staging: GangStaging | null, pose: CameraPose | null): void {
+    this.gang.stage(staging);
+    if (pose) this.rig.setPose(pose, this.conditions.tideM);
   }
 
   applyMoment(m: Moment): void {
@@ -893,7 +923,8 @@ export class App {
     this.ribbon.renderFootprint(this.renderer);
   }
 
-  private onConditionsEdited(): void {
+  /** The heavy apply after a conditions edit (the dev panel's, or the front end's through its gate). */
+  applyConditionsEdit(): void {
     this.surf.invalidate();
     const clean = sanitizeConditions(this.conditions);
     if (JSON.stringify(clean) !== JSON.stringify(this.conditions)) {
@@ -903,6 +934,132 @@ export class App {
     this.seabed.setTide(this.conditions.tideM);
     this.updateOffshore();
     this.scheduleSpectrumRebuild();
+  }
+
+  /** The front end's view of the App (dune select spec §14). */
+  frontEndHost(): FrontEndHost {
+    return {
+      standSpot: () => {
+        const lh = this.land.height;
+        return lh?.trackNetwork ? landSpots(lh, lh.profile).standSpot : null;
+      },
+      groundAt: this.groundAt,
+      baseConditions: () => this.conditions,
+      applyConditions: (c) => {
+        assignConditions(this.conditions, c);
+        this.applyConditionsEdit();
+        this.panel.refresh();
+      },
+      stage: (staging, pose) => this.stageFrontEnd(staging, pose),
+      paddleOut: (choice) => this.paddleOut(choice),
+      crewReady: () => this.gang.settled,
+    };
+  }
+
+  /** Dev checks: drives the front end to a beat (opening it if needed) and waits for the move to land. */
+  async frontEndGoTo(beat: 'conditions' | 'rider' | 'gear'): Promise<void> {
+    this.openFrontEnd();
+    const order = ['conditions', 'rider', 'gear'] as const;
+    for (let k = 0; k < 900; k++) {
+      const s = this.frontEnd?.state;
+      if (!s) return;
+      if (s.beat === beat && !s.move) return;
+      if (!s.move) this.frontEnd!.act(order.indexOf(beat) > order.indexOf(s.beat as typeof order[number]) ? 'confirm' : 'back');
+      // Step the frame here too: a hidden window stalls requestAnimationFrame.
+      this.lastMs = performance.now() - 16;
+      this.frame();
+      await new Promise((r) => setTimeout(r, 17));
+    }
+  }
+
+  /**
+   * Dev checks: a ray from the camera to the focused rider's head; the first thing in front of it (by name), or null.
+   * The rider's own body is skipped (the ray ends inside the head).
+   */
+  frontEndFaceRay(): { rider: string; covered: string | null } {
+    const rider = this.frontEnd?.state?.rider ?? 'female', stand = this.gang.standOf(rider);
+    const head = stand.rider?.boneWorldPosition('head', new THREE.Vector3());
+    if (!head) return { rider, covered: null };
+    const from = this.camera.getWorldPosition(new THREE.Vector3()), dir = head.clone().sub(from), dist = dir.length();
+    const ray = new THREE.Raycaster(from, dir.normalize(), 0.05, dist - 0.12);
+    const own = (o: THREE.Object3D | null): boolean => { for (; o; o = o.parent) if (o === stand.group) return true; return false; };
+    // Meshes only (the land, the heath's instances, the riders and boards); sprites, points and lines can't block a face.
+    const meshes: THREE.Object3D[] = [];
+    this.scene.traverseVisible((o) => { if ((o as THREE.Mesh).isMesh && !own(o)) meshes.push(o); });
+    const hit = ray.intersectObjects(meshes, false)[0];
+    if (!hit) return { rider, covered: null };
+    let o: THREE.Object3D | null = hit.object;
+    while (o && !o.name) o = o.parent;
+    return { rider, covered: `${o?.name || hit.object.type} at ${hit.distance.toFixed(2)} m` };
+  }
+
+  /** Opens the front end (a normal start after prewarm, or the dev panel's button). */
+  openFrontEnd(): void {
+    if (this.frontEnd?.isOpen) return;
+    this.frontEnd ??= new FrontEnd(this.frontEndHost(), this.container, this.sound, browserStorage);
+    this.input.suspended = true;
+    this.surferStand.group.visible = false;
+    this.frontEnd.open();
+  }
+
+  /** The menu while surfing: the sim holds still and the camera lets go of the mouse until a choice is made. */
+  private openPauseMenu(): void {
+    this.pausedBeforeMenu = this.clock.paused;
+    this.setPaused(true);
+    this.input.suspended = true;
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.pauseMenu = new PauseMenu(this.container, () => this.sound.uiOut(), browserStorage);
+  }
+
+  private closePauseMenu(pick: MenuPick): void {
+    this.pauseMenu?.close();
+    this.pauseMenu = null;
+    if (pick === 'resume') {
+      this.setPaused(this.pausedBeforeMenu);
+      this.input.suspended = false;
+    } else this.backToDune();
+  }
+
+  /** Back to the dune (Andrew, Gate B): fade to black, the front end opens on the crew again, fade back in. */
+  backToDune(): void {
+    const fade = document.createElement('div');
+    Object.assign(fade.style, { position: 'fixed', inset: '0', background: '#000', opacity: '0', zIndex: '6', pointerEvents: 'none', transition: `opacity ${PADDLE_OUT_MS.fadeOut}ms ease-in` });
+    this.container.appendChild(fade);
+    window.setTimeout(() => { fade.style.opacity = '1'; }, 20);
+    window.setTimeout(() => {
+      this.setPaused(false);
+      this.chaseAfterPaddle = false;
+      this.openFrontEnd();
+      fade.style.transition = `opacity ${PADDLE_OUT_MS.fadeIn}ms ease-out`;
+      fade.style.opacity = '0';
+      window.setTimeout(() => fade.remove(), PADDLE_OUT_MS.fadeIn + 50);
+    }, PADDLE_OUT_MS.fadeOut);
+  }
+
+  /** Paddle out (spec §3): fade to black, set the session, put the rider on the stand in the water, fade back in. */
+  paddleOut(choice: SessionChoice): void {
+    const fade = document.createElement('div');
+    Object.assign(fade.style, { position: 'fixed', inset: '0', background: '#000', opacity: '0', zIndex: '6', pointerEvents: 'none', transition: `opacity ${PADDLE_OUT_MS.fadeOut}ms ease-in` });
+    this.container.appendChild(fade);
+    window.setTimeout(() => { fade.style.opacity = '1'; }, PADDLE_OUT_MS.uiOut);
+    window.setTimeout(() => {
+      const lineup = DEFAULT_SURFER_PARAMS;
+      Object.assign(this.surferParams, {
+        enabled: true, onLand: false, preset: choice.rider, board: choice.board, outfit: choice.outfit, stance: choice.stance, pose: 'sit', gang: false,
+        x: lineup.x, z: lineup.z, headingDeg: lineup.headingDeg, heightNudgeM: 0, expression: 'none',
+      });
+      normalizeSurferParams(this.surferParams);
+      this.surferStand.group.visible = true;
+      this.stageFrontEnd(null, null);
+      this.input.suspended = false;
+      this.rig.setPose(this.startupMoment().camera, this.conditions.tideM);
+      this.chaseAfterPaddle = true;
+      this.panel.refresh();
+      this.scheduleSave();
+      fade.style.transition = `opacity ${PADDLE_OUT_MS.fadeIn}ms ease-out`;
+      fade.style.opacity = '0';
+      window.setTimeout(() => fade.remove(), PADDLE_OUT_MS.fadeIn + 50);
+    }, PADDLE_OUT_MS.uiOut + PADDLE_OUT_MS.fadeOut);
   }
 
   private scheduleSpectrumRebuild(): void {
@@ -1493,6 +1650,8 @@ export class App {
     this.renderer.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.frontEnd?.resize(window.innerWidth, window.innerHeight);
+    this.pauseMenu?.resize(window.innerWidth, window.innerHeight);
   };
 
   /**
@@ -1548,8 +1707,19 @@ export class App {
     const realDt = clampFrameDt((now - this.lastMs) / 1000);
     this.lastMs = now;
     const simDt = this.clock.tick(realDt);
+    this.frontEnd?.update(realDt);
+    // The menu while surfing: Esc or a pad's START opens it (the pad is watched every frame, so a START still held from
+    // paddling out isn't a press).
+    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? [...navigator.getGamepads()] : [];
+    const padStart = this.padStart.poll(pads.map((g) => (g?.connected ? { index: g.index, buttons: g.buttons.map((b) => b.pressed) } : null)));
+    if (this.pauseMenu) {
+      const pick = this.pauseMenu.update();
+      if (pick) this.closePauseMenu(pick);
+    } else if (!this.frontEnd?.isOpen && (this.input.consumePressed('Escape') || padStart)) this.openPauseMenu();
 
-    handleHotkeys(this.input, {
+    // While the front end has the keys, only H (show/hide the dev tools) reaches the game's hotkeys.
+    if (this.frontEnd?.isOpen && this.input.consumePressed(HOTKEYS.toggleDevUi)) this.toggleDevUi();
+    if (!this.frontEnd?.isOpen) handleHotkeys(this.input, {
       copyLink: () => void this.copyLink(),
       togglePause: () => this.setPaused(!this.clock.paused),
       screenshot: () => { this.screenshotRequested = true; },
@@ -1621,6 +1791,10 @@ export class App {
     }
     const sp = this.surferParams;
     this.surferStand.update({ ...sp, enabled: sp.enabled && !sp.gang }, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
+    if (this.chaseAfterPaddle) {
+      const chase = this.surferStand.chasePose(sp.headingDeg);
+      if (chase) { this.rig.setPose(chase); this.chaseAfterPaddle = false; }
+    }
     this.gang.update(sp, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
     this.clearings = [
       ...(sp.gang ? this.gang.spots.map((g) => ({ x: g.x, z: g.z, r: 1.2 })) : sp.enabled && sp.onLand ? [{ x: sp.x, z: sp.z, r: 1.2 }] : []),

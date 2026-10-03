@@ -10,6 +10,9 @@ import { fingerDeltas, fingerLocals, fingerRestFromManifest, relaxedFingerDeltas
 import type { SolvedPose } from './solvePose';
 import { type Cloth, type OutfitUniforms, bodyMaterial, clothMaterial, eyesMaterial, fabricMaterial, hairMaterial, lashesMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
 import { FACE_CHANNELS, type FaceState, IdleLife, MOODS } from './idleLife';
+
+/** A hand's baked shape (dune select Gate A). */
+export type HandShape = 'relaxed' | 'grip' | 'flat';
 import { skinZones } from './skinDetail';
 import { SOLE_M } from './placement';
 import { bodyOutfit, hairShown, landLook, outfitMasks, showsBoardies, wearsClothes } from './wardrobe';
@@ -73,6 +76,10 @@ export class Surfer {
   /** Where the eyes look, in radians off the head's look (yaw, pitch; closeup spec §5.1): the eye shader draws the iris
    * toward it. */
   readonly gaze = uniform(new THREE.Vector2());
+  /** Each mesh's hand morph slots (dune select Gate A): the rail grip and the open hand, per hand; -1 absent. */
+  private readonly grips: { mesh: THREE.Mesh; gripL: number; gripR: number; flatL: number; flatR: number }[] = [];
+  /** Each hand's shape from setHands: a shaped hand's finger bones stay at rest under its morph. */
+  private handShapes: Record<'l' | 'r', HandShape> = { l: 'relaxed', r: 'relaxed' };
   /** Each morphing mesh's slot for each face channel, by its own morph dictionary (Review Focus 1). */
   private readonly morphs: { mesh: THREE.Mesh; slots: [channel: number, morph: number][] }[] = [];
   /** This rider's idle face (closeup spec §5.1), seeded per rider. */
@@ -209,6 +216,9 @@ export class Surfer {
           if (dict[c] !== undefined) slots.push([i, dict[c]]);
         });
         if (slots.length) this.morphs.push({ mesh, slots });
+        if (dict.gripL !== undefined || dict.gripR !== undefined) {
+          this.grips.push({ mesh, gripL: dict.gripL ?? -1, gripR: dict.gripR ?? -1, flatL: dict.flatL ?? -1, flatR: dict.flatR ?? -1 });
+        }
       }
     });
     // The hair's soft edges (dune select spec §13.1): each hair mesh drawn a second time, blended over its opaque core.
@@ -288,6 +298,21 @@ export class Surfer {
     this.gaze.value.set(f.gazeYawDeg * DEG, f.gazePitchDeg * DEG);
   }
 
+  /** Each hand's shape: relaxed (the rest hand), gripping a rail, or open flat on a board's face (a bodyboard's). */
+  setHands(l: HandShape, r: HandShape): void {
+    this.handShapes = { l, r };
+    for (const g of this.grips) {
+      const w = g.mesh.morphTargetInfluences!;
+      const put = (i: number, on: boolean): void => {
+        if (i >= 0) w[i] = on ? 1 : 0;
+      };
+      put(g.gripL, l === 'grip');
+      put(g.flatL, l === 'flat');
+      put(g.gripR, r === 'grip');
+      put(g.flatR, r === 'flat');
+    }
+  }
+
   setSwimFins(on: boolean): void {
     for (const f of this.fins) f.visible = on;
   }
@@ -306,7 +331,13 @@ export class Surfer {
         l: p.world.hand_l.clone().multiply(this.rest.restQ.hand_l.clone().invert()),
         r: p.world.hand_r.clone().multiply(this.rest.restQ.hand_r.clone().invert()),
       };
-      const local = fingerLocals({ l: p.world.hand_l, r: p.world.hand_r }, fingerDeltas(handD, this.relaxed, fingers), this.fingerRestQ);
+      const D = fingerDeltas(handD, this.relaxed, fingers);
+      // A gripping or open hand (dune select Gate A) is shaped by its morph, baked from the fingers at rest: they stay so.
+      for (const f of FINGER_BONES) {
+        const side = f.slice(-1) as 'l' | 'r';
+        if (this.handShapes[side] !== 'relaxed') D[f] = handD[side].clone();
+      }
+      const local = fingerLocals({ l: p.world.hand_l, r: p.world.hand_r }, D, this.fingerRestQ);
       for (const f of FINGER_BONES) this.fingerBones[f]!.quaternion.copy(local[f]);
     }
   }

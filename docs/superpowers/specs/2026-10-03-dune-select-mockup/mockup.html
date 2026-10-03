@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Liquid Dreams: the select screen</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=Knewave&family=Caveat+Brush&display=block" rel="stylesheet">
+<style>
+  :root { --sun: #ef7d2e; --sun-hi: #ffa14f; --teal: #1d6b74; --cream: #f7ecd2; --ink: #10171a; --safe-x: 96px; --safe-y: 54px; --safe-pc-x: 58px; --safe-pc-y: 32px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0b0f11; color: var(--cream); font-family: 'Barlow Semi Condensed', sans-serif; padding: 24px 24px 60px; }
+  .intro { max-width: 1200px; margin: 0 auto 18px; color: #b9c2c6; font: 500 17px/1.45 'Barlow Semi Condensed', sans-serif; }
+  .intro b { color: var(--cream); }
+  .label-out { max-width: 1200px; margin: 28px auto 8px; font: 600 15px 'Barlow Semi Condensed'; letter-spacing: .14em; text-transform: uppercase; color: var(--sun-hi); }
+  .fit { max-width: 1200px; margin: 0 auto; aspect-ratio: 16/9; position: relative; overflow: hidden; border-radius: 4px; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  .screen { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; background-size: cover; overflow: hidden; }
+  .screen::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 75% 70% at 50% 48%, transparent 55%, rgba(5,10,14,.38) 100%); z-index: 2; }
+  .title { position: absolute; left: var(--safe-x); top: calc(var(--safe-y) + 22px); font: 76px/1 Knewave, cursive; color: var(--cream);
+           text-shadow: 4px 4px 0 var(--teal), 0 2px 18px rgba(0,0,0,.35); -webkit-text-stroke: 1.5px var(--sun); z-index: 3; }
+  .beats { position: absolute; left: var(--safe-x); top: var(--safe-y); display: flex; gap: 8px; z-index: 3; }
+  .beats i { width: 34px; height: 5px; background: rgba(247,236,210,.35); display: block; } .beats i.on { background: var(--sun); }
+  .legend { position: absolute; right: var(--safe-x); bottom: var(--safe-y); display: flex; gap: 34px; align-items: center; z-index: 5;
+            font: 600 26px 'Barlow Semi Condensed'; color: var(--cream); text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+  .legend span { display: flex; align-items: center; gap: 12px; } .legend .go { color: var(--sun-hi); }
+  .g { width: 42px; height: 42px; border-radius: 50%; background: #151a1d; border: 2px solid rgba(247,236,210,.9); display: inline-flex; align-items: center; justify-content: center;
+       font: 700 23px 'Barlow Semi Condensed'; font-style: normal; box-shadow: 0 2px 6px rgba(0,0,0,.5); text-shadow: none; flex: none; }
+  .g.a { color: #7ccf52; } .g.b { color: #ff5a4e; } .g.x { color: #5aa8ff; } .g.y { color: #ffd24a; }
+  .g.bump { width: 62px; border-radius: 10px 10px 8px 8px; height: 36px; color: var(--cream); font-size: 19px; }
+  .g.start { width: 58px; border-radius: 10px; height: 36px; color: var(--cream); font-size: 22px; }
+  .g.rs { width: 38px; height: 38px; font-size: 16px; color: var(--cream); }
+  .lab { font: 500 21px 'Barlow Semi Condensed'; letter-spacing: .14em; text-transform: uppercase; color: rgba(247,236,210,.72); }
+  .val { font: 600 32px/1.15 'Barlow Semi Condensed'; color: var(--cream); }
+  .say { font: 40px/1.12 'Caveat Brush'; color: var(--cream); text-shadow: 0 2px 8px rgba(0,0,0,.6); }
+  .who { font: 600 19px 'Barlow Semi Condensed'; letter-spacing: .16em; color: var(--sun-hi); text-transform: uppercase; margin-bottom: 4px; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+  .scrim-l { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,13,17,.82) 0, rgba(7,13,17,.7) 30%, rgba(7,13,17,0) 48%); }
+  .scrim-r { position: absolute; inset: 0; background: linear-gradient(270deg, rgba(7,13,17,.82) 0, rgba(7,13,17,.68) 30%, rgba(7,13,17,0) 46%); }
+  .scrim-b { position: absolute; left: 0; right: 0; bottom: 0; height: 220px; background: linear-gradient(0deg, rgba(7,13,17,.6), rgba(7,13,17,0)); }
+
+  /* Beat 1: the slide-in panel from the right, a raked leading edge (sports-game cut), hiding the other two riders. */
+  .slide { position: absolute; top: 0; bottom: 0; right: 0; width: 900px; z-index: 3;
+           background: linear-gradient(100deg, rgba(10,18,22,.9) 0, rgba(10,18,22,.95) 40%, rgba(8,14,18,.97) 100%);
+           clip-path: polygon(110px 0, 100% 0, 100% 100%, 0 100%); }
+  .slide-edge { position: absolute; top: 0; bottom: 0; right: 0; width: 900px; z-index: 4; pointer-events: none;
+                background: linear-gradient(var(--sun), var(--sun)) no-repeat; clip-path: polygon(110px 0, 116px 0, 6px 100%, 0 100%); }
+  .roster { position: absolute; left: 1170px; top: 92px; z-index: 4; display: flex; align-items: center; gap: 26px; }
+  .roster .r { font: 700 26px 'Barlow Semi Condensed'; letter-spacing: .14em; color: rgba(247,236,210,.45); text-transform: uppercase; padding-bottom: 8px; border-bottom: 4px solid transparent; }
+  .roster .r.on { color: var(--cream); border-color: var(--sun); }
+  .lock { position: absolute; left: 1170px; top: 190px; z-index: 4; }
+  .lock .nick { font: 128px/1 Knewave; color: var(--cream); text-shadow: 5px 5px 0 var(--teal); -webkit-text-stroke: 2px var(--sun); }
+  .lock .real { font: 46px 'Caveat Brush'; color: var(--cream); margin: 2px 0 0 6px; }
+  .desc { position: absolute; left: 1170px; top: 430px; width: 600px; z-index: 4; }
+  .desc .row1 { display: grid; grid-template-columns: 170px 1fr; align-items: baseline; padding: 15px 0; border-top: 1px solid rgba(247,236,210,.16); }
+  .bars { display: flex; gap: 6px; } .bars i { width: 44px; height: 12px; background: rgba(247,236,210,.18); display: block; transform: skewX(-18deg); } .bars i.on { background: var(--sun); }
+  .crew { position: absolute; left: 1170px; top: 820px; z-index: 4; font: 500 24px 'Barlow Semi Condensed'; color: rgba(247,236,210,.7); }
+  .crew b { color: var(--cream); font-weight: 600; }
+
+  /* Beat 2: value rows */
+  .rows { position: absolute; left: var(--safe-x); top: 228px; width: 640px; z-index: 3; }
+  .rr { display: grid; grid-template-columns: 150px 1fr; align-items: center; height: 74px; padding: 0 18px; position: relative; }
+  .rr + .rr { border-top: 1px solid rgba(247,236,210,.12); }
+  .rr .val { font-size: 34px; display: flex; align-items: baseline; gap: 14px; }
+  .num { font: 400 23px 'Barlow Semi Condensed'; color: rgba(247,236,210,.66); font-variant-numeric: tabular-nums; }
+  .rr .ico { width: 30px; height: 30px; align-self: center; }
+  .rr.preset { margin-bottom: 14px; border: 0; } .rr.preset .val { font-size: 30px; }
+  .f { background: var(--cream) !important; box-shadow: 0 6px 22px rgba(0,0,0,.35); border-radius: 3px; }
+  .rr.f { transform: scale(1.04); transform-origin: left center; }
+  .f::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: var(--sun); border-radius: 3px 0 0 3px; }
+  .f .lab { color: rgba(16,23,26,.7); } .f .val { color: var(--ink); } .f .num { color: rgba(16,23,26,.62); }
+  .arr { color: var(--sun); font-size: 24px; }
+  .rr .tide { width: 96px; height: 34px; align-self: center; }
+
+  /* Beat 2: the map of the break, from the game's own terrain and reef (north up). */
+  .map { position: absolute; right: var(--safe-pc-x); top: var(--safe-pc-y); width: 448px; height: 336px; z-index: 3;
+         background: #0d2530; box-shadow: 0 10px 34px rgba(0,0,0,.45); border-top: 5px solid var(--sun); }
+  .map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .map .cap { position: absolute; left: 20px; top: 14px; font: 700 22px 'Barlow Semi Condensed'; letter-spacing: .16em; color: var(--cream); text-transform: uppercase; }
+  .map .sub { position: absolute; left: 20px; top: 42px; font: 500 19px 'Barlow Semi Condensed'; color: rgba(247,236,210,.7); }
+  .inset { position: absolute; right: 0; top: 0; bottom: 0; width: 112px; background: #0a1d26; border-left: 1px solid rgba(247,236,210,.18); }
+
+  /* Beat 3 */
+  .panel { position: absolute; right: var(--safe-x); top: 150px; width: 600px; z-index: 3; }
+  .tabs { display: flex; align-items: center; gap: 26px; margin-bottom: 26px; }
+  .tab { font: 700 30px 'Barlow Semi Condensed'; letter-spacing: .12em; color: rgba(247,236,210,.55); padding-bottom: 8px; border-bottom: 4px solid transparent; }
+  .tab.on { color: var(--cream); border-color: var(--sun); }
+  .bd { display: grid; grid-template-columns: 1fr auto; align-items: center; height: 84px; padding: 0 20px; position: relative; }
+  .bd + .bd { border-top: 1px solid rgba(247,236,210,.12); }
+  .bd .val { font-size: 36px; } .bd .num { margin-left: 12px; }
+  .bd.f { transform: scale(1.04); transform-origin: right center; }
+  .fitb { font: 700 19px 'Barlow Semi Condensed'; letter-spacing: .14em; padding: 5px 10px 4px; border-radius: 2px; }
+  .fitb.ideal { background: var(--teal); color: #e9fbf8; } .fitb.good { background: rgba(247,236,210,.18); color: var(--cream); } .fitb.ok { background: rgba(247,236,210,.1); color: rgba(247,236,210,.75); }
+  .pick { font: 500 20px 'Barlow Semi Condensed'; color: var(--sun); letter-spacing: .06em; margin-left: 12px; }
+  .stats { margin-top: 30px; padding: 0 20px; }
+  .st { display: grid; grid-template-columns: 130px 1fr; align-items: center; height: 44px; }
+  .seg { display: flex; gap: 6px; } .seg i { width: 58px; height: 12px; background: rgba(247,236,210,.18); display: block; transform: skewX(-18deg); } .seg i.on { background: var(--sun); }
+  .spec { margin-top: 22px; padding: 0 20px; font: 500 25px 'Barlow Semi Condensed'; color: rgba(247,236,210,.8); font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 14px; }
+</style>
+</head>
+<body>
+
+<p class="intro"><b>Liquid Dreams: the select screen (work in progress).</b> Three camera beats on the dune above the Womb, all one live 3D scene from the game. The crew's stances are placeholders; new relaxed poses come next.</p>
+
+<div class="label-out">1 · Conditions: set the surf, then the crew turn round</div>
+<div class="fit"><div class="screen" style="background-image:url('bg-conditions.jpg')">
+  <div class="scrim-l"></div>
+  <div class="scrim-b" style="height:180px"></div>
+  <div class="beats"><i class="on"></i><i></i><i></i></div>
+  <div class="title">Conditions</div>
+  <div class="rows">
+    <div class="rr preset"><div class="lab">Preset</div><div class="val"><span class="arr" style="color:rgba(247,236,210,.5)">◀</span>Winter offshore<span class="arr" style="color:rgba(247,236,210,.5)">▶</span></div></div>
+    <div class="rr"><div class="lab">Month</div><div class="val">July<span class="num">Winter</span></div></div>
+    <div class="rr"><div class="lab">Time</div><div class="val">Mid-morning<span class="num">10:30 am</span></div></div>
+    <div class="rr"><div class="lab">Sky</div><div class="val"><svg class="ico" viewBox="0 0 30 30"><circle cx="15" cy="15" r="6" fill="none" stroke="#ffa14f" stroke-width="2.5"/><g stroke="#ffa14f" stroke-width="2.5" stroke-linecap="round"><path d="M15 2v4M15 24v4M2 15h4M24 15h4M5.8 5.8l2.8 2.8M21.4 21.4l2.8 2.8M5.8 24.2l2.8-2.8M21.4 8.6l2.8-2.8"/></g></svg>Clear<span class="num">0% cloud</span></div></div>
+    <div class="rr"><div class="lab">Wind</div><div class="val">Light offshore<span class="num">6 kn E</span></div></div>
+    <div class="rr f"><div class="lab">Swell</div><div class="val"><span class="arr">◀</span>Fun 3–4 ft<span class="arr">▶</span><span class="num">4 ft · 15 s</span></div></div>
+    <div class="rr"><div class="lab">From</div><div class="val">South-west<span class="num">SW 225°</span></div></div>
+    <div class="rr"><div class="lab">Tide</div><div class="val">Low, pushing<svg class="tide" viewBox="0 0 96 34"><path d="M2 26 C 18 26, 22 6, 38 6 S 58 26, 74 26 S 90 14, 94 10" fill="none" stroke="rgba(247,236,210,.55)" stroke-width="2.5"/><circle cx="72" cy="26" r="5" fill="#ffa14f"/></svg><span class="num">−0.3 m</span></div></div>
+  </div>
+
+  <div class="map">
+    <svg viewBox="0 0 640 480">
+      <defs>
+        <clipPath id="mclip"><rect x="0" y="0" width="528" height="480"/></clipPath>
+        <marker id="ah" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#ffa14f"/></marker>
+        <marker id="awd" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#10171a"/></marker>
+        <marker id="aw" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#f7ecd2"/></marker>
+        <linearGradient id="deep" x1="0" x2="1"><stop offset="0" stop-color="#0b2029"/><stop offset="1" stop-color="#14424e"/></linearGradient>
+      </defs>
+      <g clip-path="url(#mclip)">
+        <rect width="528" height="480" fill="url(#deep)"/>
+        <!-- near grid: 301x281 cells of 5 m; x -700..800, z -700..700; drawn at 1.9 px/cell, offset to centre the reef -->
+        <g transform="translate(-124 -124) scale(2.6)">
+          <path d="M158.7 0.0 L158.7 50.0 L157.8 53.0 L155.8 55.0 L152.0 56.8 L146.0 56.0 L135.0 56.0 L117.0 58.7 L111.0 61.0 L109.0 62.7 L108.7 64.0 L110.0 71.0 L114.0 77.0 L116.0 86.0 L121.7 101.0 L125.0 106.0 L127.0 112.0 L127.7 117.0 L126.3 125.0 L124.7 128.0 L123.5 133.0 L121.0 137.0 L121.5 146.0 L125.0 150.0 L126.0 153.0 L133.0 159.3 L140.0 163.3 L151.0 166.7 L154.0 168.7 L156.0 171.0 L158.5 177.0 L158.7 280.0" fill="none" stroke="rgba(120,200,205,.35)" stroke-width="0.5"/>
+          <path d="M162.6 0.0 L162.6 52.0 L162.0 55.0 L159.0 57.6 L152.0 59.8 L149.0 59.0 L147.0 60.3 L140.0 59.1 L138.0 59.8 L136.0 58.5 L134.0 58.3 L130.0 60.2 L129.0 63.0 L129.0 67.0 L130.0 68.0 L130.0 70.0 L132.0 73.0 L132.0 75.0 L134.0 77.0 L134.0 80.0 L137.0 84.0 L137.0 88.0 L138.0 89.0 L139.0 95.0 L142.0 100.0 L142.0 102.0 L146.0 110.0 L146.0 113.0 L149.0 116.0 L149.0 119.0 L147.0 121.0 L145.0 125.0 L145.0 127.0 L144.0 128.0 L144.0 133.0 L141.0 137.0 L140.0 140.0 L141.0 142.0 L146.0 147.0 L148.0 147.0 L152.0 149.0 L161.0 149.0 L163.0 147.0 L163.0 144.0 L162.0 143.0 L161.9 135.0 L160.9 133.0 L162.0 129.0 L162.7 130.0 L163.0 142.0 L166.0 147.0 L166.0 151.0 L164.0 153.0 L164.0 155.0 L163.0 156.0 L162.5 162.0 L162.6 280.0 M162.0 60.8 L162.0 60.8 M162.0 100.0 L162.0 100.0 M162.0 114.0 L162.0 114.0" fill="none" stroke="rgba(120,200,205,.6)" stroke-width="0.6"/>
+          <path d="M167.0 0.0 L167.0 84.0 L168.3 98.0 L171.7 114.0 L171.7 122.0 L170.8 125.0 L178.0 134.0 L178.3 147.0 L178.0 162.7 L173.0 170.0 L168.2 174.0 L167.0 178.0 L167.0 280.0 M150.0 61.0 L150.0 61.0 M147.0 62.0 L147.0 62.0 M144.0 66.0 L144.0 66.0 M138.0 69.2 L138.0 69.2 M147.0 69.4 L147.0 69.4 M159.0 69.6 L159.0 69.6 M153.0 70.5 L153.0 70.5 M144.0 78.8 L144.0 78.8 M141.0 79.6 L141.0 79.6 M148.0 82.9 L148.0 82.9 M151.0 84.4 L151.0 84.4 M148.0 85.6 L148.0 85.6 M143.0 87.6 L143.0 87.6 M159.0 88.1 L159.0 88.1 M155.0 95.9 L155.0 95.9 M160.0 97.6 L160.0 97.6 M148.0 99.8 L148.0 99.8 M152.0 102.6 L152.0 102.6 M159.0 103.6 L159.0 103.6 M156.0 105.4 L156.0 105.4 M154.0 107.7 L154.0 107.7 M152.0 112.5 L152.0 112.5 M160.0 122.8 L160.0 122.8 M154.0 123.9 L154.0 123.9 M149.0 126.6 L149.0 126.6 M143.0 138.9 L143.0 138.9" fill="none" stroke="rgba(150,225,225,.85)" stroke-width="0.7" stroke-dasharray="1.6 1.2"/>
+          <rect x="179" y="-20" width="400" height="400" fill="#c9b07e"/>
+          <rect x="179" y="-20" width="2.4" height="400" fill="#efe1bd"/>
+          <path d="M207.4 0.0 L206.5 4.0 L208.6 7.0 L207.2 9.0 L208.3 11.0 L208.4 14.0 L206.4 16.0 L205.2 22.0 L202.8 25.0 L202.0 29.0 L199.0 32.3 L199.1 35.0 L196.9 38.0 L197.6 39.0 L196.6 43.0 L197.4 52.0 L198.2 53.0 L196.3 63.0 L197.6 79.0 L196.6 87.0 L197.3 97.0 L195.5 108.0 L197.5 129.0 L195.9 148.0 L197.5 160.0 L201.5 168.0 L202.3 173.0 L207.0 184.0 L207.8 192.0 L206.1 195.0 L205.1 203.0 L206.4 208.0 L205.9 214.0 L206.9 215.0 L205.9 217.0 L209.0 220.0 L209.6 226.0 L207.6 232.0 L206.2 233.0 L206.8 235.0 L205.8 237.0 L208.0 240.0 L207.8 245.0 L204.2 251.0 L204.4 260.0 L206.1 262.0 L205.0 264.0 L206.0 264.6 L207.0 263.8 L211.8 268.0 L211.0 269.0 L211.9 270.0 L211.5 272.0 L209.8 273.0 L212.0 274.4 L215.2 279.0 L215.0 280.0" fill="none" stroke="rgba(90,70,40,.45)" stroke-width="0.6"/>
+        </g>
+        <!-- swell from SW: crests run NW-SE, travelling NE -->
+        <g stroke="#ffa14f" stroke-width="3" fill="none" stroke-linecap="round">
+          <path d="M14 300 L 150 436" opacity=".95"/><path d="M14 210 L 210 406" opacity=".8"/><path d="M40 146 L 250 356" opacity=".6"/>
+          <path d="M64 452 L 128 388" marker-end="url(#ah)"/>
+        </g>
+        <text x="18" y="468" font-family="Barlow Semi Condensed" font-weight="700" font-size="28" letter-spacing="1.5" fill="#ffa14f">SW · 4 FT · 15 S</text>
+        <!-- wind from E: offshore, blowing from the land out over the lineup -->
+        <g stroke="#10171a" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".75">
+          <path d="M512 92 L 300 92" marker-end="url(#awd)"/><path d="M512 132 L 330 132" marker-end="url(#awd)"/>
+        </g>
+        <text x="348" y="70" font-family="Barlow Semi Condensed" font-weight="700" font-size="27" letter-spacing="1.2" fill="#10171a">E · OFFSHORE</text>
+        <!-- the peak and the lookout -->
+        <circle cx="240" cy="240" r="9" fill="#ef7d2e" stroke="#10171a" stroke-width="2"/>
+        <text x="150" y="214" font-family="Knewave" font-size="38" fill="#f7ecd2" stroke="#10171a" stroke-width="0.6">The Womb</text>
+        <circle cx="405" cy="263" r="7" fill="#f7ecd2" stroke="#10171a" stroke-width="2"/>
+        <text x="372" y="300" font-family="Barlow Semi Condensed" font-weight="700" font-size="26" letter-spacing="1.5" fill="#10171a">LOOKOUT</text>
+        <!-- compass and scale -->
+        <g transform="translate(500 412)"><path d="M0 -22 L7 0 L0 -5 L-7 0 z" fill="#10171a"/><text x="0" y="20" text-anchor="middle" font-family="Barlow Semi Condensed" font-weight="700" font-size="26" fill="#10171a">N</text></g>
+        <g transform="translate(360 452)"><rect width="130" height="5" fill="#10171a"/><text x="0" y="-6" font-family="Barlow Semi Condensed" font-weight="600" font-size="26" fill="#10171a">250 m</text></g>
+      </g>
+      <!-- inset: 30 km of coast from the game's terrain ring (50 m cells), the break boxed -->
+      <g transform="translate(528 0)">
+        <rect width="112" height="480" fill="#0a1d26"/>
+        <g transform="translate(-14 -40) scale(0.85)">
+          <path d="M70.6 0.0 L70.2 5.0 L77.4 31.0 L78.0 39.0 L83.0 47.6 L84.8 60.0 L89.2 67.0 L90.3 71.0 L88.7 79.0 L88.3 94.0 L84.5 106.0 L85.1 135.0 L84.3 139.0 L80.8 147.0 L79.2 155.0 L81.0 170.0 L80.0 191.6 L74.0 201.3 L68.2 208.0 L65.4 214.0 L65.8 218.0 L69.1 224.0 L68.3 227.0 L53.0 233.2 L48.8 236.0 L49.7 243.0 L53.4 252.0 L53.7 257.0 L58.5 267.0 L60.8 280.0 L63.8 286.0 L63.9 312.0 L68.2 321.0 L68.0 327.6 L64.6 337.0 L67.6 346.0 L67.7 355.0 L66.7 361.0 L72.0 371.8 L76.4 386.0 L75.4 398.0 L76.9 422.0 L76.0 428.5 L71.1 437.0 L66.3 441.0 L58.0 445.5 L54.7 449.0 L57.7 462.0 L65.0 470.4 L63.1 477.0 L63.7 482.0 L70.0 488.7 L71.7 492.0 L73.0 507.0 L71.1 517.0 L76.7 531.0 L83.0 539.4 L84.8 546.0 L92.4 562.0 L92.8 575.0 L90.1 586.0 L91.6 600.0" fill="none" stroke="#c9b07e" stroke-width="2.2"/>
+          <rect x="52" y="290" width="16" height="20" fill="none" stroke="#ef7d2e" stroke-width="2.4"/>
+        </g>
+        <text transform="translate(88 175) rotate(90)" text-anchor="middle" font-family="Barlow Semi Condensed" font-weight="600" font-size="26" letter-spacing="1" fill="rgba(247,236,210,.8)">GRACETOWN</text>
+        <text transform="translate(88 400) rotate(90)" text-anchor="middle" font-family="Barlow Semi Condensed" font-weight="600" font-size="26" letter-spacing="1" fill="rgba(247,236,210,.8)">MARGARET R.</text>
+        <line x1="0" y1="0" x2="0" y2="480" stroke="rgba(247,236,210,.18)"/>
+      </g>
+    </svg>
+  </div>
+
+  <div style="position:absolute;left:760px;top:438px;z-index:3;width:560px"><div class="who">T-Bone</div><div class="say">"Four foot and offshore. Mate."</div></div>
+  <div class="legend"><span><i class="g y">Y</i>Roll the dice</span><span><i class="g x">X</i>Swell details</span><span><i class="g a">A</i>Done</span><span><i class="g b">B</i>Back</span></div>
+</div></div>
+
+<div class="label-out">2 · Choose your rider: the camera pushes in on each of the crew</div>
+<div class="fit"><div class="screen" style="background-image:url('bg-rider.jpg')">
+  <div class="scrim-b"></div>
+  <div class="beats"><i class="on"></i><i class="on"></i><i></i></div>
+  <div class="title">Choose your rider</div>
+  <div class="slide"></div><div class="slide-edge"></div>
+  <div class="roster"><i class="g bump">LB</i><div class="r">T-Bone</div><div class="r on">Shazza</div><div class="r">Grommet</div><i class="g bump">RB</i></div>
+  <div class="lock"><div class="nick">Shazza</div><div class="real">Sharon</div></div>
+  <div class="desc">
+    <div class="row1"><div class="lab">Stance</div><div class="val">Regular</div></div>
+    <div class="row1"><div class="lab">Rides</div><div class="val">Shortboard, step-up, bodyboard</div></div>
+    <div class="row1"><div class="lab">Style</div><div class="val">Smooth lines. Reads the sets.</div></div>
+    <div class="row1"><div class="lab">Loves</div><div class="val">Clean, long walls</div></div>
+  </div>
+  <div style="position:absolute;left:1170px;top:735px;z-index:4;width:600px"><div class="say">"Reckon it's pumping out there!"</div></div>
+  <div class="crew">The crew always paddles out together: <b>T-Bone</b> and <b>Grommet</b> surf beside you.</div>
+  <div class="legend"><span><i class="g a">A</i>Ride as Shazza</span><span><i class="g b">B</i>Back</span></div>
+</div></div>
+
+<div class="label-out">3 · Grab your gear: your rider picks the board for the conditions, then paddle out</div>
+<div class="fit"><div class="screen" style="background-image:url('bg-gear.jpg')">
+  <div class="scrim-r"></div><div class="scrim-b"></div>
+  <div class="beats"><i class="on"></i><i class="on"></i><i class="on"></i></div>
+  <div class="title">Grab your gear</div>
+  <div style="position:absolute;left:700px;top:250px;z-index:3;width:540px"><div class="who">Shazza</div><div class="say">"Clean four foot. Thruster, easy."</div></div>
+  <div class="panel">
+    <div class="tabs"><i class="g bump">LB</i><div class="tab on">BOARD</div><div class="tab">OUTFIT</div><i class="g bump">RB</i></div>
+    <div class="bd f"><div class="val">Thruster<span class="num">5'10"</span><span class="pick">Shazza's pick</span></div><span class="fitb ideal">IDEAL</span></div>
+    <div class="bd"><div class="val">Step-up<span class="num">6'4"</span></div><span class="fitb good">GOOD</span></div>
+    <div class="bd"><div class="val">Bodyboard<span class="num">40"</span></div><span class="fitb ok">OK</span></div>
+    <div class="stats">
+      <div class="st"><div class="lab">Paddle</div><div class="seg"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div></div>
+      <div class="st"><div class="lab">Hold</div><div class="seg"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div></div>
+      <div class="st"><div class="lab">Turn</div><div class="seg"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
+    </div>
+    <div class="spec"><i class="g rs">RS</i>5'10" × 18¾" × 2 5⁄16" · squash tail · thruster</div>
+  </div>
+  <div class="legend"><span><i class="g a">A</i>Choose</span><span><i class="g b">B</i>Back</span><span class="go"><i class="g start">☰</i>Paddle out</span></div>
+</div></div>
+
+<script>
+  const solo = /^#b(\d)$/.exec(location.hash);
+  if (solo) { document.body.style.padding = '0'; document.querySelectorAll('.intro,.label-out').forEach((e) => e.remove());
+    document.querySelectorAll('.fit').forEach((f, i) => { if (i !== +solo[1] - 1) f.remove(); else { f.style.maxWidth = 'none'; f.style.borderRadius = '0'; } }); }
+  const fit = () => document.querySelectorAll('.fit').forEach((f) => { const s = f.querySelector('.screen'); s.style.transform = `scale(${f.clientWidth / 1920})`; });
+  addEventListener('resize', fit); document.fonts.ready.then(fit); fit();
+</script>
+</body>
+</html>
