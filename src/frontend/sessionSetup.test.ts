@@ -6,7 +6,7 @@ import { CONDITION_RANGES } from '../conditions/sanitize';
 import { WEATHER_PRESETS } from '../weather/weather';
 import {
   FIRST_PRESET, FROM_WINDOW, SESSION_PRESETS, SKY_ROWS, SWELL_BANDS, TIDE_STOPS, TIME_STOPS, WIND_ROWS,
-  type SessionSetup, dateForMonth, presetById, presetOfSetup, rowDisplay, sunTimes, swellBand, timeOfDayFor, toConditions,
+  type SessionSetup, dateForMonth, presetById, presetOfSetup, rollSetup, rowDisplay, rowWords, sunTimes, swellBand, timeOfDayFor, toConditions,
 } from './sessionSetup';
 
 const TODAY = new Date('2026-10-03T10:00:00+08:00');
@@ -93,8 +93,8 @@ describe('the conditions model (dune select spec §6)', () => {
   });
   it('reads like a surf report: a word, then the number small', () => {
     expect(rowDisplay(winter, 'preset', TODAY)).toEqual({ value: 'Winter offshore', small: '' });
-    expect(rowDisplay(winter, 'month', TODAY)).toEqual({ value: 'July', small: 'Winter · big swell season' });
-    expect(rowDisplay({ ...winter, month: 0 }, 'month', TODAY)).toEqual({ value: 'January', small: 'Summer · sea breeze season' });
+    expect(rowDisplay(winter, 'month', TODAY)).toEqual({ value: 'July', small: 'Winter · big swells' });
+    expect(rowDisplay({ ...winter, month: 0 }, 'month', TODAY)).toEqual({ value: 'January', small: 'Summer · sea breezes' });
     expect(rowDisplay({ ...winter, month: 8 }, 'month', TODAY)).toEqual({ value: 'September', small: 'Winter' });
     expect(rowDisplay(winter, 'time', TODAY)).toEqual({ value: 'Mid-morning', small: '10:30 am' });
     expect(rowDisplay(winter, 'sky', TODAY)).toEqual({ value: 'Clear', small: '0% cloud' });
@@ -116,5 +116,26 @@ describe('the conditions model (dune select spec §6)', () => {
     for (const p of SESSION_PRESETS) expect(presetOfSetup(p.setup)).toBe(p.id);
     expect(presetOfSetup({ ...winter, tide: 3 })).toBeNull();
     expect(rowDisplay({ ...winter, tide: 3 }, 'preset', TODAY).value).toBe('Custom');
+  });
+});
+
+describe('every word a row can show (the value box is sized to the longest, so the arrows stay put)', () => {
+  const today = new Date('2026-07-10T09:00:00+08:00');
+  it('lists each row\'s shown value for every value the row can take', () => {
+    const base = presetById(SESSION_PRESETS[0].id)!.setup;
+    const setups: SessionSetup[] = [...SESSION_PRESETS.map((p) => p.setup)];
+    for (let k = 0; k < 300; k++) setups.push(rollSetup(k));
+    for (let m = 0; m < 12; m++) setups.push({ ...base, month: m });
+    for (let t = 0; t < TIME_STOPS.length; t++) setups.push({ ...base, timeStop: t });
+    for (const r of SKY_ROWS) setups.push({ ...base, sky: r.id });
+    for (let w = 0; w < WIND_ROWS.length; w++) setups.push({ ...base, wind: w });
+    for (let ft = 1; ft <= 12; ft += 0.5) setups.push({ ...base, swellFt: ft });
+    for (let p = 8; p <= 20; p++) setups.push({ ...base, periodS: p });
+    for (const f of FROM_WINDOW) setups.push({ ...base, fromDeg: f });
+    for (let t = 0; t < TIDE_STOPS.length; t++) setups.push({ ...base, tide: t });
+    for (const row of ['preset', 'month', 'time', 'sky', 'wind', 'swell', 'period', 'from', 'tide'] as const) {
+      const words = rowWords(row);
+      for (const s of setups) expect(words, row).toContain(rowDisplay(s, row, today).value);
+    }
   });
 });

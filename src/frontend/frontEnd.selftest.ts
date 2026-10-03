@@ -1,7 +1,7 @@
 // src/frontend/frontEnd.selftest.ts: the front end's DOM checks (spec §15), run with ?selftest=frontend.
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
-import { initialFront } from './frontEnd';
+import { type FrontState, initialFront, step } from './frontEnd';
 import { DEFAULT_CHOICES, DEFAULT_FRONT_SETTINGS } from './frontSettings';
 import type { FrontEndHost } from './frontEndCore';
 import { FrontEnd } from './frontEndPage';
@@ -87,6 +87,34 @@ registerSelfTest({
       const tiny = [...p.el.querySelectorAll('.fe-label, .fe-value, .fe-small, .fe-title')].filter((t) => parseFloat(getComputedStyle(t).fontSize) < 18);
       const focused = p.el.querySelectorAll('.fe-row.is-focus').length;
       return { pass: rows.length === 8 && outside.length === 0 && tiny.length === 0 && focused === 1, detail: `${rows.length} rows, ${outside.length} outside, ${tiny.length} under 18 px, ${focused} focused` };
+    });
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: each Conditions row\'s arrows stay put as its value changes (a mouse can keep clicking one spot)',
+  async run() {
+    return withRoot(1920, 1080, async (root, l) => {
+      // The faces load on first use: measure with them, not the fallback.
+      await Promise.all(['500 21px "Barlow Semi Condensed"', '600 34px "Barlow Semi Condensed"', '400 23px "Barlow Semi Condensed"'].map((f) => document.fonts.load(f, 'Aa0')));
+      const p = new ConditionsPanel(() => {}), today = new Date('2026-07-10T09:00:00+08:00'), ctx = { seed: 1, today, calm: true };
+      root.appendChild(p.el);
+      const moved: string[] = [], clipped = new Set<string>();
+      for (const row of ['preset', 'month', 'time', 'sky', 'wind', 'swell', 'from', 'tide'] as const) {
+        let s: FrontState = { ...initialFront(DEFAULT_CHOICES), rowFocus: row };
+        const xs: number[] = [];
+        for (const a of [...Array(14).fill('left'), ...Array(28).fill('right')] as ('left' | 'right')[]) {
+          s = step(s, a, ctx).state;
+          p.render(s, today);
+          xs.push(designBox(p.el.querySelector('.fe-row.is-focus [data-hit$=":right"]')!, root, l.scale).x);
+          const v = p.el.querySelector('.fe-row.is-focus .fe-value')!;
+          if (v.scrollWidth > v.clientWidth + 0.5) clipped.add(`${row} "${v.querySelector('.fe-small')?.textContent}" by ${v.scrollWidth - v.clientWidth} px`);
+        }
+        const spread = Math.max(...xs) - Math.min(...xs);
+        if (spread > 0.5) moved.push(`${row} ${spread.toFixed(1)} px`);
+      }
+      const said = moved.length ? `the right arrow moves: ${moved.join(', ')}` : 'every row\'s right arrow holds its place';
+      return { pass: moved.length === 0 && clipped.size === 0, detail: `${said}; ${clipped.size ? `clipped: ${[...clipped].join(', ')}` : 'nothing clipped'}` };
     });
   },
 });
