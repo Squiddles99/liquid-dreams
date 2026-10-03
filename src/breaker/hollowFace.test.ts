@@ -44,8 +44,11 @@ describe("the face and the tube's back are one hollow curve (Andrew's red line),
           // A corner is a turn standing out from its neighbours (the step: 62° with ~0° either side); the tube's round back
           // turns ~30° a sample over several samples, all one way, and is no corner.
           const spike = Math.max(...t.map((d, i) => Math.abs(d) - Math.max(Math.abs(t[i - 1] ?? 0), Math.abs(t[i + 1] ?? 0))));
-          // (While it fades in, the young lip leaves the crest at an angle, the right way: checked from 30% of the throw.)
-          if (k >= 0.3 && k <= 1) expect(spike, `${where}: the largest corner (° over its neighbours)`).toBeLessThan(20);
+          // While it fades in too (Andrew, 2026-10-03: the young lip hooked off the back wall at 55°), between pieces of 1 cm
+          // or more (at 4% of the throw the curl is a few cm across).
+          const tc = k < 0.3 ? turns(curve, 0.01) : t;
+          const spikeC = Math.max(...tc.map((d, i) => Math.abs(d) - Math.max(Math.abs(tc[i - 1] ?? 0), Math.abs(tc[i + 1] ?? 0))));
+          if (k <= 1) expect(spikeC, `${where}: the largest corner (° over its neighbours)`).toBeLessThan(20);
           // One way only along the hollow curve itself, from past the foot (at the foot the trough's own upward curve meets
           // it; the corner check above covers that point). After the landing the pile rides the face: shape checks stop there.
           const own = t.slice(2), pos = k > 1 ? 0 : own.filter((d) => d > 2).length, neg = own.filter((d) => d < -2).length;
