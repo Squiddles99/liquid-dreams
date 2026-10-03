@@ -28,14 +28,17 @@ describe('the tracks mask (dune-up-close §4.3)', () => {
     expect(worst).toBe(0);
   });
   it('is quick enough to rebuild on a recentre (§5: 0.5 ms in the game; vitest is slower)', () => {
+    // Five warm-up recentres (the JIT), then the median of ten timed ones (a test process among others: a GC or a
+    // descheduling lands in a few of them).
     let prev = { mask: buildTracksMask(net, cornerX, cornerZ), cornerX, cornerZ };
-    const t0 = performance.now();
-    for (let k = 1; k <= 5; k++) {
-      const c = { x: cornerX + 8 * k, z: cornerZ };
+    const times: number[] = [];
+    for (let k = 1; k <= 15; k++) {
+      const c = { x: cornerX + 8 * k, z: cornerZ }, t0 = performance.now();
       prev = { mask: buildTracksMask(net, c.x, c.z, undefined, prev), cornerX: c.x, cornerZ: c.z };
+      if (k > 5) times.push(performance.now() - t0);
     }
-    const ms = (performance.now() - t0) / 5;
-    console.log(`tracks mask (incremental): ${ms.toFixed(2)} ms`);
+    const ms = times.sort((a, b) => a - b)[5];
+    console.log(`tracks mask (incremental): median ${ms.toFixed(2)} ms`);
     expect(ms).toBeLessThan(2);
   });
 });
