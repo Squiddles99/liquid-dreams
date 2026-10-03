@@ -55,6 +55,8 @@ export class FrontEnd {
   private beatEls: Record<'conditions' | 'rider' | 'gear', HTMLElement> | null = null;
   private parts: { cond: ConditionsPanel; map: BreakMap; slide: SlidePanel; gear: GearPanel; legend: Legend; line: RiderLine; bottom: HTMLElement } | null = null;
   private shownBeat: string | null = null;
+  /** Black over everything until the crew have loaded and the land is ready (no boards floating without riders). */
+  private veil: HTMLElement | null = null;
   /** The Settings overlay while it's open (Back + START), and its focused row. */
   private settingsPanel: SettingsPanel | null = null;
   private settingsFocus: SettingRow = 'textScale';
@@ -93,6 +95,10 @@ export class FrontEnd {
     const wrap = (...els: HTMLElement[]): HTMLElement => { const d = document.createElement('div'); d.append(...els); return d; };
     this.beatEls = { conditions: wrap(cond.el, map.el, beatHead('conditions')), rider: wrap(slide.el, beatHead('rider')), gear: wrap(gear.el, beatHead('gear')) };
     this.root.append(bottom, this.beatEls.conditions, this.beatEls.rider, this.beatEls.gear, line.el, legend.el);
+    this.veil = document.createElement('div');
+    this.veil.className = 'fe-veil';
+    Object.assign(this.veil.style, { position: 'absolute', inset: '-2px', background: '#05080a', opacity: '1', pointerEvents: 'none' });
+    this.root.appendChild(this.veil);
     this.parts = { cond, map, slide, gear, legend, line, bottom };
     this.input = new UiInput(window);
     this.sound.setFrontEndMusic(true);
@@ -114,6 +120,7 @@ export class FrontEnd {
     }
     this.cue(this.core.update(dtS, now));
     this.render(now);
+    this.liftVeil();
     if (this.core.state.beat === 'out') this.close();
   }
 
@@ -124,6 +131,7 @@ export class FrontEnd {
     this.sound.setFrontEndMusic(false);
     this.root = this.core = this.input = this.parts = this.beatEls = null;
     this.settingsPanel = null;
+    this.veil = null;
     this.shownBeat = null;
   }
 
@@ -137,9 +145,24 @@ export class FrontEnd {
       for (const e of c.events) {
         this.parts.cond.event(e, calm, performance.now(), this.today);
         if (e.kind === 'value' || e.kind === 'roll') this.parts.map.setConditions(this.core.state.setup, calm);
+        // A mate's tease when the focus lands on a bikini or boardies in the WA winter (spec §9).
+        if (e.kind === 'gear' && e.tab === 'outfit') {
+          const s = this.core.state, line = gearView(s, this.today, Math.floor(performance.now())).line;
+          if (line.speaker !== PRESETS[s.rider].nickname) this.parts.line.show(line.speaker, line.text, performance.now());
+        }
       }
     }
     if (c.settings) this.openSettings();
+  }
+
+  /** Lifts the load-in veil once the crew have loaded and the land is ready: a 400 ms fade (instant with calm menus). */
+  private liftVeil(): void {
+    const v = this.veil;
+    if (!v || v.style.opacity === '0') return;
+    if (!this.host.standSpot() || (this.host.crewReady && !this.host.crewReady())) return;
+    v.style.transition = this.settings.calmMenus ? 'none' : 'opacity 400ms cubic-bezier(0.33, 1, 0.68, 1)';
+    v.style.opacity = '0';
+    window.setTimeout(() => { v.remove(); if (this.veil === v) this.veil = null; }, 450);
   }
 
   /** The Settings overlay over everything (spec §11). */
@@ -211,7 +234,9 @@ export class FrontEnd {
     p.slide.setDevice(this.device);
     p.slide.render(s, calm);
     if (s.beat === 'gear') p.gear.render(gearView(s, this.today, 1), this.device, calm);
-    p.legend.set(this.settingsPanel ? [{ action: 'back', text: 'Back' }] : legendFor(s), this.device);
+    // The legend follows the beat on screen: mid-swing (no beat's UI showing) it's empty, then the new beat's.
+    const legend = this.settingsPanel ? [{ action: 'back' as const, text: 'Back' }] : visibleBeat ? legendFor({ ...s, beat: visibleBeat }) : [];
+    p.legend.set(legend, this.device);
     p.line.update(now);
     // The mockup's spots: over the sea left of the panel in Grab your gear, over the water in Conditions.
     const pos = s.beat === 'gear' ? { left: '700px', top: '250px' } : { left: '760px', top: '438px' };

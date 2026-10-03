@@ -29,6 +29,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 export class SurferStand {
   readonly group = new THREE.Group();
   readonly status = { outfit: '' };
+  private askedPreset: PresetName | null = null;
   private readonly board: BoardMesh;
   private readonly leash: THREE.Mesh;
   private readonly leashPos = new Float32Array((LEASH_POINTS + 1) * LEASH_SIDES * 3);
@@ -94,6 +95,7 @@ export class SurferStand {
     this.board.mesh.position.copy(frame.position);
     this.board.mesh.quaternion.copy(Qb);
 
+    this.askedPreset = p.preset;
     const s = this.loader.get(p.preset);
     if (s !== this.surfer) {
       if (this.surfer) this.group.remove(this.surfer.group);
@@ -179,6 +181,11 @@ export class SurferStand {
       .map((q) => q.applyQuaternion(Qb).add(frame.position));
     tubePositions(pts, 0.0035, LEASH_SIDES, this.leashPos);
     (this.leash.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  /** Whether the rider it was last asked for has finished loading (or failed: the stand shows the board alone). */
+  get settled(): boolean {
+    return this.askedPreset !== null && this.loader.settled(this.askedPreset);
   }
 
   /** The rider on the stand, once loaded. */

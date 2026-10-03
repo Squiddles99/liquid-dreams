@@ -25,6 +25,11 @@ export class GangLineup {
     this.group.visible = false;
   }
 
+  /** Whether all three riders have finished loading (the front end's load-in veil waits for it). */
+  get settled(): boolean {
+    return this.stands.every((s) => s.settled);
+  }
+
   /** A rider's stand (dev checks: the front end's face ray). */
   standOf(preset: 'female' | 'grommet' | 'male'): SurferStand {
     return this.stands[(['female', 'grommet', 'male'] as const).indexOf(preset)];

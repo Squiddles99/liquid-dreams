@@ -42,6 +42,11 @@ describe('the front end\'s core (spec §3, §6.10)', () => {
     for (let t = 2016; t <= 2400; t += 16) core.update(0.016, t);
     expect(calls.applied - before).toBe(1);
   });
+  it('puts the shown conditions into the world as it opens (the panel and the sky agree from the first frame)', () => {
+    const { host, calls } = fakeHost();
+    new FrontEndCore(host, DEFAULT_CHOICES, opts);
+    expect(calls.applied).toBe(1);
+  });
   it('paddles out on START with every remaining choice at its default', () => {
     const { host, calls } = fakeHost();
     const core = new FrontEndCore(host, DEFAULT_CHOICES, opts);

@@ -31,4 +31,16 @@ describe('KeyedLoader', () => {
     expect(load).toHaveBeenCalledTimes(1);
     expect(onError).toHaveBeenCalledTimes(1);
   });
+  it('says when a key has settled: not before it is asked for or while it loads; after it loads or fails (the front end load-in veil)', async () => {
+    const ok = new KeyedLoader<string, string>(() => Promise.resolve('M'), () => {});
+    expect(ok.settled('male')).toBe(false);
+    ok.get('male');
+    expect(ok.settled('male')).toBe(false);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ok.settled('male')).toBe(true);
+    const bad = new KeyedLoader<string, string>(() => Promise.reject(new Error('404')), () => {});
+    bad.get('male');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(bad.settled('male')).toBe(true);
+  });
 });

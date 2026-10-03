@@ -23,6 +23,8 @@ export interface FrontEndHost {
   applyConditions(c: Conditions): void;
   stage(staging: GangStaging | null, pose: CameraPose | null): void;
   paddleOut(choice: SessionChoice): void;
+  /** Whether the crew's bodies have loaded (absent: always); the page veils the front end until they have. */
+  crewReady?(): boolean;
 }
 
 export interface CoreCue {
@@ -50,6 +52,8 @@ export class FrontEndCore {
     this.s = initialFront(saved);
     this.calm = opts.calm;
     this.lineSeed = opts.seed;
+    // The world takes the shown conditions at once: the sky, sea and light match the panel from the first frame.
+    host.applyConditions(toConditions(this.s.setup, host.baseConditions(), opts.today));
   }
 
   get state(): FrontState {
