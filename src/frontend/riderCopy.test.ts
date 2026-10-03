@@ -14,7 +14,7 @@ describe('the riders\' copy (dune select spec §4.2.1, §8)', () => {
   it('takes the stance and the boards from the presets', () => {
     expect(stanceLabel('female')).toBe('Regular');
     expect(stanceLabel('male')).toBe('Goofy');
-    expect(ridesLabel('female')).toBe('Shortboard, step-up, bodyboard');
+    expect(ridesLabel('female')).toBe('Shortboard, step-up');
     expect(ridesLabel('grommet')).toBe('Bodyboard');
   });
   it('has every field for every rider, three or more lines a band naming the board, two or more a situation', () => {
