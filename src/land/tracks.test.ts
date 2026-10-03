@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BEACH } from './landHeight';
 import { testLand } from './testLand';
-import { CLEARING_SEMI_M, LATTICE_M, SINK_M, TrackNetwork, WOMB_LINEUP, routeTracks, type RouteLand } from './tracks';
+import { CLEARING_SEMI_M, LATTICE_M, SINK_M, TrackNetwork, WOMB_LINEUP, clearingGrade, routeTracks, type RouteLand } from './tracks';
 
 const toeEnd = DEFAULT_BEACH.wetWidthM + DEFAULT_BEACH.dryWidthM + DEFAULT_BEACH.toeWidthM;
 const land = testLand;
@@ -37,6 +37,21 @@ describe('routeTracks', () => {
     expect(Math.abs(end[0] - 190)).toBeLessThan(1);
     expect(Math.abs(end[1] - WOMB_LINEUP.z)).toBeLessThanOrEqual(5);
     expect(Math.hypot(beach.points[0][0] - t.junction.x, beach.points[0][1] - t.junction.z)).toBeLessThan(0.6);
+  });
+  it('puts the junction on the flattest ground near the lineup that sees it (Andrew, 2026-10-03: the crew stood on a bank)', () => {
+    // A gentle band across the coast 25 m along it from the lineup (the rise eased to 0.12, enough to see over the heath
+    // below), wherever the Cape to Cape crosses it; the rise's 0.25 everywhere else.
+    const zb = WOMB_LINEUP.z + 25, xr = 309;
+    const flat: RouteLand = { ...l, baseHeightAt: (x, z) => {
+      const h = l.baseHeightAt(x, z), g = Math.exp(-(((z - zb) / 9) ** 4));
+      return h + g * (l.baseHeightAt(xr, z) + 0.12 * (x - xr) - h);
+    } };
+    const r = routeTracks(flat, [-600, 600]);
+    const j = r.junction;
+    expect(Math.abs(j.z - zb)).toBeLessThan(4);
+    expect(clearingGrade(flat, j.x, j.z, j.along)).toBeLessThan(0.14);
+    // On the plain test land (no flat spot) the clearing is the rise's 0.25 at best.
+    expect(clearingGrade(l, t.junction.x, t.junction.z, t.junction.along)).toBeGreaterThan(0.2);
   });
   it('without a clear view anywhere near the lineup, takes the highest ground there (Review Focus 4)', () => {
     const r = routeTracks(land(true), [-600, 600]);

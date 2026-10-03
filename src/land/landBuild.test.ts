@@ -3,7 +3,7 @@ import { readBakedLand } from './bakedLand.testutil';
 import { type LandBuild, buildLand, offThreadBuilder } from './landBuild';
 import { decodeLandFile } from './landData';
 import { LandHeight } from './landHeight';
-import { routeTracks } from './tracks';
+import { TrackNetwork, clearingGrade, routeTracks } from './tracks';
 import { DEFAULT_LAND_PARAMS, beachProfileFor } from './landParams';
 
 /** A stand-in Worker: answers each request with `answer`, or fails. */
@@ -60,5 +60,24 @@ describe('the tracks come with the build (dune-up-close §4.1)', () => {
     const b = buildLand(lh);
     expect(b.tracks.pieces.map((p) => p.name)).toEqual(['capeToCape', 'beachPath']);
     expect(structuredClone(b.tracks)).toEqual(b.tracks);
+  }, 30_000);
+  it('stands the crew on near-level ground and walks them down to the beach at 0.35 or less over any 2 m (§7.2)', () => {
+    const lh = new LandHeight(decodeLandFile(readBakedLand()), beachProfileFor(DEFAULT_LAND_PARAMS));
+    const t = routeTracks(lh, lh.fineZRange()), j = t.junction, s = new TrackNetwork(t).standSpot();
+    expect(clearingGrade(lh, j.x, j.z, j.along)).toBeLessThan(0.2);
+    expect(Math.hypot(lh.baseHeightAt(s.x + 0.5, s.z) - lh.baseHeightAt(s.x - 0.5, s.z), lh.baseHeightAt(s.x, s.z + 0.5) - lh.baseHeightAt(s.x, s.z - 0.5))).toBeLessThan(0.2);
+    // Over 2 m walked along the path (across a switchback's hairpin the straight line is a shortcut nobody walks).
+    const bp = t.pieces[1].points, over: string[] = [];
+    for (let i = 0; i < bp.length; i++) {
+      let d = 0;
+      for (let k = i + 1; k < bp.length; k++) {
+        d += Math.hypot(bp[k][0] - bp[k - 1][0], bp[k][1] - bp[k - 1][1]);
+        if (d < 2) continue;
+        const g = Math.abs(lh.baseHeightAt(bp[k][0], bp[k][1]) - lh.baseHeightAt(bp[i][0], bp[i][1])) / d;
+        if (g > 0.35) over.push(`(${bp[i][0].toFixed(1)}, ${bp[i][1].toFixed(1)}) ${g.toFixed(2)}`);
+        break;
+      }
+    }
+    expect(over).toEqual([]);
   }, 30_000);
 });
