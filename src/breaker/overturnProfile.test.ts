@@ -38,13 +38,12 @@ describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)
   it('the face is one smooth concave curve from the trough to the lip: no step, no pocket behind the crest (Andrew, 2026-09-30)', () => {
     for (const psi of [0.025, 0.04, 0.06, 0.08, 0.1, 0.15]) {
       const tau = peakLanding(psi);
-      // From FACE_TURN_PROGRESS of the throw (before it, the crest still rounds over into the young curl).
+      // From 30% of the throw, and through where the lip meets the face (Andrew's red line, 2026-10-03: no step there).
       for (const frac of [0.3, 0.4, 0.5, 0.6, 0.9, 1]) {
         const { s, p } = prof(psi, frac * tau), pts = p.points;
         let lo = 0;
         for (let j = 0; j < wallStart; j++) if (pts[j][1] < pts[lo][1]) lo = j;
         for (let j = Math.max(lo, faceStart - 2) + 1; j + 1 < wallEnd; j++) {
-          if (j === wallStart) continue; // where the lip meets the face
           const a = [pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]], b = [pts[j + 1][0] - pts[j][0], pts[j + 1][1] - pts[j][1]];
           const la = Math.hypot(a[0], a[1]), lb = Math.hypot(b[0], b[1]);
           if (la < 1e-6 || lb < 1e-6) continue;

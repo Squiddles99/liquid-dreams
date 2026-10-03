@@ -59,15 +59,10 @@ export const FACE_CONCAVE_MARGIN = 0.03;
 export const FACE_JOIN_STEPS = 3;
 /** The outer samples' share on the lip's band (the rest run level from the tube's top to the crest). */
 export const OUTER_LIP_SHARE = 0.85;
-/** The face leaves the landing point toward the tube's lower side this far back along it (ξ). */
-export const FACE_DIR_STEP = 0.02;
 /** After the collapse ends the ribbon fades out (hands back to the sheet) over this long (s). */
 export const HAND_BACK_S = 0.5;
 /** The foam from the lip's landing rises over this fraction of the collapse. */
 export const LANDING_FOAM_RISE = 0.3;
-/** While the curl is small (to this share of the throw) the face arrives along the crest's direction, turning into the
- * tube's: the crest still rounds over into the young curl. From here on the face is concave. */
-export const FACE_TURN_PROGRESS = 0.3;
 /**
  * The ribbon is the water until its section breaks, and its curl peels out of it over this share of the throw (the
  * constructed curve's weight × smoothstep(0, LIP_EMERGE_PROGRESS, prog)). Andrew, 2026-10-02, 12 ft: a second swell down
@@ -212,12 +207,6 @@ export function uAtX(l: PileLift, x: number): number {
 const lerp2 = (a: Vec2, b: Vec2, t: number): Vec2 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 const add2 = (a: Vec2, b: Vec2): Vec2 => [a[0] + b[0], a[1] + b[1]];
 const norm2 = (v: Vec2): Vec2 => { const l = Math.hypot(v[0], v[1]); return l > 1e-9 ? [v[0] / l, v[1] / l] : [0, 1]; };
-
-function hermite(p0: Vec2, t0: Vec2, p1: Vec2, t1: Vec2, s: number): Vec2 {
-  const s2 = s * s, s3 = s2 * s;
-  const h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + s, h01 = -2 * s3 + 3 * s2, h11 = s3 - s2;
-  return [h00 * p0[0] + h10 * t0[0] + h01 * p1[0] + h11 * t1[0], h00 * p0[1] + h10 * t0[1] + h01 * p1[1] + h11 * t1[1]];
-}
 
 /** ρ: fades in over [ribbonOnset, ribbonOnset + RIBBON_FULL_OFFSET] before breaking, 1 from onset, out over HAND_BACK_S
  * after the collapse (which runs from settleFrom for span). */
@@ -438,25 +427,13 @@ export const LIP_SPRAY_PROGRESS: readonly [number, number] = [0.2, 0.7];
 /** …from nothing at this fraction of the way from the lip's root to its tip. */
 export const LIP_SPRAY_FROM = 0.3;
 
-/** The face's tangent arriving at P (length Lf), going back: see constructed's face. */
-function faceArrival(f: ProfileFrame, Lf: number): Vec2 {
-  const back = tubeLower(f.tube, f.xiEnd * (1 - FACE_DIR_STEP));
-  const dP = norm2([back[0] - f.P[0], back[1] - f.P[1]]);
-  // Angles measured going back (toward −x), up positive.
-  const ang = (v: Vec2): number => Math.atan2(v[1], -v[0]);
-  const aF = ang(f.tF), aC = ang([f.P[0] - f.F[0], f.P[1] - f.F[1]]), aL = ang(dP);
-  // The young curl's face arrives along the crest (its point is the crest at the throw's start: the crest still rounds
-  // over into the curl), turning into the tube's by FACE_TURN_PROGRESS of the throw, concave from there.
-  const a = f.aK + (Math.max(2 * aC - aF, aL) - f.aK) * smoothstep(0, FACE_TURN_PROGRESS, f.prog);
-  return [-Math.cos(a) * Lf, Math.sin(a) * Lf];
-}
-
 /**
  * The face and the tube's back as one hollow curve (Andrew, 2026-10-03, his red line): from where the face leaves the
- * sheet (F), through where the lip lands (P), up the back wall to the tube's round end (R), where the lip's ceiling
- * starts, in two Hermite pieces sharing their direction at P and arriving at R along the ceiling's own start. The face
+ * sheet (F), up the back wall to the tube's round end (R), where the lip's ceiling starts: one conic, through where the
+ * lip lands (P) once the throw completes, rounding over into the ceiling's own start over the wall's last HOLLOW_THROAT. The face
  * used to rise to P and the tube's floor (its Longuet-Higgins lower side) turn back from there nearly flat: a 62° corner
- * at 12 ft while the lip was in the air, the step. `piece` 0 is F→P, 1 is P→R; s ∈ [0, 1] along it.
+ * at 12 ft while the lip was in the air, the step. `piece` 0 is the face (F to the conic's split, P once landed), 1 the
+ * wall (on to R); s ∈ [0, 1] along it. lipProfileNodes' hollowCurveNode mirrors it.
  */
 export function hollowCurve(f: ProfileFrame, piece: 0 | 1, s: number): Vec2 {
   const R = tubeUpper(f.tube, 0), R1 = tubeUpper(f.tube, CEILING_START_XI);
