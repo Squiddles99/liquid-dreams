@@ -17,6 +17,11 @@ describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)
       expect(Math.abs(m.aspect / aspectFit(psi) - 1), 'width ÷ length').toBeLessThanOrEqual(0.08);
       expect(Math.abs(m.tiltDeg - tiltFitDeg(psi)), 'tilt').toBeLessThanOrEqual(3);
       expect(Math.abs(m.lipArea / (lipAreaFit(psi) * H * H) - 1), 'lip area').toBeLessThanOrEqual(0.25);
+      // The face is the tube's floor (Andrew's red line, 2026-10-03): where the lip lands part-way down the face (state 4),
+      // the air it encloses is a thinner oval along the face than the equations' teardrop (ψ 0.03: 0.65 of it; Moideen &
+      // Behera 2022 fig. 6). Recorded; never under half.
+      console.log(`ψ ${psi}: the air under the lip ${(m.airArea / m.area).toFixed(2)} × the equations' tube`);
+      expect(m.airArea, 'the air under the lip, down to the hollow face').toBeGreaterThanOrEqual(0.5 * m.area);
     }
   });
   it('the lip lands on the water under it, never in the air; on the face in state 4, past the foot from state 6', () => {
@@ -33,20 +38,21 @@ describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)
   it('the face is one smooth concave curve from the trough to the lip: no step, no pocket behind the crest (Andrew, 2026-09-30)', () => {
     for (const psi of [0.025, 0.04, 0.06, 0.08, 0.1, 0.15]) {
       const tau = peakLanding(psi);
-      // From FACE_TURN_PROGRESS of the throw (before it, the crest still rounds over into the young curl).
+      // From 30% of the throw, and through where the lip meets the face (Andrew's red line, 2026-10-03: no step there).
       for (const frac of [0.3, 0.4, 0.5, 0.6, 0.9, 1]) {
         const { s, p } = prof(psi, frac * tau), pts = p.points;
         let lo = 0;
         for (let j = 0; j < wallStart; j++) if (pts[j][1] < pts[lo][1]) lo = j;
         for (let j = Math.max(lo, faceStart - 2) + 1; j + 1 < wallEnd; j++) {
-          if (j === wallStart) continue; // where the lip meets the face
           const a = [pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]], b = [pts[j + 1][0] - pts[j][0], pts[j + 1][1] - pts[j][1]];
           const la = Math.hypot(a[0], a[1]), lb = Math.hypot(b[0], b[1]);
           if (la < 1e-6 || lb < 1e-6) continue;
           expect((a[0] * b[1] - a[1] * b[0]) / (la * lb), `ψ ${psi} at ${frac} of the throw: sample ${j} turns back`).toBeLessThanOrEqual(0.05);
         }
         const backMost = Math.min(...pts.slice(wallStart, wallEnd).map((q) => q[0]));
-        expect(backMost, `ψ ${psi} at ${frac}: the tube's back behind the crest`).toBeGreaterThanOrEqual(p.frame.K[0] - 1e-6);
+        // Within 5 cm: the hollow face arrives at the tube's round end along the ceiling's start, which can lean a hair
+        // back (Andrew's red line puts the back wall just behind the crest; no pocket carved behind it).
+        expect(backMost, `ψ ${psi} at ${frac}: the tube's back behind the crest`).toBeGreaterThanOrEqual(p.frame.K[0] - 0.05);
         expect(Number.isFinite(s.input.H)).toBe(true);
       }
     }
