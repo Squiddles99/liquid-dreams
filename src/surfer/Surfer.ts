@@ -5,7 +5,8 @@ import { toGeometry } from '../board/BoardMesh';
 import { buildSwimFin } from '../board/swimFinGeometry';
 import type { Sky } from '../sky/Sky';
 import type { Outfit, SurferPreset } from './presets';
-import { BONES, type BoneName, type SkeletonRest, type SurferManifest, assertManifest, restFromManifest } from './rig';
+import { BONES, type BoneName, FINGER_BONES, type FingerBone, type SkeletonRest, type SurferManifest, assertManifest, restFromManifest } from './rig';
+import { fingerDeltas, fingerLocals, fingerRestFromManifest, relaxedFingerDeltas } from './fingers';
 import type { SolvedPose } from './solvePose';
 import { type Cloth, type OutfitUniforms, bodyMaterial, clothMaterial, eyesMaterial, fabricMaterial, hairMaterial, lashesMaterial, lensMaterial, outfitUniforms, plasticMaterial, teethMaterial } from './surferShading';
 import { FACE_CHANNELS, type FaceState, IdleLife, MOODS } from './idleLife';
@@ -47,6 +48,10 @@ export class Surfer {
   readonly group = new THREE.Group();
   readonly rest: SkeletonRest;
   private readonly bones = {} as Record<BoneName, THREE.Bone>;
+  /** The finger bones (clip slice spec §2), when this build has them: posed by a clip, or curled relaxed. */
+  private readonly fingerBones = {} as Partial<Record<FingerBone, THREE.Bone>>;
+  private fingerRestQ: Record<FingerBone, THREE.Quaternion> | null = null;
+  private relaxed: Record<FingerBone, THREE.Quaternion> | null = null;
   private readonly outfit: OutfitUniforms = outfitUniforms();
   /** The head's centre in the world, for lighting the hair as one volume (surferShading.hairMaterial). */
   private readonly headCentre = uniform(new THREE.Vector3());
@@ -102,12 +107,19 @@ export class Surfer {
     this.group.updateMatrixWorld(true);
     scene.traverse((o) => {
       if ((o as THREE.Bone).isBone && (BONES as readonly string[]).includes(o.name)) this.bones[o.name as BoneName] = o as THREE.Bone;
+      if ((o as THREE.Bone).isBone && (FINGER_BONES as readonly string[]).includes(o.name)) this.fingerBones[o.name as FingerBone] = o as THREE.Bone;
     });
     const missing = BONES.filter((b) => !this.bones[b]);
     if (missing.length) throw new Error(`${preset.glbUrl} lacks bones ${missing.join(', ')}`);
     const restQ = {} as Record<BoneName, THREE.Quaternion>;
     for (const b of BONES) restQ[b] = this.bones[b].getWorldQuaternion(new THREE.Quaternion());
     this.rest = restFromManifest(manifest, restQ);
+    // Fingers only when the build has them all (a 23-bone build from before the clip slice poses without them).
+    const fingerRest = fingerRestFromManifest(manifest);
+    if (fingerRest && FINGER_BONES.every((f) => this.fingerBones[f])) {
+      this.fingerRestQ = Object.fromEntries(FINGER_BONES.map((f) => [f, this.fingerBones[f]!.getWorldQuaternion(new THREE.Quaternion())])) as Record<FingerBone, THREE.Quaternion>;
+      this.relaxed = relaxedFingerDeltas(fingerRest);
+    }
     // The head's centre at rest (as applyPose places it), so nothing renders with a centre at the origin before the
     // first pose: the wet curls' pull would drag the hair toward the feet.
     this.headCentre.value.copy(this.rest.joint.head).add(new THREE.Vector3(0, 0.09, 0.01));
@@ -281,13 +293,22 @@ export class Surfer {
   }
 
   /** The solver's rotations onto the bones; the pelvis also moves (its parent, root, stays at rest at the origin). */
-  applyPose(p: SolvedPose): void {
+  applyPose(p: SolvedPose, fingers?: Partial<Record<FingerBone, THREE.Quaternion>>): void {
     // The head's centre: 9 cm up and 1 cm forward of the head joint, turned with the head (its world rotation over rest).
     const turn = p.world.head.clone().multiply(this.rest.restQ.head.clone().invert());
     this.headTurn.value.setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(turn));
     this.headCentre.value.copy(p.joint.head).add(new THREE.Vector3(0, 0.09, 0.01).applyQuaternion(turn));
     for (const b of BONES) if (b !== 'root') this.bones[b].quaternion.copy(p.local[b]);
     this.bones.pelvis.position.copy(p.pelvisWorld.clone().sub(p.joint.root).applyQuaternion(p.world.root.clone().invert()));
+    // The fingers (clip slice spec §2): the clip's where given, else the relaxed curl carried by each hand.
+    if (this.relaxed && this.fingerRestQ) {
+      const handD = {
+        l: p.world.hand_l.clone().multiply(this.rest.restQ.hand_l.clone().invert()),
+        r: p.world.hand_r.clone().multiply(this.rest.restQ.hand_r.clone().invert()),
+      };
+      const local = fingerLocals({ l: p.world.hand_l, r: p.world.hand_r }, fingerDeltas(handD, this.relaxed, fingers), this.fingerRestQ);
+      for (const f of FINGER_BONES) this.fingerBones[f]!.quaternion.copy(local[f]);
+    }
   }
 
   boneWorldPosition(b: BoneName, out: THREE.Vector3): THREE.Vector3 {
