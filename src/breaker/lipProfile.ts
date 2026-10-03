@@ -126,6 +126,9 @@ export interface ProfileFrame {
   /** How far (m) the crest the lip was thrown from stands above the crest now (K): the tube hangs from K + (0, crestLift),
    * and the lip's back eases down from there to the wave's back. 0 while the crest is at its tallest. */
   crestLift: number;
+  /** While the curl fades in (weight < 1), the angle (rad) its constructed points turn about the tube's round end so the
+   * ceiling carries on from the faded-in back wall, its bend there faded in too (curlTurn): 0 at full weight. */
+  curlTurn: number;
   /** The trough's floor (m): the lowest of the water the lip lands on (the tube at impact's point), the face's foot and the
    * wave's own foot. The hollow face never sags below it. */
   floorY: number;
@@ -307,12 +310,39 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   // No tube (ψ below PSI_NONE), no curl to land: its weight and its landing (foam, settling) fade in together.
   const present = smoothstep(PSI_NONE, PSI_NONE + PRESENCE_FADE * (PSI_MIN - PSI_NONE), psi);
   const landing = tb === null ? 0 : smoothstep(tauLand, tauLand + LANDING_FOAM_RISE * span, tb) * present;
-  return {
+  const frame: ProfileFrame = {
     K, F, tF, uFoot, uFront: uFoot + LAND_CLEARANCE_M + EDGE_MARGIN_M, uBack: -(BACK_EDGE_H * H + EDGE_MARGIN_M),
     tauLand, prog, weight: steep * (1 - collapse) * present, collapse, landing, rho: ribbonWeight(r, tb, settleFrom, span, p),
-    uLand: uFoot, crestLift, floorY: Math.min(P[1], F[1], F0[1]), HI, shape, tube, xiTop, xiTip, xiEnd, tTop: (tTop + drop) * g, tipE: TIP_THICKNESS_RATIO * (tTop + drop) * g * (1 - prog) * smoothstep(0, TIP_GROW_PROGRESS, prog), tip, P: Pnow,
+    uLand: uFoot, crestLift, curlTurn: 0, floorY: Math.min(P[1], F[1], F0[1]), HI, shape, tube, xiTop, xiTip, xiEnd, tTop: (tTop + drop) * g, tipE: TIP_THICKNESS_RATIO * (tTop + drop) * g * (1 - prog) * smoothstep(0, TIP_GROW_PROGRESS, prog), tip, P: Pnow,
     vj: (P[0] - K[0]) / tauLand, reach: tip[0] - K[0],
   };
+  frame.curlTurn = curlTurn(frame, base);
+  return frame;
+}
+
+/**
+ * The curl's turn as it fades in (Andrew, 2026-10-03, down the line: the young lip hooked off the back wall). Blended
+ * part way from the water, the back wall ends in the blend's direction, and the curl, still the constructed one's shape,
+ * left it at the full curl's angle to the full wall: up to 66° at one point. Turned about the round end by the angle
+ * between the blended and the constructed wall's last piece, the ceiling carries on from the blended wall as it does from
+ * the constructed one, the turn spread round the curl as at full size. The water at the homes is the frame's sheet's
+ * (before the landing the pile is none).
+ */
+function curlTurn(f: ProfileFrame, base: (u: number) => Vec2): number {
+  // On the fade-in's weight (steep × present), easing out over the collapse, which settles the curl to its homes (turned
+  // through it, the lip's top rose 0.1 m after the landing, ψ 0.035).
+  const keep = 1 - f.collapse, w = keep > 1e-6 ? f.weight / keep : 1;
+  if (!(w > 0) || !(w < 1)) return 0;
+  const iW = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall - 1, iU = iW + 1;
+  const cW = hollowCurve(f, 1, sampleSegment(iW).s), R = tubeUpper(f.tube, 0);
+  if (!(Math.hypot(R[0] - cW[0], R[1] - cW[1]) > 1e-6)) return 0;
+  const Wb = lerp2(base(sampleHome(iW, f)), cW, w), Jb = lerp2(base(sampleHome(iU, f)), R, w);
+  const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
+  const cU = tubeUpper(f.tube, f.xiTip / PROFILE_SEGMENTS.under), aW = Math.atan2(R[1] - cW[1], R[0] - cW[0]);
+  // The constructed bend at the round end (wall's last piece to the ceiling's first) fades in with the curl: the curl,
+  // scaled by the weight, would bend it all at one point.
+  const bend = Math.hypot(cU[0] - R[0], cU[1] - R[1]) > 1e-9 ? wrap(Math.atan2(cU[1] - R[1], cU[0] - R[0]) - aW) : 0;
+  return wrap(Math.atan2(Jb[1] - Wb[1], Jb[0] - Wb[0]) - aW - (1 - w) * bend) * keep;
 }
 
 /** The young tube is the tube at impact scaled by 1 − (1 − prog)^TUBE_OPEN_POWER (about half its area half way through). */
@@ -538,6 +568,14 @@ function rootLift(f: ProfileFrame): number {
   return f.lift ? Math.max(0, f.crestLift - Math.max(0, liftAt(f.lift, f.K[0])[1])) : f.crestLift;
 }
 
+/** A curl point turned about the tube's round end by curlTurn × share (the fade-in's turn: curlTurn). */
+function turned(f: ProfileFrame, p: Vec2, share = 1): Vec2 {
+  const a = f.curlTurn * share;
+  if (a === 0) return p;
+  const R = tubeUpper(f.tube, 0), c = Math.cos(a), sn = Math.sin(a), dx = p[0] - R[0], dy = p[1] - R[1];
+  return [R[0] + dx * c - dy * sn, R[1] + dx * sn + dy * c];
+}
+
 /** The constructed (unblended) point for sample j, its lip thickness, lipness, and the x its lift is read at. */
 function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; thickness: number; lipness: number; liftX: number } {
   const { seg, s } = sampleSegment(j);
@@ -555,25 +593,26 @@ function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; t
       return on(hollowCurve(f, 1, s));
     case 'under': { // the tube's upper side, the lip's underside, from the round end out to the tip
       const xi = s * f.xiTip, pt = tubeUpper(f.tube, xi);
-      return on(pt, lipThicknessAt(f, xi), 1, pt[0]);
+      return on(turned(f, pt), lipThicknessAt(f, xi), 1, pt[0]);
     }
     case 'cap': { // round the tip, from the underside to the outer surface
       const no = tubeUpperNormal(f.tube, f.xiTip), e = f.tipE;
       const cx = f.tip[0] + (no[0] * e) / 2, cy = f.tip[1] + (no[1] * e) / 2;
       const a = Math.atan2(-no[1], -no[0]) + Math.PI * s;
-      return on([cx + (Math.cos(a) * e) / 2, cy + (Math.sin(a) * e) / 2], e, 1, f.tip[0]);
+      return on(turned(f, [cx + (Math.cos(a) * e) / 2, cy + (Math.sin(a) * e) / 2]), e, 1, f.tip[0]);
     }
     default: { // outer: the lip's band from the tip back to the tube's top, then level to the crest
       if (f.xiTip > f.xiTop && s <= OUTER_LIP_SHARE) {
         const xi = f.xiTip + (f.xiTop - f.xiTip) * (s / OUTER_LIP_SHARE);
         const u = tubeUpper(f.tube, xi), no = tubeUpperNormal(f.tube, xi), e = lipThicknessAt(f, xi);
-        return on([u[0] + no[0] * e, u[1] + no[1] * e], e, 1, u[0]);
+        return on(turned(f, [u[0] + no[0] * e, u[1] + no[1] * e]), e, 1, u[0]);
       }
       const fromXi = f.xiTip > f.xiTop ? f.xiTop : f.xiTip, e = f.xiTip > f.xiTop ? f.tTop : f.tipE;
       const u = tubeUpper(f.tube, fromXi), no = tubeUpperNormal(f.tube, fromXi), a: Vec2 = [u[0] + no[0] * e, u[1] + no[1] * e];
       const k = f.xiTip > f.xiTop ? (s - OUTER_LIP_SHARE) / (1 - OUTER_LIP_SHARE) : s;
       const Kt: Vec2 = [f.K[0], f.K[1] + f.crestLift];
-      return on(lerp2(a, Kt, k), e * (1 - k), 1, u[0] + (f.K[0] - u[0]) * k);
+      // The fade-in's turn eases off along the lip's level top, so it still ends at the crest.
+      return on(turned(f, lerp2(a, Kt, k), 1 - k), e * (1 - k), 1, u[0] + (f.K[0] - u[0]) * k);
     }
   }
 }
