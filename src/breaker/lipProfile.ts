@@ -734,6 +734,63 @@ export function buildProfile(base: (u: number) => Vec2, input: ProfileInput, p: 
   return out;
 }
 
+/**
+ * The tube's light (spec 2026-10-03 lip-and-tube-look §5). Side-on from a point in the tube (the profile plane: u along
+ * the station's n, y up), the tip T is the cap's middle sample and the lip's root R the outer sample over the tube's top
+ * (σ 0). Directions below T's (out of the mouth) are open, between T's and R's the lip is in the way (the sun through it
+ * tinted by its thickness), beyond R's the wave's body is (the sun through metres of water: none). Andrew, 2026-10-03:
+ * the tube's inside drew the same flat navy as the face, lit as if the lip were not there.
+ */
+export const TUBE_TIP_SAMPLE = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall + PROFILE_SEGMENTS.under + PROFILE_SEGMENTS.cap / 2;
+export const TUBE_ROOT_SAMPLE = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall + PROFILE_SEGMENTS.under + PROFILE_SEGMENTS.cap
+  + Math.ceil(OUTER_LIP_SHARE * PROFILE_SEGMENTS.outer);
+/** The shade's soft edges (rad). */
+export const TUBE_SHADE_SOFT_RAD = (4 * Math.PI) / 180;
+/** Within this distance (m) of the tip the shade fades out: where the tip lands on the face its angle from the face's
+ * points is undefined (the face/wall sample under it flipped from open to closed in a frame). */
+export const TUBE_TIP_CLEAR_M = 1;
+
+export interface TubeLight {
+  /** The share of the sun reaching the point through the lip [0, 1]. */
+  sLip: number;
+  /** The share of the sun behind the wave's body [0, 1] (sLip + sBody ≤ 1; the rest is direct). */
+  sBody: number;
+  /** The share of the sky's half circle seen out of the mouth [0, 1]. */
+  o: number;
+  /** The lip's mean thickness (m): the colour of light through it. */
+  tLip: number;
+}
+
+/** An angle (rad) measured from straight down: in [−π/2, 3π/2). Nothing the tube's light needs lies straight down (the
+ * water), so the lip's span and the sun never straddle the cut (atan2's ±π cut sat straight behind a point in front of
+ * the tube, where the landed tip is: its open sky flipped from most to none in a frame). */
+const fromDown = (a: number): number => (a < -Math.PI / 2 ? a + 2 * Math.PI : a);
+
+/**
+ * One point's shade, the sun at angle `a` (atan2(l.y, l·n)) seen from p, against the tip T and the lip's root R: the lip
+ * spans the angles between them (inside the tube from the tip up over to the root; in front of it the other way round),
+ * the wave's body lies past its far end, and the sky is open below its near end.
+ */
+export function tubeLightAt(p: Vec2, T: Vec2, R: Vec2, a: number): { sLip: number; sBody: number; o: number } {
+  const aT = fromDown(Math.atan2(T[1] - p[1], T[0] - p[0])), aR = fromDown(Math.atan2(R[1] - p[1], R[0] - p[0]));
+  const lo = Math.min(aT, aR), hi = Math.max(aT, aR), as = fromDown(a), e = TUBE_SHADE_SOFT_RAD;
+  const pastLo = smoothstep(lo - e, lo + e, as), pastHi = smoothstep(hi - e, hi + e, as);
+  return { sLip: pastLo * (1 - pastHi), sBody: pastHi, o: Math.min(Math.max(lo, 0), Math.PI) / Math.PI };
+}
+
+/** Every sample's tube light, the sun `sun` = (l·n, l.y). Only the tube's inside (face, wall) takes it, by the curl's
+ * weight: the ceiling (under) is the lip's own underside, lit as the lip. */
+export function tubeLight(profile: Profile, sun: Vec2): TubeLight[] {
+  const f = profile.frame, T = profile.points[TUBE_TIP_SAMPLE], R = profile.points[TUBE_ROOT_SAMPLE];
+  const a = Math.atan2(sun[1], sun[0]), tLip = 0.5 * (f.tTop + f.tipE), w = Math.max(0, Math.min(1, f.weight));
+  return profile.points.map((q, j) => {
+    const seg = sampleSegment(j).seg;
+    if (w <= 0 || !(seg === 'face' || seg === 'wall')) return { sLip: 0, sBody: 0, o: 1, tLip };
+    const l = tubeLightAt(q, T, R, a), wq = w * smoothstep(0, TUBE_TIP_CLEAR_M, Math.hypot(q[0] - T[0], q[1] - T[1]));
+    return { sLip: l.sLip * wq, sBody: l.sBody * wq, o: 1 - (1 - l.o) * wq, tLip };
+  });
+}
+
 /** The tube's measurements off a profile at the lip's landing (tests): the equations' tube (its Longuet-Higgins lower side
  * from where the lip lands back to its round end, closed by the drawn underside) — its area, width ÷ length and tilt about
  * its farthest point from where the lip lands — the lip's band area, and the air the drawn profile encloses (the hollow
