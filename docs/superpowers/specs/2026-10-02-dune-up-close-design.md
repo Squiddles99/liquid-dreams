@@ -598,3 +598,17 @@ then the final review's rulings and deferred minors.
 - Final: minor (deferred): plant shadows rebuild only on an 8 m recentre or a sun move, so shrubs ahead get their dapples late (pre-existing; the silhouettes make it more visible).
 - Final: minor (deferred): the crew lineup's three empty placeholder meshes draw with 0 indices (a Chrome warning; from the crew work on main).
 - Final: minor (deferred): the kit's L1 cards — dead, green, tall and cushion are 12–39% fuller than their neighbours at a band edge (six measured allowances); thinner cards in the kit build would close them; MID_M 40 → 35 is the next GPU lever.
+
+### 10.2 After gate 2 (Andrew, 2026-10-03)
+
+- **"Lift colour."** The heath floor is pale grey sand (0.32, 0.31, 0.28) with litter patches (0.13, 0.115, 0.085),
+  the soil layer as detail over it. The tracks and the clearing are packed sand (0.27, 0.235, 0.18) with the track
+  layer's detail, where they had been brown soil.
+- **"Move the junction to flatter ground."** Of the Cape to Cape's points within 40 m of the lineup that see it, the
+  junction takes the flattest clearing (a metre nearer the lineup worth 0.002 of grade). On the baked land it moved
+  from (302, 45), clearing grade 0.47, to (305, 49.8), grade 0.14; the crew's ground is 0.09. Nothing on the Cape to
+  Cape near the Womb is flatter that also sees the break.
+- **The beach path is walkable on the real land:** at most 0.35 over any 2 m walked along it (from 0.57). Its router
+  costs each step by its steepest metre, moves by knight's moves too, lays to 0.30, and keeps its switchbacks'
+  hairpins when smoothed. Each foot's prints stride along its own lane.
+
