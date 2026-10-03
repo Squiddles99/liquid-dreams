@@ -113,8 +113,8 @@ export class SurferStand {
 
     const bal = balanceApplies(p) ? balanceAt(seed, simTime, p.balanceAmount, this.heave) : null;
     const dials = { compression: p.compression + (bal?.compression ?? 0), lean: p.lean, twist: p.twist, reach: p.reach };
-    const phaseT = p.play ? playPhase(p.pose, simTime, p.phaseT) : p.phaseT;
-    const t = poseTargets(p.pose, { spec, layout, rest: s.rest, stance: p.stance, dials, phaseT, carrySide: carrySideOf(p), who: p.preset });
+    const phaseT = p.play ? playPhase(p.pose, simTime, p.phaseT, p.preset) : p.phaseT;
+    const t = poseTargets(p.pose, { spec, layout, rest: s.rest, stance: p.stance, dials, phaseT, carrySide: carrySideOf(p), who: p.preset, glasses: wearsClothes(outfit) });
     // Standing on the sand, each foot on the ground under it (a level frame on a slope buried one).
     if (carrying && ground) feetOnGround(t.feet, frame, ground, wearsClothes(outfit) ? SOLE_M : 0);
     if (bal) {

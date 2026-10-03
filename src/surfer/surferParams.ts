@@ -1,5 +1,6 @@
 import type { BoardKind } from '../board/boardSpec';
 import { type PoseName, posesOn } from './poseNames';
+import { SELECT_IDLE_S } from './poses';
 import { PRESETS, type PresetName, type Stance, boardsFor } from './presets';
 import { type OutfitChoice, presetOutfits } from './wardrobe';
 
@@ -90,9 +91,10 @@ const POPUP_LOOP_S = 3.2;
 
 /** The pose's phase while playing: the paddle cycles, the pop-up plays, holds standing, and goes again; a still pose
  * keeps the slider's phase. */
-export function playPhase(pose: PoseName, simTime: number, sliderT: number): number {
+export function playPhase(pose: PoseName, simTime: number, sliderT: number, preset?: PresetName): number {
   if (pose === 'paddle') return (((simTime / PADDLE_CYCLE_S) % 1) + 1) % 1;
   if (pose === 'popup') return Math.min(1, ((((simTime % POPUP_LOOP_S) + POPUP_LOOP_S) % POPUP_LOOP_S) / POPUP_S));
+  if (pose === 'selectStand' && preset) return (((simTime / SELECT_IDLE_S[preset]) % 1) + 1) % 1;
   return sliderT;
 }
 

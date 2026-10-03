@@ -7,6 +7,10 @@ import { LAND_POSES, isCarryPose, posesOn } from './poseNames';
 import { builtRest, depthIn, packPoints, solveStand, standCases, toW } from './poseTestKit';
 import { PRESETS, boardsFor } from './presets';
 import type { BoneName, Limb } from './rig';
+import { layoutFor } from '../board/boardSpec';
+import { DIALS } from './poseTestKit';
+import { SELECT_IDLE_S, poseTargets } from './poses';
+import { playPhase } from './surferParams';
 
 describe('selectStand (dune select spec §13): natural, cool, every rider, board and side, at rest', () => {
   it('is a land pose that carries the board', () => {
@@ -66,6 +70,50 @@ describe('selectStand (dune select spec §13): natural, cool, every rider, board
       const bag = packPoints(name, PACK_PARTS.filter((m) => m !== 'packTrim'));
       const deepest = Math.max(0, ...bag.map((q) => depthIn(new Vector3(...q).sub(at).applyQuaternion(R).add(s.joint.spine_03), boxes)));
       expect(deepest, `${name} ${kind} ${side}`).toBeLessThan(0.005);
+    }
+  });
+});
+
+describe('the select stances\' idles (spec §13: 4–8 s loops with small secondary motion)', () => {
+  const pick = (name: string, kind: string, side: string) => standCases().find((c) => c.name === name && c.kind === kind && c.side === side)!;
+  it('cycles each rider\'s loop at its own length', () => {
+    expect(SELECT_IDLE_S).toEqual({ female: 7, male: 6, grommet: 4 });
+    expect(playPhase('selectStand', 3.5, 0, 'female')).toBeCloseTo(0.5, 9);
+    expect(playPhase('selectStand', 6, 0, 'male')).toBeCloseTo(0, 9);
+    expect(playPhase('selectStand', 1, 0, 'grommet')).toBeCloseTo(0.25, 9);
+  });
+  it('lifts Shazza\'s hand to tuck her hair behind her ear mid-loop, and back', () => {
+    const c = pick('female', 'thruster', 'r'); // carrying right: her free hand is the left
+    const rest0 = solveStand('selectStand', c, 0).s, tuck = solveStand('selectStand', c, 0.46).s;
+    expect(tuck.joint.hand_l.y).toBeGreaterThan(rest0.joint.hand_l.y + 0.4);
+    expect(tuck.joint.hand_l.distanceTo(tuck.joint.head)).toBeLessThan(0.2);
+    expect(solveStand('selectStand', c, 0.99).s.joint.hand_l.distanceTo(rest0.joint.hand_l)).toBeLessThan(0.03);
+  });
+  it('bounces Grommet on his toes and has him push his glasses up', () => {
+    const c = pick('grommet', 'bodyboard', 'l'); // carrying left: his free hand is the right
+    const ys = [0, 0.125, 0.25, 0.375].map((p) => solveStand('selectStand', c, p).t.pelvis.y);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(0.008);
+    const push = solveStand('selectStand', c, 0.69).s;
+    expect(push.joint.hand_r.distanceTo(push.joint.head)).toBeLessThan(0.22);
+  });
+  it('leaves Grommet\'s hand down when he isn\'t wearing his glasses (a surf outfit on the Outfit tab)', () => {
+    const c = pick('grommet', 'bodyboard', 'l');
+    const spec = solveStand('selectStand', c, 0.69);
+    const t = poseTargets('selectStand', { spec: spec.spec, layout: layoutFor(spec.spec, c.rest.heightM), rest: c.rest, stance: 'regular', dials: DIALS, phaseT: 0.69, carrySide: c.side, who: c.name, glasses: false });
+    expect(t.hands.r.pos.y).toBeLessThan(spec.t.hands.r.pos.y - 0.2);
+  });
+  it('rolls T-Bone\'s shoulder', () => {
+    const c = pick('male', 'thruster', 'r');
+    expect(Math.abs(solveStand('selectStand', c, 0.3).t.chest.twist - solveStand('selectStand', c, 0).t.chest.twist)).toBeGreaterThan(0.04);
+  });
+  it('renders through the whole loop: every case, every 5% of it, limbs clear of the board, the hand off the head', () => {
+    for (const c of standCases()) for (let ph = 0; ph < 1; ph += 0.05) {
+      const { s, board, spec, t } = solveStand('selectStand', c, ph);
+      const H = c.rest.heightM, free: Limb = c.side === 'l' ? 'r' : 'l', boxes = boardBoxes(board, spec), at = `${c.tag} @${ph.toFixed(2)}`;
+      expect(s.joint[`hand_${c.side}`].distanceTo(toW(t.carry!.hand)), `${at} hand`).toBeLessThan(0.02);
+      expect(distanceToBoxes(s.joint[`upperarm_${free}`], s.joint[`forearm_${free}`], boxes), `${at} free arm`).toBeGreaterThanOrEqual(LIMB_RADIUS.upperarm * H);
+      expect(s.joint[`hand_${free}`].distanceTo(s.joint.head), `${at} hand off the head`).toBeGreaterThan(0.09);
+      expect(distanceToBoxes(s.joint.pelvis, s.joint.spine_03, boxes), `${at} torso`).toBeGreaterThanOrEqual((LIMB_RADIUS.torso - 0.005 / H) * H);
     }
   });
 });
