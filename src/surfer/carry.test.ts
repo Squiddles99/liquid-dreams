@@ -1,44 +1,20 @@
-import { readFileSync } from 'node:fs';
-import { Quaternion, Vector3 } from 'three/webgpu';
+import { Vector3 } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { layoutFor } from '../board/boardSpec';
-import { type Box, HAND_REACH, LIMB_RADIUS, PACK_PARTS, boardBoxes, carriedBoard, distanceToBoxes, feetOnGround } from './carry';
-import { glbFloats, glbJson } from './glbData';
+import { HAND_REACH, LIMB_RADIUS, PACK_PARTS, boardBoxes, carriedBoard, distanceToBoxes, feetOnGround } from './carry';
 import { flexDeg } from './ik';
 import { groundFrame } from './placement';
 import { poseTargets } from './poses';
-import { PRESETS, type PresetName, boardFor, boardsFor } from './presets';
-import { BONES, type BoneName, type Limb, type SkeletonRest, type SurferManifest, referenceSkeleton, restFromManifest } from './rig';
+import { DIALS, GROUND, NAMES, Qg, builtRest, depthIn, packPoints, solveStand, standCases, toW } from './poseTestKit';
+import { PRESETS, boardFor, boardsFor } from './presets';
+import { type BoneName, type Limb, referenceSkeleton } from './rig';
 import { boardQuaternion, solvePose } from './solvePose';
 
-const DIALS = { compression: 0, lean: 0, twist: 0, reach: 0 };
-const NAMES: PresetName[] = ['female', 'male', 'grommet'];
-
-/** The built body's rest skeleton (joints from its manifest; rest rotations don't change where the joints go). */
-function builtRest(name: PresetName): SkeletonRest {
-  const man: SurferManifest = JSON.parse(readFileSync(`public/surfer/${name}.manifest.json`, 'utf8'));
-  return restFromManifest(man, Object.fromEntries(BONES.map((b) => [b, new Quaternion()])) as Record<BoneName, Quaternion>);
-}
-
-/** Every rider × skeleton (reference, built) × board × side, solved on a tilted-heading ground frame (Review Focus 5). */
-function cases(): { tag: string; name: PresetName; rest: SkeletonRest; kind: ReturnType<typeof boardsFor>[number]; side: Limb }[] {
-  const out = [];
-  for (const name of NAMES) for (const [skel, rest] of [['ref', referenceSkeleton(PRESETS[name].heightM)], ['built', builtRest(name)]] as const)
-    for (const kind of boardsFor(PRESETS[name])) for (const side of ['l', 'r'] as Limb[]) out.push({ tag: `${name} ${skel} ${kind} ${side}`, name, rest, kind, side });
-  return out;
-}
-
-const ground = groundFrame({ x: 5, z: -2, headingDeg: 137, heightNudgeM: 0, pitchNudgeDeg: 0 }, 3, 0, 0);
-const Qg = boardQuaternion(ground);
-const toW = (v: Vector3): Vector3 => v.clone().applyQuaternion(Qg).add(ground.position);
+const cases = standCases;
+const ground = GROUND;
 
 function solveCarry(c: ReturnType<typeof cases>[number], lookYawDeg = 0) {
-  const spec = boardFor(PRESETS[c.name], c.kind);
-  const t = poseTargets('carry', { spec, layout: layoutFor(spec, c.rest.heightM), rest: c.rest, stance: 'regular', dials: DIALS, phaseT: 0, carrySide: c.side });
-  const look = t.look.clone().applyAxisAngle(new Vector3(0, 1, 0), (lookYawDeg * Math.PI) / 180).applyQuaternion(Qg);
-  const head = toW(c.rest.joint.head);
-  const s = solvePose(c.rest, t, ground, head.add(look.multiplyScalar(10)));
-  return { spec, t, s, board: carriedBoard(t.carry!, ground, s) };
+  return solveStand('carry', c, 0, lookYawDeg);
 }
 
 describe('the carry (walking spec §4): the board under the arm, every rider, board and side', () => {
@@ -150,29 +126,6 @@ describe('feet on the ground (final review: a level frame on a cross-slope burie
     feetOnGround(t.feet, frame, () => null, 0);
   });
 });
-
-/** How deep a point is inside the board (0 outside). */
-function depthIn(p: Vector3, boxes: readonly Box[]): number {
-  let deepest = 0;
-  for (const b of boxes) {
-    const d = p.clone().sub(b.centre);
-    let inside = Infinity;
-    for (let k = 0; k < 3; k++) inside = Math.min(inside, b.half[k] - Math.abs(d.dot(b.axes[k])));
-    deepest = Math.max(deepest, inside);
-  }
-  return deepest;
-}
-
-/** A rider's pack and what's on it, rest pose (glTF axes), from the built glb. */
-function packPoints(name: PresetName, parts: readonly string[] = PACK_PARTS): number[][] {
-  const path = `public/surfer/${name}.glb`, gltf = glbJson(path), out: number[][] = [];
-  for (const m of gltf.meshes) for (const p of m.primitives) {
-    if (!parts.includes(gltf.materials[p.material].name)) continue;
-    const f = glbFloats(path, gltf, p.attributes.POSITION);
-    for (let i = 0; i < f.length; i += 3) out.push([f[i], f[i + 1], f[i + 2]]);
-  }
-  return out;
-}
 
 describe('the carried board clear of the rider’s own pack (final review: it cut through straps, sleeve and bag)', () => {
   for (const name of NAMES) for (const kind of boardsFor(PRESETS[name])) for (const side of ['l', 'r'] as Limb[]) {
