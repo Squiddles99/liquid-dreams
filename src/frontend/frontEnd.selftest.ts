@@ -1,6 +1,8 @@
 // src/frontend/frontEnd.selftest.ts: the front end's DOM checks (spec §15), run with ?selftest=frontend.
 import { registerSelfTest } from '../dev/selfTest';
-import { DEFAULT_FRONT_SETTINGS } from './frontSettings';
+import { initialFront } from './frontEnd';
+import { DEFAULT_CHOICES, DEFAULT_FRONT_SETTINGS } from './frontSettings';
+import { Legend, legendFor } from './ui/legend';
 import { applyLayout, layoutFor, mountFrontEndRoot } from './ui/layout';
 
 /** A front-end root laid out for a window size, for the duration of one check. */
@@ -41,6 +43,24 @@ registerSelfTest({
       const ones = probe('1111'), zeros = probe('0000');
       const pass = missing.length === 0 && Math.abs(ones - zeros) < 0.5;
       return { pass, detail: `missing: ${missing.join(', ') || 'none'}; 1111 ${ones.toFixed(1)} px vs 0000 ${zeros.toFixed(1)} px` };
+    });
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the legend sits bottom-right inside the safe area and swaps glyphs at once',
+  async run() {
+    return withRoot(1920, 1080, (root, l) => {
+      const legend = new Legend(() => {});
+      root.appendChild(legend.el);
+      const s = { ...initialFront(DEFAULT_CHOICES), beat: 'gear' as const };
+      legend.set(legendFor(s), 'keyboard');
+      const b = designBox(legend.el, root, l.scale);
+      const keys = [...legend.el.querySelectorAll('[data-glyph]')].map((g) => (g as HTMLElement).dataset.glyph).join(',');
+      legend.set(legendFor(s), 'xbox');
+      const pads = [...legend.el.querySelectorAll('[data-glyph]')].map((g) => (g as HTMLElement).dataset.glyph).join(',');
+      const inside = b.x + b.w <= l.designW - l.safeX + 0.5 && b.y + b.h <= l.designH - l.safeY + 0.5 && b.x + b.w > l.designW - l.safeX - 2;
+      return { pass: inside && keys === 'Enter,Esc,P' && pads === 'A,B,START', detail: `box ${JSON.stringify(b)}; keys ${keys}; pad ${pads}` };
     });
   },
 });
