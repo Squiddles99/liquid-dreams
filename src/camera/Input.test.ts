@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldIgnoreKeyTarget } from './Input';
+import { Input, shouldIgnoreKeyTarget } from './Input';
 
 describe('shouldIgnoreKeyTarget', () => {
   it('ignores typing in form fields (dev panel)', () => {
@@ -11,5 +11,28 @@ describe('shouldIgnoreKeyTarget', () => {
   it('accepts keys on the canvas / body', () => {
     expect(shouldIgnoreKeyTarget({ tagName: 'CANVAS' } as unknown as EventTarget)).toBe(false);
     expect(shouldIgnoreKeyTarget(null)).toBe(false);
+  });
+});
+
+describe('Input while the front end is open (spec §10)', () => {
+  it('drops keys and their presses while suspended, and takes them again after', () => {
+    const listeners: Record<string, ((e: unknown) => void)[]> = {};
+    const fakeTarget = { addEventListener: (t: string, f: (e: unknown) => void) => { (listeners[t] ??= []).push(f); }, removeEventListener: () => {} };
+    Object.assign(globalThis, { window: fakeTarget, document: fakeTarget });
+    const input = new Input(fakeTarget as unknown as HTMLElement);
+    const key = (type: string, code: string) => listeners[type].forEach((f) => f({ code, target: null, preventDefault() {} }));
+    input.suspended = true;
+    key('keydown', 'KeyW');
+    expect(input.isDown('KeyW')).toBe(false);
+    expect(input.consumePressed('KeyW')).toBe(false);
+    key('keyup', 'KeyW');
+    input.suspended = false;
+    key('keydown', 'KeyW');
+    expect(input.isDown('KeyW')).toBe(true);
+    // H (show/hide the dev tools) still works while the front end has the keys.
+    input.suspended = true;
+    key('keydown', 'KeyH');
+    expect(input.consumePressed('KeyH')).toBe(true);
+    key('keyup', 'KeyH');
   });
 });

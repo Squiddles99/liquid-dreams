@@ -23,7 +23,7 @@ export interface Listener {
 /** The audio pieces SoundSystem builds (the browser's by default; fakes in the tests). */
 export interface SoundAudio {
   context(): Pick<AudioContext, 'state' | 'resume'> & { addEventListener(type: 'statechange', cb: () => void): void };
-  engine(ctx: unknown): Pick<AudioEngine, 'apply' | 'setListener' | 'setVolumes' | 'setEffectsOn'> & { groups: { music: AudioNode } };
+  engine(ctx: unknown): Pick<AudioEngine, 'apply' | 'setListener' | 'setVolumes' | 'setEffectsOn'> & { groups: { music: AudioNode; ui: AudioNode } };
   deck(ctx: unknown, dest: AudioNode, url: string): Deck;
 }
 
@@ -52,6 +52,8 @@ export class SoundSystem {
   private engine: ReturnType<SoundAudio['engine']> | null = null;
   private music: MusicPlayer | null = null;
   private running = false;
+  private frontEndMusic = false;
+  private resumeMusic = false;
   private readonly model = new SoundModel();
   private readonly nearby = new NearbyCache();
   private disarm: (() => void) | null = null;
@@ -108,8 +110,24 @@ export class SoundSystem {
     this.disarm?.();
     this.disarm = null;
     this.engine?.setEffectsOn(!hidden());
-    this.music?.play();
+    if (!this.frontEndMusic) this.music?.play();
     this.syncStatus();
+  }
+
+  /** The UI bus, once the audio is running (dune select spec §12). */
+  uiOut(): { ctx: BaseAudioContext; out: AudioNode } | null {
+    return this.running && this.ctx && this.engine ? { ctx: this.ctx as unknown as BaseAudioContext, out: this.engine.groups.ui } : null;
+  }
+
+  /** The front end's music slot: its own track if one ships (none this step), the playlist paused meanwhile. */
+  setFrontEndMusic(on: boolean): void {
+    if (on === this.frontEndMusic) return;
+    this.frontEndMusic = on;
+    if (!this.music) return;
+    if (on) {
+      this.resumeMusic = this.music.status !== 'no music' && this.music.playing;
+      this.music.pause();
+    } else if (this.resumeMusic) this.music.play();
   }
 
   private onVisibility = (): void => {

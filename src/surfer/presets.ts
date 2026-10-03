@@ -79,13 +79,12 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     quiver: {
       thruster: { lengthIn: 70, widthIn: 18.75, thicknessIn: 2.3125 },
       stepUp: { lengthIn: 76, widthIn: 19, thicknessIn: 2.5 },
-      bodyboard: { lengthIn: 40, widthIn: 21, thicknessIn: 2.625 },
     },
     skin: [0.52, 0.37, 0.3], tan: 0.35, brows: [0.085, 0.055, 0.032], lips: [0.48, 0.25, 0.22], iris: [0.1, 0.19, 0.24], hairRoot: [0.2, 0.14, 0.075], hairTip: [0.56, 0.44, 0.26],
     fabric: [0.55, 0.12, 0.1], rashie: [0.02, 0.12, 0.55], neopreneAccent: [0.1, 0.35, 0.45], boardies: [0.1, 0.2, 0.4],
     freckles: 0, sunburn: 0, curlTighten: 0,
     blush: 0.45, eyeShadow: 0.5, stubble: 0, lipGloss: 0.25, irisMm: 6.1, pupilMm: 2.1,
-    boardLooks: { bodyboard: { deck: [0.05, 0.25, 0.45], rail: [0.04, 0.19, 0.35] } },
+    boardLooks: {},
   },
   male: {
     name: 'male', label: 'Male', nickname: 'T-Bone', realName: 'Tom', heightM: 1.78, weightKg: 68, defaultStance: 'goofy',
@@ -96,13 +95,12 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     quiver: {
       thruster: { lengthIn: 72, widthIn: 19.25, thicknessIn: 2.4375 },
       stepUp: { lengthIn: 80, widthIn: 19.5, thicknessIn: 2.625 },
-      bodyboard: { lengthIn: 42, widthIn: 21.5, thicknessIn: 2.625 },
     },
     skin: [0.46, 0.3, 0.2], tan: 0.45, brows: [0.07, 0.045, 0.028], lips: [0.4, 0.23, 0.18], iris: [0.14, 0.08, 0.035], hairRoot: [0.12, 0.08, 0.04], hairTip: [0.55, 0.43, 0.27],
     fabric: [0.1, 0.1, 0.12], rashie: [0.05, 0.05, 0.06], neopreneAccent: [0.45, 0.2, 0.05], boardies: [0.08, 0.28, 0.3],
     freckles: 0, sunburn: 0, curlTighten: 0,
     blush: 0.15, eyeShadow: 0, stubble: 0.75, lipGloss: 0.2, irisMm: 5.9, pupilMm: 2.0,
-    boardLooks: { bodyboard: { deck: [0.35, 0.05, 0.05], rail: [0.25, 0.04, 0.04] } },
+    boardLooks: {},
   },
   grommet: {
     name: 'grommet', label: 'Grommet', nickname: 'Grommet', realName: 'Bradley', heightM: 1.52, weightKg: 40, defaultStance: 'regular',
@@ -121,7 +119,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
 };
 
 const BOARD_ORDER: readonly BoardKind[] = ['thruster', 'stepUp', 'bodyboard'];
-/** The boards a preset may ride: its quiver's, in the panel's order (Grommet: only his bodyboard). */
+/** The boards a preset may ride: its quiver's, in the panel's order (Shazza and T-Bone surf: surfboards only; Grommet: only his bodyboard). */
 export const boardsFor = (p: SurferPreset): BoardKind[] => BOARD_ORDER.filter((k) => p.quiver[k] !== undefined);
 export function boardFor(p: SurferPreset, kind: BoardKind): BoardSpec {
   const dims = p.quiver[kind];

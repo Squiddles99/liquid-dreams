@@ -26,9 +26,10 @@ export const POSE_PHASE: Record<PoseName, Phase> = {
   kickout: 'kickout', bail: 'bail', prone: 'ride', proneBarrel: 'ride', dropKnee: 'ride',
   // Standing on land with the board (walking spec §4): nothing downstream reads phases or zones on land yet.
   carry: 'sit',
+  selectStand: 'sit',
 };
 
 export const POSE_ZONE: Record<PoseName, Zone> = {
   sit: 'flats', paddle: 'flats', popup: 'face', drop: 'face', bottomTurn: 'face', trim: 'face', barrel: 'tube',
-  kickout: 'face', bail: 'whitewater', prone: 'face', proneBarrel: 'tube', dropKnee: 'face', carry: 'flats',
+  kickout: 'face', bail: 'whitewater', prone: 'face', proneBarrel: 'tube', dropKnee: 'face', carry: 'flats', selectStand: 'flats',
 };

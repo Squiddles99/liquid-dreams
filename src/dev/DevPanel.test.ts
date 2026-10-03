@@ -193,8 +193,8 @@ describe('the Surfer folder names the crew and lists only what each can ride (gr
   it('labels the presets by nickname and real name', () => {
     expect(SURFER_PRESET_OPTIONS).toEqual({ 'Shazza (Sharon)': 'female', 'T-Bone (Tom)': 'male', 'Grommet (Bradley)': 'grommet' });
   });
-  it('lists the whole quiver for Shazza and T-Bone, only the bodyboard for Grommet', () => {
-    expect(Object.values(surferBoardOptions('male'))).toEqual(['thruster', 'stepUp', 'bodyboard']);
+  it('lists the surfboards for Shazza and T-Bone, only the bodyboard for Grommet', () => {
+    expect(Object.values(surferBoardOptions('male'))).toEqual(['thruster', 'stepUp']);
     expect(surferBoardOptions('grommet')).toEqual({ bodyboard: 'bodyboard' });
   });
 });

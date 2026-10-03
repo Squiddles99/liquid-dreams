@@ -2,7 +2,7 @@ import { Vector3 } from 'three/webgpu';
 import { type BoardLayout, type BoardSpec, type SpotName, deckYAt, halfWidthAt, uAt } from '../board/boardSpec';
 import { type CarryBoard, HAND_REACH, LIMB_RADIUS } from './carry';
 import type { PoseName } from './poseNames';
-import type { Stance } from './presets';
+import type { PresetName, Stance } from './presets';
 import { type Limb, type RiderMeasures, type SkeletonRest, measures } from './rig';
 import type { BoardFrame } from './solvePose';
 
@@ -32,6 +32,10 @@ export interface HandTarget {
   pos: Vector3;
   /** Where the elbow points (same frame). */
   pole: Vector3;
+  /** Where the fingers point (same frame); unset, the hand runs straight on from the forearm. */
+  dir?: Vector3;
+  /** Where the palm faces (same frame), with `dir`; used when the skeleton knows its palms (SkeletonRest.hand). */
+  palm?: Vector3;
 }
 export interface PoseTargets {
   pelvis: Vector3;
@@ -56,6 +60,10 @@ export interface PoseContext {
   phaseT: number;
   /** The carry's arm (walking spec §4); the right when unset. */
   carrySide?: Limb;
+  /** Which rider (the select stance's character, dune select spec §13). */
+  who?: PresetName;
+  /** Wearing glasses (they come with the walking clothes); Grommet's idle pushes them up only then. Default true. */
+  glasses?: boolean;
 }
 
 const DEG = Math.PI / 180;
@@ -446,7 +454,8 @@ const CARRY_HIP_CLEAR = 0.025, CARRY_TUCK = 0.055;
  * tucks under the armpit), the forearm down the board's bottom face and the fingers round the lower rail (Andrew: the
  * forearm on the outside); the free arm hangs. The stand anchors the board to the solved hand.
  */
-function carry(ctx: PoseContext, r: Rider): PoseTargets {
+// tuck: the board this much closer to the body (selectStand: "tucked close under the carry arm").
+function carry(ctx: PoseContext, r: Rider, tuck = 0): PoseTargets {
   const side: Limb = ctx.carrySide ?? 'r', free: Limb = side === 'l' ? 'r' : 'l', k = side === 'l' ? -1 : 1;
   const rest = ctx.rest, H = rest.heightM, m = r.m, spec = ctx.spec;
   const foot = (s: Limb, fwd: number, out: number): FootTarget => {
@@ -463,7 +472,7 @@ function carry(ctx: PoseContext, r: Rider): PoseTargets {
   const t = spec.thicknessM, halfW = spec.maxWidthM / 2;
   const sh = rest.joint[`upperarm_${side}`], latS = Math.abs(sh.x), yS = sh.y;
   const topY = yS - CARRY_ARMPIT * H, topLat = latS - CARRY_TUCK;
-  const botLat = m.hipHalf + LIMB_RADIUS.thigh * H + CARRY_HIP_CLEAR + t / 2;
+  const botLat = m.hipHalf + LIMB_RADIUS.thigh * H + CARRY_HIP_CLEAR + t / 2 - tuck;
   const drop = Math.sqrt(Math.max(1e-6, (2 * halfW) ** 2 - (botLat - topLat) ** 2));
   const botY = topY - drop;
   // Along the board's width, lower rail → top rail; the deck's normal square to it, toward the body.
@@ -472,10 +481,18 @@ function carry(ctx: PoseContext, r: Rider): PoseTargets {
   if (n.z * k > 0) n.negate();
   const lowerRail = V(0.02, botY, k * botLat);
   const onFace = (along: number): Vector3 => add(lowerRail, sc(w, along), sc(n, -(t / 2 + LIMB_RADIUS.forearm * H)));
-  const shoulder = V(0, yS, k * latS), reachMax = 0.97 * (m.upperArmLen + m.forearmLen);
-  let along = 0.8 * HAND_REACH * H;
+  // A hand gripping a rail reaches with the arm straight (Gate A: so the knuckles get to the rail); a bodyboard's rail is out
+  // of reach whatever the arm does, so its hand rests on the face as before.
+  const palmGrips = !!rest.hand && spec.kind !== 'bodyboard';
+  const shoulder = V(0, yS, k * latS), reachMax = (palmGrips ? 0.995 : 0.97) * (m.upperArmLen + m.forearmLen);
+  // A body that knows its palm (Gate A: the fingers grip the rail): the wrist a palm's length up the face, so the knuckles
+  // sit on the rail's edge and the curled fingers hook over it. Otherwise a hand's reach up.
+  const palm = rest.hand?.[side];
+  let along = palm ? palm.palmLen : 0.8 * HAND_REACH * H;
   while (along < 2 * halfW && onFace(along).distanceTo(shoulder) > reachMax) along += 0.005;
   const wrist = onFace(along);
+  // Where the knuckles go: on the face just above the lower rail, a finger's half thickness off it.
+  const knuckles = add(lowerRail, sc(w, Math.min(0.006, along)), sc(n, -(t / 2 + 0.012)));
   // The board's origin is the middle of its bottom face, its up (the deck's normal) toward the body.
   const mid = add(sc(lowerRail, 0.5), sc(V(0.02, topY, k * topLat), 0.5));
   const board: BoardFrame = {
@@ -485,7 +502,11 @@ function carry(ctx: PoseContext, r: Rider): PoseTargets {
   };
   const fsh = rest.joint[`upperarm_${free}`], reach = m.upperArmLen + m.forearmLen, wave = clamp01(ctx.dials.reach);
   const hands = {
-    [side]: boardHand(wrist, V(0, 0.3, k)),
+    // The hand flat on the bottom face, the fingers down it toward the lower rail (Gate A: running straight on from the
+    // forearm, angled in at the board, it cut through the rail).
+    [side]: palm
+      ? { ...boardHand(wrist, V(0, 0.3, k)), dir: knuckles.clone().sub(wrist).normalize(), palm: n.clone() }
+      : { ...boardHand(wrist, V(0, 0.3, k)), dir: sc(w, -1) },
     // The free arm hangs; the reach dial raises it to a wave beside the head (stoked: the surf's up).
     [free]: boardHand(
       V(0.03, fsh.y - 0.96 * reach, -k * (Math.abs(fsh.x) + 0.06)).lerp(V(0.06, fsh.y + 0.55 * reach, -k * (Math.abs(fsh.x) + 0.2)), wave),
@@ -499,6 +520,78 @@ function carry(ctx: PoseContext, r: Rider): PoseTargets {
 }
 
 /** The pose's targets in the board frame (spec §3.5). */
+/** Each rider's select idle loop (s), dune select spec §13. */
+export const SELECT_IDLE_S: Record<PresetName, number> = { female: 7, male: 6, grommet: 4 };
+
+/** 0 outside (a, b), easing up to 1 at their middle and back down: a gesture inside the loop. */
+const bump = (t: number, a: number, b: number): number => (t <= a || t >= b ? 0 : Math.sin(((t - a) / (b - a)) * Math.PI) ** 2);
+
+/** How close selectStand tucks the board (m): tuned against the thigh and pack clearances. */
+const SELECT_TUCK = 0.012;
+/** The shoulders' counter-lean (rad, toward the carrying side); tuned against the carrying arm's clearance. */
+const SELECT_SHOULDER = 0.07;
+
+/**
+ * The select screen's stance (dune select spec §13): the carry's contacts kept, the board tucked closer, weight on one
+ * leg with the other knee soft (contrapposto), hips and shoulders counter-tilted. Each rider has their own character:
+ * T-Bone loose and confident (weight back, chin up, the free hand hooked at the boardies' pocket); Shazza relaxed and
+ * poised (the hip out, the free hand loose at the thigh); Grommet bouncy (up on his toes, the free hand on the
+ * bodyboard's nose, hugging it). Tuned at Gate A.
+ */
+function selectStand(ctx: PoseContext, r: Rider): PoseTargets {
+  const t = carry({ ...ctx, dials: { ...ctx.dials, reach: 0 } }, r, SELECT_TUCK);
+  const side = t.carry!.side, free: Limb = side === 'l' ? 'r' : 'l', k = side === 'l' ? -1 : 1;
+  const who = ctx.who ?? 'female', m = r.m, rest = ctx.rest;
+  const hipY = rest.joint[`thigh_${free}`].y;
+  // Weight over the free side's leg, so the carrying hip drops 6° away from the board.
+  t.pelvis.add(V(0, -0.006, -k * 0.03));
+  const tilt = 6 * DEG;
+  t.pelvisUp = V(0, Math.cos(tilt), k * Math.sin(tilt));
+  t.chest = { ...t.chest, side: SELECT_SHOULDER * k };
+  // The carrying side's knee soft: the foot a little ahead and out, the heel just off the sand.
+  const relaxed = t.feet[side];
+  relaxed.ankle.add(V(0.06, 0.008, k * 0.03));
+  relaxed.toe.add(V(0.06, 0, k * 0.03));
+  if (who === 'male') {
+    t.pelvis.x -= 0.025;
+    t.look = add(X(), sc(Y(), 0.06));
+  } else if (who === 'female') {
+    t.pelvis.z -= k * 0.015;
+  } else {
+    for (const l of ['l', 'r'] as const) t.feet[l].ankle.y += 0.022;
+    t.pelvis.y += 0.02;
+  }
+  // The free hand beside the free thigh, which moved with the hips.
+  const thighZ = t.pelvis.z - k * m.hipHalf;
+  let hand = boardHand(V(0.07, hipY - 0.2, thighZ - k * 0.115), V(-1, 0, -k * 0.2).normalize());
+  if (who === 'male') hand = boardHand(V(0.07, hipY - 0.05, thighZ - k * 0.1), V(-1, 0, -k * 0.6).normalize());
+  else if (who === 'grommet') {
+    const b = t.carry!.board;
+    const nose = b.position.clone().add(sc(b.forward.clone().normalize(), ctx.spec.lengthM / 2 - 0.06)).add(sc(b.up.clone().normalize(), ctx.spec.thicknessM));
+    hand = boardHand(nose, V(-0.5, 0, -k).normalize());
+  }
+  const ph = ((ctx.phaseT % 1) + 1) % 1, headY = rest.joint.head.y;
+  if (who === 'male') {
+    // T-Bone rolls a shoulder.
+    const roll = bump(ph, 0.15, 0.45);
+    t.chest = { ...t.chest, twist: t.chest.twist + 0.07 * roll, bend: t.chest.bend + 0.03 * roll };
+  } else if (who === 'female') {
+    // Shazza tucks her hair behind her ear: the hand up beside the head (outside it), the elbow out.
+    const tuck = bump(ph, 0.3, 0.62);
+    if (tuck > 0) hand = boardHand(hand.pos.clone().lerp(V(0, headY + 0.015, -k * 0.13), tuck), hand.pole.clone().lerp(V(0, -0.2, -k), tuck).normalize());
+  } else {
+    // Grommet bounces on his toes and pushes his glasses up.
+    const bounce = (0.012 * (1 - Math.cos(ph * 4 * Math.PI))) / 2;
+    for (const l of ['l', 'r'] as const) t.feet[l].ankle.y += bounce;
+    t.pelvis.y += bounce;
+    // Only when he's wearing them: glasses come with the walking clothes (wardrobe landLook), not the Outfit tab's surf outfits.
+    const push = ctx.glasses === false ? 0 : bump(ph, 0.6, 0.78);
+    if (push > 0) hand = boardHand(hand.pos.clone().lerp(V(0.21, headY - 0.07, 0), push), hand.pole.clone().lerp(V(1, -0.5, -k * 0.3), push).normalize());
+  }
+  t.hands[free] = hand;
+  return t;
+}
+
 export function poseTargets(pose: PoseName, ctx: PoseContext): PoseTargets {
   const r = rider(ctx), bb = ctx.spec.kind === 'bodyboard';
   switch (pose) {
@@ -515,5 +608,6 @@ export function poseTargets(pose: PoseName, ctx: PoseContext): PoseTargets {
     case 'proneBarrel': return prone(ctx, r, true);
     case 'dropKnee': return dropKnee(ctx, r);
     case 'carry': return carry(ctx, r);
+    case 'selectStand': return selectStand(ctx, r);
   }
 }

@@ -48,6 +48,12 @@ export interface SkeletonRest {
   joint: Record<BoneName, Vector3>;
   /** Each bone's rest rotation in that frame (identity for the reference skeleton; from the loaded bones for a .glb). */
   restQ: Record<BoneName, Quaternion>;
+  /**
+   * Each hand at rest (dune select Gate A, from a built body's grip data): its axis (the wrist to the middle knuckle, which
+   * isn't the forearm's line: the rest hand is bent at the wrist), the way the palm faces, and the axis's length (m).
+   * Absent on the reference skeleton: its hands run straight on from the forearm.
+   */
+  hand?: Record<Limb, { axis: Vector3; palm: Vector3; palmLen: number }>;
 }
 
 /** A standard A-pose skeleton (Drillis & Contini segment ratios) for tests and for poses before a body loads. */
@@ -117,6 +123,11 @@ export interface SurferManifest {
   name: string;
   heightM: number;
   bones: ManifestBone[];
+  /**
+   * Each hand's finger joints from the hand bone's head (knuckle, middle, tip joint, fingertip; index, middle, ring, pinky,
+   * thumb), at rest, curled round a rail, and open flat on a bodyboard (tools/surfer/grip.py; dune select Gate A).
+   */
+  grip?: Record<Limb, { rest: Vec3[][]; grip: Vec3[][]; flat?: Vec3[][] }>;
   /** `morphs`: the mesh's morph target names, in order (closeup spec §4.1). */
   meshes: { name: string; triangles: number; materials: string[]; morphs?: string[] }[];
   /** Body triangles weighted to the head (kept whole through decimation; closeup spec §4.1). */
@@ -221,7 +232,25 @@ export function manifestProblems(m: SurferManifest): string[] {
 export function restFromManifest(m: SurferManifest, restQ: Record<BoneName, Quaternion>): SkeletonRest {
   const joint = {} as Record<BoneName, Vector3>;
   for (const b of m.bones) if ((BONES as readonly string[]).includes(b.name)) joint[b.name as BoneName] = new Vector3(...b.head);
-  return { heightM: m.heightM, joint, restQ };
+  const hand = m.grip ? handsFrom(m.grip) : undefined;
+  return hand ? { heightM: m.heightM, joint, restQ, hand } : { heightM: m.heightM, joint, restQ };
+}
+
+/**
+ * Each hand from the grip data. The palm: the middle finger curls about one axis (the normal of its curled chain's
+ * plane), so the palm faces square to that axis and to the finger at rest, on the side its fingertip moves toward.
+ */
+function handsFrom(grip: NonNullable<SurferManifest['grip']>): Record<Limb, { axis: Vector3; palm: Vector3; palmLen: number }> {
+  const one = (g: { rest: Vec3[][]; grip: Vec3[][] }) => {
+    const knuckle = new Vector3(...g.rest[1][0]);
+    const [a, b, , tip] = g.grip[1].map((p) => new Vector3(...p));
+    const curl = b.clone().sub(a).cross(tip.clone().sub(b)).normalize();
+    const finger = new Vector3(...g.rest[1][3]).sub(knuckle).normalize();
+    const palm = curl.clone().cross(finger).normalize();
+    if (palm.dot(tip.clone().sub(new Vector3(...g.rest[1][3]))) < 0) palm.negate();
+    return { axis: knuckle.clone().normalize(), palm, palmLen: knuckle.length() };
+  };
+  return { l: one(grip.l), r: one(grip.r) };
 }
 
 /** Throws (naming the file) when a body's manifest breaks the skeleton contract, so the loader's warn-once path handles a
