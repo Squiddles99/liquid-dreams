@@ -1,9 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { Fn, PI, attribute, cameraPosition, dot, float, length, max, mix, mx_noise_float, normalWorld, normalize, positionWorld, select, smoothstep, step, uniform } from 'three/tsl';
+import { Fn, PI, abs, attribute, cameraPosition, dot, float, int, length, max, mix, mx_noise_float, normalWorld, normalize, positionWorld, pow, select, smoothstep, step, texture, uniform, vec3 } from 'three/tsl';
 import { belowBedNode, seenThroughWaterNode } from '../ocean/WaterVolume';
 import type { WaterOpticsUniforms } from '../ocean/waterShading';
 import type { Seabed } from '../seabed/Seabed';
 import type { Sky } from '../sky/Sky';
+import type { GroundLayerTextures } from './groundDetail';
 import { ROCK_SHAPES, type Rock, rockScale, rockShapeGeometry } from './rocks';
 
 type N = any;
@@ -32,14 +33,16 @@ export class Rocks {
   readonly underwater = uniform(0);
   private readonly tints: THREE.InstancedBufferAttribute[] = [];
   private readonly topTints: THREE.InstancedBufferAttribute[] = [];
+  /** 1 for the dune face's outcrops: they take the ground's limestone layer up close (dune-up-close §4.3). */
+  private readonly faces: THREE.InstancedBufferAttribute[] = [];
   private readonly m4 = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
   private readonly e = new THREE.Euler(0, 0, 0, 'YXZ');
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3();
 
-  constructor(sky: Sky, sunVisibility?: (xz: N) => N, water?: RockWater) {
-    const material = rockMaterial(sky, sunVisibility, water ? { ...water, on: this.underwater } : undefined);
+  constructor(sky: Sky, sunVisibility?: (xz: N) => N, water?: RockWater, layers?: GroundLayerTextures) {
+    const material = rockMaterial(sky, sunVisibility, water ? { ...water, on: this.underwater } : undefined, layers);
     for (let i = 0; i < ROCK_SHAPES; i++) {
       const d = rockShapeGeometry(i);
       const g = new THREE.BufferGeometry();
@@ -50,6 +53,9 @@ export class Rocks {
       const top = new THREE.InstancedBufferAttribute(new Float32Array(ROCKS_PER_SHAPE * 3), 3);
       g.setAttribute('rockTint', tint);
       g.setAttribute('rockTopTint', top);
+      const face = new THREE.InstancedBufferAttribute(new Float32Array(ROCKS_PER_SHAPE), 1);
+      g.setAttribute('rockFace', face);
+      this.faces.push(face);
       const mesh = new THREE.InstancedMesh(g, material, ROCKS_PER_SHAPE);
       mesh.count = 0;
       mesh.frustumCulled = false;
@@ -76,6 +82,7 @@ export class Rocks {
       this.meshes[r.shape].setMatrixAt(i, this.m4);
       this.tints[r.shape].setXYZ(i, r.tint[0], r.tint[1], r.tint[2]);
       this.topTints[r.shape].setXYZ(i, r.topTint[0], r.topTint[1], r.topTint[2]);
+      this.faces[r.shape].setX(i, r.kind === 'face' ? 1 : 0);
       counts[r.shape] = i + 1;
       total++;
     }
@@ -84,6 +91,7 @@ export class Rocks {
       m.instanceMatrix.needsUpdate = true;
       this.tints[k].needsUpdate = true;
       this.topTints[k].needsUpdate = true;
+      this.faces[k].needsUpdate = true;
     });
     return total;
   }
@@ -97,7 +105,7 @@ export class Rocks {
   }
 }
 
-function rockMaterial(sky: Sky, sunVisibility?: (xz: N) => N, water?: RockWater & { on: N }): THREE.MeshBasicNodeMaterial {
+function rockMaterial(sky: Sky, sunVisibility?: (xz: N) => N, water?: RockWater & { on: N }, layers?: GroundLayerTextures): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();
   // The unit rock's own coordinates (the instancing moves positionLocal into the world).
   const local: N = attribute('position', 'vec3');
@@ -106,7 +114,17 @@ function rockMaterial(sky: Sky, sunVisibility?: (xz: N) => N, water?: RockWater 
   const n = normalize(normalWorld);
   const pits = mx_noise_float(local.mul(9.0)).mul(0.5).add(0.5);
   const grain = mx_noise_float(positionWorld.mul(3.0)).mul(0.15).add(0.9);
-  const albedo = tint.mul(grain).mul(mix(float(0.7), float(1.0), smoothstep(0.35, 0.6, pits)));
+  let albedo = tint.mul(grain).mul(mix(float(0.7), float(1.0), smoothstep(0.35, 0.6, pits)));
+  if (layers) {
+    // The dune face's outcrops up close (dune-up-close §4.3): the ground's pitted limestone layer, projected from all
+    // three axes, as a detail over their own colour, so outcrop and cap rock read as one stone; gone by 16 m.
+    const wts = pow(abs(normalWorld), vec3(4.0));
+    const wn = wts.div(wts.x.add(wts.y).add(wts.z));
+    const lime = (uv: N): N => texture(layers.colour, uv.div(2.0)).depth(int(2)).rgb;
+    const tri = lime(positionWorld.zy).mul(wn.x).add(lime(positionWorld.xz).mul(wn.y)).add(lime(positionWorld.xy).mul(wn.z));
+    const on = attribute('rockFace', 'float').mul(float(1.0).sub(smoothstep(12.0, 16.0, length(cameraPosition.sub(positionWorld))))).mul(layers.on);
+    albedo = mix(albedo, albedo.mul(tri.div(layers.means[2])), on);
+  }
   const baseOcc = smoothstep(-0.6, 0.2, local.y).mul(0.6).add(0.4);
   const l = sky.sunDirection;
   const vis = sunVisibility ? sunVisibility(positionWorld.xz) : float(1.0);

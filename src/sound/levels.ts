@@ -92,8 +92,8 @@ export function windSound(speedMs: number, realTime: number): { level: number; b
 }
 
 export const SCRUB_RADIUS_M = 15;
-/** One shrub per this many m² (4c-2's heath) is full density. */
-export const SHRUB_AREA_M2 = 3;
+/** One shrub per this many m² (the near-closed heath: dune-up-close §4.5) is full density. */
+export const SHRUB_AREA_M2 = 1.6;
 export const PEBBLE_RADIUS_M = 20;
 /** The nearby counts are redone after the camera moves this far. */
 export const NEARBY_MOVE_M = 2;

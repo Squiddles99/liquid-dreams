@@ -15,7 +15,7 @@ import { DEFAULT_SURFER_PARAMS, type SurferParams, normalizeSurferParams } from 
 import { SurferStand } from '../surfer/SurferStand';
 import { BeachPile } from '../surfer/BeachPile';
 import { GangLineup } from '../surfer/GangLineup';
-import { gangCamera, gangTrack } from '../surfer/gang';
+import { gangCamera, gangCameraDistance } from '../surfer/gang';
 import { type Clearing, clearOf } from '../heath/clearings';
 import { DEFAULT_SOUND_PARAMS, type SoundParams, normalizeSoundParams } from '../sound/soundParams';
 import { SoundSystem } from '../sound/SoundSystem';
@@ -78,10 +78,18 @@ import {
 import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { Land } from '../land/Land';
 import { GroundPatch } from '../beach/GroundPatchMesh';
-import { PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
+import { buildTracksMask, loadGroundLayers } from '../beach/groundDetail';
+import { type GroundLayersCpu, loadGroundLayersCpu, patchSurfaceAt } from '../beach/groundHeights';
+import { Footprints, printsNear } from '../beach/Footprints';
+import { PATCH_SIZE_M, PatchTracker, buildPatchGrids, patchVisible } from '../beach/groundPatch';
 import { Rocks } from '../beach/RockMeshes';
-import { PlantField, patchCasters, type Plant } from '../heath/plants';
+import { LOD_RANGES_M, PLANT_CELL_M, PLANT_GONE_M, PlantField, patchCasters, type Plant, plantLod, plantSeatY } from '../heath/plants';
+import { BAND_FADE_M, type CellChange, CellQueue, MID_M, PlantRing, cellKey, layBudgetMs } from '../heath/plantRing';
 import { PlantMeshes } from '../heath/PlantMeshes';
+import { KitMeshes, hullColours } from '../heath/KitMeshes';
+import { ScatterMeshes } from '../heath/ScatterMeshes';
+import { ScatterField, type ScatterContext } from '../heath/nearScatter';
+import { canopySilhouettes, loadKit } from '../heath/kit';
 import { float, uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
 import { buildGroundShadows } from '../beach/rockShadows';
@@ -95,8 +103,12 @@ const REEF_REBUILD_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 500;
 /** The rocks are relaid (from the cached cells) once the camera has moved this far (Phase 4c-1). */
 const ROCK_RELAY_M = 2;
-/** The plants are relaid once the camera has moved this far (Phase 4c-2 §3.7). */
+/** The near plants' list (sound, shadows, the kit) is redone once the camera has moved this far (Phase 4c-2 §3.7). */
 const PLANT_RELAY_M = 3;
+/** The near plants' list reaches this far (the kit's mid band and its fade: dune-up-close §3.1). */
+const NEAR_LIST_M = 45;
+/** The plant rings re-diff once the camera has moved this far. */
+const RING_MOVE_M = 2;
 /** The crest trace's timing readout is an exponential moving average with this weight on each new frame. */
 const TRACE_MS_ALPHA = 0.1;
 
@@ -218,9 +230,43 @@ export class App {
   private readonly shadowSun = new THREE.Vector3(0, -1, 0);
   /** The heath's plants (Phase 4c-2): from the land once it loads, refreshed every PLANT_RELAY_M. */
   readonly plants: PlantMeshes;
+  private tracksMask: Float32Array<ArrayBuffer> | undefined;
+  /** The footprints along the tracks (dune-up-close §4.3), laid every 2 m while the patch shows. */
+  readonly footprints: Footprints;
+  private groundLayersCpu: GroundLayersCpu | null = null;
+  private printsAt: [number, number] | null = null;
+  private tracksMaskAt: [number, number] | null = null;
+  /** Dev readout: the last tracks mask's CPU time (ms; dune-up-close §5: ≤ 0.5). */
+  tracksMaskMs = 0;
+  /** The near scatter (dune-up-close §4.4): tufts and the heath's fallen debris, once the kit has loaded. */
+  scatter: ScatterMeshes | null = null;
+  /** Each kit variant's canopy from above (alpha), for the plants' dappled shadows (dune-up-close §4.5). */
+  private canopies: ReadonlyMap<string, Uint8Array> | undefined;
+  /** The near scatter's cells, laid nearest first a millisecond a frame (spec §5). */
+  private readonly scatterField = new ScatterField(1);
+  private scatterAt: [number, number] | null = null;
+  private scatterPending = 0;
+  /** The near plants in 2 m cells (the scatter asks which crown is over a point). */
+  private plantGrid = new Map<number, Plant[]>();
+  /** The kit's real plants near the camera (dune-up-close §3.1): once the kit has loaded, the near and mid bands. */
+  kitMeshes: KitMeshes | null = null;
   private plantField: PlantField | null = null;
   private plantsNear: Plant[] = [];
   private plantsAt: [number, number] | null = null;
+  /**
+   * The far plants, laid cell by cell (dune-up-close §4.5): the cells within 200 m (inside `hullInnerM`, the kit's
+   * bands, once the kit draws them), and rings at the hulls' level-of-detail distances, whose crossings re-lay a cell.
+   */
+  private hullInnerM = 0;
+  private hullRing = new PlantRing(PLANT_GONE_M, 0);
+  private readonly lodRings = LOD_RANGES_M.map((r) => new PlantRing(r));
+  private readonly plantQueue = new CellQueue();
+  /** Where the rings were last moved: they re-diff after RING_MOVE_M (diffing ~8,000 cells every frame cost ~1 ms). */
+  private ringsAt: [number, number] | null = null;
+  /** The far plants must be laid afresh (the land, the density, the rocks or the clearings changed). */
+  private hullsStale = true;
+  /** Dev readout: the slowest frame's cell laying (ms) since the last reset. */
+  plantLayWorstMs = 0;
   /** The plant layout's patch state at the last refresh (a patch recentre or show/hide re-seats the plants). */
   private plantPatchKey = '';
   /** 1 while the plants stand near the camera: the painted heath fades to its floor there. */
@@ -334,9 +380,30 @@ export class App {
       plantFloor: this.plantFloor,
     });
     this.land.setHole(this.patch.hole);
-    this.rocks = new Rocks(this.sky, (xz) => this.sunlight.visibilityNode(xz), { seabed: this.seabed, optics: this.waterOptics });
+    this.rocks = new Rocks(this.sky, (xz) => this.sunlight.visibilityNode(xz), { seabed: this.seabed, optics: this.waterOptics }, this.patch.layers);
     this.plants = new PlantMeshes(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     for (const m of this.plants.meshes) this.scene.add(m);
+    // The ground layers (dune-up-close §4.3): until they load the patch draws as it did. The footprints draw with them.
+    loadGroundLayers(this.patch.layers).catch((e) => console.warn('The ground layers failed to load; the patch keeps its plain look.', e));
+    fetch(import.meta.env.BASE_URL + 'heath/groundLayers.height.bin').then((r) => r.arrayBuffer()).then((b) => { this.groundLayersCpu = loadGroundLayersCpu(b); this.printsAt = null; }, () => undefined);
+    this.footprints = new Footprints(this.patch.layers);
+    this.scene.add(this.footprints.mesh);
+    // The kit loads alongside the land; until it arrives the hulls draw every band.
+    loadKit().then(
+      (kit) => {
+        this.kitMeshes = new KitMeshes(kit, this.sky, (xz) => this.sunlight.visibilityNode(xz));
+        for (const m of this.kitMeshes.meshes) this.scene.add(m);
+        this.scatter = new ScatterMeshes(kit, this.sky, (xz) => this.sunlight.visibilityNode(xz));
+        canopySilhouettes(kit).then((s) => { this.canopies = s; this.shadowSun.set(0, -1, 0); }, () => undefined);
+        for (const m of this.scatter.meshes) this.scene.add(m);
+        this.plants.kitFade.value = 1;
+        this.plants.setKindColours(hullColours());
+        void this.prewarmKit();
+        this.hullInnerM = MID_M - BAND_FADE_M;
+        this.hullsStale = true;
+      },
+      (e) => console.warn('The heath kit failed to load; the hulls stand in for it.', e),
+    );
     this.land.setPlantFloor(this.plantFloor);
     this.scene.add(this.patch.mesh);
     for (const m of this.rocks.meshes) this.scene.add(m);
@@ -449,8 +516,10 @@ export class App {
         },
         onGangCamera: () => {
           const sp = this.surferParams, g = this.groundAt(sp.x, sp.z) ?? this.conditions.tideM;
-          const ahead = gangCamera(sp, g);
-          this.rig.setPose(gangCamera(sp, g, 5.5, this.groundAt(ahead.position[0], ahead.position[2]) ?? -Infinity), this.conditions.tideM);
+          // On the track: never further than the clearing or a corridor reaches (dune-up-close §4.1).
+          const tracks = this.land.height?.trackNetwork, dist = tracks ? gangCameraDistance(tracks, sp) : 5.5;
+          const ahead = gangCamera(sp, g, dist);
+          this.rig.setPose(gangCamera(sp, g, dist, this.groundAt(ahead.position[0], ahead.position[2]) ?? -Infinity), this.conditions.tideM);
         },
         onSurferChase: () => {
           const pose = this.surferStand.chasePose(this.surferParams.headingDeg);
@@ -529,7 +598,7 @@ export class App {
     const landStandIn = this.land.standIn();
     this.scene.add(landStandIn);
     try {
-      const shown = [this.ribbon.mesh, this.bombie.mesh, landStandIn, this.patch.mesh, ...this.rocks.meshes, ...this.plants.meshes];
+      const shown = [this.ribbon.mesh, this.bombie.mesh, landStandIn, this.patch.mesh, ...this.rocks.meshes, ...this.plants.meshes, this.footprints.mesh];
       await withOnlyShown(this.scene, shown, async () => this.picture.render(target));
     } finally {
       this.scene.remove(landStandIn);
@@ -539,6 +608,24 @@ export class App {
     await this.spray.compileAsync(this.renderer);
     await this.impact.compileAsync(this.renderer);
     await this.land.sunlight.compileAsync(this.renderer);
+  }
+
+  /**
+   * Builds the kit's and the scatter's materials off screen the moment the kit loads (as prewarm does the rest at
+   * start): rendered once into a throwaway target with only them shown. Their meshes hold whole geometry from the start
+   * (count 0: three builds the pipeline and skips the draw), so nothing is built against an empty buffer.
+   */
+  private async prewarmKit(): Promise<void> {
+    if (!this.kitMeshes || !this.scatter) return;
+    const target = new THREE.RenderTarget(1, 1);
+    const t0 = performance.now();
+    try {
+      this.newNodeFrame();
+      await withOnlyShown(this.scene, [...this.kitMeshes.meshes, ...this.scatter.meshes], async () => this.picture.render(target));
+    } finally {
+      target.dispose();
+    }
+    console.info(`[prewarm] the heath kit: ${(performance.now() - t0).toFixed(0)} ms`);
   }
 
   start(): void {
@@ -895,8 +982,12 @@ export class App {
   private invalidateBeach(): void {
     this.patchTracker.centre = null;
     this.patchGrids = undefined;
+    this.tracksMaskAt = null; // the tracks may have changed with the land: build the mask afresh
+    this.scatterField.clear();
+    this.scatterAt = null;
     this.rocksAt = null;
     this.plantsAt = null;
+    this.hullsStale = true;
   }
 
   /** The sound's frame (Phase 5): the spray ticks since the last frame, the Bombie's bursts, the camera and what's around it. */
@@ -929,11 +1020,13 @@ export class App {
       this.patch.setVisible(false);
       this.rocks.setVisible(false);
       this.plants.setVisible(false);
+      this.kitMeshes?.setVisible(false);
       this.plantFloor.value = 0;
       return;
     }
     this.rocks.setVisible(true);
     this.plants.setVisible(true);
+    this.kitMeshes?.setVisible(true);
     const cam = this.camera.position;
     if (!this.rocksAt || Math.hypot(cam.x - this.rocksAt[0], cam.z - this.rocksAt[1]) > ROCK_RELAY_M) {
       this.rocksNear = this.rockField.near(cam.x, cam.z);
@@ -947,27 +1040,141 @@ export class App {
     if (moved && c) {
       this.patchGrids = buildPatchGrids(lh, c, this.patchGrids);
       this.patch.setGrids(this.patchGrids);
+      // The tracks worn into the patch (dune-up-close §4.3): their mask and sink over its square.
+      const t0 = performance.now(), mx = c[0] - PATCH_SIZE_M / 2, mz = c[1] - PATCH_SIZE_M / 2;
+      this.tracksMask = buildTracksMask(lh.trackNetwork, mx, mz, undefined, this.tracksMaskAt ? { mask: this.tracksMask!, cornerX: this.tracksMaskAt[0], cornerZ: this.tracksMaskAt[1] } : undefined);
+      this.tracksMaskAt = [mx, mz];
+      this.patch.setTracksMask(this.tracksMask, mx, mz);
+      this.tracksMaskMs = performance.now() - t0;
     }
     // The plants (Phase 4c-2): relaid every PLANT_RELAY_M, and whenever the patch recentres, shows or hides (each plant
     // sits on the surface drawn under it). With density 0 the painted heath stands near the camera again.
     this.plantFloor.value = this.landParams.bushDensity > 0 ? 1 : 0;
     const patchKey = c ? `${c[0]},${c[1]}` : 'off';
     const clearingKey = this.clearings.map((k) => `${k.x.toFixed(1)},${k.z.toFixed(1)}`).join(';');
+    if (clearingKey !== this.clearingKey) this.hullsStale = true;
     if (!this.plantsAt || patchKey !== this.plantPatchKey || clearingKey !== this.clearingKey || Math.hypot(cam.x - this.plantsAt[0], cam.z - this.plantsAt[1]) > PLANT_RELAY_M) {
       this.clearingKey = clearingKey;
       // Riders on land and the pile trample the heath clear around them (walking spec §6).
-      this.plantsNear = clearOf(this.plantField.near(cam.x, cam.z), this.clearings);
-      this.plantStats = this.plants.update(this.plantsNear, cam.x, cam.z, { cx: c ? c[0] : 0, cz: c ? c[1] : 0, on: !!c });
+      this.plantsNear = clearOf(this.plantField.near(cam.x, cam.z, NEAR_LIST_M), this.clearings);
       this.plantsAt = [cam.x, cam.z];
-      this.plantPatchKey = patchKey;
+      this.plantGrid = new Map();
+      for (const p of this.plantsNear) {
+        if (p.kind === 'pigface' || p.kind === 'rice' || p.kind === 'spinach') continue; // the low plants have no crown over the ground
+        const key = (Math.floor(p.x / 2) + 0x8000) * 0x10000 + (Math.floor(p.z / 2) + 0x8000);
+        const cell = this.plantGrid.get(key);
+        if (cell) cell.push(p);
+        else this.plantGrid.set(key, [p]);
+      }
     }
+    this.layPlants(cam.x, cam.z, c, patchKey);
     this.plants.tick(this.clock.simTime, this.conditions.wind.speedMs);
+    // The footprints: every 2 m, and on a recentre (they sit on the patch's surface).
+    const tracks = lh.trackNetwork;
+    if (c && tracks && this.patchGrids && this.groundLayersCpu && (moved || !this.printsAt || Math.hypot(cam.x - this.printsAt[0], cam.z - this.printsAt[1]) > 2)) {
+      const g = this.patchGrids, layersCpu = this.groundLayersCpu;
+      this.footprints.update(printsNear(tracks, cam.x, cam.z, 20), (x, z) => patchSurfaceAt(g, layersCpu, tracks, x, z));
+      this.printsAt = [cam.x, cam.z];
+    }
+    this.footprints.setVisible(!!c);
+    this.updateScatter(c, cam.x, cam.z);
+    if (this.kitMeshes) {
+      this.kitMeshes.update(this.plantsNear, this.camera, { cx: c ? c[0] : 0, cz: c ? c[1] : 0, on: !!c });
+      this.kitMeshes.tick(this.clock.simTime, this.conditions.wind.speedMs);
+    }
     if (c && (moved || this.sunDir.angleTo(this.shadowSun) > (0.5 * Math.PI) / 180)) {
       const inSquare = (x: number, z: number): boolean => Math.abs(x - c[0]) < 42 && Math.abs(z - c[1]) < 42;
-      const casters = [...this.rocksNear.filter((r) => inSquare(r.x, r.z)), ...patchCasters(this.plantsNear, c, cam.x, cam.z)];
+      const casters = [...this.rocksNear.filter((r) => inSquare(r.x, r.z)), ...patchCasters(this.plantsNear, c, cam.x, cam.z, this.canopies)];
       this.patch.setShadows(buildGroundShadows(casters, c[0] - 32, c[1] - 32, [this.sunDir.x, this.sunDir.y, this.sunDir.z]));
       this.shadowSun.copy(this.sunDir);
     }
+  }
+
+  /**
+   * The far plants, cell by cell (dune-up-close §4.5): the ring's entering and leaving cells, cells crossing a level-of-
+   * detail distance, and on a patch recentre or show/hide the cells over the patch (each plant sits on the surface drawn
+   * under it), laid within layBudgetMs a frame.
+   */
+  private layPlants(x: number, z: number, c: [number, number] | null, patchKey: string): void {
+    const field = this.plantField;
+    if (!field) return;
+    if (this.hullsStale) {
+      this.hullsStale = false;
+      this.plants.clear();
+      this.plantQueue.clear();
+      this.hullRing = new PlantRing(PLANT_GONE_M, this.hullInnerM);
+      for (const r of this.lodRings) r.reset();
+      this.ringsAt = null;
+    }
+    if (!this.ringsAt || Math.hypot(x - this.ringsAt[0], z - this.ringsAt[1]) >= RING_MOVE_M) {
+      this.ringsAt = [x, z];
+      // The ring orders its changes (the near adds, the drops, the rest); a level-of-detail crossing re-lays its cell.
+      this.plantQueue.push(...this.hullRing.move(x, z));
+      for (const r of this.lodRings) for (const ch of r.move(x, z)) if (this.hullRing.has(ch.key)) this.plantQueue.push({ ...ch, add: true });
+    }
+    if (patchKey !== this.plantPatchKey) {
+      // The cells over the old and the new patch re-seat (their plants blend between the patch's surface and the mesh's).
+      for (const sq of [this.plantPatchKey, patchKey]) {
+        if (sq === 'off' || sq === '') continue;
+        const [px, pz] = sq.split(',').map(Number);
+        for (let ci = Math.floor((px - 36) / PLANT_CELL_M); ci <= Math.floor((px + 36) / PLANT_CELL_M); ci++) {
+          for (let cj = Math.floor((pz - 36) / PLANT_CELL_M); cj <= Math.floor((pz + 36) / PLANT_CELL_M); cj++) {
+            const key = cellKey(ci, cj);
+            if (this.hullRing.has(key)) this.plantQueue.push({ key, ci, cj, add: true });
+          }
+        }
+      }
+      this.plantPatchKey = patchKey;
+    }
+    const patch = { cx: c ? c[0] : 0, cz: c ? c[1] : 0, on: !!c };
+    const t0 = performance.now();
+    this.plantQueue.drain((ch) => {
+      if (!ch.add || !this.hullRing.has(ch.key)) {
+        this.plants.removeCell(ch.key);
+        return;
+      }
+      const d = Math.hypot((ch.ci + 0.5) * PLANT_CELL_M - x, (ch.cj + 0.5) * PLANT_CELL_M - z), lod = plantLod(d);
+      this.plants.addCell(ch.key, clearOf(field.cell(ch.ci, ch.cj), this.clearings), (p) => plantSeatY(p, patch), () => lod);
+    }, layBudgetMs(this.plantQueue.length));
+    this.plantLayWorstMs = Math.max(this.plantLayWorstMs, performance.now() - t0);
+    this.plants.flush();
+    this.plantStats = { drawn: this.plants.drawn, dropped: this.plants.dropped };
+  }
+
+  /**
+   * The near scatter (dune-up-close §4.4): the cells within TUFT_RANGE_M, each laid once and cached, gathered every
+   * metre; drawn while the patch shows (the items sit on its surface).
+   */
+  private updateScatter(c: [number, number] | null, x: number, z: number): void {
+    const s = this.scatter, lh = this.land.height, g = this.patchGrids, layers = this.groundLayersCpu;
+    if (!s || !lh || !c || !g || !layers) {
+      s?.setVisible(false);
+      return;
+    }
+    s.setVisible(true); // with bush density 0 the tufts go (cellScatter) but the debris stays
+    if (!this.scatterAt || this.scatterPending > 0 || Math.hypot(x - this.scatterAt[0], z - this.scatterAt[1]) > 1) {
+      this.scatterAt = [x, z];
+      const tracks = lh.trackNetwork, field = this.rockField;
+      const ctx: ScatterContext = {
+        land: lh,
+        plants: (px, pz) => {
+          for (let a = -1; a <= 1; a++) {
+            for (let b = -1; b <= 1; b++) {
+              for (const p of this.plantGrid.get((Math.floor(px / 2) + a + 0x8000) * 0x10000 + (Math.floor(pz / 2) + b + 0x8000)) ?? []) {
+                if (Math.hypot(p.x - px, p.z - pz) < p.width / 2) return { underCrown: true, crownKind: p.kind };
+              }
+            }
+          }
+          return { underCrown: false, crownKind: null };
+        },
+        surfaceAt: (px, pz) => patchSurfaceAt(g, layers, tracks, px, pz),
+        density: this.landParams.bushDensity,
+        rockNear: (px, pz) => field?.covers(px, pz, 2) ?? false,
+      };
+      this.scatterPending = this.scatterField.gather(x, z, ctx);
+    }
+    s.update(this.scatterField.near, this.camera);
+    s.tick(this.clock.simTime, this.conditions.wind.speedMs);
   }
 
   /** Beach-shape edits rebuild the mesh (about half a second), debounced like the reef. */
@@ -1289,26 +1496,38 @@ export class App {
    * Dev automation (gallery captures): render one frame now, even when the page isn't animating (a hidden or
    * occluded window pauses requestAnimationFrame), and return it as a PNG, read back from an offscreen target.
    */
-  async captureFrame(): Promise<Blob | null> {
-    // Rendered into an offscreen target and read back: a hidden or covered window never presents the canvas, so a
-    // canvas toBlob there returns the last frame it did present (captures were silently stale).
-    const { width, height } = this.renderer.domElement;
-    const target = new THREE.RenderTarget(width, height, { type: THREE.UnsignedByteType, depthBuffer: false });
-    const maxFps = this.frameLimiter.maxFps;
-    this.frameLimiter.maxFps = 0;
-    this.captureTarget = target;
-    // Start a new node frame, as the renderer's animation loop does before each frame (Animation.update): passes that
-    // render once per frame (the scene pass) otherwise re-use the last frame's render, so a capture showed the frame
-    // before it (one capture late), or the same frame over and over while the window was hidden.
+  /**
+   * Starts a new node frame, as the renderer's animation loop does before each frame (Animation.update): passes that
+   * render once per frame (the scene pass) otherwise re-use the last frame's render, so a capture showed the frame before
+   * it (one capture late), or the same frame over and over while the window was hidden; and a prewarm mid-game built
+   * nothing.
+   */
+  private newNodeFrame(): void {
     const r = this.renderer as unknown as { _nodes: { nodeFrame: { update(): void; frameId: number } }; info: { frame: number } };
     r._nodes.nodeFrame.update();
     r.info.frame = r._nodes.nodeFrame.frameId;
+  }
+
+  /** Renders one frame into `target` as the animation loop would (a capture's, or the dev budget harness's). */
+  renderInto(target: THREE.RenderTarget): void {
+    const maxFps = this.frameLimiter.maxFps;
+    this.frameLimiter.maxFps = 0;
+    this.captureTarget = target;
+    this.newNodeFrame();
     try {
       this.frame();
     } finally {
       this.captureTarget = null;
       this.frameLimiter.maxFps = maxFps;
     }
+  }
+
+  async captureFrame(): Promise<Blob | null> {
+    // Rendered into an offscreen target and read back: a hidden or covered window never presents the canvas, so a
+    // canvas toBlob there returns the last frame it did present (captures were silently stale).
+    const { width, height } = this.renderer.domElement;
+    const target = new THREE.RenderTarget(width, height, { type: THREE.UnsignedByteType, depthBuffer: false });
+    this.renderInto(target);
     const padded = (await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, width, height)) as Uint8Array;
     target.dispose();
     // The readback's rows are padded to 256 bytes.
@@ -1401,7 +1620,7 @@ export class App {
     this.surferStand.update({ ...sp, enabled: sp.enabled && !sp.gang }, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
     this.gang.update(sp, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
     this.clearings = [
-      ...(sp.gang ? [...this.gang.spots.map((g) => ({ x: g.x, z: g.z, r: 1.2 })), ...gangTrack(sp)] : sp.enabled && sp.onLand ? [{ x: sp.x, z: sp.z, r: 1.2 }] : []),
+      ...(sp.gang ? this.gang.spots.map((g) => ({ x: g.x, z: g.z, r: 1.2 })) : sp.enabled && sp.onLand ? [{ x: sp.x, z: sp.z, r: 1.2 }] : []),
       ...(sp.pile ? [{ x: sp.pileX, z: sp.pileZ, r: 1.1 }] : []),
     ];
     if (this.surferParams.pile && !this.beachPile && !this.pileLoading) {

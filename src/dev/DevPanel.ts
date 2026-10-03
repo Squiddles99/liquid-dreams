@@ -84,7 +84,7 @@ export interface DevPanelHandlers {
   onSurferPlaceAhead(): void;
   onSurferChase(): void;
   /** Stands the rider at a named spot on land (walking spec §4), walking, carrying the board. */
-  onSurferSpot(spot: 'duneCrest' | 'beach'): void;
+  onSurferSpot(spot: 'standSpot' | 'beach'): void;
   /** Puts the beach pile (walking spec §5) ahead of the camera or beside the beach spot, and shows it. */
   onSurferPile(where: 'ahead' | 'beach'): void;
   /** The camera for the gang mockup (walking spec §6): in front of them, a little below their chests. */
@@ -446,7 +446,7 @@ export class DevPanel {
     surferFolder.addButton({ title: 'Place ahead of camera' }).on('click', h.onSurferPlaceAhead);
     surferFolder.addButton({ title: 'Chase view' }).on('click', h.onSurferChase);
     const land = surferFolder.addFolder({ title: 'On land', expanded: false });
-    land.addButton({ title: 'dune crest (above the Womb)' }).on('click', () => h.onSurferSpot('duneCrest'));
+    land.addButton({ title: 'stand spot (the junction above the Womb)' }).on('click', () => h.onSurferSpot('standSpot'));
     land.addButton({ title: 'beach (in front of the Womb)' }).on('click', () => h.onSurferSpot('beach'));
     land.addBinding(m.surfer, 'gang', { label: 'the gang (mockup)' }).on('change', h.onSurfer);
     land.addButton({ title: 'Gang camera' }).on('click', h.onGangCamera);

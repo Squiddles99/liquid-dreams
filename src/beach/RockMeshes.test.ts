@@ -33,4 +33,11 @@ describe('the rock meshes ahead of the land', () => {
     rocks.setUnderwater(false);
     expect(rocks.underwater.value).toBe(0);
   });
+  it('marks the face outcrops for the limestone layer up close, not the rust toe or shore boulders (dune-up-close §4.3)', () => {
+    const rocks = new Rocks(new Sky(DEFAULT_ATMOSPHERE));
+    const base: Rock = { x: 3, z: 4, y: 1, kind: 'face', shape: 2, radius: 0.8, height: 1.2, yaw: 0.3, tiltX: 0, tiltZ: 0, tint: [0.4, 0.4, 0.4], topTint: [0.4, 0.4, 0.4] };
+    rocks.update([base, { ...base, kind: 'toe', x: 5 }, { ...base, kind: 'shore', x: 7 }], 0, 0);
+    const face = rocks.meshes[2].geometry.attributes.rockFace;
+    expect(Array.from(face.array.slice(0, 3))).toEqual([1, 0, 0]);
+  });
 });

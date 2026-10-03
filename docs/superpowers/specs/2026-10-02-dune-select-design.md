@@ -17,7 +17,8 @@ This is step 4 of the front-door roadmap (grommet spec §1):
 
 Steps 0–3 are merged (main 2bf6424).
 
-The crew (Shazza, T-Bone, Grommet) stand on the dune crest above the Womb in their walking clothes, carrying their
+The crew (Shazza, T-Bone, Grommet) stand in the junction clearing on the Cape to Cape above the Womb (dune-up-close
+spec §4.1) in their walking clothes, carrying their
 boards (walking spec §6, the gang lineup). This screen is where the player:
 - sets the session's conditions;
 - picks which of the three they ride as;
@@ -34,7 +35,7 @@ research pass over shipped titles and platform guidelines (sources in Appendix A
 - close-up coastal heath with real leaves and branches;
 - grasses and sedges;
 - sand, soil and limestone;
-- footprints and litter.
+- footprints, and fallen twigs and leaves (no rubbish: the place is pristine).
 
 It is brainstormed after this spec. Both of this step's gates (§15) are judged over that environment.
 
@@ -105,7 +106,7 @@ It is brainstormed after this spec. Both of this step's gates (§15) are judged 
 
 ## 4. The three beats
 
-All three hold one live 3D scene: the gang lineup on the dune crest (`GangLineup`, `landSpots().duneCrest`). The camera
+All three hold one live 3D scene: the gang lineup in the junction clearing (`GangLineup`, `landSpots().standSpot`). The camera
 and riders move; the scene never cuts or reloads. Layout values are at 1920×1080, from the approved mockup, and scale with
 the window (§5.1).
 
@@ -822,7 +823,8 @@ beside the reference photo.
 - **`beatCamera`:**
   - each shot's projected rider bounding box lands in its region (Choose your rider: the centre x in 28–38%, the head in
     15–35% from the top);
-  - the camera stays above the ground and outside the heath.
+  - the camera stays above the ground, and its ground point is inside the clearing or a track corridor (`tracks`); the
+    Conditions shot's camera (3.8 m behind the riders) stands in the clearing or over the Cape to Cape.
 - **`riderCopy`:** every rider has every field and at least three lines per board band.
 
 **In-browser self-tests (`?selftest=frontend`, real DOM and GPU, at 1920×1080 and 1280×800):**

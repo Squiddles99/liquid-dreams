@@ -21,9 +21,14 @@ const RICE_PINK = vec3(0.55, 0.36, 0.4);
 const HEATH_GAP = vec3(0.03, 0.035, 0.025);
 /** What the mottled heath averages to at a distance (the fade target, so 2 km of heath doesn't alias). */
 const HEATH_AVG = vec3(0.12, 0.14, 0.085);
-/** The heath's floor under the 3D plants (4c-2): litter over sand, mostly dark (a pale floor read as desert). */
-const HEATH_FLOOR_SAND = vec3(0.2, 0.18, 0.13);
-const HEATH_LITTER = vec3(0.07, 0.065, 0.045);
+/**
+ * The heath's floor under the 3D plants: pale grey sand with patches of litter, like Andrew's flora photos (2026-10-03:
+ * the old mostly-dark litter floor went near-black in shade). Cool grey, not beige: a warm pale floor read as desert.
+ */
+const HEATH_FLOOR_SAND = vec3(0.32, 0.31, 0.28);
+const HEATH_LITTER = vec3(0.13, 0.115, 0.085);
+/** The tracks and the clearing through the heath: packed sand, a shade warmer and darker than the floor about it. */
+const TRACK_PACKED = vec3(0.27, 0.235, 0.18);
 
 export interface LandLookUniforms {
   sandBrightness: THREE.UniformNode<'float', number>;
@@ -60,8 +65,11 @@ export interface LandMaterialOptions {
   inputs?: { normal?: N; cover?: N; detail?: N; zones?: N };
   /** The patch's square, cut out of the coarse land. */
   hole?: PatchHole;
-  /** The patch's own terms: the rocks' grounding shadows (vec2: sun shadow, contact ring) and the sand's fine detail. */
-  patch?: { shadow: (xz: N) => N };
+  /**
+   * The patch's own terms: the rocks' grounding shadows (vec2: sun shadow, contact ring), and the ground layers' detail
+   * (dune-up-close §4.3) from (xz, the cover, how near: 1 to 16 m, 0 by 30 m).
+   */
+  patch?: { shadow: (xz: N) => N; detail?: (xz: N, cover: N, near: N) => { sand: N; rock: N; soil: N; track: N; trackW: N; gully: N; tilt: N; near: N } };
   /** 1 while 3D plants stand near the camera (Phase 4c-2 §3.5): the painted heath fades to its floor there. */
   plantFloor?: THREE.UniformNode<'float', number>;
 }
@@ -98,9 +106,11 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
   const gritN = opts.patch ? mx_noise_float(vec3(p.x.mul(60.0), p.z.mul(60.0), 3.3)) : float(0.0);
   const grit = gritN.mul(0.04).mul(near);
   const flecks = opts.patch ? smoothstep(0.62, 0.72, gritN).mul(0.25).mul(near) : float(0.0);
-  const dry = DRY_SAND.mul(ripple.add(0.97).add(grit).add(flecks)).mul(u.sandBrightness);
+  // The ground layers up close (dune-up-close §4.3): full to 16 m, gone by 30 m.
+  const gd = opts.patch?.detail ? opts.patch.detail(p.xz, cover, float(1.0).sub(smoothstep(16.0, 30.0, dist))) : null;
+  const dry = DRY_SAND.mul(ripple.add(0.97).add(grit).add(flecks)).mul(u.sandBrightness).mul(gd ? gd.sand : float(1.0));
   const wet = WET_SAND.mul(n1.sub(0.5).mul(0.1).mul(fade).add(1.0)).mul(u.sandBrightness);
-  const rock = mix(mix(ROCK_RUST, ROCK_GREY, det.y), ROCK_WEED, det.z).mul(mix(float(0.85), n1.mul(0.35).add(0.7), fade));
+  const rock = mix(mix(ROCK_RUST, ROCK_GREY, det.y), ROCK_WEED, det.z).mul(mix(float(0.85), n1.mul(0.35).add(0.7), fade)).mul(gd ? gd.rock : float(1.0));
   const base = mix(HEATH_OLIVE, HEATH_SILVER, smoothstep(0.55, 0.8, n2.add(u.heathSilver).sub(0.35)).mul(0.85));
   const pig = mix(PIGFACE, PIGFACE_TIPS, smoothstep(0.55, 0.8, n1));
   const withPig = mix(base, pig, smoothstep(0.66, 0.74, n3.add(u.heathOrange).sub(0.12)));
@@ -109,7 +119,9 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
   const heath = mix(HEATH_AVG, heathNear, fade).mul(u.heathBrightness);
   // The heath under the 3D plants (4c-2): sand, litter and dark gaps, full within 150 m, back to the painting by 200 m.
   const floorN = mx_noise_float(vec3(p.x.mul(0.8), p.z.mul(0.8), 12.5)).mul(0.5).add(0.5);
-  const floor = mix(HEATH_LITTER, HEATH_FLOOR_SAND, smoothstep(0.6, 0.8, floorN)).mul(u.sandBrightness);
+  const floorPainted = mix(HEATH_FLOOR_SAND, HEATH_LITTER, smoothstep(0.45, 0.65, floorN)).mul(u.sandBrightness);
+  // Up close the soil layer's detail (grit, pebbles, fallen leaves) over that floor's colour.
+  const floor = gd ? floorPainted.mul(gd.soil) : floorPainted;
   const heathShown = opts.plantFloor ? mix(heath, floor, opts.plantFloor.mul(float(1.0).sub(smoothstep(150.0, 200.0, dist)))) : heath;
   // The cover is per vertex (2–64 m apart), so noise-drawn clumps would come out as the mesh's squares. Near the camera
   // the toe's rock clumps and the dune rise's bushes and boulders are drawn per pixel instead, inside the bands the mesh
@@ -136,7 +148,7 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
   const wetness = wetH ? max(float(1.0).sub(smoothstep(wetH.sub(0.02), wetH.add(0.12), p.y)), wetShare.mul(0.8)) : wetShare;
   // The dry sand's wind ripples in the patch's shading normal: 12 cm apart, up to 0.8 cm crest to trough, crests along the beach
   // (north–south), wavering with noise, flattened where the sand is wet; faded out by 30 m (they'd alias beyond).
-  let n: N = n0;
+  let n: N = gd ? normalize(n0.add(vec3(gd.tilt.x.negate(), 0.0, gd.tilt.y.negate()))) : n0;
   if (opts.patch) {
     // The wobble and the patches reuse the heath's 4 m and 8 m noises (n2, n3): no new noise per pixel.
     const phase = p.x.add(n2.mul(1.2)).mul((2 * Math.PI) / 0.12);
@@ -145,9 +157,14 @@ export function createLandMaterial(sky: Sky, u: LandLookUniforms, opts: LandMate
     // Faded where a pixel spans more than about half a ripple (grazing views alias them into moiré bands).
     const resolved = float(1.0).sub(smoothstep(1.2, 2.6, fwidth(phase)));
     const slope = cos(phase).mul(patchy).mul(0.004 * ((2 * Math.PI) / 0.12)).mul(float(1.0).sub(wetness)).mul(rest).mul(resolved).mul(float(1.0).sub(smoothstep(12.0, 30.0, dist)));
-    n = normalize(n0.sub(vec3(slope, 0.0, 0.0)));
+    n = normalize(n.sub(vec3(slope, 0.0, 0.0)));
   }
-  const albedo = wet.mul(wetness.mul(rest)).add(dry.mul(float(1.0).sub(wetness).mul(rest))).add(rock.mul(rF)).add(heathShown.mul(hF));
+  const albedo0 = wet.mul(wetness.mul(rest)).add(dry.mul(float(1.0).sub(wetness).mul(rest))).add(rock.mul(rF)).add(heathShown.mul(hF));
+  // The tracks: packed sand through the heath; on the dune's and the beach's sand a trodden path is the sand
+  // itself, churned a shade darker (gate 2: the soil colour drew a brown stripe down the beach). The beach path's gully
+  // shows rock steps (§4.1).
+  const sandTrack = wet.mul(wetness).add(dry.mul(float(1.0).sub(wetness))).mul(0.9);
+  const albedo = gd ? mix(mix(albedo0, rock, gd.gully), mix(TRACK_PACKED.mul(gd.track).mul(u.sandBrightness), sandTrack, rest), gd.trackW) : albedo0;
 
   const vis = sunVisibility ? sunVisibility(p.xz) : float(1.0);
   const back = saturate(dot(v.negate(), l));
