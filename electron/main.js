@@ -1,6 +1,7 @@
 // Spike: Liquid Dreams in an Electron window, to check that WebGPU runs on the discrete GPU without the player
 // touching Windows' graphics settings, and to find where the game assumes it lives in a browser tab.
 //
+//   Liquid Dreams.bat           one click: build if anything changed, then open the built game (electron/launch.mjs)
 //   npm run electron            build, then open the built game (served over app://game/)
 //   npm run electron:dev        open the Vite dev server (run `npm run dev` first)
 //   ...  -- --no-force-gpu      don't ask Chromium for the high-performance GPU (the A/B for the spike)
@@ -14,6 +15,7 @@ const ROOT = resolve(import.meta.dirname, '..');
 const DIST = join(ROOT, 'dist');
 const DEV_URL = 'http://localhost:5173/';
 const APP_URL = 'app://game/';
+const ICON = join(ROOT, 'electron', 'icon.png');
 
 const args = process.argv.slice(1);
 const flag = (name) => args.includes(`--${name}`);
@@ -66,6 +68,8 @@ function serveDist(request) {
 async function createWindow() {
   const win = new BrowserWindow({
     width: 1600, height: 900, backgroundColor: '#000000', autoHideMenuBar: true, title: 'Liquid Dreams',
+    // The logo on the window and the taskbar (electron/icon.png; see electron/launch.mjs for the shortcut's .ico).
+    ...(existsSync(ICON) ? { icon: ICON } : {}),
     webPreferences: { backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
   });
   // The screenshot key (K) "downloads" a PNG. A browser drops it in Downloads; Electron would ask where to save it
@@ -143,6 +147,9 @@ async function probe(win, dir) {
   console.log(JSON.stringify(result, null, 2));
   app.quit();
 }
+
+// Windows groups the taskbar button by this id, and shows the window's icon for it (not Electron's).
+app.setAppUserModelId('com.liquiddreams.game');
 
 app.whenReady().then(() => {
   protocol.handle('app', serveDist);
