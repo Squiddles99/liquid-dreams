@@ -41,7 +41,11 @@ async function main(): Promise<void> {
   if (frontEndWanted(location.search, location.hash)) app.openFrontEnd();
   // Dev builds only: scripted gallery captures (window.liquidDreams.captureFrame()) and the crest trace's timing
   // readout (window.liquidDreams.traceMs, ms per frame, a moving average).
-  if (import.meta.env.DEV) (window as unknown as { liquidDreams?: App }).liquidDreams = app;
+  if (import.meta.env.DEV) {
+    (window as unknown as { liquidDreams?: App }).liquidDreams = app;
+    const { frontEndCheck } = await import('./dev/frontEndCheck');
+    (app as unknown as { frontEndCheck: () => ReturnType<typeof frontEndCheck> }).frontEndCheck = () => frontEndCheck(app);
+  }
   // Dev builds only: the species sheet (dune-up-close gate 1), each frame posted to the local snapshot receiver.
   if (import.meta.env.DEV && query.get('sheet') === 'species') {
     const { captureSpeciesSheet } = await import('./dev/speciesSheet');

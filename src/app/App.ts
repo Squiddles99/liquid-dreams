@@ -40,6 +40,7 @@ import { PADDLE_OUT_MS } from '../frontend/entry';
 import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
 import { FrontEnd } from '../frontend/frontEndPage';
+import { frontEndCheck } from '../dev/frontEndCheck';
 import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
 import { PerfOverlay } from '../dev/perf';
 import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
@@ -496,6 +497,13 @@ export class App {
           this.scheduleSave();
         },
         onFrontEnd: () => this.openFrontEnd(),
+        onFrontEndCheck: () => {
+          void frontEndCheck(this).then((r) => {
+            console.table(r.contrast);
+            console.table(r.faces);
+            console.log(`front-end check: ${r.pass ? 'PASS' : 'FAIL'}`);
+          });
+        },
         onSurferSpot: (spot) => {
           const lh = this.land.height;
           if (!lh) {
@@ -936,6 +944,43 @@ export class App {
       stage: (staging, pose) => this.stageFrontEnd(staging, pose),
       paddleOut: (choice) => this.paddleOut(choice),
     };
+  }
+
+  /** Dev checks: drives the front end to a beat (opening it if needed) and waits for the move to land. */
+  async frontEndGoTo(beat: 'conditions' | 'rider' | 'gear'): Promise<void> {
+    this.openFrontEnd();
+    const order = ['conditions', 'rider', 'gear'] as const;
+    for (let k = 0; k < 900; k++) {
+      const s = this.frontEnd?.state;
+      if (!s) return;
+      if (s.beat === beat && !s.move) return;
+      if (!s.move) this.frontEnd!.act(order.indexOf(beat) > order.indexOf(s.beat as typeof order[number]) ? 'confirm' : 'back');
+      // Step the frame here too: a hidden window stalls requestAnimationFrame.
+      this.lastMs = performance.now() - 16;
+      this.frame();
+      await new Promise((r) => setTimeout(r, 17));
+    }
+  }
+
+  /**
+   * Dev checks: a ray from the camera to the focused rider's head; the first thing in front of it (by name), or null.
+   * The rider's own body is skipped (the ray ends inside the head).
+   */
+  frontEndFaceRay(): { rider: string; covered: string | null } {
+    const rider = this.frontEnd?.state?.rider ?? 'female', stand = this.gang.standOf(rider);
+    const head = stand.rider?.boneWorldPosition('head', new THREE.Vector3());
+    if (!head) return { rider, covered: null };
+    const from = this.camera.getWorldPosition(new THREE.Vector3()), dir = head.clone().sub(from), dist = dir.length();
+    const ray = new THREE.Raycaster(from, dir.normalize(), 0.05, dist - 0.12);
+    const own = (o: THREE.Object3D | null): boolean => { for (; o; o = o.parent) if (o === stand.group) return true; return false; };
+    // Meshes only (the land, the heath's instances, the riders and boards); sprites, points and lines can't block a face.
+    const meshes: THREE.Object3D[] = [];
+    this.scene.traverseVisible((o) => { if ((o as THREE.Mesh).isMesh && !own(o)) meshes.push(o); });
+    const hit = ray.intersectObjects(meshes, false)[0];
+    if (!hit) return { rider, covered: null };
+    let o: THREE.Object3D | null = hit.object;
+    while (o && !o.name) o = o.parent;
+    return { rider, covered: `${o?.name || hit.object.type} at ${hit.distance.toFixed(2)} m` };
   }
 
   /** Opens the front end (a normal start after prewarm, or the dev panel's button). */

@@ -25,6 +25,11 @@ export class GangLineup {
     this.group.visible = false;
   }
 
+  /** A rider's stand (dev checks: the front end's face ray). */
+  standOf(preset: 'female' | 'grommet' | 'male'): SurferStand {
+    return this.stands[(['female', 'grommet', 'male'] as const).indexOf(preset)];
+  }
+
   /** The front end's staging (dune select spec §4); null for the plain lineup. */
   stage(s: GangStaging | null): void {
     this.staging = s;

@@ -72,8 +72,8 @@ export class BreakMap {
       <rect x="${mainW}" width="${MAP.insetW}" height="${MAP.h}" fill="#0a1d26"/>
       <path d="${d.inset.coast}" fill="none" stroke="#c9b07e" stroke-width="1.4"/>
       <rect x="${d.inset.box[0]}" y="${d.inset.box[1]}" width="${Math.max(8, d.inset.box[2])}" height="${Math.max(10, d.inset.box[3])}" fill="none" stroke="${SUN}" stroke-width="1.7"/>
-      <text transform="translate(${mainW + 62} 122) rotate(90)" text-anchor="middle" font-family="Barlow Semi Condensed" font-weight="600" font-size="18" letter-spacing="0.7" fill="rgba(247, 236, 210, 0.8)">${d.inset.north}</text>
-      <text transform="translate(${mainW + 62} 280) rotate(90)" text-anchor="middle" font-family="Barlow Semi Condensed" font-weight="600" font-size="18" letter-spacing="0.7" fill="rgba(247, 236, 210, 0.8)">${d.inset.south}</text>
+      <text transform="translate(${mainW + 56} 122) rotate(90)" text-anchor="middle" font-family="Barlow Semi Condensed" font-weight="600" font-size="18" letter-spacing="0.7" fill="rgba(247, 236, 210, 0.8)">${d.inset.north}</text>
+      <text transform="translate(${mainW + 56} 280) rotate(90)" text-anchor="middle" font-family="Barlow Semi Condensed" font-weight="600" font-size="18" letter-spacing="0.7" fill="rgba(247, 236, 210, 0.8)">${d.inset.south}</text>
       <line x1="${mainW}" y1="0" x2="${mainW}" y2="${MAP.h}" stroke="rgba(247, 236, 210, 0.18)"/>`;
     const live = this.svg.querySelector('[data-layer="live"]')!;
     live.setAttribute('clip-path', 'url(#fe-map-main)');

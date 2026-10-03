@@ -19,7 +19,7 @@ export class ConditionsPanel {
     const scrim = document.createElement('div');
     scrim.className = 'fe-scrim-left';
     const col = document.createElement('div');
-    Object.assign(col.style, { position: 'absolute', left: 'var(--fe-safe-x)', top: 'calc(var(--fe-safe-y) + 40px)', width: '760px' });
+    Object.assign(col.style, { position: 'absolute', left: 'var(--fe-safe-x)', top: 'calc(var(--fe-safe-y) + 40px)', width: 'calc(760px * (0.6 + 0.4 * var(--fe-text)))' });
     const title = document.createElement('h1');
     title.className = 'fe-title';
     title.textContent = 'Conditions';

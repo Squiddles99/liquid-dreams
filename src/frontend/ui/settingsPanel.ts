@@ -27,7 +27,7 @@ export class SettingsPanel {
       if (!r) {
         r = new ValueRow(v.row);
         // Wider labels than Conditions': "Opaque backplates" on one line.
-        r.el.style.gridTemplateColumns = '280px 1fr auto';
+        r.el.style.gridTemplateColumns = 'calc(280px * (0.5 + 0.5 * var(--fe-text))) 1fr auto';
         this.rows.set(v.row, r);
         this.list.appendChild(r.el);
       }
