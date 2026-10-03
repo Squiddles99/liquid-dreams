@@ -2,7 +2,7 @@ import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, 
 import {
   type BreakParams, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
   HOLLOW_REACH_Q, MIN_BREAKING_HEIGHT_M, MIN_STAGE_SPAN, PILE_BACK_H, PILE_BLEND_H, PILE_FOAM_EDGE, PILE_FOAM_THIN, PILE_FRONT_H,
-  PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, PLUNGE_FULL_RATIO, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S,
+  PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, PLUNGE_FULL_RATIO, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S, TUBE_HOLD_S,
   normalizeBreakParams, onsetGain, steepeningStart,
 } from './breaking';
 
@@ -126,7 +126,7 @@ export function slurpNode(rSlurp: N, u: BreakUniforms): N {
 }
 
 /** breaking.lifecycle's result as nodes (the pile's terms as breaking.Lifecycle's). */
-export interface LifecycleNodes { steep: N; stage: N; drain: N; collapse: N; pile: N; pileReach: N; surge: N; decay: N }
+export interface LifecycleNodes { steep: N; stage: N; drain: N; collapse: N; release: N; pile: N; pileReach: N; surge: N; decay: N }
 
 /**
  * breaking.lifecycle: `hasRecord` false is its tb undefined (the ratio alone); else `broken` (the record's, or r ≥ 1)
@@ -134,7 +134,8 @@ export interface LifecycleNodes { steep: N; stage: N; drain: N; collapse: N; pil
  * local height; rSlurp its slurp ratio (the sharpening and the drain take the slurp's pull, as breaking.lifecycle).
  */
 /** The per-crest shape (overturn.withSheetShape and the tube's presence, from the crest's ψ): absent, the uniforms and no plunge. */
-export interface CrestShapeNodes { drainGrowth: N; pileSurge: N; plunge: N }
+/** thrown: how thrown its tube is (breaking.TUBE_THROWN_PSI), the hold's weight. */
+export interface CrestShapeNodes { drainGrowth: N; pileSurge: N; plunge: N; thrown?: N }
 
 export function lifecycleNode(r: N, hasRecord: N, broken: N, tb: N, rMax: N, H: N, rSlurp: N, u: BreakUniforms, sh?: CrestShapeNodes): LifecycleNodes {
   const drainGrowth = sh?.drainGrowth ?? u.drainGrowth, pileSurge = sh?.pileSurge ?? u.pileSurge, plunge = sh?.plunge ?? float(0.0);
@@ -149,19 +150,22 @@ export function lifecycleNode(r: N, hasRecord: N, broken: N, tb: N, rMax: N, H: 
   const plunged = plunge.mul(smoothstep(1.0, PLUNGE_FULL_RATIO, max(r, rMax)));
   const extent = max(breakingStageNode(max(r, rMax), u), plunged);
   const thrown = smoothstep(0.0, land, t).mul(extent);
-  const reach = smoothstep(land, land.mul(u.collapseTime.add(1.0)), t);
+  // breaking.lifecycle's hold: a section that throws a tube settles, and its whitewater rises, TUBE_HOLD_S after landing.
+  const held = land.add(plunged.mul(sh?.thrown ?? float(0.0)).mul(TUBE_HOLD_S)).toVar();
+  const reach = smoothstep(held, held.add(land.mul(u.collapseTime)), t);
   const settled = reach.mul(extent);
   // The whitewater pile (breaking.lifecycle): none unless broken on a record.
-  const rolled = max(t.sub(land).sub(PILE_RISE_S), 0.0).mul(PILE_SPEED_MS);
+  const rolled = max(t.sub(held).sub(PILE_RISE_S), 0.0).mul(PILE_SPEED_MS);
   const surgeWeight = pileSurge.mul(max(smoothstep(1.0, SURGE_FULL_RATIO, max(r, rMax)), plunged));
-  const surge = float(1.0).add(surgeWeight.mul(smoothstep(land, land.add(SURGE_RISE_S), t))
-    .mul(float(1.0).sub(smoothstep(land.add(SURGE_RISE_S), land.add(SURGE_RISE_S + SURGE_FALL_S), t))));
+  const surge = float(1.0).add(surgeWeight.mul(smoothstep(held, held.add(SURGE_RISE_S), t))
+    .mul(float(1.0).sub(smoothstep(held.add(SURGE_RISE_S), held.add(SURGE_RISE_S + SURGE_FALL_S), t))));
   return {
     steep: select(isBroken, max(steepR, thrown), steepR),
     stage: select(isBroken, max(stageR, thrown), stageR),
     drain: select(isBroken, max(c.drain, thrown), c.drain),
     collapse: select(hasRecord, select(isBroken, settled, float(0.0)), c.collapse),
-    pile: select(isBroken, smoothstep(land, land.add(PILE_RISE_S), t).mul(extent), float(0.0)),
+    release: select(hasRecord, select(isBroken, smoothstep(land, land.mul(u.collapseTime.add(1.0)), t).mul(extent), float(0.0)), c.collapse),
+    pile: select(isBroken, smoothstep(held, held.add(PILE_RISE_S), t).mul(extent), float(0.0)),
     pileReach: select(isBroken, reach, float(0.0)),
     surge: select(isBroken, surge, float(1.0)),
     decay: select(isBroken, exp2(rolled.div(u.pileHalfM).negate()), float(1.0)),

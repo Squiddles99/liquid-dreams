@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FIXED_POINT_ITERATIONS } from '../ocean/HeightProbe';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
@@ -310,7 +311,9 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
     }
     expect(checked).toBeGreaterThan(5000);
     expect(step, 'the largest step in 0.5 m of crest (m)').toBeLessThan(0.3);
-    expect(crease, 'the sharpest crease along the crest (m, second difference at 0.5 m)').toBeLessThan(0.15);
+    // 0.16 (ruling, 2026-10-03): a thrown tube held open TUBE_HOLD_S collapses later, further onto the reef flat, and the
+    // window now catches its collapse half done (0.154 at 5 m, 3 s behind, ψ 0.082; 0.116 mid-collapse before the hold).
+    expect(crease, 'the sharpest crease along the crest (m, second difference at 0.5 m)').toBeLessThan(0.16);
   });
 });
 
@@ -379,7 +382,8 @@ describe('the breaking sheet on the real reef', () => {
           // lip's own travel, not a hand-on to a second crest. A move onto the pile's landing spot while the curl collapses
           // (its top moves out from the crest to there over the settle span) is allowed; a jump anywhere else still counts.
           const cp = line[j], cc = crestAt(cp.x, cp.z, t, at(cp.x, cp.z), w, ctx, sheet);
-          const H = cc ? localHeight(w, cc.f) : 0, land = landingEstimate(H, DEFAULT_BREAK_PARAMS);
+          // From the landing and its tube's hold (TUBE_HOLD_S: the pile rises once the hold is over).
+          const H = cc ? localHeight(w, cc.f) : 0, land = landingEstimate(H, DEFAULT_BREAK_PARAMS) + (cc?.lc.hold ?? 0);
           const rising = cc?.tb !== null && cc?.tb !== undefined && cc.lipH !== null && cc.lipH !== undefined && cc.tb >= land && cc.tb <= land + settleSpan(H, DEFAULT_BREAK_PARAMS) + 0.25;
           const ontoPile = rising && (top - j) * 0.5 <= PILE_LAND_H * (cc.lipH as number) * 1.35 + 1.5;
           // Through the break: to a second after the collapse ends. Later the whitewater bore's plateau top wanders (23 m/s
@@ -562,7 +566,7 @@ describe('the breaking sheet on the real reef', () => {
     }
   });
   it("the probe's fixed-point search converges with the front sharpening", () => {
-    // HeightProbe's loop (4 iterations of x0 ← x − d(x0)) at 50 lineup positions around the peak, through the break.
+    // HeightProbe's loop (FIXED_POINT_ITERATIONS of x0 ← x − d(x0)) at 50 lineup positions around the peak, through the break.
     // Around where the peak's section breaks, from 0.9 s after it broke (the crest's arrival at the old ledge).
     const waves = REF_SET.map(toActiveWave);
     const [bx, bz] = breakPoint(0, 0, testWave(REF_BIGGEST.heightM)), fb = at(bx, bz);
@@ -575,7 +579,7 @@ describe('the breaking sheet on the real reef', () => {
       const t = REF_BIGGEST.arrivalS + fb.tau + 0.9 + dt;
       const disp = (x: number, z: number) => sumWaves(x, z, t, at(x, z), waves, ctx, sheet);
       let ox = px, oz = pz;
-      for (let i = 0; i < 4; i++) { const d = disp(ox, oz); ox = px - d.dx; oz = pz - d.dz; }
+      for (let i = 0; i < FIXED_POINT_ITERATIONS; i++) { const d = disp(ox, oz); ox = px - d.dx; oz = pz - d.dz; }
       const d = disp(ox, oz);
       // 3 cm (was 1): next to the fold of a broken face the loop converges slowly (5.6 cm after 4 steps at worst, 1.5 cm
       // after 8, at (25.1, −4.6) with the dial set by the face): a few cm of height on a steep face.
@@ -767,7 +771,7 @@ describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
       const Pc = crestAt(px, pz, tOn, at(px, pz), w, ctx, sheet)?.params ?? P;
       // Once the crest there has collapsed (its height, and so its landing clock, can differ from the ray's start: on the
       // softened ramp the section runs ~50 m from its break to here).
-      let t = tOn + landingEstimate(H, Pc) + settleSpan(H, Pc);
+      let t = tOn + landingEstimate(H, Pc) + settleSpan(H, Pc) + (crestAt(px, pz, tOn, at(px, pz), w, ctx, sheet)?.lc.hold ?? 0);
       for (let k = 0; k < 40; k++) {
         const q = topNear(line, t, w), cq = line[q.j];
         if (crestAt(cq.x, cq.z, t, at(cq.x, cq.z), w, ctx, sheet)!.lc.collapse >= 0.99) break;
