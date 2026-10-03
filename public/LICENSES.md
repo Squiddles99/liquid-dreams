@@ -28,6 +28,12 @@ Self-hosted woff2 files (the Latin subset, as served by Google Fonts), each with
 - Licence: SIL Open Font License 1.1, `public/fonts/OFL-barlow.txt`
 - Files: `barlow-400.woff2`, `barlow-500.woff2`
 
+## Music (`music/liquid-dreams/`)
+
+- Composer: Tom (tom_a_drummond), made with Suno for Liquid Dreams
+- Used with his permission
+- Tracks: Sunrise over the Ocean, Sun-Fazed Coastline, Big Waves, Sun-bleached Haze, Sun-Bleached Bedroom
+
 ## Surfers and heath
 
 - The surfer bodies, clothes, hair and boards: see `public/surfer/LICENSES.md`.

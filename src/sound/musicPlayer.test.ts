@@ -60,14 +60,11 @@ describe('the playlist', () => {
     const files = { '/music/b/1. B1.mp3': 'b1', '/music/a/2. A2.mp3': 'a2', '/music/Loose.mp3': 'l' };
     expect(buildPlaylist(files).map((t) => `${t.album}|${t.title}`)).toEqual(['|Loose', 'a|A2', 'b|B1']);
   });
-  it('finds the committed album: 16 tracks in album order', () => {
+  it("finds the committed album: Tom's five tracks in album order", () => {
     const list = buildPlaylist(MUSIC_FILES);
-    expect(list).toHaveLength(16);
-    expect(list.every((t) => t.album === 'morning-of-the-earth')).toBe(true);
-    expect(list[0].title).toBe('Morning of the Earth');
-    expect(list[1].title).toBe("I'll Be Alright");
-    expect(list[9].title).toBe('Bali Waters');
-    expect(list[15].title).toBe('Come with Me');
+    expect(list).toHaveLength(5);
+    expect(list.every((t) => t.album === 'liquid-dreams')).toBe(true);
+    expect(list.map((t) => t.title)).toEqual(['Sunrise over the Ocean', 'Sun-Fazed Coastline', 'Big Waves', 'Sun-bleached Haze', 'Sun-Bleached Bedroom']);
   });
 });
 
