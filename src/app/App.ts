@@ -22,6 +22,7 @@ import { SoundSystem } from '../sound/SoundSystem';
 import { ticksToHear } from '../sound/hits';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
+import { ReefFlow } from '../breaker/flowNodes';
 import { type WaveContext, fieldBreakingHeight, toActiveWave } from '../breaker/setWaveModel';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
@@ -68,6 +69,7 @@ import { CoastalSurf } from '../surf/CoastalSurf';
 import { DEFAULT_SURF_PARAMS, type SurfParams, normalizeSurfParams } from '../surf/surfModel';
 import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FoamField } from '../whitewater/FoamField';
+import { KelpField } from '../seabed/KelpField';
 import { SprayParticles } from '../whitewater/SprayParticles';
 import {
   DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
@@ -88,7 +90,7 @@ import { KitMeshes, hullColours } from '../heath/KitMeshes';
 import { ScatterMeshes } from '../heath/ScatterMeshes';
 import { ScatterField, type ScatterContext } from '../heath/nearScatter';
 import { canopySilhouettes, loadKit } from '../heath/kit';
-import { uniform } from 'three/tsl';
+import { float, uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
 import { buildGroundShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
@@ -282,6 +284,10 @@ export class App {
     foamNode: (xz) => this.setWaves.breakingFoamNode(xz),
     dirNode: (xz) => this.setWaves.sample(xz, true).dir,
   });
+  /** The water's flow under the waves (reef build B §4.1): the set waves' surface plus the FFT long swell where it runs. */
+  readonly reefFlow = new ReefFlow(this.setWaves, (xz) => this.surfaceModel.fftCascadeDisplacement(xz, 0, float(1.0)).y);
+  /** The kelp's lean grid around the camera (reef build B §4.2–4.3), stepped with the foam's ticks. */
+  readonly kelp = new KelpField(this.seabed.kelp, this.reefFlow);
   private foamTimer: number | undefined;
   private sprayTimer: number | undefined;
   private foamOnlyTimer: number | undefined;
@@ -725,6 +731,36 @@ export class App {
     this.setWaves.setEvents(events);
   }
 
+  /** The kelp's ticks this frame (none while paused; a replay after a jump), like the foam's: each tick points the set waves at its time. */
+  private stepKelp(events: readonly WaveEvent[]): void {
+    const steps = this.kelp.advance(this.renderer, this.clock.simTime, this.camera.position.x, this.camera.position.z, (t) => this.pointFoamSourceAt(t));
+    if (steps === 0) return;
+    this.ocean.time.value = this.clock.simTime;
+    this.setWaves.setEvents(events);
+  }
+
+  /** Dev: the kelp on or off (off: build A's bed, no lean steps). For captures and the cost check. */
+  setKelp(on: boolean): void {
+    this.kelp.setEnabled(on);
+  }
+
+  /** Dev (spec §3.6): mean GPU ms per frame over `frames` frames with the kelp on, then off (window.__ldGpuMs). */
+  async measureKelpGpu(frames = 120): Promise<{ on: number; off: number }> {
+    const w = window as unknown as { __ldGpuMs?: number[] };
+    const take = async (): Promise<number> => {
+      w.__ldGpuMs = [];
+      while ((w.__ldGpuMs?.length ?? 0) < frames) await new Promise((r) => requestAnimationFrame(r));
+      const a = w.__ldGpuMs!.slice(-frames);
+      return a.reduce((s, v) => s + v, 0) / a.length;
+    };
+    this.setKelp(true);
+    const on = await take();
+    this.setKelp(false);
+    const off = await take();
+    this.setKelp(true);
+    return { on, off };
+  }
+
   /** The foam field's source at sim time t: the ocean's time uniform and the set waves in flight then. */
   private pointFoamSourceAt(t: number): void {
     this.ocean.time.value = t;
@@ -879,6 +915,7 @@ export class App {
   /** A jump (or new conditions or field): the foam map and the spray replay their windows. */
   private invalidateParticles(): void {
     this.foamField.invalidate();
+    this.kelp.invalidate();
     this.spray.invalidate();
     this.impact.invalidate();
   }
@@ -1556,6 +1593,7 @@ export class App {
         this.surf.update(this.clock.simTime, this.conditions, (t0, t1) => wavesBetween(t0, t1, this.conditions, this.setParams), this.field, this.surfParams);
     this.setWaves.setEvents(events);
     this.stepFoam(events);
+    this.stepKelp(events);
     this.stepSpray();
     this.updateUnderwater();
     // The Bombie (4c-3): its latest two bursts (final review I4), hidden underwater.

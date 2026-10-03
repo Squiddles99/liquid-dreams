@@ -164,7 +164,9 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
           expect(sampledTextures(w1.fragment) - sampledTextures(w0.fragment)).toBe(1);
           for (const stage of [w1.vertex, w1.fragment]) {
             expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
-            expect(sampledTextures(stage)).toBeLessThanOrEqual(16);
+            // 17 with the kelp's noise (reef build B, final review I3: baked instead of 3D noise per pixel, −2.9 ms): one
+            // over the baseline, as the cloud shadows already were; createRenderer asks the adapter for up to 48.
+            expect(sampledTextures(stage)).toBeLessThanOrEqual(17);
             expect(uniformBuffers(stage)).toBeLessThanOrEqual(12);
           }
         });
