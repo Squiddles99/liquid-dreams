@@ -1,7 +1,7 @@
 import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 import * as THREE from 'three/webgpu';
 import {
-  Break, Fn, If, Loop, abs, attribute, cameraPosition, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
+  Break, Fn, If, Loop, abs, atan, attribute, cameraPosition, clamp, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
   storage, uniform, varying, varyingProperty, vec2, vec3, vec4,
 } from 'three/tsl';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
@@ -16,9 +16,9 @@ import type { SunlightSource } from '../land/SunlightMap';
 import type { SkylineTable } from '../land/SkylineTable';
 import type { BreakParams } from './breaking';
 import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
-import { PROFILE_SAMPLES, PROFILE_SEGMENTS } from './lipProfile';
+import { PROFILE_SAMPLES, PROFILE_SEGMENTS, TUBE_ROOT_SAMPLE, TUBE_TIP_CLEAR_M, TUBE_TIP_SAMPLE } from './lipProfile';
 import {
-  FRAME_KNOT_VEC4, FRAME_VEC4S, createLipUniforms, encodeTb, packFrameNodes, profileFrameNode, profilePointNode, readFrameNodes, sampleHomeNode, sampleTargetNode,
+  FRAME_KNOT_VEC4, FRAME_VEC4S, createLipUniforms, encodeTb, packFrameNodes, profileFrameNode, profilePointNode, readFrameNodes, sampleHomeNode, sampleTargetNode, tubeLightAtNode,
   updateLipUniforms,
 } from './lipProfileNodes';
 
@@ -78,6 +78,7 @@ export const CHOP_CASCADE = 2;
  * - vertex: stations, frames, lipProfileNodes' sample table, waves, positions, normals, extras, details = 8 (at the limit:
  *   it writes the home xz into details, and the develop pass moves it into homes);
  * - develop: stations, frames, positions, details, homes = 5;
+ * - light: stations, frames, positions, lights = 4;
  * - chop: positions, extras, details = 3 (+ nothing from the FFT: textures);
  * - normal: stations, positions, normals = 3.
  */
@@ -332,6 +333,8 @@ export class BreakingRibbon {
    * from the sheet (0 on the front and back segments). Skirts take their edge's.
    */
   readonly details: THREE.StorageBufferAttribute;
+  /** Per vertex: vec4(sLip, o, tLip, sBody), the tube's light (lipProfile.tubeLight; spec 2026-10-03 lip-and-tube-look §5). */
+  readonly lights: THREE.StorageBufferAttribute;
   /** Per station: the frame as FRAME_VEC4S vec4s, lipProfileNodes.FRAME_LAYOUT order (the tube, the throw, the pile's
    * knots). */
   readonly frames: THREE.StorageBufferAttribute;
@@ -345,6 +348,9 @@ export class BreakingRibbon {
   private readonly lip;
   /** The wind's offshore speed (m/s): setOffshore. */
   private readonly offshoreMs = uniform(0);
+  /** The sun's direction (world, unit, toward the sun): setSun. */
+  private readonly sun = uniform(new THREE.Vector3(0, 1, 0));
+  private readonly lightPass: THREE.ComputeNode;
   private readonly framePass: THREE.ComputeNode;
   private readonly vertexPass: THREE.ComputeNode;
   private readonly developPass: THREE.ComputeNode;
@@ -382,11 +388,13 @@ export class BreakingRibbon {
     this.extras = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
     this.homes = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
     this.details = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
+    this.lights = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
     this.frames = new THREE.StorageBufferAttribute(new Float32Array(MAX_STATIONS * FRAME_VEC4S * 4), 4);
     this.lip = createLipUniforms(params);
     this.framePass = this.buildFramePass();
     this.vertexPass = this.buildVertexPass();
     this.developPass = this.buildDevelopPass();
+    this.lightPass = this.buildLightPass();
     this.chopPass = this.buildChopPass();
     this.normalPass = this.buildNormalPass();
     this.slopeVariance = (shading?.model.sim.sizes ?? []).map(() => uniform(0));
@@ -400,6 +408,7 @@ export class BreakingRibbon {
     this.geometry.setAttribute('ribbonExtra', this.extras);
     this.geometry.setAttribute('ribbonHome', this.homes);
     this.geometry.setAttribute('ribbonDetail', this.details);
+    this.geometry.setAttribute('ribbonLight', this.lights);
     this.geometry.setIndex(new THREE.BufferAttribute(ribbonIndices(), 1));
     this.geometry.setDrawRange(0, 0);
     this.mesh = new THREE.Mesh(this.geometry, this.buildMaterial());
@@ -424,6 +433,11 @@ export class BreakingRibbon {
   /** The wind's offshore speed (m/s, overturn.offshoreSpeed): the tube's wind factors (Feddersen et al. 2023). */
   setOffshore(ms: number): void {
     this.offshoreMs.value = Number.isFinite(ms) ? ms : 0;
+  }
+
+  /** The sun's direction (world, unit, toward the sun), for the tube's light. */
+  setSun(dir: THREE.Vector3): void {
+    this.sun.value.copy(dir);
   }
 
   setOverlays(o: DebugOverlays): void {
@@ -458,7 +472,7 @@ export class BreakingRibbon {
    * Built on the first breaking wave instead, they froze that frame (the frame pass alone took 0.4–1.7 s).
    */
   async compileAsync(renderer: THREE.WebGPURenderer): Promise<void> {
-    await renderer.compileComputeAsync([this.framePass, this.vertexPass, this.developPass, this.chopPass, this.normalPass]);
+    await renderer.compileComputeAsync([this.framePass, this.vertexPass, this.developPass, this.lightPass, this.chopPass, this.normalPass]);
     const target = renderer.getRenderTarget();
     renderer.setRenderTarget(this.footprintTarget);
     try {
@@ -468,15 +482,16 @@ export class BreakingRibbon {
     }
   }
 
-  /** Runs the frame, vertex, develop, chop and normal compute passes (no-op with no stations). */
+  /** Runs the frame, vertex, develop, light, chop and normal compute passes (no-op with no stations). */
   compute(renderer: THREE.WebGPURenderer): void {
     if (this.stationCount === 0) return;
     this.framePass.count = this.stationCount;
     this.vertexPass.count = this.stationCount * V;
     this.developPass.count = this.stationCount;
+    this.lightPass.count = this.stationCount * V;
     this.chopPass.count = this.stationCount * V;
     this.normalPass.count = this.stationCount * V;
-    renderer.compute([this.framePass, this.vertexPass, this.developPass, this.chopPass, this.normalPass]);
+    renderer.compute([this.framePass, this.vertexPass, this.developPass, this.lightPass, this.chopPass, this.normalPass]);
   }
 
   /**
@@ -538,6 +553,7 @@ export class BreakingRibbon {
     const vHome: N = varying(home);
     const vDetail: N = varying(attribute('ribbonDetail', 'vec4').xy);
     const vConstructed: N = varying(attribute('ribbonDetail', 'vec4').w);
+    const vLight: N = varying(attribute('ribbonLight', 'vec4'));
     // The sheet at the home, from one set-wave sum per vertex (the sheet's own vertex-stage sum): its foam, foam frame,
     // analytic slope and pile reach the fragment through varying properties, and the pile's churn lifts the vertex as it
     // lifts the sheet there, so the ribbon's edges stay on the sheet.
@@ -583,6 +599,7 @@ export class BreakingRibbon {
     const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, lipThickness: thickness, underside,
+        tube: { sunLip: vLight.x, sunBody: vLight.w, skyOpen: vLight.y, lipThickness: vLight.z },
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
         landReflection: shading.skyline ? (r: N) => shading.skyline!.reflectionNode(positionWorld, r, sky) : undefined },
@@ -784,6 +801,39 @@ export class BreakingRibbon {
         });
       });
     })().compute(MAX_STATIONS) as THREE.ComputeNode;
+  }
+
+  /**
+   * Each vertex's tube light (lipProfile.tubeLight): from the chop-free positions, the angles from the sample to the tip
+   * (TUBE_TIP_SAMPLE) and the lip's root (TUBE_ROOT_SAMPLE) in the station's plane against the sun's; only the tube's
+   * inside (face, wall) by the frame's weight, faded out within TUBE_TIP_CLEAR_M of the tip; everything else open. Skirts
+   * take their edge sample's (open).
+   */
+  private buildLightPass(): THREE.ComputeNode {
+    const stations = this.stationsNode();
+    const frames = storage(this.frames, 'vec4', MAX_STATIONS * FRAME_VEC4S).toReadOnly();
+    const positions = storage(this.positions, 'vec4', MAX_STATIONS * V).toReadOnly();
+    const lights = storage(this.lights, 'vec4', MAX_STATIONS * V);
+    const FACE0 = PROFILE_SEGMENTS.front, UNDER0 = FACE0 + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall;
+    return Fn(() => {
+      const idx: N = int(instanceIndex).toVar();
+      const i: N = idx.div(V).toVar();
+      const local: N = idx.sub(i.mul(V)).toVar();
+      const j = local.sub(1).clamp(int(0), int(LAST)).toVar();
+      const a = stations.element(i.mul(STATION_VEC4S)).toVar();
+      const S = a.xy, n = a.zw;
+      const f = readFrameNodes((k) => frames.element(i.mul(FRAME_VEC4S).add(k)));
+      /** Profile sample jj's (u along n, y). */
+      const UY = (jj: N): N => {
+        const p = positions.element(i.mul(V).add(jj).add(1));
+        return vec2(dot(p.xz.sub(S), n), p.y);
+      };
+      const q = vec2(UY(j)).toVar(), T = vec2(UY(int(TUBE_TIP_SAMPLE))).toVar();
+      const l = tubeLightAtNode(q, T, vec2(UY(int(TUBE_ROOT_SAMPLE))).toVar(), atan(this.sun.y, dot(this.sun.xz, n)));
+      const inside = j.greaterThanEqual(int(FACE0)).and(j.lessThan(int(UNDER0)));
+      const w = select(inside, clamp(f.weight, 0.0, 1.0).mul(smoothstep(0.0, TUBE_TIP_CLEAR_M, length(q.sub(T)))), float(0.0));
+      lights.element(idx).assign(vec4(l.sLip.mul(w), float(1.0).sub(float(1.0).sub(l.o).mul(w)), float(f.tTop).add(f.tipE).mul(0.5), l.sBody.mul(w)));
+    })().compute(MAX_STATIONS * V) as THREE.ComputeNode;
   }
 
   /** Each vertex: the chop (the FFT's cascade 2) read at its detail coordinate, faded out over the lip, added to its position. */

@@ -22,6 +22,9 @@ export interface WaterSurfaceInputs {
   /** The lip's thickness (m) where `lip` is set: the light through it takes the water's colour over a path growing with
    * it (waterOptics.lipTransmissionColour). Absent: the fixed transmissionThicknessM path. */
   lipThickness?: N;
+  /** The tube's light (spec 2026-10-03 lip-and-tube-look §5, BreakingRibbon's ribbonLight): the sun's share through the
+   * lip and behind the wave's body, the open sky's share, and the lip's thickness. Absent: fully open. */
+  tube?: { sunLip: N; sunBody: N; skyOpen: N; lipThickness: N };
   /**
    * The normal the water body's sunlight enters through. Absent means straight up, the ocean sheet's (its slopes are
    * gentle). The breaking ribbon passes its own where its face stands up: a steep face turned to the sun is lit through
@@ -97,11 +100,17 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const nDotV = max(dot(n, v), 1e-3);
   const nDotL = dot(n, l);
   const fresnel = schlickWater(nDotV);
+  // The tube's light (waterOptics.tubeLightFactors' mirror): inside the tube the sun comes direct, through the lip (its
+  // colour) or not at all (behind the wave); the sky out of the mouth, or through the lip.
+  const tc = i.tube ? exp(u.absorption.mul(u.transmissionThicknessM.mul(i.tube.lipThickness).div(LIP_REFERENCE_THICKNESS_M)).negate()) : null;
+  const direct = i.tube ? saturate(float(1.0).sub(i.tube.sunLip).sub(i.tube.sunBody)) : float(1.0);
+  const sunTint = i.tube && tc ? vec3(direct).add(tc.mul(i.tube.sunLip)) : vec3(1.0);
+  const skyTint = i.tube && tc ? vec3(i.tube.skyOpen).add(tc.mul(u.lipSkyTransmission).mul(float(1.0).sub(i.tube.skyOpen))) : vec3(1.0);
 
   const r: N = reflect(v.negate(), n); // three typings gap: reflect() is typed as returning vec2
   const skyReflection = sky.radiance(normalize(vec3(r.x, max(r.y, 0.01), r.z)));
   const land = i.landReflection ? i.landReflection(r) : null;
-  const seen = land ? mix(skyReflection, land.radiance, land.cover) : skyReflection;
+  const seen = (land ? mix(skyReflection, land.radiance, land.cover) : skyReflection).mul(skyTint);
 
   // GGX sun glitter. Slopes too small to resolve at this distance widen the lobe. unresolvedSlopeVariance
   // is the total two-axis mean-square slope, and for GGX/Beckmann E[px² + pz²] = α², so it adds to α² directly.
@@ -121,11 +130,11 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const specular = min(
     sky.sunIlluminance.mul(ggx).mul(schlickWater(max(dot(v, h), 0.0))).mul(visibility).mul(nDotLSat).mul(step(0.0, nDotL)),
     vec3(30000.0),
-  ).mul(sv);
+  ).mul(sv).mul(direct);
 
   // Light scattered back up out of the deep, clear water column.
   const sunIntoBody = i.bodyLightNormal ? max(dot(i.bodyLightNormal, l), 0.0).mul(step(0.0, l.y)) : max(l.y, 0.0);
-  const upwelling = u.albedo.mul(sky.skyIrradiance.add(sky.sunIlluminance.mul(sunIntoBody).mul(sv))).div(PI).mul(u.bodyScale);
+  const upwelling = u.albedo.mul(sky.skyIrradiance.mul(skyTint).add(sky.sunIlluminance.mul(sunIntoBody).mul(sv).mul(sunTint))).div(PI).mul(u.bodyScale);
 
   // Where the set wave has turned over (the tube's ceiling), a reflection that heads down sees the water under the lip
   // (the face and the trough), not the horizon sky the clamp above would give: the tube stays water-dark, never white.
@@ -155,8 +164,8 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
     : null;
   const column = glow ? mix(deep, glow, saturate(i.lip)) : deep;
   const water = column.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
-  const foamSky = sky.skyIrradiance.mul(u.foamAlbedo).div(PI);
-  const foamSun = sky.sunIlluminance.mul(saturate(nDotL)).mul(sv).mul(u.foamAlbedo).div(PI);
+  const foamSky = sky.skyIrradiance.mul(skyTint).mul(u.foamAlbedo).div(PI);
+  const foamSun = sky.sunIlluminance.mul(saturate(nDotL)).mul(sv).mul(sunTint).mul(u.foamAlbedo).div(PI);
   const foamLight = foamSky.add(foamSun);
   // The foam's own shade (its clumps and the creases between them, setFoamPattern's brightness 0.62–1.07; 1.07, the default
   // without set foam, is the plain lit foam): whitewater is

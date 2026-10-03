@@ -14,7 +14,7 @@ import {
 } from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
-import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame, sampleTarget, settleSpan } from './lipProfile';
+import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame, sampleTarget, settleSpan, tubeLight } from './lipProfile';
 import { FRAME_LAYOUT, FRAME_VEC4S, SEGMENT_OF_SAMPLE, homeFromTable, packFrameCpu, profilePointNode, readFrameNodes, sampleHomeNode, sampleTargetNode } from './lipProfileNodes';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
@@ -134,8 +134,11 @@ registerSelfTest({
     // The frame: the GPU frame against the CPU frame on the CPU base (excess over frameTol, > 0 fails; geometry-only fields
     // only where the station's curve is drawn).
     const edge = new Worst(), constructed = new Worst(), skirt = new Worst(), extras = new Worst(), thick = new Worst();
-    const frame = new Worst();
+    const frame = new Worst(), light = new Worst();
     frame.value = -Infinity;
+    // The tube's light against lipProfile.tubeLight, under a sun up and to one side (spec 2026-10-03 lip-and-tube-look §5).
+    const SUN = new THREE.Vector3(0.35, 0.6, -0.72).normalize();
+    ribbon.setSun(SUN);
     const perField = FRAME_LAYOUT.map(() => 0);
     let stations = 0, deadLive = 0, nonFinite = 0, broken = 0, landed = 0, worstDetail = '';
     const segBad = [0, 0, 0, 0, 0, 0, 0], segWorst = [0, 0, 0, 0, 0, 0, 0];
@@ -147,13 +150,14 @@ registerSelfTest({
       const entries = traced.entries.map((e) => (e.gap ? e : { ...e, psi }));
       ribbon.setStations(entries, LINEUP);
       ribbon.compute(renderer);
-      const gp = await read(renderer, ribbon.positions), gf = await read(renderer, ribbon.frames), ge = await read(renderer, ribbon.extras);
+      const gp = await read(renderer, ribbon.positions), gf = await read(renderer, ribbon.frames), ge = await read(renderer, ribbon.extras), gl = await read(renderer, ribbon.lights);
       let live = 0;
       entries.forEach((e, i) => {
         if (e.gap || live++ % MIRROR_STRIDE !== 0) return;
         stations++;
         const where = `ψ ${psi} dt ${dt} #${i}`;
         const { prof, world } = cpuRow(e, t, traced.waves);
+        const lights = tubeLight(prof, [SUN.x * e.nx + SUN.z * e.nz, SUN.y]);
         if (prof.frame.prog > 0 && prof.frame.prog < 1) broken++;
         if (prof.frame.landing > 0) landed++;
         for (let j = 0; j < PROFILE_SAMPLES; j++) {
@@ -173,6 +177,10 @@ registerSelfTest({
           thick.see(Math.abs(ge[k] - cx[0]), `${where} j ${j} GPU ${ge[k].toFixed(4)} CPU ${cx[0].toFixed(4)}`);
           const xm = cx.map((c, m) => (m === 0 ? 0 : Math.abs(ge[k + m] - c))), xw = xm.indexOf(Math.max(...xm));
           extras.see(xm[xw], `${where} j ${j} ${['thickness', 'lipness', 'curlFoam', 'rho'][xw]} GPU ${ge[k + xw].toFixed(4)} CPU ${cx[xw].toFixed(4)}`);
+          const cl = lights[j], gk = [gl[k], gl[k + 1], gl[k + 2], gl[k + 3]];
+          if (!gk.every(Number.isFinite)) nonFinite++;
+          const dl = Math.max(Math.abs(gk[0] - cl.sLip), Math.abs(gk[1] - cl.o), Math.abs(gk[3] - cl.sBody), Math.abs(gk[2] - cl.tLip));
+          light.see(dl, `${where} j ${j} GPU (${gk.map((v) => v.toFixed(3)).join(', ')}) CPU (${[cl.sLip, cl.o, cl.tLip, cl.sBody].map((v) => v.toFixed(3)).join(', ')})`);
         }
         const lowered = (w: readonly number[]) => [w[0], w[1] - SKIRT_DEPTH_M, w[2]];
         skirt.see(Math.max(dist3(gp, i * V * 4, lowered(world[0])), dist3(gp, (i * V + V - 1) * 4, lowered(world[LAST]))), where);
@@ -193,12 +201,12 @@ registerSelfTest({
     // so they measure the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest): 1 cm. The lip's thickness is a length on
     // the profile, bounded as the constructed points (5 mm); the unitless extras (lipness, curl foam, ρ) 2e-3.
     const ok = stations > 0 && broken > 0 && landed > 0 && deadLive === 0 && nonFinite === 0 && constructed.value < 5e-3 && Math.max(edge.value, skirt.value) < 1e-2 &&
-      frame.value <= 0 && thick.value < 5e-3 && extras.value < 2e-3;
+      frame.value <= 0 && thick.value < 5e-3 && extras.value < 2e-3 && light.value < 2e-2;
     const fields = FRAME_LAYOUT.map((n, m) => `${n} ${perField[m].toExponential(1)}`).join(', ');
     return {
       pass: ok,
       detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${broken} in the throw, ${landed} landed); worst |Δpos| (m) constructed ${constructed} (< 5e-3), ` +
-        `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the landing's root 3e-3, the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); ` +
+        `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the landing's root 3e-3, the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); worst |Δlight| ${light} (< 2e-2); ` +
         `live rows flagged dead ${deadLive}, non-finite samples ${nonFinite} (0). Samples off > 5 mm by segment (front..back) ${segBad.join('/')}, worst ${segWorst.map((v) => v.toFixed(3)).join('/')}. Worst constructed: ${worstDetail}. Per frame field |Δ|: ${fields}. Frame failures: ${failures.join(' | ') || 'none'}`,
     };
   },
