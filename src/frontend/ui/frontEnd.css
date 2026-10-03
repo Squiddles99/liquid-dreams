@@ -1,0 +1,57 @@
+/* src/frontend/ui/frontEnd.css: the §5 tokens. Every size is design px at 1080p; the root is scaled to the window.
+   Values follow the approved mockup (docs/superpowers/specs/2026-10-03-dune-select-mockup/mockup.html). */
+@font-face { font-family: 'Knewave'; src: url('/fonts/knewave-400.woff2') format('woff2'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Caveat Brush'; src: url('/fonts/caveat-brush-400.woff2') format('woff2'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('/fonts/barlow-semi-condensed-400.woff2') format('woff2'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('/fonts/barlow-semi-condensed-500.woff2') format('woff2'); font-weight: 500; font-display: block; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('/fonts/barlow-semi-condensed-600.woff2') format('woff2'); font-weight: 600; font-display: block; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('/fonts/barlow-semi-condensed-700.woff2') format('woff2'); font-weight: 700; font-display: block; }
+@font-face { font-family: 'Barlow'; src: url('/fonts/barlow-400.woff2') format('woff2'); font-weight: 400; font-display: block; }
+@font-face { font-family: 'Barlow'; src: url('/fonts/barlow-500.woff2') format('woff2'); font-weight: 500; font-display: block; }
+
+.fe-root {
+  --fe-sun: #ef7d2e; --fe-sun-hi: #ffa14f; --fe-teal: #1d6b74; --fe-cream: #f7ecd2; --fe-ink: #10171a;
+  --fe-text: 1; --fe-safe-x: 58px; --fe-safe-y: 32px;
+  --fe-radius: 3px; --fe-row-h: 74px; --fe-gutter: 24px; --fe-inset: 48px;
+  --fe-ease-out: cubic-bezier(0.33, 1, 0.68, 1); --fe-ease-in: cubic-bezier(0.32, 0, 0.67, 0); --fe-ease-io: cubic-bezier(0.65, 0, 0.35, 1);
+  position: fixed; left: 0; top: 0; transform-origin: 0 0; z-index: 5; pointer-events: none;
+  color: var(--fe-cream); font-family: 'Barlow Semi Condensed', 'Arial Narrow', sans-serif; font-weight: 500;
+  font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; user-select: none; outline: none;
+}
+.fe-root * { box-sizing: border-box; outline: none; }
+.fe-root [data-hit] { pointer-events: auto; cursor: default; }
+
+.fe-scrim-left { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7, 13, 17, 0.82) 0, rgba(7, 13, 17, 0.7) 30%, rgba(7, 13, 17, 0) 48%); }
+.fe-scrim-right { position: absolute; inset: 0; background: linear-gradient(270deg, rgba(7, 13, 17, 0.82) 0, rgba(7, 13, 17, 0.68) 30%, rgba(7, 13, 17, 0) 46%); }
+.fe-scrim-bottom { position: absolute; inset: auto 0 0 0; height: 220px; background: linear-gradient(0deg, rgba(7, 13, 17, 0.6), rgba(7, 13, 17, 0)); }
+.fe-root.is-opaque .fe-scrim-left { background: linear-gradient(90deg, rgba(7, 13, 17, 0.94) 0, rgba(7, 13, 17, 0.94) 44%, rgba(7, 13, 17, 0) 52%); }
+.fe-root.is-opaque .fe-scrim-right { background: linear-gradient(270deg, rgba(7, 13, 17, 0.94) 0, rgba(7, 13, 17, 0.94) 42%, rgba(7, 13, 17, 0) 50%); }
+
+.fe-title { font: 400 calc(76px * var(--fe-text)) / 1 'Knewave', sans-serif; color: var(--fe-cream); margin: 0 0 32px;
+  text-shadow: 4px 4px 0 var(--fe-teal), 0 2px 18px rgba(0, 0, 0, 0.35); -webkit-text-stroke: 1.5px var(--fe-sun); }
+.fe-row { position: relative; display: grid; grid-template-columns: 150px 1fr auto; align-items: center; column-gap: var(--fe-gutter);
+  min-height: calc(var(--fe-row-h) * var(--fe-text)); padding: 0 18px; border-radius: var(--fe-radius);
+  transition: transform 90ms var(--fe-ease-out), background-color 90ms linear; transform-origin: 0 50%; }
+.fe-row + .fe-row { border-top: 1px solid rgba(247, 236, 210, 0.12); }
+.fe-row.is-focus { background: var(--fe-cream); color: var(--fe-ink); transform: scale(1.04); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+  transition: transform 120ms cubic-bezier(0.34, 1.12, 0.64, 1), background-color 120ms linear; }
+.fe-row.is-focus::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: var(--fe-sun); border-radius: 3px 0 0 3px; }
+.fe-row.is-focus + .fe-row, .fe-row + .fe-row.is-focus { border-top-color: transparent; }
+.fe-label { font: 500 calc(21px * var(--fe-text)) / 1 'Barlow Semi Condensed', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(247, 236, 210, 0.72); }
+.fe-row.is-focus .fe-label { color: rgba(16, 23, 26, 0.7); }
+.fe-value { font: 600 calc(34px * var(--fe-text)) / 1.15 'Barlow Semi Condensed', sans-serif; white-space: nowrap; min-width: 18ch; display: flex; align-items: baseline; gap: 14px; overflow: hidden; }
+.fe-row.is-focus .fe-value { color: var(--fe-ink); }
+.fe-small { font: 400 calc(23px * var(--fe-text)) / 1 'Barlow Semi Condensed', sans-serif; font-variant-numeric: tabular-nums; color: rgba(247, 236, 210, 0.66); }
+.fe-row.is-focus .fe-small { color: rgba(16, 23, 26, 0.62); }
+.fe-arrow { width: 22px; height: 28px; color: var(--fe-sun); visibility: hidden; transition: transform 140ms var(--fe-ease-out); }
+.fe-row.is-focus .fe-arrow { visibility: visible; }
+.fe-legend { position: absolute; right: var(--fe-safe-x); bottom: var(--fe-safe-y); display: flex; gap: 34px; align-items: center;
+  font: 600 calc(26px * var(--fe-text)) / 1 'Barlow Semi Condensed', sans-serif; color: var(--fe-cream); text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
+.fe-legend .fe-start { color: var(--fe-sun-hi); }
+.fe-line { font: 400 calc(40px * var(--fe-text)) / 1.12 'Caveat Brush', cursive; color: var(--fe-cream); text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); }
+.fe-line-name { display: block; font: 600 calc(19px * var(--fe-text)) / 1 'Barlow Semi Condensed', sans-serif; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--fe-sun-hi); margin-bottom: 4px; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
+.fe-tabs { display: flex; gap: 26px; align-items: center; font: 700 calc(30px * var(--fe-text)) / 1 'Barlow Semi Condensed', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; }
+.fe-tab { color: rgba(247, 236, 210, 0.55); padding-bottom: 8px; border-bottom: 4px solid transparent; }
+.fe-tab.is-focus { color: var(--fe-cream); border-bottom-color: var(--fe-sun); }
+.fe-root.is-calm .fe-row, .fe-root.is-calm .fe-arrow { transition: none; }
