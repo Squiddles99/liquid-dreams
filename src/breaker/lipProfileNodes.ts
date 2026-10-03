@@ -391,7 +391,7 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
   const prog = t.div(tauLand).toVar();
   // lipProfile's growing curl: the tube at impact scaled by the throw about an origin sliding from the crest to its place.
   // lipProfile: it opens out as it is thrown, scaled by 1 − (1 − prog)^TUBE_OPEN_POWER.
-  const g = float(1.0).sub(pow(float(1.0).sub(prog), TUBE_OPEN_POWER)).toVar();
+  const g = float(1.0).sub(pow(max(float(1.0).sub(prog), 1e-6), TUBE_OPEN_POWER)).toVar(); // pow(0, y) is not finite on every GPU
   const tube: TubeNodes = { O: vec2(mix(Kt, full.O, g) as N).toVar(), d, n, L: shape.L.mul(g).toVar(), W: shape.W.mul(g).toVar(), clipY: P.y };
   const Pnow = vec2(tubeUpperNode(tube, xiEnd)).toVar();
   const xiTip = prog.mul(xiEnd).toVar();
