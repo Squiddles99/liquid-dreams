@@ -27,6 +27,8 @@ const C2C_ALLOWED: [number, number] = [20, 160];
 const MAX_GRADE = 0.35;
 const LATERAL_CELLS = 3;
 const JUNCTION_REACH_M = 40;
+/** Grade a metre of distance from the lineup (along the coast) is worth, choosing the junction. */
+const JUNCTION_DZ_COST = 0.002;
 const EYE_M = 1.6;
 const HEATH_TOP_M = 1.4;
 const CLEAR_M = 0.2;
@@ -41,13 +43,45 @@ function stepCost(len: number, dh: number): number {
   return len * (1 + 40 * g * g) + (g > MAX_GRADE ? 1000 * len : 0);
 }
 
-/** Chaikin corner-cutting, then resampled every 1 m (both ends kept). */
-export function smoothLine(pts: [number, number][], passes = 2): [number, number][] {
+/**
+ * The beach path's moves on its grid: the 8 neighbours and the 8 knight's moves, so it can traverse a slope at angles
+ * between the diagonals (a switchback down a 0.5 slope must cross it at 45° or more to stay under 0.35).
+ */
+const PATH_MOVES: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]];
+/** The grade the beach path is laid to (under MAX_GRADE, so smoothing its corners keeps it walkable). */
+const PATH_DESIGN_GRADE = 0.3;
+
+/**
+ * A beach-path step's cost from (ax, az) to (bx, bz): its length, dearer the steeper, a grade over PATH_DESIGN_GRADE all
+ * but forbidden; the grade the steepest metre along it (the ground between grid nodes has bumps of its own).
+ */
+function pathStepCost(land: RouteLand, ax: number, az: number, bx: number, bz: number): number {
+  const len = Math.hypot(bx - ax, bz - az), n = Math.max(2, Math.ceil(len));
+  let g = 0, h0 = land.baseHeightAt(ax, az);
+  for (let k = 1; k <= n; k++) {
+    const h = land.baseHeightAt(ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n);
+    g = Math.max(g, (Math.abs(h - h0) * n) / len);
+    h0 = h;
+  }
+  return len * (1 + 40 * g * g) + (g > PATH_DESIGN_GRADE ? 1000 * len : 0);
+}
+
+/**
+ * Chaikin corner-cutting, then resampled every 1 m (both ends kept). Corners turning more than `keepTurnDeg` keep their
+ * vertex (a switchback's hairpin: cutting it would join the upper leg to the lower one, straight down the slope).
+ */
+export function smoothLine(pts: [number, number][], passes = 2, keepTurnDeg = 180): [number, number][] {
   let p = pts;
+  const cosKeep = Math.cos((keepTurnDeg * Math.PI) / 180);
   for (let k = 0; k < passes; k++) {
     const q: [number, number][] = [p[0]];
     for (let i = 0; i < p.length - 1; i++) {
       const [ax, az] = p[i], [bx, bz] = p[i + 1];
+      if (i > 0 && keepTurnDeg < 180) {
+        const [px, pz] = p[i - 1], ux = ax - px, uz = az - pz, vx = bx - ax, vz = bz - az;
+        const c = (ux * vx + uz * vz) / (Math.hypot(ux, uz) * Math.hypot(vx, vz) || 1);
+        if (c < cosKeep) q.push([ax, az]);
+      }
       q.push([0.75 * ax + 0.25 * bx, 0.75 * az + 0.25 * bz], [0.25 * ax + 0.75 * bx, 0.25 * az + 0.75 * bz]);
     }
     q.push(p[p.length - 1]);
@@ -111,6 +145,12 @@ function routeCapeToCape(land: RouteLand, zRange: [number, number]): [number, nu
   return smoothLine(pts.reverse());
 }
 
+/** The Cape to Cape's direction at point i (a unit vector, from two points either side). */
+function alongAt(c2c: [number, number][], i: number): [number, number] {
+  const a = c2c[Math.max(0, i - 2)], b = c2c[Math.min(c2c.length - 1, i + 2)], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+}
+
 /** From (x, z) at eye height, does the line to the lineup clear the heath tops (ground + 1.4 m, 45 m inland and more) by 0.2 m? */
 function seesLineup(land: RouteLand, x: number, z: number, lineup: { x: number; z: number }): boolean {
   const eye = land.baseHeightAt(x, z) + EYE_M, len = Math.hypot(lineup.x - x, lineup.z - z);
@@ -123,13 +163,47 @@ function seesLineup(land: RouteLand, x: number, z: number, lineup: { x: number; 
   return true;
 }
 
-/** The Cape to Cape's point nearest the lineup (within 40 m of it along the coast) that sees it; else the highest there. */
+/**
+ * The clearing's slope at a junction (x, z) whose track runs `along`: the rise per metre of a plane fitted to the ground
+ * over its 7 × 5 m ellipse.
+ */
+export function clearingGrade(land: RouteLand, x: number, z: number, along: readonly [number, number]): number {
+  let n = 0, su = 0, sv = 0, sh = 0, suu = 0, svv = 0, suv = 0, suh = 0, svh = 0;
+  const [ax, az] = along;
+  for (let u = -CLEARING_SEMI_M[0]; u <= CLEARING_SEMI_M[0] + 1e-9; u += 0.5) {
+    for (let v = -CLEARING_SEMI_M[1]; v <= CLEARING_SEMI_M[1] + 1e-9; v += 0.5) {
+      if (Math.hypot(u / CLEARING_SEMI_M[0], v / CLEARING_SEMI_M[1]) > 1) continue;
+      const h = land.baseHeightAt(x + u * ax - v * az, z + u * az + v * ax);
+      n++; su += u; sv += v; sh += h; suu += u * u; svv += v * v; suv += u * v; suh += u * h; svh += v * h;
+    }
+  }
+  // Least squares for h = c + gu·u + gv·v (the grid is symmetric, but solve it whole).
+  const cuu = suu - (su * su) / n, cvv = svv - (sv * sv) / n, cuv = suv - (su * sv) / n;
+  const cuh = suh - (su * sh) / n, cvh = svh - (sv * sh) / n, det = cuu * cvv - cuv * cuv;
+  return Math.hypot((cuh * cvv - cvh * cuv) / det, (cvh * cuu - cuh * cuv) / det);
+}
+
+/**
+ * The junction: of the Cape to Cape's points within 40 m of the lineup along the coast that see it, the one with the
+ * flattest clearing (a metre nearer the lineup worth 0.002 of grade; Andrew, 2026-10-03: the crew had stood on a 25°
+ * bank); else the highest there.
+ */
 function pickJunction(land: RouteLand, c2c: [number, number][], lineup: { x: number; z: number }): number {
   const near = c2c
     .map((p, i) => ({ i, dz: Math.abs(p[1] - lineup.z) }))
     .filter((q) => q.dz <= JUNCTION_REACH_M)
     .sort((a, b) => a.dz - b.dz || a.i - b.i);
-  for (const q of near) if (seesLineup(land, c2c[q.i][0], c2c[q.i][1], lineup)) return q.i;
+  let pick = -1, pickCost = Infinity;
+  for (const q of near) {
+    const [x, z] = c2c[q.i];
+    if (!seesLineup(land, x, z, lineup)) continue;
+    const cost = clearingGrade(land, x, z, alongAt(c2c, q.i)) + JUNCTION_DZ_COST * q.dz;
+    if (cost < pickCost) {
+      pickCost = cost;
+      pick = q.i;
+    }
+  }
+  if (pick >= 0) return pick;
   let best = near[0].i;
   for (const q of near) if (land.baseHeightAt(c2c[q.i][0], c2c[q.i][1]) > land.baseHeightAt(c2c[best][0], c2c[best][1])) best = q.i;
   return best;
@@ -187,18 +261,17 @@ function routeBeachPath(land: RouteLand, start: [number, number], lineupZ: numbe
       break;
     }
     const ix = i % nx, iz = Math.floor(i / nx);
-    for (let dz = -1; dz <= 1; dz++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (!dx && !dz) continue;
-        const jx = ix + dx, jz = iz + dz;
-        if (jx < 0 || jx >= nx || jz < 0 || jz >= nz) continue;
-        const j = jz * nx + jx, v = dist[i] + stepCost(Math.hypot(dx, dz) * STEP_M, H[j] - H[i]);
-        if (v < dist[j]) {
-          dist[j] = v;
-          prev[j] = i;
-          heap.push(j);
-          up(heap.length - 1);
-        }
+    for (const [dx, dz] of PATH_MOVES) {
+      const jx = ix + dx, jz = iz + dz;
+      if (jx < 0 || jx >= nx || jz < 0 || jz >= nz) continue;
+      const j = jz * nx + jx;
+      if (done[j]) continue;
+      const v = dist[i] + pathStepCost(land, X(i), Z(i), X(j), Z(j));
+      if (v < dist[j]) {
+        dist[j] = v;
+        prev[j] = i;
+        heap.push(j);
+        up(heap.length - 1);
       }
     }
   }
@@ -209,15 +282,14 @@ function routeBeachPath(land: RouteLand, start: [number, number], lineupZ: numbe
   pts[0] = start;
   const last = pts[pts.length - 1];
   pts.push([land.waterlineAt(last[1]), last[1]]);
-  return smoothLine(pts, 1);
+  return smoothLine(pts, 1, 100);
 }
 
 /** The Cape to Cape over zRange, the junction opposite the lineup, and the beach path down to the water. */
 export function routeTracks(land: RouteLand, zRange: [number, number], lineup = WOMB_LINEUP): TrackData {
   const c2c = routeCapeToCape(land, zRange);
   const j = pickJunction(land, c2c, lineup);
-  const a = c2c[Math.max(0, j - 2)], b = c2c[Math.min(c2c.length - 1, j + 2)], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  const junction = { x: c2c[j][0], z: c2c[j][1], along: [(b[0] - a[0]) / len, (b[1] - a[1]) / len] as [number, number] };
+  const junction = { x: c2c[j][0], z: c2c[j][1], along: alongAt(c2c, j) };
   const beach = routeBeachPath(land, [junction.x, junction.z], lineup.z);
   return {
     pieces: [
