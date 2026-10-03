@@ -294,8 +294,11 @@ function paddle(ctx: PoseContext, r: Rider): PoseTargets {
   const b = proneBody(ctx, r, chestX, -0.45, bb ? 0.35 : -0.03);
   const arm = (a: Limb): HandTarget => {
     const k = a === 'l' ? -1 : 1, phi = 2 * Math.PI * (ctx.phaseT + (a === 'r' ? 0.5 : 0));
-    const x = chestX + 0.15 + 0.38 * Math.cos(phi);
-    return boardHand(V(x, deckAt(ctx, x) + 0.06 - 0.3 * Math.sin(phi), k * (halfWidthAtX(ctx, x) + 0.08)), V(0, 1, 0.8 * k));
+    // The pull sweeps the hand 30 cm under; the recovery carries it back just clear of the water and swung wide, the elbow
+    // lifted high over it (Andrew: lifted to the shoulder, the hand folded back over the upper arm, the elbow the wrong way).
+    const x = chestX + 0.15 + 0.38 * Math.cos(phi), pull = Math.max(0, Math.sin(phi)), rec = Math.max(0, -Math.sin(phi));
+    return boardHand(V(x, deckAt(ctx, x) + 0.06 - 0.3 * pull + 0.06 * rec, k * (halfWidthAtX(ctx, x) + 0.08 + 0.14 * rec)),
+      V(-0.4 * rec, 1, (0.8 - 0.4 * rec) * k));
   };
   // The bodyboarder's flutter kick (gate 2, Andrew: "needs to kick his fins to move"), two a stroke, legs alternating:
   // each thigh swings from the hip, the knee bends on the way up and straightens through the down-kick, the foot pointed
