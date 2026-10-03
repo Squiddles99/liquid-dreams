@@ -115,12 +115,26 @@ describe('the clip on the board (clip slice spec §4.1, §5)', () => {
     expect(Object.keys(b.fingers).length).toBe(0);
   });
 
-  it('lets the look only nudge the clip’s head (≤ 20° round, ≤ 15° up or down): the capture keeps its own neck (Andrew, Gate C: the head twisted over the shoulder)', () => {
-    const s = setup('female', 'thruster', 'regular'), sample = sampleClip(s.clip, 30, 0);
-    const own = clipPose(s.rest, sample, ctxOf(s, 'regular'), FLAT, null).world.head;
-    for (const target of [new Vector3(20, 1.4, 3), new Vector3(-20, 1.4, 3), new Vector3(0, 30, 5), new Vector3(0, -30, 5)]) {
-      const head = clipPose(s.rest, sample, ctxOf(s, 'regular'), FLAT, target).world.head;
-      expect((own.angleTo(head) * 180) / Math.PI, `${target.toArray()}`).toBeLessThanOrEqual(25.1); // 20° and 15° combined
+  it('the head looks where the game says, off the chest as in the code poses, not the capture’s glance down at the deck (Andrew, Gate C)', () => {
+    const s = setup('female', 'thruster', 'regular');
+    const fwd = (q: Quaternion): Vector3 => new Vector3(0, 0, 1).applyQuaternion(q);
+    for (let i = 0; i < 8; i++) {
+      const sample = sampleClip(s.clip, 30, i / 4);
+      // The capture's skater looking down at the deck, as CMU's does.
+      const down = (deg: number): Quaternion => new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), (deg * Math.PI) / 180);
+      sample.rot.neck = down(15); sample.rot.head = down(40);
+      const p = clipPose(s.rest, sample, ctxOf(s, 'regular'), FLAT, new Vector3(20, 1.5, 3)); // down the line, head height
+      const head = fwd(p.world.head), chest = fwd(p.world.spine_03);
+      expect((Math.asin(head.y) * 180) / Math.PI, `t${i / 4} head pitch`).toBeGreaterThan(-12);
+      const off = (Math.acos(Math.min(1, new Vector3(head.x, 0, head.z).normalize().dot(new Vector3(chest.x, 0, chest.z).normalize()))) * 180) / Math.PI;
+      expect(off, `t${i / 4} head off the chest`).toBeLessThanOrEqual(75.5);
+    }
+  });
+  it('opens the chest toward the nose as the code trim does, so the neck isn’t doing all the turning', () => {
+    for (const stance of STANCES) {
+      const s = setup('female', 'thruster', stance);
+      const chest = new Vector3(0, 0, 1).applyQuaternion(clipPose(s.rest, sampleClip(s.clip, 30, 0), ctxOf(s, stance), FLAT, null).world.spine_03);
+      expect(chest.x, stance).toBeGreaterThan(Math.sin((15 * Math.PI) / 180)); // ≥ 15° toward the nose (+x)
     }
   });
   it('turns the head toward a look target on top of the clip', () => {
