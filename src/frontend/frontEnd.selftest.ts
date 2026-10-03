@@ -11,6 +11,7 @@ import { BreakMap } from './ui/breakMap';
 import { ConditionsPanel } from './ui/conditionsPanel';
 import { GearPanel } from './ui/gearPanel';
 import { Legend, legendFor } from './ui/legend';
+import { PauseMenu } from './ui/pauseMenu';
 import { SlidePanel } from './ui/slidePanel';
 import { UI_SOUND_MS, type UiSound, UiSounds } from './uiSounds';
 import { applyLayout, layoutFor, mountFrontEndRoot } from './ui/layout';
@@ -379,6 +380,44 @@ registerSelfTest({
       }
     }
     return { pass: bad.length === 0, detail: bad.join('; ') || 'clear at both sizes' };
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the menu while surfing sits inside the safe area, 18 px or more; a click on Back to the dune takes it, Esc keeps surfing',
+  async run() {
+    await document.fonts.ready;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const bad: string[] = [];
+    let m = new PauseMenu(host, () => null, memory());
+    try {
+      m.resize(1920, 1080);
+      const root = host.querySelector('.fe-root') as HTMLElement, scale = root.getBoundingClientRect().width / root.offsetWidth;
+      const l = layoutFor(1920, 1080, 0.03);
+      const texts = [...root.querySelectorAll('h1, .fe-value, .fe-legend span')].filter((e) => e.childElementCount === 0 && e.textContent);
+      for (const t of texts) {
+        const b = designBox(t, root, scale);
+        if (b.x < l.safeX - 0.5 || b.y < l.safeY - 0.5 || b.x + b.w > l.designW - l.safeX + 0.5 || b.y + b.h > l.designH - l.safeY + 0.5) bad.push(`"${t.textContent}" outside`);
+        if (parseFloat(getComputedStyle(t).fontSize) < 18) bad.push(`"${t.textContent}" small`);
+      }
+      const words = [...root.querySelectorAll('.fe-row')].map((r) => r.textContent).join(' / ');
+      if (words !== 'Keep surfing / Back to the dune') bad.push(`rows ${words}`);
+      m.update();
+      root.querySelector('[data-hit="dune"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      const clicked = m.update();
+      if (clicked !== 'dune') bad.push(`a click took ${clicked}`);
+      m.close();
+      m = new PauseMenu(host, () => null, memory());
+      m.update();
+      press('Escape');
+      const esc = m.update();
+      if (esc !== 'resume') bad.push(`Esc took ${esc}`);
+    } finally {
+      m.close();
+      host.remove();
+    }
+    return { pass: bad.length === 0, detail: bad.join('; ') || 'inside, readable, click and Esc both work' };
   },
 });
 
