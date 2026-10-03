@@ -9,6 +9,7 @@ import { ConditionsPanel } from './ui/conditionsPanel';
 import { GearPanel } from './ui/gearPanel';
 import { Legend, legendFor } from './ui/legend';
 import { SlidePanel } from './ui/slidePanel';
+import { UI_SOUND_MS, type UiSound, UiSounds } from './uiSounds';
 import { applyLayout, layoutFor, mountFrontEndRoot } from './ui/layout';
 
 /** A front-end root laid out for a window size, for the duration of one check. */
@@ -132,5 +133,30 @@ registerSelfTest({
       const outside = texts.filter((t) => { const r = designBox(t, root, l.scale); return r.x + r.w > l.designW - l.safeX + 0.5 || r.y + r.h > l.designH - l.safeY + 0.5; });
       return { pass: tiny.length === 0 && outside.length === 0 && p.el.querySelectorAll('[data-index]').length === 3, detail: `${tiny.length} small, ${outside.length} outside` };
     });
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the UI sounds render, their lengths match, the focus tick sits about 12 dB under the confirm',
+  async run() {
+    const rms = async (s: UiSound): Promise<{ rms: number; lenMs: number }> => {
+      const ctx = new OfflineAudioContext(1, 48000 * 2, 48000);
+      new UiSounds(ctx, ctx.destination, () => 0.5).play(s, { durS: 1.6 });
+      const d = (await ctx.startRendering()).getChannelData(0);
+      let sum = 0, last = 0;
+      for (let i = 0; i < d.length; i++) { sum += d[i] * d[i]; if (Math.abs(d[i]) > 1e-4) last = i; }
+      return { rms: Math.sqrt(sum / Math.max(1, last)), lenMs: (last / 48000) * 1000 };
+    };
+    const out: string[] = [];
+    let pass = true;
+    for (const s of ['focus', 'value', 'end', 'confirm', 'back', 'swing'] as const) {
+      const r = await rms(s);
+      const ok = r.rms > 1e-3 && r.lenMs <= UI_SOUND_MS[s] * 1.15 + 15;
+      pass &&= ok;
+      out.push(`${s} ${r.lenMs.toFixed(0)} ms rms ${r.rms.toFixed(4)}${ok ? '' : ' ✗'}`);
+    }
+    const f = await rms('focus'), c = await rms('confirm'), db = 20 * Math.log10(f.rms / c.rms);
+    pass &&= db < -8 && db > -18;
+    return { pass, detail: `${out.join('; ')}; focus vs confirm ${db.toFixed(1)} dB` };
   },
 });

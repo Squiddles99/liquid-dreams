@@ -63,6 +63,11 @@ export class MusicPlayer {
 
   constructor(readonly tracks: readonly Track[], private readonly makeDeck: (url: string) => Deck) {}
 
+  /** Whether the player wants to be playing (it may still be loading or between tracks). */
+  get playing(): boolean {
+    return this.wantPlaying;
+  }
+
   get status(): MusicStatus {
     if (this.tracks.length === 0 || this.failures >= this.tracks.length) return 'no music';
     return this.wantPlaying ? 'playing' : 'paused';

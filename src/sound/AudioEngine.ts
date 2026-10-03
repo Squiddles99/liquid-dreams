@@ -8,11 +8,12 @@ import { LoopVoice, type NoiseBuffers, makeNoiseBuffers, makeRng, playHit, playP
  * - waves, ambience and near water → the muffle (underwater low-pass and −6 dB) → the effects fade (pause, hidden) → master;
  * - the underwater hum → the effects fade;
  * - the music → master;
+ * - the UI → master (never muffled or paused: the front end and pause menus speak over everything);
  * - master → a gentle limiter → out.
  * Works on an OfflineAudioContext too (the self-tests).
  */
 
-export type SoundGroup = 'waves' | 'ambience' | 'nearWater' | 'music';
+export type SoundGroup = 'waves' | 'ambience' | 'nearWater' | 'music' | 'ui';
 export const UNDERWATER_CUTOFF_HZ = 400;
 export const UNDERWATER_GAIN = 0.5;
 /** Time constant (s) of the underwater glide: settled in about 0.15 s. */
@@ -60,7 +61,7 @@ export class AudioEngine {
       g.connect(dest);
       return g;
     };
-    this.groups = { waves: group(this.muffle), ambience: group(this.muffle), nearWater: group(this.muffle), music: group(this.master) };
+    this.groups = { waves: group(this.muffle), ambience: group(this.muffle), nearWater: group(this.muffle), music: group(this.master), ui: group(this.master) };
 
     this.noise = makeNoiseBuffers(ctx);
     const n = this.noise, g = this.groups;
