@@ -19,6 +19,19 @@ export interface ShadowCaster {
   ringOnly?: boolean;
   /** The sun shadow's longest reach (default 12 m, the rocks'). */
   maxLenM?: number;
+  /**
+   * A kit plant's canopy from above (dune-up-close §4.5): an n² alpha over its footprint (radius), turned by yaw. The sun
+   * shadow is the crown's silhouette cast from 60% of its height, so its gaps let the sun through (dappled shade), and
+   * the floor under it darkens by it (the heath floor's mask, sharpened).
+   */
+  silhouette?: { alpha: Uint8Array; n: number; yaw: number };
+}
+
+/** A silhouette's alpha (0–1) at (u, v) in [−1, 1]² of its footprint (nearest texel; 0 outside). */
+function silhouetteAt(s: { alpha: Uint8Array; n: number }, u: number, v: number): number {
+  if (u <= -1 || u >= 1 || v <= -1 || v >= 1) return 0;
+  const i = Math.min(s.n - 1, Math.floor(((u + 1) / 2) * s.n)), j = Math.min(s.n - 1, Math.floor(((v + 1) / 2) * s.n));
+  return s.alpha[j * s.n + i] / 255;
 }
 
 export function buildGroundShadows(
@@ -32,6 +45,10 @@ export function buildGroundShadows(
   for (const r of rocks) {
     const s0 = r.strength ?? 1;
     const len = castSun && !r.ringOnly ? Math.min(r.maxLenM ?? MAX_LEN_M, r.height / tanEl) : 0;
+    if (r.silhouette) {
+      castSilhouette(out, r, r.silhouette, cornerX, cornerZ, castSun ? Math.min(r.maxLenM ?? MAX_LEN_M, (0.6 * r.height) / tanEl) : 0, dx, dz, s0);
+      continue;
+    }
     const ex = r.x + dx * len, ez = r.z + dz * len;
     const pad = r.radius * 1.4;
     const i0 = Math.max(0, Math.floor((Math.min(r.x, ex) - pad - cornerX) / SHADOW_CELL_M));
@@ -73,4 +90,32 @@ export function buildGroundShadows(
     }
   }
   return out;
+}
+
+/**
+ * A canopy silhouette's shadow: each texel within its reach looks back along the sun to the crown's plane (`lenM`
+ * behind it) and takes the silhouette's alpha there; and under the plant, the floor darkens by the silhouette itself.
+ */
+function castSilhouette(out: Float32Array, r: ShadowCaster, s: { alpha: Uint8Array; n: number; yaw: number }, cornerX: number, cornerZ: number, lenM: number, dx: number, dz: number, s0: number): void {
+  // Into the plant's own frame (the inverse of its instance's yaw: local x = cos·dx − sin·dz, local z = sin·dx + cos·dz).
+  const c = Math.cos(s.yaw), sn = Math.sin(s.yaw), rad = r.radius;
+  const ex = r.x + dx * lenM, ez = r.z + dz * lenM;
+  const i0 = Math.max(0, Math.floor((Math.min(r.x, ex) - rad - cornerX) / SHADOW_CELL_M));
+  const i1 = Math.min(SHADOW_N - 1, Math.ceil((Math.max(r.x, ex) + rad - cornerX) / SHADOW_CELL_M));
+  const j0 = Math.max(0, Math.floor((Math.min(r.z, ez) - rad - cornerZ) / SHADOW_CELL_M));
+  const j1 = Math.min(SHADOW_N - 1, Math.ceil((Math.max(r.z, ez) + rad - cornerZ) / SHADOW_CELL_M));
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
+      const px = cornerX + (i + 0.5) * SHADOW_CELL_M, pz = cornerZ + (j + 0.5) * SHADOW_CELL_M, k = (j * SHADOW_N + i) * 2;
+      // Under it: the floor, darker by the canopy over it.
+      const ux = (px - r.x) / rad, uz = (pz - r.z) / rad;
+      const under = silhouetteAt(s, ux * c - uz * sn, ux * sn + uz * c);
+      if (under > 0) out[k + 1] = Math.max(out[k + 1], 0.5 * under * s0);
+      if (lenM <= 0) continue;
+      // The sun's shadow: the crown's point the sun passes through on its way here.
+      const qx = (px - dx * lenM - r.x) / rad, qz = (pz - dz * lenM - r.z) / rad;
+      const a = silhouetteAt(s, qx * c - qz * sn, qx * sn + qz * c);
+      if (a > 0) out[k] = Math.max(out[k], a * s0);
+    }
+  }
 }

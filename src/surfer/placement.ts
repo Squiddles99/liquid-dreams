@@ -1,3 +1,4 @@
+import type { TrackNetwork } from '../land/tracks';
 import { Vector3 } from 'three/webgpu';
 import type { CameraPose } from '../dev/momentLink';
 import type { BoardFrame } from './solvePose';
@@ -91,47 +92,19 @@ export interface LandSpot {
 /** The Womb's lineup z (DEFAULT_SURFER_PARAMS.z): "above the Womb" is straight inland of it. */
 export const WOMB_Z = 45;
 
+export interface TrackedSurface extends LandSurface {
+  trackNetwork: TrackNetwork | null;
+}
+
 /**
- * Named spots on land (walking spec §4): the dune crest above the Womb, facing inland (east, toward the camera), and the
- * dry sand in front of it, facing the sea; sampled along the line inland of the lineup. The crest is the lip of the dune
- * cliff, where its steep face (steeper than 0.3, 8 m up at least) gives way (the Womb's has no crest: the heath climbs on from its lip),
- * else the top of a rise that falls away again, else the highest ground in 250 m; then the nearest ground within 8 m flat
- * enough to stand on both ways (a grade under 0.15 across a stride).
+ * Named spots on land: the crew's stand spot in the junction clearing where the beach path leaves the Cape to Cape
+ * (dune-up-close §4.1), facing inland to the gang camera with the break behind them; and the dry sand in front of the
+ * lineup, facing the sea. `duneCrest` is the stand spot under its old name until the select screen (step 4) lands.
  */
-export function landSpots(land: LandSurface, beach: { wetWidthM: number; dryWidthM: number }, z = WOMB_Z): { duneCrest: LandSpot; beach: LandSpot } {
-  const xs = land.waterlineAt(z), toe = xs + beach.wetWidthM + beach.dryWidthM;
-  const slope = (x: number, r = 1): number => Math.abs(land.heightAt(x + r, z) - land.heightAt(x - r, z)) / (2 * r);
-  const base = land.heightAt(toe, z);
-  let crest = toe, top = -Infinity, face = 0;
-  for (let x = toe; x <= toe + 250; x += 0.5) {
-    const h = land.heightAt(x, z), s = slope(x, 5); // over 10 m: the face's small terraces aren't its lip
-    face = Math.max(face, s);
-    // A lip only once the face has climbed a cliff (8 m): the sand's bumps at the toe have little lips of their own.
-    if (face > 0.3 && h > base + 8 && s < Math.min(0.2, 0.4 * face)) {
-      crest = x; // the cliff's lip
-      break;
-    }
-    if (h > top) {
-      crest = x;
-      top = h;
-    } else if (top - h > 1.5) break; // past the top of a rise: the land falls away
-  }
-  // The nearest ground within 8 m that is flat both ways (the lip can slope across the line; final review).
-  const grade = (x: number, zz: number): number =>
-    Math.hypot(land.heightAt(x + 1, zz) - land.heightAt(x - 1, zz), land.heightAt(x, zz + 1) - land.heightAt(x, zz - 1)) / 2;
-  let spot = { x: crest, z };
-  search: for (let r = 0; r <= 8; r += 0.5) {
-    const steps = Math.max(1, Math.round((2 * Math.PI * r) / 0.5));
-    for (let k = 0; k < steps; k++) {
-      const a = (2 * Math.PI * k) / steps, x = crest + r * Math.cos(a), zz = z + r * Math.sin(a);
-      if (grade(x, zz) < 0.15) {
-        spot = { x, z: zz };
-        break search;
-      }
-    }
-  }
-  const tidy = (v: number): number => Math.round(v * 100) / 100;
-  return { duneCrest: { x: tidy(spot.x), z: tidy(spot.z), headingDeg: 90 }, beach: { x: xs + beach.wetWidthM + 0.6 * beach.dryWidthM, z, headingDeg: 270 } };
+export function landSpots(land: TrackedSurface, beach: { wetWidthM: number; dryWidthM: number }, z = WOMB_Z): { standSpot: LandSpot; duneCrest: LandSpot; beach: LandSpot } {
+  if (!land.trackNetwork) throw new Error('landSpots: the land has no tracks yet (they come with its build)');
+  const xs = land.waterlineAt(z), standSpot = land.trackNetwork.standSpot();
+  return { standSpot, duneCrest: standSpot, beach: { x: xs + beach.wetWidthM + 0.6 * beach.dryWidthM, z, headingDeg: 270 } };
 }
 
 export function placeAhead(c: CameraPose): { x: number; z: number; headingDeg: number } {

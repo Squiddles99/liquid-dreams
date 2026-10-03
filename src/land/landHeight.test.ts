@@ -3,6 +3,7 @@ import { depthBg, SHORE_X } from '../seabed/coastProfile';
 import { readBakedLand } from './bakedLand.testutil';
 import { decodeLandFile, type LandFile } from './landData';
 import { DEFAULT_BEACH, LandHeight, PIN_BLEND_M, PIN_HALF_M, REEF_CENTRE_Z, beachHeight } from './landHeight';
+import { TrackNetwork, routeTracks } from './tracks';
 
 /** A synthetic coast: the real waterline at x = wl(z), land rising 0.2 m per m inland of it. */
 function synthetic(wl: (z: number) => number): LandFile {
@@ -102,4 +103,21 @@ describe('LandHeight on the baked data', () => {
       expect(Math.abs(bedHeightAt(bathy, xs - 0.01, z, shiftAt) - land.heightAt(xs + 0.01, z))).toBeLessThan(0.1);
     }
   }, 30_000); // builds the reef map
+});
+
+describe('LandHeight with the tracks (dune-up-close §4.1)', () => {
+  it("subtracts the tracks' sink in heightAt and keeps baseHeightAt without it", () => {
+    const lh = new LandHeight(synthetic(() => 190));
+    const data = routeTracks(lh, [-300, 300]);
+    const [x, z] = data.pieces[0].points[100];
+    const before = lh.heightAt(x, z);
+    lh.setTracks(new TrackNetwork(data));
+    expect(lh.baseHeightAt(x, z)).toBe(before);
+    expect(lh.baseHeightAt(x, z) - lh.heightAt(x, z)).toBeCloseTo(lh.trackNetwork!.sinkAt(x, z), 9);
+    expect(lh.trackNetwork!.sinkAt(x, z)).toBeGreaterThan(0.03);
+    expect(lh.heightAt(x + 30, z)).toBe(lh.baseHeightAt(x + 30, z));
+  });
+  it("gives the fine grid's z range", () => {
+    expect(new LandHeight(synthetic(() => 190)).fineZRange()).toEqual([-4000, 4000]);
+  });
 });

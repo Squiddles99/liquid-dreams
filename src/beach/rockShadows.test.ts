@@ -74,3 +74,28 @@ describe('shadow length caps (final review I1)', () => {
   });
 });
 
+describe('canopy silhouettes (dune-up-close §4.5)', () => {
+  // A ring canopy: solid between half and the whole radius, open in its middle.
+  const n = 64, ring = new Uint8Array(n * n);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const r = Math.hypot((i + 0.5) / n * 2 - 1, (j + 0.5) / n * 2 - 1);
+    ring[j * n + i] = r > 0.5 && r < 1 ? 255 : 0;
+  }
+  const sun: [number, number, number] = [-0.6, 0.6, 0];
+  const plant = { x: 16, z: 16, radius: 1.5, height: 1.2, strength: 0.8, maxLenM: 4 };
+  const at = (out: Float32Array, x: number, z: number, ch: number): number => out[(Math.floor(z / 0.25) * 256 + Math.floor(x / 0.25)) * 2 + ch];
+  it("casts the canopy's holes as light: behind a ring's open middle, sun; behind its rim, shade", () => {
+    const out = buildGroundShadows([{ ...plant, silhouette: { alpha: ring, n, yaw: 0 } }], 0, 0, sun);
+    const len = 0.6 * plant.height / 1; // tan(elevation) = 0.6 / 0.6 = 1: the crown's middle lands 0.72 m behind
+    expect(at(out, 16 + len, 16, 0)).toBeLessThan(0.3);
+    expect(at(out, 16 + len + 1.1, 16, 0)).toBeGreaterThan(0.5);
+    const solid = buildGroundShadows([plant], 0, 0, sun);
+    expect(at(solid, 16 + len, 16, 0)).toBeGreaterThan(0.6);
+  });
+  it('darkens the floor under the crown by its silhouette, none beyond its radius', () => {
+    const out = buildGroundShadows([{ ...plant, silhouette: { alpha: ring, n, yaw: 0 } }], 0, 0, [0, 1, 0]);
+    expect(at(out, 16 + 1.1, 16, 1)).toBeGreaterThanOrEqual(0.35);
+    expect(at(out, 16 + 2.2, 16, 1)).toBe(0);
+  });
+});
+

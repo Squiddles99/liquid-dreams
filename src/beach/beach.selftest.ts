@@ -15,6 +15,12 @@ import { PATCH_GRID_N, PATCH_HOLE_INSET_M, buildPatchGrids } from './groundPatch
 import { GroundPatch } from './GroundPatchMesh';
 import { Rocks } from './RockMeshes';
 import type { Rock } from './rocks';
+import { buildTracksMask, emptyGroundLayerTextures, loadGroundLayers } from './groundDetail';
+import { Footprints } from './Footprints';
+import { coverage } from '../board/board.selftest';
+import { loadGroundLayersCpu, patchSurfaceAt } from './groundHeights';
+import { TrackNetwork, routeTracks } from '../land/tracks';
+import { PATCH_SIZE_M } from './groundPatch';
 
 type N = any;
 
@@ -66,6 +72,57 @@ registerSelfTest({
     const off = await evaluate(renderer, cases.map(([x, z]) => [x, z]), mask);
     const bad = cases.filter(([, , want], k) => on[k] !== want || off[k] !== 1);
     return { pass: bad.length === 0, detail: bad.length ? `wrong at ${bad.map(([x, z]) => `(${x},${z})`).join(', ')}` : `${cases.length} points right, with the patch shown and hidden` };
+  },
+});
+
+registerSelfTest({
+  name: "beach: the patch's full surface (the layers' relief and the tracks' sink) matches the CPU's patchSurfaceAt, ±1 mm",
+  async run(renderer) {
+    const r = await fetch(LAND_URL);
+    const land = new LandHeight(decodeLandFile(new Uint8Array(await r.arrayBuffer())));
+    const net = new TrackNetwork(routeTracks(land, land.fineZRange()));
+    land.setTracks(net);
+    const j = net.data.junction;
+    const c: [number, number] = [Math.round(j.x / 4) * 4, Math.round(j.z / 4) * 4];
+    const g = buildPatchGrids(land, c);
+    const patch = new GroundPatch(new Sky(DEFAULT_ATMOSPHERE), createLandLookUniforms());
+    patch.setGrids(g);
+    await loadGroundLayers(patch.layers);
+    const corner: [number, number] = [c[0] - PATCH_SIZE_M / 2, c[1] - PATCH_SIZE_M / 2];
+    patch.setTracksMask(buildTracksMask(net, corner[0], corner[1]), corner[0], corner[1]);
+    const bin = await (await fetch(import.meta.env.BASE_URL + 'heath/groundLayers.height.bin')).arrayBuffer();
+    const cpuLayers = loadGroundLayersCpu(bin);
+    // On the beach path, beside it, in the clearing and out on the heath: every point on the 0.25 m lattice (the vertices).
+    const beach = net.data.pieces[1].points;
+    const raw: [number, number][] = [[j.x, j.z], [j.x + 1, j.z - 0.5], ...[5, 10, 20].map((k) => beach[k]), [beach[10][0] + 0.6, beach[10][1]], [c[0] + 12, c[1] - 9], [c[0] - 20, c[1] + 15]];
+    const points = raw.map(([x, z]) => [Math.round(x * 4) / 4, Math.round(z * 4) / 4] as [number, number]);
+    const gpu = await evaluate(renderer, points, (xz) => patch.surfaceNode(xz));
+    let worst = 0;
+    const rows = points.map(([x, z], k) => {
+      const cpu = patchSurfaceAt(g, cpuLayers, net, x, z);
+      worst = Math.max(worst, Math.abs(gpu[k] - cpu));
+      return `(${x},${z}) gpu ${gpu[k].toFixed(4)} cpu ${cpu.toFixed(4)}`;
+    });
+    return { pass: worst <= 0.001, detail: `worst ${(worst * 1000).toFixed(2)} mm; ${rows.join('; ')}` };
+  },
+});
+
+registerSelfTest({
+  name: 'beach: footprints draw (a dozen prints on flat ground, seen from 2 m)',
+  async run(renderer) {
+    const layers = emptyGroundLayerTextures();
+    await loadGroundLayers(layers);
+    const f = new Footprints(layers);
+    const prints = Array.from({ length: 12 }, (_, k) => ({ x: (k % 4) * 0.3 - 0.45, z: -2 - Math.floor(k / 4) * 0.4, yaw: 0.2 * k, age: 0.2, left: k % 2 === 0 }));
+    f.update(prints, () => 0);
+    f.setVisible(true);
+    const cam = new THREE.PerspectiveCamera(40, 1, 0.05, 50);
+    cam.position.set(0, 2, 0);
+    cam.lookAt(0, 0, -2.4);
+    cam.updateMatrixWorld();
+    await renderer.compileAsync(f.mesh, cam);
+    const px = await coverage(renderer, f.mesh, cam);
+    return { pass: px > 50, detail: `${px} px of prints` };
   },
 });
 
