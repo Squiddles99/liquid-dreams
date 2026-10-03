@@ -3,6 +3,7 @@ import type { HeightProbe } from '../ocean/HeightProbe';
 import type { Sky } from '../sky/Sky';
 import { type GangPlace, gangPlaces } from './gang';
 import { PRESETS, boardsFor } from './presets';
+import type { GangStaging } from '../frontend/staging';
 import type { SurferParams } from './surferParams';
 import { SurferStand } from './SurferStand';
 
@@ -16,6 +17,7 @@ export class GangLineup {
   readonly group = new THREE.Group();
   private readonly stands: SurferStand[];
   private places: GangPlace[] = [];
+  private staging: GangStaging | null = null;
 
   constructor(sky: Sky, sunVisibility?: (xz: N) => N) {
     this.stands = [0, 1, 2].map(() => new SurferStand(sky, sunVisibility));
@@ -23,15 +25,24 @@ export class GangLineup {
     this.group.visible = false;
   }
 
+  /** The front end's staging (dune select spec §4); null for the plain lineup. */
+  stage(s: GangStaging | null): void {
+    this.staging = s;
+  }
+
   update(p: SurferParams, simTime: number, dateISO: string, seed: number, probe: HeightProbe, tideM: number, ground?: (x: number, z: number) => number | null): void {
-    this.group.visible = p.gang;
-    if (!p.gang) return;
-    this.places = gangPlaces({ x: p.x, z: p.z, headingDeg: p.headingDeg });
+    const st = this.staging;
+    this.group.visible = p.gang || st !== null;
+    if (!this.group.visible) return;
+    this.places = st
+      ? (['female', 'grommet', 'male'] as const).map((n) => ({ preset: n, x: st[n].x, z: st[n].z, headingDeg: st[n].headingDeg, carrySide: PRESETS[n].walking.carrySide }))
+      : gangPlaces({ x: p.x, z: p.z, headingDeg: p.headingDeg });
     this.places.forEach((g, i) => {
-      const preset = PRESETS[g.preset];
+      const preset = PRESETS[g.preset], r = st?.[g.preset];
       this.stands[i].update({
-        ...p, enabled: true, preset: g.preset, stance: preset.defaultStance, board: boardsFor(preset)[0],
-        x: g.x, z: g.z, headingDeg: g.headingDeg, onLand: true, outfit: 'walking', pose: 'carry', carrySide: g.carrySide,
+        ...p, enabled: r ? r.visible : true, preset: g.preset, stance: preset.defaultStance, board: r?.board ?? boardsFor(preset)[0],
+        x: g.x, z: g.z, headingDeg: g.headingDeg, onLand: true, outfit: r?.outfit ?? 'walking', pose: r?.pose ?? 'carry', carrySide: g.carrySide,
+        expression: r?.expression ?? 'none', reach: r?.reach ?? 0, heightNudgeM: r?.heightNudgeM ?? 0, play: true,
       }, simTime, dateISO, seed, probe, tideM, ground);
     });
   }

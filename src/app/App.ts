@@ -1,3 +1,4 @@
+import type { GangStaging } from '../frontend/staging';
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
 import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
@@ -631,6 +632,12 @@ export class App {
   start(): void {
     this.renderer.setAnimationLoop(this.frame);
     this.sound.arm();
+  }
+
+  /** Stages the crew and holds the camera (the front end; null releases them). */
+  stageFrontEnd(staging: GangStaging | null, pose: CameraPose | null): void {
+    this.gang.stage(staging);
+    if (pose) this.rig.setPose(pose, this.conditions.tideM);
   }
 
   applyMoment(m: Moment): void {
