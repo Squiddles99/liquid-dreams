@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
-import { If, Loop, atan, clamp, cos, dot, float, int, length, max, min, mix, pow, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
+import { If, Loop, abs, atan, clamp, cos, dot, float, int, length, max, min, mix, pow, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
 import { type BreakParams, RIBBON_FULL_OFFSET, normalizeBreakParams, steepeningStart } from './breaking';
 import {
-  BACK_EDGE_H, BACK_OFF_DROP_H, CREST_DIR_STEP, EDGE_LOWER_FADE, EDGE_MARGIN_M, FACE_TURN_PROGRESS, LIP_EMERGE_PROGRESS, FACE_CONCAVE_MARGIN, FACE_CONCAVE_STEPS, FACE_CONCAVE_STEP_H, FACE_DIR_STEP, FACE_JOIN_MIN_M, FACE_JOIN_STEPS,
-  FOOT_WIDTHS, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
+  BACK_EDGE_H, BACK_OFF_DROP_H, CREST_DIR_STEP, EDGE_LOWER_FADE, EDGE_MARGIN_M, LIP_EMERGE_PROGRESS, FACE_CONCAVE_MARGIN, FACE_CONCAVE_STEPS, FACE_CONCAVE_STEP_H, FACE_JOIN_MIN_M, FACE_JOIN_STEPS,
+  CEILING_START_XI, FOOT_WIDTHS, HOLLOW_BACK_H, HOLLOW_EPS, HOLLOW_FOOT_DIP, HOLLOW_MIN_WEIGHT, HOLLOW_SETTLE, HOLLOW_THROAT, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
   LIP_SPRAY_PROGRESS, LIP_TAPER_POWER, OUTER_LIP_SHARE, PRESENCE_FADE, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID,
   TIP_GROW_PROGRESS, TIP_THICKNESS_RATIO, TUBE_BACK_AHEAD_H, sampleSegment,
 } from './lipProfile';
@@ -471,13 +471,6 @@ export function sampleHomeNode(j: N, f: ProfileFrameNodes): N {
   return coeffs.x.mul(f.uFoot).add(coeffs.y.mul(f.uFront)).add(coeffs.z.mul(f.uBack));
 }
 
-function hermiteNode(p0: N, t0: N, p1: N, t1: N, s: N): N {
-  const s2 = s.mul(s), s3 = s2.mul(s);
-  const h00 = s3.mul(2.0).sub(s2.mul(3.0)).add(1.0), h10 = s3.sub(s2.mul(2.0)).add(s);
-  const h01 = s3.mul(-2.0).add(s2.mul(3.0)), h11 = s3.sub(s2);
-  return p0.mul(h00).add(t0.mul(h10)).add(p1.mul(h01)).add(t1.mul(h11));
-}
-
 /** lipProfile.lipThicknessAt. */
 export function lipThicknessNode(f: ProfileFrameNodes, xi: N): N {
   const u = min(float(xi).sub(f.xiTop).div(max(f.xiTip.sub(f.xiTop), 1e-9)), 1.0);
@@ -485,14 +478,60 @@ export function lipThicknessNode(f: ProfileFrameNodes, xi: N): N {
   return select(f.xiTip.lessThanEqual(f.xiTop), f.tipE, select(float(xi).lessThanEqual(f.xiTop), f.tTop, tapered));
 }
 
-/** lipProfile's faceArrival: the face's tangent arriving at P (length Lf), going back. */
-function faceArrivalNode(f: ProfileFrameNodes, Lf: N): N {
-  const back = tubeLowerNode(f.tube, f.xiEnd.mul(1 - FACE_DIR_STEP));
-  const dP = norm2(back.sub(f.P));
-  // The young curl's face arrives along the crest, turning into the tube's by FACE_TURN_PROGRESS (lipProfile's faceArrival).
-  const full = max(angBack(f.P.sub(f.F)).mul(2.0).sub(angBack(f.tF)), angBack(dP));
-  const a = f.aK.add(full.sub(f.aK).mul(smoothstep(0.0, FACE_TURN_PROGRESS, f.prog)));
-  return vec2(cos(a).negate(), sin(a)).mul(Lf);
+/**
+ * lipProfile.hollowCurve: the face and the tube's back as one hollow curve (Andrew's red line, 2026-10-03), a conic from
+ * F to the tube's round end R through where the lip lands, rounding over into the ceiling's start over the wall's last
+ * HOLLOW_THROAT. `wall` (bool) picks the second piece; s ∈ [0, 1] along it. The CPU's early returns are selects here.
+ * Inside an Fn, inside one branch of the segment If chain (every var it builds is its own).
+ */
+function hollowCurveNode(f: ProfileFrameNodes, wall: N, s: N): N {
+  const R = vec2(tubeUpperNode(f.tube, 0.0)).toVar();
+  const dR = vec2(norm2(vec2(tubeUpperNode(f.tube, CEILING_START_XI)).sub(R))).toVar();
+  const FP = vec2(f.P.sub(f.F)).toVar(), rr = vec2(R.sub(f.F)).toVar();
+  // The face leaves the foot along the sheet, unless the landing point lies under that line; then just under P.
+  const above: N = FP.x.mul(f.tF.y).sub(FP.y.mul(f.tF.x));
+  const toP = norm2(FP), cd = Math.cos(HOLLOW_FOOT_DIP), sd = Math.sin(HOLLOW_FOOT_DIP);
+  const dipped = norm2(vec2(toP.x.mul(cd).sub(toP.y.mul(sd)), toP.x.mul(sd).add(toP.y.mul(cd))));
+  const tF = vec2(select(above.greaterThanEqual(0.0), f.tF, dipped)).toVar();
+  const det = tF.x.mul(dR.y).sub(tF.y.mul(dR.x)).toVar();
+  const detS = select(abs(det).greaterThan(1e-6), det, 1.0);
+  const a = rr.x.mul(dR.y).sub(rr.y.mul(dR.x)).div(detS).toVar(), b = tF.x.mul(rr.y).sub(tF.y.mul(rr.x)).div(detS);
+  const w = smoothstep(0.0, HOLLOW_SETTLE, f.prog).toVar();
+  const chord = abs(det).lessThanEqual(1e-6).or(a.lessThanEqual(1e-3)).or(b.lessThanEqual(1e-3)).toVar();
+  // The straight chord (the two directions don't meet ahead of both ends), the landing on it.
+  const tPc = clamp(dot(FP, rr).div(max(dot(rr, rr), 1e-9)), 0.0, 1.0);
+  const tSc = float(0.5).add(tPc.sub(0.5).mul(w)).toVar();
+  const chordPos = f.F.add(rr.mul(select(wall, tSc.add(s.mul(float(1.0).sub(tSc))), s.mul(tSc))));
+  // The back wall no further behind the round end than HOLLOW_BACK_H × H_I.
+  const aMax = R.x.sub(f.HI.mul(HOLLOW_BACK_H)).sub(f.F.x).div(min(tF.x, -1e-6));
+  const X = vec2(f.F.add(tF.mul(min(a, aMax)))).toVar();
+  // P in barycentric coordinates over (F, X, R), kept inside the triangle.
+  const v0 = vec2(X.sub(f.F)).toVar();
+  const d = v0.x.mul(rr.y).sub(v0.y.mul(rr.x)), dS = select(abs(d).greaterThan(1e-12), d, 1.0).toVar();
+  const be = FP.x.mul(rr.y).sub(FP.y.mul(rr.x)).div(dS).toVar(), ga = v0.x.mul(FP.y).sub(v0.y.mul(FP.x)).div(dS).toVar();
+  const al0 = max(float(1.0).sub(be).sub(ga), HOLLOW_EPS), be0 = max(be, HOLLOW_EPS), ga0 = max(ga, HOLLOW_EPS);
+  const sum = al0.add(be0).add(ga0).toVar();
+  const al = al0.div(sum).toVar(), beN = be0.div(sum).toVar(), gaN = ga0.div(sum).toVar();
+  const tP = sqrt(gaN).div(sqrt(al).add(sqrt(gaN))), omP = beN.div(sqrt(al.mul(gaN)).mul(2.0));
+  const om = float(1.0).add(max(omP, HOLLOW_MIN_WEIGHT).sub(1.0).mul(w)).toVar(), tS = float(0.5).add(tP.sub(0.5).mul(w)).toVar();
+  const conic = (t: N): N => {
+    const tt = float(t), u = float(1.0).sub(tt), k0 = u.mul(u), k1 = om.mul(2.0).mul(tt).mul(u), k2 = tt.mul(tt);
+    return f.F.mul(k0).add(X.mul(k1)).add(R.mul(k2)).div(k0.add(k1).add(k2));
+  };
+  const onConic = vec2(conic(select(wall, tS.add(s.mul(float(1.0).sub(tS))), s.mul(tS)))).toVar();
+  // The throat: a parabola from A (the conic at the throat's start) along its direction to R along the ceiling's start.
+  const tA = tS.add(float(1.0 - HOLLOW_THROAT).mul(float(1.0).sub(tS))).toVar();
+  const A = vec2(conic(tA)).toVar(), dA = vec2(norm2(vec2(conic(min(tA.add(1e-4), 1.0))).sub(A))).toVar();
+  const q = s.sub(1.0 - HOLLOW_THROAT).div(HOLLOW_THROAT).toVar();
+  const dt = dA.x.mul(dR.y).sub(dA.y.mul(dR.x)).toVar(), dtS = select(abs(dt).greaterThan(1e-6), dt, 1.0);
+  const ax = R.x.sub(A.x), ay = R.y.sub(A.y);
+  const ya = ax.mul(dR.y).sub(ay.mul(dR.x)).div(dtS).toVar(), yb = dA.x.mul(ay).sub(dA.y.mul(ax)).div(dtS);
+  const Y = A.add(dA.mul(ya)), v = float(1.0).sub(q);
+  const parabola = A.mul(v.mul(v)).add(Y.mul(v.mul(q).mul(2.0))).add(R.mul(q.mul(q)));
+  const throatOk = abs(dt).greaterThan(1e-6).and(ya.greaterThan(0.0)).and(yb.greaterThan(0.0));
+  const throatPos = select(throatOk, parabola, mix(A, R, q));
+  const inThroat = wall.and(s.greaterThan(1.0 - HOLLOW_THROAT));
+  return select(chord, chordPos, select(inThroat, throatPos, onConic));
 }
 
 /** lipProfile's constructed point for sample j: { pos, thickness, lipness, liftX }. Inside an Fn. */
@@ -501,12 +540,9 @@ function constructedNode(j: N, f: ProfileFrameNodes, baseHome: N): { pos: N; thi
   // Fresh vars, the inputs assigned here, before the segment If chain (see fresh).
   const sv = fresh(float(0.0), s);
   const pos = fresh(vec2(0.0), baseHome), thickness = fresh(float(0.0), 0.0), lipness = fresh(float(0.0), 0.0), liftX = fresh(float(0.0), pos.x);
-  If(seg.equal(float(SEGMENT_ID.face)), () => {
-    const Lf = length(f.P.sub(f.F)).toVar();
-    pos.assign(hermiteNode(f.F, f.tF.mul(Lf), f.P, faceArrivalNode(f, Lf), sv));
-    liftX.assign(pos.x);
-  }).ElseIf(seg.equal(float(SEGMENT_ID.wall)), () => {
-    pos.assign(select(sv.equal(0.0), f.P, tubeLowerNode(f.tube, f.xiEnd.mul(float(1.0).sub(sv)))));
+  If(seg.equal(float(SEGMENT_ID.face)).or(seg.equal(float(SEGMENT_ID.wall))), () => {
+    // From the foot up the face, up the back wall to the tube's round end (lipProfile's face and wall: hollowCurve).
+    pos.assign(hollowCurveNode(f, seg.equal(float(SEGMENT_ID.wall)), sv));
     liftX.assign(pos.x);
   }).ElseIf(seg.equal(float(SEGMENT_ID.under)), () => {
     const xi = sv.mul(f.xiTip).toVar();
