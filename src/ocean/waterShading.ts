@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Fn, If, PI, dot, exp, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, refract, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
+import { Fn, If, PI, abs, dot, exp, float, fract, fwidth, length, max, min, mix, normalize, pow, reflect, refract, saturate, smoothstep, sqrt, step, uniform, vec3 } from 'three/tsl';
 import { WATER_IOR, extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
 import { alongPathNode, cameraDepthNode, fresnelFromInsideNode, sunThroughWindowNode, waterColourAtDepthNode } from './underwaterNodes';
@@ -50,6 +50,7 @@ export function createWaterOpticsUniforms(p: WaterOpticsParams) {
     absorption: uniform(new THREE.Vector3(...p.absorptionPerM)),
     transmissionThicknessM: uniform(p.transmissionThicknessM),
     lipSideSkylight: uniform(p.lipSideSkylight),
+    lipBubbleScatter: uniform(p.lipBubbleScatter),
     baseRoughness: uniform(p.baseRoughness),
     foamAlbedo: uniform(p.foamAlbedo),
   };
@@ -67,6 +68,7 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
   u.absorption.value.set(...p.absorptionPerM);
   u.transmissionThicknessM.value = p.transmissionThicknessM;
   u.lipSideSkylight.value = p.lipSideSkylight;
+  u.lipBubbleScatter.value = p.lipBubbleScatter;
   u.baseRoughness.value = p.baseRoughness;
   u.foamAlbedo.value = p.foamAlbedo;
 }
@@ -142,7 +144,16 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const transmitted = i.lip ? lipColour.mul(lipLight).mul(saturate(i.lip)).mul(u.transmissionIntensity).div(PI) : vec3(0.0);
 
   // Below the surface: the seabed where it's in reach, blended with the water body by the view-path transmittance.
-  const column = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;
+  const deep = i.seabed ? i.seabed.radiance.mul(i.seabed.transmittance).add(upwelling.mul(vec3(1.0).sub(i.seabed.transmittance))) : upwelling;
+  // The lip's own light (spec 2026-10-03 lip-and-tube-look §4; waterOptics.lipGlow): a thrown lip is aerated, so sun
+  // (through whichever face it lights) and sky entering it scatter back out, coloured by the water crossed. On the lip it
+  // replaces the deep water's light: a lip 1.5 m thick is not a window onto deep water (it drew the same flat navy as the
+  // face, Andrew 2026-10-03).
+  const glow = i.lip && i.lipThickness
+    ? lipColour.mul(sky.sunIlluminance.mul(sv).mul(abs(nDotL)).mul(step(0.0, l.y)).add(sky.skyIrradiance))
+      .mul(float(1.0).sub(exp(u.lipBubbleScatter.mul(i.lipThickness).negate()))).div(PI)
+    : null;
+  const column = glow ? mix(deep, glow, saturate(i.lip)) : deep;
   const water = column.add(transmitted).mul(float(1.0).sub(fresnel)).add(reflection.mul(fresnel)).add(specular);
   const foamSky = sky.skyIrradiance.mul(u.foamAlbedo).div(PI);
   const foamSun = sky.sunIlluminance.mul(saturate(nDotL)).mul(sv).mul(u.foamAlbedo).div(PI);

@@ -500,6 +500,7 @@ export class DevPanel {
     water.addBinding(m.water, 'transmissionIntensity', { min: 0, max: 3, step: 0.01 }).on('change', h.onWater);
     water.addBinding(m.water, 'lipSkyTransmission', { label: 'lip skylight', min: 0, max: 2, step: 0.01 }).on('change', h.onWater);
     water.addBinding(m.water, 'lipSideSkylight', { label: 'lip side skylight', min: 0, max: 2, step: 0.01 }).on('change', h.onWater);
+    water.addBinding(m.water, 'lipBubbleScatter', { label: 'lip bubble scatter', min: 0, max: 5, step: 0.01 }).on('change', h.onWater);
     water.addBinding(m.water, 'baseRoughness', { min: 0.005, max: 0.2, step: 0.001 }).on('change', h.onWater);
     water.addBinding(m.water, 'foamAlbedo', { min: 0, max: 1, step: 0.01 }).on('change', h.onWater);
 
