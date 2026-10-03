@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { If, Loop, abs, atan, clamp, cos, dot, exp, float, int, length, max, min, mix, pow, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
-import { type BreakParams, RIBBON_FULL_OFFSET, normalizeBreakParams, steepeningStart } from './breaking';
+import { type BreakParams, RIBBON_FULL_OFFSET, TUBE_HOLD_S, TUBE_THROWN_PSI, normalizeBreakParams, steepeningStart } from './breaking';
 import {
   BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_LOWER_FADE, EDGE_MARGIN_M, LIP_EMERGE_PROGRESS, FACE_JOIN_MIN_M, FACE_JOIN_STEPS, HOLLOW_FLOOR_SOFT, LIP_JET_SHARE,
-  CEILING_START_XI, FOOT_WIDTHS, HOLLOW_BACK_H, HOLLOW_EPS, HOLLOW_FOOT_DIP, HOLLOW_MIN_WEIGHT, HOLLOW_SETTLE, HOLLOW_THROAT, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
+  CEILING_START_XI, FOOT_WIDTHS, TUBE_OPEN_POWER, HOLLOW_BACK_H, HOLLOW_EPS, HOLLOW_FOOT_DIP, HOLLOW_MIN_WEIGHT, HOLLOW_SETTLE, HOLLOW_THROAT, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
   LIP_SPRAY_PROGRESS, LIP_TAPER_POWER, OUTER_LIP_SHARE, PRESENCE_FADE, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID,
   TIP_GROW_PROGRESS, TIP_THICKNESS_RATIO, TUBE_BACK_AHEAD_H, sampleSegment,
 } from './lipProfile';
@@ -34,9 +34,9 @@ function homeCoeffs(seg: ProfileSegment, s: number): [number, number, number] {
     case 'front': return [s, 1 - s, 0];
     case 'face': return [1 - 0.25 * s, 0, 0];
     case 'wall': return [0.75 - 0.15 * s, 0, 0];
-    case 'under': return [0.6 - 0.3 * s, 0, 0];
-    case 'cap': return [0.3 - 0.05 * s, 0, 0];
-    case 'outer': return [0.25 * (1 - s), 0, 0];
+    case 'under': return [0.6 - 0.01 * s, 0, 0];
+    case 'cap': return [0.59 - 0.005 * s, 0, 0];
+    case 'outer': return [0.585 * (1 - s), 0, 0];
     default: return [0, 0, s];
   }
 }
@@ -390,7 +390,9 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
   const t = select(pre, float(0.0), min(max(tb, 0.0), tauLand)).toVar();
   const prog = t.div(tauLand).toVar();
   // lipProfile's growing curl: the tube at impact scaled by the throw about an origin sliding from the crest to its place.
-  const tube: TubeNodes = { O: vec2(mix(Kt, full.O, prog) as N).toVar(), d, n, L: shape.L.mul(prog).toVar(), W: shape.W.mul(prog).toVar(), clipY: P.y };
+  // lipProfile: it opens out as it is thrown, scaled by 1 − (1 − prog)^TUBE_OPEN_POWER.
+  const g = float(1.0).sub(pow(float(1.0).sub(prog), TUBE_OPEN_POWER)).toVar();
+  const tube: TubeNodes = { O: vec2(mix(Kt, full.O, g) as N).toVar(), d, n, L: shape.L.mul(g).toVar(), W: shape.W.mul(g).toVar(), clipY: P.y };
   const Pnow = vec2(tubeUpperNode(tube, xiEnd)).toVar();
   const xiTip = prog.mul(xiEnd).toVar();
   const tip = vec2(tubeUpperNode(tube, xiTip)).toVar();
@@ -402,7 +404,8 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
   // breaking.landingEstimate and settleSpan on the crest's drain.
   const landEstimate = max(H.mul(drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt().toVar();
   const span = u.collapseTime.mul(landEstimate).toVar();
-  const settleFrom = max(tauLand, landEstimate).toVar();
+  // ...and once landed a thrown tube stays open TUBE_HOLD_S × how thrown (lipProfile, breaking.lifecycle).
+  const settleFrom = max(tauLand, landEstimate).add(smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi).mul(TUBE_HOLD_S)).toVar();
   const collapse: N = select(pre, float(0.0), smoothstep(settleFrom, settleFrom.add(span), tb)).toVar();
   const present: N = smoothstep(PSI_NONE, PSI_NONE + PRESENCE_FADE * (PSI_MIN - PSI_NONE), psi).toVar();
   const landing = select(pre, float(0.0), smoothstep(tauLand, tauLand.add(span.mul(LANDING_FOAM_RISE)), tb)).mul(present).toVar();
@@ -410,7 +413,7 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
   const rho = select(pre, smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r), float(1.0).sub(smoothstep(end, end.add(HAND_BACK_S), tb))).toVar();
   const uFront = uFoot.add(LAND_CLEARANCE_M + EDGE_MARGIN_M).toVar();
   const uBack = H.mul(BACK_EDGE_H).add(EDGE_MARGIN_M).negate().toVar();
-  const drop2 = tTop.add(drop).mul(prog).toVar();
+  const drop2 = tTop.add(drop).mul(g).toVar();
   const f: ProfileFrameNodes = {
     K, F, tF, P: Pnow, tip, tube, xiTop, xiTip, xiEnd, tTop: drop2,
     tipE: drop2.mul(TIP_THICKNESS_RATIO).mul(float(1.0).sub(prog)).mul(smoothstep(0.0, TIP_GROW_PROGRESS, prog)),
@@ -670,7 +673,9 @@ export function profilePointNode(j: N, f: ProfileFrameNodes, baseTarget: N, home
   const sigma = select(isOuter, select(f.xiTip.greaterThan(0.0), clamp(float(1.0).sub(sv.div(OUTER_LIP_SHARE)), 0.0, 1.0), float(0.0)), select(isCap, float(1.0), float(0.0)));
   const spray = smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog).mul(LIP_SPRAY).mul(smoothstep(LIP_SPRAY_FROM, 1.0, sigma));
   const air = f.weight.mul(float(1.0).sub(f.landing));
-  const curlFoam = select(isOuter.or(isCap), max(landed, spray.mul(air)), select(isInside, landed.sub(air), landed));
+  // The tube's inside stays clean while it is held open and foams as it collapses (lipProfile.profilePoint).
+  const filled = landed.mul(smoothstep(0.0, LANDING_FOAM_RISE, f.collapse));
+  const curlFoam = select(isOuter.or(isCap), max(landed, spray.mul(air)), select(isInside, filled.sub(air), landed));
   const lifted = ridingNode(seg, sv, f, c);
   return { pos: mix(bt, lifted, f.weight), thickness: c.thickness.mul(f.weight), curlFoam, lipness: c.lipness.mul(f.weight) };
 }
