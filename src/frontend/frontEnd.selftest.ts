@@ -2,6 +2,7 @@
 import { registerSelfTest } from '../dev/selfTest';
 import { initialFront } from './frontEnd';
 import { DEFAULT_CHOICES, DEFAULT_FRONT_SETTINGS } from './frontSettings';
+import { ConditionsPanel } from './ui/conditionsPanel';
 import { Legend, legendFor } from './ui/legend';
 import { applyLayout, layoutFor, mountFrontEndRoot } from './ui/layout';
 
@@ -61,6 +62,22 @@ registerSelfTest({
       const pads = [...legend.el.querySelectorAll('[data-glyph]')].map((g) => (g as HTMLElement).dataset.glyph).join(',');
       const inside = b.x + b.w <= l.designW - l.safeX + 0.5 && b.y + b.h <= l.designH - l.safeY + 0.5 && b.x + b.w > l.designW - l.safeX - 2;
       return { pass: inside && keys === 'Enter,Esc,P' && pads === 'A,B,START', detail: `box ${JSON.stringify(b)}; keys ${keys}; pad ${pads}` };
+    });
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the Conditions rows are inside the safe area, 18 px or more, and one row is focused',
+  async run() {
+    return withRoot(1920, 1080, (root, l) => {
+      const p = new ConditionsPanel(() => {});
+      root.appendChild(p.el);
+      p.render(initialFront(DEFAULT_CHOICES), new Date('2026-07-10T09:00:00+08:00'));
+      const rows = [...p.el.querySelectorAll('.fe-row')];
+      const outside = rows.filter((r) => { const b = designBox(r, root, l.scale); return b.x < l.safeX - 0.5 || b.y < l.safeY - 0.5 || b.y + b.h > l.designH - l.safeY + 0.5; });
+      const tiny = [...p.el.querySelectorAll('.fe-label, .fe-value, .fe-small, .fe-title')].filter((t) => parseFloat(getComputedStyle(t).fontSize) < 18);
+      const focused = p.el.querySelectorAll('.fe-row.is-focus').length;
+      return { pass: rows.length === 8 && outside.length === 0 && tiny.length === 0 && focused === 1, detail: `${rows.length} rows, ${outside.length} outside, ${tiny.length} under 18 px, ${focused} focused` };
     });
   },
 });
