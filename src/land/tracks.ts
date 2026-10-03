@@ -50,16 +50,18 @@ function stepCost(len: number, dh: number): number {
 const PATH_MOVES: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1], [1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]];
 /** The grade the beach path is laid to (under MAX_GRADE, so smoothing its corners keeps it walkable). */
 const PATH_DESIGN_GRADE = 0.3;
+/** The beach path's ground sampling (its step costs read a grid this fine). */
+const FINE_M = 1;
 
 /**
  * A beach-path step's cost from (ax, az) to (bx, bz): its length, dearer the steeper, a grade over PATH_DESIGN_GRADE all
  * but forbidden; the grade the steepest metre along it (the ground between grid nodes has bumps of its own).
  */
-function pathStepCost(land: RouteLand, ax: number, az: number, bx: number, bz: number): number {
+function pathStepCost(heightAt: (x: number, z: number) => number, ax: number, az: number, bx: number, bz: number): number {
   const len = Math.hypot(bx - ax, bz - az), n = Math.max(2, Math.ceil(len));
-  let g = 0, h0 = land.baseHeightAt(ax, az);
+  let g = 0, h0 = heightAt(ax, az);
   for (let k = 1; k <= n; k++) {
-    const h = land.baseHeightAt(ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n);
+    const h = heightAt(ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n);
     g = Math.max(g, (Math.abs(h - h0) * n) / len);
     h0 = h;
   }
@@ -109,7 +111,10 @@ function routeCapeToCape(land: RouteLand, zRange: [number, number]): [number, nu
   const d0 = toe + C2C_ALLOWED[0], nCols = Math.floor((C2C_ALLOWED[1] - C2C_ALLOWED[0]) / STEP_M) + 1;
   const nRows = Math.floor((zRange[1] - zRange[0]) / STEP_M) + 1;
   const zAt = (r: number): number => zRange[0] + r * STEP_M;
-  const xAt = (r: number, c: number): number => land.waterlineAt(zAt(r)) + d0 + c * STEP_M;
+  // Each row's waterline once (it's per row, and the land's lookup is dear).
+  const wl = new Float64Array(nRows);
+  for (let r = 0; r < nRows; r++) wl[r] = land.waterlineAt(zAt(r));
+  const xAt = (r: number, c: number): number => wl[r] + d0 + c * STEP_M;
   const h = new Float64Array(nRows * nCols);
   for (let r = 0; r < nRows; r++) for (let c = 0; c < nCols; c++) h[r * nCols + c] = land.baseHeightAt(xAt(r, c), zAt(r));
   const band = (c: number): number => {
@@ -193,17 +198,11 @@ function pickJunction(land: RouteLand, c2c: [number, number][], lineup: { x: num
     .map((p, i) => ({ i, dz: Math.abs(p[1] - lineup.z) }))
     .filter((q) => q.dz <= JUNCTION_REACH_M)
     .sort((a, b) => a.dz - b.dz || a.i - b.i);
-  let pick = -1, pickCost = Infinity;
-  for (const q of near) {
-    const [x, z] = c2c[q.i];
-    if (!seesLineup(land, x, z, lineup)) continue;
-    const cost = clearingGrade(land, x, z, alongAt(c2c, q.i)) + JUNCTION_DZ_COST * q.dz;
-    if (cost < pickCost) {
-      pickCost = cost;
-      pick = q.i;
-    }
-  }
-  if (pick >= 0) return pick;
+  // Cheapest first, then the first that sees the lineup (the sightline is the dearer test).
+  const ranked = near
+    .map((q) => ({ i: q.i, cost: clearingGrade(land, c2c[q.i][0], c2c[q.i][1], alongAt(c2c, q.i)) + JUNCTION_DZ_COST * q.dz }))
+    .sort((a, b) => a.cost - b.cost || a.i - b.i);
+  for (const q of ranked) if (seesLineup(land, c2c[q.i][0], c2c[q.i][1], lineup)) return q.i;
   let best = near[0].i;
   for (const q of near) if (land.baseHeightAt(c2c[q.i][0], c2c[q.i][1]) > land.baseHeightAt(c2c[best][0], c2c[best][1])) best = q.i;
   return best;
@@ -216,8 +215,20 @@ function routeBeachPath(land: RouteLand, start: [number, number], lineupZ: numbe
   const nx = Math.ceil((x1 - x0) / STEP_M) + 1, nz = Math.ceil((z1 - z0) / STEP_M) + 1, n = nx * nz;
   const X = (i: number): number => x0 + (i % nx) * STEP_M;
   const Z = (i: number): number => z0 + Math.floor(i / nx) * STEP_M;
-  const H = new Float64Array(n);
-  for (let i = 0; i < n; i++) H[i] = land.baseHeightAt(X(i), Z(i));
+  // The ground every metre over the search, each sample looked up the first time a step needs it (the land's own lookup
+  // is dear, and the search visits only part of its box); the step costs read it bilinearly.
+  const fx = Math.ceil((x1 - x0) / FINE_M) + 2, fz = Math.ceil((z1 - z0) / FINE_M) + 2, fine = new Float64Array(fx * fz).fill(NaN);
+  const at = (i: number, j: number): number => {
+    const o = j * fx + i;
+    let h = fine[o];
+    if (Number.isNaN(h)) h = fine[o] = land.baseHeightAt(x0 + i * FINE_M, z0 + j * FINE_M);
+    return h;
+  };
+  const ground = (x: number, z: number): number => {
+    const u = Math.min(Math.max((x - x0) / FINE_M, 0), fx - 1.001), v = Math.min(Math.max((z - z0) / FINE_M, 0), fz - 1.001);
+    const i = Math.floor(u), j = Math.floor(v), tu = u - i, tv = v - j;
+    return (at(i, j) * (1 - tu) + at(i + 1, j) * tu) * (1 - tv) + (at(i, j + 1) * (1 - tu) + at(i + 1, j + 1) * tu) * tv;
+  };
   const dist = new Float64Array(n).fill(Infinity), prev = new Int32Array(n).fill(-1), done = new Uint8Array(n);
   const s = Math.round((start[1] - z0) / STEP_M) * nx + Math.round((start[0] - x0) / STEP_M);
   dist[s] = 0;
@@ -266,7 +277,7 @@ function routeBeachPath(land: RouteLand, start: [number, number], lineupZ: numbe
       if (jx < 0 || jx >= nx || jz < 0 || jz >= nz) continue;
       const j = jz * nx + jx;
       if (done[j]) continue;
-      const v = dist[i] + pathStepCost(land, X(i), Z(i), X(j), Z(j));
+      const v = dist[i] + pathStepCost(ground, X(i), Z(i), X(j), Z(j));
       if (v < dist[j]) {
         dist[j] = v;
         prev[j] = i;
