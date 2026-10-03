@@ -13,6 +13,9 @@ const BADGE: Record<'IDEAL' | 'GOOD' | 'OK', { bg: string; fg: string }> = {
   OK: { bg: 'rgba(247, 236, 210, 0.1)', fg: 'rgba(247, 236, 210, 0.75)' },
 };
 
+/** The locked-in mark: a bold tick (sun orange on the dark rows, teal on the focused cream one). */
+const TICK = '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M4 13.5 L10.5 20 L22 6.5" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 /**
  * Grab your gear's right panel over its scrim (spec §4.3), laid out as the approved mockup: 600 px wide at 150 px down,
  * the tabs, 84 px rows (the focused one scaled from its right edge), then the Paddle / Hold / Turn bars or the specs line.
@@ -21,6 +24,8 @@ export class GearPanel {
   readonly el = document.createElement('div');
   private readonly col = document.createElement('div');
   private key = '';
+  /** The tab and row last shown as chosen: a new choice on the same tab pops its tick. */
+  private chosen = '';
 
   constructor(private readonly onPointer: (p: Intent) => void) {
     const scrim = document.createElement('div');
@@ -66,12 +71,20 @@ export class GearPanel {
     };
     tabs.append(glyph('tabMinus'), tab('Board', 'board'), tab('Outfit', 'outfit'), tab('Stance', 'stance'), glyph('tabPlus'));
 
+    const was = this.chosen, chosen = v.rows.find((r) => r.chosen);
+    this.chosen = chosen ? `${v.tab}:${chosen.id}` : '';
+    const pop = !calm && was.startsWith(`${v.tab}:`) && was !== this.chosen;
     const rows = v.rows.map((r, i) => {
       const el = document.createElement('div');
-      el.className = `fe-row${r.focused ? ' is-focus' : ''}`;
+      el.className = `fe-row${r.focused ? ' is-focus' : ''}${r.chosen ? ' is-chosen' : ''}`;
       el.dataset.index = String(i);
       el.dataset.hit = 'row';
-      Object.assign(el.style, { gridTemplateColumns: '1fr auto', minHeight: 'calc(84px * min(var(--fe-text), 1.15))', padding: '0 20px', transformOrigin: '100% 50%' });
+      Object.assign(el.style, { gridTemplateColumns: 'auto 1fr auto', columnGap: '14px', minHeight: 'calc(84px * min(var(--fe-text), 1.15))', padding: '0 20px', transformOrigin: '100% 50%' });
+      // Every row keeps the tick's slot, so the names line up; only the chosen row shows it.
+      const tick = document.createElement('span');
+      tick.className = 'fe-tick';
+      tick.innerHTML = TICK;
+      if (r.chosen && pop) tick.animate([{ transform: 'scale(0.4)', opacity: 0 }, { transform: 'scale(1.2)', opacity: 1, offset: 0.6 }, { transform: 'scale(1)', opacity: 1 }], { duration: 240, easing: 'cubic-bezier(0.34, 1.3, 0.64, 1)' });
       const name = document.createElement('span');
       name.className = 'fe-value';
       Object.assign(name.style, { fontSize: 'calc(36px * var(--fe-text))', gap: '12px', minWidth: '0' });
@@ -97,7 +110,7 @@ export class GearPanel {
           borderRadius: '2px', background: BADGE[r.badge].bg, color: BADGE[r.badge].fg,
         });
       }
-      el.append(name, badge);
+      el.append(tick, name, badge);
       return el;
     });
 
