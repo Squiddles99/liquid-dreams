@@ -1,6 +1,6 @@
 // src/frontend/frontEnd.ts
 import type { BoardKind } from '../board/boardSpec';
-import { PRESETS, type PresetName, boardsFor } from '../surfer/presets';
+import { PRESETS, type PresetName, type Stance, boardsFor } from '../surfer/presets';
 import { type OutfitChoice, presetOutfits } from '../surfer/wardrobe';
 import { pickBoard } from './boardPick';
 import type { SavedChoices } from './frontSettings';
@@ -8,6 +8,10 @@ import { RIDER_ORDER } from './riderCopy';
 import { type Dir, type RowId, type SessionSetup, fineRow, presetById, presetOfSetup, rollSetup, stepPreset, stepRow } from './sessionSetup';
 
 export type Beat = 'conditions' | 'rider' | 'gear' | 'out';
+export type GearTab = 'board' | 'outfit' | 'stance';
+/** Grab your gear's tabs, in order (LB / RB step through them, round). */
+export const GEAR_TABS: readonly GearTab[] = ['board', 'outfit', 'stance'];
+export const STANCES: readonly Stance[] = ['regular', 'goofy'];
 export type FrontAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'random' | 'details' | 'fineMinus' | 'finePlus' | 'tabMinus' | 'tabPlus' | 'toggle' | 'start' | 'settings';
 
 export const BEAT_MOVE_S = 1.6;
@@ -20,10 +24,12 @@ export interface FrontState {
   rowFocus: RowId;
   detailsOpen: boolean;
   rider: PresetName;
-  gearTab: 'board' | 'outfit';
+  gearTab: GearTab;
   gearFocus: number;
   boards: Partial<Record<PresetName, BoardKind>>;
   outfits: Partial<Record<PresetName, OutfitChoice>>;
+  /** Natural (regular) or goofy, per rider (absent: the rider's own). */
+  stances: Partial<Record<PresetName, Stance>>;
   showSpecs: boolean;
   /** A camera move between beats in progress (the beat is already the destination). */
   move: { from: Beat; to: Beat; t: number; durS: number } | null;
@@ -41,7 +47,7 @@ export type FrontEvent =
   | { kind: 'landed'; beat: Beat }
   | { kind: 'riderFocus'; rider: PresetName }
   | { kind: 'pick'; rider: PresetName }
-  | { kind: 'gear'; tab: 'board' | 'outfit'; focus: number }
+  | { kind: 'gear'; tab: GearTab; focus: number }
   | { kind: 'chosen' }
   | { kind: 'paddleOut'; choice: SessionChoice }
   | { kind: 'back' }
@@ -52,6 +58,7 @@ export interface SessionChoice {
   rider: PresetName;
   board: BoardKind;
   outfit: OutfitChoice;
+  stance: Stance;
 }
 
 const BASE_ROWS: RowId[] = ['preset', 'month', 'time', 'sky', 'wind', 'swell', 'from', 'tide'];
@@ -64,24 +71,27 @@ export function conditionRows(s: FrontState): RowId[] {
 
 const outfitRows = (rider: PresetName): OutfitChoice[] => presetOutfits(PRESETS[rider]).filter((o) => o !== 'walking');
 
-/** The rows of Grab your gear's tab: the rider's boards, or their three surf outfits. */
-export function gearRows(s: FrontState): (BoardKind | OutfitChoice)[] {
-  return s.gearTab === 'board' ? boardsFor(PRESETS[s.rider]) : outfitRows(s.rider);
+/** The rows of Grab your gear's tab: the rider's boards, their three surf outfits, or the two stances. */
+export function gearRows(s: FrontState): (BoardKind | OutfitChoice | Stance)[] {
+  if (s.gearTab === 'board') return boardsFor(PRESETS[s.rider]);
+  return s.gearTab === 'outfit' ? outfitRows(s.rider) : [...STANCES];
 }
 
 export function initialFront(saved: SavedChoices): FrontState {
   return {
     beat: 'conditions', setup: saved.setup, presetId: presetOfSetup(saved.setup), rowFocus: 'preset', detailsOpen: false,
-    rider: saved.rider, gearTab: 'board', gearFocus: 0, boards: { ...saved.boards }, outfits: { ...saved.outfits },
+    rider: saved.rider, gearTab: 'board', gearFocus: 0, boards: { ...saved.boards }, outfits: { ...saved.outfits }, stances: { ...saved.stances },
     showSpecs: false, move: null, buffer: [],
   };
 }
 
 export const boardOf = (s: FrontState, rider: PresetName): BoardKind => s.boards[rider] ?? pickBoard(rider, s.setup.swellFt, s.setup.periodS);
 
-export const choiceOf = (s: FrontState): SessionChoice => ({ setup: s.setup, rider: s.rider, board: boardOf(s, s.rider), outfit: s.outfits[s.rider] ?? 'season' });
+export const stanceOf = (s: FrontState, rider: PresetName): Stance => s.stances[rider] ?? PRESETS[rider].defaultStance;
 
-export const savedOf = (s: FrontState): SavedChoices => ({ setup: s.setup, rider: s.rider, boards: { ...s.boards }, outfits: { ...s.outfits } });
+export const choiceOf = (s: FrontState): SessionChoice => ({ setup: s.setup, rider: s.rider, board: boardOf(s, s.rider), outfit: s.outfits[s.rider] ?? 'season', stance: stanceOf(s, s.rider) });
+
+export const savedOf = (s: FrontState): SavedChoices => ({ setup: s.setup, rider: s.rider, boards: { ...s.boards }, outfits: { ...s.outfits }, stances: { ...s.stances } });
 
 type Ctx = { seed: number; today: Date; calm: boolean };
 type Out = { state: FrontState; events: FrontEvent[] };
@@ -92,9 +102,10 @@ function moveTo(s: FrontState, to: Beat, ctx: Ctx, extra: FrontEvent[] = []): Ou
   return { state: { ...s, beat: to, move: { from: s.beat, to, t: 0, durS: ctx.calm ? CALM_MOVE_S : BEAT_MOVE_S } }, events: [...extra, { kind: 'move', from: s.beat, to }] };
 }
 
-/** On the gear beat, the focus starts on the rider's board (or outfit). */
+/** On the gear beat, the focus starts on the rider's board (outfit, stance). */
 function gearFocusFor(s: FrontState): number {
   if (s.gearTab === 'board') return Math.max(0, boardsFor(PRESETS[s.rider]).indexOf(boardOf(s, s.rider)));
+  if (s.gearTab === 'stance') return STANCES.indexOf(stanceOf(s, s.rider));
   const want = s.outfits[s.rider] ?? 'season', rows = outfitRows(s.rider);
   return Math.max(0, rows.indexOf(want));
 }
@@ -156,13 +167,14 @@ function stepGear(s: FrontState, a: FrontAction, ctx: Ctx): Out {
       return { state: { ...s, gearFocus }, events: [{ kind: 'gear', tab: s.gearTab, focus: gearFocus }] };
     }
     case 'tabMinus': case 'tabPlus': {
-      const t = { ...s, gearTab: s.gearTab === 'board' ? ('outfit' as const) : ('board' as const) };
+      const t = { ...s, gearTab: GEAR_TABS[wrap(GEAR_TABS.indexOf(s.gearTab) + (a === 'tabPlus' ? 1 : -1), GEAR_TABS.length)] };
       const gearFocus = gearFocusFor(t);
       return { state: { ...t, gearFocus }, events: [{ kind: 'gear', tab: t.gearTab, focus: gearFocus }] };
     }
     case 'confirm': {
       const v = rows[s.gearFocus];
-      const state = s.gearTab === 'board' ? { ...s, boards: { ...s.boards, [s.rider]: v as BoardKind } } : { ...s, outfits: { ...s.outfits, [s.rider]: v as OutfitChoice } };
+      const state = s.gearTab === 'board' ? { ...s, boards: { ...s.boards, [s.rider]: v as BoardKind } }
+        : s.gearTab === 'outfit' ? { ...s, outfits: { ...s.outfits, [s.rider]: v as OutfitChoice } } : { ...s, stances: { ...s.stances, [s.rider]: v as Stance } };
       return { state, events: [{ kind: 'chosen' }] };
     }
     case 'toggle':

@@ -19,6 +19,10 @@ describe('Choose your rider\'s panel (spec §4.2)', () => {
     expect(v.rows.map((r) => r.label)).toEqual(['Stance', 'Rides', 'Style', 'Loves']);
     expect(v.rows[1].value).toBe('Bodyboard');
   });
+  it('shows the stance the player chose, Natural or Goofy (Andrew, Gate B)', () => {
+    expect(riderView(front({ rider: 'female' })).rows[0].value).toBe('Natural');
+    expect(riderView(front({ rider: 'female', stances: { female: 'goofy' } })).rows[0].value).toBe('Goofy');
+  });
   it('closes with the rider\'s line and the crew note', () => {
     const v = riderView(front({ rider: 'male' }));
     expect(v.line).toBe('Let\'s get pitted.');

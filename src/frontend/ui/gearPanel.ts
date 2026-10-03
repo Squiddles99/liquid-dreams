@@ -64,7 +64,7 @@ export class GearPanel {
       t.textContent = label;
       return t;
     };
-    tabs.append(glyph('tabMinus'), tab('Board', 'board'), tab('Outfit', 'outfit'), glyph('tabPlus'));
+    tabs.append(glyph('tabMinus'), tab('Board', 'board'), tab('Outfit', 'outfit'), tab('Stance', 'stance'), glyph('tabPlus'));
 
     const rows = v.rows.map((r, i) => {
       const el = document.createElement('div');

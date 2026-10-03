@@ -12,8 +12,8 @@ const SITUATIONS: Situation[] = ['glassy', 'offshore', 'onshore', 'small', 'soli
 describe('the riders\' copy (dune select spec §4.2.1, §8)', () => {
   it('lists the roster T-Bone, Shazza, Grommet', () => expect(RIDER_ORDER).toEqual(['male', 'female', 'grommet']));
   it('takes the stance and the boards from the presets', () => {
-    expect(stanceLabel('female')).toBe('Regular');
-    expect(stanceLabel('male')).toBe('Goofy');
+    expect(stanceLabel('regular')).toBe('Natural');
+    expect(stanceLabel('goofy')).toBe('Goofy');
     expect(ridesLabel('female')).toBe('Shortboard, step-up');
     expect(ridesLabel('grommet')).toBe('Bodyboard');
   });

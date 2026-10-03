@@ -1,14 +1,15 @@
 // src/frontend/gearView.ts
 import type { BoardKind } from '../board/boardSpec';
-import { type Outfit, PRESETS } from '../surfer/presets';
+import { sideOf } from '../surfer/poses';
+import { type Outfit, PRESETS, type Stance } from '../surfer/presets';
 import { OUTFIT_LABELS, outfitFor } from '../surfer/wardrobe';
 import { BOARD_NAMES, boardBars, fitOf, lengthLabel, pickBoard, reasonLine, specsLine } from './boardPick';
-import { type FrontState, boardOf, gearRows } from './frontEnd';
-import { RIDER_COPY, chooseLine, fillLine } from './riderCopy';
+import { type FrontState, type GearTab, boardOf, gearRows, stanceOf } from './frontEnd';
+import { RIDER_COPY, chooseLine, fillLine, stanceLabel } from './riderCopy';
 import { MONTHS, dateForMonth } from './sessionSetup';
 
 export interface GearView {
-  tab: 'board' | 'outfit';
+  tab: GearTab;
   rows: { id: string; name: string; detail: string; badge: 'IDEAL' | 'GOOD' | 'OK' | null; pick: string | null; season: string | null; focused: boolean; chosen: boolean }[];
   bars: { paddle: number; hold: number; turn: number } | null;
   specs: string | null;
@@ -34,6 +35,23 @@ export function gearView(s: FrontState, today: Date, seed: number): GearView {
       bars: s.showSpecs ? null : boardBars(r, focused),
       specs: s.showSpecs ? specsLine(r, focused) : null,
       note: null,
+      line: { speaker: name, text: reasonLine(r, pick, swellFt, seed) },
+    };
+  }
+  if (s.gearTab === 'stance') {
+    const own = p.defaultStance, chosen = stanceOf(s, r), stances = gearRows(s) as Stance[];
+    // Grommet drops a knee: his stance is which foot he plants.
+    const foot = (st: Stance): string => `${st === 'regular' ? 'left' : 'right'} foot forward`;
+    const detail = (st: Stance): string => (r === 'grommet' ? `Drop-knee, ${foot(st)}` : foot(st)[0].toUpperCase() + foot(st).slice(1));
+    return {
+      tab: 'stance',
+      rows: stances.map((st, i) => ({
+        id: st, name: stanceLabel(st), detail: detail(st), badge: null, pick: st === own ? `${name}'s stance` : null, season: null, focused: i === s.gearFocus, chosen: st === chosen,
+      })),
+      bars: null,
+      specs: null,
+      // The break is a left: which way each stance faces on it (the poses' own rule).
+      note: `The Womb's a left: Natural rides it ${sideOf('regular')}, Goofy ${sideOf('goofy')}.`,
       line: { speaker: name, text: reasonLine(r, pick, swellFt, seed) },
     };
   }

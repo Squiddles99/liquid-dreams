@@ -104,6 +104,19 @@ describe('the front end\'s state machine (dune select spec §3, §4)', () => {
     expect(r.events).toContainEqual({ kind: 'gear', tab: 'outfit', focus: 1 });
     expect(focusTo(r.state, { tab: 'outfit' }).events).toEqual([]);
   });
+  it("tabs Board, Outfit, Stance and round; A on Stance takes Natural or Goofy, carried into the session (Andrew, Gate B)", () => {
+    let s = settle(run(settle(run(fresh(), 'confirm')), 'confirm'));
+    expect([s.gearTab, run(s, 'tabPlus').gearTab, run(s, 'tabPlus', 'tabPlus').gearTab, run(s, 'tabPlus', 'tabPlus', 'tabPlus').gearTab]).toEqual(['board', 'outfit', 'stance', 'board']);
+    expect(run(s, 'tabMinus').gearTab).toBe('stance');
+    s = run(s, 'tabMinus');
+    expect(s.gearFocus).toBe(0);
+    s = run(s, 'down', 'confirm');
+    expect(s.stances.female).toBe('goofy');
+    expect(choiceOf(s).stance).toBe('goofy');
+    expect(savedOf(s).stances).toEqual({ female: 'goofy' });
+    expect(choiceOf(fresh()).stance).toBe('regular');
+    expect(choiceOf({ ...fresh(), rider: 'male' }).stance).toBe('goofy');
+  });
   it('paddles out from any beat on START with every remaining choice at its default', () => {
     for (const path of [[], ['confirm'], ['confirm', 'confirm']] as FrontAction[][]) {
       let s = fresh();
@@ -111,7 +124,7 @@ describe('the front end\'s state machine (dune select spec §3, §4)', () => {
       const r = step(s, 'start', CTX);
       const out = r.events.find((e) => e.kind === 'paddleOut');
       expect(out, path.join(',')).toBeDefined();
-      expect(choiceOf(r.state)).toEqual({ setup: presetById('winterOffshore')!.setup, rider: 'female', board: 'thruster', outfit: 'season' });
+      expect(choiceOf(r.state)).toEqual({ setup: presetById('winterOffshore')!.setup, rider: 'female', board: 'thruster', outfit: 'season', stance: 'regular' });
       expect(r.state.beat).toBe('out');
     }
   });
@@ -133,6 +146,6 @@ describe('the front end\'s state machine (dune select spec §3, §4)', () => {
   });
   it('saves what it should remember', () => {
     const s = run(fresh(), 'down', 'right');
-    expect(savedOf(s)).toEqual({ setup: s.setup, rider: 'female', boards: {}, outfits: {} });
+    expect(savedOf(s)).toEqual({ setup: s.setup, rider: 'female', boards: {}, outfits: {}, stances: {} });
   });
 });
