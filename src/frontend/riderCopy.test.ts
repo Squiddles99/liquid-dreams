@@ -51,6 +51,10 @@ describe('the riders\' copy (dune select spec §4.2.1, §8)', () => {
     expect(chooseLine(list, 7)).toBe(chooseLine(list, 7));
     expect(new Set([1, 2, 3, 4, 5, 6, 7, 8].map((s) => chooseLine(list, s))).size).toBeGreaterThan(1);
   });
+  it('always chooses a line from the list, for every seed', () => {
+    const list = ['a', 'b', 'c'];
+    for (let seed = -50; seed < 1000; seed++) expect(list, `seed ${seed}`).toContain(chooseLine(list, seed));
+  });
   it('finds the situation a change makes', () => {
     const w = presetById(FIRST_PRESET)!.setup;
     expect(situationOf(w, 'wind')).toBe('offshore');
