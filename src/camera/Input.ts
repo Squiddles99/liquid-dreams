@@ -14,6 +14,7 @@ export class Input {
   /** Hold-to-look: press-drag-release, independent of whether the pointer lock it requested ever lands. */
   private readonly lookDrag = new LookDrag();
   private wheel = 0;
+  #suspended = false;
 
   constructor(private readonly element: HTMLElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -26,6 +27,24 @@ export class Input {
     document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
     element.addEventListener('wheel', this.onWheel, { passive: true });
+  }
+
+  /**
+   * While true (the front end is open), no keys, mouse or wheel reach the camera and nothing counts as pressed. Releases
+   * still run, so nothing sticks; turning it on clears what was held.
+   */
+  get suspended(): boolean {
+    return this.#suspended;
+  }
+
+  set suspended(on: boolean) {
+    this.#suspended = on;
+    if (on) {
+      this.down.clear();
+      this.pressed.clear();
+      this.lookDrag.end();
+      this.wheel = 0;
+    }
   }
 
   isDown(code: string): boolean {
@@ -68,7 +87,7 @@ export class Input {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    if (shouldIgnoreKeyTarget(e.target)) return;
+    if (this.#suspended || shouldIgnoreKeyTarget(e.target)) return;
     if (!e.repeat) this.pressed.add(e.code);
     this.down.add(e.code);
     if (e.code === 'Space') e.preventDefault();
@@ -85,6 +104,7 @@ export class Input {
   };
 
   private onMouseDown = (e: MouseEvent): void => {
+    if (this.#suspended) return;
     if (!this.lookDrag.press(e.button)) return;
     if (document.pointerLockElement !== this.element) {
       // Chrome makes you wait a moment before re-locking after Escape, and rejects the request in the
@@ -112,11 +132,13 @@ export class Input {
   };
 
   private onMouseMove = (e: MouseEvent): void => {
+    if (this.#suspended) return;
     // Accumulates while the drag is held whether or not the pointer lock landed (see LookDrag).
     this.lookDrag.move(e.movementX, e.movementY);
   };
 
   private onWheel = (e: WheelEvent): void => {
+    if (this.#suspended) return;
     this.wheel += e.deltaY;
   };
 }

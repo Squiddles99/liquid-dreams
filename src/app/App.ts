@@ -36,6 +36,10 @@ import {
   cloneDevSettings, cloneLook, loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
 } from '../dev/devSettings';
 import { captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
+import { PADDLE_OUT_MS } from '../frontend/entry';
+import type { SessionChoice } from '../frontend/frontEnd';
+import type { FrontEndHost } from '../frontend/frontEndCore';
+import { FrontEnd } from '../frontend/frontEndPage';
 import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
 import { PerfOverlay } from '../dev/perf';
 import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
@@ -219,6 +223,10 @@ export class App {
   private clearingKey = '';
   private pileLoading = false;
   /** The ground a rider stands on (walking spec §4): the land, or the top of a rock on it; null until the land loads. */
+  /** The front end (the dune select screen), once opened. */
+  private frontEnd: FrontEnd | null = null;
+  /** Paddle out: put the camera behind the rider once the stand has placed them in the water. */
+  private chaseAfterPaddle = false;
   private readonly groundAt = (x: number, z: number): number | null => {
     const lh = this.land.height;
     return lh ? Math.max(lh.heightAt(x, z), this.rockField?.topAt(x, z) ?? -Infinity) : null;
@@ -424,7 +432,7 @@ export class App {
         overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, sound: this.soundParams, soundStatus: this.sound.status, surfer: this.surferParams, surferStatus: this.surferStand.status, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
-        onConditions: () => this.onConditionsEdited(),
+        onConditions: () => this.applyConditionsEdit(),
         onUserConditionEdit: () => this.profile.own(),
         onSpectrum: () => this.scheduleSpectrumRebuild(),
         onSim: () => this.ocean.setParams(this.simParams),
@@ -487,6 +495,7 @@ export class App {
           this.panel.refresh();
           this.scheduleSave();
         },
+        onFrontEnd: () => this.openFrontEnd(),
         onSurferSpot: (spot) => {
           const lh = this.land.height;
           if (!lh) {
@@ -897,7 +906,8 @@ export class App {
     this.ribbon.renderFootprint(this.renderer);
   }
 
-  private onConditionsEdited(): void {
+  /** The heavy apply after a conditions edit (the dev panel's, or the front end's through its gate). */
+  applyConditionsEdit(): void {
     this.surf.invalidate();
     const clean = sanitizeConditions(this.conditions);
     if (JSON.stringify(clean) !== JSON.stringify(this.conditions)) {
@@ -907,6 +917,60 @@ export class App {
     this.seabed.setTide(this.conditions.tideM);
     this.updateOffshore();
     this.scheduleSpectrumRebuild();
+  }
+
+  /** The front end's view of the App (dune select spec §14). */
+  frontEndHost(): FrontEndHost {
+    return {
+      standSpot: () => {
+        const lh = this.land.height;
+        return lh?.trackNetwork ? landSpots(lh, lh.profile).standSpot : null;
+      },
+      groundAt: this.groundAt,
+      baseConditions: () => this.conditions,
+      applyConditions: (c) => {
+        assignConditions(this.conditions, c);
+        this.applyConditionsEdit();
+        this.panel.refresh();
+      },
+      stage: (staging, pose) => this.stageFrontEnd(staging, pose),
+      paddleOut: (choice) => this.paddleOut(choice),
+    };
+  }
+
+  /** Opens the front end (a normal start after prewarm, or the dev panel's button). */
+  openFrontEnd(): void {
+    if (this.frontEnd?.isOpen) return;
+    this.frontEnd ??= new FrontEnd(this.frontEndHost(), this.container, this.sound, browserStorage);
+    this.input.suspended = true;
+    this.surferStand.group.visible = false;
+    this.frontEnd.open();
+  }
+
+  /** Paddle out (spec §3): fade to black, set the session, put the rider on the stand in the water, fade back in. */
+  paddleOut(choice: SessionChoice): void {
+    const fade = document.createElement('div');
+    Object.assign(fade.style, { position: 'fixed', inset: '0', background: '#000', opacity: '0', zIndex: '6', pointerEvents: 'none', transition: `opacity ${PADDLE_OUT_MS.fadeOut}ms ease-in` });
+    this.container.appendChild(fade);
+    window.setTimeout(() => { fade.style.opacity = '1'; }, PADDLE_OUT_MS.uiOut);
+    window.setTimeout(() => {
+      const lineup = DEFAULT_SURFER_PARAMS;
+      Object.assign(this.surferParams, {
+        enabled: true, onLand: false, preset: choice.rider, board: choice.board, outfit: choice.outfit, pose: 'sit', gang: false,
+        x: lineup.x, z: lineup.z, headingDeg: lineup.headingDeg, heightNudgeM: 0, expression: 'none',
+      });
+      normalizeSurferParams(this.surferParams);
+      this.surferStand.group.visible = true;
+      this.stageFrontEnd(null, null);
+      this.input.suspended = false;
+      this.rig.setPose(this.startupMoment().camera, this.conditions.tideM);
+      this.chaseAfterPaddle = true;
+      this.panel.refresh();
+      this.scheduleSave();
+      fade.style.transition = `opacity ${PADDLE_OUT_MS.fadeIn}ms ease-out`;
+      fade.style.opacity = '0';
+      window.setTimeout(() => fade.remove(), PADDLE_OUT_MS.fadeIn + 50);
+    }, PADDLE_OUT_MS.uiOut + PADDLE_OUT_MS.fadeOut);
   }
 
   private scheduleSpectrumRebuild(): void {
@@ -1497,6 +1561,7 @@ export class App {
     this.renderer.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.frontEnd?.resize(window.innerWidth, window.innerHeight);
   };
 
   /**
@@ -1552,8 +1617,9 @@ export class App {
     const realDt = clampFrameDt((now - this.lastMs) / 1000);
     this.lastMs = now;
     const simDt = this.clock.tick(realDt);
+    this.frontEnd?.update(realDt);
 
-    handleHotkeys(this.input, {
+    if (!this.frontEnd?.isOpen) handleHotkeys(this.input, {
       copyLink: () => void this.copyLink(),
       togglePause: () => this.setPaused(!this.clock.paused),
       screenshot: () => { this.screenshotRequested = true; },
@@ -1625,6 +1691,10 @@ export class App {
     }
     const sp = this.surferParams;
     this.surferStand.update({ ...sp, enabled: sp.enabled && !sp.gang }, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
+    if (this.chaseAfterPaddle) {
+      const chase = this.surferStand.chasePose(sp.headingDeg);
+      if (chase) { this.rig.setPose(chase); this.chaseAfterPaddle = false; }
+    }
     this.gang.update(sp, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
     this.clearings = [
       ...(sp.gang ? this.gang.spots.map((g) => ({ x: g.x, z: g.z, r: 1.2 })) : sp.enabled && sp.onLand ? [{ x: sp.x, z: sp.z, r: 1.2 }] : []),
