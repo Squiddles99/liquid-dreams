@@ -26,7 +26,6 @@ import { ReefFlow } from '../breaker/flowNodes';
 import { type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { RIDE_MESSAGES, RideSession } from '../ride/RideSession';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
-import { PRESETS, boardsFor } from '../surfer/presets';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -1259,9 +1258,6 @@ export class App {
       this.panel.refresh();
       return;
     }
-    if (sp.preset === 'grommet') sp.preset = 'female';
-    const boards = boardsFor(PRESETS[sp.preset]);
-    if (sp.board === 'bodyboard') sp.board = boards.find((b) => b !== 'bodyboard') ?? boards[0];
     Object.assign(sp, { enabled: true, onLand: false, gang: false, pose: 'sit' });
     normalizeSurferParams(sp);
     this.callSetNow();
@@ -1700,7 +1696,7 @@ export class App {
       this.setStatus.psi = formatPeakPsi(peakPsi(this.field, events, this.clock.simTime, this.breakParams, this.offshoreMs), this.field !== null);
     }
     const sp = this.surferParams;
-    const riding = this.ride.surfer();
+    const riding = this.ride.surfer(sp.board === 'bodyboard');
     this.surferStand.update(riding ? { ...sp, ...riding, gang: false } : { ...sp, enabled: sp.enabled && !sp.gang }, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt, this.ride.boardFrame() ?? undefined);
     this.gang.update(sp, this.clock.simTime, this.conditions.date, this.conditions.seed, this.probe, this.conditions.tideM, this.groundAt);
     this.clearings = [

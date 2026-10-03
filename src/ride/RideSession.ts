@@ -79,8 +79,8 @@ export class RideSession {
     return this.body ? this.camera.update(this.body, dt, (x, z) => water(x, z).y) : null;
   }
 
-  surfer(): ReturnType<typeof rideSurferParams> | null {
-    return this.body ? rideSurferParams(this.body, POPUP_S) : null;
+  surfer(bodyboard = false): ReturnType<typeof rideSurferParams> | null {
+    return this.body ? rideSurferParams(this.body, POPUP_S, bodyboard) : null;
   }
 
   boardFrame(): ReturnType<typeof rideBoardFrame> | null {
