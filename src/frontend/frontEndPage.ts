@@ -88,7 +88,11 @@ export class FrontEnd {
     const act = (a: Parameters<FrontEndCore['act']>[0]): void => this.cue(this.core!.act(a, performance.now()));
     const cond = new ConditionsPanel((p) => (p.kind === 'focus' ? this.cue(this.core!.pointer({ row: p.row }, performance.now())) : act(p.action)));
     const slide = new SlidePanel((p) => (p.kind === 'rider' ? this.cue(this.core!.pointer({ rider: p.rider }, performance.now())) : act(p.action)));
-    const gear = new GearPanel((p) => (p.kind === 'gear' ? this.cue(this.core!.pointer({ gear: p.index }, performance.now())) : act(p.action)));
+    const gear = new GearPanel((p) => {
+      if (p.kind === 'gear') this.cue(this.core!.pointer({ gear: p.index }, performance.now()));
+      else if (p.kind === 'tab') this.cue(this.core!.pointer({ tab: p.tab }, performance.now()));
+      else act(p.action);
+    });
     const map = new BreakMap(), legend = new Legend((a) => act(a)), line = new RiderLine(), bottom = document.createElement('div');
     bottom.className = 'fe-scrim-bottom';
     void map.load().then(() => { const s = this.host.standSpot(); if (s) map.setLookout(s); map.setConditions(this.core!.state.setup, true); });

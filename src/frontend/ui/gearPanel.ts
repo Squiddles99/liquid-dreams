@@ -4,7 +4,8 @@ import type { GearView } from '../gearView';
 import { glyphFor } from '../glyphs';
 import type { Device } from '../uiInput';
 
-type Intent = { kind: 'gear'; index: number } | { kind: 'action'; action: FrontAction };
+type Tab = GearView['tab'];
+type Intent = { kind: 'gear'; index: number } | { kind: 'tab'; tab: Tab } | { kind: 'action'; action: FrontAction };
 /** The fit badges, the mockup's: IDEAL in teal, GOOD and OK in cream tints. */
 const BADGE: Record<'IDEAL' | 'GOOD' | 'OK', { bg: string; fg: string }> = {
   IDEAL: { bg: 'var(--fe-teal)', fg: '#e9fbf8' },
@@ -26,14 +27,17 @@ export class GearPanel {
     scrim.className = 'fe-scrim-right';
     Object.assign(this.col.style, { position: 'absolute', right: 'var(--fe-safe-x)', top: '150px', width: 'calc(600px * (0.6 + 0.4 * var(--fe-text)))' });
     this.el.append(scrim, this.col);
+    // The tabs follow the mouse like the rider tabs do (hover or click); a row takes the focus on hover, A on click.
     this.el.addEventListener('pointerover', (e) => {
-      const row = (e.target as HTMLElement).closest('[data-index]') as HTMLElement | null;
+      const t = e.target as HTMLElement, row = t.closest('[data-index]') as HTMLElement | null, tab = t.closest('[data-tab]') as HTMLElement | null;
       if (row) this.onPointer({ kind: 'gear', index: Number(row.dataset.index) });
+      else if (tab) this.onPointer({ kind: 'tab', tab: tab.dataset.tab as Tab });
     });
     this.el.addEventListener('click', (e) => {
       const hit = (e.target as HTMLElement).closest('[data-hit]') as HTMLElement | null;
       if (!hit) return;
-      if (hit.dataset.index !== undefined) this.onPointer({ kind: 'action', action: 'confirm' });
+      if (hit.dataset.tab) this.onPointer({ kind: 'tab', tab: hit.dataset.tab as Tab });
+      else if (hit.dataset.index !== undefined) this.onPointer({ kind: 'action', action: 'confirm' });
       else this.onPointer({ kind: 'action', action: hit.dataset.hit as FrontAction });
     });
   }
@@ -52,13 +56,15 @@ export class GearPanel {
     const tabs = document.createElement('div');
     tabs.className = 'fe-tabs';
     tabs.style.marginBottom = '26px';
-    const tab = (label: string, on: boolean): HTMLElement => {
+    const tab = (label: string, id: Tab): HTMLElement => {
       const t = document.createElement('span');
-      t.className = `fe-tab${on ? ' is-focus' : ''}`;
+      t.className = `fe-tab${v.tab === id ? ' is-focus' : ''}`;
+      t.dataset.tab = id;
+      t.dataset.hit = 'tab';
       t.textContent = label;
       return t;
     };
-    tabs.append(glyph('tabMinus'), tab('Board', v.tab === 'board'), tab('Outfit', v.tab === 'outfit'), glyph('tabPlus'));
+    tabs.append(glyph('tabMinus'), tab('Board', 'board'), tab('Outfit', 'outfit'), glyph('tabPlus'));
 
     const rows = v.rows.map((r, i) => {
       const el = document.createElement('div');

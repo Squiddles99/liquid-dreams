@@ -1,7 +1,7 @@
 // src/frontend/frontEnd.test.ts
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CHOICES } from './frontSettings';
-import { BEAT_MOVE_S, type FrontAction, type FrontState, choiceOf, conditionRows, initialFront, savedOf, step, tick } from './frontEnd';
+import { BEAT_MOVE_S, type FrontAction, type FrontState, choiceOf, conditionRows, focusTo, initialFront, savedOf, step, tick } from './frontEnd';
 import { presetById } from './sessionSetup';
 
 const CTX = { seed: 99, today: new Date('2026-10-03T10:00:00+08:00'), calm: false };
@@ -93,6 +93,16 @@ describe('the front end\'s state machine (dune select spec §3, §4)', () => {
     expect(s.outfits.female).toBe('rashieAndBottoms');
     s = run(s, 'toggle');
     expect(s.showSpecs).toBe(true);
+  });
+  it("switches Grab your gear's tab straight from a pointer (a click on Board or Outfit), the focus on that tab's choice (Andrew, Gate B)", () => {
+    let s = settle(run(settle(run(fresh(), 'confirm')), 'confirm'));
+    s = run(s, 'tabPlus', 'down', 'confirm', 'tabMinus');
+    expect(s.gearTab).toBe('board');
+    const r = focusTo(s, { tab: 'outfit' });
+    expect(r.state.gearTab).toBe('outfit');
+    expect(r.state.gearFocus).toBe(1);
+    expect(r.events).toContainEqual({ kind: 'gear', tab: 'outfit', focus: 1 });
+    expect(focusTo(r.state, { tab: 'outfit' }).events).toEqual([]);
   });
   it('paddles out from any beat on START with every remaining choice at its default', () => {
     for (const path of [[], ['confirm'], ['confirm', 'confirm']] as FrontAction[][]) {
