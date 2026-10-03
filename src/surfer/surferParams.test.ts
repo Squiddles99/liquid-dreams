@@ -121,3 +121,11 @@ describe('on land only where there is land (final review: an old onLand link at 
     expect(landedAt(p, -4, 0.4)).toBe(p);
   });
 });
+
+describe('motion (clip slice spec §4.2)', () => {
+  it('defaults to code and repairs anything else to it', () => {
+    expect(DEFAULT_SURFER_PARAMS.motion).toBe('code');
+    expect(sanitizeSurferParams({ motion: 'clip' }).motion).toBe('clip');
+    expect(sanitizeSurferParams({ motion: 'mocap' }).motion).toBe('code');
+  });
+});

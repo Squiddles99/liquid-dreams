@@ -14,7 +14,12 @@ import { poseTargets } from './poses';
 import { PRESETS, type PresetName, boardFor, boardLookFor } from './presets';
 import { POSE_PHASE, POSE_ZONE, type RideState } from './rideState';
 import { applyFaceParams, idleContextFor, restingFace, sunFacing } from './faceControl';
-import { type BoardFrame, boardQuaternion, solvePose } from './solvePose';
+import { type BoardFrame, type SolvedPose, boardQuaternion, solvePose } from './solvePose';
+import { clipDuration, loadRiderClips, type RiderClips } from './clips';
+import { sampleClip } from './clipPlayer';
+import { clipPose } from './clipPose';
+import { chooseMotion, clipTime } from './motion';
+import type { FingerBone } from './rig';
 import { Surfer } from './Surfer';
 import { type SurferParams, balanceApplies, carrySideOf, landedAt, playPhase } from './surferParams';
 import { KeyedLoader } from './surferLoader';
@@ -27,7 +32,12 @@ const UP = new THREE.Vector3(0, 1, 0);
 /** The stand (spec §6): the chosen surfer on the chosen board, on the water at a chosen spot, in the chosen pose. */
 export class SurferStand {
   readonly group = new THREE.Group();
-  readonly status = { outfit: '' };
+  readonly status = { outfit: '', motion: '' };
+  /** Each rider's baked motion clips (clip slice spec §4.2), fetched once; { clips: null } when not built. */
+  private readonly clipLoader = new KeyedLoader<PresetName, { clips: RiderClips | null }>(
+    (name) => loadRiderClips(`${import.meta.env.BASE_URL}surfer/clips/${name}.clips.json`).then((clips) => ({ clips })),
+    (name, e) => console.warn(`The ${name} motion clips failed to load; the stand uses the code poses.`, e),
+  );
   private readonly board: BoardMesh;
   private readonly leash: THREE.Mesh;
   private readonly leashPos = new Float32Array((LEASH_POINTS + 1) * LEASH_SIDES * 3);
@@ -142,8 +152,19 @@ export class SurferStand {
       zone: POSE_ZONE[p.pose], phase: POSE_PHASE[p.pose], phaseT,
       lookAt,
     };
-    const solved = solvePose(s.rest, t, state.board, state.lookAt);
-    s.applyPose(solved);
+    // Code or clip (clip slice spec §4.2). The code targets above still give the look and the carry.
+    const choice = chooseMotion(p.motion, p.pose, this.clipLoader.get(p.preset), p.stance);
+    this.status.motion = choice.status;
+    let solved: SolvedPose, fingers: Partial<Record<FingerBone, THREE.Quaternion>> | undefined;
+    if (choice.use === 'clip' && choice.clip && choice.rc) {
+      const sample = sampleClip(choice.clip, choice.rc.fps, clipTime(p.play, simTime, p.phaseT, clipDuration(choice.rc, choice.clip)));
+      const c = clipPose(s.rest, sample, { spec, layout, stance: p.stance, dials, balance: bal }, state.board, state.lookAt);
+      solved = c;
+      fingers = c.fingers;
+    } else {
+      solved = solvePose(s.rest, t, state.board, state.lookAt);
+    }
+    s.applyPose(solved, fingers);
     if (carrying && t.carry) {
       // The board under the arm (walking spec §4): placed from the solved hand, not the feet; no deck contacts, no leash.
       const held = carriedBoard(t.carry, frame, solved);
