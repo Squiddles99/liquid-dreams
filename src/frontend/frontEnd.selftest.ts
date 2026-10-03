@@ -174,6 +174,32 @@ registerSelfTest({
 });
 
 registerSelfTest({
+  name: 'frontend: a choice shows as locked in: the chosen board, outfit or stance carries a tick, focused or not (Andrew, Gate B)',
+  async run() {
+    return withRoot(1920, 1080, (root) => {
+      const p = new GearPanel(() => {}), today = new Date('2026-07-10T09:00:00+08:00');
+      root.appendChild(p.el);
+      const bad: string[] = [];
+      const base = { ...initialFront(DEFAULT_CHOICES), beat: 'gear' as const };
+      const cases = [
+        { tab: 'board' as const, s: { ...base, gearTab: 'board' as const, gearFocus: 0, boards: { female: 'stepUp' as const } }, want: 1 },
+        { tab: 'outfit' as const, s: { ...base, gearTab: 'outfit' as const, gearFocus: 0, outfits: { female: 'shortArmSteamer' as const } }, want: 2 },
+        { tab: 'stance' as const, s: { ...base, gearTab: 'stance' as const, gearFocus: 0, stances: { female: 'goofy' as const } }, want: 1 },
+      ];
+      for (const c of cases) {
+        p.render(gearView(c.s, today, 1), 'keyboard', true);
+        const rows = [...p.el.querySelectorAll('[data-index]')];
+        const ticked = rows.map((r, i) => (r.classList.contains('is-chosen') && r.querySelector('.fe-tick svg') ? i : -1)).filter((i) => i >= 0);
+        if (ticked.join() !== String(c.want)) bad.push(`${c.tab}: ticked ${ticked.join() || 'none'}, want ${c.want}`);
+        const tick = rows[c.want]?.querySelector('.fe-tick');
+        if (tick && getComputedStyle(tick).visibility === 'hidden') bad.push(`${c.tab}: tick hidden`);
+      }
+      return { pass: bad.length === 0, detail: bad.join('; ') || 'board, outfit and stance each tick their choice' };
+    });
+  },
+});
+
+registerSelfTest({
   name: 'frontend: the UI sounds render, their lengths match, the focus tick sits about 12 dB under the confirm',
   async run() {
     const rms = async (s: UiSound): Promise<{ rms: number; lenMs: number }> => {

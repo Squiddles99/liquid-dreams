@@ -50,6 +50,10 @@
 /* The focused row's word box is as wide as its longest word (hidden sizers), so its arrows hold still under a mouse;
    unfocused rows flow, their numbers right after the word. */
 .fe-row:not(.is-focus) .fe-sizer { display: none; }
+/* Grab your gear's locked-in choice: a tick in its slot (hidden on the other rows, so the names still line up). */
+.fe-tick { display: inline-flex; width: 26px; color: var(--fe-sun-hi); visibility: hidden; }
+.fe-row.is-chosen .fe-tick { visibility: visible; }
+.fe-row.is-focus .fe-tick { color: var(--fe-teal); }
 .fe-legend { position: absolute; right: var(--fe-safe-x); bottom: var(--fe-safe-y); display: flex; gap: 34px; align-items: center;
   font: 600 calc(26px * var(--fe-text)) / 1 'Barlow Semi Condensed', sans-serif; color: var(--fe-cream); text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
 .fe-legend .fe-start { color: var(--fe-sun-hi); }
