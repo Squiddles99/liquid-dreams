@@ -33,15 +33,15 @@ scoring, the crew riding, AAA HUD (hints use the dev flash line for now).
    - bail lasts 2 s, then you are back paddling where you are;
    - the wave carries you (the arcade part): standing on its front face, the board grips against water moving with the
      wave at 0.9 × its speed, so a rider angled along the face stays on it; over the back, nothing.
-6. **The set**: G calls a set and starts you on its biggest wave, 10 s before it reaches the peak, at (−10, 3) facing
-   the swell's travel; R moves on to the set's next wave.
 3. **Controls** (`src/ride/rideInput.ts`): keyboard (W/S/A/D or arrows, Space, R, G) and a standard gamepad (left stick,
    A pop up, right trigger paddle / stand tall, left trigger crouch, B next wave).
-4. **Chase camera** (`src/ride/rideCamera.ts`): behind and above the board along its travel, smoothed; the free camera
+4. **Chase camera** (`RideCamera` in `src/ride/ridePose.ts`): behind and above the board along its travel, smoothed; the free camera
    stays put while riding (WASD drive the board, not the camera).
 5. **Posing** (`src/ride/ridePose.ts`): the ride state picks the surfer's pose and dials (sit, paddle, popup, drop then
    trim with lean from the carve, bail) and the board frame (surface normal, rolled onto its rail in a carve). The stand
    takes that frame instead of probing.
+6. **The set**: G calls a set and starts you on its biggest wave, 10 s before it reaches the peak, at (−10, 3) facing
+   the swell's travel; R moves on to the set's next wave.
 
 ## Tuning found (2026-10-03, bot rides on the default conditions)
 
