@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PI, abs, attribute, cameraPosition, dot, float, int, length, max, mix, mx_noise_float, normalWorld, normalize, positionWorld, pow, select, smoothstep, step, texture, uniform, vec3 } from 'three/tsl';
+import { Fn, PI, abs, attribute, cameraPosition, dot, float, int, length, max, mix, mx_noise_float, normalWorld, normalize, positionWorld, pow, select, smoothstep, step, texture, uniform, vec3 } from 'three/tsl';
 import { belowBedNode, seenThroughWaterNode } from '../ocean/WaterVolume';
 import type { WaterOpticsUniforms } from '../ocean/waterShading';
 import type { Seabed } from '../seabed/Seabed';
@@ -136,15 +136,20 @@ function rockMaterial(sky: Sky, sunVisibility?: (xz: N) => N, water?: RockWater 
   const toCam = cameraPosition.sub(positionWorld);
   const dist = length(toCam);
   const lit = albedo.mul(sunE.add(skyE).add(bounce)).div(PI);
-  const inAir = sky.applyAerialPerspective(lit, dist, toCam.div(max(dist, 1e-3)).negate());
+  const inAir = (c: N): N => sky.applyAerialPerspective(c, dist, toCam.div(max(dist, 1e-3)).negate());
   if (!water) {
-    m.colorNode = inAir;
+    m.colorNode = inAir(lit);
     return m;
   }
   // From underwater the land is hidden and the bed is the water volume's march, which writes no depth: the rocks show
   // through the water (fading where the reef does, not as bright dots on the far shore) and hide their own buried bases.
   const under = water.on.greaterThan(0.5);
-  m.colorNode = select(under, seenThroughWaterNode(cameraPosition, positionWorld, lit, water.seabed, sky, water.optics), inAir);
+  // The light is a var assigned before the branch: built inside the select, three (r186) assigns normalWorld only in the
+  // underwater branch, the first to reach it, and above water normalize(normalWorld) is normalize(0), NaN: a black rock.
+  m.colorNode = Fn(() => {
+    const litHere = lit.toVar();
+    return select(under, seenThroughWaterNode(cameraPosition, positionWorld, litHere, water.seabed, sky, water.optics), inAir(litHere));
+  })();
   m.maskNode = under.not().or(belowBedNode(positionWorld, water.seabed).not());
   return m;
 }
