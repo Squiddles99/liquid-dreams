@@ -7,6 +7,7 @@ import { sampleClip } from './clipPlayer';
 import { type ClipPoseContext, clipPose } from './clipPose';
 import { clipFor } from './clips';
 import { flexDeg } from './ik';
+import { poseTargets } from './poses';
 import { PRESETS, type Stance, boardFor } from './presets';
 import { BONES, LIMITS, measures, referenceSkeleton } from './rig';
 import { type BoardFrame, boardQuaternion } from './solvePose';
@@ -135,6 +136,25 @@ describe('the clip on the board (clip slice spec §4.1, §5)', () => {
       const s = setup('female', 'thruster', stance);
       const chest = new Vector3(0, 0, 1).applyQuaternion(clipPose(s.rest, sampleClip(s.clip, 30, 0), ctxOf(s, stance), FLAT, null).world.spine_03);
       expect(chest.x, stance).toBeGreaterThan(Math.sin((15 * Math.PI) / 180)); // ≥ 15° toward the nose (+x)
+    }
+  });
+  it('takes the arms from the surfer pose’s hand targets when given (Andrew, Gate C: a skater’s hanging arms; a surfer holds them out), elbows its way, fingers relaxed', () => {
+    for (const stance of STANCES) {
+      const s = setup('female', 'thruster', stance);
+      const code = poseTargets('trim', { spec: s.spec, layout: s.layout, rest: s.rest, stance, dials: { compression: 0, lean: 0, twist: 0, reach: 0 }, phaseT: 0 });
+      const withF = syntheticRiderClips(s.rest, { fingers: true });
+      const sample = sampleClip(clipFor(withF, 'trim', stance)!, 30, 0.3);
+      const p = clipPose(s.rest, sample, { ...ctxOf(s, stance), hands: code.hands }, FLAT, null);
+      const Ds3 = p.world.spine_03; // referenceSkeleton: world = D
+      for (const side of ['l', 'r'] as const) {
+        const h = code.hands[side];
+        const want = h.frame === 'board' ? h.pos : p.joint.spine_03.clone().add(h.pos.clone().applyQuaternion(Ds3));
+        expect(p.joint[`hand_${side}`].distanceTo(want), `${stance} hand_${side}`).toBeLessThan(0.01);
+        const pole = h.frame === 'board' ? h.pole : h.pole.clone().applyQuaternion(Ds3);
+        const elbow = p.joint[`forearm_${side}`].clone().sub(p.joint[`upperarm_${side}`].clone().add(p.joint[`hand_${side}`]).multiplyScalar(0.5));
+        expect(elbow.dot(pole), `${stance} elbow_${side} toward its pole`).toBeGreaterThan(0);
+        expect(Object.keys(p.fingers).some((f) => f.endsWith(`_${side}`)), `${stance} fingers_${side} left relaxed`).toBe(false);
+      }
     }
   });
   it('turns the head toward a look target on top of the clip', () => {
