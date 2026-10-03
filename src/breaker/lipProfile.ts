@@ -400,9 +400,13 @@ export function sampleHome(j: number, f: ProfileFrame): number {
     case 'front': return f.uFront + (uF - f.uFront) * s;
     case 'face': return uF * (1 - 0.25 * s);
     case 'wall': return uF * (0.75 - 0.15 * s);
-    case 'under': return uF * (0.6 - 0.3 * s);
-    case 'cap': return uF * (0.3 - 0.05 * s);
-    case 'outer': return uF * 0.25 * (1 - s);
+    // The curl's ceiling and tip are at home just by the round end's (0.6 uF; a hair apart, each sample its own), and the
+    // lip's outside runs home from there to the crest (Andrew, 2026-10-03, down the line): blending in from homes spread
+    // down the face, the ceiling ran one way and its homes the other, and the emerging curl notched 26° the wrong way
+    // where the back wall met it. From by one home it grows out of the water, a scaled copy of itself.
+    case 'under': return uF * (0.6 - 0.01 * s);
+    case 'cap': return uF * (0.59 - 0.005 * s);
+    case 'outer': return uF * 0.585 * (1 - s);
     default: return f.uBack * s;
   }
 }
