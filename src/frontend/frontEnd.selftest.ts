@@ -2,7 +2,7 @@
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { type FrontState, initialFront, step } from './frontEnd';
-import { DEFAULT_CHOICES, DEFAULT_FRONT_SETTINGS } from './frontSettings';
+import { DEFAULT_CHOICES, DEFAULT_FRONT_SETTINGS, FRONT_SETTINGS_KEY } from './frontSettings';
 import type { FrontEndHost } from './frontEndCore';
 import { FrontEnd } from './frontEndPage';
 import { gearView } from './gearView';
@@ -349,6 +349,36 @@ registerSelfTest({
       fe.close();
       host.remove();
     }
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: in Grab your gear the rider’s line stays clear of the panel, at 100% and 200% text',
+  async run() {
+    const bad: string[] = [];
+    for (const textScale of [1, 2]) {
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const store = memory();
+      store.setItem(FRONT_SETTINGS_KEY, JSON.stringify({ ...DEFAULT_FRONT_SETTINGS, textScale }));
+      const fe = new FrontEnd(fakeHost(), host, noSound, store);
+      try {
+        fe.open();
+        fe.resize(1920, 1080);
+        for (const a of ['confirm', 'confirm', 'confirm', 'confirm'] as const) { fe.act(a); await frames(fe, 2); }
+        const line = host.querySelector('.fe-root > .fe-line') as HTMLElement;
+        // The longest a board line runs, give or take.
+        line.lastElementChild!.textContent = 'Five and a half foot and hollow, I’m taking the thruster, no worries at all.';
+        const rows = [...host.querySelectorAll('[data-index]')].map((r) => r.getBoundingClientRect().left);
+        const right = line.getBoundingClientRect().right;
+        if (fe.state?.beat !== 'gear' || !rows.length) bad.push(`${textScale * 100}%: not on the gear beat`);
+        else if (right > Math.min(...rows) - 8) bad.push(`${textScale * 100}%: the line runs ${(right - Math.min(...rows)).toFixed(0)} px into the panel`);
+      } finally {
+        fe.close();
+        host.remove();
+      }
+    }
+    return { pass: bad.length === 0, detail: bad.join('; ') || 'clear at both sizes' };
   },
 });
 

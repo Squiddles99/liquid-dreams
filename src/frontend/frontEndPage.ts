@@ -242,8 +242,11 @@ export class FrontEnd {
     const legend = this.settingsPanel ? [{ action: 'back' as const, text: 'Back' }] : visibleBeat ? legendFor({ ...s, beat: visibleBeat }) : [];
     p.legend.set(legend, this.device);
     p.line.update(now);
-    // The mockup's spots: over the sea left of the panel in Grab your gear, over the water in Conditions.
-    const pos = s.beat === 'gear' ? { left: '700px', top: '250px' } : { left: '760px', top: '438px' };
+    // The mockup's spots: over the sea left of the panel in Grab your gear (ending 40 px short of its column, at any text
+    // size), over the water in Conditions.
+    const pos = s.beat === 'gear'
+      ? { left: '700px', top: '250px', maxWidth: 'calc(100% - var(--fe-safe-x) - 600px * (0.6 + 0.4 * var(--fe-text)) - 740px)' }
+      : { left: '760px', top: '438px', maxWidth: '760px' };
     Object.assign(p.line.el.style, pos);
   }
 }
