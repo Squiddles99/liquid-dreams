@@ -86,3 +86,14 @@ export function deepUpwelling(p: WaterOpticsParams, sunY: number, sun: Rgb, sky:
   const a = waterAlbedo(p);
   return [0, 1, 2].map((i) => (a[i] * (sky[i] + sun[i] * Math.max(sunY, 0)) * p.bodyScale) / Math.PI) as Rgb;
 }
+
+/** The tube's light (shadeWater's mirror, spec 2026-10-03 lip-and-tube-look R3.4): the sun's factor (direct + through the
+ * lip, tinted), the sky's (open + through the lip, tinted and dimmed) and the glitter's (the direct sun only). */
+export function tubeLightFactors(p: WaterOpticsParams, sLip: number, sBody: number, o: number, tLip: number): { sun: Rgb; sky: Rgb; glitter: number } {
+  const c = lipTransmissionColour(p, tLip), direct = Math.max(0, 1 - sLip - sBody);
+  return {
+    sun: [0, 1, 2].map((i) => direct + sLip * c[i]) as Rgb,
+    sky: [0, 1, 2].map((i) => o + (1 - o) * c[i] * p.lipSkyTransmission) as Rgb,
+    glitter: direct,
+  };
+}

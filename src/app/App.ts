@@ -874,7 +874,9 @@ export class App {
   private updateRibbon(events: readonly WaveEvent[]): void {
     const field = this.field, ctx = this.waveCtx, cam = this.camera.position;
     const tracing = field !== null && ctx !== null && this.breakParams.enabled;
-    const key = `${tracing}|${this.clock.simTime}|${cam.x}|${cam.z}`;
+    // The sun too: the tube's light (BreakingRibbon's light pass) follows it, paused or not.
+    const sun = this.sky.sunDirection.value;
+    const key = `${tracing}|${this.clock.simTime}|${cam.x}|${cam.z}|${sun.x}|${sun.y}|${sun.z}`;
     if (key === this.ribbonKey) return;
     this.ribbonKey = key;
     let entries: StationEntry[] = [];
@@ -886,6 +888,7 @@ export class App {
       this.traceMs += TRACE_MS_ALPHA * (performance.now() - start - this.traceMs);
     }
     this.ribbon.setStations(entries, cam);
+    this.ribbon.setSun(sun);
     this.ribbon.compute(this.renderer);
     this.ribbon.renderFootprint(this.renderer);
   }
