@@ -35,7 +35,7 @@ import {
   CustomProfile, type DevLookParams, type DevSettings, type SettingsMode, type SettingsStorage, assignParams, clearDevSettings,
   cloneDevSettings, cloneLook, loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
 } from '../dev/devSettings';
-import { captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
+import { HOTKEYS, captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
 import { PADDLE_OUT_MS } from '../frontend/entry';
 import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
@@ -1665,6 +1665,8 @@ export class App {
     const simDt = this.clock.tick(realDt);
     this.frontEnd?.update(realDt);
 
+    // While the front end has the keys, only H (show/hide the dev tools) reaches the game's hotkeys.
+    if (this.frontEnd?.isOpen && this.input.consumePressed(HOTKEYS.toggleDevUi)) this.toggleDevUi();
     if (!this.frontEnd?.isOpen) handleHotkeys(this.input, {
       copyLink: () => void this.copyLink(),
       togglePause: () => this.setPaused(!this.clock.paused),

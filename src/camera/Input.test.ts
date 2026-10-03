@@ -29,5 +29,10 @@ describe('Input while the front end is open (spec §10)', () => {
     input.suspended = false;
     key('keydown', 'KeyW');
     expect(input.isDown('KeyW')).toBe(true);
+    // H (show/hide the dev tools) still works while the front end has the keys.
+    input.suspended = true;
+    key('keydown', 'KeyH');
+    expect(input.consumePressed('KeyH')).toBe(true);
+    key('keyup', 'KeyH');
   });
 });
