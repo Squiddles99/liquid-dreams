@@ -6,6 +6,7 @@ import { FIRST_PRESET, presetById } from './sessionSetup';
 import { BreakMap } from './ui/breakMap';
 import { ConditionsPanel } from './ui/conditionsPanel';
 import { Legend, legendFor } from './ui/legend';
+import { SlidePanel } from './ui/slidePanel';
 import { applyLayout, layoutFor, mountFrontEndRoot } from './ui/layout';
 
 /** A front-end root laid out for a window size, for the duration of one check. */
@@ -97,6 +98,22 @@ registerSelfTest({
       const inside = Math.abs(b.x + b.w - (l.designW - l.safeX)) < 1 && Math.abs(b.y - l.safeY) < 1;
       const reef = (m.el.querySelector('path[stroke-dasharray]')?.getAttribute('d') ?? '').length;
       return { pass: inside && tiny.length === 0 && reef > 20, detail: `box ${JSON.stringify(b)}, ${tiny.length} small labels, 3 m contour ${reef} chars` };
+    });
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the slide panel is 900 px from the right edge, its text inside the safe area and 18 px or more',
+  async run() {
+    return withRoot(1920, 1080, (root, l) => {
+      const p = new SlidePanel(() => {});
+      root.appendChild(p.el);
+      p.render({ ...initialFront(DEFAULT_CHOICES), beat: 'rider' }, true);
+      const b = designBox(p.el, root, l.scale);
+      const texts = [...p.el.querySelectorAll('span, div')].filter((e) => e.childElementCount === 0 && e.textContent);
+      const tiny = texts.filter((t) => parseFloat(getComputedStyle(t).fontSize) < 18);
+      const outside = texts.filter((t) => { const r = designBox(t, root, l.scale); return r.x + r.w > l.designW - l.safeX + 0.5 || r.y + r.h > l.designH - l.safeY + 0.5; });
+      return { pass: Math.abs(b.w - 900) < 1 && Math.abs(b.x + b.w - l.designW) < 1 && tiny.length === 0 && outside.length === 0, detail: `box ${JSON.stringify(b)}, ${tiny.length} small, ${outside.length} outside` };
     });
   },
 });
