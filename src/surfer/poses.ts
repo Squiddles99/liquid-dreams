@@ -567,7 +567,7 @@ function selectStand(ctx: PoseContext, r: Rider): PoseTargets {
     t.pelvis.y += bounce;
     // Only when he's wearing them: glasses come with the walking clothes (wardrobe landLook), not the Outfit tab's surf outfits.
     const push = ctx.glasses === false ? 0 : bump(ph, 0.6, 0.78);
-    if (push > 0) hand = boardHand(hand.pos.clone().lerp(V(0.17, headY + 0.03, 0), push), hand.pole.clone().lerp(V(0, -1, -k * 0.3), push).normalize());
+    if (push > 0) hand = boardHand(hand.pos.clone().lerp(V(0.21, headY - 0.07, 0), push), hand.pole.clone().lerp(V(1, -0.5, -k * 0.3), push).normalize());
   }
   t.hands[free] = hand;
   return t;

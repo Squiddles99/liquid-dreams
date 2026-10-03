@@ -102,6 +102,14 @@ describe('the select stances\' idles (spec §13: 4–8 s loops with small second
     const t = poseTargets('selectStand', { spec: spec.spec, layout: layoutFor(spec.spec, c.rest.heightM), rest: c.rest, stance: 'regular', dials: DIALS, phaseT: 0.69, carrySide: c.side, who: c.name, glasses: false });
     expect(t.hands.r.pos.y).toBeLessThan(spec.t.hands.r.pos.y - 0.2);
   });
+  it('keeps Grommet\'s fingers under his hat brim while he pushes his glasses up (everything renders)', () => {
+    for (const c of standCases().filter((x) => x.name === 'grommet')) for (let ph = 0.55; ph <= 0.85; ph += 0.01) {
+      const s = solveStand('selectStand', c, ph).s, free: Limb = c.side === 'l' ? 'r' : 'l';
+      const wrist = s.joint[`hand_${free}`], dir = wrist.clone().sub(s.joint[`forearm_${free}`]).normalize();
+      const tip = wrist.clone().add(dir.multiplyScalar(0.18));
+      expect(tip.y - s.joint.head.y, `${c.tag} @${ph.toFixed(2)} fingertips`).toBeLessThan(0.1);
+    }
+  });
   it('rolls T-Bone\'s shoulder', () => {
     const c = pick('male', 'thruster', 'r');
     expect(Math.abs(solveStand('selectStand', c, 0.3).t.chest.twist - solveStand('selectStand', c, 0).t.chest.twist)).toBeGreaterThan(0.04);
