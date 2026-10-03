@@ -20,6 +20,10 @@ export const CLIP_COMPRESSION_DROP = 0.42;
 const BAL_ROLL = 1.5, BAL_ROLL_MAX = 0.06, BAL_PITCH = 0.75, BAL_PITCH_MAX = 0.04;
 /** A clip turned to put its feet along the board is held to ±60° (Review Focus 4): a wrong-footed clip shows as such. */
 const YAW_MAX = 60 * DEG;
+/** How far the look may turn a clip's head past the capture's own (Andrew, Gate C: the full code-pose look on top of the
+ * skater's own glance twisted the head over the shoulder): small glances, never a second neck. */
+export const CLIP_LOOK_YAW_MAX = 20 * DEG;
+export const CLIP_LOOK_PITCH_MAX = 15 * DEG;
 
 export interface ClipPoseContext {
   spec: BoardSpec;
@@ -144,12 +148,12 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
     D[to] = D[ft].clone();
   }
 
-  // The head turned toward lookAt on top of the clip's own (the neck takes 40%, as solvePose).
+  // The head nudged toward lookAt on top of the clip's own, within CLIP_LOOK_* (the neck takes 40%, as solvePose).
   const Qb = boardQuaternion(board);
   if (lookAt) {
     const dir = lookAt.clone().sub(board.position).applyQuaternion(Qb.clone().invert()).sub(J.head).normalize().applyQuaternion(D.head.clone().invert());
-    const yaw = clamp(Math.atan2(dir.x, dir.z), -LIMITS.headYawMaxDeg * DEG, LIMITS.headYawMaxDeg * DEG);
-    const pitch = clamp(Math.asin(clamp(dir.y, -1, 1)), -LIMITS.headPitchDownDeg * DEG, LIMITS.headPitchUpDeg * DEG);
+    const yaw = clamp(Math.atan2(dir.x, dir.z), -CLIP_LOOK_YAW_MAX, CLIP_LOOK_YAW_MAX);
+    const pitch = clamp(Math.asin(clamp(dir.y, -1, 1)), -CLIP_LOOK_PITCH_MAX, CLIP_LOOK_PITCH_MAX);
     const look = new Quaternion().setFromAxisAngle(Y, yaw).multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -pitch));
     D.neck = D.neck.clone().multiply(new Quaternion().slerp(look, 0.4));
     D.head = D.head.clone().multiply(look);

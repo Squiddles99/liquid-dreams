@@ -115,6 +115,14 @@ describe('the clip on the board (clip slice spec §4.1, §5)', () => {
     expect(Object.keys(b.fingers).length).toBe(0);
   });
 
+  it('lets the look only nudge the clip’s head (≤ 20° round, ≤ 15° up or down): the capture keeps its own neck (Andrew, Gate C: the head twisted over the shoulder)', () => {
+    const s = setup('female', 'thruster', 'regular'), sample = sampleClip(s.clip, 30, 0);
+    const own = clipPose(s.rest, sample, ctxOf(s, 'regular'), FLAT, null).world.head;
+    for (const target of [new Vector3(20, 1.4, 3), new Vector3(-20, 1.4, 3), new Vector3(0, 30, 5), new Vector3(0, -30, 5)]) {
+      const head = clipPose(s.rest, sample, ctxOf(s, 'regular'), FLAT, target).world.head;
+      expect((own.angleTo(head) * 180) / Math.PI, `${target.toArray()}`).toBeLessThanOrEqual(25.1); // 20° and 15° combined
+    }
+  });
   it('turns the head toward a look target on top of the clip', () => {
     const s = setup('female', 'thruster', 'regular'), sample = sampleClip(s.clip, 30, 0);
     const noLook = clipPose(s.rest, sample, ctxOf(s, 'regular'), FLAT, null);
