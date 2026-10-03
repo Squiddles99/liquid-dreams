@@ -14,7 +14,7 @@ import {
 } from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
-import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame, sampleTarget, settleSpan, tubeLight } from './lipProfile';
+import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame, sampleTarget, settleSpan, tubeLight, TUBE_TIP_SAMPLE } from './lipProfile';
 import { FRAME_LAYOUT, FRAME_VEC4S, SEGMENT_OF_SAMPLE, homeFromTable, packFrameCpu, profilePointNode, readFrameNodes, sampleHomeNode, sampleTargetNode } from './lipProfileNodes';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
@@ -140,7 +140,7 @@ registerSelfTest({
     const SUN = new THREE.Vector3(0.35, 0.6, -0.72).normalize();
     ribbon.setSun(SUN);
     const perField = FRAME_LAYOUT.map(() => 0);
-    let stations = 0, deadLive = 0, nonFinite = 0, broken = 0, landed = 0, worstDetail = '';
+    let stations = 0, deadLive = 0, nonFinite = 0, notOpen = 0, broken = 0, landed = 0, worstDetail = '';
     const segBad = [0, 0, 0, 0, 0, 0, 0], segWorst = [0, 0, 0, 0, 0, 0, 0];
     const failures: string[] = [];
     for (const psi of MIRROR_PSI) for (const dt of MIRROR_DTS) {
@@ -179,6 +179,9 @@ registerSelfTest({
           extras.see(xm[xw], `${where} j ${j} ${['thickness', 'lipness', 'curlFoam', 'rho'][xw]} GPU ${ge[k + xw].toFixed(4)} CPU ${cx[xw].toFixed(4)}`);
           const cl = lights[j], gk = [gl[k], gl[k + 1], gl[k + 2], gl[k + 3]];
           if (!gk.every(Number.isFinite)) nonFinite++;
+          // Off the tube's inside (and the tip itself) the light is exactly open (no atan2(0, 0) leaking through a × 0).
+          const offInside = SEGMENT_OF_SAMPLE[j] !== SEGMENT_ID.face && SEGMENT_OF_SAMPLE[j] !== SEGMENT_ID.wall;
+          if ((offInside || j === TUBE_TIP_SAMPLE) && (gk[0] !== 0 || gk[1] !== 1 || gk[3] !== 0)) notOpen++;
           const dl = Math.max(Math.abs(gk[0] - cl.sLip), Math.abs(gk[1] - cl.o), Math.abs(gk[3] - cl.sBody), Math.abs(gk[2] - cl.tLip));
           light.see(dl, `${where} j ${j} GPU (${gk.map((v) => v.toFixed(3)).join(', ')}) CPU (${[cl.sLip, cl.o, cl.tLip, cl.sBody].map((v) => v.toFixed(3)).join(', ')})`);
         }
@@ -201,12 +204,12 @@ registerSelfTest({
     // so they measure the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest): 1 cm. The lip's thickness is a length on
     // the profile, bounded as the constructed points (5 mm); the unitless extras (lipness, curl foam, ρ) 2e-3.
     const ok = stations > 0 && broken > 0 && landed > 0 && deadLive === 0 && nonFinite === 0 && constructed.value < 5e-3 && Math.max(edge.value, skirt.value) < 1e-2 &&
-      frame.value <= 0 && thick.value < 5e-3 && extras.value < 2e-3 && light.value < 2e-2;
+      frame.value <= 0 && thick.value < 5e-3 && extras.value < 2e-3 && light.value < 2e-2 && notOpen === 0;
     const fields = FRAME_LAYOUT.map((n, m) => `${n} ${perField[m].toExponential(1)}`).join(', ');
     return {
       pass: ok,
       detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${broken} in the throw, ${landed} landed); worst |Δpos| (m) constructed ${constructed} (< 5e-3), ` +
-        `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the landing's root 3e-3, the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); worst |Δlight| ${light} (< 2e-2); ` +
+        `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the landing's root 3e-3, the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); worst |Δlight| ${light} (< 2e-2), open samples not exactly open ${notOpen} (0); ` +
         `live rows flagged dead ${deadLive}, non-finite samples ${nonFinite} (0). Samples off > 5 mm by segment (front..back) ${segBad.join('/')}, worst ${segWorst.map((v) => v.toFixed(3)).join('/')}. Worst constructed: ${worstDetail}. Per frame field |Δ|: ${fields}. Frame failures: ${failures.join(' | ') || 'none'}`,
     };
   },
