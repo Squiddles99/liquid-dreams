@@ -19,7 +19,7 @@ A surfing game built for the love of it. The first (and only) break is **The Wom
 - **Sound:**
   - lip impacts heard a beat after you see them, the white water's roar, and the shore break;
   - the Bombie's boom, wind in the scrub, lapping and swash;
-  - the *Morning Of The Earth* soundtrack quietly underneath (see Music).
+  - the *Liquid Dreams* soundtrack by Andrew's friend Tom quietly underneath (see Music).
 
 ## Just want to play? (Windows)
 
@@ -140,7 +140,7 @@ View and set picks are visits: your saved swell, tide and camera stay untouched,
 
 The game plays the audio files under `music/` quietly under the ocean: one folder per album, tracks in the order of the number at the start of each file name (`1. …`, `2. …`, `10. …`). The Sound folder has the volumes, play/pause and next track; `M` mutes everything.
 
-`music/morning-of-the-earth/` is Andrew's personal copy of the *Morning Of The Earth* soundtrack, committed for his own use. 
+`music/liquid-dreams/` is the game's own soundtrack, made for Liquid Dreams by Andrew's friend Tom (tom_a_drummond) with Suno, and used with his permission. See `public/LICENSES.md`. 
 ## Developers
 
 ```bash
