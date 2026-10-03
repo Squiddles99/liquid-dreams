@@ -943,6 +943,7 @@ export class App {
       },
       stage: (staging, pose) => this.stageFrontEnd(staging, pose),
       paddleOut: (choice) => this.paddleOut(choice),
+      crewReady: () => this.gang.settled,
     };
   }
 

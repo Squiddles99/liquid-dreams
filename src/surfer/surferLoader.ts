@@ -21,4 +21,9 @@ export class KeyedLoader<K, T> {
     );
     return null;
   }
+
+  /** Whether `key` has finished: loaded, or failed for good. False before it's asked for and while it loads. */
+  settled(key: K): boolean {
+    return this.done.has(key) || this.failed.has(key);
+  }
 }
