@@ -269,3 +269,23 @@ describe('prone elbows (Andrew, gate 2: the elbow pointed up and pinched, the fo
     expect(worst.length, worst.slice(0, 3).join('; ')).toBe(0);
   });
 });
+
+describe('the paddle stroke (Andrew: the recovering hand lifted to the shoulder and folded back, the elbow the wrong way)', () => {
+  it('the hand never rises above the shoulder, and comes back over the water under a lifted elbow', () => {
+    const worst: string[] = [];
+    for (const { name, preset, rest } of RIDERS) for (const kind of boardsFor(preset)) {
+      const spec = boardFor(preset, kind);
+      const layout = layoutFor(spec, rest.heightM);
+      for (let i = 0; i < 16; i++) {
+        const t = poseTargets('paddle', { spec, layout, rest, stance: 'regular', dials: { compression: 0, lean: 0, twist: 0, reach: 0 }, phaseT: i / 16 });
+        const J = solvePose(rest, t, FRAMES[0], null).joint;
+        for (const side of ['l', 'r'] as const) {
+          const sh = J[`upperarm_${side}`].y, el = J[`forearm_${side}`].y, ha = J[`hand_${side}`].y;
+          if (ha > sh) worst.push(`${name}/${kind} t=${i / 16} hand_${side} ${((ha - sh) * 100).toFixed(1)} cm above the shoulder`);
+          if (ha > el + 0.01) worst.push(`${name}/${kind} t=${i / 16} hand_${side} above its elbow`);
+        }
+      }
+    }
+    expect(worst.length, worst.slice(0, 3).join('; ')).toBe(0);
+  });
+});
