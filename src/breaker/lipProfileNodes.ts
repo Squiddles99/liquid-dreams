@@ -317,18 +317,20 @@ function impactHeightNode(baseAt: (u: N) => N, K: N, H: N, psi: N, uc: N): N {
   const above = (hi: N): N => K.y.add(hi.mul(py)).sub(yAt(x0.add(hi.mul(px))));
   const nScan = IMPACT_SCAN.length;
   const lo = float(-1.0).toVar(), hi = float(-1.0).toVar(), prev = float(0.0).toVar(), prevAt = float(0.0).toVar();
-  const found = float(0.0).toVar();
+  // under: the point is under the water at the sheet's H, so H, and the scan stops (lipProfile.impactHeight).
+  const found = float(0.0).toVar(), under = float(0.0).toVar();
   Loop(nScan + IMPACT_BISECT, ({ i }: N) => {
     const scanning = i.lessThan(int(nScan));
     // The scan's factor at step i (IMPACT_SCAN is evenly spaced from 1 to 2: 1 + i/4), or the bisection's midpoint.
     const at = select(scanning, H.mul(float(i).mul((IMPACT_SCAN[nScan - 1] - IMPACT_SCAN[0]) / (nScan - 1)).add(IMPACT_SCAN[0])), lo.add(hi).mul(0.5)).toVar();
     // As the CPU: the scan stops at its crossing, and the bisection reads only once one is found.
-    If(scanning.and(found.lessThan(0.5)).or(scanning.not().and(found.greaterThan(0.5))), () => {
+    If(scanning.and(found.lessThan(0.5)).and(under.lessThan(0.5)).or(scanning.not().and(found.greaterThan(0.5))), () => {
       const g = above(at).toVar();
       If(scanning, () => {
         If(i.greaterThan(int(0)).and(found.lessThan(0.5)).and(prev.greaterThan(0.0)).and(g.lessThanEqual(0.0)), () => {
           lo.assign(prevAt); hi.assign(at); found.assign(1.0);
         });
+        If(i.equal(int(0)).and(g.lessThanEqual(0.0)), () => { under.assign(1.0); });
         prev.assign(g); prevAt.assign(at);
       }).Else(() => {
         If(g.greaterThan(0.0), () => { lo.assign(at); }).Else(() => { hi.assign(at); });
