@@ -16,6 +16,8 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
 export const CLIP_LEAN_MAX = 35 * DEG;
 export const CLIP_TWIST_DIAL = 0.6;
 export const CLIP_COMPRESSION_DROP = 0.42;
+/** A clip's own crouch before the dial (Andrew, Gate C: bend the knees a little more; a skater stands taller than a surfer). */
+export const CLIP_BASE_COMPRESSION = 0.3;
 /** The balance layer's hand drift (m) as small chest roll and pitch (rad per m, and the caps; §4.1 step 3). */
 const BAL_ROLL = 1.5, BAL_ROLL_MAX = 0.06, BAL_PITCH = 0.75, BAL_PITCH_MAX = 0.04;
 /** A clip turned to put its feet along the board is held to ±60° (Review Focus 4): a wrong-footed clip shows as such. */
@@ -98,7 +100,7 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
   P.add(pivot.clone().sub(J.foot_l.clone().add(J.foot_r).multiplyScalar(0.5)));
 
   // The dials and the balance, as corrections on top of the clip.
-  P.y -= CLIP_COMPRESSION_DROP * m.legLen * clamp(ctx.dials.compression, -1, 1);
+  P.y -= CLIP_COMPRESSION_DROP * m.legLen * clamp(CLIP_BASE_COMPRESSION + ctx.dials.compression, -1, 1.3);
   const lean = clamp(ctx.dials.lean, -1, 1) * CLIP_LEAN_MAX;
   if (lean !== 0) {
     const q = new Quaternion().setFromAxisAngle(leanAxis, lean);
