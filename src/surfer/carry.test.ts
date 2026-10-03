@@ -5,7 +5,7 @@ import { HAND_REACH, LIMB_RADIUS, PACK_PARTS, boardBoxes, carriedBoard, distance
 import { flexDeg } from './ik';
 import { groundFrame } from './placement';
 import { poseTargets } from './poses';
-import { DIALS, GROUND, NAMES, Qg, builtRest, depthIn, handIntoBoard, packPoints, solveStand, standCases, toW } from './poseTestKit';
+import { DIALS, GROUND, NAMES, Qg, builtRest, depthIn, gripHooks, gripIntoBoard, handIntoBoard, handShapeFor, packPoints, solveStand, standCases, toW } from './poseTestKit';
 import { PRESETS, boardFor, boardsFor } from './presets';
 import { type BoneName, type Limb, referenceSkeleton } from './rig';
 import { boardQuaternion, solvePose } from './solvePose';
@@ -69,9 +69,17 @@ describe('the carry (walking spec §4): the board under the arm, every rider, bo
   }
 
   it('lays the carrying hand along the board, the fingers clear of it (Gate A: the hand cut through the lower rail)', () => {
-    for (const c of cases()) {
+    for (const c of cases().filter((x) => !x.rest.hand)) {
       const { s, board, spec } = solveCarry(c);
       expect(handIntoBoard(s, c.rest, c.side, board, spec), c.tag).toBeLessThan(0.001);
+    }
+  });
+
+  it('grips the rail: the index, middle and ring fingers hook round it, nothing in the board; a bodyboard\'s hand lies open (Andrew, Gate A)', () => {
+    for (const c of cases().filter((x) => x.rest.hand)) {
+      const { s, board, spec } = solveCarry(c);
+      expect(gripIntoBoard(s, c.rest, c.side, c.name, board, spec, handShapeFor(c.kind)), `${c.tag} fingers into the board (m)`).toBeLessThan(0.002);
+      if (c.kind !== 'bodyboard') expect(gripHooks(s, c.rest, c.side, c.name, board, spec), `${c.tag} index, middle, ring round the rail`).toEqual([true, true, true]);
     }
   });
 

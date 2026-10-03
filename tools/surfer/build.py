@@ -12,6 +12,7 @@ import export  # noqa: E402
 import expressions  # noqa: E402
 import face  # noqa: E402
 import glasses  # noqa: E402
+import grip  # noqa: E402
 import hairline  # noqa: E402
 import hair  # noqa: E402
 import mpfb_bridge  # noqa: E402
@@ -40,6 +41,8 @@ expressions.scale(body, rig_trim.scale_to_height(body, rig, preset["heightM"], l
 sculpt.smooth_anatomy(body, preset["heightM"], preset.get("smooth", []))
 # The upper lip thinned directly (dune select spec §13.1), where MPFB's targets only nudge it.
 lip_mm = sculpt.upper_lip(body, landmarks["mouth"], preset["upperLip"]) if preset.get("upperLip") else None
+# The rail grip, posed on MPFB's finger bones before the trim folds them into the hand (dune select Gate A).
+grip_points = grip.make(rig, body, preset.get("grip"))
 rig_trim.trim(rig, body)
 rig_trim.decimate(body, preset["bodyTriangles"])
 rig_trim.limit_weights(body)
@@ -170,7 +173,7 @@ if hat_hair is not None:
     checks["hatHairUnder"] = all(clothes.hat_hair_check(o, hat, band, L["head_centre"]) for o in (hat_hair, *hat_extras))
 print(f"checks: {checks}")
 export.glb(rig, parts, os.path.join(out_dir, f"{name}.glb"))
-export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version(), L, spots, head_tris, checks)
+export.manifest(rig, parts, preset, os.path.join(out_dir, f"{name}.manifest.json"), mpfb_bridge.version(), L, spots, head_tris, checks, grip_points)
 previews.clay(body)
 previews.sheet(name, preset["heightM"], preview_dir, "clay")
 for outfit in preset["outfits"] + (["walking"] if walk else []):

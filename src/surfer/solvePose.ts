@@ -108,7 +108,11 @@ export function solvePose(rest: SkeletonRest, t: PoseTargets, board: BoardFrame,
     J[fa] = fk(fa);
     D[fa] = aimRotation(restDir(fa, h), NEG_Z, ik.end.clone().sub(J[fa]), pole);
     J[h] = fk(h);
-    D[h] = ht.dir ? aimRotation(restDir(fa, h), NEG_Z, ht.frame === 'board' ? dirW(ht.dir) : ht.dir.clone().applyQuaternion(Ds3), pole) : D[fa].clone();
+    const inW = (v: Vector3): Vector3 => (ht.frame === 'board' ? dirW(v) : v.clone().applyQuaternion(Ds3));
+    const palm = rest.hand?.[s];
+    // The hand aimed where its fingers point, its palm turned where it faces (the rail grip), or straight on.
+    D[h] = ht.dir && ht.palm && palm ? aimRotation(palm.axis, palm.palm, inW(ht.dir), inW(ht.palm))
+      : ht.dir ? aimRotation(restDir(fa, h), NEG_Z, inW(ht.dir), pole) : D[fa].clone();
   }
 
   for (const g of legs) {

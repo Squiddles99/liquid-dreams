@@ -16,7 +16,7 @@ def glb(rig, meshes, path):
                               export_vertex_color="ACTIVE")
 
 
-def manifest(rig, meshes, preset, path, mpfb_version, L=None, pimples=(), head_triangles=None, checks=None):
+def manifest(rig, meshes, preset, path, mpfb_version, L=None, pimples=(), head_triangles=None, checks=None, grip=None):
     def gl(v):  # Blender (x, y, z) → glTF (x, z, -y)
         return [round(v.x, 5), round(v.z, 5), round(-v.y, 5)]
     data = {
@@ -43,6 +43,10 @@ def manifest(rig, meshes, preset, path, mpfb_version, L=None, pimples=(), head_t
         data["headTriangles"] = head_triangles
     if checks is not None:
         data["checks"] = checks
+    if grip is not None:
+        # Each finger's joints (knuckle, middle, tip joint, fingertip; index, middle, ring, pinky, thumb) from the hand
+        # bone's head, at rest and curled round a rail (grip.py), for the game's tests.
+        data["grip"] = {s: {k: [[gl(p) for p in finger] for finger in v[k]] for k in ("rest", "grip", "flat")} for s, v in grip.items()}
     if pimples:
         data["skin"] = {"pimples": [gl(c) + [round(r, 5)] for c, r in pimples]}
     with open(path, "w", encoding="utf-8") as f:

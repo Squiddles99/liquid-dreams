@@ -23,7 +23,8 @@ UNITS = {
     "squint": ["eye-left-slit", "eye-right-slit"],
     "nostrils": ["nose-left-dilatation", "nose-right-dilatation"],
 }
-MORPHS = [*UNITS, "breathe"]
+# The rail grip and the open hand, per hand (grip.py), ride the same path; the game drives them from the pose, not the face.
+MORPHS = [*UNITS, "breathe", "gripL", "gripR", "flatL", "flatR"]
 PREFIX = "xp_"
 
 
