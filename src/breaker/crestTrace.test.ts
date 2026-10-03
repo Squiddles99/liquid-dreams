@@ -166,6 +166,26 @@ describe('station ψ (barrel from the maths)', () => {
   });
 });
 
+describe("each station's throw height (spec 2026-10-03 barrel-size, option A)", () => {
+  it("is the sheet's crest lipH there: the tube hangs from the crest the sheet threw", () => {
+    const big = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+    const w = testWave(big.heightM), t = sampleField(field, 0, 0).tau + 0.8;
+    const input = { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: 0 };
+    const o = breakOptions(field, DEFAULT_BREAK_PARAMS, 0);
+    const stations = traceStations(field, [w], t, ctx, input).filter((e): e is Station => !e.gap);
+    let broken = 0, worst = 0;
+    for (const s of stations) {
+      const c = crestAt(s.x, s.z, t, sampleField(field, s.x, s.z), w, ctx, o);
+      if (!c) continue;
+      if (c.lipH === null) { expect(s.lipH).toBeNull(); continue; }
+      broken++;
+      worst = Math.max(worst, Math.abs((s.lipH ?? NaN) - c.lipH));
+    }
+    expect(broken).toBeGreaterThan(5);
+    expect(worst).toBeLessThan(1e-6);
+  });
+});
+
 describe("the crest's ψ at the reef grid's edge (final review I2)", () => {
   it('eases to PSI_NORMAL at the edge, so a crest crossing it keeps its shape', () => {
     const g = field.grid, w = testWave(REF_BIGGEST.heightM), input = { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0 };

@@ -105,7 +105,7 @@ describe('lipProfile', () => {
     expect(worst, `the largest jump in the landing (× H), at ${where}`).toBeLessThan(0.03);
   });
   it("the face's join moves smoothly with the wave: no jump of a whole concave step (it jumped 0.15 H)", { timeout: 60_000 }, () => {
-    // The join stepped out toward the trough in whole FACE_CONCAVE_STEP_H steps while the sheet there stood steeper than
+    // (The steps are gone with the hollow face, 2026-10-03; the join must still move smoothly.) The join stepped out toward the trough in whole 0.15 H steps while the sheet there stood steeper than
     // the face's chord: where a wave sat on that line, a hair's change in it moved the face's foot 0.15 H, and the GPU's
     // f32 and the CPU took different sides of it (ribbon self-test, after the face's floor ran down from one width). The
     // peak's own landing jump (impactHeight's scan) is pinned in the next test.

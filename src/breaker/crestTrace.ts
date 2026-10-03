@@ -1,4 +1,4 @@
-import { type BreakParams, ONSET_RECORD_LENGTH, breakingRatio, landingEstimate, onsetPsi, onsetTime } from './breaking';
+import { type BreakParams, ONSET_RECORD_LENGTH, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetTime } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
@@ -50,6 +50,9 @@ export interface Station {
   tb: number | null;
   /** The crest's ψ, as the sheet's crest there (setWaveModel.crestAt): the lip's shape. */
   psi: number;
+  /** The height (m) the section stood at as it threw its lip, as the sheet's crest there (setWaveModel.Crest.lipH): the
+   * tube hangs from the crest it stood at then. null before breaking or off the record. */
+  lipH: number | null;
 }
 
 export type StationEntry = Station | { gap: true };
@@ -114,6 +117,12 @@ export function stationPsi(field: ReefField, w: ActiveWave, x: number, z: number
   return PSI_NORMAL + (psi - PSI_NORMAL) * psiEdgeFade(field.grid, x, z);
 }
 
+/** The station's throw height: the onset record's there (breaking.onsetHeight), as setWaveModel.crestAt reads it. */
+export function stationLipH(field: ReefField, w: ActiveWave, x: number, z: number, p: BreakParams): number | null {
+  const rec = sampleOnset(field, x, z, onsetScratch);
+  return rec ? onsetHeight(rec, 0, w.heightM, p) : null;
+}
+
 /** Whether a station still draws: before breaking, from the ribbon's onset ratio; after, until the (estimated) hand-back. */
 function alive(s: Station, p: BreakParams): boolean {
   if (s.tb === null) return s.r >= p.ribbonOnset;
@@ -133,7 +142,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
     for (let n = 0; n < 20000; n++) {
       const nrm = crestNormal(w, f, ctx);
       if (sign > 0 || n > 0) {
-        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, psi: PSI_NORMAL });
+        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, psi: PSI_NORMAL, lipH: null });
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS);
@@ -155,6 +164,7 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], ctx: WaveCo
   for (const s of line) {
     s.tb = timeSinceOnset(field, w, s.x, s.z, ctx, input.params);
     s.psi = stationPsi(field, w, s.x, s.z, input);
+    s.lipH = stationLipH(field, w, s.x, s.z, input.params);
   }
 }
 
