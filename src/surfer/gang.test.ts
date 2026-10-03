@@ -3,7 +3,9 @@ import { Quaternion, Vector3 } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { layoutFor } from '../board/boardSpec';
 import { LIMB_RADIUS, boardBoxes, carriedBoard, distanceToBoxes } from './carry';
-import { GANG_SPACING_M, gangCamera, gangPlaces, gangTrack } from './gang';
+import { GANG_SPACING_M, gangCamera, gangCameraDistance, gangPlaces } from './gang';
+import { TrackNetwork, routeTracks } from '../land/tracks';
+import { testLand } from '../land/testLand';
 import { groundFrame, headingAxes } from './placement';
 import { poseTargets } from './poses';
 import { PRESETS, type PresetName, boardFor, boardsFor } from './presets';
@@ -62,15 +64,13 @@ describe('the gang mockup’s lineup (walking spec §6)', () => {
     expect(cam.position[1]).toBeGreaterThanOrEqual(36 + 0.5 - 1e-9);
     expect(cam.pitchDeg).toBeLessThan(0);
   });
-  it('tramples a track through the heath from them to the camera', () => {
-    const track = gangTrack(CENTRE, 5.5);
-    const { fwd } = headingAxes(CENTRE.headingDeg);
-    expect(track.length).toBeGreaterThanOrEqual(4);
-    for (const t of track) {
-      const along = (t.x - CENTRE.x) * fwd[0] + (t.z - CENTRE.z) * fwd[1];
-      expect(along).toBeGreaterThan(0);
-      expect(along).toBeLessThanOrEqual(5.5 + 1e-9);
-      expect(t.r).toBeGreaterThanOrEqual(GANG_SPACING_M + 0.6);
-    }
+  it('keeps the camera on the track: never more than 5.5 m, never off the clearing or a corridor', () => {
+    const net = new TrackNetwork(routeTracks(testLand(), [-300, 300]));
+    const s = net.standSpot();
+    const d = gangCameraDistance(net, s);
+    expect(d).toBeLessThanOrEqual(5.5);
+    expect(d).toBeGreaterThan(2);
+    const { fwd } = headingAxes(s.headingDeg);
+    expect(net.onTrack(s.x + fwd[0] * d, s.z + fwd[1] * d)).toBe(true);
   });
 });
