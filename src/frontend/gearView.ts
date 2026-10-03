@@ -4,7 +4,7 @@ import { type Outfit, PRESETS } from '../surfer/presets';
 import { OUTFIT_LABELS, outfitFor } from '../surfer/wardrobe';
 import { BOARD_NAMES, boardBars, fitOf, lengthLabel, pickBoard, reasonLine, specsLine } from './boardPick';
 import { type FrontState, boardOf, gearRows } from './frontEnd';
-import { RIDER_COPY, chooseLine } from './riderCopy';
+import { RIDER_COPY, chooseLine, fillLine } from './riderCopy';
 import { MONTHS, dateForMonth } from './sessionSetup';
 
 export interface GearView {
@@ -15,6 +15,9 @@ export interface GearView {
   note: string | null;
   line: { speaker: string; text: string };
 }
+
+/** What the crew call each other, short (the tease lines' {name}). */
+const SHORT_NAME: Record<'female' | 'male' | 'grommet', string> = { female: 'Shaz', male: 'T-Bone', grommet: 'Grom' };
 
 export function gearView(s: FrontState, today: Date, seed: number): GearView {
   const r = s.rider, p = PRESETS[r], name = p.nickname, { swellFt, periodS } = s.setup;
@@ -42,12 +45,13 @@ export function gearView(s: FrontState, today: Date, seed: number): GearView {
   return {
     tab: 'outfit',
     rows: outfits.map((o, i) => ({
-      id: o, name: OUTFIT_LABELS[o], detail: '', badge: null, pick: null, season: o === season ? `for ${MONTHS[s.setup.month]}` : null,
+      // Title case, like the boards (the wardrobe's labels are lower case for running text).
+      id: o, name: OUTFIT_LABELS[o][0].toUpperCase() + OUTFIT_LABELS[o].slice(1), detail: '', badge: null, pick: null, season: o === season ? `for ${MONTHS[s.setup.month]}` : null,
       focused: i === s.gearFocus, chosen: o === chosen,
     })),
     bars: null,
     specs: null,
     note: 'Looks only, no effect on your surfing.',
-    line: tease ? { speaker: PRESETS[mate].nickname, text: chooseLine(RIDER_COPY[mate].teaseLines, seed) } : { speaker: name, text: reasonLine(r, pick, swellFt, seed) },
+    line: tease ? { speaker: PRESETS[mate].nickname, text: fillLine(chooseLine(RIDER_COPY[mate].teaseLines, seed), { name: SHORT_NAME[r] }) } : { speaker: name, text: reasonLine(r, pick, swellFt, seed) },
   };
 }

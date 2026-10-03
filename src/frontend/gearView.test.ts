@@ -35,6 +35,17 @@ describe('Grab your gear\'s panel (spec §4.3, §8, §9)', () => {
     expect(gearView(front({ rider: 'female', showSpecs: false }), today, 1)).toMatchObject({ specs: null });
     expect(gearView(front({ rider: 'female', showSpecs: true }), today, 1)).toMatchObject({ bars: null });
   });
+  it('names the outfits in title case, like the boards', () => {
+    const v = gearView(front({ rider: 'female', gearTab: 'outfit' }), today, 1);
+    for (const r of v.rows) expect(r.name[0]).toBe(r.name[0].toUpperCase());
+  });
+  it('has a mate tease a bikini in the WA winter (spec §9)', () => {
+    const v = gearView(front({ rider: 'female', gearTab: 'outfit', gearFocus: 0 }), today, 1);
+    expect(v.rows[0].id).toBe('bikini');
+    expect(v.line.speaker).toBe('T-Bone');
+    expect(v.line.text).not.toContain('{');
+    expect(v.line.text).toContain('Shaz');
+  });
   it('says why the rider picked the board, in their voice', () => {
     const s = front({ rider: 'female', setup: presetById(FIRST_PRESET)!.setup });
     const v = gearView(s, today, 3);

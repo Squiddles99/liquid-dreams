@@ -19,7 +19,7 @@ export class ConditionsPanel {
     const scrim = document.createElement('div');
     scrim.className = 'fe-scrim-left';
     const col = document.createElement('div');
-    Object.assign(col.style, { position: 'absolute', left: 'var(--fe-safe-x)', top: 'calc(var(--fe-safe-y) + 40px)', width: 'calc(760px * (0.6 + 0.4 * var(--fe-text)))' });
+    Object.assign(col.style, { position: 'absolute', left: 'var(--fe-safe-x)', top: 'calc(var(--fe-safe-y) + 40px)', width: 'calc(640px * (0.6 + 0.4 * var(--fe-text)))' });
     const title = document.createElement('h1');
     title.className = 'fe-title';
     title.textContent = 'Conditions';
@@ -57,9 +57,11 @@ export class ConditionsPanel {
     const tideRow = this.rows.get('tide');
     if (tideRow) {
       this.tide.innerHTML = `<path d="${tideCurve(s.setup.tide)}" fill="none" stroke="#f7ecd2" stroke-width="2.5" opacity="0.8"/>`;
-      tideRow.el.querySelector('.fe-value')!.appendChild(this.tide);
+      // The curve sits between the word and its number, as in the mockup.
+      const value = tideRow.el.querySelector('.fe-value')!;
+      value.insertBefore(this.tide, value.querySelector('.fe-small'));
     }
-    const skyIcon = this.rows.get('sky')?.el.querySelector('.fe-value > span:first-child');
+    const skyIcon = this.rows.get('sky')?.el.querySelector('.fe-icon');
     if (skyIcon) skyIcon.innerHTML = SKY_GLYPHS[s.setup.sky];
   }
 

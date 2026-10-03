@@ -45,8 +45,8 @@
 .fe-row.is-focus .fe-value { color: var(--fe-ink); }
 .fe-small { font: 400 calc(23px * var(--fe-text)) / 1 'Barlow Semi Condensed', sans-serif; font-variant-numeric: tabular-nums; color: rgba(247, 236, 210, 0.66); }
 .fe-row.is-focus .fe-small { color: rgba(16, 23, 26, 0.62); }
-.fe-arrow { width: 22px; height: 28px; color: var(--fe-sun); visibility: hidden; transition: transform 140ms var(--fe-ease-out); }
-.fe-row.is-focus .fe-arrow { visibility: visible; }
+.fe-arrow { display: none; color: var(--fe-sun); align-self: center; transition: transform 140ms var(--fe-ease-out); }
+.fe-row.is-focus .fe-arrow { display: inline-flex; }
 .fe-legend { position: absolute; right: var(--fe-safe-x); bottom: var(--fe-safe-y); display: flex; gap: 34px; align-items: center;
   font: 600 calc(26px * var(--fe-text)) / 1 'Barlow Semi Condensed', sans-serif; color: var(--fe-cream); text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
 .fe-legend .fe-start { color: var(--fe-sun-hi); }
