@@ -10,6 +10,7 @@ import { HeaveFilter, balanceAt } from './balance';
 import { CUFF_SIDES, LEASH_POINTS, LEASH_SIDES, cuffPositions, leashCuff, leashCurve, leashStart, tubeIndices, tubePositions } from './leash';
 import { carriedBoard, feetOnGround } from './carry';
 import { SOLE_M, STAND_PROBE_FIRST, boardFrameFrom, chaseCamera, groundFrame, probePoints, stableLookAt } from './placement';
+import { isCarryPose } from './poseNames';
 import { poseTargets } from './poses';
 import { PRESETS, type PresetName, boardFor, boardLookFor } from './presets';
 import { POSE_PHASE, POSE_ZONE, type RideState } from './rideState';
@@ -78,7 +79,7 @@ export class SurferStand {
     const preset = PRESETS[p.preset], spec = boardFor(preset, p.board), layout = layoutFor(spec, preset.heightM);
     this.board.setBoard(spec, boardLookFor(preset, p.board));
     const halfLen = spec.lengthM / 2, halfWidth = spec.maxWidthM / 2;
-    const outfit = outfitFor(preset, p.outfit, dateISO), carrying = p.onLand && p.pose === 'carry';
+    const outfit = outfitFor(preset, p.outfit, dateISO), carrying = p.onLand && isCarryPose(p.pose);
     let frame: BoardFrame;
     if (p.onLand) {
       // The feet on the sand, lifted by the thongs' soles when walking; other poses ride a board lying on the sand.
@@ -113,7 +114,7 @@ export class SurferStand {
     const bal = balanceApplies(p) ? balanceAt(seed, simTime, p.balanceAmount, this.heave) : null;
     const dials = { compression: p.compression + (bal?.compression ?? 0), lean: p.lean, twist: p.twist, reach: p.reach };
     const phaseT = p.play ? playPhase(p.pose, simTime, p.phaseT) : p.phaseT;
-    const t = poseTargets(p.pose, { spec, layout, rest: s.rest, stance: p.stance, dials, phaseT, carrySide: carrySideOf(p) });
+    const t = poseTargets(p.pose, { spec, layout, rest: s.rest, stance: p.stance, dials, phaseT, carrySide: carrySideOf(p), who: p.preset });
     // Standing on the sand, each foot on the ground under it (a level frame on a slope buried one).
     if (carrying && ground) feetOnGround(t.feet, frame, ground, wearsClothes(outfit) ? SOLE_M : 0);
     if (bal) {

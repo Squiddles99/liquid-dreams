@@ -5,7 +5,7 @@ import type { SurferParams } from './surferParams';
 /** How hard each pose works the lungs (closeup spec §5.1): paddling most, riding some, sitting none. */
 const EXERTION: Record<PoseName, number> = {
   sit: 0, paddle: 1, popup: 0.8, drop: 0.45, bottomTurn: 0.45, trim: 0.35, barrel: 0.4, kickout: 0.45, bail: 0.8,
-  prone: 0.3, proneBarrel: 0.35, dropKnee: 0.45, carry: 0,
+  prone: 0.3, proneBarrel: 0.35, dropKnee: 0.45, carry: 0, selectStand: 0,
 };
 
 /** The idle model's context from the stand: the head may wander only sitting or on land (Review Focus 3). */
