@@ -37,6 +37,9 @@ export class HeightProbe {
   /** Bumped by invalidate(): a readback dispatched before it is dropped (acceptReadback). */
   private generation = 0;
   private pending = false;
+  /** Each update()'s number, and the one the held heights were read on (the ride matches a readback to its request). */
+  private seq = 0;
+  latestSeq = -1;
 
   constructor(model: WaterSurfaceModel) {
     const input = storage(this.inputAttr, 'vec4', MAX_PROBES).toReadOnly();
@@ -63,17 +66,23 @@ export class HeightProbe {
     this.inputAttr.needsUpdate = true;
   }
 
-  /** Dispatch the probe pass and start a readback if none is in flight. Call after the ocean update. */
-  update(renderer: THREE.WebGPURenderer): void {
+  /** Dispatch the probe pass and start a readback if none is in flight. Call after the ocean update. Returns this
+   * dispatch's number: latestSeq takes it once its readback is the one held. */
+  update(renderer: THREE.WebGPURenderer): number {
+    const seq = ++this.seq;
     renderer.compute(this.pass);
-    if (this.pending) return;
+    if (this.pending) return seq;
     this.pending = true;
     const dispatched = this.generation;
     renderer
       .getArrayBufferAsync(this.outputAttr)
-      .then((buffer) => { this.latest = acceptReadback(this.latest, new Float32Array(buffer), dispatched, this.generation); })
+      .then((buffer) => {
+        this.latest = acceptReadback(this.latest, new Float32Array(buffer), dispatched, this.generation);
+        if (this.latest) this.latestSeq = seq;
+      })
       .catch((e) => console.warn('HeightProbe readback failed; holding last value', e))
       .finally(() => { this.pending = false; });
+    return seq;
   }
 
   /**

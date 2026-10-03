@@ -27,6 +27,7 @@ import { ReefFlow } from '../breaker/flowNodes';
 import { type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { RIDE_MESSAGES, RideSession } from '../ride/RideSession';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
+import { SurfaceOffset } from '../ride/surfaceOffset';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -131,6 +132,8 @@ const browserStorage: SettingsStorage = {
 
 /** Where G puts you (first-ride spec): on the Womb's takeoff spot, just outside where the set waves stand up. */
 export const RIDE_START = { x: -10, z: 3 };
+/** The height probe's slot under the board while riding (the stand's own slots are idle then). */
+const RIDE_PROBE = 1;
 /** Seconds of warning before the wave reaches the peak. */
 export const RIDE_LEAD_S = 10;
 
@@ -174,6 +177,8 @@ export class App {
   readonly ride = new RideSession(document.body);
   /** The called set's arrivals at the peak (sim s), and the wave being ridden. */
   private rideSet: number[] = [];
+  /** The drawn sea's height over the ride's CPU water, read by the height probe under the board. */
+  private readonly rideOffset = new SurfaceOffset();
   private rideWave = 0;
   readonly bombie: BombieMesh;
   private bombieTauS: number | null = null;
@@ -1396,12 +1401,17 @@ export class App {
 
   /** Jump sim time to just before the next set reaches the peak (reproducible: a moment link records the time). */
   /** The set waves' surface at sim time t on the CPU (first-ride spec §1); flat at the tide until the reef field loads. */
-  private rideWater(t: number): WaterFn {
-    const field = this.field, ctx = this.waveCtx, tide = this.conditions.tideM;
+  private rideWater(t: number, drawn = true): WaterFn {
+    const field = this.field, ctx = this.waveCtx, tide = this.conditions.tideM + (drawn ? this.rideOffset.value : 0);
     if (!field || !ctx) return flatWater(tide);
     const waves = wavesNear(t, this.conditions, this.setParams).map(toActiveWave);
     const o = this.breakParams.enabled ? breakOptions(field, this.breakParams, this.offshoreMs) : undefined;
-    return (x, z) => waterAt(x, z, tide, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
+    // The land and the rocks under the board (null while the land loads): the board runs aground on them.
+    return (x, z) => {
+      const w = waterAt(x, z, tide, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
+      const bed = this.groundAt(x, z);
+      return bed === null ? w : { ...w, bedY: bed };
+    };
   }
 
   /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */
@@ -1447,6 +1457,7 @@ export class App {
     }
     this.rideWave = i % this.rideSet.length;
     this.clock.setTime(this.rideSet[this.rideWave] - RIDE_LEAD_S);
+    this.rideOffset.reset();
     this.ocean.resetFoam();
     this.invalidateParticles();
     // Facing the way the swell runs at the takeoff spot.
@@ -1819,6 +1830,8 @@ export class App {
       // Riding (first-ride spec): the keys drive the board, and the chase camera follows it.
       this.input.consumePressed('KeyC');
       this.input.consumeMouse();
+      // The drawn sea under the board (the FFT's long swell rides on the set waves), matched to the request it answers.
+      this.rideOffset.read(this.probe.latestSeq, this.probe.heightAt(RIDE_PROBE), realDt);
       const water = this.rideWater(this.clock.simTime);
       const event = this.ride.step(simDt, this.input, water);
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
@@ -1899,7 +1912,10 @@ export class App {
     this.beachPile?.update(this.surferParams, this.conditions.tideM, this.groundAt);
     const probeXZ = this.rig.probeXZ;
     this.probe.setProbe(0, probeXZ.x, probeXZ.z);
-    this.probe.update(this.renderer);
+    const rb = this.ride.body;
+    if (rb) this.probe.setProbe(RIDE_PROBE, rb.x, rb.z);
+    const probeSeq = this.probe.update(this.renderer);
+    if (rb) this.rideOffset.sent(probeSeq, this.rideWater(this.clock.simTime, false)(rb.x, rb.z).y);
     this.oceanSurface.update(this.camera.position, this.ocean);
 
     this.picture.setSun(sun.elevationDeg, this.camera.getWorldDirection(this.viewDir).dot(this.sunDir));

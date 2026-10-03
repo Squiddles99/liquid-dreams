@@ -113,6 +113,19 @@ describe('the board on the water', () => {
     expect(b.phase).toBe('paddle');
   });
 
+  it('runs aground in the shallows instead of riding up the beach and under it (Andrew)', () => {
+    // Flat water at 0 over a beach rising toward +x: 0.3 m deep at x = 20.
+    const beach: WaterFn = (x) => ({ ...flatWater()(x, 0), bedY: -1 + 0.035 * x });
+    const b = startBody(0, 0, 90, beach);
+    b.phase = 'ride';
+    b.vx = 8;
+    const events = run(b, NO_CONTROLS, () => beach, 5);
+    expect(events).toContain('aground');
+    expect(b.x).toBeLessThan(20);
+    expect(b.phase).toBe('paddle');
+    expect(b.y).toBeGreaterThanOrEqual(beach(b.x, 0).bedY!);
+  });
+
   it('stays finite when the water is not', () => {
     const b = startBody(0, 0, 90, flatWater());
     run(b, { ...NO_CONTROLS, paddle: true }, () => () => ({ ...flatWater()(0, 0), y: NaN }), 1);

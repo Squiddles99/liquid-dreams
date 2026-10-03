@@ -8,6 +8,8 @@ const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.le
 const base = arg('base'), out = arg('out');
 const at = (arg('at') ?? '-3,-1.5,-0.5,0.5,1.5,3,5').split(',').map(Number);
 const dir = process.argv.includes('--right') ? 1 : -1;
+// --cond=<json>: conditions to ride in, merged over the defaults (e.g. {"swell":{"sizeFt":5.5,"periodS":14},"tideM":-0.25}).
+const cond = arg('cond') ? JSON.parse(arg('cond')) : null;
 app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -22,6 +24,15 @@ app.whenReady().then(async () => {
   await sleep(15000);
   await win.webContents.executeJavaScript(`(async () => {
     const a = window.liquidDreams, P = await import('/src/ride/ridePhysics.ts');
+    const cond = ${JSON.stringify(cond)};
+    if (cond) {
+      const before = a.field;
+      const c = JSON.parse(JSON.stringify(a.conditions));
+      for (const [k, v] of Object.entries(cond)) c[k] = v && typeof v === 'object' && !Array.isArray(v) ? { ...c[k], ...v } : v;
+      a.applyMoment({ conditions: c, camera: a.rig.getPose(), simTime: a.clock.simTime, paused: false });
+      for (let i = 0; i < 120 && (a.field === before || !a.field); i++) await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 3000));
+    }
     a.setPaused(true);
     if (!a.ride.active) a.toggleRide();
     window.__bot = { a, P, arr: a.rideSet[a.rideWave], t: a.clock.simTime };
@@ -39,7 +50,7 @@ app.whenReady().then(async () => {
         P.stepRide(b, { paddle: t > arr - 4 && b.phase === 'paddle', steer, crouch: 0, popup: b.caught }, a.rideWater(t), 1 / 60);
       }
       a.clock.setTime(window.__bot.t);
-      return { s: ${s}, phase: b.phase, x: +b.x.toFixed(1), z: +b.z.toFixed(1), y: +b.y.toFixed(2), v: +P.speedOf(b).toFixed(1), h: Math.round(b.headingDeg), foam: +b.water.foam.toFixed(2) };
+      return { s: ${s}, offset: +a.rideOffset.value.toFixed(2), underwater: a.underwater, phase: b.phase, x: +b.x.toFixed(1), z: +b.z.toFixed(1), y: +b.y.toFixed(2), v: +P.speedOf(b).toFixed(1), h: Math.round(b.headingDeg), foam: +b.water.foam.toFixed(2) };
     })()`);
     let png = '';
     for (let k = 0; k < 4; k++) {

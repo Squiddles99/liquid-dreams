@@ -18,6 +18,8 @@ export interface WaterAt {
   c: number;
   dirX: number;
   dirZ: number;
+  /** The bed, the beach or a rock under the board (m, world y), where known: the board runs aground on it. */
+  bedY?: number;
 }
 
 export type WaterFn = (x: number, z: number) => WaterAt;
