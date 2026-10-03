@@ -1,4 +1,5 @@
 import type { BoardKind } from '../board/boardSpec';
+import type { SelectExpression } from './faceControl';
 import { type PoseName, posesOn } from './poseNames';
 import { SELECT_IDLE_S } from './poses';
 import { PRESETS, type PresetName, type Stance, boardsFor } from './presets';
@@ -44,6 +45,8 @@ export interface SurferParams {
   idle: boolean;
   /** The Face folder's dials override the idle face's blink, smile, jaw, brows, squint and gaze (the gate, testing). */
   faceManual: boolean;
+  /** The select screen's authored face over idle life (dune select spec §13.1); 'none' elsewhere. */
+  expression: SelectExpression;
   faceBlink: number;
   faceSmile: number;
   faceJaw: number;
@@ -59,7 +62,7 @@ export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
   pile: false, gang: false, pileX: 219, pileZ: 47, pileHeadingDeg: 0,
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
   x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
-  idle: true, faceManual: false, faceBlink: 0, faceSmile: 0, faceJaw: 0, faceBrows: 0, faceSquint: 0, gazeYawDeg: 0, gazePitchDeg: 0,
+  idle: true, faceManual: false, expression: 'none', faceBlink: 0, faceSmile: 0, faceJaw: 0, faceBrows: 0, faceSquint: 0, gazeYawDeg: 0, gazePitchDeg: 0,
 };
 
 export const SURFER_PARAM_RANGES = {
@@ -119,6 +122,7 @@ export function normalizeSurferParams(p: SurferParams): void {
   p.outfit = oneOf(p.outfit, ['season', ...presetOutfits(PRESETS[p.preset])] as const, 'season');
   if (p.outfit === 'walking' && !p.onLand) p.outfit = 'season';
   p.carrySide = oneOf(p.carrySide, ['auto', 'l', 'r'] as const, 'auto');
+  p.expression = oneOf(p.expression, ['none', 'grin', 'stoked', 'easy'] as const, 'none');
   for (const k of Object.keys(SURFER_PARAM_RANGES) as (keyof typeof SURFER_PARAM_RANGES)[]) {
     const r = SURFER_PARAM_RANGES[k], v = p[k];
     p[k] = typeof v === 'number' && Number.isFinite(v) ? Math.min(r.max, Math.max(r.min, v)) : d[k];

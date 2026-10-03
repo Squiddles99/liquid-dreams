@@ -14,7 +14,7 @@ import { isCarryPose } from './poseNames';
 import { poseTargets } from './poses';
 import { PRESETS, type PresetName, boardFor, boardLookFor } from './presets';
 import { POSE_PHASE, POSE_ZONE, type RideState } from './rideState';
-import { applyFaceParams, idleContextFor, restingFace, sunFacing } from './faceControl';
+import { applyFaceParams, idleContextFor, restingFace, sunFacing, withExpression } from './faceControl';
 import { type BoardFrame, boardQuaternion, solvePose } from './solvePose';
 import { Surfer } from './Surfer';
 import { type SurferParams, balanceApplies, carrySideOf, landedAt, playPhase } from './surferParams';
@@ -130,7 +130,7 @@ export class SurferStand {
     const head = s.boneWorldPosition('head', new THREE.Vector3());
     const facing = lookAt.clone().sub(head).normalize();
     const ctx = idleContextFor(p.pose, p.onLand, sunFacing(facing, this.sky.sunDirection.value));
-    const face = applyFaceParams(p.idle ? s.idle.tick(dt, ctx) : restingFace(), p);
+    const face = withExpression(applyFaceParams(p.idle ? s.idle.tick(dt, ctx) : restingFace(), p), p.preset, p.expression);
     s.setFace(face);
     if (face.headYawDeg !== 0 || face.headPitchDeg !== 0) {
       const v = lookAt.clone().sub(head).applyAxisAngle(UP, face.headYawDeg * DEG);
