@@ -1,14 +1,20 @@
 import * as THREE from 'three/webgpu';
 import { Fn, float, instanceIndex, select, storage, uniform, vec4 } from 'three/tsl';
-import { registerSelfTest } from '../dev/selfTest';
+import { fmt, registerSelfTest } from '../dev/selfTest';
 import { LAND_URL } from '../land/Land';
 import { decodeLandFile } from '../land/landData';
 import { LandHeight } from '../land/landHeight';
 import { createLandLookUniforms, patchHoleMaskNode } from '../land/landShading';
+import { DEFAULT_WATER_OPTICS } from '../ocean/waterOptics';
+import { createWaterOpticsUniforms } from '../ocean/waterShading';
+import { buildBathymetry } from '../seabed/bathymetry';
+import { Seabed } from '../seabed/Seabed';
 import { Sky } from '../sky/Sky';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { PATCH_GRID_N, PATCH_HOLE_INSET_M, buildPatchGrids } from './groundPatch';
 import { GroundPatch } from './GroundPatchMesh';
+import { Rocks } from './RockMeshes';
+import type { Rock } from './rocks';
 
 type N = any;
 
@@ -60,5 +66,46 @@ registerSelfTest({
     const off = await evaluate(renderer, cases.map(([x, z]) => [x, z]), mask);
     const bad = cases.filter(([, , want], k) => on[k] !== want || off[k] !== 1);
     return { pass: bad.length === 0, detail: bad.length ? `wrong at ${bad.map(([x, z]) => `(${x},${z})`).join(', ')}` : `${cases.length} points right, with the patch shown and hidden` };
+  },
+});
+
+registerSelfTest({
+  name: 'beach: a sunlit rock on the beach renders in its own colour, not black (the underwater switch keeps its normal)',
+  async run(renderer) {
+    // Built as App builds it (with the water, so the above/underwater select is in the shader), at a midday sun.
+    const sky = new Sky(DEFAULT_ATMOSPHERE);
+    sky.update(renderer, new THREE.Vector3(0.25, 0.93, -0.27).normalize(), 25);
+    const rocks = new Rocks(sky, undefined, { seabed: new Seabed(buildBathymetry()), optics: createWaterOpticsUniforms(DEFAULT_WATER_OPTICS) });
+    const rust: [number, number, number] = [0.29, 0.2, 0.12];
+    const rock: Rock = { x: 240, z: 45, y: 4, kind: 'toe', shape: 1, radius: 0.8, height: 1.2, yaw: 0.4, tiltX: 0, tiltZ: 0, tint: rust, topTint: rust };
+    rocks.update([rock], 240, 45);
+    const cam = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+    cam.position.set(244, 6.5, 45);
+    cam.lookAt(240, 4.6, 45);
+    const scene = new THREE.Scene();
+    for (const m of rocks.meshes) scene.add(m);
+    const target = new THREE.RenderTarget(64, 64, { type: THREE.FloatType });
+    const clear = new THREE.Color();
+    renderer.getClearColor(clear);
+    const alpha = renderer.getClearAlpha();
+    renderer.setClearColor(0x000000, 0);
+    renderer.setRenderTarget(target);
+    renderer.render(scene, cam);
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(clear, alpha);
+    const px = new Float32Array((await renderer.readRenderTargetPixelsAsync(target, 0, 0, 64, 64)) as Float32Array);
+    target.dispose();
+    let drawn = 0, dark = 0;
+    const sum = [0, 0, 0];
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] <= 0) continue;
+      drawn++;
+      for (let k = 0; k < 3; k++) sum[k] += Number.isFinite(px[i + k]) ? px[i + k] : 0;
+      if (!(px[i] + px[i + 1] + px[i + 2] > 0.01)) dark++;
+    }
+    const mean = sum.map((v) => v / Math.max(drawn, 1));
+    // Drawn, nowhere black, and rust: red over blue.
+    const pass = drawn > 200 && dark === 0 && mean[0] > 0.05 && mean[0] > mean[2];
+    return { pass, detail: `${drawn} px drawn, ${dark} black; mean rgb ${fmt(mean)}` };
   },
 });
