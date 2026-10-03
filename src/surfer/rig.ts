@@ -22,6 +22,17 @@ export const PARENT: Record<BoneName, BoneName | null> = {
   thigh_r: 'pelvis', shin_r: 'thigh_r', foot_r: 'shin_r', toe_r: 'foot_r',
 };
 
+/** MPFB's finger bones (the UE4 mannequin's), kept since the clip slice (spec 2026-10-03 §2): three per finger, each
+ * finger's in order, so a parent always comes first. The solver never writes them; a clip or the relaxed curl does. */
+export const FINGER_BONES = (['l', 'r'] as const).flatMap((s) =>
+  (['thumb', 'index', 'middle', 'ring', 'pinky'] as const).flatMap((f) => ([1, 2, 3] as const).map((i) => `${f}_0${i}_${s}` as const)));
+export type FingerBone = (typeof FINGER_BONES)[number];
+
+export const FINGER_PARENT = Object.fromEntries(FINGER_BONES.map((b) => {
+  const [f, n, s] = b.split('_');
+  return [b, n === '01' ? `hand_${s}` : `${f}_0${Number(n) - 1}_${s}`];
+})) as Record<FingerBone, BoneName | FingerBone>;
+
 export const LIMITS = {
   kneeMaxDeg: 150,
   elbowMaxDeg: 150,
@@ -177,13 +188,21 @@ export interface SurferLandmarks {
 export function manifestProblems(m: SurferManifest): string[] {
   const out: string[] = [];
   const byName = new Map(m.bones.map((b) => [b.name, b]));
-  const names = [...byName.keys()].sort(), want = [...BONES].sort();
-  if (JSON.stringify(names) !== JSON.stringify(want)) out.push(`bones ${JSON.stringify(names)} ≠ contract ${JSON.stringify(want)}`);
+  const names = JSON.stringify([...byName.keys()].sort());
+  const core = JSON.stringify([...BONES].sort()), full = JSON.stringify([...BONES, ...FINGER_BONES].sort());
+  // 23 bones (a build from before the clip slice) or 53 with the fingers (spec 2026-10-03 §2); never a part set.
+  if (names !== core && names !== full) out.push(`bones ${names} ≠ contract ${full}`);
   for (const b of BONES) {
     const mb = byName.get(b);
     if (!mb) continue;
     if (mb.parent !== PARENT[b]) out.push(`${b}: parent ${mb.parent} ≠ ${PARENT[b]}`);
     if (Math.hypot(mb.tail[0] - mb.head[0], mb.tail[1] - mb.head[1], mb.tail[2] - mb.head[2]) < 0.01) out.push(`${b}: shorter than 1 cm`);
+  }
+  for (const f of FINGER_BONES) {
+    const mb = byName.get(f);
+    if (!mb) continue;
+    if (mb.parent !== FINGER_PARENT[f]) out.push(`${f}: parent ${mb.parent} ≠ ${FINGER_PARENT[f]}`);
+    if (Math.hypot(mb.tail[0] - mb.head[0], mb.tail[1] - mb.head[1], mb.tail[2] - mb.head[2]) < 0.005) out.push(`${f}: shorter than 5 mm`);
   }
   for (const s of ['l', 'r'] as const) {
     for (const leg of [`thigh_${s}`, `shin_${s}`] as const) {
