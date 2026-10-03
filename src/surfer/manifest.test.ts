@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { glbFloats, glbJson, glbValues } from './glbData';
 import { FACE_CHANNELS } from './idleLife';
 import { PRESETS } from './presets';
-import { BONES, type SurferManifest, manifestProblems } from './rig';
+import { BONES, FINGER_BONES, type SurferManifest, manifestProblems } from './rig';
 
 /** The share of a primitive's vertices that sit on another's point with a normal more than 8° off it: flat-shaded
  * facets split every corner (most of them); a smooth surface none, bar where two tubes happen to cross. */
@@ -27,9 +27,19 @@ for (const name of ['female', 'male', 'grommet'] as const) {
     const gltf = glbJson(`public/surfer/${name}.glb`);
     it('keeps the skeleton contract (names, parents, lengths, legs down)', () => expect(manifestProblems(man)).toEqual([]));
     it('is the preset’s height (±1 cm)', () => expect(Math.abs(man.heightM - PRESETS[name].heightM)).toBeLessThan(0.01));
-    it('skins to exactly the contract bones', () => {
+    it('skins to the contract bones and the fingers (clip slice §2)', () => {
       expect(gltf.skins.length).toBe(1);
-      expect(gltf.skins[0].joints.map((i: number) => gltf.nodes[i].name).sort()).toEqual([...BONES].sort());
+      expect(gltf.skins[0].joints.map((i: number) => gltf.nodes[i].name).sort()).toEqual([...BONES, ...FINGER_BONES].sort());
+    });
+    it('weights every finger to part of its hand (clip slice §2: fingers no longer merged into the hand)', () => {
+      const path = `public/surfer/${name}.glb`, joints: string[] = gltf.skins[0].joints.map((i: number) => gltf.nodes[i].name);
+      const used = new Set<string>();
+      for (const mesh of gltf.meshes) for (const prim of mesh.primitives) {
+        if (gltf.materials[prim.material].name !== 'body' || prim.attributes.JOINTS_0 === undefined) continue;
+        const J = glbValues(path, gltf, prim.attributes.JOINTS_0), W = glbValues(path, gltf, prim.attributes.WEIGHTS_0);
+        for (let i = 0; i < J.length; i++) if (W[i] > 0.3) used.add(joints[J[i]]);
+      }
+      expect(FINGER_BONES.filter((f) => !used.has(f))).toEqual([]);
     });
     it('keeps within budget: the body ≤ 30k triangles and ≤ 4 materials, each hair mesh ≤ 150k, ≤ 260k in all (closeup ruling 2)', () => {
       const body = man.meshes.find((m) => m.materials.includes('body'))!;

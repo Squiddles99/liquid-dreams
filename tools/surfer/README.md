@@ -5,8 +5,9 @@ It runs Blender in the background with the scripts in this folder:
 
 1. MPFB (MakeHuman's Blender extension) makes a late-teen body from `presets/<name>.json`.
 2. The shape keys are baked in, the helper geometry removed, and the body scaled to the preset's exact height.
-3. The rig is trimmed to the game's 23-bone skeleton (`src/surfer/rig.ts`), and the dropped bones' weights are merged
-   into their nearest kept parent.
+3. The rig is trimmed to the game's 23-bone skeleton (`src/surfer/rig.ts`) plus MPFB's 30 finger bones, which keep
+   their own weights (clip slice spec 2026-10-03 §2); the other dropped bones' weights are merged into their nearest
+   kept parent.
 4. The body is decimated to about 27,000 triangles (the head is kept whole), with at most 4 bone weights per vertex.
 5. The face's morph targets ride along (`expressions.py`): MPFB's expression units (blinks, jaw, smile, brows,
    squint, nostrils) are loaded on the baked base mesh, carried through the helper deletion, the scaling and the
