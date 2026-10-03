@@ -31,7 +31,7 @@ Self-hosted woff2 files (the Latin subset, as served by Google Fonts), each with
 ## Music (`music/liquid-dreams/`)
 
 - Composer: Tom (tom_a_drummond), made with Suno for Liquid Dreams
-- Used with his permission
+- Made on Suno's paid plan (commercial use allowed); used with his permission (Andrew, 2026-10-03)
 - Tracks: Sunrise over the Ocean, Sun-Fazed Coastline, Big Waves, Sun-bleached Haze, Sun-Bleached Bedroom
 
 ## Surfers and heath
