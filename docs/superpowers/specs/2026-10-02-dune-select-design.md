@@ -1,6 +1,6 @@
 # The dune select screen: conditions, rider and gear (front-door step 4)
 
-Status: draft for Andrew's review, 2026-10-02.
+Status: draft for Andrew's review, 2026-10-02; brought up to date 2026-10-03 (the dune up close, faces and hair built).
 
 ## 1. Context and scope
 
@@ -15,7 +15,8 @@ This is step 4 of the front-door roadmap (grommet spec §1):
 6. on foot and paddling out;
 7. the two NPC mates.
 
-Steps 0–3 are merged (main 2bf6424).
+Steps 0–3 are merged (main 2bf6424), and so are this spec's face and hair work (§13.1–13.2, main 0f00cbc) and the dune up
+close (main 0c1eabe).
 
 The crew (Shazza, T-Bone, Grommet) stand in the junction clearing on the Cape to Cape above the Womb (dune-up-close
 spec §4.1) in their walking clothes, carrying their
@@ -37,7 +38,13 @@ research pass over shipped titles and platform guidelines (sources in Appendix A
 - sand, soil and limestone;
 - footprints, and fallen twigs and leaves (no rubbish: the place is pristine).
 
-It is brainstormed after this spec. Both of this step's gates (§15) are judged over that environment.
+It is built and merged (main 0c1eabe). Both of this step's gates (§15) are judged over it. What it means here:
+- **The stand spot** is `TrackNetwork.standSpot()`: 1.2 m seaward of the junction, in the junction clearing. After gate 2
+  of the dune up close the junction sits on the flattest ground near the lineup that sees the break: the clearing's grade
+  is 0.14 (about 1 m of fall across its 7 m), and the crew's ground 0.09. Each rider stands on the ground under them.
+- **The ground** is pale grey sand with litter; the clearing and the tracks are packed sand.
+- **The approved mockup's backgrounds** were shot over the old dune. They fix the layout and type, not the look of the
+  ground; the gates use fresh frames.
 
 **Out of scope:**
 - **The intro cinematic and "press START" (step 5).** This screen opens straight at beat 1. A dev entry stands in for the
@@ -625,6 +632,11 @@ in `AudioEngine`, mixed under the master volume.
   - **Grab your gear:** the chosen rider only.
 ### 13.1 Faces and hair at select-screen distance
 
+**Status (2026-10-03):** built and merged with the face-hair work (main 0f00cbc): the two-pass hair, the staggered lock
+turns, the hairline, the curtain locks, the top lip, the strand atlas and Shazza's braids (§13.2). The skin's wrap and
+cavity terms were already in from step 2. **Still to build in this step:** the authored select expressions (`grin`,
+`stoked`, `easy`) and the face sheets at Gate A. The rest of this section is kept as the record.
+
 Andrew: "Shazza's face looks messed up" (the mockup's beat-3 frame). Diagnosed at 0.6 m on the dune in daylight:
 - **The forced grin:** the captures drove the raw manual dials (smile 0.85 + brows 0.5 + jaw 0.12). The smile unit pulls
   the mouth sideways and puffs the cheeks, a lopsided smirk. These camera distances were never gated with that mix.
@@ -795,10 +807,8 @@ beside the reference photo.
 - **Rider clothes:** `Surfer.ts` / `SurferStand.ts` can show a surf outfit dry on land for the Outfit preview.
 - **`SoundSystem.ts` / `AudioEngine.ts`:** the UI bus and the music slot.
 - **`DevPanel.ts`:** a "Front end" button.
-- **Faces and hair (§13.1):**
-  - `faceControl.ts` gets the authored select expressions;
-  - `tools/surfer/hair.py` gets the dry hairline cards (then a rider rebuild);
-  - `surferShading.ts` gets the skin wrap and cavity terms and the sun-scaled lip gloss.
+- **Faces (§13.1):** `faceControl.ts` gets the authored select expressions. (The hair, the hairline, the lip and the skin
+  terms are already built.)
 - **`main.ts`:** the `?frontend=off` skip.
 
 ## 15. Testing and gates
