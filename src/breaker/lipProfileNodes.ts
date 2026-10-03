@@ -4,7 +4,7 @@ import { type BreakParams, RIBBON_FULL_OFFSET, TUBE_HOLD_S, TUBE_THROWN_PSI, nor
 import {
   BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_LOWER_FADE, EDGE_MARGIN_M, LIP_EMERGE_PROGRESS, FACE_JOIN_MIN_M, FACE_JOIN_STEPS, HOLLOW_FLOOR_SOFT, LIP_JET_SHARE,
   CEILING_START_XI, FOOT_WIDTHS, TUBE_OPEN_POWER, HOLLOW_BACK_H, HOLLOW_EPS, HOLLOW_FOOT_DIP, HOLLOW_MIN_WEIGHT, HOLLOW_SETTLE, HOLLOW_THROAT, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
-  LIP_SPRAY_PROGRESS, LIP_TAPER_POWER, OUTER_LIP_SHARE, PRESENCE_FADE, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID,
+  LIP_SPRAY_PROGRESS, LIP_TAPER_POWER, OUTER_LIP_SHARE, PRESENCE_FADE, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, type ProfileSegment, SEGMENT_ID,
   TIP_GROW_PROGRESS, TIP_THICKNESS_RATIO, TUBE_BACK_AHEAD_H, sampleSegment,
 } from './lipProfile';
 import { LH82_K, PSI_MIN, PSI_NONE } from './overturn';
@@ -124,7 +124,7 @@ export const PILE_KNOTS = 7;
 export interface ProfileFrameNodes {
   K: N; F: N; tF: N; P: N; tip: N; tube: TubeNodes;
   xiTop: N; xiTip: N; xiEnd: N; tTop: N; tipE: N; uFoot: N; uFront: N; uBack: N;
-  tauLand: N; prog: N; weight: N; collapse: N; landing: N; rho: N; vj: N; reach: N; uLand: N; HI: N; crestLift: N; floorY: N;
+  tauLand: N; prog: N; weight: N; collapse: N; landing: N; rho: N; vj: N; reach: N; uLand: N; HI: N; crestLift: N; floorY: N; curlTurn: N;
   /** PILE_KNOTS vec4(u, x, dx, dy), in pileLiftKnots' order (monotone in u, and so in x along the ray). */
   knots: N[];
 }
@@ -136,7 +136,7 @@ export const FRAME_PROFILE_VEC4S = FRAME_VEC4S;
 export const FRAME_LAYOUT = [
   'K.x', 'K.y', 'F.x', 'F.y', 'tF.x', 'tF.y', 'P.x', 'P.y', 'tip.x', 'tip.y', 'O.x', 'O.y', 'd.x', 'd.y', 'L', 'W',
   'clipY', 'xiTop', 'xiTip', 'xiEnd', 'tTop', 'tipE', 'uFoot', 'uFront', 'uBack', 'tauLand', 'prog', 'weight',
-  'collapse', 'landing', 'rho', 'vj', 'reach', 'uLand', 'HI', 'crestLift', 'floorY', 'pad0', 'pad1', 'pad2',
+  'collapse', 'landing', 'rho', 'vj', 'reach', 'uLand', 'HI', 'crestLift', 'floorY', 'curlTurn', 'pad1', 'pad2',
   ...Array.from({ length: PILE_KNOTS }, (_, k) => [`k${k}.u`, `k${k}.x`, `k${k}.dx`, `k${k}.dy`]).flat(),
 ] as const;
 
@@ -147,7 +147,7 @@ export function packFrameCpu(f: ProfileFrame): number[] {
   return [
     f.K[0], f.K[1], f.F[0], f.F[1], f.tF[0], f.tF[1], f.P[0], f.P[1], f.tip[0], f.tip[1], f.tube.O[0], f.tube.O[1],
     f.tube.d[0], f.tube.d[1], f.tube.L, f.tube.W, f.tube.clipY, f.xiTop, f.xiTip, f.xiEnd, f.tTop, f.tipE, f.uFoot, f.uFront,
-    f.uBack, f.tauLand, f.prog, f.weight, f.collapse, f.landing, f.rho, f.vj, f.reach, f.uLand, f.HI, f.crestLift, f.floorY, 0, 0, 0,
+    f.uBack, f.tauLand, f.prog, f.weight, f.collapse, f.landing, f.rho, f.vj, f.reach, f.uLand, f.HI, f.crestLift, f.floorY, f.curlTurn, 0, 0,
     ...knots,
   ];
 }
@@ -157,7 +157,7 @@ export function packFrameNodes(f: ProfileFrameNodes): N[] {
   return [
     vec4(f.K, f.F), vec4(f.tF, f.P), vec4(f.tip, f.tube.O), vec4(f.tube.d, f.tube.L, f.tube.W),
     vec4(f.tube.clipY, f.xiTop, f.xiTip, f.xiEnd), vec4(f.tTop, f.tipE, f.uFoot, f.uFront), vec4(f.uBack, f.tauLand, f.prog, f.weight),
-    vec4(f.collapse, f.landing, f.rho, f.vj), vec4(f.reach, f.uLand, f.HI, f.crestLift), vec4(f.floorY, 0.0, 0.0, 0.0),
+    vec4(f.collapse, f.landing, f.rho, f.vj), vec4(f.reach, f.uLand, f.HI, f.crestLift), vec4(f.floorY, f.curlTurn, 0.0, 0.0),
   ];
 }
 /** The index of the first knot's vec4 in a stored frame. */
@@ -185,7 +185,7 @@ function unpackFrameNodes(v: readonly N[], n: N): ProfileFrameNodes {
     tube: { O: v[2].zw, d: v[3].xy, n, L: v[3].z, W: v[3].w, clipY: v[4].x },
     xiTop: v[4].y, xiTip: v[4].z, xiEnd: v[4].w, tTop: v[5].x, tipE: v[5].y, uFoot: v[5].z, uFront: v[5].w,
     uBack: v[6].x, tauLand: v[6].y, prog: v[6].z, weight: v[6].w, collapse: v[7].x, landing: v[7].y, rho: v[7].z, vj: v[7].w,
-    reach: v[8].x, uLand: v[8].y, HI: v[8].z, crestLift: v[8].w, floorY: v[9].x,
+    reach: v[8].x, uLand: v[8].y, HI: v[8].z, crestLift: v[8].w, floorY: v[9].x, curlTurn: v[9].y,
     knots: v.slice(FRAME_KNOT_VEC4, FRAME_KNOT_VEC4 + PILE_KNOTS),
   };
 }
@@ -341,6 +341,29 @@ function impactHeightNode(baseAt: (u: N) => N, K: N, H: N, psi: N, uc: N): N {
   return select(found.greaterThan(0.5).and(H.greaterThan(0.0)), lo.add(hi).mul(0.5), H);
 }
 
+/** lipProfile's curlTurn: the angle the fading-in curl turns about the round end to carry on from the blended back wall. */
+function curlTurnNode(f: ProfileFrameNodes, baseAt: (u: N) => N): N {
+  const iW = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall - 1, iU = iW + 1;
+  const keep = float(1.0).sub(f.collapse).toVar();
+  const w = select(keep.greaterThan(1e-6), f.weight.div(max(keep, 1e-6)), float(1.0)).toVar();
+  const cW = vec2(hollowCurveNode(f, float(1.0).greaterThan(0.5), float(SAMPLE_S[iW]))).toVar();
+  const R = vec2(tubeUpperNode(f.tube, 0.0)).toVar(), cU = vec2(tubeUpperNode(f.tube, f.xiTip.div(PROFILE_SEGMENTS.under))).toVar();
+  const hW = vec2(baseAt(f.uFoot.mul(HOME_COEFFS[3 * iW]))).toVar(), hU = vec2(baseAt(f.uFoot.mul(HOME_COEFFS[3 * iU]))).toVar();
+  const Wb = mix(hW, cW, w), Jb = mix(hU, R, w);
+  const wrap = (a: N): N => atan(sin(a), cos(a));
+  const aW = atan(R.y.sub(cW.y), R.x.sub(cW.x)).toVar();
+  const bend = select(length(cU.sub(R)).greaterThan(1e-9), wrap(atan(cU.y.sub(R.y), cU.x.sub(R.x)).sub(aW)), float(0.0));
+  const turn = wrap(atan(Jb.y.sub(Wb.y), Jb.x.sub(Wb.x)).sub(aW).sub(float(1.0).sub(w).mul(bend))).mul(keep);
+  const valid = w.greaterThan(0.0).and(w.lessThan(1.0)).and(length(R.sub(cW)).greaterThan(1e-6));
+  return select(valid, turn, float(0.0));
+}
+
+/** A curl point turned about the tube's round end by curlTurn × share (lipProfile's turned). */
+function turnedNode(f: ProfileFrameNodes, p: N, share: N | number = 1): N {
+  const a = f.curlTurn.mul(share).toVar(), R = vec2(tubeUpperNode(f.tube, 0.0)).toVar(), d = vec2(p).sub(R).toVar();
+  return R.add(vec2(d.x.mul(cos(a)).sub(d.y.mul(sin(a))), d.x.mul(sin(a)).add(d.y.mul(cos(a)))));
+}
+
 /**
  * profileFrame on the GPU (lipProfile.profileFrame, term by term), with pileLift's knots: `baseAt(u)` is the frame's sheet
  * (without the pile) and `pileAt(u)` the sheet with it, each the displaced vec2(x, y) at undisplaced u; `storeKnot(k, v)`
@@ -418,8 +441,9 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
     K, F, tF, P: Pnow, tip, tube, xiTop, xiTip, xiEnd, tTop: drop2,
     tipE: drop2.mul(TIP_THICKNESS_RATIO).mul(float(1.0).sub(prog)).mul(smoothstep(0.0, TIP_GROW_PROGRESS, prog)),
     uFoot, uFront, uBack, tauLand, prog, weight: steep.mul(float(1.0).sub(collapse)).mul(present), collapse, landing, rho,
-    vj: P.x.sub(K.x).div(tauLand), reach: tip.x.sub(K.x), uLand: uFoot, HI, crestLift, floorY: min(P.y, min(F.y, F0.y)), knots: [],
+    vj: P.x.sub(K.x).div(tauLand), reach: tip.x.sub(K.x), uLand: uFoot, HI, crestLift, floorY: min(P.y, min(F.y, F0.y)).toVar(), curlTurn: float(0.0), knots: [],
   };
+  f.curlTurn = curlTurnNode(f, baseAt).toVar();
   // pileLift at pileLiftKnots' u: behind the crest, the crest, half way to the foot, the foot (twice: uLand is the
   // foot), half way to the front edge, the front edge.
   Loop(PILE_KNOTS, ({ i }: N) => {
@@ -540,20 +564,20 @@ function constructedNode(j: N, f: ProfileFrameNodes, baseHome: N): { pos: N; thi
     liftX.assign(pos.x);
   }).ElseIf(seg.equal(float(SEGMENT_ID.under)), () => {
     const xi = sv.mul(f.xiTip).toVar();
-    pos.assign(tubeUpperNode(f.tube, xi));
+    pos.assign(turnedNode(f, tubeUpperNode(f.tube, xi)));
     thickness.assign(lipThicknessNode(f, xi)); lipness.assign(1.0); liftX.assign(pos.x);
   }).ElseIf(seg.equal(float(SEGMENT_ID.cap)), () => {
     const no = vec2(tubeUpperNormalNode(f.tube, f.xiTip)).toVar(), e = float(f.tipE).toVar();
     const centre = f.tip.add(no.mul(e).mul(0.5));
     const a = atan(no.y.negate(), no.x.negate()).add(sv.mul(Math.PI));
-    pos.assign(centre.add(vec2(cos(a), sin(a)).mul(e).mul(0.5)));
+    pos.assign(turnedNode(f, centre.add(vec2(cos(a), sin(a)).mul(e).mul(0.5))));
     thickness.assign(e); lipness.assign(1.0); liftX.assign(f.tip.x);
   }).ElseIf(seg.equal(float(SEGMENT_ID.outer)), () => {
     const band = f.xiTip.greaterThan(f.xiTop);
     If(band.and(sv.lessThanEqual(OUTER_LIP_SHARE)), () => {
       const xi = f.xiTip.add(f.xiTop.sub(f.xiTip).mul(sv.div(OUTER_LIP_SHARE))).toVar();
       const uu = vec2(tubeUpperNode(f.tube, xi)).toVar(), no = tubeUpperNormalNode(f.tube, xi), e = lipThicknessNode(f, xi).toVar();
-      pos.assign(uu.add(no.mul(e)));
+      pos.assign(turnedNode(f, uu.add(no.mul(e))));
       thickness.assign(e); liftX.assign(uu.x);
     }).Else(() => {
       const fromXi = select(band, f.xiTop, f.xiTip).toVar(), e = select(band, f.tTop, f.tipE).toVar();
@@ -561,7 +585,7 @@ function constructedNode(j: N, f: ProfileFrameNodes, baseHome: N): { pos: N; thi
       const a = uu.add(no.mul(e));
       const k = select(band, sv.sub(OUTER_LIP_SHARE).div(1 - OUTER_LIP_SHARE), sv).toVar();
       const Kt: N = vec2(f.K.x, f.K.y.add(f.crestLift));
-      pos.assign(mix(a, Kt, k));
+      pos.assign(turnedNode(f, mix(a, Kt, k), float(1.0).sub(k)));
       thickness.assign(e.mul(float(1.0).sub(k))); liftX.assign(uu.x.add(f.K.x.sub(uu.x).mul(k)));
     });
     lipness.assign(1.0);
