@@ -2,6 +2,8 @@
 import { registerSelfTest } from '../dev/selfTest';
 import { initialFront } from './frontEnd';
 import { DEFAULT_CHOICES, DEFAULT_FRONT_SETTINGS } from './frontSettings';
+import { FIRST_PRESET, presetById } from './sessionSetup';
+import { BreakMap } from './ui/breakMap';
 import { ConditionsPanel } from './ui/conditionsPanel';
 import { Legend, legendFor } from './ui/legend';
 import { applyLayout, layoutFor, mountFrontEndRoot } from './ui/layout';
@@ -78,6 +80,23 @@ registerSelfTest({
       const tiny = [...p.el.querySelectorAll('.fe-label, .fe-value, .fe-small, .fe-title')].filter((t) => parseFloat(getComputedStyle(t).fontSize) < 18);
       const focused = p.el.querySelectorAll('.fe-row.is-focus').length;
       return { pass: rows.length === 8 && outside.length === 0 && tiny.length === 0 && focused === 1, detail: `${rows.length} rows, ${outside.length} outside, ${tiny.length} under 18 px, ${focused} focused` };
+    });
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the map loads, sits top-right inside the safe area, and its text is 18 px or more',
+  async run() {
+    return withRoot(1920, 1080, async (root, l) => {
+      const m = new BreakMap();
+      root.appendChild(m.el);
+      await m.load();
+      m.setConditions(presetById(FIRST_PRESET)!.setup, true);
+      const b = designBox(m.el, root, l.scale);
+      const tiny = [...m.el.querySelectorAll('text')].filter((t) => parseFloat(t.getAttribute('font-size') ?? '0') < 18);
+      const inside = Math.abs(b.x + b.w - (l.designW - l.safeX)) < 1 && Math.abs(b.y - l.safeY) < 1;
+      const reef = (m.el.querySelector('path[stroke-dasharray]')?.getAttribute('d') ?? '').length;
+      return { pass: inside && tiny.length === 0 && reef > 20, detail: `box ${JSON.stringify(b)}, ${tiny.length} small labels, 3 m contour ${reef} chars` };
     });
   },
 });
