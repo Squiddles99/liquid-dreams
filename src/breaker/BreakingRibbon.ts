@@ -662,7 +662,7 @@ export class BreakingRibbon {
       };
       // The frame on the sheet without the pile (the lip is thrown from the wave as it stood); the pile's lift from the
       // sheet with it (lipProfile.buildProfile).
-      const f = profileFrameNode(along(frameSurface), along(smooth), { H: b.x, c: b.y, r: b.z, tb: b.w, psi: cS.z, offshoreMs: this.offshoreMs }, this.lip,
+      const f = profileFrameNode(along(frameSurface), along(smooth), { H: b.x, c: b.y, r: b.z, tb: b.w, psi: cS.z, offshoreMs: this.offshoreMs, lipH: cS.w }, this.lip,
         (k, v) => { frames.element(i.mul(FRAME_VEC4S).add(FRAME_KNOT_VEC4).add(k)).assign(v); });
       packFrameNodes(f).forEach((v, k) => frames.element(i.mul(FRAME_VEC4S).add(k)).assign(v));
     })().compute(MAX_STATIONS) as THREE.ComputeNode;

@@ -309,9 +309,9 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   };
 }
 
-/** impactHeight's scan (× the wave's H: the first place the tube's point comes down onto the water) and bisections. */
+/** impactHeight's scan (× the throw height: the first place the tube's point comes down onto the water) and bisections (13: × the throw height the last step was 2 mm, and the GPU and the CPU took either side of it). */
 export const IMPACT_SCAN: readonly number[] = [1, 1.25, 1.5, 1.75, 2];
-export const IMPACT_BISECT = 10;
+export const IMPACT_BISECT = 13;
 /** impactHeight's sheet reads after the first: steps from the last read's u (the first read takes sheetYAt's four). */
 export const SHEET_WARM_STEPS = 2;
 
