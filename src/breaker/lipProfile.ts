@@ -353,6 +353,10 @@ export function impactHeight(base: (u: number) => Vec2, K: Vec2, H: number, psi:
   };
   const above = (hi: number): number => K[1] + hi * py - yAt(x0 + hi * px);
   let lo = -1, hi = -1, prev = above(IMPACT_SCAN[0] * H);
+  // Under the water at the sheet's H: H, and the scan stops. Scanned on, a hump the scaled point grazed by centimetres
+  // further out (near 1.3 H at the peak) tipped one sample over the water, and the landing jumped from the face to the
+  // trough (0.49 H at one wave height).
+  if (!(prev > 0)) return H;
   for (let i = 1; i < IMPACT_SCAN.length && lo < 0; i++) {
     const g = above(IMPACT_SCAN[i] * H);
     if (prev > 0 && g <= 0) { lo = IMPACT_SCAN[i - 1] * H; hi = IMPACT_SCAN[i] * H; }
