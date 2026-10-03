@@ -3,6 +3,7 @@ import { App } from './app/App';
 import { showOverlay } from './app/overlay';
 import { WEBGPU_HELP, checkWebGpuSupport } from './app/webgpuSupport';
 import { momentFromHash, momentHashProblem } from './dev/momentLink';
+import { frontEndWanted } from './frontend/entry';
 import { createRenderer } from './render/createRenderer';
 
 async function main(): Promise<void> {
@@ -37,6 +38,7 @@ async function main(): Promise<void> {
   // Build what the first break would otherwise build mid-game, before the first frame.
   await app.prewarm();
   app.start();
+  if (frontEndWanted(location.search, location.hash)) app.openFrontEnd();
   // Dev builds only: scripted gallery captures (window.liquidDreams.captureFrame()) and the crest trace's timing
   // readout (window.liquidDreams.traceMs, ms per frame, a moving average).
   if (import.meta.env.DEV) (window as unknown as { liquidDreams?: App }).liquidDreams = app;

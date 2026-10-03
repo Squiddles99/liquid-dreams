@@ -56,6 +56,8 @@ export interface DevPanelModel {
 }
 
 export interface DevPanelHandlers {
+  /** Opens the front end (the dune select screen). */
+  onFrontEnd(): void;
   onConditions(): void;
   /** A condition binding changed because the user edited it (not a refresh showing a moment applied elsewhere). */
   onUserConditionEdit(): void;
@@ -447,6 +449,7 @@ export class DevPanel {
     surferFolder.addButton({ title: 'Chase view' }).on('click', h.onSurferChase);
     const land = surferFolder.addFolder({ title: 'On land', expanded: false });
     land.addButton({ title: 'stand spot (the junction above the Womb)' }).on('click', () => h.onSurferSpot('standSpot'));
+    land.addButton({ title: 'Front end (the select screen)' }).on('click', () => h.onFrontEnd());
     land.addButton({ title: 'beach (in front of the Womb)' }).on('click', () => h.onSurferSpot('beach'));
     land.addBinding(m.surfer, 'gang', { label: 'the gang (mockup)' }).on('change', h.onSurfer);
     land.addButton({ title: 'Gang camera' }).on('click', h.onGangCamera);
