@@ -73,6 +73,22 @@ describe('a CMU clip on our riders (clip slice Task 8)', () => {
     const a = sampleClip(c, 30, c.frames / 30 - 1e-6), b = sampleClip(c, 30, 0);
     for (const k of Object.keys(c.rot)) expect((a.rot[k]!.angleTo(b.rot[k]!) * 180) / Math.PI, k).toBeLessThan(2);
   });
+  it('takes out the skater’s heading in the capture room: whichever way they faced, the clip faces +Z with the feet along x', () => {
+    for (const heading of [0, 63, 150, -120]) {
+      // Turned `heading`° about y in the room, rolling toward its own left.
+      const yaw = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), (heading * Math.PI) / 180);
+      const take = rolling().map((f, i) => {
+        const p = new Vector3(i * 0.1, 15, 0).applyQuaternion(yaw);
+        return { ...f, root: [p.x, p.y, p.z, 0, heading, 0] } as AmcFrame;
+      });
+      const c = cmuClip(asf, take, rest, { fps: 120, outFps: 30, loop: true, noseSide: 'auto' });
+      expect(c.noseSide, `${heading}`).toBe('left');
+      for (let k = 0; k < c.frames; k += 7) {
+        const q = new Quaternion(...(c.rot.pelvis.slice(4 * k, 4 * k + 4) as [number, number, number, number]));
+        expect(new Vector3(0, 0, 1).applyQuaternion(q).z, `${heading}° frame ${k}`).toBeGreaterThan(0.95);
+      }
+    }
+  });
   const real = '../liquid-dreaming/anim-source/cmu-134/134.asf';
   it.skipIf(!existsSync(real))('reads the real CMU skater and every trial makes a well-formed clip', () => {
     const a = parseAsf(readFileSync(real, 'utf8'));
