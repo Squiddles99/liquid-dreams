@@ -1,5 +1,5 @@
 import { smoothstep } from '../math/smoothstep';
-import { type BreakParams, GRAVITY_MS2, RIBBON_FULL_OFFSET, landingEstimate, landingTime, settleSpan, steepening } from './breaking';
+import { type BreakParams, GRAVITY_MS2, RIBBON_FULL_OFFSET, TUBE_HOLD_S, TUBE_THROWN_PSI, landingEstimate, landingTime, settleSpan, steepening } from './breaking';
 import { type Overturn, PSI_MIN, PSI_NONE, PSI_NORMAL, overturnShape, sheetShape, windUC } from './overturn';
 import { type Tube, tubeAxes, tubeBackMostX, tubeLower, tubeTopXi, tubeUpper, tubeUpperArc, tubeUpperNormal } from './tube';
 
@@ -44,17 +44,18 @@ export const TIP_THICKNESS_RATIO = 0.4;
 export const TIP_GROW_PROGRESS = 0.3;
 /** The tube's round back sits this many H ahead of the crest's vertical (Pick & Feddersen Fig. 6b: just ahead of it). */
 export const TUBE_BACK_AHEAD_H = 0.03;
+/**
+ * The lip's thickness over the tube's top is this share of Pick & Feddersen's: their jet area is the whole plunging jet,
+ * drawn as one band it made a lip 2.8 m thick at an ordinary 12 ft wave, against Andrew's 1.5 m (spec 2026-10-03
+ * barrel-size, option A: the lip's thickness comes out of the tube).
+ */
+export const LIP_JET_SHARE = 0.42;
 /** The lip thins from its thickest (over the tube's top) to its tip as (1 − u)^LIP_TAPER_POWER (plan ruling 4). */
 export const LIP_TAPER_POWER = 0.8;
 /** Where the lip lands beyond the wave's foot, the face below it rejoins the sheet at least this far past it (m). */
 export const FACE_JOIN_MIN_M = 1;
 /** Of ψ's fade-in (PSI_NONE to PSI_MIN, over which the tube grows from nothing), the share over which it is also blended in. */
 export const PRESENCE_FADE = 0.3;
-/** The face's join steps out by this many H (at most FACE_CONCAVE_STEPS times) until the sheet there is flatter than the
- * face's chord by FACE_CONCAVE_MARGIN (rad). */
-export const FACE_CONCAVE_STEP_H = 0.15;
-export const FACE_CONCAVE_STEPS = 4;
-export const FACE_CONCAVE_MARGIN = 0.03;
 /** Steps placing that join in the sheet's displaced x. */
 export const FACE_JOIN_STEPS = 3;
 /** The outer samples' share on the lip's band (the rest run level from the tube's top to the crest). */
@@ -73,8 +74,6 @@ export const LANDING_FOAM_RISE = 0.3;
  * face and the sheet's. From here on the curve is the growing curl's (its tube already scaled by the throw).
  */
 export const LIP_EMERGE_PROGRESS = 0.3;
-/** The crest's direction is read this far behind it (m). */
-export const CREST_DIR_STEP = 0.1;
 /** A broken section whose crest stands less than BACK_OFF_DROP_H[1]·H above its foot (it has run into deeper water and
  * the sheet has stopped sharpening it) relaxes back to the sheet, fully by BACK_OFF_DROP_H[0]·H. */
 export const BACK_OFF_DROP_H: readonly [number, number] = [0.3, 0.6];
@@ -96,6 +95,9 @@ export interface ProfileInput {
   psi?: number;
   /** The wind's offshore speed (m/s, overturn.offshoreSpeed): the tube's wind factors. Absent: 0. */
   offshoreMs?: number;
+  /** The height (m) the section stood at while it threw its lip (breaking.onsetHeight, the station's lipH): the tube
+   * hangs from the crest it stood at then. Absent or null: H. */
+  lipH?: number | null;
 }
 
 /** Everything about one station's profile that does not depend on the sample: computed once per station. */
@@ -121,8 +123,15 @@ export interface ProfileFrame {
   rho: number;
   /** The pile's landing knot (PileLift): the face's join. */
   uLand: number;
-  /** The crest's direction going back (the angle up from −x): the young curl's face arrives along it. */
-  aK: number;
+  /** How far (m) the crest the lip was thrown from stands above the crest now (K): the tube hangs from K + (0, crestLift),
+   * and the lip's back eases down from there to the wave's back. 0 while the crest is at its tallest. */
+  crestLift: number;
+  /** While the curl fades in (weight < 1), the angle (rad) its constructed points turn about the tube's round end so the
+   * ceiling carries on from the faded-in back wall, its bend there faded in too (curlTurn): 0 at full weight. */
+  curlTurn: number;
+  /** The trough's floor (m): the lowest of the water the lip lands on (the tube at impact's point), the face's foot and the
+   * wave's own foot. The hollow face never sags below it. */
+  floorY: number;
   /** The fits' wave height (m): the crest's height above the water the lip lands on (impactHeight). */
   HI: number;
   /** The tube at impact (overturn.overturnShape at HI), and as it stands now: the curl growing as it throws (scaled by
@@ -230,16 +239,25 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   // The wave's own foot: where the sheet's front sharpening has sunk to the trough.
   const uFootWave = FOOT_WIDTHS * p.faceWidth * H;
   const K = base(0), F0 = base(uFootWave);
+  // The tube hangs from the crest the lip was thrown from (spec 2026-10-03 barrel-size, option A): the section's crest
+  // stood lipH tall then, and its height above still water scales with the wave's (0.675 H while it throws, at every
+  // size). By the landing it has sunk 1.1 m at an ordinary 12 ft wave, and hung from where it is now, the tube shrank
+  // with it.
+  const crestLift = Math.max(0, K[1]) * Math.max(0, (input.lipH ?? H) / Math.max(H, 1e-6) - 1);
+  const Kt: Vec2 = [K[0], K[1] + crestLift];
   // Below PSI_MIN the tube fades out (plan ruling 7): it shrinks to nothing at PSI_NONE, and is drawn fainter only over
   // the first PRESENCE_FADE of that, where it is already tiny (a full-size lip half blended into the sheet folded: its two
   // surfaces blend toward different sheet points).
-  const HI = impactHeight(base, K, H, psi, uc) * smoothstep(PSI_NONE, PSI_MIN, psi);
+  // Sized from the height the section stood at as it threw (impactHeight's scan and its floor are × that height): scanned
+  // × the station's H as the crest sank, a tube hung from the throw crest found its point under the water at the first
+  // step and kept the sunk H, half its size (ψ 0.09 at the landing).
+  const HI = impactHeight(base, Kt, Math.max(H, input.lipH ?? H), psi, uc) * smoothstep(PSI_NONE, PSI_MIN, psi);
   const shape = overturnShape(psi, HI, uc);
   const { d, n } = tubeAxes(shape.theta);
   const at0: Tube = { O: [0, 0], d, n, L: shape.L, W: shape.W, clipY: -Infinity };
   const xiTop = tubeTopXi(at0), top0 = tubeUpper(at0, xiTop);
-  const tTop = (shape.AJ * (1 + LIP_TAPER_POWER)) / Math.max(tubeUpperArc(at0, xiTop, 1), 1e-3);
-  const O0: Vec2 = [K[0] + TUBE_BACK_AHEAD_H * H - tubeBackMostX(at0), K[1] - tTop - top0[1]];
+  const tTop = (LIP_JET_SHARE * shape.AJ * (1 + LIP_TAPER_POWER)) / Math.max(tubeUpperArc(at0, xiTop, 1), 1e-3);
+  const O0: Vec2 = [Kt[0] + TUBE_BACK_AHEAD_H * H - tubeBackMostX(at0), Kt[1] - tTop - top0[1]];
   // The lip lands on the water (impactHeight sized the tube so its point meets it). A point still hanging over the water
   // drops onto it, the lip over the tube's top thickening by as much (plan ruling 3); one under it lands on the face,
   // which hollows to meet it.
@@ -248,7 +266,7 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   const full: Tube = { ...at0, O: [O0[0], O0[1] - drop] };
   const xiEnd = 1;
   const P = tubeUpper(full, xiEnd);
-  const tauLand = landingTime(K[1] - P[1]);
+  const tauLand = landingTime(Kt[1] - P[1]);
   // The face leaves the sheet at the wave's foot, or FACE_JOIN_MIN_M past where the lip lands beyond it (in the sheet's
   // displaced x: over the drained trough the water is drawn back, so u alone put the join behind the landing).
   let uFoot = uFootWave, F = F0;
@@ -258,21 +276,10 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
     for (let i = 0; i < FACE_JOIN_STEPS; i++) { F = base(uFoot); uFoot += x - F[0]; }
     F = base(uFoot);
   }
-  // The face must leave the sheet where the sheet is flatter than the face's chord up to the landing, or it bulges
-  // (a lip landing just short of the foot, on the softened ramp): step the join out toward the trough, and back along the
-  // last step to where the sheet meets the chord's angle (linear in the steepness to spare): in whole steps a hair's change
-  // in the wave moved the join a whole step (0.15 H), and the GPU and the CPU took either side of it.
-  let Fb = base(uFoot - 0.1);
-  const ang = (v: Vec2): number => Math.atan2(v[1], -v[0]);
-  const steeper = (): number => ang([Fb[0] - F[0], Fb[1] - F[1]]) - (ang([P[0] - F[0], P[1] - F[1]]) - FACE_CONCAVE_MARGIN);
-  let e = steeper(), ePrev = 0;
-  for (let i = 0; i < FACE_CONCAVE_STEPS && e > 0; i++) {
-    uFoot += FACE_CONCAVE_STEP_H * H; F = base(uFoot); Fb = base(uFoot - 0.1);
-    ePrev = e; e = steeper();
-  }
-  if (ePrev > 0 && e <= 0) {
-    uFoot -= FACE_CONCAVE_STEP_H * H * (-e / (ePrev - e)); F = base(uFoot); Fb = base(uFoot - 0.1);
-  }
+  // The face leaves along the sheet there (the hollow face is one-way by construction: the join no longer steps out
+  // toward the trough to keep a Hermite face concave, which, saturating at four steps, moved the foot 4 m between waves
+  // a quarter-foot apart once the tube landed past the foot).
+  const Fb = base(uFoot - 0.1);
   const tF = norm2([Fb[0] - F[0], Fb[1] - F[1]]);
   const t = tb === null ? 0 : Math.min(Math.max(tb, 0), tauLand);
   const prog = t / tauLand;
@@ -281,34 +288,68 @@ export function profileFrame(base: (u: number) => Vec2, input: ProfileInput, lp:
   // crest itself; at the landing, the tube at impact. Drawn full size from the start, the thin young tube lay along its
   // axis from the crest down to where it would land: a flat shoulder ahead of the break, a square corner along the peel
   // and a notch under the crest. The tip keeps its path from the origin (prog² of the tube's length).
-  const g = prog;
-  const tube: Tube = { ...full, O: [K[0] + (full.O[0] - K[0]) * g, K[1] + (full.O[1] - K[1]) * g], L: full.L * g, W: full.W * g, clipY: P[1] };
+  // It opens out as it is thrown (Andrew, 2026-10-03, down the line: "not nearly hollow enough"): scaled by the throw's
+  // progress the young tube had a quarter of its area half way through, a slit down the line; a thrown lip is out
+  // before it falls. Scaled by 1 − (1 − prog)^TUBE_OPEN_POWER it opens out fast from the start (at a finite rate: a power
+  // of prog popped it to a sixth of its size in the throw's first hundredth) and eases into the landing.
+  const g = 1 - (1 - prog) ** TUBE_OPEN_POWER;
+  const tube: Tube = { ...full, O: [Kt[0] + (full.O[0] - Kt[0]) * g, Kt[1] + (full.O[1] - Kt[1]) * g], L: full.L * g, W: full.W * g, clipY: P[1] };
   const Pnow = tubeUpper(tube, xiEnd);
   const xiTip = prog * xiEnd;
   const tip = tubeUpper(tube, xiTip);
-  const Kb = base(-CREST_DIR_STEP), aK = Math.atan2(Kb[1] - K[1], -(Kb[0] - K[0]));
   // Before the break the ribbon is the water (LIP_EMERGE_PROGRESS); from it, its curl peels out as it throws, backed off
   // where the crest stands barely above the foot.
   const steep = tb === null ? 0 : smoothstep(BACK_OFF_DROP_H[0] * H, BACK_OFF_DROP_H[1] * H, K[1] - F0[1]) * smoothstep(0, LIP_EMERGE_PROGRESS, prog);
   const span = settleSpan(H, p);
   // The curl collapses as the sheet under it does (breaking.lifecycle, from landingEstimate), but never before its own
   // lip has landed.
-  const settleFrom = Math.max(tauLand, landingEstimate(H, p));
+  // ...and once landed it stays open TUBE_HOLD_S before the whitewater fills it, as the sheet under it holds (breaking.
+  // lifecycle): closing from the landing, the tube was full size for 0.7 s, 8 m of crest down the line at 12 m/s.
+  const settleFrom = Math.max(tauLand, landingEstimate(H, p)) + TUBE_HOLD_S * smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi);
   const collapse = tb === null ? 0 : smoothstep(settleFrom, settleFrom + span, tb);
   // No tube (ψ below PSI_NONE), no curl to land: its weight and its landing (foam, settling) fade in together.
   const present = smoothstep(PSI_NONE, PSI_NONE + PRESENCE_FADE * (PSI_MIN - PSI_NONE), psi);
   const landing = tb === null ? 0 : smoothstep(tauLand, tauLand + LANDING_FOAM_RISE * span, tb) * present;
-  return {
+  const frame: ProfileFrame = {
     K, F, tF, uFoot, uFront: uFoot + LAND_CLEARANCE_M + EDGE_MARGIN_M, uBack: -(BACK_EDGE_H * H + EDGE_MARGIN_M),
     tauLand, prog, weight: steep * (1 - collapse) * present, collapse, landing, rho: ribbonWeight(r, tb, settleFrom, span, p),
-    uLand: uFoot, aK, HI, shape, tube, xiTop, xiTip, xiEnd, tTop: (tTop + drop) * g, tipE: TIP_THICKNESS_RATIO * (tTop + drop) * g * (1 - prog) * smoothstep(0, TIP_GROW_PROGRESS, prog), tip, P: Pnow,
+    uLand: uFoot, crestLift, curlTurn: 0, floorY: Math.min(P[1], F[1], F0[1]), HI, shape, tube, xiTop, xiTip, xiEnd, tTop: (tTop + drop) * g, tipE: TIP_THICKNESS_RATIO * (tTop + drop) * g * (1 - prog) * smoothstep(0, TIP_GROW_PROGRESS, prog), tip, P: Pnow,
     vj: (P[0] - K[0]) / tauLand, reach: tip[0] - K[0],
   };
+  frame.curlTurn = curlTurn(frame, base);
+  return frame;
 }
 
-/** impactHeight's scan (× the wave's H: the first place the tube's point comes down onto the water) and bisections. */
+/**
+ * The curl's turn as it fades in (Andrew, 2026-10-03, down the line: the young lip hooked off the back wall). Blended
+ * part way from the water, the back wall ends in the blend's direction, and the curl, still the constructed one's shape,
+ * left it at the full curl's angle to the full wall: up to 66° at one point. Turned about the round end by the angle
+ * between the blended and the constructed wall's last piece, the ceiling carries on from the blended wall as it does from
+ * the constructed one, the turn spread round the curl as at full size. The water at the homes is the frame's sheet's
+ * (before the landing the pile is none).
+ */
+function curlTurn(f: ProfileFrame, base: (u: number) => Vec2): number {
+  // On the fade-in's weight (steep × present), easing out over the collapse, which settles the curl to its homes (turned
+  // through it, the lip's top rose 0.1 m after the landing, ψ 0.035).
+  const keep = 1 - f.collapse, w = keep > 1e-6 ? f.weight / keep : 1;
+  if (!(w > 0) || !(w < 1)) return 0;
+  const iW = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall - 1, iU = iW + 1;
+  const cW = hollowCurve(f, 1, sampleSegment(iW).s), R = tubeUpper(f.tube, 0);
+  if (!(Math.hypot(R[0] - cW[0], R[1] - cW[1]) > 1e-6)) return 0;
+  const Wb = lerp2(base(sampleHome(iW, f)), cW, w), Jb = lerp2(base(sampleHome(iU, f)), R, w);
+  const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
+  const cU = tubeUpper(f.tube, f.xiTip / PROFILE_SEGMENTS.under), aW = Math.atan2(R[1] - cW[1], R[0] - cW[0]);
+  // The constructed bend at the round end (wall's last piece to the ceiling's first) fades in with the curl: the curl,
+  // scaled by the weight, would bend it all at one point.
+  const bend = Math.hypot(cU[0] - R[0], cU[1] - R[1]) > 1e-9 ? wrap(Math.atan2(cU[1] - R[1], cU[0] - R[0]) - aW) : 0;
+  return wrap(Math.atan2(Jb[1] - Wb[1], Jb[0] - Wb[0]) - aW - (1 - w) * bend) * keep;
+}
+
+/** The young tube is the tube at impact scaled by 1 − (1 − prog)^TUBE_OPEN_POWER (about half its area half way through). */
+export const TUBE_OPEN_POWER = 2.2;
+/** impactHeight's scan (× the throw height: the first place the tube's point comes down onto the water) and bisections (13: × the throw height the last step was 2 mm, and the GPU and the CPU took either side of it). */
 export const IMPACT_SCAN: readonly number[] = [1, 1.25, 1.5, 1.75, 2];
-export const IMPACT_BISECT = 10;
+export const IMPACT_BISECT = 13;
 /** impactHeight's sheet reads after the first: steps from the last read's u (the first read takes sheetYAt's four). */
 export const SHEET_WARM_STEPS = 2;
 
@@ -328,7 +369,7 @@ export function impactHeight(base: (u: number) => Vec2, K: Vec2, H: number, psi:
   const unit = overturnShape(psi, 1, uc), { d, n } = tubeAxes(unit.theta);
   const t1: Tube = { O: [0, 0], d, n, L: unit.L, W: unit.W, clipY: -Infinity };
   const xiTop = tubeTopXi(t1), top1 = tubeUpper(t1, xiTop), pt1 = tubeUpper(t1, 1);
-  const tTop1 = (unit.AJ * (1 + LIP_TAPER_POWER)) / Math.max(tubeUpperArc(t1, xiTop, 1), 1e-9);
+  const tTop1 = (LIP_JET_SHARE * unit.AJ * (1 + LIP_TAPER_POWER)) / Math.max(tubeUpperArc(t1, xiTop, 1), 1e-9);
   const px = pt1[0] - tubeBackMostX(t1), py = pt1[1] - top1[1] - tTop1, x0 = K[0] + TUBE_BACK_AHEAD_H * H;
   // The sheet's height along the search, each read warm-started from the last one's u (the points are close: the scan's
   // steps, then the bisection's), so it needs SHEET_WARM_STEPS steps, not sheetYAt's four (final review I3: the frame
@@ -389,9 +430,13 @@ export function sampleHome(j: number, f: ProfileFrame): number {
     case 'front': return f.uFront + (uF - f.uFront) * s;
     case 'face': return uF * (1 - 0.25 * s);
     case 'wall': return uF * (0.75 - 0.15 * s);
-    case 'under': return uF * (0.6 - 0.3 * s);
-    case 'cap': return uF * (0.3 - 0.05 * s);
-    case 'outer': return uF * 0.25 * (1 - s);
+    // The curl's ceiling and tip are at home just by the round end's (0.6 uF; a hair apart, each sample its own), and the
+    // lip's outside runs home from there to the crest (Andrew, 2026-10-03, down the line): blending in from homes spread
+    // down the face, the ceiling ran one way and its homes the other, and the emerging curl notched 26° the wrong way
+    // where the back wall met it. From by one home it grows out of the water, a scaled copy of itself.
+    case 'under': return uF * (0.6 - 0.01 * s);
+    case 'cap': return uF * (0.59 - 0.005 * s);
+    case 'outer': return uF * 0.585 * (1 - s);
     default: return f.uBack * s;
   }
 }
@@ -436,6 +481,17 @@ export const LIP_SPRAY_FROM = 0.3;
  * wall (on to R); s ∈ [0, 1] along it. lipProfileNodes' hollowCurveNode mirrors it.
  */
 export function hollowCurve(f: ProfileFrame, piece: 0 | 1, s: number): Vec2 {
+  const q = hollowArc(f, piece, s);
+  // The tube's floor is the trough's: a big tube landing out past the trough sagged its arc 0.5 m under it (12 ft, mid
+  // tide). Only what dips below is lifted, onto a soft floor (tanh: the slope carries on through it, and the arc keeps
+  // turning one way); above it the arc is untouched.
+  if (q[1] >= f.floorY) return q;
+  return [q[0], f.floorY - HOLLOW_FLOOR_SOFT * Math.tanh((f.floorY - q[1]) / HOLLOW_FLOOR_SOFT)];
+}
+/** An arc dipping under the trough's floor eases onto it within this (m): it sags at most this far below. */
+export const HOLLOW_FLOOR_SOFT = 0.05;
+
+function hollowArc(f: ProfileFrame, piece: 0 | 1, s: number): Vec2 {
   const R = tubeUpper(f.tube, 0), R1 = tubeUpper(f.tube, CEILING_START_XI);
   const dR = norm2([R1[0] - R[0], R1[1] - R[1]]);
   // A conic (rational quadratic) from F, leaving along the sheet (tF), to R, arriving along the ceiling's start (dR): its
@@ -507,38 +563,56 @@ export const HOLLOW_MIN_WEIGHT = 0.5;
 /** The ceiling's start direction at the tube's round end is read this far along its upper side (√ξ: along the normal). */
 export const CEILING_START_XI = 1e-3;
 
+/** How far the lip's root stands above the water at the crest: crestLift, less what the pile has filled under it. */
+function rootLift(f: ProfileFrame): number {
+  return f.lift ? Math.max(0, f.crestLift - Math.max(0, liftAt(f.lift, f.K[0])[1])) : f.crestLift;
+}
+
+/** A curl point turned about the tube's round end by curlTurn × share (the fade-in's turn: curlTurn). */
+function turned(f: ProfileFrame, p: Vec2, share = 1): Vec2 {
+  const a = f.curlTurn * share;
+  if (a === 0) return p;
+  const R = tubeUpper(f.tube, 0), c = Math.cos(a), sn = Math.sin(a), dx = p[0] - R[0], dy = p[1] - R[1];
+  return [R[0] + dx * c - dy * sn, R[1] + dx * sn + dy * c];
+}
+
 /** The constructed (unblended) point for sample j, its lip thickness, lipness, and the x its lift is read at. */
 function constructed(j: number, f: ProfileFrame, baseHome: Vec2): { pos: Vec2; thickness: number; lipness: number; liftX: number } {
   const { seg, s } = sampleSegment(j);
   const on = (pos: Vec2, thickness = 0, lipness = 0, liftX = pos[0]) => ({ pos, thickness, lipness, liftX });
   switch (seg) {
     case 'front':
-    case 'back':
       return on(baseHome);
+    case 'back': { // the wave's back, from the crest the lip was thrown from (crestLift above it now) easing down to the water
+      const k = 1 - s * s * (3 - 2 * s);
+      return on([baseHome[0], baseHome[1] + rootLift(f) * k]);
+    }
     case 'face': // from where the face leaves the sheet up to where the lip lands (hollowCurve's first piece)
       return on(hollowCurve(f, 0, s));
     case 'wall': // on up the back wall to the tube's round end, where the ceiling starts (hollowCurve's second piece)
       return on(hollowCurve(f, 1, s));
     case 'under': { // the tube's upper side, the lip's underside, from the round end out to the tip
       const xi = s * f.xiTip, pt = tubeUpper(f.tube, xi);
-      return on(pt, lipThicknessAt(f, xi), 1, pt[0]);
+      return on(turned(f, pt), lipThicknessAt(f, xi), 1, pt[0]);
     }
     case 'cap': { // round the tip, from the underside to the outer surface
       const no = tubeUpperNormal(f.tube, f.xiTip), e = f.tipE;
       const cx = f.tip[0] + (no[0] * e) / 2, cy = f.tip[1] + (no[1] * e) / 2;
       const a = Math.atan2(-no[1], -no[0]) + Math.PI * s;
-      return on([cx + (Math.cos(a) * e) / 2, cy + (Math.sin(a) * e) / 2], e, 1, f.tip[0]);
+      return on(turned(f, [cx + (Math.cos(a) * e) / 2, cy + (Math.sin(a) * e) / 2]), e, 1, f.tip[0]);
     }
     default: { // outer: the lip's band from the tip back to the tube's top, then level to the crest
       if (f.xiTip > f.xiTop && s <= OUTER_LIP_SHARE) {
         const xi = f.xiTip + (f.xiTop - f.xiTip) * (s / OUTER_LIP_SHARE);
         const u = tubeUpper(f.tube, xi), no = tubeUpperNormal(f.tube, xi), e = lipThicknessAt(f, xi);
-        return on([u[0] + no[0] * e, u[1] + no[1] * e], e, 1, u[0]);
+        return on(turned(f, [u[0] + no[0] * e, u[1] + no[1] * e]), e, 1, u[0]);
       }
       const fromXi = f.xiTip > f.xiTop ? f.xiTop : f.xiTip, e = f.xiTip > f.xiTop ? f.tTop : f.tipE;
       const u = tubeUpper(f.tube, fromXi), no = tubeUpperNormal(f.tube, fromXi), a: Vec2 = [u[0] + no[0] * e, u[1] + no[1] * e];
       const k = f.xiTip > f.xiTop ? (s - OUTER_LIP_SHARE) / (1 - OUTER_LIP_SHARE) : s;
-      return on(lerp2(a, f.K, k), e * (1 - k), 1, u[0] + (f.K[0] - u[0]) * k);
+      const Kt: Vec2 = [f.K[0], f.K[1] + f.crestLift];
+      // The fade-in's turn eases off along the lip's level top, so it still ends at the crest.
+      return on(turned(f, lerp2(a, Kt, k), 1 - k), e * (1 - k), 1, u[0] + (f.K[0] - u[0]) * k);
     }
   }
 }
@@ -563,7 +637,13 @@ function riding(j: number, f: ProfileFrame, c: { pos: Vec2; liftX: number }): Ve
   if (!f.lift) return c.pos;
   const { seg, s } = sampleSegment(j);
   const crest = liftAt(f.lift, f.K[0])[1];
-  const capped = (x: number): Vec2 => { const l = liftAt(f.lift!, x); return [l[0], Math.min(l[1], crest)]; };
+  // The lip hangs crestLift above the crest: under its root the pile first fills that gap (riding all of it, the tube's top
+  // rose 1.3 m after the landing, ψ 0.035), fading out toward the tip, which rides the water it landed in.
+  const under = Math.min(f.crestLift, Math.max(0, crest)), span = f.P[0] - f.K[0];
+  const capped = (x: number): Vec2 => {
+    const l = liftAt(f.lift!, x), root = span > 1e-3 ? 1 - smoothstep(f.K[0], f.P[0], x) : 1;
+    return [l[0], Math.min(l[1], crest) - under * root];
+  };
   if (seg === 'front' || seg === 'back') {
     const k = smoothstep(0, EDGE_LOWER_FADE, seg === 'front' ? s : 1 - s);
     return [c.pos[0], c.pos[1] - k * Math.max(0, liftAt(f.lift, c.pos[0])[1] - crest)];
@@ -603,8 +683,11 @@ export function profilePoint(j: number, f: ProfileFrame, baseHome: Vec2): Profil
   const sigma = seg === 'outer' ? (f.xiTip > 0 ? Math.max(0, Math.min(1, 1 - s / OUTER_LIP_SHARE)) : 0) : seg === 'cap' ? 1 : 0;
   const spray = LIP_SPRAY * smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog) * smoothstep(LIP_SPRAY_FROM, 1, sigma);
   const air = f.weight * (1 - f.landing);
+  // The tube's inside stays clean while it is held open after the landing, and turns to foam as it collapses (Andrew's
+  // photo, 2026-09-29: full foam once it has imploded).
+  const filled = landed * smoothstep(0, LANDING_FOAM_RISE, f.collapse);
   const curlFoam = seg === 'outer' || seg === 'cap' ? Math.max(landed, spray * air)
-    : seg === 'face' || seg === 'wall' || seg === 'under' ? landed - air
+    : seg === 'face' || seg === 'wall' || seg === 'under' ? filled - air
       : landed;
   const lifted = riding(j, f, c);
   return { pos: lerp2(baseHome, lifted, f.weight), thickness: c.thickness * f.weight, curlFoam, lipness: c.lipness * f.weight };

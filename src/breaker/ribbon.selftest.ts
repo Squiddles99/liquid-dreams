@@ -108,7 +108,11 @@ const GEOMETRY_ONLY = new Set<string>(['vj', 'tauLand', 'reach', 'prog', 'collap
 /** The frame tolerance (controller ruling): 1e-3 × max(1, |CPU value|); the pile's knots' x, dx and dy are sheet evaluations (and
  * their differences), bounded by the sheet's own f32 GPU/CPU gap as the edge samples are (1 cm). */
 const SHEET_FIELD = /^k\d\.(x|dx|dy)$/;
-const frameTol = (c: number, name: string): number => (SHEET_FIELD.test(name) ? 1e-2 : 1e-3 * Math.max(1, Math.abs(c)));
+/** The landing's root (impactHeight's search, and the tube it sizes): 3e-3 × max(1, |v|) (ruling, 2026-10-03 barrel size):
+ * sized × the throw height, a small tube whose point grazes the water (ψ 0.03, H_I 1.3 m) turns the sheet's 1 mm f32 gap
+ * into 2 mm of landing; hung from the crest now, those stations kept H without searching. */
+const LANDING_FIELD = /^(P\.[xy]|tip\.[xy]|clipY|HI|L|W)$/;
+const frameTol = (c: number, name: string): number => (SHEET_FIELD.test(name) ? 1e-2 : (LANDING_FIELD.test(name) ? 3e-3 : 1e-3) * Math.max(1, Math.abs(c)));
 /** Whether a station's constructed curve shows: CPU weight > 0.01, or a finite tb before the collapse ends. */
 const drawn = (e: Station, f: ProfileFrame): boolean =>
   f.weight > 0.01 || (e.tb !== null && Number.isFinite(e.tb) && e.tb < f.tauLand + settleSpan(e.H, P));
@@ -194,7 +198,7 @@ registerSelfTest({
     return {
       pass: ok,
       detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${broken} in the throw, ${landed} landed); worst |Δpos| (m) constructed ${constructed} (< 5e-3), ` +
-        `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); ` +
+        `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the landing's root 3e-3, the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); ` +
         `live rows flagged dead ${deadLive}, non-finite samples ${nonFinite} (0). Samples off > 5 mm by segment (front..back) ${segBad.join('/')}, worst ${segWorst.map((v) => v.toFixed(3)).join('/')}. Worst constructed: ${worstDetail}. Per frame field |Δ|: ${fields}. Frame failures: ${failures.join(' | ') || 'none'}`,
     };
   },
@@ -614,12 +618,13 @@ registerSelfTest({
     // A synthetic cross-section steep enough to throw (weight ~1: a crest at u = 0 falling to a trough ahead) and the same with a whitewater bump ahead.
     const frameBase = (u: number): Vec2 => [u + 0.3 * Math.sin(u * 0.2), 2.6 * Math.exp(-((u / 2.5) ** 2)) - 1.6];
     const base = (u: number): Vec2 => { const b = frameBase(u); return [b[0], b[1] + 1.2 * Math.exp(-(((u - 4) / 3) ** 2))]; };
-    const cases: { psi: number; tb: number }[] = [];
-    for (const psi of [0.03, 0.065, 0.09]) {
-      const tau = profileFrame(frameBase, { H: 4, c: 8, r: 1.4, tb: 0, psi }, P).tauLand;
-      for (const tb of [0.3 * tau, 0.8 * tau, tau + 0.2, tau + 0.8]) cases.push({ psi, tb });
+    // With and without a throw height above the crest's now (the tube hung from the throw crest, its back eased down).
+    const cases: { psi: number; tb: number; lipH: number | null }[] = [];
+    for (const psi of [0.03, 0.065, 0.09]) for (const lipH of [null, 4.8]) {
+      const tau = profileFrame(frameBase, { H: 4, c: 8, r: 1.4, tb: 0, psi, lipH }, P).tauLand;
+      for (const tb of [0.3 * tau, 0.8 * tau, tau + 0.2, tau + 0.8]) cases.push({ psi, tb, lipH });
     }
-    const profs = cases.map((c) => buildProfile(base, { H: 4, c: 8, r: 1.4, tb: c.tb, psi: c.psi }, P, frameBase));
+    const profs = cases.map((c) => buildProfile(base, { H: 4, c: 8, r: 1.4, tb: c.tb, psi: c.psi, lipH: c.lipH }, P, frameBase));
     const nF = profs.length, frameData = new Float32Array(nF * FRAME_FLOATS), targets = new Float32Array(nF * PROFILE_SAMPLES * 4);
     profs.forEach((pr, q) => {
       frameData.set(packFrameCpu(pr.frame), q * FRAME_FLOATS);
@@ -645,7 +650,7 @@ registerSelfTest({
     const bySeg = [0, 0, 0, 0, 0, 0, 0];
     profs.forEach((pr, q) => {
       for (let j = 0; j < PROFILE_SAMPLES; j++) {
-        const k = (q * PROFILE_SAMPLES + j) * 8, where = `ψ ${cases[q].psi} tb ${cases[q].tb.toFixed(2)} j ${j}`;
+        const k = (q * PROFILE_SAMPLES + j) * 8, where = `ψ ${cases[q].psi} lipH ${cases[q].lipH} tb ${cases[q].tb.toFixed(2)} j ${j}`;
         const dp = Math.hypot(g[k] - pr.points[j][0], g[k + 1] - pr.points[j][1]);
         pos.see(dp, `${where} GPU (${g[k].toFixed(3)}, ${g[k + 1].toFixed(3)}) CPU (${pr.points[j][0].toFixed(3)}, ${pr.points[j][1].toFixed(3)})`);
         if (dp > 5e-3) bySeg[SEGMENT_OF_SAMPLE[j]]++;

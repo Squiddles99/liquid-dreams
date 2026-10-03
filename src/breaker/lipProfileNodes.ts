@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { If, Loop, abs, atan, clamp, cos, dot, float, int, length, max, min, mix, pow, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
-import { type BreakParams, RIBBON_FULL_OFFSET, normalizeBreakParams, steepeningStart } from './breaking';
+import { If, Loop, abs, atan, clamp, cos, dot, exp, float, int, length, max, min, mix, pow, select, sin, smoothstep, sqrt, storage, uniform, vec2, vec4 } from 'three/tsl';
+import { type BreakParams, RIBBON_FULL_OFFSET, TUBE_HOLD_S, TUBE_THROWN_PSI, normalizeBreakParams, steepeningStart } from './breaking';
 import {
-  BACK_EDGE_H, BACK_OFF_DROP_H, CREST_DIR_STEP, EDGE_LOWER_FADE, EDGE_MARGIN_M, LIP_EMERGE_PROGRESS, FACE_CONCAVE_MARGIN, FACE_CONCAVE_STEPS, FACE_CONCAVE_STEP_H, FACE_JOIN_MIN_M, FACE_JOIN_STEPS,
-  CEILING_START_XI, FOOT_WIDTHS, HOLLOW_BACK_H, HOLLOW_EPS, HOLLOW_FOOT_DIP, HOLLOW_MIN_WEIGHT, HOLLOW_SETTLE, HOLLOW_THROAT, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
-  LIP_SPRAY_PROGRESS, LIP_TAPER_POWER, OUTER_LIP_SHARE, PRESENCE_FADE, PROFILE_SAMPLES, type ProfileFrame, type ProfileSegment, SEGMENT_ID,
+  BACK_EDGE_H, BACK_OFF_DROP_H, EDGE_LOWER_FADE, EDGE_MARGIN_M, LIP_EMERGE_PROGRESS, FACE_JOIN_MIN_M, FACE_JOIN_STEPS, HOLLOW_FLOOR_SOFT, LIP_JET_SHARE,
+  CEILING_START_XI, FOOT_WIDTHS, TUBE_OPEN_POWER, HOLLOW_BACK_H, HOLLOW_EPS, HOLLOW_FOOT_DIP, HOLLOW_MIN_WEIGHT, HOLLOW_SETTLE, HOLLOW_THROAT, GRAVITY_MS2, HAND_BACK_S, HOME_SETTLE, IMPACT_BISECT, IMPACT_SCAN, SHEET_WARM_STEPS, LANDING_FOAM_RISE, LAND_CLEARANCE_M, LIP_SPRAY, LIP_SPRAY_FROM,
+  LIP_SPRAY_PROGRESS, LIP_TAPER_POWER, OUTER_LIP_SHARE, PRESENCE_FADE, PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, type ProfileSegment, SEGMENT_ID,
   TIP_GROW_PROGRESS, TIP_THICKNESS_RATIO, TUBE_BACK_AHEAD_H, sampleSegment,
 } from './lipProfile';
 import { LH82_K, PSI_MIN, PSI_NONE } from './overturn';
@@ -34,9 +34,9 @@ function homeCoeffs(seg: ProfileSegment, s: number): [number, number, number] {
     case 'front': return [s, 1 - s, 0];
     case 'face': return [1 - 0.25 * s, 0, 0];
     case 'wall': return [0.75 - 0.15 * s, 0, 0];
-    case 'under': return [0.6 - 0.3 * s, 0, 0];
-    case 'cap': return [0.3 - 0.05 * s, 0, 0];
-    case 'outer': return [0.25 * (1 - s), 0, 0];
+    case 'under': return [0.6 - 0.01 * s, 0, 0];
+    case 'cap': return [0.59 - 0.005 * s, 0, 0];
+    case 'outer': return [0.585 * (1 - s), 0, 0];
     default: return [0, 0, s];
   }
 }
@@ -111,7 +111,8 @@ export function encodeTb(tb: number | null): number {
 }
 
 /** ProfileInput as nodes; tb encoded (encodeTb): < 0 means null. */
-export interface ProfileInputNodes { H: N; c: N; r: N; tb: N; psi: N; offshoreMs: N }
+/** lipH: the throw height (m; ≤ 0: none, the CPU's null). */
+export interface ProfileInputNodes { H: N; c: N; r: N; tb: N; psi: N; offshoreMs: N; lipH: N }
 
 /** The tube (tube.Tube) as nodes: n is (−d.y, d.x). */
 export interface TubeNodes { O: N; d: N; n: N; L: N; W: N; clipY: N }
@@ -123,19 +124,19 @@ export const PILE_KNOTS = 7;
 export interface ProfileFrameNodes {
   K: N; F: N; tF: N; P: N; tip: N; tube: TubeNodes;
   xiTop: N; xiTip: N; xiEnd: N; tTop: N; tipE: N; uFoot: N; uFront: N; uBack: N;
-  tauLand: N; prog: N; weight: N; collapse: N; landing: N; rho: N; vj: N; reach: N; uLand: N; HI: N; aK: N;
+  tauLand: N; prog: N; weight: N; collapse: N; landing: N; rho: N; vj: N; reach: N; uLand: N; HI: N; crestLift: N; floorY: N; curlTurn: N;
   /** PILE_KNOTS vec4(u, x, dx, dy), in pileLiftKnots' order (monotone in u, and so in x along the ray). */
   knots: N[];
 }
 
 /** A station's frame is stored as this many vec4s (packFrameNodes, FRAME_LAYOUT order); the samples read all of them. */
-export const FRAME_VEC4S = 16;
+export const FRAME_VEC4S = 17;
 export const FRAME_PROFILE_VEC4S = FRAME_VEC4S;
 /** The packed frame's components in order (4 per vec4). */
 export const FRAME_LAYOUT = [
   'K.x', 'K.y', 'F.x', 'F.y', 'tF.x', 'tF.y', 'P.x', 'P.y', 'tip.x', 'tip.y', 'O.x', 'O.y', 'd.x', 'd.y', 'L', 'W',
   'clipY', 'xiTop', 'xiTip', 'xiEnd', 'tTop', 'tipE', 'uFoot', 'uFront', 'uBack', 'tauLand', 'prog', 'weight',
-  'collapse', 'landing', 'rho', 'vj', 'reach', 'uLand', 'HI', 'aK',
+  'collapse', 'landing', 'rho', 'vj', 'reach', 'uLand', 'HI', 'crestLift', 'floorY', 'curlTurn', 'pad1', 'pad2',
   ...Array.from({ length: PILE_KNOTS }, (_, k) => [`k${k}.u`, `k${k}.x`, `k${k}.dx`, `k${k}.dy`]).flat(),
 ] as const;
 
@@ -146,21 +147,21 @@ export function packFrameCpu(f: ProfileFrame): number[] {
   return [
     f.K[0], f.K[1], f.F[0], f.F[1], f.tF[0], f.tF[1], f.P[0], f.P[1], f.tip[0], f.tip[1], f.tube.O[0], f.tube.O[1],
     f.tube.d[0], f.tube.d[1], f.tube.L, f.tube.W, f.tube.clipY, f.xiTop, f.xiTip, f.xiEnd, f.tTop, f.tipE, f.uFoot, f.uFront,
-    f.uBack, f.tauLand, f.prog, f.weight, f.collapse, f.landing, f.rho, f.vj, f.reach, f.uLand, f.HI, f.aK,
+    f.uBack, f.tauLand, f.prog, f.weight, f.collapse, f.landing, f.rho, f.vj, f.reach, f.uLand, f.HI, f.crestLift, f.floorY, f.curlTurn, 0, 0,
     ...knots,
   ];
 }
 
-/** The frame as its first 9 vec4s (FRAME_LAYOUT order); the knots, vec4s 9 to 15, are stored by profileFrameNode's storeKnot. */
+/** The frame as its first 10 vec4s (FRAME_LAYOUT order); the knots, vec4s 10 to 16, are stored by profileFrameNode's storeKnot. */
 export function packFrameNodes(f: ProfileFrameNodes): N[] {
   return [
     vec4(f.K, f.F), vec4(f.tF, f.P), vec4(f.tip, f.tube.O), vec4(f.tube.d, f.tube.L, f.tube.W),
     vec4(f.tube.clipY, f.xiTop, f.xiTip, f.xiEnd), vec4(f.tTop, f.tipE, f.uFoot, f.uFront), vec4(f.uBack, f.tauLand, f.prog, f.weight),
-    vec4(f.collapse, f.landing, f.rho, f.vj), vec4(f.reach, f.uLand, f.HI, f.aK),
+    vec4(f.collapse, f.landing, f.rho, f.vj), vec4(f.reach, f.uLand, f.HI, f.crestLift), vec4(f.floorY, f.curlTurn, 0.0, 0.0),
   ];
 }
 /** The index of the first knot's vec4 in a stored frame. */
-export const FRAME_KNOT_VEC4 = 9;
+export const FRAME_KNOT_VEC4 = 10;
 
 /**
  * The stored frame read into FRAME_VEC4S vars, each declared and assigned here, at the top of the pass. A `.toVar()` of
@@ -184,7 +185,7 @@ function unpackFrameNodes(v: readonly N[], n: N): ProfileFrameNodes {
     tube: { O: v[2].zw, d: v[3].xy, n, L: v[3].z, W: v[3].w, clipY: v[4].x },
     xiTop: v[4].y, xiTip: v[4].z, xiEnd: v[4].w, tTop: v[5].x, tipE: v[5].y, uFoot: v[5].z, uFront: v[5].w,
     uBack: v[6].x, tauLand: v[6].y, prog: v[6].z, weight: v[6].w, collapse: v[7].x, landing: v[7].y, rho: v[7].z, vj: v[7].w,
-    reach: v[8].x, uLand: v[8].y, HI: v[8].z, aK: v[8].w,
+    reach: v[8].x, uLand: v[8].y, HI: v[8].z, crestLift: v[8].w, floorY: v[9].x, curlTurn: v[9].y,
     knots: v.slice(FRAME_KNOT_VEC4, FRAME_KNOT_VEC4 + PILE_KNOTS),
   };
 }
@@ -287,7 +288,7 @@ function unitReachNode(psi: N, uc: N): { px: N; py: N } {
   const unit = overturnShapeNode(psi, 1.0, uc), ax = tubeAxesNode(unit.theta);
   const t1: TubeNodes = { O: vec2(0.0), d: ax.d, n: ax.n, L: unit.L, W: unit.W, clipY: float(NO_CLIP) };
   const xiTop = tubeTopXiNode(t1), top1 = vec2(tubeUpperNode(t1, xiTop)).toVar(), pt1 = vec2(tubeUpperNode(t1, 1.0)).toVar();
-  const tTop1 = unit.AJ.mul(1 + LIP_TAPER_POWER).div(max(tubeUpperArcNode(t1, xiTop, float(1.0)), 1e-9));
+  const tTop1 = unit.AJ.mul(LIP_JET_SHARE * (1 + LIP_TAPER_POWER)).div(max(tubeUpperArcNode(t1, xiTop, float(1.0)), 1e-9));
   return { px: pt1.x.sub(tubeBackMostXNode(t1)).toVar(), py: pt1.y.sub(top1.y).sub(tTop1).toVar() };
 }
 
@@ -340,6 +341,29 @@ function impactHeightNode(baseAt: (u: N) => N, K: N, H: N, psi: N, uc: N): N {
   return select(found.greaterThan(0.5).and(H.greaterThan(0.0)), lo.add(hi).mul(0.5), H);
 }
 
+/** lipProfile's curlTurn: the angle the fading-in curl turns about the round end to carry on from the blended back wall. */
+function curlTurnNode(f: ProfileFrameNodes, baseAt: (u: N) => N): N {
+  const iW = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall - 1, iU = iW + 1;
+  const keep = float(1.0).sub(f.collapse).toVar();
+  const w = select(keep.greaterThan(1e-6), f.weight.div(max(keep, 1e-6)), float(1.0)).toVar();
+  const cW = vec2(hollowCurveNode(f, float(1.0).greaterThan(0.5), float(SAMPLE_S[iW]))).toVar();
+  const R = vec2(tubeUpperNode(f.tube, 0.0)).toVar(), cU = vec2(tubeUpperNode(f.tube, f.xiTip.div(PROFILE_SEGMENTS.under))).toVar();
+  const hW = vec2(baseAt(f.uFoot.mul(HOME_COEFFS[3 * iW]))).toVar(), hU = vec2(baseAt(f.uFoot.mul(HOME_COEFFS[3 * iU]))).toVar();
+  const Wb = mix(hW, cW, w), Jb = mix(hU, R, w);
+  const wrap = (a: N): N => atan(sin(a), cos(a));
+  const aW = atan(R.y.sub(cW.y), R.x.sub(cW.x)).toVar();
+  const bend = select(length(cU.sub(R)).greaterThan(1e-9), wrap(atan(cU.y.sub(R.y), cU.x.sub(R.x)).sub(aW)), float(0.0));
+  const turn = wrap(atan(Jb.y.sub(Wb.y), Jb.x.sub(Wb.x)).sub(aW).sub(float(1.0).sub(w).mul(bend))).mul(keep);
+  const valid = w.greaterThan(0.0).and(w.lessThan(1.0)).and(length(R.sub(cW)).greaterThan(1e-6));
+  return select(valid, turn, float(0.0));
+}
+
+/** A curl point turned about the tube's round end by curlTurn × share (lipProfile's turned). */
+function turnedNode(f: ProfileFrameNodes, p: N, share: N | number = 1): N {
+  const a = f.curlTurn.mul(share).toVar(), R = vec2(tubeUpperNode(f.tube, 0.0)).toVar(), d = vec2(p).sub(R).toVar();
+  return R.add(vec2(d.x.mul(cos(a)).sub(d.y.mul(sin(a))), d.x.mul(sin(a)).add(d.y.mul(cos(a)))));
+}
+
 /**
  * profileFrame on the GPU (lipProfile.profileFrame, term by term), with pileLift's knots: `baseAt(u)` is the frame's sheet
  * (without the pile) and `pileAt(u)` the sheet with it, each the displaced vec2(x, y) at undisplaced u; `storeKnot(k, v)`
@@ -353,21 +377,25 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
   const uFootWave = float(FOOT_WIDTHS).mul(u.faceWidth).mul(H).toVar();
   const K = vec2(baseAt(float(0.0))).toVar();
   const F0 = vec2(baseAt(uFootWave)).toVar();
-  const HI = impactHeightNode(baseAt, K, H, psi, uc).mul(smoothstep(PSI_NONE, PSI_MIN, psi)).toVar();
+  // lipProfile: the tube hangs from the crest the lip was thrown from (K × lipH / H), sized × the throw height.
+  const lipH = select(float(input.lipH).greaterThan(0.0), float(input.lipH), H).toVar();
+  const crestLift = max(K.y, 0.0).mul(max(lipH.div(max(H, 1e-6)).sub(1.0), 0.0)).toVar();
+  const Kt = vec2(K.x, K.y.add(crestLift)).toVar();
+  const HI = impactHeightNode(baseAt, Kt, max(H, lipH), psi, uc).mul(smoothstep(PSI_NONE, PSI_MIN, psi)).toVar();
   const shape = overturnShapeNode(psi, HI, uc);
   const ax = tubeAxesNode(shape.theta);
   const d = vec2(ax.d).toVar(), n = vec2(ax.n).toVar();
   const at0: TubeNodes = { O: vec2(0.0), d, n, L: shape.L, W: shape.W, clipY: float(NO_CLIP) };
   const xiTop = tubeTopXiNode(at0), top0 = vec2(tubeUpperNode(at0, xiTop)).toVar();
-  const tTop = shape.AJ.mul(1 + LIP_TAPER_POWER).div(max(tubeUpperArcNode(at0, xiTop, float(1.0)), 1e-3)).toVar();
-  const O0 = vec2(K.x.add(H.mul(TUBE_BACK_AHEAD_H)).sub(tubeBackMostXNode(at0)), K.y.sub(tTop).sub(top0.y)).toVar();
+  const tTop = shape.AJ.mul(LIP_JET_SHARE * (1 + LIP_TAPER_POWER)).div(max(tubeUpperArcNode(at0, xiTop, float(1.0)), 1e-3)).toVar();
+  const O0 = vec2(Kt.x.add(H.mul(TUBE_BACK_AHEAD_H)).sub(tubeBackMostXNode(at0)), Kt.y.sub(tTop).sub(top0.y)).toVar();
   const point0 = vec2(tubeUpperNode({ ...at0, O: O0 }, 1.0)).toVar();
   const under = sheetYAtNode(baseAt, K, point0.x).toVar();
   const drop = max(point0.y.sub(under), 0.0).toVar();
   const full: TubeNodes = { ...at0, O: vec2(O0.x, O0.y.sub(drop)).toVar() };
   const xiEnd = float(1.0);
   const P = vec2(tubeUpperNode(full, xiEnd)).toVar();
-  const tauLand = landingTimeNode(K.y.sub(P.y)).toVar();
+  const tauLand = landingTimeNode(Kt.y.sub(P.y)).toVar();
   // The face's join: the wave's foot, or FACE_JOIN_MIN_M past a landing beyond it, in the sheet's displaced x.
   const uFoot = float(uFootWave).toVar(), F = vec2(F0).toVar();
   If(P.x.greaterThan(F0.x.sub(FACE_JOIN_MIN_M)), () => {
@@ -378,36 +406,19 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
       If(i.lessThan(int(FACE_JOIN_STEPS)), () => { uFoot.addAssign(x.sub(F.x)); });
     });
   });
-  // The join steps out toward the trough until the sheet there is flatter than the face's chord, then back along the last
-  // step to where it meets the chord's angle (lipProfile.profileFrame).
+  // The face leaves along the sheet there (lipProfile.profileFrame: the join no longer steps out toward the trough).
   const Fb = vec2(baseAt(uFoot.sub(0.1))).toVar();
-  const going = float(1.0).toVar();
-  const e = angBack(Fb.sub(F)).sub(angBack(P.sub(F)).sub(FACE_CONCAVE_MARGIN)).toVar(), ePrev = float(0.0).toVar();
-  Loop(FACE_CONCAVE_STEPS, () => {
-    If(going.greaterThan(0.5).and(e.greaterThan(0.0)), () => {
-      uFoot.addAssign(H.mul(FACE_CONCAVE_STEP_H));
-      F.assign(baseAt(uFoot));
-      Fb.assign(baseAt(uFoot.sub(0.1)));
-      ePrev.assign(e);
-      e.assign(angBack(Fb.sub(F)).sub(angBack(P.sub(F)).sub(FACE_CONCAVE_MARGIN)));
-    }).Else(() => { going.assign(0.0); });
-  });
-  If(ePrev.greaterThan(0.0).and(e.lessThanEqual(0.0)), () => {
-    uFoot.subAssign(H.mul(FACE_CONCAVE_STEP_H).mul(e.negate().div(ePrev.sub(e))));
-    F.assign(baseAt(uFoot));
-    Fb.assign(baseAt(uFoot.sub(0.1)));
-  });
   const tF = norm2(Fb.sub(F)).toVar();
   const pre = tb.lessThan(0.0);
   const t = select(pre, float(0.0), min(max(tb, 0.0), tauLand)).toVar();
   const prog = t.div(tauLand).toVar();
   // lipProfile's growing curl: the tube at impact scaled by the throw about an origin sliding from the crest to its place.
-  const tube: TubeNodes = { O: vec2(mix(K, full.O, prog) as N).toVar(), d, n, L: shape.L.mul(prog).toVar(), W: shape.W.mul(prog).toVar(), clipY: P.y };
+  // lipProfile: it opens out as it is thrown, scaled by 1 − (1 − prog)^TUBE_OPEN_POWER.
+  const g = float(1.0).sub(pow(max(float(1.0).sub(prog), 1e-6), TUBE_OPEN_POWER)).toVar(); // pow(0, y) is not finite on every GPU
+  const tube: TubeNodes = { O: vec2(mix(Kt, full.O, g) as N).toVar(), d, n, L: shape.L.mul(g).toVar(), W: shape.W.mul(g).toVar(), clipY: P.y };
   const Pnow = vec2(tubeUpperNode(tube, xiEnd)).toVar();
   const xiTip = prog.mul(xiEnd).toVar();
   const tip = vec2(tubeUpperNode(tube, xiTip)).toVar();
-  const Kb = vec2(baseAt(float(-CREST_DIR_STEP))).toVar();
-  const aK = atan(Kb.y.sub(K.y), Kb.x.sub(K.x).negate()).toVar();
   // The back-off edges scale with H: floored so a zero-height row (never drawn) can't give smoothstep equal edges.
   const Hs = max(H, 1e-6);
   // lipProfile: the water before the break; from it, the curl peels out over LIP_EMERGE_PROGRESS of the throw.
@@ -416,7 +427,8 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
   // breaking.landingEstimate and settleSpan on the crest's drain.
   const landEstimate = max(H.mul(drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt().toVar();
   const span = u.collapseTime.mul(landEstimate).toVar();
-  const settleFrom = max(tauLand, landEstimate).toVar();
+  // ...and once landed a thrown tube stays open TUBE_HOLD_S × how thrown (lipProfile, breaking.lifecycle).
+  const settleFrom = max(tauLand, landEstimate).add(smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi).mul(TUBE_HOLD_S)).toVar();
   const collapse: N = select(pre, float(0.0), smoothstep(settleFrom, settleFrom.add(span), tb)).toVar();
   const present: N = smoothstep(PSI_NONE, PSI_NONE + PRESENCE_FADE * (PSI_MIN - PSI_NONE), psi).toVar();
   const landing = select(pre, float(0.0), smoothstep(tauLand, tauLand.add(span.mul(LANDING_FOAM_RISE)), tb)).mul(present).toVar();
@@ -424,13 +436,14 @@ export function profileFrameNode(baseAt: (u: N) => N, pileAt: (u: N) => N, input
   const rho = select(pre, smoothstep(u.ribbonOnset, u.ribbonOnset.add(RIBBON_FULL_OFFSET), r), float(1.0).sub(smoothstep(end, end.add(HAND_BACK_S), tb))).toVar();
   const uFront = uFoot.add(LAND_CLEARANCE_M + EDGE_MARGIN_M).toVar();
   const uBack = H.mul(BACK_EDGE_H).add(EDGE_MARGIN_M).negate().toVar();
-  const drop2 = tTop.add(drop).mul(prog).toVar();
+  const drop2 = tTop.add(drop).mul(g).toVar();
   const f: ProfileFrameNodes = {
     K, F, tF, P: Pnow, tip, tube, xiTop, xiTip, xiEnd, tTop: drop2,
     tipE: drop2.mul(TIP_THICKNESS_RATIO).mul(float(1.0).sub(prog)).mul(smoothstep(0.0, TIP_GROW_PROGRESS, prog)),
     uFoot, uFront, uBack, tauLand, prog, weight: steep.mul(float(1.0).sub(collapse)).mul(present), collapse, landing, rho,
-    vj: P.x.sub(K.x).div(tauLand), reach: tip.x.sub(K.x), uLand: uFoot, HI, aK, knots: [],
+    vj: P.x.sub(K.x).div(tauLand), reach: tip.x.sub(K.x), uLand: uFoot, HI, crestLift, floorY: min(P.y, min(F.y, F0.y)).toVar(), curlTurn: float(0.0), knots: [],
   };
+  f.curlTurn = curlTurnNode(f, baseAt).toVar();
   // pileLift at pileLiftKnots' u: behind the crest, the crest, half way to the foot, the foot (twice: uLand is the
   // foot), half way to the front edge, the front edge.
   Loop(PILE_KNOTS, ({ i }: N) => {
@@ -531,7 +544,12 @@ function hollowCurveNode(f: ProfileFrameNodes, wall: N, s: N): N {
   const throatOk = abs(dt).greaterThan(1e-6).and(ya.greaterThan(0.0)).and(yb.greaterThan(0.0));
   const throatPos = select(throatOk, parabola, mix(A, R, q));
   const inThroat = wall.and(s.greaterThan(1.0 - HOLLOW_THROAT));
-  return select(chord, chordPos, select(inThroat, throatPos, onConic));
+  const sel: N = select(chord, chordPos, select(inThroat, throatPos, onConic));
+  const q0 = vec2(sel).toVar();
+  // lipProfile.hollowCurve's floor: what dips below the trough's floor eases onto it (tanh, as 1 − 2/(e^2x + 1)).
+  const under = f.floorY.sub(q0.y).div(HOLLOW_FLOOR_SOFT).toVar();
+  const th = float(1.0).sub(float(2.0).div(exp(under.mul(2.0)).add(1.0)));
+  return select(q0.y.greaterThanEqual(f.floorY), q0, vec2(q0.x, f.floorY.sub(th.mul(HOLLOW_FLOOR_SOFT))));
 }
 
 /** lipProfile's constructed point for sample j: { pos, thickness, lipness, liftX }. Inside an Fn. */
@@ -546,27 +564,28 @@ function constructedNode(j: N, f: ProfileFrameNodes, baseHome: N): { pos: N; thi
     liftX.assign(pos.x);
   }).ElseIf(seg.equal(float(SEGMENT_ID.under)), () => {
     const xi = sv.mul(f.xiTip).toVar();
-    pos.assign(tubeUpperNode(f.tube, xi));
+    pos.assign(turnedNode(f, tubeUpperNode(f.tube, xi)));
     thickness.assign(lipThicknessNode(f, xi)); lipness.assign(1.0); liftX.assign(pos.x);
   }).ElseIf(seg.equal(float(SEGMENT_ID.cap)), () => {
     const no = vec2(tubeUpperNormalNode(f.tube, f.xiTip)).toVar(), e = float(f.tipE).toVar();
     const centre = f.tip.add(no.mul(e).mul(0.5));
     const a = atan(no.y.negate(), no.x.negate()).add(sv.mul(Math.PI));
-    pos.assign(centre.add(vec2(cos(a), sin(a)).mul(e).mul(0.5)));
+    pos.assign(turnedNode(f, centre.add(vec2(cos(a), sin(a)).mul(e).mul(0.5))));
     thickness.assign(e); lipness.assign(1.0); liftX.assign(f.tip.x);
   }).ElseIf(seg.equal(float(SEGMENT_ID.outer)), () => {
     const band = f.xiTip.greaterThan(f.xiTop);
     If(band.and(sv.lessThanEqual(OUTER_LIP_SHARE)), () => {
       const xi = f.xiTip.add(f.xiTop.sub(f.xiTip).mul(sv.div(OUTER_LIP_SHARE))).toVar();
       const uu = vec2(tubeUpperNode(f.tube, xi)).toVar(), no = tubeUpperNormalNode(f.tube, xi), e = lipThicknessNode(f, xi).toVar();
-      pos.assign(uu.add(no.mul(e)));
+      pos.assign(turnedNode(f, uu.add(no.mul(e))));
       thickness.assign(e); liftX.assign(uu.x);
     }).Else(() => {
       const fromXi = select(band, f.xiTop, f.xiTip).toVar(), e = select(band, f.tTop, f.tipE).toVar();
       const uu = vec2(tubeUpperNode(f.tube, fromXi)).toVar(), no = tubeUpperNormalNode(f.tube, fromXi);
       const a = uu.add(no.mul(e));
       const k = select(band, sv.sub(OUTER_LIP_SHARE).div(1 - OUTER_LIP_SHARE), sv).toVar();
-      pos.assign(mix(a, f.K, k));
+      const Kt: N = vec2(f.K.x, f.K.y.add(f.crestLift));
+      pos.assign(turnedNode(f, mix(a, Kt, k), float(1.0).sub(k)));
       thickness.assign(e.mul(float(1.0).sub(k))); liftX.assign(uu.x.add(f.K.x.sub(uu.x).mul(k)));
     });
     lipness.assign(1.0);
@@ -599,10 +618,20 @@ function uAtXNode(f: ProfileFrameNodes, x: N): N {
   return res;
 }
 
-/** lipProfile's riding: the constructed point lifted by the pile, up to the crest's own rise. */
+/** lipProfile's rootLift: crestLift, less what the pile has filled under the lip's root. */
+function rootLiftNode(f: ProfileFrameNodes): N {
+  return max(f.crestLift.sub(max(liftAtNode(f, f.K.x).y, 0.0)), 0.0);
+}
+
+/** lipProfile's riding: the constructed point lifted by the pile, up to the crest's own rise, less what fills under the
+ * lip's root (fading out toward the tip). */
 function ridingNode(seg: N, s: N, f: ProfileFrameNodes, c: { pos: N; liftX: N }): N {
   const crest = liftAtNode(f, f.K.x).y.toVar();
-  const capped = (x: N): N => { const l = liftAtNode(f, x); return vec2(l.x, min(l.y, crest)); };
+  const under = min(f.crestLift, max(crest, 0.0)).toVar(), wide = f.P.x.sub(f.K.x).greaterThan(1e-3);
+  const capped = (x: N): N => {
+    const l = liftAtNode(f, x), root = select(wide, float(1.0).sub(smoothstep(f.K.x, max(f.P.x, f.K.x.add(1e-3)), x)), float(1.0));
+    return vec2(l.x, min(l.y, crest).sub(under.mul(root)));
+  };
   const edge = seg.equal(float(SEGMENT_ID.front)).or(seg.equal(float(SEGMENT_ID.back)));
   const out = vec2(0.0).toVar();
   If(edge, () => {
@@ -653,7 +682,10 @@ export function profilePointNode(j: N, f: ProfileFrameNodes, baseTarget: N, home
   const built = c0 ?? constructedNode(j, f, bt);
   // The front and back are the base at the target itself (constructed's front/back). Vars assigned here: as shared
   // expressions TSL declared them in the first riding branch that used them, and the others read (0, 0).
-  const c = { pos: fresh(vec2(0.0), select(edge, bt, built.pos)), thickness: built.thickness, lipness: built.lipness, liftX: fresh(float(0.0), select(edge, bt.x, built.liftX)) };
+  // The back eases down from the crest the lip was thrown from (lipProfile's constructed back: rootLift).
+  const back = seg.equal(float(SEGMENT_ID.back)), ease = float(1.0).sub(sv.mul(sv).mul(float(3.0).sub(sv.mul(2.0))));
+  const backLift = select(back, rootLiftNode(f).mul(ease), float(0.0));
+  const c = { pos: fresh(vec2(0.0), select(edge, bt.add(vec2(0.0, backLift)), built.pos)), thickness: built.thickness, lipness: built.lipness, liftX: fresh(float(0.0), select(edge, bt.x, built.liftX)) };
   // Landing foam: the curl (wall, lip) and the front out to just past where the lip lands.
   const landAt = f.P.x;
   const region = select(seg.equal(float(SEGMENT_ID.back)), float(0.0),
@@ -665,7 +697,9 @@ export function profilePointNode(j: N, f: ProfileFrameNodes, baseTarget: N, home
   const sigma = select(isOuter, select(f.xiTip.greaterThan(0.0), clamp(float(1.0).sub(sv.div(OUTER_LIP_SHARE)), 0.0, 1.0), float(0.0)), select(isCap, float(1.0), float(0.0)));
   const spray = smoothstep(LIP_SPRAY_PROGRESS[0], LIP_SPRAY_PROGRESS[1], f.prog).mul(LIP_SPRAY).mul(smoothstep(LIP_SPRAY_FROM, 1.0, sigma));
   const air = f.weight.mul(float(1.0).sub(f.landing));
-  const curlFoam = select(isOuter.or(isCap), max(landed, spray.mul(air)), select(isInside, landed.sub(air), landed));
+  // The tube's inside stays clean while it is held open and foams as it collapses (lipProfile.profilePoint).
+  const filled = landed.mul(smoothstep(0.0, LANDING_FOAM_RISE, f.collapse));
+  const curlFoam = select(isOuter.or(isCap), max(landed, spray.mul(air)), select(isInside, filled.sub(air), landed));
   const lifted = ridingNode(seg, sv, f, c);
   return { pos: mix(bt, lifted, f.weight), thickness: c.thickness.mul(f.weight), curlFoam, lipness: c.lipness.mul(f.weight) };
 }

@@ -45,8 +45,8 @@ describe('lipProfileNodes sample tables', () => {
     expect([read('xiTop'), read('xiTip'), read('xiEnd'), read('tTop'), read('tipE'), read('HI')]).toEqual([f.xiTop, f.xiTip, f.xiEnd, f.tTop, f.tipE, f.HI]);
     expect([read('uFoot'), read('uFront'), read('uBack'), read('tauLand'), read('vj'), read('prog'), read('reach'), read('uLand')]).toEqual([f.uFoot, f.uFront, f.uBack, f.tauLand, f.vj, f.prog, f.reach, f.uLand]);
     expect([read('weight'), read('collapse'), read('landing'), read('rho')]).toEqual([f.weight, f.collapse, f.landing, f.rho]);
-    // The crest's direction (the young curl's face arrives along it).
-    expect(read('aK')).toBe(f.aK);
+    // The throw crest's lift over the crest now, and the trough's floor (the hollow face's).
+    expect([read('crestLift'), read('floorY'), read('curlTurn')]).toEqual([f.crestLift, f.floorY, f.curlTurn]);
     // The tube's n is not stored: it is (−d.y, d.x).
     expect(f.tube.n[0]).toBeCloseTo(-f.tube.d[1], 12);
     expect(f.tube.n[1]).toBeCloseTo(f.tube.d[0], 12);

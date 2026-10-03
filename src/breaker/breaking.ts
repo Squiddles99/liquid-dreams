@@ -351,8 +351,14 @@ export interface Lifecycle {
   stage: number;
   drain: number;
   collapse: number;
-  /** The whitewater pile's weight [0, 1]: 0 until the lip lands, full PILE_RISE_S later, × the section's extent. */
+  /** The whitewater pile's weight [0, 1]: 0 until the lip lands and its tube's hold is over, full PILE_RISE_S later, ×
+   * the section's extent. */
   pile: number;
+  /** How long (s) after the landing the section holds its tube open before it settles (TUBE_HOLD_S × its plunge). */
+  hold: number;
+  /** The collapse on the landing's own clock, without the tube's hold: the shoaling front's lean lets go on it (held on
+   * over the inside reef, its squeeze folded the water beside the peak). */
+  release: number;
   /** How far the pile's top has moved from the crest to where the lip landed [0, 1]: the settle's progress. */
   pileReach: number;
   /** The impact's surge on the pile's height (≥ 1): 1 + pileSurge·smoothstep(1, SURGE_FULL_RATIO, rMax)·rise·fall. */
@@ -361,7 +367,7 @@ export interface Lifecycle {
    * × PILE_SPEED_MS): it stands at the lip's height first. */
   decay: number;
 }
-const NO_PILE = { pile: 0, pileReach: 0, surge: 1, decay: 1 } as const;
+const NO_PILE = { pile: 0, pileReach: 0, surge: 1, decay: 1, hold: 0 } as const;
 
 /**
  * One section's breaking state, on one clock. Before it breaks (tb null) the wave stands up with its crest's breaking
@@ -387,30 +393,41 @@ const NO_PILE = { pile: 0, pileReach: 0, surge: 1, decay: 1 } as const;
  * the stage's range at once; on the softened ramp it creeps, and the sheet broke a sliver while the lip threw a full tube
  * (plan 2026-09-30-barrel-from-maths, Task 5).
  */
+/** A section that throws a tube holds it open this long (s) after its lip lands, before the wave settles and the
+ * whitewater rises (the ribbon's curl holds as long: lipProfile.profileFrame), × how thrown its tube is: tubeThrown. */
+export const TUBE_HOLD_S = 1.5;
+/** How thrown a tube is at ψ, the hold's weight: 0 at ψ_a (an oval, 4 ft's 0.03 ≈ 0.2), 1 by ψ_b (a thrown barrel, 8 ft up). */
+export const TUBE_THROWN_PSI: readonly [number, number] = [0.02, 0.065];
 /** A plunging section breaks whole, and surges as its ψ says, once its ratio has passed breaking by this much (one that
  * just grazes it stays a partial break). */
 export const PLUNGE_FULL_RATIO = 1.05;
-export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, rSlurp = r, plunge = 0): Lifecycle {
+export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, rSlurp = r, plunge = 0, thrown = 0): Lifecycle {
   const own = stageCurves(r, p), pulled = slurp(rSlurp, p);
   const c0 = { drain: Math.max(own.drain, pulled), collapse: own.collapse };
   const steep = Math.max(steepening(r, p), pulled), stage = breakingStage(r, p);
-  if (tb === undefined) return { steep, stage, drain: c0.drain, collapse: c0.collapse, ...NO_PILE };
+  if (tb === undefined) return { steep, stage, drain: c0.drain, collapse: c0.collapse, release: c0.collapse, ...NO_PILE };
   const t = tb ?? (r >= 1 ? 0 : null);
-  if (t === null) return { steep, stage, drain: c0.drain, collapse: 0, ...NO_PILE };
+  if (t === null) return { steep, stage, drain: c0.drain, collapse: 0, release: 0, ...NO_PILE };
   const extent = Math.max(breakingStage(Math.max(r, rMax), p), plunge * smoothstep(1, PLUNGE_FULL_RATIO, Math.max(r, rMax)));
   const land = landingEstimate(H, p);
   const span = settleSpan(H, p);
-  const thrown = smoothstep(0, land, t) * extent;
-  const rolled = Math.max(0, t - land - PILE_RISE_S) * PILE_SPEED_MS;
-  const surgeWeight = p.pileSurge * Math.max(smoothstep(1, SURGE_FULL_RATIO, Math.max(r, rMax)), plunge * smoothstep(1, PLUNGE_FULL_RATIO, Math.max(r, rMax)));
+  const thrownBy = smoothstep(0, land, t) * extent;
+  // A section that throws a tube holds it open TUBE_HOLD_S after the lip lands (Andrew, 2026-10-03, down the line), × how
+  // thrown its tube is (`thrown`: 0 for an oval that closes as it lands, 1 for a thrown barrel): the wave settles and the
+  // whitewater rises from then.
+  const plunged = plunge * smoothstep(1, PLUNGE_FULL_RATIO, Math.max(r, rMax)), held = land + TUBE_HOLD_S * plunged * thrown;
+  const rolled = Math.max(0, t - held - PILE_RISE_S) * PILE_SPEED_MS;
+  const surgeWeight = p.pileSurge * Math.max(smoothstep(1, SURGE_FULL_RATIO, Math.max(r, rMax)), plunged);
   return {
-    steep: Math.max(steep, thrown),
-    stage: Math.max(stage, thrown),
-    drain: Math.max(c0.drain, thrown),
-    collapse: smoothstep(land, land + span, t) * extent,
-    pile: smoothstep(land, land + PILE_RISE_S, t) * extent,
-    pileReach: smoothstep(land, land + span, t),
-    surge: 1 + surgeWeight * smoothstep(land, land + SURGE_RISE_S, t) * (1 - smoothstep(land + SURGE_RISE_S, land + SURGE_RISE_S + SURGE_FALL_S, t)),
+    steep: Math.max(steep, thrownBy),
+    stage: Math.max(stage, thrownBy),
+    drain: Math.max(c0.drain, thrownBy),
+    collapse: smoothstep(held, held + span, t) * extent,
+    hold: held - land,
+    release: smoothstep(land, land + span, t) * extent,
+    pile: smoothstep(held, held + PILE_RISE_S, t) * extent,
+    pileReach: smoothstep(held, held + span, t),
+    surge: 1 + surgeWeight * smoothstep(held, held + SURGE_RISE_S, t) * (1 - smoothstep(held + SURGE_RISE_S, held + SURGE_RISE_S + SURGE_FALL_S, t)),
     decay: 0.5 ** (rolled / p.pileHalfM),
   };
 }
