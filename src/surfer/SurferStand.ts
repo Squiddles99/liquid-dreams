@@ -78,9 +78,10 @@ export class SurferStand {
 
   /**
    * `ground` (walking spec §4): the land's height at (x, z), or null while it loads; on land the stand stands there (the
-   * board on the sand, or carried under the arm) and doesn't probe the water.
+   * board on the sand, or carried under the arm) and doesn't probe the water. `rideFrame`: the board where the riding
+   * physics put it, in place of the probed water.
    */
-  update(asked: SurferParams, simTime: number, dateISO: string, seed: number, probe: HeightProbe, tideM: number, ground?: (x: number, z: number) => number | null): void {
+  update(asked: SurferParams, simTime: number, dateISO: string, seed: number, probe: HeightProbe, tideM: number, ground?: (x: number, z: number) => number | null, rideFrame?: BoardFrame): void {
     this.group.visible = asked.enabled;
     if (!asked.enabled) return;
     const groundY = asked.onLand ? ground?.(asked.x, asked.z) ?? null : null;
@@ -93,6 +94,9 @@ export class SurferStand {
     if (p.onLand) {
       // The feet on the sand, lifted by the thongs' soles when walking; other poses ride a board lying on the sand.
       frame = groundFrame(p, groundY, tideM, carrying && wearsClothes(outfit) ? SOLE_M : 0);
+    } else if (rideFrame) {
+      // Riding (first-ride spec §5): the physics puts the board on the wave.
+      frame = rideFrame;
     } else {
       probePoints(p, halfLen, halfWidth).forEach(([x, z], i) => probe.setProbe(STAND_PROBE_FIRST + i, x, z));
       frame = boardFrameFrom(p, halfLen, halfWidth, [0, 1, 2, 3].map((i) => probe.heightAt(STAND_PROBE_FIRST + i)), tideM);

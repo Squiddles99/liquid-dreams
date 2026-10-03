@@ -83,6 +83,8 @@ export interface DevPanelHandlers {
   onSurfer(): void;
   onSurferPlaceAhead(): void;
   onSurferChase(): void;
+  /** G: paddle out at the Womb and ride (first-ride spec), or stop. */
+  onGoSurfing(): void;
   /** Stands the rider at a named spot on land (walking spec §4), walking, carrying the board. */
   onSurferSpot(spot: 'standSpot' | 'beach'): void;
   /** Puts the beach pile (walking spec §5) ahead of the camera or beside the beach spot, and shows it. */
@@ -448,6 +450,7 @@ export class DevPanel {
     }
     surferFolder.addButton({ title: 'Place ahead of camera' }).on('click', h.onSurferPlaceAhead);
     surferFolder.addButton({ title: 'Chase view' }).on('click', h.onSurferChase);
+    surferFolder.addButton({ title: 'Go surfing / stop (G)' }).on('click', h.onGoSurfing);
     const land = surferFolder.addFolder({ title: 'On land', expanded: false });
     land.addButton({ title: 'stand spot (the junction above the Womb)' }).on('click', () => h.onSurferSpot('standSpot'));
     land.addButton({ title: 'beach (in front of the Womb)' }).on('click', () => h.onSurferSpot('beach'));
