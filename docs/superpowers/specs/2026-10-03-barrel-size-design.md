@@ -139,3 +139,29 @@ It ships on its own branch (`barrel-size`) and merges to main only on Andrew's w
   "blades" (the lip's foam streak pattern, found on 2026-10-03 to be shading, not geometry).
 - **Sub-project 3:** whitewater up close (the sharp white pyramids when the camera is inside the explosion).
 - **The sheet:** its own shape (the water surface) is unchanged; only the ribbon's tube and lip are resized.
+
+## Amendment, 2026-10-03 (Andrew: "ok go with A")
+
+Measured after the hollow face (Andrew's red line) merged into this branch, sections 2–4 changed:
+
+- **No new bake.** The onset record already carries the height each section stood at as it threw its lip (its `lipH`,
+  the tallest within LIP_THROW_S of onset), within 1% of the tallest station height since the throw at 4–12 ft. The
+  crest above still water is 0.675 × the height throughout the throw, so the crest the lip was thrown from is
+  K × lipH / H. Stations carry lipH (packed last in the station row's third vec4); the bake and its +4.5 s are dropped.
+- **The tube hangs from the throw crest** (K raised by crestLift) and is sized × the throw height (impactHeight's scan).
+  Hanging it from the sunk crest alone reached only 6.1 × 5.3 m.
+- **The lip is 0.42 of Pick & Feddersen's jet area** (LIP_JET_SHARE): their whole jet as one band made a 2.8 m lip at an
+  ordinary 12 ft wave against Andrew's 1.5 m, and its thickness came out of the tube.
+- **The lip's back has no step:** it eases from the throw crest down to the wave's back over the back segment; after the
+  landing the pile fills under the root first.
+- **The hollow face's floor is the trough's** (never sags below the lowest of the landing, the face's foot and the wave's
+  foot), and the face's join no longer steps out toward the trough (FACE_CONCAVE_STEPS, made for the old Hermite face,
+  moved the foot 4 m between waves 0.25 ft apart once a bigger tube landed past it).
+- **Result, ordinary 12 ft at the landing:** tube 8.9 × 8.3 m (was 5.4 × 4.6), tip 11.7 m ahead, lip 1.54 m. The orange's
+  10 m height and 7.5 m lip top wait on the water at the peak (option B: crest +5.5 / trough −5.9 m against about
+  +7.5 / −4 m).
+- **Ideal against ordinary (ruling):** the tube is sized until its point meets the water, so at one wave height over the
+  same water a heavier ψ reaches it at about the same size: ideal throws ≥ 0.5 m further (12.8 against 11.7 m) and is
+  no smaller, rather than ≥ 10% larger. A bigger ideal tube is option B's.
+- **Tests:** barrelSize.test.ts (ordinary 12 ft: 7–9 m wide, ≥ 6.5 m tall, tip 11–15 m, lip 1.2–1.8 m; ideal vs
+  ordinary; 8 ft < 0.6 × ordinary; no jump between waves 0.25 ft apart), hollowFace.test.ts (the lip's back, the floor).
