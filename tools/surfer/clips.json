@@ -1,0 +1,7 @@
+{
+  "fps": 30,
+  "credit": "Motion capture: CMU Graphics Lab Motion Capture Database (mocap.cs.cmu.edu), subject 134 (skateboard).",
+  "clips": [
+    { "name": "trim", "source": "cmu", "asf": "cmu-134/134.asf", "amc": "cmu-134/134_03.amc", "sourceFps": 120, "start": 0, "end": 310, "loop": true, "noseSide": "auto" }
+  ]
+}

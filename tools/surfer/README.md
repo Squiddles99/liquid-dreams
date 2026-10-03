@@ -63,3 +63,25 @@ Re-run `--probe`, fix those two if needed, rebuild, and run `npx vitest run src/
 
 MakeHuman's base mesh, targets and exported characters are CC0. MPFB's code is GPL, but it's a build tool only and is
 never shipped. See `public/surfer/LICENSES.md`.
+
+## Motion clips (clip slice spec 2026-10-03)
+
+`npm run build:clips` bakes every clip in `clips.json` onto Shazza and T-Bone →
+`public/surfer/clips/<rider>.clips.json`, which the stand plays when the Surfer folder's **motion** is set to *motion
+clip*.
+
+- **Sources are free and commercially usable.** Today that's the CMU Graphics Lab Motion Capture Database
+  (mocap.cs.cmu.edu), subject 134 (skateboard), read as ASF/AMC by `src/surfer/asfAmc.ts` and mapped onto our skeleton
+  by `src/surfer/cmuClip.ts`.
+  - CMU's T-pose is aimed onto our A-pose bone by bone, the pelvis is scaled to each rider's leg, frames are resampled
+    to 30 fps, and the loop's seam is eased.
+  - Credit CMU in the game's credits.
+- **The sources and the baked clips are git-ignored** (`anim-source/`, `public/surfer/clips/`): the repo is public.
+  - Back up `anim-source/` outside git.
+  - Set `LD_ANIM_SOURCE` to read the sources from elsewhere, e.g. a worktree pointing at main's
+    `../liquid-dreaming/anim-source`.
+- **Downloading the sources:** put `134.asf` and `134_03.amc` from `mocap.cs.cmu.edu/subjects/134/` in
+  `anim-source/cmu-134/`.
+- **Without the bake** the game runs as before: the panel says *clip: not built* and the code poses play.
+- **FBX sources** (a bought pack) would go through `clips.py` in Blender instead. It's written but unused while the
+  clips are free.
