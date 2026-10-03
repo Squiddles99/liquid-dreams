@@ -143,8 +143,8 @@ export function wornSinkNode(mask: THREE.DataTexture, corner: N, xz: N): N {
 
 /**
  * The fragment's ground detail (spec §4.3): each layer tiled every 2 m, height-blended by the layers' weights, faded to
- * nothing by 30 m: multipliers for the sand and the rock (their hue stays the land material's), the soil and the track
- * as albedos, the gully's rock steps, and the blended normal's tilt.
+ * nothing by 30 m: multipliers for the sand, the rock, the heath's soil floor and the tracks (their hue is the land
+ * material's), the gully's rock steps, and the blended normal's tilt.
  */
 export function groundDetailNodes(t: GroundLayerTextures, xz: N, cover: N, worn: N, nearIn: N): { sand: N; rock: N; soil: N; track: N; trackW: N; gully: N; tilt: N; near: N } {
   let near: N = nearIn;
@@ -161,8 +161,9 @@ export function groundDetailNodes(t: GroundLayerTextures, xz: N, cover: N, worn:
   return {
     sand: mix(vec3(1.0), col(0).rgb.div(mean(0)), near),
     rock: mix(vec3(1.0), col(2).rgb.div(mean(2)), near),
-    soil: col(1).rgb,
-    track: col(3).rgb,
+    // The soil layer as detail over the floor's own colour (its mean taken out, as for the sand and the rock).
+    soil: mix(vec3(1.0), col(1).rgb.div(mean(1)), near),
+    track: col(3).rgb.div(mean(3)),
     trackW: worn.mul(near),
     // The beach path's gully (§4.1): where it cuts the limestone band its shoulders show rock steps.
     gully: cover.z.mul(smoothstep(0.2, 0.6, worn)).mul(float(1).sub(smoothstep(0.9, 1.0, worn))).mul(near),
