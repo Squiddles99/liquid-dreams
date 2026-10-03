@@ -10,10 +10,14 @@ describe('presets (spec §4.1, §5.1)', () => {
   it('carry the planned quivers', () => {
     expect(boardFor(PRESETS.male, 'thruster')).toEqual(makeBoard('thruster', { lengthIn: 72, widthIn: 19.25, thicknessIn: 2.4375 }));
     expect(boardFor(PRESETS.female, 'stepUp').lengthM).toBeCloseTo(76 * 0.0254, 9);
-    expect(boardFor(PRESETS.female, 'bodyboard').lengthM).toBeCloseTo(40 * 0.0254, 9);
+  });
+  it('Shazza and T-Bone are surfers: surfboards only, no bodyboard (Andrew, Gate B)', () => {
+    expect(boardsFor(PRESETS.female)).toEqual(['thruster', 'stepUp']);
+    expect(boardsFor(PRESETS.male)).toEqual(['thruster', 'stepUp']);
+    expect(() => boardFor(PRESETS.female, 'bodyboard')).toThrow(/female.*bodyboard/);
   });
   it('merge a preset’s board colours over the defaults', () => {
-    expect(boardLookFor(PRESETS.female, 'bodyboard').deck).toEqual(PRESETS.female.boardLooks.bodyboard!.deck);
+    expect(boardLookFor(PRESETS.grommet, 'bodyboard').deck).toEqual(PRESETS.grommet.boardLooks.bodyboard!.deck);
     expect(boardLookFor(PRESETS.female, 'thruster').padLengthM).toBe(0.3);
   });
 });
@@ -26,9 +30,8 @@ describe('Grommet (grommet spec §2, §6)', () => {
     expect(boardFor(g, 'bodyboard').lengthM).toBeCloseTo(38 * 0.0254, 9);
     expect(() => boardFor(g, 'thruster')).toThrow(/grommet.*thruster/);
   });
-  it('names the other two, and keeps their quivers', () => {
+  it('names the other two', () => {
     expect([PRESETS.female.nickname, PRESETS.female.realName, PRESETS.male.nickname, PRESETS.male.realName]).toEqual(['Shazza', 'Sharon', 'T-Bone', 'Tom']);
-    expect(boardsFor(PRESETS.male)).toEqual(['thruster', 'stepUp', 'bodyboard']);
   });
   it('gives only Grommet freckles, sunburn and curls that tighten when wet', () => {
     for (const k of ['freckles', 'sunburn', 'curlTighten'] as const) {

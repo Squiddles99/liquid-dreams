@@ -12,7 +12,7 @@ describe('Grab your gear\'s panel (spec §4.3, §8, §9)', () => {
   it('lists the quiver with lengths, fit badges, and the rider\'s pick marked', () => {
     const v = gearView(front({ rider: 'female' }), today, 1);
     expect(v.tab).toBe('board');
-    expect(v.rows.map((r) => r.name)).toEqual(['Thruster', 'Step-up', 'Bodyboard']);
+    expect(v.rows.map((r) => r.name)).toEqual(['Thruster', 'Step-up']);
     expect(v.rows.every((r) => r.badge !== null)).toBe(true);
     expect(v.rows.filter((r) => r.pick).map((r) => r.pick)).toEqual(["Shazza's pick"]);
     expect(v.rows[0].detail).toMatch(/^\d'\d+"$/);

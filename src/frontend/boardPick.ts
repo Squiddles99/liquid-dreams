@@ -15,10 +15,10 @@ export function fitOf(kind: BoardKind, sizeFt: number, periodS: number): Fit {
   return (sizeFt >= 1.5 && sizeFt <= 6) || (periodS >= 14 && sizeFt <= 8) ? 'IDEAL' : 'GOOD';
 }
 
-/** Each rider's taste, breaking ties (spec §8: Shazza and T-Bone take the thruster before the bodyboard). */
+/** Each rider's taste, breaking ties (spec §8). Shazza and T-Bone ride surfboards only (Andrew, Gate B). */
 const TASTE: Record<PresetName, BoardKind[]> = {
-  female: ['thruster', 'stepUp', 'bodyboard'],
-  male: ['stepUp', 'thruster', 'bodyboard'],
+  female: ['thruster', 'stepUp'],
+  male: ['stepUp', 'thruster'],
   grommet: ['bodyboard'],
 };
 

@@ -139,6 +139,7 @@ describe('drop-knee', () => {
   it('rests the back knee on its spot (within 3 cm of a kneecap above it) for every stance, body and dial', () => {
     let worst = 0;
     for (const { preset, rest } of RIDERS) {
+      if (!boardsFor(preset).includes('bodyboard')) continue;
       const spec = boardFor(preset, 'bodyboard');
       const layout = layoutFor(spec, rest.heightM);
       const spot = new Vector3(...layout.spots.dkKnee).add(new Vector3(0, 0.085, 0));
@@ -254,6 +255,7 @@ describe('prone elbows (Andrew, gate 2: the elbow pointed up and pinched, the fo
   it('a prone rider holds the board with the elbows out and low, never above the shoulders', () => {
     const worst: string[] = [];
     for (const { preset, rest } of RIDERS) {
+      if (!boardsFor(preset).includes('bodyboard')) continue;
       const spec = boardFor(preset, 'bodyboard');
       const layout = layoutFor(spec, rest.heightM);
       for (const pose of ['prone', 'proneBarrel'] as const) for (const stance of ['regular', 'goofy'] as Stance[])
