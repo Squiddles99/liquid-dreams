@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { PI, abs, attribute, cameraPosition, dot, float, length, max, mix, mx_noise_float, mx_noise_vec3, normalWorld, normalize, positionLocal, positionWorld, pow, reflect, saturate, sin, smoothstep, step, uniform, vec3 } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
-import { LOD_CAPACITY, PLANT_KINDS, PLANT_LODS, PLANT_SHAPES, type Plant, type PlantKind, plantLod, plantScale, plantShapeGeometry } from './plants';
+import { bandDitherNode, bandWeightNodes } from './KitMeshes';
+import { LOD_CAPACITY, PLANT_FULL_M, PLANT_GONE_M, PLANT_KINDS, PLANT_LODS, PLANT_SHAPES, type Plant, type PlantKind, plantLod, plantSeatY, plantShapeGeometry } from './plants';
 
 type N = any;
 
@@ -18,11 +19,40 @@ export function raggedKeepNode(noise01: N, facing: N): N {
   return noise01.greaterThanEqual(cut);
 }
 
-/** The heath's plants (spec §3.3–3.4): one InstancedMesh per level × kind × shape, a foliage material per kind. */
+/** One laid plant: its mesh and slot (the slot moves when another plant is swap-removed into it). */
+interface SlotRec {
+  mesh: number;
+  slot: number;
+}
+
+/**
+ * The heath's plants (spec §3.3–3.4): one InstancedMesh per level × kind × shape, a foliage material per kind. Laid cell
+ * by cell (dune-up-close §4.5): a cell's plants take slots at the end of their meshes and give them back by swap-remove,
+ * so a move lays only the cells that entered the ring.
+ */
 export class PlantMeshes {
   readonly meshes: THREE.InstancedMesh[] = [];
   private readonly tints: THREE.InstancedBufferAttribute[] = [];
   private readonly seeds: THREE.InstancedBufferAttribute[] = [];
+  /**
+   * Each instance's base (x, y, z): the shader shrinks plants from 150 to 200 m from the camera about it, per frame, not
+   * per lay. (three applies the instance matrix before the material's positionNode, so positionLocal there is already
+   * placed: a plain scale of it pulled far plants toward the world's origin, into the sky.)
+   */
+  private readonly origins: THREE.InstancedBufferAttribute[] = [];
+  /** Per mesh, by slot: the record that owns it (so a swap-remove can tell the moved plant its new slot). */
+  private readonly owners: SlotRec[][] = [];
+  private readonly cellSlots = new Map<number, SlotRec[]>();
+  /** Per mesh, the lowest and highest slot written since the last flush. */
+  private readonly dirty: [number, number][] = [];
+  /** 1 once the kit draws the near and mid bands: the hulls then draw only beyond 40 m (spec §3.1). */
+  readonly kitFade = uniform(0);
+  /** Each kind's colour multiplier (setKindColours). */
+  private readonly kindScale = new Map(PLANT_KINDS.map((k) => [k, uniform(new THREE.Vector3(1, 1, 1))]));
+  /** The self-tests' switch: 1 draws every hull whatever its band. */
+  readonly forceBand = uniform(0);
+  /** Plants that found their mesh full (dev readout). */
+  dropped = 0;
   private readonly time = uniform(0);
   private readonly sway = uniform(0);
 
@@ -39,14 +69,19 @@ export class PlantMeshes {
           const cap = LOD_CAPACITY[lod];
           const tint = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
           const seed = new THREE.InstancedBufferAttribute(new Float32Array(cap), 1);
+          const origin = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
           g.setAttribute('plantTint', tint);
           g.setAttribute('plantSeed', seed);
+          g.setAttribute('plantOrigin', origin);
           const mesh = new THREE.InstancedMesh(g, materials.get(kind)!, cap);
           mesh.count = 0;
           mesh.frustumCulled = false;
           this.meshes.push(mesh);
           this.tints.push(tint);
           this.seeds.push(seed);
+          this.origins.push(origin);
+          this.owners.push([]);
+          this.dirty.push([Infinity, -Infinity]);
         }
       }
     }
@@ -58,53 +93,118 @@ export class PlantMeshes {
     return (lod * PLANT_KINDS.length + this.kindIndex.get(kind)!) * PLANT_SHAPES + shape;
   }
 
+  /** Writes plant p into slot i of mesh m, its base at y: a yaw rotation about y, scaled to its size (column-major). */
+  private write(m: number, i: number, p: Plant, y: number): void {
+    const sx = p.width / 2, sy = p.height, c = p.cosYaw, sn = p.sinYaw;
+    const a = this.meshes[m].instanceMatrix.array as Float32Array, o = i * 16;
+    a[o] = c * sx; a[o + 1] = 0; a[o + 2] = -sn * sx; a[o + 3] = 0;
+    a[o + 4] = 0; a[o + 5] = sy; a[o + 6] = 0; a[o + 7] = 0;
+    a[o + 8] = sn * sx; a[o + 9] = 0; a[o + 10] = c * sx; a[o + 11] = 0;
+    a[o + 12] = p.x; a[o + 13] = y; a[o + 14] = p.z; a[o + 15] = 1;
+    const tint = this.tints[m].array as Float32Array;
+    tint[i * 3] = p.tint[0]; tint[i * 3 + 1] = p.tint[1]; tint[i * 3 + 2] = p.tint[2];
+    (this.seeds[m].array as Float32Array)[i] = p.seed;
+    const or = this.origins[m].array as Float32Array;
+    or[i * 3] = p.x; or[i * 3 + 1] = y; or[i * 3 + 2] = p.z;
+    this.touch(m, i);
+  }
+
+  /** Copies slot `from` of mesh m into slot `to`. */
+  private copy(m: number, from: number, to: number): void {
+    const mat = this.meshes[m].instanceMatrix.array as Float32Array;
+    mat.copyWithin(to * 16, from * 16, from * 16 + 16);
+    const t = this.tints[m].array as Float32Array;
+    t.copyWithin(to * 3, from * 3, from * 3 + 3);
+    const sd = this.seeds[m].array as Float32Array;
+    sd[to] = sd[from];
+    const or = this.origins[m].array as Float32Array;
+    or.copyWithin(to * 3, from * 3, from * 3 + 3);
+    this.touch(m, to);
+  }
+
+  private touch(m: number, i: number): void {
+    const d = this.dirty[m];
+    d[0] = Math.min(d[0], i);
+    d[1] = Math.max(d[1], i);
+  }
+
   /**
-   * Lays the plants out around the camera: each at its level of detail, shrinking beyond 150 m, seated on the surface
-   * drawn there (the true ground inside the fine patch, blending to the coarse mesh over its outer 4 m, the coarse mesh
-   * beyond or with the patch hidden).
+   * Lays cell `key`'s plants (replacing the cell if it was laid): each in its kind × shape mesh at the level of detail
+   * `lodOf` gives, its base at `seatOf`.
+   */
+  addCell(key: number, plants: readonly Plant[], seatOf: (p: Plant) => number, lodOf: (p: Plant) => number): void {
+    this.removeCell(key);
+    const recs: SlotRec[] = [];
+    for (const p of plants) {
+      const m = this.index(lodOf(p), p.kind, p.shape), mesh = this.meshes[m];
+      const i = mesh.count;
+      if (i >= mesh.instanceMatrix.count) {
+        this.dropped++;
+        continue;
+      }
+      mesh.count = i + 1;
+      this.write(m, i, p, seatOf(p));
+      const rec = { mesh: m, slot: i };
+      this.owners[m][i] = rec;
+      recs.push(rec);
+    }
+    this.cellSlots.set(key, recs);
+  }
+
+  /** Drops cell `key`'s plants: each slot takes its mesh's last instance (swap-remove). Nothing if it isn't laid. */
+  removeCell(key: number): void {
+    const recs = this.cellSlots.get(key);
+    if (!recs) return;
+    this.cellSlots.delete(key);
+    for (const rec of recs) {
+      const mesh = this.meshes[rec.mesh], last = mesh.count - 1;
+      if (rec.slot !== last) {
+        this.copy(rec.mesh, last, rec.slot);
+        const moved = this.owners[rec.mesh][last];
+        moved.slot = rec.slot;
+        this.owners[rec.mesh][rec.slot] = moved;
+      }
+      this.owners[rec.mesh].length = last;
+      mesh.count = last;
+    }
+  }
+
+  /** Drops every cell. */
+  clear(): void {
+    for (const key of [...this.cellSlots.keys()]) this.removeCell(key);
+    this.dropped = 0;
+  }
+
+  /** Uploads the slots written since the last flush (only those: a far mesh holds 11,000). */
+  flush(): void {
+    this.meshes.forEach((mesh, k) => {
+      const d = this.dirty[k];
+      for (const [attr, size] of [[mesh.instanceMatrix, 16], [this.tints[k], 3], [this.seeds[k], 1], [this.origins[k], 3]] as const) {
+        attr.clearUpdateRanges();
+        if (d[1] >= d[0]) {
+          attr.addUpdateRange(d[0] * size, (d[1] - d[0] + 1) * size);
+          attr.needsUpdate = true;
+        }
+      }
+      d[0] = Infinity;
+      d[1] = -Infinity;
+    });
+  }
+
+  /** Instances laid. */
+  get drawn(): number {
+    return this.meshes.reduce((n, m) => n + m.count, 0);
+  }
+
+  /**
+   * Lays `plants` as one cell after dropping every other (a whole layout at once: the tests, dev tools), each at its
+   * level of detail by distance from (camX, camZ), seated on the surface drawn under it.
    */
   update(plants: readonly Plant[], camX: number, camZ: number, patch: { cx: number; cz: number; on: boolean }): { drawn: number; dropped: number } {
-    const counts = new Array<number>(this.meshes.length).fill(0);
-    let drawn = 0, dropped = 0;
-    for (const p of plants) {
-      const dx = p.x - camX, dz = p.z - camZ;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      const s = plantScale(dist);
-      if (s <= 0) continue;
-      const m = this.index(plantLod(dist), p.kind, p.shape);
-      const i = counts[m];
-      const mesh = this.meshes[m];
-      if (i >= mesh.instanceMatrix.count) { dropped++; continue; }
-      let w = 0;
-      if (patch.on) {
-        const t = Math.min(1, Math.max(0, (32 - Math.max(Math.abs(p.x - patch.cx), Math.abs(p.z - patch.cz))) / 4));
-        w = t * t * (3 - 2 * t); // smoothstep(0, 4, distance inside the patch's edge): the patch's own height blend
-      }
-      const y = p.yCoarse + (p.yTrue - p.yCoarse) * w;
-      const sx = (p.width / 2) * s, sy = p.height * s, c = p.cosYaw, sn = p.sinYaw;
-      // Column-major, written in place (a refresh lays out ~20,000 plants): a yaw rotation about y, scaled.
-      const a = mesh.instanceMatrix.array as Float32Array, o = i * 16;
-      a[o] = c * sx; a[o + 1] = 0; a[o + 2] = -sn * sx; a[o + 3] = 0;
-      a[o + 4] = 0; a[o + 5] = sy; a[o + 6] = 0; a[o + 7] = 0;
-      a[o + 8] = sn * sx; a[o + 9] = 0; a[o + 10] = c * sx; a[o + 11] = 0;
-      a[o + 12] = p.x; a[o + 13] = y; a[o + 14] = p.z; a[o + 15] = 1;
-      const tint = this.tints[m].array as Float32Array;
-      tint[i * 3] = p.tint[0]; tint[i * 3 + 1] = p.tint[1]; tint[i * 3 + 2] = p.tint[2];
-      (this.seeds[m].array as Float32Array)[i] = p.seed;
-      counts[m] = i + 1;
-      drawn++;
-    }
-    this.meshes.forEach((mesh, k) => {
-      const n = counts[k];
-      mesh.count = n;
-      // Upload only the instances in use (a far mesh's full buffer is 6,000 matrices).
-      for (const [attr, size] of [[mesh.instanceMatrix, 16], [this.tints[k], 3], [this.seeds[k], 1]] as const) {
-        attr.clearUpdateRanges();
-        if (n > 0) attr.addUpdateRange(0, n * size);
-        attr.needsUpdate = n > 0;
-      }
-    });
-    return { drawn, dropped };
+    this.clear();
+    this.addCell(0, plants.filter((p) => Math.hypot(p.x - camX, p.z - camZ) < PLANT_GONE_M), (p) => plantSeatY(p, patch), (p) => plantLod(Math.hypot(p.x - camX, p.z - camZ)));
+    this.flush();
+    return { drawn: this.drawn, dropped: this.dropped };
   }
 
   /** The sway's clock and strength (the conditions' wind: none on glass, gentle on a Doctor afternoon). */
@@ -117,6 +217,11 @@ export class PlantMeshes {
     for (const m of this.meshes) m.visible = on;
   }
 
+  /** Each kind's colour multiplier (the kit's KIT_CALIBRATION hull colours: dune-up-close §4.2); 1 until the kit loads. */
+  setKindColours(scales: Readonly<Partial<Record<PlantKind, readonly [number, number, number]>>>): void {
+    for (const [kind, s] of Object.entries(scales) as [PlantKind, readonly [number, number, number]][]) this.kindScale.get(kind)?.value.set(s[0], s[1], s[2]);
+  }
+
   private material(sky: Sky, kind: PlantKind, sunVisibility?: (xz: N) => N): THREE.MeshBasicNodeMaterial {
     const m = new THREE.MeshBasicNodeMaterial();
     const local: N = attribute('position', 'vec3'); // the unit plant: y 0 at the base, 1 at the top
@@ -125,7 +230,11 @@ export class PlantMeshes {
     const lean: N = local.y.mul(local.y).mul(this.sway);
     const swayX: N = sin(this.time.mul(1.7).add(seed.mul(6.28))).mul(lean);
     const swayZ: N = sin(this.time.mul(1.3).add(seed.mul(4.1))).mul(lean).mul(0.6);
-    m.positionNode = positionLocal.add(vec3(swayX, 0.0, swayZ));
+    // Shrinking from 150 to 200 m (plantScale), by the instance's own distance each frame: the far cells are laid once,
+    // not every move.
+    const base: N = attribute('plantOrigin', 'vec3');
+    const shrink: N = float(1.0).sub(smoothstep(PLANT_FULL_M, PLANT_GONE_M, length(base.xz.sub(cameraPosition.xz))));
+    m.positionNode = base.add(positionLocal.add(vec3(swayX, 0.0, swayZ)).sub(base).mul(shrink));
 
     // Leaf clumps in the shading: the normal jittered by a 3D noise (~15 cm), so a shrub doesn't shade like a smooth stone.
     const n = normalize(normalWorld.add(mx_noise_vec3(positionWorld.mul(6.0)).mul(0.45)));
@@ -137,12 +246,16 @@ export class PlantMeshes {
     // Ragged silhouettes, faded out by 100 m (the edge is under a pixel beyond).
     const edgeN = mx_noise_float(positionWorld.mul(5.0)).mul(0.5).add(0.5);
     const keep = raggedKeepNode(edgeN.add(smoothstep(80.0, 100.0, dist)), facing);
-    m.maskNode = keep;
+    // Once the kit draws the near and mid bands (dune-up-close §3.1), a hull keeps only its share of the shared dither:
+    // beyond 40 m, fading in across 3 m as the kit's L1 fades out.
+    const [, wFar] = bandWeightNodes(base);
+    const ours: N = bandDitherNode(seed).greaterThanEqual(float(1.0).sub(wFar));
+    m.maskNode = keep.and(ours.or(this.kitFade.lessThan(0.5)).or(this.forceBand.greaterThan(0.5)));
 
     const near = float(1.0).sub(smoothstep(20.0, 60.0, dist));
     const leaf = mx_noise_float(positionWorld.mul(10.0)).mul(0.5).add(0.5);
     const fine = mx_noise_float(positionWorld.mul(40.0)).mul(0.5).add(0.5);
-    let albedo: N = attribute('plantTint', 'vec3').mul(mix(float(1.0), leaf.mul(0.6).add(0.7), near)).mul(mix(float(1.0), fine.mul(0.2).add(0.9), near));
+    let albedo: N = attribute('plantTint', 'vec3').mul(this.kindScale.get(kind)!).mul(mix(float(1.0), leaf.mul(0.6).add(0.7), near)).mul(mix(float(1.0), fine.mul(0.2).add(0.9), near));
     if (kind === 'pigface') albedo = mix(albedo, PIGFACE_TIPS, smoothstep(0.62, 0.72, leaf).mul(smoothstep(0.4, 0.9, local.y)).mul(0.8));
     if (kind === 'rice') albedo = mix(albedo, RICE_PINK, smoothstep(0.7, 0.8, fine).mul(smoothstep(0.3, 0.7, local.y)));
 

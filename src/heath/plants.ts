@@ -7,8 +7,8 @@ import { coarseMeshHeightAt } from '../land/landMesh';
 import { smoothstep } from '../math/smoothstep';
 
 /** The heath's plants (spec 2026-09-28-the-heath-design.md §3.1). */
-export type PlantKind = 'daisy' | 'green' | 'tall' | 'pigface' | 'rice';
-export const PLANT_KINDS: readonly PlantKind[] = ['daisy', 'green', 'tall', 'pigface', 'rice'];
+export type PlantKind = 'daisy' | 'green' | 'tall' | 'pigface' | 'rice' | 'dead' | 'cushion' | 'spinach';
+export const PLANT_KINDS: readonly PlantKind[] = ['daisy', 'green', 'tall', 'pigface', 'rice', 'dead', 'cushion', 'spinach'];
 export const PLANT_SHAPES = 4;
 export const PLANT_LODS = 3;
 /** Icosphere subdivisions per level of detail: 320, 80 and 20 triangles. */
@@ -20,6 +20,12 @@ export const PLANT_SPECS: Record<PlantKind, { heightM: [number, number]; widthM:
   tall: { heightM: [1.5, 2.5], widthM: [2, 3.5] },
   pigface: { heightM: [0.1, 0.25], widthM: [1, 3] },
   rice: { heightM: [0.3, 0.5], widthM: [0.5, 1] },
+  /** A dead shrub's grey skeleton (dune-up-close §4.2: Andrew's flora photo shows them between the living). */
+  dead: { heightM: [0.5, 1.2], widthM: [0.6, 1.6] },
+  /** Coast cushion bush (Leucophyta brownii): a silver-white wiry mound (gate 1: Andrew's photo 8). */
+  cushion: { heightM: [0.3, 0.7], widthM: [0.5, 1.2] },
+  /** Sea spinach (Tetragonia decumbens): a low fleshy green mat (gate 1: photo 6). */
+  spinach: { heightM: [0.08, 0.2], widthM: [0.8, 2.0] },
 };
 
 /**
@@ -35,6 +41,9 @@ const FORM: Record<PlantKind, { lobes: number; bumps: number; scallop: number }>
   tall: { lobes: 0.4, bumps: 0.14, scallop: 0 },
   pigface: { lobes: 0.15, bumps: 0.08, scallop: 0.18 },
   rice: { lobes: 0.12, bumps: 0.12, scallop: 0 },
+  dead: { lobes: 0.35, bumps: 0.18, scallop: 0 },
+  cushion: { lobes: 0.12, bumps: 0.06, scallop: 0 },
+  spinach: { lobes: 0.15, bumps: 0.08, scallop: 0.12 },
 };
 
 /** The displaced (unnormalised) position of the unit-sphere point p for this kind and shape; the bottom cut at PLANT_CUT. */
@@ -83,14 +92,15 @@ export const PLANT_FULL_M = 150;
 export const PLANT_GONE_M = 200;
 export const LOD_RANGES_M = [25, 70] as const;
 /** Instances per kind × shape mesh at each level of detail (Review Focus 1: the inland heath at density 1 fits). */
-export const LOD_CAPACITY = [400, 1000, 6000] as const;
-/** Candidates per 16 m² cell: shrubs at up to one per 2.7 m², low plants at up to one per 8 m². */
-const SHRUB_CANDIDATES = 6, LOW_CANDIDATES = 2;
+export const LOD_CAPACITY = [400, 1300, 11000] as const;
+/** Candidates per 16 m² cell (dune-up-close §4.5): shrubs at up to one per 1.45 m², low plants, and dead wood. */
+const SHRUB_CANDIDATES = 11, LOW_CANDIDATES = 2, DEAD_CANDIDATES = 1;
 /**
- * Keep probabilities on full cover: 6 × 0.89 / 16 m² = one shrub per 3 m² (the shrubs nearly touch: capture ruling; one
- * per 5 m² read as bushes dotted on sand); 2 × 0.67 / 16 m² = one low plant per 12 m².
+ * Keep probabilities on full cover: on heath 11 × 0.91 / 16 m² = one shrub per 1.6 m² (near-closed, as Andrew's aerial
+ * view shows it); on the dune rise 11 × 0.4855 / 16 m² = one per 3 m², as before (4c-2's capture ruling); 2 × 0.67 / 16 m²
+ * = one low plant per 12 m²; on heath only, 1 × 0.64 / 16 m² = one dead shrub per 25 m².
  */
-const SHRUB_KEEP = 0.89, LOW_KEEP = 0.667;
+const SHRUB_KEEP = 0.91, RISE_SHRUB_KEEP = (0.89 * 6) / 11, LOW_KEEP = 0.667, DEAD_KEEP = 0.64;
 /** Plants start inland of the toe's rock band (the dune rise begins at toeEnd − 3 = 52 m on the default beach). */
 const PLANT_MIN_D = 45;
 const SINK = 0.15;
@@ -121,15 +131,32 @@ export interface Plant {
   tint: [number, number, number];
 }
 
-/** 4a's painted palette (landShading.ts), so near and far agree. */
-const ALBEDO: Record<PlantKind, [number, number, number]> = {
+/** 4a's painted palette (landShading.ts), so near and far agree; a plant's tint is this × its jitter. */
+export const PLANT_ALBEDO: Record<PlantKind, [number, number, number]> = {
   // Silvery sage (the flora photo), a touch greener than 4a's painted silver-grey, which read as stone in 3D.
   daisy: [0.17, 0.2, 0.14],
   green: [0.12, 0.16, 0.065],
   tall: [0.08, 0.1, 0.05],
   pigface: [0.15, 0.19, 0.07],
   rice: [0.12, 0.16, 0.07],
+  /** Weathered grey wood. */
+  dead: [0.16, 0.155, 0.14],
+  cushion: [0.3, 0.31, 0.28],
+  spinach: [0.16, 0.22, 0.07],
 };
+
+/**
+ * Where a plant's base is drawn: the true ground inside the fine patch, blending to the coarse mesh over its outer 4 m,
+ * the coarse mesh beyond it or with the patch hidden.
+ */
+export function plantSeatY(p: Plant, patch: { cx: number; cz: number; on: boolean }): number {
+  let w = 0;
+  if (patch.on) {
+    const t = Math.min(1, Math.max(0, (32 - Math.max(Math.abs(p.x - patch.cx), Math.abs(p.z - patch.cz))) / 4));
+    w = t * t * (3 - 2 * t); // smoothstep(0, 4, distance inside the patch's edge): the patch's own height blend
+  }
+  return p.yCoarse + (p.yTrue - p.yCoarse) * w;
+}
 
 export function plantScale(distance: number): number {
   return 1 - smoothstep(PLANT_FULL_M, PLANT_GONE_M, distance);
@@ -150,7 +177,8 @@ export function cellPlants(ci: number, cj: number, land: LandHeight, rocks: Rock
   const grad = Math.hypot(gx, gz), slope = 1 - 1 / Math.sqrt(1 + grad * grad);
   // Density 1 keeps each candidate at its weight × share; above 1 a second pass of candidates adds (density − 1) × that,
   // so density 2 doubles the plants instead of saturating each candidate's probability.
-  const per = SHRUB_CANDIDATES + LOW_CANDIDATES;
+  const per = SHRUB_CANDIDATES + LOW_CANDIDATES + DEAD_CANDIDATES;
+  const tracks = land.trackNetwork;
   for (let k = 0; k < (density > 1 ? 2 : 1) * per; k++) {
     const pass = k < per ? Math.min(1, density) : density - 1;
     const r = (q: number) => hash3(ci, cj, 1000 + k * 16 + q);
@@ -160,11 +188,16 @@ export function cellPlants(ci: number, cj: number, land: LandHeight, rocks: Rock
     const h = land.heightAt(x, z);
     const c = coverAt(d, slope, x, z, h, land.profile);
     const heathW = Math.max(0, c.heath - c.bushes), riseW = c.bushes;
-    const shrub = k % per < SHRUB_CANDIDATES;
-    if (r(2) >= (heathW + riseW) * (shrub ? SHRUB_KEEP : LOW_KEEP) * pass) continue;
+    const slot = k % per, shrub = slot < SHRUB_CANDIDATES, dead = slot >= SHRUB_CANDIDATES + LOW_CANDIDATES;
+    // Dead wood only where the heath outweighs the dune rise (never on the rise: spec §4.2).
+    const keep = shrub ? heathW * SHRUB_KEEP + riseW * RISE_SHRUB_KEEP : dead ? (heathW > riseW ? heathW * DEAD_KEEP : 0) : (heathW + riseW) * LOW_KEEP;
+    if (r(2) >= keep * pass) continue;
     let kind: PlantKind;
-    if (!shrub) kind = r(3) < 0.5 ? 'pigface' : 'rice';
-    else if (riseW > heathW) kind = r(3) < 0.54 ? 'daisy' : 'green';
+    if (dead) kind = 'dead';
+    // The low plants: sea spinach shares the pigface's ground within 120 m of the water (gate 1).
+    else if (!shrub) kind = d < 120 && r(11) < 0.35 ? 'spinach' : r(3) < 0.5 ? 'pigface' : 'rice';
+    // The dune rise: coast cushion bush's silver mounds among the daisy and fanflower (gate 1).
+    else if (riseW > heathW) kind = r(11) < 0.12 ? 'cushion' : r(3) < 0.54 ? 'daisy' : 'green';
     else {
       const tall = 0.04 + 0.06 * smoothstep(90, 300, d);
       kind = r(3) < tall ? 'tall' : r(3) < tall + 0.5 ? 'daisy' : 'green';
@@ -172,9 +205,15 @@ export function cellPlants(ci: number, cj: number, land: LandHeight, rocks: Rock
     const spec = PLANT_SPECS[kind];
     const width = spec.widthM[0] + (spec.widthM[1] - spec.widthM[0]) * r(4);
     if (rocks?.covers(x, z, 0.2)) continue;
+    // Nothing on the tracks: no crown over a corridor, nothing in the clearing (dune-up-close §4.5).
+    if (tracks) {
+      const n = tracks.nearest(x, z), rc = width / 2;
+      if (n.d <= n.halfWidthM + rc) continue;
+      if (tracks.inClearing(x, z) || tracks.inClearing(x + rc, z) || tracks.inClearing(x - rc, z) || tracks.inClearing(x, z + rc) || tracks.inClearing(x, z - rc)) continue;
+    }
     const height = spec.heightM[0] + (spec.heightM[1] - spec.heightM[0]) * r(5);
     const drop = SINK * height + 0.5 * (width / 2) * grad;
-    const base = ALBEDO[kind], vary = 0.85 + 0.3 * r(6), hue = (r(7) - 0.5) * 0.1;
+    const base = PLANT_ALBEDO[kind], vary = 0.85 + 0.3 * r(6), hue = (r(7) - 0.5) * 0.1;
     out.push({
       x, z, kind, shape: Math.floor(r(8) * PLANT_SHAPES) % PLANT_SHAPES, width, height,
       yTrue: h - drop, yCoarse: coarseMeshHeightAt(land, x, z) - drop,
@@ -207,20 +246,28 @@ export class PlantField {
     this.cells.clear();
   }
 
-  near(camX: number, camZ: number): Plant[] {
+  /** The plants of cell (ci, cj), cached. */
+  cell(ci: number, cj: number): Plant[] {
+    const key = (ci + 0x8000) * 0x10000 + (cj + 0x8000);
+    let c = this.cells.get(key);
+    if (!c) {
+      c = cellPlants(ci, cj, this.land, this.rocks, this.density);
+      this.cells.set(key, c);
+    }
+    return c;
+  }
+
+  near(camX: number, camZ: number, radiusM = PLANT_GONE_M): Plant[] {
     const out: Plant[] = [];
-    const n = Math.ceil(PLANT_GONE_M / PLANT_CELL_M), cj0 = Math.floor(camZ / PLANT_CELL_M);
+    const n = Math.ceil(radiusM / PLANT_CELL_M), cj0 = Math.floor(camZ / PLANT_CELL_M);
     for (let dj = -n; dj <= n; dj++) {
       const cj = cj0 + dj, cz = (cj + 0.5) * PLANT_CELL_M, dz = cz - camZ;
-      const reach = PLANT_GONE_M * PLANT_GONE_M - dz * dz;
+      const reach = radiusM * radiusM - dz * dz;
       if (reach < 0) continue;
       const half = Math.sqrt(reach);
       const x0 = Math.max(camX - half, this.land.waterlineAt(cz) + PLANT_MIN_D - PLANT_CELL_M), x1 = camX + half;
       for (let ci = Math.ceil(x0 / PLANT_CELL_M - 0.5); (ci + 0.5) * PLANT_CELL_M <= x1; ci++) {
-        const key = (ci + 0x8000) * 0x10000 + (cj + 0x8000);
-        let c = this.cells.get(key);
-        if (!c) { c = cellPlants(ci, cj, this.land, this.rocks, this.density); this.cells.set(key, c); }
-        for (const p of c) out.push(p);
+        for (const p of this.cell(ci, cj)) out.push(p);
       }
     }
     if (this.cells.size > PLANT_CACHE_CELLS) {
@@ -239,18 +286,22 @@ export class PlantField {
 }
 
 /** A plant in the fine patch's shadow picture (spec §3.5): lighter than a rock; the low plants only darken their contact. */
-export function plantCaster(p: Plant): ShadowCaster {
-  return { x: p.x, z: p.z, radius: p.width / 2, height: p.height, strength: 0.6, ringOnly: p.kind === 'pigface' || p.kind === 'rice', maxLenM: 4 };
+export function plantCaster(p: Plant, silhouettes?: ReadonlyMap<string, Uint8Array>): ShadowCaster {
+  const c: ShadowCaster = { x: p.x, z: p.z, radius: p.width / 2, height: p.height, strength: 0.6, ringOnly: p.kind === 'pigface' || p.kind === 'rice', maxLenM: 4 };
+  // A kit plant's own canopy from above (dune-up-close §4.5): dappled shade, and the floor darker under its crown.
+  const alpha = silhouettes?.get(`${p.kind}_${p.shape}`);
+  if (alpha) c.silhouette = { alpha, n: Math.round(Math.sqrt(alpha.length)), yaw: p.yaw };
+  return c;
 }
 
 /**
  * The plants in the fine patch's shadow picture: those within SUN_SHADOW_RANGE_M of the camera. With every plant in the
  * square casting (a low sun's shadows 12 m long), a rebuild on the heath took 12–35 ms (final review I1).
  */
-export function patchCasters(plants: readonly Plant[], _centre: [number, number], camX: number, camZ: number): ShadowCaster[] {
+export function patchCasters(plants: readonly Plant[], _centre: [number, number], camX: number, camZ: number, silhouettes?: ReadonlyMap<string, Uint8Array>): ShadowCaster[] {
   const out: ShadowCaster[] = [];
   for (const p of plants) {
-    if (Math.hypot(p.x - camX, p.z - camZ) <= SUN_SHADOW_RANGE_M) out.push(plantCaster(p));
+    if (Math.hypot(p.x - camX, p.z - camZ) <= SUN_SHADOW_RANGE_M) out.push(plantCaster(p, silhouettes));
   }
   return out;
 }
