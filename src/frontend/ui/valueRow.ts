@@ -1,9 +1,9 @@
 // src/frontend/ui/valueRow.ts
 import type { RowView } from '../conditionsView';
 
-const ARROW = (d: -1 | 1): string => `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="28" viewBox="0 0 22 28" aria-hidden="true"><path d="${d < 0 ? 'M17 3 L5 14 L17 25' : 'M5 3 L17 14 L5 25'}" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
+const ARROW = (d: -1 | 1): string => `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="24" viewBox="0 0 22 28" aria-hidden="true"><path d="${d < 0 ? 'M17 3 L5 14 L17 25' : 'M5 3 L17 14 L5 25'}" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
 
-/** A label, a word value with its small number, and the ◀ ▶ arrows (shown on the focused row only). */
+/** A label, then the value as the mockup draws it: ◀ word ▶ and its small number (the arrows on the focused row only). */
 export class ValueRow {
   readonly el = document.createElement('div');
   private readonly label = document.createElement('span');
@@ -25,16 +25,16 @@ export class ValueRow {
     this.right.innerHTML = ARROW(1);
     this.left.dataset.hit = `${row}:left`;
     this.right.dataset.hit = `${row}:right`;
-    const arrows = document.createElement('span');
-    Object.assign(arrows.style, { display: 'flex', gap: '10px' });
-    arrows.append(this.left, this.right);
+    this.value.append(this.left);
     if (glyph) {
       const icon = document.createElement('span');
+      icon.className = 'fe-icon';
       icon.innerHTML = glyph;
       this.value.append(icon);
     }
-    this.value.append(this.word, this.small);
-    this.el.append(this.label, this.value, arrows);
+    this.value.append(this.word, this.right, this.small);
+    this.el.style.gridTemplateColumns = 'calc(150px * (0.5 + 0.5 * var(--fe-text))) 1fr';
+    this.el.append(this.label, this.value);
   }
 
   set(v: Omit<RowView, 'row'>): void {
