@@ -136,7 +136,7 @@ export function chooseLine(list: readonly string[], seed: number): string {
   let h = (seed ^ 0x9e3779b9) >>> 0;
   h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
-  return list[(h ^ (h >>> 16)) % list.length];
+  return list[((h ^ (h >>> 16)) >>> 0) % list.length];
 }
 
 /** What a change to `row` makes the conditions feel like. */
