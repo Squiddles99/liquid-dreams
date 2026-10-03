@@ -29,20 +29,31 @@ const CLEARING_PRINTS = 40;
  * yawed ±12° and aged by a hash of where it is along its lane; and a scuff of prints in random directions in the clearing.
  * The same prints whatever the camera; nearest first, at most MAX_PRINTS.
  */
+/** The line `offset` metres to the left of `pts` (each point moved along its corner's mean normal). */
+function laneLine(pts: [number, number][], offset: number): [number, number][] {
+  return pts.map(([px, pz], i) => {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / l, uz = (b[1] - a[1]) / l;
+    return [px - uz * offset, pz + ux * offset];
+  });
+}
+
 export function printsNear(tracks: TrackNetwork, x: number, z: number, radiusM = 20): Print[] {
   const out: (Print & { d: number })[] = [];
   const r2 = (radiusM + 1) ** 2;
   tracks.data.pieces.forEach((piece, pi) => {
-    const pts = piece.points;
     for (const [li, side] of [[0, 1], [1, -1]] as const) {
+      // Each foot strides along its own lane (offset from the centreline), so a turn's inside lane doesn't bunch up.
+      const pts = laneLine(piece.points, LANE_M * side);
       let k = 0, next = 0.3 * hash3(pi, li, 7), along = 0;
       for (let i = 1; i < pts.length; i++) {
         const [ax, az] = pts[i - 1], [bx, bz] = pts[i];
         const len = Math.hypot(bx - ax, bz - az);
+        if (len < 1e-9) continue;
         const near = (ax - x) ** 2 + (az - z) ** 2 < r2 + 4 || (bx - x) ** 2 + (bz - z) ** 2 < r2 + 4;
         while (next <= along + len) {
           const t = (next - along) / len, ux = (bx - ax) / len, uz = (bz - az) / len;
-          const px = ax + (bx - ax) * t - uz * LANE_M * side, pz = az + (bz - az) * t + ux * LANE_M * side;
+          const px = ax + (bx - ax) * t, pz = az + (bz - az) * t;
           const keep = piece.name === 'beachPath' || hash3(pi * 31 + li, k, 11) < C2C_SHARE;
           if (near && keep) {
             const d = Math.hypot(px - x, pz - z);
