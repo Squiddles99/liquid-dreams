@@ -14,8 +14,8 @@ export const SIT_AFTER_S = 1.5;
 /** The pop-up's pose plays over the physics' pop-up; the drop holds this long after it. */
 export const DROP_HOLD_S = 0.5;
 
-/** The pose and dials for the ride's state (first-ride spec §5). */
-export function rideSurferParams(b: RideBody, popupS: number): Pick<SurferParams, 'pose' | 'phaseT' | 'play' | 'lean' | 'compression' | 'twist' | 'x' | 'z' | 'headingDeg' | 'onLand' | 'enabled'> {
+/** The pose and dials for the ride's state (first-ride spec §5). On a bodyboard (Grommet) he rides prone: no pop-up. */
+export function rideSurferParams(b: RideBody, popupS: number, bodyboard = false): Pick<SurferParams, 'pose' | 'phaseT' | 'play' | 'lean' | 'compression' | 'twist' | 'x' | 'z' | 'headingDeg' | 'onLand' | 'enabled'> {
   let pose: PoseName, phaseT = 0, play = false;
   switch (b.phase) {
     case 'paddle':
@@ -26,11 +26,11 @@ export function rideSurferParams(b: RideBody, popupS: number): Pick<SurferParams
       }
       break;
     case 'popup':
-      pose = 'popup';
+      pose = bodyboard ? 'prone' : 'popup';
       phaseT = Math.min(1, b.phaseT / popupS);
       break;
     case 'ride':
-      pose = b.phaseT < DROP_HOLD_S ? 'drop' : 'trim';
+      pose = bodyboard ? 'prone' : b.phaseT < DROP_HOLD_S ? 'drop' : 'trim';
       break;
     case 'bail':
       pose = 'bail';
