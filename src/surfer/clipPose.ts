@@ -3,13 +3,13 @@ import type { BoardLayout, BoardSpec } from '../board/boardSpec';
 import type { Balance } from './balance';
 import type { ClipSample } from './clipPlayer';
 import { aimRotation, minReach, twoBoneIK } from './ik';
-import type { PoseDials } from './poses';
+import type { HandTarget, PoseDials } from './poses';
 import type { Stance } from './presets';
 import { BONES, type BoneName, FINGER_BONES, type FingerBone, LIMITS, type Limb, PARENT, type SkeletonRest, measures } from './rig';
 import { type BoardFrame, type SolvedPose, boardQuaternion } from './solvePose';
 
 const DEG = Math.PI / 180;
-const Y = new Vector3(0, 1, 0), Z = new Vector3(0, 0, 1);
+const Y = new Vector3(0, 1, 0), Z = new Vector3(0, 0, 1), NEG_Z = new Vector3(0, 0, -1);
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 /** The dials' reach on a clip (§4.1 step 3), the code poses' own (poses.ts LEAN_MAX, TWIST_DIAL; standing()'s 0.42). */
@@ -31,6 +31,9 @@ export interface ClipPoseContext {
   /** As for the code poses; `compression` already carries the balance layer's (SurferStand adds it). */
   dials: PoseDials;
   balance: Balance | null;
+  /** The surfer pose's hand targets (Andrew, Gate C: a skater's arms hang; a surfer holds them out): when given, the
+   * arms are solved to them as solvePose does, the clip keeping everything below the shoulders. */
+  hands?: Record<Limb, HandTarget>;
 }
 export interface ClipSolved extends SolvedPose {
   /** The clip's finger bones' world rotations from rest; absent ones take the relaxed curl (Surfer.applyPose). */
@@ -145,6 +148,25 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
     D[ft] = aimRotation(restDir(ft, to), Y, toe.sub(J[ft]), Y);
     J[to] = fk(to);
     D[to] = D[ft].clone();
+  }
+
+  // The arms from the surfer pose's targets, when given: the clavicles ride the chest, two-bone IK to each hand (elbow
+  // toward its pole), the hand following the forearm and the fingers relaxed (as solvePose).
+  if (ctx.hands) for (const s of ['l', 'r'] as const) {
+    const cl: BoneName = `clavicle_${s}`, ua: BoneName = `upperarm_${s}`, fa: BoneName = `forearm_${s}`, h: BoneName = `hand_${s}`;
+    const Ds3 = D.spine_03, ht = ctx.hands[s];
+    D[cl] = Ds3.clone();
+    J[cl] = fk(cl);
+    J[ua] = fk(ua);
+    const target = ht.frame === 'board' ? ht.pos.clone() : J.spine_03.clone().add(ht.pos.clone().applyQuaternion(Ds3));
+    const pole = ht.frame === 'board' ? ht.pole.clone() : ht.pole.clone().applyQuaternion(Ds3);
+    const ik = twoBoneIK(J[ua], target, len(ua, fa), len(fa, h), pole, LIMITS.elbowMaxDeg);
+    D[ua] = aimRotation(restDir(ua, fa), NEG_Z, ik.mid.clone().sub(J[ua]), pole);
+    J[fa] = fk(fa);
+    D[fa] = aimRotation(restDir(fa, h), NEG_Z, ik.end.clone().sub(J[fa]), pole);
+    J[h] = fk(h);
+    D[h] = D[fa].clone();
+    for (const g of Object.keys(F) as FingerBone[]) if (g.endsWith(`_${s}`)) delete F[g];
   }
 
   // The head looks where the game says, off the chest as in solvePose (the neck takes 40%), not the capture's own neck

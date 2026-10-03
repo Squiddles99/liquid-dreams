@@ -158,7 +158,8 @@ export class SurferStand {
     let solved: SolvedPose, fingers: Partial<Record<FingerBone, THREE.Quaternion>> | undefined;
     if (choice.use === 'clip' && choice.clip && choice.rc) {
       const sample = sampleClip(choice.clip, choice.rc.fps, clipTime(p.play, simTime, p.phaseT, clipDuration(choice.rc, choice.clip)));
-      const c = clipPose(s.rest, sample, { spec, layout, stance: p.stance, dials, balance: bal }, state.board, state.lookAt);
+      // The clip moves the body; the arms take the surfer pose's hands, balance drift included (Andrew, Gate C).
+      const c = clipPose(s.rest, sample, { spec, layout, stance: p.stance, dials, balance: bal, hands: t.hands }, state.board, state.lookAt);
       solved = c;
       fingers = c.fingers;
     } else {
