@@ -16,6 +16,8 @@ const DIST = join(ROOT, 'dist');
 const DEV_URL = 'http://localhost:5173/';
 const APP_URL = 'app://game/';
 const ICON = join(ROOT, 'electron', 'icon.png');
+/** The loading cover's sand (index.html --ld-sand): the window's colour before the page paints. */
+const SAND = '#e8dbc4';
 
 const args = process.argv.slice(1);
 const flag = (name) => args.includes(`--${name}`);
@@ -67,11 +69,13 @@ function serveDist(request) {
 
 async function createWindow() {
   const win = new BrowserWindow({
-    width: 1600, height: 900, backgroundColor: '#000000', autoHideMenuBar: true, title: 'Liquid Dreams',
+    width: 1600, height: 900, backgroundColor: SAND, show: false, autoHideMenuBar: true, title: 'Liquid Dreams',
     // The logo on the window and the taskbar (electron/icon.png; see electron/launch.mjs for the shortcut's .ico).
     ...(existsSync(ICON) ? { icon: ICON } : {}),
     webPreferences: { backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
   });
+  // Shown on the page's first paint (the loading cover), never as an empty black window.
+  win.once('ready-to-show', () => win.show());
   // The screenshot key (K) "downloads" a PNG. A browser drops it in Downloads; Electron would ask where to save it
   // every time. Save straight to Pictures\Liquid Dreams instead (the probe's own folder while probing).
   win.webContents.session.on('will-download', (_e, item) => {
