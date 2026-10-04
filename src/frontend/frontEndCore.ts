@@ -23,7 +23,7 @@ export interface FrontEndHost {
   applyConditions(c: Conditions): void;
   stage(staging: GangStaging | null, pose: CameraPose | null): void;
   paddleOut(choice: SessionChoice): void;
-  /** Whether the crew's bodies have loaded (absent: always); the page veils the front end until they have. */
+  /** Whether the crew's bodies have loaded (absent: always); the loading cover waits for it. */
   crewReady?(): boolean;
 }
 

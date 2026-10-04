@@ -43,6 +43,7 @@ import { PADDLE_OUT_MS } from '../frontend/entry';
 import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
 import { FrontEnd } from '../frontend/frontEndPage';
+import { FRONT_SETTINGS_KEY, sanitizeFrontSettings } from '../frontend/frontSettings';
 import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
 import { PauseMenu } from '../frontend/ui/pauseMenu';
 import { frontEndCheck } from '../dev/frontEndCheck';
@@ -107,6 +108,8 @@ import { buildGroundShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
 import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime, FOAM_TICKS_PER_S } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
+import { bootReady } from './loadingProgress';
+import type { LoadingScreen } from './loadingScreen';
 import { showOverlay } from './overlay';
 
 const SPECTRUM_REBUILD_DEBOUNCE_MS = 150;
@@ -245,6 +248,11 @@ export class App {
   /** The ground a rider stands on (walking spec §4): the land, or the top of a rock on it; null until the land loads. */
   /** The front end (the dune select screen), once opened. */
   private frontEnd: FrontEnd | null = null;
+  private loadingScreen: LoadingScreen | null = null;
+  /** Start-up (loading screens §1.2): the land built, the kit (or its failure), the ground layers (or theirs). */
+  private readonly heathParts = { land: false, kit: false, layers: false };
+  private frontEndAtBoot = false;
+  private bootReported = false;
   /** Paddle out: put the camera behind the rider once the stand has placed them in the water. */
   private chaseAfterPaddle = false;
   /** The menu while surfing (Esc or a pad's START): keep surfing, or back to the dune. */
@@ -382,7 +390,10 @@ export class App {
   private screenshotRequested = false;
   /** Set only inside captureFrame: this frame renders there instead of to the canvas. */
   private captureTarget: THREE.RenderTarget | null = null;
-  private devUiVisible = true;
+  /** The dev tools (panel, perf graphs): hidden for players, H shows them (Andrew, 2026-10-04). */
+  private devUiVisible = false;
+  /** While a dev measurement reads window.__ldGpuMs: the perf overlay samples even with the dev tools hidden. */
+  private gpuSampling = false;
 
   /** `hashMoment` is the moment a #m= / #ref= link opened, or null to open the saved (or default) moment. */
   constructor(
@@ -417,7 +428,13 @@ export class App {
     this.plants = new PlantMeshes(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     for (const m of this.plants.meshes) this.scene.add(m);
     // The ground layers (dune-up-close §4.3): until they load the patch draws as it did. The footprints draw with them.
-    loadGroundLayers(this.patch.layers).catch((e) => console.warn('The ground layers failed to load; the patch keeps its plain look.', e));
+    loadGroundLayers(this.patch.layers).then(
+      () => { this.heathParts.layers = true; },
+      (e) => {
+        this.heathParts.layers = true;
+        console.warn('The ground layers failed to load; the patch keeps its plain look.', e);
+      },
+    );
     fetch(import.meta.env.BASE_URL + 'heath/groundLayers.height.bin').then((r) => r.arrayBuffer()).then((b) => { this.groundLayersCpu = loadGroundLayersCpu(b); this.printsAt = null; }, () => undefined);
     this.footprints = new Footprints(this.patch.layers);
     this.scene.add(this.footprints.mesh);
@@ -431,11 +448,14 @@ export class App {
         for (const m of this.scatter.meshes) this.scene.add(m);
         this.plants.kitFade.value = 1;
         this.plants.setKindColours(hullColours());
-        void this.prewarmKit();
+        void this.prewarmKit().finally(() => { this.heathParts.kit = true; });
         this.hullInnerM = MID_M - BAND_FADE_M;
         this.hullsStale = true;
       },
-      (e) => console.warn('The heath kit failed to load; the hulls stand in for it.', e),
+      (e) => {
+        this.heathParts.kit = true;
+        console.warn('The heath kit failed to load; the hulls stand in for it.', e);
+      },
     );
     this.land.setPlantFloor(this.plantFloor);
     this.scene.add(this.patch.mesh);
@@ -444,7 +464,14 @@ export class App {
     this.scene.add(this.surferStand.group);
     this.gang = new GangLineup(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     this.scene.add(this.gang.group);
-    void this.land.load().then(() => this.onLandBuilt(), (e: unknown) => {
+    void this.land.load().then(() => {
+      try {
+        this.onLandBuilt();
+      } finally {
+        this.heathParts.land = true;
+      }
+    }, (e: unknown) => {
+      this.heathParts.land = true;
       console.warn(`The land didn't load (${e instanceof Error ? e.message : String(e)}); running without it.`);
     });
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
@@ -593,6 +620,8 @@ export class App {
         },
       },
     );
+    this.panel.setVisible(this.devUiVisible);
+    this.perf.setVisible(this.devUiVisible);
     renderer.onDeviceLost = (info) => this.onDeviceLost(info);
     this.fieldClient.onField = (f) => {
       this.field = f;
@@ -672,7 +701,8 @@ export class App {
 
   start(): void {
     this.renderer.setAnimationLoop(this.frame);
-    this.sound.arm();
+    // With the loading cover, sound is armed as it dissolves (nothing audible, and no hint, over the cover).
+    if (!this.loadingScreen) this.sound.arm();
   }
 
   /** Stages the crew and holds the camera (the front end; null releases them). */
@@ -801,12 +831,17 @@ export class App {
       const a = w.__ldGpuMs!.slice(-frames);
       return a.reduce((s, v) => s + v, 0) / a.length;
     };
-    this.setKelp(true);
-    const on = await take();
-    this.setKelp(false);
-    const off = await take();
-    this.setKelp(true);
-    return { on, off };
+    this.gpuSampling = true;
+    try {
+      this.setKelp(true);
+      const on = await take();
+      this.setKelp(false);
+      const off = await take();
+      this.setKelp(true);
+      return { on, off };
+    } finally {
+      this.gpuSampling = false;
+    }
   }
 
   /** The foam field's source at sim time t: the ocean's time uniform and the set waves in flight then. */
@@ -969,7 +1004,7 @@ export class App {
         this.panel.refresh();
       },
       stage: (staging, pose) => this.stageFrontEnd(staging, pose),
-      paddleOut: (choice) => this.paddleOut(choice),
+      paddleOut: (choice) => void this.paddleOut(choice),
       crewReady: () => this.gang.settled,
     };
   }
@@ -1011,6 +1046,55 @@ export class App {
     return { rider, covered: `${o?.name || hit.object.type} at ${hit.distance.toFixed(2)} m` };
   }
 
+  get loading(): LoadingScreen | null {
+    return this.loadingScreen;
+  }
+
+  /**
+   * The loading cover (loading screens spec). `frontEnd`: whether this start opens the front end (otherwise, a moment
+   * link or ?frontend=off, nothing waits for the crew). Sound is armed and the front end's input let go as it dissolves.
+   */
+  attachLoading(loading: LoadingScreen | null, frontEnd: boolean): void {
+    this.loadingScreen = loading;
+    this.frontEndAtBoot = frontEnd;
+    if (!loading) return;
+    loading.setCalm(this.calmMenus());
+    loading.onBootDissolve(() => this.sound.arm());
+  }
+
+  private calmMenus(): boolean {
+    try {
+      return sanitizeFrontSettings(JSON.parse(localStorage.getItem(FRONT_SETTINGS_KEY) ?? 'null')).calmMenus;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Each frame: the heath and the crew stages as they land (start-up), the frame for the cover's gate, its hold on the menu. */
+  private reportLoading(dtMs: number): void {
+    const l = this.loadingScreen;
+    if (!l) return;
+    const h = this.heathParts;
+    if (!this.bootReported && h.land && h.kit && h.layers) {
+      const ready = bootReady({
+        ...h, frontEnd: this.frontEndAtBoot, landUsable: !!this.land.height?.trackNetwork,
+        crewIn: !!this.frontEndHost().standSpot() && this.gang.settled,
+      });
+      if (ready.heath) l.stageDone('heath');
+      if (ready.crew) {
+        l.stageDone('crew');
+        this.bootReported = true;
+      }
+    }
+    l.frameDrawn(dtMs);
+    if (this.frontEnd) this.frontEnd.inputHeld = l.blocking;
+  }
+
+  /** The Electron probe's Paddle out (?probe): START on the select screen, as a player would. */
+  probePaddleOut(): void {
+    this.frontEnd?.act('start');
+  }
+
   /** Opens the front end (a normal start after prewarm, or the dev panel's button). */
   openFrontEnd(): void {
     if (this.frontEnd?.isOpen) return;
@@ -1035,33 +1119,52 @@ export class App {
     if (pick === 'resume') {
       this.setPaused(this.pausedBeforeMenu);
       this.input.suspended = false;
-    } else this.backToDune();
+    } else void this.backToDune();
   }
 
-  /** Back to the dune (Andrew, Gate B): fade to black, the front end opens on the crew again, fade back in. */
-  backToDune(): void {
-    const fade = document.createElement('div');
-    Object.assign(fade.style, { position: 'fixed', inset: '0', background: '#000', opacity: '0', zIndex: '6', pointerEvents: 'none', transition: `opacity ${PADDLE_OUT_MS.fadeOut}ms ease-in` });
-    this.container.appendChild(fade);
-    window.setTimeout(() => { fade.style.opacity = '1'; }, 20);
-    window.setTimeout(() => {
+  /**
+   * Covers a transition (loading screens §4): the cover comes in, `work` runs under it with the sim held still, and it
+   * dissolves once the frames run smooth and it has held long enough; the sim then runs (or stays paused) as `work`
+   * left it. Without a cover (none adopted), the work just runs. A second transition while one is covered is refused.
+   * `afterDissolve` runs as it dissolves: the game's own keys come back then, never under the cover.
+   */
+  private async underCover(line: string, delayMs: number, work: () => void, afterDissolve?: () => void): Promise<void> {
+    const cover = this.loadingScreen;
+    if (!cover) {
+      work();
+      afterDissolve?.();
+      return;
+    }
+    await new Promise((r) => window.setTimeout(r, delayMs));
+    const calm = this.calmMenus();
+    let resume = false;
+    let dissolved!: () => void;
+    const started = new Promise<void>((r) => { dissolved = r; });
+    const ok = await cover.cover({
+      line, calm, minHoldMs: calm ? PADDLE_OUT_MS.minHoldCalm : PADDLE_OUT_MS.minHold,
+      onDissolve: () => { this.setPaused(resume); afterDissolve?.(); dissolved(); },
+    });
+    if (!ok) return;
+    work();
+    resume = this.clock.paused;
+    this.setPaused(true);
+    cover.release();
+    await started;
+  }
+
+  /** Back to the dune (Andrew, Gate B): under the cover, the ride stops and the front end opens on the crew again. */
+  backToDune(): Promise<void> {
+    return this.underCover('Walking back up the dune…', 0, () => {
       this.setPaused(false);
       this.chaseAfterPaddle = false;
       this.stopRide(false);
       this.openFrontEnd();
-      fade.style.transition = `opacity ${PADDLE_OUT_MS.fadeIn}ms ease-out`;
-      fade.style.opacity = '0';
-      window.setTimeout(() => fade.remove(), PADDLE_OUT_MS.fadeIn + 50);
-    }, PADDLE_OUT_MS.fadeOut);
+    });
   }
 
-  /** Paddle out (spec §3): fade to black, set the session, put the rider on the stand in the water, fade back in. */
-  paddleOut(choice: SessionChoice): void {
-    const fade = document.createElement('div');
-    Object.assign(fade.style, { position: 'fixed', inset: '0', background: '#000', opacity: '0', zIndex: '6', pointerEvents: 'none', transition: `opacity ${PADDLE_OUT_MS.fadeOut}ms ease-in` });
-    this.container.appendChild(fade);
-    window.setTimeout(() => { fade.style.opacity = '1'; }, PADDLE_OUT_MS.uiOut);
-    window.setTimeout(() => {
+  /** Paddle out (spec §3): the UI leaves; under the cover, the session is set and the rider put on a set wave. */
+  paddleOut(choice: SessionChoice): Promise<void> {
+    return this.underCover('Paddling out…', PADDLE_OUT_MS.uiOut, () => {
       const lineup = DEFAULT_SURFER_PARAMS;
       Object.assign(this.surferParams, {
         enabled: true, onLand: false, preset: choice.rider, board: choice.board, outfit: choice.outfit, stance: choice.stance, pose: 'sit', gang: false,
@@ -1070,16 +1173,12 @@ export class App {
       normalizeSurferParams(this.surferParams);
       this.surferStand.group.visible = true;
       this.stageFrontEnd(null, null);
-      this.input.suspended = false;
       this.rig.setPose(this.startupMoment().camera, this.conditions.tideM);
       // Straight onto a set wave (first ride): the ride's camera takes over from here.
       this.startRide();
       this.panel.refresh();
       this.scheduleSave();
-      fade.style.transition = `opacity ${PADDLE_OUT_MS.fadeIn}ms ease-out`;
-      fade.style.opacity = '0';
-      window.setTimeout(() => fade.remove(), PADDLE_OUT_MS.fadeIn + 50);
-    }, PADDLE_OUT_MS.uiOut + PADDLE_OUT_MS.fadeOut);
+    }, () => { this.input.suspended = false; });
   }
 
   private scheduleSpectrumRebuild(): void {
@@ -1699,6 +1798,8 @@ export class App {
   private onDeviceLost(info: { message?: string }): void {
     // Nothing more can be drawn on a lost device; stop the loop rather than keep submitting to it.
     this.renderer.setAnimationLoop(null);
+    // The loading cover waits on frames that will never come now: take it away, or it hides the message for good.
+    this.loadingScreen?.remove();
     const hash = encodeMoment(this.currentMoment());
     showOverlay('The GPU connection was lost', info?.message || 'The graphics device stopped responding.', [
       { label: 'Reload this moment', onClick: () => { history.replaceState(null, '', hash); location.reload(); } },
@@ -1792,6 +1893,7 @@ export class App {
     if (!this.frameLimiter.shouldRender(now)) return;
     const realDt = clampFrameDt((now - this.lastMs) / 1000);
     this.lastMs = now;
+    this.reportLoading(realDt * 1000);
     const simDt = this.clock.tick(realDt);
     this.frontEnd?.update(realDt);
     // The menu while surfing: Esc or a pad's START opens it (the pad is watched every frame, so a START still held from
@@ -1801,7 +1903,7 @@ export class App {
     if (this.pauseMenu) {
       const pick = this.pauseMenu.update();
       if (pick) this.closePauseMenu(pick);
-    } else if (!this.frontEnd?.isOpen && (this.input.consumePressed('Escape') || padStart)) this.openPauseMenu();
+    } else if (!this.frontEnd?.isOpen && !this.loadingScreen?.blocking && (this.input.consumePressed('Escape') || padStart)) this.openPauseMenu();
 
     // While the front end has the keys, only H (show/hide the dev tools) reaches the game's hotkeys.
     if (this.frontEnd?.isOpen && this.input.consumePressed(HOTKEYS.toggleDevUi)) this.toggleDevUi();
@@ -1931,6 +2033,6 @@ export class App {
       captureScreenshot(this.renderer.domElement, screenshotFilename(this.conditions));
     }
     // GPU timestamp readback only matters while the stats are on screen.
-    if (this.devUiVisible) this.perf.update();
+    if (this.devUiVisible || this.gpuSampling) this.perf.update();
   };
 }
