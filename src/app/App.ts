@@ -390,7 +390,10 @@ export class App {
   private screenshotRequested = false;
   /** Set only inside captureFrame: this frame renders there instead of to the canvas. */
   private captureTarget: THREE.RenderTarget | null = null;
-  private devUiVisible = true;
+  /** The dev tools (panel, perf graphs): hidden for players, H shows them (Andrew, 2026-10-04). */
+  private devUiVisible = false;
+  /** While a dev measurement reads window.__ldGpuMs: the perf overlay samples even with the dev tools hidden. */
+  private gpuSampling = false;
 
   /** `hashMoment` is the moment a #m= / #ref= link opened, or null to open the saved (or default) moment. */
   constructor(
@@ -617,6 +620,8 @@ export class App {
         },
       },
     );
+    this.panel.setVisible(this.devUiVisible);
+    this.perf.setVisible(this.devUiVisible);
     renderer.onDeviceLost = (info) => this.onDeviceLost(info);
     this.fieldClient.onField = (f) => {
       this.field = f;
@@ -826,12 +831,17 @@ export class App {
       const a = w.__ldGpuMs!.slice(-frames);
       return a.reduce((s, v) => s + v, 0) / a.length;
     };
-    this.setKelp(true);
-    const on = await take();
-    this.setKelp(false);
-    const off = await take();
-    this.setKelp(true);
-    return { on, off };
+    this.gpuSampling = true;
+    try {
+      this.setKelp(true);
+      const on = await take();
+      this.setKelp(false);
+      const off = await take();
+      this.setKelp(true);
+      return { on, off };
+    } finally {
+      this.gpuSampling = false;
+    }
   }
 
   /** The foam field's source at sim time t: the ocean's time uniform and the set waves in flight then. */
@@ -2023,6 +2033,6 @@ export class App {
       captureScreenshot(this.renderer.domElement, screenshotFilename(this.conditions));
     }
     // GPU timestamp readback only matters while the stats are on screen.
-    if (this.devUiVisible) this.perf.update();
+    if (this.devUiVisible || this.gpuSampling) this.perf.update();
   };
 }
