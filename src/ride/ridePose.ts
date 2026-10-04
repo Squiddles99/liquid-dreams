@@ -49,8 +49,7 @@ export function rideSurferParams(b: RideBody, popupS: number, bodyboard = false)
 
 /** The board on the surface: its normal, the nose along the heading, rolled onto the inside rail in a carve. */
 export function rideBoardFrame(b: RideBody): BoardFrame {
-  const w = b.water;
-  const n = new Vector3(-w.slopeX, 1, -w.slopeZ).normalize();
+  const n = new Vector3(-b.tiltX, 1, -b.tiltZ).normalize();
   const [fx, fz] = forwardOf(b.headingDeg);
   const f = new Vector3(fx, 0, fz);
   f.addScaledVector(n, -f.dot(n)).normalize();
@@ -67,14 +66,27 @@ export const CHASE_CLEAR_M = 1.8;
 /** Seconds for the camera to settle on a new spot. */
 export const CHASE_TAU_S = 0.35;
 /**
- * Up and riding (Andrew: "front-on, slightly looking into the barrel"): ahead of the rider along the wave, out in front of
- * its face, low, looking back at her and the curl behind her.
+ * Up and riding (Andrew 2026-10-04: "we can't see the face of the wave ahead"): behind her, lower and closer than paddling,
+ * looking ahead along her run, so the wall down the line is in view.
  */
-export const FRONT_AHEAD_M = 7;
-export const FRONT_OUT_M = 4;
-export const FRONT_UP_M = 1.4;
-/** The look aims this far behind her along the line, into the curl. */
-export const FRONT_LOOK_BACK_M = 2.5;
+export const RIDE_BACK_M = 5.5;
+export const RIDE_UP_M = 2;
+export const RIDE_LOOK_AHEAD_M = 6;
+/** Seconds for the camera's direction to follow her run (it doesn't whip round in a carve). */
+export const DIR_TAU_S = 0.4;
+/**
+ * About to be barrelled (tubeCover), over her shoulder: at her head, a little behind, on the side away from the wall (the
+ * shore side), looking down the tube, so the curl doesn't block the view. Blended in by the cover, eased.
+ */
+export const POV_UP_M = 1.6;
+export const POV_BACK_M = 0.7;
+/** Her head and shoulder at the frame's edge, the line ahead clear (at 0.35 m her head filled the middle). */
+export const POV_SIDE_M = 0.7;
+export const POV_LOOK_AHEAD_M = 12;
+/** The tube's cover (tubeCover) over which the camera commits to her shoulder: all of it by the second. */
+export const POV_COVER: readonly [number, number] = [0.3, 0.6];
+export const POV_IN_TAU_S = 0.2;
+export const POV_OUT_TAU_S = 0.6;
 
 /** The player's look (Andrew 2026-10-04: right stick, or a mouse drag): this long with none and the camera goes home. */
 export const LOOK_HOLD_S = 3;
@@ -90,25 +102,25 @@ export interface LookInput {
 }
 
 /**
- * The ride's camera, easing after the board: paddling, behind it along its travel (its heading when slow); up and riding,
- * front-on from the shoulder. The player can swing it around the rider (right stick, mouse drag); LOOK_HOLD_S after the
- * last look it eases back to where it was framed.
+ * The ride's camera, easing after the board: always behind it along its run (its heading when slow), higher and further
+ * back paddling, lower and looking ahead down the line standing; over her shoulder as a tube closes over her. The player
+ * can swing it around the rider (right stick, mouse drag); LOOK_HOLD_S after the last look it eases back to its framing.
  */
 export class RideCamera {
   private pos: Vector3 | null = null;
   private dir = new Vector3(1, 0, 0);
-  /** Which way along the wave the rider is going (horizontal unit), smoothed so it doesn't flip in a carve. */
-  private line: Vector3 | null = null;
   /** The player's swing off the framed camera (degrees), and the seconds since they last moved it. */
   private yawOff = 0;
   private pitchOff = 0;
   private idleS = Infinity;
+  /** The over-the-shoulder camera's share [0, 1]. */
+  pov = 0;
 
   reset(): void {
     this.pos = null;
-    this.line = null;
     this.yawOff = this.pitchOff = 0;
     this.idleS = Infinity;
+    this.pov = 0;
   }
 
   /** The player's swing off the framed camera (degrees): tests, and the HUD. */
@@ -116,7 +128,8 @@ export class RideCamera {
     return { yawDeg: this.yawOff, pitchDeg: this.pitchOff };
   }
 
-  update(b: RideBody, dt: number, waterY: (x: number, z: number) => number, input: LookInput = { yawDeg: 0, pitchDeg: 0 }): CameraPose {
+  /** `cover`: how far she is under a curl (tubeCover), 0 out in the open. */
+  update(b: RideBody, dt: number, waterY: (x: number, z: number) => number, input: LookInput = { yawDeg: 0, pitchDeg: 0 }, cover = 0): CameraPose {
     if (input.yawDeg !== 0 || input.pitchDeg !== 0) {
       this.yawOff = (((this.yawOff + input.yawDeg + 180) % 360) + 360) % 360 - 180;
       this.pitchOff += input.pitchDeg;
@@ -130,38 +143,40 @@ export class RideCamera {
         if (Math.abs(this.yawOff) < 0.01 && Math.abs(this.pitchOff) < 0.01) this.yawOff = this.pitchOff = 0;
       }
     }
-    const a = this.pos ? 1 - Math.exp(-dt / CHASE_TAU_S) : 1;
+    const first = !this.pos, a = first ? 1 : 1 - Math.exp(-dt / CHASE_TAU_S);
     const up = b.phase === 'ride' || b.phase === 'popup' || b.phase === 'bail';
-    let target: Vector3, lookAt: Vector3;
-    if (up) {
-      const w = b.water, d = new Vector3(w.dirX, 0, w.dirZ).normalize();
-      // Along the wave: the board's motion (its heading when slow) less its part along the swell's travel.
-      const sp = speedOf(b), [fx, fz] = forwardOf(b.headingDeg);
-      const v = sp > 2 ? new Vector3(b.vx, 0, b.vz) : new Vector3(fx, 0, fz);
-      const along = v.addScaledVector(d, -v.dot(d));
-      if (along.lengthSq() < 1e-6) along.set(-d.z, 0, d.x);
-      along.normalize();
-      if (!this.line) this.line = along.clone();
-      else this.line.lerp(along, 1 - Math.exp(-dt / 0.8)).normalize();
-      const L = this.line;
-      target = new Vector3(b.x, 0, b.z).addScaledVector(L, FRONT_AHEAD_M).addScaledVector(d, FRONT_OUT_M);
-      target.y = waterY(target.x, target.z) + FRONT_UP_M;
-      lookAt = new Vector3(b.x, b.y + 1, b.z).addScaledVector(L, -FRONT_LOOK_BACK_M);
-    } else {
-      this.line = null;
-      const sp = speedOf(b);
-      const [fx, fz] = forwardOf(b.headingDeg);
-      const want = sp > 2 ? new Vector3(b.vx / sp, 0, b.vz / sp) : new Vector3(fx, 0, fz);
-      this.dir.lerp(want, a).normalize();
-      target = new Vector3(b.x - this.dir.x * CHASE_BACK_M, b.y + CHASE_UP_M, b.z - this.dir.z * CHASE_BACK_M);
-      target.y = Math.max(target.y, waterY(target.x, target.z) + CHASE_CLEAR_M, waterY((target.x + b.x) / 2, (target.z + b.z) / 2) + CHASE_CLEAR_M);
-      lookAt = new Vector3(b.x, b.y + 1, b.z);
-    }
+    // Her run (her heading when slow), smoothed.
+    const sp = speedOf(b), [fx, fz] = forwardOf(b.headingDeg);
+    const want = sp > 2 ? new Vector3(b.vx / sp, 0, b.vz / sp) : new Vector3(fx, 0, fz);
+    this.dir.lerp(want, first ? 1 : 1 - Math.exp(-dt / DIR_TAU_S));
+    if (this.dir.lengthSq() < 1e-6) this.dir.copy(want);
+    this.dir.normalize();
+    const D = this.dir, back = up ? RIDE_BACK_M : CHASE_BACK_M;
+    const target = new Vector3(b.x - D.x * back, b.y + (up ? RIDE_UP_M : CHASE_UP_M), b.z - D.z * back);
+    target.y = Math.max(target.y, waterY(target.x, target.z) + CHASE_CLEAR_M, waterY((target.x + b.x) / 2, (target.z + b.z) / 2) + CHASE_CLEAR_M);
+    let lookAt = up ? new Vector3(b.x, b.y + 1, b.z).addScaledVector(D, RIDE_LOOK_AHEAD_M) : new Vector3(b.x, b.y + 1, b.z);
     if (!this.pos) this.pos = target.clone();
     else this.pos.lerp(target, a);
+    // Never under the water where the camera is now (the face can rise under it while it eases).
+    this.pos.y = Math.max(this.pos.y, waterY(this.pos.x, this.pos.z) + 0.5);
+    // Over her shoulder as the tube closes over her: rigid with her (no lag, or she'd slide out of the frame).
+    const c = Math.min(1, Math.max(0, (cover - POV_COVER[0]) / (POV_COVER[1] - POV_COVER[0])));
+    const povTarget = up ? c * c * (3 - 2 * c) : 0;
+    this.pov += (povTarget - this.pov) * (1 - Math.exp(-dt / (povTarget > this.pov ? POV_IN_TAU_S : POV_OUT_TAU_S)));
+    if (this.pov < 1e-3) this.pov = 0;
+    let cam = this.pos.clone();
+    if (this.pov > 0) {
+      // The shore side of her run: away from the wall.
+      const d = new Vector3(b.water.dirX, 0, b.water.dirZ), side = new Vector3(-D.z, 0, D.x);
+      if (side.dot(d) < 0) side.negate();
+      const head = new Vector3(b.x, b.y + POV_UP_M, b.z).addScaledVector(D, -POV_BACK_M).addScaledVector(side, POV_SIDE_M);
+      const ahead = new Vector3(b.x, b.y + 1.1, b.z).addScaledVector(D, POV_LOOK_AHEAD_M);
+      const k = this.pov * this.pov * (3 - 2 * this.pov);
+      cam = cam.lerp(head, k);
+      lookAt = lookAt.lerp(ahead, k);
+    }
     // The player's swing: the framed camera and its aim turned around the rider by the yaw, raised or lowered by the
     // pitch (looking up drops the camera), its height kept within LOOK_ELEVATION_DEG.
-    const cam = this.pos.clone();
     if (this.yawOff !== 0 || this.pitchOff !== 0) {
       const pivot = new Vector3(b.x, b.y + 1, b.z);
       const turn = (v: Vector3): void => {
@@ -176,9 +191,7 @@ export class RideCamera {
       const k = flat > 1e-6 ? (r * Math.cos(el)) / flat : 0;
       cam.set(pivot.x + off.x * k, pivot.y + r * Math.sin(el), pivot.z + off.z * k);
     }
-    // Never under the water where the camera is now (the face can rise under it while it eases).
-    this.pos.y = Math.max(this.pos.y, waterY(this.pos.x, this.pos.z) + 0.5);
-    cam.y = Math.max(cam.y, waterY(cam.x, cam.z) + 0.5);
+    if (this.pov < 0.5) cam.y = Math.max(cam.y, waterY(cam.x, cam.z) + 0.5);
     const look = lookAt.sub(cam);
     const yawDeg = Math.atan2(look.x, -look.z) / DEG;
     const pitchDeg = Math.atan2(look.y, Math.hypot(look.x, look.z)) / DEG;
