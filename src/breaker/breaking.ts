@@ -415,15 +415,25 @@ export const TUBE_THROWN_PSI: readonly [number, number] = [0.02, 0.065];
 /** A plunging section breaks whole, and surges as its ψ says, once its ratio has passed breaking by this much (one that
  * just grazes it stays a partial break). */
 export const PLUNGE_FULL_RATIO = 1.05;
-export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, rSlurp = r, plunge = 0, thrown = 0): Lifecycle {
-  const own = stageCurves(r, p), pulled = slurp(rSlurp, p);
+/** A delayed section's ratio past 1 fades in over the landing from its turn, weighted in by its delay over this (s), so an
+ * undelayed section (and every section at peel 1) reads its ratio exactly as before (spec 2026-10-04 §3). */
+export const PEEL_RAMP_DELAY_S = 0.2;
+
+export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, rSlurp = r, plunge = 0, thrown = 0, delay = 0): Lifecycle {
+  const land = landingEstimate(H, p);
+  // The peel stretch (spec 2026-10-04 §3): a held section (broken by the reef, its turn still to come) stands as the wave
+  // at r = 1, the moment it pitches; once its turn comes its ratio past 1 fades in over the landing (no jump).
+  const waiting = typeof tb === 'number' && tb < 0;
+  let rE = r;
+  if (waiting) rE = Math.min(r, 1);
+  else if (typeof tb === 'number' && delay > 0) rE = r - smoothstep(0, PEEL_RAMP_DELAY_S, delay) * (r - Math.min(r, 1 + (r - 1) * smoothstep(0, land, tb)));
+  const own = stageCurves(rE, p), pulled = slurp(rSlurp, p);
   const c0 = { drain: Math.max(own.drain, pulled), collapse: own.collapse };
-  const steep = Math.max(steepening(r, p), pulled), stage = breakingStage(r, p);
+  const steep = Math.max(steepening(rE, p), pulled), stage = breakingStage(rE, p);
   if (tb === undefined) return { steep, stage, drain: c0.drain, collapse: c0.collapse, release: c0.collapse, ...NO_PILE };
-  const t = tb ?? (r >= 1 ? 0 : null);
+  const t = waiting ? null : tb ?? (r >= 1 ? 0 : null);
   if (t === null) return { steep, stage, drain: c0.drain, collapse: 0, release: 0, ...NO_PILE };
   const extent = Math.max(breakingStage(Math.max(r, rMax), p), plunge * smoothstep(1, PLUNGE_FULL_RATIO, Math.max(r, rMax)));
-  const land = landingEstimate(H, p);
   const span = settleSpan(H, p);
   const thrownBy = smoothstep(0, land, t) * extent;
   // A section that throws a tube holds it open TUBE_HOLD_S after the lip lands (Andrew, 2026-10-03, down the line), × how
