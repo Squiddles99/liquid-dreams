@@ -25,7 +25,8 @@ import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
 import { ReefFlow } from '../breaker/flowNodes';
 import { type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
-import { RIDE_MESSAGES, RideSession } from '../ride/RideSession';
+import { currentBindings, keyLabel } from '../ride/bindings';
+import { RideSession, rideMessage } from '../ride/RideSession';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
 import { SurfaceOffset } from '../ride/surfaceOffset';
 import { CameraRig } from '../camera/CameraRig';
@@ -1562,7 +1563,8 @@ export class App {
     // Facing the way the swell runs at the takeoff spot.
     const water = this.rideWater(this.clock.simTime), w = water(RIDE_START.x, RIDE_START.z);
     this.ride.begin(RIDE_START.x, RIDE_START.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water);
-    this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}: paddle (W) as it lifts you, Space to pop up`);
+    const keys = currentBindings().keys;
+    this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}: paddle (${keyLabel(keys.paddle)}) as it lifts you, ${keyLabel(keys.popup)} to pop up`);
   }
 
   private callSetNow(): void {
@@ -1931,14 +1933,14 @@ export class App {
     if (this.ride.active) {
       // Riding (first-ride spec): the keys drive the board, and the chase camera follows it.
       this.input.consumePressed('KeyC');
-      this.input.consumeMouse();
+      const mouse = this.input.consumeMouse();
       // The drawn sea under the board (the FFT's long swell rides on the set waves), matched to the request it answers.
       this.rideOffset.read(this.probe.latestSeq, this.probe.heightAt(RIDE_PROBE), realDt);
       const water = this.rideWater(this.clock.simTime);
       const event = this.ride.step(simDt, this.input, water);
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
-      else if (event) this.perf.flash(RIDE_MESSAGES[event]);
-      const pose = this.ride.cameraPose(realDt, water);
+      else if (event) this.perf.flash(rideMessage(event));
+      const pose = this.ride.cameraPose(realDt, water, mouse);
       if (pose) this.rig.setPose(pose);
     } else {
       this.rig.update(realDt, this.input, this.waterHeightAtCamera());

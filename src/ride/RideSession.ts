@@ -1,29 +1,35 @@
 import type { CameraPose } from '../dev/momentLink';
-import { PadEdges, type RideKeys, readPad, rideControls } from './rideInput';
+import { type Bindings, currentBindings, keyLabel } from './bindings';
+import { PadEdges, type RideKeys, lookFrom, readPad, rideControls } from './rideInput';
 import { type RideBody, type RideEvent, POPUP_S, speedOf, startBody, stepRide } from './ridePhysics';
-import { RideCamera, rideBoardFrame, rideSurferParams } from './ridePose';
+import { type LookInput, RideCamera, rideBoardFrame, rideSurferParams } from './ridePose';
 import type { WaterFn } from './water';
 
 /** Longest physics step (s): a slow frame is split into steps no longer than this. */
 export const MAX_STEP_S = 1 / 60;
 const MAX_STEPS = 4;
 
-export const RIDE_MESSAGES: Record<RideEvent, string> = {
-  caught: "You're on it: Space to pop up!",
-  popup: 'Up!',
-  tooSoon: 'Not yet: paddle (W) as the wave lifts your tail',
-  wipeout: 'Wiped out!',
-  kickout: 'Ride over',
-  reset: 'Next wave',
-  aground: 'Washed up on the shallows: R for the next wave',
-};
+/** What happened, in the player's keys. */
+export function rideMessage(e: RideEvent, b: Bindings = currentBindings()): string {
+  const k = (a: keyof Bindings['keys']): string => keyLabel(b.keys[a]);
+  const messages: Record<RideEvent, string> = {
+    caught: `You're on it: ${k('popup')} to pop up!`,
+    popup: 'Up!',
+    tooSoon: `Not yet: paddle (${k('paddle')}) as the wave lifts your tail`,
+    wipeout: 'Wiped out!',
+    kickout: 'Ride over',
+    reset: 'Next wave',
+    aground: `Washed up on the shallows: ${k('next')} for the next wave`,
+  };
+  return messages[e];
+}
 
-const HINTS: Record<RideBody['phase'], string> = {
-  paddle: 'W paddle · A/D turn · Space pop up · R next wave · Esc menu',
-  popup: '',
-  ride: 'A/D carve · S crouch · W stand tall',
-  bail: '',
-};
+function hint(phase: RideBody['phase'], b: Bindings): string {
+  const k = (a: keyof Bindings['keys']): string => keyLabel(b.keys[a]);
+  if (phase === 'paddle') return `${k('paddle')} paddle · ${k('left')}/${k('right')} turn · ${k('popup')} pop up · ${k('next')} next wave · Esc menu`;
+  if (phase === 'ride') return `${k('left')}/${k('right')} carve · ${k('crouch')} crouch · ${k('paddle')} stand tall`;
+  return '';
+}
 
 /** The playable ride (first-ride spec): the board's physics, its controls, the chase camera and a crude HUD. */
 export class RideSession {
@@ -62,9 +68,10 @@ export class RideSession {
     const b = this.body;
     if (!b) return null;
     const pad = readPad();
-    // R: the next wave of the set (the app moves the clock, then calls begin()).
-    if (keys.consumePressed('KeyR') || this.edges.pressed(pad, 1)) return 'reset';
-    const c = rideControls(keys, pad, this.edges);
+    // The next wave of the set (R by default; the app moves the clock, then calls begin()).
+    const bindings = currentBindings();
+    if (keys.consumePressed(bindings.keys.next) || this.edges.pressed(pad, bindings.pad.next)) return 'reset';
+    const c = rideControls(keys, pad, this.edges, bindings);
     let event: RideEvent | null = null;
     const n = Math.min(MAX_STEPS, Math.ceil(dt / MAX_STEP_S));
     for (let i = 0; i < n && dt > 0; i++) {
@@ -72,12 +79,15 @@ export class RideSession {
       if (e) event = e;
     }
     const kmh = Math.round(speedOf(b) * 3.6);
-    this.hud.textContent = `${kmh} km/h   ${HINTS[b.phase]}`;
+    this.hud.textContent = `${kmh} km/h   ${hint(b.phase, bindings)}`;
     return event;
   }
 
-  cameraPose(dt: number, water: WaterFn): CameraPose | null {
-    return this.body ? this.camera.update(this.body, dt, (x, z) => water(x, z).y) : null;
+  /** The camera this frame; `mouse` is the drag since the last frame (px), the right stick is read here. */
+  cameraPose(dt: number, water: WaterFn, mouse: { dx: number; dy: number } = { dx: 0, dy: 0 }): CameraPose | null {
+    if (!this.body) return null;
+    const look: LookInput = lookFrom(readPad(), mouse, dt);
+    return this.camera.update(this.body, dt, (x, z) => water(x, z).y, look);
   }
 
   surfer(bodyboard = false): ReturnType<typeof rideSurferParams> | null {

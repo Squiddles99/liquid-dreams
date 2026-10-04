@@ -1,5 +1,6 @@
 // src/frontend/frontEnd.selftest.ts: the front end's DOM checks (spec §15), run with ?selftest=frontend.
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
+import { currentBindings, setBindings } from '../ride/bindings';
 import { registerSelfTest } from '../dev/selfTest';
 import { type FrontState, initialFront, step } from './frontEnd';
 import { DEFAULT_CHOICES, DEFAULT_FRONT_SETTINGS, FRONT_SETTINGS_KEY } from './frontSettings';
@@ -71,7 +72,7 @@ registerSelfTest({
       legend.set(legendFor(s), 'xbox');
       const pads = [...legend.el.querySelectorAll('[data-glyph]')].map((g) => (g as HTMLElement).dataset.glyph).join(',');
       const inside = b.x + b.w <= l.designW - l.safeX + 0.5 && b.y + b.h <= l.designH - l.safeY + 0.5 && b.x + b.w > l.designW - l.safeX - 2;
-      return { pass: inside && keys === 'Enter,Esc,P' && pads === 'A,B,START', detail: `box ${JSON.stringify(b)}; keys ${keys}; pad ${pads}` };
+      return { pass: inside && keys === 'C,Enter,Esc,P' && pads === 'View,A,B,START', detail: `box ${JSON.stringify(b)}; keys ${keys}; pad ${pads}` };
     });
   },
 });
@@ -344,7 +345,7 @@ registerSelfTest({
       pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, connected: true, mapping: 'standard', timestamp: performance.now(), axes: [0, 0, 0, 0], buttons } as unknown as Gamepad;
       await frames(fe, 5);
       const pads = [...host.querySelectorAll('.fe-legend [data-glyph]')].map((g) => (g as HTMLElement).dataset.glyph).join(',');
-      return { pass: keys === 'R,F,Enter,Esc' && pads === 'Y,X,A,B', detail: `keys ${keys} → pad ${pads}` };
+      return { pass: keys === 'C,R,F,Enter,Esc' && pads === 'View,Y,X,A,B', detail: `keys ${keys} → pad ${pads}` };
     } finally {
       Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: real });
       fe.close();
@@ -384,7 +385,7 @@ registerSelfTest({
 });
 
 registerSelfTest({
-  name: 'frontend: the menu while surfing sits inside the safe area, 18 px or more; a click on Back to the dune takes it, Esc keeps surfing',
+  name: 'frontend: the menu while surfing (and its Controls page: both tabs, remapping) sits inside the safe area, 18 px or more; a remapped key takes; a click on Back to the dune takes it, Esc keeps surfing',
   async run() {
     await document.fonts.ready;
     const host = document.createElement('div');
@@ -395,14 +396,60 @@ registerSelfTest({
       m.resize(1920, 1080);
       const root = host.querySelector('.fe-root') as HTMLElement, scale = root.getBoundingClientRect().width / root.offsetWidth;
       const l = layoutFor(1920, 1080, 0.03);
-      const texts = [...root.querySelectorAll('h1, .fe-value, .fe-legend span')].filter((e) => e.childElementCount === 0 && e.textContent);
-      for (const t of texts) {
-        const b = designBox(t, root, scale);
-        if (b.x < l.safeX - 0.5 || b.y < l.safeY - 0.5 || b.x + b.w > l.designW - l.safeX + 0.5 || b.y + b.h > l.designH - l.safeY + 0.5) bad.push(`"${t.textContent}" outside`);
-        if (parseFloat(getComputedStyle(t).fontSize) < 18) bad.push(`"${t.textContent}" small`);
-      }
+      const check = (): void => {
+        const texts = [...root.querySelectorAll('h1, .fe-value, .fe-legend span, .fe-tab, .fe-callout span')]
+          .filter((e) => e.childElementCount === 0 && e.textContent && (e as HTMLElement).offsetParent !== null);
+        for (const t of texts) {
+          const b = designBox(t, root, scale);
+          if (b.x < l.safeX - 0.5 || b.y < l.safeY - 0.5 || b.x + b.w > l.designW - l.safeX + 0.5 || b.y + b.h > l.designH - l.safeY + 0.5) bad.push(`"${t.textContent}" outside`);
+          if (parseFloat(getComputedStyle(t).fontSize) < 18) bad.push(`"${t.textContent}" small`);
+        }
+      };
+      check();
       const words = [...root.querySelectorAll('.fe-row')].map((r) => r.textContent).join(' / ');
-      if (words !== 'Keep surfing / Back to the dune') bad.push(`rows ${words}`);
+      if (words !== 'Keep surfing / Controls / Back to the dune') bad.push(`rows ${words}`);
+      m.update();
+      // Controls: opens on the keyboard tab (keys drove it), E switches to the pad, both inside and readable.
+      press('ArrowDown');
+      m.update();
+      press('Enter');
+      m.update();
+      const page = m.controlsPage;
+      if (!root.classList.contains('is-controls') || page.tab !== 'keys') bad.push(`Controls opened on ${page.tab ?? 'nothing'}`);
+      m.update();
+      check();
+      press('KeyE');
+      m.update();
+      if (page.tab !== 'pad') bad.push(`E showed ${page.tab}`);
+      check();
+      press('KeyQ');
+      m.update();
+      // Remap: Enter lists the keys, Enter on Paddle listens, J takes; the drawing and the ride's bindings say J.
+      const before = currentBindings();
+      try {
+        press('Enter');
+        m.update();
+        m.update();
+        if (page.mode !== 'remap') bad.push(`Enter on the drawing gave ${page.mode}`);
+        check();
+        press('Enter');
+        m.update();
+        m.update();
+        if (page.mode !== 'listen') bad.push(`Enter on Paddle gave ${page.mode}`);
+        press('KeyJ');
+        m.update();
+        m.update();
+        if (currentBindings().keys.paddle !== 'KeyJ') bad.push(`J bound paddle to ${currentBindings().keys.paddle}`);
+        press('Escape');
+        m.update();
+        m.update();
+        const paddle = root.querySelector('[data-callout="Paddle · stand tall"]')?.textContent ?? '';
+        if (page.mode !== 'view' || !paddle.includes('J or ↑')) bad.push(`after the remap: ${page.mode}, "${paddle}"`);
+      } finally {
+        setBindings(before);
+      }
+      press('Escape');
+      if (m.update() !== null || root.classList.contains('is-controls')) bad.push('Esc on Controls did not go back to the rows');
       m.update();
       root.querySelector('[data-hit="dune"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       const clicked = m.update();
@@ -418,6 +465,35 @@ registerSelfTest({
       host.remove();
     }
     return { pass: bad.length === 0, detail: bad.join('; ') || 'inside, readable, click and Esc both work' };
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the select screen offers Controls on every beat (C or View) and Esc comes back to the beat',
+  async run() {
+    await document.fonts.ready;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const fe = new FrontEnd(fakeHost(), host, noSound, memory());
+    const bad: string[] = [];
+    try {
+      fe.open();
+      await frames(fe, 4);
+      const legend = (): string => [...host.querySelectorAll('.fe-legend > span')].map((e) => e.lastElementChild?.textContent).join(' / ');
+      if (!legend().startsWith('Controls')) bad.push(`legend ${legend()}`);
+      press('KeyC');
+      await frames(fe, 3);
+      const root = host.querySelector('.fe-root') as HTMLElement;
+      if (fe.controls?.tab !== 'keys' || !root.classList.contains('is-controls-open')) bad.push(`C opened ${fe.controls?.tab ?? 'nothing'}`);
+      if (!legend().includes('Remap')) bad.push(`Controls legend ${legend()}`);
+      press('Escape');
+      await frames(fe, 3);
+      if (fe.controls || root.classList.contains('is-controls-open') || fe.state?.beat !== 'conditions') bad.push(`Esc left ${fe.controls ? 'Controls open' : fe.state?.beat}`);
+    } finally {
+      fe.close();
+      host.remove();
+    }
+    return { pass: bad.length === 0, detail: bad.join('; ') || 'C opens Controls over the beat, Esc comes back' };
   },
 });
 

@@ -76,22 +76,60 @@ export const FRONT_UP_M = 1.4;
 /** The look aims this far behind her along the line, into the curl. */
 export const FRONT_LOOK_BACK_M = 2.5;
 
+/** The player's look (Andrew 2026-10-04: right stick, or a mouse drag): this long with none and the camera goes home. */
+export const LOOK_HOLD_S = 3;
+/** Then it eases back over about this long (the time constant). */
+export const LOOK_RETURN_TAU_S = 0.5;
+/** The camera's height around the rider stays between these (degrees above her). */
+export const LOOK_ELEVATION_DEG: readonly [number, number] = [-4, 70];
+
+/** A look this step, in degrees: + yaw turns the view right, + pitch looks up. */
+export interface LookInput {
+  yawDeg: number;
+  pitchDeg: number;
+}
+
 /**
  * The ride's camera, easing after the board: paddling, behind it along its travel (its heading when slow); up and riding,
- * front-on from the shoulder.
+ * front-on from the shoulder. The player can swing it around the rider (right stick, mouse drag); LOOK_HOLD_S after the
+ * last look it eases back to where it was framed.
  */
 export class RideCamera {
   private pos: Vector3 | null = null;
   private dir = new Vector3(1, 0, 0);
   /** Which way along the wave the rider is going (horizontal unit), smoothed so it doesn't flip in a carve. */
   private line: Vector3 | null = null;
+  /** The player's swing off the framed camera (degrees), and the seconds since they last moved it. */
+  private yawOff = 0;
+  private pitchOff = 0;
+  private idleS = Infinity;
 
   reset(): void {
     this.pos = null;
     this.line = null;
+    this.yawOff = this.pitchOff = 0;
+    this.idleS = Infinity;
   }
 
-  update(b: RideBody, dt: number, waterY: (x: number, z: number) => number): CameraPose {
+  /** The player's swing off the framed camera (degrees): tests, and the HUD. */
+  get look(): LookInput {
+    return { yawDeg: this.yawOff, pitchDeg: this.pitchOff };
+  }
+
+  update(b: RideBody, dt: number, waterY: (x: number, z: number) => number, input: LookInput = { yawDeg: 0, pitchDeg: 0 }): CameraPose {
+    if (input.yawDeg !== 0 || input.pitchDeg !== 0) {
+      this.yawOff = (((this.yawOff + input.yawDeg + 180) % 360) + 360) % 360 - 180;
+      this.pitchOff += input.pitchDeg;
+      this.idleS = 0;
+    } else {
+      this.idleS += dt;
+      if (this.idleS > LOOK_HOLD_S) {
+        const k = Math.exp(-dt / LOOK_RETURN_TAU_S);
+        this.yawOff *= k;
+        this.pitchOff *= k;
+        if (Math.abs(this.yawOff) < 0.01 && Math.abs(this.pitchOff) < 0.01) this.yawOff = this.pitchOff = 0;
+      }
+    }
     const a = this.pos ? 1 - Math.exp(-dt / CHASE_TAU_S) : 1;
     const up = b.phase === 'ride' || b.phase === 'popup' || b.phase === 'bail';
     let target: Vector3, lookAt: Vector3;
@@ -121,11 +159,29 @@ export class RideCamera {
     }
     if (!this.pos) this.pos = target.clone();
     else this.pos.lerp(target, a);
+    // The player's swing: the framed camera and its aim turned around the rider by the yaw, raised or lowered by the
+    // pitch (looking up drops the camera), its height kept within LOOK_ELEVATION_DEG.
+    const cam = this.pos.clone();
+    if (this.yawOff !== 0 || this.pitchOff !== 0) {
+      const pivot = new Vector3(b.x, b.y + 1, b.z);
+      const turn = (v: Vector3): void => {
+        const t = this.yawOff * DEG, c = Math.cos(t), s = Math.sin(t), x = v.x - pivot.x, z = v.z - pivot.z;
+        v.x = pivot.x + x * c - z * s;
+        v.z = pivot.z + z * c + x * s;
+      };
+      turn(cam);
+      turn(lookAt);
+      const off = cam.clone().sub(pivot), flat = Math.hypot(off.x, off.z), r = off.length();
+      const el = Math.max(LOOK_ELEVATION_DEG[0], Math.min(LOOK_ELEVATION_DEG[1], Math.atan2(off.y, flat) / DEG - this.pitchOff)) * DEG;
+      const k = flat > 1e-6 ? (r * Math.cos(el)) / flat : 0;
+      cam.set(pivot.x + off.x * k, pivot.y + r * Math.sin(el), pivot.z + off.z * k);
+    }
     // Never under the water where the camera is now (the face can rise under it while it eases).
     this.pos.y = Math.max(this.pos.y, waterY(this.pos.x, this.pos.z) + 0.5);
-    const look = lookAt.sub(this.pos);
+    cam.y = Math.max(cam.y, waterY(cam.x, cam.z) + 0.5);
+    const look = lookAt.sub(cam);
     const yawDeg = Math.atan2(look.x, -look.z) / DEG;
     const pitchDeg = Math.atan2(look.y, Math.hypot(look.x, look.z)) / DEG;
-    return { mode: 'free', position: [this.pos.x, this.pos.y, this.pos.z], yawDeg: ((yawDeg % 360) + 360) % 360, pitchDeg };
+    return { mode: 'free', position: [cam.x, cam.y, cam.z], yawDeg: ((yawDeg % 360) + 360) % 360, pitchDeg };
   }
 }

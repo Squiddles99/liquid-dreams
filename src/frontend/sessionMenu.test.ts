@@ -2,27 +2,31 @@
 import { describe, expect, it } from 'vitest';
 import { MENU_ITEMS, PadStartWatch, stepMenu } from './sessionMenu';
 
-describe('the menu while surfing: Keep surfing or Back to the dune (Andrew, Gate B)', () => {
-  it('offers Keep surfing first, then Back to the dune', () => {
-    expect(MENU_ITEMS.map((m) => m.label)).toEqual(['Keep surfing', 'Back to the dune']);
+describe('the menu while surfing: Keep surfing, Controls or Back to the dune (Andrew, Gate B; Controls 2026-10-04)', () => {
+  it('offers Keep surfing first, then Controls, then Back to the dune', () => {
+    expect(MENU_ITEMS.map((m) => m.label)).toEqual(['Keep surfing', 'Controls', 'Back to the dune']);
   });
   it('moves the focus up and down (round), A takes the focused item', () => {
     let s = { focus: 0 };
     s = stepMenu(s, 'down').state;
     expect(s.focus).toBe(1);
-    expect(stepMenu(s, 'down').state.focus).toBe(0);
-    expect(stepMenu(s, 'up').state.focus).toBe(0);
-    expect(stepMenu(s, 'confirm').pick).toBe('dune');
+    expect(stepMenu({ focus: 2 }, 'down').state.focus).toBe(0);
+    expect(stepMenu({ focus: 0 }, 'up').state.focus).toBe(2);
+    expect(stepMenu({ focus: 2 }, 'confirm').pick).toBe('dune');
     expect(stepMenu({ focus: 0 }, 'confirm').pick).toBe('resume');
   });
   it('closes on B or START (keep surfing), and ignores the rest', () => {
     expect(stepMenu({ focus: 1 }, 'back').pick).toBe('resume');
     expect(stepMenu({ focus: 1 }, 'start').pick).toBe('resume');
-    expect(stepMenu({ focus: 1 }, 'random')).toEqual({ state: { focus: 1 }, pick: null, moved: false });
+    expect(stepMenu({ focus: 1 }, 'random')).toEqual({ state: { focus: 1 }, pick: null, moved: false, controls: false });
   });
   it('says when the focus moved (the focus tick)', () => {
     expect(stepMenu({ focus: 0 }, 'down').moved).toBe(true);
     expect(stepMenu({ focus: 0 }, 'confirm').moved).toBe(false);
+  });
+  it('Controls (the row, or View / C from any row) opens the Controls page', () => {
+    expect(stepMenu({ focus: 1 }, 'confirm')).toEqual({ state: { focus: 1 }, pick: null, moved: false, controls: true });
+    expect(stepMenu({ focus: 0 }, 'controls').controls).toBe(true);
   });
 });
 

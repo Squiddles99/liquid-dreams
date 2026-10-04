@@ -34,10 +34,12 @@ export interface CoreCue {
   line: { speaker: PresetName; text: string } | null;
   haptic: boolean;
   settings: boolean;
+  /** The Controls page was asked for (View, or C). */
+  controls: boolean;
   landed: Beat | null;
 }
 
-const empty = (): CoreCue => ({ events: [], sounds: [], line: null, haptic: false, settings: false, landed: null });
+const empty = (): CoreCue => ({ events: [], sounds: [], line: null, haptic: false, settings: false, controls: false, landed: null });
 
 export class FrontEndCore {
   private s: FrontState;
@@ -112,6 +114,7 @@ export class FrontEndCore {
         if (e.beat === 'gear') { const v = gearView(this.s, this.opts.today, this.lineSeed++); cue.line = { speaker: this.s.rider, text: v.line.text }; }
       }
       if (e.kind === 'settings') cue.settings = true;
+      if (e.kind === 'controls') cue.controls = true;
       if (e.kind === 'paddleOut') {
         if (this.opts.storage) saveJson(this.opts.storage, FRONT_CHOICES_KEY, savedOf(this.s));
         this.host.applyConditions(toConditions(this.s.setup, this.host.baseConditions(), this.opts.today));
