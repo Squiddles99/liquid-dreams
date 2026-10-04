@@ -20,6 +20,9 @@ export interface WaterAt {
   dirZ: number;
   /** The bed, the beach or a rock under the board (m, world y), where known: the board runs aground on it. */
   bedY?: number;
+  /** Where this water sits undisplaced (the Lagrangian label, world xz), as the breaking ribbon's crest stations are. */
+  lx?: number;
+  lz?: number;
 }
 
 export type WaterFn = (x: number, z: number) => WaterAt;
@@ -46,7 +49,7 @@ export function waterAt(
   const u = flowFromEta(r.eta, f, omega, 0);
   return {
     y: tideM + r.eta, slopeX: r.slopeX, slopeZ: r.slopeZ, foam: r.foam, ux: u.ux, uz: u.uz,
-    c: f.k > 1e-6 ? omega / f.k : 0, dirX: f.dirX, dirZ: f.dirZ,
+    c: f.k > 1e-6 ? omega / f.k : 0, dirX: f.dirX, dirZ: f.dirZ, lx: x0, lz: z0,
   };
 }
 

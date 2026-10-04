@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LENS_CLEAR_S, LENS_DRAIN_S, LensWater, RAIN_LENS_MAX, lensWaterAt, rainLensStep } from './lensWater';
+import { LENS_CLEAR_S, LENS_DRAIN_S, LensWater, RAIN_LENS_MAX, lensWaterAt, rainLensStep, tubeLensStep } from './lensWater';
 
 describe('water on the lens after surfacing', () => {
   it('at the moment of surfacing the whole lens is under a sheet of water, with its drops', () => {
@@ -70,5 +70,33 @@ describe('rain on the lens', () => {
     s.rain(0);
     s.step(10);
     expect(s.state().active).toBe(false);
+  });
+});
+
+describe('spray on the lens in the tube (Andrew 2026-10-04: the same drops as surfacing)', () => {
+  it('wets fast under the curl, then the drops are gone about LENS_CLEAR_S after leaving it', () => {
+    let wet = 0;
+    for (let t = 0; t < 0.5; t += 1 / 60) wet = tubeLensStep(wet, 1, 1 / 60);
+    expect(wet).toBeGreaterThan(0.7);
+    for (let t = 0; t < 1; t += 1 / 60) wet = tubeLensStep(wet, 1, 1 / 60);
+    let out = 0;
+    while (wet > 0 && out < 10) {
+      wet = tubeLensStep(wet, 0, 1 / 60);
+      out += 1 / 60;
+    }
+    expect(out).toBeGreaterThan(LENS_CLEAR_S - 0.3);
+    expect(out).toBeLessThan(LENS_CLEAR_S + 0.1);
+  });
+
+  it('shows as drops on the lens, no sheet', () => {
+    const lens = new LensWater();
+    expect(lens.state().active).toBe(false);
+    lens.tube(1);
+    const s = lens.state();
+    expect(s.active).toBe(true);
+    expect(s.drops).toBe(1);
+    expect(s.front).toBeGreaterThan(1);
+    lens.tube(0);
+    expect(lens.state().active).toBe(false);
   });
 });

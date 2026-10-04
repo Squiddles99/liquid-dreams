@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type RideBody, type RideControls, type RideEvent, BAIL_S, MAX_SPEED, NO_CONTROLS, forwardOf, speedOf, startBody, stepRide } from './ridePhysics';
+import { type RideBody, type RideControls, type RideEvent, BAIL_S, MAX_SPEED, NO_CONTROLS, POPUP_S, forwardOf, speedOf, startBody, stepRide } from './ridePhysics';
 import { type WaterFn, flatWater } from './water';
 
 const DT = 1 / 60;
@@ -151,5 +151,49 @@ describe('the board on the water', () => {
     const b = startBody(0, 0, 90, flatWater());
     run(b, { ...NO_CONTROLS, paddle: true }, () => () => ({ ...flatWater()(0, 0), y: NaN }), 1);
     expect(Number.isFinite(b.x) && Number.isFinite(b.y)).toBe(true);
+  });
+});
+
+/**
+ * The takeoff spot's face as it pitches (the 2026-10-04 probe, 5.5 ft): a 3 m wall, 3 m wide at its foot, running +x at
+ * 10 m/s. A still point under it rises at up to 15 m/s (the probe: 16).
+ */
+const wall = (t: number): WaterFn => (x) => {
+  const u = Math.min(1, Math.max(0, (-20 + 10 * t - x) / 3));
+  return { y: 3 * u * u * (3 - 2 * u), slopeX: -6 * u * (1 - u), slopeZ: 0, foam: 0, ux: 0, uz: 0, c: 10, dirX: 1, dirZ: 0 };
+};
+
+describe('the board floats like a board (Andrew 2026-10-04: the bobbing over a steep swell looked fast-forward)', () => {
+  it('a steep face lifts a floating board over it, not snaps it up the wall', () => {
+    const b = startBody(0, 0, 270, wall(0));
+    let maxVy = 0, maxTiltRate = 0, deepest = 0;
+    let y = b.y, tilt = Math.atan(b.tiltX);
+    for (let i = 0; i < 4 / DT; i++) {
+      const t = (i + 1) * DT;
+      stepRide(b, NO_CONTROLS, wall(t), DT);
+      maxVy = Math.max(maxVy, Math.abs(b.y - y) / DT);
+      maxTiltRate = Math.max(maxTiltRate, Math.abs(Math.atan(b.tiltX) - tilt) / DT / (Math.PI / 180));
+      deepest = Math.max(deepest, wall(t)(b.x, b.z).y - b.y);
+      y = b.y;
+      tilt = Math.atan(b.tiltX);
+    }
+    // Well under the wall's own 15 m/s (read at one point it was ~15); the face washes over the nose for a moment instead.
+    expect(maxVy).toBeLessThan(9);
+    expect(maxTiltRate).toBeLessThan(250);
+    expect(deepest).toBeLessThan(1.5);
+    expect(b.y).toBeCloseTo(3, 1);
+  });
+
+  it('standing, it planes on the surface under it', () => {
+    const b = startBody(0, 0, 90, slope(0.5));
+    b.phase = 'ride';
+    b.vx = 6;
+    run(b, NO_CONTROLS, () => slope(0.5), 1);
+    expect(Math.abs(b.y - slope(0.5)(b.x, b.z).y)).toBeLessThan(0.05);
+    expect(b.tiltX).toBeCloseTo(-0.5, 2);
+  });
+
+  it('pops up in 0.4 s (Andrew: on his feet only at the bottom of the drop)', () => {
+    expect(POPUP_S).toBeCloseTo(0.4, 5);
   });
 });

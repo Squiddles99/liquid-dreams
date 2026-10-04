@@ -29,6 +29,8 @@ export interface RideBody {
   x: number;
   z: number;
   y: number;
+  /** The board's heave (m/s): floating, it rides over the water under it with some weight. */
+  vy: number;
   vx: number;
   vz: number;
   /** Compass heading of the nose (deg): forward = (sin h, −cos h), as placement.headingAxes. */
@@ -45,6 +47,11 @@ export interface RideBody {
   idleT: number;
   /** The water under the board this step. */
   water: WaterAt;
+  /** The board's own tilt (∂y/∂x, ∂y/∂z): the water under its nose, middle and tail, eased (it is drawn on this). */
+  tiltX: number;
+  tiltZ: number;
+  /** The water's height under the whole board last step (boardSurface). */
+  surfY: number;
 }
 
 const G = 9.81;
@@ -74,7 +81,8 @@ export const ASSIST_TO = 0.8;
 export const CATCH_RATIO = 0.45;
 /** Too slow to pop up below this (m/s). */
 export const POPUP_MIN_SPEED = 2.5;
-export const POPUP_S = 0.6;
+/** Andrew 2026-10-04: at 0.6 s he was on his feet only at the bottom of a ~1 s drop. */
+export const POPUP_S = 0.4;
 export const BAIL_S = 2;
 /** Whitewater over this and you're gone. */
 export const WIPEOUT_FOAM = 0.5;
@@ -84,6 +92,21 @@ export const WIPEOUT_SLOPE = 2.5;
 export const STALL_SPEED = 3;
 export const STALL_S = 0.6;
 export const MAX_SPEED = 18;
+/** Half the board's length (m): its height and tilt come from the water under its nose and tail as well as its middle. */
+export const BOARD_HALF_M = 0.9;
+/**
+ * Floating (prone, or after a wipeout), the board and rider heave onto the water under them, critically damped over this
+ * period (s), falling no faster than g and never more than FLOAT_OVER_M above it. Read at one point, the takeoff's
+ * pitching face flicked the board up 3 m in 0.2 s at 16 m/s (Andrew 2026-10-04: "fast-forward"); now ~9 m/s, the face
+ * washing over the nose (> 1 m) for under 0.2 s. Shorter periods snap, longer ones bury it.
+ */
+export const FLOAT_PERIOD_S = 0.5;
+export const FLOAT_OVER_M = 0.25;
+/** Standing, the board planes on the surface; a gap left from floating closes over this long (s). */
+export const PLANE_TAU_S = 0.05;
+/** The board's tilt follows the water under it over this long (s): floating, and planing. */
+export const FLOAT_TILT_TAU_S = 0.18;
+export const PLANE_TILT_TAU_S = 0.05;
 /** Water shallower than this (m) over the bed, the beach or a rock and the board runs aground: it stops there. */
 export const AGROUND_DEPTH_M = 0.3;
 
@@ -99,7 +122,16 @@ export function rightOf(headingDeg: number): [number, number] {
 
 export function startBody(x: number, z: number, headingDeg: number, water: WaterFn): RideBody {
   const w = water(x, z);
-  return { phase: 'paddle', phaseT: 0, x, z, y: w.y, vx: 0, vz: 0, headingDeg, carve: 0, compression: 0, caught: false, stallT: 0, idleT: 10, water: w };
+  return { phase: 'paddle', phaseT: 0, x, z, y: w.y, vy: 0, vx: 0, vz: 0, headingDeg, carve: 0, compression: 0, caught: false, stallT: 0, idleT: 10, water: w, tiltX: w.slopeX, tiltZ: w.slopeZ, surfY: w.y };
+}
+
+/** The water under the whole board: its height (nose, middle and tail) and slope (nose to tail along it, across from the middle). */
+export function boardSurface(water: WaterFn, x: number, z: number, headingDeg: number, mid: WaterAt): { y: number; slopeX: number; slopeZ: number } {
+  const [fx, fz] = forwardOf(headingDeg), [rx, rz] = rightOf(headingDeg);
+  const nose = water(x + fx * BOARD_HALF_M, z + fz * BOARD_HALF_M), tail = water(x - fx * BOARD_HALF_M, z - fz * BOARD_HALF_M);
+  if (!Number.isFinite(nose.y) || !Number.isFinite(tail.y)) return { y: mid.y, slopeX: mid.slopeX, slopeZ: mid.slopeZ };
+  const along = (nose.y - tail.y) / (2 * BOARD_HALF_M), across = mid.slopeX * rx + mid.slopeZ * rz;
+  return { y: (nose.y + 2 * mid.y + tail.y) / 4, slopeX: along * fx + across * rx, slopeZ: along * fz + across * rz };
 }
 
 const smoothstep = (a: number, b: number, v: number): number => {
@@ -206,7 +238,30 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
     if (moving) event = 'aground';
   }
   if (Number.isFinite(next.y) && Number.isFinite(next.slopeX) && Number.isFinite(next.slopeZ)) b.water = next;
-  b.y = Math.max(b.water.y, b.water.bedY ?? -Infinity);
+  // The board on the water under it: planing on it standing; floating, heaving over it with the rider's weight.
+  const surf = boardSurface(water, b.x, b.z, b.headingDeg, b.water), y0 = b.y;
+  const onFeet = standing && event !== 'aground';
+  if (onFeet) b.y = surf.y + (y0 - b.surfY) * Math.exp(-dt / PLANE_TAU_S);
+  else {
+    const w0 = (2 * Math.PI) / FLOAT_PERIOD_S;
+    b.vy += Math.max(-G, w0 * w0 * (surf.y - b.y) - 2 * w0 * b.vy) * dt;
+    b.y += b.vy * dt;
+    if (b.y > surf.y + FLOAT_OVER_M) {
+      b.y = surf.y + FLOAT_OVER_M;
+      b.vy = (b.y - y0) / dt;
+    }
+  }
+  b.y = Math.max(b.y, b.water.bedY ?? -Infinity);
+  if (!Number.isFinite(b.y)) {
+    b.y = Number.isFinite(b.water.y) ? b.water.y : y0;
+    b.vy = 0;
+  } else if (onFeet) b.vy = (b.y - y0) / dt;
+  if (Number.isFinite(surf.y)) b.surfY = surf.y;
+  const tilt = 1 - Math.exp(-dt / (onFeet ? PLANE_TILT_TAU_S : FLOAT_TILT_TAU_S));
+  if (Number.isFinite(surf.slopeX) && Number.isFinite(surf.slopeZ)) {
+    b.tiltX += (surf.slopeX - b.tiltX) * tilt;
+    b.tiltZ += (surf.slopeZ - b.tiltZ) * tilt;
+  }
 
   if (event === 'aground') return event;
   // Phases.

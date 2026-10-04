@@ -44,6 +44,19 @@ export function rainLensStep(wet: number, rain: number, facing: number, dt: numb
   return Math.min(RAIN_LENS_MAX, Math.max(0, next));
 }
 
+/** In the tube, the spray wets the lens this fast (per second, at full cover), up to fully wet. */
+const TUBE_WET_PER_S = 3;
+
+/**
+ * One step of the tube's spray on the lens (Andrew 2026-10-04: the same drops as surfacing): wetting as the rider is under
+ * the curl (`cover`, tubeCover), drying off steadily once out, gone LENS_CLEAR_S after full, like the surfacing drops.
+ */
+export function tubeLensStep(wet: number, cover: number, dt: number): number {
+  const into = Math.min(1, Math.max(0, cover));
+  const next = wet + dt * (into * TUBE_WET_PER_S * (1 - wet) - (1 - into) / LENS_CLEAR_S);
+  return Math.min(1, Math.max(0, next));
+}
+
 /**
  * Water on the lens as the camera breaks the surface: wet at the moment it surfaces, dry again by LENS_CLEAR_S. Going
  * under wipes it (under water the lens is all water, and nothing shows on it).
@@ -52,10 +65,16 @@ export class LensWater {
   private sinceSurfaced = Number.POSITIVE_INFINITY;
 
   private rainWet = 0;
+  private tubeWet = 0;
 
   /** The rain's wetness on the lens (rainLensStep), shown alongside the surfacing sheet's drops. */
   rain(wetness: number): void {
     this.rainWet = wetness;
+  }
+
+  /** The tube's spray on the lens (tubeLensStep), shown as the rain's drops are. */
+  tube(wetness: number): void {
+    this.tubeWet = wetness;
   }
 
   surfaced(): void {
@@ -73,8 +92,9 @@ export class LensWater {
 
   state(): LensWaterState {
     const surf = lensWaterAt(this.sinceSurfaced);
-    if (this.rainWet <= 0.01) return surf;
-    // Rain drops, with no sheet (front past the screen's foot) unless the surfacing sheet is still draining.
-    return { active: true, front: surf.active ? surf.front : 2, drops: Math.max(surf.drops, this.rainWet) };
+    const wet = Math.max(this.rainWet, this.tubeWet);
+    if (wet <= 0.01) return surf;
+    // Rain or spray drops, with no sheet (front past the screen's foot) unless the surfacing sheet is still draining.
+    return { active: true, front: surf.active ? surf.front : 2, drops: Math.max(surf.drops, wet) };
   }
 }
