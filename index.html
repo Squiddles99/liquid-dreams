@@ -11,7 +11,7 @@
       /* The loading cover (loading screens spec §1.1): inline so it paints before the game's code loads. */
       :root { --ld-sand: #e8dbc4; --ld-teal: #3f959b; --ld-orange: #f7931e; }
       html, body { background: var(--ld-sand); }
-      .ld-cover { position: fixed; inset: 0; z-index: 20; background: var(--ld-sand); overflow: hidden; pointer-events: none;
+      .ld-cover { position: fixed; inset: 0; z-index: 2147483000; background: var(--ld-sand); overflow: hidden; pointer-events: none;
         opacity: 1; transition: opacity 400ms ease-out; }
       .ld-cover:not(.is-in) { opacity: 0; }
       .ld-cover.is-out { opacity: 0; transition: opacity 1200ms cubic-bezier(0.33, 1, 0.68, 1); }

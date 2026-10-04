@@ -75,14 +75,20 @@ export class LoadingScreen {
     this.tick(0);
   }
 
-  /** Transitions: fades the cover in; resolves true once it is opaque, false if a cover is already up (refused). */
+  /**
+   * Transitions: fades the cover in; resolves true once it is opaque, false if a cover is already up (refused). A cover
+   * still dissolving is taken back over, fading in from where it is: its menu's keys were already let go, so a refusal
+   * then would close the menu into nothing.
+   */
   cover(opts: CoverOptions): Promise<boolean> {
-    if (this.phase !== 'gone') return Promise.resolve(false);
+    if (this.phase !== 'gone' && this.phase !== 'out') return Promise.resolve(false);
+    const fromOut = this.phase === 'out';
     this.setCalm(opts.calm);
     this.el.dataset.mode = 'cover';
     this.el.dataset.logo = opts.logo ?? 'hero';
     this.showLine(opts.line);
-    this.el.classList.remove('is-out', 'is-in');
+    this.el.classList.remove('is-out');
+    if (!fromOut) this.el.classList.remove('is-in');
     this.el.hidden = false;
     this.minHoldMs = opts.minHoldMs;
     this.onDissolve = opts.onDissolve ?? null;
@@ -92,8 +98,11 @@ export class LoadingScreen {
     this.phase = 'coming-in';
     this.comingInAt = this.now();
     this.setState('covering');
-    // Next frame, so the browser sees opacity 0 before it transitions to 1.
-    requestAnimationFrame(() => this.el.classList.add('is-in'));
+    if (!fromOut) {
+      // Style the unhidden cover at opacity 0 first, or the browser has nothing to transition from and it pops in.
+      void this.el.getBoundingClientRect();
+      this.el.classList.add('is-in');
+    }
     this.loop();
     return new Promise((resolve) => {
       this.comingIn = resolve;
