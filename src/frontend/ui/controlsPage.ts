@@ -1,5 +1,6 @@
 // src/frontend/ui/controlsPage.ts: the Controls page (Andrew 2026-10-04), over the pause menu or the select screen: the
 // title and the Controller / Keyboard tabs top-left, the tab's drawing with its callouts, and the remap list.
+import { buttonDown } from '../../input/padButton';
 import { ACTION_LABELS, type Bindings, BINDABLE_BUTTONS, currentBindings, keyLabel, setBindings } from '../../ride/bindings';
 import { type Callout, type PadFamily, controllerArt, keyboardArt } from '../controlsArt';
 import { type ControlsState, type ControlsTab, type Heard, heard, openControls, remapRows, stepControls } from '../controlsMenu';
@@ -118,7 +119,7 @@ export class ControlsPage {
     if (!this.state) { this.heardKey = null; return; }
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? [...navigator.getGamepads()].filter((g) => g?.connected) : [];
     const held = new Set<number>();
-    for (const g of pads) g!.buttons.forEach((btn, i) => { if (btn.pressed) held.add(i); });
+    for (const g of pads) g!.buttons.forEach((btn, i) => { if (buttonDown(btn)) held.add(i); });
     if (this.state.mode === 'listen') {
       let h: Heard | null = null;
       if (this.heardKey) h = this.heardKey === 'Escape' ? 'cancel' : this.state.tab === 'keys' ? { key: this.heardKey } : null;
@@ -156,7 +157,7 @@ export class ControlsPage {
     this.swallow = true;
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? [...navigator.getGamepads()] : [];
     this.padBefore = new Set();
-    for (const g of pads) g?.buttons.forEach((btn, i) => { if (btn.pressed) this.padBefore.add(i); });
+    for (const g of pads) g?.buttons.forEach((btn, i) => { if (buttonDown(btn)) this.padBefore.add(i); });
   }
 
   private apply(state: ControlsState, bindings: Bindings, sound: 'focus' | 'confirm' | 'back' | null): void {

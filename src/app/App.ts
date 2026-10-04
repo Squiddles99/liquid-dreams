@@ -1,3 +1,4 @@
+import { buttonDown } from '../input/padButton';
 import type { GangStaging } from '../frontend/staging';
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
@@ -1921,7 +1922,7 @@ export class App {
     // The menu while surfing: Esc or a pad's START opens it (the pad is watched every frame, so a START still held from
     // paddling out isn't a press).
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? [...navigator.getGamepads()] : [];
-    const padStart = this.padStart.poll(pads.map((g) => (g?.connected ? { index: g.index, buttons: g.buttons.map((b) => b.pressed) } : null)));
+    const padStart = this.padStart.poll(pads.map((g) => (g?.connected ? { index: g.index, buttons: g.buttons.map(buttonDown) } : null)));
     if (this.pauseMenu) {
       const pick = this.pauseMenu.update();
       if (pick) this.closePauseMenu(pick);

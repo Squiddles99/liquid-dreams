@@ -1,4 +1,5 @@
 // src/frontend/uiInput.ts
+import { buttonDown } from '../input/padButton';
 import { shouldIgnoreKeyTarget } from '../camera/Input';
 import type { FrontAction } from './frontEnd';
 
@@ -101,7 +102,7 @@ export class UiInput {
       live.add(g.index);
       let r = this.padRepeaters.get(g.index);
       if (!r) this.padRepeaters.set(g.index, (r = new Repeater()));
-      const snap: PadSnapshot = { id: g.id, buttons: g.buttons.map((b) => b.pressed), axes: [...g.axes] };
+      const snap: PadSnapshot = { id: g.id, buttons: g.buttons.map(buttonDown), axes: [...g.axes] };
       const got = r.update(padHeld(snap), nowMs);
       if (got.length) {
         this.device = deviceFamily(g.id);
