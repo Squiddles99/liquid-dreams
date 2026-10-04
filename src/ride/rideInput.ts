@@ -1,3 +1,4 @@
+import { buttonDown } from '../input/padButton';
 import { ARROW_FOR, type Bindings, currentBindings } from './bindings';
 import type { RideControls } from './ridePhysics';
 
@@ -19,7 +20,7 @@ export const STICK_DEADZONE = 0.15;
 export function readPad(): PadState | null {
   const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
   for (const p of pads) {
-    if (p && p.connected) return { axes: p.axes, pressed: p.buttons.map((b) => b.pressed), values: p.buttons.map((b) => b.value) };
+    if (p && p.connected) return { axes: p.axes, pressed: p.buttons.map(buttonDown), values: p.buttons.map((b) => b.value) };
   }
   return null;
 }

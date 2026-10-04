@@ -32,7 +32,8 @@ function loop() {
       const fresh = now.findIndex((v, k) => v && !prev[k]);
       const axis = p.axes.findIndex((a, k) => Math.abs(a) > 0.6 && !(Math.abs(prevAxes[k] ?? 0) > 0.6));
       if (fresh >= 0 || axis >= 0) {
-        result.presses[ASK[i]] = fresh >= 0 ? { button: fresh } : { axis, sign: Math.sign(p.axes[axis]) };
+        result.presses[ASK[i]] = fresh >= 0 ? { button: fresh, pressedFlag: p.buttons[fresh].pressed, value: +p.buttons[fresh].value.toFixed(2) } : { axis, sign: Math.sign(p.axes[axis]) };
+        result.pads = [...navigator.getGamepads()].filter((g) => g && g.connected).map((g) => g.index + ': ' + g.id + ' (' + (g.mapping || 'no mapping') + ')');
         i++;
         document.getElementById('ask').textContent = i < ASK.length ? ASK[i] : 'all done — you can close this window';
         window.probe(result);
