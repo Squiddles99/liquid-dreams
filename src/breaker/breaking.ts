@@ -39,6 +39,10 @@ export interface BreakParams {
   psiNudge: number;
   /** The random dial: each wave's ψ moves by up to ± this fraction (its seeded draw); 0 is pure physics. */
   randomDial: number;
+  /** The peel stretch (spec 2026-10-04, Andrew: "the wave is simply breaking too fast for the surfer to ride"): each part
+   * of the line breaks this much later after the part up the line than the reef alone says; 1 is physics. Baked into the
+   * reef field's onset record (a change re-bakes it). */
+  peel: number;
   /** The pile's churn (render only; the CPU model ignores it): lumps up to this fraction of the pile's height… */
   churnSize: number;
   /** …churning at this rate (× CHURN_RATE_PER_S, pileChurn.ts). */
@@ -62,6 +66,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   pileSurge: 0.3,
   psiNudge: 0,
   randomDial: 0,
+  peel: 1.7,
   churnSize: 0.2,
   churnSpeed: 1,
 };
@@ -115,6 +120,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.pileSurge = clampTo(p.pileSurge, 0, 0.6, d.pileSurge);
   p.psiNudge = clampTo(p.psiNudge, -0.5, 0.5, d.psiNudge);
   p.randomDial = clampTo(p.randomDial, 0, 0.15, d.randomDial);
+  p.peel = clampTo(p.peel, 1, 3, d.peel);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
@@ -256,10 +262,14 @@ export function onsetLevelHeight(k: number): number {
   return 1 / (ONSET_LEVEL_Q[k] * onsetGain(DEFAULT_BREAK_PARAMS));
 }
 /** Values per record sample: the running maximum; per level (time since onset, the throw's height ÷ the level's
- * deep-water height); then per level ψ₀ where that level broke (reefField.psiFromStep, plan 2026-10-02). */
-export const ONSET_RECORD_LENGTH = 1 + 3 * ONSET_LEVELS;
+ * deep-water height); then per level ψ₀ where that level broke (reefField.psiFromStep, plan 2026-10-02); then per level
+ * the peel stretch's delay (s, spec 2026-10-04 §1). The time since onset is the stretched one: negative while the section
+ * waits its turn. */
+export const ONSET_RECORD_LENGTH = 1 + 4 * ONSET_LEVELS;
 /** Offset of level 0's ψ₀ in a record sample. */
 export const ONSET_PSI_OFFSET = 1 + 2 * ONSET_LEVELS;
+/** Offset of level 0's peel delay in a record sample. */
+export const ONSET_DELAY_OFFSET = 1 + 3 * ONSET_LEVELS;
 
 /**
  * ρ per metre of wave height per unit amp/hminBreak: (1 + γδ)/γ, breakingRatio without its floor. The record leaves the
@@ -288,11 +298,21 @@ function onsetLevel(rec: ArrayLike<number>, offset: number, heightM: number, p: 
 }
 
 /** The time (s) since the section at a crest first broke, from the onset record there, for a wave of deep-water height
- * `heightM`: null if it hasn't broken. */
+ * `heightM`: null if it hasn't broken. The peel stretch's (spec 2026-10-04 §2): negative while the section, broken by the
+ * reef, waits its turn; just broken by the reef (toRun), it runs to −D, its turn D seconds off. */
 export function onsetTime(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
   const l = onsetLevel(rec, offset, heightM, p);
   if (!l) return null;
-  const lo = rec[offset + 1 + 2 * l.k], hi = l.toRun ? 0 : rec[offset + 3 + 2 * l.k];
+  const lo = rec[offset + 1 + 2 * l.k], hi = l.toRun ? -rec[offset + ONSET_DELAY_OFFSET + l.k] : rec[offset + 3 + 2 * l.k];
+  return lo + l.w * (hi - lo);
+}
+
+/** The peel stretch's delay (s) of the section at a crest (level k toward k + 1 as onsetTime reads; level k's own where
+ * toRun): 0 if it hasn't broken. */
+export function onsetDelay(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number {
+  const l = onsetLevel(rec, offset, heightM, p);
+  if (!l) return 0;
+  const lo = rec[offset + ONSET_DELAY_OFFSET + l.k], hi = l.toRun ? lo : rec[offset + ONSET_DELAY_OFFSET + l.k + 1];
   return lo + l.w * (hi - lo);
 }
 
@@ -401,15 +421,32 @@ export const TUBE_THROWN_PSI: readonly [number, number] = [0.02, 0.065];
 /** A plunging section breaks whole, and surges as its ψ says, once its ratio has passed breaking by this much (one that
  * just grazes it stays a partial break). */
 export const PLUNGE_FULL_RATIO = 1.05;
-export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, rSlurp = r, plunge = 0, thrown = 0): Lifecycle {
-  const own = stageCurves(r, p), pulled = slurp(rSlurp, p);
+/** A delayed section's ratio past 1 fades in over the landing from its turn, weighted in by its delay over this (s), so an
+ * undelayed section (and every section at peel 1) reads its ratio exactly as before (spec 2026-10-04 §3). */
+export const PEEL_RAMP_DELAY_S = 0.2;
+
+/**
+ * The ratio a crest stands at under the peel stretch (spec 2026-10-04 §3): a held section (broken by the reef, its stretched
+ * time since onset still negative) stands as the wave at r = 1, the moment it pitches; once its turn comes its ratio past 1
+ * fades in over the landing τ_land (no jump), weighted in by its delay. Undelayed (and at peel 1), the ratio as it is. The
+ * sheet's lifecycle and the ribbon's stations both read it, so the lip stands as the water under it does.
+ */
+export function peelRatio(r: number, tb: number | null | undefined, delay: number, land: number): number {
+  if (typeof tb !== 'number') return r;
+  if (tb < 0) return Math.min(r, 1);
+  return delay > 0 ? r - smoothstep(0, PEEL_RAMP_DELAY_S, delay) * (r - Math.min(r, 1 + (r - 1) * smoothstep(0, land, tb))) : r;
+}
+
+export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, rSlurp = r, plunge = 0, thrown = 0, delay = 0): Lifecycle {
+  const land = landingEstimate(H, p);
+  const waiting = typeof tb === 'number' && tb < 0, rE = peelRatio(r, tb, delay, land);
+  const own = stageCurves(rE, p), pulled = slurp(rSlurp, p);
   const c0 = { drain: Math.max(own.drain, pulled), collapse: own.collapse };
-  const steep = Math.max(steepening(r, p), pulled), stage = breakingStage(r, p);
+  const steep = Math.max(steepening(rE, p), pulled), stage = breakingStage(rE, p);
   if (tb === undefined) return { steep, stage, drain: c0.drain, collapse: c0.collapse, release: c0.collapse, ...NO_PILE };
-  const t = tb ?? (r >= 1 ? 0 : null);
+  const t = waiting ? null : tb ?? (r >= 1 ? 0 : null);
   if (t === null) return { steep, stage, drain: c0.drain, collapse: 0, release: 0, ...NO_PILE };
   const extent = Math.max(breakingStage(Math.max(r, rMax), p), plunge * smoothstep(1, PLUNGE_FULL_RATIO, Math.max(r, rMax)));
-  const land = landingEstimate(H, p);
   const span = settleSpan(H, p);
   const thrownBy = smoothstep(0, land, t) * extent;
   // A section that throws a tube holds it open TUBE_HOLD_S after the lip lands (Andrew, 2026-10-03, down the line), × how

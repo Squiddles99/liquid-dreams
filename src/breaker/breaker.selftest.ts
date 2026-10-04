@@ -4,7 +4,7 @@ import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams, onsetPsi } from './breaking';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams, onsetDelay, onsetPsi, onsetTime } from './breaking';
 import { type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import { SetWaves } from './SetWaves';
 import { type BreakOptions, breakOptions, sumWaves, toActiveWave } from './setWaveModel';
@@ -29,7 +29,7 @@ function readPass(n: number, body: (xz: any) => [any, any]) {
 }
 
 let shared: { field: ReturnType<typeof computeReefField> } | null = null;
-const getField = () => (shared ??= { field: computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 }) }).field;
+const getField = () => (shared ??= { field: computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, peel: DEFAULT_BREAK_PARAMS.peel }) }).field;
 
 registerSelfTest({
   name: 'breaker: GPU field sampling matches the CPU field (inside and far field, the breaking depth included)',
@@ -451,6 +451,36 @@ registerSelfTest({
       });
     }
     return { pass: worst < 1e-4, detail: `${points.length} points × 3 heights; worst |Δψ₀| ${worst.toExponential(2)} ${at}` };
+  },
+});
+
+registerSelfTest({
+  name: 'breaker: GPU onset time and delay match the CPU on the stretched record (held sections included)',
+  async run(renderer) {
+    const field = getField();
+    const sets = new SetWaves(uniform(0));
+    sets.setField(field);
+    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+    // Along the left (the line runs toward −z from the peak) and either side of it.
+    const points: [number, number][] = [];
+    for (let x = -10; x <= 60; x += 5) for (let z = -160; z <= 20; z += 10) points.push([x, z]);
+    let worst = 0, at = '', held = 0, flagMismatch = 0;
+    for (const h of [REF_BIGGEST.heightM, 1.6 * REF_BIGGEST.heightM]) {
+      const { pass, outAttr } = computeAt(points, 1, (xz) => [sets.onsetTimeAt(xz, float(h))]);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      points.forEach(([x, z], i) => {
+        const rec = sampleOnset(field, x, z);
+        if (!rec) return;
+        const tb = onsetTime(rec, 0, h, DEFAULT_BREAK_PARAMS), d = onsetDelay(rec, 0, h, DEFAULT_BREAK_PARAMS);
+        if ((tb !== null) !== (out[i * 4 + 2] > 0.5)) { flagMismatch++; return; }
+        if (tb === null) return;
+        if (tb < 0) held++;
+        const e = Math.max(Math.abs(out[i * 4] - tb), Math.abs(out[i * 4 + 1] - d));
+        if (e > worst) { worst = e; at = `h ${h.toFixed(2)} (${x}, ${z}) GPU tb ${out[i * 4].toFixed(4)} CPU ${tb.toFixed(4)}`; }
+      });
+    }
+    return { pass: worst < 1e-3 && flagMismatch === 0 && held > 0, detail: `worst |Δ| ${worst.toExponential(2)} s ${at}; broken-flag mismatches ${flagMismatch}; held samples ${held}` };
   },
 });
 
