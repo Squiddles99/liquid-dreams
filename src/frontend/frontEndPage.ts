@@ -247,7 +247,7 @@ export class FrontEnd {
         const on = k === visibleBeat;
         el.style.transition = on ? `opacity ${calm ? 200 : 280}ms cubic-bezier(0.33, 1, 0.68, 1)` : `opacity ${calm ? 200 : 180}ms cubic-bezier(0.32, 0, 0.67, 0)`;
         el.style.opacity = on ? '1' : '0';
-        el.style.pointerEvents = on ? '' : 'none';
+        el.classList.toggle('fe-beat-off', !on);
       }
       this.shownBeat = visibleBeat;
     }

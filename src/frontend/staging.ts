@@ -6,7 +6,7 @@ import type { PoseName } from '../surfer/poseNames';
 import type { PresetName } from '../surfer/presets';
 import type { OutfitChoice } from '../surfer/wardrobe';
 import { crewFor } from './beatCamera';
-import { type FrontState, boardOf, gearRows } from './frontEnd';
+import { type FrontState, boardOf } from './frontEnd';
 
 export interface RiderStaging {
   visible: boolean;
@@ -44,8 +44,8 @@ const RIDERS: PresetName[] = ['male', 'female', 'grommet'];
 /**
  * The crew for a front-end state. Conditions: all three facing the sea in walking clothes. Choose your rider: turned
  * (`turnT` through the turn) and spread, the focused rider grinning. The pick (`pickT`): half a pace forward, stoked,
- * waving. Grab your gear: only the chosen rider, holding the focused board, in the focused surf outfit on the Outfit
- * tab (walking clothes otherwise).
+ * waving. Grab your gear: only the chosen rider, holding the ticked board in the ticked surf outfit, whatever the focus
+ * is on (Andrew 2026-10-04: she stays in what's ticked until something else is).
  */
 export function stagingFor(s: FrontState, stand: LandSpot, opts: { turnT: number; pickT: number }): GangStaging {
   const toConditions = s.beat === 'conditions';
@@ -66,9 +66,8 @@ export function stagingFor(s: FrontState, stand: LandSpot, opts: { turnT: number
       expression = 'stoked';
       reach = Math.sin(opts.pickT * Math.PI);
     }
-    const rows = gearSettled && focused ? gearRows(s) : [];
-    const board = rows.length && s.gearTab === 'board' ? (rows[s.gearFocus] as BoardKind) : boardOf(s, n);
-    const outfit = rows.length && s.gearTab === 'outfit' ? (rows[s.gearFocus] as OutfitChoice) : 'walking';
+    const board = boardOf(s, n);
+    const outfit: OutfitChoice | 'walking' = gearSettled && focused ? (s.outfits[n] ?? 'season') : 'walking';
     // In Grab your gear only the chosen rider stays (hidden at the cut: once the move from Choose your rider lands).
     const visible = s.beat !== 'gear' || focused || (s.move !== null && s.move.from === 'rider');
     out[n] = { visible: gearSettled ? focused : visible, x, z, headingDeg: turn.headingDeg, heightNudgeM: turn.bobM, pose: 'selectStand', expression, reach, board, outfit };

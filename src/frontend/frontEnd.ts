@@ -227,6 +227,10 @@ export function tick(s: FrontState, dtS: number, ctx: Ctx): Out {
 
 /** Focus straight onto a row, rider, gear row (the mouse's hover) or gear tab (a click). A focus tick only when it moves. */
 export function focusTo(s: FrontState, target: { row: RowId } | { rider: PresetName } | { gear: number } | { tab: FrontState['gearTab'] }): { state: FrontState; events: FrontEvent[] } {
+  // Only on the beat the target belongs to, settled: a card of a beat that's gone (still under the mouse as it fades) mustn't
+  // pick a rider on Grab your gear (Andrew: "I go to the outfit tab and I become Grommet").
+  const beat = 'row' in target ? 'conditions' : 'rider' in target ? 'rider' : 'gear';
+  if (s.beat !== beat || s.move) return { state: s, events: [] };
   if ('tab' in target) {
     if (target.tab === s.gearTab) return { state: s, events: [] };
     const t = { ...s, gearTab: target.tab }, gearFocus = gearFocusFor(t);
