@@ -56,7 +56,8 @@ export class FrontEnd {
   private parts: { cond: ConditionsPanel; map: BreakMap; slide: SlidePanel; gear: GearPanel; legend: Legend; line: RiderLine; bottom: HTMLElement } | null = null;
   private shownBeat: string | null = null;
   /** Black over everything until the crew have loaded and the land is ready (no boards floating without riders). */
-  private veil: HTMLElement | null = null;
+  /** While the loading cover is up, key presses are read and dropped, so nothing changes under it (loading screens §2). */
+  inputHeld = false;
   /** The Settings overlay while it's open (Back + START), and its focused row. */
   private settingsPanel: SettingsPanel | null = null;
   private settingsFocus: SettingRow = 'textScale';
@@ -99,10 +100,6 @@ export class FrontEnd {
     const wrap = (...els: HTMLElement[]): HTMLElement => { const d = document.createElement('div'); d.append(...els); return d; };
     this.beatEls = { conditions: wrap(cond.el, map.el, beatHead('conditions')), rider: wrap(slide.el, beatHead('rider')), gear: wrap(gear.el, beatHead('gear')) };
     this.root.append(bottom, this.beatEls.conditions, this.beatEls.rider, this.beatEls.gear, line.el, legend.el);
-    this.veil = document.createElement('div');
-    this.veil.className = 'fe-veil';
-    Object.assign(this.veil.style, { position: 'absolute', inset: '-2px', background: '#05080a', opacity: '1', pointerEvents: 'none' });
-    this.root.appendChild(this.veil);
     this.parts = { cond, map, slide, gear, legend, line, bottom };
     this.input = new UiInput(window);
     this.sound.setFrontEndMusic(true);
@@ -116,7 +113,8 @@ export class FrontEnd {
 
   update(dtS: number): void {
     if (!this.root || !this.core || !this.parts || !this.input) return;
-    const now = performance.now(), { actions, device } = this.input.poll(now);
+    const now = performance.now(), polled = this.input.poll(now);
+    const { device } = polled, actions = this.inputHeld ? [] : polled.actions;
     if (actions.length) this.device = this.settings.glyphs === 'auto' ? device : this.settings.glyphs;
     for (const a of actions) {
       if (this.settingsPanel) this.settingsAct(a);
@@ -124,7 +122,6 @@ export class FrontEnd {
     }
     this.cue(this.core.update(dtS, now));
     this.render(now);
-    this.liftVeil();
     if (this.core.state.beat === 'out') this.close();
   }
 
@@ -135,7 +132,6 @@ export class FrontEnd {
     this.sound.setFrontEndMusic(false);
     this.root = this.core = this.input = this.parts = this.beatEls = null;
     this.settingsPanel = null;
-    this.veil = null;
     this.shownBeat = null;
   }
 
@@ -157,16 +153,6 @@ export class FrontEnd {
       }
     }
     if (c.settings) this.openSettings();
-  }
-
-  /** Lifts the load-in veil once the crew have loaded and the land is ready: a 400 ms fade (instant with calm menus). */
-  private liftVeil(): void {
-    const v = this.veil;
-    if (!v || v.style.opacity === '0') return;
-    if (!this.host.standSpot() || (this.host.crewReady && !this.host.crewReady())) return;
-    v.style.transition = this.settings.calmMenus ? 'none' : 'opacity 400ms cubic-bezier(0.33, 1, 0.68, 1)';
-    v.style.opacity = '0';
-    window.setTimeout(() => { v.remove(); if (this.veil === v) this.veil = null; }, 450);
   }
 
   /** The Settings overlay over everything (spec §11). */
