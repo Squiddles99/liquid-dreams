@@ -1,12 +1,66 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-ld-loading="boot">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Liquid Dreams</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="preload" as="image" href="/loading/logo-emblem.svg" />
+    <link rel="preload" as="image" href="/loading/photo-1920.webp" imagesrcset="/loading/photo-1920.webp 1920w, /loading/photo-full.webp 3840w" imagesizes="100vw" />
+    <style>
+      /* The loading cover (loading screens spec §1.1): inline so it paints before the game's code loads. */
+      :root { --ld-sand: #e8dbc4; --ld-teal: #3f959b; --ld-orange: #f7931e; }
+      html, body { background: var(--ld-sand); }
+      .ld-cover { position: fixed; inset: 0; z-index: 20; background: var(--ld-sand); overflow: hidden; pointer-events: none;
+        opacity: 1; transition: opacity 400ms ease-out; }
+      .ld-cover:not(.is-in) { opacity: 0; }
+      .ld-cover.is-out { opacity: 0; transition: opacity 1200ms cubic-bezier(0.33, 1, 0.68, 1); }
+      .ld-cover.is-out.is-calm { transition-duration: 300ms; }
+      .ld-cover[hidden] { display: none; }
+      .ld-cover-bg { position: absolute; left: 0; right: 0; top: 0; height: 55vh; opacity: 0; transition: opacity 300ms ease-out; }
+      .ld-cover-bg img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 62%; display: block; }
+      .ld-logo { position: absolute; left: 50%; top: 55vh; transform: translate(-50%, -50%) scale(1); transform-origin: 50% 40%;
+        display: flex; flex-direction: column; align-items: center; opacity: 0; transition: opacity 300ms ease-out, transform 1200ms cubic-bezier(0.33, 1, 0.68, 1); }
+      .ld-cover.is-out:not(.is-calm) .ld-logo { transform: translate(-50%, -50%) scale(1.03); }
+      .ld-emblem { width: min(40vh, 48vw); height: auto; display: block; }
+      .ld-wordmark { width: min(34vh, 41vw); height: auto; display: block; margin-top: -3vh; }
+      .ld-cover.is-ready .ld-cover-bg, .ld-cover.is-ready .ld-logo { opacity: 1; }
+      .ld-cover[data-logo="corner"] .ld-logo { left: auto; right: 3vw; top: auto; bottom: 3vh; transform: none; }
+      .ld-cover[data-logo="corner"] .ld-emblem { width: 9vh; }
+      .ld-cover[data-logo="corner"] .ld-wordmark { width: 8vh; }
+      .ld-progress { position: absolute; left: 50%; bottom: 5.5vh; transform: translateX(-50%); width: min(37vh, 60vw);
+        display: flex; flex-direction: column; align-items: center; gap: 1.3vh; }
+      .ld-bar { width: 100%; height: max(3px, 0.37vh); border-radius: 2px; background: rgba(63, 149, 155, 0.18); overflow: hidden; }
+      .ld-bar-fill { height: 100%; width: 0%; background: var(--ld-teal); }
+      .ld-line { color: var(--ld-teal); font: 500 max(14px, 2vh) 'Barlow', system-ui, sans-serif; letter-spacing: 0.02em; white-space: nowrap; }
+      .ld-cover[data-mode="cover"] .ld-bar { display: none; }
+      .ld-cover[data-mode="cover"] .ld-line { animation: ld-pulse 1.6s ease-in-out infinite alternate; }
+      .ld-cover.is-calm .ld-line { animation: none; }
+      @keyframes ld-pulse { from { opacity: 1; } to { opacity: 0.55; } }
+    </style>
   </head>
   <body>
+    <div id="ld-cover" class="ld-cover is-in" data-mode="boot" data-logo="hero" aria-label="Loading Liquid Dreams" role="status">
+      <div class="ld-cover-bg">
+        <img src="/loading/photo-1920.webp" srcset="/loading/photo-1920.webp 1920w, /loading/photo-full.webp 3840w" sizes="100vw" alt="" />
+      </div>
+      <div class="ld-logo">
+        <img class="ld-emblem" src="/loading/logo-emblem.svg" alt="" />
+        <img class="ld-wordmark" src="/loading/logo-wordmark.svg" alt="Liquid Dreams" />
+      </div>
+      <div class="ld-progress">
+        <div class="ld-bar"><div class="ld-bar-fill"></div></div>
+        <div class="ld-line">Waking the GPU…</div>
+      </div>
+    </div>
+    <script>
+      // Show the art only once it's decoded, so the sand never shows a half-drawn logo (it fades in over 300 ms).
+      (function () {
+        var cover = document.getElementById('ld-cover');
+        var imgs = Array.prototype.slice.call(cover.querySelectorAll('img'));
+        Promise.all(imgs.map(function (i) { return i.decode().catch(function () {}); })).then(function () { cover.classList.add('is-ready'); });
+      })();
+    </script>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

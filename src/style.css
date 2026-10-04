@@ -1,4 +1,4 @@
-html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: system-ui, sans-serif; }
+html, body { margin: 0; height: 100%; background: var(--ld-sand, #e8dbc4); overflow: hidden; font-family: system-ui, sans-serif; }
 #app { width: 100vw; height: 100vh; }
 #app canvas { display: block; }
 /* The dev panel (Tweakpane's default container) scrolls inside the window instead of running off the bottom. */
