@@ -8,6 +8,7 @@ import { SETTING_ROWS, type SettingRow, stepSetting } from './settingsView';
 import { SettingsPanel } from './ui/settingsPanel';
 import { gearView } from './gearView';
 import { BreakMap } from './ui/breakMap';
+import { ControlsPage } from './ui/controlsPage';
 import { ConditionsPanel } from './ui/conditionsPanel';
 import { GearPanel } from './ui/gearPanel';
 import { applyLayout, layoutFor, mountFrontEndRoot } from './ui/layout';
@@ -61,6 +62,8 @@ export class FrontEnd {
   /** The Settings overlay while it's open (Back + START), and its focused row. */
   private settingsPanel: SettingsPanel | null = null;
   private settingsFocus: SettingRow = 'textScale';
+  /** The Controls page (View or C, on any beat): the drawn pad and keys, and remapping. */
+  private controlsPage: ControlsPage | null = null;
   private size = { w: window.innerWidth, h: window.innerHeight };
   private readonly today = new Date();
 
@@ -77,7 +80,20 @@ export class FrontEnd {
 
   /** One action, as if pressed (dev checks). */
   act(a: FrontAction): void {
-    if (this.core) this.cue(this.core.act(a, performance.now()));
+    if (this.core) this.route(a, performance.now());
+  }
+
+  /** The Controls page while it's open (the self-tests read it). */
+  get controls(): ControlsPage | null {
+    return this.controlsPage?.isOpen ? this.controlsPage : null;
+  }
+
+  /** An action to whatever has the input: the Controls page, Settings, or the beats. */
+  private route(a: FrontAction, now: number): void {
+    if (this.controlsPage?.isOpen) {
+      if (this.controlsPage.act(a) === 'closed') this.root?.classList.remove('is-controls-open');
+    } else if (this.settingsPanel) this.settingsAct(a);
+    else this.cue(this.core!.act(a, now));
   }
 
   open(): void {
@@ -87,6 +103,7 @@ export class FrontEnd {
     this.core = new FrontEndCore(this.host, saved, { today: this.today, seed: Date.now() % 100000, calm: this.settings.calmMenus, storage: this.storage });
     this.root = mountFrontEndRoot(this.parent);
     const act = (a: Parameters<FrontEndCore['act']>[0]): void => this.cue(this.core!.act(a, performance.now()));
+    const routed = (a: FrontAction): void => this.route(a, performance.now());
     const cond = new ConditionsPanel((p) => (p.kind === 'focus' ? this.cue(this.core!.pointer({ row: p.row }, performance.now())) : act(p.action)));
     const slide = new SlidePanel((p) => (p.kind === 'rider' ? this.cue(this.core!.pointer({ rider: p.rider }, performance.now())) : act(p.action)));
     const gear = new GearPanel((p) => {
@@ -94,7 +111,7 @@ export class FrontEnd {
       else if (p.kind === 'tab') this.cue(this.core!.pointer({ tab: p.tab }, performance.now()));
       else act(p.action);
     });
-    const map = new BreakMap(), legend = new Legend((a) => act(a)), line = new RiderLine(), bottom = document.createElement('div');
+    const map = new BreakMap(), legend = new Legend((a) => routed(a)), line = new RiderLine(), bottom = document.createElement('div');
     bottom.className = 'fe-scrim-bottom';
     void map.load().then(() => { const s = this.host.standSpot(); if (s) map.setLookout(s); map.setConditions(this.core!.state.setup, true); });
     const wrap = (...els: HTMLElement[]): HTMLElement => { const d = document.createElement('div'); d.append(...els); return d; };
@@ -116,10 +133,9 @@ export class FrontEnd {
     const now = performance.now(), polled = this.input.poll(now);
     const { device } = polled, actions = this.inputHeld ? [] : polled.actions;
     if (actions.length) this.device = this.settings.glyphs === 'auto' ? device : this.settings.glyphs;
-    for (const a of actions) {
-      if (this.settingsPanel) this.settingsAct(a);
-      else this.cue(this.core.act(a, now));
-    }
+    this.controlsPage?.setDevice(this.device);
+    this.controlsPage?.update();
+    for (const a of actions) this.route(a, now);
     this.cue(this.core.update(dtS, now));
     this.render(now);
     if (this.core.state.beat === 'out') this.close();
@@ -127,6 +143,8 @@ export class FrontEnd {
 
   close(): void {
     this.input?.dispose();
+    this.controlsPage?.dispose();
+    this.controlsPage = null;
     this.root?.remove();
     this.host.stage(null, null);
     this.sound.setFrontEndMusic(false);
@@ -153,6 +171,20 @@ export class FrontEnd {
       }
     }
     if (c.settings) this.openSettings();
+    if (c.controls) this.openControls();
+  }
+
+  /** The Controls page over everything, on the tab of the device last used. */
+  private openControls(): void {
+    if (!this.root || this.settingsPanel) return;
+    if (!this.controlsPage) {
+      this.controlsPage = new ControlsPage((s) => this.sounds?.play(s, { durS: 0.2 }));
+      this.root.appendChild(this.controlsPage.el);
+    }
+    this.sounds?.play('confirm', { durS: 0.2 });
+    this.controlsPage.open(this.device);
+    this.root.classList.add('is-controls-open');
+    if (this.parts) this.root.appendChild(this.parts.legend.el); // the legend stays above the page's scrim
   }
 
   /** The Settings overlay over everything (spec §11). */
@@ -225,8 +257,13 @@ export class FrontEnd {
     p.slide.render(s, calm);
     if (s.beat === 'gear') p.gear.render(gearView(s, this.today, 1), this.device, calm);
     // The legend follows the beat on screen: mid-swing (no beat's UI showing) it's empty, then the new beat's.
-    const legend = this.settingsPanel ? [{ action: 'back' as const, text: 'Back' }] : visibleBeat ? legendFor({ ...s, beat: visibleBeat }) : [];
-    p.legend.set(legend, this.device);
+    if (this.controlsPage?.isOpen) {
+      const l = this.controlsPage.legend(this.device);
+      p.legend.set(l.entries, l.device);
+    } else {
+      const legend = this.settingsPanel ? [{ action: 'back' as const, text: 'Back' }] : visibleBeat ? legendFor({ ...s, beat: visibleBeat }) : [];
+      p.legend.set(legend, this.device);
+    }
     p.line.update(now);
     // The mockup's spots: over the sea left of the panel in Grab your gear (ending 40 px short of its column, at any text
     // size), over the water in Conditions.

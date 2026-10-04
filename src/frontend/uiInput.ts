@@ -8,7 +8,7 @@ export type Device = 'keyboard' | 'xbox' | 'playstation';
 export const KEY_ACTIONS: Record<string, FrontAction> = {
   ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
   Enter: 'confirm', NumpadEnter: 'confirm', Space: 'confirm', Escape: 'back', Backspace: 'back',
-  KeyR: 'random', KeyF: 'details', KeyQ: 'tabMinus', KeyE: 'tabPlus', Tab: 'toggle', KeyP: 'start',
+  KeyR: 'random', KeyF: 'details', KeyQ: 'tabMinus', KeyE: 'tabPlus', Tab: 'toggle', KeyP: 'start', KeyC: 'controls',
 };
 
 export function deviceFamily(padId: string): 'xbox' | 'playstation' {
@@ -24,7 +24,7 @@ export interface PadSnapshot {
 /** The W3C standard mapping's buttons → actions. */
 const PAD_BUTTONS: [number, FrontAction][] = [
   [0, 'confirm'], [1, 'back'], [2, 'details'], [3, 'random'], [4, 'tabMinus'], [5, 'tabPlus'], [6, 'fineMinus'], [7, 'finePlus'],
-  [9, 'start'], [11, 'toggle'], [12, 'up'], [13, 'down'], [14, 'left'], [15, 'right'],
+  [8, 'controls'], [9, 'start'], [11, 'toggle'], [12, 'up'], [13, 'down'], [14, 'left'], [15, 'right'],
 ];
 const STICK = 0.5;
 

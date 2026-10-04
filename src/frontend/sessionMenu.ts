@@ -1,10 +1,12 @@
-// src/frontend/sessionMenu.ts: the menu while surfing (Esc or a pad's START): keep surfing, or back to the dune to choose again.
+// src/frontend/sessionMenu.ts: the menu while surfing (Esc or a pad's START): keep surfing, the controls, or back to the
+// dune to choose again.
 import type { FrontAction } from './frontEnd';
 
 export type MenuPick = 'resume' | 'dune';
 
-export const MENU_ITEMS: readonly { id: MenuPick; label: string }[] = [
+export const MENU_ITEMS: readonly { id: MenuPick | 'controls'; label: string }[] = [
   { id: 'resume', label: 'Keep surfing' },
+  { id: 'controls', label: 'Controls' },
   { id: 'dune', label: 'Back to the dune' },
 ];
 
@@ -12,13 +14,20 @@ export interface MenuState {
   focus: number;
 }
 
-/** One action: up and down move the focus (round), A takes it, B or START keeps surfing. */
-export function stepMenu(s: MenuState, a: FrontAction): { state: MenuState; pick: MenuPick | null; moved: boolean } {
-  const n = MENU_ITEMS.length;
-  if (a === 'up' || a === 'down') return { state: { focus: (s.focus + (a === 'down' ? 1 : -1) + n) % n }, pick: null, moved: true };
-  if (a === 'confirm') return { state: s, pick: MENU_ITEMS[s.focus].id, moved: false };
-  if (a === 'back' || a === 'start') return { state: s, pick: 'resume', moved: false };
-  return { state: s, pick: null, moved: false };
+/**
+ * One action on the rows: up and down move the focus (round), A takes it (Controls opens its page, as View or C do from
+ * any row), B or START keeps surfing.
+ */
+export function stepMenu(s: MenuState, a: FrontAction): { state: MenuState; pick: MenuPick | null; moved: boolean; controls: boolean } {
+  const n = MENU_ITEMS.length, none = { state: s, pick: null, moved: false, controls: false };
+  if (a === 'up' || a === 'down') return { ...none, state: { focus: (s.focus + (a === 'down' ? 1 : -1) + n) % n }, moved: true };
+  if (a === 'controls') return { ...none, controls: true };
+  if (a === 'confirm') {
+    const id = MENU_ITEMS[s.focus].id;
+    return id === 'controls' ? { ...none, controls: true } : { ...none, pick: id };
+  }
+  if (a === 'back' || a === 'start') return { ...none, pick: 'resume' };
+  return none;
 }
 
 /**

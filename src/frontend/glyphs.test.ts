@@ -35,16 +35,16 @@ describe('glyphs (spec §5.5, §10)', () => {
   });
 });
 
-describe('the legend (spec §4, §5.5): Y, X, A, B, START, absent actions left out', () => {
+describe('the legend (spec §4, §5.5): View, Y, X, A, B, START, absent actions left out; Controls on every beat', () => {
   it('Conditions: Roll the dice, Swell details, Done, Back', () => {
-    expect(legendFor(front()).map((e) => [e.action, e.text])).toEqual([['random', 'Roll the dice'], ['details', 'Swell details'], ['confirm', 'Done'], ['back', 'Back']]);
+    expect(legendFor(front()).map((e) => [e.action, e.text])).toEqual([['controls', 'Controls'], ['random', 'Roll the dice'], ['details', 'Swell details'], ['confirm', 'Done'], ['back', 'Back']]);
   });
   it('Choose your rider: the confirm carries the name', () => {
-    expect(legendFor(front({ beat: 'rider', rider: 'male' })).map((e) => e.text)).toEqual(['Ride as T-Bone', 'Back']);
+    expect(legendFor(front({ beat: 'rider', rider: 'male' })).map((e) => e.text)).toEqual(['Controls', 'Ride as T-Bone', 'Back']);
   });
   it('Grab your gear: Choose, Back, and Paddle out in sun orange', () => {
     const l = legendFor(front({ beat: 'gear' }));
-    expect(l.map((e) => e.text)).toEqual(['Choose', 'Back', 'Paddle out']);
-    expect(l[2]).toMatchObject({ action: 'start', accent: true });
+    expect(l.map((e) => e.text)).toEqual(['Controls', 'Choose', 'Back', 'Paddle out']);
+    expect(l[3]).toMatchObject({ action: 'start', accent: true });
   });
 });

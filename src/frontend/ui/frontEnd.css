@@ -66,3 +66,27 @@
 .fe-root.is-calm .fe-row, .fe-root.is-calm .fe-arrow { transition: none; }
 /* Settings open: only the overlay and the legend show; the beat's UI underneath is hidden, not seen through. */
 .fe-root.is-settings > :not(.fe-settings):not(.fe-legend) { visibility: hidden; }
+
+/* The Controls page (Andrew 2026-10-04), over the pause menu or the select screen: a title and the tabs top-left; the
+   tab's drawing with its callouts, or the remap list. */
+.fe-pause-scrim { position: absolute; inset: -2px; background: rgba(7, 13, 17, 0.62); pointer-events: auto; }
+.fe-pause.is-controls .fe-pause-scrim { background: transparent; }
+.fe-pause.is-controls .fe-pause-rows { display: none; }
+.fe-root.is-controls-open > :not(.fe-controls):not(.fe-legend) { visibility: hidden; }
+.fe-controls { position: absolute; inset: 0; }
+.fe-controls-scrim { position: absolute; inset: -2px; background: rgba(7, 13, 17, 0.84); pointer-events: auto; }
+.fe-controls-head { position: absolute; left: var(--fe-safe-x); top: 96px; }
+.fe-controls-head .fe-title { margin-bottom: 26px; }
+.fe-controls[data-mode="view"] .fe-remap { display: none; }
+.fe-controls:not([data-mode="view"]) .fe-art { display: none; }
+.fe-art { position: absolute; left: calc(50% - 750px); top: 330px; width: 1500px; height: 640px; }
+.fe-art > svg { position: absolute; left: 0; top: 0; }
+.fe-callout { position: absolute; display: flex; flex-direction: column; gap: 7px; white-space: nowrap; }
+.fe-callout-text { font: 600 calc(32px * var(--fe-text)) / 1 'Barlow Semi Condensed', sans-serif; color: var(--fe-cream); text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
+.fe-callout-sub { font: 600 calc(19px * var(--fe-text)) / 1 'Barlow Semi Condensed', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fe-sun-hi); }
+.fe-remap { position: absolute; left: var(--fe-safe-x); top: 300px; width: calc(760px * (0.6 + 0.4 * var(--fe-text))); }
+.fe-remap-bound { display: inline-flex; align-items: center; }
+.fe-remap-note { margin-top: 24px; min-height: 1.2em; padding-left: 18px; color: var(--fe-sun-hi); }
+.fe-remap-listen { color: var(--fe-teal); font-weight: 600; animation: fe-listen 0.9s ease-in-out infinite alternate; }
+.fe-root.is-calm .fe-remap-listen { animation: none; }
+@keyframes fe-listen { from { opacity: 1; } to { opacity: 0.45; } }

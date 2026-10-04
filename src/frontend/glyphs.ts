@@ -1,8 +1,8 @@
 // src/frontend/glyphs.ts
 import type { Device } from './uiInput';
 
-export type LegendAction = 'random' | 'details' | 'confirm' | 'back' | 'start';
-type GlyphAction = LegendAction | 'tabMinus' | 'tabPlus' | 'toggle' | 'fineMinus' | 'finePlus';
+export type LegendAction = 'controls' | 'random' | 'details' | 'confirm' | 'back' | 'start' | 'tabPlus';
+type GlyphAction = LegendAction | 'tabMinus' | 'toggle' | 'fineMinus' | 'finePlus';
 
 const CREAM = '#f7ecd2', DISC = '#1a2226';
 const svg = (w: number, body: string): string => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="40" viewBox="0 0 ${w} 40" aria-hidden="true">${body}</svg>`;
@@ -16,7 +16,7 @@ const cap = (ch: string): string => {
   const w = Math.max(40, 18 + ch.length * 12);
   return svg(w, `<rect x="1" y="2" width="${w - 2}" height="36" rx="3" fill="${DISC}" stroke="${CREAM}" stroke-width="2"/><rect x="1" y="32" width="${w - 2}" height="6" rx="2" fill="${CREAM}" opacity="0.25"/><text x="${w / 2}" y="26" text-anchor="middle" font-family="Barlow Semi Condensed" font-weight="700" font-size="18" fill="${CREAM}">${ch}</text>`);
 };
-const PS_SHAPE: Record<'cross' | 'circle' | 'square' | 'triangle', string> = {
+export const PS_SHAPE: Record<'cross' | 'circle' | 'square' | 'triangle', string> = {
   cross: `<g data-shape="cross" stroke="#7fb0e8" stroke-width="3" stroke-linecap="round"><path d="M13 13 L27 27 M27 13 L13 27"/></g>`,
   circle: `<g data-shape="circle"><circle cx="20" cy="20" r="8" fill="none" stroke="#e86b6b" stroke-width="3"/></g>`,
   square: `<g data-shape="square"><rect x="12.5" y="12.5" width="15" height="15" fill="none" stroke="#d68fc8" stroke-width="3"/></g>`,
@@ -29,6 +29,7 @@ const XBOX: Record<GlyphAction, { svg: string; label: string }> = {
   details: { svg: disc(letter('X', '#3a7fd5')), label: 'X' },
   random: { svg: disc(letter('Y', '#e8b52a')), label: 'Y' },
   start: { svg: pill('START', 76), label: 'START' },
+  controls: { svg: pill('VIEW', 70), label: 'View' },
   tabMinus: { svg: pill('LB'), label: 'LB' }, tabPlus: { svg: pill('RB'), label: 'RB' },
   fineMinus: { svg: pill('LT'), label: 'LT' }, finePlus: { svg: pill('RT'), label: 'RT' },
   toggle: { svg: pill('RS'), label: 'RS' },
@@ -39,15 +40,28 @@ const PLAYSTATION: Record<GlyphAction, { svg: string; label: string }> = {
   details: { svg: disc(PS_SHAPE.square), label: 'Square' },
   random: { svg: disc(PS_SHAPE.triangle), label: 'Triangle' },
   start: { svg: pill('OPTIONS', 92), label: 'Options' },
+  controls: { svg: pill('CREATE', 84), label: 'Create' },
   tabMinus: { svg: pill('L1'), label: 'L1' }, tabPlus: { svg: pill('R1'), label: 'R1' },
   fineMinus: { svg: pill('L2'), label: 'L2' }, finePlus: { svg: pill('R2'), label: 'R2' },
   toggle: { svg: pill('R3'), label: 'R3' },
 };
-const KEYS: Record<GlyphAction, string> = { confirm: 'Enter', back: 'Esc', random: 'R', details: 'F', start: 'P', tabMinus: 'Q', tabPlus: 'E', toggle: 'Tab', fineMinus: '−', finePlus: '+' };
+const KEYS: Record<GlyphAction, string> = { confirm: 'Enter', back: 'Esc', random: 'R', details: 'F', start: 'P', controls: 'C', tabMinus: 'Q', tabPlus: 'E', toggle: 'Tab', fineMinus: '−', finePlus: '+' };
 
 /** Our own glyph for an action on a device (spec §5.5: no platform artwork beyond the face letters and shapes). */
 export function glyphFor(device: Device, action: GlyphAction): { svg: string; label: string } {
   if (device === 'xbox') return XBOX[action];
   if (device === 'playstation') return PLAYSTATION[action];
   return { svg: cap(KEYS[action]), label: KEYS[action] };
+}
+
+/** A key cap glyph for any key's name (the Controls page's remap rows). */
+export function keyCapGlyph(label: string): string {
+  return cap(label);
+}
+
+/** A pad button's glyph by its standard-mapping index (face buttons, bumpers, triggers). */
+export function buttonGlyph(button: number, family: 'xbox' | 'playstation'): string {
+  const action: GlyphAction[] = ['confirm', 'back', 'details', 'random', 'tabMinus', 'tabPlus', 'fineMinus', 'finePlus'];
+  const a = action[button];
+  return a ? (family === 'playstation' ? PLAYSTATION : XBOX)[a].svg : cap(`#${button}`);
 }

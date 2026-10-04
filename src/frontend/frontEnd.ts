@@ -12,7 +12,7 @@ export type GearTab = 'board' | 'outfit' | 'stance';
 /** Grab your gear's tabs, in order (LB / RB step through them, round). */
 export const GEAR_TABS: readonly GearTab[] = ['board', 'outfit', 'stance'];
 export const STANCES: readonly Stance[] = ['regular', 'goofy'];
-export type FrontAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'random' | 'details' | 'fineMinus' | 'finePlus' | 'tabMinus' | 'tabPlus' | 'toggle' | 'start' | 'settings';
+export type FrontAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'random' | 'details' | 'fineMinus' | 'finePlus' | 'tabMinus' | 'tabPlus' | 'toggle' | 'start' | 'settings' | 'controls';
 
 export const BEAT_MOVE_S = 1.6;
 export const CALM_MOVE_S = 0.2;
@@ -51,7 +51,8 @@ export type FrontEvent =
   | { kind: 'chosen' }
   | { kind: 'paddleOut'; choice: SessionChoice }
   | { kind: 'back' }
-  | { kind: 'settings' };
+  | { kind: 'settings' }
+  | { kind: 'controls' };
 
 export interface SessionChoice {
   setup: SessionSetup;
@@ -190,6 +191,7 @@ function stepGear(s: FrontState, a: FrontAction, ctx: Ctx): Out {
 export function step(s: FrontState, a: FrontAction, ctx: Ctx): Out {
   if (s.beat === 'out') return { state: s, events: [] };
   if (a === 'settings') return { state: s, events: [{ kind: 'settings' }] };
+  if (a === 'controls') return { state: s, events: [{ kind: 'controls' }] };
   if (a === 'start') {
     const state = { ...s, beat: 'out' as const, move: null, buffer: [] };
     return { state, events: [{ kind: 'paddleOut', choice: choiceOf(state) }] };
