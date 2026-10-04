@@ -118,3 +118,44 @@ registerSelfTest({
     return { pass: el.hidden && !screen.blocking, detail: `hidden ${el.hidden}, blocking ${screen.blocking}` };
   },
 });
+
+registerSelfTest({
+  name: 'loading: a transition asked for while the last cover is still dissolving takes it back over (never refused into nothing)',
+  async run() {
+    const { el, t, screen } = fixture();
+    for (const s of STAGES) screen.stageDone(s.id);
+    smooth(screen, t, 12);
+    t.now += 700;
+    screen.tick(16);
+    const bad: string[] = [];
+    if (screen.blocking) bad.push('still blocking past halfway out');
+    const again = screen.cover({ line: 'Paddling out…', minHoldMs: 1500, calm: false });
+    t.now += 400;
+    screen.tick(16);
+    if ((await again) !== true) bad.push('refused while dissolving');
+    if (el.classList.contains('is-out') || el.hidden) bad.push(`class ${el.className}, hidden ${el.hidden}`);
+    if (el.dataset.mode !== 'cover') bad.push(`mode ${el.dataset.mode}`);
+    screen.remove();
+    return { pass: bad.length === 0, detail: bad.join('; ') || 'taken back over mid-dissolve' };
+  },
+});
+
+registerSelfTest({
+  name: 'loading: a transition cover fades in (no pop) and sits above every piece of game UI (perf graphs, dev panel, ride hints)',
+  async run() {
+    const el = document.getElementById('ld-cover');
+    if (!el) return { pass: false, detail: 'no #ld-cover in the page' };
+    const screen = LoadingScreen.adopt(document)!;
+    screen.remove();
+    const bad: string[] = [];
+    const z = Number(getComputedStyle(el).zIndex);
+    if (!(z > 10000)) bad.push(`z-index ${getComputedStyle(el).zIndex} (the perf overlay is 10000)`);
+    const coming = screen.cover({ line: 'Paddling out…', minHoldMs: 0, calm: false });
+    await new Promise((r) => setTimeout(r, 150));
+    const mid = parseFloat(getComputedStyle(el).opacity);
+    if (!(mid > 0.05 && mid < 0.95)) bad.push(`opacity ${mid.toFixed(2)} 150 ms in (should be part-way through 400 ms)`);
+    await coming;
+    screen.remove();
+    return { pass: bad.length === 0, detail: bad.join('; ') || `z ${z}, opacity ${mid.toFixed(2)} at 150 ms` };
+  },
+});

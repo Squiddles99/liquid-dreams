@@ -6,5 +6,5 @@ export function frontEndWanted(search: string, hash: string): boolean {
   return !/^#(m|moment|ref)=/.test(hash);
 }
 
-/** Paddle out (spec §3): the UI leaves, the screen fades to black, the session is set up, it fades back in. */
-export const PADDLE_OUT_MS = { uiOut: 180, fadeOut: 600, fadeIn: 600 } as const;
+/** Paddle out and Back to the dune (loading screens §4): the UI leaves, the cover comes in, holds at least this long, dissolves. */
+export const PADDLE_OUT_MS = { uiOut: 180, minHold: 1500, minHoldCalm: 600 } as const;

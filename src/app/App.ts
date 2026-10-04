@@ -993,7 +993,7 @@ export class App {
         this.panel.refresh();
       },
       stage: (staging, pose) => this.stageFrontEnd(staging, pose),
-      paddleOut: (choice) => this.paddleOut(choice),
+      paddleOut: (choice) => void this.paddleOut(choice),
       crewReady: () => this.gang.settled,
     };
   }
@@ -1104,33 +1104,50 @@ export class App {
     if (pick === 'resume') {
       this.setPaused(this.pausedBeforeMenu);
       this.input.suspended = false;
-    } else this.backToDune();
+    } else void this.backToDune();
   }
 
-  /** Back to the dune (Andrew, Gate B): fade to black, the front end opens on the crew again, fade back in. */
-  backToDune(): void {
-    const fade = document.createElement('div');
-    Object.assign(fade.style, { position: 'fixed', inset: '0', background: '#000', opacity: '0', zIndex: '6', pointerEvents: 'none', transition: `opacity ${PADDLE_OUT_MS.fadeOut}ms ease-in` });
-    this.container.appendChild(fade);
-    window.setTimeout(() => { fade.style.opacity = '1'; }, 20);
-    window.setTimeout(() => {
+  /**
+   * Covers a transition (loading screens §4): the cover comes in, `work` runs under it with the sim held still, and it
+   * dissolves once the frames run smooth and it has held long enough; the sim then runs (or stays paused) as `work`
+   * left it. Without a cover (none adopted), the work just runs. A second transition while one is covered is refused.
+   */
+  private async underCover(line: string, delayMs: number, work: () => void): Promise<void> {
+    const cover = this.loadingScreen;
+    if (!cover) {
+      work();
+      return;
+    }
+    await new Promise((r) => window.setTimeout(r, delayMs));
+    const calm = this.calmMenus();
+    let resume = false;
+    let dissolved!: () => void;
+    const started = new Promise<void>((r) => { dissolved = r; });
+    const ok = await cover.cover({
+      line, calm, minHoldMs: calm ? PADDLE_OUT_MS.minHoldCalm : PADDLE_OUT_MS.minHold,
+      onDissolve: () => { this.setPaused(resume); dissolved(); },
+    });
+    if (!ok) return;
+    work();
+    resume = this.clock.paused;
+    this.setPaused(true);
+    cover.release();
+    await started;
+  }
+
+  /** Back to the dune (Andrew, Gate B): under the cover, the ride stops and the front end opens on the crew again. */
+  backToDune(): Promise<void> {
+    return this.underCover('Walking back up the dune…', 0, () => {
       this.setPaused(false);
       this.chaseAfterPaddle = false;
       this.stopRide(false);
       this.openFrontEnd();
-      fade.style.transition = `opacity ${PADDLE_OUT_MS.fadeIn}ms ease-out`;
-      fade.style.opacity = '0';
-      window.setTimeout(() => fade.remove(), PADDLE_OUT_MS.fadeIn + 50);
-    }, PADDLE_OUT_MS.fadeOut);
+    });
   }
 
-  /** Paddle out (spec §3): fade to black, set the session, put the rider on the stand in the water, fade back in. */
-  paddleOut(choice: SessionChoice): void {
-    const fade = document.createElement('div');
-    Object.assign(fade.style, { position: 'fixed', inset: '0', background: '#000', opacity: '0', zIndex: '6', pointerEvents: 'none', transition: `opacity ${PADDLE_OUT_MS.fadeOut}ms ease-in` });
-    this.container.appendChild(fade);
-    window.setTimeout(() => { fade.style.opacity = '1'; }, PADDLE_OUT_MS.uiOut);
-    window.setTimeout(() => {
+  /** Paddle out (spec §3): the UI leaves; under the cover, the session is set and the rider put on a set wave. */
+  paddleOut(choice: SessionChoice): Promise<void> {
+    return this.underCover('Paddling out…', PADDLE_OUT_MS.uiOut, () => {
       const lineup = DEFAULT_SURFER_PARAMS;
       Object.assign(this.surferParams, {
         enabled: true, onLand: false, preset: choice.rider, board: choice.board, outfit: choice.outfit, stance: choice.stance, pose: 'sit', gang: false,
@@ -1145,10 +1162,7 @@ export class App {
       this.startRide();
       this.panel.refresh();
       this.scheduleSave();
-      fade.style.transition = `opacity ${PADDLE_OUT_MS.fadeIn}ms ease-out`;
-      fade.style.opacity = '0';
-      window.setTimeout(() => fade.remove(), PADDLE_OUT_MS.fadeIn + 50);
-    }, PADDLE_OUT_MS.uiOut + PADDLE_OUT_MS.fadeOut);
+    });
   }
 
   private scheduleSpectrumRebuild(): void {
