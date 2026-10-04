@@ -175,6 +175,7 @@ export const BREAK_BINDINGS = {
   pileHalfM: { label: 'pile half distance (m)', min: 10, max: 150, step: 1 },
   psiNudge: { label: 'ψ nudge (×)', min: -0.5, max: 0.5, step: 0.01 },
   randomDial: { label: 'random dial', min: 0, max: 0.15, step: 0.01 },
+  peel: { label: 'peel stretch (× slower along the line)', min: 1, max: 3, step: 0.05 },
   churnSize: { label: 'churn size (× pile)', min: 0, max: 0.4, step: 0.01 },
   churnSpeed: { label: 'churn speed', min: 0, max: 3, step: 0.05 },
 } as const;

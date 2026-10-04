@@ -1,7 +1,7 @@
 import type { Bathymetry } from '../seabed/bathymetry';
 import { smoothstep } from '../math/smoothstep';
 import type { GridSpec } from '../seabed/wombReef';
-import { BREAKING_RATIO, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, breakingDepth, onsetLevelHeight } from './breaking';
+import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, breakingDepth, onsetLevelHeight } from './breaking';
 import { AMP_CAP, type FarField, computeFarField, farSample } from './coastFarField';
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
 import { solveEikonal } from './eikonal';
@@ -13,6 +13,9 @@ export interface ReefFieldRequest {
   periodS: number;
   fromDeg: number;
   tideM: number;
+  /** The peel stretch (≥ 1; 1 = physics; BreakParams.peel): each part of the line breaks this much later after the part
+   * up the line than the reef alone says (spec 2026-10-04 §1). Absent: 1. */
+  peel?: number;
 }
 
 export interface ReefField {
@@ -366,7 +369,7 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const step = smoothAlongCrest(rawStep, dirX, dirZ, grid, STEP_SMOOTHING_M);
   const psiHere = new Float32Array(n * ONSET_LEVELS);
   for (let i = 0; i < n; i++) psiHere.fill(psiFromStep(step[i]), i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
-  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere });
+  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel: req.peel ?? 1 });
   return { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
 }
 
@@ -381,19 +384,35 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
  * it broke where R crossed q (linear between the two), and the time and the throw's height start there. Off the grid's
  * march (a boundary or fixed node) a node breaks at itself.
  */
+/** The peel stretch links a level's onset nodes this many cells apart into one breaking section. */
+export const PEEL_NEIGHBOUR_CELLS = 3;
+/** Where a breaking section meets one that broke less than this (s) earlier, they are one line (peelLines). */
+export const PEEL_MERGE_S = 1.5;
+/** A held section's turn comes at most this long (s) after the reef broke it, so a held wall never runs on into the
+ * shallows (at 5.5 ft the left's last section waits ~6 s). (A cap on the ratio instead undid the stretch: on the ledge
+ * the ratio climbs past 1.6× its level within metres of breaking.) */
+export const PEEL_MAX_HOLD_S = 6;
 /** How far back along its ray (cells) a node reads the record: past its own cell, so every node read arrived earlier. */
 const RUN_BACK_CELLS = 2;
 /** How far (fraction) the running maximum dips under a level between rays (≤ 2% measured) and still counts as broken there. */
 export const RUN_DIP = 0.03;
 
-function computeOnsetRecord(f: {
+export function computeOnsetRecord(f: {
   grid: GridSpec; tau: Float32Array; amp: Float32Array; hmin: Float32Array; hminBreak: Float32Array; k: Float32Array; dirX: Float32Array;
-  dirZ: Float32Array; fixed: Uint8Array; order: Uint32Array; omega: number; psiHere: Float32Array;
+  dirZ: Float32Array; fixed: Uint8Array; order: Uint32Array; omega: number; psiHere: Float32Array; peel?: number;
 }): Float32Array {
   const { grid, dirX, dirZ } = f;
   const { nx, nz } = grid;
   const n = nx * nz, R = ONSET_RECORD_LENGTH, S = ONSET_PSI_OFFSET;
-  const out = new Float32Array(n * R);
+  let out = new Float32Array(n * R);
+  const D = ONSET_DELAY_OFFSET, stretch = Math.max(1, f.peel ?? 1) - 1;
+  // Each level's onset time T = τ − tb at its onset nodes (NaN elsewhere); with the stretch, each onset node's breaking
+  // line's first break T₀ (peelLines), and T₀ carried along the rays as the march goes (NaN where unbroken).
+  const onsetT = new Float32Array(n * ONSET_LEVELS).fill(Number.NaN);
+  let lineStart: Float32Array | null = null;
+  const t0 = new Float32Array(n * ONSET_LEVELS).fill(Number.NaN);
+  /** The delay of a ray that broke at T on a line that first broke at T₀. */
+  const delayOf = (T: number, T0: number): number => (Number.isFinite(T0) ? Math.min(Math.max(0, stretch * (T - T0)), PEEL_MAX_HOLD_S) : 0);
   // One bilinear cell for everything read back there.
   const xMax = (nx - 1) * grid.cellM, zMax = (nz - 1) * grid.cellM;
   let ci = 0, wx = 0, wz = 0;
@@ -408,53 +427,140 @@ function computeOnsetRecord(f: {
     const top = a[i00] + (a[i10] - a[i00]) * wx, bottom = a[i01] + (a[i11] - a[i01]) * wx;
     return top + (bottom - top) * wz;
   };
+  /** The breaking line's first break back there for level k: bilinear over the corners that carry one. It is the same
+   * all along a line, so averaging rays together can't water it down. (Carrying the delay itself aliased where the rays
+   * cross the grid at an angle: 0.25 s beside 2 s along the onset band, and the left peeled 1.4× slower for a 1.7 dial.) */
+  const lineStartBack = (k: number): number => {
+    let sum = 0, weight = 0;
+    const corners = [[ci, (1 - wx) * (1 - wz)], [ci + 1, wx * (1 - wz)], [ci + nx, (1 - wx) * wz], [ci + nx + 1, wx * wz]] as const;
+    for (const [c, w] of corners) {
+      const v = t0[c * ONSET_LEVELS + k];
+      if (w > 0 && Number.isFinite(v)) { sum += w * v; weight += w; }
+    }
+    return weight > 0 ? sum / weight : Number.NaN;
+  };
   const back = RUN_BACK_CELLS * grid.cellM;
   // The throw's height factor for level k: the amplification, capped by the depth as the sheet caps a crest.
   const capOf = ONSET_LEVEL_Q.map((_, k) => BREAKING_RATIO / onsetLevelHeight(k));
   const throwAt = (amp: number, hmin: number, k: number): number => Math.min(amp, capOf[k] * hmin);
-  for (let o = 0; o < n; o++) {
-    const i = f.order[o];
-    const col = i % nx, row = (i - col) / nx, base = i * R;
-    const own = f.hminBreak[i] > 0 ? f.amp[i] / f.hminBreak[i] : 0;
-    const x = grid.x0 + col * grid.cellM - dirX[i] * back, z = grid.z0 + row * grid.cellM - dirZ[i] * back;
-    const inside = !f.fixed[i] && x >= grid.x0 && z >= grid.z0 && x <= grid.x0 + (nx - 1) * grid.cellM && z <= grid.z0 + (nz - 1) * grid.cellM;
+  // The march (in arrival order). With the peel stretch it runs twice: once without, to find where and when each ray
+  // breaks and so each breaking line's first break (peelLines); then once more, stretching every ray's onset from it.
+  const march = (): void => {
+    for (let o = 0; o < n; o++) {
+      const i = f.order[o];
+      const col = i % nx, row = (i - col) / nx, base = i * R;
+      const own = f.hminBreak[i] > 0 ? f.amp[i] / f.hminBreak[i] : 0;
+      const x = grid.x0 + col * grid.cellM - dirX[i] * back, z = grid.z0 + row * grid.cellM - dirZ[i] * back;
+      const inside = !f.fixed[i] && x >= grid.x0 && z >= grid.z0 && x <= grid.x0 + (nx - 1) * grid.cellM && z <= grid.z0 + (nz - 1) * grid.cellM;
+      // A boundary or fixed node breaks at itself and stays out of the peel stretch (physical timing): along the grid's
+    // edge such nodes broke one after another and chained into one long section held up to PEEL_MAX_HOLD_S, a seam beside
+    // the rays inside.
     if (!inside) {
-      out[base] = own;
+        out[base] = own;
+        for (let k = 0; k < ONSET_LEVELS; k++) {
+          out[base + 2 + 2 * k] = throwAt(f.amp[i], f.hmin[i], k);
+          out[base + S + k] = f.psiHere[i * ONSET_LEVELS + k];
+
+        }
+        continue;
+      }
+      cell(x, z);
+      const runB = lerp(out, R, 0), tauB = lerp(f.tau), ampB = lerp(f.amp), hminB = lerp(f.hmin);
+      const run = Math.max(own, runB), dTau = f.tau[i] - tauB;
+      out[base] = run;
       for (let k = 0; k < ONSET_LEVELS; k++) {
-        out[base + 2 + 2 * k] = throwAt(f.amp[i], f.hmin[i], k);
-        out[base + S + k] = f.psiHere[i * ONSET_LEVELS + k];
+        const q = ONSET_LEVEL_Q[k];
+        // Back there: the stretched time since onset tbS and the delay d (tbS + d is the physical time). Broken back there:
+        // its ratio reached q, or its physical clock is running and its ratio is within RUN_DIP of q (where the running
+        // maximum dips a hair under q between rays, the clock would otherwise restart; further below, a running clock is a
+        // broken neighbour's, blended in).
+        const tbSB = lerp(out, R, 1 + 2 * k), dB = lerp(out, R, D + k);
+        const brokenB = runB >= q || (tbSB + dB > 0 && runB >= q * (1 - RUN_DIP));
+        const here = throwAt(f.amp[i], f.hmin[i], k);
+        if (run < q && !brokenB) {
+          out[base + 2 + 2 * k] = here;
+          out[base + S + k] = f.psiHere[i * ONSET_LEVELS + k];
+        } else if (brokenB) {
+          // The physical clock is carried as before (tbS + d, bilinear), so the ray's own onset time is τ − tb; its delay
+          // comes from that and its line's first break, carried along the ray.
+          const tbP = tbSB + dB + dTau, T0 = lineStart ? lineStartBack(k) : Number.NaN, d = delayOf(f.tau[i] - tbP, T0);
+          if (lineStart) t0[i * ONSET_LEVELS + k] = T0;
+          const tbS = tbP - d;
+          out[base + 1 + 2 * k] = tbS;
+          out[base + D + k] = d;
+          // While held the section measures as unbroken (the node's own throw and ψ₀); the throw's window opens at its turn.
+          const thrownB = lerp(out, R, 2 + 2 * k), turned = tbS - dTau >= 0;
+          out[base + 2 + 2 * k] = tbS < 0 || !turned ? here : tbS <= LIP_THROW_S ? Math.max(thrownB, here) : thrownB;
+          out[base + S + k] = tbS < 0 || !turned ? f.psiHere[i * ONSET_LEVELS + k] : lerp(out, R, S + k);
+        } else {
+          const fr = (q - runB) / (run - runB), tb = (1 - fr) * dTau, T = f.tau[i] - tb;
+          const T0 = lineStart ? lineStart[i * ONSET_LEVELS + k] : Number.NaN, d = delayOf(T, T0);
+          if (lineStart) t0[i * ONSET_LEVELS + k] = T0;
+          onsetT[i * ONSET_LEVELS + k] = T;
+          out[base + 1 + 2 * k] = tb - d;
+          out[base + D + k] = d;
+          const atOnset = throwAt(ampB + fr * (f.amp[i] - ampB), hminB + fr * (f.hmin[i] - hminB), k);
+          out[base + 2 + 2 * k] = d > 0 ? here : Math.max(atOnset, here);
+          const psiB = lerp(f.psiHere, ONSET_LEVELS, k);
+          out[base + S + k] = d > 0 ? f.psiHere[i * ONSET_LEVELS + k] : psiB + fr * (f.psiHere[i * ONSET_LEVELS + k] - psiB);
+        }
       }
-      continue;
     }
-    cell(x, z);
-    const runB = lerp(out, R, 0), tauB = lerp(f.tau), ampB = lerp(f.amp), hminB = lerp(f.hmin);
-    const run = Math.max(own, runB), dTau = f.tau[i] - tauB;
-    out[base] = run;
-    for (let k = 0; k < ONSET_LEVELS; k++) {
-      const q = ONSET_LEVEL_Q[k];
-      // Broken back there: its ratio reached q, or its clock is running and its ratio is within RUN_DIP of q (where the
-      // running maximum dips a hair under q between rays, the clock would otherwise restart; further below, a running
-      // clock is a broken neighbour's, blended in).
-      const tbB = lerp(out, R, 1 + 2 * k);
-      const brokenB = runB >= q || (tbB > 0 && runB >= q * (1 - RUN_DIP));
-      const here = throwAt(f.amp[i], f.hmin[i], k);
-      if (run < q && !brokenB) {
-        out[base + 2 + 2 * k] = here;
-        out[base + S + k] = f.psiHere[i * ONSET_LEVELS + k];
-      } else if (brokenB) {
-        const tb = tbB + dTau, thrownB = lerp(out, R, 2 + 2 * k);
-        out[base + 1 + 2 * k] = tb;
-        out[base + 2 + 2 * k] = tb <= LIP_THROW_S ? Math.max(thrownB, here) : thrownB;
-        out[base + S + k] = lerp(out, R, S + k);
-      } else {
-        const fr = (q - runB) / (run - runB);
-        out[base + 1 + 2 * k] = (1 - fr) * dTau;
-        const atOnset = throwAt(ampB + fr * (f.amp[i] - ampB), hminB + fr * (f.hmin[i] - hminB), k);
-        out[base + 2 + 2 * k] = Math.max(atOnset, here);
-        const psiB = lerp(f.psiHere, ONSET_LEVELS, k);
-        out[base + S + k] = psiB + fr * (f.psiHere[i * ONSET_LEVELS + k] - psiB);
+  };
+  march();
+  if (stretch > 0) {
+    lineStart = peelLines(onsetT, nx, nz);
+    out = new Float32Array(n * R);
+    onsetT.fill(Number.NaN);
+    march();
+  }
+  return out;
+}
+
+/**
+ * Each level's breaking sections and, at every onset node, its section's first break T₀ (NaN off the onset nodes): the
+ * peel stretch's origin (spec 2026-10-04 §1). Every onset time in a section is stretched from T₀, so D = (peel − 1)·(T − T₀).
+ * The onset nodes join in order of T, linked within PEEL_NEIGHBOUR_CELLS (a union-find): a node with no earlier neighbour
+ * starts a section (the peak, the inside section); where a node joins sections, one whose first break leads the node by
+ * less than PEEL_MERGE_S merges into the earliest (a reef bump that breaks a moment early is stretched with the line:
+ * given no delay of its own it broke seconds ahead of the held curl, a closeout the reef doesn't have). Linking every
+ * onset node instead chained the peak to sections far off that break earlier, and its first break moved 2 s.
+ */
+export function peelLines(onsetT: Float32Array, nx: number, nz: number): Float32Array {
+  const L = ONSET_LEVELS, n = nx * nz, out = new Float32Array(onsetT.length).fill(Number.NaN);
+  const parent = new Int32Array(n), first = new Float32Array(n), joined = new Uint8Array(n);
+  const find = (i: number): number => {
+    while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+    return i;
+  };
+  for (let k = 0; k < L; k++) {
+    const nodes: number[] = [];
+    for (let i = 0; i < n; i++) if (Number.isFinite(onsetT[i * L + k])) nodes.push(i);
+    nodes.sort((a, b) => onsetT[a * L + k] - onsetT[b * L + k]);
+    joined.fill(0);
+    for (const i of nodes) {
+      const T = onsetT[i * L + k], col = i % nx, row = (i - col) / nx;
+      parent[i] = i;
+      first[i] = T;
+      const roots: number[] = [];
+      for (let dr = -PEEL_NEIGHBOUR_CELLS; dr <= PEEL_NEIGHBOUR_CELLS; dr++) for (let dc = -PEEL_NEIGHBOUR_CELLS; dc <= PEEL_NEIGHBOUR_CELLS; dc++) {
+        const c = col + dc, r = row + dr;
+        if (c < 0 || r < 0 || c >= nx || r >= nz || (dc === 0 && dr === 0)) continue;
+        const j = r * nx + c;
+        if (joined[j]) { const rj = find(j); if (!roots.includes(rj)) roots.push(rj); }
       }
+      joined[i] = 1;
+      if (roots.length === 0) continue;
+      // The node joins the latest section that started PEEL_MERGE_S or more before it (its nearest start), or the earliest
+      // if none did; sections younger than that merge into the node's own (a bump the line reaches is stretched with the
+      // line arriving at it, not with an older section beside it: final review).
+      roots.sort((a, b) => first[a] - first[b]);
+      let home = roots[0];
+      for (const r of roots) if (T - first[r] >= PEEL_MERGE_S) home = r;
+      for (const r of roots) if (r !== home && T - first[r] < PEEL_MERGE_S) parent[r] = home;
+      parent[i] = home;
     }
+    for (const i of nodes) out[i * L + k] = first[find(i)];
   }
   return out;
 }

@@ -2,7 +2,7 @@ import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, 
 import {
   type BreakParams, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
   HOLLOW_REACH_Q, MIN_BREAKING_HEIGHT_M, MIN_STAGE_SPAN, PILE_BACK_H, PILE_BLEND_H, PILE_FOAM_EDGE, PILE_FOAM_THIN, PILE_FRONT_H,
-  PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, PLUNGE_FULL_RATIO, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S, TUBE_HOLD_S,
+  PEEL_RAMP_DELAY_S, PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, PLUNGE_FULL_RATIO, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S, TUBE_HOLD_S,
   normalizeBreakParams, onsetGain, steepeningStart,
 } from './breaking';
 
@@ -101,11 +101,12 @@ export function onsetLevelNode(heightM: N, u: BreakUniforms): { lq: N; k: N } {
 }
 
 /**
- * breaking.onsetTime, onsetHeight and onsetRatio from the record's running maximum and levels k (lo) and k + 1 (hi) at a
- * point: { broken, tb, rMax, lipH }. From level k toward level k + 1 log-linearly, or toward the running maximum (time 0)
- * where level k + 1 is above it. tb and lipH are meaningless when not broken.
+ * breaking.onsetTime, onsetDelay, onsetHeight and onsetRatio from the record's running maximum and levels k (lo) and k + 1
+ * (hi) at a point: { broken, tb, rMax, lipH, delay }. From level k toward level k + 1 log-linearly, or toward the running
+ * maximum where level k + 1 is above it (time −D there: the peel stretch's turn, spec 2026-10-04 §2). tb is the stretched
+ * time since onset, negative while held. tb, lipH and delay are meaningless when not broken.
  */
-export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N }, level: { lq: N; k: N }, heightM: N, u: BreakUniforms): { broken: N; tb: N; rMax: N; lipH: N } {
+export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; delayLo: N; delayHi: N }, level: { lq: N; k: N }, heightM: N, u: BreakUniforms): { broken: N; tb: N; rMax: N; lipH: N; delay: N } {
   const g: N = float(heightM).mul(u.onsetGain);
   const logR = Math.log(ONSET_LEVEL_RATIO);
   const qHi = exp(level.k.add(1.0).mul(logR)).mul(ONSET_LEVEL_Q0);
@@ -114,7 +115,8 @@ export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: 
   const w = clamp(level.lq.sub(level.k).div(max(hi.sub(level.k), 1e-9)), 0.0, 1.0);
   return {
     broken: g.mul(rec.run).greaterThanEqual(1.0),
-    tb: mix(rec.tbLo, select(toRun, float(0.0), rec.tbHi), w),
+    tb: mix(rec.tbLo, select(toRun, rec.delayLo.negate(), rec.tbHi), w),
+    delay: mix(rec.delayLo, select(toRun, rec.delayLo, rec.delayHi), w),
     rMax: g.mul(rec.run),
     lipH: float(heightM).mul(mix(rec.ampLo, rec.ampHi, w)),
   };
@@ -137,15 +139,21 @@ export interface LifecycleNodes { steep: N; stage: N; drain: N; collapse: N; rel
 /** thrown: how thrown its tube is (breaking.TUBE_THROWN_PSI), the hold's weight. */
 export interface CrestShapeNodes { drainGrowth: N; pileSurge: N; plunge: N; thrown?: N }
 
-export function lifecycleNode(r: N, hasRecord: N, broken: N, tb: N, rMax: N, H: N, rSlurp: N, u: BreakUniforms, sh?: CrestShapeNodes): LifecycleNodes {
+export function lifecycleNode(r: N, hasRecord: N, broken: N, tb: N, rMax: N, H: N, rSlurp: N, u: BreakUniforms, sh?: CrestShapeNodes, delay: N = float(0.0)): LifecycleNodes {
   const drainGrowth = sh?.drainGrowth ?? u.drainGrowth, pileSurge = sh?.pileSurge ?? u.pileSurge, plunge = sh?.plunge ?? float(0.0);
-  const pulled = slurpNode(rSlurp, u);
-  const steepR = max(steepeningNode(r, u), pulled), stageR = breakingStageNode(r, u), own = stageCurvesNode(r, u);
-  const c = { drain: max(own.drain, pulled), collapse: own.collapse };
-  const isBroken = hasRecord.and(broken.or(r.greaterThanEqual(1.0)));
-  const t = select(broken, tb, float(0.0));
   // landingEstimate: landingTime(H·(1 + troughDrain·δ)), the fall floored at 0.05 m; settleSpan is collapseTime × it.
-  const land = max(H.mul(drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt();
+  const land = max(H.mul(drainGrowth), 0.05).mul(2 / GRAVITY_MS2).sqrt().toVar();
+  // The peel stretch (breaking.lifecycle): waiting (broken by the reef, its time still negative) stands at r = 1; after its
+  // turn a delayed section's ratio past 1 fades in over the landing.
+  const waiting = hasRecord.and(broken).and(tb.lessThan(0.0));
+  const ramp = smoothstep(0.0, land, max(tb, 0.0));
+  const rTurned = r.sub(smoothstep(0.0, PEEL_RAMP_DELAY_S, delay).mul(r.sub(min(r, float(1.0).add(r.sub(1.0).mul(ramp))))));
+  const rE = select(waiting, min(r, 1.0), select(broken, rTurned, r)).toVar();
+  const pulled = slurpNode(rSlurp, u);
+  const steepR = max(steepeningNode(rE, u), pulled), stageR = breakingStageNode(rE, u), own = stageCurvesNode(rE, u);
+  const c = { drain: max(own.drain, pulled), collapse: own.collapse };
+  const isBroken = hasRecord.and(select(broken, tb.greaterThanEqual(0.0), r.greaterThanEqual(1.0)));
+  const t = select(broken, max(tb, 0.0), float(0.0));
   // breaking.lifecycle's plunge: a section the maths throws a tube for breaks whole (and surges) once past PLUNGE_FULL_RATIO.
   const plunged = plunge.mul(smoothstep(1.0, PLUNGE_FULL_RATIO, max(r, rMax)));
   const extent = max(breakingStageNode(max(r, rMax), u), plunged);

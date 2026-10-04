@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, MIN_STAGE_SPAN, sharpenDropSlope, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, TUBE_HOLD_S, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, TUBE_HOLD_S, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart, ONSET_DELAY_OFFSET, onsetDelay, PEEL_RAMP_DELAY_S, peelRatio,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -365,6 +365,50 @@ describe('one clock: the onset record and the lifecycle', () => {
     expect(onsetTime(rec, 0, heightFor(run), P)).toBeCloseTo(0, 5);
     expect(onsetTime(rec, 0, heightFor(qk * ONSET_LEVEL_RATIO ** 0.25), P)).toBeCloseTo(1, 5);
   });
+  it('onsetTime and onsetDelay: the stretched clock is negative while the section waits its turn, toRun reads −D (spec 2026-10-04 §2)', () => {
+    const run = qMid;
+    const rec = recOf(run, (_, j) => (j === k ? -1 : 5), () => 1);
+    rec[ONSET_DELAY_OFFSET + k] = 3;
+    expect(onsetTime(rec, 0, heightFor(qk), P)).toBeCloseTo(-1, 5);
+    // At the running maximum: breaking here now by the reef, its turn in D = 3 s.
+    expect(onsetTime(rec, 0, heightFor(run), P)).toBeCloseTo(-3, 5);
+    expect(onsetDelay(rec, 0, heightFor(qk), P)).toBeCloseTo(3, 5);
+    expect(onsetDelay(rec, 0, heightFor(run), P)).toBeCloseTo(3, 5);
+    // Between two broken levels, log-linearly.
+    const two = recOf(1.3, () => 0, () => 1);
+    two[ONSET_DELAY_OFFSET + k] = 2; two[ONSET_DELAY_OFFSET + k + 1] = 4;
+    expect(onsetDelay(two, 0, heightFor(qMid), P)).toBeCloseTo(3, 5);
+    expect(onsetDelay(recOf(0.2, () => 1, () => 1), 0, heightFor(0.3), P)).toBe(0);
+  });
+  it('a held crest (negative time since onset) stands as the unbroken wave at r = 1, whatever its ratio (spec 2026-10-04 §3)', () => {
+    const H = 3, rMax = 2.5;
+    const atOne = lifecycle(1 - 1e-9, null, H, P, rMax, 0.5);
+    for (const r of [1, 1.3, 2, 4]) {
+      const held = lifecycle(r, -0.7, H, P, rMax, 0.5, 0, 0, 1.5);
+      for (const key of ['steep', 'stage', 'drain'] as const) expect(held[key], `${key} at r ${r}`).toBeCloseTo(atOne[key], 6);
+      expect(held.collapse).toBe(0);
+      expect(held.release).toBe(0);
+      expect(held.pile).toBe(0);
+    }
+  });
+
+  it('a delayed section turns without a jump: its ratio past 1 fades in over the landing', () => {
+    const H = 3, rMax = 2.5, r = 2;
+    const before = lifecycle(r, -0.01, H, P, rMax, r, 0, 0, 1.5), after = lifecycle(r, 0.01, H, P, rMax, r, 0, 0, 1.5);
+    for (const key of ['steep', 'stage', 'drain'] as const) expect(Math.abs(after[key] - before[key]), key).toBeLessThan(0.05);
+    // Landed, it is the wave at its own ratio again.
+    const land = landingEstimate(H, P);
+    const late = lifecycle(r, land + 0.01, H, P, rMax, r, 0, 0, 1.5), plain = lifecycle(r, land + 0.01, H, P, rMax, r);
+    for (const key of ['steep', 'stage', 'drain', 'collapse'] as const) expect(late[key], key).toBeCloseTo(plain[key], 6);
+  });
+
+  it('with no delay the lifecycle is exactly today\'s', () => {
+    const H = 3, rMax = 2.5;
+    for (const r of [0.7, 1, 1.4, 3]) for (const tb of [null, 0, 0.3, 1, 4]) {
+      expect(lifecycle(r, tb, H, P, rMax, r, 0.5, 0.5, 0)).toEqual(lifecycle(r, tb, H, P, rMax, r, 0.5, 0.5));
+    }
+    expect(PEEL_RAMP_DELAY_S).toBe(0.2);
+  });
   it("onsetHeight: the wave's height where its level broke, interpolated as the time is", () => {
     const rec = recOf(1.3, (_, j) => 10 - j, (_, j) => 2 + 0.1 * j);
     expect(onsetHeight(rec, 0, heightFor(qk), P)).toBeCloseTo(heightFor(qk) * (2 + 0.1 * k), 5);
@@ -546,5 +590,28 @@ describe('the whitewater pile (spec 2026-09-29 §3.2)', () => {
       }
       expect(worst, `lip ${lipHeight} m`).toBeLessThan(2e-3);
     }
+  });
+});
+
+describe('the peel dial (spec 2026-10-04 §1)', () => {
+  it('defaults to 1.7 and keeps any saved value usable, within [1, 3]', () => {
+    expect(DEFAULT_BREAK_PARAMS.peel).toBe(1.7);
+    for (const [raw, want] of [[Number.NaN, 1.7], [0.5, 1], [9, 3], ['x' as unknown as number, 1.7], [2.2, 2.2]] as const) {
+      const p = { ...DEFAULT_BREAK_PARAMS, peel: raw };
+      normalizeBreakParams(p);
+      expect(p.peel, String(raw)).toBe(want);
+    }
+  });
+});
+
+describe("the ratio a held section stands at (spec 2026-10-04 §3, shared by the sheet and the ribbon's stations)", () => {
+  it('held: capped at 1; turned: its excess fades in over the landing; undelayed: the ratio as it is', () => {
+    expect(peelRatio(2.5, -0.4, 1, 0.8)).toBe(1);
+    expect(peelRatio(0.7, -0.4, 1, 0.8)).toBe(0.7);
+    expect(peelRatio(2.5, 0, 1, 0.8)).toBeCloseTo(1, 6);
+    expect(peelRatio(2.5, 0.8, 1, 0.8)).toBeCloseTo(2.5, 6);
+    expect(peelRatio(2.5, 0.4, 1, 0.8)).toBeGreaterThan(1);
+    expect(peelRatio(2.5, 0.4, 1, 0.8)).toBeLessThan(2.5);
+    for (const tb of [null, undefined, 0, 0.3]) expect(peelRatio(2.5, tb, 0, 0.8)).toBe(2.5);
   });
 });

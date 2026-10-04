@@ -4,13 +4,13 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, landingEstimate } from './breaking';
+import { DEFAULT_BREAK_PARAMS, ONSET_DELAY_OFFSET, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, landingEstimate, onsetGain } from './breaking';
 import { HAND_BACK_S } from './lipProfile';
 import {
-  CREST_TOLERANCE_S, MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, stationPsi, timeSinceOnset, traceStations,
+  CREST_TOLERANCE_S, MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, stationOnset, stationPsi, timeSinceOnset, traceStations,
 } from './crestTrace';
 import { PSI_NORMAL } from './overturn';
-import { computeReefField, sampleField } from './reefField';
+import { type ReefField, computeReefField, sampleField } from './reefField';
 import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi } from './setWaveModel';
 import { cloneConditions } from '../conditions/defaults';
 
@@ -208,5 +208,43 @@ describe("the crest's ψ at the reef grid's edge (final review I2)", () => {
     }
     expect(worst).toBeLessThan(1e-3);
     expect(inner).toBeGreaterThan(0.01);
+  });
+});
+
+describe('a held section reads as unbroken to the stations (spec 2026-10-04 §4)', () => {
+  it('timeSinceOnset is null while the stretched clock is negative, the time once it runs', () => {
+    const k = 5, q = ONSET_LEVEL_Q[k], heightM = 1 / (q * onsetGain(DEFAULT_BREAK_PARAMS));
+    const fieldWith = (tb: number): ReefField => {
+      const onset = new Float32Array(4 * ONSET_RECORD_LENGTH);
+      for (let i = 0; i < 4; i++) { onset[i * ONSET_RECORD_LENGTH] = 1.3; for (let j = 0; j <= k + 1; j++) onset[i * ONSET_RECORD_LENGTH + 1 + 2 * j] = tb; }
+      return { grid: { x0: 0, z0: 0, cellM: 1, nx: 2, nz: 2 }, onset } as unknown as ReefField;
+    };
+    const w = { heightM } as Parameters<typeof timeSinceOnset>[1];
+    const ctx = { omega: 1, travelX: 1, travelZ: 0 };
+    expect(timeSinceOnset(fieldWith(-0.5), w, 0.5, 0.5, ctx, DEFAULT_BREAK_PARAMS)).toBeNull();
+    expect(timeSinceOnset(fieldWith(0.5), w, 0.5, 0.5, ctx, DEFAULT_BREAK_PARAMS)).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe("a held section's station carries the held ratio, so the ribbon stands as the sheet does (spec 2026-10-04 §3-4)", () => {
+  it('stationOnset: held → tb null and r capped at 1; turned → the time and its ratio', () => {
+    const k = 5, q = ONSET_LEVEL_Q[k], heightM = 1 / (q * onsetGain(DEFAULT_BREAK_PARAMS));
+    const fieldWith = (tb: number, d: number): ReefField => {
+      const onset = new Float32Array(4 * ONSET_RECORD_LENGTH);
+      for (let i = 0; i < 4; i++) {
+        onset[i * ONSET_RECORD_LENGTH] = 1.3;
+        for (let j = 0; j <= k + 1; j++) { onset[i * ONSET_RECORD_LENGTH + 1 + 2 * j] = tb; onset[i * ONSET_RECORD_LENGTH + ONSET_DELAY_OFFSET + j] = d; }
+      }
+      return { grid: { x0: 0, z0: 0, cellM: 1, nx: 2, nz: 2 }, onset } as unknown as ReefField;
+    };
+    const w = { heightM } as Parameters<typeof stationOnset>[1];
+    const held = { x: 0.5, z: 0.5, H: 3, r: 2.4, tb: null } as Station;
+    stationOnset(fieldWith(-0.5, 2), w, held, DEFAULT_BREAK_PARAMS);
+    expect(held.tb).toBeNull();
+    expect(held.r).toBe(1);
+    const late = { x: 0.5, z: 0.5, H: 3, r: 2.4, tb: null } as Station;
+    stationOnset(fieldWith(5, 2), w, late, DEFAULT_BREAK_PARAMS);
+    expect(late.tb).toBeCloseTo(5, 5);
+    expect(late.r).toBeCloseTo(2.4, 6);
   });
 });

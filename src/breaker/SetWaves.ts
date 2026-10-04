@@ -5,7 +5,7 @@ import {
 } from 'three/tsl';
 import { REEF_GRID } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, TUBE_THROWN_PSI, breakingDepth, normalizeBreakParams } from './breaking';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, TUBE_THROWN_PSI, breakingDepth, normalizeBreakParams } from './breaking';
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
@@ -74,7 +74,8 @@ export class SetWaves {
   /** The onset record (ReefField.onset), ONSET_TEXELS texels per field node side by side along x: the running maximum,
    * then two levels per texel, (time since onset, amplification) each. One texture, so the record is one binding. */
   private readonly onsetRec = floatTexture(FIELD_NX * ONSET_TEXELS, FIELD_NZ);
-  /** The onset record's ψ₀ per level (ReefField.onset from ONSET_PSI_OFFSET), PSI_TEXELS pairs per node. */
+  /** The onset record's ψ₀ per level (ReefField.onset from ONSET_PSI_OFFSET), PSI_TEXELS pairs per node, with the peel
+   * stretch's delay pair (from ONSET_DELAY_OFFSET) in each texel's z and w. */
   private readonly onsetPsiTex = floatTexture(FIELD_NX * PSI_TEXELS, FIELD_NZ);
   private readonly farA = floatTexture(FAR_COUNT, 1);
   private readonly farB = floatTexture(FAR_COUNT, 1);
@@ -141,10 +142,11 @@ export class SetWaves {
     }
     const pd = this.onsetPsiTex.image.data as Float32Array;
     for (let i = 0; i < f.tau.length; i++) {
-      const col = i % FIELD_NX, row = (i - col) / FIELD_NX, r = i * ONSET_RECORD_LENGTH + ONSET_PSI_OFFSET;
+      const col = i % FIELD_NX, row = (i - col) / FIELD_NX, r = i * ONSET_RECORD_LENGTH + ONSET_PSI_OFFSET, d = i * ONSET_RECORD_LENGTH + ONSET_DELAY_OFFSET;
       for (let k = 0; k < PSI_TEXELS; k++) {
         const o = ((row * FIELD_NX + col) * PSI_TEXELS + k) * 4;
-        pd[o] = f.onset[r + k]; pd[o + 1] = f.onset[r + k + 1];
+        // (ψ_k, ψ_{k+1}, D_k, D_{k+1}): the peel stretch's delay rides in the spare channels (spec 2026-10-04 §1).
+        pd[o] = f.onset[r + k]; pd[o + 1] = f.onset[r + k + 1]; pd[o + 2] = f.onset[d + k]; pd[o + 3] = f.onset[d + k + 1];
       }
     }
     for (const t of [this.fieldA, this.fieldB, this.fieldC, this.onsetRec, this.onsetPsiTex, this.farA, this.farB]) t.needsUpdate = true;
@@ -190,6 +192,14 @@ export class SetWaves {
     const level = onsetLevelNode(heightM, this.brk);
     const rec = this.sampleOnset(xz, level.k);
     return onsetPsiNode(rec.psiLo, rec.psiHi, level);
+  }
+
+  /** The onset record's stretched time since onset, delay and broken flag at xz for a wave of deep-water height heightM,
+   * as vec4(tb, delay, broken, 0) (self-tests). Inside an Fn. */
+  onsetTimeAt(xz: N, heightM: N): N {
+    const level = onsetLevelNode(heightM, this.brk);
+    const o = onsetTimeNode(this.sampleOnset(xz, level.k), level, heightM, this.brk);
+    return vec4(o.tb, o.delay, select(o.broken, float(1.0), float(0.0)), 0.0);
   }
 
   /**
@@ -256,7 +266,7 @@ export class SetWaves {
    * k a float) at world xz (bilinear between nodes), and whether xz is on the grid. Three texel columns per node: the
    * running maximum's, and the one or two holding the two levels. Inside an Fn.
    */
-  private sampleOnset(xz: N, k: N): { inside: N; run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; psiLo: N; psiHi: N; edgeFade: N } {
+  private sampleOnset(xz: N, k: N): { inside: N; run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; psiLo: N; psiHi: N; delayLo: N; delayHi: N; edgeFade: N } {
     const g = xz.sub(this.origin).div(this.cell).toVar();
     const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThanEqual(this.fieldMax.x)).and(g.y.lessThanEqual(this.fieldMax.y));
     const gc = clamp(g, vec2(0.0), this.fieldMax.sub(0.001));
@@ -278,7 +288,7 @@ export class SetWaves {
     // The record ψ's weight (reefField.psiEdgeFade): 0 at the grid's edge, 1 from PSI_EDGE_FADE_M inside.
     const edgeM = min(min(g.x, g.y), min(this.fieldMax.x.sub(g.x), this.fieldMax.y.sub(g.y))).mul(this.cell);
     const edgeFade = smoothstep(0.0, PSI_EDGE_FADE_M, edgeM);
-    return { inside, run, tbLo: select(even, lo.x, lo.z), ampLo: select(even, lo.y, lo.w), tbHi: select(even, lo.z, hi.x), ampHi: select(even, lo.w, hi.y), psiLo: psi.x, psiHi: psi.y, edgeFade };
+    return { inside, run, tbLo: select(even, lo.x, lo.z), ampLo: select(even, lo.y, lo.w), tbHi: select(even, lo.z, hi.x), ampHi: select(even, lo.w, hi.y), psiLo: psi.x, psiHi: psi.y, delayLo: psi.z, delayHi: psi.w, edgeFade };
   }
 
   /**
@@ -387,7 +397,7 @@ export class SetWaves {
             // × (1 − release: the collapse without the tube's hold), assigned with the lifecycle below.
             lean.assign(smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], breakingRatioNode(a.y.mul(fc.amp), fc.hminLean, brk)).mul(confidence));
             const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), rSlurp, brk,
-              { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi), thrown: smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi) });
+              { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi), thrown: smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi) }, onset.delay);
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
             lean.assign(lean.mul(float(1.0).sub(l.release)));
             if (withPile) {
