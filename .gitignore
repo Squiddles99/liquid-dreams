@@ -23,3 +23,6 @@ Thumbs.db
 anim-source/
 public/surfer/clips/
 tools/surfer/previews-before/
+
+# Brainstorming companion mockups (local only)
+.superpowers/
