@@ -54,6 +54,26 @@ describe('the board on the water', () => {
     expect(Math.abs(across.vx)).toBeLessThan(0.5 * alongV);
   });
 
+  it('a bottom turn keeps its speed: the rail turns the slide into run (Andrew: it has to grip and keep up)', () => {
+    const b = startBody(0, 0, 90, flatWater());
+    b.phase = 'ride';
+    b.vx = 12;
+    run(b, { ...NO_CONTROLS, steer: -1 }, () => flatWater(), 0.5);
+    expect(b.headingDeg).toBeLessThan(10);
+    expect(speedOf(b)).toBeGreaterThan(10);
+    run(b, NO_CONTROLS, () => flatWater(), 0.3); // and it runs where it points
+    const [fx, fz] = forwardOf(b.headingDeg);
+    expect((b.vx * fx + b.vz * fz) / speedOf(b)).toBeGreaterThan(0.95);
+  });
+
+  it('steers while popping up: the line is set before the feet land', () => {
+    const b = startBody(0, 0, 90, flatWater());
+    b.phase = 'popup';
+    b.vx = 8;
+    run(b, { ...NO_CONTROLS, steer: -1 }, () => flatWater(), 0.3);
+    expect(b.headingDeg).toBeLessThan(65);
+  });
+
   it('a swell passes under a board that only sits there', () => {
     const b = startBody(0, 0, 90, swell(0));
     const events = run(b, NO_CONTROLS, swell, 8);
