@@ -101,6 +101,7 @@ export class LoadingScreen {
     this.phase = 'coming-in';
     this.comingInAt = this.now();
     this.setState('covering');
+    this.el.classList.add('is-blocking');
     if (!fromOut) {
       // Style the unhidden cover at opacity 0 first, or the browser has nothing to transition from and it pops in.
       void this.el.getBoundingClientRect();
@@ -132,7 +133,7 @@ export class LoadingScreen {
     this.comingIn?.(false);
     this.comingIn = null;
     this.el.hidden = true;
-    this.el.classList.remove('is-in', 'is-out');
+    this.el.classList.remove('is-in', 'is-out', 'is-blocking');
     this.phase = 'gone';
     this.setState('done');
   }
@@ -154,6 +155,7 @@ export class LoadingScreen {
     }
     const ready = this.phase === 'boot' || this.phase === 'in';
     if (ready && this.gate?.open && holdMet(this.coverInAt, now, this.phase === 'boot' ? 0 : this.minHoldMs)) this.dissolve(now);
+    this.el.classList.toggle('is-blocking', this.blocking);
     if (this.phase === 'out' && now - this.outAt >= this.dissolveMs() + 50) {
       this.el.hidden = true;
       this.el.classList.remove('is-in', 'is-out');
