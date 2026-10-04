@@ -56,6 +56,18 @@ export function normalizeSetParams(p: SetParams): void {
   p.intervalJitterS = Math.min(p.intervalJitterS, p.meanIntervalS / 2);
 }
 
+/**
+ * The select screen's sets (Andrew, 2026-10-04): the chosen swell's own sets, but one every 120 s (the panel's lowest),
+ * so whoever is choosing always sees what the swell they've picked does to the waves. No jitter: at ±60 s, 14–36 % of
+ * sets ran into the next one (two sets' waves interleaved); like clockwork, 3–5.5 ft sets keep a lull of 23 s or more.
+ */
+export const SELECT_SCREEN_SETS = { meanIntervalS: 120, intervalJitterS: 0 } as const;
+
+/** `from` (the dev panel's sets) with the select screen's timing, written into `into` (no allocation per frame). */
+export function selectScreenSetParams(from: Readonly<SetParams>, into: SetParams): SetParams {
+  return Object.assign(into, from, SELECT_SCREEN_SETS);
+}
+
 export interface WaveEvent {
   /** Stable per (slot, index): slot·64 + index; strays use 32 + n. */
   id: number;
