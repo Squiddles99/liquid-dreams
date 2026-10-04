@@ -292,11 +292,21 @@ function onsetLevel(rec: ArrayLike<number>, offset: number, heightM: number, p: 
 }
 
 /** The time (s) since the section at a crest first broke, from the onset record there, for a wave of deep-water height
- * `heightM`: null if it hasn't broken. */
+ * `heightM`: null if it hasn't broken. The peel stretch's (spec 2026-10-04 §2): negative while the section, broken by the
+ * reef, waits its turn; just broken by the reef (toRun), it runs to −D, its turn D seconds off. */
 export function onsetTime(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
   const l = onsetLevel(rec, offset, heightM, p);
   if (!l) return null;
-  const lo = rec[offset + 1 + 2 * l.k], hi = l.toRun ? 0 : rec[offset + 3 + 2 * l.k];
+  const lo = rec[offset + 1 + 2 * l.k], hi = l.toRun ? -rec[offset + ONSET_DELAY_OFFSET + l.k] : rec[offset + 3 + 2 * l.k];
+  return lo + l.w * (hi - lo);
+}
+
+/** The peel stretch's delay (s) of the section at a crest (level k toward k + 1 as onsetTime reads; level k's own where
+ * toRun): 0 if it hasn't broken. */
+export function onsetDelay(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number {
+  const l = onsetLevel(rec, offset, heightM, p);
+  if (!l) return 0;
+  const lo = rec[offset + ONSET_DELAY_OFFSET + l.k], hi = l.toRun ? lo : rec[offset + ONSET_DELAY_OFFSET + l.k + 1];
   return lo + l.w * (hi - lo);
 }
 

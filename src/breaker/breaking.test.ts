@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, MIN_STAGE_SPAN, sharpenDropSlope, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, TUBE_HOLD_S, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, TUBE_HOLD_S, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart, ONSET_DELAY_OFFSET, onsetDelay,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -364,6 +364,21 @@ describe('one clock: the onset record and the lifecycle', () => {
     expect(onsetTime(rec, 0, heightFor(qk), P)).toBeCloseTo(2, 5);
     expect(onsetTime(rec, 0, heightFor(run), P)).toBeCloseTo(0, 5);
     expect(onsetTime(rec, 0, heightFor(qk * ONSET_LEVEL_RATIO ** 0.25), P)).toBeCloseTo(1, 5);
+  });
+  it('onsetTime and onsetDelay: the stretched clock is negative while the section waits its turn, toRun reads −D (spec 2026-10-04 §2)', () => {
+    const run = qMid;
+    const rec = recOf(run, (_, j) => (j === k ? -1 : 5), () => 1);
+    rec[ONSET_DELAY_OFFSET + k] = 3;
+    expect(onsetTime(rec, 0, heightFor(qk), P)).toBeCloseTo(-1, 5);
+    // At the running maximum: breaking here now by the reef, its turn in D = 3 s.
+    expect(onsetTime(rec, 0, heightFor(run), P)).toBeCloseTo(-3, 5);
+    expect(onsetDelay(rec, 0, heightFor(qk), P)).toBeCloseTo(3, 5);
+    expect(onsetDelay(rec, 0, heightFor(run), P)).toBeCloseTo(3, 5);
+    // Between two broken levels, log-linearly.
+    const two = recOf(1.3, () => 0, () => 1);
+    two[ONSET_DELAY_OFFSET + k] = 2; two[ONSET_DELAY_OFFSET + k + 1] = 4;
+    expect(onsetDelay(two, 0, heightFor(qMid), P)).toBeCloseTo(3, 5);
+    expect(onsetDelay(recOf(0.2, () => 1, () => 1), 0, heightFor(0.3), P)).toBe(0);
   });
   it("onsetHeight: the wave's height where its level broke, interpolated as the time is", () => {
     const rec = recOf(1.3, (_, j) => 10 - j, (_, j) => 2 + 0.1 * j);
