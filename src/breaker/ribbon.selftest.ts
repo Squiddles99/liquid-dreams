@@ -112,7 +112,12 @@ const SHEET_FIELD = /^k\d\.(x|dx|dy)$/;
  * sized × the throw height, a small tube whose point grazes the water (ψ 0.03, H_I 1.3 m) turns the sheet's 1 mm f32 gap
  * into 2 mm of landing; hung from the crest now, those stations kept H without searching. */
 const LANDING_FIELD = /^(P\.[xy]|tip\.[xy]|clipY|HI|L|W)$/;
-const frameTol = (c: number, name: string): number => (SHEET_FIELD.test(name) ? 1e-2 : (LANDING_FIELD.test(name) ? 3e-3 : 1e-3) * Math.max(1, Math.abs(c)));
+/** The face's direction at its foot, tF: the sheet's chord over the 0.1 m behind F, so ×10 the sheet's own f32 gap between
+ * two reads: 3e-3, 0.3 mm of it (ruling, 2026-10-04, after the peel stretch: a foot moved past the landing onto a trough
+ * bending 0.25 m round, where the two reads' 0.09 mm gaps no longer cancel, put it at 1.1e-3; the mirror is exact, the
+ * CPU's tF at the GPU's uFoot being 2e-4 off the CPU's own). */
+const CHORD_FIELD = /^tF\.[xy]$/;
+const frameTol = (c: number, name: string): number => (SHEET_FIELD.test(name) ? 1e-2 : (LANDING_FIELD.test(name) || CHORD_FIELD.test(name) ? 3e-3 : 1e-3) * Math.max(1, Math.abs(c)));
 /** Whether a station's constructed curve shows: CPU weight > 0.01, or a finite tb before the collapse ends. */
 const drawn = (e: Station, f: ProfileFrame): boolean =>
   f.weight > 0.01 || (e.tb !== null && Number.isFinite(e.tb) && e.tb < f.tauLand + settleSpan(e.H, P));
@@ -209,7 +214,7 @@ registerSelfTest({
     return {
       pass: ok,
       detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${broken} in the throw, ${landed} landed); worst |Δpos| (m) constructed ${constructed} (< 5e-3), ` +
-        `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the landing's root 3e-3, the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); worst |Δlight| ${light} (< 2e-2), open samples not exactly open ${notOpen} (0); ` +
+        `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the landing's root and the foot's chord 3e-3, the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); worst |Δlight| ${light} (< 2e-2), open samples not exactly open ${notOpen} (0); ` +
         `live rows flagged dead ${deadLive}, non-finite samples ${nonFinite} (0). Samples off > 5 mm by segment (front..back) ${segBad.join('/')}, worst ${segWorst.map((v) => v.toFixed(3)).join('/')}. Worst constructed: ${worstDetail}. Per frame field |Δ|: ${fields}. Frame failures: ${failures.join(' | ') || 'none'}`,
     };
   },
