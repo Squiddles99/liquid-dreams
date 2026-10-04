@@ -64,7 +64,7 @@ export const CARVE_TURN_DEG_S = 170;
 export const POPUP_TURN = 0.6;
 /**
  * The rail's grip turns the board's slide into speed along it instead of scrubbing it off: of the sideways speed the rail
- * takes out (relative to the water and the wave carrying you), this fraction of its energy goes into the board's run.
+ * takes out (relative to the water), this fraction of its energy goes into the board's run.
  */
 export const RAIL_KEEP = 0.85;
 /** The assisted takeoff's push (m/s²) at full lift, up to ASSIST_TO × the wave's speed. */
@@ -86,13 +86,6 @@ export const STALL_S = 0.6;
 export const MAX_SPEED = 18;
 /** Water shallower than this (m) over the bed, the beach or a rock and the board runs aground: it stops there. */
 export const AGROUND_DEPTH_M = 0.3;
-/**
- * The wave carries you (the arcade part): on its front face, standing, the board grips and drags against water moving
- * with the wave at this fraction of its speed, so a rider angled along the face stays on it; over the back, nothing.
- * Half, not more: the rest of the wave's speed is water running up the face past the rail, which is what drives the
- * board along the line (at 0.9 the trim along a 12 ft face was ~6 m/s, the section peeling at ~15).
- */
-export const WAVE_CARRY = 0.5;
 
 export function forwardOf(headingDeg: number): [number, number] {
   const h = headingDeg * DEG;
@@ -170,8 +163,10 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   // Drag relative to the water.
   const d = b.phase === 'bail' ? BAIL_DRAG : b.phase === 'paddle' ? PRONE_DRAG : PLANE_DRAG;
   const standing = b.phase === 'ride' || b.phase === 'popup';
-  const carry = standing ? WAVE_CARRY * w.c * smoothstep(0, 0.08, -(w.slopeX * w.dirX + w.slopeZ * w.dirZ)) : 0;
-  const ux = w.ux + w.dirX * carry, uz = w.uz + w.dirZ * carry;
+  // Against the water itself, not the wave: the wave runs on through the water, and that water running up the face past
+  // the rail is what drives the board along the line. (Dragging against water carried with the wave, as first tuned,
+  // ate the drop's speed: a hard bottom turn made ~4 m/s along the line and the lip landed on it, Andrew 2026-10-04.)
+  const ux = w.ux, uz = w.uz;
   const relX = b.vx - ux, relZ = b.vz - uz;
   let along = relX * fx + relZ * fz, side = relX * rx + relZ * rz;
   along *= Math.exp(-d.lin * dt);

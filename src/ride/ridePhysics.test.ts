@@ -95,17 +95,18 @@ describe('the board on the water', () => {
     expect(speedOf(b)).toBeGreaterThan(4);
   });
 
-  it('the wave carries a rider angled along its face', () => {
-    // Riding 70° off the swell's travel, on the front face just below the crest.
+  it('a rider angled along the face, moving with the wave, stays on it: the water running up the face drives the rail', () => {
+    // Riding 60° off the swell's travel, on the front face just below the crest, keeping pace with the wave.
     const k = (2 * Math.PI) / 30, x0 = (Math.PI / 2 + 0.6) / k;
-    const b = startBody(x0, 0, 90 - 70, swell(0));
+    const b = startBody(x0, 0, 90 - 60, swell(0));
     b.phase = 'ride';
-    b.vx = 3;
+    b.vx = 7;
     b.vz = -8;
-    run(b, NO_CONTROLS, swell, 4);
-    const front = -b.water.slopeX;
+    // A rider trims: points down the face when the wave starts to pass, along it when running ahead.
+    run(b, (_t, body) => ({ ...NO_CONTROLS, steer: Math.max(-1, Math.min(1, (7 - body.vx) / 2)) }), swell, 4);
     expect(b.phase).toBe('ride');
-    expect(front).toBeGreaterThan(0);
+    expect(-b.water.slopeX).toBeGreaterThan(0);
+    expect(-b.vz).toBeGreaterThan(6);
   });
 
   it('Space too early just says so', () => {
