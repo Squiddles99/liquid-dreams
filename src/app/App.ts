@@ -30,6 +30,7 @@ import { currentBindings, keyLabel } from '../ride/bindings';
 import { RideSession, rideMessage } from '../ride/RideSession';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
 import { SurfaceOffset } from '../ride/surfaceOffset';
+import { fieldKey } from '../breaker/fieldKey';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -391,6 +392,8 @@ export class App {
   private spectrumKey = '';
   private spectrumTimer: number | undefined;
   private reefTimer: number | undefined;
+  /** The peel slider re-bakes the field once you stop dragging (as the reef sliders do). */
+  private peelTimer: number | undefined;
   private saveTimer: number | undefined;
   private statusAge = 0;
   private screenshotRequested = false;
@@ -518,6 +521,8 @@ export class App {
         onCallSet: () => this.callSetNow(),
         onBreak: () => {
           normalizeBreakParams(this.breakParams);
+          clearTimeout(this.peelTimer);
+          this.peelTimer = window.setTimeout(() => this.requestFieldIfNeeded(false), REEF_REBUILD_DEBOUNCE_MS);
           this.setWaves.setBreakParams(this.breakParams);
           this.onRibbonInputs();
           this.panel.refresh();
@@ -1496,10 +1501,10 @@ export class App {
   /** Re-solve the reef wave field (off-thread) when the swell period or direction, the tide or the reef changes. */
   private requestFieldIfNeeded(force: boolean): void {
     const c = this.conditions;
-    const key = JSON.stringify([c.swell.periodS, c.swell.directionDeg, c.tideM, this.reefParams]);
+    const key = fieldKey(c, this.reefParams, this.breakParams.peel);
     if (!force && key === this.fieldKey) return;
     this.fieldKey = key;
-    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM });
+    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel });
   }
 
   /** Reef sliders rebuild the bathymetry (~2M cells) once you stop dragging, then re-solve the field on it. */
