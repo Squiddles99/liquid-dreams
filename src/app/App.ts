@@ -31,6 +31,7 @@ import { RideSession, rideMessage } from '../ride/RideSession';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
 import { SurfaceOffset } from '../ride/surfaceOffset';
 import { fieldKey } from '../breaker/fieldKey';
+import { tubeCover } from '../ride/tubeCover';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -59,7 +60,7 @@ import { DEFAULT_DEBUG_OVERLAYS, type DebugOverlays, OceanSurface } from '../oce
 import { DEFAULT_SPECTRUM_PARAMS, type OceanSpectrumParams, spectrumInputsKey } from '../ocean/spectrum';
 import { DEFAULT_WATER_OPTICS, type WaterOpticsParams } from '../ocean/waterOptics';
 import { nextUnderwater } from '../ocean/underwaterOptics';
-import { LensWater, rainLensStep } from '../render/lensWater';
+import { LensWater, rainLensStep, tubeLensStep } from '../render/lensWater';
 import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
@@ -189,6 +190,11 @@ export class App {
   private rideSet: number[] = [];
   /** The drawn sea's height over the ride's CPU water, read by the height probe under the board. */
   private readonly rideOffset = new SurfaceOffset();
+  /** The breaking ribbon's crest stations last traced, how far the rider is under a curl (tubeCover), and the spray on the
+   * lens from it (Andrew 2026-10-04: over her shoulder in the tube, and the surfacing drops on the lens). */
+  private ribbonStations: readonly StationEntry[] = [];
+  private rideCover = 0;
+  private tubeLensWet = 0;
   private rideWave = 0;
   readonly bombie: BombieMesh;
   private bombieTauS: number | null = null;
@@ -981,6 +987,7 @@ export class App {
       entries = traceStations(field, waves, this.clock.simTime, ctx, input);
       this.traceMs += TRACE_MS_ALPHA * (performance.now() - start - this.traceMs);
     }
+    this.ribbonStations = entries;
     this.ribbon.setStations(entries, cam);
     this.ribbon.setSun(sun);
     this.ribbon.compute(this.renderer);
@@ -1966,9 +1973,12 @@ export class App {
       const event = this.ride.step(simDt, this.input, water);
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
       else if (event) this.perf.flash(rideMessage(event));
-      const pose = this.ride.cameraPose(realDt, water, mouse);
+      const rb = this.ride.body;
+      this.rideCover = rb ? tubeCover(this.ribbonStations, rb.water.lx ?? rb.x, rb.water.lz ?? rb.z, this.breakParams) : 0;
+      const pose = this.ride.cameraPose(realDt, water, mouse, this.rideCover);
       if (pose) this.rig.setPose(pose);
     } else {
+      this.rideCover = 0;
       this.rig.update(realDt, this.input, this.waterHeightAtCamera());
     }
 
@@ -1986,6 +1996,8 @@ export class App {
     const facing = Math.min(1, Math.max(0, 0.3 - 0.7 * this.camera.getWorldDirection(this.viewDir).dot(fall)));
     this.rainLensWet = this.underwater ? 0 : rainLensStep(this.rainLensWet, this.cloudMeter.rainHere, facing, realDt);
     this.lensWater.rain(this.rainLensWet);
+    this.tubeLensWet = tubeLensStep(this.tubeLensWet, this.underwater ? 0 : 2 * this.rideCover - 1, realDt);
+    this.lensWater.tube(this.tubeLensWet);
     this.strikesPending.push(...this.lightning.update(this.conditions.seed, this.conditions.weather.storm, this.clock.simTime,
       lowLayer(this.conditions.weather).baseM, this.camera.position).fired);
     this.land.update(this.renderer, sun.direction, this.camera.position);

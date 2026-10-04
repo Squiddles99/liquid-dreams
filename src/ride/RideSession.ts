@@ -83,11 +83,14 @@ export class RideSession {
     return event;
   }
 
-  /** The camera this frame; `mouse` is the drag since the last frame (px), the right stick is read here. */
-  cameraPose(dt: number, water: WaterFn, mouse: { dx: number; dy: number } = { dx: 0, dy: 0 }): CameraPose | null {
+  /**
+   * The camera this frame; `mouse` is the drag since the last frame (px), the right stick is read here; `cover`: how far
+   * she is under a curl (tubeCover), for the over-the-shoulder camera.
+   */
+  cameraPose(dt: number, water: WaterFn, mouse: { dx: number; dy: number } = { dx: 0, dy: 0 }, cover = 0): CameraPose | null {
     if (!this.body) return null;
     const look: LookInput = lookFrom(readPad(), mouse, dt);
-    return this.camera.update(this.body, dt, (x, z) => water(x, z).y, look);
+    return this.camera.update(this.body, dt, (x, z) => water(x, z).y, look, cover);
   }
 
   surfer(bodyboard = false): ReturnType<typeof rideSurferParams> | null {
