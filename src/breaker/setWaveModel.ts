@@ -1,7 +1,7 @@
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetTime, pileTop, settledCrestTop, steepeningStart, TUBE_THROWN_PSI } from './breaking';
+import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetDelay, onsetTime, pileTop, settledCrestTop, steepeningStart, TUBE_THROWN_PSI } from './breaking';
 import { PSI_MIN, PSI_NONE, PSI_NORMAL, drainFactor, effectivePsi, withSheetShape } from './overturn';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
@@ -255,6 +255,7 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   const on = rayCrestPoint(x, z, t, f, w, ctx);
   const rec = o.onset?.(on.x, on.z);
   const tb = rec ? onsetTime(rec, 0, w.heightM, o.params) : undefined;
+  const delay = rec ? onsetDelay(rec, 0, w.heightM, o.params) : 0;
   const rMax = rec ? onsetRatio(rec, 0, w.heightM, o.params) : r;
   // The lip too, on the point's own ray: carried along the rays, it is the same all along one (under 1% at most ledge
   // points). Read at the lookup's crest instead, it slid along the crest's lip gradient (the peak's lip falls 20% in 7 m).
@@ -267,7 +268,7 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
     : PSI_NORMAL);
   const params = withSheetShape(o.params, psi);
   const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
-  const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp, smoothstep(PSI_NONE, PSI_MIN, psi), smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi));
+  const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp, smoothstep(PSI_NONE, PSI_MIN, psi), smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi), delay);
   const rLean = breakingRatio(w.heightM * fc.amp, fc.hminLean, o.params);
   return { x: cx, z: cz, f: fc, r, rSlurp, rLean, s: lc.stage, tb, lc, confidence, lipH, psi, params };
 }

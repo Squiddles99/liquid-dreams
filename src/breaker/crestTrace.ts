@@ -102,11 +102,14 @@ const onsetScratch = new Float32Array(ONSET_RECORD_LENGTH);
 /**
  * How long ago (s) the crest at (x, z) first broke: the field's onset record there (breaking.onsetTime), the same
  * record the sheet reads, so the lip and the water under it agree on when each section broke. null if it hasn't
- * broken (or the point is off the record); Infinity once the record's reach is past (the section is long handed back).
+ * broken (or the point is off the record), or while the section waits its turn (the peel stretch); Infinity once the
+ * record's reach is past (the section is long handed back).
  */
 export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: number, _ctx: WaveContext, p: BreakParams): number | null {
   const rec = sampleOnset(field, x, z, onsetScratch);
-  return rec ? onsetTime(rec, 0, w.heightM, p) : null;
+  const tb = rec ? onsetTime(rec, 0, w.heightM, p) : null;
+  // Held by the peel stretch (spec 2026-10-04 §4): unbroken to the ribbon, the spray and the sound until its turn.
+  return tb !== null && tb < 0 ? null : tb;
 }
 
 /** The station's ψ: the onset record's ψ₀ there with the game rules, as setWaveModel.crestAt reads it; PSI_NORMAL off the record. */
