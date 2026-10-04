@@ -38,10 +38,12 @@ describe('the peel stretch in the onset record (spec 2026-10-04 §1)', () => {
 
   it('peel 1 is today: no delay anywhere, every time since onset ≥ 0', () => {
     const { rec } = shelf((z) => 30 + 0.25 * z, 1);
+    let delayed = 0, negative = 0;
     for (let i = 0; i < NX * NZ; i++) for (let lvl = 0; lvl < ONSET_LEVELS; lvl++) {
-      expect(rec[i * ONSET_RECORD_LENGTH + ONSET_DELAY_OFFSET + lvl]).toBe(0);
-      expect(rec[i * ONSET_RECORD_LENGTH + 1 + 2 * lvl]).toBeGreaterThanOrEqual(0);
+      if (rec[i * ONSET_RECORD_LENGTH + ONSET_DELAY_OFFSET + lvl] !== 0) delayed++;
+      if (rec[i * ONSET_RECORD_LENGTH + 1 + 2 * lvl] < 0) negative++;
     }
+    expect({ delayed, negative }).toEqual({ delayed: 0, negative: 0 });
   });
 
   it('an oblique shelf peels 1/peel as fast along the line', () => {
@@ -82,6 +84,8 @@ describe('the peel stretch in the onset record (spec 2026-10-04 §1)', () => {
   it('a swell too small to break: no delay, all finite', () => {
     const { rec } = shelf((z) => 30 + 0.25 * z, 1.7, 1e-6);
     expect(rec.every(Number.isFinite)).toBe(true);
-    for (let i = 0; i < NX * NZ; i++) expect(rec[i * ONSET_RECORD_LENGTH + ONSET_DELAY_OFFSET + LVL]).toBe(0);
+    let delayed = 0;
+    for (let i = 0; i < NX * NZ; i++) if (rec[i * ONSET_RECORD_LENGTH + ONSET_DELAY_OFFSET + LVL] !== 0) delayed++;
+    expect(delayed).toBe(0);
   });
 });
