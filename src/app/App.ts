@@ -43,6 +43,7 @@ import { PADDLE_OUT_MS } from '../frontend/entry';
 import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
 import { FrontEnd } from '../frontend/frontEndPage';
+import { FRONT_SETTINGS_KEY, sanitizeFrontSettings } from '../frontend/frontSettings';
 import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
 import { PauseMenu } from '../frontend/ui/pauseMenu';
 import { frontEndCheck } from '../dev/frontEndCheck';
@@ -107,6 +108,7 @@ import { buildGroundShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
 import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime, FOAM_TICKS_PER_S } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
+import type { LoadingScreen } from './loadingScreen';
 import { showOverlay } from './overlay';
 
 const SPECTRUM_REBUILD_DEBOUNCE_MS = 150;
@@ -245,6 +247,11 @@ export class App {
   /** The ground a rider stands on (walking spec §4): the land, or the top of a rock on it; null until the land loads. */
   /** The front end (the dune select screen), once opened. */
   private frontEnd: FrontEnd | null = null;
+  private loadingScreen: LoadingScreen | null = null;
+  /** Start-up (loading screens §1.2): the land built, the kit (or its failure), the ground layers (or theirs). */
+  private readonly heathParts = { land: false, kit: false, layers: false };
+  private frontEndAtBoot = false;
+  private bootReported = false;
   /** Paddle out: put the camera behind the rider once the stand has placed them in the water. */
   private chaseAfterPaddle = false;
   /** The menu while surfing (Esc or a pad's START): keep surfing, or back to the dune. */
@@ -417,7 +424,13 @@ export class App {
     this.plants = new PlantMeshes(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     for (const m of this.plants.meshes) this.scene.add(m);
     // The ground layers (dune-up-close §4.3): until they load the patch draws as it did. The footprints draw with them.
-    loadGroundLayers(this.patch.layers).catch((e) => console.warn('The ground layers failed to load; the patch keeps its plain look.', e));
+    loadGroundLayers(this.patch.layers).then(
+      () => { this.heathParts.layers = true; },
+      (e) => {
+        this.heathParts.layers = true;
+        console.warn('The ground layers failed to load; the patch keeps its plain look.', e);
+      },
+    );
     fetch(import.meta.env.BASE_URL + 'heath/groundLayers.height.bin').then((r) => r.arrayBuffer()).then((b) => { this.groundLayersCpu = loadGroundLayersCpu(b); this.printsAt = null; }, () => undefined);
     this.footprints = new Footprints(this.patch.layers);
     this.scene.add(this.footprints.mesh);
@@ -431,11 +444,14 @@ export class App {
         for (const m of this.scatter.meshes) this.scene.add(m);
         this.plants.kitFade.value = 1;
         this.plants.setKindColours(hullColours());
-        void this.prewarmKit();
+        void this.prewarmKit().finally(() => { this.heathParts.kit = true; });
         this.hullInnerM = MID_M - BAND_FADE_M;
         this.hullsStale = true;
       },
-      (e) => console.warn('The heath kit failed to load; the hulls stand in for it.', e),
+      (e) => {
+        this.heathParts.kit = true;
+        console.warn('The heath kit failed to load; the hulls stand in for it.', e);
+      },
     );
     this.land.setPlantFloor(this.plantFloor);
     this.scene.add(this.patch.mesh);
@@ -444,7 +460,14 @@ export class App {
     this.scene.add(this.surferStand.group);
     this.gang = new GangLineup(this.sky, (xz) => this.sunlight.visibilityNode(xz));
     this.scene.add(this.gang.group);
-    void this.land.load().then(() => this.onLandBuilt(), (e: unknown) => {
+    void this.land.load().then(() => {
+      try {
+        this.onLandBuilt();
+      } finally {
+        this.heathParts.land = true;
+      }
+    }, (e: unknown) => {
+      this.heathParts.land = true;
       console.warn(`The land didn't load (${e instanceof Error ? e.message : String(e)}); running without it.`);
     });
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
@@ -672,7 +695,8 @@ export class App {
 
   start(): void {
     this.renderer.setAnimationLoop(this.frame);
-    this.sound.arm();
+    // With the loading cover, sound is armed as it dissolves (nothing audible, and no hint, over the cover).
+    if (!this.loadingScreen) this.sound.arm();
   }
 
   /** Stages the crew and holds the camera (the front end; null releases them). */
@@ -1009,6 +1033,51 @@ export class App {
     let o: THREE.Object3D | null = hit.object;
     while (o && !o.name) o = o.parent;
     return { rider, covered: `${o?.name || hit.object.type} at ${hit.distance.toFixed(2)} m` };
+  }
+
+  get loading(): LoadingScreen | null {
+    return this.loadingScreen;
+  }
+
+  /**
+   * The loading cover (loading screens spec). `frontEnd`: whether this start opens the front end (otherwise, a moment
+   * link or ?frontend=off, nothing waits for the crew). Sound is armed and the front end's input let go as it dissolves.
+   */
+  attachLoading(loading: LoadingScreen | null, frontEnd: boolean): void {
+    this.loadingScreen = loading;
+    this.frontEndAtBoot = frontEnd;
+    if (!loading) return;
+    loading.setCalm(this.calmMenus());
+    loading.onBootDissolve(() => this.sound.arm());
+  }
+
+  private calmMenus(): boolean {
+    try {
+      return sanitizeFrontSettings(JSON.parse(localStorage.getItem(FRONT_SETTINGS_KEY) ?? 'null')).calmMenus;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Each frame: the heath and the crew stages as they land (start-up), the frame for the cover's gate, its hold on the menu. */
+  private reportLoading(dtMs: number): void {
+    const l = this.loadingScreen;
+    if (!l) return;
+    const h = this.heathParts;
+    if (!this.bootReported && h.land && h.kit && h.layers) {
+      l.stageDone('heath');
+      if (!this.frontEndAtBoot || (this.frontEndHost().standSpot() && this.gang.settled)) {
+        l.stageDone('crew');
+        this.bootReported = true;
+      }
+    }
+    l.frameDrawn(dtMs);
+    if (this.frontEnd) this.frontEnd.inputHeld = l.blocking;
+  }
+
+  /** The Electron probe's Paddle out (?probe): START on the select screen, as a player would. */
+  probePaddleOut(): void {
+    this.frontEnd?.act('start');
   }
 
   /** Opens the front end (a normal start after prewarm, or the dev panel's button). */
@@ -1792,6 +1861,7 @@ export class App {
     if (!this.frameLimiter.shouldRender(now)) return;
     const realDt = clampFrameDt((now - this.lastMs) / 1000);
     this.lastMs = now;
+    this.reportLoading(realDt * 1000);
     const simDt = this.clock.tick(realDt);
     this.frontEnd?.update(realDt);
     // The menu while surfing: Esc or a pad's START opens it (the pad is watched every frame, so a START still held from
