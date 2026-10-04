@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PROFILE_SEGMENTS, type Vec2, buildProfile, sheetYAt } from './lipProfile';
+import { HOLLOW_FOOT_DIP, PROFILE_SEGMENTS, type Vec2, buildProfile, hollowCurve, sheetYAt } from './lipProfile';
 import { peakLanding, peakSetup, peakStation } from './peakStation.fixture';
 import { TIDES, peakPsi, setWaveHeight } from './reefReport';
 
@@ -73,4 +73,30 @@ describe("the face and the tube's back are one hollow curve (Andrew's red line),
       });
     }
   }
+});
+
+describe('the hollow face is well-conditioned where the lip lands on the line of the sheet at its foot', () => {
+  // A lip landing past the wave's foot has the foot moved 1 m beyond it on the same water, so the landing point lies within
+  // millimetres of the sheet's line there. On that line the conic through it was a corner whose wall moved 7 mm for 0.03 mm
+  // of the landing point (the GPU's f32 frame against the CPU's, ψ 0.09, 2026-10-04), and across it the face's direction
+  // jumped by HOLLOW_FOOT_DIP.
+  it('swept across the line in 0.05 mm steps, no wall sample moves more than 0.5 mm a step', () => {
+    const psi = 0.09, st = peakStation(psi, peakLanding(psi));
+    const f = buildProfile(st.base, st.input, st.lip, st.frameBase).frame;
+    expect(f.prog, 'the throw is complete (the face is the arc through the landing point)').toBe(1);
+    const up: Vec2 = [-f.tF[1], f.tF[0]];
+    const wall = Array.from({ length: n.wall }, (_, i) => i / n.wall);
+    const at = (h: number) => {
+      const P: Vec2 = [f.F[0] + f.tF[0] + up[0] * h, f.F[1] + f.tF[1] + up[1] * h];
+      return wall.map((s) => hollowCurve({ ...f, P }, 1, s));
+    };
+    let worst = 0, where = '', prev = at(-0.003);
+    // From 3 mm under the line to past where the dip lets go (sin(HOLLOW_FOOT_DIP) × the 1 m from the foot, plus 1 cm).
+    for (let h = -0.003 + 5e-5; h <= Math.sin(HOLLOW_FOOT_DIP) + 0.01; h += 5e-5) {
+      const cur = at(h);
+      cur.forEach((q, i) => { const d = Math.hypot(q[0] - prev[i][0], q[1] - prev[i][1]); if (d > worst) { worst = d; where = `${(h * 1000).toFixed(2)} mm over the line, wall s ${wall[i].toFixed(2)}`; } });
+      prev = cur;
+    }
+    expect(worst, `the largest step of a wall sample (m), at ${where}`).toBeLessThan(5e-4);
+  });
 });

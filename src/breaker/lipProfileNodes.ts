@@ -501,11 +501,12 @@ function hollowCurveNode(f: ProfileFrameNodes, wall: N, s: N): N {
   const R = vec2(tubeUpperNode(f.tube, 0.0)).toVar();
   const dR = vec2(norm2(vec2(tubeUpperNode(f.tube, CEILING_START_XI)).sub(R))).toVar();
   const FP = vec2(f.P.sub(f.F)).toVar(), rr = vec2(R.sub(f.F)).toVar();
-  // The face leaves the foot along the sheet, unless the landing point lies under that line; then just under P.
-  const above: N = FP.x.mul(f.tF.y).sub(FP.y.mul(f.tF.x));
-  const toP = norm2(FP), cd = Math.cos(HOLLOW_FOOT_DIP), sd = Math.sin(HOLLOW_FOOT_DIP);
+  // The face leaves the foot along the sheet, unless the landing point lies under that line or less than HOLLOW_FOOT_DIP
+  // above it; then HOLLOW_FOOT_DIP under P.
+  const toP = vec2(norm2(FP)).toVar(), cd = Math.cos(HOLLOW_FOOT_DIP), sd = Math.sin(HOLLOW_FOOT_DIP);
+  const above: N = toP.x.mul(f.tF.y).sub(toP.y.mul(f.tF.x));
   const dipped = norm2(vec2(toP.x.mul(cd).sub(toP.y.mul(sd)), toP.x.mul(sd).add(toP.y.mul(cd))));
-  const tF = vec2(select(above.greaterThanEqual(0.0), f.tF, dipped)).toVar();
+  const tF = vec2(select(above.greaterThanEqual(sd), f.tF, dipped)).toVar();
   const det = tF.x.mul(dR.y).sub(tF.y.mul(dR.x)).toVar();
   const detS = select(abs(det).greaterThan(1e-6), det, 1.0);
   const a = rr.x.mul(dR.y).sub(rr.y.mul(dR.x)).div(detS).toVar(), b = tF.x.mul(rr.y).sub(tF.y.mul(rr.x)).div(detS);

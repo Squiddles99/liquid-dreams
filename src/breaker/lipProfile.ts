@@ -507,10 +507,14 @@ function hollowArc(f: ProfileFrame, piece: 0 | 1, s: number): Vec2 {
   // picks the arc: 1 (a parabola) while the lip is in the air, then the one through the landing point P as the throw
   // completes (Andrew's red line: before the landing the face doesn't reach for P, which can stand above it).
   // The face leaves the foot along the sheet, unless the landing point lies under that line (a wide face's foot out past
-  // the trough, faceWidth 3: the arc passed over P and the landing tip came up through it); then just under P.
-  const above = (f.P[0] - f.F[0]) * f.tF[1] - (f.P[1] - f.F[1]) * f.tF[0];
+  // the trough, faceWidth 3: the arc passed over P and the landing tip came up through it), or less than HOLLOW_FOOT_DIP
+  // above it; then HOLLOW_FOOT_DIP under P. A lip landing past the wave's foot has the foot moved 1 m beyond it on the
+  // same water, so P lies within millimetres of that line: on it the conic through P is a corner (its weight ~ 1/√ of
+  // P's height over the line, 4.8 at 1.2 mm), every wall sample moving 7 mm for 0.03 mm of P (the GPU's f32 frame, ψ 0.09
+  // after the peel stretch), and across it the face's direction jumped by the whole dip.
   const toP = norm2([f.P[0] - f.F[0], f.P[1] - f.F[1]]), dip = HOLLOW_FOOT_DIP;
-  const tF: Vec2 = above >= 0 ? f.tF : norm2([toP[0] * Math.cos(dip) - toP[1] * Math.sin(dip), toP[0] * Math.sin(dip) + toP[1] * Math.cos(dip)]);
+  const above = toP[0] * f.tF[1] - toP[1] * f.tF[0];
+  const tF: Vec2 = above >= Math.sin(dip) ? f.tF : norm2([toP[0] * Math.cos(dip) - toP[1] * Math.sin(dip), toP[0] * Math.sin(dip) + toP[1] * Math.cos(dip)]);
   const det = tF[0] * dR[1] - tF[1] * dR[0];
   const rx = R[0] - f.F[0], ry = R[1] - f.F[1];
   const a = (rx * dR[1] - ry * dR[0]) / det, b = (tF[0] * ry - tF[1] * rx) / det;
