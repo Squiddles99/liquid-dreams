@@ -39,6 +39,10 @@ export interface BreakParams {
   psiNudge: number;
   /** The random dial: each wave's ψ moves by up to ± this fraction (its seeded draw); 0 is pure physics. */
   randomDial: number;
+  /** The peel stretch (spec 2026-10-04, Andrew: "the wave is simply breaking too fast for the surfer to ride"): each part
+   * of the line breaks this much later after the part up the line than the reef alone says; 1 is physics. Baked into the
+   * reef field's onset record (a change re-bakes it). */
+  peel: number;
   /** The pile's churn (render only; the CPU model ignores it): lumps up to this fraction of the pile's height… */
   churnSize: number;
   /** …churning at this rate (× CHURN_RATE_PER_S, pileChurn.ts). */
@@ -62,6 +66,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   pileSurge: 0.3,
   psiNudge: 0,
   randomDial: 0,
+  peel: 1.7,
   churnSize: 0.2,
   churnSpeed: 1,
 };
@@ -115,6 +120,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.pileSurge = clampTo(p.pileSurge, 0, 0.6, d.pileSurge);
   p.psiNudge = clampTo(p.psiNudge, -0.5, 0.5, d.psiNudge);
   p.randomDial = clampTo(p.randomDial, 0, 0.15, d.randomDial);
+  p.peel = clampTo(p.peel, 1, 3, d.peel);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
