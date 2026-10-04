@@ -11,13 +11,18 @@ export interface Stage {
   expectedMs: number;
 }
 
-/** In order. Weights and times are first guesses until they are measured. */
+/**
+ * In order. Measured in the built Electron app on Andrew's RTX 4060 (2026-10-04, median of three warm starts, each
+ * stage from the end of the one before): 593, 842, 5235, ~5 and 2268 ms, about 8.9 s in all (a first start, with no
+ * shader cache yet, took 22 s, nearly all of it the reef). The heath loads alongside the reef and is reported just
+ * after it, so it keeps a token share.
+ */
 export const STAGES: readonly Stage[] = [
-  { id: 'gpu', line: 'Waking the GPU…', weight: 0.1, expectedMs: 400 },
-  { id: 'world', line: 'Swell rolling in…', weight: 0.2, expectedMs: 1500 },
-  { id: 'reef', line: 'Laying the reef…', weight: 0.35, expectedMs: 3000 },
-  { id: 'heath', line: 'Growing the heath…', weight: 0.25, expectedMs: 2500 },
-  { id: 'crew', line: 'Waking the crew…', weight: 0.1, expectedMs: 800 },
+  { id: 'gpu', line: 'Waking the GPU…', weight: 0.07, expectedMs: 593 },
+  { id: 'world', line: 'Swell rolling in…', weight: 0.09, expectedMs: 842 },
+  { id: 'reef', line: 'Laying the reef…', weight: 0.58, expectedMs: 5235 },
+  { id: 'heath', line: 'Growing the heath…', weight: 0.01, expectedMs: 100 },
+  { id: 'crew', line: 'Waking the crew…', weight: 0.25, expectedMs: 2268 },
 ];
 
 /** How far through its span a stage's bar has crept (0 → 0.95, about 0.9 at the expected duration). */
