@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, MIN_STAGE_SPAN, sharpenDropSlope, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, TUBE_HOLD_S, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart, ONSET_DELAY_OFFSET, onsetDelay,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, TUBE_HOLD_S, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart, ONSET_DELAY_OFFSET, onsetDelay, PEEL_RAMP_DELAY_S,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -379,6 +379,35 @@ describe('one clock: the onset record and the lifecycle', () => {
     two[ONSET_DELAY_OFFSET + k] = 2; two[ONSET_DELAY_OFFSET + k + 1] = 4;
     expect(onsetDelay(two, 0, heightFor(qMid), P)).toBeCloseTo(3, 5);
     expect(onsetDelay(recOf(0.2, () => 1, () => 1), 0, heightFor(0.3), P)).toBe(0);
+  });
+  it('a held crest (negative time since onset) stands as the unbroken wave at r = 1, whatever its ratio (spec 2026-10-04 §3)', () => {
+    const H = 3, rMax = 2.5;
+    const atOne = lifecycle(1 - 1e-9, null, H, P, rMax, 0.5);
+    for (const r of [1, 1.3, 2, 4]) {
+      const held = lifecycle(r, -0.7, H, P, rMax, 0.5, 0, 0, 1.5);
+      for (const key of ['steep', 'stage', 'drain'] as const) expect(held[key], `${key} at r ${r}`).toBeCloseTo(atOne[key], 6);
+      expect(held.collapse).toBe(0);
+      expect(held.release).toBe(0);
+      expect(held.pile).toBe(0);
+    }
+  });
+
+  it('a delayed section turns without a jump: its ratio past 1 fades in over the landing', () => {
+    const H = 3, rMax = 2.5, r = 2;
+    const before = lifecycle(r, -0.01, H, P, rMax, r, 0, 0, 1.5), after = lifecycle(r, 0.01, H, P, rMax, r, 0, 0, 1.5);
+    for (const key of ['steep', 'stage', 'drain'] as const) expect(Math.abs(after[key] - before[key]), key).toBeLessThan(0.05);
+    // Landed, it is the wave at its own ratio again.
+    const land = landingEstimate(H, P);
+    const late = lifecycle(r, land + 0.01, H, P, rMax, r, 0, 0, 1.5), plain = lifecycle(r, land + 0.01, H, P, rMax, r);
+    for (const key of ['steep', 'stage', 'drain', 'collapse'] as const) expect(late[key], key).toBeCloseTo(plain[key], 6);
+  });
+
+  it('with no delay the lifecycle is exactly today\'s', () => {
+    const H = 3, rMax = 2.5;
+    for (const r of [0.7, 1, 1.4, 3]) for (const tb of [null, 0, 0.3, 1, 4]) {
+      expect(lifecycle(r, tb, H, P, rMax, r, 0.5, 0.5, 0)).toEqual(lifecycle(r, tb, H, P, rMax, r, 0.5, 0.5));
+    }
+    expect(PEEL_RAMP_DELAY_S).toBe(0.2);
   });
   it("onsetHeight: the wave's height where its level broke, interpolated as the time is", () => {
     const rec = recOf(1.3, (_, j) => 10 - j, (_, j) => 2 + 0.1 * j);
