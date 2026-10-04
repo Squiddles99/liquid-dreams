@@ -34,6 +34,7 @@ export class LoadingScreen {
   private released = false;
   private raf = 0;
   private lastTick: number;
+  private readonly bootAt: number;
 
   /** Adopts index.html's #ld-cover in boot mode (null if the page has none). */
   static adopt(doc: Document, now: () => number = () => performance.now()): LoadingScreen | null {
@@ -46,6 +47,7 @@ export class LoadingScreen {
     this.progress = new BootProgress(t);
     this.coverInAt = t;
     this.lastTick = t;
+    this.bootAt = t;
     this.showLine(this.progress.current?.line ?? '');
     this.setState('boot');
     this.loop();
@@ -54,6 +56,7 @@ export class LoadingScreen {
   /** Boot: a stage ended. */
   stageDone(id: StageId): void {
     if (this.phase !== 'boot') return;
+    if (!this.progress.isDone(id)) console.info(`[loading] ${id} done at ${(this.now() - this.bootAt).toFixed(0)} ms`);
     this.progress.done(id, this.now());
     this.showLine(this.progress.current?.line ?? '');
     if (this.progress.allDone) this.gate ??= new SmoothFramesGate(this.now());
