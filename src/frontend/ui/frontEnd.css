@@ -20,6 +20,9 @@
 }
 .fe-root * { box-sizing: border-box; outline: none; }
 .fe-root [data-hit] { pointer-events: auto; cursor: default; }
+/* A beat that isn't showing takes no clicks or hovers, its hit areas included (a faded rider card under the Outfit tab
+   picked Grommet, Andrew 2026-10-04). */
+.fe-root .fe-beat-off, .fe-root .fe-beat-off [data-hit] { pointer-events: none; }
 
 .fe-scrim-left { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7, 13, 17, 0.82) 0, rgba(7, 13, 17, 0.7) 30%, rgba(7, 13, 17, 0) 48%); }
 .fe-scrim-right { position: absolute; inset: 0; background: linear-gradient(270deg, rgba(7, 13, 17, 0.82) 0, rgba(7, 13, 17, 0.68) 30%, rgba(7, 13, 17, 0) 46%); }

@@ -42,14 +42,19 @@ describe('staging the crew (dune select spec §4, §13)', () => {
     const place = crewFor('rider', stand).find((p) => p.preset === 'female')!;
     expect(Math.hypot(g.female.x - place.x, g.female.z - place.z)).toBeGreaterThan(0.15);
   });
-  it('shows only the chosen rider in Grab your gear, holding the focused board, in the focused outfit on the Outfit tab', () => {
+  it('shows only the chosen rider in Grab your gear, with the ticked board and outfit whatever the focus (Andrew 2026-10-04)', () => {
     let g = stagingFor(front({ beat: 'gear', rider: 'female', gearTab: 'board', gearFocus: 1 }), stand, NONE);
     expect(g.female.visible).toBe(true);
     expect(g.male.visible).toBe(false);
     expect(g.grommet.visible).toBe(false);
-    expect(g.female.board).toBe('stepUp');
-    expect(g.female.outfit).toBe('walking');
+    const own = g.female.board;
+    expect(g.female.outfit).toBe('season');
     g = stagingFor(front({ beat: 'gear', rider: 'female', gearTab: 'outfit', gearFocus: 2 }), stand, NONE);
+    expect(g.female.outfit).toBe('season');
+    expect(g.female.board).toBe(own);
+    // Ticked: she wears and holds those on every tab.
+    g = stagingFor(front({ beat: 'gear', rider: 'female', gearTab: 'stance', gearFocus: 0, boards: { female: 'stepUp' }, outfits: { female: 'shortArmSteamer' } }), stand, NONE);
+    expect(g.female.board).toBe('stepUp');
     expect(g.female.outfit).toBe('shortArmSteamer');
   });
 });

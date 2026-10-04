@@ -57,4 +57,10 @@ describe('focusTo (the mouse: hover moves focus, spec §5.4)', () => {
     expect(focusTo(front({ beat: 'rider' }), { rider: 'grommet' }).events).toContainEqual({ kind: 'riderFocus', rider: 'grommet' });
     expect(focusTo(front({ beat: 'gear' }), { gear: 1 }).state.gearFocus).toBe(1);
   });
+  it('ignores a target on a beat that isn\u2019t showing: a faded rider card can\u2019t change the rider on Grab your gear', () => {
+    const gear = front({ beat: 'gear', rider: 'male' });
+    expect(focusTo(gear, { rider: 'grommet' })).toEqual({ state: gear, events: [] });
+    expect(focusTo(gear, { row: 'tide' }).state).toBe(gear);
+    expect(focusTo(front({ beat: 'rider' }), { gear: 2 }).state.gearFocus).toBe(0);
+  });
 });
