@@ -526,7 +526,7 @@ export function computeOnsetRecord(f: {
  * given no delay of its own it broke seconds ahead of the held curl, a closeout the reef doesn't have). Linking every
  * onset node instead chained the peak to sections far off that break earlier, and its first break moved 2 s.
  */
-function peelLines(onsetT: Float32Array, nx: number, nz: number): Float32Array {
+export function peelLines(onsetT: Float32Array, nx: number, nz: number): Float32Array {
   const L = ONSET_LEVELS, n = nx * nz, out = new Float32Array(onsetT.length).fill(Number.NaN);
   const parent = new Int32Array(n), first = new Float32Array(n), joined = new Uint8Array(n);
   const find = (i: number): number => {
@@ -551,14 +551,13 @@ function peelLines(onsetT: Float32Array, nx: number, nz: number): Float32Array {
       }
       joined[i] = 1;
       if (roots.length === 0) continue;
-      // The earliest section takes in the shallow ones; the node joins the latest section still apart (its nearest start).
+      // The node joins the latest section that started PEEL_MERGE_S or more before it (its nearest start), or the earliest
+      // if none did; sections younger than that merge into the node's own (a bump the line reaches is stretched with the
+      // line arriving at it, not with an older section beside it: final review).
       roots.sort((a, b) => first[a] - first[b]);
-      const r0 = roots[0];
-      let home = r0;
-      for (const r of roots.slice(1)) {
-        if (T - first[r] < PEEL_MERGE_S) parent[r] = r0;
-        else home = r;
-      }
+      let home = roots[0];
+      for (const r of roots) if (T - first[r] >= PEEL_MERGE_S) home = r;
+      for (const r of roots) if (r !== home && T - first[r] < PEEL_MERGE_S) parent[r] = home;
       parent[i] = home;
     }
     for (const i of nodes) out[i * L + k] = first[find(i)];
