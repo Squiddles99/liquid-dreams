@@ -3,7 +3,7 @@ import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import {
   CALL_SET_LEAD_S, DEFAULT_SET_PARAMS, MAX_ACTIVE_WAVES, WAVE_WINDOW_AFTER_S, WAVE_WINDOW_BEFORE_S,
-  callSetTime, nextSetArrivalS, normalizeSetParams, setStartS, straysAfterSet, wavesNear, wavesOfSet,
+  callSetTime, nextSetArrivalS, normalizeSetParams, selectScreenSetParams, setStartS, straysAfterSet, wavesNear, wavesOfSet,
   type WaveEvent, wavesBetween,
 } from './sets';
 import { toActiveWave } from '../breaker/setWaveModel';
@@ -129,6 +129,25 @@ describe('set timeline', () => {
     flat.swell.sizeFt = 0;
     expect(nextSetArrivalS(1000, flat, p)).toBeNull();
     expect(callSetTime(1000, flat, p)).toBeNull();
+  });
+  it('on the select screen, rolls in a set of the chosen swell every 120 s, each clear of the next (Andrew)', () => {
+    const into = { ...p };
+    const custom = { ...p, meanIntervalS: 1800, intervalJitterS: 300, maxWaves: 6 };
+    const dune = selectScreenSetParams(custom, into);
+    expect(dune).toBe(into);
+    expect(dune).toEqual({ ...custom, meanIntervalS: 120, intervalJitterS: 0 });
+    expect(custom.meanIntervalS).toBe(1800); // the dev panel's own sets untouched
+    for (const [ft, periodS] of [[3, 10], [5.5, 13]]) {
+      const cc = cloneConditions(c);
+      cc.swell.sizeFt = ft;
+      cc.swell.periodS = periodS;
+      for (let k = 0; k < 200; k++) {
+        expect(setStartS(k + 1, cc, dune) - setStartS(k, cc, dune)).toBeCloseTo(120, 9);
+        const set = wavesOfSet(k, cc, dune);
+        expect(wavesOfSet(k + 1, cc, dune)[0].arrivalS - set[set.length - 1].arrivalS).toBeGreaterThan(periodS);
+      }
+      for (const t of [0, 777, 5000]) expect(nextSetArrivalS(t, cc, dune)! - t).toBeLessThanOrEqual(120 + 1e-9);
+    }
   });
   it('clamps interval jitter to at most half the mean interval, so sets stay in slot order', () => {
     const wild = { ...p, meanIntervalS: 200, intervalJitterS: 500 };
