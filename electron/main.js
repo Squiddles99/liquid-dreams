@@ -6,7 +6,7 @@
 //   npm run electron:dev        open the Vite dev server (run `npm run dev` first)
 //   ...  -- --no-force-gpu      don't ask Chromium for the high-performance GPU (the A/B for the spike)
 //   ...  -- --probe=<dir>       run ~20 s, write <dir>/probe.json (GPUs, adapter, frame rate) + probe.png, quit
-import { app, BrowserWindow, clipboard, protocol } from 'electron';
+import { app, BrowserWindow, clipboard, nativeImage, protocol } from 'electron';
 import { existsSync, mkdirSync, readdirSync, statSync, createReadStream, writeFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
@@ -42,6 +42,36 @@ const MIME = {
   '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.wav': 'audio/wav',
 };
 
+/** Whether a capture is mostly black: over half its sampled pixels with luminance under 0.04 (loading screens §7). */
+function mostlyBlack(image) {
+  const { width, height } = image.getSize();
+  const px = image.toBitmap(); // BGRA
+  let dark = 0, n = 0;
+  for (let y = 0; y < height; y += 8) for (let x = 0; x < width; x += 8) {
+    const i = (y * width + x) * 4;
+    const lum = (0.0722 * px[i] + 0.7152 * px[i + 1] + 0.2126 * px[i + 2]) / 255;
+    if (lum < 0.04) dark++;
+    n++;
+  }
+  return n > 0 && dark / n > 0.5;
+}
+
+/** The probe's captures from the window's show to the end of the start-up dissolve: any mostly black fails it. */
+const blackCheck = { captures: 0, black: 0, firstBlackAtS: null };
+// Settles once the watch, started on the window's first paint (which can come after the page's load), has finished.
+let startBlackWatch = () => {};
+const blackWatch = new Promise((resolve) => { startBlackWatch = resolve; });
+async function watchForBlack(win, t0) {
+  for (;;) {
+    const state = await win.webContents.executeJavaScript('document.documentElement.dataset.ldLoading').catch(() => 'boot');
+    const img = await win.webContents.capturePage();
+    blackCheck.captures++;
+    if (!img.isEmpty() && mostlyBlack(img)) { blackCheck.black++; blackCheck.firstBlackAtS ??= (Date.now() - t0) / 1000; }
+    if (state === 'done' || Date.now() - t0 > 120000) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 /** Music files served while probing: proof the soundtrack streams from inside the app. */
 const mediaRequests = [];
 
@@ -75,7 +105,10 @@ async function createWindow() {
     webPreferences: { backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
   });
   // Shown on the page's first paint (the loading cover), never as an empty black window.
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    if (probeDir) startBlackWatch(watchForBlack(win, Date.now()));
+    win.show();
+  });
   // The screenshot key (K) "downloads" a PNG. A browser drops it in Downloads; Electron would ask where to save it
   // every time. Save straight to Pictures\Liquid Dreams instead (the probe's own folder while probing).
   win.webContents.session.on('will-download', (_e, item) => {
@@ -92,13 +125,38 @@ async function createWindow() {
     const t0 = Date.now();
     win.webContents.on('console-message', (e) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s renderer ${e.level}] ${e.message}`));
   }
-  await win.loadURL(dev ? DEV_URL : APP_URL);
+  // ?probe: the page hands the probe a Paddle out and a Back to the dune (window.ldProbe).
+  await win.loadURL((dev ? DEV_URL : APP_URL) + (probeDir ? '?probe' : ''));
   if (probeDir) await probe(win, probeDir);
 }
 
 /** What the spike needs to know, gathered without anyone watching: which GPU, how fast, and what it looks like. */
 async function probe(win, dir) {
   mkdirSync(dir, { recursive: true });
+  const solid = (b, g, r) => nativeImage.createFromBitmap(Buffer.from(new Array(64 * 64).fill([b, g, r, 255]).flat()), { width: 64, height: 64 });
+  if (!mostlyBlack(solid(0, 0, 0)) || mostlyBlack(solid(0xc4, 0xdb, 0xe8))) throw new Error('mostlyBlack is wrong');
+  await blackWatch;
+  // 3 s of frames after a dissolve: every frame over 50 ms (loading screens §7: the target is none).
+  const hitchesFor = () => win.webContents.executeJavaScript(`new Promise((done) => {
+    const out = []; let last = performance.now(); const end = last + 3000;
+    const tick = (now) => { if (now - last > 50) out.push({ atS: Math.round(now / 100) / 10, ms: Math.round(now - last) }); last = now;
+      now < end ? requestAnimationFrame(tick) : done(out); };
+    requestAnimationFrame(tick);
+  })`);
+  const waitState = (s) => win.webContents.executeJavaScript(`new Promise((done) => { const t = setInterval(() => {
+    if (document.documentElement.dataset.ldLoading === '${s}') { clearInterval(t); done(); } }, 20); })`);
+  const afterDissolve = [{ which: 'start-up', hitches: await hitchesFor() }];
+  await new Promise((r) => setTimeout(r, 2000));
+  await win.webContents.executeJavaScript('window.ldProbe.paddleOut()');
+  await waitState('covering');
+  await waitState('dissolving');
+  afterDissolve.push({ which: 'paddle out', hitches: await hitchesFor() });
+  await waitState('done');
+  await win.webContents.executeJavaScript('void window.ldProbe.backToDune()');
+  await waitState('covering');
+  await waitState('dissolving');
+  afterDissolve.push({ which: 'back to the dune', hitches: await hitchesFor() });
+  await waitState('done');
   // Every frame over 60 s: the rate per 5 s window (start-up work vs a steady cost) and each hitch (>50 ms) by time.
   const timeline = await win.webContents.executeJavaScript(`new Promise((done) => {
     const hitches = [], perWindow = []; let last = performance.now(), frames = 0, windowStart = last;
@@ -146,6 +204,9 @@ async function probe(win, dir) {
     ...page,
     keys,
     mediaRequests: mediaRequests.slice(0, 5),
+    blackCheck,
+    afterDissolve,
+    afterDissolveNote: 'start-up window starts when the dissolve ends',
   };
   writeFileSync(join(dir, 'probe.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
