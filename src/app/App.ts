@@ -77,7 +77,7 @@ import type { Strike } from '../weather/rainModel';
 import { lowLayer } from '../weather/cloudModel';
 import { travelDirectionXZ } from '../conditions/directions';
 import { combineSunlight } from '../weather/CloudShadow';
-import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, wavesBetween, wavesNear } from '../swell/sets';
+import { DEFAULT_SET_PARAMS, type SetParams, type WaveEvent, callSetTime, nextSetArrivalS, normalizeSetParams, selectScreenSetParams, wavesBetween, wavesNear } from '../swell/sets';
 import { CoastalSurf } from '../surf/CoastalSurf';
 import { DEFAULT_SURF_PARAMS, type SurfParams, normalizeSurfParams } from '../surf/surfModel';
 import { formatNextSet, waveStatus } from '../swell/setStatus';
@@ -164,6 +164,10 @@ export class App {
   readonly pictureParams: PictureParams = { ...DEFAULT_PICTURE };
   readonly reefParams: ReefParams = { ...DEFAULT_REEF_PARAMS };
   readonly setParams: SetParams = { ...DEFAULT_SET_PARAMS };
+  /** The select screen's sets (a set every 120 s), filled from setParams while `duneSets` is on. */
+  private readonly selectScreenSets: SetParams = { ...DEFAULT_SET_PARAMS };
+  /** On from the select screen opening until Paddle out's cover is in: the sea runs the select screen's sets. */
+  private duneSets = false;
   readonly shallowParams: ShallowSwellParams = { ...DEFAULT_SHALLOW_SWELL };
   readonly overlays: DebugOverlays = { ...DEFAULT_DEBUG_OVERLAYS };
   readonly breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
@@ -848,7 +852,7 @@ export class App {
   /** The foam field's source at sim time t: the ocean's time uniform and the set waves in flight then. */
   private pointFoamSourceAt(t: number): void {
     this.ocean.time.value = t;
-    this.setWaves.setEvents(wavesNear(t, this.conditions, this.setParams));
+    this.setWaves.setEvents(wavesNear(t, this.conditions, this.sets));
   }
 
   /** Dev (plan Task 5, spec §3.4): times a forced replay to the GPU's completion. ms / steps is one step's cost. */
@@ -871,7 +875,7 @@ export class App {
     const T = this.conditions.swell.periodS;
     // The Womb's set waves around the bursting waves' peak arrivals (final review I1: the window was centred on t).
     const win = setWindow(t, this.bombieTauS!, T);
-    const setIndices = setIndicesFrom(wavesBetween(win.t0, win.t1, this.conditions, this.setParams), T);
+    const setIndices = setIndicesFrom(wavesBetween(win.t0, win.t1, this.conditions, this.sets), T);
     return { tauS: this.bombieTauS!, periodS: T, hs: surferFeetToHs(this.conditions.swell.sizeFt), thresholdHs: surferFeetToHs(this.bombieParams.thresholdFt), seed: this.conditions.seed, setIndices };
   }
 
@@ -894,7 +898,7 @@ export class App {
     if (!e) {
       const t = tickTime(k);
       e = breakEmitters({
-        field: this.field, ctx: this.waveCtx, events: wavesNear(t, this.conditions, this.setParams), t, params: this.breakParams,
+        field: this.field, ctx: this.waveCtx, events: wavesNear(t, this.conditions, this.sets), t, params: this.breakParams,
         minHeightM: this.ribbonMinHeightM, wind: { speedMs: this.conditions.wind.speedMs, fromDeg: this.conditions.wind.directionDeg },
         tideM: this.conditions.tideM, amount: this.sprayParams.amount, impactAmount: this.impactParams.amount,
       });
@@ -1100,6 +1104,7 @@ export class App {
   openFrontEnd(): void {
     if (this.frontEnd?.isOpen) return;
     this.frontEnd ??= new FrontEnd(this.frontEndHost(), this.container, this.sound, browserStorage);
+    this.setDuneSets(true);
     this.input.suspended = true;
     this.surferStand.group.visible = false;
     this.frontEnd.open();
@@ -1175,6 +1180,8 @@ export class App {
       this.surferStand.group.visible = true;
       this.stageFrontEnd(null, null);
       this.rig.setPose(this.startupMoment().camera, this.conditions.tideM);
+      // Under the cover, so the sea's set timeline changes unseen: the ride runs the dev panel's sets.
+      this.setDuneSets(false);
       // Straight onto a set wave (first ride): the ride's camera takes over from here.
       this.startRide();
       this.panel.refresh();
@@ -1190,6 +1197,19 @@ export class App {
       this.rebuildSpectrumIfNeeded(false);
       this.requestFieldIfNeeded(false);
     }, SPECTRUM_REBUILD_DEBOUNCE_MS);
+  }
+
+  /** The sets the sea runs now: the dev panel's, or on the select screen a set every 120 s (Andrew, 2026-10-04). */
+  private get sets(): SetParams {
+    return this.duneSets ? selectScreenSetParams(this.setParams, this.selectScreenSets) : this.setParams;
+  }
+
+  /** Switches the select screen's sets on or off: a new set timeline, so the surf and the particles start over. */
+  private setDuneSets(on: boolean): void {
+    if (this.duneSets === on) return;
+    this.duneSets = on;
+    this.surf.invalidate();
+    this.invalidateParticles();
   }
 
   /** A jump (or new conditions or field): the foam map and the spray replay their windows. */
@@ -1504,7 +1524,7 @@ export class App {
   private rideWater(t: number, drawn = true): WaterFn {
     const field = this.field, ctx = this.waveCtx, tide = this.conditions.tideM + (drawn ? this.rideOffset.value : 0);
     if (!field || !ctx) return flatWater(tide);
-    const waves = wavesNear(t, this.conditions, this.setParams).map(toActiveWave);
+    const waves = wavesNear(t, this.conditions, this.sets).map(toActiveWave);
     const o = this.breakParams.enabled ? breakOptions(field, this.breakParams, this.offshoreMs) : undefined;
     // The land and the rocks under the board (null while the land loads): the board runs aground on them.
     return (x, z) => {
@@ -1541,7 +1561,7 @@ export class App {
     normalizeSurferParams(sp);
     this.callSetNow();
     const t = this.clock.simTime;
-    const set = wavesBetween(t, t + 120, this.conditions, this.setParams).filter((e) => e.arrivalS > t + RIDE_LEAD_S);
+    const set = wavesBetween(t, t + 120, this.conditions, this.sets).filter((e) => e.arrivalS > t + RIDE_LEAD_S);
     this.rideSet = set.map((e) => e.arrivalS);
     // The set's biggest wave first; R goes on through the rest.
     this.catchSetWave(set.reduce((best, e, i) => (e.heightM > set[best].heightM ? i : best), 0));
@@ -1568,7 +1588,7 @@ export class App {
   }
 
   private callSetNow(): void {
-    const t = callSetTime(this.clock.simTime, this.conditions, this.setParams);
+    const t = callSetTime(this.clock.simTime, this.conditions, this.sets);
     if (t === null) {
       this.perf.flash('Flat: no sets to call');
       return;
@@ -1967,8 +1987,8 @@ export class App {
     this.sky.followCamera(this.camera.position);
 
     this.ocean.update(this.renderer, this.clock.simTime, simDt);
-    const events = wavesNear(this.clock.simTime, this.conditions, this.setParams);
-        this.surf.update(this.clock.simTime, this.conditions, (t0, t1) => wavesBetween(t0, t1, this.conditions, this.setParams), this.field, this.surfParams);
+    const events = wavesNear(this.clock.simTime, this.conditions, this.sets);
+        this.surf.update(this.clock.simTime, this.conditions, (t0, t1) => wavesBetween(t0, t1, this.conditions, this.sets), this.field, this.surfParams);
     this.setWaves.setEvents(events);
     this.stepFoam(events);
     this.stepKelp(events);
@@ -1989,7 +2009,7 @@ export class App {
     this.statusAge += realDt;
     if (this.statusAge > 0.25) {
       this.statusAge = 0;
-      this.setStatus.nextSet = formatNextSet(nextSetArrivalS(this.clock.simTime, this.conditions, this.setParams), this.clock.simTime);
+      this.setStatus.nextSet = formatNextSet(nextSetArrivalS(this.clock.simTime, this.conditions, this.sets), this.clock.simTime);
       this.setStatus.wave = waveStatus(this.clock.simTime, events);
       this.setStatus.face = formatPeakFace(peakFace(this.field, events, this.clock.simTime, this.breakParams), this.field !== null);
       this.setStatus.psi = formatPeakPsi(peakPsi(this.field, events, this.clock.simTime, this.breakParams, this.offshoreMs), this.field !== null);
