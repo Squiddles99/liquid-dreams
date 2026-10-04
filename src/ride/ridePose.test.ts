@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { startBody } from './ridePhysics';
+import { type RideBody, startBody } from './ridePhysics';
 import { LOOK_HOLD_S, RideCamera } from './ridePose';
 import { flatWater } from './water';
 
@@ -34,5 +34,44 @@ describe('the ride camera: the player can look around, and it goes home (Andrew 
     expect(up.position[1]).toBeLessThan(level.position[1]);
     expect(up.position[1]).toBeGreaterThanOrEqual(0.5);
     expect(up.pitchDeg).toBeGreaterThan(level.pitchDeg);
+  });
+});
+
+describe('the ride camera from behind, and over her shoulder in the tube (Andrew 2026-10-04: "we can\'t see the face of the wave ahead")', () => {
+  const settle = (cam: RideCamera, b: RideBody, cover = 0, s = 3) => {
+    let pose = cam.update(b, DT, () => 0, undefined, cover);
+    for (let t = 0; t < s; t += DT) pose = cam.update(b, DT, () => 0, undefined, cover);
+    return pose;
+  };
+  /** Up and running down the line (−z) at 10 m/s, the swell running +x. */
+  const riding = (): RideBody => {
+    const b = startBody(0, 0, 0, flatWater());
+    b.phase = 'ride';
+    b.phaseT = 2;
+    b.vz = -10;
+    return b;
+  };
+
+  it('riding, it follows behind her and looks ahead down the line', () => {
+    const pose = settle(new RideCamera(), riding());
+    expect(pose.position[2]).toBeGreaterThan(4); // behind her (+z)
+    expect(Math.abs(pose.position[0])).toBeLessThan(0.5);
+    expect(Math.min(pose.yawDeg, 360 - pose.yawDeg)).toBeLessThan(10); // looking −z, down the line
+  });
+
+  it('paddling, it is behind the board too', () => {
+    const b = startBody(0, 0, 90, flatWater());
+    expect(settle(new RideCamera(), b).position[0]).toBeLessThan(-3);
+  });
+
+  it('under a curl it goes over her shoulder (the shore side), still looking down the line, and back out after', () => {
+    const cam = new RideCamera(), b = riding();
+    settle(cam, b);
+    const pov = settle(cam, b, 1, 1);
+    expect(Math.hypot(pov.position[0], pov.position[2])).toBeLessThan(1.5);
+    expect(pov.position[1]).toBeGreaterThan(1.2);
+    expect(pov.position[0]).toBeGreaterThan(0.1); // the shore side (+x), away from the wall
+    expect(Math.min(pov.yawDeg, 360 - pov.yawDeg)).toBeLessThan(10);
+    expect(settle(cam, b, 0, 3).position[2]).toBeGreaterThan(4);
   });
 });
