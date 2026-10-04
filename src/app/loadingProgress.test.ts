@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BarFollower, BootProgress, STAGES, creep } from './loadingProgress';
+import { BarFollower, BootProgress, STAGES, bootReady, creep } from './loadingProgress';
 
 describe('STAGES', () => {
   it('runs gpu, world, reef, heath, crew, with weights summing to 1', () => {
@@ -77,5 +77,24 @@ describe('BarFollower', () => {
     const before = f.shown;
     f.step(0.2, 16);
     expect(f.shown).toBe(before);
+  });
+});
+
+describe('bootReady', () => {
+  const base = { land: true, kit: true, layers: true, frontEnd: true, landUsable: true, crewIn: false };
+  it('the heath waits for the land, the kit and the ground layers', () => {
+    expect(bootReady({ ...base, kit: false }).heath).toBe(false);
+    expect(bootReady(base).heath).toBe(true);
+  });
+  it('the crew waits for the heath and the crew on the stand spot', () => {
+    expect(bootReady(base).crew).toBe(false);
+    expect(bootReady({ ...base, crewIn: true }).crew).toBe(true);
+    expect(bootReady({ ...base, crewIn: true, layers: false }).crew).toBe(false);
+  });
+  it('nothing waits for a crew when there is no front end (a moment link, ?frontend=off)', () => {
+    expect(bootReady({ ...base, frontEnd: false }).crew).toBe(true);
+  });
+  it('nothing waits for a crew that cannot appear: the land failed, so there is no stand spot (the bar never hangs)', () => {
+    expect(bootReady({ ...base, landUsable: false }).crew).toBe(true);
   });
 });

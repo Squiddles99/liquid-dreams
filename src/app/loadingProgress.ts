@@ -77,3 +77,13 @@ export class BarFollower {
     return this.shown;
   }
 }
+
+/**
+ * Which of the last two stages are done (loading screens §1.2, §1.4). The heath: the land, the kit and the ground
+ * layers have each loaded or failed. The crew: the heath, and the crew on the stand spot, unless no crew is coming (no
+ * front end at this start, or no usable land, so no stand spot): the bar never hangs.
+ */
+export function bootReady(p: { land: boolean; kit: boolean; layers: boolean; frontEnd: boolean; landUsable: boolean; crewIn: boolean }): { heath: boolean; crew: boolean } {
+  const heath = p.land && p.kit && p.layers;
+  return { heath, crew: heath && (!p.frontEnd || !p.landUsable || p.crewIn) };
+}

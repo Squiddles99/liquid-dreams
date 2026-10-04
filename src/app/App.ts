@@ -108,6 +108,7 @@ import { buildGroundShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
 import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime, FOAM_TICKS_PER_S } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
+import { bootReady } from './loadingProgress';
 import type { LoadingScreen } from './loadingScreen';
 import { showOverlay } from './overlay';
 
@@ -1065,8 +1066,12 @@ export class App {
     if (!l) return;
     const h = this.heathParts;
     if (!this.bootReported && h.land && h.kit && h.layers) {
-      l.stageDone('heath');
-      if (!this.frontEndAtBoot || (this.frontEndHost().standSpot() && this.gang.settled)) {
+      const ready = bootReady({
+        ...h, frontEnd: this.frontEndAtBoot, landUsable: !!this.land.height?.trackNetwork,
+        crewIn: !!this.frontEndHost().standSpot() && this.gang.settled,
+      });
+      if (ready.heath) l.stageDone('heath');
+      if (ready.crew) {
         l.stageDone('crew');
         this.bootReported = true;
       }
@@ -1111,11 +1116,13 @@ export class App {
    * Covers a transition (loading screens §4): the cover comes in, `work` runs under it with the sim held still, and it
    * dissolves once the frames run smooth and it has held long enough; the sim then runs (or stays paused) as `work`
    * left it. Without a cover (none adopted), the work just runs. A second transition while one is covered is refused.
+   * `afterDissolve` runs as it dissolves: the game's own keys come back then, never under the cover.
    */
-  private async underCover(line: string, delayMs: number, work: () => void): Promise<void> {
+  private async underCover(line: string, delayMs: number, work: () => void, afterDissolve?: () => void): Promise<void> {
     const cover = this.loadingScreen;
     if (!cover) {
       work();
+      afterDissolve?.();
       return;
     }
     await new Promise((r) => window.setTimeout(r, delayMs));
@@ -1125,7 +1132,7 @@ export class App {
     const started = new Promise<void>((r) => { dissolved = r; });
     const ok = await cover.cover({
       line, calm, minHoldMs: calm ? PADDLE_OUT_MS.minHoldCalm : PADDLE_OUT_MS.minHold,
-      onDissolve: () => { this.setPaused(resume); dissolved(); },
+      onDissolve: () => { this.setPaused(resume); afterDissolve?.(); dissolved(); },
     });
     if (!ok) return;
     work();
@@ -1156,13 +1163,12 @@ export class App {
       normalizeSurferParams(this.surferParams);
       this.surferStand.group.visible = true;
       this.stageFrontEnd(null, null);
-      this.input.suspended = false;
       this.rig.setPose(this.startupMoment().camera, this.conditions.tideM);
       // Straight onto a set wave (first ride): the ride's camera takes over from here.
       this.startRide();
       this.panel.refresh();
       this.scheduleSave();
-    });
+    }, () => { this.input.suspended = false; });
   }
 
   private scheduleSpectrumRebuild(): void {
@@ -1782,6 +1788,8 @@ export class App {
   private onDeviceLost(info: { message?: string }): void {
     // Nothing more can be drawn on a lost device; stop the loop rather than keep submitting to it.
     this.renderer.setAnimationLoop(null);
+    // The loading cover waits on frames that will never come now: take it away, or it hides the message for good.
+    this.loadingScreen?.remove();
     const hash = encodeMoment(this.currentMoment());
     showOverlay('The GPU connection was lost', info?.message || 'The graphics device stopped responding.', [
       { label: 'Reload this moment', onClick: () => { history.replaceState(null, '', hash); location.reload(); } },
@@ -1885,7 +1893,7 @@ export class App {
     if (this.pauseMenu) {
       const pick = this.pauseMenu.update();
       if (pick) this.closePauseMenu(pick);
-    } else if (!this.frontEnd?.isOpen && (this.input.consumePressed('Escape') || padStart)) this.openPauseMenu();
+    } else if (!this.frontEnd?.isOpen && !this.loadingScreen?.blocking && (this.input.consumePressed('Escape') || padStart)) this.openPauseMenu();
 
     // While the front end has the keys, only H (show/hide the dev tools) reaches the game's hotkeys.
     if (this.frontEnd?.isOpen && this.input.consumePressed(HOTKEYS.toggleDevUi)) this.toggleDevUi();

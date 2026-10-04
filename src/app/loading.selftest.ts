@@ -159,3 +159,20 @@ registerSelfTest({
     return { pass: bad.length === 0, detail: bad.join('; ') || `z ${z}, opacity ${mid.toFixed(2)} at 150 ms` };
   },
 });
+
+registerSelfTest({
+  name: 'loading: while the cover blocks, it takes the mouse too (clicks, the wheel and hovers never reach the menu under it)',
+  async run() {
+    const el = document.getElementById('ld-cover');
+    if (!el) return { pass: false, detail: 'no #ld-cover in the page' };
+    const screen = LoadingScreen.adopt(document)!;
+    screen.remove();
+    const coming = screen.cover({ line: 'Paddling out…', minHoldMs: 0, calm: false });
+    await new Promise((r) => setTimeout(r, 450));
+    await coming;
+    const hit = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+    const takes = getComputedStyle(el).pointerEvents !== 'none' && !!hit && el.contains(hit);
+    screen.remove();
+    return { pass: takes, detail: `pointer-events ${getComputedStyle(el).pointerEvents}, hit ${hit?.tagName}.${hit?.className}` };
+  },
+});
