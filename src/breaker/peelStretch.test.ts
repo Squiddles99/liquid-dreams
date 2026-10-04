@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ONSET_DELAY_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH } from './breaking';
-import { PEEL_MAX_HOLD_S, computeOnsetRecord } from './reefField';
+import { PEEL_MAX_HOLD_S, computeOnsetRecord, peelLines } from './reefField';
 
 /**
  * A synthetic reef: the swell runs +x at C m/s over a 1 m grid; amp/hminBreak rises shoreward as
@@ -107,5 +107,19 @@ describe('the peel stretch in the onset record (spec 2026-10-04 §1)', () => {
     let delayed = 0;
     for (let i = 0; i < NX * NZ; i++) if (rec[i * ONSET_RECORD_LENGTH + ONSET_DELAY_OFFSET + LVL] !== 0) delayed++;
     expect(delayed).toBe(0);
+  });
+});
+
+describe('the breaking sections (peelLines)', () => {
+  it('a young section merges into the section the joining node belongs to, not the earliest one (final review)', () => {
+    // On a 10 × 10 grid at one level: A (2, 2) breaks at 0, C (8, 8) at 5, a bump B (2, 8) at 9.5, and X (5, 5), next to
+    // all three, at 10. X belongs with C (its nearest start still apart); B, 0.5 s ahead of X, is stretched with C.
+    const nx = 10, nz = 10, onsetT = new Float32Array(nx * nz * ONSET_LEVELS).fill(Number.NaN);
+    const put = (col: number, row: number, T: number): void => { onsetT[(row * nx + col) * ONSET_LEVELS] = T; };
+    put(2, 2, 0); put(8, 8, 5); put(8, 2, 9.5); put(5, 5, 10);
+    const start = peelLines(onsetT, nx, nz), at = (col: number, row: number): number => start[(row * nx + col) * ONSET_LEVELS];
+    expect(at(5, 5)).toBe(5);
+    expect(at(8, 2)).toBe(5);
+    expect(at(2, 2)).toBe(0);
   });
 });
