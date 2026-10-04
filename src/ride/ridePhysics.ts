@@ -58,7 +58,15 @@ const PLANE_DRAG = { lin: 0.03, quad: 0.012, side: 5 };
 /** In the water after a wipeout: carried with the water. */
 const BAIL_DRAG = { lin: 1.5, quad: 0, side: 1.5 };
 export const PADDLE_TURN_DEG_S = 70;
-export const CARVE_TURN_DEG_S = 110;
+/** Carving at speed (Andrew 2026-10-04: the turn wasn't responsive enough to set the rail and keep up with the wave). */
+export const CARVE_TURN_DEG_S = 170;
+/** Popping up, you already set your line (at this fraction of the carve rate). */
+export const POPUP_TURN = 0.6;
+/**
+ * The rail's grip turns the board's slide into speed along it instead of scrubbing it off: of the sideways speed the rail
+ * takes out (relative to the water and the wave carrying you), this fraction of its energy goes into the board's run.
+ */
+export const RAIL_KEEP = 0.85;
 /** The assisted takeoff's push (m/s²) at full lift, up to ASSIST_TO × the wave's speed. */
 export const ASSIST_ACCEL = 8;
 export const ASSIST_TO = 0.8;
@@ -66,7 +74,7 @@ export const ASSIST_TO = 0.8;
 export const CATCH_RATIO = 0.45;
 /** Too slow to pop up below this (m/s). */
 export const POPUP_MIN_SPEED = 2.5;
-export const POPUP_S = 0.8;
+export const POPUP_S = 0.6;
 export const BAIL_S = 2;
 /** Whitewater over this and you're gone. */
 export const WIPEOUT_FOAM = 0.5;
@@ -81,8 +89,10 @@ export const AGROUND_DEPTH_M = 0.3;
 /**
  * The wave carries you (the arcade part): on its front face, standing, the board grips and drags against water moving
  * with the wave at this fraction of its speed, so a rider angled along the face stays on it; over the back, nothing.
+ * Half, not more: the rest of the wave's speed is water running up the face past the rail, which is what drives the
+ * board along the line (at 0.9 the trim along a 12 ft face was ~6 m/s, the section peeling at ~15).
  */
-export const WAVE_CARRY = 0.9;
+export const WAVE_CARRY = 0.5;
 
 export function forwardOf(headingDeg: number): [number, number] {
   const h = headingDeg * DEG;
@@ -133,11 +143,11 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   // Steering and the carve.
   const steer = Math.max(-1, Math.min(1, c.steer));
   const speed0 = speedOf(b);
-  const turn = b.phase === 'paddle' ? PADDLE_TURN_DEG_S
-    : b.phase === 'ride' ? CARVE_TURN_DEG_S * Math.max(0.3, Math.min(1, speed0 / 5)) : 0;
+  const carveRate = CARVE_TURN_DEG_S * Math.max(0.5, Math.min(1, speed0 / 5));
+  const turn = b.phase === 'paddle' ? PADDLE_TURN_DEG_S : b.phase === 'ride' ? carveRate : b.phase === 'popup' ? POPUP_TURN * carveRate : 0;
   b.headingDeg = (((b.headingDeg + steer * turn * dt) % 360) + 360) % 360;
   const ease = 1 - Math.exp(-dt / 0.15);
-  b.carve += ((b.phase === 'ride' ? steer : 0) - b.carve) * ease;
+  b.carve += ((b.phase === 'ride' || b.phase === 'popup' ? steer : 0) - b.carve) * ease;
   b.compression += ((b.phase === 'ride' ? Math.max(-1, Math.min(1, c.crouch)) : 0) - b.compression) * ease;
 
   // Forces: gravity along the surface, paddling, the assist.
@@ -166,7 +176,10 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   let along = relX * fx + relZ * fz, side = relX * rx + relZ * rz;
   along *= Math.exp(-d.lin * dt);
   along /= 1 + d.quad * Math.abs(along) * dt;
-  side *= Math.exp(-d.side * (b.phase === 'ride' ? 1 + 0.3 * b.compression : 1) * dt);
+  const gripped = side * Math.exp(-d.side * (b.phase === 'ride' ? 1 + 0.3 * b.compression : 1) * dt);
+  // On its feet, the rail turns the slide it grips into run (a bottom turn keeps its speed); prone, the water just takes it.
+  if (standing && along > 0) along = Math.sqrt(along * along + RAIL_KEEP * (side * side - gripped * gripped));
+  side = gripped;
   b.vx = ux + fx * along + rx * side;
   b.vz = uz + fz * along + rz * side;
   if (b.phase === 'bail') {
