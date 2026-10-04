@@ -1,4 +1,4 @@
-import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetTime } from './breaking';
+import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetDelay, onsetTime, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
@@ -112,6 +112,18 @@ export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: nu
   return tb !== null && tb < 0 ? null : tb;
 }
 
+/**
+ * A station's time since onset and ratio from the onset record: as timeSinceOnset (null while the section waits its turn),
+ * with its ratio as the sheet stands it (breaking.peelRatio: held at 1, fading in after its turn), so the ribbon's lip
+ * stands as the water under it does (spec 2026-10-04 §3-4).
+ */
+export function stationOnset(field: ReefField, w: ActiveWave, s: Pick<Station, 'x' | 'z' | 'H' | 'r' | 'tb'>, p: BreakParams): void {
+  const rec = sampleOnset(field, s.x, s.z, onsetScratch);
+  const tb = rec ? onsetTime(rec, 0, w.heightM, p) : null;
+  if (tb !== null) s.r = peelRatio(s.r, tb, onsetDelay(rec!, 0, w.heightM, p), landingEstimate(s.H, p));
+  s.tb = tb !== null && tb < 0 ? null : tb;
+}
+
 /** The station's ψ: the onset record's ψ₀ there with the game rules, as setWaveModel.crestAt reads it; PSI_NORMAL off the record. */
 export function stationPsi(field: ReefField, w: ActiveWave, x: number, z: number, input: TraceInput): number {
   const rec = sampleOnset(field, x, z, onsetScratch);
@@ -163,9 +175,9 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
 /** Fills each station's time since onset and ψ, each exactly from the onset record (a lookup). Interpolating between key
  * stations 3 m apart (from when this was a march up the ray per station) put the lip up to 0.31 s off the sheet where the
  * onset creeps unevenly along the crest (the softened ramp, plan 2026-09-30-barrel-from-maths Task 5). */
-function fillTimes(field: ReefField, w: ActiveWave, line: Station[], ctx: WaveContext, input: TraceInput): void {
+function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveContext, input: TraceInput): void {
   for (const s of line) {
-    s.tb = timeSinceOnset(field, w, s.x, s.z, ctx, input.params);
+    stationOnset(field, w, s, input.params);
     s.psi = stationPsi(field, w, s.x, s.z, input);
     s.lipH = stationLipH(field, w, s.x, s.z, input.params);
   }

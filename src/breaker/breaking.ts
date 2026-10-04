@@ -425,14 +425,21 @@ export const PLUNGE_FULL_RATIO = 1.05;
  * undelayed section (and every section at peel 1) reads its ratio exactly as before (spec 2026-10-04 §3). */
 export const PEEL_RAMP_DELAY_S = 0.2;
 
+/**
+ * The ratio a crest stands at under the peel stretch (spec 2026-10-04 §3): a held section (broken by the reef, its stretched
+ * time since onset still negative) stands as the wave at r = 1, the moment it pitches; once its turn comes its ratio past 1
+ * fades in over the landing τ_land (no jump), weighted in by its delay. Undelayed (and at peel 1), the ratio as it is. The
+ * sheet's lifecycle and the ribbon's stations both read it, so the lip stands as the water under it does.
+ */
+export function peelRatio(r: number, tb: number | null | undefined, delay: number, land: number): number {
+  if (typeof tb !== 'number') return r;
+  if (tb < 0) return Math.min(r, 1);
+  return delay > 0 ? r - smoothstep(0, PEEL_RAMP_DELAY_S, delay) * (r - Math.min(r, 1 + (r - 1) * smoothstep(0, land, tb))) : r;
+}
+
 export function lifecycle(r: number, tb: number | null | undefined, H: number, p: BreakParams, rMax = r, rSlurp = r, plunge = 0, thrown = 0, delay = 0): Lifecycle {
   const land = landingEstimate(H, p);
-  // The peel stretch (spec 2026-10-04 §3): a held section (broken by the reef, its turn still to come) stands as the wave
-  // at r = 1, the moment it pitches; once its turn comes its ratio past 1 fades in over the landing (no jump).
-  const waiting = typeof tb === 'number' && tb < 0;
-  let rE = r;
-  if (waiting) rE = Math.min(r, 1);
-  else if (typeof tb === 'number' && delay > 0) rE = r - smoothstep(0, PEEL_RAMP_DELAY_S, delay) * (r - Math.min(r, 1 + (r - 1) * smoothstep(0, land, tb)));
+  const waiting = typeof tb === 'number' && tb < 0, rE = peelRatio(r, tb, delay, land);
   const own = stageCurves(rE, p), pulled = slurp(rSlurp, p);
   const c0 = { drain: Math.max(own.drain, pulled), collapse: own.collapse };
   const steep = Math.max(steepening(rE, p), pulled), stage = breakingStage(rE, p);

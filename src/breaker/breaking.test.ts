@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import {
   type BreakParams, type BreakPointInput, COLLAPSE_END, DEFAULT_BREAK_PARAMS, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, MIN_STAGE_SPAN, sharpenDropSlope, boreHeight, boreScale, breakPoint, breakingHeightThreshold,
-  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, TUBE_HOLD_S, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart, ONSET_DELAY_OFFSET, onsetDelay, PEEL_RAMP_DELAY_S,
+  FOAM_DENSE_BEHIND_H, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H, breakingDepth, breakingRatio, breakingStage, drainDepth, faceHeight, foamWeight, landingEstimate, landingTime, lifecycle, normalizeBreakParams, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetHeight, onsetGain, PILE_RISE_S, PILE_SPEED_MS, TUBE_HOLD_S, SURGE_RISE_S, SURGE_FALL_S, smoothMax, pileShape, pileTop, settledCrestTop, type Lifecycle, PILE_LAND_H, onsetTime, settleSpan, sharpenDrop, stageCurves, steepening, steepeningStart, ONSET_DELAY_OFFSET, onsetDelay, PEEL_RAMP_DELAY_S, peelRatio,
 } from './breaking';
 import { waveNumber } from './dispersion';
 
@@ -601,5 +601,17 @@ describe('the peel dial (spec 2026-10-04 §1)', () => {
       normalizeBreakParams(p);
       expect(p.peel, String(raw)).toBe(want);
     }
+  });
+});
+
+describe("the ratio a held section stands at (spec 2026-10-04 §3, shared by the sheet and the ribbon's stations)", () => {
+  it('held: capped at 1; turned: its excess fades in over the landing; undelayed: the ratio as it is', () => {
+    expect(peelRatio(2.5, -0.4, 1, 0.8)).toBe(1);
+    expect(peelRatio(0.7, -0.4, 1, 0.8)).toBe(0.7);
+    expect(peelRatio(2.5, 0, 1, 0.8)).toBeCloseTo(1, 6);
+    expect(peelRatio(2.5, 0.8, 1, 0.8)).toBeCloseTo(2.5, 6);
+    expect(peelRatio(2.5, 0.4, 1, 0.8)).toBeGreaterThan(1);
+    expect(peelRatio(2.5, 0.4, 1, 0.8)).toBeLessThan(2.5);
+    for (const tb of [null, undefined, 0, 0.3]) expect(peelRatio(2.5, tb, 0, 0.8)).toBe(2.5);
   });
 });
