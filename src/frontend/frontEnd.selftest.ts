@@ -422,22 +422,33 @@ registerSelfTest({
 });
 
 registerSelfTest({
-  name: 'frontend: a veil covers the front end until the crew have loaded, then lifts (no floating boards)',
+  name: 'frontend: while the loading cover holds the input, a key press does nothing to the menu underneath',
   async run() {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    let ready = false;
-    const fe = new FrontEnd({ ...fakeHost(), crewReady: () => ready }, host, noSound, memory());
+    const fe = new FrontEnd(fakeHost(), host, noSound, memory());
+    const where = (): string => JSON.stringify({ beat: fe.state?.beat, move: !!fe.state?.move });
+    const press = async (): Promise<void> => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter' }));
+      await frames(fe, 4);
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter' }));
+      await frames(fe, 4);
+    };
     try {
       fe.open();
       await frames(fe, 10);
-      const veil = (): HTMLElement | null => host.querySelector('.fe-veil');
-      const before = veil()?.style.opacity ?? 'none';
-      ready = true;
-      await frames(fe, 10);
-      for (const a of document.getAnimations()) a.finish();
-      const after = veil()?.style.opacity ?? 'gone';
-      return { pass: before === '1' && (after === '0' || after === 'gone'), detail: `veil before ${before}, after ${after}` };
+      const before = where();
+      fe.inputHeld = true;
+      await press();
+      const held = where();
+      fe.inputHeld = false;
+      await press();
+      const free = where();
+      const veil = host.querySelector('.fe-veil');
+      return {
+        pass: held === before && free !== before && !veil,
+        detail: `held: ${before} → ${held}; let go: → ${free}; veil ${veil ? 'still there' : 'gone'}`,
+      };
     } finally {
       fe.close();
       host.remove();

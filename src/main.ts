@@ -1,5 +1,6 @@
 import './style.css';
 import { App } from './app/App';
+import { LoadingScreen } from './app/loadingScreen';
 import { showOverlay } from './app/overlay';
 import { WEBGPU_HELP, checkWebGpuSupport } from './app/webgpuSupport';
 import { momentFromHash, momentHashProblem } from './dev/momentLink';
@@ -9,23 +10,29 @@ import { createRenderer } from './render/createRenderer';
 async function main(): Promise<void> {
   const container = document.getElementById('app');
   if (!container) throw new Error('#app container missing');
+  // The cover index.html painted first (loading screens spec): it reports each stage, then dissolves into the dune.
+  const loading = LoadingScreen.adopt(document);
+  const fail = (title: string, message: string, help = WEBGPU_HELP): void => {
+    loading?.remove();
+    showOverlay(title, help ? `${message}
+
+${help}` : message);
+  };
 
   const support = await checkWebGpuSupport(navigator as unknown as Parameters<typeof checkWebGpuSupport>[0]);
-  if (!support.ok) {
-    showOverlay('WebGPU is not available', `${support.reason}\n\n${WEBGPU_HELP}`);
-    return;
-  }
+  if (!support.ok) return fail('WebGPU is not available', support.reason);
 
   let renderer;
   try {
     renderer = await createRenderer(container);
   } catch (e) {
-    showOverlay('WebGPU could not start', `${e instanceof Error ? e.message : String(e)}\n\n${WEBGPU_HELP}`);
-    return;
+    return fail('WebGPU could not start', e instanceof Error ? e.message : String(e));
   }
+  loading?.stageDone('gpu');
 
   const query = new URLSearchParams(location.search);
   if (query.has('selftest')) {
+    loading?.remove();
     const { runSelfTests, renderSelfTestReport } = await import('./dev/selfTests');
     renderSelfTestReport(await runSelfTests(renderer, query.get('selftest') ?? ''));
     return;
@@ -33,12 +40,25 @@ async function main(): Promise<void> {
 
   const problem = momentHashProblem(location.hash);
   if (problem) console.warn(`Moment link ignored (${problem}); opening the saved or default moment.`);
-  // No link: the App opens the saved settings' moment (or the default one).
-  const app = new App(renderer, container, momentFromHash(location.hash));
-  // Build what the first break would otherwise build mid-game, before the first frame.
-  await app.prewarm();
+  const frontEnd = frontEndWanted(location.search, location.hash);
+  let app: App;
+  try {
+    // No link: the App opens the saved settings' moment (or the default one).
+    app = new App(renderer, container, momentFromHash(location.hash));
+    // __ldHoldCover (set in the console before a reload): the App ignores the cover, so it stays up to be looked at.
+    app.attachLoading((globalThis as { __ldHoldCover?: boolean }).__ldHoldCover ? null : loading, frontEnd);
+    loading?.stageDone('world');
+    // Build what the first break would otherwise build mid-game, before the first frame.
+    await app.prewarm();
+    loading?.stageDone('reef');
+  } catch (e) {
+    fail('Liquid Dreams could not start', e instanceof Error ? e.message : String(e), '');
+    throw e;
+  }
   app.start();
-  if (frontEndWanted(location.search, location.hash)) app.openFrontEnd();
+  if (frontEnd) app.openFrontEnd();
+  // The Electron probe (?probe): a Paddle out and a Back to the dune it can trigger (loading screens §7).
+  if (query.has('probe')) (window as unknown as { ldProbe: unknown }).ldProbe = { paddleOut: () => app.probePaddleOut(), backToDune: () => app.backToDune() };
   // Dev builds only: scripted gallery captures (window.liquidDreams.captureFrame()) and the crest trace's timing
   // readout (window.liquidDreams.traceMs, ms per frame, a moving average).
   if (import.meta.env.DEV) {
