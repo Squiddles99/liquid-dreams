@@ -124,6 +124,33 @@ The 6 ft set's biggest wave (3.17 m out at sea) stood ~2 m at the curl, ψ 0.03 
 - [x] Take-off: G puts you 8 m seaward of where the wave starts breaking on the ray through the south ledge's take-off mark (ride/takeoff.ts), since bigger waves break further out. The ride test rides 6 and 12 ft for 10 s+.
 - [ ] The shading Andrew circled at 12 ft, overcast (a flat beige patch on the water, a dark green ellipse): needs his moment link.
 
+### Found in Andrew's eighth look (2026-10-05, 7 and 12 ft, his screenshots in the session's scratchpad 7–11.webp)
+
+GPU self-tests after da616ab: to rerun (breaker 11/12 and ribbon 5/7 before it: two tests had nothing to check, one front sample 2.6 cm off).
+
+1. From the lineup a swell line still bends at a right angle on the south side (fading before it breaks), and a kink at
+   the north end of the breaking section. Overhead, the curl's end turns a right angle instead of lining up into a wall,
+   and as it breaks the plan shape is a V wedge. Measured (τ and amp maps, scratchpad tau_cmp3.png): the 20 m basin
+   (25–30 before) is ringed by the coast's 13 m; the first-arrival swell races through it and bends hard at its south wall
+   (z ≈ 200–300) and at the ledge (shelf read as 10 m), with a 0.5× shadow and caustic streaks south of the corner. A 14 m
+   basin, about the coast's own, gives near-straight lines and amp ~1.0–1.1 (the old 6 ft test: amp 1.03–1.07, first leg
+   ~15.8 m/s). Floor 20 straightens the grid but tears at its south edge. Also a seam at the reef grid's south edge
+   (z = 300) near the shore. Plan: basin 14 m (re-measure size, hollowness with STEP_AHEAD 2.5, peel); the grid-edge seam;
+   then the north-end kink (the front's lean switching on along the crest).
+2. Inside the 7 ft barrel: still a step at the foot, and the barrel should be rounder and more hollow. The profile's foot
+   (floor knot −0.30, trough −0.36 units) stands above the sheet's trough in front (−0.45 to −0.6 units): the water drops
+   off a bench in front of the foot. Plan: stretch the profile's under-sea part so its trough is the sheet's trough
+   level (the foot the lowest point, the water drawn up the face from it); compare the tube's shape with his photos.
+3. An "ugly blob" just past where the lip lands (inside view), and a white streak at right angles to the crest from the
+   lip's end (overhead): to find (impact spray or foam placement).
+4. 12 ft from the shoulder: the back of the wave is nearly flat, at sea level, with a slight step, instead of a crest
+   standing above sea level. Suspect: the sheet behind the profile's crest is capped by the shelf's depth and lowered by
+   the bore, so the back hands over to a much lower sheet. To measure (cross-sections at 12 ft).
+5. He could not get the rider to stand up at 7 ft. The bot catches and rides 6 and 12 ft from takeoffSpot. To find out
+   which event stops him (tooSoon: not caught; or wipeout at once: foam or a face past WIPEOUT_SLOPE after the pop-up).
+6. Still open: the shading at 12 ft overcast (needs his moment link); the wall easing off down the line (his G-Land
+   photo); 40 old tests to re-measure.
+
 ### 3e. Andrew's look (his PC)
 
 - [ ] Captures of the left at 6, 8 and 10 ft, mid tide, from the lineup and the ride camera. His sign-off before step 4 removes the old code.
