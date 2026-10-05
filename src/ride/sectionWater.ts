@@ -13,8 +13,13 @@ import type { WaterFn } from './water';
  * over it: the face and the tube's floor, not the lip above.
  */
 
-/** Steeper than this (|dy/du|) the face reads as this: the ride's physics needs a finite slope on the vertical wall. */
-export const MAX_SECTION_SLOPE = 6;
+/**
+ * Steeper than this (|dy/du|, 63°) the face reads as this: the ride's physics needs a finite slope on the vertical wall,
+ * and one under its wipeout slope (ridePhysics.WIPEOUT_SLOPE, 2.5): at 6 the board on the drawn wave's steep face wiped
+ * out the moment it caught (Andrew, 2026-10-05). The board rides the face as the face; only the sheet's own steepness, or
+ * the foam, throws the rider.
+ */
+export const MAX_SECTION_SLOPE = 2;
 /** A point further than this (m) along the crest from the nearest station is off the ribbon. */
 export const MAX_ALONG_M = 6;
 
