@@ -169,6 +169,10 @@ export const interiorWeight = (uUnits: number, crestU: number): number =>
  * smoothly up the face before the lip throws out onto the flats").
  */
 export const FOOT_RUN_UNITS = 1.2;
+/** The front's samples start this many before the floor's mark: the GPU's walk can mark the floor one sample from the
+ * CPU's, and the sample at the mark lies just past the knot (up to 0.07 A), where the two would draw it 5–7 mm apart
+ * (Andrew's GPU run, 2026-10-05). The one before lies at or behind the knot at every phase and hollow. */
+export const FRONT_FROM_MARK = 1;
 /** A front point's height (m): from the profile's at the foot (floorU, units of A) to the lower of it and the sheet's. */
 export function frontHeight(profileY: number, sheetY: number, uUnits: number, floorU: number): number {
   const own = 1 - smoothstep(floorU, floorU + FOOT_RUN_UNITS, uUnits);
@@ -196,10 +200,12 @@ export function wombSection(s: SectionInput, sheet: SheetAlong, p: SectionParams
 export function sectionOf(numbers: SectionNumbers, sheet: SheetAlong): Section {
   const { phase, hollow } = numbers;
   const { curve, marks } = profileSamples(phase, hollow, CURVE_SAMPLES);
-  // From the floor knot itself, not its sample: the GPU's walk can mark the sample one along (wombSectionNodes).
+  // From the floor knot itself, not its sample: the GPU's walk can mark the sample one along (wombSectionNodes). The front
+  // starts FRONT_FROM_MARK samples before the mark, which lie at or behind the knot (the profile's own height there), so
+  // a mark one off on either side changes no point.
   const place = placer(numbers, sheet, profileKnots(phase, hollow)[FLOOR_KNOT][0]);
   const points: P2[] = [];
-  for (let j = curve.length - 1; j >= 0; j--) points.push(place(curve[j], j > marks.floor));
+  for (let j = curve.length - 1; j >= 0; j--) points.push(place(curve[j], j >= marks.floor - FRONT_FROM_MARK));
   const k = profileKnots(phase, hollow);
   return { numbers, points, crest: place(k[CREST_KNOT]), tip: place(k[TIP_KNOT]) };
 }
