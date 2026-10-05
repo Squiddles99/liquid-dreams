@@ -24,6 +24,8 @@ export const REEF_SEED = 1905;
  */
 export const REEF_WARP = { ampM: 5, featureM: 35, detailAmpM: 2, detailFeatureM: 12 };
 
+type Pt = readonly [number, number];
+
 export interface ReefParams {
   /** Still-water depth along both ledges and at the take-off corner (Andrew: about 6 m / 20 ft). */
   ledgeDepthM: number;
@@ -43,6 +45,11 @@ export interface ReefParams {
   minDepthM: number;
   /** Floor depth of the sand pockets. */
   pocketDepthM: number;
+  /** The x band (m) over which the coast may deepen toward slopeDepthM: none inshore of the first, fully by the second
+   * (bathymetry.seawardDepth). Absent: SHORE_X − 140 → SHORE_X − 260. */
+  offshoreBand?: readonly [number, number];
+  /** The left's seaward edge (the shelf follows it). Absent: NORTH_LEDGE. */
+  northLedge?: readonly Pt[];
 }
 
 export const DEFAULT_REEF_PARAMS: ReefParams = {
@@ -57,14 +64,40 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
   pocketDepthM: 5.5,
 };
 
-type Pt = readonly [number, number];
-
 /** Seaward edge the left peels along: the first 120 m from the tip runs at bearing 20° (north-north-east) — that angle to the refracted swell sets the peel speed (≈14 m/s at the default 225° swell) — then continues north-north-west to the map edge, landing about 36 m east of the originally traced shelf edge at the map edge (90–110 m east of it mid-shelf) (tunable with Andrew in Task 13). */
 export const NORTH_LEDGE: readonly Pt[] = [[0, 0], [41.04, -112.76], [-19.8, -280], [-81.6, -450]];
 /** Short edge running south-east from the tip (the right closes out along it). */
 export const SOUTH_LEDGE: readonly Pt[] = [[0, 0], [25, 28], [60, 38], [110, 45]];
 /** Shelf polygon (clockwise in plan view): tip → south ledge → inner-platform edge → north map edge → north ledge. */
-export const SHELF_POLYGON: readonly Pt[] = [[0, 0], [25, 28], [60, 38], [110, 45], [110, -450], [-81.6, -450], [-19.8, -280], [41.04, -112.76]];
+export const SHELF_POLYGON: readonly Pt[] = shelfPolygon(NORTH_LEDGE);
+/** The shelf polygon for a left's edge: tip → south ledge → inner-platform edge → north map edge → back down the left. */
+export function shelfPolygon(north: readonly Pt[]): Pt[] {
+  return [...SOUTH_LEDGE, [110, -450], ...[...north].reverse().slice(0, -1)];
+}
+
+/**
+ * The reshaped reef (spec 2026-10-05-womb-profile-design §3; Andrew chose round 2, 2026-10-05): deep water right up to a
+ * short, steep face (25 m rising to 3.5 m over 20 m), so the wave breaks at the edge and throws instead of tripping on the
+ * slope in front of the take-off. The left: a first section of 55 m at bearing 40°, across the swell enough to peel at
+ * 5–9 m/s; the gap, a deep bay cut 50 m into the reef that the wave backs off into (the kick-out); the second section, its
+ * own small peak, heavier and faster (12–16 m/s: "accurate", Andrew); then the old line on to the map's edge, which
+ * closes out. The tide slides the sizes it suits (low 4–8 ft, mid 6–10, high 8–12; 4 ft is soft at mid tide). It goes
+ * live with the new wave shape (§7 step 3): the old breaking code's rules were tuned to DEFAULT_REEF_PARAMS.
+ */
+export const RESHAPED_NORTH_LEDGE: readonly Pt[] = [[0, 0], [35.4, -42.1], [60, -58], [95, -75], [95, -100], [60, -115], [44, -118], [93, -152], [-19.8, -280], [-81.6, -450]];
+export const RESHAPED_REEF_PARAMS: ReefParams = {
+  ledgeDepthM: 3.5,
+  faceBaseDepthM: 25,
+  faceWidthM: 20,
+  slopeDepthM: 30,
+  slopeEndM: 200,
+  shelfDepthM: 4,
+  headReliefM: 2.5,
+  minDepthM: 1.5,
+  pocketDepthM: 5.5,
+  offshoreBand: [130, 40],
+  northLedge: RESHAPED_NORTH_LEDGE,
+};
 /** Sand pockets traced from Andrew's top-down satellite view (reference/place/womb-correct-topdown-peak-189m-offshore.webp:
  * 0.41 m/px, the peak at pixel (902, 572)): small scattered patches in the dark reef, [cx, cz, rx, rz] (spec 2026-10-02 §4). */
 export const SAND_POCKETS: readonly (readonly [number, number, number, number])[] = [
