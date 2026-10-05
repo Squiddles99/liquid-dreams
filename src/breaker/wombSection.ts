@@ -196,7 +196,8 @@ export function wombSection(s: SectionInput, sheet: SheetAlong, p: SectionParams
 export function sectionOf(numbers: SectionNumbers, sheet: SheetAlong): Section {
   const { phase, hollow } = numbers;
   const { curve, marks } = profileSamples(phase, hollow, CURVE_SAMPLES);
-  const place = placer(numbers, sheet, curve[marks.floor][0]);
+  // From the floor knot itself, not its sample: the GPU's walk can mark the sample one along (wombSectionNodes).
+  const place = placer(numbers, sheet, profileKnots(phase, hollow)[FLOOR_KNOT][0]);
   const points: P2[] = [];
   for (let j = curve.length - 1; j >= 0; j--) points.push(place(curve[j], j > marks.floor));
   const k = profileKnots(phase, hollow);

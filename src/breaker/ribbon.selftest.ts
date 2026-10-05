@@ -286,9 +286,16 @@ registerSelfTest({
   name: 'ribbon: gap rows are zero-width and dead',
   async run(renderer) {
     const { time, sets, ribbon } = setsRig();
-    const t = REF_BIGGEST.arrivalS + 0.6;
+    // The first of these moments with two waves breaking, and so a gap row between them: on the satellite reef without the
+    // peel stretch only one wave breaks 0.6 s after the biggest's arrival; 1–2.5 s before it, the one ahead is still breaking.
+    const live = (es: readonly StationEntry[]) => new Set(es.filter((e): e is Station => !e.gap).map((e) => e.wave)).size;
+    let t = REF_BIGGEST.arrivalS + 0.6, { entries } = traceAt(t, sets);
+    for (const dt of [-1.5, -1, -2, -0.5, -2.5]) {
+      if (live(entries) >= 2 && entries.some((e) => e.gap)) break;
+      t = REF_BIGGEST.arrivalS + dt;
+      ({ entries } = traceAt(t, sets));
+    }
     time.value = t;
-    const { entries } = traceAt(t, sets);
     ribbon.setStations(entries, LINEUP);
     ribbon.compute(renderer);
     const gp = await read(renderer, ribbon.positions), gn = await read(renderer, ribbon.normals), ge = await read(renderer, ribbon.extras);

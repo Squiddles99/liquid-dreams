@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Break, If, Loop, abs, atan, clamp, dot, float, int, length, max, min, select, smoothstep, sqrt, vec2, vec4 } from 'three/tsl';
 import {
-  CREST_KNOT, CURVE_SAMPLES, DENSE_POINTS, KNOTS, MARKED_KNOTS, PROFILE_KEYS, ROUNDED_KNOTS, SPANS, SPAN_SAMPLES, STAGES, TIP_KNOT, TIP_PULL, TIP_ROUND,
+  CREST_KNOT, CURVE_SAMPLES, DENSE_POINTS, FLOOR_KNOT, KNOTS, MARKED_KNOTS, PROFILE_KEYS, ROUNDED_KNOTS, SPANS, SPAN_SAMPLES, STAGES, TIP_KNOT, TIP_PULL, TIP_ROUND,
   TURN_COST_H, keyTable,
 } from './wombProfile';
 import {
@@ -29,7 +29,8 @@ const GRAVITY_MS2 = 9.81;
 /** The most samples one dense segment can hold (wombSectionNodes.test checks the CPU never needs more). */
 export const SAMPLES_PER_SEGMENT_MAX = 4;
 /** vec4s per station in the frame buffer: [A, phase, hollow, ρ], [tip, crest, floor samples (front → back), tip life],
- * [tip u, tip y, crest u, crest y] (units of A). */
+ * [tip u, tip y, crest u, floor u] (units of A; the floor knot's u is where the profile settles onto the sea in front,
+ * wombSection.frontHeight). */
 export const WOMB_FRAME_VEC4S = 3;
 /** vec4s per station in the knots scratch buffer (the rounded knots). */
 export const WOMB_KNOT_VEC4S = ROUNDED_KNOTS;
@@ -43,7 +44,7 @@ export interface WombFrameNodes {
   A: N; phase: N; hollow: N; rho: N;
   /** Front → back sample indices (float) of the tip, the crest and the floor. */
   tip: N; crest: N; floor: N; life: N;
-  tipKnot: N; crestKnot: N;
+  tipKnot: N; crestKnot: N; floorKnot: N;
 }
 
 const smoothNode = (t: N): N => t.mul(t).mul(float(3.0).sub(t.mul(2.0)));
@@ -183,7 +184,7 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, ke
   return {
     ...numbers, life,
     tip: fb(mark.tip), crest: fb(mark.crest), floor: fb(mark.floor),
-    tipKnot: tT, crestKnot: knot[CREST_KNOT],
+    tipKnot: tT, crestKnot: knot[CREST_KNOT], floorKnot: knot[FLOOR_KNOT],
   };
 }
 

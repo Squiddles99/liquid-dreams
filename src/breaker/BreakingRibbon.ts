@@ -673,7 +673,7 @@ export class BreakingRibbon {
         (j: N, v: N) => { sections.element(i.mul(PROFILE_SAMPLES).add(j)).assign(v); });
       frames.element(i.mul(WOMB_FRAME_VEC4S)).assign(vec4(f.A, f.phase, f.hollow, f.rho));
       frames.element(i.mul(WOMB_FRAME_VEC4S).add(1)).assign(vec4(f.tip, f.crest, f.floor, f.life));
-      frames.element(i.mul(WOMB_FRAME_VEC4S).add(2)).assign(vec4(f.tipKnot, f.crestKnot));
+      frames.element(i.mul(WOMB_FRAME_VEC4S).add(2)).assign(vec4(f.tipKnot, f.crestKnot.x, f.floorKnot.x));
     })().compute(MAX_STATIONS) as THREE.ComputeNode;
   }
 
@@ -700,8 +700,9 @@ export class BreakingRibbon {
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const gap = stations.element(i.mul(STATION_VEC4S).add(2)).x.toVar();
       const f0: N = frames.element(i.mul(WOMB_FRAME_VEC4S)).toVar(), f1: N = frames.element(i.mul(WOMB_FRAME_VEC4S).add(1)).toVar();
-      // The frame's third vec4: the tip knot (xy) and the crest knot (zw), in units of A.
-      const crestU: N = frames.element(i.mul(WOMB_FRAME_VEC4S).add(2)).z.toVar();
+      // The frame's third vec4: the tip knot (xy), the crest knot's u and the floor knot's u, in units of A.
+      const f2: N = frames.element(i.mul(WOMB_FRAME_VEC4S).add(2)).toVar();
+      const crestU: N = f2.z, floorU: N = f2.w;
       const A: N = f0.x, phase: N = f0.y, rho: N = f0.w, tip: N = f1.x, crest: N = f1.y;
       const S = a.xy, n = a.zw;
       const tHat = vec2(n.y.negate(), n.x).toVar();
@@ -714,7 +715,6 @@ export class BreakingRibbon {
       const w = rho.mul(interiorWeightNode(q.x, crestU)).toVar();
       // Past the face's foot (samples before the floor's, front first) the profile settles onto the sea in front.
       const floorIdx: N = f1.z;
-      const floorU: N = sections.element(i.mul(PROFILE_SAMPLES).add(int(floorIdx))).x;
       const qy: N = q.y.mul(A).toVar();
       const y = select(float(j).lessThan(floorIdx), frontHeightNode(qy, base.y, q.x, floorU), qy);
       const pos = mix(base, vec2(q.x.mul(A), y), w).toVar();
