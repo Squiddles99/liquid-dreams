@@ -102,6 +102,20 @@ export function leanPhase(theta: number, lean: number, frontMin = LEAN_FRONT_MIN
   return theta >= -phi * Math.PI ? { th: theta / phi, dth: 1 / phi } : { th: -Math.PI, dth: 0 };
 }
 
+/**
+ * The white water's bore keeps the swell's troughs: the wave settled into it (amplitude A, Stokes ratio B, from the
+ * unsettled A0, B0) is stretched down from its crest, η = A·(stretch·shape + offset·(1 + B)), so its crest is A(1 + B) and
+ * its troughs A0's, −A0(1 − B0). Scaled whole by BORE_SHARE, the trough in front of the broken section rose by half the
+ * crest's drop while the one in front of the curl's wall stayed down: a crease ran out in front of the curl along the
+ * rays, and the flats in front of the white water stood higher than in front of the barrel (Andrew, 2026-10-05: "the v
+ * shaped wedge occurring as the wave breaks"). Unsettled (A = A0) it is the shape itself: stretch 1, offset 0.
+ */
+export function boreSettle(A: number, B: number, A0: number, B0: number): { stretch: number; offset: number } {
+  if (!(A > 0) || A === A0) return { stretch: 1, offset: 0 };
+  const stretch = (A * (1 + B) + A0 * (1 - B0)) / (2 * A);
+  return { stretch, offset: 1 - stretch };
+}
+
 /** Crest ends taper between these distances from the peak (the crest spans the whole reef near it). */
 export const TAPER_NEAR_M = 250;
 export const TAPER_FAR_M = 500;
@@ -362,12 +376,14 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   if (beyondEnvelope(xi, w)) return { ...ZERO };
   // Under the ribbon (shape 'lean') the broken wave settles into the white water's bore behind the curl (wombSection.boreWeight).
   const bore = o?.shape === 'lean' && crest ? boreWeight(crest.tb, localHeight(w, crest.f), (2 * Math.PI) / w.omega) : 0;
-  const H = waveHeightAt(w, f, crest, xi) * (1 - (1 - BORE_SHARE) * bore);
+  const H0 = waveHeightAt(w, f, crest, xi), H = H0 * (1 - (1 - BORE_SHARE) * bore);
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;
   const { env, dEnv } = waveEnvelope(xi, w);
   const sigma = Math.max(Math.tanh(f.k * f.depth), 0.05);
-  const B = Math.min(STOKES_CAP, (f.k * A * (3 - sigma * sigma)) / (4 * sigma * sigma * sigma));
+  const stokesPerA = (f.k * (3 - sigma * sigma)) / (4 * sigma * sigma * sigma);
+  const B = Math.min(STOKES_CAP, stokesPerA * A);
+  const settle = boreSettle(A, B, H0 / 2, Math.min(STOKES_CAP, (stokesPerA * H0) / 2));
   const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, Math.hypot(x, z));
   const q = (2 * (-x * w.travelZ + z * w.travelX - w.crestOffsetM)) / w.crestLengthM;
   const lateral = 1 + (Math.exp(-(q * q * q * q)) - 1) * wFar;
@@ -380,12 +396,14 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
     : leanPhase(theta, o?.shape === false ? 0 : leanWeight(crest));
   const leaning = th !== theta || dth !== 1;
   const shape = Math.cos(th) + B * Math.cos(2 * th);
-  const eta = aE * shape;
+  // Settled into the bore, the wave is stretched down from its crest so its troughs stay the swell's (boreSettle).
+  const crestShape = settle.offset * (1 + B);
+  const eta = aE * (settle.stretch * shape + crestShape);
   const hAmp = Math.min(aE, FOLD_LIMIT / f.k);
   const nearBreaking = smoothstep(0.3, BREAKING_RATIO, H / Math.max(f.hmin, MIN_DEPTH_M));
   const pitch = Math.min(PITCH_MAX * nearBreaking, PITCH_KA_CAP / Math.max(f.k * aE, 1e-4));
   const dh = hAmp * Math.sin(theta) + pitch * eta;
-  const dEtaDXi = A * lateral * (dEnv * shape - env * w.omega * dth * (Math.sin(th) + 2 * B * Math.sin(2 * th)));
+  const dEtaDXi = A * lateral * (dEnv * (settle.stretch * shape + crestShape) - settle.stretch * env * w.omega * dth * (Math.sin(th) + 2 * B * Math.sin(2 * th)));
   const dXiDs = -f.k / ctx.omega;
   const jacobian = Math.max(0.2, 1 + (hAmp * w.omega * Math.cos(theta) + pitch * dEtaDXi) * dXiDs);
   const slopeAlong = (dEtaDXi * dXiDs) / jacobian;
@@ -408,9 +426,10 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const perAhead = dXiDs / jacobian;
   // Where the front leans, breaking also needs the unleaned wave (breakPoint: the drained hollow is the unleaned one's).
   const shapeU = Math.cos(theta) + B * Math.cos(2 * theta);
-  const slopeU = leaning ? (A * lateral * (dEnv * shapeU - env * w.omega * (Math.sin(theta) + 2 * B * Math.sin(2 * theta))) * dXiDs) / jacobian : slopeAlong;
+  // (Unleaned and unsettled: without either it is the wave itself, bit for bit, as the GPU reads it.)
+  const slopeU = (A * lateral * (dEnv * shapeU - env * w.omega * (Math.sin(theta) + 2 * B * Math.sin(2 * theta))) * dXiDs) / jacobian;
   const b = breakPoint({
-    theta, env: env * lateral, uUnbroken: v0 + dh * facing, eta: leaning ? aE * shapeU : eta, uCrest: cf.pitchC * cf.etaCrest, etaCrest: cf.etaCrest, H: cf.Hc * lateral, k: crest.f.k,
+    theta, env: env * lateral, uUnbroken: v0 + dh * facing, eta: aE * shapeU, uCrest: cf.pitchC * cf.etaCrest, etaCrest: cf.etaCrest, H: cf.Hc * lateral, k: crest.f.k,
     hmin: crest.f.hminBreak, boreH: cf.boreH, lipTop: cf.lipTop, lipHeight: cf.lipHeight, lateral,
     slope: slopeU, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead, crestConfidence: crest.confidence,
     lean: leaning ? { eta, slope: slopeAlong } : undefined,

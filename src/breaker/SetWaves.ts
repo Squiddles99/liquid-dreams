@@ -441,10 +441,15 @@ export class SetWaves {
           // nearness to the crest in phase (CREST_HEIGHT_REACH periods, T = 2π/ω). mix(a, b, 0) is a exactly, so without
           // breaking this is the Phase 1 height.
           const near = float(1.0).sub(smoothstep(float(CREST_HEIGHT_REACH[0] * 2 * Math.PI).div(a.z), float(CREST_HEIGHT_REACH[1] * 2 * Math.PI).div(a.z), abs(xi)));
-          const H: N = mix(Hown, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), lc.steep.mul(confidence).mul(near)).mul(float(1.0).sub(bore.mul(1 - BORE_SHARE))).toVar();
+          const H0: N = mix(Hown, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), lc.steep.mul(confidence).mul(near)).toVar();
+          const H: N = H0.mul(float(1.0).sub(bore.mul(1 - BORE_SHARE))).toVar();
           const A = H.mul(0.5);
           const B = min(float(STOKES_CAP), stokesPerA.mul(A));
           const aE = A.mul(env).mul(lateral);
+          // setWaveModel.boreSettle: settled into the bore, stretched down from its crest to the swell's troughs.
+          const A0 = H0.mul(0.5), B0 = min(float(STOKES_CAP), stokesPerA.mul(A0));
+          const stretch = select(A.greaterThan(0.0), A.mul(B.add(1.0)).add(A0.mul(float(1.0).sub(B0))).div(max(A.mul(2.0), 1e-9)), float(1.0)).toVar();
+          const crestShape = float(1.0).sub(stretch).mul(B.add(1.0)).toVar();
           // setWaveModel.leanPhase: the front (−π < θ < 0) squeezed into its last share φ, the trough's level ahead of it.
           // With the ribbon drawing the breaking, as short as the Womb profile's face (setWaveModel.wombFrontMin).
           // Shortened on the ribbon's clock (setWaveModel.frontStanding).
@@ -458,12 +463,12 @@ export class SetWaves {
           const th: N = select(inFront, select(squeezed, thetaN.div(phi), float(-Math.PI)), thetaN).toVar();
           const dth: N = select(inFront, select(squeezed, float(1.0).div(phi), float(0.0)), float(1.0)).toVar();
           const shape = cos(th).add(B.mul(cos(th.mul(2.0))));
-          const e = aE.mul(shape).toVar();
+          const e = aE.mul(stretch.mul(shape).add(crestShape)).toVar();
           const hAmp = min(aE, float(FOLD_LIMIT).div(f.k));
           const nearBreaking = smoothstep(0.3, BREAKING_RATIO, H.div(max(f.hmin, MIN_DEPTH_M)));
           const pitch = min(nearBreaking.mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(f.k.mul(aE), 1e-4)));
           const d = hAmp.mul(sin(theta)).add(pitch.mul(e)).toVar();
-          const dEtaDXi = A.mul(lateral).mul(dEnv.mul(shape).sub(env.mul(a.z).mul(dth).mul(sin(th).add(B.mul(2.0).mul(sin(th.mul(2.0)))))));
+          const dEtaDXi = A.mul(lateral).mul(dEnv.mul(stretch.mul(shape).add(crestShape)).sub(stretch.mul(env).mul(a.z).mul(dth).mul(sin(th).add(B.mul(2.0).mul(sin(th.mul(2.0)))))));
           const jacobian = max(float(1.0).add(hAmp.mul(a.z).mul(cos(theta)).add(pitch.mul(dEtaDXi)).mul(dXiDs)), 0.2);
           const along = dEtaDXi.mul(dXiDs).div(jacobian).toVar();
           // Per metre of the displaced surface along travel (ahead): Phase 1's derivatives along s, over its Jacobian.

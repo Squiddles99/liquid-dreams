@@ -1,6 +1,6 @@
 import { smoothstep } from '../math/smoothstep';
 import { moundY } from '../bombie/bombieModel';
-import { REEF_SURROUND_DEPTH_M, SHORE_X, depthBg } from './coastProfile';
+import { SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { beachHeight } from '../land/landHeight';
 import { fbm2, valueNoise2 } from './noise';
@@ -114,7 +114,8 @@ const REEF_OFFSHORE_BAND: readonly [number, number] = [SHORE_X - 140, SHORE_X - 
 export function seawardDepth(v: number, x: number, p: ReefParams): number {
   const bg = depthBg(x);
   const band = p.offshoreBand ?? REEF_OFFSHORE_BAND;
-  const cap = bg + Math.max(0, p.slopeDepthM - REEF_SURROUND_DEPTH_M) * smoothstep(band[0], band[1], x);
+  // Toward the slope's depth from the coast's own here (inshore the coast is shallower than its offshore depth).
+  const cap = bg + Math.max(0, p.slopeDepthM - bg) * smoothstep(band[0], band[1], x);
   const reef = Math.min(reefProfileDepth(v, p), cap);
   return reef + Math.max(0, bg - reef) * smoothstep(p.slopeEndM, p.slopeEndM + REEF_FAR_EASE_M, v);
 }

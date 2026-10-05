@@ -61,10 +61,13 @@ export interface ReefParams {
  * our left-handed ride"), turned into the game's frame, whose beach runs north–south (the real one runs 347°), with the
  * take-off 100–110 m off the sand (coastProfile.SHORE_X). The depths are round 2's (spec 2026-10-05-womb-profile-design
  * §3.1) but for the basin: deep water right up to a short, steep face (20 m rising to 3.5 m over 20 m), so the wave breaks
- * at the edge and throws instead of tripping on a slope in front of the take-off. Round 2's 25–30 m basin, ringed by the
- * coast's 13 m, spread the swell out before this broad edge (it reached the reef at 0.66× its open-sea height, the 6 ft
- * curl ~2.4 m: Andrew, "TINY"); at 20 m it reaches it at about 1×. Round 2's left ran at 40°, along the swell's own travel:
- * the swell slid along it and bent a right angle onto the shelf (Andrew, 2026-10-05: "the wave goes into a right angle").
+ * at the edge and throws instead of tripping on a slope in front of the take-off. The basin is the coast's own offshore
+ * depth (coastProfile.REEF_SURROUND_DEPTH_M), so it is open to the sea: round 2's 25–30 m, ringed by the coast's 13 m,
+ * spread the swell out before this broad edge (it reached the reef at 0.66× its open-sea height, the 6 ft curl ~2.4 m:
+ * Andrew, "TINY"), and a 20 m basin in that 13 m coast bent the swell a right angle at its walls and focused a band of it
+ * through the take-off (Andrew, 2026-10-05: "the adjacent right-angle swell", "the v shaped wedge"). Round 2's left ran at
+ * 40°, along the swell's own travel: the swell slid along it and bent a right angle onto the shelf (Andrew, 2026-10-05:
+ * "the wave goes into a right angle").
  */
 export const DEFAULT_REEF_PARAMS: ReefParams = {
   ledgeDepthM: 3.5,

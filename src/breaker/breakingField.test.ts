@@ -11,7 +11,7 @@ import { type Station, traceStations } from './crestTrace';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { offshoreSpeed } from './overturn';
-import { type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
+import { REFRACT_FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import {
   type ActiveWave, type BreakOptions, breakOptions, LEAN_RATIO, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestPileTop, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
   phaseXi, seabedFloor, sumWaves, toActiveWave, waveAt, waveAtCrest,
@@ -127,7 +127,8 @@ describe('the field breaking height (SetWaves skips the GPU breaking below its s
     it(`is a lower bound that is nearly attained (${name})`, () => {
       const hb = fieldBreakingHeight(field, p), n = nodeMin(p);
       expect(hb).toBeGreaterThan(0);
-      expect(hb).toBeLessThanOrEqual(n.T);
+      // (To the last bit: the bound and the node's threshold are the same quotient, computed in different orders.)
+      expect(hb).toBeLessThanOrEqual(n.T * (1 + 1e-12));
       expect(hb).toBeGreaterThan(0.8 * n.T);
       // Just above the best node's threshold, a crest there breaks.
       const w = testWave(1.01 * n.T), o = optsFor(field, p);
@@ -595,12 +596,17 @@ describe('the breaking surface has no seams across the crest', () => {
   // shrink as the points close in. So the check is at 1 cm, where the old lookup's seams stepped 0.19–0.38 m, and on the
   // displaced surface's (dx, η, dz). And the power: a steep but continuous surface's excess shrinks with the spacing, a
   // seam's does not, so the worst pairs are re-measured a quarter as far apart and must shrink by at least 2× (the old
-  // lookup's 0.18 m at 4 mm would fail this).
+  // lookup's 0.18 m at 4 mm would fail this). On the sheet the game draws (the field smoothed and bent as over
+  // REFRACT_FLOOR_M, the front leaned, no pile): on the raw field the old sheet's pile and collapse draw an 8 cm seam at
+  // (24, −2.5) since the coast offshore is 20 m (2026-10-05), and the game draws neither.
   it('1 cm apart, breaking adds at most 0.15 m to Phase 1’s 3D step, and the worst pairs shrink ≥ 2× at 2.5 mm', { timeout: 120_000 }, () => {
     const waves = REF_SET.map(toActiveWave);
     const h = 0.01;
+    const game = computeReefField({ bed: downsample(reef05, 2), periodS: 15, fromDeg: 225, tideM: 0, peel: DEFAULT_BREAK_PARAMS.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+    const gameCtx = { omega: game.omega, travelX: game.far.dirX, travelZ: game.far.dirZ };
+    const drawn: BreakOptions = { ...optsFor(game), pile: false, shape: 'lean' };
     const pos = (x: number, z: number, t: number, o?: BreakOptions): [number, number, number] => {
-      const r = sumWaves(x, z, t, at(x, z), waves, ctx, o);
+      const r = sumWaves(x, z, t, sampleField(game, x, z), waves, gameCtx, o);
       return [x + r.dx, r.eta, z + r.dz];
     };
     const gap = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -611,13 +617,13 @@ describe('the breaking surface has no seams across the crest', () => {
       const t = REF_BIGGEST.arrivalS + dt;
       const pairs: { x: number; z: number; dx: number; dz: number; e: number }[] = [];
       for (let x = 0; x <= 40 + 1e-9; x += 0.5) for (let z = -15; z <= 5 + 1e-9; z += 0.5) {
-        for (const [dx, dz] of [[h, 0], [0, h]]) pairs.push({ x, z, dx, dz, e: excessAt(x, z, dx, dz, t, sheet) });
+        for (const [dx, dz] of [[h, 0], [0, h]]) pairs.push({ x, z, dx, dz, e: excessAt(x, z, dx, dz, t, drawn) });
       }
       pairs.sort((p, q) => q.e - p.e);
       const w = pairs[0];
       expect(w.e, `arrival + ${dt} s, worst (${w.x}, ${w.z}) + (${w.dx}, ${w.dz})`).toBeLessThanOrEqual(0.15);
       for (const p of pairs.slice(0, 20).filter((q) => q.e > 0.005)) {
-        const quarter = excessAt(p.x, p.z, p.dx / 4, p.dz / 4, t, sheet);
+        const quarter = excessAt(p.x, p.z, p.dx / 4, p.dz / 4, t, drawn);
         expect(quarter, `arrival + ${dt} s, (${p.x}, ${p.z}): ${p.e.toFixed(4)} m at 1 cm`).toBeLessThanOrEqual(p.e / 2);
       }
     }

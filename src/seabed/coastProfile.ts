@@ -8,8 +8,12 @@ export const SHORE_X = 94;
 export const FAR_DEPTH_M = 30;
 /** Landward of the waterline there is no land yet (Phase 4): a shallow flat stands in for it. */
 export const SHORE_FLAT_DEPTH_M = 0.5;
-/** Deep water around the reef, before the shelf (Claude's estimate; tunable through the reef params). */
-export const REEF_SURROUND_DEPTH_M = 13;
+/** The coast's depth offshore, 140–260 m off the beach: the reef's own basin depth (wombReef.DEFAULT_REEF_PARAMS), so the
+ * deep water in front of the reef is open to the sea. At 13 m the 20 m basin was a fast patch ringed by slow water: the
+ * swell's first arrival raced through it and bent a right angle at its walls (Andrew, 2026-10-05: "the adjacent
+ * right-angle swell"), and a band of focused swell ran through the take-off. A 14 m basin straightened the lines but let
+ * 8 ft and up break over its flat floor, short of the ledge, and soft. */
+export const REEF_SURROUND_DEPTH_M = 20;
 /** The open sea's depth (FAR_DEPTH_M) is reached at the reef map's west edge (x = −400, coastFarField.FAR_X0), so the far
  * field meets the map there; the coast deepens toward it from REEF_SURROUND_DEPTH_M 260 m off the beach. */
 export const FAR_RAMP_S: readonly [number, number] = [260, SHORE_X + 400];
