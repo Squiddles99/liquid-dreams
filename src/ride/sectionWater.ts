@@ -1,5 +1,5 @@
 import type { Station, StationEntry } from '../breaker/crestTrace';
-import { interiorWeight } from '../breaker/wombSection';
+import { EDGE_OUTER_UNITS, LIFT_UNITS, endLift, interiorWeight } from '../breaker/wombSection';
 import { type P2, profileCurve } from '../breaker/wombProfile';
 import type { WaterFn } from './water';
 
@@ -23,7 +23,7 @@ export const MAX_SECTION_SLOPE = 2;
 /** A point further than this (m) along the crest from the nearest station is off the ribbon. */
 export const MAX_ALONG_M = 6;
 
-interface Cached { curve: P2[] }
+interface Cached { curve: P2[]; front: number; back: number }
 
 /**
  * `base`'s water, with the stations' sections where they draw. `tideM` is the still-water level the sections stand on
@@ -33,10 +33,15 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
   const live = entries.filter((e): e is Station => !e.gap && e.section.rho > 0);
   if (live.length === 0) return base;
   const cache = new Map<Station, Cached>();
-  const curveOf = (s: Station): P2[] => {
+  // The station's curve, and the sheet's levels (above tideM) at the profile's two ends (wombSection.sheetEnds).
+  const cached = (s: Station): Cached => {
     let c = cache.get(s);
-    if (!c) { c = { curve: profileCurve(s.section.phase, s.section.hollow) }; cache.set(s, c); }
-    return c.curve;
+    if (!c) {
+      const end = s.section.A * EDGE_OUTER_UNITS;
+      c = { curve: profileCurve(s.section.phase, s.section.hollow), front: base(s.x + s.nx * end, s.z + s.nz * end).y - tideM, back: base(s.x - s.nx * end, s.z - s.nz * end).y - tideM };
+      cache.set(s, c);
+    }
+    return c;
   };
   return (x, z) => {
     const w = base(x, z);
@@ -51,9 +56,13 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
     const at = (s: Station): { y: number; slopeU: number; weight: number } | null => {
       const u = (x - s.x) * s.nx + (z - s.z) * s.nz, A = s.section.A;
       if (!(A > 0)) return null;
-      const hit = lowestWetCrossing(curveOf(s), u / A);
+      const c = cached(s), hit = lowestWetCrossing(c.curve, u / A);
       if (!hit) return null;
-      return { y: tideM + A * hit.y, slopeU: Math.max(-MAX_SECTION_SLOPE, Math.min(MAX_SECTION_SLOPE, hit.slope)), weight: s.section.rho * interiorWeight(u / A) };
+      // Lifted to the sheet's level at the end on u's side (wombSection.endLift), and the lift's own slope.
+      const level = u < 0 ? c.back : c.front, t = (Math.abs(u / A) - LIFT_UNITS[0]) / (LIFT_UNITS[1] - LIFT_UNITS[0]);
+      const dLift = t > 0 && t < 1 ? (Math.sign(u) * 6 * t * (1 - t)) / ((LIFT_UNITS[1] - LIFT_UNITS[0]) * A) : 0;
+      const slope = hit.slope + level * dLift;
+      return { y: tideM + A * hit.y + endLift(u / A) * level, slopeU: Math.max(-MAX_SECTION_SLOPE, Math.min(MAX_SECTION_SLOPE, slope)), weight: s.section.rho * interiorWeight(u / A) };
     };
     const a = at(best);
     if (!a) return w;

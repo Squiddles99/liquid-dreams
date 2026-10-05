@@ -42,17 +42,19 @@ export const SECTION_HAND_BACK_S = 0.5;
 /** The ribbon's weight rises as the onset ratio goes from the ribbon's onset to this (it stands up out of the sheet). */
 export const RHO_FULL_RATIO = 0.9;
 /**
- * The section blends into the sheet behind the crest over u from −EDGE_BACK_UNITS[0] to −[1] (units of A), and in front
- * of the trough over u from EDGE_FRONT_UNITS[0] to [1]; past them it is the sheet's swell. The profile is drawn about
- * still water, but the real sea round a breaking wave is not still: the swell's back stands higher than the profile's
- * gentle back, and its trough lies lower than the profile's front. Blended out only at the profile's ends (±7) the
- * section dipped behind the crest and stood a ledge in front of the face: "a swell bump before the real swell hits …
- * a second swell bump" behind, and the face "doesn't extend very far" (Andrew, 2026-10-05, in the game).
+ * The profile's ends (units of A): the section is the sheet's from here out. Over its last stretch, EDGE_BLEND_UNITS, it
+ * blends into the sheet (the mesh's edge meets the sheet's surface exactly).
  */
-export const EDGE_BACK_UNITS: readonly [number, number] = [0.5, 4];
-export const EDGE_FRONT_UNITS: readonly [number, number] = [2.3, 4];
-/** The profile's ends (units of A): the section is the sheet's from here out. */
 export const EDGE_OUTER_UNITS = 7;
+export const EDGE_BLEND_UNITS: readonly [number, number] = [6, EDGE_OUTER_UNITS];
+/**
+ * The profile is drawn about still water, its back and its front running gently down to sea level at its ends; the sea
+ * round a breaking wave is not still, so the profile is lifted (or lowered) to the sheet's level at each end, by a ramp
+ * from none at LIFT_UNITS[0] from the crest to all of it at the end. Handed to the sheet nearer the curl instead, the
+ * swell's broad hump stood behind and in front of the profile's narrow crest as a second wave (Andrew, 2026-10-05, in the
+ * game: "the 2 waves are still very much there"; wanted: "a smooth gradient returning down to sea level").
+ */
+export const LIFT_UNITS: readonly [number, number] = [1, EDGE_OUTER_UNITS];
 
 export interface SectionInput {
   /** The station's local wave height (m), crest to trough. */
@@ -138,8 +140,25 @@ export interface Section {
 }
 
 /** How much of the profile is drawn at u units of A from the crest: all of it inside, none past its ends. */
-export const interiorWeight = (uUnits: number): number =>
-  uUnits < 0 ? 1 - smoothstep(EDGE_BACK_UNITS[0], EDGE_BACK_UNITS[1], -uUnits) : 1 - smoothstep(EDGE_FRONT_UNITS[0], EDGE_FRONT_UNITS[1], uUnits);
+export const interiorWeight = (uUnits: number): number => 1 - smoothstep(EDGE_BLEND_UNITS[0], EDGE_BLEND_UNITS[1], Math.abs(uUnits));
+
+/** How much of the sheet's level at the profile's end on u's side lifts the profile at u units of A from the crest. */
+export const endLift = (uUnits: number): number => smoothstep(LIFT_UNITS[0], LIFT_UNITS[1], Math.abs(uUnits));
+
+/** The sheet's levels (m) at the profile's two ends, the front (+EDGE_OUTER_UNITS) and the back (−). */
+export const sheetEnds = (A: number, sheet: SheetAlong): { front: number; back: number } =>
+  ({ front: sheet(A * EDGE_OUTER_UNITS)[1], back: sheet(-A * EDGE_OUTER_UNITS)[1] });
+
+/** A profile point (units of A) placed on the station's plane (m): lifted to the sheet's level at its end, blended into the
+ * sheet by ρ and toward the ends. */
+function placer(numbers: SectionNumbers, sheet: SheetAlong): (q: P2) => P2 {
+  const { A, rho } = numbers, ends = sheetEnds(A, sheet);
+  return (q) => {
+    const S = sheet(A * q[0]), w = rho * interiorWeight(q[0]);
+    const y = A * q[1] + endLift(q[0]) * (q[0] < 0 ? ends.back : ends.front);
+    return [S[0] + (A * q[0] - S[0]) * w, S[1] + (y - S[1]) * w];
+  };
+}
 
 /** The station's section from its own numbers (no smoothing along the crest), blended into `sheet`. */
 export function wombSection(s: SectionInput, sheet: SheetAlong, p: SectionParams): Section {
@@ -149,12 +168,9 @@ export function wombSection(s: SectionInput, sheet: SheetAlong, p: SectionParams
 /** The section for given numbers (a station's, smoothed along the crest: Station.section), blended into `sheet` by ρ and
  * toward its ends. */
 export function sectionOf(numbers: SectionNumbers, sheet: SheetAlong): Section {
-  const { A, phase, hollow, rho } = numbers;
+  const { phase, hollow } = numbers;
   const curve = profileCurve(phase, hollow, CURVE_SAMPLES);
-  const place = (q: P2): P2 => {
-    const S = sheet(A * q[0]), w = rho * interiorWeight(q[0]);
-    return [S[0] + (A * q[0] - S[0]) * w, S[1] + (A * q[1] - S[1]) * w];
-  };
+  const place = placer(numbers, sheet);
   const points: P2[] = [];
   for (let j = curve.length - 1; j >= 0; j--) points.push(place(curve[j]));
   const k = profileKnots(phase, hollow);
@@ -188,10 +204,7 @@ export const lipWeight = (phase: number): number => smoothstep(LIP_PHASES[0], LI
 /** The station's section frame: its numbers (smoothed, Station.section), its height H, crest speed c and the sheet. */
 export function sectionFrame(numbers: SectionNumbers, H: number, c: number, sheet: SheetAlong): SectionFrame {
   const { A, phase, hollow, rho } = numbers;
-  const place = (q: P2): P2 => {
-    const S = sheet(A * q[0]), w = rho * interiorWeight(q[0]);
-    return [S[0] + (A * q[0] - S[0]) * w, S[1] + (A * q[1] - S[1]) * w];
-  };
+  const place = placer(numbers, sheet);
   const k = profileKnots(phase, hollow), tip = place(k[TIP_KNOT]), crest = place(k[CREST_KNOT]), floor = place(k[FLOOR_KNOT]);
   // The tip's throw: its u's rate in phase, times the phase's rate in time over the lip's flight.
   const fly = flightTime(H), dPhase = 0.01, ahead = profileKnots(Math.min(2, phase + dPhase), hollow)[TIP_KNOT][0];

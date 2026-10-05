@@ -103,7 +103,17 @@ export class SetWaves {
   private steepeningHeight = Infinity;
   private events: readonly WaveEvent[] = [];
 
-  constructor(readonly time: N) {
+  /**
+   * false: the sheet without the whitewater pile anywhere (setWaveModel.BreakOptions.pile), as the game draws it: the
+   * breaking ribbon draws the white water from the Womb profile (plan 2026-10-05-womb-profile-step3). The pile is built
+   * where the sheet's own lip lands, and from 2 s after onset it stood 5 to 7.5 m ahead of the ribbon's crest: past the
+   * ribbon it was a second wave, and the ride stood on it (Andrew, 2026-10-05: "you are actually surfing the higher of the
+   * 2 waves"). Absent: with it (the old breaking's own tests, until step 4 removes it).
+   */
+  private readonly pile: boolean;
+
+  constructor(readonly time: N, opts: { pile?: boolean } = {}) {
+    this.pile = opts.pile !== false;
     this.setEvents([]);
   }
 
@@ -300,7 +310,8 @@ export class SetWaves {
    * largest envelope there, vec2(metres behind its crest, ξ·c; metres along its crest). It moves with the crest, so
    * noise read in it is advected with the wave; the foam's noise uses it (render only, not part of the CPU model).
    */
-  private sumBreaking(xz: N, frame: boolean, withPile = true): { eta: N; dh: N; slope: N; foam: N; stage: N; foamFrame: N; pile: N } {
+  private sumBreaking(xz: N, frame: boolean, pileWanted = true): { eta: N; dh: N; slope: N; foam: N; stage: N; foamFrame: N; pile: N } {
+    const withPile = pileWanted && this.pile;
     const eta = float(0.0).toVar(), dh = vec2(0.0).toVar(), slope = vec2(0.0).toVar();
     const foam = float(0.0).toVar(), stage = float(0.0).toVar(), pile = float(0.0).toVar();
     const foamFrame = vec2(0.0).toVar(), frameEnv = float(0.0).toVar();

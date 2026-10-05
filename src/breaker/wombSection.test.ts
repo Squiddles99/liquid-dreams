@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, TIP_KNOT, TROUGH_KNOT, profileCurve, profileKnots } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, TIP_KNOT, profileCurve, profileKnots } from './wombProfile';
 import {
-  type SectionInput, EDGE_BACK_UNITS, EDGE_FRONT_UNITS, SECTION_HAND_BACK_S, STAND_LEAD_S, STOOD_PHASE, collapseSpan, flightTime, interiorWeight, sectionEnd, sectionPhase, sectionScale, sectionWeight, tubeHold,
+  type SectionInput, SECTION_HAND_BACK_S, STAND_LEAD_S, STOOD_PHASE, collapseSpan, endLift, flightTime, interiorWeight, sectionEnd, sectionPhase, sectionScale, sectionWeight, tubeHold,
   wombSection,
 } from './wombSection';
 
@@ -42,15 +42,19 @@ describe('wombSection: a station as the Womb profile family', () => {
     for (let w = 0; w < STAND_LEAD_S; w += 0.1) expect(rho(w)).toBeGreaterThanOrEqual(rho(w + 0.1));
   });
 
-  it('is the sheet from EDGE_BACK_UNITS behind the crest and EDGE_FRONT_UNITS in front, past the trough (no ledge, no dip: Andrew, 2026-10-05)', () => {
-    expect(interiorWeight(-EDGE_BACK_UNITS[1])).toBe(0);
-    expect(interiorWeight(EDGE_FRONT_UNITS[1])).toBe(0);
-    expect(interiorWeight(0)).toBe(1);
-    // The whole curl is drawn: crest to the trough in front, at every phase.
-    for (const phase of [0.45, 1, 1.25, 1.5, 2]) for (const h of [0, 1]) {
-      const k = profileKnots(phase, h);
-      for (const m of [CREST_KNOT, TIP_KNOT, FLOOR_KNOT, TROUGH_KNOT]) expect(interiorWeight(k[m][0]), `phase ${phase} knot ${m}`).toBe(1);
-    }
+  it('is lifted to the sheet\u2019s level at each end, its own gentle back and front between (Andrew, 2026-10-05: "a smooth gradient returning down to sea level", not a second wave)', () => {
+    // A sea standing 1.2 m up toward the profile's back end and 0.4 m down toward its front end, level over its last unit.
+    const end = 7 * sectionScale(5), ramp = (u: number): number => Math.min(1, Math.abs(u) / ((6 / 7) * end));
+    const sheet = (u: number): P2 => [u, u < 0 ? 1.2 * ramp(u) : -0.4 * ramp(u)];
+    const s = wombSection(at(5, 0.4), sheet, P), { A } = s.numbers;
+    expect(s.points[0][1]).toBeCloseTo(-0.4, 9);
+    expect(s.points[CURVE_SAMPLES - 1][1]).toBeCloseTo(1.2, 9);
+    // Near the curl, next to none of the lift: the approved shape.
+    const k = profileKnots(s.numbers.phase, s.numbers.hollow);
+    for (const m of [CREST_KNOT, TIP_KNOT, FLOOR_KNOT]) expect(endLift(k[m][0])).toBeLessThan(0.05);
+    // The back falls from the crest to its end without a second rise.
+    const back = s.points.filter((p) => p[0] < A * k[CREST_KNOT][0]).sort((p, q) => q[0] - p[0]);
+    for (let i = 1; i < back.length; i++) expect(back[i][1]).toBeLessThanOrEqual(back[i - 1][1] + 0.01);
   });
 
   it('holds the tube longer and collapses slower for a bigger, longer-period wave (Andrew, 2026-10-05)', () => {
