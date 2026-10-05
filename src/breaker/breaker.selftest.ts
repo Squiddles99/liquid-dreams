@@ -31,6 +31,10 @@ function readPass(n: number, body: (xz: any) => [any, any]) {
 
 let shared: { field: ReturnType<typeof computeReefField> } | null = null;
 const getField = () => (shared ??= { field: computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, peel: DEFAULT_BREAK_PARAMS.peel }) }).field;
+/** The peel stretch is off by default (BreakParams.peel 1); the stretched record's test turns it on, at its old default. */
+const STRETCH = 1.7;
+let stretched: ReturnType<typeof computeReefField> | undefined;
+const getStretchedField = () => (stretched ??= computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, peel: STRETCH }));
 
 registerSelfTest({
   name: 'breaker: GPU field sampling matches the CPU field (inside and far field, the breaking depth included)',
@@ -505,7 +509,7 @@ registerSelfTest({
 registerSelfTest({
   name: 'breaker: GPU onset time and delay match the CPU on the stretched record (held sections included)',
   async run(renderer) {
-    const field = getField();
+    const field = getStretchedField();
     const sets = new SetWaves(uniform(0));
     sets.setField(field);
     sets.setBreakParams(DEFAULT_BREAK_PARAMS);

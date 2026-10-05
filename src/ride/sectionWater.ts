@@ -1,6 +1,6 @@
 import type { Station, StationEntry } from '../breaker/crestTrace';
 import { frontHeight, interiorWeight } from '../breaker/wombSection';
-import { CREST_KNOT, type P2, profileKnots, profileSamples } from '../breaker/wombProfile';
+import { CREST_KNOT, FLOOR_KNOT, type P2, profileKnots, profileSamples } from '../breaker/wombProfile';
 import type { WaterFn } from './water';
 
 /**
@@ -36,8 +36,9 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
   const cached = (s: Station): Cached => {
     let c = cache.get(s);
     if (!c) {
-      const { curve, marks } = profileSamples(s.section.phase, s.section.hollow);
-      c = { curve, crestU: profileKnots(s.section.phase, s.section.hollow)[CREST_KNOT][0], floorU: curve[marks.floor][0] };
+      const { curve } = profileSamples(s.section.phase, s.section.hollow);
+      const k = profileKnots(s.section.phase, s.section.hollow);
+      c = { curve, crestU: k[CREST_KNOT][0], floorU: k[FLOOR_KNOT][0] };
       cache.set(s, c);
     }
     return c;
