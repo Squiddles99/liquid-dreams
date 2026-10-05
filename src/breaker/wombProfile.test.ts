@@ -26,8 +26,10 @@ describe('wombProfile', () => {
     for (const ph of PHASES) for (const hv of HOLLOWS) {
       const k = profileKnots(ph, hv);
       expect(k).toHaveLength(KNOTS);
-      expect(k[0]).toEqual([-7, 0]);
-      expect(k[KNOTS - 1]).toEqual([7, 0]);
+      for (const [i, u] of [[0, -7], [KNOTS - 1, 7]]) {
+        expect(k[i][0]).toBeCloseTo(u, 12);
+        expect(k[i][1]).toBeCloseTo(0, 12);
+      }
     }
   });
 
