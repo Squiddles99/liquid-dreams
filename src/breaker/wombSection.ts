@@ -41,20 +41,22 @@ export const FLIGHT_DROP_A = 1.3;
 export const SECTION_HAND_BACK_S = 0.5;
 /** The ribbon's weight rises as the onset ratio goes from the ribbon's onset to this (it stands up out of the sheet). */
 export const RHO_FULL_RATIO = 0.9;
-/**
- * The profile's ends (units of A): the section is the sheet's from here out. Over its last stretch, EDGE_BLEND_UNITS, it
- * blends into the sheet (the mesh's edge meets the sheet's surface exactly).
- */
+/** The profile's ends (units of A): the ribbon's mesh spans them; the section is the sheet's well before them. */
 export const EDGE_OUTER_UNITS = 7;
-export const EDGE_BLEND_UNITS: readonly [number, number] = [6, EDGE_OUTER_UNITS];
 /**
- * The profile is drawn about still water, its back and its front running gently down to sea level at its ends; the sea
- * round a breaking wave is not still, so the profile is lifted (or lowered) to the sheet's level at each end, by a ramp
- * from none at LIFT_UNITS[0] from the crest to all of it at the end. Handed to the sheet nearer the curl instead, the
- * swell's broad hump stood behind and in front of the profile's narrow crest as a second wave (Andrew, 2026-10-05, in the
- * game: "the 2 waves are still very much there"; wanted: "a smooth gradient returning down to sea level").
+ * Where the section is the profile and where it is the sheet. The profile draws the curl: the crest, the lip, the tube, the
+ * face and the trough in front of it. Behind the crest the back is the sheet's own (the swell's), handed over between
+ * BACK_BLEND_UNITS[0] and [1] units of A behind the crest knot; in front, past the trough, between FRONT_BLEND_UNITS[0]
+ * and [1] units ahead of the crest line.
+ *
+ * The profile's gentle back stands lower than the shoaled swell's back (≈ 0.75 A against 0.9 A one unit behind the crest,
+ * 0.2 A against 0.6 A four units behind): every hand-over further back left a dip behind the crest and a rise where the
+ * swell took over, a second wave behind the first (Andrew, 2026-10-05, in the game: his red line "rises, dips, rises",
+ * his green "a smooth gradient returning down to sea level", which is the swell's own back). Handed over just behind the
+ * crest, where the two stand at nearly the same height, the back is the swell's from there on.
  */
-export const LIFT_UNITS: readonly [number, number] = [1, EDGE_OUTER_UNITS];
+export const BACK_BLEND_UNITS: readonly [number, number] = [0.25, 1.5];
+export const FRONT_BLEND_UNITS: readonly [number, number] = [2.3, 4];
 
 export interface SectionInput {
   /** The station's local wave height (m), crest to trough. */
@@ -139,24 +141,17 @@ export interface Section {
   tip: P2;
 }
 
-/** How much of the profile is drawn at u units of A from the crest: all of it inside, none past its ends. */
-export const interiorWeight = (uUnits: number): number => 1 - smoothstep(EDGE_BLEND_UNITS[0], EDGE_BLEND_UNITS[1], Math.abs(uUnits));
+/** How much of the profile is drawn at u units of A from the crest line, with the crest knot at crestU: all of it over the
+ * curl, none behind the crest or ahead of the trough past the blends (BACK_BLEND_UNITS, FRONT_BLEND_UNITS). */
+export const interiorWeight = (uUnits: number, crestU: number): number =>
+  uUnits < crestU ? 1 - smoothstep(BACK_BLEND_UNITS[0], BACK_BLEND_UNITS[1], crestU - uUnits) : 1 - smoothstep(FRONT_BLEND_UNITS[0], FRONT_BLEND_UNITS[1], uUnits);
 
-/** How much of the sheet's level at the profile's end on u's side lifts the profile at u units of A from the crest. */
-export const endLift = (uUnits: number): number => smoothstep(LIFT_UNITS[0], LIFT_UNITS[1], Math.abs(uUnits));
-
-/** The sheet's levels (m) at the profile's two ends, the front (+EDGE_OUTER_UNITS) and the back (−). */
-export const sheetEnds = (A: number, sheet: SheetAlong): { front: number; back: number } =>
-  ({ front: sheet(A * EDGE_OUTER_UNITS)[1], back: sheet(-A * EDGE_OUTER_UNITS)[1] });
-
-/** A profile point (units of A) placed on the station's plane (m): lifted to the sheet's level at its end, blended into the
- * sheet by ρ and toward the ends. */
+/** A profile point (units of A) placed on the station's plane (m), blended into the sheet by ρ and interiorWeight. */
 function placer(numbers: SectionNumbers, sheet: SheetAlong): (q: P2) => P2 {
-  const { A, rho } = numbers, ends = sheetEnds(A, sheet);
+  const { A, phase, hollow, rho } = numbers, crestU = profileKnots(phase, hollow)[CREST_KNOT][0];
   return (q) => {
-    const S = sheet(A * q[0]), w = rho * interiorWeight(q[0]);
-    const y = A * q[1] + endLift(q[0]) * (q[0] < 0 ? ends.back : ends.front);
-    return [S[0] + (A * q[0] - S[0]) * w, S[1] + (y - S[1]) * w];
+    const S = sheet(A * q[0]), w = rho * interiorWeight(q[0], crestU);
+    return [S[0] + (A * q[0] - S[0]) * w, S[1] + (A * q[1] - S[1]) * w];
   };
 }
 

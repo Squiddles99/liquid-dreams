@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, TIP_KNOT, profileCurve, profileKnots } from './wombProfile';
 import {
-  type SectionInput, SECTION_HAND_BACK_S, STAND_LEAD_S, STOOD_PHASE, collapseSpan, endLift, flightTime, interiorWeight, sectionEnd, sectionPhase, sectionScale, sectionWeight, tubeHold,
+  type SectionInput, BACK_BLEND_UNITS, SECTION_HAND_BACK_S, STAND_LEAD_S, STOOD_PHASE, collapseSpan, flightTime, interiorWeight, sectionEnd, sectionPhase, sectionScale, sectionWeight, tubeHold,
   wombSection,
 } from './wombSection';
 
@@ -42,19 +42,21 @@ describe('wombSection: a station as the Womb profile family', () => {
     for (let w = 0; w < STAND_LEAD_S; w += 0.1) expect(rho(w)).toBeGreaterThanOrEqual(rho(w + 0.1));
   });
 
-  it('is lifted to the sheet\u2019s level at each end, its own gentle back and front between (Andrew, 2026-10-05: "a smooth gradient returning down to sea level", not a second wave)', () => {
-    // A sea standing 1.2 m up toward the profile's back end and 0.4 m down toward its front end, level over its last unit.
-    const end = 7 * sectionScale(5), ramp = (u: number): number => Math.min(1, Math.abs(u) / ((6 / 7) * end));
-    const sheet = (u: number): P2 => [u, u < 0 ? 1.2 * ramp(u) : -0.4 * ramp(u)];
-    const s = wombSection(at(5, 0.4), sheet, P), { A } = s.numbers;
-    expect(s.points[0][1]).toBeCloseTo(-0.4, 9);
-    expect(s.points[CURVE_SAMPLES - 1][1]).toBeCloseTo(1.2, 9);
-    // Near the curl, next to none of the lift: the approved shape.
-    const k = profileKnots(s.numbers.phase, s.numbers.hollow);
-    for (const m of [CREST_KNOT, TIP_KNOT, FLOOR_KNOT]) expect(endLift(k[m][0])).toBeLessThan(0.05);
-    // The back falls from the crest to its end without a second rise.
-    const back = s.points.filter((p) => p[0] < A * k[CREST_KNOT][0]).sort((p, q) => q[0] - p[0]);
-    for (let i = 1; i < back.length; i++) expect(back[i][1]).toBeLessThanOrEqual(back[i - 1][1] + 0.01);
+  it('draws the curl as the profile and the back as the swell\u2019s own, handed over just behind the crest (Andrew, 2026-10-05: "a smooth gradient returning down to sea level", not a second wave)', () => {
+    // A broad swell, higher than the profile's gentle back: its crest at u = 0, 0.95 A high, falling away either side.
+    const A = sectionScale(5), swell = (u: number): P2 => [u, 0.95 * A * Math.cos(Math.min(Math.PI, Math.abs(u) / (12 * A) * Math.PI))];
+    for (const tb of [null, 0.2, 0.6, 1.5]) {
+      const s = wombSection(at(5, tb), swell, P), { phase, hollow } = s.numbers;
+      const k = profileKnots(phase, hollow), crestU = k[CREST_KNOT][0];
+      // The curl is the profile's: the crest, the tip and the floor are exactly where the profile puts them.
+      for (const m of [CREST_KNOT, TIP_KNOT, FLOOR_KNOT]) expect(interiorWeight(k[m][0], crestU), `tb ${tb} knot ${m}`).toBe(1);
+      // The back is the swell's from BACK_BLEND_UNITS[1] behind the crest, and falls from the crest without a second rise.
+      const back = s.points.filter((p) => p[0] < A * crestU).sort((p, q) => q[0] - p[0]);
+      for (const p of back.filter((q) => q[0] < A * (crestU - BACK_BLEND_UNITS[1]))) expect(p[1]).toBeCloseTo(swell(p[0])[1], 9);
+      let dip = 0, low = Infinity;
+      for (const p of back) { low = Math.min(low, p[1]); dip = Math.max(dip, p[1] - low); }
+      expect(dip, `tb ${tb}`).toBeLessThan(0.05 * A);
+    }
   });
 
   it('holds the tube longer and collapses slower for a bigger, longer-period wave (Andrew, 2026-10-05)', () => {
@@ -78,7 +80,7 @@ describe('wombSection: a station as the Womb profile family', () => {
       const c = profileCurve(phase, hollow);
       expect(s.points).toHaveLength(CURVE_SAMPLES);
       s.points.forEach((p, i) => {
-        const [u, y] = c[CURVE_SAMPLES - 1 - i], w = s.numbers.rho * interiorWeight(u);
+        const [u, y] = c[CURVE_SAMPLES - 1 - i], w = s.numbers.rho * interiorWeight(u, profileKnots(phase, hollow)[CREST_KNOT][0]);
         expect(p[0]).toBeCloseTo(A * u, 9);
         expect(p[1]).toBeCloseTo(A * y * w, 9);
       });

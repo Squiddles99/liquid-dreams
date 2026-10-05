@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { vec3 } from 'three/tsl';
 import { computeWgsl, stubRenderer } from './wgslBuild.testutil';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { OceanSimulation } from '../ocean/OceanSimulation';
 import { OceanSurface } from '../ocean/OceanSurface';
 import { DEFAULT_WATER_OPTICS } from '../ocean/waterOptics';
@@ -68,6 +68,22 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
       for (const p of passes) expect(counts[p], p).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
     });
   }
+
+  // TSL reports a malformed node (e.g. a vec4 built from more than four components, which it truncates) on the console and
+  // builds on: the frame pass once packed the sheet's end levels after the tip and crest knots (two vec2) and they were
+  // dropped, so the ribbon lifted its ends by the wrong numbers (Andrew's GPU self-test, 2026-10-05: 1.56 m).
+  it('every compute pass builds without a TSL complaint', { timeout: 60_000 }, () => {
+    const said: string[] = [];
+    const spies = (['error', 'warn'] as const).map((k) => vi.spyOn(console, k).mockImplementation((...a: unknown[]) => { said.push(a.map(String).join(' ')); }));
+    try {
+      for (const [, ribbon] of [['production', production], ['self-test rig', selfTestRig]] as const) {
+        for (const p of passes) computeWgsl((ribbon as unknown as Record<string, THREE.ComputeNode>)[p]);
+      }
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
+    expect(said.filter((m) => /THREE|TSL/.test(m))).toEqual([]);
+  });
 
   it(`the ribbon's and the footprint's shader stages bind at most ${MAX_STORAGE_BUFFERS_PER_STAGE} storage buffers`, () => {
     const footprintMesh = (production as unknown as { footprintScene: THREE.Scene }).footprintScene.children[0] as THREE.Mesh;
