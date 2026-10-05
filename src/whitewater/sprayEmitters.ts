@@ -231,7 +231,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
   const offshoreMs = offshoreSpeed(i.wind.speedMs, i.wind.fromDeg, ctx.travelX, ctx.travelZ);
   const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M, offshoreMs });
   // The lip is thrown from the wave as it stood: the frame reads the sheet without the whitewater pile (as the ribbon's).
-  const opts: BreakOptions = { ...breakOptions(field, params, offshoreMs), pile: false };
+  const opts: BreakOptions = { ...breakOptions(field, params, offshoreMs), pile: false, shape: 'lean' };
   const frames: (SectionFrame | null)[] = stations.map(() => null);
   for (const [si, s] of stations.entries()) {
     if (s.gap || s.tb === null || !Number.isFinite(s.tb)) continue;

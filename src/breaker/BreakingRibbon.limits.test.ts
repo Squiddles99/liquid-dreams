@@ -85,6 +85,25 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
     expect(said.filter((m) => /THREE|TSL/.test(m))).toEqual([]);
   });
 
+  it("the game's sheet (SetWaves without the pile, its front leaned to the Womb profile) builds without a TSL complaint and within the limits", { timeout: 60_000 }, () => {
+    const said: string[] = [];
+    const spies = (['error', 'warn'] as const).map((k) => vi.spyOn(console, k).mockImplementation((...a: unknown[]) => { said.push(a.map(String).join(' ')); }));
+    try {
+      const gameSets = new SetWaves(sim.time, { pile: false, shape: 'lean' });
+      const gameModel = new WaterSurfaceModel(sim, new Seabed(bed), gameSets);
+      const surface = new OceanSurface(gameModel, new Sky(DEFAULT_ATMOSPHERE), createWaterOpticsUniforms(DEFAULT_WATER_OPTICS));
+      for (const which of ['aboveMaterial', 'belowMaterial'] as const) {
+        const w = renderWgsl(new THREE.Mesh(surface.mesh.geometry, surface[which]));
+        for (const stage of [w.vertex, w.fragment]) expect(storageBindings(stage)).toBeLessThanOrEqual(MAX_STORAGE_BUFFERS_PER_STAGE);
+      }
+      const ribbon = new BreakingRibbon(modelRibbonSurface(gameModel));
+      for (const p of passes) computeWgsl((ribbon as unknown as Record<string, THREE.ComputeNode>)[p]);
+    } finally {
+      for (const sp of spies) sp.mockRestore();
+    }
+    expect(said.filter((m) => /THREE|TSL/.test(m))).toEqual([]);
+  });
+
   it(`the ribbon's and the footprint's shader stages bind at most ${MAX_STORAGE_BUFFERS_PER_STAGE} storage buffers`, () => {
     const footprintMesh = (production as unknown as { footprintScene: THREE.Scene }).footprintScene.children[0] as THREE.Mesh;
     for (const [label, mesh] of [['ribbon', production.mesh], ['footprint', footprintMesh]] as const) {

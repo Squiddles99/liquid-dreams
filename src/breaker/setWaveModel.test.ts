@@ -188,3 +188,23 @@ describe('ψ at the crest (barrel from the maths)', () => {
   });
 });
 
+
+describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
+  it('shortens a crest’s front on the ribbon’s clock: the swell’s down the line, the profile’s face over the last STAND_LEAD_S and after', async () => {
+    const { frontStanding, wombFrontMin, LEAN_FRONT_MIN, LEAN_FRONT_FLOOR } = await import('./setWaveModel');
+    const { STAND_LEAD_S } = await import('./wombSection');
+    expect(frontStanding(undefined)).toBe(0);
+    expect(frontStanding(null)).toBe(0);
+    expect(frontStanding(-10)).toBe(0);
+    expect(frontStanding(-STAND_LEAD_S)).toBe(0);
+    expect(frontStanding(-STAND_LEAD_S / 2)).toBeCloseTo(0.5, 12);
+    expect(frontStanding(0)).toBe(1);
+    expect(frontStanding(3)).toBe(1);
+    // The front as long as the profile's face (1.8 A, A = H / 1.3) on the 6 ft set at the take-off (H 3.5 m, k 0.068):
+    // ~4.8 m, a share 0.11 of the half wavelength; never longer than the plain lean, never shorter than the floor.
+    const share = wombFrontMin(3.5, 0.068);
+    expect((share * Math.PI) / 0.068).toBeCloseTo(1.8 * (3.5 / 1.3), 6);
+    expect(wombFrontMin(0.3, 0.05)).toBe(LEAN_FRONT_FLOOR);
+    expect(wombFrontMin(20, 0.1)).toBe(LEAN_FRONT_MIN);
+  });
+});

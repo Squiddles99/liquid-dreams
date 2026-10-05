@@ -1,3 +1,4 @@
+import { STAND_LEAD_S } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -50,6 +51,15 @@ export const PITCH_KA_CAP = 0.12;
  */
 export const LEAN_RATIO: readonly [number, number] = [0.5, 1];
 export const LEAN_FRONT_MIN = 0.3;
+/**
+ * With the ribbon drawing the breaking (BreakOptions.shape 'lean'), the front is squeezed until it is as long as the Womb
+ * profile's face, crest to trough: this many units of A (= H / 1.3), so where the ribbon hands the front back to the sheet
+ * (wombSection.FRONT_BLEND_UNITS) the sheet already lies at its trough. Squeezed only to LEAN_FRONT_MIN (13 m on the 6 ft
+ * set) the sheet's front still stood 1–2 m high there, a second wave in front of the face (Andrew, 2026-10-05). Bounded
+ * below by LEAN_FRONT_FLOOR.
+ */
+export const WOMB_FRONT_UNITS = 1.8;
+export const LEAN_FRONT_FLOOR = 0.08;
 
 /**
  * The lean's weight at a crest: by its slurp ratio, × the lookup's confidence, × (1 − its release, the collapse on the
@@ -58,6 +68,22 @@ export const LEAN_FRONT_MIN = 0.3;
  * inside reef, where the rays fan out, the squeeze (1/LEAN_FRONT_MIN) amplified the phase's ripples there into 0.5 m
  * spikes on the bore's face. 0 without a crest.
  */
+/** The front's share of the half wavelength when it is as long as the Womb profile's face (WOMB_FRONT_UNITS of A). */
+export const wombFrontMin = (H: number, k: number): number =>
+  Math.min(LEAN_FRONT_MIN, Math.max(LEAN_FRONT_FLOOR, (WOMB_FRONT_UNITS * (H / 1.3) * k) / Math.PI));
+
+/**
+ * How far a crest's front has shortened to the Womb profile's face [0, 1], on the ribbon's clock (wombSection.sectionWeight):
+ * 0 where its section will not break, and while it waits for its turn more than STAND_LEAD_S away; to 1 over that last
+ * STAND_LEAD_S; 1 once broken. Down the line the front stays the swell's (Andrew, 2026-10-05: "a less vertical gradient,
+ * similar to how the swell approaches"), and shortened from the first a surfer had a third of a second on the face to
+ * catch it.
+ */
+export function frontStanding(tb: number | null | undefined): number {
+  if (tb === null || tb === undefined) return 0;
+  return tb >= 0 ? 1 : 1 - smoothstep(0, STAND_LEAD_S, -tb);
+}
+
 export function leanWeight(crest: Crest | null): number {
   return crest ? smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence * (1 - crest.lc.release) : 0;
 }
@@ -67,9 +93,9 @@ export function leanWeight(crest: Crest | null): number {
  * lean·(1 − LEAN_FRONT_MIN), θ/φ over its last share (θ ≥ −φπ), the trough (−π) ahead of that; θ itself elsewhere. C1:
  * the shape's slope is 0 at θ = 0 and at the trough either way.
  */
-export function leanPhase(theta: number, lean: number): { th: number; dth: number } {
+export function leanPhase(theta: number, lean: number, frontMin = LEAN_FRONT_MIN): { th: number; dth: number } {
   if (!(lean > 0) || !(theta < 0) || !(theta > -Math.PI)) return { th: theta, dth: 1 };
-  const phi = 1 - lean * (1 - LEAN_FRONT_MIN);
+  const phi = 1 - lean * (1 - frontMin);
   return theta >= -phi * Math.PI ? { th: theta / phi, dth: 1 / phi } : { th: -Math.PI, dth: 0 };
 }
 
@@ -131,6 +157,14 @@ export interface BreakOptions {
   pile?: boolean;
   /** The wind's offshore speed (m/s; overturn.offshoreSpeed, negative onshore). Absent: 0. */
   offshoreMs?: number;
+  /**
+   * false: the sheet is the swell's own shape where it breaks (no front lean, no steepening, drain, collapse or pile; the
+   * foam and the stage are still reported), and the breaking ribbon draws all of the breaking (the game: plan
+   * 2026-10-05-womb-profile-step3). With the sheet's own breaking under it, every hand-over between the two drew a
+   * second wave: the sheet's breaking front, bore and the set's earlier waves stood beside the ribbon's ("waves going in
+   * everywhere", Andrew, 2026-10-05). Absent: with it (the old breaking's own tests, until it is removed).
+   */
+  shape?: boolean | 'lean';
   /** Tests and the drawings: every crest takes this ψ. */
   force?: { psi: number };
 }
@@ -335,7 +369,10 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const theta = w.omega * xi;
   const aE = A * env * lateral;
   // The front's lean (LEAN_RATIO): the trough moves in to the face's foot as the wave shoals.
-  const { th, dth } = leanPhase(theta, leanWeight(crest));
+  const { th, dth } = o?.shape === 'lean' && crest
+    ? leanPhase(theta, smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence,
+      LEAN_FRONT_MIN + (wombFrontMin(localHeight(w, crest.f), crest.f.k) - LEAN_FRONT_MIN) * frontStanding(crest.tb))
+    : leanPhase(theta, o?.shape === false ? 0 : leanWeight(crest));
   const leaning = th !== theta || dth !== 1;
   const shape = Math.cos(th) + B * Math.cos(2 * th);
   const eta = aE * shape;
@@ -373,10 +410,11 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
     slope: slopeU, dThetaDAhead: w.omega * perAhead, dEnvDAhead: dEnv * lateral * perAhead, crestConfidence: crest.confidence,
     lean: leaning ? { eta, slope: slopeAlong } : undefined,
   }, crest.lc, crest.params);
+  out.foam = b.foam;
+  if (o.shape === false || o.shape === 'lean') return out;
   out.eta = b.eta;
   out.slopeX += f.dirX * b.dEtaDAhead;
   out.slopeZ += f.dirZ * b.dEtaDAhead;
-  out.foam = b.foam;
   out.pile = b.pile;
   return out;
 }

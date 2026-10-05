@@ -279,3 +279,32 @@ describe('the onset record', () => {
     expect(sampleOnset(f, 0, 0)).not.toBeNull();
   });
 });
+
+describe('smoothFieldAmplitude: the field as the game draws it', () => {
+  it('smooths the amplitude, direction and depth cap, and leaves every breaking ratio as it was (Andrew, 2026-10-05: "waves going in everywhere")', async () => {
+    const { smoothFieldAmplitude } = await import('./reefField');
+    const nx = 60, nz = 50, n = nx * nz;
+    // Streaky amplitude and depth cap (a ray streak every 4 cells), as over the inside reef.
+    const amp = new Float32Array(n), hmin = new Float32Array(n), hb = new Float32Array(n), hs = new Float32Array(n), hl = new Float32Array(n);
+    const dirX = new Float32Array(n), dirZ = new Float32Array(n), tau = new Float32Array(n);
+    for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+      const i = z * nx + x, streak = z % 4 === 0 ? 1.6 : 0.6;
+      amp[i] = streak; hmin[i] = z % 5 === 0 ? 1.7 : 2.8; hb[i] = 2 * streak; hs[i] = 1.8 * streak; hl[i] = 1.5 * streak;
+      const a = (z % 3) * 0.3; dirX[i] = Math.cos(a); dirZ[i] = Math.sin(a); tau[i] = 0.1 * x + (z % 6 === 0 ? 0.3 : 0);
+    }
+    const field = { grid: { x0: 0, z0: 0, cellM: 1, nx, nz }, amp, hmin, hminBreak: hb, hminSlurp: hs, hminLean: hl, dirX, dirZ, tau } as unknown as import('./reefField').ReefField;
+    const ratios = Array.from(amp, (a, i) => [a / hb[i], a / hs[i], a / hl[i]]);
+    const jump = (f: Float32Array): number => { let m = 0; for (let z = 1; z < nz; z++) for (let x = 0; x < nx; x++) m = Math.max(m, Math.abs(f[z * nx + x] - f[(z - 1) * nx + x])); return m; };
+    const before = { amp: jump(amp), hmin: jump(hmin), tau: jump(tau) };
+    smoothFieldAmplitude(field, 6, 4);
+    expect(jump(amp)).toBeLessThan(0.1 * before.amp);
+    expect(jump(hmin)).toBeLessThan(0.1 * before.hmin);
+    expect(jump(tau)).toBeLessThan(0.5 * before.tau);
+    amp.forEach((a, i) => {
+      expect(a / hb[i]).toBeCloseTo(ratios[i][0], 5);
+      expect(a / hs[i]).toBeCloseTo(ratios[i][1], 5);
+      expect(a / hl[i]).toBeCloseTo(ratios[i][2], 5);
+      expect(Math.hypot(dirX[i], dirZ[i])).toBeCloseTo(1, 5);
+    });
+  });
+});

@@ -19,11 +19,11 @@ describe('a ride on the drawn sections', () => {
   it('a 6 ft set wave: caught, popped up and ridden along the left for 5 s or more without a wipeout', { timeout: 300_000 }, () => {
     const c = cloneConditions(DEFAULT_CONDITIONS);
     c.swell.sizeFt = 6;
-    const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: P.peel });
+    const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: P.peel, smooth: true });
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
     const set = wavesBetween(0, 600, c, DEFAULT_SET_PARAMS).filter((e) => e.arrivalS > 10).slice(0, 8);
     const big = set.reduce((a, b) => (b.heightM > a.heightM ? b : a));
-    const o = { ...breakOptions(field, P), pile: false }, minHeightM = minRibbonHeight(fieldBreakingHeight(field, P), P);
+    const o = { ...breakOptions(field, P), pile: false, shape: 'lean' as const }, minHeightM = minRibbonHeight(fieldBreakingHeight(field, P), P);
     const waterAtT = (t: number, cx: number, cz: number): WaterFn => {
       const waves = wavesNear(t, c, DEFAULT_SET_PARAMS).map(toActiveWave);
       const sheet: WaterFn = (x, z) => waterAt(x, z, c.tideM, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
