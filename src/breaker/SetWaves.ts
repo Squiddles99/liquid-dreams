@@ -9,12 +9,13 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LE
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
+import { STAND_LEAD_S } from './wombSection';
 import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import { PSI_EDGE_FADE_M, type ReefField } from './reefField';
 import {
-  BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, FOLD_LIMIT, LEAN_FRONT_MIN, LEAN_RATIO, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
+  BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, FOLD_LIMIT, LEAN_FRONT_FLOOR, LEAN_FRONT_MIN, LEAN_RATIO, WOMB_FRONT_UNITS, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
   TAPER_FAR_M, TAPER_NEAR_M, fieldSteepeningHeight, toActiveWave,
 } from './setWaveModel';
 
@@ -112,8 +113,14 @@ export class SetWaves {
    */
   private readonly pile: boolean;
 
-  constructor(readonly time: N, opts: { pile?: boolean } = {}) {
+  /** setWaveModel.BreakOptions.shape: 'full' (absent) with the breaking shape; 'lean' the swell's front leaned to the Womb
+   * profile's face and held (the game: the ribbon draws the breaking); 'none' the swell's own shape. The foam and the
+   * stage are reported either way. */
+  private readonly shape: 'full' | 'lean' | 'none';
+
+  constructor(readonly time: N, opts: { pile?: boolean; shape?: boolean | 'lean' } = {}) {
     this.pile = opts.pile !== false;
+    this.shape = opts.shape === 'lean' ? 'lean' : opts.shape === false ? 'none' : 'full';
     this.setEvents([]);
   }
 
@@ -367,6 +374,8 @@ export class SetWaves {
           const confidence = float(0.0).toVar(), rC = float(0.0).toVar();
           // The front's lean (setWaveModel.leanWeight): 0 without a crest.
           const lean = float(0.0).toVar();
+          // setWaveModel.frontStanding: 0 off the record or not breaking there, rising over the last STAND_LEAD_S to 1 once broken.
+          const standing = float(0.0).toVar();
           const lc = { steep: float(0.0).toVar(), stage: float(0.0).toVar(), drain: float(0.0).toVar(), collapse: float(0.0).toVar() };
           // The whitewater pile's curves and the lip's height (setWaveModel.Crest.lipH: 0 unbroken or off the record).
           const pc = { pile: float(0.0).toVar(), pileReach: float(0.0).toVar(), surge: float(1.0).toVar(), decay: float(1.0).toVar() };
@@ -410,7 +419,9 @@ export class SetWaves {
             const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), rSlurp, brk,
               { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi), thrown: smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi) }, onset.delay);
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
-            lean.assign(lean.mul(float(1.0).sub(l.release)));
+            if (this.shape === 'lean') standing.assign(select(rec.inside.and(onset.broken), select(onset.tb.greaterThanEqual(0.0), float(1.0), float(1.0).sub(smoothstep(0.0, STAND_LEAD_S, onset.tb.negate()))), float(0.0)));
+            if (this.shape === 'full') lean.assign(lean.mul(float(1.0).sub(l.release)));
+            else if (this.shape === 'none') lean.assign(0.0);
             if (withPile) {
               pc.pile.assign(l.pile); pc.pileReach.assign(l.pileReach); pc.surge.assign(l.surge); pc.decay.assign(l.decay);
               lipH.assign(select(rec.inside.and(onset.broken), onset.lipH, float(0.0)));
@@ -425,7 +436,12 @@ export class SetWaves {
           const B = min(float(STOKES_CAP), stokesPerA.mul(A));
           const aE = A.mul(env).mul(lateral);
           // setWaveModel.leanPhase: the front (−π < θ < 0) squeezed into its last share φ, the trough's level ahead of it.
-          const phi = float(1.0).sub(lean.mul(1 - LEAN_FRONT_MIN));
+          // With the ribbon drawing the breaking, as short as the Womb profile's face (setWaveModel.wombFrontMin).
+          // Shortened on the ribbon's clock (setWaveModel.frontStanding).
+          const frontMin = this.shape === 'lean'
+            ? mix(float(LEAN_FRONT_MIN), clamp(min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)).mul(WOMB_FRONT_UNITS / 1.3).mul(fc.k).div(Math.PI), LEAN_FRONT_FLOOR, LEAN_FRONT_MIN), standing)
+            : float(LEAN_FRONT_MIN);
+          const phi = float(1.0).sub(lean.mul(float(1.0).sub(frontMin)));
           const thetaN: N = theta;
           const inFront: N = lean.greaterThan(0.0).and(thetaN.lessThan(0.0)).and(thetaN.greaterThan(-Math.PI));
           const squeezed: N = thetaN.greaterThanEqual(phi.mul(-Math.PI));
@@ -489,10 +505,12 @@ export class SetWaves {
                   ...(withPile ? { lipTop, lateral, lipHeight: lipH.mul(lateral) } : {}),
                   lean: { eta: e, slope: along, on: inFront },
                 }, lc.steep, brk, { drain: lc.drain, collapse: lc.collapse }, withPile ? pc : undefined, { troughDrain: shTrough });
-                eta.addAssign(br.eta.sub(e));
-                slope.addAssign(f.dir.mul(br.dEtaDAhead));
                 foam.assign(max(foam, br.foam));
-                pile.assign(max(pile, br.pile));
+                if (this.shape === 'full') {
+                  eta.addAssign(br.eta.sub(e));
+                  slope.addAssign(f.dir.mul(br.dEtaDAhead));
+                  pile.assign(max(pile, br.pile));
+                }
               });
             });
           });

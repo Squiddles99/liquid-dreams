@@ -331,7 +331,7 @@ export class App {
   /** A walk pose applied before the land loaded (it became a free pose): walked into once the ground exists. */
   private pendingWalk: CameraPose | null = null;
   private builtReefKey = JSON.stringify(this.reefParams);
-  readonly setWaves = new SetWaves(this.ocean.time, { pile: false });
+  readonly setWaves = new SetWaves(this.ocean.time, { pile: false, shape: 'lean' });
   readonly surfaceModel = new WaterSurfaceModel(this.ocean, this.seabed, this.setWaves);
   readonly probe = new HeightProbe(this.surfaceModel);
   /** Breaking foam that lingers and drifts (spec 2026-09-27-foam-field-design.md), stepped at 20 Hz of sim time. */
@@ -1511,7 +1511,7 @@ export class App {
     const key = fieldKey(c, this.reefParams, this.breakParams.peel);
     if (!force && key === this.fieldKey) return;
     this.fieldKey = key;
-    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel });
+    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, smooth: true });
   }
 
   /** Reef sliders rebuild the bathymetry (~2M cells) once you stop dragging, then re-solve the field on it. */
@@ -1540,8 +1540,8 @@ export class App {
     const field = this.field, ctx = this.waveCtx, tide = this.conditions.tideM + (drawn ? this.rideOffset.value : 0);
     if (!field || !ctx) return flatWater(tide);
     const waves = wavesNear(t, this.conditions, this.sets).map(toActiveWave);
-    // Without the whitewater pile, as SetWaves draws the sheet (SetWaves' pile option).
-    const o = this.breakParams.enabled ? { ...breakOptions(field, this.breakParams, this.offshoreMs), pile: false } : undefined;
+    // The sheet as SetWaves draws it: no whitewater pile, the swell's front leaned and no breaking shape (the ribbon draws it).
+    const o = this.breakParams.enabled ? { ...breakOptions(field, this.breakParams, this.offshoreMs), pile: false, shape: 'lean' as const } : undefined;
     // The land and the rocks under the board (null while the land loads): the board runs aground on them.
     const sheet: WaterFn = (x, z) => {
       const w = waterAt(x, z, tide, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));

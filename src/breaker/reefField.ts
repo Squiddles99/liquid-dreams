@@ -16,6 +16,9 @@ export interface ReefFieldRequest {
   /** The peel stretch (≥ 1; 1 = physics; BreakParams.peel): each part of the line breaks this much later after the part
    * up the line than the reef alone says (spec 2026-10-04 §1). Absent: 1. */
   peel?: number;
+  /** true: the sea's height, direction, depth cap and arrival time smoothed for drawing (smoothFieldAmplitude), as the game
+   * draws it; the breaking ratios are unchanged. Absent: as solved. */
+  smooth?: boolean;
 }
 
 export interface ReefField {
@@ -234,6 +237,72 @@ function smoothAlongLine(a: Float32Array, dirX: Float32Array, dirZ: Float32Array
   return out;
 }
 
+/**
+ * The sea's height and direction smoothed over this σ (m) across the grid (smoothFieldAmplitude): the rays' amplitude
+ * crosses and focuses into streaks over the inside reef (0.24 to 1.67 of the offshore height 5 m apart, the direction
+ * swinging 50°), which stood on the sheet as a field of short ridges (Andrew, 2026-10-05: "waves going in everywhere").
+ * Real waves spread their energy along the crest (diffraction) and do not keep a ray streak.
+ */
+export const FIELD_SMOOTHING_M = 6;
+/**
+ * The arrival time τ smoothed over this σ (m): where the swell bent round the two ledges meets, τ (the earlier of two
+ * arrivals) has kinks, and each kink moved the crest ~2 m and stood a 0.3 m spike on the sheet, a comb of short ridges
+ * 6–13 m apart inshore of the peak. Rounded over a few metres the crest passes them smoothly; the phase moves < 0.1 s.
+ */
+export const TAU_SMOOTHING_M = 4;
+
+/**
+ * Smooths `field`'s amplitude, direction and shallowest depth so far (hmin, the cap on a wave's height there:
+ * setWaveModel.localHeight) in place by a Gaussian of σ = sigmaM (separable, over the grid), and its arrival time τ by
+ * σ = tauSigmaM. The breaking depths are scaled by the same factor as the amplitude, so each cell's breaking ratios
+ * (amplitude over depth) are unchanged: where and when the waves break, and the onset record, stay as they were. hmin
+ * dips in a streak behind every reef head a ray crossed (2.6 m to 1.7 m and back within 3 m), and the height capped on
+ * it stood a comb of 0.3 m ridges on the sheet; a real wave fills that shadow back in along its crest.
+ */
+export function smoothFieldAmplitude(field: ReefField, sigmaM = FIELD_SMOOTHING_M, tauSigmaM = TAU_SMOOTHING_M): void {
+  const { nx, nz, cellM } = field.grid;
+  const s = sigmaM / cellM, r = Math.ceil(3 * s);
+  const kern = Array.from({ length: 2 * r + 1 }, (_, i) => Math.exp(-((i - r) ** 2) / (2 * s * s)));
+  const blur = (src: Float32Array): Float32Array => {
+    const tmp = new Float32Array(src.length), out = new Float32Array(src.length);
+    for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+      let a = 0, w = 0;
+      for (let k = -r; k <= r; k++) { const xx = x + k; if (xx < 0 || xx >= nx) continue; a += kern[k + r] * src[z * nx + xx]; w += kern[k + r]; }
+      tmp[z * nx + x] = a / w;
+    }
+    for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+      let a = 0, w = 0;
+      for (let k = -r; k <= r; k++) { const zz = z + k; if (zz < 0 || zz >= nz) continue; a += kern[k + r] * tmp[zz * nx + x]; w += kern[k + r]; }
+      out[z * nx + x] = a / w;
+    }
+    return out;
+  };
+  const amp = blur(field.amp), dx = blur(field.dirX), dz = blur(field.dirZ), hmin = blur(field.hmin);
+  if (tauSigmaM > 0) {
+    const ts = tauSigmaM / cellM, tr = Math.ceil(3 * ts);
+    const tk = Array.from({ length: 2 * tr + 1 }, (_, i) => Math.exp(-((i - tr) ** 2) / (2 * ts * ts)));
+    const src = field.tau, tmp = new Float32Array(src.length);
+    for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+      let a = 0, w = 0;
+      for (let k = -tr; k <= tr; k++) { const xx = x + k; if (xx < 0 || xx >= nx) continue; a += tk[k + tr] * src[z * nx + xx]; w += tk[k + tr]; }
+      tmp[z * nx + x] = a / w;
+    }
+    for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
+      let a = 0, w = 0;
+      for (let k = -tr; k <= tr; k++) { const zz = z + k; if (zz < 0 || zz >= nz) continue; a += tk[k + tr] * tmp[zz * nx + x]; w += tk[k + tr]; }
+      src[z * nx + x] = a / w;
+    }
+  }
+  for (let i = 0; i < amp.length; i++) {
+    const f = field.amp[i] > 1e-6 ? amp[i] / field.amp[i] : 1;
+    field.hminBreak[i] *= f; field.hminSlurp[i] *= f; field.hminLean[i] *= f;
+    field.hmin[i] = hmin[i];
+    field.amp[i] = amp[i];
+    const l = Math.hypot(dx[i], dz[i]);
+    if (l > 1e-6) { field.dirX[i] = dx[i] / l; field.dirZ[i] = dz[i] / l; }
+  }
+}
+
 export function computeReefField(req: ReefFieldRequest): ReefField {
   const { grid } = req.bed;
   const { nx, nz, cellM, x0, z0 } = grid;
@@ -370,7 +439,9 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const psiHere = new Float32Array(n * ONSET_LEVELS);
   for (let i = 0; i < n; i++) psiHere.fill(psiFromStep(step[i]), i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
   const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel: req.peel ?? 1 });
-  return { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
+  const field: ReefField = { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
+  if (req.smooth) smoothFieldAmplitude(field);
+  return field;
 }
 
 /**

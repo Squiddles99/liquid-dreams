@@ -89,6 +89,17 @@
 - [x] A traced line can stop where its wave is still drawn breaking (a run started at ρ 1 on the 6 ft set): its cut cross-section stood as a wall. ρ fades over each line's last LINE_END_FADE_M (6 m).
 - [x] Process: a CPU render of what the GPU draws (the sheet without the pile, the ribbon from sectionOf as the vertex pass places it, the footprint) from the reference moments' cameras, in the session scratchpad; it reproduced the slab from the bug and shows it gone. (Headless Chromium's SwiftShader WebGPU loses its device within minutes here, so the GPU self-tests stay on Andrew's PC.)
 
+### Found in Andrew's fifth look (2026-10-05): "there are waves going in everywhere"
+
+His reference: a left-hand barrel from the beach (one crest line from the shoulder through the peak and the pocket to the white water; a tall concave face under a thick lip; flat water in front; white water exploding where the lip lands) and from inside the tube. Checked from now on with a ridge map from above (every crest marked) and renders from his angles, in the session scratchpad.
+
+- [x] The sheet still broke its waves itself (steepening, drain, collapse, bore) beside the ribbon: the sheet is now the swell's shape under the ribbon (BreakOptions.shape 'lean', SetWaves { shape: 'lean' }), its foam and stage still reported.
+- [x] The sheet's front was a long cosine front (13 m on the 6 ft set) ahead of the ribbon's 5 m face: where the ribbon handed the front back, the sheet still stood 1–2 m high, a second wave in front. Its front now shortens to the profile's face (WOMB_FRONT_UNITS of A) on the ribbon's own clock (frontStanding: over a section's last STAND_LEAD_S, and held through the collapse), and stays the swell's longer front down the line. Squeezed from the start, the face passed under a paddling surfer in a third of a second and the 6 ft ride test never caught the wave.
+- [x] The inside reef was a field of short ridges: the rays' amplitude, direction and depth cap (hmin, the shallowest depth so far, which dips in a streak behind every reef head) streak and kink there. The game's field is smoothed for drawing (ReefFieldRequest.smooth: smoothFieldAmplitude, σ 6 m; τ σ 4 m) with every breaking ratio unchanged.
+- [ ] The game still runs on the old reef, where the 6 ft take-off's sections are 0–0.2 hollow (soft, open): switch to the reshaped reef (round 2: 0.16–0.66 there).
+- [ ] The set's earlier waves inshore are drawn as clean swell lines; after their collapse they should be white water rolling in (the ribbon keeps the bore instead of handing back).
+- [ ] From the shoulder the curl looks twisted, and a crease showed near the shoulder end in one frame: to look at on the reshaped reef.
+
 ### 3e. Andrew's look (his PC)
 
 - [ ] Captures of the left at 6, 8 and 10 ft, mid tide, from the lineup and the ride camera. His sign-off before step 4 removes the old code.
