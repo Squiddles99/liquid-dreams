@@ -4,7 +4,7 @@ import { REEF_SURROUND_DEPTH_M, SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { beachHeight } from '../land/landHeight';
 import { fbm2, valueNoise2 } from './noise';
-import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE, rockReachM } from './wombReef';
+import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE, rockReachM, shelfPolygon } from './wombReef';
 
 /** Weed dominates rock across most of the shelf; baseline coverage before the patchy noise carves gaps. */
 const SHELF_WEED_BASE = 0.78;
@@ -38,13 +38,14 @@ function insidePolygon(px: number, pz: number, poly: readonly Pt[]): boolean {
   return inside;
 }
 
-/** Distance to the ledge lines (positive inside the shelf, negative outside). Only the ledges count as edges. */
-export function ledgeSignedDistance(x: number, z: number): number {
+/** Distance to the ledge lines (positive inside the shelf, negative outside). Only the ledges count as edges. `north`:
+ * the left's edge (ReefParams.northLedge), its shelf polygon built to match. */
+export function ledgeSignedDistance(x: number, z: number, north: readonly Pt[] = NORTH_LEDGE, shelf: readonly Pt[] = north === NORTH_LEDGE ? SHELF_POLYGON : shelfPolygon(north)): number {
   let d = Infinity;
-  for (const line of [NORTH_LEDGE, SOUTH_LEDGE]) {
+  for (const line of [north, SOUTH_LEDGE]) {
     for (let i = 0; i + 1 < line.length; i++) d = Math.min(d, segmentDistance(x, z, line[i], line[i + 1]));
   }
-  return insidePolygon(x, z, SHELF_POLYGON) ? d : -d;
+  return insidePolygon(x, z, shelf) ? d : -d;
 }
 
 function pocketWeight(x: number, z: number): number {
@@ -112,7 +113,8 @@ const REEF_OFFSHORE_BAND: readonly [number, number] = [SHORE_X - 140, SHORE_X - 
  */
 export function seawardDepth(v: number, x: number, p: ReefParams): number {
   const bg = depthBg(x);
-  const cap = bg + Math.max(0, p.slopeDepthM - REEF_SURROUND_DEPTH_M) * smoothstep(REEF_OFFSHORE_BAND[0], REEF_OFFSHORE_BAND[1], x);
+  const band = p.offshoreBand ?? REEF_OFFSHORE_BAND;
+  const cap = bg + Math.max(0, p.slopeDepthM - REEF_SURROUND_DEPTH_M) * smoothstep(band[0], band[1], x);
   const reef = Math.min(reefProfileDepth(v, p), cap);
   return reef + Math.max(0, bg - reef) * smoothstep(p.slopeEndM, p.slopeEndM + REEF_FAR_EASE_M, v);
 }
@@ -131,9 +133,10 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   // The deep slope's weed patches (its 5 m noise at every 0.5 m cell more than doubled the build): on the same lattice,
   // 10–20 m down where the water hides the difference.
   const patchOutField = new Float32Array(sx * sz);
+  const north = p.northLedge ?? NORTH_LEDGE, shelf = p.northLedge ? shelfPolygon(north) : SHELF_POLYGON;
   for (let r = 0; r < sz; r++) for (let c = 0; c < sx; c++) {
     const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M;
-    sdf[r * sx + c] = ledgeSignedDistance(x, z);
+    sdf[r * sx + c] = ledgeSignedDistance(x, z, north, shelf);
     pockets[r * sx + c] = pocketWeight(x, z);
     const [dx, dz] = reefWarp(x, z);
     warpDxField[r * sx + c] = dx;

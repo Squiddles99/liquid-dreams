@@ -204,3 +204,74 @@ export function rayProfile(bathy: Bathymetry, f: ReefField, px: number, pz: numb
   }
   return out;
 }
+
+/** One stretch of the left as a wave of height H breaks along it (spec 2026-10-05-womb-profile-design §3). */
+export interface StretchReport {
+  /** Points along the edge (every LINE_STEP_M) whose ray broke, of all of them. */
+  broken: number;
+  of: number;
+  /** When the stretch's first and last points broke (s; the crest reaches the peak at 0). */
+  start: number;
+  end: number;
+  /** The peel speed (m/s): the least-squares slope of distance along the edge on break time. */
+  peel: number;
+  /** The median hollowness where it broke: ψ₀ from oval (0.035) to thrown (0.09) as 0–1. */
+  hollow: number;
+}
+export type Ride = 'barrel' | 'soft' | 'closes out' | 'backs off' | 'keeps breaking' | 'no break';
+const LINE_STEP_M = 2.5;
+/** A stretch peeling faster than this closes out; a barrel is at least this hollow (and a gap less than BACKS_OFF_HOLLOW,
+ * or slower than BACKS_OFF_PEEL: the wave stalls in the bay). */
+export const CLOSEOUT_PEEL = 18;
+export const BARREL_HOLLOW = 0.6;
+export const BACKS_OFF_HOLLOW = 0.4;
+export const BACKS_OFF_PEEL = 4;
+
+/** ψ₀ as the profile family's hollowness: oval 0, thrown 1 (STEP_PSI_POINTS' ends), clamped. */
+export const hollowFromPsi = (psi: number): number => Math.min(1, Math.max(0, (psi - 0.035) / 0.055));
+
+/**
+ * The left as H breaks along it, stretch by stretch: every LINE_STEP_M along `north`, the first broken point on its ray
+ * (from 120 m seaward to 60 m inshore). `stretches` names the edge's segments (indices into `north`) in each stretch.
+ */
+export function leftStretches(f: ReefField, H: number, north: readonly (readonly [number, number])[], stretches: Readonly<Record<string, readonly number[]>>,
+  p: Gd = DEFAULT_BREAK_PARAMS): Record<string, StretchReport | null> {
+  const pts: { s: number; leg: number; t: number | null; psi: number }[] = [];
+  let s0 = 0;
+  for (let i = 0; i + 1 < north.length; i++) {
+    const [a, b] = [north[i], north[i + 1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    for (let s = 0; s < L; s += LINE_STEP_M) {
+      let x = a[0] + ((b[0] - a[0]) * s) / L, z = a[1] + ((b[1] - a[1]) * s) / L, hit: { t: number; psi: number } | null = null;
+      for (let d = 0; d < 120; d++) { const sf = sampleField(f, x, z); x -= sf.dirX; z -= sf.dirZ; }
+      for (let d = -120; d <= 60 && !hit; d += STEP_M) {
+        const r = sampleOnset(f, x, z), sf = sampleField(f, x, z), tb = r ? onsetTime(r, 0, H, p) : null;
+        if (r && tb !== null) hit = { t: sf.tau - tb, psi: onsetPsi(r, 0, H, p) };
+        x += sf.dirX * STEP_M; z += sf.dirZ * STEP_M;
+      }
+      pts.push({ s: s0 + s, leg: i, t: hit?.t ?? null, psi: hit?.psi ?? NaN });
+    }
+    s0 += L;
+  }
+  const out: Record<string, StretchReport | null> = {};
+  for (const [name, legs] of Object.entries(stretches)) {
+    const all = pts.filter((q) => legs.includes(q.leg)), br = all.filter((q) => q.t !== null) as { s: number; t: number; psi: number }[];
+    if (br.length < 3) { out[name] = null; continue; }
+    const mt = br.reduce((a, q) => a + q.t, 0) / br.length, ms = br.reduce((a, q) => a + q.s, 0) / br.length;
+    const vt = br.reduce((a, q) => a + (q.t - mt) ** 2, 0);
+    const hs = br.map((q) => hollowFromPsi(q.psi)).sort((a, b) => a - b);
+    out[name] = {
+      broken: br.length, of: all.length, start: Math.min(...br.map((q) => q.t)), end: Math.max(...br.map((q) => q.t)),
+      peel: vt > 1e-9 ? br.reduce((a, q) => a + (q.t - mt) * (q.s - ms), 0) / vt : Infinity,
+      hollow: hs[Math.floor(hs.length / 2)],
+    };
+  }
+  return out;
+}
+
+/** What a surfer gets from a stretch: a barrel, soft, a closeout, or (for the gap) whether the wave backs off there. */
+export function rideOf(r: StretchReport | null, gap = false): Ride {
+  if (!r) return 'no break';
+  if (gap) return r.hollow < BACKS_OFF_HOLLOW || r.peel < BACKS_OFF_PEEL ? 'backs off' : 'keeps breaking';
+  if (r.peel > CLOSEOUT_PEEL || r.peel < 0) return 'closes out';
+  return r.hollow >= BARREL_HOLLOW ? 'barrel' : 'soft';
+}
