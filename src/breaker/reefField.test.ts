@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Bathymetry, buildBathymetry, downsample } from '../seabed/bathymetry';
-import { depthBg } from '../seabed/coastProfile';
+import { SHORE_X, depthBg } from '../seabed/coastProfile';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
@@ -56,12 +56,14 @@ describe('reef wave field', () => {
   it('a grazing swell (exactly 270°) does not source the whole south edge as a numerical caustic', { timeout: 60_000 }, () => {
     // dirZ is float residue of cos(90°) at exactly 270°; a bare `< 0` edge-source test used to treat that residue's
     // sign as real inflow and source the whole south edge from the far field, capping a line of cells at AMP_CAP.
+    // Seaward of the surf zone: at the waterline the coast's own shoaling reaches AMP_CAP along every row (since the coast
+    // offshore is 20 m, 2026-10-05: 53 cells at x 85–137 on the edge rows, as at 269.9°).
     const cappedCount = (fromDeg: number, edgeOnly = false) => {
-      const f = computeReefField({ bed: reef1, periodS: 15, fromDeg, tideM: 0 }), { nx } = f.grid;
+      const f = computeReefField({ bed: reef1, periodS: 15, fromDeg, tideM: 0 }), { nx, x0, cellM } = f.grid;
       let count = 0;
       f.amp.forEach((v, i) => {
         const c = i % nx, r = (i - c) / nx, edge = r < 3;
-        if (v >= AMP_CAP - 1e-6 && (edge || !edgeOnly)) count++;
+        if (v >= AMP_CAP - 1e-6 && (edge || !edgeOnly) && x0 + c * cellM < SHORE_X - 40) count++;
       });
       return count;
     };
