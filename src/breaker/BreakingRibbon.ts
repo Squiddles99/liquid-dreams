@@ -20,7 +20,7 @@ import { TUBE_TIP_CLEAR_M } from './lipProfile';
 import { encodeTb, tubeLightAtNode } from './lipProfileNodes';
 import { CURVE_SAMPLES } from './wombProfile';
 import { EDGE_OUTER_UNITS } from './wombSection';
-import { WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, interiorWeightNode, sectionNumbersNode, wombFrameNode } from './wombSectionNodes';
+import { WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, interiorWeightNode, wombFrameNode } from './wombSectionNodes';
 
 type N = any;
 
@@ -53,8 +53,9 @@ export interface RibbonSurface {
 export const SKIRT_DEPTH_M = 0.3;
 /** PROFILE_SAMPLES plus one skirt vertex at each end (index 0: under the front edge; last: under the back edge). */
 export const VERTS_PER_STATION = PROFILE_SAMPLES + 2;
-/** vec4s per station in the stations buffer: [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, ψ, lipH (0: none)] (packStations). */
-export const STATION_VEC4S = 3;
+/** vec4s per station in the stations buffer: [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, ψ, lipH (0: none)], [A, phase, hollow, ρ]
+ * (the section's numbers, smoothed along the crest: crestTrace.fillSections) (packStations). */
+export const STATION_VEC4S = 4;
 /** A sample whose home is more than this inside both edges is `inner` (the footprint's 1 m shrink, spec R9). */
 export const INNER_MARGIN_M = 1;
 /**
@@ -227,7 +228,8 @@ export function packStations(entries: readonly StationEntry[], out: Float32Array
     const e = entries[i];
     if (!e.gap) prev = e;
     const s: Station = prev;
-    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0], i * STATION_VEC4S * 4);
+    const q = s.section;
+    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0, q.A, q.phase, q.hollow, q.rho], i * STATION_VEC4S * 4);
   }
   return n;
 }
@@ -346,9 +348,6 @@ export class BreakingRibbon {
   private readonly stationsAttr = new THREE.StorageBufferAttribute(new Float32Array(MAX_STATIONS * STATION_VEC4S * 4), 4);
   /** stationCount on the GPU: the normal pass's runs end at it. */
   private readonly rows = uniform(0);
-  /** The ribbon's onset ratio (BreakParams.ribbonOnset) and the swell's period (s): setParams, setPeriod. */
-  private readonly ribbonOnset = uniform(0.6);
-  private readonly periodS = uniform(15);
   /** The wind's offshore speed (m/s): setOffshore. */
   private readonly offshoreMs = uniform(0);
   /** The sun's direction (world, unit, toward the sun): setSun. */
@@ -384,7 +383,7 @@ export class BreakingRibbon {
   /** The FFT cascades' slope variances (the unresolved roughness), copied from the simulation each frame. */
   private readonly slopeVariance: THREE.UniformNode<'float', number>[];
 
-  constructor(private readonly surface: RibbonSurface, params: BreakParams, private readonly shading?: RibbonShading) {
+  constructor(private readonly surface: RibbonSurface, private readonly shading?: RibbonShading) {
     const vertexCount = MAX_STATIONS * V;
     this.positions = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
     this.normals = new THREE.StorageBufferAttribute(new Float32Array(vertexCount * 4), 4);
@@ -395,7 +394,6 @@ export class BreakingRibbon {
     this.frames = new THREE.StorageBufferAttribute(new Float32Array(MAX_STATIONS * WOMB_FRAME_VEC4S * 4), 4);
     this.sections = new THREE.StorageBufferAttribute(new Float32Array(MAX_STATIONS * PROFILE_SAMPLES * 4), 4);
     this.knots = new THREE.StorageBufferAttribute(new Float32Array(MAX_STATIONS * WOMB_KNOT_VEC4S * 4), 4);
-    this.ribbonOnset.value = params.ribbonOnset;
     this.framePass = this.buildFramePass();
     this.vertexPass = this.buildVertexPass();
     this.developPass = this.buildDevelopPass();
@@ -429,15 +427,6 @@ export class BreakingRibbon {
     const footprintMesh = new THREE.Mesh(this.geometry, this.buildFootprintMaterial());
     footprintMesh.frustumCulled = false;
     this.footprintScene.add(footprintMesh);
-  }
-
-  setParams(p: BreakParams): void {
-    this.ribbonOnset.value = p.ribbonOnset;
-  }
-
-  /** The swell's period (s): the tube's hold and collapse grow with it (wombSection.tubeHold). */
-  setPeriod(periodS: number): void {
-    if (Number.isFinite(periodS) && periodS > 0) this.periodS.value = periodS;
   }
 
   /** The wind's offshore speed (m/s, overturn.offshoreSpeed): the tube's wind factors (Feddersen et al. 2023). */
@@ -677,9 +666,9 @@ export class BreakingRibbon {
     const frames = storage(this.frames, 'vec4', MAX_STATIONS * WOMB_FRAME_VEC4S);
     return Fn(() => {
       const i: N = int(instanceIndex).toVar();
-      const b = stations.element(i.mul(STATION_VEC4S).add(1)).toVar();
-      const cS = stations.element(i.mul(STATION_VEC4S).add(2)).toVar();
-      const nums = sectionNumbersNode({ H: b.x, r: b.z, tb: b.w, psi: cS.z }, { periodS: this.periodS, ribbonOnset: this.ribbonOnset });
+      // The section's numbers, smoothed along the crest on the CPU (crestTrace.fillSections).
+      const q = stations.element(i.mul(STATION_VEC4S).add(3)).toVar();
+      const nums = { A: q.x, phase: q.y, hollow: q.z, rho: q.w };
       const f = wombFrameNode(nums, keys, (k: N) => knots.element(i.mul(WOMB_KNOT_VEC4S).add(k)),
         (j: N, v: N) => { sections.element(i.mul(PROFILE_SAMPLES).add(j)).assign(v); });
       frames.element(i.mul(WOMB_FRAME_VEC4S)).assign(vec4(f.A, f.phase, f.hollow, f.rho));

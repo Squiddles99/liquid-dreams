@@ -1,5 +1,6 @@
 import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetDelay, onsetTime, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
+import { type SectionNumbers, sectionNumbers } from './wombSection';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
@@ -53,6 +54,9 @@ export interface Station {
   /** The height (m) the section stood at as it threw its lip, as the sheet's crest there (setWaveModel.Crest.lipH): the
    * tube hangs from the crest it stood at then. null before breaking or off the record. */
   lipH: number | null;
+  /** The cross-section's numbers (wombSection: scale A, phase, hollowness, ρ), smoothed along the crest
+   * (SECTION_SMOOTHING_M): what the ribbon, the ride and the spray all draw the section from. */
+  section: SectionNumbers;
 }
 
 export type StationEntry = Station | { gap: true };
@@ -138,10 +142,11 @@ export function stationLipH(field: ReefField, w: ActiveWave, x: number, z: numbe
   return rec ? onsetHeight(rec, 0, w.heightM, p) : null;
 }
 
-/** Whether a station still draws: before breaking, from the ribbon's onset ratio; after, until the (estimated) hand-back. */
-function alive(s: Station, p: BreakParams): boolean {
-  if (s.tb === null) return s.r >= p.ribbonOnset;
-  return s.tb <= landingEstimate(s.H, p) * (1 + p.collapseTime) + TUBE_HOLD_S + HAND_BACK_S + LOOK_BACK_MARGIN_S;
+/** A station draws while its section has any weight (its smoothed ρ): from standing up out of the sheet to the hand-back
+ * after the white-water wall (wombSection.sectionWeight). */
+export const ALIVE_RHO = 1e-3;
+function alive(s: Station): boolean {
+  return s.section.rho > ALIVE_RHO;
 }
 
 /** One wave's crest, both ways from its seed, at `factor` × the spacing rule. Empty if the crest isn't on the reef. */
@@ -157,7 +162,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
     for (let n = 0; n < 20000; n++) {
       const nrm = crestNormal(w, f, ctx);
       if (sign > 0 || n > 0) {
-        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, psi: PSI_NORMAL, lipH: null });
+        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, psi: PSI_NORMAL, lipH: null, section: { A: 0, phase: 0, hollow: 0, rho: 0 } });
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS);
@@ -184,6 +189,30 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveC
 }
 
 /**
+ * The cross-section's numbers are smoothed along the crest by a Gaussian of this σ (m of arc): read station by station from
+ * the reef's record, they jump between neighbours over reef heads (a height of 0.6 m beside 1.7 m 2 m along, a barrel
+ * beside a wall still standing: spec 2026-10-05-womb-profile-design §2, "neighbouring slices never jump"; the ribbon
+ * self-test's sliced back edges, 2026-10-05).
+ */
+export const SECTION_SMOOTHING_M = 4;
+
+/** Each station's section numbers (wombSection.sectionNumbers), then smoothed along the line by arc (SECTION_SMOOTHING_M). */
+export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'>): void {
+  const raw = line.map((s) => sectionNumbers({ H: s.H, r: s.r, tb: s.tb, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
+  const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
+  let lo = 0;
+  line.forEach((s, i) => {
+    while (line[lo].arc < s.arc - reach) lo++;
+    let w = 0, A = 0, phase = 0, hollow = 0, rho = 0;
+    for (let k = lo; k < line.length && line[k].arc <= s.arc + reach; k++) {
+      const g = Math.exp(-((line[k].arc - s.arc) ** 2) * inv);
+      w += g; A += g * raw[k].A; phase += g * raw[k].phase; hollow += g * raw[k].hollow; rho += g * raw[k].rho;
+    }
+    s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: rho / w };
+  });
+}
+
+/**
  * Every wave's stations, in drawing order: each wave's crest from one end to the other, runs of live stations
  * separated by a single gap entry (between waves, and where a stretch of crest isn't drawn). At most MAX_STATIONS
  * entries: if a trace would exceed it, the spacing grows by 1.5× and the trace is redone (up to four times, then cut).
@@ -198,8 +227,9 @@ export function traceStations(field: ReefField, waves: readonly ActiveWave[], t:
       if (sides.length === 0) return;
       const line = [...sides[1].reverse(), ...sides[0]];
       fillTimes(field, w, line, ctx, input);
+      fillSections(line, field.periodS, input.params);
       for (const s of line) {
-        if (alive(s, input.params)) out.push(s);
+        if (alive(s)) out.push(s);
         else if (out.length > 0 && !out[out.length - 1].gap) out.push({ gap: true });
       }
       if (out.length > 0 && !out[out.length - 1].gap) out.push({ gap: true });

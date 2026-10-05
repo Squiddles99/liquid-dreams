@@ -54,10 +54,10 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
   const sim = new OceanSimulation();
   const sets = new SetWaves(sim.time);
   const model = new WaterSurfaceModel(sim, new Seabed(bed), sets);
-  const production = new BreakingRibbon(modelRibbonSurface(model), DEFAULT_BREAK_PARAMS, {
+  const production = new BreakingRibbon(modelRibbonSurface(model), {
     model, sky: new Sky(DEFAULT_ATMOSPHERE), optics: createWaterOpticsUniforms(DEFAULT_WATER_OPTICS),
   });
-  const selfTestRig = new BreakingRibbon({ smooth: (xz) => sets.displacementNode(xz), chop: () => vec3(0.0) }, DEFAULT_BREAK_PARAMS);
+  const selfTestRig = new BreakingRibbon({ smooth: (xz) => sets.displacementNode(xz), chop: () => vec3(0.0) });
   const passes = ['framePass', 'vertexPass', 'developPass', 'lightPass', 'chopPass', 'normalPass'] as const;
 
   for (const [label, ribbon] of [['production', production], ['self-test rig', selfTestRig]] as const) {
@@ -102,8 +102,8 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
     }
     it('the ribbon with the foam map stays within the limits and samples the map in its vertex stage', () => {
       const shading = { model, sky, optics };
-      const r0 = new BreakingRibbon(modelRibbonSurface(model), DEFAULT_BREAK_PARAMS, shading);
-      const r1 = new BreakingRibbon(modelRibbonSurface(model), DEFAULT_BREAK_PARAMS, { ...shading, foamMap: foam });
+      const r0 = new BreakingRibbon(modelRibbonSurface(model), shading);
+      const r1 = new BreakingRibbon(modelRibbonSurface(model), { ...shading, foamMap: foam });
       const w0 = renderWgsl(r0.mesh), w1 = renderWgsl(r1.mesh);
       expect(sampledTextures(w1.vertex) - sampledTextures(w0.vertex)).toBe(1);
       for (const stage of [w1.vertex, w1.fragment]) {
@@ -202,7 +202,7 @@ describe('BreakingRibbon stays within WebGPU baseline limits', () => {
       }
     });
     it('the ribbon, the spray and the land with the sunlight map stay within the limits', () => {
-          const r = new BreakingRibbon(modelRibbonSurface(model), DEFAULT_BREAK_PARAMS, { model, sky, optics, foamMap: foam, sunlight, skyline: new SkylineTable() });
+          const r = new BreakingRibbon(modelRibbonSurface(model), { model, sky, optics, foamMap: foam, sunlight, skyline: new SkylineTable() });
           const spray = new SprayParticles(sky, undefined, sunlight);
           const land = new Land(sky);
           land.setSunVisibility((xz) => sunlight.visibilityNode(xz));

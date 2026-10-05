@@ -372,7 +372,7 @@ export class App {
   private rainLensWet = 0;
   private readonly rainFall = new THREE.Vector3();
   /** The breaking part of each set wave as its own mesh (breaking-ribbon spec); the sheet steps aside under its footprint. */
-  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), this.breakParams, { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline });
+  readonly ribbon = new BreakingRibbon(modelRibbonSurface(this.surfaceModel), { model: this.surfaceModel, sky: this.sky, optics: this.waterOptics, foamMap: this.foamField, sunlight: this.sunlight, skyline: this.land.skyline });
   /** Waves no taller than this never reach the ribbon's onset (minRibbonHeight): recomputed when the field or the break params change. */
   private ribbonMinHeightM = Infinity;
   /** The field's wave context (made once per field, outside the timed trace). */
@@ -773,9 +773,6 @@ export class App {
 
   /** The field or the break params changed: the ribbon's params and the trace's height cut-off follow. */
   private onRibbonInputs(): void {
-    this.ribbon.setParams(this.breakParams);
-    // The tube's hold and collapse grow with the swell's period (wombSection.tubeHold): the field's own.
-    if (this.field) this.ribbon.setPeriod(this.field.periodS);
     this.ribbonMinHeightM = this.field ? minRibbonHeight(fieldBreakingHeight(this.field, this.breakParams), this.breakParams) : Infinity;
     this.waveCtx = this.field ? { omega: this.field.omega, travelX: this.field.far.dirX, travelZ: this.field.far.dirZ } : null;
     this.updateOffshore();

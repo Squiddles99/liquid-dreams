@@ -17,8 +17,9 @@ import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
 import { PROFILE_SAMPLES } from './BreakingRibbon';
 import { profileSamples } from './wombProfile';
-import { type SectionInput, wombSection } from './wombSection';
+import { sectionOf } from './wombSection';
 import { WOMB_FRAME_VEC4S } from './wombSectionNodes';
+import { hollowFromPsi } from './reefReport';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
 import { type ActiveWave, type BreakOptions, breakOptions, type SetWaveResult, type WaveContext, fieldBreakingHeight, sumWaves, toActiveWave } from './setWaveModel';
@@ -45,7 +46,7 @@ function setsRig() {
     sets.setField(getField());
     sets.setBreakParams(P);
     const surface: RibbonSurface = { smooth: (xz) => sets.displacementNode(xz), chop: () => vec3(0.0), frameBase: (xz) => sets.displacementNode(xz, false) };
-    rig = { time, sets, ribbon: new BreakingRibbon(surface, P) };
+    rig = { time, sets, ribbon: new BreakingRibbon(surface) };
   }
   return rig;
 }
@@ -63,9 +64,6 @@ function traceAt(t: number, sets: SetWaves): { waves: ActiveWave[]; entries: Sta
 const read = async (renderer: THREE.WebGPURenderer, attr: THREE.StorageBufferAttribute): Promise<Float32Array> =>
   new Float32Array(await renderer.getArrayBufferAsync(attr));
 
-/** The swell's period the rig's field and ribbon use (s). */
-const PERIOD_S = 15;
-
 /** The CPU ribbon row of a station: wombSection on the sumWaves sheet along n, placed in the world as the vertex pass
  * places it (the sheet's lateral displacement at each sample's home carried along t̂). */
 function cpuRow(st: Station, t: number, waves: readonly ActiveWave[]) {
@@ -82,8 +80,8 @@ function cpuRow(st: Station, t: number, waves: readonly ActiveWave[]) {
     return r;
   };
   const sheet = (u: number): Vec2 => { const d = at(u); return [u + d.dx * st.nx + d.dz * st.nz, d.eta]; };
-  const input: SectionInput = { H: st.H, r: st.r, tb: st.tb, psi: st.psi, periodS: PERIOD_S };
-  const sec = wombSection(input, sheet, { ribbonOnset: P.ribbonOnset });
+  // The station's own numbers, smoothed along the crest (as the GPU reads them from the station buffer).
+  const sec = sectionOf(st.section, sheet);
   const { A, phase, hollow } = sec.numbers;
   const { curve, marks } = profileSamples(phase, hollow);
   const homes = curve.map(([u]) => A * u).reverse();
@@ -106,6 +104,17 @@ class Worst {
   toString(): string { return `${this.value.toExponential(2)} (${this.at || 'none'})`; }
 }
 
+/** The distance (m) from p to the polyline through `pts`. */
+function toPolyline(p: readonly number[], pts: readonly (readonly number[])[]): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i], b = pts[i + 1], d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+    const t = Math.max(0, Math.min(1, (w[0] * d[0] + w[1] * d[1] + w[2] * d[2]) / (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] || 1)));
+    best = Math.min(best, Math.hypot(w[0] - t * d[0], w[1] - t * d[1], w[2] - t * d[2]));
+  }
+  return best;
+}
+
 const dist3 = (g: Float32Array, k: number, w: readonly number[]): number => Math.max(Math.abs(g[k] - w[0]), Math.abs(g[k + 1] - w[1]), Math.abs(g[k + 2] - w[2]));
 
 /** The ψ the mirror test forces on every station (oval, cylinder, thrown, past it) and its times around the biggest wave's
@@ -119,13 +128,14 @@ registerSelfTest({
   name: 'ribbon: GPU section matches wombSection',
   async run(renderer) {
     const { time, sets, ribbon } = setsRig();
-    const pos = new Worst(), skirt = new Worst(), numbers = new Worst(), marks = new Worst(), rhoX = new Worst();
+    const pos = new Worst(), skirt = new Worst(), numbers = new Worst(), marks = new Worst(), rhoX = new Worst(), slide = new Worst();
     let stations = 0, deadLive = 0, nonFinite = 0, thrown = 0, collapsing = 0, standing = 0, worstDetail = '';
     for (const psi of MIRROR_PSI) for (const dt of MIRROR_DTS) {
       const t = REF_BIGGEST.arrivalS + dt;
       time.value = t;
       const traced = traceAt(t, sets);
-      const entries = traced.entries.map((e) => (e.gap ? e : { ...e, psi }));
+      // Every station's hollowness forced from ψ (the smoothed numbers otherwise as traced).
+      const entries = traced.entries.map((e) => (e.gap ? e : { ...e, psi, section: { ...e.section, hollow: hollowFromPsi(psi) } }));
       ribbon.setStations(entries, LINEUP);
       ribbon.compute(renderer);
       const gp = await read(renderer, ribbon.positions), gf = await read(renderer, ribbon.frames), ge = await read(renderer, ribbon.extras), gl = await read(renderer, ribbon.lights);
@@ -141,7 +151,11 @@ registerSelfTest({
         if (phase > 0.1 && phase <= 0.45) standing++;
         for (let j = 0; j < PROFILE_SAMPLES; j++) {
           const k = (i * V + j + 1) * 4;
-          const dj = dist3(gp, k, world[j]);
+          // The GPU's sample against the CPU's curve near it (the polyline of samples j ± 3): the walk spreads the samples
+          // in f32 on the GPU, so a sample may slide along the curve by millimetres, which changes nothing drawn; on a
+          // near-vertical stretch of sheet that slide reads centimetres sample to sample.
+          const dj = toPolyline([gp[k], gp[k + 1], gp[k + 2]], world.slice(Math.max(0, j - 3), Math.min(PROFILE_SAMPLES, j + 4)));
+          slide.see(dist3(gp, k, world[j]), `${where} j ${j}`);
           if (!(dj <= pos.value)) {
             worstDetail = `${where} j ${j}: GPU (${[gp[k], gp[k + 1], gp[k + 2]].map((v) => v.toFixed(3)).join(', ')}) CPU (${world[j].map((v) => v.toFixed(3)).join(', ')}); ` +
               `A ${A.toFixed(3)} phase ${phase.toFixed(3)} hollow ${hollow.toFixed(3)} ρ ${rho.toFixed(3)}`;
@@ -167,7 +181,7 @@ registerSelfTest({
     return {
       pass: ok,
       detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${standing} standing up, ${thrown} thrown, ${collapsing} collapsing); ` +
-        `worst |Δpos| ${pos} (< 5e-3), skirts ${skirt} (< 5e-3); numbers (A, phase, hollow, ρ; relative) ${numbers} (< 1e-4); marks ${marks} samples (≤ 1); ` +
+        `worst distance from the CPU's curve ${pos} (< 5e-3), sample-to-sample ${slide} (diagnostic), skirts ${skirt} (< 5e-3); numbers (A, phase, hollow, ρ; relative) ${numbers} (< 1e-4); marks ${marks} samples (≤ 1); ` +
         `extras' ρ ${rhoX} (< 1e-4); live rows flagged dead ${deadLive}, non-finite values ${nonFinite} (0). Worst sample: ${worstDetail}`,
     };
   },
@@ -183,7 +197,7 @@ registerSelfTest({
     sets.setBreakParams(P);
     const model = new WaterSurfaceModel(sim, new Seabed(buildBathymetry()), sets);
     const surface = modelRibbonSurface(model);
-    const ribbon = new BreakingRibbon(surface, P);
+    const ribbon = new BreakingRibbon(surface);
     const t = REF_BIGGEST.arrivalS + 0.6;
     const { entries } = traceAt(t, sets);
     sim.update(renderer, t, 1 / 60);

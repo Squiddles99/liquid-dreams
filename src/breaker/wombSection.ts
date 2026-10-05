@@ -111,19 +111,22 @@ export interface Section {
 /** How much of the profile is drawn at u units of A from the crest: all of it inside, none past its ends. */
 export const interiorWeight = (uUnits: number): number => 1 - smoothstep(EDGE_INNER_UNITS, EDGE_OUTER_UNITS, Math.abs(uUnits));
 
-/** The station's section, blended into `sheet` by ρ and toward its ends. */
+/** The station's section from its own numbers (no smoothing along the crest), blended into `sheet`. */
 export function wombSection(s: SectionInput, sheet: SheetAlong, p: SectionParams): Section {
-  const numbers = sectionNumbers(s, p), { A, phase, hollow, rho } = numbers;
+  return sectionOf(sectionNumbers(s, p), sheet);
+}
+
+/** The section for given numbers (a station's, smoothed along the crest: Station.section), blended into `sheet` by ρ and
+ * toward its ends. */
+export function sectionOf(numbers: SectionNumbers, sheet: SheetAlong): Section {
+  const { A, phase, hollow, rho } = numbers;
   const curve = profileCurve(phase, hollow, CURVE_SAMPLES);
-  const points: P2[] = [];
-  for (let j = curve.length - 1; j >= 0; j--) {
-    const [u, y] = curve[j], w = rho * interiorWeight(u);
-    const S = sheet(A * u);
-    points.push([S[0] + (A * u - S[0]) * w, S[1] + (A * y - S[1]) * w]);
-  }
-  const k = profileKnots(phase, hollow), place = (q: P2): P2 => {
+  const place = (q: P2): P2 => {
     const S = sheet(A * q[0]), w = rho * interiorWeight(q[0]);
     return [S[0] + (A * q[0] - S[0]) * w, S[1] + (A * q[1] - S[1]) * w];
   };
+  const points: P2[] = [];
+  for (let j = curve.length - 1; j >= 0; j--) points.push(place(curve[j]));
+  const k = profileKnots(phase, hollow);
   return { numbers, points, crest: place(k[CREST_KNOT]), tip: place(k[TIP_KNOT]) };
 }
