@@ -22,6 +22,7 @@ export const CREST_KNOT = 3;
 export const TIP_KNOT = 6;
 export const FLOOR_KNOT = 10;
 export const TROUGH_KNOT = 11;
+export const FRONT_KNOT = 12;
 /** Samples per Catmull–Rom span before resampling, and the sample count the ribbon mesh takes. */
 export const SPAN_SAMPLES = 24;
 export const CURVE_SAMPLES = 160;

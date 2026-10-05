@@ -1,6 +1,6 @@
 import { smoothstep } from '../math/smoothstep';
 import { hollowFromPsi } from './reefReport';
-import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, STAGES, TIP_KNOT, profileKnots, profileSamples } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, type P2, STAGES, TIP_KNOT, TROUGH_KNOT, profileKnots, profileSamples } from './wombProfile';
 
 /**
  * A crest station's cross-section as the Womb's profile family (spec 2026-10-05-womb-profile-design §2, §4; plan
@@ -179,13 +179,48 @@ export function frontHeight(profileY: number, sheetY: number, uUnits: number, fl
   return Math.min(sheetY, profileY) + (profileY - Math.min(sheetY, profileY)) * own;
 }
 
-/** A profile point (units of A) placed on the station's plane (m), blended into the sheet by ρ and interiorWeight; past
- * the face's foot (`front`, floorU its u) onto the sea in front (frontHeight). */
+/**
+ * The profile's front is seated on the sea in front of it. Andrew's drawing has its own flat sea there, about sea level,
+ * with the water at the foot of the face drawn down to its trough knot (−0.36 at the barrel) below it. The sea the ribbon
+ * stands in is the sheet's, whose water in front of the face is the swell's trough, 0.4–0.5 A down: drawn as it was, the
+ * foot stood on a bench 0.2 m over that water at 7 ft (Andrew, 2026-10-05: "still a slight step"). Seated, everything in
+ * front of the crest is stretched down from the crest's height so that the trough knot lies SEAT_DIP_UNITS below the
+ * sheet's water at the front knot (seatScale), blended in over SEAT_BLEND_UNITS from the crest (seatedY): the crest and
+ * the back stay as they were, the water at the foot is the lowest, drawn gently below the flats, and the face and the
+ * tube stand taller by the stretch (1.1–1.3). Seated by its front knot instead (the drawing's flats on the sheet's), the
+ * drawing's draw-down became a bowl 1 m deep at 7 ft.
+ */
+export const SEAT_BLEND_UNITS = 0.3;
+export const SEAT_DIP_UNITS = 0.12;
+/** The stretch is at most this (a sheet far below the profile's front, as on a small wave's broad trough). */
+export const SEAT_MAX = 2;
+/** The stretch that lays the trough knot (`troughY`, units of A) SEAT_DIP_UNITS below the sea in front (`seaY`, units of
+ * A), from the crest's height `crestY`: 1 where the sea is that high or higher. */
+export function seatScale(crestY: number, troughY: number, seaY: number): number {
+  const span = crestY - troughY;
+  return span > 1e-3 ? Math.min(SEAT_MAX, Math.max(1, (crestY - Math.min(seaY - SEAT_DIP_UNITS, troughY)) / span)) : 1;
+}
+/** A profile point's height (units of A) seated (seatScale `k`): stretched down from the crest's height by k, in front of
+ * the crest. */
+export function seatedY(y: number, u: number, crestU: number, crestY: number, k: number): number {
+  return y + (y - crestY) * (k - 1) * smoothstep(crestU, crestU + SEAT_BLEND_UNITS, u);
+}
+/** d(seatedY)/du given the profile's own dy/du there. */
+export function seatedSlope(y: number, dydu: number, u: number, crestU: number, crestY: number, k: number): number {
+  const t = Math.min(1, Math.max(0, (u - crestU) / SEAT_BLEND_UNITS));
+  const w = t * t * (3 - 2 * t), dw = (6 * t * (1 - t)) / SEAT_BLEND_UNITS;
+  return dydu * (1 + (k - 1) * w) + (y - crestY) * (k - 1) * dw;
+}
+
+/** A profile point (units of A) placed on the station's plane (m), seated on the sea in front (seatedY), blended into the
+ * sheet by ρ and interiorWeight; past the face's foot (`front`, floorU its u) onto the sea in front (frontHeight). */
 function placer(numbers: SectionNumbers, sheet: SheetAlong, floorU = Infinity): (q: P2, front?: boolean) => P2 {
-  const { A, phase, hollow, rho } = numbers, crestU = profileKnots(phase, hollow)[CREST_KNOT][0];
+  const { A, phase, hollow, rho } = numbers, k = profileKnots(phase, hollow);
+  const [crestU, crestY] = k[CREST_KNOT], frontU = k[FRONT_KNOT][0];
+  const seat = seatScale(crestY, k[TROUGH_KNOT][1], sheet(A * frontU)[1] / A);
   return (q, front = false) => {
-    const S = sheet(A * q[0]), w = rho * interiorWeight(q[0], crestU);
-    const y = front ? frontHeight(A * q[1], S[1], q[0], floorU) : A * q[1];
+    const S = sheet(A * q[0]), w = rho * interiorWeight(q[0], crestU), qy = A * seatedY(q[1], q[0], crestU, crestY, seat);
+    const y = front ? frontHeight(qy, S[1], q[0], floorU) : qy;
     return [S[0] + (A * q[0] - S[0]) * w, S[1] + (y - S[1]) * w];
   };
 }

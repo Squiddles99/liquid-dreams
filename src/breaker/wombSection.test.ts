@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, TIP_KNOT, profileCurve, profileKnots } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, TIP_KNOT, TROUGH_KNOT, profileCurve, profileKnots, profileSamples } from './wombProfile';
 import {
-  type SectionInput, BACK_BLEND_UNITS, SECTION_HAND_BACK_S, STAND_LEAD_S, STOOD_PHASE, collapseSpan, flightTime, interiorWeight, sectionEnd, sectionPhase, sectionScale, sectionWeight, tubeHold,
-  wombSection,
+  type SectionInput, BACK_BLEND_UNITS, SEAT_DIP_UNITS, SECTION_HAND_BACK_S, STAND_LEAD_S, STOOD_PHASE, collapseSpan, flightTime, interiorWeight, sectionEnd, sectionOf,
+  sectionPhase, sectionScale, sectionWeight, seatScale, seatedY, tubeHold, wombSection,
 } from './wombSection';
 
 const P = { ribbonOnset: 0.6 };
@@ -105,5 +105,31 @@ describe('wombSection: a station as the Womb profile family', () => {
       const worst = Math.max(...a.points.map((p, i) => Math.hypot(p[0] - b.points[i][0], p[1] - b.points[i][1])));
       expect(worst, `tb ${tb}`).toBeLessThan(0.02 * a.numbers.A);
     }
+  });
+
+  // Andrew, 2026-10-05: "still a slight step" at the foot of the 7 ft barrel: the drawing's foot stood on a bench over the
+  // swell's trough in front of it.
+  it('is seated on the sea in front: the crest as drawn, the foot the lowest water, gently below the flats', () => {
+    const A = 2.5, numbers = { A, phase: 1, hollow: 1, rho: 1 };
+    const k = profileKnots(1, 1), [crestU, crestY] = k[CREST_KNOT], floorU = k[FLOOR_KNOT][0];
+    // The swell's trough in front: 0.45 A below still water from 1.5 A out, rising to the crest behind.
+    const sea = (u: number): P2 => [u, u > 1.5 * A ? -0.45 * A : -0.45 * A + (0.45 * A + A) * Math.max(0, 1 - u / (1.5 * A)) ** 2];
+    const s = sectionOf(numbers, sea);
+    const seat = seatScale(crestY, k[TROUGH_KNOT][1], -0.45);
+    expect(seat).toBeGreaterThan(1.05);
+    // The crest stays where it was drawn; the trough knot lies SEAT_DIP_UNITS under the flats.
+    expect(seatedY(crestY, crestU, crestU, crestY, seat)).toBeCloseTo(crestY, 12);
+    expect(seatedY(k[TROUGH_KNOT][1], k[TROUGH_KNOT][0], crestU, crestY, seat)).toBeCloseTo(-0.45 - SEAT_DIP_UNITS, 9);
+    // In front of the face (from its foot out to where the ribbon hands back): no water above the flats, and the lowest
+    // under them, within a few metres of the foot.
+    // (The points run front first: the water past the floor's sample, not the lip over it.)
+    const pastFloor = CURVE_SAMPLES - 1 - profileSamples(1, 1).marks.floor;
+    const front = s.points.filter(([u], j) => j < pastFloor && u > A * floorU && u < 2.3 * A);
+    expect(Math.max(...front.map(([, y]) => y))).toBeLessThanOrEqual(-0.45 * A + 1e-9);
+    const low = front.reduce((a, b) => (b[1] < a[1] ? b : a));
+    expect(low[1]).toBeLessThan(-0.45 * A - 0.05 * A);
+    expect(low[0] - A * floorU).toBeLessThan(1.5 * A);
+    // Where the sea is the drawing's own (still water), it is drawn as it was.
+    expect(seatScale(crestY, k[TROUGH_KNOT][1], 0)).toBe(1);
   });
 });

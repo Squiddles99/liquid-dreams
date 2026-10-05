@@ -1,12 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { Break, If, Loop, abs, atan, clamp, dot, float, int, length, max, min, select, smoothstep, sqrt, vec2, vec4 } from 'three/tsl';
 import {
-  CREST_KNOT, CURVE_SAMPLES, DENSE_POINTS, FLOOR_KNOT, KNOTS, MARKED_KNOTS, PROFILE_KEYS, ROUNDED_KNOTS, SPANS, SPAN_SAMPLES, STAGES, TIP_KNOT, TIP_PULL, TIP_ROUND,
-  TURN_COST_H, keyTable,
+  CREST_KNOT, CURVE_SAMPLES, DENSE_POINTS, FLOOR_KNOT, FRONT_KNOT, KNOTS, MARKED_KNOTS, PROFILE_KEYS, ROUNDED_KNOTS, SPANS, SPAN_SAMPLES, STAGES, TIP_KNOT, TIP_PULL,
+  TIP_ROUND, TROUGH_KNOT, TURN_COST_H, keyTable,
 } from './wombProfile';
 import {
   COLLAPSE_BASE_S, COLLAPSE_PER_M, BACK_BLEND_UNITS, FLIGHT_DROP_A, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, RHO_FULL_RATIO,
-  FOOT_RUN_UNITS, FRONT_BLEND_UNITS, SECTION_HAND_BACK_S, STOOD_PHASE,
+  FOOT_RUN_UNITS, FRONT_BLEND_UNITS, SEAT_BLEND_UNITS, SEAT_DIP_UNITS, SEAT_MAX, SECTION_HAND_BACK_S, STOOD_PHASE,
 } from './wombSection';
 
 type N = any;
@@ -30,8 +30,9 @@ const GRAVITY_MS2 = 9.81;
 export const SAMPLES_PER_SEGMENT_MAX = 4;
 /** vec4s per station in the frame buffer: [A, phase, hollow, ρ], [tip, crest, floor samples (front → back), tip life],
  * [tip u, tip y, crest u, floor u] (units of A; the floor knot's u is where the profile settles onto the sea in front,
- * wombSection.frontHeight). */
-export const WOMB_FRAME_VEC4S = 3;
+ * wombSection.frontHeight), [seat scale, crest y, 0, 0] (wombSection.seatScale: the stretch seating the front on the
+ * sheet's water in front). */
+export const WOMB_FRAME_VEC4S = 4;
 /** vec4s per station in the knots scratch buffer (the rounded knots). */
 export const WOMB_KNOT_VEC4S = ROUNDED_KNOTS;
 
@@ -44,7 +45,7 @@ export interface WombFrameNodes {
   A: N; phase: N; hollow: N; rho: N;
   /** Front → back sample indices (float) of the tip, the crest and the floor. */
   tip: N; crest: N; floor: N; life: N;
-  tipKnot: N; crestKnot: N; floorKnot: N;
+  tipKnot: N; crestKnot: N; floorKnot: N; troughKnot: N; frontKnot: N;
 }
 
 const smoothNode = (t: N): N => t.mul(t).mul(float(3.0).sub(t.mul(2.0)));
@@ -184,9 +185,20 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, ke
   return {
     ...numbers, life,
     tip: fb(mark.tip), crest: fb(mark.crest), floor: fb(mark.floor),
-    tipKnot: tT, crestKnot: knot[CREST_KNOT], floorKnot: knot[FLOOR_KNOT],
+    tipKnot: tT, crestKnot: knot[CREST_KNOT], floorKnot: knot[FLOOR_KNOT], troughKnot: knot[TROUGH_KNOT], frontKnot: knot[FRONT_KNOT],
   };
 }
+
+/** wombSection.seatScale. */
+export const seatScaleNode = (crestY: N, troughY: N, seaY: N): N => {
+  const span = crestY.sub(troughY);
+  const k = clamp(crestY.sub(min(seaY.sub(SEAT_DIP_UNITS), troughY)).div(max(span, 1e-3)), 1.0, SEAT_MAX);
+  return select(span.greaterThan(1e-3), k, float(1.0));
+};
+
+/** wombSection.seatedY. */
+export const seatedYNode = (y: N, u: N, crestU: N, crestY: N, k: N): N =>
+  y.add(y.sub(crestY).mul(k.sub(1.0)).mul(smoothstep(crestU, crestU.add(SEAT_BLEND_UNITS), u)));
 
 /** wombSection.frontHeight. */
 export const frontHeightNode = (profileY: N, sheetY: N, uUnits: N, floorU: N): N => {
