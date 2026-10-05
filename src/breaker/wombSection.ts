@@ -41,8 +41,17 @@ export const FLIGHT_DROP_A = 1.3;
 export const SECTION_HAND_BACK_S = 0.5;
 /** The ribbon's weight rises as the onset ratio goes from the ribbon's onset to this (it stands up out of the sheet). */
 export const RHO_FULL_RATIO = 0.9;
-/** Over the profile's ends (|u| from INNER to 7 units of A) the section blends into the sheet. */
-export const EDGE_INNER_UNITS = 4;
+/**
+ * The section blends into the sheet behind the crest over u from −EDGE_BACK_UNITS[0] to −[1] (units of A), and in front
+ * of the trough over u from EDGE_FRONT_UNITS[0] to [1]; past them it is the sheet's swell. The profile is drawn about
+ * still water, but the real sea round a breaking wave is not still: the swell's back stands higher than the profile's
+ * gentle back, and its trough lies lower than the profile's front. Blended out only at the profile's ends (±7) the
+ * section dipped behind the crest and stood a ledge in front of the face: "a swell bump before the real swell hits …
+ * a second swell bump" behind, and the face "doesn't extend very far" (Andrew, 2026-10-05, in the game).
+ */
+export const EDGE_BACK_UNITS: readonly [number, number] = [0.5, 4];
+export const EDGE_FRONT_UNITS: readonly [number, number] = [2.3, 4];
+/** The profile's ends (units of A): the section is the sheet's from here out. */
 export const EDGE_OUTER_UNITS = 7;
 
 export interface SectionInput {
@@ -82,10 +91,8 @@ export const collapseSpan = (H: number, periodS: number): number => COLLAPSE_BAS
  * barrel, the tube's hold, the collapse.
  */
 export function sectionPhase(s: SectionInput, p: SectionParams): number {
-  if (s.tb === null) {
-    const turn = s.wait === undefined || s.wait === null ? 1 : 1 - smoothstep(0, STAND_LEAD_S, s.wait);
-    return STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r) * turn;
-  }
+  if (s.tb === null) return STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r) * standing(s);
+
   if (!Number.isFinite(s.tb)) return 2;
   const t = Math.max(0, s.tb), fly = flightTime(s.H), hold = tubeHold(s.H, s.periodS);
   if (t < fly) return STOOD_PHASE + (STAGES.barrel - STOOD_PHASE) * (t / fly);
@@ -96,9 +103,18 @@ export function sectionPhase(s: SectionInput, p: SectionParams): number {
 /** When (s after onset) the section reaches the white-water wall, and hands back to the sheet. */
 export const sectionEnd = (H: number, periodS: number): number => flightTime(H) + tubeHold(H, periodS) + collapseSpan(H, periodS);
 
-/** The ribbon's weight ρ: in from the sheet as the wave stands up, out to it after the white-water wall. */
+/** A section held for its turn: 0 more than STAND_LEAD_S before it, 1 at it; 1 for a section not held. */
+const standing = (s: SectionInput): number => (s.wait === undefined || s.wait === null ? 1 : 1 - smoothstep(0, STAND_LEAD_S, s.wait));
+
+/**
+ * The ribbon's weight ρ: in from the sheet as the wave stands up, out to it after the white-water wall. A section held for
+ * its turn comes in over the same last STAND_LEAD_S as its phase: further down the line the swell is the sheet's own. The
+ * profile's unbroken keys stand lower than the shoaled swell at the station's height (phase 0's crest is 0.55 A, the
+ * sheet's about 0.9 A), so drawn there they pressed the wall down the line a metre under the swell: "the wall of the wave
+ * in front of the surfer doesn't extend very far" (Andrew, 2026-10-05, in the game).
+ */
 export function sectionWeight(s: SectionInput, p: SectionParams): number {
-  if (s.tb === null) return smoothstep(p.ribbonOnset, RHO_FULL_RATIO, s.r);
+  if (s.tb === null) return smoothstep(p.ribbonOnset, RHO_FULL_RATIO, s.r) * standing(s);
   if (!Number.isFinite(s.tb)) return 0;
   return 1 - smoothstep(0, SECTION_HAND_BACK_S, s.tb - sectionEnd(s.H, s.periodS));
 }
@@ -122,7 +138,8 @@ export interface Section {
 }
 
 /** How much of the profile is drawn at u units of A from the crest: all of it inside, none past its ends. */
-export const interiorWeight = (uUnits: number): number => 1 - smoothstep(EDGE_INNER_UNITS, EDGE_OUTER_UNITS, Math.abs(uUnits));
+export const interiorWeight = (uUnits: number): number =>
+  uUnits < 0 ? 1 - smoothstep(EDGE_BACK_UNITS[0], EDGE_BACK_UNITS[1], -uUnits) : 1 - smoothstep(EDGE_FRONT_UNITS[0], EDGE_FRONT_UNITS[1], uUnits);
 
 /** The station's section from its own numbers (no smoothing along the crest), blended into `sheet`. */
 export function wombSection(s: SectionInput, sheet: SheetAlong, p: SectionParams): Section {

@@ -31,10 +31,14 @@ describe('tube cover (Andrew 2026-10-04: the camera goes over the shoulder when 
     expect(near).toBeLessThan(tubeCover(crest(() => BARREL), 2, 0));
   });
 
-  it('gone once the tube has caved in, and never for a lip too small or too gentle to stand under', () => {
+  it('gone once the tube has caved in, and never for a lip too small to stand under', () => {
     expect(tubeCover(crest(() => 1.6), 2, 0)).toBe(0);
     expect(tubeCover(crest(() => BARREL, 1), 1, 0)).toBe(0);
-    expect(tubeCover(crest(() => BARREL, 3, 0.05), 2, 0)).toBe(0);
+  });
+
+  it('a middling-hollow section that throws a drawn tube covers her in it (Andrew, 2026-10-05: the camera "isn\u2019t engaging despite me riding close to or being actually in the barrel")', () => {
+    expect(tubeCover(crest(() => BARREL, 3, 0.3), 1.6, 0)).toBeGreaterThan(0.9);
+    expect(tubeCover(crest(() => 0.8, 4, 0.3), 2, 0)).toBeGreaterThan(0.9);
   });
 
   it('skips gaps', () => {

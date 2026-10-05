@@ -1979,7 +1979,7 @@ export class App {
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
       else if (event) this.perf.flash(rideMessage(event));
       const rb = this.ride.body;
-      this.rideCover = rb ? tubeCover(this.ribbonStations, rb.water.lx ?? rb.x, rb.water.lz ?? rb.z) : 0;
+      this.rideCover = rb ? tubeCover(this.ribbonStations, rb.x, rb.z) : 0;
       const pose = this.ride.cameraPose(realDt, water, mouse, this.rideCover);
       if (pose) this.rig.setPose(pose);
     } else {

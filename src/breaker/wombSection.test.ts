@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CURVE_SAMPLES, type P2, profileCurve } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, TIP_KNOT, TROUGH_KNOT, profileCurve, profileKnots } from './wombProfile';
 import {
-  type SectionInput, SECTION_HAND_BACK_S, STAND_LEAD_S, STOOD_PHASE, collapseSpan, flightTime, interiorWeight, sectionEnd, sectionPhase, sectionScale, sectionWeight, tubeHold,
+  type SectionInput, EDGE_BACK_UNITS, EDGE_FRONT_UNITS, SECTION_HAND_BACK_S, STAND_LEAD_S, STOOD_PHASE, collapseSpan, flightTime, interiorWeight, sectionEnd, sectionPhase, sectionScale, sectionWeight, tubeHold,
   wombSection,
 } from './wombSection';
 
@@ -32,6 +32,25 @@ describe('wombSection: a station as the Womb profile family', () => {
     expect(held(0.5 * STAND_LEAD_S)).toBeCloseTo(0.5 * STOOD_PHASE, 12);
     expect(held(0)).toBeCloseTo(STOOD_PHASE, 12);
     for (let w = 0; w < STAND_LEAD_S; w += 0.1) expect(held(w)).toBeGreaterThanOrEqual(held(w + 0.1));
+  });
+
+  it('a held section weighs in over the same last STAND_LEAD_S: down the line the swell is the sheet\u2019s own (Andrew, 2026-10-05: the wall "doesn\u2019t extend very far")', () => {
+    const rho = (wait: number): number => sectionWeight({ ...at(4, null, 1.2), wait }, P);
+    expect(rho(10)).toBe(0);
+    expect(rho(STAND_LEAD_S)).toBe(0);
+    expect(rho(0)).toBe(1);
+    for (let w = 0; w < STAND_LEAD_S; w += 0.1) expect(rho(w)).toBeGreaterThanOrEqual(rho(w + 0.1));
+  });
+
+  it('is the sheet from EDGE_BACK_UNITS behind the crest and EDGE_FRONT_UNITS in front, past the trough (no ledge, no dip: Andrew, 2026-10-05)', () => {
+    expect(interiorWeight(-EDGE_BACK_UNITS[1])).toBe(0);
+    expect(interiorWeight(EDGE_FRONT_UNITS[1])).toBe(0);
+    expect(interiorWeight(0)).toBe(1);
+    // The whole curl is drawn: crest to the trough in front, at every phase.
+    for (const phase of [0.45, 1, 1.25, 1.5, 2]) for (const h of [0, 1]) {
+      const k = profileKnots(phase, h);
+      for (const m of [CREST_KNOT, TIP_KNOT, FLOOR_KNOT, TROUGH_KNOT]) expect(interiorWeight(k[m][0]), `phase ${phase} knot ${m}`).toBe(1);
+    }
   });
 
   it('holds the tube longer and collapses slower for a bigger, longer-period wave (Andrew, 2026-10-05)', () => {

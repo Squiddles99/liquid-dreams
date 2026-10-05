@@ -16,7 +16,7 @@ describe('sectionWater: the ride stands on the drawn sections', () => {
     const sec = { A: 3, phase: 0.2, hollow: 1, rho: 1 };
     const water = withSections(flatWater(0.5), crest(sec), 0.5);
     const c = profileCurve(sec.phase, sec.hollow);
-    for (const u of [-6, -2, 0, 1.5]) {
+    for (const u of [-1.2, 0, 1.5, 4]) {
       const want = 0.5 + 3 * lowestWetCrossing(c, u / 3)!.y;
       expect(water(u, 0).y).toBeCloseTo(want, 6);
       expect(water(u, 3.5).y).toBeCloseTo(want, 6);
