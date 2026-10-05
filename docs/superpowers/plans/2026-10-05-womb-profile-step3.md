@@ -113,6 +113,17 @@ From the lineup a breaking section ran off from the peak square to the main swel
 - [ ] Tests that pinned the old reef (its shelf now runs onto the beach) to re-measure on the new one: breakingField, reefCriteria, barrelSize, hollowFace, peakFace, reshapedReef (round 2), bathymetry, coastProfile, shoreReef, surfModel, foamStep, landHeight, skyline, sunlight, sprayEmitters and others (58 at this commit).
 - [ ] GPU self-test on Andrew's PC, including the new one for the game's sheet with the white water (breaker filter).
 
+### Found in Andrew's seventh look (2026-10-05): "the wave is TINY for a 6 to 8 ft swell... it does the same at 12 ft"
+
+The 6 ft set's biggest wave (3.17 m out at sea) stood ~2 m at the curl, ψ 0.03 (oval), and 12 ft the same. Two causes, measured along the left: the 25–30 m basin in front of the reef, ringed by the coast's 13 m, spread the swell out (it reached the face at 0.6–0.85× its open-sea height; round 2's narrow point focused it to ~1.1×); and the peel stretch held each section up to 6 s, in which it ran 20–40 m on over the flat 3.5 m shelf, where the sheet caps a crest at 0.78 × the depth (~2.7 m, less over heads) and the step reads 1 (oval). Without the hold the reef breaks the wave on its face, in 7–15 m of water.
+
+- [x] The peel stretch is off (BreakParams.peel 1); a 1.4 stretch held only 1.5 s still made the take-off oval. The curl runs at the reef's own speed: 11–18 m/s on the first leg at 4–8 ft (the surfer's top speed is 18); 10–12 ft at low and mid tide break further out, where the swell runs faster, 19–25 m/s.
+- [x] The basin is 20 m (faceBaseDepthM, slopeDepthM 20, not 25/30): the wave reaches the face at ~1× its open-sea height.
+- [x] The step looks STEP_AHEAD 2.5 depths ahead, not 1.5: a 12 ft wave starts breaking 25–45 m out from the edge over the face's 18 m foot, and 1.5 depths never reached the ledge.
+- [x] Measured (biggest wave of the set, mid tide): 6 ft curl 3.3–4.1 m, 12 ft 5.3–7.9 m, hollow 1 the length of the first leg; 3 ft stays soft. BREAKING_MODEL 10 resets a saved peel and reef.
+- [x] Take-off: G puts you 8 m seaward of where the wave starts breaking on the ray through the south ledge's take-off mark (ride/takeoff.ts), since bigger waves break further out. The ride test rides 6 and 12 ft for 10 s+.
+- [ ] The shading Andrew circled at 12 ft, overcast (a flat beige patch on the water, a dark green ellipse): needs his moment link.
+
 ### 3e. Andrew's look (his PC)
 
 - [ ] Captures of the left at 6, 8 and 10 ft, mid tide, from the lineup and the ride camera. His sign-off before step 4 removes the old code.

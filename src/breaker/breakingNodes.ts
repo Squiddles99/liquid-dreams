@@ -22,6 +22,7 @@ export function createBreakUniforms(p: BreakParams) {
     faceWidth: uniform(0), drainTo: uniform(1), collapseFrom: uniform(1), collapseTo: uniform(2), steepFrom: uniform(0),
     collapseTime: uniform(1), drainGrowth: uniform(1), onsetGain: uniform(1),
     pileHalfM: uniform(50), pileSurge: uniform(0), churnSize: uniform(0), churnSpeed: uniform(1), psiNudge: uniform(0), randomDial: uniform(0),
+    ribbonOnset: uniform(0.7),
   };
   updateBreakUniforms(u, p);
   return u;
@@ -47,6 +48,7 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.pileHalfM.value = Math.max(p.pileHalfM, 1e-3); u.pileSurge.value = p.pileSurge;
   u.psiNudge.value = p.psiNudge; u.randomDial.value = p.randomDial;
   u.churnSize.value = p.churnSize; u.churnSpeed.value = p.churnSpeed;
+  u.ribbonOnset.value = p.ribbonOnset;
 }
 
 /** smoothstep with its edges reversed (e0 > e1): WGSL's smoothstep wants low < high. */

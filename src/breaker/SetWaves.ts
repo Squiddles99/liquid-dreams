@@ -375,7 +375,8 @@ export class SetWaves {
           const confidence = float(0.0).toVar(), rC = float(0.0).toVar();
           // The front's lean (setWaveModel.leanWeight): 0 without a crest.
           const lean = float(0.0).toVar();
-          // setWaveModel.frontStanding: 0 off the record or not breaking there, rising over the last STAND_LEAD_S to 1 once broken.
+          // setWaveModel.frontStanding: 0 off the record; before the break rising with the ratio from the ribbon's onset;
+          // while held, over the last STAND_LEAD_S; 1 once broken.
           const standing = float(0.0).toVar();
           // How far it has settled into the white water's bore (setWaveModel.waveAtCrest, wombSection.boreWeight): 'lean' only.
           const bore = float(0.0).toVar();
@@ -423,7 +424,9 @@ export class SetWaves {
               { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi), thrown: smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi) }, onset.delay);
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
             if (this.shape === 'lean') {
-              standing.assign(select(rec.inside.and(onset.broken), select(onset.tb.greaterThanEqual(0.0), float(1.0), float(1.0).sub(smoothstep(0.0, STAND_LEAD_S, onset.tb.negate()))), float(0.0)));
+              standing.assign(select(rec.inside, select(onset.broken,
+                select(onset.tb.greaterThanEqual(0.0), float(1.0), float(1.0).sub(smoothstep(0.0, STAND_LEAD_S, onset.tb.negate()))),
+                smoothstep(brk.ribbonOnset, 1.0, rC)), float(0.0)));
               bore.assign(select(rec.inside.and(onset.broken).and(onset.tb.greaterThanEqual(0.0)),
                 boreWeightNode(onset.tb, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), float(2 * Math.PI).div(a.z)), float(0.0)));
             }

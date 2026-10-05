@@ -20,7 +20,7 @@ import { TUBE_TIP_CLEAR_M } from './lipProfile';
 import { encodeTb, tubeLightAtNode } from './lipProfileNodes';
 import { CURVE_SAMPLES } from './wombProfile';
 import { EDGE_OUTER_UNITS } from './wombSection';
-import { WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, interiorWeightNode, wombFrameNode } from './wombSectionNodes';
+import { WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, frontHeightNode, interiorWeightNode, wombFrameNode } from './wombSectionNodes';
 
 type N = any;
 
@@ -712,7 +712,12 @@ export class BreakingRibbon {
       const d = vec3(smooth(xzHome)).toVar();
       const base = vec2(home.add(dot(d.xz, n)), d.y).toVar();
       const w = rho.mul(interiorWeightNode(q.x, crestU)).toVar();
-      const pos = mix(base, q.mul(A), w).toVar();
+      // Past the face's foot (samples before the floor's, front first) the profile settles onto the sea in front.
+      const floorIdx: N = f1.z;
+      const floorU: N = sections.element(i.mul(PROFILE_SAMPLES).add(int(floorIdx))).x;
+      const qy: N = q.y.mul(A).toVar();
+      const y = select(float(j).lessThan(floorIdx), frontHeightNode(qy, base.y, q.x, floorU), qy);
+      const pos = mix(base, vec2(q.x.mul(A), y), w).toVar();
       // The profile's u along n; the lateral displacement at home carried unchanged along t̂.
       const xz = S.add(n.mul(pos.x)).add(tHat.mul(dot(d.xz, tHat)));
       const skirt = select(local.equal(int(0)).or(local.equal(int(V - 1))), float(SKIRT_DEPTH_M), float(0.0));

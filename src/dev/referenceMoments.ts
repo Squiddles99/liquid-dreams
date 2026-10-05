@@ -116,9 +116,10 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
     { mode: 'free', position: [16, 2.9, -41], yawDeg: 196, pitchDeg: -3 }, REF_BIGGEST.arrivalS + 1.0),
     ref('in-the-shade', "07:45 facing the land (east): the lineup still in the ridge's shade, a glow along the skyline where the sun will break.",
       conditions({ timeOfDay: 7.75 }), lineup(90, 4)),
-    ref('sunbreak', '08:05 facing the sun (ENE): the sun clearing the ridge, the light arriving across the water.',
-      conditions({ timeOfDay: 8 + 5 / 60 }), lineup(58, 4)),
-  // 5 m up: from the lineup's own eye height (0.8 m) the surf zone 125–215 m away is a sliver the swell hides; a surfer
+    // 08:11 since the reef moved in (2026-10-05): the ridge stands 96 m nearer, and the sun clears it at 08:10.
+    ref('sunbreak', '08:11 facing the sun (ENE): the sun clearing the ridge, the light arriving across the water.',
+      conditions({ timeOfDay: 8 + 11 / 60 }), lineup(58, 4)),
+  // 5 m up: from the lineup's own eye height (0.8 m) the surf zone 80–120 m away is a sliver the swell hides; a surfer
   // sees the shore break from the tops of swells (Phase 4b gallery ruling).
   setMoment('surf-from-the-lineup', "08:15 from the top of a swell at the lineup, facing the beach as the reference set's bores reach the shore: white water across the platform, the swash on the sand.",
     conditions({}), { mode: 'free', position: [-25, 5, 45], yawDeg: 90, pitchDeg: -1 }, REF_BIGGEST.arrivalS + 12),

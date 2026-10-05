@@ -102,8 +102,11 @@ const SLURP_STEP_M = 2;
  * reef face's slope, and a face steep enough to hold 12 ft at the take-off (about 1:3, far past the fits' 1:10) made every
  * wave a slab. The step is how hard the reef stands a wave up instead: the still water where it breaks over the
  * shallowest within STEP_AHEAD depths ahead (Andrew's measure, 2026-09-30: low tide ≈ 2.6, mid 2.2, high 1.9 at the peak).
+ * 2.5, not 1.5, on the satellite reef (2026-10-05): a 12 ft set wave starts breaking 25–45 m out from the edge, over the
+ * face's 18 m foot, and 1.5 depths ahead never reached the ledge, so the biggest days read as a gentle wave all along the
+ * left; small days, breaking on the shelf, look only a few metres further.
  */
-export const STEP_AHEAD = 1.5;
+export const STEP_AHEAD = 2.5;
 /**
  * The step is smoothed along the crest by a Gaussian of this σ (m): light, because the peak is a narrow wedge (at the
  * breaking depth's σ BREAKING_SMOOTHING_M, 12 ft's ideal ψ fell from 0.089 to 0.074; taking the largest first lifted 6 ft's

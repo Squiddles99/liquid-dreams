@@ -41,7 +41,9 @@ export interface BreakParams {
   randomDial: number;
   /** The peel stretch (spec 2026-10-04, Andrew: "the wave is simply breaking too fast for the surfer to ride"): each part
    * of the line breaks this much later after the part up the line than the reef alone says; 1 is physics. Baked into the
-   * reef field's onset record (a change re-bakes it). */
+   * reef field's onset record (a change re-bakes it). On Andrew's satellite reef it is off (1) by default: a held section
+   * runs on over the reef's flat top before its turn and breaks there small and fat (2026-10-05: 6 and 12 ft both ~2 m,
+   * no barrel). */
   peel: number;
   /** The pile's churn (render only; the CPU model ignores it): lumps up to this fraction of the pile's height… */
   churnSize: number;
@@ -66,7 +68,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   pileSurge: 0.3,
   psiNudge: 0,
   randomDial: 0,
-  peel: 1.7,
+  peel: 1,
   churnSize: 0.2,
   churnSpeed: 1,
 };

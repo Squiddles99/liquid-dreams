@@ -1,6 +1,6 @@
 import { smoothstep } from '../math/smoothstep';
 import { hollowFromPsi } from './reefReport';
-import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, STAGES, TIP_KNOT, profileCurve, profileKnots } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, STAGES, TIP_KNOT, profileKnots, profileSamples } from './wombProfile';
 
 /**
  * A crest station's cross-section as the Womb's profile family (spec 2026-10-05-womb-profile-design §2, §4; plan
@@ -161,12 +161,28 @@ export interface Section {
 export const interiorWeight = (uUnits: number, crestU: number): number =>
   uUnits < crestU ? 1 - smoothstep(BACK_BLEND_UNITS[0], BACK_BLEND_UNITS[1], crestU - uUnits) : 1 - smoothstep(FRONT_BLEND_UNITS[0], FRONT_BLEND_UNITS[1], uUnits);
 
-/** A profile point (units of A) placed on the station's plane (m), blended into the sheet by ρ and interiorWeight. */
-function placer(numbers: SectionNumbers, sheet: SheetAlong): (q: P2) => P2 {
+/**
+ * Past the face's foot (the floor knot) the profile settles onto the sea in front over this many units of A: its height is
+ * the sea's wherever that is lower, the profile's own only at the foot. The profile's front climbs back to still water
+ * (its drawing's flat sea), but the sheet in front lies at the swell's trough, 2.5 m lower on a 12 ft set: handed over
+ * 2.3–4 units out, the two drew a rim with a trench between it and the face (Andrew, 2026-10-05: "the water draws
+ * smoothly up the face before the lip throws out onto the flats").
+ */
+export const FOOT_RUN_UNITS = 1.2;
+/** A front point's height (m): from the profile's at the foot (floorU, units of A) to the lower of it and the sheet's. */
+export function frontHeight(profileY: number, sheetY: number, uUnits: number, floorU: number): number {
+  const own = 1 - smoothstep(floorU, floorU + FOOT_RUN_UNITS, uUnits);
+  return Math.min(sheetY, profileY) + (profileY - Math.min(sheetY, profileY)) * own;
+}
+
+/** A profile point (units of A) placed on the station's plane (m), blended into the sheet by ρ and interiorWeight; past
+ * the face's foot (`front`, floorU its u) onto the sea in front (frontHeight). */
+function placer(numbers: SectionNumbers, sheet: SheetAlong, floorU = Infinity): (q: P2, front?: boolean) => P2 {
   const { A, phase, hollow, rho } = numbers, crestU = profileKnots(phase, hollow)[CREST_KNOT][0];
-  return (q) => {
+  return (q, front = false) => {
     const S = sheet(A * q[0]), w = rho * interiorWeight(q[0], crestU);
-    return [S[0] + (A * q[0] - S[0]) * w, S[1] + (A * q[1] - S[1]) * w];
+    const y = front ? frontHeight(A * q[1], S[1], q[0], floorU) : A * q[1];
+    return [S[0] + (A * q[0] - S[0]) * w, S[1] + (y - S[1]) * w];
   };
 }
 
@@ -179,10 +195,10 @@ export function wombSection(s: SectionInput, sheet: SheetAlong, p: SectionParams
  * toward its ends. */
 export function sectionOf(numbers: SectionNumbers, sheet: SheetAlong): Section {
   const { phase, hollow } = numbers;
-  const curve = profileCurve(phase, hollow, CURVE_SAMPLES);
-  const place = placer(numbers, sheet);
+  const { curve, marks } = profileSamples(phase, hollow, CURVE_SAMPLES);
+  const place = placer(numbers, sheet, curve[marks.floor][0]);
   const points: P2[] = [];
-  for (let j = curve.length - 1; j >= 0; j--) points.push(place(curve[j]));
+  for (let j = curve.length - 1; j >= 0; j--) points.push(place(curve[j], j > marks.floor));
   const k = profileKnots(phase, hollow);
   return { numbers, points, crest: place(k[CREST_KNOT]), tip: place(k[TIP_KNOT]) };
 }

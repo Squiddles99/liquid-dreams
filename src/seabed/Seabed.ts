@@ -3,7 +3,7 @@ import { clamp, float, floor, fract, int, length, max, mix, pow, select, sin, sm
 import { BOMBIE_X, BOMBIE_Z, MOUND_BASE_Y, MOUND_CREST_Y, MOUND_HALF_X_M, MOUND_HALF_Z_M } from '../bombie/bombieModel';
 import { DEFAULT_BEACH } from '../land/landHeight';
 import type { Bathymetry } from './bathymetry';
-import { FAR_DEPTH_M, REEF_SURROUND_DEPTH_M, SHORE_FLAT_DEPTH_M, SHORE_X } from './coastProfile';
+import { FAR_DEPTH_M, FAR_RAMP_S, REEF_SURROUND_DEPTH_M, SHORE_FLAT_DEPTH_M, SHORE_X } from './coastProfile';
 import { KelpMap } from './KelpMap';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_AT_MAP_M, SHORE_REEF_EDGE_M, SHORE_REEF_MAP_EASE_M, SHORE_REEF_MAP_Z, SHORE_REEF_MATERIAL, SHORE_REEF_MEAN_M } from './shoreReef';
 
@@ -25,7 +25,7 @@ export function depthBgNode(x: N): N {
   const s = float(SHORE_X).sub(x);
   const nearShore = float(SHORE_FLAT_DEPTH_M).add(float(1.5 - SHORE_FLAT_DEPTH_M).mul(smoothstep(0, 30, s)));
   const slope = float(1.5).add(float(REEF_SURROUND_DEPTH_M - 1.5).mul(smoothstep(30, 140, s)));
-  const offshore = float(REEF_SURROUND_DEPTH_M).add(float(FAR_DEPTH_M - REEF_SURROUND_DEPTH_M).mul(smoothstep(260, 590, s)));
+  const offshore = float(REEF_SURROUND_DEPTH_M).add(float(FAR_DEPTH_M - REEF_SURROUND_DEPTH_M).mul(smoothstep(FAR_RAMP_S[0], FAR_RAMP_S[1], s)));
   return select(s.lessThan(30), nearShore, select(s.lessThan(140), slope, offshore));
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
-import { RESHAPED_REEF_PARAMS } from '../seabed/wombReef';
+import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesBetween, wavesNear } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS as P } from '../breaker/breaking';
 import { minRibbonHeight, traceStations } from '../breaker/crestTrace';
@@ -10,19 +10,20 @@ import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../br
 import { withSections } from './sectionWater';
 import { type WaterFn, waterAt } from './water';
 import { type RideEvent, startBody, stepRide } from './ridePhysics';
+import { takeoffSpot } from './takeoff';
 
 /**
- * A rider on the drawn wave (Andrew, 2026-10-05: "the surfer wipes out instantly"): the 6 ft set's biggest wave from the
- * take-off spot, as App.catchSetWave starts it (App.RIDE_START), the ride standing on the ribbon's sections (App.rideWater).
+ * A rider on the drawn wave (Andrew, 2026-10-05: "the surfer wipes out instantly"): each size's set's biggest wave from the
+ * take-off spot, as App.catchSetWave starts it (takeoff.takeoffSpot), the ride standing on the ribbon's sections (App.rideWater).
  * The rider faces the swell and paddles until caught, pops up once the face is steep under the board (as a surfer waits
  * for the wave to stand up: popped as soon as it lifted, the rider was left on the gentle front and the wave ran on), then
  * steers to hold a line along the left.
  */
 describe('a ride on the drawn sections', () => {
-  it('a 6 ft set wave: caught, popped up and ridden along the left for 5 s or more without a wipeout', { timeout: 300_000 }, () => {
+  it.each([6, 12])('a %i ft set wave: caught, popped up and ridden along the left for 5 s or more without a wipeout', { timeout: 300_000 }, (ft) => {
     const c = cloneConditions(DEFAULT_CONDITIONS);
-    c.swell.sizeFt = 6;
-    const field = computeReefField({ bed: downsample(buildBathymetry(RESHAPED_REEF_PARAMS), 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: P.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+    c.swell.sizeFt = ft;
+    const field = computeReefField({ bed: downsample(buildBathymetry(DEFAULT_REEF_PARAMS), 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: P.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
     const set = wavesBetween(0, 600, c, DEFAULT_SET_PARAMS).filter((e) => e.arrivalS > 10).slice(0, 8);
     const big = set.reduce((a, b) => (b.heightM > a.heightM ? b : a));
@@ -33,7 +34,7 @@ describe('a ride on the drawn sections', () => {
       return withSections(sheet, traceStations(field, waves, t, ctx, { cameraX: cx, cameraZ: cz, params: P, minHeightM }), c.tideM);
     };
     let t = big.arrivalS - 10;
-    const [sx, sz] = [4, 40];
+    const { x: sx, z: sz } = takeoffSpot(field, big.heightM, P);
     const start = waterAtT(t, sx, sz)(sx, sz);
     const swellHeading = Math.atan2(start.dirX, -start.dirZ) / (Math.PI / 180);
     const b = startBody(sx, sz, swellHeading, waterAtT(t, sx, sz));

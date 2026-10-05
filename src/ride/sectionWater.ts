@@ -1,6 +1,6 @@
 import type { Station, StationEntry } from '../breaker/crestTrace';
-import { interiorWeight } from '../breaker/wombSection';
-import { CREST_KNOT, type P2, profileCurve, profileKnots } from '../breaker/wombProfile';
+import { frontHeight, interiorWeight } from '../breaker/wombSection';
+import { CREST_KNOT, type P2, profileKnots, profileSamples } from '../breaker/wombProfile';
 import type { WaterFn } from './water';
 
 /**
@@ -23,7 +23,7 @@ export const MAX_SECTION_SLOPE = 2;
 /** A point further than this (m) along the crest from the nearest station is off the ribbon. */
 export const MAX_ALONG_M = 6;
 
-interface Cached { curve: P2[]; crestU: number }
+interface Cached { curve: P2[]; crestU: number; floorU: number }
 
 /**
  * `base`'s water, with the stations' sections where they draw. `tideM` is the still-water level the sections stand on
@@ -35,7 +35,11 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
   const cache = new Map<Station, Cached>();
   const cached = (s: Station): Cached => {
     let c = cache.get(s);
-    if (!c) { c = { curve: profileCurve(s.section.phase, s.section.hollow), crestU: profileKnots(s.section.phase, s.section.hollow)[CREST_KNOT][0] }; cache.set(s, c); }
+    if (!c) {
+      const { curve, marks } = profileSamples(s.section.phase, s.section.hollow);
+      c = { curve, crestU: profileKnots(s.section.phase, s.section.hollow)[CREST_KNOT][0], floorU: curve[marks.floor][0] };
+      cache.set(s, c);
+    }
     return c;
   };
   return (x, z) => {
@@ -53,7 +57,9 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
       if (!(A > 0)) return null;
       const c = cached(s), hit = lowestWetCrossing(c.curve, u / A);
       if (!hit) return null;
-      return { y: tideM + A * hit.y, slopeU: Math.max(-MAX_SECTION_SLOPE, Math.min(MAX_SECTION_SLOPE, hit.slope)), weight: s.section.rho * interiorWeight(u / A, c.crestU) };
+      // Past the face's foot the section settles onto the sea in front (wombSection.frontHeight), as the ribbon draws it.
+      const own = tideM + A * hit.y, y = u / A > c.floorU ? frontHeight(own, w.y, u / A, c.floorU) : own;
+      return { y, slopeU: Math.max(-MAX_SECTION_SLOPE, Math.min(MAX_SECTION_SLOPE, hit.slope)), weight: s.section.rho * interiorWeight(u / A, c.crestU) };
     };
     const a = at(best);
     if (!a) return w;

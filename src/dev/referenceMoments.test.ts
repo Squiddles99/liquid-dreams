@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SHORE_X } from '../seabed/coastProfile';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { msToKmh, surferFeetToHs } from '../conditions/units';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
@@ -83,7 +84,7 @@ describe('reference moment kinds', () => {
     const r = REFERENCE_MOMENTS.find((m) => m.name === 'on-the-beach')!;
     expect(r.kind).toBe('view');
     expect(r.moment.camera.mode).toBe('walk');
-    expect(r.moment.camera.position[0]).toBe(210);
+    expect(r.moment.camera.position[0]).toBe(SHORE_X + 20);
     expect(r.moment.camera.position[2]).toBe(-40);
     expect(r.moment.camera.yawDeg).toBe(0);
     expect(r.moment.conditions.timeOfDay).toBe(10.5);
@@ -92,7 +93,7 @@ describe('reference moment kinds', () => {
     const r = REFERENCE_MOMENTS.find((m) => m.name === 'up-the-dune')!;
     expect(r.kind).toBe('view');
     expect(r.moment.camera.mode).toBe('walk');
-    expect(r.moment.camera.position[0]).toBe(234);
+    expect(r.moment.camera.position[0]).toBe(SHORE_X + 44);
     expect(r.moment.camera.yawDeg).toBe(90);
     expect(r.moment.conditions.timeOfDay).toBe(8.75);
   });

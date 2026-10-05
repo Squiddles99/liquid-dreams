@@ -18,14 +18,14 @@ const rr = await imp<typeof import('../src/breaker/reefReport')>('/src/breaker/r
 const sizeFt = Number(process.argv[2] ?? 8), tide = Number(process.argv[3] ?? 0), PERIOD = 15;
 const OUT = `docs/superpowers/specs/2026-10-05-womb-profile-mockup/film-${sizeFt}ft.html`;
 const P = brk.DEFAULT_BREAK_PARAMS;
-const field = rf.computeReefField({ bed: bathy.downsample(bathy.buildBathymetry(reef.RESHAPED_REEF_PARAMS), 2), periodS: PERIOD, fromDeg: 225, tideM: tide, peel: P.peel });
+const field = rf.computeReefField({ bed: bathy.downsample(bathy.buildBathymetry(reef.DEFAULT_REEF_PARAMS), 2), periodS: PERIOD, fromDeg: 225, tideM: tide, peel: P.peel });
 const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
 const H0 = rr.setWaveHeight(sizeFt);
 const wave = { arrivalS: 0, heightM: H0, omega: ctx.omega, travelX: ctx.travelX, travelZ: ctx.travelZ, crestLengthM: 400, crestOffsetM: 0 };
 const swell = swm.breakOptions(field, { ...P, enabled: false });
 
 // The places down the left: along the reshaped edge (m from the peak), named for Andrew.
-const edge = reef.RESHAPED_NORTH_LEDGE;
+const edge = reef.NORTH_LEDGE;
 const alongEdge = (s: number): [number, number] => {
   for (let i = 0, s0 = 0; i + 1 < edge.length; i++) {
     const [a, b] = [edge[i], edge[i + 1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]);

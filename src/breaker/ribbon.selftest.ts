@@ -201,7 +201,11 @@ registerSelfTest({
     const t = REF_BIGGEST.arrivalS + 0.6;
     const { entries } = traceAt(t, sets);
     sim.update(renderer, t, 1 / 60);
-    ribbon.setStations(entries, LINEUP);
+    // The camera 10 m seaward of the live stations: the chop (cascade 2) fades out 20–60 m from it, and on the reef moved
+    // in (2026-10-05) the stations stand 80 m from the lineup, where the comparison would have no chop in it.
+    const live = entries.filter((e): e is Station => !e.gap && e.section.rho > 0.05);
+    const near = live.length ? new THREE.Vector3(live.reduce((a, e) => a + e.x, 0) / live.length - 10, 3, live.reduce((a, e) => a + e.z, 0) / live.length) : LINEUP;
+    ribbon.setStations(entries, near);
     ribbon.compute(renderer);
     // The first and last profile vertex of every live station, and the sheet at their homes (same camera, same fades).
     const idx: number[] = [];

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SHORE_X } from '../seabed/coastProfile';
 import { computeFarField, farSample } from '../breaker/coastFarField';
 import { beachHeight } from '../land/landHeight';
 import { shoreReefWidth } from '../seabed/shoreReef';
@@ -21,7 +22,7 @@ describe('the τ table', () => {
     const seen: [number, number][] = [];
     const tau = buildTauTable((x, z) => { seen.push([x, z]); return x + z; });
     expect(tau.length).toBe(SURF_NZ);
-    expect(seen[0]).toEqual([190 - shoreReefWidth(SURF_Z0), SURF_Z0]);
+    expect(seen[0]).toEqual([SHORE_X - shoreReefWidth(SURF_Z0), SURF_Z0]);
     expect(tableAt(tau, SURF_Z0 + SURF_DZ / 2)).toBeCloseTo((tau[0] + tau[1]) / 2, 3);
   });
 });
@@ -103,7 +104,8 @@ describe('the bores', () => {
   });
   it('even a between-sets bore front reads as solid white water (tuned in captures)', () => {
     const tb = 9 * T + tableAt(s.tau, z); // a lull wave
-    const age = 6, df = W - BORE_SPEED_MS * age;
+    // A quarter of the way in across the platform (6 s across the 90 m one it was tuned on).
+    const age = (0.23 * (W - e)) / BORE_SPEED_MS, df = W - BORE_SPEED_MS * age;
     expect(surfFoam(df, z, tb + age, s)).toBeGreaterThan(0.8);
   });
   it('at a short period every bore still reaches the water\'s edge (final review I3)', () => {

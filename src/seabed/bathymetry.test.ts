@@ -4,7 +4,7 @@ import { depthBg } from './coastProfile';
 import { bedHeightAt, bedMaterialAt, buildBathymetry, downsample, ledgeSignedDistance, reefProfileDepth, reefWarp, seawardDepth } from './bathymetry';
 import { OPEN_COAST_MATERIAL } from './shoreReef';
 import { SHORE_X } from './coastProfile';
-import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, REEF_GRID, REEF_WARP, SOUTH_LEDGE, rockReachM } from './wombReef';
+import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, REEF_GRID, REEF_WARP, SHELF_INNER_X, SOUTH_LEDGE, rockReachM } from './wombReef';
 
 const bathy = buildBathymetry();
 const depth = (x: number, z: number) => -bedHeightAt(bathy, x, z);
@@ -32,17 +32,18 @@ describe('the Womb reef', () => {
       expect(depth(x, z)).toBeLessThan(DEFAULT_REEF_PARAMS.ledgeDepthM + 1.5);
     }
   });
-  it('is shallower on the shelf than at the ledge, never shallower than the minimum', () => {
+  it('is shallow on the shelf (its base depth or less on average), never shallower than the minimum', () => {
     let sum = 0, n = 0;
-    for (let x = 45; x <= 105; x += 5) for (let z = -200; z <= -40; z += 5) {
+    // The shelf south of the corner, between the south ledge and the shore's platform.
+    for (let x = 5; x <= 50; x += 5) for (let z = 20; z <= 140; z += 5) {
       const d = depth(x, z);
       expect(d).toBeGreaterThanOrEqual(DEFAULT_REEF_PARAMS.minDepthM - 1e-6);
       sum += d; n++;
     }
-    expect(sum / n).toBeLessThan(DEFAULT_REEF_PARAMS.ledgeDepthM);
+    expect(sum / n).toBeLessThan(DEFAULT_REEF_PARAMS.shelfDepthM);
   });
   it('matches the coast profile at and beyond the map edges (continuity for the far field)', () => {
-    for (const z of [-449, 299]) for (const x of [-399, -200, 0, 150]) {
+    for (const z of [-449, 299]) for (const x of [-399, -200, 0, SHORE_X - 30]) {
       expect(depth(x, z)).toBeCloseTo(depthBg(x), 1);
     }
     expect(depth(-1000, 0)).toBe(depthBg(-1000));
@@ -82,24 +83,24 @@ describe('reef domain warp', () => {
 
 describe('bedHeightAt with a waterline shift (Phase 4a spec §4.4)', () => {
   it('moves the coast profile east by the shift outside the map, and leaves the map alone', () => {
-    const shift = (z: number) => (z > 1000 ? 120 : 0);
-    expect(bedHeightAt(bathy, 300, 2000, shift)).toBeCloseTo(-depthBg(300 - 120), 6);
-    expect(bedHeightAt(bathy, 300, 0, shift)).toBeCloseTo(bedHeightAt(bathy, 300, 0), 6);
+    const shift = (z: number) => (z > 1000 ? 120 : 0), x = SHORE_X + 110;
+    expect(bedHeightAt(bathy, x, 2000, shift)).toBeCloseTo(-depthBg(x - 120), 6);
+    expect(bedHeightAt(bathy, x, 0, shift)).toBeCloseTo(bedHeightAt(bathy, x, 0), 6);
     expect(bedHeightAt(bathy, 0, 0, shift)).toBe(bedHeightAt(bathy, 0, 0)); // inside the reef map
   });
 });
 
 describe('the beach under the swash (Phase 4b spec §3.3, Ruling W7)', () => {
   it('landward of the waterline the shading bed follows the beach profile; seaward it is unchanged', () => {
-    expect(bedHeightAt(bathy, 190 + 6, 3000)).toBeCloseTo(beachHeight(6), 6);
-    expect(bedHeightAt(bathy, 190 + 30, 3000, () => 0)).toBeCloseTo(beachHeight(30), 6);
-    expect(bedHeightAt(bathy, 150, 3000)).toBeCloseTo(-depthBg(150), 6);
-    // shifted: the waterline at 190 + 120
-    expect(bedHeightAt(bathy, 310 + 5, 3000, () => 120)).toBeCloseTo(beachHeight(5), 6);
+    expect(bedHeightAt(bathy, SHORE_X + 6, 3000)).toBeCloseTo(beachHeight(6), 6);
+    expect(bedHeightAt(bathy, SHORE_X + 30, 3000, () => 0)).toBeCloseTo(beachHeight(30), 6);
+    expect(bedHeightAt(bathy, SHORE_X - 40, 3000)).toBeCloseTo(-depthBg(SHORE_X - 40), 6);
+    // shifted: the waterline at SHORE_X + 120
+    expect(bedHeightAt(bathy, SHORE_X + 120 + 5, 3000, () => 120)).toBeCloseTo(beachHeight(5), 6);
   });
   it('is continuous with the seabed at the waterline, at any shift', () => {
     for (const shift of [-300, 0, 150]) {
-      const xs = 190 + shift;
+      const xs = SHORE_X + shift;
       expect(Math.abs(bedHeightAt(bathy, xs + 0.001, 3000, () => shift) - bedHeightAt(bathy, xs - 0.001, 3000, () => shift))).toBeLessThan(0.01);
     }
   });
@@ -110,7 +111,7 @@ describe('the Bombie’s mound (4c-3)', () => {
   const b = buildBathymetry();
   it('rises to 5 m below mean sea level outside the reef map, and leaves the bed alone beyond its oval', () => {
     expect(bedHeightAt(b, BOMBIE_X, BOMBIE_Z)).toBeCloseTo(MOUND_CREST_Y, 3);
-    expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z)).toBeLessThan(-20);
+    expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z)).toBeCloseTo(-depthBg(BOMBIE_X + MOUND_HALF_X_M + 5), 3);
     expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M * 0.5, BOMBIE_Z)).toBeGreaterThan(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z));
   });
 });
@@ -136,7 +137,7 @@ describe('the reef seaward of the ledges (spec 2026-10-02 §3)', () => {
     }
   });
   it('inshore of the reef the bed stays the coast’s shallows (south of the peak near the beach)', () => {
-    for (const [x, z] of [[150, 200], [170, 120], [120, 250]]) expect(depth(x, z)).toBeCloseTo(depthBg(x), 0);
+    for (const [x, z] of [[SHORE_X - 15, 200], [SHORE_X - 20, 120], [SHORE_X - 25, 250]]) expect(depth(x, z)).toBeCloseTo(depthBg(x), 0);
   });
   it('along the peak’s south-west line the bed deepens steadily from the ledge to 300 m out (no step back up > 2 cm)', () => {
     let prev = depth(0, 0);
@@ -146,16 +147,22 @@ describe('the reef seaward of the ledges (spec 2026-10-02 §3)', () => {
       prev = Math.max(prev, d);
     }
   });
-  it('the face and the slope are where the params put them along the peak’s line (±1.5 m: the line leaves the ledge at an angle)', () => {
-    const at = (v: number) => depth(-v * Math.SQRT1_2, v * Math.SQRT1_2);
-    expect(at(p.faceWidthM)).toBeGreaterThan(p.faceBaseDepthM - 1.5);
+  it('the face and the slope are where the params put them square off the left\'s first leg (±1.5 m: the warp)', () => {
+    // Out from the first leg's middle, square to it (seaward).
+    const [a, b] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const nx = (b[1] - a[1]) / L, nz = -(b[0] - a[0]) / L, mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+    const at = (v: number) => depth(mx + nx * v, mz + nz * v);
+    // The face's foot: the profile's, capped (98 m off the beach) by the coast deepened toward the slope's depth; a steep
+    // face either way, ~13 m in its 20 m.
+    expect(Math.abs(at(p.faceWidthM) - seawardDepth(p.faceWidthM, mx + nx * p.faceWidthM, p))).toBeLessThan(1.5);
+    expect(at(p.faceWidthM) - at(0)).toBeGreaterThan(10);
     expect(at(p.slopeEndM)).toBeGreaterThan(p.slopeDepthM - 2);
     expect(at(p.slopeEndM)).toBeLessThan(p.slopeDepthM + 1.5);
   });
   it('meets the coast profile at the west, north and south map edges (the far field)', () => {
     for (const z of [-300, 0, 200]) expect(depth(-399, z)).toBeCloseTo(depthBg(-399), 1);
     expect(seawardDepth(1000, -1000, p)).toBe(depthBg(-1000));
-    expect(SHORE_X).toBe(190);
+    expect(SHORE_X).toBe(94);
   });
 });
 
@@ -199,7 +206,7 @@ describe('the bed’s material (spec 2026-10-02 §4)', () => {
       expect(bathy.sand[i], `(${x}, ${z})`).toBeLessThan(0.3);
       expect(bathy.weed[i], `(${x}, ${z})`).toBeGreaterThan(0.4);
     }
-    const [s, w] = bedMaterialAt(bathy, -60, 180, undefined, false);
+    const [s, w] = bedMaterialAt(bathy, -100, 180, undefined, false);
     expect(s).toBeCloseTo(OPEN_COAST_MATERIAL[0], 1);
     expect(w).toBeCloseTo(OPEN_COAST_MATERIAL[1], 1);
   });
@@ -212,6 +219,6 @@ describe('the bed’s material (spec 2026-10-02 §4)', () => {
     }
   });
   it('the shore platform meets the reef: no sand strip anywhere between the beach and the reef (regression guard)', () => {
-    for (let z = -440; z <= 290; z += 10) for (let x = 100; x <= 185; x += 5) expect(bedMaterialAt(bathy, x, z)[0], `(${x}, ${z})`).toBeLessThan(0.5);
+    for (let z = -440; z <= 290; z += 10) for (let x = SHELF_INNER_X; x <= SHORE_X - 5; x += 5) expect(bedMaterialAt(bathy, x, z)[0], `(${x}, ${z})`).toBeLessThan(0.5);
   });
 });

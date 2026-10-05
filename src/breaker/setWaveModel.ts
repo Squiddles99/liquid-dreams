@@ -2,7 +2,7 @@ import { BORE_SHARE, STAND_LEAD_S, boreWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { BREAKING_RATIO, type BreakParams, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetDelay, onsetTime, pileTop, settledCrestTop, steepeningStart, TUBE_THROWN_PSI } from './breaking';
+import { BREAKING_RATIO, type BreakParams, DEFAULT_BREAK_PARAMS, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetDelay, onsetTime, pileTop, settledCrestTop, steepeningStart, TUBE_THROWN_PSI } from './breaking';
 import { PSI_MIN, PSI_NONE, PSI_NORMAL, drainFactor, effectivePsi, withSheetShape } from './overturn';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
@@ -74,13 +74,16 @@ export const wombFrontMin = (H: number, k: number): number =>
 
 /**
  * How far a crest's front has shortened to the Womb profile's face [0, 1], on the ribbon's clock (wombSection.sectionWeight):
- * 0 where its section will not break, and while it waits for its turn more than STAND_LEAD_S away; to 1 over that last
- * STAND_LEAD_S; 1 once broken. Down the line the front stays the swell's (Andrew, 2026-10-05: "a less vertical gradient,
- * similar to how the swell approaches"), and shortened from the first a surfer had a third of a second on the face to
- * catch it.
+ * 0 off the reef's record; before its section breaks, rising with its breaking ratio `r` from the ribbon's onset to 1, as
+ * the ribbon stands up out of the sheet; while it waits for its turn (the peel stretch), 0 more than STAND_LEAD_S away, to 1
+ * over that last STAND_LEAD_S; 1 once broken. Down the line the front stays the swell's (Andrew, 2026-10-05: "a less
+ * vertical gradient, similar to how the swell approaches"), and shortened from the first a surfer had a third of a second
+ * on the face to catch it. Switched on at the break itself (`tb` from null to 0), along the crest the front jumped from
+ * the swell's to the face's where the record says broken, a staircase seam out in front of the curl (Andrew, 2026-10-05).
  */
-export function frontStanding(tb: number | null | undefined): number {
-  if (tb === null || tb === undefined) return 0;
+export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset): number {
+  if (tb === undefined) return 0;
+  if (tb === null) return smoothstep(ribbonOnset, 1, r);
   return tb >= 0 ? 1 : 1 - smoothstep(0, STAND_LEAD_S, -tb);
 }
 
@@ -373,7 +376,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   // The front's lean (LEAN_RATIO): the trough moves in to the face's foot as the wave shoals.
   const { th, dth } = o?.shape === 'lean' && crest
     ? leanPhase(theta, smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence,
-      LEAN_FRONT_MIN + (wombFrontMin(localHeight(w, crest.f), crest.f.k) - LEAN_FRONT_MIN) * frontStanding(crest.tb))
+      LEAN_FRONT_MIN + (wombFrontMin(localHeight(w, crest.f), crest.f.k) - LEAN_FRONT_MIN) * frontStanding(crest.tb, crest.r, crest.params.ribbonOnset))
     : leanPhase(theta, o?.shape === false ? 0 : leanWeight(crest));
   const leaning = th !== theta || dth !== 1;
   const shape = Math.cos(th) + B * Math.cos(2 * th);

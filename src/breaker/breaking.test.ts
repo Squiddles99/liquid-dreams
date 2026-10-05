@@ -594,9 +594,9 @@ describe('the whitewater pile (spec 2026-09-29 §3.2)', () => {
 });
 
 describe('the peel dial (spec 2026-10-04 §1)', () => {
-  it('defaults to 1.7 and keeps any saved value usable, within [1, 3]', () => {
-    expect(DEFAULT_BREAK_PARAMS.peel).toBe(1.7);
-    for (const [raw, want] of [[Number.NaN, 1.7], [0.5, 1], [9, 3], ['x' as unknown as number, 1.7], [2.2, 2.2]] as const) {
+  it('defaults to 1 (off: on the satellite reef a held section breaks small and fat on the flat) and keeps any saved value usable, within [1, 3]', () => {
+    expect(DEFAULT_BREAK_PARAMS.peel).toBe(1);
+    for (const [raw, want] of [[Number.NaN, 1], [0.5, 1], [9, 3], ['x' as unknown as number, 1], [2.2, 2.2]] as const) {
       const p = { ...DEFAULT_BREAK_PARAMS, peel: raw };
       normalizeBreakParams(p);
       expect(p.peel, String(raw)).toBe(want);
