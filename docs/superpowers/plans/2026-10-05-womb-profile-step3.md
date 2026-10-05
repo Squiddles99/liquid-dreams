@@ -98,7 +98,20 @@ His reference: a left-hand barrel from the beach (one crest line from the should
 - [x] The inside reef was a field of short ridges: the rays' amplitude, direction and depth cap (hmin, the shallowest depth so far, which dips in a streak behind every reef head) streak and kink there. The game's field is smoothed for drawing (ReefFieldRequest.smooth: smoothFieldAmplitude, σ 6 m; τ σ 4 m) with every breaking ratio unchanged.
 - [x] The game ran on the old reef, where the 6 ft set's barrel sections are 0–0.2 hollow (soft, open): it now starts on the reshaped reef (round 2), 0.77–1.00 hollow along the first section; the settings stamp (BREAKING_MODEL 8) resets a saved reef to it; the panel's reef face and outer slope ranges widened to it.
 - [ ] After the collapse the broken section is drawn as a clean swell line; it should be white water rolling in, lower, its front short and ahead of the crest line. A first try (the sheet settling into a bore on each point's own onset record) drew seams where the record jumps between neighbours: backed out. Needs its own design (smooth along the crest, as the ribbon's numbers are).
-- [ ] From the shoulder the curl looks twisted, and a crease showed near the shoulder end in one frame: to look at on the reshaped reef.
+- [x] After the collapse the broken section was drawn as a clean swell line. Now the sheet settles into the white water's bore behind the curl (wombSection.boreWeight: its height × BORE_SHARE 0.52 over the collapse, on the ribbon's clock), CPU and GPU, from the onset record's time smoothed along the crest (reefField.smoothOnsetTimes, σ 8 m) so it draws no seams.
+- [ ] From the shoulder the curl looks twisted, and a crease showed near the shoulder end in one frame: to look at on the new reef.
+
+### Found in Andrew's sixth look (2026-10-05): "the wave goes into a right angle"
+
+From the lineup a breaking section ran off from the peak square to the main swell line and broke into it. The reef's left edge (round 2, bearing 40°) ran along the swell's own travel (49°): the swell slid along it, bent round onto the shelf (the first-arrival solve turned it a right angle at the 25 m → 3.5 m face) and broke along the bend. Andrew drew the reef as it is (his overhead screenshot; Google Earth with measurements) and chose to move it in and to slow the curl.
+
+- [x] The reef is his satellite line (wombReef.SATELLITE_NORTH_LEDGE / SOUTH_LEDGE, in the game's frame, whose beach runs north–south): from the corner the left runs 24° for 70 m then bends to run along the beach; the south edge runs a little seaward of south. Deep water up to the face (offshoreBand from SHORE_X).
+- [x] Moved in: the take-off 100–110 m off the sand ("from all the imagery"): SHORE_X 190 → 94. The land follows the pinned waterline (landHeight), back to the real coast over 600–1000 m along it; the shore platform on the reef's stretch is 40 m (SHORE_REEF_AT_MAP_M), the shelf meeting it (SHELF_INNER_X); the beach moments, the pile spot, the rain's coastline and the land mesh's 2 m level moved with it; the front end's break map re-baked on the live reef. BREAKING_MODEL 9 resets a saved reef.
+- [x] One crest line: the game's swell bends as over 10 m at least (REFRACT_FLOOR_M), τ rounded over 12 m (TAU_SMOOTHING_M): the crest turns gently at the ledge.
+- [x] One curl: down the line past a held section the crest waits too (crestTrace.holdDownTheLine); a second breaking section stood 60–80 m down the line. The curl runs ~9–10 m/s on the 6 ft set (Andrew chose to slow it from the reef's ~15 m/s; the ride is shorter, about 8–10 s).
+- [x] Take-off: the swell reaches the south edge before the corner, so the left stands up first 40 m south of it: RIDE_START (4, 40). The ride test pops up once the face under the board is steep (as a surfer waits for it) and rides 9 s+.
+- [ ] Tests that pinned the old reef (its shelf now runs onto the beach) to re-measure on the new one: breakingField, reefCriteria, barrelSize, hollowFace, peakFace, reshapedReef (round 2), bathymetry, coastProfile, shoreReef, surfModel, foamStep, landHeight, skyline, sunlight, sprayEmitters and others (58 at this commit).
+- [ ] GPU self-test on Andrew's PC, including the new one for the game's sheet with the white water (breaker filter).
 
 ### 3e. Andrew's look (his PC)
 

@@ -8,7 +8,7 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '..
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from '../breaker/peakFace';
 import { offshoreSpeed } from '../breaker/overturn';
-import { type ReefField, sampleField } from '../breaker/reefField';
+import { REFRACT_FLOOR_M, type ReefField, sampleField } from '../breaker/reefField';
 import { BOMBIE_X, BOMBIE_Z, type BombieWaves, type Burst, burstAt, burstWidthM, burstsAt, setIndicesFrom, setWindow } from '../bombie/bombieModel';
 import { BombieMesh } from '../bombie/BombieMesh';
 import { surferFeetToHs } from '../conditions/units';
@@ -138,8 +138,9 @@ const browserStorage: SettingsStorage = {
   removeItem: (k) => window.localStorage.removeItem(k),
 };
 
-/** Where G puts you (first-ride spec): on the Womb's takeoff spot, just outside where the set waves stand up. */
-export const RIDE_START = { x: -10, z: 3 };
+/** Where G puts you (first-ride spec): on the Womb's takeoff spot, where the set waves stand up first. On Andrew's satellite
+ * reef (2026-10-05) that is 40 m south of the corner, just inside the south ledge: the swell reaches it before the corner. */
+export const RIDE_START = { x: 4, z: 40 };
 /** The height probe's slot under the board while riding (the stand's own slots are idle then). */
 const RIDE_PROBE = 1;
 /** Seconds of warning before the wave reaches the peak. */
@@ -1512,7 +1513,7 @@ export class App {
     const key = fieldKey(c, this.reefParams, this.breakParams.peel);
     if (!force && key === this.fieldKey) return;
     this.fieldKey = key;
-    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, smooth: true });
+    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
   }
 
   /** Reef sliders rebuild the bathymetry (~2M cells) once you stop dragging, then re-solve the field on it. */

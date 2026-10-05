@@ -1,4 +1,5 @@
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
+import { SHORE_X } from '../seabed/coastProfile';
 import type { Conditions } from '../conditions/types';
 import { WEATHER_PRESETS } from '../weather/weather';
 import type { CameraPose, Moment } from './momentLink';
@@ -123,9 +124,9 @@ export const REFERENCE_MOMENTS: ReferenceMoment[] = [
     conditions({}), { mode: 'free', position: [-25, 5, 45], yawDeg: 90, pitchDeg: -1 }, REF_BIGGEST.arrivalS + 12),
   // Walk mode takes its height from the ground (the y here is informational); before the land loads it is a free pose.
   ref('on-the-beach', '10:30 standing on the dry sand in front of the Womb, looking north along the beach: the rock clumps at the dune toe, the swash.',
-    conditions({ timeOfDay: 10.5 }), { mode: 'walk', position: [210, 4, -40], yawDeg: 0, pitchDeg: -4 }, 'view'),
+    conditions({ timeOfDay: 10.5 }), { mode: 'walk', position: [SHORE_X + 20, 4, -40], yawDeg: 0, pitchDeg: -4 }, 'view'),
   ref('up-the-dune', '08:45 standing at the toe, looking east up the first dune rise into the backlit heath: shrub clumps, glowing rims, the dune still shading the lower slope.',
-    conditions({ timeOfDay: 8.75 }), { mode: 'walk', position: [234, 4, -38], yawDeg: 90, pitchDeg: 8 }, 'view'),
+    conditions({ timeOfDay: 8.75 }), { mode: 'walk', position: [SHORE_X + 44, 4, -38], yawDeg: 90, pitchDeg: 8 }, 'view'),
   setMoment('bombie-from-the-lineup', "08:15, 8 ft, from the Womb's lineup facing south-west: a Bombie burst 450 m out, spray blowing back out to sea on the offshore.",
     conditions({ swell: { sizeFt: 8 } }), lineup(223, 1), BOMBIE_LINEUP_SIM_S),
   setMoment('bombie-close', '10 ft, from 30 m up and 120 m inshore of the Bombie: the burst over the reef, the white water rolling toward shore.',

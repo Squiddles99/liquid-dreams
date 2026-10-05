@@ -1,4 +1,6 @@
 import { smoothstep } from '../math/smoothstep';
+import { SHORE_X } from './coastProfile';
+import { SHORE_REEF_AT_MAP_M } from './shoreReef';
 
 export interface GridSpec {
   /** World x (m) of column 0's cell centre. */
@@ -50,6 +52,8 @@ export interface ReefParams {
   offshoreBand?: readonly [number, number];
   /** The left's seaward edge (the shelf follows it). Absent: NORTH_LEDGE. */
   northLedge?: readonly Pt[];
+  /** The right's seaward edge, from the tip (the shelf follows it). Absent: SOUTH_LEDGE. */
+  southLedge?: readonly Pt[];
 }
 
 export const DEFAULT_REEF_PARAMS: ReefParams = {
@@ -68,11 +72,16 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
 export const NORTH_LEDGE: readonly Pt[] = [[0, 0], [41.04, -112.76], [-19.8, -280], [-81.6, -450]];
 /** Short edge running south-east from the tip (the right closes out along it). */
 export const SOUTH_LEDGE: readonly Pt[] = [[0, 0], [25, 28], [60, 38], [110, 45]];
+/** The shelf's inshore edge (x): 10 m inside the shore's platform (shoreReef.SHORE_REEF_AT_MAP_M), so no sand strip shows
+ * between them. */
+export const SHELF_INNER_X = SHORE_X - SHORE_REEF_AT_MAP_M + 10;
 /** Shelf polygon (clockwise in plan view): tip → south ledge → inner-platform edge → north map edge → north ledge. */
 export const SHELF_POLYGON: readonly Pt[] = shelfPolygon(NORTH_LEDGE);
-/** The shelf polygon for a left's edge: tip → south ledge → inner-platform edge → north map edge → back down the left. */
-export function shelfPolygon(north: readonly Pt[]): Pt[] {
-  return [...SOUTH_LEDGE, [110, -450], ...[...north].reverse().slice(0, -1)];
+/** The shelf polygon for the ledges: tip → south ledge → across to the inner-platform edge (SHELF_INNER_X) → north map
+ * edge → back down the left. */
+export function shelfPolygon(north: readonly Pt[], south: readonly Pt[] = SOUTH_LEDGE): Pt[] {
+  const end = south[south.length - 1];
+  return [...south, ...(end[0] < SHELF_INNER_X ? [[SHELF_INNER_X, end[1]] as Pt] : []), [SHELF_INNER_X, -450], ...[...north].reverse().slice(0, -1)];
 }
 
 /**
@@ -85,6 +94,14 @@ export function shelfPolygon(north: readonly Pt[]): Pt[] {
  * live with the new wave shape (§7 step 3): the old breaking code's rules were tuned to DEFAULT_REEF_PARAMS.
  */
 export const RESHAPED_NORTH_LEDGE: readonly Pt[] = [[0, 0], [35.4, -42.1], [60, -58], [95, -75], [95, -100], [60, -115], [44, -118], [93, -152], [-19.8, -280], [-81.6, -450]];
+/**
+ * Andrew's satellite line (Google Earth, 2026-10-05: "the red line is the breaking reef of our left-handed ride"), turned
+ * into the game's frame, whose beach runs north–south (the real one runs 347°): from the take-off corner the left's edge
+ * runs 24° for 70 m, then bends to run along the beach 54 m off the waterline (his line closes on the beach there).
+ */
+export const SATELLITE_NORTH_LEDGE: readonly Pt[] = [[0, 0], [28, -64], [40, -110], [40, -450]];
+/** South of the corner his line runs a little seaward of due south. */
+export const SATELLITE_SOUTH_LEDGE: readonly Pt[] = [[0, 0], [-7, 50], [-20, 150], [-30, 242]];
 export const RESHAPED_REEF_PARAMS: ReefParams = {
   ledgeDepthM: 3.5,
   faceBaseDepthM: 25,
@@ -95,13 +112,14 @@ export const RESHAPED_REEF_PARAMS: ReefParams = {
   headReliefM: 2.5,
   minDepthM: 1.5,
   pocketDepthM: 5.5,
-  offshoreBand: [130, 40],
-  northLedge: RESHAPED_NORTH_LEDGE,
+  offshoreBand: [SHORE_X - 40, SHORE_X - 100],
+  northLedge: SATELLITE_NORTH_LEDGE,
+  southLedge: SATELLITE_SOUTH_LEDGE,
 };
 /** Sand pockets traced from Andrew's top-down satellite view (reference/place/womb-correct-topdown-peak-189m-offshore.webp:
  * 0.41 m/px, the peak at pixel (902, 572)): small scattered patches in the dark reef, [cx, cz, rx, rz] (spec 2026-10-02 §4). */
 export const SAND_POCKETS: readonly (readonly [number, number, number, number])[] = [
-  [40, -21, 8, 5], [71, 3, 7, 5], [-13, -42, 9, 6], [40, -111, 10, 6], [102, -79, 8, 6], [-50, -132, 10, 7], [-83, -173, 9, 6], [11, -177, 8, 6],
+  [40, -21, 8, 5], [45, 12, 7, 5], [-13, -42, 9, 6], [52, -130, 10, 6], [52, -80, 8, 6], [-50, -132, 10, 7], [-83, -173, 9, 6], [11, -177, 8, 6],
 ];
 
 /**

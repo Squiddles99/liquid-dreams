@@ -14,7 +14,7 @@ export interface MeshLevel {
 }
 
 export const MESH_LEVELS: MeshLevel[] = [
-  { cellM: 2, box: [128, -384, 384, 384] },
+  { cellM: 2, box: [32, -384, 288, 384] },
   { cellM: 4, box: [-128, -768, 768, 768] },
   { cellM: 8, box: [-512, -1792, 1792, 1792] },
   { cellM: 16, box: [-1024, -3584, 3584, 3584] },

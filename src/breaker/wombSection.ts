@@ -107,6 +107,21 @@ export function sectionPhase(s: SectionInput, p: SectionParams): number {
 /** When (s after onset) the section reaches the white-water wall, and hands back to the sheet. */
 export const sectionEnd = (H: number, periodS: number): number => flightTime(H) + tubeHold(H, periodS) + collapseSpan(H, periodS);
 
+/**
+ * Once its tube has caved in the sea settles into the white water's bore, its height × BORE_SHARE: the profile's white-water
+ * wall (phase 2, 0.47 A) against the swell the sheet stands (about 0.9 A). Behind the curl the broken wave had stood on as a
+ * clean swell line over the reef (Andrew, 2026-10-05: "waves going in everywhere").
+ */
+export const BORE_SHARE = 0.52;
+/** How far the sea has settled into the bore [0, 1], on the ribbon's clock: over the collapse, from the tube's end to the
+ * white-water wall (sectionEnd), so the sheet the ribbon hands back to is already the bore. */
+export function boreWeight(tb: number | null | undefined, H: number, periodS: number): number {
+  if (tb === null || tb === undefined || tb < 0) return 0;
+  if (!Number.isFinite(tb)) return 1;
+  const t0 = flightTime(H) + tubeHold(H, periodS);
+  return smoothstep(t0, t0 + collapseSpan(H, periodS), tb);
+}
+
 /** A section held for its turn: 0 more than STAND_LEAD_S before it, 1 at it; 1 for a section not held. */
 const standing = (s: SectionInput): number => (s.wait === undefined || s.wait === null ? 1 : 1 - smoothstep(0, STAND_LEAD_S, s.wait));
 

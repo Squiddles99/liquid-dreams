@@ -1,7 +1,9 @@
 import { smoothstep } from '../math/smoothstep';
 
-/** Beach waterline, metres east of the peak (Andrew measured 189–192 m). */
-export const SHORE_X = 190;
+/** Beach waterline, metres east of the peak: Andrew's satellite views put the take-off 100–110 m off the sand
+ * (2026-10-05; he first measured 189–192 m to the reef's outer corner), and the dry sand starts 12 m above the waterline
+ * (landHeight.DEFAULT_BEACH.wetWidthM). The land is placed to match (landData.LAND_SHIFT_X). */
+export const SHORE_X = 94;
 /** Depth where the map meets the open sea to the west, and everywhere further out. */
 export const FAR_DEPTH_M = 30;
 /** Landward of the waterline there is no land yet (Phase 4): a shallow flat stands in for it. */

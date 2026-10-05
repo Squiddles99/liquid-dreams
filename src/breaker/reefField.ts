@@ -19,6 +19,9 @@ export interface ReefFieldRequest {
   /** true: the sea's height, direction, depth cap and arrival time smoothed for drawing (smoothFieldAmplitude), as the game
    * draws it; the breaking ratios are unchanged. Absent: as solved. */
   smooth?: boolean;
+  /** The swell bends (the arrival time's slowness) as though the water were never shallower than this (m): REFRACT_FLOOR_M
+   * in the game. Absent: the depth itself. Its height, shoaling and breaking still read the real depth. */
+  refractFloorM?: number;
 }
 
 export interface ReefField {
@@ -249,7 +252,50 @@ export const FIELD_SMOOTHING_M = 6;
  * arrivals) has kinks, and each kink moved the crest ~2 m and stood a 0.3 m spike on the sheet, a comb of short ridges
  * 6–13 m apart inshore of the peak. Rounded over a few metres the crest passes them smoothly; the phase moves < 0.1 s.
  */
-export const TAU_SMOOTHING_M = 4;
+export const TAU_SMOOTHING_M = 12;
+/**
+ * The game's swell bends as though the reef were never shallower than this (m). Over the 3.5 m shelf the linear wave slows
+ * to 40% of its speed off the face, and the first-arrival solve turned the crest a right angle at the ledge: the breaking
+ * section ran off from the peak square to the main swell line (Andrew, 2026-10-05: "the wave goes into a right angle").
+ * A breaking wave and its bore run faster than the linear wave over shallow water (√(g(h + H))), and a real crest cannot
+ * hold a corner (diffraction); bent as over 10 m, with τ rounded over TAU_SMOOTHING_M, the crest turns gently instead.
+ */
+export const REFRACT_FLOOR_M = 10;
+/**
+ * The onset record's time since onset smoothed along the crest over this σ (m), for the game (smoothFieldAmplitude): it
+ * steps where neighbouring rays broke or were held seconds apart (3.4 s over 4 m of crest where the peel stretch's hold
+ * meets its cap, on Andrew's satellite reef), and the sea's white water, settling on that clock (wombSection.boreWeight),
+ * stood a crease along the swell's travel at every step. The ribbon already smooths its stations' numbers along the crest
+ * (crestTrace.SECTION_SMOOTHING_M).
+ */
+export const ONSET_SMOOTHING_M = 8;
+
+/** Each level's time since onset smoothed along the crest over sigmaM (as smoothAlongCrest), among the nodes where that
+ * level broke (the record's running maximum at least its q); a node keeps its own where it hasn't broken. */
+export function smoothOnsetTimes(field: ReefField, sigmaM = ONSET_SMOOTHING_M): void {
+  const { grid, onset, dirX, dirZ } = field;
+  const { nx, nz, cellM } = grid, n = nx * nz, R = ONSET_RECORD_LENGTH;
+  const sigma = sigmaM / cellM, step = Math.max(1, sigma / 3), J = Math.ceil((3 * sigma) / step);
+  const w = Array.from({ length: 2 * J + 1 }, (_, j) => Math.exp(-(((j - J) * step) ** 2) / (2 * sigma * sigma)));
+  const masked = new Float32Array(n), mask = new Float32Array(n), out = new Float32Array(n);
+  for (let k = 0; k < ONSET_LEVELS; k++) {
+    const q = ONSET_LEVEL_Q[k], slot = 1 + 2 * k;
+    for (let i = 0; i < n; i++) {
+      const t = onset[i * R + slot], m = onset[i * R] >= q && Number.isFinite(t) ? 1 : 0;
+      mask[i] = m; masked[i] = m * (m ? t : 0);
+    }
+    const atT = bilinearCells(masked, grid), atM = bilinearCells(mask, grid);
+    for (let row = 0; row < nz; row++) for (let col = 0; col < nx; col++) {
+      const i = row * nx + col;
+      if (!mask[i]) { out[i] = onset[i * R + slot]; continue; }
+      const tx = -dirZ[i], tz = dirX[i];
+      let sum = 0, ws = 0;
+      for (let j = -J; j <= J; j++) { const fx = col + j * step * tx, fz = row + j * step * tz; sum += w[j + J] * atT(fx, fz); ws += w[j + J] * atM(fx, fz); }
+      out[i] = ws > 1e-6 ? sum / ws : onset[i * R + slot];
+    }
+    for (let i = 0; i < n; i++) onset[i * R + slot] = out[i];
+  }
+}
 
 /**
  * Smooths `field`'s amplitude, direction and shallowest depth so far (hmin, the cap on a wave's height there:
@@ -301,6 +347,7 @@ export function smoothFieldAmplitude(field: ReefField, sigmaM = FIELD_SMOOTHING_
     const l = Math.hypot(dx[i], dz[i]);
     if (l > 1e-6) { field.dirX[i] = dx[i] / l; field.dirZ[i] = dz[i] / l; }
   }
+  smoothOnsetTimes(field);
 }
 
 export function computeReefField(req: ReefFieldRequest): ReefField {
@@ -312,7 +359,7 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   for (let i = 0; i < n; i++) {
     depth[i] = Math.max(req.tideM - req.bed.bed[i], MIN_DEPTH_M);
     k[i] = waveNumber(omega, depth[i]);
-    slow[i] = k[i] / omega;
+    slow[i] = (req.refractFloorM ? waveNumber(omega, Math.max(depth[i], req.refractFloorM)) : k[i]) / omega;
     cg[i] = groupSpeed(omega, k[i], depth[i]);
   }
   const far = computeFarField(req.periodS, req.fromDeg, req.tideM);

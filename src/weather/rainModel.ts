@@ -1,3 +1,4 @@
+import { SHORE_X } from '../seabed/coastProfile';
 import type { WeatherConditions } from './weather';
 
 /**
@@ -6,14 +7,14 @@ import type { WeatherConditions } from './weather';
  * rainRate on the GPU.
  */
 
-/** The beach runs north–south here (world x, m); the land lies to +x (east). */
-export const COAST_X_M = 200;
+/** The beach runs north–south here (world x, m): 10 m up the sand from the waterline; the land lies to +x (east). */
+export const COAST_X_M = SHORE_X + 10;
 /** Rain over the open sea, as a fraction of the rain the same cloud drops over the land. */
 export const SEA_RAIN = 0.3;
 /**
  * The coastal factor rises from SEA_RAIN to 1 over this span around the coast (m): it starts at the beach and builds
  * over the dunes and the ridge (the air lifting over the land). Andrew: the rain falls once the clouds have passed the
- * coastline, so the lineup, 225 m offshore, gets only the sea's rain.
+ * coastline, so the lineup, about 130 m offshore, gets only the sea's rain.
  */
 export const COAST_RISE_M: readonly [number, number] = [-200, 2000];
 

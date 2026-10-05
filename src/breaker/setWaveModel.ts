@@ -1,4 +1,4 @@
-import { STAND_LEAD_S } from './wombSection';
+import { BORE_SHARE, STAND_LEAD_S, boreWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -357,7 +357,9 @@ export function crestStage(x: number, z: number, t: number, f: FieldSample, w: A
 export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, crest: Crest | null, o?: BreakOptions): SetWaveResult {
   const xi = phaseXi(x, z, t, f, w, ctx);
   if (beyondEnvelope(xi, w)) return { ...ZERO };
-  const H = waveHeightAt(w, f, crest, xi);
+  // Under the ribbon (shape 'lean') the broken wave settles into the white water's bore behind the curl (wombSection.boreWeight).
+  const bore = o?.shape === 'lean' && crest ? boreWeight(crest.tb, localHeight(w, crest.f), (2 * Math.PI) / w.omega) : 0;
+  const H = waveHeightAt(w, f, crest, xi) * (1 - (1 - BORE_SHARE) * bore);
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;
   const { env, dEnv } = waveEnvelope(xi, w);

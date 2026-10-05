@@ -9,7 +9,8 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LE
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { STAND_LEAD_S } from './wombSection';
+import { BORE_SHARE, STAND_LEAD_S } from './wombSection';
+import { boreWeightNode } from './wombSectionNodes';
 import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
@@ -376,6 +377,8 @@ export class SetWaves {
           const lean = float(0.0).toVar();
           // setWaveModel.frontStanding: 0 off the record or not breaking there, rising over the last STAND_LEAD_S to 1 once broken.
           const standing = float(0.0).toVar();
+          // How far it has settled into the white water's bore (setWaveModel.waveAtCrest, wombSection.boreWeight): 'lean' only.
+          const bore = float(0.0).toVar();
           const lc = { steep: float(0.0).toVar(), stage: float(0.0).toVar(), drain: float(0.0).toVar(), collapse: float(0.0).toVar() };
           // The whitewater pile's curves and the lip's height (setWaveModel.Crest.lipH: 0 unbroken or off the record).
           const pc = { pile: float(0.0).toVar(), pileReach: float(0.0).toVar(), surge: float(1.0).toVar(), decay: float(1.0).toVar() };
@@ -419,7 +422,11 @@ export class SetWaves {
             const l = lifecycleNode(rC, rec.inside, onset.broken, onset.tb, onset.rMax, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), rSlurp, brk,
               { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi), thrown: smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi) }, onset.delay);
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
-            if (this.shape === 'lean') standing.assign(select(rec.inside.and(onset.broken), select(onset.tb.greaterThanEqual(0.0), float(1.0), float(1.0).sub(smoothstep(0.0, STAND_LEAD_S, onset.tb.negate()))), float(0.0)));
+            if (this.shape === 'lean') {
+              standing.assign(select(rec.inside.and(onset.broken), select(onset.tb.greaterThanEqual(0.0), float(1.0), float(1.0).sub(smoothstep(0.0, STAND_LEAD_S, onset.tb.negate()))), float(0.0)));
+              bore.assign(select(rec.inside.and(onset.broken).and(onset.tb.greaterThanEqual(0.0)),
+                boreWeightNode(onset.tb, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), float(2 * Math.PI).div(a.z)), float(0.0)));
+            }
             if (this.shape === 'full') lean.assign(lean.mul(float(1.0).sub(l.release)));
             else if (this.shape === 'none') lean.assign(0.0);
             if (withPile) {
@@ -431,7 +438,7 @@ export class SetWaves {
           // nearness to the crest in phase (CREST_HEIGHT_REACH periods, T = 2π/ω). mix(a, b, 0) is a exactly, so without
           // breaking this is the Phase 1 height.
           const near = float(1.0).sub(smoothstep(float(CREST_HEIGHT_REACH[0] * 2 * Math.PI).div(a.z), float(CREST_HEIGHT_REACH[1] * 2 * Math.PI).div(a.z), abs(xi)));
-          const H: N = mix(Hown, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), lc.steep.mul(confidence).mul(near)).toVar();
+          const H: N = mix(Hown, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), lc.steep.mul(confidence).mul(near)).mul(float(1.0).sub(bore.mul(1 - BORE_SHARE))).toVar();
           const A = H.mul(0.5);
           const B = min(float(STOKES_CAP), stokesPerA.mul(A));
           const aE = A.mul(env).mul(lateral);

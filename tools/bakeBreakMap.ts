@@ -10,7 +10,7 @@ const { module: reef } = await runnerImport<typeof import('../src/seabed/wombRee
 const { module: landHeight } = await runnerImport<typeof import('../src/land/landHeight')>('/src/land/landHeight.ts');
 
 const land = landData.decodeLandFile(new Uint8Array(readFileSync('public/terrain/womb-land.bin')));
-const bed = bathy.buildBathymetry(reef.DEFAULT_REEF_PARAMS);
+const bed = bathy.buildBathymetry(reef.RESHAPED_REEF_PARAMS);
 // The land as the game shapes it (the waterline pinned at the reef, the hand-made beach), not the raw file.
 const ground = new landHeight.LandHeight(land);
 const { MAP, worldToMap, mapCentre } = geom;
