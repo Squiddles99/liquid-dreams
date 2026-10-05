@@ -326,7 +326,8 @@ registerSelfTest({
     const points = [...peakRay(field), ...OFF_RAY, ...AROUND_PEAK];
     const { pass, outAttr } = computeAt(points, 1, (xz) => [vec4(sets.slopeNode(xz), 0.0, 0.0)]);
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    // Each component within 2e-3 absolute or 2% of the CPU's, whichever is looser: `excess` > 0 is a failure.
+    // Each component within 2e-3 absolute or 2% of the CPU's, whichever is looser, plus what the GPU's float32 clock can't
+    // resolve (below): `excess` > 0 is a failure.
     const excess = new Worst(true, -Infinity);
     let breakingPart = 0;
     const tables: string[] = [];
@@ -342,11 +343,18 @@ registerSelfTest({
         const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
         const waves = events.map(toActiveWave);
         const rows: string[] = [];
+        // The GPU's clock is a float32: near t it resolves time no finer than t·2⁻²³ (0.17 ms at 1467 s). Where a crest's top
+        // passes a point its slope swings ~40 per second (since the coast offshore is 20 m, (2, −14) at +0.3 s: −0.56 to 0
+        // in 15 ms), and that much time alone moves it past 2%: each component is also allowed what the CPU's slope changes
+        // over that much time either side.
+        const clock = t * 2 ** -23;
         points.forEach(([x, z], i) => {
           const f = sampleField(field, x, z);
           const c = sumWaves(x, z, t, f, waves, ctx, o), unbroken = sumWaves(x, z, t, f, waves, ctx);
+          const early = sumWaves(x, z, t - clock, f, waves, ctx, o), late = sumWaves(x, z, t + clock, f, waves, ctx, o);
+          const jitter = (k: 'slopeX' | 'slopeZ'): number => Math.max(Math.abs(early[k] - c[k]), Math.abs(late[k] - c[k]));
           const g = out.slice(i * 4, i * 4 + 2);
-          const e = Math.max(...[[g[0], c.slopeX], [g[1], c.slopeZ]].map(([gv, cv]) => Math.abs(gv - cv) - Math.max(2e-3, 0.02 * Math.abs(cv))));
+          const e = Math.max(...([[g[0], c.slopeX, jitter('slopeX')], [g[1], c.slopeZ, jitter('slopeZ')]] as const).map(([gv, cv, jv]) => Math.abs(gv - cv) - Math.max(2e-3, 0.02 * Math.abs(cv)) - jv));
           excess.see(e, dt, i, `${setName} `);
           breakingPart = Math.max(breakingPart, Math.abs(c.slopeX - unbroken.slopeX), Math.abs(c.slopeZ - unbroken.slopeZ));
           rows.push(`#${i} (${x.toFixed(1)},${z.toFixed(1)}) GPU/CPU slope ${f3(g[0])},${f3(g[1])}/${f3(c.slopeX)},${f3(c.slopeZ)} (Phase 1 ${f3(unbroken.slopeX)},${f3(unbroken.slopeZ)})`);
@@ -359,7 +367,7 @@ registerSelfTest({
     const ok = excess.value <= 0 && breakingPart > 0.05;
     return {
       pass: ok,
-      detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s × default and alt params; worst excess over max(2e-3, 2%) ${excess}; ` +
+      detail: `${points.length} points × dt ${BREAK_DTS.join('/')} s × default and alt params; worst excess over max(2e-3, 2%) + the float32 clock's ${excess}; ` +
         `largest breaking change to the CPU slope ${breakingPart.toFixed(3)}${ok ? '' : `. Per point: ${tables.join(' || ')}`}`,
     };
   },
