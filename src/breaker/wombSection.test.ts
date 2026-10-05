@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CURVE_SAMPLES, type P2, profileCurve } from './wombProfile';
 import {
-  type SectionInput, SECTION_HAND_BACK_S, STOOD_PHASE, collapseSpan, flightTime, interiorWeight, sectionEnd, sectionPhase, sectionScale, sectionWeight, tubeHold,
+  type SectionInput, SECTION_HAND_BACK_S, STAND_LEAD_S, STOOD_PHASE, collapseSpan, flightTime, interiorWeight, sectionEnd, sectionPhase, sectionScale, sectionWeight, tubeHold,
   wombSection,
 } from './wombSection';
 
@@ -23,6 +23,15 @@ describe('wombSection: a station as the Womb profile family', () => {
     expect(sectionPhase(at(4, flightTime(4) + 0.5 * tubeHold(4, 15)), P)).toBe(1);
     expect(last).toBe(2);
     expect(sectionPhase(at(4, Infinity), P)).toBe(2);
+  });
+
+  it('a section held for its turn keeps the swell\u2019s shape down the line and stands up only over its last STAND_LEAD_S (Andrew, 2026-10-05)', () => {
+    const held = (wait: number): number => sectionPhase({ ...at(4, null, 1.2), wait }, P);
+    expect(held(10)).toBe(0);
+    expect(held(STAND_LEAD_S)).toBe(0);
+    expect(held(0.5 * STAND_LEAD_S)).toBeCloseTo(0.5 * STOOD_PHASE, 12);
+    expect(held(0)).toBeCloseTo(STOOD_PHASE, 12);
+    for (let w = 0; w < STAND_LEAD_S; w += 0.1) expect(held(w)).toBeGreaterThanOrEqual(held(w + 0.1));
   });
 
   it('holds the tube longer and collapses slower for a bigger, longer-period wave (Andrew, 2026-10-05)', () => {

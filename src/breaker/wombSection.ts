@@ -1,6 +1,6 @@
 import { smoothstep } from '../math/smoothstep';
 import { hollowFromPsi } from './reefReport';
-import { CREST_KNOT, CURVE_SAMPLES, type P2, STAGES, TIP_KNOT, profileCurve, profileKnots } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, STAGES, TIP_KNOT, profileCurve, profileKnots } from './wombProfile';
 
 /**
  * A crest station's cross-section as the Womb's profile family (spec 2026-10-05-womb-profile-design §2, §4; plan
@@ -28,6 +28,13 @@ export const COLLAPSE_PER_M = 0.25;
  * wall … until its turn"), then throws.
  */
 export const STOOD_PHASE = 0.45;
+/**
+ * A section held for its turn stands up over this long before it (s): well down the line it keeps the swell's gentle
+ * shape, and only the last stretch before the curl reaches it stands vertical (Andrew, 2026-10-05, in the game: "it should
+ * be vertical closest to where the lip is throwing … further down the line … a less vertical gradient, similar to how the
+ * swell approaches before it breaks").
+ */
+export const STAND_LEAD_S = 2;
 /** The lip's flight (onset to the round barrel) is the free fall from this many A, the crest to the landing below sea level. */
 export const FLIGHT_DROP_A = 1.3;
 /** After the white-water wall the section hands back to the sheet over this long (s); the foam carries on over it. */
@@ -45,6 +52,8 @@ export interface SectionInput {
   r: number;
   /** Time since onset (s): null before breaking (or while the section waits its turn), Infinity long after. */
   tb: number | null;
+  /** While the peel stretch holds the section: how long until its turn (s) (Station.wait); absent or null otherwise. */
+  wait?: number | null;
   /** The reef's ψ₀ where it broke (Station.psi). */
   psi: number;
   /** The swell's period (s). */
@@ -68,11 +77,15 @@ export const collapseSpan = (H: number, periodS: number): number => COLLAPSE_BAS
 
 /**
  * The phase through the break (wombProfile: 0 swell … 0.5 the lip pitching … 1 the round barrel … 2 the white-water wall).
- * Before onset it rises with the onset ratio to STOOD_PHASE; after, it runs on in time: the lip's flight to the
+ * Before onset it rises with the onset ratio to STOOD_PHASE, and a section held for its turn only over the last
+ * STAND_LEAD_S before it; after, it runs on in time: the lip's flight to the
  * barrel, the tube's hold, the collapse.
  */
 export function sectionPhase(s: SectionInput, p: SectionParams): number {
-  if (s.tb === null) return STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r);
+  if (s.tb === null) {
+    const turn = s.wait === undefined || s.wait === null ? 1 : 1 - smoothstep(0, STAND_LEAD_S, s.wait);
+    return STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r) * turn;
+  }
   if (!Number.isFinite(s.tb)) return 2;
   const t = Math.max(0, s.tb), fly = flightTime(s.H), hold = tubeHold(s.H, s.periodS);
   if (t < fly) return STOOD_PHASE + (STAGES.barrel - STOOD_PHASE) * (t / fly);
@@ -129,4 +142,46 @@ export function sectionOf(numbers: SectionNumbers, sheet: SheetAlong): Section {
   for (let j = curve.length - 1; j >= 0; j--) points.push(place(curve[j]));
   const k = profileKnots(phase, hollow);
   return { numbers, points, crest: place(k[CREST_KNOT]), tip: place(k[TIP_KNOT]) };
+}
+
+/** What the spray, the impact, the spit and the tube camera read of a station's section (in place of lipProfile's frame):
+ * points on the station's (u, y) plane (m, y from still water), drawn as the ribbon draws them. */
+export interface SectionFrame {
+  /** How far the lip is through its throw [0, 1]: 0 as it pitches (STOOD_PHASE), 1 at the round barrel. */
+  prog: number;
+  /** How much lip there is [0, 1]: in as it pitches, out as the tube caves in. */
+  weight: number;
+  rho: number;
+  /** The lip's tip, the crest's top, the tube's floor (the face's foot), drawn. */
+  tip: P2;
+  crest: P2;
+  floor: P2;
+  /** The tip's speed along the wave's travel (m/s, world: the crest's speed c plus its throw). */
+  vj: number;
+  /** When the lip lands (s after onset): its flight. */
+  tauLand: number;
+  /** How far ahead of the crest the tip is (m). */
+  reach: number;
+}
+
+/** The lip is present over these phases: in as it pitches, out as the tube caves in. */
+export const LIP_PHASES: readonly [number, number, number, number] = [0.4, 0.55, 1.2, 1.45];
+export const lipWeight = (phase: number): number => smoothstep(LIP_PHASES[0], LIP_PHASES[1], phase) * (1 - smoothstep(LIP_PHASES[2], LIP_PHASES[3], phase));
+
+/** The station's section frame: its numbers (smoothed, Station.section), its height H, crest speed c and the sheet. */
+export function sectionFrame(numbers: SectionNumbers, H: number, c: number, sheet: SheetAlong): SectionFrame {
+  const { A, phase, hollow, rho } = numbers;
+  const place = (q: P2): P2 => {
+    const S = sheet(A * q[0]), w = rho * interiorWeight(q[0]);
+    return [S[0] + (A * q[0] - S[0]) * w, S[1] + (A * q[1] - S[1]) * w];
+  };
+  const k = profileKnots(phase, hollow), tip = place(k[TIP_KNOT]), crest = place(k[CREST_KNOT]), floor = place(k[FLOOR_KNOT]);
+  // The tip's throw: its u's rate in phase, times the phase's rate in time over the lip's flight.
+  const fly = flightTime(H), dPhase = 0.01, ahead = profileKnots(Math.min(2, phase + dPhase), hollow)[TIP_KNOT][0];
+  const flying = phase > STOOD_PHASE && phase < STAGES.barrel ? (STAGES.barrel - STOOD_PHASE) / Math.max(fly, 1e-6) : 0;
+  const vj = c + (A * (ahead - k[TIP_KNOT][0]) / dPhase) * flying;
+  return {
+    prog: Math.min(1, Math.max(0, (phase - STOOD_PHASE) / (STAGES.barrel - STOOD_PHASE))), weight: lipWeight(phase), rho,
+    tip, crest, floor, vj, tauLand: fly, reach: tip[0] - crest[0],
+  };
 }

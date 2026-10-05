@@ -311,9 +311,10 @@ registerSelfTest({
 /**
  * The normal pass on the CPU (BreakingRibbon.buildNormalPass): cross(∂P/∂station, ∂P/∂j) from central differences of
  * the rows' positions (one-sided next to a gap or the ends; t̂ for a lone station), the nearest live profile difference
- * (MIN_PROFILE_STEP_M across the crest) within ±NORMAL_SEARCH (else up), oriented so the station's back-edge normal points up.
+ * (MIN_PROFILE_STEP_M across the crest) within ±NORMAL_SEARCH (else up), oriented so the station's crest normal (sample
+ * crestJ) points up.
  */
-function cpuNormal(rows: readonly (readonly (readonly number[])[] | null)[], entries: readonly StationEntry[], i: number, j: number): number[] {
+function cpuNormal(rows: readonly (readonly (readonly number[])[] | null)[], entries: readonly StationEntry[], i: number, j: number, crestJ: number): number[] {
   const r = rows[i] as (readonly number[])[], e = entries[i] as Station;
   const sub = (a: readonly number[], b: readonly number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
   const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -335,7 +336,8 @@ function cpuNormal(rows: readonly (readonly (readonly number[])[] | null)[], ent
     if (!live(jn)) return [0, 1, 0];
   }
   let n = cross(dS(jn), dJ(jn));
-  if (cross(dS(LAST), dJ(LAST))[1] < 0) n = n.map((c) => -c);
+  const cj = Math.min(LAST - 1, Math.max(1, crestJ));
+  if (cross(dS(cj), dJ(cj))[1] < 0) n = n.map((c) => -c);
   const l = Math.hypot(...n);
   return l > 1e-12 ? n.map((c) => c / l) : [0, 1, 0];
 }
@@ -375,7 +377,7 @@ registerSelfTest({
       const tipJ = f[4], floorJ = f[6], underFrom = tipJ - 0.25 * (tipJ - floorJ);
       for (let j = 0; j < PROFILE_SAMPLES; j++) {
         const k = (i * V + j + 1) * 4;
-        const cn = cpuNormal(rows, entries, i, j), err = dist3(gn, k, cn);
+        const cn = cpuNormal(rows, entries, i, j, f[5]), err = dist3(gn, k, cn);
         if (!(err <= mirror.value)) {
           const r = rows[i] as number[][], f3 = (v: readonly number[]) => `(${v.map((c) => c.toFixed(5)).join(', ')})`;
           const near = [j - 1, j, j + 1].filter((q) => q >= 0 && q <= LAST);

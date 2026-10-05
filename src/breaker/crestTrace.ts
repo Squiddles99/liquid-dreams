@@ -49,6 +49,8 @@ export interface Station {
   r: number;
   /** Time since onset (s): null before breaking, Infinity once past the hand-back. */
   tb: number | null;
+  /** While the peel stretch holds the section for its turn: how long until its turn (s); null otherwise. */
+  wait: number | null;
   /** The crest's ψ, as the sheet's crest there (setWaveModel.crestAt): the lip's shape. */
   psi: number;
   /** The height (m) the section stood at as it threw its lip, as the sheet's crest there (setWaveModel.Crest.lipH): the
@@ -121,11 +123,12 @@ export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: nu
  * with its ratio as the sheet stands it (breaking.peelRatio: held at 1, fading in after its turn), so the ribbon's lip
  * stands as the water under it does (spec 2026-10-04 §3-4).
  */
-export function stationOnset(field: ReefField, w: ActiveWave, s: Pick<Station, 'x' | 'z' | 'H' | 'r' | 'tb'>, p: BreakParams): void {
+export function stationOnset(field: ReefField, w: ActiveWave, s: Pick<Station, 'x' | 'z' | 'H' | 'r' | 'tb' | 'wait'>, p: BreakParams): void {
   const rec = sampleOnset(field, s.x, s.z, onsetScratch);
   const tb = rec ? onsetTime(rec, 0, w.heightM, p) : null;
   if (tb !== null) s.r = peelRatio(s.r, tb, onsetDelay(rec!, 0, w.heightM, p), landingEstimate(s.H, p));
   s.tb = tb !== null && tb < 0 ? null : tb;
+  s.wait = tb !== null && tb < 0 ? -tb : null;
 }
 
 /** The station's ψ: the onset record's ψ₀ there with the game rules, as setWaveModel.crestAt reads it; PSI_NORMAL off the record. */
@@ -162,7 +165,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
     for (let n = 0; n < 20000; n++) {
       const nrm = crestNormal(w, f, ctx);
       if (sign > 0 || n > 0) {
-        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, psi: PSI_NORMAL, lipH: null, section: { A: 0, phase: 0, hollow: 0, rho: 0 } });
+        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, wait: null, psi: PSI_NORMAL, lipH: null, section: { A: 0, phase: 0, hollow: 0, rho: 0 } });
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS);
@@ -198,7 +201,7 @@ export const SECTION_SMOOTHING_M = 4;
 
 /** Each station's section numbers (wombSection.sectionNumbers), then smoothed along the line by arc (SECTION_SMOOTHING_M). */
 export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'>): void {
-  const raw = line.map((s) => sectionNumbers({ H: s.H, r: s.r, tb: s.tb, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
+  const raw = line.map((s) => sectionNumbers({ H: s.H, r: s.r, tb: s.tb, wait: s.wait, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
   const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
   let lo = 0;
   line.forEach((s, i) => {

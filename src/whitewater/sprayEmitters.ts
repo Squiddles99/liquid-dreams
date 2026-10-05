@@ -2,7 +2,9 @@ import type { BreakParams } from '../breaker/breaking';
 import { offshoreSpeed } from '../breaker/overturn';
 import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
 import { type Station, type StationEntry, traceStations } from '../breaker/crestTrace';
-import { GRAVITY_MS2, type ProfileFrame, type Vec2, profileFrame } from '../breaker/lipProfile';
+import { GRAVITY_MS2 } from '../breaker/lipProfile';
+import { type SectionFrame, sectionFrame } from '../breaker/wombSection';
+import type { P2 as Vec2 } from '../breaker/wombProfile';
 import { type ReefField, sampleField } from '../breaker/reefField';
 import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { smoothstep } from '../math/smoothstep';
@@ -230,7 +232,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
   const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M, offshoreMs });
   // The lip is thrown from the wave as it stood: the frame reads the sheet without the whitewater pile (as the ribbon's).
   const opts: BreakOptions = { ...breakOptions(field, params, offshoreMs), pile: false };
-  const frames: (ProfileFrame | null)[] = stations.map(() => null);
+  const frames: (SectionFrame | null)[] = stations.map(() => null);
   for (const [si, s] of stations.entries()) {
     if (s.gap || s.tb === null || !Number.isFinite(s.tb)) continue;
     const wind = wantSpray ? offshoreFactor(i.wind, s.nx, s.nz) : 0;
@@ -243,11 +245,12 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       const r = sumWaves(x, z, i.t, sampleField(field, x, z), own, ctx, opts);
       return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
     };
-    const f = profileFrame(base, { H: s.H, c: s.c, r: s.r, tb: s.tb, psi: s.psi, offshoreMs, lipH: s.lipH }, params);
+    // The section as the ribbon draws it (wombSection: the station's smoothed numbers).
+    const f = sectionFrame(s.section, s.H, s.c, base);
     if (wantImpact) frames[si] = f;
     const waveId = i.events[s.wave].id, arc = Math.round(s.arc / SPRAY_SPACING_M);
     if (wind > 0 && f.prog > 0 && f.prog < 1 && f.weight * f.rho > MIN_EMIT_WEIGHT) {
-      // The lip's tip now (lipProfile.profileFrame: on the tube's upper side).
+      // The lip's tip now.
       const u = f.tip[0], y = f.tip[1];
       spray.push({
         x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz,
@@ -255,9 +258,8 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       });
     }
     if (wantImpact && f.tauLand <= s.tb && s.tb < f.tauLand + IMPACT_WINDOW_S && f.rho > MIN_EMIT_WEIGHT) {
-      // Where the lip lands: its tip at τ_land (the landing criterion defines τ_land by the tip reaching the water).
-      // Where the lip lands.
-      const u = f.P[0], y = f.P[1];
+      // Where the lip lands: its tip as it reaches the water (the round barrel, τ_land after onset).
+      const u = f.tip[0], y = f.tip[1];
       impact.push({
         x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz, H: s.H,
         strength: Math.min(1, s.H / 2) * f.rho * impactAmount, lip: Math.min(1, f.rho), waveId, arc,
@@ -269,7 +271,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
 }
 
 /** The stations' spit (SpitEmitter), from their frames (null: no frame), into `out`. */
-function spitEmitters(stations: readonly StationEntry[], frames: readonly (ProfileFrame | null)[], i: EmitterInput, amount: number, out: SpitEmitter[]): void {
+function spitEmitters(stations: readonly StationEntry[], frames: readonly (SectionFrame | null)[], i: EmitterInput, amount: number, out: SpitEmitter[]): void {
   // The station k steps from j along its run (same wave, no gap between), or -1.
   const at = (j: number): Station | null => {
     const e = j >= 0 && j < stations.length ? stations[j] : null;
@@ -301,9 +303,9 @@ function spitEmitters(stations: readonly StationEntry[], frames: readonly (Profi
     const b = at(from) as Station;
     const ddx = s.x - b.x, ddz = s.z - b.z, dl = Math.hypot(ddx, ddz);
     if (!(dl > 1e-6)) continue;
-    // The tube's middle: under the lip, between the face's foot and the crest.
-    const tubeH = Math.max(f.K[1] - f.F[1], 0.1);
-    const u = f.K[0] + 0.4 * f.reach, y = f.F[1] + 0.45 * tubeH;
+    // The tube's middle: under the lip, between the tube's floor and the crest.
+    const tubeH = Math.max(f.crest[1] - f.floor[1], 0.1);
+    const u = f.crest[0] + 0.4 * f.reach, y = f.floor[1] + 0.45 * tubeH;
     out.push({
       x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, dx: ddx / dl, dz: ddz / dl,
       speed: Math.min(SPIT_MAX_SPEED_MS, SPIT_SPEED * Math.sqrt(GRAVITY_MS2 * s.H)), nx: s.nx, nz: s.nz, radius: 0.3 * tubeH,
