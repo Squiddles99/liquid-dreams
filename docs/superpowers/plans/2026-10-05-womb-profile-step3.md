@@ -82,6 +82,13 @@
 - [x] Down the line a held section was drawn at full weight in the unbroken key, whose crest (0.55 A) stands a metre under the shoaled swell: ρ now comes in over the same last STAND_LEAD_S as the phase.
 - [x] The over-shoulder camera and the lens water never came on: the tube cover required a hollow section (the take-off's are middling on the present reef) and a window of phases. It now reads the drawn section: water over her head with room to stand under it.
 
+### Found in Andrew's fourth look (2026-10-05): "an absolute disaster"
+
+- [x] A ridge in front of the wave and a long band down the line (his screenshot), and his GPU self-test 6/7 ("GPU section matches wombSection", 1.56 m near the front end). The frame pass wrote the sheet's end levels into the frame's third vec4, which the tip and crest knots (two vec2) already filled: TSL dropped them (its console: "Length of parameters exceeds maximum length of function 'vec4()'"), and the vertex pass lifted each end by the crest knot's coordinates (up to ~1 m), a slab with a cliff where each end met the sheet. BreakingRibbon.limits.test now fails on any TSL complaint while building the passes.
+- [x] The lift itself was the wrong idea: the profile's gentle back stands well under the shoaled swell's (0.2 A against 0.6 A four units behind the crest), so lifting its ends to the swell left a flat dip 3–6 A behind the crest and a rise at the join (measured 0.2 m; Andrew's red line). Now the back is the swell's own from just behind the crest (BACK_BLEND_UNITS, 0.25–1.5 A behind the crest knot) and the front the swell's past the trough (FRONT_BLEND_UNITS, 2.3–4 A): no lift, no end levels.
+- [x] A traced line can stop where its wave is still drawn breaking (a run started at ρ 1 on the 6 ft set): its cut cross-section stood as a wall. ρ fades over each line's last LINE_END_FADE_M (6 m).
+- [x] Process: a CPU render of what the GPU draws (the sheet without the pile, the ribbon from sectionOf as the vertex pass places it, the footprint) from the reference moments' cameras, in the session scratchpad; it reproduced the slab from the bug and shows it gone. (Headless Chromium's SwiftShader WebGPU loses its device within minutes here, so the GPU self-tests stay on Andrew's PC.)
+
 ### 3e. Andrew's look (his PC)
 
 - [ ] Captures of the left at 6, 8 and 10 ft, mid tide, from the lineup and the ride camera. His sign-off before step 4 removes the old code.

@@ -1,5 +1,6 @@
 import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetDelay, onsetTime, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
+import { smoothstep } from '../math/smoothstep';
 import { type SectionNumbers, sectionNumbers } from './wombSection';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
@@ -198,6 +199,12 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveC
  * self-test's sliced back edges, 2026-10-05).
  */
 export const SECTION_SMOOTHING_M = 4;
+/**
+ * Over this much crest (m of arc) at each end of a traced line the section's weight ρ fades to 0: the trace can stop where
+ * the wave is still drawn breaking (its crest lookup lost, the grid's edge), and a ribbon ending there at full weight stood
+ * its cut cross-section as a wall beside the sheet. Faded, it ends on the sheet.
+ */
+export const LINE_END_FADE_M = 6;
 
 /**
  * Each station's section numbers (wombSection.sectionNumbers), then smoothed along the line by arc (SECTION_SMOOTHING_M);
@@ -217,7 +224,8 @@ export function fillSections(line: Station[], periodS: number, p: Pick<BreakPara
       w += g; A += g * raw[k].A; phase += g * raw[k].phase; hollow += g * raw[k].hollow; rho += g * raw[k].rho;
       nx += g * normals[k][0]; nz += g * normals[k][1];
     }
-    s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: rho / w };
+    const end = Math.min(s.arc - line[0].arc, line[line.length - 1].arc - s.arc);
+    s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: (rho / w) * smoothstep(0, LINE_END_FADE_M, end) };
     const l = Math.hypot(nx, nz);
     if (l > 1e-9) { s.nx = nx / l; s.nz = nz / l; }
   });

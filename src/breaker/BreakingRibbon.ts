@@ -20,7 +20,7 @@ import { TUBE_TIP_CLEAR_M } from './lipProfile';
 import { encodeTb, tubeLightAtNode } from './lipProfileNodes';
 import { CURVE_SAMPLES } from './wombProfile';
 import { EDGE_OUTER_UNITS } from './wombSection';
-import { WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, endLiftNode, interiorWeightNode, wombFrameNode } from './wombSectionNodes';
+import { WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, interiorWeightNode, wombFrameNode } from './wombSectionNodes';
 
 type N = any;
 
@@ -656,9 +656,8 @@ export class BreakingRibbon {
     return storage(this.stationsAttr, 'vec4', MAX_STATIONS * STATION_VEC4S).toReadOnly();
   }
 
-  /** Per station: its numbers and its profile samples (wombSectionNodes.wombFrameNode), and the sheet's levels at the
-   * profile's two ends (wombSection.sheetEnds: the vertex pass lifts the profile to them, and blends each sample into the
-   * sheet). */
+  /** Per station: its numbers and its profile samples (wombSectionNodes.wombFrameNode); no sheet here (the vertex pass
+   * blends each sample into it). */
   private buildFramePass(): THREE.ComputeNode {
     const stations = this.stationsNode();
     const keys = storage(this.keys, 'vec4', this.keys.count).toReadOnly();
@@ -674,11 +673,7 @@ export class BreakingRibbon {
         (j: N, v: N) => { sections.element(i.mul(PROFILE_SAMPLES).add(j)).assign(v); });
       frames.element(i.mul(WOMB_FRAME_VEC4S)).assign(vec4(f.A, f.phase, f.hollow, f.rho));
       frames.element(i.mul(WOMB_FRAME_VEC4S).add(1)).assign(vec4(f.tip, f.crest, f.floor, f.life));
-      const a = stations.element(i.mul(STATION_VEC4S)).toVar();
-      const smooth = this.surfaceFn(this.surface.smooth, 'ribbonSmooth');
-      const end = f.A.mul(EDGE_OUTER_UNITS);
-      const front = vec3(smooth(a.xy.add(a.zw.mul(end)))).y, back = vec3(smooth(a.xy.sub(a.zw.mul(end)))).y;
-      frames.element(i.mul(WOMB_FRAME_VEC4S).add(2)).assign(vec4(f.tipKnot, f.crestKnot, front, back));
+      frames.element(i.mul(WOMB_FRAME_VEC4S).add(2)).assign(vec4(f.tipKnot, f.crestKnot));
     })().compute(MAX_STATIONS) as THREE.ComputeNode;
   }
 
@@ -705,7 +700,8 @@ export class BreakingRibbon {
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const gap = stations.element(i.mul(STATION_VEC4S).add(2)).x.toVar();
       const f0: N = frames.element(i.mul(WOMB_FRAME_VEC4S)).toVar(), f1: N = frames.element(i.mul(WOMB_FRAME_VEC4S).add(1)).toVar();
-      const f2: N = frames.element(i.mul(WOMB_FRAME_VEC4S).add(2)).toVar();
+      // The frame's third vec4: the tip knot (xy) and the crest knot (zw), in units of A.
+      const crestU: N = frames.element(i.mul(WOMB_FRAME_VEC4S).add(2)).z.toVar();
       const A: N = f0.x, phase: N = f0.y, rho: N = f0.w, tip: N = f1.x, crest: N = f1.y;
       const S = a.xy, n = a.zw;
       const tHat = vec2(n.y.negate(), n.x).toVar();
@@ -715,10 +711,8 @@ export class BreakingRibbon {
       const smooth = this.surfaceFn(this.surface.smooth, 'ribbonSmooth');
       const d = vec3(smooth(xzHome)).toVar();
       const base = vec2(home.add(dot(d.xz, n)), d.y).toVar();
-      const w = rho.mul(interiorWeightNode(q.x)).toVar();
-      // Lifted to the sheet's level at its end on this side (wombSection.endLift).
-      const lift = endLiftNode(q.x).mul(select(q.x.lessThan(0.0), f2.w, f2.z));
-      const pos = mix(base, vec2(q.x.mul(A), q.y.mul(A).add(lift)), w).toVar();
+      const w = rho.mul(interiorWeightNode(q.x, crestU)).toVar();
+      const pos = mix(base, q.mul(A), w).toVar();
       // The profile's u along n; the lateral displacement at home carried unchanged along t̂.
       const xz = S.add(n.mul(pos.x)).add(tHat.mul(dot(d.xz, tHat)));
       const skirt = select(local.equal(int(0)).or(local.equal(int(V - 1))), float(SKIRT_DEPTH_M), float(0.0));
