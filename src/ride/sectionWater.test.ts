@@ -44,3 +44,16 @@ describe('sectionWater: the ride stands on the drawn sections', () => {
     expect(water(0, 0).y).toBeCloseTo(0.5 * full(0, 0).y, 6);
   });
 });
+
+describe('sectionWater and the ride', () => {
+  it('never reads steeper than the ride wipes out at, on the steepest wall the family draws', async () => {
+    const { WIPEOUT_SLOPE } = await import('./ridePhysics');
+    for (const phase of [0.45, 0.6, 0.8, 1, 1.3]) {
+      const water = withSections(flatWater(0), crest({ A: 3, phase, hollow: 1, rho: 1 }), 0);
+      for (let u = -8; u <= 8; u += 0.05) {
+        const w = water(u, 0);
+        expect(Math.hypot(w.slopeX, w.slopeZ), `phase ${phase} u ${u.toFixed(2)}`).toBeLessThan(WIPEOUT_SLOPE);
+      }
+    }
+  });
+});
