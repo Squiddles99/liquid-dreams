@@ -3,6 +3,7 @@ import type { GangStaging } from '../frontend/staging';
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
 import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
+import { withSections } from '../ride/sectionWater';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from '../breaker/peakFace';
@@ -1539,11 +1540,14 @@ export class App {
     const waves = wavesNear(t, this.conditions, this.sets).map(toActiveWave);
     const o = this.breakParams.enabled ? breakOptions(field, this.breakParams, this.offshoreMs) : undefined;
     // The land and the rocks under the board (null while the land loads): the board runs aground on them.
-    return (x, z) => {
+    const sheet: WaterFn = (x, z) => {
       const w = waterAt(x, z, tide, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
       const bed = this.groundAt(x, z);
       return bed === null ? w : { ...w, bedY: bed };
     };
+    // Where the breaking ribbon draws, the board stands on its sections (the wave that is drawn), from this frame's
+    // stations (traced at the clock's time).
+    return t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide) : sheet;
   }
 
   /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */
@@ -1973,7 +1977,7 @@ export class App {
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
       else if (event) this.perf.flash(rideMessage(event));
       const rb = this.ride.body;
-      this.rideCover = rb ? tubeCover(this.ribbonStations, rb.water.lx ?? rb.x, rb.water.lz ?? rb.z, this.breakParams) : 0;
+      this.rideCover = rb ? tubeCover(this.ribbonStations, rb.water.lx ?? rb.x, rb.water.lz ?? rb.z) : 0;
       const pose = this.ride.cameraPose(realDt, water, mouse, this.rideCover);
       if (pose) this.rig.setPose(pose);
     } else {

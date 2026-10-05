@@ -61,10 +61,18 @@
 
 ### 3d. Gameplay (cloud)
 
-- [ ] Ride water: where a station's ribbon draws (ρ > 0), `water(x, z)` is the section's height and slope there (nearest stations, interpolated along the crest); elsewhere the sheet.
-- [ ] Spray, impact, spit and sound read `wombSection`'s points in place of `profileFrame`'s.
-- [ ] The tube cover reads the section's phase and hollowness in place of tb and ψ.
+- [x] Ride water: where a station's ribbon draws (ρ > 0), `water(x, z)` is the section's height and slope there (nearest stations, interpolated along the crest); elsewhere the sheet.
+- [x] Spray, impact, spit and sound read `wombSection`'s points in place of `profileFrame`'s.
+- [x] The tube cover reads the section's phase and hollowness in place of tb and ψ.
 - [ ] Switch the default reef to the reshaped one; the dev panel's reef ranges widened to it.
+
+### Found in Andrew's first look (2026-10-05)
+
+- [x] The stations' numbers jumped between neighbours over reef heads: smoothed along the crest (crestTrace.fillSections, σ 4 m).
+- [x] A held wall stood at the pitching stage all along the line ("an unrealistic lip across the entire length of the wall",
+  "vertical the whole way"): a held section stands up only over its last STAND_LEAD_S (2 s) before its turn.
+- [x] Neighbouring back edges cross behind a tightly curving crest and turned stations inside out: oriented by the crest.
+- [x] The surfer sank: the ride stands on the sections (ride/sectionWater).
 
 ### 3e. Andrew's look (his PC)
 

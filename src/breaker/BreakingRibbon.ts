@@ -863,13 +863,16 @@ export class BreakingRibbon {
   /**
    * Each vertex's normal: cross(∂P/∂station, ∂P/∂j) from central differences (one-sided at the profile's ends, and
    * along the stations next to a gap or the end of the rows; a station alone in its run uses its tangent t̂), flipped
-   * for the whole station if it points down at the back edge (the water is below and behind). A vertex whose profile
+   * for the whole station if it points down at the crest (the top of the wave: the water is below). Not the back edge:
+   * 7 A behind a tightly curving crest, neighbouring stations' back edges cross, and their difference turned whole
+   * stations inside out (Andrew's GPU run, 2026-10-05). A vertex whose profile
    * difference is dead (MIN_PROFILE_STEP_M across the crest) takes the normal of the nearest live sample anywhere along
    * the profile (NORMAL_SEARCH), so it is oriented as the surface around it (up only where the whole station has no
    * area). Skirts take their edge vertex's normal.
    */
   private buildNormalPass(): THREE.ComputeNode {
     const stations = this.stationsNode();
+    const frames = storage(this.frames, 'vec4', MAX_STATIONS * WOMB_FRAME_VEC4S).toReadOnly();
     const positions = storage(this.positions, 'vec4', MAX_STATIONS * V).toReadOnly();
     const normals = storage(this.normals, 'vec4', MAX_STATIONS * V);
     return Fn(() => {
@@ -912,9 +915,10 @@ export class BreakingRibbon {
         });
       });
       const nrm = cross(dStation(jn), dProfile(jn)).toVar();
-      // The station's orientation, from its back edge: that normal must point up.
-      const back = cross(dStation(int(LAST)), dProfile(int(LAST)));
-      const oriented = select(back.y.lessThan(0.0), nrm.negate(), nrm);
+      // The station's orientation, from its crest: that normal must point up.
+      const crestJ = (int(frames.element(i.mul(WOMB_FRAME_VEC4S).add(1)).y) as N).clamp(int(1), int(LAST - 1));
+      const top = cross(dStation(crestJ), dProfile(crestJ));
+      const oriented = select(top.y.lessThan(0.0), nrm.negate(), nrm);
       // No live difference within the search: the vertex sits in a collapsed cluster (its triangles have no area).
       const normal = select(isLive(jn), safeNormalize3(oriented), vec3(0.0, 1.0, 0.0));
       normals.element(idx).assign(vec4(normal, normals.element(idx).w));
