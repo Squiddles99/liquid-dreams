@@ -331,7 +331,7 @@ export class App {
   /** A walk pose applied before the land loaded (it became a free pose): walked into once the ground exists. */
   private pendingWalk: CameraPose | null = null;
   private builtReefKey = JSON.stringify(this.reefParams);
-  readonly setWaves = new SetWaves(this.ocean.time);
+  readonly setWaves = new SetWaves(this.ocean.time, { pile: false });
   readonly surfaceModel = new WaterSurfaceModel(this.ocean, this.seabed, this.setWaves);
   readonly probe = new HeightProbe(this.surfaceModel);
   /** Breaking foam that lingers and drifts (spec 2026-09-27-foam-field-design.md), stepped at 20 Hz of sim time. */
@@ -1540,7 +1540,8 @@ export class App {
     const field = this.field, ctx = this.waveCtx, tide = this.conditions.tideM + (drawn ? this.rideOffset.value : 0);
     if (!field || !ctx) return flatWater(tide);
     const waves = wavesNear(t, this.conditions, this.sets).map(toActiveWave);
-    const o = this.breakParams.enabled ? breakOptions(field, this.breakParams, this.offshoreMs) : undefined;
+    // Without the whitewater pile, as SetWaves draws the sheet (SetWaves' pile option).
+    const o = this.breakParams.enabled ? { ...breakOptions(field, this.breakParams, this.offshoreMs), pile: false } : undefined;
     // The land and the rocks under the board (null while the land loads): the board runs aground on them.
     const sheet: WaterFn = (x, z) => {
       const w = waterAt(x, z, tide, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));

@@ -5,8 +5,8 @@ import {
   TURN_COST_H, keyTable,
 } from './wombProfile';
 import {
-  COLLAPSE_BASE_S, COLLAPSE_PER_M, EDGE_BACK_UNITS, EDGE_FRONT_UNITS, FLIGHT_DROP_A, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, RHO_FULL_RATIO,
-  SECTION_HAND_BACK_S, STOOD_PHASE,
+  COLLAPSE_BASE_S, COLLAPSE_PER_M, EDGE_BLEND_UNITS, FLIGHT_DROP_A, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, RHO_FULL_RATIO,
+  LIFT_UNITS, SECTION_HAND_BACK_S, STOOD_PHASE,
 } from './wombSection';
 
 type N = any;
@@ -181,5 +181,7 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, ke
 }
 
 /** wombSection.interiorWeight. */
-export const interiorWeightNode = (uUnits: N): N => float(1.0).sub(select(uUnits.lessThan(0.0),
-  smoothstep(EDGE_BACK_UNITS[0], EDGE_BACK_UNITS[1], uUnits.negate()), smoothstep(EDGE_FRONT_UNITS[0], EDGE_FRONT_UNITS[1], uUnits)));
+export const interiorWeightNode = (uUnits: N): N => float(1.0).sub(smoothstep(EDGE_BLEND_UNITS[0], EDGE_BLEND_UNITS[1], abs(uUnits)));
+
+/** wombSection.endLift: the share of the sheet's level at the profile's end on u's side that lifts the profile at u. */
+export const endLiftNode = (uUnits: N): N => smoothstep(LIFT_UNITS[0], LIFT_UNITS[1], abs(uUnits));
