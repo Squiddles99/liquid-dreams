@@ -70,7 +70,7 @@ import { withOnlyShown } from '../render/prewarm';
 import { bedHeightAt, buildBathymetry, downsample } from '../seabed/bathymetry';
 import { SHORE_X } from '../seabed/coastProfile';
 import { Seabed, WATERLINE_STEP_M } from '../seabed/Seabed';
-import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
+import { RESHAPED_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
 import { Clouds } from '../weather/Clouds';
@@ -166,7 +166,8 @@ export class App {
     ozoneAbsorptionPerKm: [...DEFAULT_ATMOSPHERE.ozoneAbsorptionPerKm] as Rgb,
   };
   readonly pictureParams: PictureParams = { ...DEFAULT_PICTURE };
-  readonly reefParams: ReefParams = { ...DEFAULT_REEF_PARAMS };
+  /** The reshaped reef (spec 2026-10-05-womb-profile-design §3.1, round 2): it goes live with the Womb profile's ribbon. */
+  readonly reefParams: ReefParams = { ...RESHAPED_REEF_PARAMS };
   readonly setParams: SetParams = { ...DEFAULT_SET_PARAMS };
   /** The select screen's sets (a set every 120 s), filled from setParams while `duneSets` is on. */
   private readonly selectScreenSets: SetParams = { ...DEFAULT_SET_PARAMS };

@@ -36,9 +36,10 @@ export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
  * 1.8 × its landing time, not 1 ×, so a barrel no longer drops like a trap door once the lip lands; model 5: the barrel's new
  * proportions (trough drain 0.7, throw 0.6, lip 0.25·H) and the whitewater pile; model 6: the barrel from the maths, whose
  * shape follows each crest's ψ₀ on the reef, so the reef (its softened ledge) resets with it; model 7: the reef build's face
- * and slope (plan 2026-10-02) replace that ramp, so the reef resets again).
+ * and slope (plan 2026-10-02) replace that ramp, so the reef resets again; model 8: the Womb profile's ribbon draws the
+ * breaking on the reshaped reef, so the reef resets to it).
  */
-export const BREAKING_MODEL = 7;
+export const BREAKING_MODEL = 8;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;
@@ -143,7 +144,9 @@ export function loadDevSettings(storage: SettingsStorage, defaults: DevSettings)
   if (raw.breakingModel !== BREAKING_MODEL) look.breaking = deepClone(defaults.breaking);
   // Model 6 softened the ledge the barrel's ψ₀ is read from; model 7 replaced that ramp with the reef build's face and slope
   // (plan 2026-10-02): an older look's reef carries keys and depths the reef no longer has.
-  if (typeof raw.breakingModel !== 'number' || raw.breakingModel < 7) look.reef = deepClone(defaults.reef);
+  // Model 8: the Womb profile's ribbon goes live on the reshaped reef (plan 2026-10-05-womb-profile-step3): a saved reef is
+  // the old one.
+  if (typeof raw.breakingModel !== 'number' || raw.breakingModel < 8) look.reef = deepClone(defaults.reef);
   return {
     ...(look as unknown as DevLookParams),
     mode: raw.mode === 'default' || raw.mode === 'custom' ? raw.mode : 'custom',
