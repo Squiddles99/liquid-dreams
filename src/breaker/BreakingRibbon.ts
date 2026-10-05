@@ -20,7 +20,7 @@ import { TUBE_TIP_CLEAR_M } from './lipProfile';
 import { encodeTb, tubeLightAtNode } from './lipProfileNodes';
 import { CURVE_SAMPLES } from './wombProfile';
 import { EDGE_OUTER_UNITS, FRONT_FROM_MARK } from './wombSection';
-import { WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, frontHeightNode, interiorWeightNode, wombFrameNode } from './wombSectionNodes';
+import { WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, frontHeightNode, interiorWeightNode, seatScaleNode, seatedYNode, wombFrameNode } from './wombSectionNodes';
 
 type N = any;
 
@@ -656,8 +656,9 @@ export class BreakingRibbon {
     return storage(this.stationsAttr, 'vec4', MAX_STATIONS * STATION_VEC4S).toReadOnly();
   }
 
-  /** Per station: its numbers and its profile samples (wombSectionNodes.wombFrameNode); no sheet here (the vertex pass
-   * blends each sample into it). */
+  /** Per station: its numbers and its profile samples (wombSectionNodes.wombFrameNode), and the stretch that seats its
+   * front on the sheet's water in front (wombSection.seatScale: the sheet read once, at the front knot's home); the vertex
+   * pass blends each sample into the sheet. */
   private buildFramePass(): THREE.ComputeNode {
     const stations = this.stationsNode();
     const keys = storage(this.keys, 'vec4', this.keys.count).toReadOnly();
@@ -674,6 +675,10 @@ export class BreakingRibbon {
       frames.element(i.mul(WOMB_FRAME_VEC4S)).assign(vec4(f.A, f.phase, f.hollow, f.rho));
       frames.element(i.mul(WOMB_FRAME_VEC4S).add(1)).assign(vec4(f.tip, f.crest, f.floor, f.life));
       frames.element(i.mul(WOMB_FRAME_VEC4S).add(2)).assign(vec4(f.tipKnot, f.crestKnot.x, f.floorKnot.x));
+      const a = stations.element(i.mul(STATION_VEC4S)).toVar();
+      const smooth = this.surfaceFn(this.surface.smooth, 'ribbonSmoothSeat');
+      const seaY = vec3(smooth(a.xy.add(a.zw.mul(f.frontKnot.x.mul(f.A))))).y.div(max(f.A, 1e-6));
+      frames.element(i.mul(WOMB_FRAME_VEC4S).add(3)).assign(vec4(seatScaleNode(f.crestKnot.y, f.troughKnot.y, seaY), f.crestKnot.y, 0.0, 0.0));
     })().compute(MAX_STATIONS) as THREE.ComputeNode;
   }
 
@@ -700,8 +705,10 @@ export class BreakingRibbon {
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const gap = stations.element(i.mul(STATION_VEC4S).add(2)).x.toVar();
       const f0: N = frames.element(i.mul(WOMB_FRAME_VEC4S)).toVar(), f1: N = frames.element(i.mul(WOMB_FRAME_VEC4S).add(1)).toVar();
-      // The frame's third vec4: the tip knot (xy), the crest knot's u and the floor knot's u, in units of A.
+      // The frame's third vec4: the tip knot (xy), the crest knot's u and the floor knot's u, in units of A; its fourth: the
+      // seat's stretch and the crest knot's y.
       const f2: N = frames.element(i.mul(WOMB_FRAME_VEC4S).add(2)).toVar();
+      const f3: N = frames.element(i.mul(WOMB_FRAME_VEC4S).add(3)).toVar();
       const crestU: N = f2.z, floorU: N = f2.w;
       const A: N = f0.x, phase: N = f0.y, rho: N = f0.w, tip: N = f1.x, crest: N = f1.y;
       const S = a.xy, n = a.zw;
@@ -713,10 +720,10 @@ export class BreakingRibbon {
       const d = vec3(smooth(xzHome)).toVar();
       const base = vec2(home.add(dot(d.xz, n)), d.y).toVar();
       const w = rho.mul(interiorWeightNode(q.x, crestU)).toVar();
-      // Past the face's foot (samples before the floor's, front first, from FRONT_FROM_MARK behind it as the CPU's) the
-      // profile settles onto the sea in front.
+      // Seated on the sea in front (wombSection.seatedY). Past the face's foot (samples before the floor's, front first,
+      // from FRONT_FROM_MARK behind it as the CPU's) the profile settles onto the sea in front.
       const floorIdx: N = f1.z;
-      const qy: N = q.y.mul(A).toVar();
+      const qy: N = seatedYNode(q.y, q.x, crestU, f3.y, f3.x).mul(A).toVar();
       const y = select(float(j).lessThan(floorIdx.add(FRONT_FROM_MARK + 1)), frontHeightNode(qy, base.y, q.x, floorU), qy);
       const pos = mix(base, vec2(q.x.mul(A), y), w).toVar();
       // The profile's u along n; the lateral displacement at home carried unchanged along t̂.

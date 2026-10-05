@@ -1,6 +1,6 @@
 import type { Station, StationEntry } from '../breaker/crestTrace';
-import { frontHeight, interiorWeight } from '../breaker/wombSection';
-import { CREST_KNOT, FLOOR_KNOT, type P2, profileKnots, profileSamples } from '../breaker/wombProfile';
+import { frontHeight, interiorWeight, seatScale, seatedSlope, seatedY } from '../breaker/wombSection';
+import { CREST_KNOT, FLOOR_KNOT, FRONT_KNOT, type P2, TROUGH_KNOT, profileKnots, profileSamples } from '../breaker/wombProfile';
 import type { WaterFn } from './water';
 
 /**
@@ -23,7 +23,7 @@ export const MAX_SECTION_SLOPE = 2;
 /** A point further than this (m) along the crest from the nearest station is off the ribbon. */
 export const MAX_ALONG_M = 6;
 
-interface Cached { curve: P2[]; crestU: number; floorU: number }
+interface Cached { curve: P2[]; crestU: number; crestY: number; floorU: number; seat: number }
 
 /**
  * `base`'s water, with the stations' sections where they draw. `tideM` is the still-water level the sections stand on
@@ -37,8 +37,10 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
     let c = cache.get(s);
     if (!c) {
       const { curve } = profileSamples(s.section.phase, s.section.hollow);
-      const k = profileKnots(s.section.phase, s.section.hollow);
-      c = { curve, crestU: k[CREST_KNOT][0], floorU: k[FLOOR_KNOT][0] };
+      const k = profileKnots(s.section.phase, s.section.hollow), A = s.section.A, uF = A * k[FRONT_KNOT][0];
+      // Seated on the sea in front as the ribbon draws it (wombSection.seatScale: the sheet at the front knot's home).
+      const sea = (base(s.x + s.nx * uF, s.z + s.nz * uF).y - tideM) / A;
+      c = { curve, crestU: k[CREST_KNOT][0], crestY: k[CREST_KNOT][1], floorU: k[FLOOR_KNOT][0], seat: seatScale(k[CREST_KNOT][1], k[TROUGH_KNOT][1], sea) };
       cache.set(s, c);
     }
     return c;
@@ -58,9 +60,11 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
       if (!(A > 0)) return null;
       const c = cached(s), hit = lowestWetCrossing(c.curve, u / A);
       if (!hit) return null;
-      // Past the face's foot the section settles onto the sea in front (wombSection.frontHeight), as the ribbon draws it.
-      const own = tideM + A * hit.y, y = u / A > c.floorU ? frontHeight(own, w.y, u / A, c.floorU) : own;
-      return { y, slopeU: Math.max(-MAX_SECTION_SLOPE, Math.min(MAX_SECTION_SLOPE, hit.slope)), weight: s.section.rho * interiorWeight(u / A, c.crestU) };
+      // Seated on the sea in front (wombSection.seatedY); past the face's foot it settles onto the sea in front
+      // (wombSection.frontHeight), as the ribbon draws it.
+      const uu = u / A, sy = seatedY(hit.y, uu, c.crestU, c.crestY, c.seat), slope = seatedSlope(hit.y, hit.slope, uu, c.crestU, c.crestY, c.seat);
+      const own = tideM + A * sy, y = uu > c.floorU ? frontHeight(own, w.y, uu, c.floorU) : own;
+      return { y, slopeU: Math.max(-MAX_SECTION_SLOPE, Math.min(MAX_SECTION_SLOPE, slope)), weight: s.section.rho * interiorWeight(uu, c.crestU) };
     };
     const a = at(best);
     if (!a) return w;
