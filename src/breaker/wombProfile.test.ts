@@ -108,13 +108,22 @@ describe('wombProfile', () => {
     }
   });
 
-  it('is still the shapes Andrew signed (wombProfile.approved.json)', () => {
+  it('is still the shapes Andrew signed (wombProfile.approved.json): every sample within 2 mm per metre of H of the signed curve (its chords sag ~1 mm where it turns hardest), and back', () => {
+    // The shape is what was signed, not where along it the samples fall (their spacing is the mesh's business).
+    const offCurve = (p: readonly number[], c: readonly (readonly number[])[]): number => {
+      let best = Infinity;
+      for (let i = 0; i < c.length - 1; i++) {
+        const dx = c[i + 1][0] - c[i][0], dy = c[i + 1][1] - c[i][1];
+        const t = Math.max(0, Math.min(1, ((p[0] - c[i][0]) * dx + (p[1] - c[i][1]) * dy) / (dx * dx + dy * dy || 1)));
+        best = Math.min(best, Math.hypot(p[0] - c[i][0] - t * dx, p[1] - c[i][1] - t * dy));
+      }
+      return best;
+    };
     expect(approved.n).toBe(CURVE_SAMPLES);
     for (const shape of approved.shapes) {
       const c = profileCurve(shape.phase, shape.hollow);
-      shape.curve.forEach((p, i) => {
-        expect(Math.hypot(c[i][0] - p[0], c[i][1] - p[1]), `phase ${shape.phase} hollow ${shape.hollow} sample ${i}`).toBeLessThan(1e-4);
-      });
+      for (const p of c) expect(offCurve(p, shape.curve), `phase ${shape.phase} hollow ${shape.hollow}`).toBeLessThan(2e-3);
+      for (const p of shape.curve) expect(offCurve(p, c), `phase ${shape.phase} hollow ${shape.hollow}`).toBeLessThan(2e-3);
     }
   });
 });

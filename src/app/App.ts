@@ -774,6 +774,8 @@ export class App {
   /** The field or the break params changed: the ribbon's params and the trace's height cut-off follow. */
   private onRibbonInputs(): void {
     this.ribbon.setParams(this.breakParams);
+    // The tube's hold and collapse grow with the swell's period (wombSection.tubeHold): the field's own.
+    if (this.field) this.ribbon.setPeriod(this.field.periodS);
     this.ribbonMinHeightM = this.field ? minRibbonHeight(fieldBreakingHeight(this.field, this.breakParams), this.breakParams) : Infinity;
     this.waveCtx = this.field ? { omega: this.field.omega, travelX: this.field.far.dirX, travelZ: this.field.far.dirZ } : null;
     this.updateOffshore();

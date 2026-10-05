@@ -31,32 +31,32 @@
 
 ### 3a. Station numbers (CPU, cloud)
 
-- [ ] `stationPhase(input, p)`:
+- [x] `sectionPhase(input, p)` (wombSection.ts):
   - before onset: 0 → 0.5 as r rises from `ribbonOnset` to 1;
   - after onset: 0.5 → 1 over the lip's flight (`landingEstimate`);
   - held at 1 for the tube's hold;
   - 1 → 2 over the collapse.
 
   Hold and collapse grow with H·T. Clamp at 2.
-- [ ] `stationHollow(psi)` = `hollowFromPsi`. Scale A = H / 1.3 (the profile at onset stands 1.3 units crest to trough).
-- [ ] ρ: in over r ∈ [ribbonOnset, 0.9], out over `HAND_BACK_S` after phase 2.
-- [ ] Tests: monotone phase in time; the hold and collapse longer for a bigger, longer-period wave; ρ 0 on a wave that never stands up; continuous at onset.
+- [x] `stationHollow(psi)` = `hollowFromPsi`. Scale A = H / 1.3 (the profile at onset stands 1.3 units crest to trough).
+- [x] ρ: in over r ∈ [ribbonOnset, 0.9], out over `HAND_BACK_S` after phase 2.
+- [x] Tests: monotone phase in time; the hold and collapse longer for a bigger, longer-period wave; ρ 0 on a wave that never stands up; continuous at onset.
 
 ### 3b. The section on the CPU (cloud)
 
-- [ ] `wombSection(station, sheet(u), p)`: 160 points, front → back; the blend to the sheet; the emitters' points.
+- [x] `wombSection(station, sheet(u), p)`: 160 points, front → back; the blend to the sheet; the emitters' points.
 - [ ] Tests:
   - on a flat sheet it is A × `profileCurve` (reversed) exactly;
   - its ends are the sheet;
   - neighbouring stations' sections differ smoothly;
   - no self-crossing on the real reef at 6–12 ft, at every tide.
-- [ ] Pictures for Andrew: the game's own slices down the reshaped left, through time (a film strip), the anti-"held at one slice" check.
+- [x] Pictures for Andrew: the game's own slices down the reshaped left, through time (a film strip), the anti-"held at one slice" check.
 
 ### 3c. The GPU (cloud writes, Andrew runs)
 
-- [ ] TSL mirror of `profileKnots`, the Catmull–Rom, the rounded tip and the arc-length resample, in the frame pass. Write 160 samples per station to a new `sections` buffer (2048 × 160 vec2), replacing the frame's pile knots and `lipProfileNodes`' sample table in the vertex pass.
-- [ ] Vertex pass: place the samples. Normal, develop, light (tip and root samples from the knots) and chop passes adapted.
-- [ ] Self-test "ribbon: GPU section matches wombSection" (5 mm), and the existing footprint, gap-row and normal tests adapted.
+- [x] TSL mirror of `profileKnots`, the Catmull–Rom, the rounded tip and the arc-length resample, in the frame pass. Write 160 samples per station to a new `sections` buffer (2048 × 160 vec2), replacing the frame's pile knots and `lipProfileNodes`' sample table in the vertex pass.
+- [x] Vertex pass: place the samples. Normal, develop, light (tip and root samples from the knots) and chop passes adapted.
+- [x] Self-test "ribbon: GPU section matches wombSection" (5 mm), and the existing footprint, gap-row and normal tests adapted.
 - [ ] Andrew runs the self-tests and a timing capture; pastes the report.
 
 ### 3d. Gameplay (cloud)
@@ -69,3 +69,4 @@
 ### 3e. Andrew's look (his PC)
 
 - [ ] Captures of the left at 6, 8 and 10 ft, mid tide, from the lineup and the ride camera. His sign-off before step 4 removes the old code.
+- [ ] Watch (Andrew, 2026-10-05, from the film strip): "the edges seem a little sharp after the barrel": the white water's steep front as the tube caves in (phases 1.25–2). Judge in the game before changing the collapse keys.

@@ -10,13 +10,15 @@ import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { PSI_NORMAL } from './overturn';
 import { Sky } from '../sky/Sky';
 import {
-  BreakingRibbon, DEVELOP_BLEND, FOOTPRINT_END_MARGIN_M, FOOTPRINT_GRID, STATION_VEC4S, VERTS_PER_STATION, developedU, modelRibbonSurface, packStations,
+  BreakingRibbon, FOOTPRINT_END_MARGIN_M, FOOTPRINT_GRID, STATION_VEC4S, VERTS_PER_STATION, developedU, modelRibbonSurface, packStations,
   ribbonDrawCount, ribbonIndices, runEndFlags,
 } from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { SetWaves } from './SetWaves';
 import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
-import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type Vec2, buildProfile } from './lipProfile';
+import { PROFILE_SAMPLES } from './BreakingRibbon';
+import { type P2, profileSamples } from './wombProfile';
+import { wombSection } from './wombSection';
 import { TB_INFINITY, TB_NULL } from './lipProfileNodes';
 import { REEF_GRID } from '../seabed/wombReef';
 
@@ -69,66 +71,71 @@ describe('BreakingRibbon run ends', () => {
 });
 
 describe('BreakingRibbon detail coordinate (developed u)', () => {
+  type Vec2 = P2;
   const flat = (from: number, to: number): Vec2[] => Array.from({ length: PROFILE_SAMPLES }, (_, j) => [from + ((to - from) * j) / (PROFILE_SAMPLES - 1), 0]);
+  /** The blend's span on these synthetic profiles. */
+  const BETWEEN: readonly [number, number] = [60, 100];
+  /** A thrown lip on a flat sea: the section's points (front → back), its homes (A × the profile's u) and its floor and crest samples. */
+  const thrown = () => {
+    const input = { H: 3.9, r: 1.3, tb: 0.45, psi: 0.09, periodS: 15 };
+    const sec = wombSection(input, (u) => [u, 0], { ribbonOnset: 0.6 });
+    const { A, phase, hollow } = sec.numbers, n = PROFILE_SAMPLES;
+    const { curve, marks } = profileSamples(phase, hollow);
+    const homes = curve.map(([u]) => A * u).reverse();
+    const between: [number, number] = [n - 1 - marks.floor, n - 1 - marks.crest];
+    return { sec, homes, between, uFront: homes[0], uBack: homes[n - 1] };
+  };
 
   it('is the home itself on a flat profile, and exactly uFront and uBack at the edges', () => {
     const pts = flat(10, -5);
-    const dev = developedU(pts, 10, -5);
+    const dev = developedU(pts, 10, -5, BETWEEN);
     expect(dev[0]).toBe(10);
     expect(dev[PROFILE_SAMPLES - 1]).toBe(-5);
     dev.forEach((u, j) => expect(u).toBeCloseTo(pts[j][0], 9));
   });
 
   it('advances with the curve\u2019s own length up a vertical face (a full face of detail, not one column)', () => {
-    // Flat from u = 10 to 6 over the front and face, then straight up 4 m at u = 6 through the wall, then flat back.
+    // Flat from u = 10 to 6 over the front, then straight up 4 m at u = 6, then flat back.
     const pts: Vec2[] = Array.from({ length: PROFILE_SAMPLES }, (_, j): Vec2 => {
       if (j <= 20) return [10 - (4 * j) / 20, 0];
-      if (j <= DEVELOP_BLEND[0]) return [6, (4 * (j - 20)) / (DEVELOP_BLEND[0] - 20)];
-      return [6 - (11 * (j - DEVELOP_BLEND[0])) / (PROFILE_SAMPLES - 1 - DEVELOP_BLEND[0]), 4];
+      if (j <= BETWEEN[0]) return [6, (4 * (j - 20)) / (BETWEEN[0] - 20)];
+      return [6 - (11 * (j - BETWEEN[0])) / (PROFILE_SAMPLES - 1 - BETWEEN[0]), 4];
     });
-    const dev = developedU(pts, 10, -5);
-    // Up the vertical stretch (all before the blend) the coordinate moves by the 4 m climbed, 0.2 m per sample.
-    expect(dev[20] - dev[DEVELOP_BLEND[0]]).toBeCloseTo(4, 9);
-    for (let j = 21; j <= DEVELOP_BLEND[0]; j++) expect(dev[j - 1] - dev[j]).toBeCloseTo(0.2, 9);
+    const dev = developedU(pts, 10, -5, BETWEEN);
+    // Up the vertical stretch (all before the blend) the coordinate moves by the 4 m climbed, 0.1 m per sample.
+    expect(dev[20] - dev[BETWEEN[0]]).toBeCloseTo(4, 9);
+    for (let j = 21; j <= BETWEEN[0]; j++) expect(dev[j - 1] - dev[j]).toBeCloseTo(4 / (BETWEEN[0] - 20), 9);
   });
 
   it('is continuous along a thrown lip\u2019s profile, edges exact', () => {
-    const base = (u: number): Vec2 => [u, 3 * Math.exp(-((u / 2.5) ** 2))];
-    const prof = buildProfile(base, { H: 3, c: 9, r: 1.3, tb: 0.45 }, DEFAULT_BREAK_PARAMS);
-    expect(prof.frame.weight).toBeGreaterThan(0.9);
-    expect(prof.frame.reach).toBeGreaterThan(1);
-    const dev = developedU(prof.points, prof.frame.uFront, prof.frame.uBack);
-    expect(dev[0]).toBe(prof.homes[0]);
-    expect(dev[PROFILE_SAMPLES - 1]).toBe(prof.homes[PROFILE_SAMPLES - 1]);
-    let maxStep = 0, maxJump = 0;
+    const { sec, homes, between, uFront, uBack } = thrown();
+    expect(sec.numbers.rho).toBe(1);
+    const dev = developedU(sec.points, uFront, uBack, between);
+    expect(dev[0]).toBe(homes[0]);
+    expect(dev[PROFILE_SAMPLES - 1]).toBe(homes[PROFILE_SAMPLES - 1]);
+    let maxJump = 0;
     for (let j = 1; j < PROFILE_SAMPLES; j++) {
-      const step = Math.hypot(prof.points[j][0] - prof.points[j - 1][0], prof.points[j][1] - prof.points[j - 1][1]);
-      maxStep = Math.max(maxStep, step);
+      const step = Math.hypot(sec.points[j][0] - sec.points[j - 1][0], sec.points[j][1] - sec.points[j - 1][1]);
       maxJump = Math.max(maxJump, Math.abs(dev[j] - dev[j - 1]) - step);
     }
-    // Beyond each sample's own step, the blend adds at most (its ends' disagreement) × (smoothstep's steepest step).
-    const face = PROFILE_SEGMENTS.front, faceEnd = face + PROFILE_SEGMENTS.face;
-    let faceArc = 0;
-    for (let j = face + 1; j <= faceEnd; j++) faceArc += Math.hypot(prof.points[j][0] - prof.points[j - 1][0], prof.points[j][1] - prof.points[j - 1][1]);
-    expect(maxJump).toBeLessThan(0.25);
-    expect(dev[face] - dev[faceEnd]).toBeCloseTo(faceArc, 9);
+    // Beyond each sample's own step, the blend adds at most (its ends' disagreement) × (smoothstep's steepest step): a few
+    // metres of disagreement over the ~40 samples from the floor to the crest, under 0.15 A a sample.
+    expect(maxJump).toBeLessThan(0.15 * sec.numbers.A);
   });
 
-  it('blends toward the home by the frame’s weight: the home at weight 0, the developed u at weight 1, edges exact', () => {
-    const base = (u: number): Vec2 => [u, 3 * Math.exp(-((u / 2.5) ** 2))];
-    const prof = buildProfile(base, { H: 3, c: 9, r: 1.3, tb: 0.45 }, DEFAULT_BREAK_PARAMS);
-    const { uFront, uBack } = prof.frame;
-    const dev = developedU(prof.points, uFront, uBack);
+  it('blends toward the home by the station\u2019s weight: the home at weight 0, the developed u at weight 1, edges exact', () => {
+    const { sec, homes, between, uFront, uBack } = thrown();
+    const dev = developedU(sec.points, uFront, uBack, between);
     // The developed coordinate really departs from the home here (else the blend proves nothing).
-    expect(Math.max(...dev.map((u, j) => Math.abs(u - prof.homes[j])))).toBeGreaterThan(0.5);
-    const at0 = developedU(prof.points, uFront, uBack, { homes: prof.homes, weight: 0 });
-    at0.forEach((u, j) => expect(Math.abs(u - prof.homes[j])).toBeLessThanOrEqual(1e-9));
-    const at1 = developedU(prof.points, uFront, uBack, { homes: prof.homes, weight: 1 });
+    expect(Math.max(...dev.map((u, j) => Math.abs(u - homes[j])))).toBeGreaterThan(0.5);
+    const at0 = developedU(sec.points, uFront, uBack, between, { homes, weight: 0 });
+    at0.forEach((u, j) => expect(Math.abs(u - homes[j])).toBeLessThanOrEqual(1e-9));
+    const at1 = developedU(sec.points, uFront, uBack, between, { homes, weight: 1 });
     at1.forEach((u, j) => expect(Math.abs(u - dev[j])).toBeLessThanOrEqual(1e-9));
-    const half = developedU(prof.points, uFront, uBack, { homes: prof.homes, weight: 0.3 });
-    half.forEach((u, j) => expect(u).toBeCloseTo(0.7 * prof.homes[j] + 0.3 * dev[j], 9));
-    expect(half[0]).toBe(prof.homes[0]);
-    expect(half[PROFILE_SAMPLES - 1]).toBe(prof.homes[PROFILE_SAMPLES - 1]);
+    const half = developedU(sec.points, uFront, uBack, between, { homes, weight: 0.3 });
+    half.forEach((u, j) => expect(u).toBeCloseTo(0.7 * homes[j] + 0.3 * dev[j], 9));
+    expect(half[0]).toBe(homes[0]);
+    expect(half[PROFILE_SAMPLES - 1]).toBe(homes[PROFILE_SAMPLES - 1]);
   });
 });
 
