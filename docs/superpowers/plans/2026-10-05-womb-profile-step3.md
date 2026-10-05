@@ -74,6 +74,13 @@
 - [x] Neighbouring back edges cross behind a tightly curving crest and turned stations inside out: oriented by the crest.
 - [x] The surfer sank: the ride stands on the sections (ride/sectionWater).
 
+### Found in Andrew's second ride (2026-10-05)
+
+- [x] The drawn-sea offset was matched against the sections water while the probe reads the sheet: wipeouts from nothing, the board straightening out. Matched against the sheet alone.
+- [x] "A swell bump before the real swell hits … a second swell bump" behind, and the wall in front "doesn't extend very far": the profile is drawn about still water, blended out only at its ends (±7 A), so it dipped under the swell's higher back and stood a ledge over its lower trough. It now hands over to the swell from 0.5 to 4 A behind the crest and 2.3 to 4 A in front (past every phase's trough).
+- [x] Down the line a held section was drawn at full weight in the unbroken key, whose crest (0.55 A) stands a metre under the shoaled swell: ρ now comes in over the same last STAND_LEAD_S as the phase.
+- [x] The over-shoulder camera and the lens water never came on: the tube cover required a hollow section (the take-off's are middling on the present reef) and a window of phases. It now reads the drawn section: water over her head with room to stand under it.
+
 ### 3e. Andrew's look (his PC)
 
 - [ ] Captures of the left at 6, 8 and 10 ft, mid tide, from the lineup and the ride camera. His sign-off before step 4 removes the old code.
