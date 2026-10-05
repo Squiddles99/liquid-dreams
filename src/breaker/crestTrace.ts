@@ -193,6 +193,24 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveC
 }
 
 /**
+ * Down the line past a section held for its turn (the peel stretch), the crest waits too: from the curl outward, each
+ * unbroken station beyond a held one takes the held one's wait. The record knows a hold only where the reef has broken the
+ * wave already; further down the line, where the wave is still steepening toward its break, the ratio alone stood the
+ * ribbon up, so a second breaking section stood 60–80 m down the line with a held stretch of sheet between them (on
+ * Andrew's satellite reef, 2026-10-05).
+ */
+export function holdDownTheLine(line: Station[]): void {
+  for (const order of [line, [...line].reverse()]) {
+    let carry: number | null = null;
+    for (const s of order) {
+      if (s.wait !== null) carry = Math.max(carry ?? 0, s.wait);
+      else if (s.tb !== null) carry = null;
+      else if (carry !== null) s.wait = carry;
+    }
+  }
+}
+
+/**
  * The cross-section's numbers are smoothed along the crest by a Gaussian of this σ (m of arc): read station by station from
  * the reef's record, they jump between neighbours over reef heads (a height of 0.6 m beside 1.7 m 2 m along, a barrel
  * beside a wall still standing: spec 2026-10-05-womb-profile-design §2, "neighbouring slices never jump"; the ribbon
@@ -246,6 +264,7 @@ export function traceStations(field: ReefField, waves: readonly ActiveWave[], t:
       if (sides.length === 0) return;
       const line = [...sides[1].reverse(), ...sides[0]];
       fillTimes(field, w, line, ctx, input);
+      holdDownTheLine(line);
       fillSections(line, field.periodS, input.params);
       for (const s of line) {
         if (alive(s)) out.push(s);

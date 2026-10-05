@@ -15,21 +15,22 @@ export const OPEN_COAST_MATERIAL: readonly [number, number] = [0.25, 0.6];
 export const SHORE_REEF_MEAN_M = 70;
 const EDGE_M = 8;
 
-/** Along the reef map's stretch of coast the platform reaches its inner rock platform: at least this wide (m). */
-export const SHORE_REEF_AT_MAP_M = 90;
+/** Along the reef map's stretch of coast the platform is this wide (m), the reef's shelf reaching it (wombReef.SHELF_INNER_X):
+ * Andrew's close-up satellite view, the shore's foam field 10–40 m off the waterline. */
+export const SHORE_REEF_AT_MAP_M = 40;
 /** The reef map's stretch of coast (z), and how far beyond its ends the minimum width eases off (m). */
 export const SHORE_REEF_MAP_Z: readonly [number, number] = [-450, 300];
 export const SHORE_REEF_MAP_EASE_M = 200;
 
 /**
- * The platform's width (m) at z: 50–90 m, varying smoothly along the coast, and at least SHORE_REEF_AT_MAP_M along the
- * reef map, where its weedy shelf ends about 80 m off the beach (no sand strip between them).
+ * The platform's width (m) at z: 50–90 m, varying smoothly along the coast, and SHORE_REEF_AT_MAP_M along the reef map,
+ * where the reef's weedy shelf meets it (no sand strip between them).
  */
 export function shoreReefWidth(z: number): number {
   const w = SHORE_REEF_MEAN_M + 12 * Math.sin(z / 97) + 8 * Math.sin(z / 41 + 1.3);
   const [z0, z1] = SHORE_REEF_MAP_Z;
   const atMap = smoothstep(z0 - SHORE_REEF_MAP_EASE_M, z0, z) * (1 - smoothstep(z1, z1 + SHORE_REEF_MAP_EASE_M, z));
-  return Math.max(w, SHORE_REEF_AT_MAP_M * atMap);
+  return w + (SHORE_REEF_AT_MAP_M - w) * atMap;
 }
 
 /** How much of the seabed dSea m seaward of the waterline is the platform: 1 at the waterline, 0 past its width. */

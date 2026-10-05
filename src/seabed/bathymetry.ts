@@ -4,7 +4,7 @@ import { REEF_SURROUND_DEPTH_M, SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { beachHeight } from '../land/landHeight';
 import { fbm2, valueNoise2 } from './noise';
-import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_POLYGON, SOUTH_LEDGE, rockReachM, shelfPolygon } from './wombReef';
+import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_INNER_X, SHELF_POLYGON, SOUTH_LEDGE, rockReachM, shelfPolygon } from './wombReef';
 
 /** Weed dominates rock across most of the shelf; baseline coverage before the patchy noise carves gaps. */
 const SHELF_WEED_BASE = 0.78;
@@ -40,9 +40,9 @@ function insidePolygon(px: number, pz: number, poly: readonly Pt[]): boolean {
 
 /** Distance to the ledge lines (positive inside the shelf, negative outside). Only the ledges count as edges. `north`:
  * the left's edge (ReefParams.northLedge), its shelf polygon built to match. */
-export function ledgeSignedDistance(x: number, z: number, north: readonly Pt[] = NORTH_LEDGE, shelf: readonly Pt[] = north === NORTH_LEDGE ? SHELF_POLYGON : shelfPolygon(north)): number {
+export function ledgeSignedDistance(x: number, z: number, north: readonly Pt[] = NORTH_LEDGE, shelf: readonly Pt[] = north === NORTH_LEDGE ? SHELF_POLYGON : shelfPolygon(north), south: readonly Pt[] = SOUTH_LEDGE): number {
   let d = Infinity;
-  for (const line of [north, SOUTH_LEDGE]) {
+  for (const line of [north, south]) {
     for (let i = 0; i + 1 < line.length; i++) d = Math.min(d, segmentDistance(x, z, line[i], line[i + 1]));
   }
   return insidePolygon(x, z, shelf) ? d : -d;
@@ -133,10 +133,11 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   // The deep slope's weed patches (its 5 m noise at every 0.5 m cell more than doubled the build): on the same lattice,
   // 10–20 m down where the water hides the difference.
   const patchOutField = new Float32Array(sx * sz);
-  const north = p.northLedge ?? NORTH_LEDGE, shelf = p.northLedge ? shelfPolygon(north) : SHELF_POLYGON;
+  const north = p.northLedge ?? NORTH_LEDGE, south = p.southLedge ?? SOUTH_LEDGE;
+  const shelf = p.northLedge || p.southLedge ? shelfPolygon(north, south) : SHELF_POLYGON;
   for (let r = 0; r < sz; r++) for (let c = 0; c < sx; c++) {
     const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M;
-    sdf[r * sx + c] = ledgeSignedDistance(x, z, north, shelf);
+    sdf[r * sx + c] = ledgeSignedDistance(x, z, north, shelf, south);
     pockets[r * sx + c] = pocketWeight(x, z);
     const [dx, dz] = reefWarp(x, z);
     warpDxField[r * sx + c] = dx;
@@ -185,7 +186,7 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
         w = wOpen + (wReef - wOpen) * rock * edgeFade;
       } else {
         // Inside: reef heads and sand pockets on the shelf, also fading out at its inshore (x ≈ 110 m) boundary.
-        const reefness = edgeFade * smoothstep(125, 100, x);
+        const reefness = edgeFade * smoothstep(SHELF_INNER_X + 15, SHELF_INNER_X - 10, x);
         const warpX = xw + 6 * fbm2(xw / 23, zw / 23, REEF_SEED + 7);
         const warpZ = zw + 6 * fbm2(xw / 23 + 9.1, zw / 23 - 3.7, REEF_SEED + 8);
         const relief = fbm2(warpX / 11, warpZ / 11, REEF_SEED);

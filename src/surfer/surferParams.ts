@@ -62,7 +62,7 @@ export interface SurferParams {
 /** In the lineup where Andrew waits (DEFAULT_LINEUP_POSITION), nose out to sea toward the south-west swell. */
 export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
   enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, motion: 'clip', onLand: false, carrySide: 'auto',
-  pile: false, gang: false, pileX: 219, pileZ: 47, pileHeadingDeg: 0,
+  pile: false, gang: false, pileX: 123, pileZ: 47, pileHeadingDeg: 0,
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
   x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
   idle: true, faceManual: false, expression: 'none', faceBlink: 0, faceSmile: 0, faceJaw: 0, faceBrows: 0, faceSquint: 0, gazeYawDeg: 0, gazePitchDeg: 0,

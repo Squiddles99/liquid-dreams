@@ -5,7 +5,8 @@ import { registerSelfTest } from '../dev/selfTest';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams, onsetDelay, onsetPsi, onsetTime } from './breaking';
-import { type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
+import { REFRACT_FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
+import { RESHAPED_REEF_PARAMS } from '../seabed/wombReef';
 import { SetWaves } from './SetWaves';
 import { type BreakOptions, breakOptions, sumWaves, toActiveWave } from './setWaveModel';
 import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
@@ -130,6 +131,50 @@ registerSelfTest({
       pass: ok,
       detail: `${points.length} points × dt −8/0/1.2/8 s (${breakers} slots flagged can-break); worst |Δdisp| ${disp} m; |Δstage| ${stage}`,
     };
+  },
+});
+
+let gameShared: ReefField | null = null;
+/** The field as the game asks for it (App: the live reef, smoothed for drawing, the swell bent as over REFRACT_FLOOR_M). */
+const getGameField = (): ReefField => (gameShared ??= computeReefField({
+  bed: downsample(buildBathymetry(RESHAPED_REEF_PARAMS), 2), periodS: DEFAULT_CONDITIONS.swell.periodS, fromDeg: DEFAULT_CONDITIONS.swell.directionDeg,
+  tideM: DEFAULT_CONDITIONS.tideM, peel: DEFAULT_BREAK_PARAMS.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M,
+}));
+
+registerSelfTest({
+  name: "breaker: the game's sheet (no pile, the front leaned, the white water's bore) matches the CPU through its biggest wave",
+  async run(renderer) {
+    const field = getGameField();
+    const time = uniform(0);
+    const sets = new SetWaves(time, { pile: false, shape: 'lean' });
+    sets.setField(field);
+    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+    // Over the reef and its surf zone, 10 m apart: the take-off, the left's ledge, the white water inside.
+    const points: [number, number][] = [];
+    for (let x = -20; x <= 80; x += 10) for (let z = -80; z <= 60; z += 10) points.push([x, z]);
+    const { pass, outAttr } = computeAt(points, 2, (xz) => {
+      const b = sets.breakSampleNode(xz);
+      return [vec4(b.disp, b.foam), vec4(b.stage, 0.0, 0.0, 0.0)];
+    });
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    const o: BreakOptions = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), pile: false, shape: 'lean' };
+    const disp = new Worst(true, 0);
+    // From before the take-off to well after the tube's collapse, when the bore has settled.
+    for (const dt of [-2, 0, 2, 4, 6, 9]) {
+      const t = REF_BIGGEST.arrivalS + dt;
+      time.value = t;
+      const events = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+      sets.setEvents(events);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      const waves = events.map(toActiveWave);
+      points.forEach(([x, z], i) => {
+        const c = sumWaves(x, z, t, sampleField(field, x, z), waves, ctx, o);
+        const g = out.slice(i * 8, i * 8 + 8);
+        disp.see(Math.max(Math.abs(g[0] - c.dx), Math.abs(g[1] - c.eta), Math.abs(g[2] - c.dz)), dt, i);
+      });
+    }
+    return { pass: disp.value < 0.05, detail: `${points.length} points × dt −2…9 s; worst |Δdisp| ${disp} m` };
   },
 });
 

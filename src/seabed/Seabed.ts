@@ -44,7 +44,8 @@ export function beachBedNode(dl: N): N {
 export function shoreReefWidthNode(z: N): N {
   const [mz0, mz1] = SHORE_REEF_MAP_Z;
   const atMap = smoothstep(mz0 - SHORE_REEF_MAP_EASE_M, mz0, z).mul(float(1.0).sub(smoothstep(mz1, mz1 + SHORE_REEF_MAP_EASE_M, z)));
-  return max(float(SHORE_REEF_MEAN_M).add(sin(z.div(97.0)).mul(12.0)).add(sin(z.div(41.0).add(1.3)).mul(8.0)), atMap.mul(SHORE_REEF_AT_MAP_M));
+  const w = float(SHORE_REEF_MEAN_M).add(sin(z.div(97.0)).mul(12.0)).add(sin(z.div(41.0).add(1.3)).mul(8.0));
+  return w.add(float(SHORE_REEF_AT_MAP_M).sub(w).mul(atMap));
 }
 
 function packTexture(b: Bathymetry, target?: THREE.DataTexture): THREE.DataTexture {

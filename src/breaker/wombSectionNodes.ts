@@ -11,6 +11,13 @@ import {
 
 type N = any;
 
+/** wombSection.boreWeight for a broken section (tb ≥ 0), H its crest's height (m), periodS the swell's period. */
+export const boreWeightNode = (tb: N, H: N, periodS: N): N => {
+  const h = max(H, 0.0), power = h.mul(periodS.div(15.0));
+  const t0 = sqrt(h.div(ONSET_HEIGHT_UNITS).mul((2 * FLIGHT_DROP_A) / 9.81)).add(power.mul(HOLD_PER_M).add(HOLD_BASE_S));
+  return smoothstep(t0, t0.add(power.mul(COLLAPSE_PER_M).add(COLLAPSE_BASE_S)), tb);
+};
+
 /**
  * The TSL mirror of wombProfile.profileSamples and wombSection's station numbers, step by step (plan
  * 2026-10-05-womb-profile-step3 3c): the frame pass runs it once per station, writing the station's CURVE_SAMPLES
