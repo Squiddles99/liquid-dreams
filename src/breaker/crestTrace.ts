@@ -199,19 +199,27 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveC
  */
 export const SECTION_SMOOTHING_M = 4;
 
-/** Each station's section numbers (wombSection.sectionNumbers), then smoothed along the line by arc (SECTION_SMOOTHING_M). */
+/**
+ * Each station's section numbers (wombSection.sectionNumbers), then smoothed along the line by arc (SECTION_SMOOTHING_M);
+ * its normal too: over reef heads the crest's own normal swings ±17° between stations 2 m apart, and the sections, reaching
+ * 7 A behind the crest, crossed each other there (the ribbon folded behind the wave: Andrew's GPU run, 2026-10-05).
+ */
 export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'>): void {
+  const normals = line.map((s) => [s.nx, s.nz]);
   const raw = line.map((s) => sectionNumbers({ H: s.H, r: s.r, tb: s.tb, wait: s.wait, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
   const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
   let lo = 0;
   line.forEach((s, i) => {
     while (line[lo].arc < s.arc - reach) lo++;
-    let w = 0, A = 0, phase = 0, hollow = 0, rho = 0;
+    let w = 0, A = 0, phase = 0, hollow = 0, rho = 0, nx = 0, nz = 0;
     for (let k = lo; k < line.length && line[k].arc <= s.arc + reach; k++) {
       const g = Math.exp(-((line[k].arc - s.arc) ** 2) * inv);
       w += g; A += g * raw[k].A; phase += g * raw[k].phase; hollow += g * raw[k].hollow; rho += g * raw[k].rho;
+      nx += g * normals[k][0]; nz += g * normals[k][1];
     }
     s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: rho / w };
+    const l = Math.hypot(nx, nz);
+    if (l > 1e-9) { s.nx = nx / l; s.nz = nz / l; }
   });
 }
 
