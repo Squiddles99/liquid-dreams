@@ -109,18 +109,34 @@ export const PROFILE_KEYS: readonly ProfileKey[] = [
 const clamp = (x: number, a: number, b: number): number => Math.min(b, Math.max(a, x));
 const smooth = (t: number): number => t * t * (3 - 2 * t);
 
-/** The knots at (phase, hollow): each family eased between its keyframes, then blended by hollowness. */
+/**
+ * A knot's velocity in phase at key i (units of H per unit phase): the slope across its neighbours (a Catmull–Rom in
+ * phase), so the shape flows through every stage without stopping; at rest at the first and last keys. The closed tube's
+ * knots rest at the keys after the tube has closed: shrunk to CLOSED_POCKET, a velocity through them would turn the pocket
+ * inside out.
+ */
+function keyVelocity(i: number, k: number, j: 0 | 1, family: 'hollow' | 'open'): number {
+  const K = PROFILE_KEYS;
+  if (i === 0 || i === K.length - 1) return 0;
+  if (k >= TIP_KNOT && k <= FLOOR_KNOT && K[i].phase > 1.25) return 0;
+  return (K[i + 1][family][k][j] - K[i - 1][family][k][j]) / (K[i + 1].phase - K[i - 1].phase);
+}
+
+/** The knots at (phase, hollow): each family through its keyframes by a cubic Hermite in phase, then blended by
+ * hollowness. At a keyframe's phase the knots are that keyframe's exactly. */
 export function profileKnots(phase: number, hollow: number): P2[] {
   const ph = clamp(phase, 0, 2), hv = clamp(hollow, 0, 1);
   let i = 0;
   while (i < PROFILE_KEYS.length - 2 && ph > PROFILE_KEYS[i + 1].phase) i++;
-  const a = PROFILE_KEYS[i], b = PROFILE_KEYS[i + 1];
-  const t = smooth((ph - a.phase) / (b.phase - a.phase));
+  const a = PROFILE_KEYS[i], b = PROFILE_KEYS[i + 1], span = b.phase - a.phase;
+  const t = (ph - a.phase) / span, t2 = t * t, t3 = t2 * t;
+  const h00 = 2 * t3 - 3 * t2 + 1, h10 = t3 - 2 * t2 + t, h01 = -2 * t3 + 3 * t2, h11 = t3 - t2;
+  const at = (family: 'hollow' | 'open', k: number, j: 0 | 1): number =>
+    h00 * a[family][k][j] + h10 * span * keyVelocity(i, k, j, family) + h01 * b[family][k][j] + h11 * span * keyVelocity(i + 1, k, j, family);
   const out: P2[] = [];
   for (let k = 0; k < KNOTS; k++) {
-    const ho = (j: 0 | 1): number => a.hollow[k][j] + (b.hollow[k][j] - a.hollow[k][j]) * t;
-    const op = (j: 0 | 1): number => a.open[k][j] + (b.open[k][j] - a.open[k][j]) * t;
-    out.push([op(0) + (ho(0) - op(0)) * hv, op(1) + (ho(1) - op(1)) * hv]);
+    const ho0 = at('hollow', k, 0), ho1 = at('hollow', k, 1), op0 = at('open', k, 0), op1 = at('open', k, 1);
+    out.push([op0 + (ho0 - op0) * hv, op1 + (ho1 - op1) * hv]);
   }
   return out;
 }
