@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { context, vec3 } from 'three/tsl';
+import { vec3 } from 'three/tsl';
+import { computeWgsl, stubRenderer } from './wgslBuild.testutil';
 import { describe, expect, it } from 'vitest';
 import { OceanSimulation } from '../ocean/OceanSimulation';
 import { OceanSurface } from '../ocean/OceanSurface';
@@ -27,57 +28,12 @@ import { createLandLookUniforms } from '../land/landShading';
 
 type N = any;
 
-/**
- * WebGPU checks maxStorageBuffersPerShaderStage only when the device creates the bind group layout, so an over-limit pass
- * builds, compiles offline and then fails at runtime (every dispatch invalid). This builds each of the ribbon's shaders
- * to WGSL with three's own node builder on a minimal stand-in renderer (no device) and counts its storage bindings.
- */
-function stubRenderer(): N {
-  return {
-    library: new (THREE as N).StandardNodeLibrary(),
-    lighting: { createNode: () => null, getNode: () => null },
-    getRenderTarget: () => null,
-    getOutputRenderTarget: () => null,
-    getMRT: () => null,
-    getColorBufferType: () => THREE.HalfFloatType,
-    coordinateSystem: THREE.WebGPUCoordinateSystem,
-    toneMapping: THREE.NoToneMapping,
-    outputColorSpace: THREE.SRGBColorSpace,
-    currentColorSpace: THREE.SRGBColorSpace,
-    currentToneMapping: THREE.NoToneMapping,
-    contextNode: context(),
-    logarithmicDepthBuffer: false,
-    _currentRenderContext: null,
-    backend: {
-      utils: { getTextureSampleData: () => ({ primarySamples: 1 }) },
-      isWebGPUBackend: true, device: { features: new Set(), limits: {} }, compatibilityMode: false, hasFeature: () => false, getClearColor: () => null,
-      // WebGPU's default maxUniformBufferBindingSize (instanced meshes size their matrix buffer against it).
-      capabilities: { getUniformBufferLimit: () => 65536 },
-    },
-    hasCompatibility: () => false,
-    hasFeature: () => false,
-    getCanvasTarget: () => null,
-    xr: { enabled: false },
-    debug: { onNodeBuilderCreated: null, diagnostics: { keywords: false } },
-    depth: true, stencil: false, alpha: true,
-    shadowMap: { enabled: false },
-    info: {},
-    samples: 1,
-  };
-}
-
 const storageBindings = (wgsl: string): number => (wgsl.match(/var<storage/g) ?? []).length;
 /** Sampled (non-storage) texture bindings in a WGSL stage: the baseline allows 16 per stage. */
 const sampledTextures = (wgsl: string): number => (wgsl.match(/var\s+\w+\s*:\s*texture_(?!storage)/g) ?? []).length;
 /** Uniform buffer bindings in a WGSL stage: the baseline allows 12 per stage. */
 const uniformBuffers = (wgsl: string): number => (wgsl.match(/var<uniform>/g) ?? []).length;
 
-function computeWgsl(node: THREE.ComputeNode): string {
-  const b: N = new (THREE as N).WGSLNodeBuilder(null, stubRenderer());
-  b.compute = node;
-  b.build();
-  return b.computeShader;
-}
 
 function renderWgsl(mesh: THREE.Mesh): { vertex: string; fragment: string } {
   const b: N = new (THREE as N).WGSLNodeBuilder(mesh, stubRenderer());

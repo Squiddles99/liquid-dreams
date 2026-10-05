@@ -23,7 +23,7 @@ export const TIP_KNOT = 6;
 export const FLOOR_KNOT = 10;
 export const TROUGH_KNOT = 11;
 /** Samples per Catmull–Rom span before resampling, and the sample count the ribbon mesh takes. */
-const SPAN_SAMPLES = 24;
+export const SPAN_SAMPLES = 24;
 export const CURVE_SAMPLES = 160;
 
 export const STAGES = { swell: 0, standing: 0.25, pitching: 0.5, throwing: 0.75, barrel: 1, tubeFilling: 1.25, cavingIn: 1.5, whitewater: 2 } as const;
@@ -141,36 +141,26 @@ export function profileKnots(phase: number, hollow: number): P2[] {
   return out;
 }
 
-/** Centripetal Catmull–Rom through the knots (no cusps or loops between them), SPAN_SAMPLES per span. */
-function catmullRom(pts: readonly P2[]): P2[] {
-  const P = [pts[0], ...pts, pts[pts.length - 1]];
-  const out: P2[] = [];
-  for (let i = 1; i < P.length - 2; i++) {
-    const p0 = P[i - 1], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2];
-    const tj = (ti: number, a: P2, b: P2): number => ti + Math.sqrt(Math.max(1e-6, Math.hypot(b[0] - a[0], b[1] - a[1])));
-    const t0 = 0, t1 = tj(t0, p0, p1), t2 = tj(t1, p1, p2), t3 = tj(t2, p2, p3);
-    for (let k = 0; k < SPAN_SAMPLES; k++) {
-      const t = t1 + ((t2 - t1) * k) / SPAN_SAMPLES;
-      const L = (a: P2, b: P2, ta: number, tb: number): P2 => [((tb - t) * a[0] + (t - ta) * b[0]) / (tb - ta), ((tb - t) * a[1] + (t - ta) * b[1]) / (tb - ta)];
-      const A1 = L(p0, p1, t0, t1), A2 = L(p1, p2, t1, t2), A3 = L(p2, p3, t2, t3);
-      out.push(L(L(A1, A2, t0, t2), L(A2, A3, t1, t3), t1, t2));
-    }
-  }
-  out.push(pts[pts.length - 1]);
-  return out;
-}
-
 /** How far (share of the way to its nearer neighbour) the lip's end is rounded, and how far its point is pulled in: the tip
  * reads as a thick, round end, not a point. */
-const TIP_ROUND = 0.18;
-const TIP_PULL = 0.35;
+export const TIP_ROUND = 0.18;
+export const TIP_PULL = 0.35;
 /** Each radian the curve turns costs this much length (units of H) when the samples are spread, so the lip's end and
  * the tube get more samples than the straight back. */
-const TURN_COST_H = 0.15;
+export const TURN_COST_H = 0.15;
+/** The knots once the lip's end is rounded (the tip becomes three), the Catmull–Rom's spans through them, and its points. */
+export const ROUNDED_KNOTS = KNOTS + 2;
+export const SPANS = ROUNDED_KNOTS - 1;
+export const DENSE_POINTS = SPANS * SPAN_SAMPLES + 1;
+/** The rounded tip's point among the rounded knots. */
+export const ROUNDED_TIP = TIP_KNOT + 1;
 
-/** The knots with the lip's end rounded: the tip knot becomes three, either side of it and its point pulled in. Only
- * while there is a lip: from the standing wave to the tube filling, faded in and out (`life`, 0–1). */
-function roundedTip(k: readonly P2[], life: number): P2[] {
+/** How much rounding the tip's point takes at a phase: from the standing wave to the tube filling, faded in and out. */
+export const tipLife = (phase: number): number =>
+  smooth(clamp((phase - STAGES.standing) / 0.25, 0, 1)) * (1 - smooth(clamp((phase - STAGES.tubeFilling) / 0.25, 0, 1)));
+
+/** The knots with the lip's end rounded: the tip knot becomes three, either side of it and its point pulled in by `life`. */
+export function roundedTip(k: readonly P2[], life: number): P2[] {
   const T = k[TIP_KNOT], A = k[TIP_KNOT - 1], B = k[TIP_KNOT + 1], pull = TIP_PULL * life;
   // The same distance both sides, set by the nearer neighbour: the rounding shrinks with a closing tube.
   const dA = Math.hypot(A[0] - T[0], A[1] - T[1]), dB = Math.hypot(B[0] - T[0], B[1] - T[1]);
@@ -182,28 +172,95 @@ function roundedTip(k: readonly P2[], life: number): P2[] {
   return [...k.slice(0, TIP_KNOT), tA, tT, tB, ...k.slice(TIP_KNOT + 1)];
 }
 
-/** The profile at (phase, hollow) as n points along the curve, back to front, spread by length plus turning. */
+/** The rounded knots at (phase, hollow). */
+export const roundedKnots = (phase: number, hollow: number): P2[] => roundedTip(profileKnots(phase, hollow), tipLife(clamp(phase, 0, 2)));
+
+/**
+ * Dense point d (0 … DENSE_POINTS − 1) of the centripetal Catmull–Rom through the rounded knots (no cusps or loops between
+ * them): SPAN_SAMPLES per span, the ends' knots repeated as their outer neighbours, the last point the last knot.
+ */
+export function densePoint(k: readonly P2[], d: number): P2 {
+  const last = k.length - 1;
+  if (d >= SPANS * SPAN_SAMPLES) return k[last];
+  const sp = Math.floor(d / SPAN_SAMPLES), i = d - sp * SPAN_SAMPLES;
+  const p0 = k[Math.max(sp - 1, 0)], p1 = k[sp], p2 = k[sp + 1], p3 = k[Math.min(sp + 2, last)];
+  const tj = (ti: number, a: P2, b: P2): number => ti + Math.sqrt(Math.max(1e-6, Math.hypot(b[0] - a[0], b[1] - a[1])));
+  const t0 = 0, t1 = tj(t0, p0, p1), t2 = tj(t1, p1, p2), t3 = tj(t2, p2, p3);
+  const t = t1 + ((t2 - t1) * i) / SPAN_SAMPLES;
+  const L = (a: P2, b: P2, ta: number, tb: number): P2 => [((tb - t) * a[0] + (t - ta) * b[0]) / (tb - ta), ((tb - t) * a[1] + (t - ta) * b[1]) / (tb - ta)];
+  const A1 = L(p0, p1, t0, t1), A2 = L(p1, p2, t1, t2), A3 = L(p2, p3, t2, t3);
+  return L(L(A1, A2, t0, t2), L(A2, A3, t1, t3), t1, t2);
+}
+
+/** The angle (rad, 0 … π) the curve turns from segment a to segment b; 0 where either has no length. */
+export function turnAngle(ax: number, ay: number, bx: number, by: number): number {
+  const cr = ax * by - ay * bx, dt = ax * bx + ay * by;
+  return ax * ax + ay * ay > 1e-12 && bx * bx + by * by > 1e-12 ? Math.abs(Math.atan2(cr, dt)) : 0;
+}
+
+/**
+ * The profile at (phase, hollow) as n points along the curve, back to front, spread by length plus turning: each dense
+ * point's spread position is the one before's, plus the segment between them, plus TURN_COST_H × the turn at the point
+ * before. Written as one walk along the dense points (twice: the total, then the samples), as the GPU's frame pass walks.
+ */
 export function profileCurve(phase: number, hollow: number, n = CURVE_SAMPLES): P2[] {
-  const ph = clamp(phase, 0, 2);
-  const life = smooth(clamp((ph - STAGES.standing) / 0.25, 0, 1)) * (1 - smooth(clamp((ph - STAGES.tubeFilling) / 0.25, 0, 1)));
-  const dense = catmullRom(roundedTip(profileKnots(ph, hollow), life));
-  const s = [0];
-  for (let i = 1; i < dense.length; i++) {
-    let turn = 0;
-    if (i < dense.length - 1) {
-      const a1 = Math.atan2(dense[i][1] - dense[i - 1][1], dense[i][0] - dense[i - 1][0]);
-      const a2 = Math.atan2(dense[i + 1][1] - dense[i][1], dense[i + 1][0] - dense[i][0]);
-      turn = Math.abs(Math.atan2(Math.sin(a2 - a1), Math.cos(a2 - a1)));
+  return profileSamples(phase, hollow, n).curve;
+}
+
+/** The marked knots' samples (indices into the back-to-front curve): the first sample at or past each knot's dense point. */
+export interface ProfileMarks { crest: number; tip: number; floor: number }
+export const MARKED_KNOTS = { crest: CREST_KNOT, tip: ROUNDED_TIP, floor: FLOOR_KNOT + 2 } as const;
+
+/** profileCurve with the samples where it passes the crest, the (rounded) tip and the floor. */
+export function profileSamples(phase: number, hollow: number, n = CURVE_SAMPLES): { curve: P2[]; marks: ProfileMarks } {
+  const k = roundedKnots(phase, hollow);
+  // visit(q0, q1, s0, s1, d): the segment from dense point d − 1 to d and their spread positions.
+  const walk = (visit: (q0: P2, q1: P2, s0: number, s1: number, d: number) => boolean): number => {
+    let prev = densePoint(k, 0), cur = densePoint(k, 1), s = 0;
+    let s1 = Math.hypot(cur[0] - prev[0], cur[1] - prev[1]);
+    if (visit(prev, cur, s, s1, 1)) return s1;
+    for (let d = 2; d < DENSE_POINTS; d++) {
+      const next = densePoint(k, d);
+      const turn = turnAngle(cur[0] - prev[0], cur[1] - prev[1], next[0] - cur[0], next[1] - cur[1]);
+      s = s1;
+      s1 = s + Math.hypot(next[0] - cur[0], next[1] - cur[1]) + TURN_COST_H * turn;
+      prev = cur; cur = next;
+      if (visit(prev, cur, s, s1, d)) break;
     }
-    s.push(s[i - 1] + Math.hypot(dense[i][0] - dense[i - 1][0], dense[i][1] - dense[i - 1][1]) + TURN_COST_H * turn);
-  }
-  const total = s[s.length - 1], out: P2[] = [];
-  let j = 0;
-  for (let k = 0; k < n; k++) {
-    const target = (total * k) / (n - 1);
-    while (j < dense.length - 2 && s[j + 1] < target) j++;
-    const f = s[j + 1] > s[j] ? clamp((target - s[j]) / (s[j + 1] - s[j]), 0, 1) : 0;
-    out.push([dense[j][0] + (dense[j + 1][0] - dense[j][0]) * f, dense[j][1] + (dense[j + 1][1] - dense[j][1]) * f]);
-  }
+    return s1;
+  };
+  const total = walk(() => false), out: P2[] = [];
+  const marks: ProfileMarks = { crest: n - 1, tip: n - 1, floor: n - 1 };
+  const seen = { crest: false, tip: false, floor: false };
+  walk((q0, q1, s0, s1, d) => {
+    // A knot's dense point is d = knot × SPAN_SAMPLES: its mark is the next sample emitted from here on.
+    for (const key of ['crest', 'tip', 'floor'] as const) {
+      if (!seen[key] && d >= MARKED_KNOTS[key] * SPAN_SAMPLES) { seen[key] = true; marks[key] = Math.min(out.length, n - 1); }
+    }
+    // Every sample up to the last falls on the segment its spread position reaches; the last is the last knot.
+    while (out.length < n - 1) {
+      const target = (total * out.length) / (n - 1);
+      if (target > s1) return false;
+      const f = s1 > s0 ? clamp((target - s0) / (s1 - s0), 0, 1) : 0;
+      out.push([q0[0] + (q1[0] - q0[0]) * f, q0[1] + (q1[1] - q0[1]) * f]);
+    }
+    return true;
+  });
+  out.push(k[k.length - 1]);
+  return { curve: out, marks };
+}
+
+/**
+ * The keyframes as the GPU reads them: per key and knot, two vec4s, (hollow x, y, open x, y) and their velocities in phase
+ * (keyVelocity), key-major. The key phases are compile-time constants (PROFILE_KEYS[i].phase).
+ */
+export function keyTable(): Float32Array {
+  const out = new Float32Array(PROFILE_KEYS.length * KNOTS * 8);
+  PROFILE_KEYS.forEach((key, i) => {
+    for (let m = 0; m < KNOTS; m++) {
+      out.set([key.hollow[m][0], key.hollow[m][1], key.open[m][0], key.open[m][1],
+        keyVelocity(i, m, 0, 'hollow'), keyVelocity(i, m, 1, 'hollow'), keyVelocity(i, m, 0, 'open'), keyVelocity(i, m, 1, 'open')], (i * KNOTS + m) * 8);
+    }
+  });
   return out;
 }

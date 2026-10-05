@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Fn, float, instanceIndex, int, length, max, storage, uniform, vec2, vec3, vec4 } from 'three/tsl';
+type Vec2 = readonly [number, number];
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { OceanSimulation } from '../ocean/OceanSimulation';
@@ -14,8 +15,10 @@ import {
 } from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
-import { PROFILE_SAMPLES, PROFILE_SEGMENTS, type ProfileFrame, SEGMENT_ID, type Vec2, buildProfile, profileFrame, sampleTarget, settleSpan, tubeLight, TUBE_TIP_SAMPLE } from './lipProfile';
-import { FRAME_LAYOUT, FRAME_VEC4S, SEGMENT_OF_SAMPLE, homeFromTable, packFrameCpu, profilePointNode, readFrameNodes, sampleHomeNode, sampleTargetNode } from './lipProfileNodes';
+import { PROFILE_SAMPLES } from './BreakingRibbon';
+import { profileSamples } from './wombProfile';
+import { type SectionInput, wombSection } from './wombSection';
+import { WOMB_FRAME_VEC4S } from './wombSectionNodes';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
 import { type ActiveWave, type BreakOptions, breakOptions, type SetWaveResult, type WaveContext, fieldBreakingHeight, sumWaves, toActiveWave } from './setWaveModel';
@@ -27,8 +30,7 @@ const LAST = PROFILE_SAMPLES - 1;
 const LINEUP = new THREE.Vector3(-25, 0.8, 45);
 /** The biggest wave of the default set 1 (as breaker.selftest.ts), and the times after its arrival the profile test reads. */
 const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
-const PROFILE_DTS = [0.3, 0.6, 1.0, 1.6];
-const FRAME_FLOATS = FRAME_VEC4S * 4;
+const FRAME_FLOATS = WOMB_FRAME_VEC4S * 4;
 
 let fieldCache: ReefField | null = null;
 const getField = (): ReefField => (fieldCache ??= computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, peel: DEFAULT_BREAK_PARAMS.peel }));
@@ -61,7 +63,11 @@ function traceAt(t: number, sets: SetWaves): { waves: ActiveWave[]; entries: Sta
 const read = async (renderer: THREE.WebGPURenderer, attr: THREE.StorageBufferAttribute): Promise<Float32Array> =>
   new Float32Array(await renderer.getArrayBufferAsync(attr));
 
-/** The CPU ribbon row of a station: buildProfile on the sumWaves base along n, placed in the world as the vertex pass places it. */
+/** The swell's period the rig's field and ribbon use (s). */
+const PERIOD_S = 15;
+
+/** The CPU ribbon row of a station: wombSection on the sumWaves sheet along n, placed in the world as the vertex pass
+ * places it (the sheet's lateral displacement at each sample's home carried along t̂). */
 function cpuRow(st: Station, t: number, waves: readonly ActiveWave[]) {
   const field = getField(), ctx = ctxOf(field);
   const o: BreakOptions = breakOptions(field, P);
@@ -75,21 +81,19 @@ function cpuRow(st: Station, t: number, waves: readonly ActiveWave[]) {
     }
     return r;
   };
-  const base = (u: number): Vec2 => { const d = at(u); return [u + d.dx * st.nx + d.dz * st.nz, d.eta]; };
-  // The frame on the sheet without the pile (as the GPU frame pass reads it).
-  const flat: BreakOptions = { ...o, pile: false };
-  const frameBase = (u: number): Vec2 => {
-    const x = st.x + st.nx * u, z = st.z + st.nz * u, d = sumWaves(x, z, t, sampleField(field, x, z), waves, ctx, flat);
-    return [u + d.dx * st.nx + d.dz * st.nz, d.eta];
-  };
-  const prof = buildProfile(base, st, P, frameBase);
-  const tx = -st.nz, tz = st.nx;
-  const world = prof.points.map(([u, y], j): [number, number, number] => {
-    const d = at(prof.homes[j]);
+  const sheet = (u: number): Vec2 => { const d = at(u); return [u + d.dx * st.nx + d.dz * st.nz, d.eta]; };
+  const input: SectionInput = { H: st.H, r: st.r, tb: st.tb, psi: st.psi, periodS: PERIOD_S };
+  const sec = wombSection(input, sheet, { ribbonOnset: P.ribbonOnset });
+  const { A, phase, hollow } = sec.numbers;
+  const { curve, marks } = profileSamples(phase, hollow);
+  const homes = curve.map(([u]) => A * u).reverse();
+  const n = PROFILE_SAMPLES, tx = -st.nz, tz = st.nx;
+  const world = sec.points.map(([u, y], j): [number, number, number] => {
+    const d = at(homes[j]);
     const lat = d.dx * tx + d.dz * tz;
     return [st.x + st.nx * u + tx * lat, y, st.z + st.nz * u + tz * lat];
   });
-  return { prof, world };
+  return { sec, homes, world, marks: { tip: n - 1 - marks.tip, crest: n - 1 - marks.crest, floor: n - 1 - marks.floor } };
 }
 
 /** The worst of one comparison, with where it came from. */
@@ -103,51 +107,20 @@ class Worst {
 }
 
 const dist3 = (g: Float32Array, k: number, w: readonly number[]): number => Math.max(Math.abs(g[k] - w[0]), Math.abs(g[k + 1] - w[1]), Math.abs(g[k + 2] - w[2]));
-/** Frame fields that matter only through the geometry: compared directly only where the station's curve is drawn. */
-const GEOMETRY_ONLY = new Set<string>(['vj', 'tauLand', 'reach', 'prog', 'collapse', 'landing', 'weight']);
-/** The frame tolerance (controller ruling): 1e-3 × max(1, |CPU value|); the pile's knots' x, dx and dy are sheet evaluations (and
- * their differences), bounded by the sheet's own f32 GPU/CPU gap as the edge samples are (1 cm). */
-const SHEET_FIELD = /^k\d\.(x|dx|dy)$/;
-/** The landing's root (impactHeight's search, and the tube it sizes): 3e-3 × max(1, |v|) (ruling, 2026-10-03 barrel size):
- * sized × the throw height, a small tube whose point grazes the water (ψ 0.03, H_I 1.3 m) turns the sheet's 1 mm f32 gap
- * into 2 mm of landing; hung from the crest now, those stations kept H without searching. */
-const LANDING_FIELD = /^(P\.[xy]|tip\.[xy]|clipY|HI|L|W)$/;
-/** The face's direction at its foot, tF: the sheet's chord over the 0.1 m behind F, so ×10 the sheet's own f32 gap between
- * two reads: 3e-3, 0.3 mm of it (ruling, 2026-10-04, after the peel stretch: a foot moved past the landing onto a trough
- * bending 0.25 m round, where the two reads' 0.09 mm gaps no longer cancel, put it at 1.1e-3; the mirror is exact, the
- * CPU's tF at the GPU's uFoot being 2e-4 off the CPU's own). */
-const CHORD_FIELD = /^tF\.[xy]$/;
-const frameTol = (c: number, name: string): number => (SHEET_FIELD.test(name) ? 1e-2 : (LANDING_FIELD.test(name) || CHORD_FIELD.test(name) ? 3e-3 : 1e-3) * Math.max(1, Math.abs(c)));
-/** Whether a station's constructed curve shows: CPU weight > 0.01, or a finite tb before the collapse ends. */
-const drawn = (e: Station, f: ProfileFrame): boolean =>
-  f.weight > 0.01 || (e.tb !== null && Number.isFinite(e.tb) && e.tb < f.tauLand + settleSpan(e.H, P));
 
-const isEdge = (j: number): boolean => SEGMENT_OF_SAMPLE[j] === SEGMENT_ID.front || SEGMENT_OF_SAMPLE[j] === SEGMENT_ID.back;
-
-/** The ψ the mirror test forces on every station (states 4, 5, 6 and a slab past the fits), and its times: from before the
- * peak breaks (it breaks seconds before the biggest wave reaches (0, 0) on the softened ramp) through the landing. */
-const MIRROR_PSI = [0, 0.005, 0.03, 0.065, 0.09, 0.2];
-const MIRROR_DTS = [-5, -3.5, -2, 0.6];
-/** Every MIRROR_STRIDE-th live station is compared (the CPU reference is ~300 sheet evaluations a station). */
+/** The ψ the mirror test forces on every station (oval, cylinder, thrown, past it) and its times around the biggest wave's
+ * arrival at the take-off: standing up, held by the peel, the throw, the barrel, the collapse. */
+const MIRROR_PSI = [0.03, 0.065, 0.09, 0.2];
+const MIRROR_DTS = [-5, -3.5, -2, -1, 0, 0.6, 2];
+/** Every MIRROR_STRIDE-th live station is compared (the CPU reference is ~160 sheet evaluations a station). */
 const MIRROR_STRIDE = 3;
 
 registerSelfTest({
-  name: 'ribbon: GPU profile matches lipProfile',
+  name: 'ribbon: GPU section matches wombSection',
   async run(renderer) {
     const { time, sets, ribbon } = setsRig();
-    // Front/back samples are the sheet itself (their error is the sheet's own GPU/CPU gap); the rest are constructed.
-    // The frame: the GPU frame against the CPU frame on the CPU base (excess over frameTol, > 0 fails; geometry-only fields
-    // only where the station's curve is drawn).
-    const edge = new Worst(), constructed = new Worst(), skirt = new Worst(), extras = new Worst(), thick = new Worst();
-    const frame = new Worst(), light = new Worst();
-    frame.value = -Infinity;
-    // The tube's light against lipProfile.tubeLight, under a sun up and to one side (spec 2026-10-03 lip-and-tube-look §5).
-    const SUN = new THREE.Vector3(0.35, 0.6, -0.72).normalize();
-    ribbon.setSun(SUN);
-    const perField = FRAME_LAYOUT.map(() => 0);
-    let stations = 0, deadLive = 0, nonFinite = 0, notOpen = 0, broken = 0, landed = 0, worstDetail = '';
-    const segBad = [0, 0, 0, 0, 0, 0, 0], segWorst = [0, 0, 0, 0, 0, 0, 0];
-    const failures: string[] = [];
+    const pos = new Worst(), skirt = new Worst(), numbers = new Worst(), marks = new Worst(), rhoX = new Worst();
+    let stations = 0, deadLive = 0, nonFinite = 0, thrown = 0, collapsing = 0, standing = 0, worstDetail = '';
     for (const psi of MIRROR_PSI) for (const dt of MIRROR_DTS) {
       const t = REF_BIGGEST.arrivalS + dt;
       time.value = t;
@@ -161,61 +134,41 @@ registerSelfTest({
         if (e.gap || live++ % MIRROR_STRIDE !== 0) return;
         stations++;
         const where = `ψ ${psi} dt ${dt} #${i}`;
-        const { prof, world } = cpuRow(e, t, traced.waves);
-        const lights = tubeLight(prof, [SUN.x * e.nx + SUN.z * e.nz, SUN.y]);
-        if (prof.frame.prog > 0 && prof.frame.prog < 1) broken++;
-        if (prof.frame.landing > 0) landed++;
+        const { sec, world, marks: cm } = cpuRow(e, t, traced.waves);
+        const { A, phase, hollow, rho } = sec.numbers;
+        if (phase > 0.6 && phase < 1.2 && rho > 0.9) thrown++;
+        if (phase > 1.2 && rho > 0.5) collapsing++;
+        if (phase > 0.1 && phase <= 0.45) standing++;
         for (let j = 0; j < PROFILE_SAMPLES; j++) {
           const k = (i * V + j + 1) * 4;
           const dj = dist3(gp, k, world[j]);
-          const sg = SEGMENT_OF_SAMPLE[j];
-          if (dj > 5e-3) { segBad[sg]++; segWorst[sg] = Math.max(segWorst[sg], dj); }
-          if (!isEdge(j) && dj > constructed.value) {
-            const fr = prof.frame;
+          if (!(dj <= pos.value)) {
             worstDetail = `${where} j ${j}: GPU (${[gp[k], gp[k + 1], gp[k + 2]].map((v) => v.toFixed(3)).join(', ')}) CPU (${world[j].map((v) => v.toFixed(3)).join(', ')}); ` +
-              `home ${prof.homes[j].toFixed(3)} target ${sampleTarget(j, fr).toFixed(3)}; prog ${fr.prog.toFixed(3)} landing ${fr.landing.toFixed(3)} collapse ${fr.collapse.toFixed(3)} weight ${fr.weight.toFixed(3)}`;
+              `A ${A.toFixed(3)} phase ${phase.toFixed(3)} hollow ${hollow.toFixed(3)} ρ ${rho.toFixed(3)}`;
           }
-          (isEdge(j) ? edge : constructed).see(dj, `${where} j ${j}`);
+          pos.see(dj, `${where} j ${j}`);
           if (gp[k + 3] !== 0) deadLive++;
-          if (![gp[k], gp[k + 1], gp[k + 2], ge[k], ge[k + 1], ge[k + 2], ge[k + 3]].every(Number.isFinite)) nonFinite++;
-          const cx = [prof.thickness[j], prof.lipness[j], prof.curlFoam[j], prof.frame.rho];
-          thick.see(Math.abs(ge[k] - cx[0]), `${where} j ${j} GPU ${ge[k].toFixed(4)} CPU ${cx[0].toFixed(4)}`);
-          const xm = cx.map((c, m) => (m === 0 ? 0 : Math.abs(ge[k + m] - c))), xw = xm.indexOf(Math.max(...xm));
-          extras.see(xm[xw], `${where} j ${j} ${['thickness', 'lipness', 'curlFoam', 'rho'][xw]} GPU ${ge[k + xw].toFixed(4)} CPU ${cx[xw].toFixed(4)}`);
-          const cl = lights[j], gk = [gl[k], gl[k + 1], gl[k + 2], gl[k + 3]];
-          if (!gk.every(Number.isFinite)) nonFinite++;
-          // Off the tube's inside (and the tip itself) the light is exactly open (no atan2(0, 0) leaking through a × 0).
-          const offInside = SEGMENT_OF_SAMPLE[j] !== SEGMENT_ID.face && SEGMENT_OF_SAMPLE[j] !== SEGMENT_ID.wall;
-          if ((offInside || j === TUBE_TIP_SAMPLE) && (gk[0] !== 0 || gk[1] !== 1 || gk[3] !== 0)) notOpen++;
-          const dl = Math.max(Math.abs(gk[0] - cl.sLip), Math.abs(gk[1] - cl.o), Math.abs(gk[3] - cl.sBody), Math.abs(gk[2] - cl.tLip));
-          light.see(dl, `${where} j ${j} GPU (${gk.map((v) => v.toFixed(3)).join(', ')}) CPU (${[cl.sLip, cl.o, cl.tLip, cl.sBody].map((v) => v.toFixed(3)).join(', ')})`);
+          if (![gp[k], gp[k + 1], gp[k + 2], ge[k], ge[k + 1], ge[k + 2], ge[k + 3], gl[k], gl[k + 1], gl[k + 2], gl[k + 3]].every(Number.isFinite)) nonFinite++;
+          rhoX.see(Math.abs(ge[k + 3] - rho), `${where} j ${j}`);
         }
         const lowered = (w: readonly number[]) => [w[0], w[1] - SKIRT_DEPTH_M, w[2]];
         skirt.see(Math.max(dist3(gp, i * V * 4, lowered(world[0])), dist3(gp, (i * V + V - 1) * 4, lowered(world[LAST]))), where);
         const g = gf.subarray(i * FRAME_FLOATS, (i + 1) * FRAME_FLOATS);
-        const cf = packFrameCpu(prof.frame);
-        const isDrawn = drawn(e, prof.frame);
-        cf.forEach((c, m) => {
-          const err = Math.abs(g[m] - c);
-          perField[m] = Math.max(perField[m], err);
-          if (GEOMETRY_ONLY.has(FRAME_LAYOUT[m]) && !isDrawn) return;
-          const excess = err - frameTol(c, FRAME_LAYOUT[m]);
-          frame.see(excess, `${where} ${FRAME_LAYOUT[m]}`);
-          if (excess > 0 && failures.length < 8) failures.push(`${where} ${FRAME_LAYOUT[m]} GPU ${g[m].toFixed(4)} CPU ${c.toFixed(4)}`);
-        });
+        const nm = [A, phase, hollow, rho].map((c, m) => Math.abs(g[m] - c) / Math.max(1, Math.abs(c))), nw = nm.indexOf(Math.max(...nm));
+        numbers.see(nm[nw], `${where} ${['A', 'phase', 'hollow', 'rho'][nw]} GPU ${g[nw].toFixed(5)} CPU ${[A, phase, hollow, rho][nw].toFixed(5)}`);
+        const mm = [cm.tip, cm.crest, cm.floor].map((c, m) => Math.abs(g[4 + m] - c)), mw = mm.indexOf(Math.max(...mm));
+        marks.see(mm[mw], `${where} ${['tip', 'crest', 'floor'][mw]} GPU ${g[4 + mw]} CPU ${[cm.tip, cm.crest, cm.floor][mw]}`);
       });
     }
-    // Bounds: the constructed samples are the mirror (5 mm). The edge samples and the skirts are pure sheet evaluations,
-    // so they measure the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest): 1 cm. The lip's thickness is a length on
-    // the profile, bounded as the constructed points (5 mm); the unitless extras (lipness, curl foam, ρ) 2e-3.
-    const ok = stations > 0 && broken > 0 && landed > 0 && deadLive === 0 && nonFinite === 0 && constructed.value < 5e-3 && Math.max(edge.value, skirt.value) < 1e-2 &&
-      frame.value <= 0 && thick.value < 5e-3 && extras.value < 2e-3 && light.value < 2e-2 && notOpen === 0;
-    const fields = FRAME_LAYOUT.map((n, m) => `${n} ${perField[m].toExponential(1)}`).join(', ');
+    // Bounds: the samples are the mirror plus the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest), 5 mm; the
+    // numbers 1e-4 relative; the marks within one sample (a walk's threshold in f32 against f64).
+    const ok = stations > 0 && thrown > 0 && collapsing > 0 && standing > 0 && deadLive === 0 && nonFinite === 0 && pos.value < 5e-3 && skirt.value < 5e-3 &&
+      numbers.value < 1e-4 && marks.value <= 1 && rhoX.value < 1e-4;
     return {
       pass: ok,
-      detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${broken} in the throw, ${landed} landed); worst |Δpos| (m) constructed ${constructed} (< 5e-3), ` +
-        `edge samples ${edge} and skirts ${skirt} (< 1e-2); frame (excess over 1e-3·max(1, |v|), the landing's root and the foot's chord 3e-3, the knots' sheet reads 1e-2) worst ${frame} (≤ 0); worst |Δthickness| ${thick} (< 5e-3) and |Δextras| ${extras} (< 2e-3); worst |Δlight| ${light} (< 2e-2), open samples not exactly open ${notOpen} (0); ` +
-        `live rows flagged dead ${deadLive}, non-finite samples ${nonFinite} (0). Samples off > 5 mm by segment (front..back) ${segBad.join('/')}, worst ${segWorst.map((v) => v.toFixed(3)).join('/')}. Worst constructed: ${worstDetail}. Per frame field |Δ|: ${fields}. Frame failures: ${failures.join(' | ') || 'none'}`,
+      detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${standing} standing up, ${thrown} thrown, ${collapsing} collapsing); ` +
+        `worst |Δpos| ${pos} (< 5e-3), skirts ${skirt} (< 5e-3); numbers (A, phase, hollow, ρ; relative) ${numbers} (< 1e-4); marks ${marks} samples (≤ 1); ` +
+        `extras' ρ ${rhoX} (< 1e-4); live rows flagged dead ${deadLive}, non-finite values ${nonFinite} (0). Worst sample: ${worstDetail}`,
     };
   },
 });
@@ -289,13 +242,13 @@ registerSelfTest({
       detailAtEdge.see(out[q + 15], where);
       tilt = Math.max(tilt, Math.hypot(out[q + 12], out[q + 14]));
     });
-    // Where the lip is thrown the blend must engage: the most constructed face or lip sample of those stations.
-    const frameAt = (i: number, name: (typeof FRAME_LAYOUT)[number]): number => gf[i * FRAME_FLOATS + FRAME_LAYOUT.indexOf(name)];
+    // Where the lip is thrown the blend must engage: the most constructed sample from the floor to the crest of those stations.
     let lipConstructed = 0, peaks = 0;
     entries.forEach((e, i) => {
-      if (e.gap || !(frameAt(i, 'weight') > 0.9 && frameAt(i, 'prog') > 0.3)) return;
+      const f = gf.subarray(i * FRAME_FLOATS, (i + 1) * FRAME_FLOATS);
+      if (e.gap || !(f[3] > 0.9 && f[1] > 0.6 && f[1] < 1.2)) return;
       peaks++;
-      for (let j = PROFILE_SEGMENTS.front; j < PROFILE_SAMPLES - PROFILE_SEGMENTS.back; j++) lipConstructed = Math.max(lipConstructed, gd[(i * V + j + 1) * 4 + 3]);
+      for (let j = Math.min(f[6], f[5]); j <= Math.max(f[6], f[5]); j++) lipConstructed = Math.max(lipConstructed, gd[(i * V + j + 1) * 4 + 3]);
     });
     // The chop must be there (FFT on) or the comparison proves nothing about it. The default sea's 35 m cascade is only
     // millimetres high at the lineup (6 mm measured), so the bound is 1 mm; the equality itself holds to ~1e-5 m.
@@ -373,9 +326,6 @@ function cpuNormal(rows: readonly (readonly (readonly number[])[] | null)[], ent
   return l > 1e-12 ? n.map((c) => c / l) : [0, 1, 0];
 }
 
-/** The first under sample (lipProfile's segment order: front, face, wall, under). */
-const UNDER_FROM = PROFILE_SEGMENTS.front + PROFILE_SEGMENTS.face + PROFILE_SEGMENTS.wall;
-
 registerSelfTest({
   name: 'ribbon: normals face up out of the water on the back slope and down under the lip',
   async run(renderer) {
@@ -388,7 +338,6 @@ registerSelfTest({
     const gn = await read(renderer, ribbon.normals), gf = await read(renderer, ribbon.frames), gp = await read(renderer, ribbon.positions);
     const field = getField(), ctx = ctxOf(field);
     const o: BreakOptions = breakOptions(field, P);
-    const frameAt = (i: number, name: (typeof FRAME_LAYOUT)[number]): number => gf[i * FRAME_FLOATS + FRAME_LAYOUT.indexOf(name)];
     // The mirror runs on the GPU's own positions, so it checks the normal pass alone (test 1 checks the positions).
     const rows = entries.map((e, i) => (e.gap ? null : Array.from({ length: PROFILE_SAMPLES }, (_, j) => Array.from(gp.slice((i * V + j + 1) * 4, (i * V + j + 1) * 4 + 3)))));
     /** The sheet's own normal y at a station's back edge, from central differences of sumWaves 0.25 m apart (the true
@@ -404,9 +353,12 @@ registerSelfTest({
     entries.forEach((e, i) => {
       if (e.gap) return;
       live++;
-      // Any station with a thrown lip (the break sits 50–130 m seaward of (0, 0) on the softened reef).
-      const peak = frameAt(i, 'weight') > 0.9 && frameAt(i, 'prog') > 0.3;
+      // Any station with a thrown lip.
+      const f = gf.subarray(i * FRAME_FLOATS, (i + 1) * FRAME_FLOATS);
+      const peak = f[3] > 0.9 && f[1] > 0.7 && f[1] < 1.1;
       if (peak) peakStations++;
+      // The lip's underside: the samples just inside the tip, toward the tube's floor (front → back: floor … ceiling … tip).
+      const tipJ = f[4], floorJ = f[6], underFrom = tipJ - 0.25 * (tipJ - floorJ);
       for (let j = 0; j < PROFILE_SAMPLES; j++) {
         const k = (i * V + j + 1) * 4;
         const cn = cpuNormal(rows, entries, i, j), err = dist3(gn, k, cn);
@@ -417,10 +369,7 @@ registerSelfTest({
             `rows i±1 at j ${[i - 1, i + 1].map((q) => (rows[q] ? f3((rows[q] as number[][])[j]) : 'none')).join(' ')}`;
         }
         mirror.see(err, `#${i} j ${j}`);
-        // The lip's underside: the under samples past the tube's top (ξ = s·ξtip ≥ ξtop). Behind the top it is the tube's
-        // back, the inside of the wall rising to the top, whose normal faces back and up.
-        const underXi = ((j - UNDER_FROM) / PROFILE_SEGMENTS.under) * frameAt(i, 'xiTip');
-        const lipUnder = SEGMENT_OF_SAMPLE[j] === SEGMENT_ID.under && underXi >= frameAt(i, 'xiTop');
+        const lipUnder = j >= underFrom && j < tipJ - 1;
         if (peak && lipUnder && !(gn[k + 1] <= underMax)) { underMax = gn[k + 1]; underAt = `#${i} j ${j}`; }
       }
       const by = gn[(i * V + LAST + 1) * 4 + 1];
@@ -436,7 +385,7 @@ registerSelfTest({
       pass: ok,
       detail: `${live} live stations at dt 0.6 s; worst |GPU normal − CPU mirror of the normal pass| ${mirror} (< 0.05) [${mirrorNote}]; ` +
         `lowest back-edge normal y ${backMin.toFixed(3)} (${backAt}; > 0); on the ${gentle} gentle back slopes (sheet normal y > 0.95) lowest ${gentleMin.toFixed(3)} (${gentleAt}; > 0.8); ` +
-        `${peakStations} stations with a thrown lip (weight > 0.9, prog > 0.3); highest lip underside normal y (ξ ≥ ξtop) ${underMax.toFixed(3)} (${underAt}; < 0)`,
+        `${peakStations} stations with a thrown lip (ρ > 0.9, phase 0.7–1.1); highest lip underside normal y (the quarter of the tube's inside next to the tip) ${underMax.toFixed(3)} (${underAt}; < 0)`,
     };
   },
 });
@@ -571,25 +520,26 @@ registerSelfTest({
     // The rig's chop is 0, so the positions are the chop-free profile the develop pass measured.
     const gp = await read(renderer, ribbon.positions), gd = await read(renderer, ribbon.details), gh = await read(renderer, ribbon.homes);
     const gf = await read(renderer, ribbon.frames);
-    const frameAt = (i: number, name: (typeof FRAME_LAYOUT)[number]): number => gf[i * FRAME_FLOATS + FRAME_LAYOUT.indexOf(name)];
     const mirror = new Worst(), place = new Worst(), edges = new Worst(), skirts = new Worst(), flat = new Worst();
-    let live = 0, peaks = 0, flatStations = 0, faceShort = Infinity, faceAt = '';
+    let live = 0, flatStations = 0;
     entries.forEach((e, i) => {
       if (e.gap) return;
       live++;
+      const f = gf.subarray(i * FRAME_FLOATS, (i + 1) * FRAME_FLOATS);
       const pts = Array.from({ length: PROFILE_SAMPLES }, (_, j): Vec2 => {
         const k = (i * V + j + 1) * 4;
         return [(gp[k] - e.x) * e.nx + (gp[k + 2] - e.z) * e.nz, gp[k + 1]];
       });
-      // The detail coordinate: mix(home u, developed u, the frame's weight) on the GPU's own frame and positions.
-      const frame = { uFoot: frameAt(i, 'uFoot'), uFront: frameAt(i, 'uFront'), uBack: frameAt(i, 'uBack') }, weight = frameAt(i, 'weight');
-      const homes = Array.from({ length: PROFILE_SAMPLES }, (_, j) => homeFromTable(j, frame));
-      const dev = developedU(pts, frame.uFront, frame.uBack, { homes, weight });
+      // The detail coordinate: mix(home u, developed u, ρ) on the GPU's own positions and homes, blended from the floor's
+      // sample to the crest's.
+      const homes = Array.from({ length: PROFILE_SAMPLES }, (_, j) => { const k = (i * V + j + 1) * 4; return (gh[k] - e.x) * e.nx + (gh[k + 1] - e.z) * e.nz; });
+      const weight = f[3];
+      const dev = developedU(pts, homes[0], homes[LAST], [f[6], f[5]], { homes, weight });
       if (weight === 0) flatStations++;
       for (let j = 0; j < PROFILE_SAMPLES; j++) {
         const k = (i * V + j + 1) * 4;
-        mirror.see(Math.abs(gd[k + 2] - dev[j]), `#${i} j ${j} weight ${weight.toFixed(3)}`);
-        // Where the frame's weight is 0 the profile is the sheet's own: the detail is the sheet's home, exactly.
+        mirror.see(Math.abs(gd[k + 2] - dev[j]), `#${i} j ${j} ρ ${weight.toFixed(3)}`);
+        // Where ρ is 0 the profile is the sheet's own: the detail is the sheet's home, exactly.
         if (weight === 0) flat.see(Math.max(Math.abs(gd[k] - gh[k]), Math.abs(gd[k + 1] - gh[k + 1])), `#${i} j ${j}`);
         place.see(Math.max(Math.abs(gd[k] - (e.x + e.nx * gd[k + 2])), Math.abs(gd[k + 1] - (e.z + e.nz * gd[k + 2]))), `#${i} j ${j}`);
       }
@@ -599,84 +549,13 @@ registerSelfTest({
       }
       const s0 = i * V * 4, s1 = (i * V + V - 1) * 4, e0 = (i * V + 1) * 4, e1 = (i * V + PROFILE_SAMPLES) * 4;
       skirts.see(Math.max(...[0, 1, 2].map((m) => Math.max(Math.abs(gd[s0 + m] - gd[e0 + m]), Math.abs(gd[s1 + m] - gd[e1 + m])))), `#${i}`);
-      // Where the lip is thrown, the face gets a face's worth of detail: its developed span is its own arc length
-      // (blended with the home's span by the weight, so exactly the arc at weight 1).
-      if (weight > 0.9 && frameAt(i, 'prog') > 0.3) {
-        peaks++;
-        const f0 = PROFILE_SEGMENTS.front, f1 = f0 + PROFILE_SEGMENTS.face;
-        let arc = 0;
-        for (let j = f0 + 1; j <= f1; j++) arc += Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]);
-        const span = gd[(i * V + f0 + 1) * 4 + 2] - gd[(i * V + f1 + 1) * 4 + 2];
-        const homeSpan = gh[(i * V + f0 + 1) * 4] * e.nx + gh[(i * V + f0 + 1) * 4 + 1] * e.nz - (gh[(i * V + f1 + 1) * 4] * e.nx + gh[(i * V + f1 + 1) * 4 + 1] * e.nz);
-        const expected = weight * arc + (1 - weight) * homeSpan;
-        const ratio = span / Math.max(expected, 1e-9);
-        if (ratio < faceShort) {
-          faceShort = ratio;
-          faceAt = `#${i}: weight ${weight.toFixed(3)}, face arc ${arc.toFixed(2)} m, home span ${homeSpan.toFixed(2)} m, expected ${expected.toFixed(2)} m, detail span ${span.toFixed(2)} m`;
-        }
-      }
     });
-    const ok = live > 0 && mirror.value < 1e-3 && place.value < 1e-3 && edges.value <= 1e-5 && flat.value <= 1e-5 && skirts.value === 0 &&
-      peaks > 0 && faceShort > 0.99;
+    const ok = live > 0 && mirror.value < 1e-3 && place.value < 1e-3 && edges.value <= 1e-5 && flat.value <= 1e-5 && skirts.value === 0;
     return {
       pass: ok,
-      detail: `${live} live stations at dt 0.6 s; worst |GPU detail u − developedU(mix(home, developed, weight)) on the GPU's frames and positions| ${mirror} m (< 1e-3); ` +
+      detail: `${live} live stations at dt 0.6 s; worst |GPU detail u − developedU(mix(home, developed, ρ)) on the GPU's positions and homes| ${mirror} m (< 1e-3); ` +
         `worst |detail xz − (S + n·u)| ${place} m (< 1e-3); worst |detail − home| at the edges ${edges} m (≤ 1e-5); ` +
-        `${flatStations} stations at weight 0, worst |detail − home| there ${flat} m (≤ 1e-5); skirts vs their edge ${skirts} (0); ` +
-        `${peaks} stations with a thrown lip, lowest face detail span / (weight·arc + (1 − weight)·home span) ${faceShort.toFixed(4)} (> 0.99) [${faceAt}]`,
+        `${flatStations} stations at ρ 0, worst |detail − home| there ${flat} m (≤ 1e-5); skirts vs their edge ${skirts} (0)`,
     };
-  },
-});
-
-registerSelfTest({
-  name: 'ribbon: the sample mirror on CPU frames (constructed, riding, settling target)',
-  async run(renderer) {
-    // A synthetic cross-section steep enough to throw (weight ~1: a crest at u = 0 falling to a trough ahead) and the same with a whitewater bump ahead.
-    const frameBase = (u: number): Vec2 => [u + 0.3 * Math.sin(u * 0.2), 2.6 * Math.exp(-((u / 2.5) ** 2)) - 1.6];
-    const base = (u: number): Vec2 => { const b = frameBase(u); return [b[0], b[1] + 1.2 * Math.exp(-(((u - 4) / 3) ** 2))]; };
-    // With and without a throw height above the crest's now (the tube hung from the throw crest, its back eased down).
-    const cases: { psi: number; tb: number; lipH: number | null }[] = [];
-    for (const psi of [0.03, 0.065, 0.09]) for (const lipH of [null, 4.8]) {
-      const tau = profileFrame(frameBase, { H: 4, c: 8, r: 1.4, tb: 0, psi, lipH }, P).tauLand;
-      for (const tb of [0.3 * tau, 0.8 * tau, tau + 0.2, tau + 0.8]) cases.push({ psi, tb, lipH });
-    }
-    const profs = cases.map((c) => buildProfile(base, { H: 4, c: 8, r: 1.4, tb: c.tb, psi: c.psi, lipH: c.lipH }, P, frameBase));
-    const nF = profs.length, frameData = new Float32Array(nF * FRAME_FLOATS), targets = new Float32Array(nF * PROFILE_SAMPLES * 4);
-    profs.forEach((pr, q) => {
-      frameData.set(packFrameCpu(pr.frame), q * FRAME_FLOATS);
-      for (let j = 0; j < PROFILE_SAMPLES; j++) targets.set([...base(sampleTarget(j, pr.frame)), 0, 0], (q * PROFILE_SAMPLES + j) * 4);
-    });
-    const framesAttr = new THREE.StorageBufferAttribute(frameData, 4), targetsAttr = new THREE.StorageBufferAttribute(targets, 4);
-    const outAttr = new THREE.StorageBufferAttribute(new Float32Array(nF * PROFILE_SAMPLES * 8), 4);
-    const framesS = storage(framesAttr, 'vec4', nF * FRAME_VEC4S).toReadOnly(), targetsS = storage(targetsAttr, 'vec4', nF * PROFILE_SAMPLES).toReadOnly();
-    const out = storage(outAttr, 'vec4', nF * PROFILE_SAMPLES * 2);
-    const pass = Fn(() => {
-      const idx: any = int(instanceIndex).toVar();
-      const q: any = idx.div(PROFILE_SAMPLES).toVar(), j: any = idx.sub(q.mul(PROFILE_SAMPLES)).toVar();
-      const f = readFrameNodes((k) => framesS.element(q.mul(FRAME_VEC4S).add(k)));
-      const home = sampleHomeNode(j, f).toVar();
-      const st = sampleTargetNode(j, f, home);
-      const p = profilePointNode(j, f, targetsS.element(idx).xy, home, st.c);
-      out.element(idx.mul(2)).assign(vec4(p.pos, st.target, p.thickness));
-      out.element(idx.mul(2).add(1)).assign(vec4(p.curlFoam, p.lipness, 0.0, 0.0));
-    })().compute(nF * PROFILE_SAMPLES) as THREE.ComputeNode;
-    renderer.compute(pass);
-    const g = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
-    const pos = new Worst(), target = new Worst(), extra = new Worst();
-    const bySeg = [0, 0, 0, 0, 0, 0, 0];
-    profs.forEach((pr, q) => {
-      for (let j = 0; j < PROFILE_SAMPLES; j++) {
-        const k = (q * PROFILE_SAMPLES + j) * 8, where = `ψ ${cases[q].psi} lipH ${cases[q].lipH} tb ${cases[q].tb.toFixed(2)} j ${j}`;
-        const dp = Math.hypot(g[k] - pr.points[j][0], g[k + 1] - pr.points[j][1]);
-        pos.see(dp, `${where} GPU (${g[k].toFixed(3)}, ${g[k + 1].toFixed(3)}) CPU (${pr.points[j][0].toFixed(3)}, ${pr.points[j][1].toFixed(3)})`);
-        if (dp > 5e-3) bySeg[SEGMENT_OF_SAMPLE[j]]++;
-        target.see(Math.abs(g[k + 2] - sampleTarget(j, pr.frame)), where);
-        extra.see(Math.max(Math.abs(g[k + 3] - pr.thickness[j]), Math.abs(g[k + 4] - pr.curlFoam[j]), Math.abs(g[k + 5] - pr.lipness[j])), where);
-      }
-    });
-    // The frames must throw, or the lip's samples are the base and the mirror proves nothing.
-    const thrown = profs.filter((pr) => pr.frame.weight > 0.9).length;
-    const ok = pos.value < 5e-3 && target.value < 5e-3 && extra.value < 2e-3 && thrown >= nF / 2;
-    return { pass: ok, detail: `${nF} CPU frames × ${PROFILE_SAMPLES} samples, ${thrown} thrown (weight > 0.9; ≥ ${nF / 2}); worst |Δpos| ${pos} (< 5e-3), off by segment ${bySeg.join('/')}; |Δtarget| ${target}; |Δextras| ${extra}` };
   },
 });
