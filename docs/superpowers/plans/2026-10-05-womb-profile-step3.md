@@ -186,6 +186,22 @@ GPU self-tests after da616ab: to rerun (breaker 11/12 and ribbon 5/7 before it: 
   water 0.1 m lower than the near one's; the peak 0.94 of the shoulders, wants 0.95), the pile never growing (1 cm),
   overturnProfile's lip growth, tubeLight 8 ft low tide.
 
+#### Found in Andrew's ninth look (2026-10-05, 8.1 ft, his screenshot 12.webp in the session's scratchpad)
+
+"It's still there": from just inside the wave looking down the line, a wedge of water in front of the face (his red
+outline) is darker and smoother than the sea around it, with a sharp far edge, and the face itself reads flat grey-white.
+The checks behind fdd0988/ac88408 were of the surface's heights (CPU height maps, cross-sections): they show the crease in
+front of the curl reduced, but say nothing about shading, and this is a shading boundary. Hypothesis, not yet checked: it
+is the ribbon's own footprint. The ribbon's mesh runs EDGE_OUTER_UNITS (7 A, ~24 m at 8 ft) in front of the crest, the
+sheet hidden under it; past FRONT_BLEND_UNITS[1] (4 A) its positions are the sheet's, but it is shaded as the ribbon (its
+own vertex spacing for the chop cascade, which it adds per vertex, its normals, its detail coordinate), and its edge is
+where that stops: a wedge, widest where the curl's A is largest. Next:
+- [ ] Confirm: the same moment with the ribbon hidden (App: this.ribbon.mesh.visible), and with the ribbon's front cut at
+  4 A. If the wedge goes, either end the ribbon's front where it becomes the sheet (FRONT_BLEND_UNITS[1]) so the sheet
+  draws the flats, or make its shading there the sheet's exactly (chop sampled at the sheet's resolution, the sheet's
+  normal).
+- [ ] The face's flat grey-white look in the same shot (the ribbon's face shading at 8 ft, sun high, sky custom).
+
 ### 3e. Andrew's look (his PC)
 
 - [ ] Captures of the left at 6, 8 and 10 ft, mid tide, from the lineup and the ride camera. His sign-off before step 4 removes the old code.
