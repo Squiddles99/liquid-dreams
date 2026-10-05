@@ -22,7 +22,7 @@ import { wombSection } from './wombSection';
 import { TB_INFINITY, TB_NULL } from './lipProfileNodes';
 import { REEF_GRID } from '../seabed/wombReef';
 
-const station = (x: number, tb: number | null): Station => ({ gap: false, wave: 0, x, z: -x, arc: x, nx: 0.6, nz: 0.8, H: 2 + x, c: 9, r: 1.2, tb, psi: PSI_NORMAL, lipH: null });
+const station = (x: number, tb: number | null): Station => ({ gap: false, wave: 0, x, z: -x, arc: x, nx: 0.6, nz: 0.8, H: 2 + x, c: 9, r: 1.2, tb, psi: PSI_NORMAL, lipH: null, section: { A: 2, phase: 0.8, hollow: 1, rho: 1 } });
 const GAP: StationEntry = { gap: true };
 const ROW = STATION_VEC4S * 4;
 const row = (d: Float32Array, i: number): number[] => Array.from(d.subarray(i * ROW, (i + 1) * ROW));
@@ -32,14 +32,14 @@ describe('BreakingRibbon stations', () => {
     expect(VERTS_PER_STATION).toBe(PROFILE_SAMPLES + 2);
   });
 
-  it('packs [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, psi, 0] with tb encoded, and a gap as a dead copy of the previous live station', () => {
+  it('packs [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, psi, 0], [A, phase, hollow, ρ] with tb encoded, and a gap as a dead copy of the previous live station', () => {
     const d = new Float32Array(MAX_STATIONS * ROW);
     const n = packStations([station(1, 0.25), station(2, null), GAP, station(3, Infinity)], d);
     expect(n).toBe(4);
     // Every live station here is within FOOTPRINT_END_MARGIN_M of its run's end (runs 1–2 m and 3 m of arc): runEnd 1.
-    expect(row(d, 0)).toEqual([1, -1, 0.6, 0.8, 3, 9, 1.2, 0.25, 0, 1, PSI_NORMAL, 0].map(Math.fround));
+    expect(row(d, 0)).toEqual([1, -1, 0.6, 0.8, 3, 9, 1.2, 0.25, 0, 1, PSI_NORMAL, 0, 2, 0.8, 1, 1].map(Math.fround));
     expect(row(d, 1)[7]).toBe(TB_NULL);
-    expect(row(d, 2)).toEqual([...row(d, 1).slice(0, 8), 1, 0, Math.fround(PSI_NORMAL), 0]);
+    expect(row(d, 2)).toEqual([...row(d, 1).slice(0, 8), 1, 0, Math.fround(PSI_NORMAL), 0, ...row(d, 1).slice(12)]);
     expect(row(d, 3)[7]).toBe(TB_INFINITY);
     expect(row(d, 3)[8]).toBe(0);
   });
@@ -47,7 +47,7 @@ describe('BreakingRibbon stations', () => {
   it('a gap before any live station copies the first live one; nothing live packs nothing; at most MAX_STATIONS rows', () => {
     const d = new Float32Array(MAX_STATIONS * ROW);
     expect(packStations([GAP, station(5, 0.1)], d)).toBe(2);
-    expect(row(d, 0)).toEqual([...row(d, 1).slice(0, 8), 1, 0, Math.fround(PSI_NORMAL), 0]);
+    expect(row(d, 0)).toEqual([...row(d, 1).slice(0, 8), 1, 0, Math.fround(PSI_NORMAL), 0, ...row(d, 1).slice(12)]);
     expect(packStations([], d)).toBe(0);
     expect(packStations([GAP, GAP], d)).toBe(0);
     const many = Array.from({ length: MAX_STATIONS + 5 }, (_, i) => station(i * 0.01, 0.2));
@@ -147,7 +147,7 @@ describe('BreakingRibbon tint overlay', () => {
     const grid = { x0: 0, z0: 0, cellM: 1, nx: 4, nz: 4 };
     const bed = { grid, bed: new Float32Array(16).fill(-10), sand: new Float32Array(16), weed: new Float32Array(16) };
     const model = new WaterSurfaceModel(sim, new Seabed(bed), sets);
-    const ribbon = new BreakingRibbon(modelRibbonSurface(model), DEFAULT_BREAK_PARAMS, {
+    const ribbon = new BreakingRibbon(modelRibbonSurface(model), {
       model, sky: new Sky(DEFAULT_ATMOSPHERE), optics: createWaterOpticsUniforms(DEFAULT_WATER_OPTICS),
     });
     // Walk the colour graph once per node (it shares subgraphs heavily, so Node.traverse would revisit them).
@@ -173,7 +173,7 @@ describe('BreakingRibbon ahead of the first break', () => {
     const sim = new OceanSimulation();
     const grid = { x0: 0, z0: 0, cellM: 1, nx: 4, nz: 4 };
     const bed = { grid, bed: new Float32Array(16).fill(-10), sand: new Float32Array(16), weed: new Float32Array(16) };
-    const ribbon = new BreakingRibbon(modelRibbonSurface(new WaterSurfaceModel(sim, new Seabed(bed), new SetWaves(sim.time))), DEFAULT_BREAK_PARAMS);
+    const ribbon = new BreakingRibbon(modelRibbonSurface(new WaterSurfaceModel(sim, new Seabed(bed), new SetWaves(sim.time))));
     const outer = {} as THREE.RenderTarget;
     let target: THREE.RenderTarget | null = outer;
     const computes: unknown[][] = [];
@@ -239,16 +239,16 @@ describe('BreakingRibbon mesh', () => {
 
 describe('packStations and ψ (barrel from the maths)', () => {
   it('packStations puts the ψ in the third vec4', () => {
-    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 1.37, lipH: null };
-    const out = new Float32Array(12);
+    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 1.37, lipH: null, section: { A: 2.3, phase: 0.9, hollow: 1, rho: 1 } };
+    const out = new Float32Array(16);
     packStations([s], out);
     expect(out[10]).toBeCloseTo(1.37, 6);
   });
   it('packStations puts the throw height (lipH) last in the third vec4, 0 before breaking', () => {
-    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 0.07, lipH: 3.6 };
-    const out = new Float32Array(24);
+    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 0.07, lipH: 3.6, section: { A: 2.3, phase: 0.9, hollow: 0.6, rho: 1 } };
+    const out = new Float32Array(32);
     packStations([s, { ...s, tb: null, lipH: null }], out);
     expect(out[11]).toBeCloseTo(3.6, 6);
-    expect(out[23]).toBe(0);
+    expect(out[27]).toBe(0);
   });
 });

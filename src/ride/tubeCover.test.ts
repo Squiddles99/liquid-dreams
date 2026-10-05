@@ -6,7 +6,7 @@ import { tubeCover } from './tubeCover';
 /** A straight crest along z at x = 0, the wave running +x, every metre from z = −30 to 30, all with this onset time. */
 const crest = (tb: (z: number) => number | null, H = 3, psi = 0.08): StationEntry[] => {
   const out: Station[] = [];
-  for (let z = -30; z <= 30; z += 1) out.push({ gap: false, wave: 0, x: 0, z, arc: z, nx: 1, nz: 0, H, c: 9, r: 1.2, tb: tb(z), psi, lipH: H });
+  for (let z = -30; z <= 30; z += 1) out.push({ gap: false, wave: 0, x: 0, z, arc: z, nx: 1, nz: 0, H, c: 9, r: 1.2, tb: tb(z), psi, lipH: H, section: { A: H / 1.3, phase: 1, hollow: 1, rho: 1 } });
   return out;
 };
 const p = DEFAULT_BREAK_PARAMS;
