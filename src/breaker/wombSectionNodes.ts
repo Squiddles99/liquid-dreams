@@ -6,7 +6,7 @@ import {
 } from './wombProfile';
 import {
   COLLAPSE_BASE_S, COLLAPSE_PER_M, BACK_BLEND_UNITS, FLIGHT_DROP_A, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, RHO_FULL_RATIO,
-  FRONT_BLEND_UNITS, SECTION_HAND_BACK_S, STOOD_PHASE,
+  FOOT_RUN_UNITS, FRONT_BLEND_UNITS, SECTION_HAND_BACK_S, STOOD_PHASE,
 } from './wombSection';
 
 type N = any;
@@ -186,6 +186,13 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, ke
     tipKnot: tT, crestKnot: knot[CREST_KNOT],
   };
 }
+
+/** wombSection.frontHeight. */
+export const frontHeightNode = (profileY: N, sheetY: N, uUnits: N, floorU: N): N => {
+  const own = float(1.0).sub(smoothstep(floorU, floorU.add(FOOT_RUN_UNITS), uUnits));
+  const low = min(sheetY, profileY);
+  return low.add(profileY.sub(low).mul(own));
+};
 
 /** wombSection.interiorWeight. */
 export const interiorWeightNode = (uUnits: N, crestU: N): N => float(1.0).sub(select(uUnits.lessThan(crestU),

@@ -75,10 +75,11 @@ describe('the ridge shades the lineup at sunrise (spec §3: sunbreak about 08:05
     expect(sunVisibility(h, -2900, lz, sunForConditions({ date: '2026-07-15', timeOfDay: 7.5 }).direction)).toBe(0);
     expect(vis(8.25)).toBe(1);
   });
-  it('the sunbreak falls between 08:00 and 08:10', () => {
+  // 08:00–08:15: the ridge stands 96 m nearer the lineup since the reef moved in (2026-10-05; 08:10 from 190 m off the beach).
+  it('the sunbreak falls between 08:00 and 08:15', () => {
     let lo = 7.75, hi = 8.25;
     for (let k = 0; k < 20; k++) { const mid = (lo + hi) / 2; if (vis(mid) < 0.5) lo = mid; else hi = mid; }
     expect(lo).toBeGreaterThan(8.0);
-    expect(lo).toBeLessThan(8 + 10 / 60);
+    expect(lo).toBeLessThan(8 + 15 / 60);
   });
 });

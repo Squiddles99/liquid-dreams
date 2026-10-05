@@ -6,7 +6,7 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams, onsetDelay, onsetPsi, onsetTime } from './breaking';
 import { REFRACT_FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
-import { RESHAPED_REEF_PARAMS } from '../seabed/wombReef';
+import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
 import { SetWaves } from './SetWaves';
 import { type BreakOptions, breakOptions, sumWaves, toActiveWave } from './setWaveModel';
 import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
@@ -137,7 +137,7 @@ registerSelfTest({
 let gameShared: ReefField | null = null;
 /** The field as the game asks for it (App: the live reef, smoothed for drawing, the swell bent as over REFRACT_FLOOR_M). */
 const getGameField = (): ReefField => (gameShared ??= computeReefField({
-  bed: downsample(buildBathymetry(RESHAPED_REEF_PARAMS), 2), periodS: DEFAULT_CONDITIONS.swell.periodS, fromDeg: DEFAULT_CONDITIONS.swell.directionDeg,
+  bed: downsample(buildBathymetry(DEFAULT_REEF_PARAMS), 2), periodS: DEFAULT_CONDITIONS.swell.periodS, fromDeg: DEFAULT_CONDITIONS.swell.directionDeg,
   tideM: DEFAULT_CONDITIONS.tideM, peel: DEFAULT_BREAK_PARAMS.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M,
 }));
 
@@ -209,6 +209,9 @@ function peakRay(field: ReefField): [number, number][] {
  * ledge 30 m up the peel, and on the south ledge (the closeout).
  */
 const OFF_RAY: [number, number][] = [[20, -6], [27, -6.5], [30, -9], [10.3, -28.2], [12.5, 14], [42.5, 33]];
+/** Over the shelf south of the corner, where the reef moved in (2026-10-05) piles its white water and the foam rises
+ * through partial values while the biggest wave passes (the pile ray from the corner no longer meets either). */
+const SOUTH_SHELF: [number, number][] = [[5, 60], [10, 65], [10, 70], [10, 75], [10, 80]];
 
 /** Where the pile rolls: 20–70 m shoreward of the peak along its ray, every 5 m, and one point off the record grid. */
 function pileRay(field: ReefField): [number, number][] {
@@ -259,7 +262,7 @@ registerSelfTest({
     const time = uniform(0);
     const sets = new SetWaves(time);
     sets.setField(field);
-    const points = [...peakRay(field), ...OFF_RAY, ...pileRay(field)];
+    const points = [...peakRay(field), ...OFF_RAY, ...pileRay(field), ...SOUTH_SHELF];
     const { pass, outAttr } = computeAt(points, 2, (xz) => {
       const b = sets.breakSampleNode(xz);
       return [vec4(b.disp, b.foam), vec4(b.stage, b.pile, 0.0, 0.0)];

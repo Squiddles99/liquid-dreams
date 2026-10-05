@@ -56,22 +56,35 @@ export interface ReefParams {
   southLedge?: readonly Pt[];
 }
 
+/**
+ * The Womb's reef. The ledges are Andrew's satellite line (Google Earth, 2026-10-05: "the red line is the breaking reef of
+ * our left-handed ride"), turned into the game's frame, whose beach runs north–south (the real one runs 347°), with the
+ * take-off 100–110 m off the sand (coastProfile.SHORE_X). The depths are round 2's (spec 2026-10-05-womb-profile-design
+ * §3.1) but for the basin: deep water right up to a short, steep face (20 m rising to 3.5 m over 20 m), so the wave breaks
+ * at the edge and throws instead of tripping on a slope in front of the take-off. Round 2's 25–30 m basin, ringed by the
+ * coast's 13 m, spread the swell out before this broad edge (it reached the reef at 0.66× its open-sea height, the 6 ft
+ * curl ~2.4 m: Andrew, "TINY"); at 20 m it reaches it at about 1×. Round 2's left ran at 40°, along the swell's own travel:
+ * the swell slid along it and bent a right angle onto the shelf (Andrew, 2026-10-05: "the wave goes into a right angle").
+ */
 export const DEFAULT_REEF_PARAMS: ReefParams = {
-  ledgeDepthM: 6,
-  faceBaseDepthM: 14,
-  faceWidthM: 25,
+  ledgeDepthM: 3.5,
+  faceBaseDepthM: 20,
+  faceWidthM: 20,
   slopeDepthM: 20,
   slopeEndM: 200,
   shelfDepthM: 4,
   headReliefM: 2.5,
   minDepthM: 1.5,
   pocketDepthM: 5.5,
+  offshoreBand: [SHORE_X - 40, SHORE_X - 100],
 };
 
-/** Seaward edge the left peels along: the first 120 m from the tip runs at bearing 20° (north-north-east) — that angle to the refracted swell sets the peel speed (≈14 m/s at the default 225° swell) — then continues north-north-west to the map edge, landing about 36 m east of the originally traced shelf edge at the map edge (90–110 m east of it mid-shelf) (tunable with Andrew in Task 13). */
-export const NORTH_LEDGE: readonly Pt[] = [[0, 0], [41.04, -112.76], [-19.8, -280], [-81.6, -450]];
-/** Short edge running south-east from the tip (the right closes out along it). */
-export const SOUTH_LEDGE: readonly Pt[] = [[0, 0], [25, 28], [60, 38], [110, 45]];
+/** The left's edge: from the corner it runs 24° for 70 m, then bends to run along the beach 54 m off the waterline (his
+ * line closes on the beach there). */
+export const NORTH_LEDGE: readonly Pt[] = [[0, 0], [28, -64], [40, -110], [40, -450]];
+/** South of the corner his line runs a little seaward of due south. The swell reaches it before the corner: the left
+ * stands up first 40 m south of the corner. */
+export const SOUTH_LEDGE: readonly Pt[] = [[0, 0], [-7, 50], [-20, 150], [-30, 242]];
 /** The shelf's inshore edge (x): 10 m inside the shore's platform (shoreReef.SHORE_REEF_AT_MAP_M), so no sand strip shows
  * between them. */
 export const SHELF_INNER_X = SHORE_X - SHORE_REEF_AT_MAP_M + 10;
@@ -84,42 +97,10 @@ export function shelfPolygon(north: readonly Pt[], south: readonly Pt[] = SOUTH_
   return [...south, ...(end[0] < SHELF_INNER_X ? [[SHELF_INNER_X, end[1]] as Pt] : []), [SHELF_INNER_X, -450], ...[...north].reverse().slice(0, -1)];
 }
 
-/**
- * The reshaped reef (spec 2026-10-05-womb-profile-design §3; Andrew chose round 2, 2026-10-05): deep water right up to a
- * short, steep face (25 m rising to 3.5 m over 20 m), so the wave breaks at the edge and throws instead of tripping on the
- * slope in front of the take-off. The left: a first section of 55 m at bearing 40°, across the swell enough to peel at
- * 5–9 m/s; the gap, a deep bay cut 50 m into the reef that the wave backs off into (the kick-out); the second section, its
- * own small peak, heavier and faster (12–16 m/s: "accurate", Andrew); then the old line on to the map's edge, which
- * closes out. The tide slides the sizes it suits (low 4–8 ft, mid 6–10, high 8–12; 4 ft is soft at mid tide). It goes
- * live with the new wave shape (§7 step 3): the old breaking code's rules were tuned to DEFAULT_REEF_PARAMS.
- */
-export const RESHAPED_NORTH_LEDGE: readonly Pt[] = [[0, 0], [35.4, -42.1], [60, -58], [95, -75], [95, -100], [60, -115], [44, -118], [93, -152], [-19.8, -280], [-81.6, -450]];
-/**
- * Andrew's satellite line (Google Earth, 2026-10-05: "the red line is the breaking reef of our left-handed ride"), turned
- * into the game's frame, whose beach runs north–south (the real one runs 347°): from the take-off corner the left's edge
- * runs 24° for 70 m, then bends to run along the beach 54 m off the waterline (his line closes on the beach there).
- */
-export const SATELLITE_NORTH_LEDGE: readonly Pt[] = [[0, 0], [28, -64], [40, -110], [40, -450]];
-/** South of the corner his line runs a little seaward of due south. */
-export const SATELLITE_SOUTH_LEDGE: readonly Pt[] = [[0, 0], [-7, 50], [-20, 150], [-30, 242]];
-export const RESHAPED_REEF_PARAMS: ReefParams = {
-  ledgeDepthM: 3.5,
-  faceBaseDepthM: 25,
-  faceWidthM: 20,
-  slopeDepthM: 30,
-  slopeEndM: 200,
-  shelfDepthM: 4,
-  headReliefM: 2.5,
-  minDepthM: 1.5,
-  pocketDepthM: 5.5,
-  offshoreBand: [SHORE_X - 40, SHORE_X - 100],
-  northLedge: SATELLITE_NORTH_LEDGE,
-  southLedge: SATELLITE_SOUTH_LEDGE,
-};
 /** Sand pockets traced from Andrew's top-down satellite view (reference/place/womb-correct-topdown-peak-189m-offshore.webp:
  * 0.41 m/px, the peak at pixel (902, 572)): small scattered patches in the dark reef, [cx, cz, rx, rz] (spec 2026-10-02 §4). */
 export const SAND_POCKETS: readonly (readonly [number, number, number, number])[] = [
-  [40, -21, 8, 5], [45, 12, 7, 5], [-13, -42, 9, 6], [52, -130, 10, 6], [52, -80, 8, 6], [-50, -132, 10, 7], [-83, -173, 9, 6], [11, -177, 8, 6],
+  [40, -21, 8, 5], [45, 12, 7, 5], [-13, -42, 9, 6], [10, -130, 10, 6], [45, -80, 8, 6], [-50, -132, 10, 7], [-83, -173, 9, 6], [11, -177, 8, 6],
 ];
 
 /**

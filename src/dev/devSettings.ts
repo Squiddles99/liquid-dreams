@@ -38,9 +38,10 @@ export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
  * shape follows each crest's ψ₀ on the reef, so the reef (its softened ledge) resets with it; model 7: the reef build's face
  * and slope (plan 2026-10-02) replace that ramp, so the reef resets again; model 8: the Womb profile's ribbon draws the
  * breaking on the reshaped reef, so the reef resets to it; model 9: the reef is Andrew's satellite line, moved in to 100–110 m
- * off the beach, so it resets again).
+ * off the beach, so it resets again; model 10: the peel stretch is off by default, so the curl breaks on the reef's face
+ * at full size, and the basin in front of the reef is 20 m, not 30, so the reef resets again).
  */
-export const BREAKING_MODEL = 9;
+export const BREAKING_MODEL = 10;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;
@@ -147,7 +148,8 @@ export function loadDevSettings(storage: SettingsStorage, defaults: DevSettings)
   // (plan 2026-10-02): an older look's reef carries keys and depths the reef no longer has.
   // Model 8: the Womb profile's ribbon goes live on the reshaped reef (plan 2026-10-05-womb-profile-step3): a saved reef is
   // the old one. Model 9: the reef is Andrew's satellite line, moved in toward the beach: a saved reef is round 2's.
-  if (typeof raw.breakingModel !== 'number' || raw.breakingModel < 9) look.reef = deepClone(defaults.reef);
+  // Model 10: the basin in front of it is 20 m: a saved reef's 30 m spreads the swell.
+  if (typeof raw.breakingModel !== 'number' || raw.breakingModel < 10) look.reef = deepClone(defaults.reef);
   return {
     ...(look as unknown as DevLookParams),
     mode: raw.mode === 'default' || raw.mode === 'custom' ? raw.mode : 'custom',

@@ -70,7 +70,9 @@ describe('the tracks come with the build (dune-up-close §4.1)', () => {
     const lh = new LandHeight(decodeLandFile(readBakedLand()), beachProfileFor(DEFAULT_LAND_PARAMS));
     const t = routeTracks(lh, lh.fineZRange()), j = t.junction, s = new TrackNetwork(t).standSpot();
     expect(clearingGrade(lh, j.x, j.z, j.along)).toBeLessThan(0.2);
-    expect(Math.hypot(lh.baseHeightAt(s.x + 0.5, s.z) - lh.baseHeightAt(s.x - 0.5, s.z), lh.baseHeightAt(s.x, s.z + 0.5) - lh.baseHeightAt(s.x, s.z - 0.5))).toBeLessThan(0.2);
+    // The stand spot's own ground, its small relief included (keyed to world x: it re-rolled when the land moved in with the
+    // reef, 2026-10-05, from 0.2 to 0.25): under 0.3, 17°, well off the 25° bank Andrew saw the crew on.
+    expect(Math.hypot(lh.baseHeightAt(s.x + 0.5, s.z) - lh.baseHeightAt(s.x - 0.5, s.z), lh.baseHeightAt(s.x, s.z + 0.5) - lh.baseHeightAt(s.x, s.z - 0.5))).toBeLessThan(0.3);
     // Over 2 m walked along the path (across a switchback's hairpin the straight line is a shortcut nobody walks).
     const bp = t.pieces[1].points, over: string[] = [];
     for (let i = 0; i < bp.length; i++) {

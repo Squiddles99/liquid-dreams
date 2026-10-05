@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
 import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
 import { withSections } from '../ride/sectionWater';
+import { TAKEOFF_ANCHOR, takeoffSpot } from '../ride/takeoff';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from '../breaker/peakFace';
@@ -70,7 +71,7 @@ import { withOnlyShown } from '../render/prewarm';
 import { bedHeightAt, buildBathymetry, downsample } from '../seabed/bathymetry';
 import { SHORE_X } from '../seabed/coastProfile';
 import { Seabed, WATERLINE_STEP_M } from '../seabed/Seabed';
-import { RESHAPED_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
+import { DEFAULT_REEF_PARAMS, type ReefParams } from '../seabed/wombReef';
 import { type AtmosphereParams, DEFAULT_ATMOSPHERE, type Rgb } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
 import { Clouds } from '../weather/Clouds';
@@ -138,9 +139,6 @@ const browserStorage: SettingsStorage = {
   removeItem: (k) => window.localStorage.removeItem(k),
 };
 
-/** Where G puts you (first-ride spec): on the Womb's takeoff spot, where the set waves stand up first. On Andrew's satellite
- * reef (2026-10-05) that is 40 m south of the corner, just inside the south ledge: the swell reaches it before the corner. */
-export const RIDE_START = { x: 4, z: 40 };
 /** The height probe's slot under the board while riding (the stand's own slots are idle then). */
 const RIDE_PROBE = 1;
 /** Seconds of warning before the wave reaches the peak. */
@@ -168,7 +166,7 @@ export class App {
   };
   readonly pictureParams: PictureParams = { ...DEFAULT_PICTURE };
   /** The reshaped reef (spec 2026-10-05-womb-profile-design §3.1, round 2): it goes live with the Womb profile's ribbon. */
-  readonly reefParams: ReefParams = { ...RESHAPED_REEF_PARAMS };
+  readonly reefParams: ReefParams = { ...DEFAULT_REEF_PARAMS };
   readonly setParams: SetParams = { ...DEFAULT_SET_PARAMS };
   /** The select screen's sets (a set every 120 s), filled from setParams while `duneSets` is on. */
   private readonly selectScreenSets: SetParams = { ...DEFAULT_SET_PARAMS };
@@ -191,6 +189,8 @@ export class App {
   readonly ride = new RideSession(document.body);
   /** The called set's arrivals at the peak (sim s), and the wave being ridden. */
   private rideSet: number[] = [];
+  /** Each ride wave's deep-water height (m), for its take-off spot. */
+  private rideHeights: number[] = [];
   /** The drawn sea's height over the ride's CPU water, read by the height probe under the board. */
   private readonly rideOffset = new SurfaceOffset();
   /** The breaking ribbon's crest stations last traced, how far the rider is under a curl (tubeCover), and the spray on the
@@ -1584,6 +1584,7 @@ export class App {
     const t = this.clock.simTime;
     const set = wavesBetween(t, t + 120, this.conditions, this.sets).filter((e) => e.arrivalS > t + RIDE_LEAD_S);
     this.rideSet = set.map((e) => e.arrivalS);
+    this.rideHeights = set.map((e) => e.heightM);
     // The set's biggest wave first; R goes on through the rest.
     this.catchSetWave(set.reduce((best, e, i) => (e.heightM > set[best].heightM ? i : best), 0));
     this.panel.refresh();
@@ -1601,9 +1602,11 @@ export class App {
     this.rideOffset.reset();
     this.ocean.resetFoam();
     this.invalidateParticles();
-    // Facing the way the swell runs at the takeoff spot.
-    const water = this.rideWater(this.clock.simTime), w = water(RIDE_START.x, RIDE_START.z);
-    this.ride.begin(RIDE_START.x, RIDE_START.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water);
+    // Where G puts you (first-ride spec): just outside where this wave starts to break in the take-off zone (bigger waves
+    // break further out), facing the way the swell runs there.
+    const at = this.field ? takeoffSpot(this.field, this.rideHeights[this.rideWave], this.breakParams) : TAKEOFF_ANCHOR;
+    const water = this.rideWater(this.clock.simTime), w = water(at.x, at.z);
+    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water);
     const keys = currentBindings().keys;
     this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}: paddle (${keyLabel(keys.paddle)}) as it lifts you, ${keyLabel(keys.popup)} to pop up`);
   }

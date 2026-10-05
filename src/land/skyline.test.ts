@@ -63,9 +63,11 @@ describe('the skyline from the lineup (spec §3)', () => {
   const land = new LandHeight(decodeLandFile(readBakedLand()));
   const [x, y, z] = DEFAULT_LINEUP_POSITION;
   const t = skylineTable((a, b) => land.heightAt(a, b), { x, y, z });
-  it('is 7–8.5° due east and 0.5–2.5° along the coast', () => {
+  // Due east 7.5–9.5°: the reef moved in toward the beach (2026-10-05) and the land with it, the ridge 96 m nearer the
+  // lineup (it read 7–8.5° from 190 m off the beach).
+  it('is 7.5–9.5° due east and 0.5–2.5° along the coast', () => {
     const e = (b: number) => deg(skylineElevationFrom(t, b, 0, y));
-    expect(e(90)).toBeGreaterThan(7); expect(e(90)).toBeLessThan(8.5);
+    expect(e(90)).toBeGreaterThan(7.5); expect(e(90)).toBeLessThan(9.5);
     expect(e(0)).toBeGreaterThan(0.5); expect(e(0)).toBeLessThan(2.5);
     expect(e(165)).toBeGreaterThan(0.5); expect(e(165)).toBeLessThan(2.5);
   });

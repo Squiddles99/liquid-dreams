@@ -195,6 +195,10 @@ describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
     const { STAND_LEAD_S } = await import('./wombSection');
     expect(frontStanding(undefined)).toBe(0);
     expect(frontStanding(null)).toBe(0);
+    // Before the break it stands up with the ratio, as the ribbon does (wombSection.sectionWeight): no step where it breaks.
+    expect(frontStanding(null, 0.7, 0.7)).toBe(0);
+    expect(frontStanding(null, 0.85, 0.7)).toBeCloseTo(0.5, 12);
+    expect(frontStanding(null, 1, 0.7)).toBe(1);
     expect(frontStanding(-10)).toBe(0);
     expect(frontStanding(-STAND_LEAD_S)).toBe(0);
     expect(frontStanding(-STAND_LEAD_S / 2)).toBeCloseTo(0.5, 12);
