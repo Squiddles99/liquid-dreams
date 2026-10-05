@@ -151,6 +151,41 @@ GPU self-tests after da616ab: to rerun (breaker 11/12 and ribbon 5/7 before it: 
 6. Still open: the shading at 12 ft overcast (needs his moment link); the wall easing off down the line (his G-Land
    photo); 40 old tests to re-measure.
 
+#### Done on the eighth look (2026-10-05)
+
+- [x] GPU self-tests: breaker 12/12 after da616ab; ribbon 6/7, one front sample 5.2 mm off at ψ 0.03 phase 1.9 (the floor's
+  mark one sample apart, the sample at the mark just past the floor knot): the front now starts one sample before the mark
+  on both (wombSection.FRONT_FROM_MARK), 63f11a2. To rerun on ac88408 (both filters: the bore and the seat are new GPU code).
+- [x] Right-angle swell line: the coast offshore is 20 m (coastProfile.REEF_SURROUND_DEPTH_M, was 13), the reef basin's own
+  depth, so the deep water in front of the reef is open to the sea; the reef's cap near the beach deepens from the coast's
+  own depth there. A 14 m basin also straightened the lines but 6–8 ft broke over its flat floor short of the ledge, soft
+  (low tide 6 ft hollow 0.42, 8 ft 0.18). With the coast at 20 m: first leg hollow 1 at 6 and 8 ft every tide, 13–17 m/s;
+  10 ft barrels at mid and high tide. BREAKING_MODEL 11; break map re-baked. fdd0988.
+- [x] V wedge in front of the curl: the bore scaled the whole wave, raising the trough in front of the broken section; it
+  now keeps the swell's troughs (setWaveModel.boreSettle, CPU and GPU). 8–24 m in front of the wave the water stepped
+  0.9 m along the crest at the curl; now 0.4 m over ~20 m. fdd0988.
+- [x] The bench at the foot: the drawing's flats are about still water, the sheet's water in front is the swell's trough
+  0.4–0.5 A down; the profile is seated on it (wombSection.seatScale/seatedY: stretched down from the crest so the trough
+  knot lies 0.12 A under the sheet's water at the front knot), CPU, GPU (fourth frame vec4) and the ride's water. The foot
+  is the lowest water, the face and tube 10–30% taller. ac88408.
+- [ ] The lip never lands in Andrew's drawing (its tip 0.23–0.32 A over the water under it through the barrel). Proposed:
+  the round barrel's tip at −0.36 (was −0.14), landing 0.02–0.08 clear from phase 0.95 to 1.05; lowered at 1.25 too, the
+  tip rose through the closing pocket at 1.4. Patch and before/after drawing in the session's scratchpad; needs Andrew's
+  sign-off (and then `node tools/drawWombProfiles.ts --freeze`).
+- [ ] Pop-up at 7 ft: the ride bot stands up and rides from G's spot on fdd0988 and on the build Andrew tested (da616ab),
+  with and without the 33 km/h offshore wind, pressing at the catch (5.4 s after G) or up to 0.5 s after; the board is
+  "caught" for only ~0.5 s, before that a press is "Not yet". Ask Andrew which message he saw.
+- [ ] A band of focused swell from the reef's corner runs through the take-off (crest height +15% along one ray, a ridge on
+  the wave's back behind the curl). The drawn field's smoothing at σ 18 m spreads it without changing the sizes (7 ft local
+  H max 5.56 → 5.30 m) but did not clearly remove anything Andrew pointed at: held.
+- [ ] The white-water block after the collapse (phase 1.3–1.6: a flat-topped hump 1.6 m high at 7 ft with a steep front):
+  Andrew's "ugly blob"? To look at on the new build.
+- [ ] Tide (Andrew's Copilot notes): high tide fat and not barrelling, mid standing up, low the hollow slab. The model
+  barrels at high tide from 6 ft. Andrew to decide.
+- [ ] Tests moved by the deeper coast, to re-measure with the 40 older ones: breakingField slurp (12 ft: the far shoulder's
+  water 0.1 m lower than the near one's; the peak 0.94 of the shoulders, wants 0.95), the pile never growing (1 cm),
+  overturnProfile's lip growth, tubeLight 8 ft low tide.
+
 ### 3e. Andrew's look (his PC)
 
 - [ ] Captures of the left at 6, 8 and 10 ft, mid tide, from the lineup and the ride camera. His sign-off before step 4 removes the old code.
