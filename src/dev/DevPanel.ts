@@ -481,9 +481,9 @@ export class DevPanel {
 
     const reef = this.pane.addFolder({ title: 'Reef', expanded: false });
     reef.addBinding(m.reef, 'ledgeDepthM', { label: 'ledge depth (m)', min: 2, max: 12, step: 0.1 }).on('change', h.onReef);
-    reef.addBinding(m.reef, 'faceBaseDepthM', { label: 'reef face base (m)', min: 7, max: 18, step: 0.5 }).on('change', h.onReef);
+    reef.addBinding(m.reef, 'faceBaseDepthM', { label: 'reef face base (m)', min: 7, max: 30, step: 0.5 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'faceWidthM', { label: 'reef face width (m)', min: 5, max: 120, step: 1 }).on('change', h.onReef);
-    reef.addBinding(m.reef, 'slopeDepthM', { label: 'outer slope depth (m)', min: 12, max: 30, step: 0.5 }).on('change', h.onReef);
+    reef.addBinding(m.reef, 'slopeDepthM', { label: 'outer slope depth (m)', min: 12, max: 40, step: 0.5 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'slopeEndM', { label: 'outer slope reach (m)', min: 60, max: 300, step: 5 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'shelfDepthM', { label: 'shelf depth (m)', min: 1, max: 8, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'headReliefM', { label: 'reef head relief (m)', min: 0, max: 4, step: 0.1 }).on('change', h.onReef);
