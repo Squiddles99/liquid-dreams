@@ -1534,7 +1534,9 @@ export class App {
 
   /** Jump sim time to just before the next set reaches the peak (reproducible: a moment link records the time). */
   /** The set waves' surface at sim time t on the CPU (first-ride spec §1); flat at the tide until the reef field loads. */
-  private rideWater(t: number, drawn = true): WaterFn {
+  /** The ride's water at t: the sheet (lifted onto the drawn sea when `drawn`), with the ribbon's sections over it when
+   * `sections` (the height probe reads the sheet alone, so its offset is matched against the sheet alone). */
+  private rideWater(t: number, drawn = true, sections = true): WaterFn {
     const field = this.field, ctx = this.waveCtx, tide = this.conditions.tideM + (drawn ? this.rideOffset.value : 0);
     if (!field || !ctx) return flatWater(tide);
     const waves = wavesNear(t, this.conditions, this.sets).map(toActiveWave);
@@ -1547,7 +1549,7 @@ export class App {
     };
     // Where the breaking ribbon draws, the board stands on its sections (the wave that is drawn), from this frame's
     // stations (traced at the clock's time).
-    return t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide) : sheet;
+    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide) : sheet;
   }
 
   /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */
@@ -2060,7 +2062,9 @@ export class App {
     const rb = this.ride.body;
     if (rb) this.probe.setProbe(RIDE_PROBE, rb.x, rb.z);
     const probeSeq = this.probe.update(this.renderer);
-    if (rb) this.rideOffset.sent(probeSeq, this.rideWater(this.clock.simTime, false)(rb.x, rb.z).y);
+    // The probe reads the drawn sheet (the ribbon draws over it): matched against the CPU's sheet alone, not its sections, or
+    // the offset pulled the board back down onto the sheet under the drawn wave (Andrew's wipeouts, 2026-10-05).
+    if (rb) this.rideOffset.sent(probeSeq, this.rideWater(this.clock.simTime, false, false)(rb.x, rb.z).y);
     this.oceanSurface.update(this.camera.position, this.ocean);
 
     this.picture.setSun(sun.elevationDeg, this.camera.getWorldDirection(this.viewDir).dot(this.sunDir));
