@@ -223,12 +223,13 @@ export class SetWaves {
     return onsetPsiNode(rec.psiLo, rec.psiHi, level);
   }
 
-  /** The onset record's stretched time since onset, delay and broken flag at xz for a wave of deep-water height heightM,
-   * as vec4(tb, delay, broken, 0) (self-tests). Inside an Fn. */
+  /** The onset record's stretched time since onset, delay, broken flag and time until onset (breaking.onsetUntil,
+   * UNTIL_NEVER for never) at xz for a wave of deep-water height heightM, as vec4(tb, delay, broken, until) (self-tests).
+   * Inside an Fn. */
   onsetTimeAt(xz: N, heightM: N): N {
     const level = onsetLevelNode(heightM, this.brk);
     const o = onsetTimeNode(this.sampleOnset(xz, level.k), level, heightM, this.brk);
-    return vec4(o.tb, o.delay, select(o.broken, float(1.0), float(0.0)), 0.0);
+    return vec4(o.tb, o.delay, select(o.broken, float(1.0), float(0.0)), o.until);
   }
 
   /**
