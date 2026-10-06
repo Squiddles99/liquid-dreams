@@ -4,7 +4,7 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesBetween, wavesNear } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS as P } from '../breaker/breaking';
-import { minRibbonHeight, traceStations } from '../breaker/crestTrace';
+import { type Station, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { REFRACT_FLOOR_M, computeReefField, sampleField } from '../breaker/reefField';
 import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { withSections } from './sectionWater';
@@ -29,10 +29,15 @@ describe('a ride on the drawn sections', () => {
     const set = wavesBetween(0, 600, c, DEFAULT_SET_PARAMS).filter((e) => e.arrivalS > 10).slice(0, 8);
     const big = set.reduce((a, b) => (b.heightM > a.heightM ? b : a));
     const o = { ...breakOptions(field, P), pile: false, shape: 'lean' as const }, minHeightM = minRibbonHeight(fieldBreakingHeight(field, P), P);
+    // Her wave's live stations at the last step traced (R2 §3: the ride must not end because they vanished).
+    let herLive = 0;
     const waterAtT = (t: number, cx: number, cz: number): WaterFn => {
-      const waves = wavesNear(t, c, DEFAULT_SET_PARAMS).map(toActiveWave);
+      const events = wavesNear(t, c, DEFAULT_SET_PARAMS), waves = events.map(toActiveWave);
+      const mine = events.findIndex((e) => Math.abs(e.arrivalS - big.arrivalS) < 1e-6);
       const sheet: WaterFn = (x, z) => waterAt(x, z, c.tideM, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
-      return withSections(sheet, traceStations(field, waves, t, ctx, { cameraX: cx, cameraZ: cz, params: P, minHeightM }), c.tideM);
+      const entries = traceStations(field, waves, t, ctx, { cameraX: cx, cameraZ: cz, params: P, minHeightM });
+      herLive = entries.filter((e): e is Station => !e.gap && e.wave === mine).length;
+      return withSections(sheet, entries, c.tideM);
     };
     const { x: sx, z: sz } = takeoffSpot(field, big.heightM, P);
     let t = big.arrivalS - takeoffLeadS(field, { x: sx, z: sz });
@@ -63,5 +68,10 @@ describe('a ride on the drawn sections', () => {
     expect(events).toContain('popup');
     expect(events).not.toContain('wipeout');
     expect(rodeS).toBeGreaterThan(5);
+    // Not ended by her wave vanishing from under her (R2 §3): at the end it is still traced, or the end is the wave's
+    // (foam, or on a drawn section), or the window's. (The kickouts here at 10-14 s are stalls behind the wave, R2 §1's
+    // probe: she is over the back within ~1 s of the pop-up on this line, 88° off the swell.)
+    const last = b.water;
+    expect({ herLive, foam: last.foam, onSection: !!last.onSection, rodeS, real: herLive > 0 || last.foam > 0 || last.onSection === true || rodeS >= 15 }).toMatchObject({ real: true });
   });
 });
