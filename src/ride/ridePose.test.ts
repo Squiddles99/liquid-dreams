@@ -153,6 +153,18 @@ describe('the take-off camera (R1 §4)', () => {
     const along = (pose.position[0] - b.x) * line[0] + (pose.position[2] - b.z) * line[1];
     expect(along, 'behind her as she goes +line').toBeLessThan(-2);
   });
+  it('paddling with a face rising between the camera and her, the camera sees over it (the live run, 7 ft: only water at "caught")', () => {
+    const b = paddlingBody(), cam = new RideCamera();
+    // A 3 m ridge 1.5 m seaward of her (x = −1.5), the camera 2.5 m seaward and 7 m along: it sits low behind the ridge.
+    const ridge = (x: number): number => 3 * Math.exp(-(((x + 1.5) / 1) ** 2));
+    let pose!: CameraPose;
+    for (let k = 0; k < 90; k++) pose = cam.update(b, 1 / 60, ridge);
+    const chest = [b.x, b.y + 1, b.z];
+    for (let i = 1; i < 20; i++) {
+      const f = i / 20, x = pose.position[0] + (chest[0] - pose.position[0]) * f, y = pose.position[1] + (chest[1] - pose.position[1]) * f;
+      expect(y, `the sight line at ${(f * 100).toFixed(0)} %`).toBeGreaterThan(ridge(x));
+    }
+  });
   it('a look swing during paddle still pivots around the rider', () => {
     const b = paddlingBody(), cam = new RideCamera();
     let pose!: CameraPose;
