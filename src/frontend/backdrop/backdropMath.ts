@@ -63,3 +63,8 @@ export function backdropFade(s: FadeState | null): number {
   if (b > a) return smooth(clamp01((t - 0.5) / 0.5));
   return a;
 }
+
+/** One frame of exponential easing toward `target` with time constant `tauS` (frame-rate independent, never overshoots). */
+export function easeToward(current: number, target: number, dtS: number, tauS: number): number {
+  return current + (target - current) * (1 - Math.exp(-Math.max(0, dtS) / tauS));
+}

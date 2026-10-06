@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { PI, clamp, float, floor, mix, mod, screenUV, sin, step, texture, uniform, vec2 } from 'three/tsl';
 import type { SceneOverlay } from '../../render/PicturePipeline';
 import type { Sky } from '../../sky/Sky';
-import { PLATE_ASPECT, windDrive } from './backdropMath';
+import { PLATE_ASPECT, easeToward, windDrive } from './backdropMath';
 import { DEFAULT_LOOKOUT_LIGHT, type LookoutLight } from './backdropLight';
 
 type N = any;
@@ -48,6 +48,8 @@ export class LookoutBackdrop {
   private loopS = 3.95;
   private clock = 0;
   private gustT = 0;
+  /** The cloud meter's sun visibility, eased: it reads every 0.25 s, and a raw step would pop the painted ground. */
+  private sunVis = 1;
 
   /** `base` is the site root (import.meta.env.BASE_URL); `wide` loads the 3840 px painting; `plate` names the art. */
   constructor(base: string, wide: boolean, plate = 'conditions') {
@@ -131,7 +133,8 @@ export class LookoutBackdrop {
     this.u.fade.value = i.fade;
     this.u.aspect.value = i.aspect;
     this.u.sunShare.value = this.light.sunShare;
-    this.u.sunVisible.value = i.sunVisible;
+    this.sunVis = easeToward(this.sunVis, i.sunVisible, dtS, 0.4);
+    this.u.sunVisible.value = this.sunVis;
     this.u.exposure.value = this.light.exposure;
   }
 }
