@@ -59,8 +59,22 @@ export function rideBoardFrame(b: RideBody): BoardFrame {
   return { position: new Vector3(b.x, b.y - SINK_M, b.z), forward: f, up };
 }
 
-export const CHASE_BACK_M = 7;
-export const CHASE_UP_M = 3.2;
+/**
+ * Paddling (R1 §4, Andrew: "the camera angles are impossible, especially taking off"): on the shoulder, down the line the
+ * left peels toward, a little seaward of her and above, so the wall stands up behind her and the camera sees it come
+ * side-on. It looks between her chest and the oncoming wall (PADDLE_LOOK_SEAWARD_M seaward of her), so both are in frame.
+ */
+export const PADDLE_ALONG_M = 7;
+export const PADDLE_SEAWARD_M = 2.5;
+export const PADDLE_UP_M = 2;
+export const PADDLE_LOOK_SEAWARD_M = 4.5;
+/** Which way along the line (×(−dirZ, dirX)) the Womb's left peels: north, toward −line. */
+export const PADDLE_PEEL_SIGN = -1;
+/** The paddle camera's sight line to her chest clears the water by this much (m), checked at this many points. */
+export const SIGHT_CLEAR_M = 0.3;
+export const SIGHT_SAMPLES = 16;
+/** At pop-up the camera swings from the shoulder to behind her over about this long (s). */
+export const POPUP_BLEND_TAU_S = 0.6;
 /** The camera stays at least this far over the water under it (the wave's back or crest behind the rider). */
 export const CHASE_CLEAR_M = 1.8;
 /** Seconds for the camera to settle on a new spot. */
@@ -107,8 +121,9 @@ export interface LookInput {
 }
 
 /**
- * The ride's camera, easing after the board: paddling, behind it along its run (its heading when slow), high and back;
- * standing, behind her along the line, low and close, looking ahead down the line; over her shoulder as a tube closes over her. The player
+ * The ride's camera, easing after the board: paddling, on the shoulder down the line with the wall coming behind her;
+ * standing, behind her along the line, low and close, looking ahead down the line (the swing between them at pop-up
+ * takes about POPUP_BLEND_TAU_S); over her shoulder as a tube closes over her. The player
  * can swing it around the rider (right stick, mouse drag); LOOK_HOLD_S after the last look it eases back to its framing.
  */
 export class RideCamera {
@@ -152,22 +167,42 @@ export class RideCamera {
         if (Math.abs(this.yawOff) < 0.01 && Math.abs(this.pitchOff) < 0.01) this.yawOff = this.pitchOff = 0;
       }
     }
-    const first = !this.pos, a = first ? 1 : 1 - Math.exp(-dt / CHASE_TAU_S);
     const up = b.phase === 'ride' || b.phase === 'popup' || b.phase === 'bail';
-    // Paddling, her run (her heading when slow); up, the way she's going along the line. Smoothed.
-    const sp = speedOf(b), [fx, fz] = forwardOf(b.headingDeg);
+    const first = !this.pos, a = first ? 1 : 1 - Math.exp(-dt / (up && b.phaseT < 1 ? POPUP_BLEND_TAU_S : CHASE_TAU_S));
+    // Paddling, down the line the left peels toward; up, the way she's going along the line. Smoothed.
+    const [fx, fz] = forwardOf(b.headingDeg);
     const shore = new Vector3(b.water.dirX, 0, b.water.dirZ), line = new Vector3(-shore.z, 0, shore.x);
     const along = b.vx * line.x + b.vz * line.z;
-    if (this.lineSign === 0 || Math.abs(along) > LINE_SWAP_MS) this.lineSign = Math.abs(along) > 1e-3 ? Math.sign(along) : Math.sign(fx * line.x + fz * line.z) || 1;
-    const want = up && shore.lengthSq() > 1e-6 ? line.clone().multiplyScalar(this.lineSign) : sp > 2 ? new Vector3(b.vx / sp, 0, b.vz / sp) : new Vector3(fx, 0, fz);
-    this.dir.lerp(want, first ? 1 : 1 - Math.exp(-dt / DIR_TAU_S));
-    if (this.dir.lengthSq() < 1e-6) this.dir.copy(want);
+    // Paddling, the side the left peels toward; up, the way she goes along the line once she moves (held through a stall).
+    if (!up) this.lineSign = PADDLE_PEEL_SIGN;
+    else if (this.lineSign === 0 || Math.abs(along) > LINE_SWAP_MS) this.lineSign = Math.abs(along) > 1e-3 ? Math.sign(along) : Math.sign(fx * line.x + fz * line.z) || 1;
+    const want = line.clone().multiplyScalar(this.lineSign);
+    // Turned about the vertical toward `want` (a straight-line ease between opposite directions never leaves the first).
+    if (first || this.dir.lengthSq() < 1e-6) this.dir.copy(want);
+    else {
+      const turn = Math.atan2(this.dir.x * want.z - this.dir.z * want.x, this.dir.x * want.x + this.dir.z * want.z);
+      const t = (Math.abs(turn) > Math.PI - 1e-6 ? Math.PI : turn) * (1 - Math.exp(-dt / DIR_TAU_S)), c = Math.cos(t), s = Math.sin(t);
+      this.dir.set(this.dir.x * c - this.dir.z * s, 0, this.dir.x * s + this.dir.z * c);
+    }
     this.dir.normalize();
-    const D = this.dir, back = up ? RIDE_BACK_M : CHASE_BACK_M;
-    const target = new Vector3(b.x - D.x * back, b.y + (up ? RIDE_UP_M : CHASE_UP_M), b.z - D.z * back);
-    if (up) target.addScaledVector(shore, RIDE_SHORE_M);
+    const D = this.dir;
+    const target = up
+      ? new Vector3(b.x - D.x * RIDE_BACK_M, b.y + RIDE_UP_M, b.z - D.z * RIDE_BACK_M).addScaledVector(shore, RIDE_SHORE_M)
+      : new Vector3(b.x + D.x * PADDLE_ALONG_M, b.y + PADDLE_UP_M, b.z + D.z * PADDLE_ALONG_M).addScaledVector(shore, -PADDLE_SEAWARD_M);
     target.y = Math.max(target.y, waterY(target.x, target.z) + CHASE_CLEAR_M, waterY((target.x + b.x) / 2, (target.z + b.z) / 2) + CHASE_CLEAR_M);
-    let lookAt = up ? new Vector3(b.x, b.y + 1, b.z).addScaledVector(D, RIDE_LOOK_AHEAD_M) : new Vector3(b.x, b.y + 1, b.z);
+    if (!up) {
+      // Paddling, the face rising between the shoulder and her must not hide her (the live run at 7 ft saw only water at
+      // the catch): the camera rises until its sight line to her chest clears the water by SIGHT_CLEAR_M.
+      const cy = b.y + 1;
+      for (let i = 1; i < SIGHT_SAMPLES; i++) {
+        const f = i / SIGHT_SAMPLES, x = target.x + (b.x - target.x) * f, z = target.z + (b.z - target.z) * f;
+        const need = waterY(x, z) + SIGHT_CLEAR_M - (target.y + (cy - target.y) * f);
+        if (need > 0) target.y += need / (1 - f);
+      }
+    }
+    let lookAt = up
+      ? new Vector3(b.x, b.y + 1, b.z).addScaledVector(D, RIDE_LOOK_AHEAD_M)
+      : new Vector3(b.x, b.y + 1, b.z).addScaledVector(shore, -PADDLE_LOOK_SEAWARD_M);
     const rel = target.sub(new Vector3(b.x, b.y, b.z));
     if (!this.pos) this.pos = rel.clone();
     else this.pos.lerp(rel, a);

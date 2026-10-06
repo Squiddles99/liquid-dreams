@@ -112,7 +112,9 @@ describe('the Bombie’s mound (4c-3)', () => {
   it('rises to 5 m below mean sea level outside the reef map, and leaves the bed alone beyond its oval', () => {
     expect(bedHeightAt(b, BOMBIE_X, BOMBIE_Z)).toBeCloseTo(MOUND_CREST_Y, 3);
     expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z)).toBeCloseTo(-depthBg(BOMBIE_X + MOUND_HALF_X_M + 5), 3);
-    expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M * 0.5, BOMBIE_Z)).toBeGreaterThan(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z));
+    // 0.3 of its half width, not 0.5: the sea around it is 15 m since R1 §1 and the mound's outer half (its base is −26 m)
+    // lies under that floor.
+    expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M * 0.3, BOMBIE_Z)).toBeGreaterThan(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z));
   });
 });
 
@@ -153,9 +155,9 @@ describe('the reef seaward of the ledges (spec 2026-10-02 §3)', () => {
     const nx = (b[1] - a[1]) / L, nz = -(b[0] - a[0]) / L, mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
     const at = (v: number) => depth(mx + nx * v, mz + nz * v);
     // The face's foot: the profile's, capped (98 m off the beach) by the coast deepened toward the slope's depth; a steep
-    // face either way, ~13 m in its 20 m.
+    // face either way, ~8.4 m in its 15 m (R1 §1: 15 → 3.5 m over 15 m; was ~13 m in 20 m).
     expect(Math.abs(at(p.faceWidthM) - seawardDepth(p.faceWidthM, mx + nx * p.faceWidthM, p))).toBeLessThan(1.5);
-    expect(at(p.faceWidthM) - at(0)).toBeGreaterThan(10);
+    expect(at(p.faceWidthM) - at(0)).toBeGreaterThan(0.6 * (p.faceBaseDepthM - p.ledgeDepthM));
     expect(at(p.slopeEndM)).toBeGreaterThan(p.slopeDepthM - 2);
     expect(at(p.slopeEndM)).toBeLessThan(p.slopeDepthM + 1.5);
   });

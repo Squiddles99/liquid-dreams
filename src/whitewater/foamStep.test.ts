@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BREAK_PARAMS, breakingHeight } from '../breaker/breaking';
 import { computeReefField } from '../breaker/reefField';
-import { surferFeetToHs } from '../conditions/units';
+import { setWaveHeight } from '../breaker/reefReport';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { SHORE_X } from '../seabed/coastProfile';
 import {
@@ -138,10 +138,12 @@ describe('a replay against live play (ruling R2)', () => {
 });
 
 describe('the foam box (ruling R1)', () => {
-  // The widest breaking regions measured at plan time, at the slider extreme: 12 ft × heightFactorMax 3 × (1 + 2 × 0.15 jitter).
+  // The widest breaking regions, for the biggest 12 ft set wave with the jitter: R1's range (spec 2026-10-06 §1). At the
+  // slider extreme (12 ft × heightFactorMax 3 × 1.3, a ~14 m wave) the sea is as deep as the wave is tall since the 15 m
+  // basin runs to the map edge, so it breaks out there and no foam box holds it (R1 handover, open).
   const cases: [number, number, number][] = [[-0.6, 18, 250], [-0.6, 15, 225], [0, 15, 225]];
-  it('every cell in the water where the biggest wave the sliders allow can break lies 20 m inside the seaward edge', () => {
-    const H = surferFeetToHs(12) * 3 * 1.3;
+  it('every cell in the water where the biggest 12 ft set wave can break lies 20 m inside the seaward edge', () => {
+    const H = setWaveHeight(12) * 1.3;
     const bed = downsample(buildBathymetry(), 2);
     for (const [tideM, periodS, fromDeg] of cases) {
       const f = computeReefField({ bed, periodS, fromDeg, tideM });

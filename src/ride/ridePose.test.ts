@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type RideBody, startBody } from './ridePhysics';
-import { LOOK_HOLD_S, RideCamera } from './ridePose';
+import type { CameraPose } from '../dev/momentLink';
+import { LOOK_HOLD_S, RIDE_BACK_M, RIDE_UP_M, RideCamera } from './ridePose';
 import { flatWater } from './water';
 
 const DT = 1 / 60;
@@ -86,10 +87,6 @@ describe('the ride camera from behind, and over her shoulder in the tube (Andrew
     expect(pose.position[2] - b.z).toBeGreaterThan(3);
   });
 
-  it('paddling, it is behind the board too', () => {
-    const b = startBody(0, 0, 90, flatWater());
-    expect(settle(new RideCamera(), b).position[0]).toBeLessThan(-3);
-  });
 
   it('under a curl it goes over her shoulder (the shore side), still looking down the line, and back out after', () => {
     const cam = new RideCamera(), b = riding();
@@ -100,5 +97,87 @@ describe('the ride camera from behind, and over her shoulder in the tube (Andrew
     expect(pov.position[0]).toBeGreaterThan(0.1); // the shore side (+x), away from the wall
     expect(Math.min(pov.yawDeg, 360 - pov.yawDeg)).toBeLessThan(10);
     expect(settle(cam, b, 0, 3).position[2]).toBeGreaterThan(3);
+  });
+});
+
+describe('the take-off camera (R1 §4)', () => {
+  const DEG = Math.PI / 180;
+  // The swell runs toward the beach (+x) at 8 m/s on flat water.
+  const water = () => ({ y: 0, slopeX: 0, slopeZ: 0, foam: 0, ux: 0, uz: 0, c: 8, dirX: 1, dirZ: 0 });
+  const paddlingBody = (): RideBody => startBody(0, 0, 90, water);
+  const ridingBody = (): RideBody => {
+    const b = startBody(0, 0, 0, water);
+    b.phase = 'ride';
+    b.phaseT = 2;
+    b.vx = 8 * -b.water.dirZ; b.vz = 8 * b.water.dirX; // along the line (−dirZ, dirX)
+    return b;
+  };
+  const inFrame = (pose: CameraPose, p: [number, number, number]) => {
+    const yaw = pose.yawDeg * DEG, pitch = pose.pitchDeg * DEG;
+    const look = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
+    const d = [p[0] - pose.position[0], p[1] - pose.position[1], p[2] - pose.position[2]], n = Math.hypot(d[0], d[1], d[2]);
+    return Math.acos((look[0] * d[0] + look[1] * d[1] + look[2] * d[2]) / n) / DEG <= 40;
+  };
+  it('paddling: the rider and the oncoming crest are both in frame, from the shoulder side', () => {
+    const b = paddlingBody(), cam = new RideCamera();
+    let pose!: CameraPose;
+    for (let k = 0; k < 60; k++) pose = cam.update(b, 1 / 60, () => 0);
+    const shore = [b.water.dirX, b.water.dirZ];
+    const crest: [number, number, number] = [b.x - shore[0] * 12, 2, b.z - shore[1] * 12];
+    expect(inFrame(pose, [b.x, b.y + 1, b.z]), 'the rider').toBe(true);
+    expect(inFrame(pose, crest), 'the crest').toBe(true);
+    // on the shoulder side (along the line), not behind her along her run
+    const line = [-shore[1], shore[0]];
+    const along = (pose.position[0] - b.x) * line[0] + (pose.position[2] - b.z) * line[1];
+    expect(Math.abs(along)).toBeGreaterThan(5);
+  });
+  it.each([0, 20, 45, 70, 135, 200, 315])('at pop-up with no speed along the line yet, it swings behind her for the left (swell toward %i°)', (deg) => {
+    const dX = Math.sin(deg * DEG), dZ = -Math.cos(deg * DEG);
+    const w = () => ({ y: 0, slopeX: 0, slopeZ: 0, foam: 0, ux: 0, uz: 0, c: 8, dirX: dX, dirZ: dZ });
+    const b = startBody(0, 0, Math.atan2(dX, -dZ) / DEG, w), cam = new RideCamera();
+    for (let k = 0; k < 60; k++) cam.update(b, 1 / 60, () => 0);
+    b.phase = 'popup'; b.phaseT = 0;
+    let pose!: CameraPose;
+    for (let k = 0; k < 90; k++) { b.phaseT += 1 / 60; pose = cam.update(b, 1 / 60, () => 0); }
+    const line = [-b.water.dirZ, b.water.dirX];
+    const along = (pose.position[0] - b.x) * line[0] + (pose.position[2] - b.z) * line[1];
+    expect(along, 'behind her along a ride toward −line').toBeGreaterThan(2);
+  });
+  it('a rider who pops up and goes right (+line) gets the camera behind her within 1.5 s, not stuck in front', () => {
+    const b = paddlingBody(), cam = new RideCamera();
+    for (let k = 0; k < 60; k++) cam.update(b, 1 / 60, () => 0);
+    const line = [-b.water.dirZ, b.water.dirX];
+    b.phase = 'ride'; b.phaseT = 0; b.vx = 4 * line[0]; b.vz = 4 * line[1];
+    let pose!: CameraPose;
+    for (let k = 0; k < 90; k++) { b.phaseT += 1 / 60; pose = cam.update(b, 1 / 60, () => 0); }
+    const along = (pose.position[0] - b.x) * line[0] + (pose.position[2] - b.z) * line[1];
+    expect(along, 'behind her as she goes +line').toBeLessThan(-2);
+  });
+  it('paddling with a face rising between the camera and her, the camera sees over it (the live run, 7 ft: only water at "caught")', () => {
+    const b = paddlingBody(), cam = new RideCamera();
+    // A 3 m ridge 1.5 m seaward of her (x = −1.5), the camera 2.5 m seaward and 7 m along: it sits low behind the ridge.
+    const ridge = (x: number): number => 3 * Math.exp(-(((x + 1.5) / 1) ** 2));
+    let pose!: CameraPose;
+    for (let k = 0; k < 90; k++) pose = cam.update(b, 1 / 60, ridge);
+    const chest = [b.x, b.y + 1, b.z];
+    for (let i = 1; i < 20; i++) {
+      const f = i / 20, x = pose.position[0] + (chest[0] - pose.position[0]) * f, y = pose.position[1] + (chest[1] - pose.position[1]) * f;
+      expect(y, `the sight line at ${(f * 100).toFixed(0)} %`).toBeGreaterThan(ridge(x));
+    }
+  });
+  it('a look swing during paddle still pivots around the rider', () => {
+    const b = paddlingBody(), cam = new RideCamera();
+    let pose!: CameraPose;
+    for (let k = 0; k < 60; k++) pose = cam.update(b, 1 / 60, () => 0, k === 30 ? { yawDeg: 40, pitchDeg: 0 } : undefined);
+    expect(inFrame(pose, [b.x, b.y + 1, b.z])).toBe(true);
+  });
+  it('standing: the pose is the along-the-line ride camera (unchanged)', () => {
+    const b = ridingBody(), cam = new RideCamera();
+    let pose!: CameraPose;
+    for (let k = 0; k < 120; k++) pose = cam.update(b, 1 / 60, () => 0);
+    const line = [-b.water.dirZ, b.water.dirX];
+    const back = -((pose.position[0] - b.x) * line[0] + (pose.position[2] - b.z) * line[1]) * Math.sign(b.vx * line[0] + b.vz * line[1]);
+    expect(back).toBeCloseTo(RIDE_BACK_M, 0);
+    expect(pose.position[1] - b.y).toBeCloseTo(RIDE_UP_M, 0);
   });
 });
