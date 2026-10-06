@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PLATE_ASPECT, backdropFade, coverUV, easeToward, windDrive } from './backdropMath';
+import { PLATE_ASPECT, backdropFade, coverUV, easeToward, insideLayer, layerUV, windDrive } from './backdropMath';
 
 const KN = 1 / 1.943844; // m/s per knot
 
@@ -111,5 +111,24 @@ describe('easeToward: the painting\'s sun follows the cloud meter smoothly (fina
       v = next;
     }
     expect(worst).toBeLessThan(1 / 3);
+  });
+});
+
+describe('layerUV: a painted layer placed on the ground (the crew on Conditions)', () => {
+  const rect = { x: 0.3, y: 0.27, scale: 0.72 };
+  it('maps the rect\'s corners to the layer\'s corners', () => {
+    expect(layerUV(0.3, 0.27, rect)).toEqual([0, 0]);
+    const [u, v] = layerUV(0.3 + 0.72, 0.27 + 0.72, rect);
+    expect(u).toBeCloseTo(1, 9);
+    expect(v).toBeCloseTo(1, 9);
+  });
+  it('keeps the layer\'s 16:9 shape (one scale on both axes)', () => {
+    const [u0, v0] = layerUV(0.5, 0.5, rect), [u1, v1] = layerUV(0.6, 0.6, rect);
+    expect(u1 - u0).toBeCloseTo(v1 - v0, 9);
+  });
+  it('says whether a ground point falls inside the layer', () => {
+    expect(insideLayer(...layerUV(0.5, 0.5, rect))).toBe(true);
+    expect(insideLayer(...layerUV(0.1, 0.5, rect))).toBe(false);
+    expect(insideLayer(...layerUV(0.5, 0.1, rect))).toBe(false);
   });
 });
