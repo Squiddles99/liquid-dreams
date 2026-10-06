@@ -48,7 +48,7 @@ app.whenReady().then(async () => {
         const travel = Math.atan2(b.water.dirX, -b.water.dirZ) * 180 / Math.PI, aim = travel + ${dir} * 45;
         const off = ((aim - b.headingDeg + 540) % 360) - 180;
         const steer = ridingFor > 0.3 ? Math.max(-1, Math.min(1, off / 20)) : 0;
-        const ev = P.stepRide(b, { paddle: t > arrive - 3 && b.phase === 'paddle', steer, crouch: 0, popup: b.caught }, a.rideWater(t), 1 / 60);
+        const ev = P.stepRide(b, { paddle: t > arrive - 3 && b.phase === 'paddle', steer, crouch: 0, popup: b.caught }, a.rideWater(t), 1 / 60, P.TUNING.intermediate);
         if (ev) events.push(ev + '@' + (t - arr).toFixed(2));
       }
       a.clock.setTime(window.__bot.t);
