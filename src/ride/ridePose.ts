@@ -66,12 +66,17 @@ export const CHASE_CLEAR_M = 1.8;
 /** Seconds for the camera to settle on a new spot. */
 export const CHASE_TAU_S = 0.35;
 /**
- * Up and riding (Andrew 2026-10-04: "we can't see the face of the wave ahead"): behind her, lower and closer than paddling,
- * looking ahead along her run, so the wall down the line is in view.
+ * Up and riding (Andrew 2026-10-04: "we can't see the face of the wave ahead"; then "behind them as they travel left, across
+ * the wave. Currently, the camera is behind the wave"): behind her along the line (across the swell, not along her run,
+ * which the swell carries mostly shoreward), close so the whitewater behind her doesn't fill the frame, a little to the
+ * shore side so it's off the face, looking ahead down the line at the wall.
  */
-export const RIDE_BACK_M = 5.5;
-export const RIDE_UP_M = 2;
-export const RIDE_LOOK_AHEAD_M = 6;
+export const RIDE_BACK_M = 4;
+export const RIDE_UP_M = 1.8;
+export const RIDE_SHORE_M = 1;
+export const RIDE_LOOK_AHEAD_M = 8;
+/** Her speed along the line (m/s) past which the camera swaps to her other side (she's turned and gone the other way). */
+export const LINE_SWAP_MS = 1.5;
 /** Seconds for the camera's direction to follow her run (it doesn't whip round in a carve). */
 export const DIR_TAU_S = 0.4;
 /**
@@ -102,13 +107,16 @@ export interface LookInput {
 }
 
 /**
- * The ride's camera, easing after the board: always behind it along its run (its heading when slow), higher and further
- * back paddling, lower and looking ahead down the line standing; over her shoulder as a tube closes over her. The player
+ * The ride's camera, easing after the board: paddling, behind it along its run (its heading when slow), high and back;
+ * standing, behind her along the line, low and close, looking ahead down the line; over her shoulder as a tube closes over her. The player
  * can swing it around the rider (right stick, mouse drag); LOOK_HOLD_S after the last look it eases back to its framing.
  */
 export class RideCamera {
+  /** The camera's spot relative to the rider, eased (so her speed doesn't drag it further back). */
   private pos: Vector3 | null = null;
   private dir = new Vector3(1, 0, 0);
+  /** Which way along the line she's going (+1 along (−dirZ, dirX), the swell's left), held through a stall. */
+  private lineSign = 0;
   /** The player's swing off the framed camera (degrees), and the seconds since they last moved it. */
   private yawOff = 0;
   private pitchOff = 0;
@@ -121,6 +129,7 @@ export class RideCamera {
     this.yawOff = this.pitchOff = 0;
     this.idleS = Infinity;
     this.pov = 0;
+    this.lineSign = 0;
   }
 
   /** The player's swing off the framed camera (degrees): tests, and the HUD. */
@@ -145,30 +154,36 @@ export class RideCamera {
     }
     const first = !this.pos, a = first ? 1 : 1 - Math.exp(-dt / CHASE_TAU_S);
     const up = b.phase === 'ride' || b.phase === 'popup' || b.phase === 'bail';
-    // Her run (her heading when slow), smoothed.
+    // Paddling, her run (her heading when slow); up, the way she's going along the line. Smoothed.
     const sp = speedOf(b), [fx, fz] = forwardOf(b.headingDeg);
-    const want = sp > 2 ? new Vector3(b.vx / sp, 0, b.vz / sp) : new Vector3(fx, 0, fz);
+    const shore = new Vector3(b.water.dirX, 0, b.water.dirZ), line = new Vector3(-shore.z, 0, shore.x);
+    const along = b.vx * line.x + b.vz * line.z;
+    if (this.lineSign === 0 || Math.abs(along) > LINE_SWAP_MS) this.lineSign = Math.abs(along) > 1e-3 ? Math.sign(along) : Math.sign(fx * line.x + fz * line.z) || 1;
+    const want = up && shore.lengthSq() > 1e-6 ? line.clone().multiplyScalar(this.lineSign) : sp > 2 ? new Vector3(b.vx / sp, 0, b.vz / sp) : new Vector3(fx, 0, fz);
     this.dir.lerp(want, first ? 1 : 1 - Math.exp(-dt / DIR_TAU_S));
     if (this.dir.lengthSq() < 1e-6) this.dir.copy(want);
     this.dir.normalize();
     const D = this.dir, back = up ? RIDE_BACK_M : CHASE_BACK_M;
     const target = new Vector3(b.x - D.x * back, b.y + (up ? RIDE_UP_M : CHASE_UP_M), b.z - D.z * back);
+    if (up) target.addScaledVector(shore, RIDE_SHORE_M);
     target.y = Math.max(target.y, waterY(target.x, target.z) + CHASE_CLEAR_M, waterY((target.x + b.x) / 2, (target.z + b.z) / 2) + CHASE_CLEAR_M);
     let lookAt = up ? new Vector3(b.x, b.y + 1, b.z).addScaledVector(D, RIDE_LOOK_AHEAD_M) : new Vector3(b.x, b.y + 1, b.z);
-    if (!this.pos) this.pos = target.clone();
-    else this.pos.lerp(target, a);
+    const rel = target.sub(new Vector3(b.x, b.y, b.z));
+    if (!this.pos) this.pos = rel.clone();
+    else this.pos.lerp(rel, a);
+    const at = this.pos.clone().add(new Vector3(b.x, b.y, b.z));
     // Never under the water where the camera is now (the face can rise under it while it eases).
-    this.pos.y = Math.max(this.pos.y, waterY(this.pos.x, this.pos.z) + 0.5);
+    at.y = Math.max(at.y, waterY(at.x, at.z) + 0.5);
     // Over her shoulder as the tube closes over her: rigid with her (no lag, or she'd slide out of the frame).
     const c = Math.min(1, Math.max(0, (cover - POV_COVER[0]) / (POV_COVER[1] - POV_COVER[0])));
     const povTarget = up ? c * c * (3 - 2 * c) : 0;
     this.pov += (povTarget - this.pov) * (1 - Math.exp(-dt / (povTarget > this.pov ? POV_IN_TAU_S : POV_OUT_TAU_S)));
     if (this.pov < 1e-3) this.pov = 0;
-    let cam = this.pos.clone();
+    let cam = at;
     if (this.pov > 0) {
       // The shore side of her run: away from the wall.
-      const d = new Vector3(b.water.dirX, 0, b.water.dirZ), side = new Vector3(-D.z, 0, D.x);
-      if (side.dot(d) < 0) side.negate();
+      const side = new Vector3(-D.z, 0, D.x);
+      if (side.dot(shore) < 0) side.negate();
       const head = new Vector3(b.x, b.y + POV_UP_M, b.z).addScaledVector(D, -POV_BACK_M).addScaledVector(side, POV_SIDE_M);
       const ahead = new Vector3(b.x, b.y + 1.1, b.z).addScaledVector(D, POV_LOOK_AHEAD_M);
       const k = this.pov * this.pov * (3 - 2 * this.pov);
