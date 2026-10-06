@@ -54,7 +54,9 @@ export interface BreakParams {
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
   enabled: true,
   gamma: 0.78,
-  delta: 1.0,
+  // 0.2, not 1.0: at 1.0 a wave broke at 0.44 × depth (half the real 0.78–0.9) and the 7 ft wave was declared broken in
+  // 17.8 m of water (R1 §2).
+  delta: 0.2,
   hFloorM: 0.3,
   stageSpan: 0.7,
   troughDrain: 0.6544,
