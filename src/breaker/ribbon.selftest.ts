@@ -16,8 +16,7 @@ import {
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
 import { PROFILE_SAMPLES } from './BreakingRibbon';
-import { profileSamples } from './wombProfile';
-import { sectionOf } from './wombSection';
+import { curlWeight, sectionOf, sectionSamples } from './wombSection';
 import { WOMB_FRAME_VEC4S } from './wombSectionNodes';
 import { hollowFromPsi } from './reefReport';
 import { type ReefField, computeReefField, sampleField } from './reefField';
@@ -82,9 +81,8 @@ function cpuRow(st: Station, t: number, waves: readonly ActiveWave[]) {
   const sheet = (u: number): Vec2 => { const d = at(u); return [u + d.dx * st.nx + d.dz * st.nz, d.eta]; };
   // The station's own numbers, smoothed along the crest (as the GPU reads them from the station buffer).
   const sec = sectionOf(st.section, sheet);
-  const { A, phase, hollow } = sec.numbers;
-  const { curve, marks } = profileSamples(phase, hollow);
-  const homes = curve.map(([u]) => A * u).reverse();
+  const { marks } = sectionSamples(st.section, sheet);
+  const homes = sec.homes;
   const n = PROFILE_SAMPLES, tx = -st.nz, tz = st.nx;
   const world = sec.points.map(([u, y], j): [number, number, number] => {
     const d = at(homes[j]);
@@ -145,7 +143,7 @@ registerSelfTest({
         stations++;
         const where = `ψ ${psi} dt ${dt} #${i}`;
         const { sec, world, marks: cm } = cpuRow(e, t, traced.waves);
-        const { A, phase, hollow, rho } = sec.numbers;
+        const { A, phase, hollow } = sec.numbers, rho = curlWeight(sec.numbers);
         if (phase > 0.6 && phase < 1.2 && rho > 0.9) thrown++;
         if (phase > 1.2 && rho > 0.5) collapsing++;
         if (phase > 0.1 && phase <= 0.45) standing++;

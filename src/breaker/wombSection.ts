@@ -1,13 +1,14 @@
 import { smoothstep } from '../math/smoothstep';
 import { hollowFromPsi } from './reefReport';
-import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, type P2, STAGES, TIP_KNOT, TROUGH_KNOT, profileKnots, profileSamples } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, type P2, PROFILE_KEYS, STAGES, TIP_KNOT, TROUGH_KNOT, crStep, crTangent, curveSamples, hermitePoint, profileKnots, roundedTip, tipLife } from './wombProfile';
 
 /**
  * A crest station's cross-section as the Womb's profile family (spec 2026-10-05-womb-profile-design §2, §4; plan
  * 2026-10-05-womb-profile-step3 3a–3b). The station gives its numbers: the scale A, the phase through the break, the
- * hollowness and the ribbon's weight; the section is wombProfile's curve at them, A to the metre, placed on the station's
- * (u, y) plane (u along the wave's travel from the crest, y up from still water) and blended into the sea's sheet at its
- * ends. Pure: the ribbon's GPU mirrors it, the ride and the spray read it on the CPU.
+ * hollowness and the curl's weight; the section is one curve on the station's (u, y) plane (u along the wave's travel from
+ * the crest, y up from still water): its ends are the sea's sheet, sampled, and its curl is wombProfile's drawing, A to the
+ * metre (plan 2026-10-06-wave-root-cause step 3, Andrew's ruling: one surface, no blends). Pure: the ribbon's GPU mirrors
+ * it, the ride and the spray read it on the CPU.
  */
 
 const GRAVITY_MS2 = 9.81;
@@ -39,24 +40,8 @@ export const STAND_LEAD_S = 2;
 export const FLIGHT_DROP_A = 1.3;
 /** After the white-water wall the section hands back to the sheet over this long (s); the foam carries on over it. */
 export const SECTION_HAND_BACK_S = 0.5;
-/** The ribbon's weight rises as the onset ratio goes from the ribbon's onset to this (it stands up out of the sheet). */
-export const RHO_FULL_RATIO = 0.9;
-/** The profile's ends (units of A): the ribbon's mesh spans them; the section is the sheet's well before them. */
+/** The section's ends (units of A from the crest line): the ribbon's mesh spans them; the curve is the sheet's there. */
 export const EDGE_OUTER_UNITS = 7;
-/**
- * Where the section is the profile and where it is the sheet. The profile draws the curl: the crest, the lip, the tube, the
- * face and the trough in front of it. Behind the crest the back is the sheet's own (the swell's), handed over between
- * BACK_BLEND_UNITS[0] and [1] units of A behind the crest knot; in front, past the trough, between FRONT_BLEND_UNITS[0]
- * and [1] units ahead of the crest line.
- *
- * The profile's gentle back stands lower than the shoaled swell's back (≈ 0.75 A against 0.9 A one unit behind the crest,
- * 0.2 A against 0.6 A four units behind): every hand-over further back left a dip behind the crest and a rise where the
- * swell took over, a second wave behind the first (Andrew, 2026-10-05, in the game: his red line "rises, dips, rises",
- * his green "a smooth gradient returning down to sea level", which is the swell's own back). Handed over just behind the
- * crest, where the two stand at nearly the same height, the back is the swell's from there on.
- */
-export const BACK_BLEND_UNITS: readonly [number, number] = [0.25, 1.5];
-export const FRONT_BLEND_UNITS: readonly [number, number] = [2.3, 4];
 
 export interface SectionInput {
   /** The station's local wave height (m), crest to trough. */
@@ -143,14 +128,12 @@ export function boreWeight(tb: number | null | undefined, H: number, periodS: nu
 const standing = (s: SectionInput): number => (s.wait === undefined || s.wait === null ? 1 : 1 - smoothstep(0, STAND_LEAD_S, s.wait));
 
 /**
- * The ribbon's weight ρ: in from the sheet as the wave stands up, out to it after the white-water wall. A section held for
- * its turn comes in over the same last STAND_LEAD_S as its phase: further down the line the swell is the sheet's own. The
- * profile's unbroken keys stand lower than the shoaled swell at the station's height (phase 0's crest is 0.55 A, the
- * sheet's about 0.9 A), so drawn there they pressed the wall down the line a metre under the swell: "the wall of the wave
- * in front of the surfer doesn't extend very far" (Andrew, 2026-10-05, in the game).
+ * The section's ρ: how much of the curl it draws over the sheet. 1 until the white-water wall, then handed back to the
+ * sheet over SECTION_HAND_BACK_S (and, along the crest, faded to 0 at a traced line's cut end: crestTrace.fillSections).
+ * Before the break the phase alone carries the wave: phase 0 is the sheet (sectionKnots).
  */
-export function sectionWeight(s: SectionInput, p: SectionParams): number {
-  if (s.tb === null) return smoothstep(p.ribbonOnset, RHO_FULL_RATIO, s.r) * standing(s);
+export function sectionWeight(s: SectionInput, _p?: SectionParams): number {
+  if (s.tb === null) return 1;
   if (!Number.isFinite(s.tb)) return 0;
   return 1 - smoothstep(0, SECTION_HAND_BACK_S, s.tb - sectionEnd(brokeAt(s), s.periodS));
 }
@@ -162,105 +145,158 @@ export function sectionNumbers(s: SectionInput, p: SectionParams): SectionNumber
   return { A: sectionSize(s, phase), phase, hollow: hollowFromPsi(s.psi), rho: sectionWeight(s, p) };
 }
 
-/** The sheet along the station: at u m from the crest along the wave's travel, the displaced (u, y) of the sea there. */
+/** The sheet along the station: at home u m from the crest along the wave's travel, the displaced (u, y) of the sea there. */
 export type SheetAlong = (u: number) => P2;
+
+/**
+ * A section knot (units of A): (u, y) on the station's plane, its home u (where the sheet under it is read), and the sheet's
+ * point at that home (su, sy). Every sample carries all five along the curve; the section is the sheet at the sample's home
+ * plus (u − su, y − sy), the drawing's offset from the sheet there (sectionOf): 0 wherever the knots are the sheet's.
+ */
+export type SectionKnot = readonly [number, number, number, number, number];
+
+/** Knots sampled from the sheet at each end: from the edge (EDGE_OUTER_UNITS) to the drawing's back shoulder (knot 2) and
+ * from its front knot (12), evenly by home. Their offset from the sheet is 0, so beyond the shoulder and the front knot the
+ * section is the sheet itself, sample by sample: these knots only spread its samples and carry their homes. */
+export const SHEET_KNOTS = 5;
+/** The joins' tangents are the sheet's own slope over this far (units of A) on its side of the join. */
+export const JOIN_SLOPE_UNITS = 0.02;
+/** The drawing's curl, crest … trough, with the lip's end rounded (wombProfile.roundedTip: the tip knot becomes three). */
+export const CURL_KNOTS = TROUGH_KNOT - CREST_KNOT + 3;
+export const SECTION_KNOTS = 2 * SHEET_KNOTS + CURL_KNOTS;
+/** The drawing's knot m among the section's knots (the tip: its rounded point). */
+export const sectionKnot = (m: number): number => SHEET_KNOTS + m - CREST_KNOT + (m > TIP_KNOT ? 2 : m === TIP_KNOT ? 1 : 0);
+export const SECTION_CREST = sectionKnot(CREST_KNOT);
+export const SECTION_TIP = sectionKnot(TIP_KNOT);
+export const SECTION_FLOOR = sectionKnot(FLOOR_KNOT);
+export const SECTION_TROUGH = sectionKnot(TROUGH_KNOT);
+/** The knots whose samples are marked. */
+export const SECTION_MARKED = { crest: SECTION_CREST, tip: SECTION_TIP, floor: SECTION_FLOOR } as const;
+
+/** The curl comes in over phases 0 to this: phase 0 is the sheet (Andrew's ruling: the phase alone carries the wave from
+ * swell to barrel); by the time the lip pitches it is the drawing. */
+export const CURL_PHASE = STAGES.pitching;
+/** The drawing's "flat sea in front" is the sheet's water: the drawn curl is moved (not stretched) so its trough knot lies
+ * SEAT_DIP_UNITS under the sheet at the drawing's front knot, by at most SEAT_SHIFT_MAX units of A either way. */
+export const SEAT_DIP_UNITS = 0.12;
+export const SEAT_SHIFT_MAX = 0.4;
+
+/** How much of the drawn curl a section draws over the sheet [0, 1]: by its phase (in over 0 … CURL_PHASE) × its ρ. */
+export const curlWeight = (numbers: Pick<SectionNumbers, 'phase' | 'rho'>): number => smoothstep(0, CURL_PHASE, numbers.phase) * numbers.rho;
+
+/** The datum shift (units of A): the drawn trough knot (`troughY`) to SEAT_DIP_UNITS under the sea at the front knot (`seaY`). */
+export const seatShift = (troughY: number, seaY: number): number => Math.max(-SEAT_SHIFT_MAX, Math.min(SEAT_SHIFT_MAX, seaY - SEAT_DIP_UNITS - troughY));
+
+/** The drawing's curl knots (crest … trough) with the lip's end rounded at `life` (wombProfile.roundedTip). */
+const roundedCurl = (k: readonly P2[], life: number): P2[] => roundedTip(k, life, TIP_KNOT).slice(CREST_KNOT, TROUGH_KNOT + 3);
+/** Where the curl's knots sit on the sheet at phase 0: the swell drawing's (rounded the same way, life 0), which stand in
+ * order along the sea. */
+export const SWELL_CURL_U: readonly number[] = roundedCurl(PROFILE_KEYS[0].hollow, 0).map((p) => p[0]);
+
+/**
+ * The section's knots (units of A; back to front). The sheet at SHEET_KNOTS homes from the back edge to the drawing's
+ * shoulder (knot 2); the curl (crest … trough, the lip's end rounded) from the sheet at the swell drawing's homes toward the
+ * drawing at (phase, hollow), moved by seatShift, by curlWeight; the sheet at SHEET_KNOTS homes from the drawing's front
+ * knot (12) to the front edge. Every knot carries its home: the sheet's own where it is sampled; on the drawing its u less
+ * the sheet's horizontal displacement, eased from the shoulder's to the front's.
+ */
+export function sectionKnots(numbers: SectionNumbers, sheet: SheetAlong): SectionKnot[] {
+  return sectionFrameKnots(numbers, sheet).knots;
+}
+
+/**
+ * sectionKnots, with four more of the sheet's points (`beyond`): one knot spacing behind the back edge and ahead of the front
+ * edge (the Catmull–Rom's outer neighbours there), and JOIN_SLOPE_UNITS on the sheet's side of the shoulder and the front
+ * knot (their slope: sectionTangents).
+ */
+export function sectionFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): { knots: SectionKnot[]; beyond: SectionKnot[] } {
+  const { A, phase, hollow } = numbers, k = profileKnots(phase, hollow);
+  const at = (h: number): SectionKnot => { const p = sheet(A * h); return [p[0] / A, p[1] / A, h, p[0] / A, p[1] / A]; };
+  const back: SectionKnot[] = [], front: SectionKnot[] = [];
+  const b0 = -EDGE_OUTER_UNITS, b1 = k[CREST_KNOT - 1][0], f0 = k[FRONT_KNOT][0], f1 = EDGE_OUTER_UNITS;
+  for (let i = 0; i < SHEET_KNOTS; i++) {
+    back.push(at(b0 + ((b1 - b0) * i) / (SHEET_KNOTS - 1)));
+    front.push(at(f0 + ((f1 - f0) * i) / (SHEET_KNOTS - 1)));
+  }
+  const db = (b1 - b0) / (SHEET_KNOTS - 1), df = (f1 - f0) / (SHEET_KNOTS - 1);
+  const beyond = [at(b0 - db), at(b1 - JOIN_SLOPE_UNITS), at(f0 + JOIN_SLOPE_UNITS), at(f1 + df)];
+  const g = curlWeight(numbers), shift = seatShift(k[TROUGH_KNOT][1], front[0][1]);
+  const oBack = back[SHEET_KNOTS - 1][0] - back[SHEET_KNOTS - 1][2], oFront = front[0][0] - front[0][2];
+  const drawn = roundedCurl(k, tipLife(Math.min(2, Math.max(0, phase))));
+  const curl = drawn.map((d, i): SectionKnot => {
+    const s = at(SWELL_CURL_U[i]), f = (i + 1) / (CURL_KNOTS + 1);
+    const dy = d[1] + shift, dh = d[0] - (oBack + (oFront - oBack) * f), h = s[2] + (dh - s[2]) * g;
+    // Its offset is from the sheet at its own home (at phase 0, s itself: no offset).
+    const under = g > 0 ? at(h) : s;
+    return [s[0] + (d[0] - s[0]) * g, s[1] + (dy - s[1]) * g, h, under[0], under[1]];
+  });
+  return { knots: [...back, ...curl, ...front], beyond };
+}
+
+/** The sheet's ends among the section's knots: the back edge, the shoulder, the front knot, the front edge. */
+export const SHEET_ENDS: readonly number[] = [0, SHEET_KNOTS - 1, SHEET_KNOTS + CURL_KNOTS, 2 * SHEET_KNOTS + CURL_KNOTS - 1];
+
+/**
+ * The knots' parameters (centripetal: cumulative √ of the (u, y) distance) and tangents: the Catmull–Rom's from its
+ * neighbours at every knot (`beyond` outside the edges); at the joins (the shoulder, the front knot) the sheet's own slope
+ * there (from its point JOIN_SLOPE_UNITS on the sheet's side), at the speed of the curl's span beside it. The curve leaves
+ * the sheet along the sheet, so the section, the sheet's itself beyond the joins (sectionOf), turns smoothly into the curl.
+ */
+export function sectionTangents(knots: readonly SectionKnot[], beyond: readonly SectionKnot[]): { t: number[]; m: SectionKnot[] } {
+  const t = [0];
+  for (let i = 1; i < knots.length; i++) t.push(t[i - 1] + crStep(knots[i - 1], knots[i]));
+  const last = knots.length - 1;
+  const m = knots.map((p, i): SectionKnot => {
+    if (i === SHEET_ENDS[1] || i === SHEET_ENDS[2]) {
+      const shoulder = i === SHEET_ENDS[1], near = beyond[shoulder ? 1 : 2], o = knots[shoulder ? i + 1 : i - 1];
+      const dir = p.map((v, j) => (shoulder ? v - near[j] : near[j] - v));
+      const len = Math.hypot(dir[0], dir[1]) || 1, speed = Math.hypot(o[0] - p[0], o[1] - p[1]) / Math.abs(t[shoulder ? i + 1 : i - 1] - t[i]);
+      return dir.map((v) => (v / len) * speed) as unknown as SectionKnot;
+    }
+    const a = i === 0 ? beyond[0] : knots[i - 1], b = i === last ? beyond[3] : knots[i + 1];
+    const ta = i === 0 ? t[i] - crStep(a, p) : t[i - 1], tb = i === last ? t[i] + crStep(p, b) : t[i + 1];
+    return crTangent(a, ta, p, t[i], b, tb);
+  });
+  return { t, m };
+}
 
 export interface Section {
   numbers: SectionNumbers;
   /** CURVE_SAMPLES points (u, y) in m, front edge (the beach side) to back edge: the ribbon mesh's order. */
   points: P2[];
+  /** Each point's home u (m), in the same order: where the sheet under it is read (its chop, its foam). */
+  homes: number[];
   /** The crest's top, and the lip's tip, as drawn (u, y). */
   crest: P2;
   tip: P2;
 }
 
-/** How much of the profile is drawn at u units of A from the crest line, with the crest knot at crestU: all of it over the
- * curl, none behind the crest or ahead of the trough past the blends (BACK_BLEND_UNITS, FRONT_BLEND_UNITS). */
-export const interiorWeight = (uUnits: number, crestU: number): number =>
-  uUnits < crestU ? 1 - smoothstep(BACK_BLEND_UNITS[0], BACK_BLEND_UNITS[1], crestU - uUnits) : 1 - smoothstep(FRONT_BLEND_UNITS[0], FRONT_BLEND_UNITS[1], uUnits);
-
-/**
- * Past the face's foot (the floor knot) the profile settles onto the sea in front over this many units of A: its height is
- * the sea's wherever that is lower, the profile's own only at the foot. The profile's front climbs back to still water
- * (its drawing's flat sea), but the sheet in front lies at the swell's trough, 2.5 m lower on a 12 ft set: handed over
- * 2.3–4 units out, the two drew a rim with a trench between it and the face (Andrew, 2026-10-05: "the water draws
- * smoothly up the face before the lip throws out onto the flats").
- */
-export const FOOT_RUN_UNITS = 1.2;
-/** The front's samples start this many before the floor's mark: the GPU's walk can mark the floor one sample from the
- * CPU's, and the sample at the mark lies just past the knot (up to 0.07 A), where the two would draw it 5–7 mm apart
- * (Andrew's GPU run, 2026-10-05). The one before lies at or behind the knot at every phase and hollow. */
-export const FRONT_FROM_MARK = 1;
-/** A front point's height (m): from the profile's at the foot (floorU, units of A) to the lower of it and the sheet's. */
-export function frontHeight(profileY: number, sheetY: number, uUnits: number, floorU: number): number {
-  const own = 1 - smoothstep(floorU, floorU + FOOT_RUN_UNITS, uUnits);
-  return Math.min(sheetY, profileY) + (profileY - Math.min(sheetY, profileY)) * own;
-}
-
-/**
- * The profile's front is seated on the sea in front of it. Andrew's drawing has its own flat sea there, about sea level,
- * with the water at the foot of the face drawn down to its trough knot (−0.36 at the barrel) below it. The sea the ribbon
- * stands in is the sheet's, whose water in front of the face is the swell's trough, 0.4–0.5 A down: drawn as it was, the
- * foot stood on a bench 0.2 m over that water at 7 ft (Andrew, 2026-10-05: "still a slight step"). Seated, everything in
- * front of the crest is stretched down from the crest's height so that the trough knot lies SEAT_DIP_UNITS below the
- * sheet's water at the front knot (seatScale), blended in over SEAT_BLEND_UNITS from the crest (seatedY): the crest and
- * the back stay as they were, the water at the foot is the lowest, drawn gently below the flats, and the face and the
- * tube stand taller by the stretch (1.1–1.3). Seated by its front knot instead (the drawing's flats on the sheet's), the
- * drawing's draw-down became a bowl 1 m deep at 7 ft.
- */
-export const SEAT_BLEND_UNITS = 0.3;
-export const SEAT_DIP_UNITS = 0.12;
-/** The stretch is at most this (a sheet far below the profile's front, as on a small wave's broad trough). */
-export const SEAT_MAX = 2;
-/** The stretch that lays the trough knot (`troughY`, units of A) SEAT_DIP_UNITS below the sea in front (`seaY`, units of
- * A), from the crest's height `crestY`: 1 where the sea is that high or higher. */
-export function seatScale(crestY: number, troughY: number, seaY: number): number {
-  const span = crestY - troughY;
-  return span > 1e-3 ? Math.min(SEAT_MAX, Math.max(1, (crestY - Math.min(seaY - SEAT_DIP_UNITS, troughY)) / span)) : 1;
-}
-/** A profile point's height (units of A) seated (seatScale `k`): stretched down from the crest's height by k, in front of
- * the crest. */
-export function seatedY(y: number, u: number, crestU: number, crestY: number, k: number): number {
-  return y + (y - crestY) * (k - 1) * smoothstep(crestU, crestU + SEAT_BLEND_UNITS, u);
-}
-/** d(seatedY)/du given the profile's own dy/du there. */
-export function seatedSlope(y: number, dydu: number, u: number, crestU: number, crestY: number, k: number): number {
-  const t = Math.min(1, Math.max(0, (u - crestU) / SEAT_BLEND_UNITS));
-  const w = t * t * (3 - 2 * t), dw = (6 * t * (1 - t)) / SEAT_BLEND_UNITS;
-  return dydu * (1 + (k - 1) * w) + (y - crestY) * (k - 1) * dw;
-}
-
-/** A profile point (units of A) placed on the station's plane (m), seated on the sea in front (seatedY), blended into the
- * sheet by ρ and interiorWeight; past the face's foot (`front`, floorU its u) onto the sea in front (frontHeight). */
-function placer(numbers: SectionNumbers, sheet: SheetAlong, floorU = Infinity): (q: P2, front?: boolean) => P2 {
-  const { A, phase, hollow, rho } = numbers, k = profileKnots(phase, hollow);
-  const [crestU, crestY] = k[CREST_KNOT], frontU = k[FRONT_KNOT][0];
-  const seat = seatScale(crestY, k[TROUGH_KNOT][1], sheet(A * frontU)[1] / A);
-  return (q, front = false) => {
-    const S = sheet(A * q[0]), w = rho * interiorWeight(q[0], crestU), qy = A * seatedY(q[1], q[0], crestU, crestY, seat);
-    const y = front ? frontHeight(qy, S[1], q[0], floorU) : qy;
-    return [S[0] + (A * q[0] - S[0]) * w, S[1] + (y - S[1]) * w];
-  };
-}
-
-/** The station's section from its own numbers (no smoothing along the crest), blended into `sheet`. */
+/** The station's section from its own numbers (no smoothing along the crest), on `sheet`. */
 export function wombSection(s: SectionInput, sheet: SheetAlong, p: SectionParams): Section {
   return sectionOf(sectionNumbers(s, p), sheet);
 }
 
-/** The section for given numbers (a station's, smoothed along the crest: Station.section), blended into `sheet` by ρ and
- * toward its ends. */
+/** The section's knots, and its CURVE_SAMPLES samples back to front (units of A, with their homes) and their marks. */
+export function sectionSamples(numbers: SectionNumbers, sheet: SheetAlong): { knots: SectionKnot[]; curve: SectionKnot[]; marks: { crest: number; tip: number; floor: number } } {
+  const { knots, beyond } = sectionFrameKnots(numbers, sheet), { t, m } = sectionTangents(knots, beyond);
+  const { curve, marks } = curveSamples((d) => hermitePoint(knots, t, m, d), knots.length, SECTION_MARKED, CURVE_SAMPLES);
+  return { knots, curve, marks };
+}
+
+/** A sample's point (m): the sheet at its home plus its offset from the sheet (SectionKnot). */
+export const sectionPoint = (q: SectionKnot, A: number, sheet: SheetAlong): P2 => {
+  const S = sheet(A * q[2]);
+  return [S[0] + A * (q[0] - q[3]), S[1] + A * (q[1] - q[4])];
+};
+
+/** The section for given numbers (a station's, smoothed along the crest: Station.section) on `sheet`: one surface, the sheet
+ * at every sample's home plus the drawing's offset from it (0 beyond the shoulder and the front knot, at phase 0 and at ρ 0). */
 export function sectionOf(numbers: SectionNumbers, sheet: SheetAlong): Section {
-  const { phase, hollow } = numbers;
-  const { curve, marks } = profileSamples(phase, hollow, CURVE_SAMPLES);
-  // From the floor knot itself, not its sample: the GPU's walk can mark the sample one along (wombSectionNodes). The front
-  // starts FRONT_FROM_MARK samples before the mark, which lie at or behind the knot (the profile's own height there), so
-  // a mark one off on either side changes no point.
-  const place = placer(numbers, sheet, profileKnots(phase, hollow)[FLOOR_KNOT][0]);
-  const points: P2[] = [];
-  for (let j = curve.length - 1; j >= 0; j--) points.push(place(curve[j], j >= marks.floor - FRONT_FROM_MARK));
-  const k = profileKnots(phase, hollow);
-  return { numbers, points, crest: place(k[CREST_KNOT]), tip: place(k[TIP_KNOT]) };
+  const { A } = numbers, { knots, curve } = sectionSamples(numbers, sheet);
+  const points: P2[] = [], homes: number[] = [];
+  for (let j = curve.length - 1; j >= 0; j--) { points.push(sectionPoint(curve[j], A, sheet)); homes.push(A * curve[j][2]); }
+  const place = (q: SectionKnot): P2 => [A * q[0], A * q[1]];
+  return { numbers, points, homes, crest: place(knots[SECTION_CREST]), tip: place(knots[SECTION_TIP]) };
 }
 
 /** What the spray, the impact, the spit and the tube camera read of a station's section (in place of lipProfile's frame):
@@ -290,10 +326,10 @@ export const lipWeight = (phase: number): number => smoothstep(LIP_PHASES[0], LI
 /** The station's section frame: its numbers (smoothed, Station.section), its height H, crest speed c and the sheet. */
 export function sectionFrame(numbers: SectionNumbers, H: number, c: number, sheet: SheetAlong): SectionFrame {
   const { A, phase, hollow, rho } = numbers;
-  const place = placer(numbers, sheet);
-  const k = profileKnots(phase, hollow), tip = place(k[TIP_KNOT]), crest = place(k[CREST_KNOT]), floor = place(k[FLOOR_KNOT]);
+  const knots = sectionKnots(numbers, sheet), place = (q: SectionKnot): P2 => [A * q[0], A * q[1]];
+  const tip = place(knots[SECTION_TIP]), crest = place(knots[SECTION_CREST]), floor = place(knots[SECTION_FLOOR]);
   // The tip's throw: its u's rate in phase, times the phase's rate in time over the lip's flight.
-  const fly = flightTime(H), dPhase = 0.01, ahead = profileKnots(Math.min(2, phase + dPhase), hollow)[TIP_KNOT][0];
+  const k = profileKnots(phase, hollow), fly = flightTime(H), dPhase = 0.01, ahead = profileKnots(Math.min(2, phase + dPhase), hollow)[TIP_KNOT][0];
   const flying = phase > STOOD_PHASE && phase < STAGES.barrel ? (STAGES.barrel - STOOD_PHASE) / Math.max(fly, 1e-6) : 0;
   const vj = c + (A * (ahead - k[TIP_KNOT][0]) / dPhase) * flying;
   return {
