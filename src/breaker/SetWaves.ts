@@ -9,7 +9,7 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LE
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { BORE_SHARE, STAND_LEAD_S } from './wombSection';
+import { BORE_SHARE } from './wombSection';
 import { boreWeightNode } from './wombSectionNodes';
 import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
@@ -375,8 +375,8 @@ export class SetWaves {
           const confidence = float(0.0).toVar(), rC = float(0.0).toVar();
           // The front's lean (setWaveModel.leanWeight): 0 without a crest.
           const lean = float(0.0).toVar();
-          // setWaveModel.frontStanding: 0 off the record; before the break rising with the ratio from the ribbon's onset;
-          // while held, over the last STAND_LEAD_S; 1 once broken.
+          // setWaveModel.frontStanding: 0 off the record; until broken (or while held) rising with the ratio from the
+          // ribbon's onset; 1 once broken.
           const standing = float(0.0).toVar();
           // How far it has settled into the white water's bore (setWaveModel.waveAtCrest, wombSection.boreWeight): 'lean' only.
           const bore = float(0.0).toVar();
@@ -424,9 +424,7 @@ export class SetWaves {
               { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi), thrown: smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi) }, onset.delay);
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
             if (this.shape === 'lean') {
-              standing.assign(select(rec.inside, select(onset.broken,
-                select(onset.tb.greaterThanEqual(0.0), float(1.0), float(1.0).sub(smoothstep(0.0, STAND_LEAD_S, onset.tb.negate()))),
-                smoothstep(brk.ribbonOnset, 1.0, rC)), float(0.0)));
+              standing.assign(select(rec.inside, select(onset.broken.and(onset.tb.greaterThanEqual(0.0)), float(1.0), smoothstep(brk.ribbonOnset, 1.0, rC)), float(0.0)));
               bore.assign(select(rec.inside.and(onset.broken).and(onset.tb.greaterThanEqual(0.0)),
                 boreWeightNode(onset.tb, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), float(2 * Math.PI).div(a.z)), float(0.0)));
             }
@@ -450,18 +448,25 @@ export class SetWaves {
           const A0 = H0.mul(0.5), B0 = min(float(STOKES_CAP), stokesPerA.mul(A0));
           const stretch = select(A.greaterThan(0.0), A.mul(B.add(1.0)).add(A0.mul(float(1.0).sub(B0))).div(max(A.mul(2.0), 1e-9)), float(1.0)).toVar();
           const crestShape = float(1.0).sub(stretch).mul(B.add(1.0)).toVar();
-          // setWaveModel.leanPhase: the front (−π < θ < 0) squeezed into its last share φ, the trough's level ahead of it.
+          // setWaveModel.leanPhase: over the wavelength in front of the crest (−2π < θ < 0) the face squeezed into its last
+          // share φ, the water ahead stretched over the rest, each a cubic Hermite with slope 1 at its ends (no plateau).
           // With the ribbon drawing the breaking, as short as the Womb profile's face (setWaveModel.wombFrontMin).
-          // Shortened on the ribbon's clock (setWaveModel.frontStanding).
+          // Shortened as the section stands up (setWaveModel.frontStanding).
           const frontMin = this.shape === 'lean'
             ? mix(float(LEAN_FRONT_MIN), clamp(min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)).mul(WOMB_FRONT_UNITS / 1.3).mul(fc.k).div(Math.PI), LEAN_FRONT_FLOOR, LEAN_FRONT_MIN), standing)
             : float(LEAN_FRONT_MIN);
-          const phi = float(1.0).sub(lean.mul(float(1.0).sub(frontMin)));
+          const phi = float(1.0).sub(lean.mul(float(1.0).sub(frontMin))).toVar();
           const thetaN: N = theta;
-          const inFront: N = lean.greaterThan(0.0).and(thetaN.lessThan(0.0)).and(thetaN.greaterThan(-Math.PI));
-          const squeezed: N = thetaN.greaterThanEqual(phi.mul(-Math.PI));
-          const th: N = select(inFront, select(squeezed, thetaN.div(phi), float(-Math.PI)), thetaN).toVar();
-          const dth: N = select(inFront, select(squeezed, float(1.0).div(phi), float(0.0)), float(1.0)).toVar();
+          const inFront: N = lean.greaterThan(0.0).and(thetaN.lessThan(0.0)).and(thetaN.greaterThan(-2 * Math.PI));
+          const onFace: N = thetaN.greaterThanEqual(phi.mul(-Math.PI));
+          const span: N = select(onFace, phi.mul(Math.PI), float(2.0).sub(phi).mul(Math.PI)).toVar();
+          const tL: N = thetaN.sub(select(onFace, phi.mul(-Math.PI), float(-2 * Math.PI))).div(span).toVar();
+          const tL2 = tL.mul(tL), tL3 = tL2.mul(tL);
+          const leaned: N = select(onFace, float(-Math.PI), float(-2 * Math.PI)).add(tL2.mul(3.0).sub(tL3.mul(2.0)).mul(Math.PI))
+            .add(span.mul(tL3.mul(2.0).sub(tL2.mul(3.0)).add(tL)));
+          const leanedD: N = tL.sub(tL2).mul(6 * Math.PI).add(span.mul(tL2.mul(6.0).sub(tL.mul(6.0)).add(1.0))).div(span);
+          const th: N = select(inFront, leaned, thetaN).toVar();
+          const dth: N = select(inFront, leanedD, float(1.0)).toVar();
           const shape = cos(th).add(B.mul(cos(th.mul(2.0))));
           const e = aE.mul(stretch.mul(shape).add(crestShape)).toVar();
           const hAmp = min(aE, float(FOLD_LIMIT).div(f.k));
