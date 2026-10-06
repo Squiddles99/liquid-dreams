@@ -41,6 +41,8 @@ export interface RideBody {
   compression: number;
   /** The wave has us (paddle phase): Space now pops up. */
   caught: boolean;
+  /** Seconds the slope catch has held (paddle phase): on the face, nose downhill, the face at least the catch slope. */
+  catchT: number;
   /** Seconds the ride has been stalled (too slow to plane). */
   stallT: number;
   /** Seconds since paddling stopped (the pose sits up after a while). */
@@ -74,12 +76,20 @@ export const POPUP_TURN = 0.6;
  * takes out (relative to the water), this fraction of its energy goes into the board's run.
  */
 export const RAIL_KEEP = 0.85;
-/** The assisted takeoff's push (m/s²) at full lift, up to ASSIST_TO × the wave's speed. 12, not 8, with the wall down the
- * line (plan 2026-10-06-wave-root-cause): the face reaching the take-off is a steep wall a second from breaking, and it
- * passes under a paddler in about 0.6 s; at 8 he reached 5.0 m/s against the 5.9 the catch needs on the 13 m/s crest
- * (CATCH_RATIO; the ride test, 6 and 12 ft). The catch itself is unchanged. */
-export const ASSIST_ACCEL = 12;
+/** The assisted takeoff pushes (RideTuning.assistAccel, m/s² at full lift) up to this × the wave's speed. */
 export const ASSIST_TO = 0.8;
+/** The player's Experience setting (R1 §3, Andrew's suggestion). */
+export type Experience = 'beginner' | 'intermediate' | 'expert';
+/** What the Experience setting tunes: the assisted takeoff's push (m/s² at full lift) and the face slope (|∇y|) that
+ * catches a paddler on its own. The assist is a forgiveness, not the engine: once caught, gravity down the face is. */
+export interface RideTuning { assistAccel: number; catchSlope: number }
+export const TUNING: Readonly<Record<Experience, RideTuning>> = {
+  beginner: { assistAccel: 8, catchSlope: 0.28 },
+  intermediate: { assistAccel: 4, catchSlope: 0.35 },
+  expert: { assistAccel: 1.5, catchSlope: 0.42 },
+};
+/** The slope catch holds this long (s) before the wave has you. */
+export const CATCH_HOLD_S = 0.2;
 /** Caught once moving with the wave this fast (× its speed) on its face. 0.4, not 0.45, with the wall down the line (plan
  * 2026-10-06-wave-root-cause): the take-off's crest runs at 13 m/s over the basin (the wave breaks in 16 m of water until
  * step 5 moves it in), its face is a steep wall that passes a paddler in half a second, and at 0.45 he reached catch speed
@@ -128,7 +138,7 @@ export function rightOf(headingDeg: number): [number, number] {
 
 export function startBody(x: number, z: number, headingDeg: number, water: WaterFn): RideBody {
   const w = water(x, z);
-  return { phase: 'paddle', phaseT: 0, x, z, y: w.y, vy: 0, vx: 0, vz: 0, headingDeg, carve: 0, compression: 0, caught: false, stallT: 0, idleT: 10, water: w, tiltX: w.slopeX, tiltZ: w.slopeZ, surfY: w.y };
+  return { phase: 'paddle', phaseT: 0, x, z, y: w.y, vy: 0, vx: 0, vz: 0, headingDeg, carve: 0, compression: 0, caught: false, catchT: 0, stallT: 0, idleT: 10, water: w, tiltX: w.slopeX, tiltZ: w.slopeZ, surfY: w.y };
 }
 
 /** The water under the whole board: its height (nose, middle and tail) and slope (nose to tail along it, across from the middle). */
@@ -162,10 +172,11 @@ function setPhase(b: RideBody, phase: RidePhase): void {
   b.phaseT = 0;
   b.stallT = 0;
   b.caught = false;
+  b.catchT = 0;
 }
 
 /** One physics step of dt seconds. Mutates and returns the body, with what happened (for the hints). */
-export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: number): RideEvent | null {
+export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: number, tune: RideTuning = TUNING.intermediate): RideEvent | null {
   if (!(dt > 0)) return null;
   const w = b.water;
   let event: RideEvent | null = null;
@@ -191,7 +202,7 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
     let push = PADDLE_THRUST;
     const along = (b.vx - w.ux) * fx + (b.vz - w.uz) * fz;
     const lift = liftAt(w, b.headingDeg);
-    if (lift > 0 && along < ASSIST_TO * w.c) push += ASSIST_ACCEL * lift;
+    if (lift > 0 && along < ASSIST_TO * w.c) push += tune.assistAccel * lift;
     ax += fx * push;
     az += fz * push;
   }
@@ -276,7 +287,11 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   switch (b.phase) {
     case 'paddle': {
       const wasCaught = b.caught;
-      b.caught = liftAt(nw, b.headingDeg) > 0.3 && nw.c > 0 && alongWave > CATCH_RATIO * nw.c;
+      const lift = liftAt(nw, b.headingDeg), steep = Math.hypot(nw.slopeX, nw.slopeZ);
+      b.catchT = lift > 0.3 && steep >= tune.catchSlope ? b.catchT + dt : 0;
+      // A slab's take-off: the face stands up under you and gravity takes you down it, whatever your paddle speed
+      // (R1 §3). The speed rule stays for soft days that never stand up.
+      b.caught = b.catchT >= CATCH_HOLD_S - 1e-9 || (lift > 0.3 && nw.c > 0 && alongWave > CATCH_RATIO * nw.c);
       if (b.caught && !wasCaught) event = 'caught';
       if (c.popup) {
         if (b.caught || speed > POPUP_MIN_SPEED) {

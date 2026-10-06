@@ -1,6 +1,7 @@
 // src/frontend/frontSettings.ts
 import type { BoardKind } from '../board/boardSpec';
 import type { SettingsStorage } from '../dev/devSettings';
+import type { Experience } from '../ride/ridePhysics';
 import { PRESETS, type PresetName, type Stance, boardsFor } from '../surfer/presets';
 import { type OutfitChoice, presetOutfits } from '../surfer/wardrobe';
 import { WEATHER_PRESET_NAMES } from '../weather/weather';
@@ -16,9 +17,11 @@ export interface FrontSettings {
   safeArea: number | null;
   displayMode: 'pc' | 'tv';
   glyphs: 'auto' | 'xbox' | 'playstation' | 'keyboard';
+  /** How much help catching waves (R1 §3): the paddle assist and the face slope that catches you. */
+  experience: Experience;
 }
 
-export const DEFAULT_FRONT_SETTINGS: Readonly<FrontSettings> = { textScale: 1, calmMenus: false, opaqueBackplates: false, safeArea: null, displayMode: 'pc', glyphs: 'auto' };
+export const DEFAULT_FRONT_SETTINGS: Readonly<FrontSettings> = { textScale: 1, calmMenus: false, opaqueBackplates: false, safeArea: null, displayMode: 'pc', glyphs: 'auto', experience: 'intermediate' };
 export const FRONT_SETTINGS_KEY = 'liquid-dreams.front-settings.v1';
 export const FRONT_CHOICES_KEY = 'liquid-dreams.front-choices.v1';
 
@@ -40,6 +43,7 @@ export function sanitizeFrontSettings(raw: unknown): FrontSettings {
     safeArea: raw.safeArea === null || raw.safeArea === undefined ? null : num(raw.safeArea, 0.02, 0.1, 0.03),
     displayMode: oneOf(raw.displayMode, ['pc', 'tv'] as const, d.displayMode),
     glyphs: oneOf(raw.glyphs, ['auto', 'xbox', 'playstation', 'keyboard'] as const, d.glyphs),
+    experience: oneOf(raw.experience, ['beginner', 'intermediate', 'expert'] as const, d.experience),
   };
 }
 
