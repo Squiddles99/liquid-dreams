@@ -1963,6 +1963,7 @@ export class App {
       windMs: this.conditions.wind.speedMs,
       windFromDeg: this.conditions.wind.directionDeg,
       cameraYawDeg: ((Math.atan2(fwd.x, -fwd.z) * 180) / Math.PI + 360) % 360,
+      sunVisible: this.cloudMeter.sunVisible,
     });
     // The menu while surfing: Esc or a pad's START opens it (the pad is watched every frame, so a START still held from
     // paddling out isn't a press).
