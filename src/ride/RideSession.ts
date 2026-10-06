@@ -1,7 +1,7 @@
 import type { CameraPose } from '../dev/momentLink';
 import { type Bindings, currentBindings, keyLabel } from './bindings';
 import { PadEdges, type RideKeys, lookFrom, readPad, rideControls } from './rideInput';
-import { type RideBody, type RideEvent, POPUP_S, speedOf, startBody, stepRide } from './ridePhysics';
+import { type RideBody, type RideEvent, type RideTuning, POPUP_S, TUNING, speedOf, startBody, stepRide } from './ridePhysics';
 import { type LookInput, RideCamera, rideBoardFrame, rideSurferParams } from './ridePose';
 import type { WaterFn } from './water';
 
@@ -34,6 +34,8 @@ function hint(phase: RideBody['phase'], b: Bindings): string {
 /** The playable ride (first-ride spec): the board's physics, its controls, the chase camera and a crude HUD. */
 export class RideSession {
   body: RideBody | null = null;
+  /** The Experience setting's tuning for this ride (R1 §3), set at begin(). */
+  tune: RideTuning = TUNING.intermediate;
   private readonly camera = new RideCamera();
   private readonly edges = new PadEdges();
   private readonly hud: HTMLDivElement;
@@ -52,8 +54,9 @@ export class RideSession {
     return this.body !== null;
   }
 
-  begin(x: number, z: number, headingDeg: number, water: WaterFn): void {
+  begin(x: number, z: number, headingDeg: number, water: WaterFn, tune: RideTuning = TUNING.intermediate): void {
     this.body = startBody(x, z, headingDeg, water);
+    this.tune = tune;
     this.camera.reset();
     this.hud.style.display = '';
   }
@@ -75,7 +78,7 @@ export class RideSession {
     let event: RideEvent | null = null;
     const n = Math.min(MAX_STEPS, Math.ceil(dt / MAX_STEP_S));
     for (let i = 0; i < n && dt > 0; i++) {
-      const e = stepRide(b, i === 0 ? c : { ...c, popup: false }, water, dt / n);
+      const e = stepRide(b, i === 0 ? c : { ...c, popup: false }, water, dt / n, this.tune);
       if (e) event = e;
     }
     const kmh = Math.round(speedOf(b) * 3.6);

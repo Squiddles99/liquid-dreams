@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type RideBody, type RideControls, type RideEvent, BAIL_S, MAX_SPEED, NO_CONTROLS, POPUP_S, forwardOf, speedOf, startBody, stepRide } from './ridePhysics';
+import { type RideBody, type RideControls, type RideEvent, type RideTuning, BAIL_S, MAX_SPEED, NO_CONTROLS, POPUP_S, TUNING, forwardOf, speedOf, startBody, stepRide } from './ridePhysics';
 import { type WaterFn, flatWater } from './water';
 
 const DT = 1 / 60;
@@ -195,5 +195,38 @@ describe('the board floats like a board (Andrew 2026-10-04: the bobbing over a s
 
   it('pops up in 0.4 s (Andrew: on his feet only at the bottom of the drop)', () => {
     expect(POPUP_S).toBeCloseTo(0.4, 5);
+  });
+});
+
+describe('the catch is a late drop (R1 §3)', () => {
+  // A face running toward the beach (+x); heading 90 is the nose toward the beach.
+  const shoreHeading = 90, idle: RideControls = { paddle: false, steer: 0, crouch: 0, popup: false };
+  const water = (s: number, c = 8): WaterFn => slope(s, 0, c);
+  it('caught by slope alone: a still board, nose downhill, on a 0.4 face for 0.2 s', () => {
+    const b = startBody(0, 0, shoreHeading, water(0.4));
+    for (let k = 0; k < 6; k++) stepRide(b, idle, water(0.4), 1 / 30);
+    expect(b.caught).toBe(true);
+  });
+  it('not caught on a face shallower than the catch slope without speed', () => {
+    const b = startBody(0, 0, shoreHeading, water(0.2));
+    for (let k = 0; k < 30; k++) stepRide(b, idle, water(0.2), 1 / 30);
+    expect(b.caught).toBe(false);
+  });
+  it('not caught facing seaward (nose uphill), however steep', () => {
+    const b = startBody(0, 0, shoreHeading + 180, water(0.6));
+    for (let k = 0; k < 30; k++) stepRide(b, { paddle: true, steer: 0, crouch: 0, popup: true }, water(0.6), 1 / 30);
+    expect(b.caught).toBe(false);
+    expect(b.phase).toBe('paddle');
+  });
+  it('4 ft soft day still caught by speed: a 0.2 face at 0.5 c along the wave', () => {
+    const b = startBody(0, 0, shoreHeading, water(0.2, 6));
+    b.vx = 3; // 0.5 c, along the wave's travel (+x)
+    stepRide(b, { paddle: true, steer: 0, crouch: 0, popup: false }, water(0.2, 6), 1 / 60);
+    expect(b.caught).toBe(true);
+  });
+  it('the catch slope follows the experience: beginner catches 0.3, expert does not', () => {
+    const run = (tune: RideTuning) => { const b = startBody(0, 0, shoreHeading, water(0.3)); for (let k = 0; k < 10; k++) stepRide(b, idle, water(0.3), 1 / 30, tune); return b.caught; };
+    expect(run(TUNING.beginner)).toBe(true);
+    expect(run(TUNING.expert)).toBe(false);
   });
 });

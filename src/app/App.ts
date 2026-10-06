@@ -30,6 +30,7 @@ import { ReefFlow } from '../breaker/flowNodes';
 import { type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { currentBindings, keyLabel } from '../ride/bindings';
 import { RideSession, rideMessage } from '../ride/RideSession';
+import { type Experience, TUNING } from '../ride/ridePhysics';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
 import { SurfaceOffset } from '../ride/surfaceOffset';
 import { fieldKey } from '../breaker/fieldKey';
@@ -1089,6 +1090,15 @@ export class App {
     loading.onBootDissolve(() => this.sound.arm());
   }
 
+  /** The player's Experience setting (R1 §3), read when a ride starts. */
+  private experience(): Experience {
+    try {
+      return sanitizeFrontSettings(JSON.parse(localStorage.getItem(FRONT_SETTINGS_KEY) ?? 'null')).experience;
+    } catch {
+      return 'intermediate';
+    }
+  }
+
   private calmMenus(): boolean {
     try {
       return sanitizeFrontSettings(JSON.parse(localStorage.getItem(FRONT_SETTINGS_KEY) ?? 'null')).calmMenus;
@@ -1613,9 +1623,11 @@ export class App {
     // break further out), facing the way the swell runs there.
     const at = this.field ? takeoffSpot(this.field, this.rideHeights[this.rideWave], this.breakParams) : TAKEOFF_ANCHOR;
     const water = this.rideWater(this.clock.simTime), w = water(at.x, at.z);
-    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water);
+    const experience = this.experience();
+    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water, TUNING[experience]);
     const keys = currentBindings().keys;
-    this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}: paddle (${keyLabel(keys.paddle)}) as it lifts you, ${keyLabel(keys.popup)} to pop up`);
+    const level = experience === 'intermediate' ? '' : ` (${experience})`;
+    this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}${level}: paddle (${keyLabel(keys.paddle)}) as it lifts you, ${keyLabel(keys.popup)} to pop up`);
   }
 
   private callSetNow(): void {
