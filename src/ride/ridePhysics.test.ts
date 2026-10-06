@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type RideBody, type RideControls, type RideEvent, type RideTuning, BAIL_S, MAX_SPEED, NO_CONTROLS, POPUP_S, TUNING, forwardOf, speedOf, startBody, stepRide } from './ridePhysics';
+import { type RideBody, type RideControls, type RideEvent, type RideTuning, BAIL_S, CATCH_HOLD_S, CREST_CARRY, MAX_SPEED, NO_CONTROLS, POPUP_S, TUNING, forwardOf, speedOf, startBody, stepRide } from './ridePhysics';
 import { type WaterFn, flatWater } from './water';
 
 const DT = 1 / 60;
@@ -228,5 +228,52 @@ describe('the catch is a late drop (R1 §3)', () => {
     const run = (tune: RideTuning) => { const b = startBody(0, 0, shoreHeading, water(0.3)); for (let k = 0; k < 10; k++) stepRide(b, idle, water(0.3), 1 / 30, tune); return b.caught; };
     expect(run(TUNING.beginner)).toBe(true);
     expect(run(TUNING.expert)).toBe(false);
+  });
+});
+
+describe('the crest carries her (R1.5 §1)', () => {
+  const shoreHeading = 90, idle: RideControls = { paddle: false, steer: 0, crouch: 0, popup: false };
+  it('caught on a 0.5 face, a still prone board reaches 0.75 × CREST_CARRY × c within 0.5 s', () => {
+    const w = slope(0.5, 0, 9), b = startBody(0, 0, shoreHeading, w);
+    run(b, idle, () => w, CATCH_HOLD_S + 0.5);
+    expect(b.caught).toBe(true);
+    expect(b.vx).toBeGreaterThanOrEqual(0.75 * CREST_CARRY * 9);
+    expect(b.vx).toBeLessThanOrEqual(CREST_CARRY * 9 + 1); // gravity on the face adds a little over the carry
+  });
+  it('carried along the wave\'s travel whatever her heading', () => {
+    const w = slope(0.5, 0, 9), b = startBody(0, 0, shoreHeading + 40, w);
+    run(b, idle, () => w, CATCH_HOLD_S + 0.5);
+    expect(b.caught).toBe(true);
+    expect(b.vx).toBeGreaterThanOrEqual(0.75 * CREST_CARRY * 9);
+    expect(Math.abs(b.vz)).toBeLessThan(0.3 * b.vx);
+  });
+  it('carried through the pop-up: popping the frame she is caught still gets her to speed', () => {
+    const w = slope(0.5, 0, 9), b = startBody(0, 0, shoreHeading, w);
+    run(b, (_t, bb) => ({ ...idle, popup: bb.caught }), () => w, CATCH_HOLD_S + 0.5);
+    expect(b.phase === 'popup' || b.phase === 'ride').toBe(true);
+    expect(b.vx).toBeGreaterThanOrEqual(0.75 * CREST_CARRY * 9);
+  });
+  it('a face the expert tuning does not catch (0.3) does not carry', () => {
+    const w = slope(0.3, 0, 9), b = startBody(0, 0, shoreHeading, w);
+    for (let i = 0; i < 60; i++) stepRide(b, idle, w, DT, TUNING.expert);
+    expect(b.caught).toBe(false);
+    expect(b.vx).toBeLessThan(0.5 * CREST_CARRY * 9); // gravity alone over 1 s on 0.3: ~2.5 m/s
+  });
+  it('a speed-rule catch on a soft 0.2 face is not carried', () => {
+    const w = slope(0.2, 0, 8), b = startBody(0, 0, shoreHeading, w);
+    b.vx = 4; // 0.5 c
+    run(b, { ...idle, paddle: true }, () => w, 0.5);
+    expect(b.caught).toBe(true);
+    // paddling with the assist on a 0.2 face settles near 4 m/s against the prone drag; carried she would be near 6.8
+    expect(b.vx).toBeLessThan(CREST_CARRY * 8 - 1.5);
+  });
+  it('the carry stops when the face has passed (lift 0): she is left prone on the back', () => {
+    const face = slope(0.5, 0, 9), back = flatWater(0), b = startBody(0, 0, shoreHeading, face);
+    run(b, idle, () => face, CATCH_HOLD_S + 0.3);
+    const vAtCrest = b.vx;
+    expect(vAtCrest).toBeGreaterThan(4);
+    run(b, idle, () => back, 1);
+    expect(b.caught).toBe(false);
+    expect(b.vx).toBeLessThan(vAtCrest); // drag, no carry
   });
 });
