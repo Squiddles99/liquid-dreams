@@ -21,14 +21,16 @@ describe('ψ₀ in the reef bake (spec 2026-09-30-barrel-from-maths §5, plan ru
     expect(reefStep((s) => 10 + s, 10)).toBe(1); // deepening ahead: never below 1
     expect(reefStep(() => 0.5, 0)).toBe(1); // no water: no step
   });
-  it('psiFromStep: Andrew’s step anchors (1.3, 1.85, 2.25) land on the sheet’s ψ anchors, oval, cylinder, thrown', () => {
+  it('psiFromStep: the step anchors (Andrew’s 1.3, 1.85, 2.25 × 0.57 since R1 §2) land on the sheet’s ψ anchors, oval, cylinder, thrown', () => {
     expect(STEP_PSI_POINTS.map((p) => p[1])).toEqual(SHEET_POINTS.map((p) => p[0]));
     STEP_PSI_POINTS.forEach(([step, psi]) => expect(psiFromStep(step)).toBeCloseTo(psi, 9));
-    expect(psiState(psiFromStep(1.3))).toBe('oval');
-    expect(psiState(psiFromStep(1.85))).toBe('cylinder');
-    expect(psiState(psiFromStep(2.25))).toBe('thrown');
+    STEP_PSI_POINTS.forEach(([step], i) => expect(step).toBeCloseTo([1.3, 1.85, 2.25][i] * 0.57, 9));
+    const [oval, cyl, thrown] = STEP_PSI_POINTS.map((p) => p[0]);
+    expect(psiState(psiFromStep(oval))).toBe('oval');
+    expect(psiState(psiFromStep(cyl))).toBe('cylinder');
+    expect(psiState(psiFromStep(thrown))).toBe('thrown');
     for (let s = 0.5; s < 3; s += 0.01) expect(psiFromStep(s + 0.01)).toBeGreaterThan(psiFromStep(s)); // a bigger step throws harder
-    expect(psiFromStep(1)).toBeCloseTo(0.035 / 1.3, 9); // below the first anchor, in proportion (as drawn for Andrew)
+    expect(psiFromStep(0.5)).toBeCloseTo((0.035 * 0.5) / oval, 9); // below the first anchor, in proportion (as drawn for Andrew)
     expect(Number.isFinite(psiFromStep(Number.NaN))).toBe(true);
   });
   it('the record keeps a ψ₀ per level after the (time, height) pairs', () => {
@@ -61,7 +63,7 @@ describe('ψ₀ in the reef bake (spec 2026-09-30-barrel-from-maths §5, plan ru
     for (let d = 1; d <= 20; d++) { const f = sampleField(mid, x, z); x += f.dirX; z += f.dirZ; }
     expect(Math.abs(psiAt(mid, x, z, h) - p0)).toBeLessThanOrEqual(0.1 * p0 + 1e-9);
   });
-  it('on the reef face: low ≥ mid ≥ high at 6 and 8 ft, and a 15 ft set at low tide is too big: it breaks out on the slope', () => {
+  it('on the reef face: low ≥ mid ≥ high at 6 and 8 ft', () => {
     const rows: string[] = [];
     for (const ft of [4, 6, 8, 10, 12, 15]) {
       const h = biggest(ft), v = [low, mid, high].map((f) => psiAt(f, 0, 0, h));
@@ -69,8 +71,7 @@ describe('ψ₀ in the reef bake (spec 2026-09-30-barrel-from-maths §5, plan ru
     }
     console.log(rows.join(String.fromCharCode(10)));
     for (const ft of [6, 8]) { const h = biggest(ft); expect(psiAt(low, 0, 0, h)).toBeGreaterThanOrEqual(psiAt(mid, 0, 0, h) - 0.005); expect(psiAt(mid, 0, 0, h)).toBeGreaterThanOrEqual(psiAt(high, 0, 0, h) - 0.005); }
-    // The states by conditions are reefCriteria.test's (spec 2026-10-02 §2.3); 15 ft is past the spec's sizes and breaks outside.
-    expect(firstBreakSeaward(low, biggest(15))).toBeGreaterThan(BREAK_NEAR_PEAK_M);
+    // (15 ft at low tide no longer breaks out on the slope: since R1 §2 the break starts on the face, 12 ft within 9 m of water.)
   });
 });
 

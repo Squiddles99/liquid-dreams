@@ -534,6 +534,14 @@ describe("settings saved before the lip's light and the pile", () => {
     const kept = loadDevSettings(store({ ...raw, reef: { ...DEFAULT_REEF_PARAMS, faceWidthM: 50 } }, BREAKING_MODEL), defaults())!;
     expect(kept.reef.faceWidthM).toBe(50);
   });
+  it('a look saved by model 11 (δ 1.0, the 20 m face) loads R1’s breaking and reef defaults (R1 §1–2)', () => {
+    const raw = JSON.parse(JSON.stringify(tweaked()));
+    raw.breaking = { ...DEFAULT_BREAK_PARAMS, delta: 1.0 };
+    raw.reef = { ...DEFAULT_REEF_PARAMS, faceBaseDepthM: 20, faceWidthM: 20, slopeDepthM: 20 };
+    const got = loadDevSettings(store(raw, 11), defaults())!;
+    expect(got.breaking.delta).toBe(DEFAULT_BREAK_PARAMS.delta);
+    expect(got.reef).toEqual(DEFAULT_REEF_PARAMS);
+  });
   it('a reef saved by model 6 (the softened ramp: deepDepthM, ledgeWidthM) loads the reef build’s defaults (plan Review Focus 4)', () => {
     const raw = JSON.parse(JSON.stringify(tweaked()));
     raw.reef = { deepDepthM: 13, ledgeDepthM: 6, ledgeWidthM: 145, shelfDepthM: 4, headReliefM: 2.5, minDepthM: 1.5, pocketDepthM: 5.5 };

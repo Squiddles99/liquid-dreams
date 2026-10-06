@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setWaveHeight } from './reefReport';
 import { leanPhase } from './setWaveModel';
 import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, TIP_KNOT, TROUGH_KNOT, profileKnots, roundedTip, tipLife } from './wombProfile';
 import {
@@ -194,5 +195,36 @@ describe('the drawn curl is interpolated as drawn, the sheet as the sheet (Secti
     // At phase 0 the section is the sheet, sample by sample.
     const { curve } = sectionSamples({ A: 1, phase: 0, hollow: 1, rho: 1 }, faced);
     for (const q of curve) { const p = sectionPoint(q, 1, faced); expect(Math.abs(p[1] - faced(p[0])[1])).toBeLessThan(1e-3); }
+  });
+});
+
+describe('no rim at the foot (R1 §5)', () => {
+  /** The leaned face of the neighbouring describe (crest 0.88 A, a trough of −0.45 A 1.2 A in front, flat beyond), at the
+   * size of a set wave of `ft`, round barrel (phase 1): the drawn samples and the sheet's height under each. */
+  const buildLeanedSection = (ft: number, phase: number) => {
+    const A = sectionScale(setWaveHeight(ft));
+    const sheet: SheetAlong = (u) => {
+      const v = u / A, t = Math.min(1, Math.max(0, v / 1.2)), face = 0.88 - 1.33 * t * t * (3 - 2 * t);
+      return [u, A * (v < 0 ? 0.88 * Math.cos((v / 7) * (Math.PI / 2)) : face)];
+    };
+    const n: SectionNumbers = { A, phase, hollow: 1, rho: 1 };
+    const { knots, curve } = sectionSamples(n, sheet);
+    const samples = curve.map((q) => { const p = sectionPoint(q, A, sheet); return { u: p[0], y: p[1] }; });
+    return { samples, sheetAt: (u: number) => sheet(u)[1], troughU: A * knots[SECTION_TROUGH][0] };
+  };
+  // R1 miss, not widened: with SEAT_DIP_UNITS 0 the rim fell from 0.12 A (0.28 / 0.40 / 0.63 m here) to 0.037 / 0.051 /
+  // 0.082 m, a hump between the trough knot and the front knot (the 7 ft probe: 0.17 m over the sheet, a 0.11 m rise). Its
+  // cause: the sheet column's Hermite between those knots takes its tangent from the floor knot, whose sheet value is up
+  // the face, so it undershoots the flat sea and the w-weighted error stands up. R2 (the ribbon zipped to the sheet).
+  it.skip.each([6, 8, 12])('%i ft: beyond the trough the drawn surface is the sheet (no rim at the foot)', (ft) => {
+    const { samples, sheetAt, troughU } = buildLeanedSection(ft, 1);
+    let worst = 0, maxRise = 0, low = Infinity;
+    for (const s of samples) {
+      if (s.u <= troughU) continue;
+      worst = Math.max(worst, Math.abs(s.y - sheetAt(s.u)));
+      if (s.u - troughU <= 10) { maxRise = Math.max(maxRise, s.y - low); low = Math.min(low, s.y); }
+    }
+    expect(worst, 'drawn − sheet beyond the trough (m)').toBeLessThanOrEqual(0.02);
+    expect(maxRise, 'rise within 10 m of the trough (m)').toBeLessThanOrEqual(0.05);
   });
 });

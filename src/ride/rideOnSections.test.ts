@@ -9,8 +9,8 @@ import { REFRACT_FLOOR_M, computeReefField, sampleField } from '../breaker/reefF
 import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { withSections } from './sectionWater';
 import { type WaterFn, waterAt } from './water';
-import { type RideEvent, startBody, stepRide } from './ridePhysics';
-import { takeoffSpot } from './takeoff';
+import { type Experience, type RideEvent, TUNING, startBody, stepRide } from './ridePhysics';
+import { TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from './takeoff';
 
 /**
  * A rider on the drawn wave (Andrew, 2026-10-05: "the surfer wipes out instantly"): each size's set's biggest wave from the
@@ -20,7 +20,8 @@ import { takeoffSpot } from './takeoff';
  * steers to hold a line along the left.
  */
 describe('a ride on the drawn sections', () => {
-  it.each([6, 12])('a %i ft set wave: caught, popped up and ridden along the left for 5 s or more without a wipeout', { timeout: 300_000 }, (ft) => {
+  // 6 ft at every Experience level (plan Review Focus 5: the assist is forgiveness, not the engine), 12 ft at intermediate.
+  it.each([[6, 'intermediate'], [12, 'intermediate'], [6, 'beginner'], [6, 'expert']] as [number, Experience][])('a %i ft set wave (%s): caught, popped up and ridden along the left for 5 s or more without a wipeout', { timeout: 300_000 }, (ft, experience) => {
     const c = cloneConditions(DEFAULT_CONDITIONS);
     c.swell.sizeFt = ft;
     const field = computeReefField({ bed: downsample(buildBathymetry(DEFAULT_REEF_PARAMS), 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: P.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
@@ -33,8 +34,11 @@ describe('a ride on the drawn sections', () => {
       const sheet: WaterFn = (x, z) => waterAt(x, z, c.tideM, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
       return withSections(sheet, traceStations(field, waves, t, ctx, { cameraX: cx, cameraZ: cz, params: P, minHeightM }), c.tideM);
     };
-    let t = big.arrivalS - 10;
     const { x: sx, z: sz } = takeoffSpot(field, big.heightM, P);
+    let t = big.arrivalS - takeoffLeadS(field, { x: sx, z: sz });
+    // The crest reaches the spot TAKEOFF_ARRIVE_S after the start; the rider waits, then paddles for the last PADDLE_FROM_S
+    // (paddling from the start carried her 8–9 m in, onto the onset itself: the R1 review).
+    const arrive = t + TAKEOFF_ARRIVE_S, PADDLE_FROM_S = 2;
     const start = waterAtT(t, sx, sz)(sx, sz);
     const swellHeading = Math.atan2(start.dirX, -start.dirZ) / (Math.PI / 180);
     const b = startBody(sx, sz, swellHeading, waterAtT(t, sx, sz));
@@ -50,7 +54,7 @@ describe('a ride on the drawn sections', () => {
       const under = water(b.x, b.z);
       const popup = b.phase === 'paddle' && b.caught && !popped && Math.hypot(under.slopeX, under.slopeZ) > 0.6;
       if (popup) popped = true;
-      const ev = stepRide(b, { paddle: b.phase === 'paddle', steer: popped ? Math.max(-1, Math.min(1, -err / 30)) : 0, crouch: 0, popup }, water, dt);
+      const ev = stepRide(b, { paddle: b.phase === 'paddle' && t > arrive - PADDLE_FROM_S, steer: popped ? Math.max(-1, Math.min(1, -err / 30)) : 0, crouch: 0, popup }, water, dt, TUNING[experience]);
       if (ev) events.push(ev);
       if (b.phase === 'ride') rodeS += dt;
       if (ev === 'wipeout' || ev === 'kickout') break;

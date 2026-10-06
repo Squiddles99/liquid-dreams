@@ -4,9 +4,9 @@ import { DEFAULT_FRONT_SETTINGS, sanitizeFrontSettings } from './frontSettings';
 import { SETTING_ROWS, settingsView, stepSetting } from './settingsView';
 
 describe('the Settings overlay (spec §11)', () => {
-  it('has Text size, Calm menus, Opaque backplates, Safe area, Display mode, Glyphs', () => {
-    expect(settingsView(DEFAULT_FRONT_SETTINGS, 'textScale').map((r) => r.label)).toEqual(['Text size', 'Calm menus', 'Opaque backplates', 'Safe area', 'Display mode', 'Glyphs']);
-    expect(SETTING_ROWS.length).toBe(6);
+  it('has Experience, Text size, Calm menus, Opaque backplates, Safe area, Display mode, Glyphs', () => {
+    expect(settingsView(DEFAULT_FRONT_SETTINGS, 'textScale').map((r) => r.label)).toEqual(['Experience', 'Text size', 'Calm menus', 'Opaque backplates', 'Safe area', 'Display mode', 'Glyphs']);
+    expect(SETTING_ROWS.length).toBe(7);
   });
   it('steps text size 100–200% in 10% steps and stops at the ends', () => {
     let s = DEFAULT_FRONT_SETTINGS;
@@ -29,5 +29,11 @@ describe('the Settings overlay (spec §11)', () => {
     }
     expect(stepSetting(DEFAULT_FRONT_SETTINGS, 'calmMenus', 1).settings.calmMenus).toBe(!DEFAULT_FRONT_SETTINGS.calmMenus);
     expect(stepSetting(DEFAULT_FRONT_SETTINGS, 'glyphs', 1).settings.glyphs).toBe('xbox');
+  });
+  it('cycles experience intermediate → expert → beginner → intermediate (R1 §3)', () => {
+    let s = DEFAULT_FRONT_SETTINGS;
+    const seen = [s.experience];
+    for (let i = 0; i < 3; i++) { s = stepSetting(s, 'experience', 1).settings; seen.push(s.experience); }
+    expect(seen).toEqual(['intermediate', 'expert', 'beginner', 'intermediate']);
   });
 });

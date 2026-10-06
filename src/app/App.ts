@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
 import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
 import { withSections } from '../ride/sectionWater';
-import { TAKEOFF_ANCHOR, takeoffSpot } from '../ride/takeoff';
+import { TAKEOFF_ANCHOR, TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from '../ride/takeoff';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from '../breaker/peakFace';
@@ -30,6 +30,7 @@ import { ReefFlow } from '../breaker/flowNodes';
 import { type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { currentBindings, keyLabel } from '../ride/bindings';
 import { RideSession, rideMessage } from '../ride/RideSession';
+import { type Experience, TUNING } from '../ride/ridePhysics';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
 import { SurfaceOffset } from '../ride/surfaceOffset';
 import { fieldKey } from '../breaker/fieldKey';
@@ -200,6 +201,8 @@ export class App {
   private rideCover = 0;
   private tubeLensWet = 0;
   private rideWave = 0;
+  /** Sim time the crest reaches the take-off spot (the capture bots paddle from 3 s before it). */
+  rideArriveS = 0;
   readonly bombie: BombieMesh;
   private bombieTauS: number | null = null;
   private bombieTauField: ReefField | null = null;
@@ -1110,6 +1113,15 @@ export class App {
     loading.onBootDissolve(() => this.sound.arm());
   }
 
+  /** The player's Experience setting (R1 §3), read when a ride starts. */
+  private experience(): Experience {
+    try {
+      return sanitizeFrontSettings(JSON.parse(localStorage.getItem(FRONT_SETTINGS_KEY) ?? 'null')).experience;
+    } catch {
+      return 'intermediate';
+    }
+  }
+
   private calmMenus(): boolean {
     try {
       return sanitizeFrontSettings(JSON.parse(localStorage.getItem(FRONT_SETTINGS_KEY) ?? 'null')).calmMenus;
@@ -1619,7 +1631,8 @@ export class App {
     this.panel.refresh();
   }
 
-  /** Wave i of the called set (cycling): the clock RIDE_LEAD_S before it reaches the peak, you at the takeoff spot. */
+  /** Wave i of the called set (cycling): you at the takeoff spot, the clock set so its crest reaches you TAKEOFF_ARRIVE_S
+   * later (takeoffLeadS; RIDE_LEAD_S before the peak with no field yet). */
   private catchSetWave(i: number): void {
     if (this.rideSet.length === 0) {
       this.perf.flash('Flat: no sets to ride');
@@ -1627,17 +1640,21 @@ export class App {
       return;
     }
     this.rideWave = i % this.rideSet.length;
-    this.clock.setTime(this.rideSet[this.rideWave] - RIDE_LEAD_S);
-    this.rideOffset.reset();
-    this.ocean.resetFoam();
-    this.invalidateParticles();
     // Where G puts you (first-ride spec): just outside where this wave starts to break in the take-off zone (bigger waves
     // break further out), facing the way the swell runs there.
     const at = this.field ? takeoffSpot(this.field, this.rideHeights[this.rideWave], this.breakParams) : TAKEOFF_ANCHOR;
+    const arrival = this.rideSet[this.rideWave], lead = this.field ? takeoffLeadS(this.field, at) : RIDE_LEAD_S;
+    this.clock.setTime(arrival - lead);
+    this.rideArriveS = arrival - lead + TAKEOFF_ARRIVE_S;
+    this.rideOffset.reset();
+    this.ocean.resetFoam();
+    this.invalidateParticles();
     const water = this.rideWater(this.clock.simTime), w = water(at.x, at.z);
-    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water);
+    const experience = this.experience();
+    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water, TUNING[experience]);
     const keys = currentBindings().keys;
-    this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}: paddle (${keyLabel(keys.paddle)}) as it lifts you, ${keyLabel(keys.popup)} to pop up`);
+    const level = experience === 'intermediate' ? '' : ` (${experience})`;
+    this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}${level}: paddle (${keyLabel(keys.paddle)}) as it lifts you, ${keyLabel(keys.popup)} to pop up`);
   }
 
   private callSetNow(): void {

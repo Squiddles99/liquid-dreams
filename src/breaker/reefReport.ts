@@ -72,6 +72,15 @@ export function firstBreak(f: ReefField, H: number, p: Gd = DEFAULT_BREAK_PARAMS
   return null;
 }
 
+/**
+ * firstBreak with the still-water depth (m, tide included) at the first-break point (R1 §2: the wave breaks on the face,
+ * in ≤ 5 m of water at 6 ft). Null when firstBreak is.
+ */
+export function firstBreakDepth(f: ReefField, H: number, p: Gd = DEFAULT_BREAK_PARAMS): { d: number; x: number; z: number; depth: number } | null {
+  const fb = firstBreak(f, H, p);
+  return fb ? { ...fb, depth: sampleField(f, fb.x, fb.z).depth } : null;
+}
+
 export const firstBreakSeaward = (f: ReefField, H: number, p: Gd = DEFAULT_BREAK_PARAMS): number => firstBreak(f, H, p)?.d ?? -Infinity;
 
 /**
