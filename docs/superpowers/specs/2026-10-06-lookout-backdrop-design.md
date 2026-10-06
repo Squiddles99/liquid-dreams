@@ -33,8 +33,9 @@ From back to front, in one frame:
 
 1. **The live game:** sky, clouds, sea, reef, beach, as now. The game's own 3D land, heath and crew still draw, but the
    painting covers them. The 3D crew are hidden on the screens that show the backdrop.
-2. **The ground painting:** a full-screen layer drawn inside the game's picture, after the scene and before the tone
-   mapping. It gets the same exposure and colour handling as the sea, and `captureFrame` includes it.
+2. **The ground painting:** composited into the game's picture (`PicturePipeline`) over the scene's light, before
+   the exposure, bloom and tone mapping. It gets the same exposure and colour handling as the sea, and `captureFrame`
+   includes it.
 3. **Later (next spec):** the painted rider, their board, and a strip of foreground bush over their feet.
 4. **The menus:** the DOM panels, as now.
 
@@ -47,8 +48,9 @@ One fixed pose for the backdrop, measured in the composite test (2026-10-06):
 - Pitch: −8.5°, which puts the horizon about 37% down the frame. Field of view: the game's usual 60°.
 - The painting has no horizon of its own, so the camera is free to tilt. The pose is in one place (`beatCamera.ts`),
   so it can be tuned by eye.
-- At 21:9 or 4:3 the painting is cropped to fill the screen (cover), anchored at its bottom-right, so the ground and
-  bank stay put and the extra width shows more sea and sky.
+- At 21:9 or 4:3 the painting is cropped to fill the screen (cover), anchored at its bottom-right: a wider screen
+  loses a little of the bank's top, a narrower one a little of the sea on the left. The painting is never stretched,
+  and its bottom-left bush never ends in a hard edge.
 
 ## 3. The light
 
@@ -60,7 +62,8 @@ The painting is treated as a flat-lit surface and relit by the game's light ever
   starting value is the share that makes a clear mid-morning match the painting as painted. The ground then darkens and
   warms on its own toward dusk, greys under cloud, and goes dark at night.
 - Fog and haze: the painting is only metres from the camera, so it gets none.
-- Rain: the game's rain streaks still fall in front of the camera, over the painting.
+- Rain: the game's rain falls over the sea and sky. Over the painted ground it doesn't show, because the painting is
+  composited after the scene is drawn. A later pass can add rain streaks on top if it's missed.
 - The tunable number and an overall exposure trim live in `src/frontend/backdrop/backdropLight.ts`, with a dev
   slider. Andrew sets them by eye in four test conditions: clear morning, grey, late afternoon, and storm.
 
