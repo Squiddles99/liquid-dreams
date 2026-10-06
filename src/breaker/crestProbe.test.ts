@@ -84,3 +84,37 @@ it.skipIf(!(SIZE > 0 && Number.isFinite(DT)))('probe: the cross-section in front
   }
   console.log(lines.join('\n'));
 }, 120000);
+
+/**
+ * The sweep: every station along the ride wave at `PROBE_DT`, with the drawn surface's height less the sheet's (cm) at
+ * fixed distances in front of the crest, so a fold that runs along the crest (one cut would miss it) shows as a column
+ * that jumps or a row that differs from its neighbours. `PROBE_FT=8 PROBE_DT=3 PROBE_SWEEP=1 npx vitest run
+ * src/breaker/crestProbe.test.ts --silent=false`. Under the thrown lip the drawn height is the floor's (the lower branch).
+ */
+it.skipIf(!(SIZE > 0 && Number.isFinite(DT) && process.env.PROBE_SWEEP))('probe: the sweep along the crest', () => {
+  const c = cloneConditions(DEFAULT_CONDITIONS);
+  c.swell.sizeFt = SIZE;
+  const bed = downsample(buildBathymetry(), 2);
+  const field = computeReefField({ bed, periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: 1, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+  const ctx: WaveContext = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+  const events = wavesOfSet(1, c, DEFAULT_SET_PARAMS);
+  const big = events.reduce((a, b) => (b.heightM > a.heightM ? b : a));
+  const t = big.arrivalS + DT, waves = events.map(toActiveWave), p = DEFAULT_BREAK_PARAMS;
+  const o = { ...breakOptions(field, p, 0), pile: false, shape: 'lean' as const };
+  const st = traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: p, minHeightM: 0, spacingM: 1 });
+  const wi = waves.findIndex((w) => Math.abs(w.arrivalS - big.arrivalS) < 1e-3);
+  const line = st.filter((e): e is Station => !e.gap && e.wave === wi).sort((a, b) => a.arc - b.arc);
+  const curlArc = Math.min(...line.filter((s) => s.tb !== null).map((s) => s.arc));
+  const sheet = (x: number, z: number) => waterAt(x, z, c.tideM, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
+  const ride = withSections(sheet, st, c.tideM);
+  const US = [0, 1, 2, 3, 4, 6, 8, 12];
+  const out = [`${SIZE} ft, t + ${DT} s: curl at arc ${curlArc.toFixed(1)}; drawn − sheet (cm) at u m in front of the crest`, '   arc   past   until phase     A   rho  sheet@0 ' + US.map((u) => `u${u}`.padStart(6)).join('')];
+  for (const s of line) {
+    const past = curlArc - s.arc;
+    if (past < -40 || past > 60) continue;
+    const row = US.map((u) => { const x = s.x + s.nx * u, z = s.z + s.nz * u; return ((ride(x, z).y - sheet(x, z).y) * 100).toFixed(0).padStart(6); }).join('');
+    const until = s.until === null ? 'null' : s.until === Infinity ? 'inf' : s.until.toFixed(2);
+    out.push(`${s.arc.toFixed(1).padStart(6)} ${past.toFixed(1).padStart(6)} ${until.padStart(7)} ${s.section.phase.toFixed(2).padStart(5)} ${s.section.A.toFixed(2).padStart(5)} ${s.section.rho.toFixed(2).padStart(5)} ${(sheet(s.x, s.z).y - c.tideM).toFixed(2).padStart(8)} ${row}`);
+  }
+  console.log(out.join('\n'));
+}, 120000);
