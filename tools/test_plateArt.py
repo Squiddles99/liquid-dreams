@@ -40,6 +40,26 @@ class KeyTest(unittest.TestCase):
         self.assertGreater(out[100, 20, 3], 0.99)
 
 
+class MatchTest(unittest.TestCase):
+    def test_recovers_a_known_shift_to_a_tenth_of_a_pixel(self):
+        rng = np.random.default_rng(2)
+        ref = np.asarray(plateArt.Image.fromarray((rng.random((1080, 1920)) * 255).astype(np.uint8))
+                         .filter(plateArt.ImageFilter.GaussianBlur(2))).astype(np.float32)
+        cur = plateArt.shifted(ref, 3, -2)  # cur(x) = ref(x + (3, −2))
+        s = plateArt.match(ref, cur)
+        inner = s[5:-5, 5:-5]
+        self.assertLess(float(np.abs(inner[..., 0] - 3).mean()), 0.1)
+        self.assertLess(float(np.abs(inner[..., 1] + 2).mean()), 0.1)
+
+    def test_rows_limits_the_work_to_the_moving_band_and_leaves_the_rest_still(self):
+        rng = np.random.default_rng(3)
+        ref = (rng.random((1080, 1920)) * 255).astype(np.float32)
+        cur = plateArt.shifted(ref, 1, 0)
+        s = plateArt.match(ref, cur, rows=(100, 120))
+        self.assertTrue(np.all(s[:100] == 0) and np.all(s[120:] == 0))
+        self.assertLess(float(np.abs(s[105:115, 5:-5, 0] - 1).mean()), 0.1)
+
+
 class FlowPackTest(unittest.TestCase):
     def test_pack_round_trips_to_a_sixteenth_of_a_pixel(self):
         rng = np.random.default_rng(1)
