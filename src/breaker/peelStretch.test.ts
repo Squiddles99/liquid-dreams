@@ -32,7 +32,7 @@ const LVL = 3;
 
 describe('the peel stretch in the onset record (spec 2026-10-04 §1)', () => {
   it('the record has a delay block per level after the ψ₀ block', () => {
-    expect(ONSET_RECORD_LENGTH).toBe(1 + 5 * ONSET_LEVELS);
+    expect(ONSET_RECORD_LENGTH).toBe(1 + 6 * ONSET_LEVELS);
     expect(ONSET_DELAY_OFFSET).toBe(1 + 3 * ONSET_LEVELS);
   });
 

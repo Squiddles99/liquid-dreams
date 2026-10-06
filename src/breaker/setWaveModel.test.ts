@@ -197,8 +197,15 @@ describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
     expect(frontStanding(null, 0.7, 0.7)).toBe(0);
     expect(frontStanding(null, 0.85, 0.7)).toBeCloseTo(0.5, 12);
     expect(frontStanding(null, 1, 0.7)).toBe(1);
-    // Held for its turn: as before it broke, by its ratio.
-    expect(frontStanding(-1, 0.85, 0.7)).toBeCloseTo(0.5, 12);
+    // Held for its turn: as the wall stands up over the last WALL_LEAD_S before it (wombSection.wallWeight).
+    const { wallWeight, WALL_LEAD_S } = await import('./wombSection');
+    expect(frontStanding(-1, 0.85, 0.7)).toBeCloseTo(wallWeight(1), 12);
+    expect(frontStanding(-WALL_LEAD_S / 2, 0.85, 0.7)).toBeCloseTo(0.25, 12);
+    // Unbroken, with the record's time until it breaks: the wall, or the ratio, whichever is further.
+    expect(frontStanding(null, 0.7, 0.7, Infinity)).toBe(0);
+    expect(frontStanding(null, 0.7, 0.7, WALL_LEAD_S / 2)).toBeCloseTo(0.25, 12);
+    expect(frontStanding(null, 0.7, 0.7, 0)).toBe(1);
+    expect(frontStanding(null, 0.85, 0.7, WALL_LEAD_S)).toBeCloseTo(0.5, 12);
     expect(frontStanding(0)).toBe(1);
     expect(frontStanding(3)).toBe(1);
     // The front as long as the profile's face (1.8 A, A = H / 1.3) on the 6 ft set at the take-off (H 3.5 m, k 0.068):

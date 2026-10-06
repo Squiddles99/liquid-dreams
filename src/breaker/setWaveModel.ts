@@ -1,8 +1,8 @@
-import { BORE_SHARE, boreWeight } from './wombSection';
+import { BORE_SHARE, boreWeight, wallWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
-import { BREAKING_RATIO, type BreakParams, DEFAULT_BREAK_PARAMS, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetDelay, onsetTime, pileTop, settledCrestTop, steepeningStart, TUBE_THROWN_PSI } from './breaking';
+import { BREAKING_RATIO, type BreakParams, DEFAULT_BREAK_PARAMS, type Lifecycle, ONSET_RECORD_LENGTH, breakPoint, breakingDepth, breakingHeightThreshold, breakingRatio, lifecycle, onsetHeight, onsetRatio, onsetPsi, onsetDelay, onsetTime, onsetUntil, pileTop, settledCrestTop, steepeningStart, TUBE_THROWN_PSI } from './breaking';
 import { PSI_MIN, PSI_NONE, PSI_NORMAL, drainFactor, effectivePsi, withSheetShape } from './overturn';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
@@ -80,9 +80,11 @@ export const wombFrontMin = (H: number, k: number): number =>
  * slope of 1.35 and the ride never caught it (plan 2026-10-06 step 3; it rose over 1.5 s at 0.1–0.4). No clock: the hold's
  * STAND_LEAD_S ramp along the crest is gone with the plateau it moved.
  */
-export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset): number {
+export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset, until: number | null = null): number {
   if (tb === undefined) return 0;
-  return tb === null || tb < 0 ? smoothstep(ribbonOnset, 1, r) : 1;
+  if (tb === null) return Math.max(smoothstep(ribbonOnset, 1, r), wallWeight(until));
+  // Held for its turn (the peel stretch): as the wall stands up over the last WALL_LEAD_S before it.
+  return tb < 0 ? Math.max(smoothstep(ribbonOnset, 1, r) * wallWeight(-tb), wallWeight(-tb)) : 1;
 }
 
 export function leanWeight(crest: Crest | null): number {
@@ -265,6 +267,8 @@ export interface Crest {
   s: number;
   /** Time since the section at the crest broke (breaking.onsetTime): null before, undefined without a record there. */
   tb: number | null | undefined;
+  /** Unbroken: how long until it breaks (s; breaking.onsetUntil), Infinity if never; 0 once broken; null without a record. */
+  until: number | null;
   /** The crest's breaking state: the sharpening, the drain and the collapse (breaking.lifecycle). */
   lc: Lifecycle;
   /** How much to trust the lookup, [0, 1]: 1 when it landed on the crest, falling to 0 as the ξ left after the steps
@@ -314,6 +318,7 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   const on = rayCrestPoint(x, z, t, f, w, ctx);
   const rec = o.onset?.(on.x, on.z);
   const tb = rec ? onsetTime(rec, 0, w.heightM, o.params) : undefined;
+  const until = rec ? onsetUntil(rec, 0, w.heightM, o.params) : null;
   const delay = rec ? onsetDelay(rec, 0, w.heightM, o.params) : 0;
   const rMax = rec ? onsetRatio(rec, 0, w.heightM, o.params) : r;
   // The lip too, on the point's own ray: carried along the rays, it is the same all along one (under 1% at most ledge
@@ -329,7 +334,7 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   const rSlurp = breakingRatio(w.heightM * fc.amp, fc.hminSlurp, o.params);
   const lc = lifecycle(r, tb, localHeight(w, fc), params, rMax, rSlurp, smoothstep(PSI_NONE, PSI_MIN, psi), smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi), delay);
   const rLean = breakingRatio(w.heightM * fc.amp, fc.hminLean, o.params);
-  return { x: cx, z: cz, f: fc, r, rSlurp, rLean, s: lc.stage, tb, lc, confidence, lipH, psi, params };
+  return { x: cx, z: cz, f: fc, r, rSlurp, rLean, s: lc.stage, tb, until, lc, confidence, lipH, psi, params };
 }
 
 /**
@@ -400,7 +405,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   // The front's lean (LEAN_RATIO): the trough moves in to the face's foot as the wave shoals.
   const { th, dth } = o?.shape === 'lean' && crest
     ? leanPhase(theta, smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence,
-      LEAN_FRONT_MIN + (wombFrontMin(localHeight(w, crest.f), crest.f.k) - LEAN_FRONT_MIN) * frontStanding(crest.tb, crest.r, crest.params.ribbonOnset))
+      LEAN_FRONT_MIN + (wombFrontMin(localHeight(w, crest.f), crest.f.k) - LEAN_FRONT_MIN) * frontStanding(crest.tb, crest.r, crest.params.ribbonOnset, crest.until))
     : leanPhase(theta, o?.shape === false ? 0 : leanWeight(crest));
   const leaning = th !== theta || dth !== 1;
   const shape = Math.cos(th) + B * Math.cos(2 * th);

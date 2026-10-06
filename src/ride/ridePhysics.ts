@@ -74,11 +74,17 @@ export const POPUP_TURN = 0.6;
  * takes out (relative to the water), this fraction of its energy goes into the board's run.
  */
 export const RAIL_KEEP = 0.85;
-/** The assisted takeoff's push (m/s²) at full lift, up to ASSIST_TO × the wave's speed. */
-export const ASSIST_ACCEL = 8;
+/** The assisted takeoff's push (m/s²) at full lift, up to ASSIST_TO × the wave's speed. 12, not 8, with the wall down the
+ * line (plan 2026-10-06-wave-root-cause): the face reaching the take-off is a steep wall a second from breaking, and it
+ * passes under a paddler in about 0.6 s; at 8 he reached 5.0 m/s against the 5.9 the catch needs on the 13 m/s crest
+ * (CATCH_RATIO; the ride test, 6 and 12 ft). The catch itself is unchanged. */
+export const ASSIST_ACCEL = 12;
 export const ASSIST_TO = 0.8;
-/** Caught once moving with the wave this fast (× its speed) on its face. */
-export const CATCH_RATIO = 0.45;
+/** Caught once moving with the wave this fast (× its speed) on its face. 0.4, not 0.45, with the wall down the line (plan
+ * 2026-10-06-wave-root-cause): the take-off's crest runs at 13 m/s over the basin (the wave breaks in 16 m of water until
+ * step 5 moves it in), its face is a steep wall that passes a paddler in half a second, and at 0.45 he reached catch speed
+ * a frame after the face had gone under him and went over the back (the ride test, 6 ft). */
+export const CATCH_RATIO = 0.4;
 /** Too slow to pop up below this (m/s). */
 export const POPUP_MIN_SPEED = 2.5;
 /** Andrew 2026-10-04: at 0.6 s he was on his feet only at the bottom of a ~1 s drop. */

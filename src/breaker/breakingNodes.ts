@@ -1,6 +1,6 @@
 import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, smoothstep, uniform } from 'three/tsl';
 import {
-  type BreakParams, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
+  type BreakParams, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, UNTIL_NEVER, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
   HOLLOW_REACH_Q, MIN_BREAKING_HEIGHT_M, MIN_STAGE_SPAN, PILE_BACK_H, PILE_BLEND_H, PILE_FOAM_EDGE, PILE_FOAM_THIN, PILE_FRONT_H,
   PEEL_RAMP_DELAY_S, PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, PLUNGE_FULL_RATIO, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S, TUBE_HOLD_S,
   normalizeBreakParams, onsetGain, steepeningStart,
@@ -108,19 +108,25 @@ export function onsetLevelNode(heightM: N, u: BreakUniforms): { lq: N; k: N } {
  * maximum where level k + 1 is above it (time −D there: the peel stretch's turn, spec 2026-10-04 §2). tb is the stretched
  * time since onset, negative while held. tb, lipH and delay are meaningless when not broken.
  */
-export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; delayLo: N; delayHi: N }, level: { lq: N; k: N }, heightM: N, u: BreakUniforms): { broken: N; tb: N; rMax: N; lipH: N; delay: N } {
+export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; delayLo: N; delayHi: N; untilLo?: N; untilHi?: N }, level: { lq: N; k: N }, heightM: N, u: BreakUniforms): { broken: N; tb: N; rMax: N; lipH: N; delay: N; until: N } {
   const g: N = float(heightM).mul(u.onsetGain);
   const logR = Math.log(ONSET_LEVEL_RATIO);
   const qHi = exp(level.k.add(1.0).mul(logR)).mul(ONSET_LEVEL_Q0);
   const toRun = rec.run.lessThan(qHi);
   const hi = select(toRun, log(max(rec.run, 1e-9).div(ONSET_LEVEL_Q0)).div(logR), level.k.add(1.0));
   const w = clamp(level.lq.sub(level.k).div(max(hi.sub(level.k), 1e-9)), 0.0, 1.0);
+  const broken = g.mul(rec.run).greaterThanEqual(1.0);
+  // breaking.onsetUntil: 0 once broken; levels k and k + 1 log-linearly (as onsetPsi reads); UNTIL_NEVER where either never breaks.
+  const untilLo = rec.untilLo ?? float(UNTIL_NEVER), untilHi = rec.untilHi ?? float(UNTIL_NEVER);
+  const never = untilLo.greaterThanEqual(UNTIL_NEVER).or(untilHi.greaterThanEqual(UNTIL_NEVER));
+  const until = select(broken, float(0.0), select(never, float(UNTIL_NEVER), max(mix(untilLo, untilHi, clamp(level.lq.sub(level.k), 0.0, 1.0)), 0.0)));
   return {
-    broken: g.mul(rec.run).greaterThanEqual(1.0),
+    broken,
     tb: mix(rec.tbLo, select(toRun, rec.delayLo.negate(), rec.tbHi), w),
     delay: mix(rec.delayLo, select(toRun, rec.delayLo, rec.delayHi), w),
     rMax: g.mul(rec.run),
     lipH: float(heightM).mul(mix(rec.ampLo, rec.ampHi, w)),
+    until,
   };
 }
 
