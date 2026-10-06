@@ -86,7 +86,8 @@ describe('wombProfile', () => {
     const k = profileKnots(1, 1), c = profileCurve(1, 1);
     expect(k[FLOOR_KNOT][1]).toBeLessThan(0);
     expect(k[TROUGH_KNOT][1]).toBeLessThan(0);
-    const cavity = c.slice(nearest(c, k[TIP_KNOT]), nearest(c, k[FLOOR_KNOT]) + 1);
+    // The tip, among the samples before the floor: the landed lip touches the water in front, whose samples lie as near.
+    const iF = nearest(c, k[FLOOR_KNOT]), cavity = c.slice(nearest(c.slice(0, iF), k[TIP_KNOT]), iF + 1);
     const us = cavity.map((p) => p[0]), ys = cavity.map((p) => p[1]);
     const aspect = (Math.max(...us) - Math.min(...us)) / (Math.max(...ys) - Math.min(...ys));
     expect(aspect).toBeGreaterThan(0.7);
