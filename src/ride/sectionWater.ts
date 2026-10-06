@@ -71,7 +71,7 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
     }
     // The slope: the section's along its normal, the sheet's own along the crest.
     const tx = -nz, tz = nx, along = w.slopeX * tx + w.slopeZ * tz;
-    return { ...w, y, slopeX: slopeU * nx + along * tx, slopeZ: slopeU * nz + along * tz };
+    return { ...w, y, slopeX: slopeU * nx + along * tx, slopeZ: slopeU * nz + along * tz, onSection: true };
   };
 }
 

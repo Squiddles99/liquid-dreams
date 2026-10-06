@@ -1,6 +1,6 @@
 import { smoothstep } from '../math/smoothstep';
 import { hollowFromPsi } from './reefReport';
-import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, type P2, PROFILE_KEYS, STAGES, TIP_KNOT, TROUGH_KNOT, crStep, crTangent, curveSamples, hermitePoint, profileKnots, roundedTip, tipLife } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, type P2, PROFILE_KEYS, SPAN_SAMPLES, STAGES, TIP_KNOT, TROUGH_KNOT, crStep, crTangent, curveSamples, hermitePoint, profileKnots, roundedTip, tipLife } from './wombProfile';
 
 /**
  * A crest station's cross-section as the Womb's profile family (spec 2026-10-05-womb-profile-design §2, §4; plan
@@ -301,21 +301,52 @@ export function wombSection(s: SectionInput, sheet: SheetAlong, p: SectionParams
   return sectionOf(sectionNumbers(s, p), sheet);
 }
 
-/** The section's knots, and its CURVE_SAMPLES samples back to front (units of A, with their homes) and their marks. */
-export function sectionSamples(numbers: SectionNumbers, sheet: SheetAlong): { knots: SectionKnot[]; curve: SectionKnot[]; marks: { crest: number; tip: number; floor: number } } {
+/**
+ * A section sample (units of A): (u, y) on the station's plane as the curve through the knots interpolates them, its home
+ * h, then what places it (sectionPoint): a = (u − w·su, y − w·sy) and the sheet weight w. The sample's point is w × the
+ * sheet at its home + A × a: the sheet at the home plus the drawing's offset from it where w is 1 (the sheet's own
+ * stretches, exact sample by sample), the interpolated (u, y) itself where w is 0 (the drawn curl at full weight).
+ *
+ * Between two curl knots the sheet's offset form is wrong: the samples' homes run across the sheet's own face there (the
+ * floor knot's home is on it, the trough knot's past it), and "the sheet at the home plus an interpolated offset" follows
+ * the sheet's 4 m drop before the offset catches up. At 8 ft the drawn floor overshot 1.15 m below the trough knot and the
+ * water then climbed 1.6 m to the flats: a ridge with a dark drop under it across the sea in front of the face (Andrew's
+ * capture, 2026-10-06; 0.2 m at 6 ft). So w is 1 at the sheet knots, 1 − curlWeight at the curl knots (the sheet's form
+ * at phase 0, where the curl knots are sheet samples), and eased between over the two join spans (sampleWeight).
+ */
+export type SectionSample = readonly [number, number, number, number, number, number];
+
+/** A knot's sheet weight: 1 for a sheet knot, 1 − the curl's weight for a curl knot. */
+export const knotWeight = (k: number, curl: number): number => (k < SHEET_KNOTS || k >= SHEET_KNOTS + CURL_KNOTS ? 1 : 1 - curl);
+/** The sheet weight at dense point d (SPAN_SAMPLES per span): eased between its span's two knots' (the GPU mirrors it). */
+export function sampleWeight(d: number, curl: number, knotCount = SECTION_KNOTS): number {
+  const last = knotCount - 1;
+  if (d >= last * SPAN_SAMPLES) return knotWeight(last, curl);
+  const sp = Math.floor(d / SPAN_SAMPLES), s = (d - sp * SPAN_SAMPLES) / SPAN_SAMPLES;
+  const wa = knotWeight(sp, curl), wb = knotWeight(sp + 1, curl);
+  return wa + (wb - wa) * s * s * (3 - 2 * s);
+}
+
+/** The section's knots, and its CURVE_SAMPLES samples back to front (units of A: SectionSample) and their marks. */
+export function sectionSamples(numbers: SectionNumbers, sheet: SheetAlong): { knots: SectionKnot[]; curve: SectionSample[]; marks: { crest: number; tip: number; floor: number } } {
   const { knots, beyond } = sectionFrameKnots(numbers, sheet), { t, m } = sectionTangents(knots, beyond);
-  const { curve, marks } = curveSamples((d) => hermitePoint(knots, t, m, d), knots.length, SECTION_MARKED, CURVE_SAMPLES);
+  const curl = curlWeight(numbers);
+  const point = (d: number): SectionSample => {
+    const p = hermitePoint(knots, t, m, d), w = sampleWeight(d, curl, knots.length);
+    return [p[0], p[1], p[2], p[0] - w * p[3], p[1] - w * p[4], w];
+  };
+  const { curve, marks } = curveSamples(point, knots.length, SECTION_MARKED, CURVE_SAMPLES);
   return { knots, curve, marks };
 }
 
-/** A sample's point (m): the sheet at its home plus its offset from the sheet (SectionKnot). */
-export const sectionPoint = (q: SectionKnot, A: number, sheet: SheetAlong): P2 => {
-  const S = sheet(A * q[2]);
-  return [S[0] + A * (q[0] - q[3]), S[1] + A * (q[1] - q[4])];
+/** A sample's point (m): its sheet weight × the sheet at its home, plus A × its a (SectionSample). */
+export const sectionPoint = (q: SectionSample, A: number, sheet: SheetAlong): P2 => {
+  const S = sheet(A * q[2]), w = q[5];
+  return [w * S[0] + A * q[3], w * S[1] + A * q[4]];
 };
 
 /** The section for given numbers (a station's, smoothed along the crest: Station.section) on `sheet`: one surface, the sheet
- * at every sample's home plus the drawing's offset from it (0 beyond the shoulder and the front knot, at phase 0 and at ρ 0). */
+ * itself sample by sample on its own stretches (and at phase 0 and ρ 0), the drawn curl where it is drawn (SectionSample). */
 export function sectionOf(numbers: SectionNumbers, sheet: SheetAlong): Section {
   const { A } = numbers, { knots, curve } = sectionSamples(numbers, sheet);
   const points: P2[] = [], homes: number[] = [];

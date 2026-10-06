@@ -166,6 +166,28 @@ For Opus, on Andrew's PC, before anything else: `--filter=ribbon` and `--filter=
 texture; the GPU's `standing` must match the CPU's `frontStanding`), then a capture from inside the tube looking down the
 line at 6 and 8 ft.
 
+#### 3d. The fold in front of the face (2026-10-06, Fable, after Opus's captures of 3c)
+
+Opus's 8 ft captures showed a raised ridge with a dark drop under it across the sea just inside the mouth; 6 ft looked
+clean. Measured with the cross-section probe (`PROBE_FT=8 PROBE_DT=5 npx vitest run src/breaker/crestProbe.test.ts
+--silent=false`): not the wall, not the sheet, but how step 3b built the drawn curve. Every sample was "the sheet at its
+home plus the drawing's offset from it", and between the tube's floor knot and the trough knot the samples' homes run
+across the sheet's own 4 m face, so the samples followed that drop before the offset caught up: at 8 ft the drawn floor
+overshot 1.15 m below the trough knot (−3.3 m against −2.2 m) and the water then climbed 1.6 m to the flats. At 6 ft the
+overshoot was 0.2 m.
+
+Now each sample carries a sheet weight (`wombSection.SectionSample`, `sampleWeight`): 1 at the sheet knots, 1 − the curl's
+weight at the curl knots, eased over the two join spans; its point is weight × the sheet at its home + A × (u − w·su, y −
+w·sy). The sheet's stretches stay the sheet sample by sample (and the whole section at phase 0), the drawn curl at full
+weight is the drawn curve itself. The GPU mirrors it (`wombSectionNodes` writes (a, home, w) per sample; the vertex pass
+places w × sheet + A × a). After: at 8 ft the floor runs −1.2 → −2.2 m at the trough and climbs 0.5 m to the flats over
+4 m (the seat's 0.12 A dip, by design). `wombSection.test` pins it on a sheet with the leaned face.
+
+Also fixed: the underwater switch read the sheet under the barrel (1.45 m over an eye at 0.29 m inside a 6 ft tube);
+`App.updateUnderwater` now reads the drawn surface where a section covers the eye (`WaterAt.onSection`).
+
+For Opus: `--filter=ribbon` again (the samples' vec4 changed meaning), then the same 8 ft captures at t + 3 and t + 5.
+
 ### 4. One curl per wave, on one clock
 
 Replace the per-station onset read with a curl that moves along the crest:

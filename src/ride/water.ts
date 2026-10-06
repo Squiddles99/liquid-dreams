@@ -23,6 +23,8 @@ export interface WaterAt {
   /** Where this water sits undisplaced (the Lagrangian label, world xz), as the breaking ribbon's crest stations are. */
   lx?: number;
   lz?: number;
+  /** true where a breaking ribbon section is the surface (sectionWater.withSections): the drawn wave, not the sheet under it. */
+  onSection?: boolean;
 }
 
 export type WaterFn = (x: number, z: number) => WaterAt;
