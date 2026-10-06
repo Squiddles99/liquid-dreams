@@ -190,18 +190,15 @@ describe('ψ at the crest (barrel from the maths)', () => {
 
 
 describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
-  it('shortens a crest’s front on the ribbon’s clock: the swell’s down the line, the profile’s face over the last STAND_LEAD_S and after', async () => {
+  it('shortens a crest’s front as its section stands up: the swell’s before, the profile’s face once broken; no clock', async () => {
     const { frontStanding, wombFrontMin, LEAN_FRONT_MIN, LEAN_FRONT_FLOOR } = await import('./setWaveModel');
-    const { STAND_LEAD_S } = await import('./wombSection');
     expect(frontStanding(undefined)).toBe(0);
     expect(frontStanding(null)).toBe(0);
-    // Before the break it stands up with the ratio, as the ribbon does (wombSection.sectionWeight): no step where it breaks.
     expect(frontStanding(null, 0.7, 0.7)).toBe(0);
     expect(frontStanding(null, 0.85, 0.7)).toBeCloseTo(0.5, 12);
     expect(frontStanding(null, 1, 0.7)).toBe(1);
-    expect(frontStanding(-10)).toBe(0);
-    expect(frontStanding(-STAND_LEAD_S)).toBe(0);
-    expect(frontStanding(-STAND_LEAD_S / 2)).toBeCloseTo(0.5, 12);
+    // Held for its turn: as before it broke, by its ratio.
+    expect(frontStanding(-1, 0.85, 0.7)).toBeCloseTo(0.5, 12);
     expect(frontStanding(0)).toBe(1);
     expect(frontStanding(3)).toBe(1);
     // The front as long as the profile's face (1.8 A, A = H / 1.3) on the 6 ft set at the take-off (H 3.5 m, k 0.068):
@@ -212,3 +209,36 @@ describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
     expect(wombFrontMin(20, 0.1)).toBe(LEAN_FRONT_MIN);
   });
 });
+
+describe('leanPhase (plan 2026-10-06-wave-root-cause step 3: no plateau in front)', () => {
+  it('is θ itself without lean and outside the wavelength in front of the crest', async () => {
+    const { leanPhase } = await import('./setWaveModel');
+    for (const th of [-7, -2 * Math.PI, -3, -1, 0, 0.5, 2]) {
+      expect(leanPhase(th, 0).th).toBeCloseTo(th, 12);
+      expect(leanPhase(th, 0).dth).toBeCloseTo(1, 12);
+    }
+    for (const th of [-6.5, 0, 0.3]) expect(leanPhase(th, 1, 0.1)).toEqual({ th, dth: 1 });
+  });
+  it('squeezes the face into its share and is monotone with a continuous slope: no flat water ahead of the foot', async () => {
+    const { leanPhase } = await import('./setWaveModel');
+    for (const [lean, frontMin] of [[1, 0.08], [1, 0.3], [0.5, 0.11], [0.2, 0.3]]) {
+      const phi = 1 - lean * (1 - frontMin);
+      expect(leanPhase(-phi * Math.PI, lean, frontMin).th).toBeCloseTo(-Math.PI, 12);
+      let prev = leanPhase(-2 * Math.PI + 1e-9, lean, frontMin);
+      for (let i = 1; i <= 4000; i++) {
+        const theta = -2 * Math.PI + (2 * Math.PI * i) / 4000 - 1e-9, cur = leanPhase(theta, lean, frontMin);
+        expect(cur.dth, `${lean}/${frontMin} at ${theta}`).toBeGreaterThan(0.05);
+        // The slope is the map's derivative.
+        expect(cur.th - prev.th).toBeCloseTo(((cur.dth + prev.dth) / 2) * ((2 * Math.PI) / 4000), 4);
+        prev = cur;
+      }
+      expect(prev.dth).toBeCloseTo(1, 6);
+      // Each part is a smooth cubic: the slope is continuous where they meet (the foot) and where it meets θ (the crests).
+      const foot = -phi * Math.PI, e = 1e-9;
+      expect(leanPhase(foot - e, lean, frontMin).dth).toBeCloseTo(leanPhase(foot + e, lean, frontMin).dth, 5);
+      expect(leanPhase(-e, lean, frontMin).dth).toBeCloseTo(1, 5);
+      expect(leanPhase(-2 * Math.PI + e, lean, frontMin).dth).toBeCloseTo(1, 5);
+    }
+  });
+});
+

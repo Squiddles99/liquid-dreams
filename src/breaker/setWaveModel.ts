@@ -1,4 +1,4 @@
-import { BORE_SHARE, STAND_LEAD_S, boreWeight } from './wombSection';
+import { BORE_SHARE, boreWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -73,18 +73,16 @@ export const wombFrontMin = (H: number, k: number): number =>
   Math.min(LEAN_FRONT_MIN, Math.max(LEAN_FRONT_FLOOR, (WOMB_FRONT_UNITS * (H / 1.3) * k) / Math.PI));
 
 /**
- * How far a crest's front has shortened to the Womb profile's face [0, 1], on the ribbon's clock (wombSection.sectionWeight):
- * 0 off the reef's record; before its section breaks, rising with its breaking ratio `r` from the ribbon's onset to 1, as
- * the ribbon stands up out of the sheet; while it waits for its turn (the peel stretch), 0 more than STAND_LEAD_S away, to 1
- * over that last STAND_LEAD_S; 1 once broken. Down the line the front stays the swell's (Andrew, 2026-10-05: "a less
- * vertical gradient, similar to how the swell approaches"), and shortened from the first a surfer had a third of a second
- * on the face to catch it. Switched on at the break itself (`tb` from null to 0), along the crest the front jumped from
- * the swell's to the face's where the record says broken, a staircase seam out in front of the curl (Andrew, 2026-10-05).
+ * How far a crest's front has shortened to the Womb profile's face [0, 1]: 0 off the reef's record; until its section breaks
+ * (or while the peel stretch holds it), rising with its breaking ratio `r` from the ribbon's onset to 1, as the drawn
+ * section's phase does (wombSection.sectionPhase); 1 once broken. Down the line, and at the take-off before the wave stands
+ * up, the front stays the swell's: squeezed to the face's length there, the face swept under a paddling surfer in 0.4 s at a
+ * slope of 1.35 and the ride never caught it (plan 2026-10-06 step 3; it rose over 1.5 s at 0.1–0.4). No clock: the hold's
+ * STAND_LEAD_S ramp along the crest is gone with the plateau it moved.
  */
 export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset): number {
   if (tb === undefined) return 0;
-  if (tb === null) return smoothstep(ribbonOnset, 1, r);
-  return tb >= 0 ? 1 : 1 - smoothstep(0, STAND_LEAD_S, -tb);
+  return tb === null || tb < 0 ? smoothstep(ribbonOnset, 1, r) : 1;
 }
 
 export function leanWeight(crest: Crest | null): number {
@@ -92,14 +90,24 @@ export function leanWeight(crest: Crest | null): number {
 }
 
 /**
- * The leaned phase th for Phase 1's shape cos(th) + B·cos(2th), and dth/dθ: on the front (−π < θ < 0) with φ = 1 −
- * lean·(1 − LEAN_FRONT_MIN), θ/φ over its last share (θ ≥ −φπ), the trough (−π) ahead of that; θ itself elsewhere. C1:
- * the shape's slope is 0 at θ = 0 and at the trough either way.
+ * The leaned phase th for Phase 1's shape cos(th) + B·cos(2th), and dth/dθ (plan 2026-10-06-wave-root-cause step 3: no
+ * plateau in front). Over the wavelength in front of the crest (−2π < θ < 0), with φ = 1 − lean·(1 − frontMin): the face
+ * (th 0 → −π) squeezed into its last share φ of the half wavelength (−φπ ≤ θ ≤ 0), and the water ahead of it (th −π → −2π)
+ * stretched over the rest, rising from the face's foot back up as the swell's own quarter wave does. Each part is a cubic
+ * Hermite with slope 1 at both its ends, so the map is monotone and its slope continuous everywhere, and it is θ itself
+ * outside that wavelength and wherever lean is 0. (It used to hold th at −π from the face's foot out to the trough half a
+ * wavelength ahead: a plateau of water exactly flat at the trough's level, 40–60 m long, with a sharp far edge.)
  */
 export function leanPhase(theta: number, lean: number, frontMin = LEAN_FRONT_MIN): { th: number; dth: number } {
-  if (!(lean > 0) || !(theta < 0) || !(theta > -Math.PI)) return { th: theta, dth: 1 };
-  const phi = 1 - lean * (1 - frontMin);
-  return theta >= -phi * Math.PI ? { th: theta / phi, dth: 1 / phi } : { th: -Math.PI, dth: 0 };
+  if (!(lean > 0) || !(theta < 0) || !(theta > -2 * Math.PI)) return { th: theta, dth: 1 };
+  const phi = 1 - lean * (1 - frontMin), foot = -phi * Math.PI;
+  // The face from the foot (th −π) to the crest (0), or the water ahead from the crest ahead (−2π) to the foot (−π).
+  const [t0, span, p0] = theta >= foot ? [foot, phi * Math.PI, -Math.PI] : [-2 * Math.PI, (2 - phi) * Math.PI, -2 * Math.PI];
+  const t = (theta - t0) / span, t2 = t * t, t3 = t2 * t;
+  // p0 → p0 + π with slope 1 (span per unit t) at both ends: h01·π + (h10 + h11)·span.
+  const th = p0 + Math.PI * (3 * t2 - 2 * t3) + span * (2 * t3 - 3 * t2 + t);
+  const d = Math.PI * (6 * t - 6 * t2) + span * (6 * t2 - 6 * t + 1);
+  return { th, dth: d / span };
 }
 
 /**
