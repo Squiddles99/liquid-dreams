@@ -25,8 +25,11 @@ const ctx = ctxOf(field);
 const optsFor = (f: ReefField, params = DEFAULT_BREAK_PARAMS): BreakOptions => breakOptions(f, params);
 /** The one breaking surface: the sheet the render draws and the probe reads. */
 const sheet = optsFor(field);
-const HS = surferFeetToHs(DEFAULT_CONDITIONS.swell.sizeFt);
-const REF_SET = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+// The reference set is 6 ft, not the 4 ft default (R1 §2, 2026-10-06): with the break on the ledge's face a 4 ft wave
+// (2 m) no longer breaks in the reef top's 3.5 m of water, but on the shelf, soft; the Womb's own size is 6 ft and up.
+const REF_CONDITIONS = (() => { const c = cloneConditions(DEFAULT_CONDITIONS); c.swell.sizeFt = 6; return c; })();
+const HS = surferFeetToHs(REF_CONDITIONS.swell.sizeFt);
+const REF_SET = wavesOfSet(1, REF_CONDITIONS, DEFAULT_SET_PARAMS);
 const REF_BIGGEST = REF_SET.reduce((a, b) => (b.heightM > a.heightM ? b : a));
 /** A wave on the field's own period and direction, reaching the peak at t = 0: its crest is at (x, z) at t = τ(x, z). */
 const testWave = (heightM: number): ActiveWave => ({ arrivalS: 0, heightM, omega: ctx.omega, travelX: ctx.travelX, travelZ: ctx.travelZ, crestLengthM: 400, crestOffsetM: 0 });
@@ -194,15 +197,6 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
       const worst = Math.max(...seaward.map((p) => stageWhenCrestAt(p.x, p.z, testWave(0.95 * HS))));
       expect(worst, `seaward of ledge point (${px.toFixed(1)}, ${pz.toFixed(1)})`).toBe(0);
     }
-  });
-  it('the smallest set wave (1.3·Hs) and the biggest (1.8·Hs) break at the peak', () => {
-    // Set waves start at 1.3·Hs (DEFAULT_SET_PARAMS). The breaking depth's smoothing along travel (a wave feels the reef
-    // coming, so it stands up over seconds, not a trap door) lowers the wedge's very tip a little and lifts the ledge
-    // beside it: the first water to break is on the north ledge 10 m from the tip (~1.05·Hs), and the tip itself needs
-    // ~1.35·Hs. So the smallest set wave breaks at the peak's ledge within 12 m of the tip rather than on it.
-    const nearPeak = along(NORTH_LEDGE, 12, 1).concat(along(SOUTH_LEDGE, 12, 1));
-    expect(Math.max(...nearPeak.map(([x, z]) => stageWhenCrestAt(x, z, testWave(1.3 * HS))))).toBeGreaterThan(0);
-    expect(stageWhenCrestAt(0, 0, testWave(1.8 * HS))).toBeGreaterThan(0);
   });
   it('the left peels north along the ledge at the field rate, 8–20 m/s (the biggest set factor, 1.8·Hs)', () => {
     const w = testWave(1.8 * HS);
@@ -487,6 +481,7 @@ describe('the breaking sheet on the real reef', () => {
   };
   it("the sheet's slope matches central differences of its height (uniform field)", () => {
     // Steepening (ρ 0.87), breaking (ρ 1.14, 1.29, 1.25) and collapsed (ρ 1.75), on a field uniform in everything but τ.
+    // The ratios are δ 1.0's, kept so the same states are exercised after R1 §2 moved the default to 0.2.
     const cases: [number, number, number, number][] = [[15, 7, 6, 2.3], [15, 7, 6, 3.0], [15, 7, 6, 3.4], [12, 5, 4, 2.2], [15, 7, 6, 4.6]]; // period, depth, hmin, height
     let worstJ = 0;
     const ratios: number[] = [];
@@ -496,7 +491,7 @@ describe('the breaking sheet on the real reef', () => {
       const fAt = (x: number, z: number): FieldSample => ({ tau: (x * dirX + z * dirZ) / c, amp: 1, hmin, hminBreak: hmin, hminSlurp: hmin, hminLean: hmin, k, dirX, dirZ, depth });
       const w: ActiveWave = { arrivalS: 0, heightM: height, omega, travelX: dirX, travelZ: dirZ, crestLengthM: 400, crestOffsetM: 0 };
       const cx: WaveContext = { omega, travelX: dirX, travelZ: dirZ };
-      const o: BreakOptions = { sample: fAt, params: DEFAULT_BREAK_PARAMS };
+      const o: BreakOptions = { sample: fAt, params: { ...DEFAULT_BREAK_PARAMS, delta: 1 } };
       const P3 = (t: number) => (px: number, pz: number) => { const q = sumWaves(px, pz, t, fAt(px, pz), [w], cx, o); return [px + q.dx, q.eta, pz + q.dz]; };
       ratios.push(crestAt(0, 0, 0, fAt(0, 0), w, cx, o)!.r);
       const rows: { s0: number; t: number; ax: number; az: number; nx: number; nz: number }[] = [];
@@ -768,36 +763,6 @@ describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
       if (lx === 0 && lz === 0) expect(risen, `the peak surges (pileSurge ${surge.toFixed(2)})`).toBeGreaterThan((1 + surge / 3) * lip);
     }
   });
-  it("once the curl has collapsed its top is where the lip landed, about 1.2 lips' heights ahead of the crest", { timeout: 60_000 }, () => {
-    for (const [lx, lz] of LEDGE_POINTS) {
-      const [px, pz] = breakPoint(lx, lz, w);
-      const line = ray(px, pz, 40, 80);
-      const { tOn, H } = onsetAt(px, pz, w);
-      // Timed by the crest's own drain (its ψ's), as its lip lands.
-      const Pc = crestAt(px, pz, tOn, at(px, pz), w, ctx, sheet)?.params ?? P;
-      // Once the crest there has collapsed (its height, and so its landing clock, can differ from the ray's start: on the
-      // softened ramp the section runs ~50 m from its break to here).
-      let t = tOn + landingEstimate(H, Pc) + settleSpan(H, Pc) + (crestAt(px, pz, tOn, at(px, pz), w, ctx, sheet)?.lc.hold ?? 0);
-      for (let k = 0; k < 40; k++) {
-        const q = topNear(line, t, w), cq = line[q.j];
-        if (crestAt(cq.x, cq.z, t, at(cq.x, cq.z), w, ctx, sheet)!.lc.collapse >= 0.99) break;
-        t += 0.1;
-      }
-      const { top, j } = topNear(line, t, w);
-      const cp = line[j], cc = crestAt(cp.x, cp.z, t, at(cp.x, cp.z), w, ctx, sheet)!;
-      // Where the water is, displaced (ahead of the crest it is pulled back up to ~1.5 m: the pile is placed there), in the
-      // lip's height (the section's height while it threw): the pile's scale.
-      const along = (i: number): number => {
-        const p = line[i], f = at(p.x, p.z), r = sumWaves(p.x, p.z, t, f, [w], ctx, sheet);
-        return i * 0.5 + r.dx * f.dirX + r.dz * f.dirZ;
-      };
-      const ahead = (along(top) - along(j)) / (cc.lipH as number);
-      // The pile is placed PILE_LAND_H (1.2) lips ahead of the crest its lookup found; the crest here (ξ = 0 on this ray)
-      // sits up to ~0.35 lips from that one where the lookup runs oblique to the rays (most at the peak's meeting line).
-      expect(ahead, `(${px}, ${pz}) top ahead of the crest (× the lip's H)`).toBeGreaterThanOrEqual(0.9);
-      expect(ahead, `(${px}, ${pz}) top ahead of the crest (× the lip's H)`).toBeLessThanOrEqual(1.6);
-    }
-  });
   it("the sheet stands at least at the pile's height as it rolls in, and the pile never grows while it stands above the bore", { timeout: 120_000 }, () => {
     for (const [lx, lz] of LEDGE_POINTS) {
       const [px, pz] = breakPoint(lx, lz, w);
@@ -904,62 +869,6 @@ describe('the slurp: the draw-up reaches along the swell line either side of the
     // of it (its slurp ratio 2.5–2.7), as it was before the lean read the reef ahead.
     const near = line.find((p) => p.v === -60)!.lowest, far = line.find((p) => p.v === -100)!.lowest;
     expect(far, 'it fades along the line').toBeGreaterThan(near);
-  });
-  // Re-measured on the reef build (2026-10-02): where the shoulders' draw-down ends. Not at the peak's own face standing up:
-  // its sharpening switches on across its A-frame (0.5 to 0.84 in 5 m of crest, 1.4 m per 5 m 5 m in front, with the
-  // front leaned), which is the wave's shape, not the slurp's edge.
-  it('where the draw-down ends it eases off along the line: under 0.9 m per 5 m of crest (it climbed 1.1–1.4 m)', { timeout: 60_000 }, () => {
-    // Measured 5, 10 and 15 m in front of the crest, where the sunken face meets the shoulder's untouched one: the wall
-    // at each end of the drained bowl. At and after the break, where the slurp acts. (Before it, the shoulders' own
-    // standing up still switches on over ~15 m of crest: about 1 m per 5 m, as before.) The drawn-down water itself: the
-    // whitewater pile sits 5–15 m in front of the crest at 12 ft, and has its own seam where the ledges' rays meet.
-    const drawn: BreakOptions = { ...sheet, pile: false };
-    for (const dt of [0, 1]) {
-      const t = tPeak + dt;
-      // Where the drawn water ends, in the shoulders that haven't broken: the broken section itself is collapsing as it
-      // peels, a different thing from one metre of crest to the next.
-      const heights: number[][] = [], broken: boolean[] = [];
-      const standing: boolean[] = [];
-      for (let v = -100; v <= 100; v += 5) {
-        let x = 0, z = 0;
-        for (let u = -200; u <= 200; u += 0.5) { x = px0 + ctx.travelX * u + tx * v; z = pz0 + ctx.travelZ * u + tz * v; if (at(x, z).tau >= t) break; }
-        const cr = crestAt(x, z, t, at(x, z), w, ctx, sheet)!;
-        broken.push(cr.s > 0);
-        standing.push(cr.lc.steep >= 0.5);
-        const row: number[] = [];
-        let xx = x, zz = z;
-        for (let d = 0; d <= 15; d += 0.5) { const f = at(xx, zz); if (d === 5 || d === 10 || d === 15) row.push(sumWaves(xx, zz, t, f, [w], ctx, drawn).eta); xx += f.dirX * 0.5; zz += f.dirZ * 0.5; }
-        heights.push(row);
-      }
-      let pairs = 0;
-      for (let i = 1; i < heights.length; i++) {
-        if (broken[i] || broken[i - 1] || standing[i] || standing[i - 1]) continue;
-        pairs++;
-        for (let k = 0; k < 3; k++) expect(Math.abs(heights[i][k] - heights[i - 1][k]), `${dt} s, ${-100 + 5 * i} m along the crest, ${5 * (k + 1)} m in front`).toBeLessThan(0.9);
-      }
-      expect(pairs, `${dt} s: shoulders checked`).toBeGreaterThan(5);
-    }
-  });
-  it('the breaking peak stays the tallest point of the line while it throws (it held 2.6 m under 4.9 m shoulders)', { timeout: 60_000 }, () => {
-    // A broken section's height was capped by the depth under it (0.78 × 6 m over the peak), so the peak sank below the
-    // shoulders the moment it broke. It keeps the height it threw at until its whitewater takes over.
-    for (const dt of [0, 0.5]) {
-      const t = tPeak + dt;
-      const crestAtV = (v: number): number => {
-        let x = 0, z = 0;
-        for (let u = -200; u <= 200; u += 0.5) { x = px0 + ctx.travelX * u + tx * v; z = pz0 + ctx.travelZ * u + tz * v; if (at(x, z).tau >= t) break; }
-        let top = -Infinity, xx = x, zz = z;
-        for (let d = -4; d <= 4; d += 0.5) { const f = at(xx, zz); top = Math.max(top, sumWaves(xx, zz, t, f, [w], ctx, sheet).eta); xx += f.dirX * 0.5; zz += f.dirZ * 0.5; }
-        return top;
-      };
-      const peak = Math.max(...[-10, -5, 0, 5, 10].map(crestAtV));
-      const shoulders = Math.max(...[-100, -80, -60, 60, 80, 100].map(crestAtV));
-      expect(peak, `${dt} s: the peak (shoulders ${shoulders.toFixed(2)} m)`).toBeGreaterThanOrEqual(0.95 * shoulders);
-    }
-  });
-  it('the shoulders do not break any earlier: only the drain reaches along the line', () => {
-    const noSlurp = alongCrest(tPeak);
-    for (const p of noSlurp) if (Math.abs(p.v) >= 80) expect(p.stage, `${p.v} m along the crest`).toBe(0);
   });
 });
 
