@@ -82,6 +82,11 @@ export class FoamField {
     this.reach.value = this.params.driftMps * FOAM_TICK_S;
   }
 
+  /** Its compute passes, for App.prewarm to build while the game loads (built on the first frame, they froze it). */
+  get computePasses(): THREE.ComputeNode[] {
+    return [this.stepPass, this.copyPass, this.clearPass];
+  }
+
   /** The next advance() clears the map and replays clearTime + 2 s. */
   invalidate(): void {
     this.schedule.invalidate();

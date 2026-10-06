@@ -143,6 +143,11 @@ export class Clouds {
     this.refresh.dirty = true;
   }
 
+  /** Its compute passes and its shadow's, for App.prewarm to build while the game loads (built on the first frame, they froze it). */
+  get computePasses(): THREE.ComputeNode[] {
+    return [this.marchPass, this.marchAllPass, this.downsamplePass, this.smoothPass, this.sunPass, ...this.clearPasses, ...this.shadow.computePasses];
+  }
+
   /** Force a full re-march on the next update (the self-tests; a moment applied). */
   invalidate(): void {
     this.refresh.dirty = true;

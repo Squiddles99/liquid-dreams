@@ -106,6 +106,11 @@ export class OceanSimulation {
     this.foamAttr.needsUpdate = true;
   }
 
+  /** Its compute passes, for App.prewarm to build while the game loads (built on the first frame, they froze it). */
+  get computePasses(): THREE.ComputeNode[] {
+    return this.passes;
+  }
+
   update(renderer: THREE.WebGPURenderer, timeS: number, dtS: number): void {
     this.time.value = timeS;
     this.dt.value = dtS;
