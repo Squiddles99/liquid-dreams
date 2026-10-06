@@ -367,3 +367,39 @@ describe('one surface on the game’s sheet (plan 2026-10-06-wave-root-cause ste
   });
 });
 
+
+import { wavesBetween, wavesNear } from '../swell/sets';
+import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
+import { REFRACT_FLOOR_M } from './reefField';
+import { settleSpan } from './breaking';
+import { toActiveWave } from './setWaveModel';
+import { TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from '../ride/takeoff';
+
+describe('the wave she keeps (R2 §3)', () => {
+  it.each([8, 12])('her wave is traced for as long as it breaks on the reef (%i ft): live stations from its onset at the take-off spot until every section has collapsed or its crest leaves the reef', { timeout: 300_000 }, (ft) => {
+    // The ride's field (rideOnSections), the set's biggest wave; every 0.5 s from 2 s before it reaches the spot, for 20 s.
+    // At 7 and 8 ft the live ride bailed at +8.19 s after the peak, deep in the tube: every station of her wave vanished in
+    // one frame (the seed's projection from the origin stopped converging, R2 §3 (a)).
+    const p = DEFAULT_BREAK_PARAMS, c = cloneConditions(DEFAULT_CONDITIONS);
+    c.swell.sizeFt = ft;
+    const f = computeReefField({ bed: downsample(buildBathymetry(DEFAULT_REEF_PARAMS), 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: p.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+    const cx: WaveContext = { omega: f.omega, travelX: f.far.dirX, travelZ: f.far.dirZ };
+    const big = wavesBetween(0, 600, c, DEFAULT_SET_PARAMS).filter((e) => e.arrivalS > 10).slice(0, 8).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+    const spot = takeoffSpot(f, big.heightM, p), minHeightM = minRibbonHeight(fieldBreakingHeight(f, p), p);
+    const arrive = big.arrivalS - takeoffLeadS(f, spot) + TAKEOFF_ARRIVE_S;
+    let last: Station[] = [], gone: number | null = null, stillBreaking = 0;
+    for (let dt = -2; dt <= 20; dt += 0.5) {
+      const t = arrive + dt, events = wavesNear(t, c, DEFAULT_SET_PARAMS), mine = events.findIndex((e) => Math.abs(e.arrivalS - big.arrivalS) < 1e-6);
+      const live = traceStations(f, events.map(toActiveWave), t, cx, { cameraX: spot.x, cameraZ: spot.z, params: p, minHeightM }).filter((e): e is Station => !e.gap && e.wave === mine);
+      if (live.length > 0) { last = live; continue; }
+      if (last.length > 0 && gone === null) {
+        gone = dt;
+        // Gone may only mean done: no station of the last live set still breaking short of its settle span (each section
+        // collapsed to the bore, or handed back as the crest leaves the reef). Not "vanished with sections still throwing".
+        stillBreaking = last.filter((s) => s.tb !== null && s.tb < settleSpan(s.H, p)).length;
+      }
+    }
+    expect(last.length).toBeGreaterThan(0);
+    expect({ gone, stillBreaking }).toMatchObject({ stillBreaking: 0 });
+  });
+});
