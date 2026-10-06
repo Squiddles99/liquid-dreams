@@ -1,6 +1,7 @@
 // The loading cover (loading screens spec): adopts index.html's #ld-cover, runs the start-up bar and its dissolve, and
 // covers Paddle out and Back to the dune. The cover is the same element throughout: hidden between uses, never rebuilt.
 import { BarFollower, BootProgress, type StageId } from './loadingProgress';
+import { parseSlides, pickSlide, slideImage } from './loadingSlides';
 import { SmoothFramesGate, holdMet } from './smoothFrames';
 
 export interface CoverOptions {
@@ -9,7 +10,6 @@ export interface CoverOptions {
   calm: boolean;
   /** Called once when the dissolve starts. */
   onDissolve?: () => void;
-  logo?: 'hero' | 'corner';
 }
 
 const COVER_IN_MS = 400;
@@ -88,7 +88,7 @@ export class LoadingScreen {
     const fromOut = this.phase === 'out';
     this.setCalm(opts.calm);
     this.el.dataset.mode = 'cover';
-    this.el.dataset.logo = opts.logo ?? 'hero';
+    this.nextSlide();
     this.showLine(opts.line);
     this.el.classList.remove('is-out');
     if (!fromOut) this.el.classList.remove('is-in');
@@ -185,6 +185,30 @@ export class LoadingScreen {
       if (this.phase !== 'gone') this.raf = requestAnimationFrame(step);
     };
     this.raf = requestAnimationFrame(step);
+  }
+
+  /**
+   * A fresh picture for this cover, never the one just shown when there is another. It is swapped in only once decoded,
+   * so the cover never shows a half-drawn picture; until then the last one stays.
+   */
+  private nextSlide(): void {
+    const shown = this.el.dataset.slide ?? null;
+    const name = pickSlide(parseSlides(this.el.dataset.slides), Math.random(), shown);
+    const img = this.el.querySelector<HTMLImageElement>('.ld-cover-bg img');
+    if (!name || name === shown || !img) return;
+    const next = new Image();
+    const { src, srcset } = slideImage(name);
+    next.sizes = '100vw';
+    next.srcset = srcset;
+    next.src = src;
+    void next.decode().then(
+      () => {
+        img.srcset = srcset;
+        img.src = src;
+        this.el.dataset.slide = name;
+      },
+      () => {},
+    );
   }
 
   private showLine(text: string): void {
