@@ -60,6 +60,32 @@ class MatchTest(unittest.TestCase):
         self.assertLess(float(np.abs(s[105:115, 5:-5, 0] - 1).mean()), 0.1)
 
 
+class FramePickTest(unittest.TestCase):
+    def test_keeps_all_frames_when_they_fit(self):
+        self.assertEqual(plateArt.pick_frames(80, 80), list(range(80)))
+
+    def test_spreads_a_longer_loop_evenly_over_the_atlas(self):
+        picks = plateArt.pick_frames(100, 80)
+        self.assertEqual(len(picks), 80)
+        self.assertEqual(picks[0], 0)
+        self.assertEqual(picks, sorted(set(picks)))
+        steps = np.diff(picks + [100])  # the wrap back to frame 0 is a step like the others
+        self.assertLessEqual(int(steps.max()) - int(steps.min()), 1)
+
+
+class FiguresSwayTest(unittest.TestCase):
+    def test_people_move_head_to_toe_from_their_cut_out_not_the_hair_mask(self):
+        mask = plateArt.Image.new('L', (160, 90), 0)
+        mask.paste(255, (60, 10, 100, 20))  # ChatGPT's crew mask: only hair and hats
+        plate = plateArt.Image.new('RGBA', (160, 90), (0, 0, 0, 0))
+        plate.paste((120, 90, 70, 255), (60, 10, 100, 85))  # the person, head to toe
+        s = np.asarray(plateArt.sway_map(mask, plate, (160, 90), figures=True)).astype(float)
+        self.assertGreater(s[80, 80], 200)  # the feet move as much as the head
+        self.assertGreater(s[15, 80], 200)
+        self.assertGreater(s[50, 80], 200)  # and the body between
+        self.assertLess(s[45, 20], 5)
+
+
 class FlowPackTest(unittest.TestCase):
     def test_pack_round_trips_to_a_sixteenth_of_a_pixel(self):
         rng = np.random.default_rng(1)

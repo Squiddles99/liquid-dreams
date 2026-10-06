@@ -68,3 +68,24 @@ export function backdropFade(s: FadeState | null): number {
 export function easeToward(current: number, target: number, dtS: number, tauS: number): number {
   return current + (target - current) * (1 - Math.exp(-Math.max(0, dtS) / tauS));
 }
+
+/** Where a painted layer sits on the ground painting: its top-left and its size, in the ground's uv (both are 16:9). */
+export interface LayerRect {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+/** Ground uv → the layer's own uv. */
+export function layerUV(u: number, v: number, r: LayerRect): [number, number] {
+  return [(u - r.x) / r.scale, (v - r.y) / r.scale];
+}
+
+export const insideLayer = (u: number, v: number): boolean => u >= 0 && u <= 1 && v >= 0 && v <= 1;
+
+/**
+ * The crew on Conditions (Andrew's conditions-gang painting, sized like his conditions-select-screen mockup): 48 % of the
+ * ground's size, so they stand ~46 % of the screen tall; the trio's centre (48.3 % across their own picture) at 60 %
+ * across, and their feet (97.1 % down it) on the track at 92 % down, leaving the break and the sets above them.
+ */
+export const CREW_RECT: LayerRect = { x: 0.6 - 0.48 * 0.483, y: 0.92 - 0.48 * 0.971, scale: 0.48 };

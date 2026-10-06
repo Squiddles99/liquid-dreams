@@ -10,6 +10,9 @@ One folder per painting, art/lookout/<plate>/ (ground.webp, ground-mask.png, shr
                                            10×8 atlas, R = dx, G = dy in 1920-px pixels, stored as 128 + 16·d (±7.9 px)
   public/lookout/<plate>-flow.json         { frames, loopS, grid: [240, 135], tiles: [10, 8] }
 
+A folder whose name ends in "-crew" holds people, not plants (the crew on Conditions): they move head to toe, so their
+sway map is the mask itself, not weighted up from a rooted base, and the game gives them no wind lean.
+
 A ground original may be magenta (#FF00FF, as ChatGPT draws it) or already cut (Canva's background remover): the key
 only runs where there is no alpha.
 
@@ -53,9 +56,14 @@ def cut(img):
     return Image.fromarray((key(np.asarray(img.convert("RGB"))) * 255).round().astype(np.uint8), "RGBA")
 
 
-def sway_map(mask, plate, size=(960, 540)):
-    """Andrew's mask, plus plant-coloured pixels it missed, weighted from base (still) to tip (moves most)."""
+def sway_map(mask, plate, size=(960, 540), figures=False):
+    """Andrew's mask, plus plant-coloured pixels it missed, weighted from base (still) to tip (moves most). With
+    `figures`, the people's own cut-out instead (head to toe: a crew mask from ChatGPT marks only hair), grown a few
+    pixels so an arm's swing stays inside it."""
     w, h = size
+    if figures:
+        grown = plate.getchannel("A").resize(size, Image.LANCZOS).filter(ImageFilter.MaxFilter(5))
+        return grown.filter(ImageFilter.GaussianBlur(1))
     m = np.asarray(mask.convert("L").resize(size, Image.LANCZOS)).astype(np.float32) / 255
     p = np.asarray(plate.resize(size, Image.LANCZOS)).astype(np.float32) / 255
     plant = ((p[..., 1] > p[..., 0] * 0.92) & (p[..., 3] > 0.5)).astype(np.float32)
@@ -102,7 +110,7 @@ def build(name, flow=True):
     src = os.path.join(SRC, name)
     plate = cut(Image.open(os.path.join(src, "ground.webp")))
     save_sizes(name, plate)
-    sway = sway_map(Image.open(os.path.join(src, "ground-mask.png")), plate)
+    sway = sway_map(Image.open(os.path.join(src, "ground-mask.png")), plate, figures=name.endswith("-crew"))
     sway.save(os.path.join(OUT, f"{name}-sway.png"), optimize=True)
     print(f"{name}-sway.png: {sway.size[0]} x {sway.size[1]}")
     if flow:
@@ -117,12 +125,22 @@ def main(argv):
         build(name, flow="--no-flow" not in argv)
 
 
-def frames_luma(path):
+def pick_frames(n, k):
+    """k of a loop's n frames, evenly spaced (the wrap back to frame 0 included): all of them when they fit."""
+    return list(range(n)) if n <= k else [i * n // k for i in range(k)]
+
+
+def frames_luma(path, k=FLOW_TILES[0] * FLOW_TILES[1]):
+    """The loop's frames as 1920×1080 luma, at most `k` of them (the atlas's tiles), and the whole loop's length (s)."""
     anim = Image.open(path)
-    lum, durs = [], []
+    n = anim.n_frames
+    durs = []
     for fr in ImageSequence.Iterator(anim):
         durs.append(fr.info.get("duration", 50) or 50)
-        lum.append(np.asarray(fr.convert("RGB").resize((1920, 1080), Image.LANCZOS).convert("L")).astype(np.float32))
+    lum = []
+    for i in pick_frames(n, k):
+        anim.seek(i)
+        lum.append(np.asarray(anim.convert("RGB").resize((1920, 1080), Image.LANCZOS).convert("L")).astype(np.float32))
     return lum, sum(durs) / 1000.0
 
 

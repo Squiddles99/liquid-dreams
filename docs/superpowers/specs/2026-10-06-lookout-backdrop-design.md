@@ -139,3 +139,20 @@ originals in `art/lookout/`, it writes what the game loads into `public/lookout/
 
 - Supply the upscaled `ground.png` (Canva, from the magenta original). Everything else above already exists.
 - If ChatGPT can make the shrub loop 8–10 s at the same quality, the longer loop is better. Not required.
+
+## Addendum 2026-10-07: the crew on Conditions (Andrew's art, ruled overnight)
+
+Andrew supplied the crew from behind (`conditions-gang-*`: hi-res cut-out, 100-frame idle loop on magenta, a hair mask)
+and asked for a finished Conditions screen. Rulings made while he slept, to review:
+
+- **A second painted layer over the ground** (`LookoutBackdrop` stacks layers): same light, fade and cut-out as the
+  ground. Placed by a rect in the ground's uv: 48 % of its size, centred at 60 % across, feet at 92 % down. This matches
+  his `conditions-select-screen.png` mockup (the crew about 46 % of the screen tall, the break showing between them
+  and the menu).
+- **People move at their own pace**, not the wind's, and don't lean. Their idle loop plays at 1× with no
+  half-loop blend.
+- **The motion region is the crew's cut-out, not the supplied mask.** The mask marks only hair and hats, but the loop
+  moves whole bodies.
+- **100 frames are sampled evenly to the atlas's 80.** The loop's length (5 s) is kept.
+- **Not done, for Andrew's eye:** a soft contact shadow under their feet, and the 3D heath that shows past the painting's
+  bank at the far right.
