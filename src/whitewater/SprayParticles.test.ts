@@ -21,13 +21,9 @@ describe('the spray particles on the GPU', () => {
 });
 
 describe('the spray particles ahead of the first break', () => {
-  it('compiles its birth, step and clear passes (the birth pass otherwise first builds when a lip first throws)', async () => {
-    const spray = new SprayParticles(new Sky(DEFAULT_ATMOSPHERE));
-    const compiled: unknown[][] = [];
-    const renderer = { compileComputeAsync: async (n: unknown[]) => { compiled.push(n); } } as unknown as THREE.WebGPURenderer;
-    await spray.compileAsync(renderer);
-    expect(compiled.length).toBe(1);
-    expect(compiled[0].length).toBe(3);
-    expect(compiled[0].every((n) => (n as { isComputeNode?: boolean }).isComputeNode)).toBe(true);
+  it('hands over its birth, step and clear passes to prewarm (the birth pass otherwise first builds when a lip first throws)', () => {
+    const passes = new SprayParticles(new Sky(DEFAULT_ATMOSPHERE)).computePasses;
+    expect(passes.length).toBe(3);
+    expect(passes.every((n) => n.isComputeNode)).toBe(true);
   });
 });
