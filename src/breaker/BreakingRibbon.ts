@@ -742,15 +742,17 @@ export class BreakingRibbon {
       const A: N = f0.x, phase: N = f0.y, curl: N = f0.w, tip: N = f1.x, crest: N = f1.y;
       const S = a.xy, n = a.zw;
       const tHat = vec2(n.y.negate(), n.x).toVar();
-      // The sample: its offset from the sheet (u, y) and its home, in units of A (wombSection.sectionPoint).
-      const q: N = sections.element(i.mul(PROFILE_SAMPLES).add(j)).xyz.toVar();
+      // The sample (wombSection.SectionSample, sectionPoint): a = (u − w·su, y − w·sy), its home and its sheet weight w, in
+      // units of A: placed at w × the sheet at its home + A × a (the sheet plus the drawing's offset where w is 1, the
+      // drawn curve itself where w is 0).
+      const q: N = sections.element(i.mul(PROFILE_SAMPLES).add(j)).toVar();
       const home = q.z.mul(A).toVar();
       const xzHome = S.add(n.mul(home)).toVar();
       const smooth = this.surfaceFn(this.surface.smooth, 'ribbonSmooth');
       const d = vec3(smooth(xzHome)).toVar();
       const base = vec2(home.add(dot(d.xz, n)), d.y).toVar();
       const edgeRow = j.equal(int(0)).or(j.equal(int(LAST)));
-      const pos = select(edgeRow, base, base.add(q.xy.mul(A))).toVar();
+      const pos = select(edgeRow, base, base.mul(q.w).add(q.xy.mul(A))).toVar();
       // The profile's u along n; the lateral displacement at home carried unchanged along t̂.
       const xz = S.add(n.mul(pos.x)).add(tHat.mul(dot(d.xz, tHat)));
       const skirt = select(local.equal(int(0)).or(local.equal(int(V - 1))), float(SKIRT_DEPTH_M), float(0.0));
@@ -769,9 +771,9 @@ export class BreakingRibbon {
       const thrown = smoothstep(0.4, 0.55, phase).mul(float(1.0).sub(smoothstep(1.2, 1.45, phase)));
       const lipness = float(1.0).sub(smoothstep(0.6, 1.0, off.div(reach))).mul(thrown).mul(curl);
       const jm = (int(floor(tip.mul(2.0).sub(float(j)).add(0.5))) as N).clamp(int(0), int(LAST));
-      // (The mirrored sample's offset and home: the sheet under the two read as level between their homes.)
-      const qm = sections.element(i.mul(PROFILE_SAMPLES).add(jm)).xyz;
-      const thickness = length(vec2(q.x.sub(qm.x).add(q.z.sub(qm.z)), q.y.sub(qm.y))).mul(A);
+      // (The mirrored sample's a, home and w: the sheet under the two read as level between their homes, its u as the home.)
+      const qm = sections.element(i.mul(PROFILE_SAMPLES).add(jm));
+      const thickness = length(vec2(q.x.add(q.w.mul(q.z)).sub(qm.x.add(qm.w.mul(qm.z))), q.y.sub(qm.y))).mul(A);
       extras.element(idx).assign(vec4(thickness as N, lipness as N, 0.0, curl));
       // The home xz, and how far the curve departs from the sheet here: the develop pass moves the home into homes and
       // writes the detail coordinate over it, keeping w.

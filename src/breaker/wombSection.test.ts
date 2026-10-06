@@ -4,7 +4,7 @@ import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, TIP_KNOT, TROUGH_KNOT, 
 import {
   type SectionInput, type SectionNumbers, CURL_PHASE, SEAT_DIP_UNITS, SECTION_CREST, SECTION_FLOOR, SECTION_HAND_BACK_S, SECTION_TIP, SECTION_TROUGH, STAND_LEAD_S,
   STOOD_PHASE, collapseSpan, flightTime, sectionEnd, sectionKnots, sectionKnot, sectionOf, sectionPhase, sectionScale, sectionWeight, seatShift, tubeHold,
-  wombSection,
+  wombSection, type SheetAlong, sectionSamples, sectionPoint, curlWeight, sampleWeight, SHEET_KNOTS, CURL_KNOTS,
 } from './wombSection';
 
 const P = { ribbonOnset: 0.6 };
@@ -156,5 +156,43 @@ describe('one surface (plan 2026-10-06-wave-root-cause step 3, Andrew’s ruling
         if (!onCurl) expect(turn, `phase ${phase} sample ${j} home ${s.homes[j].toFixed(2)}`).toBeLessThan((10 * Math.PI) / 180);
       }
     }
+  });
+});
+
+describe('the drawn curl is interpolated as drawn, the sheet as the sheet (SectionSample, sampleWeight)', () => {
+  /** A sheet with a face as steep as the leaned swell's in front of the crest: crest 0.88 A at u 0, down to a trough of
+   * −0.45 A by u 1.2 A, flat beyond (the 8 ft set's at the curl, in units of A). */
+  const faced: SheetAlong = (u) => {
+    const t = Math.min(1, Math.max(0, u / 1.2)), face = 0.88 - 1.33 * t * t * (3 - 2 * t);
+    return [u, u < 0 ? 0.88 * Math.cos((u / 7) * (Math.PI / 2)) : face];
+  };
+  const numbers: SectionNumbers = { A: 1, phase: 0.54, hollow: 1, rho: 1 };
+
+  it('between the floor knot and the trough knot the floor never dips under the trough knot: no hole in front of the face (Andrew, 8 ft, 2026-10-06)', () => {
+    const { knots, curve } = sectionSamples(numbers, faced);
+    const trough = knots[SECTION_TROUGH], floor = knots[SECTION_FLOOR];
+    const pts = curve.map((q) => sectionPoint(q, 1, faced));
+    const between = pts.filter((p) => p[0] > floor[0] + 1e-6 && p[0] < trough[0] - 1e-6 && p[1] < 0.5);
+    expect(between.length).toBeGreaterThan(8);
+    for (const p of between) expect(p[1], `u ${p[0].toFixed(2)}`).toBeGreaterThan(trough[1] - 0.03);
+    // And from the trough knot out to the front knot the surface climbs to the sheet without a second dip.
+    const out = pts.filter((p) => p[0] >= trough[0] - 1e-6 && p[0] <= knots[SECTION_TROUGH + 1][0] + 1e-6);
+    for (let i = 1; i < out.length; i++) expect(out[i][1], `u ${out[i][0].toFixed(2)}`).toBeGreaterThanOrEqual(out[i - 1][1] - 2e-3);
+  });
+
+  it('the sheet weight is 1 on the sheet, 1 − the curl weight on the curl, eased over the two join spans; and 1 everywhere at phase 0', () => {
+    const curl = curlWeight(numbers);
+    expect(curl).toBe(1);
+    expect(sampleWeight(0, curl)).toBe(1);
+    expect(sampleWeight((SHEET_KNOTS - 1) * 24, curl)).toBe(1);
+    expect(sampleWeight((SHEET_KNOTS - 1) * 24 + 12, curl)).toBeCloseTo(0.5, 12);
+    expect(sampleWeight(SHEET_KNOTS * 24, curl)).toBe(0);
+    expect(sampleWeight((SHEET_KNOTS + 3) * 24 + 7, curl)).toBe(0);
+    expect(sampleWeight((SHEET_KNOTS + CURL_KNOTS) * 24, curl)).toBe(1);
+    expect(sampleWeight((2 * SHEET_KNOTS + CURL_KNOTS - 1) * 24, curl)).toBe(1);
+    for (let d = 0; d <= (2 * SHEET_KNOTS + CURL_KNOTS - 1) * 24; d++) expect(sampleWeight(d, 0)).toBe(1);
+    // At phase 0 the section is the sheet, sample by sample.
+    const { curve } = sectionSamples({ A: 1, phase: 0, hollow: 1, rho: 1 }, faced);
+    for (const q of curve) { const p = sectionPoint(q, 1, faced); expect(Math.abs(p[1] - faced(p[0])[1])).toBeLessThan(1e-3); }
   });
 });

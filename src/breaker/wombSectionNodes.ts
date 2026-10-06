@@ -168,6 +168,8 @@ export function curlReadHomeNode(k: N, numbers: { phase: N; hollow: N; rho: N },
 
 export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, keys: N, knots: (k: N) => N, write: (j: N, v: N) => void, read: (r: number) => N): WombFrameNodes {
   const ph = clamp(numbers.phase, 0.0, 2.0).toVar();
+  // (write(j, v): sample j's vec4 (a u, a y, home, w): wombSection.SectionSample; the vertex pass places it at w × the sheet
+  // at the home + A × a.)
   const { knot, drawn, life } = drawnNode(numbers, keys);
   // wombSection.sectionFrameKnots: the sheet at its ends, the curl from the sheet toward the drawing (the sheet read in
   // the passes before: SHEET_READ). A knot is a pair: vec3 (u, y, home) and vec2 (the sheet at its home).
@@ -203,10 +205,14 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, ke
     knots(int(KNOT_VEC4S * k + 2)).assign(vec4(mp.z, ms, 0.0));
   });
 
-  /** wombProfile.hermitePoint over the section's knots: (u, y, home) and (the offset from the sheet u − su, y − sy). */
-  const dense = (d: N): { p: N; off: N } => {
+  /** wombProfile.hermitePoint over the section's knots: (u, y, home), the sheet weight w (wombSection.sampleWeight: 1 at the
+   * sheet knots, 1 − the curl's weight at the curl knots, eased between over the join spans) and a = (u − w·su, y − w·sy)
+   * (wombSection.SectionSample: the vertex pass places the sample at w × the sheet at its home + A × a). */
+  const isSheetKnot = (k: N): N => k.lessThan(int(SHEET_KNOTS)).or(k.greaterThanEqual(int(SHEET_KNOTS + CURL_KNOTS)));
+  const curlW = float(1.0).sub(curl).toVar();
+  const dense = (d: N): { p: N; off: N; w: N } => {
     const lastE = int(KNOT_VEC4S * (SECTION_KNOTS - 1));
-    const p = vec3(knots(lastE).xyz).toVar(), off = vec2(knots(lastE).xy.sub(knots(lastE.add(1)).xy)).toVar();
+    const p = vec3(knots(lastE).xyz).toVar(), off = vec2(knots(lastE).xy.sub(knots(lastE.add(1)).xy)).toVar(), w = float(1.0).toVar();
     If(d.lessThan(int((SECTION_KNOTS - 1) * SPAN_SAMPLES)), () => {
       const sp = d.div(int(SPAN_SAMPLES)).toVar(), s = float(d.sub(sp.mul(int(SPAN_SAMPLES)))).div(SPAN_SAMPLES).toVar();
       const ea = sp.mul(KNOT_VEC4S), eb = sp.add(1).mul(KNOT_VEC4S);
@@ -216,9 +222,11 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, ke
       const h00 = s3.mul(2.0).sub(s2.mul(3.0)).add(1.0), h10 = dt.mul(s3.sub(s2.mul(2.0)).add(s)), h01 = s2.mul(3.0).sub(s3.mul(2.0)), h11 = dt.mul(s3.sub(s2));
       p.assign(a0.xyz.mul(h00).add(vec3(a1.zw, a2.x).mul(h10)).add(b0n.xyz.mul(h01)).add(vec3(b1n.zw, b2n.x).mul(h11)));
       const sv = a1.xy.mul(h00).add(a2.yz.mul(h10)).add(b1n.xy.mul(h01)).add(b2n.yz.mul(h11));
-      off.assign(p.xy.sub(sv));
+      const wa = select(isSheetKnot(sp), float(1.0), curlW), wb = select(isSheetKnot(sp.add(1)), float(1.0), curlW);
+      w.assign(wa.add(wb.sub(wa).mul(smoothNode(s))));
+      off.assign(p.xy.sub(sv.mul(w)));
     });
-    return { p, off };
+    return { p, off, w };
   };
   /** wombProfile.turnAngle, on (u, y). */
   const turn = (a: N, b: N): N => {
@@ -228,7 +236,7 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, ke
 
   // The walk (wombProfile.curveSamples): the total, then the samples.
   // The walk's points: (u, y, home) and the offset, as one vec4 (u, y, home) + vec2 pair; the spread is on (u, y).
-  const pointOf = (d: N): { p: N; off: N } => { const q = dense(d); return { p: vec3(q.p).toVar(), off: vec2(q.off).toVar() }; };
+  const pointOf = (d: N): { p: N; off: N; w: N } => { const q = dense(d); return { p: vec3(q.p).toVar(), off: vec2(q.off).toVar(), w: float(q.w).toVar() }; };
   const prev = vec3(pointOf(int(0)).p).toVar(), cur = vec3(pointOf(int(1)).p).toVar();
   const s0 = float(0.0).toVar(), s1 = length(cur.xy.sub(prev.xy)).toVar();
   Loop({ start: 2, end: SECTION_DENSE_POINTS, name: 'd' } as N, ({ d }: N) => {
@@ -240,9 +248,9 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, ke
   const n = CURVE_SAMPLES, count: N = int(0).toVar();
   const mark = { crest: int(n - 1).toVar(), tip: int(n - 1).toVar(), floor: int(n - 1).toVar() };
   const seen = { crest: int(0).toVar(), tip: int(0).toVar(), floor: int(0).toVar() };
-  /** Sample j: the offset and home (o: offset.xy, home) between two dense points by f. */
-  const at = (j: N, o: N): void => write(int(n - 1).sub(j), vec4(o, 0.0));
-  const prevO = vec3(0.0).toVar(), curO = vec3(0.0).toVar();
+  /** Sample j: (a.xy, home, w) between two dense points by f (wombSection.SectionSample's a, h, w). */
+  const at = (j: N, o: N): void => write(int(n - 1).sub(j), vec4(o));
+  const prevO = vec4(0.0).toVar(), curO = vec4(0.0).toVar();
   /** One segment of the walk: dense point dIdx − 1 (q0, spread a) to dIdx (q1, spread b). */
   const visit = (q0: N, q1: N, a: N, b: N, dIdx: N): void => {
     for (const key of ['crest', 'tip', 'floor'] as const) {
@@ -259,8 +267,8 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, ke
       count.addAssign(int(1));
     });
   };
-  /** (offset u, offset y, home) of a dense point. */
-  const oh = (q: { p: N; off: N }): N => vec3(q.off, q.p.z);
+  /** (a u, a y, home, w) of a dense point. */
+  const oh = (q: { p: N; off: N; w: N }): N => vec4(q.off, q.p.z, q.w);
   {
     const q0 = pointOf(int(0)), q1 = pointOf(int(1));
     prev.assign(q0.p); cur.assign(q1.p); prevO.assign(oh(q0)); curO.assign(oh(q1));

@@ -800,7 +800,14 @@ export class App {
    */
   private updateUnderwater(): void {
     this.waterVolume.followCamera(this.camera.position);
-    const water = this.probe.heightAt(0);
+    const cam = this.camera.position;
+    let water = this.probe.heightAt(0);
+    // Under the breaking ribbon the surface is the drawn section, not the sheet under it: inside a 6 ft tube the sheet stood
+    // 1.45 m over an eye at 0.29 m and the view went underwater (Opus, 2026-10-06). The eye in the tube is over the floor.
+    if (water !== null && this.ribbonStations.length > 0) {
+      const drawn = this.rideWater(this.clock.simTime)(cam.x, cam.z);
+      if (drawn.onSection) water = drawn.y;
+    }
     // The lineup camera too: a steep face can outrun its float and bury it for a second or two as a set passes.
     const under = water === null ? this.underwater : nextUnderwater(this.underwater, this.camera.position.y, water);
     const quiet = this.lensQuiet;
