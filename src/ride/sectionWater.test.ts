@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Station } from '../breaker/crestTrace';
-import { profileCurve, profileKnots } from '../breaker/wombProfile';
+import { profileKnots } from '../breaker/wombProfile';
+import { sectionPoint, sectionSamples } from '../breaker/wombSection';
 import { lowestWetCrossing, withSections } from './sectionWater';
 import { flatWater } from './water';
 
@@ -12,10 +13,11 @@ function crest(section: Station['section']): Station[] {
 }
 
 describe('sectionWater: the ride stands on the drawn sections', () => {
-  it('is the section where the ribbon draws, the sheet elsewhere', () => {
+  it('is the section where the ribbon draws (on this water’s own sheet), the sheet elsewhere', () => {
     const sec = { A: 3, phase: 0.2, hollow: 1, rho: 1 };
     const water = withSections(flatWater(0.5), crest(sec), 0.5);
-    const c = profileCurve(sec.phase, sec.hollow);
+    const flat = (u: number): [number, number] => [u, 0];
+    const c = sectionSamples(sec, flat).curve.map((q): [number, number] => { const p = sectionPoint(q, 3, flat); return [p[0] / 3, p[1] / 3]; });
     for (const u of [0.3, 1.5, 4, 6]) {
       const want = 0.5 + 3 * lowestWetCrossing(c, u / 3)!.y;
       expect(water(u, 0).y).toBeCloseTo(want, 6);
@@ -37,11 +39,11 @@ describe('sectionWater: the ride stands on the drawn sections', () => {
     expect(y).toBeLessThan(0.5 * 3 * k[3][1]);
   });
 
-  it('weighs in by the station’s ρ: half way at ρ 0.5', () => {
-    const sec = { A: 3, phase: 0.2, hollow: 1, rho: 0.5 };
-    const water = withSections(flatWater(0), crest(sec), 0);
-    const full = withSections(flatWater(0), crest({ ...sec, rho: 1 }), 0);
-    expect(water(0, 0).y).toBeCloseTo(0.5 * full(0, 0).y, 6);
+  it('at ρ 0 (a traced line’s cut end) and at phase 0 it is the sheet', () => {
+    for (const sec of [{ A: 3, phase: 1, hollow: 1, rho: 0 }, { A: 3, phase: 0, hollow: 1, rho: 1 }]) {
+      const water = withSections(flatWater(0.5), crest(sec), 0.5);
+      for (let u = -20; u <= 20; u += 0.5) expect(water(u, 0).y).toBe(0.5);
+    }
   });
 });
 

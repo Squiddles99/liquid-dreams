@@ -169,7 +169,7 @@ describe('BreakingRibbon tint overlay', () => {
 });
 
 describe('BreakingRibbon ahead of the first break', () => {
-  it('compiles its six compute passes and the footprint (into the footprint target), then restores the render target', async () => {
+  it('compiles its eight compute passes (the sheet's two read passes first) and the footprint (into the footprint target), then restores the render target', async () => {
     const sim = new OceanSimulation();
     const grid = { x0: 0, z0: 0, cellM: 1, nx: 4, nz: 4 };
     const bed = { grid, bed: new Float32Array(16).fill(-10), sand: new Float32Array(16), weed: new Float32Array(16) };
@@ -186,7 +186,7 @@ describe('BreakingRibbon ahead of the first break', () => {
     } as unknown as THREE.WebGPURenderer;
     await ribbon.compileAsync(renderer);
     expect(computes.length).toBe(1);
-    expect(computes[0].length).toBe(6);
+    expect(computes[0].length).toBe(8);
     expect(scenes.length).toBe(1);
     expect((scenes[0].scene as THREE.Scene).isScene).toBe(true);
     expect(scenes[0].target).toBe(ribbon.footprintTarget);

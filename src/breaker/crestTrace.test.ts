@@ -14,7 +14,7 @@ import { type ReefField, computeReefField, sampleField } from './reefField';
 import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi, sumWaves } from './setWaveModel';
 import { cloneConditions } from '../conditions/defaults';
 import { setWaveHeight } from './reefReport';
-import { sectionOf, sectionScale } from './wombSection';
+import { SECTION_CREST, SECTION_TROUGH, sectionKnots, sectionOf, sectionPoint, sectionSamples, sectionScale } from './wombSection';
 
 const P = DEFAULT_BREAK_PARAMS;
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
@@ -301,30 +301,66 @@ describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause s
 
 describe('the lip lands (plan 2026-10-06-wave-root-cause step 2)', () => {
   const swell = breakOptions(field, { ...P, enabled: false });
-  it("at the round barrel the lip's tip is within 0.05 A of the water under it, at 6 and 8 ft", { timeout: 120_000 }, () => {
+  it("at the round barrel the lip's end is within 0.05 A of the water under it, at 6 and 8 ft", { timeout: 120_000 }, () => {
     for (const ft of [6, 8]) {
       const w = testWave(setWaveHeight(ft));
       let n = 0;
       for (let t = -2; t <= 10; t += 0.5) {
         for (const S of live(traceStations(field, [w], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 2 }))) {
-          if (Math.abs(S.section.phase - 1) > 0.03 || S.section.hollow < 0.5) continue;
+          // The barrel's hold (phase 1, the lip landed): not the last of its flight.
+          if (S.section.phase < 0.999 || S.section.phase > 1.03 || S.section.hollow < 0.5) continue;
           const sheet = (u: number): [number, number] => {
             const x = S.x + S.nx * u, z = S.z + S.nz * u, r = sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, swell);
             return [u + r.dx * S.nx + r.dz * S.nz, r.eta];
           };
-          const sec = sectionOf(S.section, sheet), pts = sec.points;
-          // The water under the tip: the front (from the front edge to the floor), at the tip's u.
+          // The lip's end as drawn (its lowest sample around the rounded tip), and the water under it: the front (from the
+          // front edge to the floor), at its u.
+          const { curve: knotted, marks } = sectionSamples(S.section, sheet), A = S.section.A;
+          const curve = knotted.map((q) => { const p = sectionPoint(q, A, sheet); return [p[0] / A, p[1] / A]; });
+          let end = curve[marks.tip];
+          for (let j = marks.tip - 4; j <= marks.tip + 4; j++) if (curve[j][1] < end[1]) end = curve[j];
           let y = Number.NaN;
-          for (let i = 0; i + 1 < pts.length / 2; i++) {
-            const [a, b] = [pts[i], pts[i + 1]];
-            if ((a[0] - sec.tip[0]) * (b[0] - sec.tip[0]) <= 0) { y = a[1] + ((b[1] - a[1]) * (sec.tip[0] - a[0])) / (b[0] - a[0] || 1e-9); break; }
+          for (let j = curve.length - 1; j > marks.floor; j--) {
+            const [a, b] = [curve[j], curve[j - 1]];
+            if ((a[0] - end[0]) * (b[0] - end[0]) <= 0) { y = a[1] + ((b[1] - a[1]) * (end[0] - a[0])) / (b[0] - a[0] || 1e-9); break; }
           }
           n++;
-          expect(Math.abs(sec.tip[1] - y) / S.section.A, `${ft} ft at t ${t}`).toBeLessThan(0.05);
+          expect(Math.abs(end[1] - y), `${ft} ft at t ${t}`).toBeLessThan(0.05);
         }
       }
       expect(n, `${ft} ft: stations at the round barrel`).toBeGreaterThan(10);
     }
+  });
+});
+
+describe('one surface on the game’s sheet (plan 2026-10-06-wave-root-cause step 3)', () => {
+  const lean = { ...breakOptions(field, P), pile: false, shape: 'lean' as const };
+  it('every station’s section is the sheet itself beyond its shoulder and front knots at every phase, and everywhere at phase 0 (< 1 mm), at 6 and 8 ft', { timeout: 300_000 }, () => {
+    let checked = 0;
+    for (const ft of [6, 8]) {
+      const w = testWave(setWaveHeight(ft));
+      for (let t = -3; t <= 8; t += 1) {
+        const st = live(traceStations(field, [w], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 4 }));
+        for (const S of st) {
+          const sheet = (u: number): [number, number] => {
+            const x = S.x + S.nx * u, z = S.z + S.nz * u, r = sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, lean);
+            return [u + r.dx * S.nx + r.dz * S.nz, r.eta];
+          };
+          const A = S.section.A;
+          for (const phase of [0, 0.5, 1, 1.5]) {
+            const n = { ...S.section, phase }, sec = sectionOf(n, sheet), k = sectionKnots(n, sheet);
+            const back = A * k[SECTION_CREST - 1][2], front = A * k[SECTION_TROUGH + 1][2];
+            sec.points.forEach((p, j) => {
+              if (phase > 0 && sec.homes[j] > back && sec.homes[j] < front) return;
+              const q = sheet(sec.homes[j]);
+              expect(Math.hypot(p[0] - q[0], p[1] - q[1]), `${ft} ft t ${t} phase ${phase} home ${sec.homes[j].toFixed(2)} of ${A.toFixed(2)}`).toBeLessThan(1e-3);
+            });
+            checked++;
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
   });
 });
 

@@ -1,13 +1,13 @@
 import type { Station, StationEntry } from '../breaker/crestTrace';
-import { frontHeight, interiorWeight, seatScale, seatedSlope, seatedY } from '../breaker/wombSection';
-import { CREST_KNOT, FLOOR_KNOT, FRONT_KNOT, type P2, TROUGH_KNOT, profileKnots, profileSamples } from '../breaker/wombProfile';
+import { EDGE_OUTER_UNITS, curlWeight, sectionPoint, sectionSamples } from '../breaker/wombSection';
+import type { P2 } from '../breaker/wombProfile';
 import type { WaterFn } from './water';
 
 /**
  * The water the ride stands on where the breaking ribbon draws (plan 2026-10-05-womb-profile-step3 3d): the crest
- * stations' cross-sections (wombSection's curve at each station's smoothed numbers), so the board sits on the wave that is
- * drawn, not on the sheet under it. Elsewhere, and blended in by each station's ρ and toward the profile's ends exactly as
- * the ribbon blends, the sheet's own water.
+ * stations' cross-sections (wombSection's curve at each station's smoothed numbers, on this water's own sheet), so the board
+ * sits on the wave that is drawn, not on the sheet under it. The section is the sheet at its ends (plan 2026-10-06 step 3:
+ * one surface); beyond them, and away from the stations, the sheet's own water.
  *
  * Where the curve overhangs (the lip over the tube), the board stands on the lowest surface with water under it and air
  * over it: the face and the tube's floor, not the lip above.
@@ -23,24 +23,20 @@ export const MAX_SECTION_SLOPE = 2;
 /** A point further than this (m) along the crest from the nearest station is off the ribbon. */
 export const MAX_ALONG_M = 6;
 
-interface Cached { curve: P2[]; crestU: number; crestY: number; floorU: number; seat: number }
-
 /**
  * `base`'s water, with the stations' sections where they draw. `tideM` is the still-water level the sections stand on
  * (the drawn tide: base's own, as App.rideWater passes it).
  */
 export function withSections(base: WaterFn, entries: readonly StationEntry[], tideM: number): WaterFn {
-  const live = entries.filter((e): e is Station => !e.gap && e.section.rho > 0);
+  const live = entries.filter((e): e is Station => !e.gap && curlWeight(e.section) > 0);
   if (live.length === 0) return base;
-  const cache = new Map<Station, Cached>();
-  const cached = (s: Station): Cached => {
+  const cache = new Map<Station, P2[]>();
+  /** The station's curve (units of A, back to front), its knots sampled from `base` along its normal. */
+  const cached = (s: Station): P2[] => {
     let c = cache.get(s);
     if (!c) {
-      const { curve } = profileSamples(s.section.phase, s.section.hollow);
-      const k = profileKnots(s.section.phase, s.section.hollow), A = s.section.A, uF = A * k[FRONT_KNOT][0];
-      // Seated on the sea in front as the ribbon draws it (wombSection.seatScale: the sheet at the front knot's home).
-      const sea = (base(s.x + s.nx * uF, s.z + s.nz * uF).y - tideM) / A;
-      c = { curve, crestU: k[CREST_KNOT][0], crestY: k[CREST_KNOT][1], floorU: k[FLOOR_KNOT][0], seat: seatScale(k[CREST_KNOT][1], k[TROUGH_KNOT][1], sea) };
+      const sheet = (u: number): P2 => [u, base(s.x + s.nx * u, s.z + s.nz * u).y - tideM], A = s.section.A;
+      c = sectionSamples(s.section, sheet).curve.map((q): P2 => { const p = sectionPoint(q, A, sheet); return [p[0] / A, p[1] / A]; });
       cache.set(s, c);
     }
     return c;
@@ -51,37 +47,31 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
     let best: Station | null = null, bestV = Infinity, other: Station | null = null, otherV = Infinity;
     for (const s of live) {
       const dx = x - s.x, dz = z - s.z, v = -dx * s.nz + dz * s.nx, u = dx * s.nx + dz * s.nz;
-      if (Math.abs(u) > 7 * s.section.A || Math.abs(v) > MAX_ALONG_M) continue;
+      if (Math.abs(u) > EDGE_OUTER_UNITS * s.section.A || Math.abs(v) > MAX_ALONG_M) continue;
       if (Math.abs(v) < Math.abs(bestV)) { other = best; otherV = bestV; best = s; bestV = v; } else if (Math.abs(v) < Math.abs(otherV)) { other = s; otherV = v; }
     }
     if (!best) return w;
-    const at = (s: Station): { y: number; slopeU: number; weight: number } | null => {
+    const at = (s: Station): { y: number; slopeU: number } | null => {
       const u = (x - s.x) * s.nx + (z - s.z) * s.nz, A = s.section.A;
       if (!(A > 0)) return null;
-      const c = cached(s), hit = lowestWetCrossing(c.curve, u / A);
-      if (!hit) return null;
-      // Seated on the sea in front (wombSection.seatedY); past the face's foot it settles onto the sea in front
-      // (wombSection.frontHeight), as the ribbon draws it.
-      const uu = u / A, sy = seatedY(hit.y, uu, c.crestU, c.crestY, c.seat), slope = seatedSlope(hit.y, hit.slope, uu, c.crestU, c.crestY, c.seat);
-      const own = tideM + A * sy, y = uu > c.floorU ? frontHeight(own, w.y, uu, c.floorU) : own;
-      return { y, slopeU: Math.max(-MAX_SECTION_SLOPE, Math.min(MAX_SECTION_SLOPE, slope)), weight: s.section.rho * interiorWeight(uu, c.crestU) };
+      const hit = lowestWetCrossing(cached(s), u / A);
+      return hit ? { y: tideM + A * hit.y, slopeU: Math.max(-MAX_SECTION_SLOPE, Math.min(MAX_SECTION_SLOPE, hit.slope)) } : null;
     };
     const a = at(best);
     if (!a) return w;
     // Between the two stations either side (opposite signs of v) by their distance along the crest; else the nearest.
-    let y = a.y, slopeU = a.slopeU, weight = a.weight, nx = best.nx, nz = best.nz;
+    let y = a.y, slopeU = a.slopeU, nx = best.nx, nz = best.nz;
     if (other && Math.sign(otherV) !== Math.sign(bestV)) {
       const b = at(other);
       if (b) {
         const f = Math.abs(bestV) / (Math.abs(bestV) + Math.abs(otherV));
-        y += (b.y - y) * f; slopeU += (b.slopeU - slopeU) * f; weight += (b.weight - weight) * f;
+        y += (b.y - y) * f; slopeU += (b.slopeU - slopeU) * f;
         nx += (other.nx - nx) * f; nz += (other.nz - nz) * f;
       }
     }
-    if (!(weight > 0)) return w;
     // The slope: the section's along its normal, the sheet's own along the crest.
-    const tx = -nz, tz = nx, along = w.slopeX * tx + w.slopeZ * tz, sx = slopeU * nx + along * tx, sz = slopeU * nz + along * tz;
-    return { ...w, y: w.y + (y - w.y) * weight, slopeX: w.slopeX + (sx - w.slopeX) * weight, slopeZ: w.slopeZ + (sz - w.slopeZ) * weight };
+    const tx = -nz, tz = nx, along = w.slopeX * tx + w.slopeZ * tz;
+    return { ...w, y, slopeX: slopeU * nx + along * tx, slopeZ: slopeU * nz + along * tz };
   };
 }
 

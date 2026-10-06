@@ -1,7 +1,7 @@
 import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetDelay, onsetTime, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
-import { type SectionNumbers, sectionNumbers } from './wombSection';
+import { type SectionNumbers, curlWeight, sectionNumbers } from './wombSection';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
@@ -156,11 +156,11 @@ export function stationSize(field: ReefField, w: ActiveWave, s: Pick<Station, 'x
   return rec ? onsetSize(rec, 0, w.heightM, p) : null;
 }
 
-/** A station draws while its section has any weight (its smoothed ρ): from standing up out of the sheet to the hand-back
- * after the white-water wall (wombSection.sectionWeight). */
+/** A station draws while its section draws any of the curl over the sheet (wombSection.curlWeight): from standing up out
+ * of the sheet (phase 0 is the sheet) to the hand-back after the white-water wall. */
 export const ALIVE_RHO = 1e-3;
 function alive(s: Station): boolean {
-  return s.section.rho > ALIVE_RHO;
+  return curlWeight(s.section) > ALIVE_RHO;
 }
 
 /** One wave's crest, both ways from its seed, at `factor` × the spacing rule. Empty if the crest isn't on the reef. */
