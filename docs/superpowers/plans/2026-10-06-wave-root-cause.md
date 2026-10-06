@@ -129,6 +129,43 @@ Check (CPU): a cross-section through every station at phases 0, 0.5, 1, 1.5 diff
 knots 2 and 12, and the drawn height map has no slope discontinuity greater than the sheet's own anywhere within 60 m
 of the curl. Commit the CPU render tool from look 4 (the session scratchpad lost it) under `tools/` so this is repeatable.
 
+### 3c. The wall down the line (done 2026-10-06, Fable, on Opus's steps 1–3)
+
+Andrew's ninth-look complaint after steps 1–3: "the breaking part of the wave bowling into almost a right-angle, instead of
+seeing the extended wall of the yet to break wave, to plan how I ride the wave". Measured with `crestProbe.test.ts`
+(`PROBE_FT=6 npx vitest run src/breaker/crestProbe.test.ts --silent=false`): the drawn wall stood 9 m past the curl and
+the sea 6 m in front of the crest jumped 2 m over 3 m of crest where it ended, because the stand-up was keyed to the
+breaking ratio, which on the deep basin only rises in the last 10 m before a point breaks (the crest crosses the ledge at
+47°, so 20 m down the line it is in 20 m of water).
+
+What changed:
+
+- The reef record carries, per level, **how long until the section on each ray breaks** (`breaking.ONSET_UNTIL_OFFSET`,
+  `onsetUntil`, baked by `reefField.fillUntil`: the onset march run backwards; `UNTIL_NEVER` where a ray never breaks;
+  smoothed along the crest with the onset times). The GPU reads it from a third record texture (`SetWaves.onsetUntilTex`,
+  `breakingNodes.onsetTimeNode.until`).
+- `wombSection.wallWeight(until)` = (1 − until / `WALL_LEAD_S`)², `WALL_LEAD_S` 8 s: the stations' phase before onset is
+  `STOOD_PHASE` × the larger of the ratio ramp and the wall, and the sheet's front shortens on the same weight
+  (`setWaveModel.frontStanding`, `SetWaves`' `standing`), so the drawn face and the sea in front of it agree all along the
+  wall. A held section (the peel stretch) stands up on the same weight over its last `WALL_LEAD_S`. The trace runs on down
+  the line while `until` is within the lead (`crestTrace.traceWave`).
+- Measured, 6 ft mid tide, the curl at the corner: the wall is steeper than 30° for 30 m past the curl and eases to the
+  swell over the next 45 m; the sea 6 m in front of the crest falls from +1.6 m to −1.1 m over 60 m of crest, never more
+  than 0.3 m per metre (it was 0.7). `wallDownTheLine.test.ts` pins this.
+- The take-off: with the face arriving as a steep wall a second from breaking, the paddler at 8 m seaward was passed in
+  0.4 s and went over the back. `takeoff.TAKEOFF_SEAWARD_M` 8 → 20, `ridePhysics.ASSIST_ACCEL` 8 → 12, `CATCH_RATIO`
+  0.45 → 0.4; the ride test catches, pops up and rides 6 and 12 ft. These three are stand-ins for step 5: the take-off is
+  on a 13 m/s crest in 16 m of water because δ = 1 breaks the wave there; once step 5 moves the break onto the face they
+  should go back toward where they were.
+- Known, left for step 5: at the ledge the unbroken wall stands at the local height (the shoaled sheet's, up to 4.2 m at
+  6 ft) and the tube behind it at the height it broke at 25 m seaward (3.3 m), so the section shrinks about 10% as it
+  breaks there. Opus's size test now measures from phase 0.55, past that hand-over.
+- `BreakingRibbon.test.ts` had an unescaped quote (the storage-buffer guard was not running); fixed.
+
+For Opus, on Andrew's PC, before anything else: `--filter=ribbon` and `--filter=breaker` self-tests (the sheet reads a new
+texture; the GPU's `standing` must match the CPU's `frontStanding`), then a capture from inside the tube looking down the
+line at 6 and 8 ft.
+
 ### 4. One curl per wave, on one clock
 
 Replace the per-station onset read with a curl that moves along the crest:

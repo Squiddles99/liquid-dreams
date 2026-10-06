@@ -30,12 +30,32 @@ export const COLLAPSE_PER_M = 0.25;
  */
 export const STOOD_PHASE = 0.45;
 /**
- * A section held for its turn stands up over this long before it (s): well down the line it keeps the swell's gentle
- * shape, and only the last stretch before the curl reaches it stands vertical (Andrew, 2026-10-05, in the game: "it should
- * be vertical closest to where the lip is throwing … further down the line … a less vertical gradient, similar to how the
- * swell approaches before it breaks").
+ * The wall down the line: a section stands up over this long before it breaks (s), from the swell's own shape to a steep
+ * wall (STOOD_PHASE) as the curl reaches it (plan 2026-10-06-wave-root-cause, Andrew's "extended wall of the yet to break
+ * wave, to plan how I ride"; and 2026-10-05, in the game: "it should be vertical closest to where the lip is throwing …
+ * further down the line … a less vertical gradient, similar to how the swell approaches before it breaks"). On the time
+ * until it breaks (the reef record's, breaking.onsetUntil), not its breaking ratio: on the Womb's deep basin the ratio
+ * only rises in the last 10 m before a point breaks, so the wall stood for 9 m beyond the curl and then turned square
+ * across the line into the deep-water swell (Andrew's "right-angle bowl", 2026-10-06). Along the crest the time until a
+ * point breaks grows at about 0.1 s per metre from the curl on the 6 ft set, so this lead is about 80 m of wall, the first
+ * 30 m of it steeper than 30°; it scales itself as the peel slows. A section held for its turn (the peel stretch) stands up
+ * over the same lead before its turn.
  */
-export const STAND_LEAD_S = 2;
+export const WALL_LEAD_S = 8;
+/** @deprecated The hold's lead is the wall's (WALL_LEAD_S). */
+export const STAND_LEAD_S = WALL_LEAD_S;
+/**
+ * How far a section has stood up [0, 1] with `until` s to go before it breaks (or its turn): 0 WALL_LEAD_S or more away, 1
+ * at it, 0 where it never breaks (Infinity). (1 − until/WALL_LEAD_S)²: the wall stands up ever faster as its break nears,
+ * and is about 0.7 a second before it. A smoothstep (0.93 a second before) had the sea's front already as short as the
+ * drawn face when the wave reached the take-off, and it passed under a paddling surfer in 0.3 s, before the catch could
+ * bring him to speed (the ride test). The GPU mirrors it (SetWaves' standing).
+ */
+export const wallWeight = (until: number | null | undefined): number => {
+  if (until === null || until === undefined || !Number.isFinite(until)) return 0;
+  const left = 1 - Math.min(1, Math.max(0, until) / WALL_LEAD_S);
+  return left * left;
+};
 /** The lip's flight (onset to the round barrel) is the free fall from this many A, the crest to the landing below sea level. */
 export const FLIGHT_DROP_A = 1.3;
 /** After the white-water wall the section hands back to the sheet over this long (s); the foam carries on over it. */
@@ -54,6 +74,9 @@ export interface SectionInput {
   tb: number | null;
   /** While the peel stretch holds the section: how long until its turn (s) (Station.wait); absent or null otherwise. */
   wait?: number | null;
+  /** Unbroken: how long until the section breaks (s; Station.until, breaking.onsetUntil), Infinity if it never will; absent
+   * or null: unknown (the ratio alone stands it up). */
+  until?: number | null;
   /** The reef's ψ₀ where it broke (Station.psi). */
   psi: number;
   /** The swell's period (s). */
@@ -82,7 +105,9 @@ export const collapseSpan = (H: number, periodS: number): number => COLLAPSE_BAS
  * barrel, the tube's hold, the collapse.
  */
 export function sectionPhase(s: SectionInput, p: SectionParams): number {
-  if (s.tb === null) return STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r) * standing(s);
+  // Unbroken: the wall stands up over the last WALL_LEAD_S before its break (or its turn, held), or with its ratio from the
+  // ribbon's onset where the record says nothing (off the grid, or a ray that never breaks), whichever is further.
+  if (s.tb === null) return STOOD_PHASE * Math.max(smoothstep(p.ribbonOnset, 1, s.r) * standing(s), wallWeight(s.wait ?? s.until));
 
   if (!Number.isFinite(s.tb)) return 2;
   const H = brokeAt(s), t = Math.max(0, s.tb), fly = flightTime(H), hold = tubeHold(H, s.periodS);
@@ -124,8 +149,8 @@ export function boreWeight(tb: number | null | undefined, H: number, periodS: nu
   return smoothstep(t0, t0 + collapseSpan(H, periodS), tb);
 }
 
-/** A section held for its turn: 0 more than STAND_LEAD_S before it, 1 at it; 1 for a section not held. */
-const standing = (s: SectionInput): number => (s.wait === undefined || s.wait === null ? 1 : 1 - smoothstep(0, STAND_LEAD_S, s.wait));
+/** A section held for its turn: 0 more than WALL_LEAD_S before it, 1 at it; 1 for a section not held. */
+const standing = (s: SectionInput): number => (s.wait === undefined || s.wait === null ? 1 : wallWeight(s.wait));
 
 /**
  * The section's ρ: how much of the curl it draws over the sheet. 1 until the white-water wall, then handed back to the

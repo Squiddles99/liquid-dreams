@@ -266,14 +266,20 @@ export function onsetLevelHeight(k: number): number {
 /** Values per record sample: the running maximum; per level (time since onset, the throw's height ÷ the level's
  * deep-water height); then per level ψ₀ where that level broke (reefField.psiFromStep, plan 2026-10-02); then per level
  * the peel stretch's delay (s, spec 2026-10-04 §1); then per level the amplification where it broke, uncapped
- * (onsetSize). The time since onset is the stretched one: negative while the section waits its turn. */
-export const ONSET_RECORD_LENGTH = 1 + 5 * ONSET_LEVELS;
+ * (onsetSize); then per level the time until the section on this ray reaches that level (s; onsetUntil, UNTIL_NEVER where
+ * it never does). The time since onset is the stretched one: negative while the section waits its turn. */
+export const ONSET_RECORD_LENGTH = 1 + 6 * ONSET_LEVELS;
 /** Offset of level 0's ψ₀ in a record sample. */
 export const ONSET_PSI_OFFSET = 1 + 2 * ONSET_LEVELS;
 /** Offset of level 0's peel delay in a record sample. */
 export const ONSET_DELAY_OFFSET = 1 + 3 * ONSET_LEVELS;
 /** Offset of level 0's onset amplification (onsetSize) in a record sample. */
 export const ONSET_SIZE_OFFSET = 1 + 4 * ONSET_LEVELS;
+/** Offset of level 0's time until onset (onsetUntil) in a record sample. */
+export const ONSET_UNTIL_OFFSET = 1 + 5 * ONSET_LEVELS;
+/** The record's time until onset where the section on the ray never reaches the level (s): finite, so the record stays
+ * bilinear, and far past any wall's lead (wombSection.WALL_LEAD_S). */
+export const UNTIL_NEVER = 1e4;
 
 /**
  * ρ per metre of wave height per unit amp/hminBreak: (1 + γδ)/γ, breakingRatio without its floor. The record leaves the
@@ -343,6 +349,26 @@ export function onsetSize(rec: ArrayLike<number>, offset: number, heightM: numbe
   if (!l) return null;
   const lo = rec[offset + ONSET_SIZE_OFFSET + l.k], hi = rec[offset + ONSET_SIZE_OFFSET + l.k + 1];
   return heightM * (lo + l.w * (hi - lo));
+}
+
+/**
+ * How long (s) until the section at a record breaks, for a wave of deep-water height `heightM` (plan 2026-10-06-wave-root-cause,
+ * the wall down the line): 0 once it has broken (or is held for its turn: onsetTime is negative then); else the record's
+ * time until the ray reaches the wave's breaking level, levels k and k + 1 around it log-linearly (as onsetPsi reads);
+ * Infinity where the ray never breaks (UNTIL_NEVER on either level). The wall down the line, the stations' phase and the
+ * sheet's front all stand up on it (wombSection.wallWeight), so a point 80 m down the line that breaks in 5 s stands as the
+ * wall it is about to be, not as the deep-water swell its breaking ratio says it still is.
+ */
+export function onsetUntil(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number {
+  if (onsetLevel(rec, offset, heightM, p)) return 0;
+  const g = heightM * onsetGain(p), s = offset + ONSET_UNTIL_OFFSET;
+  if (!(g > 0)) return Infinity;
+  const lq = Math.log(1 / (g * ONSET_LEVEL_Q0)) / Math.log(ONSET_LEVEL_RATIO);
+  const k = Math.min(ONSET_LEVELS - 2, Math.max(0, Math.floor(lq)));
+  const w = Math.min(1, Math.max(0, lq - k));
+  const lo = rec[s + k], hi = rec[s + k + 1];
+  if (!(lo < UNTIL_NEVER) || !(hi < UNTIL_NEVER)) return Infinity;
+  return Math.max(0, lo + w * (hi - lo));
 }
 
 /**

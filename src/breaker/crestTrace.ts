@@ -1,7 +1,7 @@
-import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetDelay, onsetTime, peelRatio } from './breaking';
+import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
-import { type SectionNumbers, curlWeight, sectionNumbers } from './wombSection';
+import { type SectionNumbers, WALL_LEAD_S, curlWeight, sectionNumbers } from './wombSection';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
@@ -18,7 +18,8 @@ export const SPACING_PER_M = 0.012;
 export const MIN_SPACING_M = 0.08;
 export const MAX_SPACING_M = 4;
 export const MAX_STATIONS = 2048;
-/** A side of the trace ends after this much crest (m) below the ribbon's onset ratio. */
+/** A side of the trace ends after this much crest (m) below the ribbon's onset ratio and more than WALL_LEAD_S from
+ * breaking (the wall down the line is traced to its end). */
 export const BELOW_ONSET_RUN_M = 20;
 /** The CPU's culling margin over its landing-time estimate (s). */
 export const LOOK_BACK_MARGIN_S = 0.5;
@@ -52,6 +53,9 @@ export interface Station {
   tb: number | null;
   /** While the peel stretch holds the section for its turn: how long until its turn (s); null otherwise. */
   wait: number | null;
+  /** Unbroken: how long until the section breaks (s; the record's, breaking.onsetUntil), Infinity if it never will: the wall
+   * down the line stands up over the last WALL_LEAD_S of it (wombSection.wallWeight). 0 once broken; null off the record. */
+  until: number | null;
   /** The crest's ψ, as the sheet's crest there (setWaveModel.crestAt): the lip's shape. */
   psi: number;
   /** The height (m) the section stood at as it threw its lip, as the sheet's crest there (setWaveModel.Crest.lipH): the
@@ -127,12 +131,19 @@ export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: nu
  * with its ratio as the sheet stands it (breaking.peelRatio: held at 1, fading in after its turn), so the ribbon's lip
  * stands as the water under it does (spec 2026-10-04 §3-4).
  */
-export function stationOnset(field: ReefField, w: ActiveWave, s: Pick<Station, 'x' | 'z' | 'H' | 'r' | 'tb' | 'wait'>, p: BreakParams): void {
+export function stationOnset(field: ReefField, w: ActiveWave, s: Pick<Station, 'x' | 'z' | 'H' | 'r' | 'tb' | 'wait' | 'until'>, p: BreakParams): void {
   const rec = sampleOnset(field, s.x, s.z, onsetScratch);
   const tb = rec ? onsetTime(rec, 0, w.heightM, p) : null;
   if (tb !== null) s.r = peelRatio(s.r, tb, onsetDelay(rec!, 0, w.heightM, p), landingEstimate(s.H, p));
   s.tb = tb !== null && tb < 0 ? null : tb;
   s.wait = tb !== null && tb < 0 ? -tb : null;
+  s.until = rec ? onsetUntil(rec, 0, w.heightM, p) : null;
+}
+
+/** How long (s) until the section at (x, z) breaks for wave w (breaking.onsetUntil): Infinity if never, or off the record. */
+export function timeUntilOnset(field: ReefField, w: ActiveWave, x: number, z: number, p: BreakParams): number {
+  const rec = sampleOnset(field, x, z, onsetScratch);
+  return rec ? onsetUntil(rec, 0, w.heightM, p) : Infinity;
 }
 
 /** The station's ψ: the onset record's ψ₀ there with the game rules, as setWaveModel.crestAt reads it; PSI_NORMAL off the record. */
@@ -176,14 +187,14 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
     for (let n = 0; n < 20000; n++) {
       const nrm = crestNormal(w, f, ctx);
       if (sign > 0 || n > 0) {
-        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, wait: null, psi: PSI_NORMAL, lipH: null, Hb: null, section: { A: 0, phase: 0, hollow: 0, rho: 0 } });
+        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, wait: null, until: null, psi: PSI_NORMAL, lipH: null, Hb: null, section: { A: 0, phase: 0, hollow: 0, rho: 0 } });
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS);
       if (!(Math.abs(next.xi) < CREST_TOLERANCE_S) || !inGrid(field, next.x, next.z) || Math.hypot(next.x, next.z) > TAPER_NEAR_M) break;
       arc += sign * Math.hypot(next.x - x, next.z - z);
       ({ x, z, f } = next);
-      below = breakingRatio(w.heightM * f.amp, f.hminBreak, p) < p.ribbonOnset ? below + ds : 0;
+      below = breakingRatio(w.heightM * f.amp, f.hminBreak, p) < p.ribbonOnset && !(timeUntilOnset(field, w, x, z, p) < WALL_LEAD_S) ? below + ds : 0;
       if (below > BELOW_ONSET_RUN_M) break;
     }
     sides.push(side);
@@ -242,7 +253,7 @@ export const LINE_END_FADE_M = 6;
  */
 export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'>): void {
   const normals = line.map((s) => [s.nx, s.nz]);
-  const raw = line.map((s) => sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, wait: s.wait, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
+  const raw = line.map((s) => sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, wait: s.wait, until: s.until, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
   const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
   let lo = 0;
   line.forEach((s, i) => {

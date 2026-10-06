@@ -1,7 +1,7 @@
 import type { Bathymetry } from '../seabed/bathymetry';
 import { smoothstep } from '../math/smoothstep';
 import type { GridSpec } from '../seabed/wombReef';
-import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_SIZE_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, breakingDepth, onsetLevelHeight } from './breaking';
+import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_SIZE_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, UNTIL_NEVER, breakingDepth, onsetLevelHeight } from './breaking';
 import { AMP_CAP, type FarField, computeFarField, farSample } from './coastFarField';
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
 import { solveEikonal } from './eikonal';
@@ -285,6 +285,25 @@ export function smoothOnsetTimes(field: ReefField, sigmaM = ONSET_SMOOTHING_M): 
     const q = ONSET_LEVEL_Q[k], slot = 1 + 2 * k;
     for (let i = 0; i < n; i++) {
       const t = onset[i * R + slot], m = onset[i * R] >= q && Number.isFinite(t) ? 1 : 0;
+      mask[i] = m; masked[i] = m * (m ? t : 0);
+    }
+    const atT = bilinearCells(masked, grid), atM = bilinearCells(mask, grid);
+    for (let row = 0; row < nz; row++) for (let col = 0; col < nx; col++) {
+      const i = row * nx + col;
+      if (!mask[i]) { out[i] = onset[i * R + slot]; continue; }
+      const tx = -dirZ[i], tz = dirX[i];
+      let sum = 0, ws = 0;
+      for (let j = -J; j <= J; j++) { const fx = col + j * step * tx, fz = row + j * step * tz; sum += w[j + J] * atT(fx, fz); ws += w[j + J] * atM(fx, fz); }
+      out[i] = ws > 1e-6 ? sum / ws : onset[i * R + slot];
+    }
+    for (let i = 0; i < n; i++) onset[i * R + slot] = out[i];
+  }
+  // The time until onset the same way, among the nodes whose ray breaks (under UNTIL_NEVER): the wall down the line stands
+  // on it, and over reef heads it steps between neighbouring rays as the onset time does.
+  for (let k = 0; k < ONSET_LEVELS; k++) {
+    const slot = ONSET_UNTIL_OFFSET + k;
+    for (let i = 0; i < n; i++) {
+      const t = onset[i * R + slot], m = t < UNTIL_NEVER ? 1 : 0;
       mask[i] = m; masked[i] = m * (m ? t : 0);
     }
     const atT = bilinearCells(masked, grid), atM = bilinearCells(mask, grid);
@@ -643,7 +662,54 @@ export function computeOnsetRecord(f: {
     onsetT.fill(Number.NaN);
     march();
   }
+  fillUntil(f, out);
   return out;
+}
+
+/** The time until onset is read this many cells ahead along the ray (fillUntil): one, so along a straight ray it falls cell
+ * by cell (two cells gave a staircase, two cells a step); the corners that arrive no later than the node (not filled yet in
+ * the reverse march) are left out of the bilinear read. */
+const UNTIL_AHEAD_CELLS = 1;
+
+/**
+ * The time until onset per level (breaking.ONSET_UNTIL_OFFSET; plan 2026-10-06-wave-root-cause, the wall down the line):
+ * the same march run backwards, in reverse arrival order, each node reading the record UNTIL_AHEAD_CELLS ahead along its
+ * ray, over the corners that arrive later than it (so already filled). A node whose running maximum has reached the level
+ * has 0 (it has broken, or is held for its turn: the time slot is negative then); else the time ahead plus the arrival time
+ * between, so along a ray the value falls at the ray's own speed to 0 at the breaking line; UNTIL_NEVER where the ray
+ * leaves the grid unbroken (and, bilinear between such a node and one that breaks, a time far past any wall's lead).
+ * Smoothed along the crest for the game with the onset times (smoothOnsetTimes).
+ */
+function fillUntil(f: { grid: GridSpec; tau: Float32Array; dirX: Float32Array; dirZ: Float32Array; order: Uint32Array }, out: Float32Array): void {
+  const { grid, dirX, dirZ } = f, { nx, nz } = grid, n = nx * nz, R = ONSET_RECORD_LENGTH, U = ONSET_UNTIL_OFFSET;
+  for (let i = 0; i < n; i++) for (let k = 0; k < ONSET_LEVELS; k++) out[i * R + U + k] = UNTIL_NEVER;
+  const xMax = (nx - 1) * grid.cellM, zMax = (nz - 1) * grid.cellM, ahead = UNTIL_AHEAD_CELLS * grid.cellM;
+  const corners = new Int32Array(4), weights = new Float64Array(4);
+  for (let o = n - 1; o >= 0; o--) {
+    const i = f.order[o], col = i % nx, row = (i - col) / nx, base = i * R, tauI = f.tau[i];
+    const x = grid.x0 + col * grid.cellM + dirX[i] * ahead, z = grid.z0 + row * grid.cellM + dirZ[i] * ahead;
+    const inside = x >= grid.x0 && z >= grid.z0 && x <= grid.x0 + xMax && z <= grid.z0 + zMax;
+    // The read's corners that arrive later than this node, with their bilinear weights renormalised.
+    let wSum = 0, tauA = 0;
+    if (inside) {
+      const fx = Math.min(nx - 1, Math.max(0, (x - grid.x0) / grid.cellM)), fz = Math.min(nz - 1, Math.max(0, (z - grid.z0) / grid.cellM));
+      const c = Math.min(nx - 2, Math.floor(fx)), r = Math.min(nz - 2, Math.floor(fz)), ci = r * nx + c, wx = fx - c, wz = fz - r;
+      corners[0] = ci; corners[1] = ci + 1; corners[2] = ci + nx; corners[3] = ci + nx + 1;
+      weights[0] = (1 - wx) * (1 - wz); weights[1] = wx * (1 - wz); weights[2] = (1 - wx) * wz; weights[3] = wx * wz;
+      for (let q = 0; q < 4; q++) {
+        if (!(weights[q] > 0) || !(f.tau[corners[q]] > tauI)) { weights[q] = 0; continue; }
+        wSum += weights[q]; tauA += weights[q] * f.tau[corners[q]];
+      }
+    }
+    const dTau = wSum > 0 ? Math.max(0, tauA / wSum - tauI) : 0;
+    for (let k = 0; k < ONSET_LEVELS; k++) {
+      if (out[base] >= ONSET_LEVEL_Q[k]) { out[base + U + k] = 0; continue; }
+      if (!(wSum > 0)) continue;
+      let uA = 0;
+      for (let q = 0; q < 4; q++) if (weights[q] > 0) uA += (weights[q] / wSum) * out[corners[q] * R + U + k];
+      out[base + U + k] = uA >= UNTIL_NEVER ? UNTIL_NEVER : Math.min(UNTIL_NEVER, uA + dTau);
+    }
+  }
 }
 
 /**

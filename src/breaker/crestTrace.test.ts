@@ -269,13 +269,15 @@ describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause s
   // 5% is the plan's bar; the record's carried size still drifts 3–4% down a ray (the bilinear carry mixes neighbouring
   // rays), and the smoothing along the crest mixes in the unbroken stations ahead of the curl. Step 4's one clock per wave
   // (the size read once, as the curl passes) removes both. Until then: 8%.
-  it('A along the first leg holds within 8% from phase 0.5 to 1.5, at 6 ft mid tide', { timeout: 120_000 }, () => {
+  it('A along the first leg holds within 8% through the throw (phase 0.55 to 1.5), at 6 ft mid tide', { timeout: 120_000 }, () => {
     const seen = PLACES.map(() => [] as number[]);
     for (let t = -2; t <= 12; t += 0.1) {
       const st = live(traceStations(field, [w6], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 1 }));
       PLACES.forEach((s, i) => {
         const e = station(st, s);
-        if (e && e.section.phase >= 0.5 && e.section.phase <= 1.5) seen[i].push(e.section.A);
+        // From onset: before it the wall down the line (wallWeight) stands at the local height, the sheet's own, and the
+        // station's numbers are smoothed along the crest with its unbroken neighbours' for a few metres past the curl.
+        if (e && e.tb !== null && e.section.phase >= 0.55 && e.section.phase <= 1.5) seen[i].push(e.section.A);
       });
     }
     PLACES.forEach((s, i) => {
