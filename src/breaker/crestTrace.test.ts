@@ -11,10 +11,10 @@ import {
 } from './crestTrace';
 import { PSI_NORMAL } from './overturn';
 import { type ReefField, computeReefField, sampleField } from './reefField';
-import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi } from './setWaveModel';
+import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi, sumWaves } from './setWaveModel';
 import { cloneConditions } from '../conditions/defaults';
 import { setWaveHeight } from './reefReport';
-import { sectionScale } from './wombSection';
+import { sectionOf, sectionScale } from './wombSection';
 
 const P = DEFAULT_BREAK_PARAMS;
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
@@ -298,3 +298,33 @@ describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause s
     expect(n).toBeGreaterThan(10);
   });
 });
+
+describe('the lip lands (plan 2026-10-06-wave-root-cause step 2)', () => {
+  const swell = breakOptions(field, { ...P, enabled: false });
+  it("at the round barrel the lip's tip is within 0.05 A of the water under it, at 6 and 8 ft", { timeout: 120_000 }, () => {
+    for (const ft of [6, 8]) {
+      const w = testWave(setWaveHeight(ft));
+      let n = 0;
+      for (let t = -2; t <= 10; t += 0.5) {
+        for (const S of live(traceStations(field, [w], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 2 }))) {
+          if (Math.abs(S.section.phase - 1) > 0.03 || S.section.hollow < 0.5) continue;
+          const sheet = (u: number): [number, number] => {
+            const x = S.x + S.nx * u, z = S.z + S.nz * u, r = sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, swell);
+            return [u + r.dx * S.nx + r.dz * S.nz, r.eta];
+          };
+          const sec = sectionOf(S.section, sheet), pts = sec.points;
+          // The water under the tip: the front (from the front edge to the floor), at the tip's u.
+          let y = Number.NaN;
+          for (let i = 0; i + 1 < pts.length / 2; i++) {
+            const [a, b] = [pts[i], pts[i + 1]];
+            if ((a[0] - sec.tip[0]) * (b[0] - sec.tip[0]) <= 0) { y = a[1] + ((b[1] - a[1]) * (sec.tip[0] - a[0])) / (b[0] - a[0] || 1e-9); break; }
+          }
+          n++;
+          expect(Math.abs(sec.tip[1] - y) / S.section.A, `${ft} ft at t ${t}`).toBeLessThan(0.05);
+        }
+      }
+      expect(n, `${ft} ft: stations at the round barrel`).toBeGreaterThan(10);
+    }
+  });
+});
+
