@@ -54,9 +54,36 @@ describe('the ride camera from behind, and over her shoulder in the tube (Andrew
 
   it('riding, it follows behind her and looks ahead down the line', () => {
     const pose = settle(new RideCamera(), riding());
-    expect(pose.position[2]).toBeGreaterThan(4); // behind her (+z)
-    expect(Math.abs(pose.position[0])).toBeLessThan(0.5);
+    expect(pose.position[2]).toBeGreaterThan(3); // behind her (+z)
+    expect(pose.position[0]).toBeGreaterThan(0); // a little to the shore side (+x), off the face
+    expect(pose.position[0]).toBeLessThan(1.5);
     expect(Math.min(pose.yawDeg, 360 - pose.yawDeg)).toBeLessThan(10); // looking −z, down the line
+  });
+
+  it('riding with the wave as well as across it, it trails her along the line, not out the back of the wave', () => {
+    // Andrew 2026-10-04: "behind them as they travel left, across the wave. Currently, the camera is behind the wave".
+    // Carried in by the swell (+x, 8 m/s) while running down the line (−z) at 6 m/s: her run is mostly shoreward.
+    const b = riding();
+    b.water.c = 8;
+    b.vx = 8;
+    b.vz = -6;
+    const pose = settle(new RideCamera(), b);
+    expect(pose.position[2]).toBeGreaterThan(3); // up the line behind her (+z)
+    expect(pose.position[2]).toBeLessThan(5); // close, so the whitewater behind her doesn't fill the frame
+    expect(pose.position[0]).toBeGreaterThan(-0.5); // not out the back of the wave (−x)
+    expect(Math.min(pose.yawDeg, 360 - pose.yawDeg)).toBeLessThan(20); // looking down the line at the wall
+  });
+
+  it('stays close at speed: her moving does not drag it further back', () => {
+    const cam = new RideCamera(), b = riding();
+    b.vz = -13;
+    let pose = cam.update(b, DT, () => 0);
+    for (let t = 0; t < 3; t += DT) {
+      b.z += b.vz * DT;
+      pose = cam.update(b, DT, () => 0);
+    }
+    expect(pose.position[2] - b.z).toBeLessThan(5);
+    expect(pose.position[2] - b.z).toBeGreaterThan(3);
   });
 
   it('paddling, it is behind the board too', () => {
@@ -72,6 +99,6 @@ describe('the ride camera from behind, and over her shoulder in the tube (Andrew
     expect(pov.position[1]).toBeGreaterThan(1.2);
     expect(pov.position[0]).toBeGreaterThan(0.1); // the shore side (+x), away from the wall
     expect(Math.min(pov.yawDeg, 360 - pov.yawDeg)).toBeLessThan(10);
-    expect(settle(cam, b, 0, 3).position[2]).toBeGreaterThan(4);
+    expect(settle(cam, b, 0, 3).position[2]).toBeGreaterThan(3);
   });
 });

@@ -4,7 +4,7 @@
 import { app, BrowserWindow } from 'electron';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
-const base = arg('base') ?? 'http://localhost:5188/', out = arg('out') ?? 'takeoff-', slow = arg('slow') ?? 'full', aim = Number(arg('aim') ?? 60);
+const base = arg('base') ?? 'http://localhost:5173/', out = arg('out') ?? 'takeoff-', slow = arg('slow') ?? 'full', aim = Number(arg('aim') ?? 60);
 app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -38,10 +38,11 @@ app.whenReady().then(async () => {
       const aim = window.__aim ?? 60; if (left) { if (off < -aim - 5) key('keyup', 'KeyA'); else if (off > -aim + 5) key('keydown', 'KeyA'); }
       const cam = a.camera.position, pov = a.ride.camera?.pov ?? 0, take = pov > 0.5;
       if (take !== camWas) { snaps.push(take ? 'cam-pov' : 'cam-chase'); camWas = take; }
+      if (b.phase === 'ride' && real - (window.__lastRide ?? -9) > 2) { window.__lastRide = real; snaps.push('ride' + sim.toFixed(1)); }
       if (pov > 0.05 && real - (window.__lastSnap ?? -9) > 0.3) { window.__lastSnap = real; snaps.push('tube' + sim.toFixed(1)); }
       let near = null;
       for (const s of a.ribbonStations) { if (s.gap) continue; const dx = (b.water.lx ?? b.x) - s.x, dz = (b.water.lz ?? b.z) - s.z, al = Math.abs(-dx * s.nz + dz * s.nx); if (!near || al < near.al) near = { al, ah: dx * s.nx + dz * s.nz, tb: s.tb, H: s.H, psi: s.psi }; }
-      log.push({ real: +real.toFixed(2), sim: +sim.toFixed(2), scale: +a.clock.scale.toFixed(2), phase: b.phase, caught: b.caught, y: +b.y.toFixed(2), cam: [+(cam.x - b.x).toFixed(1), +(cam.y - b.y).toFixed(1), +(cam.z - b.z).toFixed(1)], take, cover: +a.rideCover.toFixed(2), pov: +pov.toFixed(2), lens: +a.tubeLensWet.toFixed(2), near: near && { al: +near.al.toFixed(1), ah: +near.ah.toFixed(1), tb: near.tb === null ? null : +near.tb.toFixed(2), H: +near.H.toFixed(1), psi: +near.psi.toFixed(3) }, head: Math.round(b.headingDeg), v: +Math.hypot(b.vx, b.vz).toFixed(1) });
+      log.push({ real: +real.toFixed(2), sim: +sim.toFixed(2), scale: +(a.clock.scale ?? 1).toFixed(2), phase: b.phase, caught: b.caught, y: +b.y.toFixed(2), cam: [+(cam.x - b.x).toFixed(1), +(cam.y - b.y).toFixed(1), +(cam.z - b.z).toFixed(1)], take, cover: +a.rideCover.toFixed(2), pov: +pov.toFixed(2), lens: +a.tubeLensWet.toFixed(2), near: near && { al: +near.al.toFixed(1), ah: +near.ah.toFixed(1), tb: near.tb === null ? null : +near.tb.toFixed(2), H: +near.H.toFixed(1), psi: +near.psi.toFixed(3) }, head: Math.round(b.headingDeg), v: +Math.hypot(b.vx, b.vz).toFixed(1) });
       if (sim < (window.__until ?? 12) && b.phase !== 'bail') requestAnimationFrame(loop); else window.__done = true;
     };
     window.__live = { log, snaps };
