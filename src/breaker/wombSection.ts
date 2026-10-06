@@ -203,7 +203,9 @@ export const SECTION_MARKED = { crest: SECTION_CREST, tip: SECTION_TIP, floor: S
 export const CURL_PHASE = STAGES.pitching;
 /** The drawing's "flat sea in front" is the sheet's water: the drawn curl is moved (not stretched) so its trough knot lies
  * SEAT_DIP_UNITS under the sheet at the drawing's front knot, by at most SEAT_SHIFT_MAX units of A either way. */
-export const SEAT_DIP_UNITS = 0.12;
+// 0, not 0.12 A: the drawn trough is the sea in front of it; the dip was a 0.33 m rim climbing back over 3 m that caught
+// the sun along the whole foot (Andrew's 'second wave', R1 §5).
+export const SEAT_DIP_UNITS = 0;
 export const SEAT_SHIFT_MAX = 0.4;
 
 /** How much of the drawn curl a section draws over the sheet [0, 1]: by its phase (in over 0 … CURL_PHASE) × its ρ. */
