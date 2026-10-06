@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PLATE_ASPECT, backdropFade, coverUV, windDrive } from './backdropMath';
+import { PLATE_ASPECT, backdropFade, coverUV, easeToward, windDrive } from './backdropMath';
 
 const KN = 1 / 1.943844; // m/s per knot
 
@@ -89,5 +89,27 @@ describe('backdropFade: the painting shows on Conditions only, and never in the 
   });
   it('stays 0 on a move between Rider and Gear', () => {
     expect(backdropFade({ beat: 'gear', move: { from: 'rider', to: 'gear', t: 0.5 } })).toBe(0);
+  });
+});
+
+describe('easeToward: the painting\'s sun follows the cloud meter smoothly (final review: it reads every 0.25 s)', () => {
+  it('moves only part of the way in one frame, never overshoots, and settles', () => {
+    const one = easeToward(1, 0, 1 / 60, 0.4);
+    expect(one).toBeLessThan(1);
+    expect(one).toBeGreaterThan(0.9);
+    let v = 1;
+    for (let i = 0; i < 600; i++) v = easeToward(v, 0, 1 / 60, 0.4);
+    expect(v).toBeGreaterThanOrEqual(0);
+    expect(v).toBeLessThan(1e-6);
+  });
+  it('turns a 0.25 s staircase into steps under a third of the jump', () => {
+    let v = 1, worst = 0;
+    for (let f = 0; f < 120; f++) {
+      const target = Math.floor(f / 15) % 2; // the meter flips between 0 and 1 every 0.25 s at 60 fps
+      const next = easeToward(v, target, 1 / 60, 0.4);
+      worst = Math.max(worst, Math.abs(next - v));
+      v = next;
+    }
+    expect(worst).toBeLessThan(1 / 3);
   });
 });
