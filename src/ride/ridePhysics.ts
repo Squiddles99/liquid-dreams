@@ -90,6 +90,18 @@ export const TUNING: Readonly<Record<Experience, RideTuning>> = {
 };
 /** The slope catch holds this long (s) before the wave has you. */
 export const CATCH_HOLD_S = 0.2;
+/**
+ * The crest carries her (R1.5 §1): a crest about to break runs its water at nearly its own speed c (the breaking
+ * criterion), and a surfer caught at the crest is in that water. The ride's water model is linear theory (flowFromEta:
+ * about a third of c at the take-off spot) and its drag is tuned against still water, so the carry is applied to her
+ * here, while she is caught and prone and through the pop-up, as long as the face under her is at least the catch
+ * slope and lifting her. Her velocity relaxes toward CREST_CARRY × c along the wave's travel with time constant
+ * CARRY_TAU_S. 0.85: c at the spot is 8.9 m/s at 6 ft and the crest slows to ~6.1 m/s by the onset, so 7.6 m/s keeps her
+ * ahead of it into the break. 0.15 s: the face is under her for about 0.3 s, and 0.15 reaches 86 % of the way in that.
+ * Without it she reached 3–5 m/s and was lifted over the back (R1's ride test: 1.1–2.8 s at every Experience level).
+ */
+export const CREST_CARRY = 0.85;
+export const CARRY_TAU_S = 0.15;
 /** Caught once moving with the wave this fast (× its speed) on its face. 0.4, not 0.45, with the wall down the line (plan
  * 2026-10-06-wave-root-cause): the take-off's crest runs at 13 m/s over the basin (the wave breaks in 16 m of water until
  * step 5 moves it in), its face is a steep wall that passes a paddler in half a second, and at 0.45 he reached catch speed
@@ -163,6 +175,13 @@ export function liftAt(w: WaterAt, headingDeg: number): number {
   return smoothstep(0.03, 0.15, front) * smoothstep(-0.02, 0.08, downhill);
 }
 
+/** Whether the crest's water is carrying her this step: caught (or popping up) on a face at least the catch slope, lifting her. */
+export function carrying(b: RideBody, tune: RideTuning): boolean {
+  if (!(b.phase === 'popup' || (b.phase === 'paddle' && b.caught && b.catchT > 0))) return false;
+  const w = b.water;
+  return Math.hypot(w.slopeX, w.slopeZ) >= tune.catchSlope && liftAt(w, b.headingDeg) > 0;
+}
+
 export function speedOf(b: Pick<RideBody, 'vx' | 'vz'>): number {
   return Math.hypot(b.vx, b.vz);
 }
@@ -215,7 +234,10 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   // Against the water itself, not the wave: the wave runs on through the water, and that water running up the face past
   // the rail is what drives the board along the line. (Dragging against water carried with the wave, as first tuned,
   // ate the drop's speed: a hard bottom turn made ~4 m/s along the line and the lip landed on it, Andrew 2026-10-04.)
-  const ux = w.ux, uz = w.uz;
+  // Except while the crest carries her (carrying): then the water is the crest's, see CREST_CARRY.
+  // Carried (R1.5 §1), the water she is in is the crest's, running at CREST_CARRY × c: the drag is against that.
+  const carried = carrying(b, tune), vc = CREST_CARRY * w.c;
+  const ux = carried ? w.dirX * vc : w.ux, uz = carried ? w.dirZ * vc : w.uz;
   const relX = b.vx - ux, relZ = b.vz - uz;
   let along = relX * fx + relZ * fz, side = relX * rx + relZ * rz;
   along *= Math.exp(-d.lin * dt);
@@ -230,6 +252,12 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
     // The whitewater shoves you shoreward.
     b.vx += w.dirX * w.c * w.foam * 1.2 * dt;
     b.vz += w.dirZ * w.c * w.foam * 1.2 * dt;
+  }
+  if (carried) {
+    // ... and it takes her with it, over CARRY_TAU_S (the prone drag alone couples too slowly at small relative speeds).
+    const k = 1 - Math.exp(-dt / CARRY_TAU_S);
+    b.vx += (ux - b.vx) * k;
+    b.vz += (uz - b.vz) * k;
   }
   const sp = speedOf(b);
   if (sp > MAX_SPEED) {
