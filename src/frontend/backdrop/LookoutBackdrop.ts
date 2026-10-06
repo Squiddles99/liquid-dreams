@@ -15,6 +15,8 @@ export interface BackdropInput {
   windMs: number;
   windFromDeg: number;
   cameraYawDeg: number;
+  /** 0…1: how much of the sun gets through the cloud (App's cloud meter); the painting has no sun under a storm. */
+  sunVisible: number;
 }
 
 const FRAMES = 80, TILES = [10, 8] as const, GRID = [240, 135] as const;
@@ -38,7 +40,7 @@ export class LookoutBackdrop {
   private readonly u = {
     ready: uniform(0), fade: uniform(0), aspect: uniform(PLATE_ASPECT),
     phase: uniform(0), mix2: uniform(0), lean: uniform(0), squash: uniform(0), gust: uniform(0), gustClock: uniform(0),
-    sunShare: uniform(DEFAULT_LOOKOUT_LIGHT.sunShare), exposure: uniform(DEFAULT_LOOKOUT_LIGHT.exposure),
+    sunShare: uniform(DEFAULT_LOOKOUT_LIGHT.sunShare), sunVisible: uniform(1), exposure: uniform(DEFAULT_LOOKOUT_LIGHT.exposure),
   };
   private readonly plateTex = placeholder();
   private readonly swayTex = placeholder();
@@ -108,7 +110,8 @@ export class LookoutBackdrop {
       const leanPx = vec2(u.lean.mul(LEAN_PX), u.squash.mul(SQUASH_PX)).mul(push).mul(sway);
       const sampleUV = uv.add(flowPx.sub(leanPx).div(size));
       const plate = texture(this.plateTex, sampleUV);
-      const light = sky.skyIrradiance.mul(0.75).add(sky.sunIlluminance.mul(u.sunShare)).div(PI).mul(u.exposure);
+      // The full sky light, as the game's own flat ground gets it (n.y = 1): the painting is mostly ground facing up.
+      const light = sky.skyIrradiance.add(sky.sunIlluminance.mul(u.sunShare).mul(u.sunVisible)).div(PI).mul(u.exposure);
       const lit = plate.rgb.mul(light);
       return mix(scene, lit, plate.a.mul(u.fade).mul(u.ready));
     };
@@ -128,6 +131,7 @@ export class LookoutBackdrop {
     this.u.fade.value = i.fade;
     this.u.aspect.value = i.aspect;
     this.u.sunShare.value = this.light.sunShare;
+    this.u.sunVisible.value = i.sunVisible;
     this.u.exposure.value = this.light.exposure;
   }
 }

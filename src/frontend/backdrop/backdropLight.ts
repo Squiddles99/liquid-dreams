@@ -7,5 +7,8 @@ export interface LookoutLight {
   exposure: number;
 }
 
-/** Starting values; the capture matrix calibrates them so a clear mid-morning shows the painting as painted. */
-export const DEFAULT_LOOKOUT_LIGHT: LookoutLight = { sunShare: 0.5, exposure: 1 };
+/**
+ * Calibrated 2026-10-07 (tools/captureLookout.mjs, conditions plate): clear 9:30, ground brightness 144 vs 136 as painted
+ * (exposure 1 gave 156, 0.8 gave 147). Andrew tunes both by eye in the dev panel's Lookout folder (H).
+ */
+export const DEFAULT_LOOKOUT_LIGHT: LookoutLight = { sunShare: 0.5, exposure: 0.75 };
