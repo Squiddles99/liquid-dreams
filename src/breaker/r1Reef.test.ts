@@ -29,6 +29,10 @@ describe('the basin (R1 §1)', () => {
     expect(st.first!.peel).toBeLessThanOrEqual(11);
     expect(st.first!.hollow).toBeGreaterThanOrEqual(0.8);
   });
+  it('4 ft, mid tide: soft, never thrown (first section hollow < 0.6; replaces reefCriteria §2.3 "4 ft never thrown")', () => {
+    const st = leftStretches(mid, setWaveHeight(4), NORTH_LEDGE, { first: [0], second: [1] }, DEFAULT_BREAK_PARAMS);
+    expect(st.first!.hollow).toBeLessThan(0.6);
+  });
 });
 
 const fields = Object.fromEntries((Object.keys(TIDES) as Tide[]).map((t) => [t, t === 'mid' ? mid : computeReefField({ bed, periodS: 15, fromDeg: 225, tideM: TIDES[t], smooth: true, refractFloorM: REFRACT_FLOOR_M })])) as Record<Tide, ReturnType<typeof computeReefField>>;

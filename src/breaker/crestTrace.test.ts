@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONDITIONS } from '../conditions/defaults';
+import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
@@ -12,15 +12,16 @@ import {
 import { PSI_NORMAL } from './overturn';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi, sumWaves } from './setWaveModel';
-import { cloneConditions } from '../conditions/defaults';
 import { setWaveHeight } from './reefReport';
 import { SECTION_CREST, SECTION_TROUGH, sectionKnots, sectionOf, sectionPoint, sectionSamples, sectionScale } from './wombSection';
 
 const P = DEFAULT_BREAK_PARAMS;
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
 const ctx: WaveContext = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-const HS = surferFeetToHs(DEFAULT_CONDITIONS.swell.sizeFt);
-const REF_BIGGEST = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+// 6 ft, not the 4 ft default (R1 §2): a 4 ft wave no longer breaks on the reef top's 3.5 m, only soft on the shelf.
+const REF_CONDITIONS = (() => { const c = cloneConditions(DEFAULT_CONDITIONS); c.swell.sizeFt = 6; return c; })();
+const HS = surferFeetToHs(REF_CONDITIONS.swell.sizeFt);
+const REF_BIGGEST = wavesOfSet(1, REF_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
 const testWave = (heightM: number): ActiveWave => ({ arrivalS: 0, heightM, omega: ctx.omega, travelX: ctx.travelX, travelZ: ctx.travelZ, crestLengthM: 400, crestOffsetM: 0 });
 const MIN_H = minRibbonHeight(fieldBreakingHeight(field, P), P);
 const LINEUP: [number, number] = [-25, 45];
