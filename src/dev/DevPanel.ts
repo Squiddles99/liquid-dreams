@@ -10,6 +10,7 @@ import type { OceanSpectrumParams } from '../ocean/spectrum';
 import type { WaterOpticsParams } from '../ocean/waterOptics';
 import type { ShallowSwellParams } from '../ocean/waterSurface';
 import type { PictureParams } from '../render/PicturePipeline';
+import type { LookoutLight } from '../frontend/backdrop/backdropLight';
 import type { ReefParams } from '../seabed/wombReef';
 import type { AtmosphereParams } from '../sky/atmosphereParams';
 import type { SetParams } from '../swell/sets';
@@ -34,6 +35,7 @@ export interface DevPanelModel {
   water: WaterOpticsParams;
   atmosphere: AtmosphereParams;
   picture: PictureParams;
+  lookout: LookoutLight;
   frameLimiter: { maxFps: number };
   sets: SetParams;
   reef: ReefParams;
@@ -68,6 +70,7 @@ export interface DevPanelHandlers {
   onWater(): void;
   onAtmosphere(): void;
   onPicture(): void;
+  onLookout(): void;
   onReferenceMoment(name: string): void;
   onCopyLink(): void;
   onScreenshot(): void;
@@ -543,6 +546,10 @@ export class DevPanel {
     picture.addBinding(m.picture, 'gain', { min: 0.5, max: 2, step: 0.01 }).on('change', h.onPicture);
     picture.addBinding(m.picture, 'saturation', { min: 0, max: 2, step: 0.01 }).on('change', h.onPicture);
     picture.addBinding(m.frameLimiter, 'maxFps', { label: 'max fps (0 = display)', min: 0, max: 240, step: 1 });
+
+    const lookout = this.pane.addFolder({ title: 'Lookout', expanded: false });
+    lookout.addBinding(m.lookout, 'sunShare', { label: 'sun share', min: 0, max: 2, step: 0.01 }).on('change', h.onLookout);
+    lookout.addBinding(m.lookout, 'exposure', { min: 0.1, max: 4, step: 0.01 }).on('change', h.onLookout);
 
     // Every binding and list reports here (refresh() too, when it changes a value). The readouts tick every 250 ms
     // and would otherwise look like edits.
