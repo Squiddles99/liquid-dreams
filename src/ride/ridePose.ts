@@ -70,6 +70,9 @@ export const PADDLE_UP_M = 2;
 export const PADDLE_LOOK_SEAWARD_M = 4.5;
 /** Which way along the line (×(−dirZ, dirX)) the Womb's left peels: north, toward −line. */
 export const PADDLE_PEEL_SIGN = -1;
+/** The paddle camera's sight line to her chest clears the water by this much (m), checked at this many points. */
+export const SIGHT_CLEAR_M = 0.3;
+export const SIGHT_SAMPLES = 16;
 /** At pop-up the camera swings from the shoulder to behind her over about this long (s). */
 export const POPUP_BLEND_TAU_S = 0.6;
 /** The camera stays at least this far over the water under it (the wave's back or crest behind the rider). */
@@ -187,6 +190,16 @@ export class RideCamera {
       ? new Vector3(b.x - D.x * RIDE_BACK_M, b.y + RIDE_UP_M, b.z - D.z * RIDE_BACK_M).addScaledVector(shore, RIDE_SHORE_M)
       : new Vector3(b.x + D.x * PADDLE_ALONG_M, b.y + PADDLE_UP_M, b.z + D.z * PADDLE_ALONG_M).addScaledVector(shore, -PADDLE_SEAWARD_M);
     target.y = Math.max(target.y, waterY(target.x, target.z) + CHASE_CLEAR_M, waterY((target.x + b.x) / 2, (target.z + b.z) / 2) + CHASE_CLEAR_M);
+    if (!up) {
+      // Paddling, the face rising between the shoulder and her must not hide her (the live run at 7 ft saw only water at
+      // the catch): the camera rises until its sight line to her chest clears the water by SIGHT_CLEAR_M.
+      const cy = b.y + 1;
+      for (let i = 1; i < SIGHT_SAMPLES; i++) {
+        const f = i / SIGHT_SAMPLES, x = target.x + (b.x - target.x) * f, z = target.z + (b.z - target.z) * f;
+        const need = waterY(x, z) + SIGHT_CLEAR_M - (target.y + (cy - target.y) * f);
+        if (need > 0) target.y += need / (1 - f);
+      }
+    }
     let lookAt = up
       ? new Vector3(b.x, b.y + 1, b.z).addScaledVector(D, RIDE_LOOK_AHEAD_M)
       : new Vector3(b.x, b.y + 1, b.z).addScaledVector(shore, -PADDLE_LOOK_SEAWARD_M);
