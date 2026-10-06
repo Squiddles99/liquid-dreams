@@ -4,11 +4,13 @@ import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { registerSelfTest } from '../dev/selfTest';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams, onsetDelay, onsetPsi, onsetTime } from './breaking';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, ONSET_LEVELS, ONSET_UNTIL_OFFSET, UNTIL_NEVER, normalizeBreakParams, onsetDelay, onsetPsi, onsetTime, onsetUntil } from './breaking';
 import { REFRACT_FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
 import { SetWaves } from './SetWaves';
-import { type BreakOptions, breakOptions, sumWaves, toActiveWave } from './setWaveModel';
+import { type BreakOptions, breakOptions, crestAt, frontStanding, sumWaves, toActiveWave } from './setWaveModel';
+import { wallWeight } from './wombSection';
+import { smoothstep } from '../math/smoothstep';
 import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 
 // Inside the reef grid, the inflow far field (west, south) and the outflow edge continuation (east, north).
@@ -541,6 +543,85 @@ registerSelfTest({
       });
     }
     return { pass: worst < 1e-3 && flagMismatch === 0 && held > 0, detail: `worst |Δ| ${worst.toExponential(2)} s ${at}; broken-flag mismatches ${flagMismatch}; held samples ${held}` };
+  },
+});
+
+registerSelfTest({
+  name: "breaker: the wall down the line: the GPU's time until onset and front squeeze (standing) match the CPU's (onsetUntil, frontStanding)",
+  async run(renderer) {
+    const field = getGameField();
+    const time = uniform(0);
+    const sets = new SetWaves(time, { pile: false, shape: 'lean' });
+    sets.setField(field);
+    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+    // Down the left from the peak (toward −z), 5 m apart: where the wall stands up ahead of the curl.
+    const points: [number, number][] = [];
+    for (let x = -10; x <= 60; x += 5) for (let z = -160; z <= 20; z += 5) points.push([x, z]);
+    // 1. The record's time until onset (the third record texture), for the biggest wave and a bigger one.
+    let worstUntil = 0, atUntil = '', within = 0, neverMismatch = 0;
+    for (const h of [REF_BIGGEST.heightM, 1.6 * REF_BIGGEST.heightM]) {
+      const { pass, outAttr } = computeAt(points, 1, (xz) => [sets.onsetTimeAt(xz, float(h))]);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      points.forEach(([x, z], i) => {
+        const rec = sampleOnset(field, x, z);
+        if (!rec) return;
+        const c = onsetUntil(rec, 0, h, DEFAULT_BREAK_PARAMS), g = out[i * 4 + 3];
+        if (!Number.isFinite(c) || g >= UNTIL_NEVER) { if (Number.isFinite(c) || g < UNTIL_NEVER) neverMismatch++; return; }
+        if (c > 0 && c < 8) within++;
+        const e = Math.abs(g - c);
+        if (e > worstUntil) { worstUntil = e; atUntil = `h ${h.toFixed(2)} (${x}, ${z}) GPU ${g.toFixed(4)} CPU ${c.toFixed(4)}`; }
+      });
+    }
+    // 2. The sheet through the biggest wave, where the front stands on the wall (wallWeight above the ratio's ramp,
+    // partway up): the GPU's against the CPU's, and how much the wall moves the CPU's sheet there (else 1 proves nothing).
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    const o: BreakOptions = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), pile: false, shape: 'lean' };
+    // The same record with every time until onset 'never': the sheet without the wall (the ratio's ramp alone).
+    const noWall: BreakOptions = { ...o, onset: (x, z) => {
+      const rec = o.onset?.(x, z);
+      if (!rec) return null;
+      const r = Array.from(rec);
+      for (let k = 0; k < ONSET_LEVELS; k++) r[ONSET_UNTIL_OFFSET + k] = UNTIL_NEVER;
+      return r;
+    } };
+    const { pass, outAttr } = computeAt(points, 1, (xz) => [vec4(sets.breakSampleNode(xz).disp, 0.0)]);
+    const disp = new Worst(true, 0), onWall = new Worst(true, 0);
+    let wallSamples = 0, moved = 0, movedAt = '';
+    for (const dt of [-1, 1, 3, 5, 7, 9]) {
+      const t = REF_BIGGEST.arrivalS + dt;
+      time.value = t;
+      const events = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+      sets.setEvents(events);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      const waves = events.map(toActiveWave);
+      const big = waves.find((w) => Math.abs(w.arrivalS - REF_BIGGEST.arrivalS) < 1e-6);
+      points.forEach(([x, z], i) => {
+        const f = sampleField(field, x, z);
+        const c = sumWaves(x, z, t, f, waves, ctx, o);
+        const g = out.slice(i * 4, i * 4 + 3);
+        const e = Math.max(Math.abs(g[0] - c.dx), Math.abs(g[1] - c.eta), Math.abs(g[2] - c.dz));
+        disp.see(e, dt, i);
+        const cr = big ? crestAt(x, z, t, f, big, ctx, o) : null;
+        if (!cr || cr.tb !== null || cr.confidence < 0.5) return;
+        const wall = wallWeight(cr.until), ramp = smoothstep(cr.params.ribbonOnset, 1, cr.r);
+        if (!(wall > ramp + 0.05 && wall > 0.05 && wall < 0.95)) return;
+        if (Math.abs(frontStanding(cr.tb, cr.r, cr.params.ribbonOnset, cr.until) - wall) > 1e-9) return;
+        wallSamples++;
+        onWall.see(e, dt, i);
+        const n = sumWaves(x, z, t, f, waves, ctx, noWall);
+        const m = Math.max(Math.abs(n.dx - c.dx), Math.abs(n.eta - c.eta), Math.abs(n.dz - c.dz));
+        if (m > moved) { moved = m; movedAt = `dt ${dt} (${x}, ${z}) wall ${wall.toFixed(2)} ramp ${ramp.toFixed(2)}`; }
+      });
+    }
+    const pass1 = worstUntil < 1e-3 && neverMismatch === 0 && within > 0;
+    const pass2 = disp.value < 0.05 && onWall.value < 0.05 && wallSamples >= 10 && moved > 0.05;
+    return {
+      pass: pass1 && pass2,
+      detail: `time until onset: ${points.length} points × 2 heights, worst |Δ| ${worstUntil.toExponential(2)} s ${atUntil} (< 1e-3); never-flag mismatches ${neverMismatch} (0); samples 0–8 s before onset ${within} (> 0). `
+        + `The sheet: ${points.length} points × dt −1…9 s, worst |Δdisp| ${disp} m (< 0.05); on the wall (standing = wallWeight, above the ratio's ramp, 0.05–0.95) ${wallSamples} samples (≥ 10), worst |Δdisp| there ${onWall} m (< 0.05); largest change the wall makes to the CPU's sheet there ${moved.toFixed(3)} m (${movedAt || 'none'}) (> 0.05)`,
+    };
   },
 });
 
