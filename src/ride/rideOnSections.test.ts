@@ -10,7 +10,7 @@ import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../br
 import { withSections } from './sectionWater';
 import { type WaterFn, waterAt } from './water';
 import { type RideEvent, startBody, stepRide } from './ridePhysics';
-import { takeoffSpot } from './takeoff';
+import { takeoffLeadS, takeoffSpot } from './takeoff';
 
 /**
  * A rider on the drawn wave (Andrew, 2026-10-05: "the surfer wipes out instantly"): each size's set's biggest wave from the
@@ -33,8 +33,8 @@ describe('a ride on the drawn sections', () => {
       const sheet: WaterFn = (x, z) => waterAt(x, z, c.tideM, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
       return withSections(sheet, traceStations(field, waves, t, ctx, { cameraX: cx, cameraZ: cz, params: P, minHeightM }), c.tideM);
     };
-    let t = big.arrivalS - 10;
     const { x: sx, z: sz } = takeoffSpot(field, big.heightM, P);
+    let t = big.arrivalS - takeoffLeadS(field, { x: sx, z: sz });
     const start = waterAtT(t, sx, sz)(sx, sz);
     const swellHeading = Math.atan2(start.dirX, -start.dirZ) / (Math.PI / 180);
     const b = startBody(sx, sz, swellHeading, waterAtT(t, sx, sz));
