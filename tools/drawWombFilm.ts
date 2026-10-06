@@ -61,7 +61,7 @@ const frames = TIMES.map((t) => {
       const r = swm.sumWaves(x, z, t, rf.sampleField(field, x, z), [wave], ctx, swell);
       return [u + r.dx * S.nx + r.dz * S.nz, r.eta];
     };
-    const sec = ws.wombSection({ H: S.H, r: S.r, tb: S.tb, psi: S.psi, periodS: PERIOD }, sheet, { ribbonOnset: P.ribbonOnset });
+    const sec = ws.wombSection({ H: S.H, Hb: S.Hb, r: S.r, tb: S.tb, psi: S.psi, periodS: PERIOD }, sheet, { ribbonOnset: P.ribbonOnset });
     const plain: P2[] = [];
     for (let u = -40; u <= 40; u += 1) plain.push(sheet(u));
     return { sec, plain, offset: (px - S.x) * S.nx + (pz - S.z) * S.nz };
@@ -81,7 +81,7 @@ const panel = (f: (typeof frames)[number][number]): string => {
   const n = f.sec.numbers;
   return `<svg viewBox="0 0 ${W} ${Hh}"><rect width="${W}" height="${Hh}" class="sky"/><path d="${path} L${W},${Hh} L0,${Hh} Z" class="water"/>`
     + `<path d="${d}" class="line"/><line x1="0" x2="${W}" y1="${Y(0)}" y2="${Y(0)}" class="sea"/>`
-    + `<text x="3" y="9" class="tag">${n.phase.toFixed(2)} · h${n.hollow.toFixed(2)}</text></svg>`;
+    + `<text x="3" y="9" class="tag">${n.phase.toFixed(2)} · h${n.hollow.toFixed(2)} · A${n.A.toFixed(2)}</text></svg>`;
 };
 const css = `:root{--bg:#f6f4ef;--ink:#1d2430;--muted:#5c6470;--card:#fff;--sky:#eef3f7;--water:#2f6f8f;--line:#123446;--sea:#b0463c}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14181e;--ink:#e6e9ee;--muted:#9aa3ae;--card:#1c222a;--sky:#1a2530;--water:#3b86aa;--line:#bfe0ef;--sea:#e07a6e}}

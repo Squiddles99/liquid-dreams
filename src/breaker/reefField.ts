@@ -1,7 +1,7 @@
 import type { Bathymetry } from '../seabed/bathymetry';
 import { smoothstep } from '../math/smoothstep';
 import type { GridSpec } from '../seabed/wombReef';
-import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, breakingDepth, onsetLevelHeight } from './breaking';
+import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_SIZE_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, breakingDepth, onsetLevelHeight } from './breaking';
 import { AMP_CAP, type FarField, computeFarField, farSample } from './coastFarField';
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
 import { solveEikonal } from './eikonal';
@@ -526,7 +526,7 @@ export function computeOnsetRecord(f: {
   const { nx, nz } = grid;
   const n = nx * nz, R = ONSET_RECORD_LENGTH, S = ONSET_PSI_OFFSET;
   let out = new Float32Array(n * R);
-  const D = ONSET_DELAY_OFFSET, stretch = Math.max(1, f.peel ?? 1) - 1;
+  const D = ONSET_DELAY_OFFSET, Z = ONSET_SIZE_OFFSET, stretch = Math.max(1, f.peel ?? 1) - 1;
   // Each level's onset time T = τ − tb at its onset nodes (NaN elsewhere); with the stretch, each onset node's breaking
   // line's first break T₀ (peelLines), and T₀ carried along the rays as the march goes (NaN where unbroken).
   const onsetT = new Float32Array(n * ONSET_LEVELS).fill(Number.NaN);
@@ -581,6 +581,7 @@ export function computeOnsetRecord(f: {
         for (let k = 0; k < ONSET_LEVELS; k++) {
           out[base + 2 + 2 * k] = throwAt(f.amp[i], f.hmin[i], k);
           out[base + S + k] = f.psiHere[i * ONSET_LEVELS + k];
+          out[base + Z + k] = f.amp[i];
 
         }
         continue;
@@ -601,6 +602,10 @@ export function computeOnsetRecord(f: {
         if (run < q && !brokenB) {
           out[base + 2 + 2 * k] = here;
           out[base + S + k] = f.psiHere[i * ONSET_LEVELS + k];
+          // Unbroken: the amplification where the running maximum was last raised (here, or carried), so a wave read
+          // between this level and a broken one below (onsetSize, toRun) reads a size that stays put once the ratio
+          // stops climbing, and meets the crossing's own when the level breaks.
+          out[base + Z + k] = own >= runB ? f.amp[i] : lerp(out, R, Z + k);
         } else if (brokenB) {
           // The physical clock is carried as before (tbS + d, bilinear), so the ray's own onset time is τ − tb; its delay
           // comes from that and its line's first break, carried along the ray.
@@ -613,6 +618,8 @@ export function computeOnsetRecord(f: {
           const thrownB = lerp(out, R, 2 + 2 * k), turned = tbS - dTau >= 0;
           out[base + 2 + 2 * k] = tbS < 0 || !turned ? here : tbS <= LIP_THROW_S ? Math.max(thrownB, here) : thrownB;
           out[base + S + k] = tbS < 0 || !turned ? f.psiHere[i * ONSET_LEVELS + k] : lerp(out, R, S + k);
+          // The size it broke at: the node's own amplification until its turn, then carried unchanged.
+          out[base + Z + k] = tbS < 0 || !turned ? f.amp[i] : lerp(out, R, Z + k);
         } else {
           const fr = (q - runB) / (run - runB), tb = (1 - fr) * dTau, T = f.tau[i] - tb;
           const T0 = lineStart ? lineStart[i * ONSET_LEVELS + k] : Number.NaN, d = delayOf(T, T0);
@@ -624,6 +631,7 @@ export function computeOnsetRecord(f: {
           out[base + 2 + 2 * k] = d > 0 ? here : Math.max(atOnset, here);
           const psiB = lerp(f.psiHere, ONSET_LEVELS, k);
           out[base + S + k] = d > 0 ? f.psiHere[i * ONSET_LEVELS + k] : psiB + fr * (f.psiHere[i * ONSET_LEVELS + k] - psiB);
+          out[base + Z + k] = d > 0 ? f.amp[i] : ampB + fr * (f.amp[i] - ampB);
         }
       }
     }
