@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { testLand } from '../land/testLand';
 import { TrackNetwork, routeTracks } from '../land/tracks';
 import { PRESETS } from '../surfer/presets';
-import { type CrewPlace, SELECT_SPACING_M, conditionsShot, crewFor, easePose, gearShot, poseCamera, riderShot, stagingReady } from './beatCamera';
+import { type CrewPlace, LOOKOUT, SELECT_SPACING_M, crewFor, easePose, gearShot, lookoutShot, poseCamera, riderShot, stagingReady } from './beatCamera';
 import type { CameraPose } from '../dev/momentLink';
 
 const land = testLand();
@@ -39,9 +39,6 @@ describe('the beats\' shots (dune select spec §4; ruling: the crew spread on th
     const crew = crewFor('conditions', stand);
     expect(crew.map((c) => c.preset)).toEqual(['male', 'female', 'grommet']);
     for (const c of crew) expect(c.headingDeg).toBe((stand.headingDeg + 180) % 360);
-    const pose = conditionsShot(stand, ground), xs = crew.map((c) => box(pose, c));
-    expect(xs[0].maxX).toBeLessThan(xs[1].maxX);
-    expect(xs[1].maxX).toBeLessThan(xs[2].maxX);
   });
   it('turns them round without crossing: the outer two side-step outward (a pace or two), nobody walks through the others', () => {
     const before = crewFor('conditions', stand), after = crewFor('rider', stand);
@@ -58,15 +55,17 @@ describe('the beats\' shots (dune select spec §4; ruling: the crew spread on th
     const xs = crew.map((c) => box(pose, c));
     expect(xs[0].maxX).toBeLessThan(xs[1].minX + 1e-6);
   });
-  it('frames Conditions from behind and above, the crew centre-right, the camera over the clearing or a track', () => {
-    const pose = conditionsShot(stand, ground);
-    const crew = crewFor('conditions', stand).map((c) => box(pose, c));
-    const mid = (crew[0].minX + crew[2].maxX) / 2;
-    expect(mid / W).toBeGreaterThan(0.45);
-    expect(mid / W).toBeLessThan(0.75);
-    // Over the clearing, a corridor or their worn edge (3.8 m inland of the stand spot is just past the clearing's 2.5 m half-width).
-    expect(net.worn(pose.position[0], pose.position[2])).toBeGreaterThan(0);
-    expect(pose.position[1]).toBeGreaterThan(ground(pose.position[0], pose.position[2]) + 0.4);
+  it('looks out from the lookout toward the break (lookout spec §2): 1.5 m seaward, at eye height, 30° past the lineup, 8.5° down', () => {
+    const pose = lookoutShot(stand, ground);
+    const toLineup = Math.atan2(-25 - stand.x, -(45 - stand.z)) / (Math.PI / 180);
+    expect(Math.hypot(pose.position[0] - stand.x, pose.position[2] - stand.z)).toBeCloseTo(LOOKOUT.aheadM, 6);
+    expect(pose.position[1]).toBeCloseTo(ground(stand.x, stand.z) + LOOKOUT.eyeM, 6);
+    expect((((pose.yawDeg - toLineup) % 360) + 360) % 360).toBeCloseTo(30, 6);
+    expect(pose.pitchDeg).toBe(-8.5);
+  });
+  it('keeps the 3D crew out of the Conditions frame: they stand behind the lookout camera', () => {
+    const pose = lookoutShot(stand, ground);
+    for (const c of crewFor('conditions', stand)) expect(box(pose, c).inFront, c.preset).toBe(false);
   });
   for (const focus of ['male', 'female', 'grommet'] as const) {
     it(`frames ${focus} in Choose your rider: the left third, the head high, the other two outside the frame or behind the panel`, () => {

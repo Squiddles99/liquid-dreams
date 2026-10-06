@@ -22,7 +22,6 @@ export const SELECT_SPACING_M = 2.1;
 export const CAMERA_FOV_DEG = 60;
 
 export const SHOT = {
-  cond: { backM: 3.8, upM: 2.3, yawNudgeDeg: -9 },
   rider: { distM: 2.35, heightM: 0.95, offDeg: 18, atX: 0.33 },
   gear: { distM: 2.1, heightM: 1.35, offDeg: 30, atX: 0.3 },
 } as const;
@@ -63,13 +62,17 @@ const aim = (from: readonly number[], to: readonly number[]): { yawDeg: number; 
 /** The yaw past a subject that puts it at `atX` of the frame's width (60° vertical field, 16:9). */
 const offsetFor = (atX: number): number => Math.atan((0.5 - atX) * 2 * Math.tan((CAMERA_FOV_DEG / 2) * DEG) * (16 / 9)) / DEG;
 
-/** Conditions: 3.8 m behind and 2.3 m above the crew's centre, looking at the lineup, the crew centre-right. */
-export function conditionsShot(stand: LandSpot, ground: (x: number, z: number) => number, lineup: { x: number; z: number } = WOMB_LINEUP): CameraPose {
-  const { fwd } = headingAxes(stand.headingDeg); // the stand spot faces inland: behind the crew (facing the sea) is along it
-  const x = stand.x + fwd[0] * SHOT.cond.backM, z = stand.z + fwd[1] * SHOT.cond.backM;
-  const y = Math.max(ground(stand.x, stand.z) + SHOT.cond.upM, ground(x, z) + 0.6);
-  const a = aim([x, y, z], [lineup.x, 0, lineup.z]);
-  return { mode: 'free', position: [x, y, z], yawDeg: (a.yawDeg + SHOT.cond.yawNudgeDeg + 360) % 360, pitchDeg: a.pitchDeg - 2 };
+/** The lookout (lookout backdrop spec §2): Andrew's turn toward the break, so the sets show above the painted bush line. */
+export const LOOKOUT = { aheadM: 1.5, eyeM: 1.55, yawPastLineupDeg: 30, pitchDeg: -8.5 } as const;
+
+/** Conditions: the eye 1.5 m seaward of the stand spot, 1.55 m above its ground, turned 30° past the lineup, 8.5° down. */
+export function lookoutShot(stand: LandSpot, ground: (x: number, z: number) => number, lineup: { x: number; z: number } = WOMB_LINEUP): CameraPose {
+  const dx = lineup.x - stand.x, dz = lineup.z - stand.z, n = Math.hypot(dx, dz) || 1;
+  const ux = dx / n, uz = dz / n;
+  const x = stand.x + ux * LOOKOUT.aheadM, z = stand.z + uz * LOOKOUT.aheadM;
+  const y = ground(stand.x, stand.z) + LOOKOUT.eyeM;
+  const yawDeg = ((Math.atan2(ux, -uz) / DEG + LOOKOUT.yawPastLineupDeg) % 360 + 360) % 360;
+  return { mode: 'free', position: [x, y, z], yawDeg, pitchDeg: LOOKOUT.pitchDeg };
 }
 
 /** The camera looks at `aimM` above the rider's ground (a fraction of their height for the portrait, so every head sits alike). */

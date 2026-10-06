@@ -4,7 +4,7 @@ import type { SettingsStorage } from '../dev/devSettings';
 import type { CameraPose } from '../dev/momentLink';
 import type { LandSpot } from '../surfer/placement';
 import type { PresetName } from '../surfer/presets';
-import { conditionsShot, crewFor, easePose, gearShot, riderShot } from './beatCamera';
+import { crewFor, easePose, gearShot, lookoutShot, riderShot } from './beatCamera';
 import { ConditionsGate } from './conditionsGate';
 import { lineFor } from './conditionsView';
 import { type Beat, type FrontAction, type FrontEvent, type FrontState, type SessionChoice, focusTo, initialFront, savedOf, step, tick } from './frontEnd';
@@ -129,7 +129,7 @@ export class FrontEndCore {
     const stand = this.host.standSpot();
     if (!stand) return null;
     const ground = (x: number, z: number): number => this.host.groundAt(x, z) ?? 0;
-    if (s.beat === 'conditions' || s.beat === 'out') return conditionsShot(stand, ground);
+    if (s.beat === 'conditions' || s.beat === 'out') return lookoutShot(stand, ground);
     const place = crewFor(s.beat === 'gear' ? 'gear' : 'rider', stand).find((p) => p.preset === s.rider)!;
     return s.beat === 'gear' ? gearShot(place, ground) : riderShot(place, ground);
   }
