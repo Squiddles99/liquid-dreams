@@ -127,6 +127,11 @@ export class LoadingScreen {
     return true;
   }
 
+  /** Whether the cover is opaque (boot, or fully in): nothing behind it is seen. */
+  get hidesPicture(): boolean {
+    return this.phase === 'boot' || this.phase === 'in';
+  }
+
   /** Takes the cover away at once (errors, selftests). */
   remove(): void {
     cancelAnimationFrame(this.raf);

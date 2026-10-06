@@ -475,18 +475,27 @@ export class BreakingRibbon {
   }
 
   /**
-   * Builds the compute passes and the footprint's material while the game loads (App.prewarm builds the mesh itself).
-   * Built on the first breaking wave instead, they froze that frame (the frame pass alone took 0.4–1.7 s).
+   * The compute passes, for App.prewarm to build while the game loads (App.prewarm builds the mesh itself). Built on the
+   * first breaking wave instead, they froze that frame (the frame pass alone took 0.4–1.7 s).
    */
-  async compileAsync(renderer: THREE.WebGPURenderer): Promise<void> {
-    await renderer.compileComputeAsync([this.readPass, this.curlReadPass, this.framePass, this.vertexPass, this.developPass, this.lightPass, this.chopPass, this.normalPass]);
+  get computePasses(): THREE.ComputeNode[] {
+    return [this.readPass, this.curlReadPass, this.framePass, this.vertexPass, this.developPass, this.lightPass, this.chopPass, this.normalPass];
+  }
+
+  /**
+   * Draws the footprint once, whatever the stations, to build its pipeline while the game loads (App.prewarm). Not
+   * renderer.compileAsync: three r186 builds that for the renderer's depth buffer, not the target's (it has none), so the
+   * first breaking wave built it again (0.3–4.7 s). The next renderFootprint clears what this drew.
+   */
+  prewarmFootprint(renderer: THREE.WebGPURenderer): void {
     const target = renderer.getRenderTarget();
     renderer.setRenderTarget(this.footprintTarget);
     try {
-      await renderer.compileAsync(this.footprintScene, this.footprintCamera);
+      renderer.render(this.footprintScene, this.footprintCamera);
     } finally {
       renderer.setRenderTarget(target);
     }
+    this.footprintDirty = true;
   }
 
   /** Runs the frame, vertex, develop, light, chop and normal compute passes (no-op with no stations). */
