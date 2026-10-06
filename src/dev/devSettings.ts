@@ -40,9 +40,10 @@ export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
  * breaking on the reshaped reef, so the reef resets to it; model 9: the reef is Andrew's satellite line, moved in to 100–110 m
  * off the beach, so it resets again; model 10: the peel stretch is off by default, so the curl breaks on the reef's face
  * at full size, and the basin in front of the reef is 20 m, not 30, so the reef resets again; model 11: the coast offshore is
- * 20 m, the basin's own depth, so the swell lines run straight in: the reef resets again).
+ * 20 m, the basin's own depth, so the swell lines run straight in: the reef resets again; model 12 (R1, 2026-10-06): δ 0.2
+ * and the 15 m basin to the far field with a 15 m face, so the breaking and the reef reset again).
  */
-export const BREAKING_MODEL = 11;
+export const BREAKING_MODEL = 12;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;
@@ -151,7 +152,7 @@ export function loadDevSettings(storage: SettingsStorage, defaults: DevSettings)
   // the old one. Model 9: the reef is Andrew's satellite line, moved in toward the beach: a saved reef is round 2's.
   // Model 10: the basin in front of it is 20 m: a saved reef's 30 m spreads the swell. Model 11: the coast around it is 20 m
   // too (a saved reef predates the cap that follows the coast's own depth).
-  if (typeof raw.breakingModel !== 'number' || raw.breakingModel < 11) look.reef = deepClone(defaults.reef);
+  if (typeof raw.breakingModel !== 'number' || raw.breakingModel < 12) look.reef = deepClone(defaults.reef);
   return {
     ...(look as unknown as DevLookParams),
     mode: raw.mode === 'default' || raw.mode === 'custom' ? raw.mode : 'custom',

@@ -170,10 +170,17 @@ export class RideCamera {
     const [fx, fz] = forwardOf(b.headingDeg);
     const shore = new Vector3(b.water.dirX, 0, b.water.dirZ), line = new Vector3(-shore.z, 0, shore.x);
     const along = b.vx * line.x + b.vz * line.z;
-    if (this.lineSign === 0 || Math.abs(along) > LINE_SWAP_MS) this.lineSign = Math.abs(along) > 1e-3 ? Math.sign(along) : Math.sign(fx * line.x + fz * line.z) || 1;
-    const want = line.clone().multiplyScalar(up ? this.lineSign : PADDLE_PEEL_SIGN);
-    this.dir.lerp(want, first ? 1 : 1 - Math.exp(-dt / DIR_TAU_S));
-    if (this.dir.lengthSq() < 1e-6) this.dir.copy(want);
+    // Paddling, the side the left peels toward; up, the way she goes along the line once she moves (held through a stall).
+    if (!up) this.lineSign = PADDLE_PEEL_SIGN;
+    else if (this.lineSign === 0 || Math.abs(along) > LINE_SWAP_MS) this.lineSign = Math.abs(along) > 1e-3 ? Math.sign(along) : Math.sign(fx * line.x + fz * line.z) || 1;
+    const want = line.clone().multiplyScalar(this.lineSign);
+    // Turned about the vertical toward `want` (a straight-line ease between opposite directions never leaves the first).
+    if (first || this.dir.lengthSq() < 1e-6) this.dir.copy(want);
+    else {
+      const turn = Math.atan2(this.dir.x * want.z - this.dir.z * want.x, this.dir.x * want.x + this.dir.z * want.z);
+      const t = (Math.abs(turn) > Math.PI - 1e-6 ? Math.PI : turn) * (1 - Math.exp(-dt / DIR_TAU_S)), c = Math.cos(t), s = Math.sin(t);
+      this.dir.set(this.dir.x * c - this.dir.z * s, 0, this.dir.x * s + this.dir.z * c);
+    }
     this.dir.normalize();
     const D = this.dir;
     const target = up
