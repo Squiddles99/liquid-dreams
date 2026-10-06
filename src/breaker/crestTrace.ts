@@ -1,4 +1,4 @@
-import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetDelay, onsetTime, peelRatio } from './breaking';
+import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetDelay, onsetTime, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
 import { type SectionNumbers, sectionNumbers } from './wombSection';
@@ -57,6 +57,9 @@ export interface Station {
   /** The height (m) the section stood at as it threw its lip, as the sheet's crest there (setWaveModel.Crest.lipH): the
    * tube hangs from the crest it stood at then. null before breaking or off the record. */
   lipH: number | null;
+  /** The height (m) the section broke at, uncapped by the depth under it (breaking.onsetSize): the tube's size from its
+   * onset to its collapse. null before breaking or off the record. */
+  Hb: number | null;
   /** The cross-section's numbers (wombSection: scale A, phase, hollowness, ρ), smoothed along the crest
    * (SECTION_SMOOTHING_M): what the ribbon, the ride and the spray all draw the section from. */
   section: SectionNumbers;
@@ -146,6 +149,13 @@ export function stationLipH(field: ReefField, w: ActiveWave, x: number, z: numbe
   return rec ? onsetHeight(rec, 0, w.heightM, p) : null;
 }
 
+/** The height the station's section broke at (breaking.onsetSize): null before it breaks (or while it waits its turn). */
+export function stationSize(field: ReefField, w: ActiveWave, s: Pick<Station, 'x' | 'z' | 'tb'>, p: BreakParams): number | null {
+  if (s.tb === null) return null;
+  const rec = sampleOnset(field, s.x, s.z, onsetScratch);
+  return rec ? onsetSize(rec, 0, w.heightM, p) : null;
+}
+
 /** A station draws while its section has any weight (its smoothed ρ): from standing up out of the sheet to the hand-back
  * after the white-water wall (wombSection.sectionWeight). */
 export const ALIVE_RHO = 1e-3;
@@ -166,7 +176,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
     for (let n = 0; n < 20000; n++) {
       const nrm = crestNormal(w, f, ctx);
       if (sign > 0 || n > 0) {
-        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, wait: null, psi: PSI_NORMAL, lipH: null, section: { A: 0, phase: 0, hollow: 0, rho: 0 } });
+        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, wait: null, psi: PSI_NORMAL, lipH: null, Hb: null, section: { A: 0, phase: 0, hollow: 0, rho: 0 } });
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS);
@@ -189,6 +199,7 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveC
     stationOnset(field, w, s, input.params);
     s.psi = stationPsi(field, w, s.x, s.z, input);
     s.lipH = stationLipH(field, w, s.x, s.z, input.params);
+    s.Hb = stationSize(field, w, s, input.params);
   }
 }
 
@@ -231,7 +242,7 @@ export const LINE_END_FADE_M = 6;
  */
 export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'>): void {
   const normals = line.map((s) => [s.nx, s.nz]);
-  const raw = line.map((s) => sectionNumbers({ H: s.H, r: s.r, tb: s.tb, wait: s.wait, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
+  const raw = line.map((s) => sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, wait: s.wait, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
   const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
   let lo = 0;
   line.forEach((s, i) => {

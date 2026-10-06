@@ -61,6 +61,8 @@ export const FRONT_BLEND_UNITS: readonly [number, number] = [2.3, 4];
 export interface SectionInput {
   /** The station's local wave height (m), crest to trough. */
   H: number;
+  /** The height (m) the section broke at (Station.Hb): once broken, the tube's size and its clock. Absent or null: H. */
+  Hb?: number | null;
   /** Breaking ratio (the onset ratio): 1 at onset. */
   r: number;
   /** Time since onset (s): null before breaking (or while the section waits its turn), Infinity long after. */
@@ -98,10 +100,25 @@ export function sectionPhase(s: SectionInput, p: SectionParams): number {
   if (s.tb === null) return STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r) * standing(s);
 
   if (!Number.isFinite(s.tb)) return 2;
-  const t = Math.max(0, s.tb), fly = flightTime(s.H), hold = tubeHold(s.H, s.periodS);
+  const H = brokeAt(s), t = Math.max(0, s.tb), fly = flightTime(H), hold = tubeHold(H, s.periodS);
   if (t < fly) return STOOD_PHASE + (STAGES.barrel - STOOD_PHASE) * (t / fly);
   if (t < fly + hold) return STAGES.barrel;
-  return Math.min(2, STAGES.barrel + (t - fly - hold) / collapseSpan(s.H, s.periodS));
+  return Math.min(2, STAGES.barrel + (t - fly - hold) / collapseSpan(H, s.periodS));
+}
+
+/** The height a section's break runs on: the height it broke at once broken (Hb), the local height before. */
+const brokeAt = (s: SectionInput): number => (s.tb !== null && s.Hb !== undefined && s.Hb !== null ? s.Hb : s.H);
+
+/** From this phase to 2 the white-water wall's size sinks from the height the section broke at to the local height's. */
+export const WALL_SINK_PHASE = 1.5;
+/**
+ * The scale A (m) through the break (plan 2026-10-06-wave-root-cause step 1): the local height's before onset; from onset
+ * the height it broke at, held through the lip's flight, the tube's hold and the collapse; only the white-water wall
+ * (WALL_SINK_PHASE to 2) sinks to the local height's (the bore over the shelf).
+ */
+export function sectionSize(s: SectionInput, phase: number): number {
+  const held = sectionScale(brokeAt(s)), own = sectionScale(s.H);
+  return held + (own - held) * smoothstep(WALL_SINK_PHASE, 2, phase);
 }
 
 /** When (s after onset) the section reaches the white-water wall, and hands back to the sheet. */
@@ -135,13 +152,14 @@ const standing = (s: SectionInput): number => (s.wait === undefined || s.wait ==
 export function sectionWeight(s: SectionInput, p: SectionParams): number {
   if (s.tb === null) return smoothstep(p.ribbonOnset, RHO_FULL_RATIO, s.r) * standing(s);
   if (!Number.isFinite(s.tb)) return 0;
-  return 1 - smoothstep(0, SECTION_HAND_BACK_S, s.tb - sectionEnd(s.H, s.periodS));
+  return 1 - smoothstep(0, SECTION_HAND_BACK_S, s.tb - sectionEnd(brokeAt(s), s.periodS));
 }
 
 export interface SectionNumbers { A: number; phase: number; hollow: number; rho: number }
 
 export function sectionNumbers(s: SectionInput, p: SectionParams): SectionNumbers {
-  return { A: sectionScale(s.H), phase: sectionPhase(s, p), hollow: hollowFromPsi(s.psi), rho: sectionWeight(s, p) };
+  const phase = sectionPhase(s, p);
+  return { A: sectionSize(s, phase), phase, hollow: hollowFromPsi(s.psi), rho: sectionWeight(s, p) };
 }
 
 /** The sheet along the station: at u m from the crest along the wave's travel, the displaced (u, y) of the sea there. */

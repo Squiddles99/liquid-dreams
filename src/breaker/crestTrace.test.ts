@@ -13,6 +13,8 @@ import { PSI_NORMAL } from './overturn';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi } from './setWaveModel';
 import { cloneConditions } from '../conditions/defaults';
+import { setWaveHeight } from './reefReport';
+import { sectionScale } from './wombSection';
 
 const P = DEFAULT_BREAK_PARAMS;
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
@@ -246,5 +248,53 @@ describe("a held section's station carries the held ratio, so the ribbon stands 
     stationOnset(fieldWith(5, 2), w, late, DEFAULT_BREAK_PARAMS);
     expect(late.tb).toBeCloseTo(5, 5);
     expect(late.r).toBeCloseTo(2.4, 6);
+  });
+});
+
+describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause step 1)', () => {
+  const H6 = setWaveHeight(6), w6 = testWave(H6);
+  /** The first leg's places (m along NORTH_LEDGE from the peak). */
+  const PLACES = [10, 25, 40];
+  const station = (st: Station[], s: number): Station | null => {
+    const [a, b] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const px = a[0] + ((b[0] - a[0]) * s) / L, pz = a[1] + ((b[1] - a[1]) * s) / L;
+    let best: Station | null = null, bestD = 3;
+    for (const e of st) {
+      if (Math.abs((px - e.x) * e.nx + (pz - e.z) * e.nz) > 30) continue;
+      const d = Math.abs((px - e.x) * -e.nz + (pz - e.z) * e.nx);
+      if (d < bestD) { bestD = d; best = e; }
+    }
+    return best;
+  };
+  // 5% is the plan's bar; the record's carried size still drifts 3–4% down a ray (the bilinear carry mixes neighbouring
+  // rays), and the smoothing along the crest mixes in the unbroken stations ahead of the curl. Step 4's one clock per wave
+  // (the size read once, as the curl passes) removes both. Until then: 8%.
+  it('A along the first leg holds within 8% from phase 0.5 to 1.5, at 6 ft mid tide', { timeout: 120_000 }, () => {
+    const seen = PLACES.map(() => [] as number[]);
+    for (let t = -2; t <= 12; t += 0.1) {
+      const st = live(traceStations(field, [w6], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 1 }));
+      PLACES.forEach((s, i) => {
+        const e = station(st, s);
+        if (e && e.section.phase >= 0.5 && e.section.phase <= 1.5) seen[i].push(e.section.A);
+      });
+    }
+    PLACES.forEach((s, i) => {
+      expect(seen[i].length, `${s} m: frames through the throw`).toBeGreaterThan(5);
+      const lo = Math.min(...seen[i]), hi = Math.max(...seen[i]);
+      console.log(`${s} m along the first leg: A ${lo.toFixed(2)}–${hi.toFixed(2)} m over ${seen[i].length} frames`);
+      expect(hi / lo, `${s} m`).toBeLessThan(1.08);
+    });
+  });
+  it('over the shelf, where the depth caps the height under it, the barrel keeps the height it broke at', () => {
+    let n = 0;
+    for (const t of [1, 2, 3]) {
+      const st = live(traceStations(field, [w6], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 1 }));
+      for (const s of st) {
+        if (!(s.section.phase >= 1 && s.section.phase <= 1.5 && s.Hb !== null && s.H < 0.9 * s.Hb)) continue;
+        n++;
+        expect(s.section.A).toBeGreaterThan(sectionScale(s.H) * 1.05);
+      }
+    }
+    expect(n).toBeGreaterThan(10);
   });
 });

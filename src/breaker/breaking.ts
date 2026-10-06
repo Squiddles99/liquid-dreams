@@ -265,13 +265,15 @@ export function onsetLevelHeight(k: number): number {
 }
 /** Values per record sample: the running maximum; per level (time since onset, the throw's height ÷ the level's
  * deep-water height); then per level ψ₀ where that level broke (reefField.psiFromStep, plan 2026-10-02); then per level
- * the peel stretch's delay (s, spec 2026-10-04 §1). The time since onset is the stretched one: negative while the section
- * waits its turn. */
-export const ONSET_RECORD_LENGTH = 1 + 4 * ONSET_LEVELS;
+ * the peel stretch's delay (s, spec 2026-10-04 §1); then per level the amplification where it broke, uncapped
+ * (onsetSize). The time since onset is the stretched one: negative while the section waits its turn. */
+export const ONSET_RECORD_LENGTH = 1 + 5 * ONSET_LEVELS;
 /** Offset of level 0's ψ₀ in a record sample. */
 export const ONSET_PSI_OFFSET = 1 + 2 * ONSET_LEVELS;
 /** Offset of level 0's peel delay in a record sample. */
 export const ONSET_DELAY_OFFSET = 1 + 3 * ONSET_LEVELS;
+/** Offset of level 0's onset amplification (onsetSize) in a record sample. */
+export const ONSET_SIZE_OFFSET = 1 + 4 * ONSET_LEVELS;
 
 /**
  * ρ per metre of wave height per unit amp/hminBreak: (1 + γδ)/γ, breakingRatio without its floor. The record leaves the
@@ -327,6 +329,19 @@ export function onsetHeight(rec: ArrayLike<number>, offset: number, heightM: num
   const l = onsetLevel(rec, offset, heightM, p);
   if (!l) return null;
   const lo = rec[offset + 2 + 2 * l.k], hi = rec[offset + 4 + 2 * l.k];
+  return heightM * (lo + l.w * (hi - lo));
+}
+
+/**
+ * The height (m) the section broke at: heightM × the amplification where it broke (or took its turn), uncapped by the
+ * depth and carried unchanged along the ray after (plan 2026-10-06-wave-root-cause step 1: the tube keeps the size it
+ * broke at; onsetHeight's throw height is capped by the shelf's depth under it, and the drawn barrel shrank 30–50% while it
+ * was still barrelling). Read as onsetTime reads the time; null if it hasn't broken.
+ */
+export function onsetSize(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
+  const l = onsetLevel(rec, offset, heightM, p);
+  if (!l) return null;
+  const lo = rec[offset + ONSET_SIZE_OFFSET + l.k], hi = rec[offset + ONSET_SIZE_OFFSET + l.k + 1];
   return heightM * (lo + l.w * (hi - lo));
 }
 

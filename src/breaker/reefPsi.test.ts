@@ -34,7 +34,7 @@ describe('ψ₀ in the reef bake (spec 2026-09-30-barrel-from-maths §5, plan ru
   it('the record keeps a ψ₀ per level after the (time, height) pairs', () => {
     expect(ONSET_PSI_OFFSET).toBe(1 + 2 * ONSET_LEVELS);
     // …then the peel stretch's delay block (spec 2026-10-04 §1).
-    expect(ONSET_RECORD_LENGTH).toBe(1 + 4 * ONSET_LEVELS);
+    expect(ONSET_RECORD_LENGTH).toBe(1 + 5 * ONSET_LEVELS);
   });
   const mid = fieldAt(0), low = fieldAt(-1.5), high = fieldAt(1.5);
   // Past thrown (0.09) the tube's shape barely moves with ψ (overturn.overturnShape rounds toward Mead & Black by 0.15), and
