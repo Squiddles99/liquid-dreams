@@ -26,6 +26,8 @@ export const LOOK_BACK_MARGIN_S = 0.5;
 /** Newton projections onto ξ = 0 per step (the seed takes SEED_ITERATIONS). */
 export const PROJECT_ITERATIONS = 2;
 export const SEED_ITERATIONS = 8;
+/** Rounds of SEED_ITERATIONS a projection may take to reach the crest (toCrest, R2 §3): 3 reach a crest 160 m from the origin at 8 and 12 ft. */
+export const SEED_ROUNDS = 4;
 /** A seed or step whose |ξ| stays above this (s) after projecting has not found the crest: the side (or wave) ends. */
 export const CREST_TOLERANCE_S = 0.01;
 /** A step's projection moves at most this far (m); the seed's at most half a wavelength (maxStep 0). */
@@ -174,10 +176,23 @@ function alive(s: Station): boolean {
   return curlWeight(s.section) > ALIVE_RHO;
 }
 
+/**
+ * A projection not yet within CREST_TOLERANCE_S of the crest carries on from where it stopped, SEED_ITERATIONS at a time, up
+ * to SEED_ROUNDS rounds in all, before the trace calls the crest lost (R2 §3). The projection converges only about tenfold per
+ * SEED_ITERATIONS, so ~70 m from the origin the seed's first round, and ~100 m out a step's PROJECT_ITERATIONS, landed just
+ * short (ξ 0.011–0.02 s) while the crest was still on the reef and breaking: every station of the wave vanished in one
+ * frame under a rider in its tube (the live 7 and 8 ft rides at +8.19 s after the peak), or its walk stopped a step from
+ * the seed.
+ */
+function toCrest(field: ReefField, w: ActiveWave, t: number, ctx: WaveContext, q: ReturnType<typeof project>): ReturnType<typeof project> {
+  for (let round = 1; round < SEED_ROUNDS && !(Math.abs(q.xi) < CREST_TOLERANCE_S); round++) q = project(field, w, t, ctx, q.x, q.z, SEED_ITERATIONS, 0);
+  return q;
+}
+
 /** One wave's crest, both ways from its seed, at `factor` × the spacing rule. Empty if the crest isn't on the reef. */
 function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx: WaveContext, input: TraceInput, factor: number): Station[][] {
   const p = input.params;
-  const seed = project(field, w, t, ctx, 0, 0, SEED_ITERATIONS, 0);
+  const seed = toCrest(field, w, t, ctx, project(field, w, t, ctx, 0, 0, SEED_ITERATIONS, 0));
   if (!(Math.abs(seed.xi) < CREST_TOLERANCE_S) || !inGrid(field, seed.x, seed.z)) return [];
   const sides: Station[][] = [];
   for (const sign of [1, -1]) {
@@ -190,7 +205,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
         side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, wait: null, until: null, psi: PSI_NORMAL, lipH: null, Hb: null, section: { A: 0, phase: 0, hollow: 0, rho: 0 } });
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
-      const next = project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS);
+      const next = toCrest(field, w, t, ctx, project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS));
       if (!(Math.abs(next.xi) < CREST_TOLERANCE_S) || !inGrid(field, next.x, next.z) || Math.hypot(next.x, next.z) > TAPER_NEAR_M) break;
       arc += sign * Math.hypot(next.x - x, next.z - z);
       ({ x, z, f } = next);
