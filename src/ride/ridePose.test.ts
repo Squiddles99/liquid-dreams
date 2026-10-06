@@ -131,6 +131,28 @@ describe('the take-off camera (R1 §4)', () => {
     const along = (pose.position[0] - b.x) * line[0] + (pose.position[2] - b.z) * line[1];
     expect(Math.abs(along)).toBeGreaterThan(5);
   });
+  it.each([0, 20, 45, 70, 135, 200, 315])('at pop-up with no speed along the line yet, it swings behind her for the left (swell toward %i°)', (deg) => {
+    const dX = Math.sin(deg * DEG), dZ = -Math.cos(deg * DEG);
+    const w = () => ({ y: 0, slopeX: 0, slopeZ: 0, foam: 0, ux: 0, uz: 0, c: 8, dirX: dX, dirZ: dZ });
+    const b = startBody(0, 0, Math.atan2(dX, -dZ) / DEG, w), cam = new RideCamera();
+    for (let k = 0; k < 60; k++) cam.update(b, 1 / 60, () => 0);
+    b.phase = 'popup'; b.phaseT = 0;
+    let pose!: CameraPose;
+    for (let k = 0; k < 90; k++) { b.phaseT += 1 / 60; pose = cam.update(b, 1 / 60, () => 0); }
+    const line = [-b.water.dirZ, b.water.dirX];
+    const along = (pose.position[0] - b.x) * line[0] + (pose.position[2] - b.z) * line[1];
+    expect(along, 'behind her along a ride toward −line').toBeGreaterThan(2);
+  });
+  it('a rider who pops up and goes right (+line) gets the camera behind her within 1.5 s, not stuck in front', () => {
+    const b = paddlingBody(), cam = new RideCamera();
+    for (let k = 0; k < 60; k++) cam.update(b, 1 / 60, () => 0);
+    const line = [-b.water.dirZ, b.water.dirX];
+    b.phase = 'ride'; b.phaseT = 0; b.vx = 4 * line[0]; b.vz = 4 * line[1];
+    let pose!: CameraPose;
+    for (let k = 0; k < 90; k++) { b.phaseT += 1 / 60; pose = cam.update(b, 1 / 60, () => 0); }
+    const along = (pose.position[0] - b.x) * line[0] + (pose.position[2] - b.z) * line[1];
+    expect(along, 'behind her as she goes +line').toBeLessThan(-2);
+  });
   it('a look swing during paddle still pivots around the rider', () => {
     const b = paddlingBody(), cam = new RideCamera();
     let pose!: CameraPose;

@@ -872,6 +872,43 @@ describe('the slurp: the draw-up reaches along the swell line either side of the
   });
 });
 
+describe('the peak and its shoulders at 6 ft (the slurp’s invariants, re-pinned for R1)', () => {
+  // The 12 ft slurp cases pinned the old reef's numbers and were retired (R1 Task 3); these two are physics, kept at R1's
+  // own size: the breaking peak is not drowned by its shoulders, and the shoulders don't break early with it.
+  const c6 = cloneConditions(DEFAULT_CONDITIONS);
+  c6.swell.sizeFt = 6;
+  const big6 = wavesOfSet(1, c6, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+  const w = testWave(big6.heightM);
+  const tx = -ctx.travelZ, tz = ctx.travelX;
+  const [px0, pz0] = breakPoint(0, 0, w), tPeak = at(px0, pz0).tau;
+  const crestPoint = (v: number, t: number): [number, number] => {
+    let x = 0, z = 0;
+    for (let u = -200; u <= 200; u += 0.5) { x = px0 + ctx.travelX * u + tx * v; z = pz0 + ctx.travelZ * u + tz * v; if (at(x, z).tau >= t) break; }
+    return [x, z];
+  };
+  it('the breaking peak stays the tallest point of the line while it throws', { timeout: 60_000 }, () => {
+    for (const dt of [0, 0.5]) {
+      const t = tPeak + dt;
+      const crestAtV = (v: number): number => {
+        let [xx, zz] = crestPoint(v, t), top = -Infinity;
+        for (let d = -4; d <= 4; d += 0.5) { const f = at(xx, zz); top = Math.max(top, sumWaves(xx, zz, t, f, [w], ctx, sheet).eta); xx += f.dirX * 0.5; zz += f.dirZ * 0.5; }
+        return top;
+      };
+      const peak = Math.max(...[-10, -5, 0, 5, 10].map(crestAtV));
+      const shoulders = Math.max(...[-100, -80, -60, 60, 80, 100].map(crestAtV));
+      expect(peak, `${dt} s: the peak (shoulders ${shoulders.toFixed(2)} m)`).toBeGreaterThanOrEqual(0.95 * shoulders);
+    }
+  });
+  // The left's shoulder (north, v < 0) only: the south ledge meets the swell before the corner and breaks first by design
+  // (wombReef.SOUTH_LEDGE), so +80 m is already the right closing out.
+  it('the left’s shoulder does not break any earlier: 80 m or more north along the crest is unbroken as the peak breaks', () => {
+    for (const v of [-100, -90, -80]) {
+      const [x, z] = crestPoint(v, tPeak), f = at(x, z);
+      expect(crestAt(x, z, tPeak, f, w, ctx, sheet)!.s, `${v} m along the crest`).toBe(0);
+    }
+  });
+});
+
 describe('no isolated spikes on the inside reef (Andrew\'s "rock", 12 ft)', () => {
   // Where the rays fan out over the inside reef (the swell turns ~45° within 8 m), a point's distance ahead of its crest
   // measured along its own ray collapsed (1 m for a point 6 m ahead): it took the crest's height and foam among drained
