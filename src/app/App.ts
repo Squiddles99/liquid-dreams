@@ -67,6 +67,8 @@ import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
 import { DEFAULT_PICTURE, type PictureParams, PicturePipeline } from '../render/PicturePipeline';
+import { LookoutBackdrop } from '../frontend/backdrop/LookoutBackdrop';
+import { backdropFade } from '../frontend/backdrop/backdropMath';
 import { withOnlyShown } from '../render/prewarm';
 import { bedHeightAt, buildBathymetry, downsample } from '../seabed/bathymetry';
 import { SHORE_X } from '../seabed/coastProfile';
@@ -393,6 +395,9 @@ export class App {
   traceMs = 0;
   readonly oceanSurface: OceanSurface;
   readonly picture: PicturePipeline;
+  /** The select screens' painted ground over the live sea (lookout backdrop spec). */
+  readonly lookout: LookoutBackdrop;
+  private readonly lookoutFwd = new THREE.Vector3();
   private readonly perf: PerfOverlay;
   private readonly panel: DevPanel;
   private readonly sunDir = new THREE.Vector3();
@@ -492,12 +497,13 @@ export class App {
       this.heathParts.land = true;
       console.warn(`The land didn't load (${e instanceof Error ? e.message : String(e)}); running without it.`);
     });
-    this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
+    this.lookout = new LookoutBackdrop(import.meta.env.BASE_URL, Math.max(window.innerWidth, window.innerHeight) * devicePixelRatio > 2200);
+    this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams, this.lookout.overlay(this.sky));
     this.perf = new PerfOverlay(renderer);
     this.panel = new DevPanel(
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
-        picture: this.pictureParams, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
+        picture: this.pictureParams, lookout: this.lookout.light, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
         overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, sound: this.soundParams, soundStatus: this.sound.status, surfer: this.surferParams, surferStatus: this.surferStand.status, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
@@ -508,6 +514,7 @@ export class App {
         onWater: () => updateWaterOpticsUniforms(this.waterOptics, this.waterParams),
         onAtmosphere: () => this.sky.setParams(this.atmosphereParams),
         onPicture: () => this.picture.setParams(this.pictureParams),
+        onLookout: () => {}, // read every frame by LookoutBackdrop.update
         onReferenceMoment: (name) => this.goToReferenceMoment(name),
         onCopyLink: () => void this.copyLink(),
         onScreenshot: () => { this.screenshotRequested = true; },
@@ -1949,6 +1956,14 @@ export class App {
     this.reportLoading(realDt * 1000);
     const simDt = this.clock.tick(realDt);
     this.frontEnd?.update(realDt);
+    const fwd = this.camera.getWorldDirection(this.lookoutFwd);
+    this.lookout.update(realDt, {
+      fade: backdropFade(this.frontEnd?.isOpen ? this.frontEnd.state : null),
+      aspect: this.camera.aspect,
+      windMs: this.conditions.wind.speedMs,
+      windFromDeg: this.conditions.wind.directionDeg,
+      cameraYawDeg: ((Math.atan2(fwd.x, -fwd.z) * 180) / Math.PI + 360) % 360,
+    });
     // The menu while surfing: Esc or a pad's START opens it (the pad is watched every frame, so a START still held from
     // paddling out isn't a press).
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? [...navigator.getGamepads()] : [];

@@ -39,6 +39,9 @@ export const DEFAULT_PICTURE: PictureParams = {
   agx: false,
 };
 
+/** A layer composited over the scene's HDR radiance before exposure (the lookout backdrop): scene rgb node → rgb node. */
+export type SceneOverlay = (sceneRgb: N) => N;
+
 /**
  * HDR scene → exposure → bloom → tone map → lift/gamma/gain/saturation → sRGB.
  * Khronos PBR Neutral keeps mid-tone hue and saturation (a clear sky stays blue) and only compresses highlights.
@@ -64,14 +67,15 @@ export class PicturePipeline {
   /** Water on the lens as the camera breaks the surface (LensWater, via setLensWater). */
   private readonly lens = createLensWaterUniforms();
 
-  constructor(private readonly renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, params: PictureParams = DEFAULT_PICTURE) {
+  constructor(private readonly renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, params: PictureParams = DEFAULT_PICTURE, overlay?: SceneOverlay) {
     this.params = { ...params };
     const scenePass = pass(scene, camera);
     // Clamped below the half-float maximum (65504): the scene is finite, but exposure > ~2 could push the sun
     // disk past it, overflowing bloom's HalfFloat targets, and PBR Neutral turns Infinity into NaN.
     // The scene through the lens: exactly the pass while the lens is dry, bent and blurred while it is wet.
     const throughLens: N = wetLensSampleNode(scenePass.getTextureNode('output'), this.lens);
-    const exposed = min(throughLens.rgb.mul(this.exposure).mul(this.whiteBalance), vec3(HDR_MAX));
+    const sceneRgb: N = overlay ? overlay(throughLens.rgb) : throughLens.rgb;
+    const exposed = min(sceneRgb.mul(this.exposure).mul(this.whiteBalance), vec3(HDR_MAX));
     this.bloomNode = bloom(vec4(exposed, 1.0), params.bloomStrength, params.bloomRadius, params.bloomThreshold);
     const hdr: N = exposed.add(this.bloomNode.rgb);
     // three typings gap: the tone-mapping Fns return an untyped Node, which mix() rejects.
