@@ -276,4 +276,26 @@ describe('the crest carries her (R1.5 §1)', () => {
     expect(b.caught).toBe(false);
     expect(b.vx).toBeLessThan(vAtCrest); // drag, no carry
   });
+  it('already faster than the carry along the travel, she is not slowed by it (R2 §2: one-way)', () => {
+    const w = slope(0.5, 0, 9), b = startBody(0, 0, shoreHeading, w);
+    b.caught = true; b.catchT = CATCH_HOLD_S;
+    b.vx = 0.95 * 9;
+    run(b, idle, () => w, 0.3);
+    expect(b.caught).toBe(true);
+    // Gravity on the 0.5 face (~4 m/s²) adds ~1.2 m/s; the drag against the crest's water takes back a little. Two-way, she
+    // would have been pulled to ~0.87 c (7.8).
+    expect(b.vx).toBeGreaterThan(0.95 * 9);
+  });
+  it('the line she sets during the pop-up survives it: her speed across the travel decays by drag alone', () => {
+    const w = slope(0.5, 0, 9), b = startBody(0, 0, shoreHeading, w);
+    b.phase = 'popup'; b.phaseT = 0;
+    b.vx = CREST_CARRY * 9; b.vz = -3; // 0.85 c shoreward and 3 m/s along the line
+    b.headingDeg = Math.atan2(b.vx, -b.vz) / (Math.PI / 180); // nose along her velocity: no side slip to grip
+    run(b, idle, () => w, 0.3);
+    // Two-way the relaxation took 91 % of vz in 0.3 s (|vz| 0.26). One-way the carry takes none of it: what goes (to 1.66)
+    // is the drag, which while carried is against the crest's water (spec R2 §2: unchanged), so her 3 m/s along the line
+    // is side slip to that water and the rail grips it (the same 1.66 with the carry's push switched off).
+    expect(Math.abs(b.vz)).toBeGreaterThan(1.5);
+    expect(b.vx).toBeGreaterThanOrEqual(CREST_CARRY * 9 - 0.1);
+  });
 });
