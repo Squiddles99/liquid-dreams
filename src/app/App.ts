@@ -68,6 +68,7 @@ import { WaterVolume } from '../ocean/WaterVolume';
 import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/waterShading';
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
 import { DEFAULT_PICTURE, type PictureParams, PicturePipeline } from '../render/PicturePipeline';
+import { AsyncPipelines } from '../render/asyncPipelines';
 import { withOnlyShown } from '../render/prewarm';
 import { bedHeightAt, buildBathymetry, downsample } from '../seabed/bathymetry';
 import { SHORE_X } from '../seabed/coastProfile';
@@ -396,6 +397,8 @@ export class App {
   traceMs = 0;
   readonly oceanSurface: OceanSurface;
   readonly picture: PicturePipeline;
+  /** New render pipelines build in the background while the picture is hidden (the prewarm, the frames behind the cover). */
+  private readonly asyncPipelines: AsyncPipelines;
   private readonly perf: PerfOverlay;
   private readonly panel: DevPanel;
   private readonly sunDir = new THREE.Vector3();
@@ -496,6 +499,7 @@ export class App {
       console.warn(`The land didn't load (${e instanceof Error ? e.message : String(e)}); running without it.`);
     });
     this.picture = new PicturePipeline(renderer, this.scene, this.camera, this.pictureParams);
+    this.asyncPipelines = new AsyncPipelines(renderer);
     this.perf = new PerfOverlay(renderer);
     this.panel = new DevPanel(
       {
@@ -686,6 +690,10 @@ export class App {
    * (part of every material's cache key), so what compileAsync built was built again when the ribbon first showed. The
    * rocks, plants and patch already hold their final attributes (none laid yet: count 0 builds and draws nothing); the
    * land draws its stand-in (Land.standIn), since its own geometry is empty until the land loads.
+   *
+   * Every pipeline here is built in the background (createRenderPipelineAsync and its compute twin, via AsyncPipelines and
+   * compileComputeAsync): built with the blocking calls, the GPU process stopped drawing the page while each compiled, and
+   * the loading cover froze for up to 7 s.
    */
   async prewarm(): Promise<void> {
     const target = new THREE.RenderTarget(1, 1);
@@ -693,15 +701,28 @@ export class App {
     this.scene.add(landStandIn);
     try {
       const shown = [this.ribbon.mesh, this.bombie.mesh, landStandIn, this.patch.mesh, ...this.rocks.meshes, ...this.plants.meshes, this.footprints.mesh];
-      await withOnlyShown(this.scene, shown, async () => this.picture.render(target));
+      // A render a mesh, a frame apart: in one render, the GPU process took every new shader at once and the cover froze.
+      const builds: Promise<void>[] = [];
+      for (const mesh of shown) {
+        builds.push(withOnlyShown(this.scene, [mesh], () => this.asyncPipelines.build(() => this.picture.render(target))));
+        await new Promise((resolve) => setTimeout(resolve, 16));
+      }
+      await Promise.all(builds);
     } finally {
       this.scene.remove(landStandIn);
       target.dispose();
     }
-    await this.ribbon.compileAsync(this.renderer);
-    await this.spray.compileAsync(this.renderer);
-    await this.impact.compileAsync(this.renderer);
-    await this.land.sunlight.compileAsync(this.renderer);
+    const footprint = this.asyncPipelines.build(() => this.ribbon.prewarmFootprint(this.renderer));
+    // The compute passes: the ribbon's, the particles' birth passes and the sunlight march (mid-game), and every frame's
+    // (the sky's tables, the clouds, the sea, the foam, the kelp, the height probe: built on the first frames behind the
+    // cover, each froze it a few hundred ms). One call each, all at once: compileComputeAsync waits for each pipeline
+    // before starting the next (5 s for these).
+    const passes = [
+      ...this.ribbon.computePasses, ...this.spray.computePasses, ...this.impact.computePasses, ...this.land.sunlight.computePasses,
+      ...this.sky.luts.computePasses, ...this.clouds.computePasses, ...this.ocean.computePasses, ...this.foamField.computePasses,
+      ...this.kelp.computePasses, ...this.probe.computePasses,
+    ];
+    await Promise.all([footprint, ...passes.map((p) => this.renderer.compileComputeAsync(p))]);
   }
 
   /**
@@ -715,7 +736,7 @@ export class App {
     const t0 = performance.now();
     try {
       this.newNodeFrame();
-      await withOnlyShown(this.scene, [...this.kitMeshes.meshes, ...this.scatter.meshes], async () => this.picture.render(target));
+      await withOnlyShown(this.scene, [...this.kitMeshes.meshes, ...this.scatter.meshes], () => this.asyncPipelines.build(() => this.picture.render(target)));
     } finally {
       target.dispose();
     }
@@ -1125,7 +1146,8 @@ export class App {
         this.bootReported = true;
       }
     }
-    l.frameDrawn(dtMs);
+    // A frame drawn with pipelines still building is missing them: it doesn't count as smooth.
+    l.frameDrawn(this.asyncPipelines.pending > 0 ? Infinity : dtMs);
     if (this.frontEnd) this.frontEnd.inputHeld = l.blocking;
   }
 
@@ -2104,7 +2126,10 @@ export class App {
     this.ribbon.setDisplayExposure(this.picture.exposureValue);
     this.spray.setDisplayExposure(this.picture.exposureValue);
     this.impact.setDisplayExposure(this.picture.exposureValue);
-    this.picture.render(this.captureTarget);
+    // Behind the opaque cover the start-up's (and a transition's) new pipelines build in the background: compiled on the
+    // spot they froze the cover for seconds. The cover's gate waits for them (reportLoading).
+    if (this.loadingScreen?.hidesPicture) this.asyncPipelines.run(() => this.picture.render(this.captureTarget));
+    else this.picture.render(this.captureTarget);
     if (this.screenshotRequested) {
       this.screenshotRequested = false;
       captureScreenshot(this.renderer.domElement, screenshotFilename(this.conditions));

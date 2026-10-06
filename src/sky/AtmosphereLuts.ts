@@ -62,6 +62,11 @@ export class AtmosphereLuts {
     this.dynamicPasses = [this.buildSkyViewPass(), this.skyLightPass];
   }
 
+  /** Its compute passes, for App.prewarm to build while the game loads (built on the first frame, they froze it). */
+  get computePasses(): THREE.ComputeNode[] {
+    return [...this.staticPasses, ...this.dynamicPasses];
+  }
+
   /** Re-integrate the sky light alone (the clouds changed, the sun did not). */
   renderSkyLight(renderer: THREE.WebGPURenderer): void {
     renderer.compute(this.skyLightPass);

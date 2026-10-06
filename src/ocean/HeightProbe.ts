@@ -59,6 +59,11 @@ export class HeightProbe {
     })().compute(MAX_PROBES) as THREE.ComputeNode;
   }
 
+  /** Its compute passes, for App.prewarm to build while the game loads (built on the first frame, they froze it). */
+  get computePasses(): THREE.ComputeNode[] {
+    return [this.pass];
+  }
+
   setProbe(index: number, x: number, z: number): void {
     const a = this.inputAttr.array as Float32Array;
     a[index * 4] = x;
