@@ -128,3 +128,46 @@ Baseline: cam 4.3 ms, paddling 16.1 ms, riding 372.9 ms (2.7 fps).
 - [ ] `docs/superpowers/handover/2026-10-07-ride-framerate-opus.md` (detail: every profiler table, the N table, the
       suite counts) and `-fable.md` (short: the three frame-rate lines per task, N and its error, anything red).
 - [ ] Push `ride-framerate`. Do not merge.
+
+---
+
+## Addendum 2026-10-07 (Fable): Tasks 7–9 after the first pass missed the target
+
+Spec addendum first (R6–R8). Tasks 3 and 5 are closed. The Task 3 probe harness is re-created **and committed** as an
+env-gated vitest file (`PROBE_RIDE_STATIONS=1`), driving `withSections` with the thinned / cached stations against the
+direct build, printing max |Δy| and max |Δslope| over the rows she is on a section, 6 ft and 12 ft.
+
+### Task 7: the ride's stations thinned by arc (R6)
+
+**Files:** `src/ride/sectionWater.ts` (a pure `thinStations(entries, spacingM)`), `src/ride/sectionWater.test.ts`,
+`src/app/App.ts` (`rideWater` passes `thinStations(this.ribbonStations, RIDE_STATION_SPACING_M)`; compute it once per
+frame beside `ribbonStations`, in `updateRibbon`).
+
+- [ ] Test first: a run of 50 live stations 0.1 m apart with a gap then 10 more: thinned at 1 m keeps the gap, keeps the
+      first and last of each run, and no two kept stations are < 0.9 m apart by arc; a run shorter than the spacing keeps
+      its first station.
+- [ ] Probe: thinned vs direct at 6 ft and 12 ft, max |Δy| and |Δslope|, curves built per frame before and after (count
+      `cached` misses). Paste the rows. Tolerance ≤ 2 cm at 6 ft; 12 ft reported.
+- [ ] Profiler at 6 ft and 12 ft; `task7-6ft-report.txt`, `task7-12ft-report.txt`. Commit with the three lines.
+
+### Task 8: the curve kept across frames (R7)
+
+**Files:** `src/ride/sectionWater.ts` (an optional `CurveCache` argument to `withSections`: `get(key, numbers)` /
+`set`), `src/app/App.ts` (one cache per ride session, cleared on `begin`/`end`), tests.
+
+- [ ] Test first: with a counting sheet, a station rebuilt once and then read on 3 later frames with the same numbers and
+      moved x, z costs no further sheet reads; a 1/32 change in phase rebuilds; age 5 rebuilds.
+- [ ] Probe: ages 1, 2, 4 vs direct at 6 and 12 ft; same tolerance. Choose the largest age that meets it (cap 4).
+- [ ] Profiler; `task8-*-report.txt`. Commit.
+
+### Task 9 (reserve, R8): warm-started inversion along the normal
+
+Only if Task 8's riding mean is > 20 ms at 6 ft or 12 ft. `cached(s)` samples u in order and starts each `waterAt`'s
+inversion at the previous sample's x0 plus the step along the normal; passes reduced to the fewest with max |Δy| ≤ 2 mm
+against the 4-pass build (the probe). `INVERT_ITERATIONS` itself unchanged for every other caller.
+
+### Task 10: evidence and handovers (as Task 6, plus)
+
+- [ ] The 12 ft sheet-along-the-normal sample for the wave-form work (spec addendum's last paragraph), saved as
+      `evidence/ride-framerate/sheet-normal-12ft.txt`.
+- [ ] Handovers updated in place; push. Do not merge.

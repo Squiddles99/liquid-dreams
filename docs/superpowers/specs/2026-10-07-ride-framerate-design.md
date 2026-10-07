@@ -61,3 +61,32 @@ tests keep their numbers, and the section height under the board moves by no mor
 - **Nothing else moves.** No physics constant, no `INVERT_ITERATIONS`, no `CURVE_SAMPLES`, nothing in `breaking.ts`,
   `crestTrace.ts`, `setWaveModel.ts` beyond R1's early return, nothing under `src/seabed`. A bot artefact to ignore:
   the paddling profile's 4% in `SoundSystem.context` comes from the bot re-dispatching keydown every frame.
+
+## Addendum 2026-10-07 (Fable, after Opus's Tasks 1, 2, 4: riding 187 ms at 6 ft, 172 ms at 12 ft)
+
+**What the evidence says.** A riding frame builds about 30 station curves at ~5.5 ms each. The reason is the station
+spacing: `traceStations` spaces stations by camera distance (`SPACING_PER_M` 0.012, floor `MIN_SPACING_M` 0.08 m), and the
+ride camera sits 4 m back, so the stations under the board are 8 cm apart. The section numbers are smoothed along the crest
+with σ = `SECTION_SMOOTHING_M` 4 m, so neighbouring stations' sections are the same to well under a percent. The board's
+nose, middle and tail over four substeps, the camera's probe and `MAX_ALONG_M` 6 m of reach together touch ~30 distinct
+stations and `withSections` builds every one.
+
+**R3 is closed: no sheet table.** At 12 ft no table meets any sensible tolerance (9.8 cm at N = 96 cubic): the leaned
+sheet's front is near vertical along the normal at that size and an even table cannot follow it. Not pursued further.
+
+**R6, the ride's stations are thinned by arc.** The ride's water uses a thinned copy of the frame's stations: within
+each run of live stations, the station nearest every `RIDE_STATION_SPACING_M` = 1 m of arc, gaps kept. With σ = 4 m
+smoothing this changes the section under the board by a measured, not assumed, amount (the Task 3 probe harness,
+committed env-gated this time): tolerance max |Δy| ≤ 2 cm at 6 ft, reported at 12 ft. Expected: ~30 curves → ~5.
+
+**R7, a curve is kept across frames.** The curve of a thinned station is cached by (wave arrival s, round(arc / 1 m)):
+the station rides its crest, and in its own units (A, along its normal) the sheet under it is near steady between
+frames. A cached curve is reused while its A, phase and hollow are each within 1/64 of the cached ones and it is at most
+`RIDE_CURVE_MAX_AGE` = 4 frames old. The station's x, z, nx, nz are taken fresh each frame (only the curve is reused).
+Error measured for ages 1, 2 and 4 by the probe; same tolerance. Expected: ~5 curves → ~1–2 per frame.
+
+**R8, reserve:** a warm-started inversion along the normal in `cached(s)` (start each sample's x0 from the previous
+sample's, 1–2 passes instead of 4) only if R6 + R7 miss 20 ms; its error measured the same way.
+
+**For the wave-form work, not for this branch:** at 12 ft, save one station's sheet along its normal (400 samples of
+u, y over ±8 A, with the station's A, phase, hollow) as evidence of the sharp feature Opus saw: it may be the step crease.
