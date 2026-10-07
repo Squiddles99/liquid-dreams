@@ -32,13 +32,13 @@ const kept = (name: string, maxAge: number, bucketM: number, thin: number | null
   const cache = new CurveCache(maxAge, (s: Station) => `${arrivals[s.wave]}|${Math.round(s.arc / bucketM)}`);
   return {
     name,
-    water: (sheet, entries, tide, arr, stats) => { arrivals = arr; return withSections(sheet, thin === null ? entries : thinStations(entries, thin), tide, stats, cache); },
+    water: (sheet, entries, tide, arr, stats) => { arrivals = arr; return withSections(sheet, thin === null ? entries : thinStations(entries, thin), tide, { stats, kept: cache }); },
     nextFrame: () => cache.nextFrame(),
   };
 };
 const variants = (): Variant[] => [
-  { name: 'direct', water: (sheet, entries, tide, _a, stats) => withSections(sheet, entries, tide, stats) },
-  ...[RIDE_STATION_SPACING_M, 0.5, 0.25].map((m): Variant => ({ name: `thinned ${m} m`, water: (sheet, entries, tide, _a, stats) => withSections(sheet, thinStations(entries, m), tide, stats) })),
+  { name: 'direct', water: (sheet, entries, tide, _a, stats) => withSections(sheet, entries, tide, { stats }) },
+  ...[RIDE_STATION_SPACING_M, 0.5, 0.25].map((m): Variant => ({ name: `thinned ${m} m`, water: (sheet, entries, tide, _a, stats) => withSections(sheet, thinStations(entries, m), tide, { stats }) })),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, every station, ${MIN_SPACING_M} m buckets`, a, MIN_SPACING_M, null)),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, thinned 1 m (R7 as written)`, a, 1, 1)),
 ];
