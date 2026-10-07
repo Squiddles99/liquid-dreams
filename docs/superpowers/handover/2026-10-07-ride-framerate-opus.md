@@ -89,3 +89,90 @@ N samples over ±(EDGE_OUTER_UNITS + 1) A. Outside the table the sheet is read d
 - No test pins the tube cover's rounding error against the unrounded `profileCurve` (phase off by ≤ 1/128, cosmetic,
   camera only).
 - The evidence files are named `<task>-6ft-report.txt`, not `<task>-6ft.txt`.
+
+---
+
+## Addendum pass (Tasks 7–10), 2026-10-07
+
+Tolerance unchanged: max |Δy| ≤ 2 cm at 6 ft under the board, against today's build; 12 ft reported. The probe is
+committed: `src/ride/rideStations.probe.test.ts` (`PROBE_RIDE_STATIONS=1`, `--silent=false`; `PROBE_VARIANTS` regex,
+`PROBE_REF` regex for the reference, `PROBE_SHEET_NORMAL=<file>`).
+
+| commit | what |
+|---|---|
+| bf481e5 | Tasks 7–8 measured: `thinStations`, `CurveCache` (tested; probe only, not in App) |
+| 6a968ea | exact: a curve sample at sheet weight 0 reads no sheet (43.6 of 196 reads per curve) |
+| a04368d, 86add84, ee8f649 | R8 plumbing: `waterAt(start?, passes)` + `residual`; `withSections(…, { stats, kept, along })` |
+| f171f9c | R8 in App: the stations' sheets read warm, `RIDE_WARM_PASSES` 2; an unconverged warm read is redone cold |
+| 5dafc27 | Task 10: `evidence/ride-framerate/sheet-normal-12ft.txt` |
+
+### Task 7 (R6, thinned by arc): fails at every spacing
+
+| spacing | 6 ft max \|Δy\| | p95 | rows > 2 cm | 12 ft max | curves / physics step |
+|---|---|---|---|---|---|
+| direct | 0 | 0 | 0 | 0 | 7.0 (6.7 at 12 ft) |
+| 1 m | 105.62 cm | 1.36 | 21 / 975 | 64.86 | 3.0 |
+| 0.5 m | 127.60 | 0.43 | 10 | 45.40 | 4.1 |
+| 0.25 m | 27.66 | 0.08 | 6 | 20.95 | 5.8 |
+
+The rows over 2 cm sit where the board is on the clamped-steep wall (slope 2.0) or a fold. There, a few centimetres
+along the crest is a metre of height at a fixed point.
+
+### Task 8 (R7, curves kept across frames): fails at every age
+
+6 ft max |Δy|: every station in 0.08 m buckets, age 1 / 2 / 4: 91.9 / 215.3 / 224.9 cm (curves per step
+4.5 / 3.9 / 3.4). R7 as written (thinned 1 m), age 1 / 2 / 4: 230.4 / 195.1 / 228.9 cm. Even a curve one frame old has
+p95 4.1 cm: the sheet under a station is not steady between frames at the take-off and on the wall.
+
+### The ~30 curves a frame
+
+At 60 fps one physics step builds ~7 curves. A slow frame runs up to `MAX_STEPS` 4 substeps over more crest, so the ~30
+seen in the profiler partly feed on themselves.
+
+### R8 (warm inversion): in, 2 passes, guarded
+
+Wave sums per frame, and max |Δy| against today's 4-pass build / a converged 12-pass build:
+
+| variant | 6 ft sums | 6 ft vs today | 6 ft vs converged | 12 ft sums | 12 ft vs today | 12 ft vs converged |
+|---|---|---|---|---|---|---|
+| today (cold 4) | 5187 | 0 | 0.03 cm | 5272 | 0 | **8.24 cm** |
+| warm 1, guarded | 4189 | 0.05 | 0.05 | 5543 | 1.24 | 9.03 |
+| **warm 2, guarded** | **3469** | **0.04** | 0.04 | **4482** | 1.30 | 9.01 |
+| warm 3, guarded | 4310 | 0.01 | 0.03 | 4771 | 3.45 | 9.00 |
+| warm 2, unguarded | | 0.12 | 0.13 | | 17.21 | 24.86 |
+
+Today's 4-pass inversion is itself 8 cm off converged on the 12 ft wall. Unguarded, a warm start from a neighbour can
+start on the wrong side of the steep face, so a warm read whose residual is over 1 mm (`WARM_RESIDUAL_M`) is redone
+cold.
+
+Profiler, A/B in one session (the machine ran ~25% slower than this morning: cam 5.5 ms against 4.4):
+
+| riding | R8 off | R8 on |
+|---|---|---|
+| 6 ft mean / median | 216.1 / 175.6 ms | 181.9 / 126.6 ms |
+| 12 ft mean / median | 219.8 / 170.6 ms | 210.0 / 178.5 ms |
+
+Earlier in the day, on the faster machine state, the weight-0 skip alone took 6 ft riding from 187.0 to 156.8 ms.
+
+R3's ride test with R8's warm read in the loop: held 14.33 / 15.02 / 12.45 / 0.78 s, the same as R3 (the expert case is
+R3's committed red). `src/ride` tests are green; `npx tsc --noEmit` is clean.
+
+### Task 10: the 12 ft sheet along a normal
+
+At the first 12 ft frame on the clamped wall (t 396.124 s), the leaned front falls from 5.5 m to −1.7 m over ~4 m of u.
+It is steepest at dy/du −2.42 (67°) at u/A 0.94, and smooth: no kink at this frame. The thing no table could follow at
+12 ft is this steep front, not a crease.
+
+### Where it stands
+
+The target is still missed: riding ~120–210 ms against 20 ms. Every lever in the spec (R1–R8) is now spent or measured
+out. The bound is structural. Each physics step builds ~7 station curves, each ~200 sheet reads of 3–5 wave sums. On
+the steep face no cheaper approximation of the curve holds 2 cm at a fixed point, because height at a fixed point is
+ill-conditioned there.
+
+The options are Fable's to rule on, none started:
+- (a) Read the board's water from the GPU's own section curves. The ribbon's compute passes build the same curves every
+  frame; read them back asynchronously, one frame late.
+- (b) Measure the tolerance as distance to the surface (normal distance), not |Δy| at a fixed point. Under that
+  measure, thinning and reuse may pass.
+- (c) Build fewer curves per step: the nose, middle and tail read the same two stations.

@@ -24,3 +24,23 @@
 
 Decisions for you or Andrew: whether 2 cm at 6 ft with a cubic table at N = 48 is acceptable, what 12 ft's tolerance
 should be (or fix the sheet's feature first), and whether to do R5 without a table.
+
+---
+
+## Addendum pass, Opus → Fable (2026-10-07)
+
+**Still red.** Riding is ~120–210 ms (6 ft median 126.6 ms with everything in; same-session A/B, machine slower than
+this morning).
+
+- **R6 thinning fails 2 cm at every spacing:** 1 m 105.6 cm, 0.25 m 27.7 cm. **R7 keeping curves fails at every
+  age:** 1 frame 91.9 cm. The big errors sit on the clamped-steep wall or a fold, where height at a fixed point is
+  ill-conditioned. Neither is wired into App; both are tested and in the probe.
+- **In and exact:** a curve sample at sheet weight 0 no longer reads the sheet (6 ft riding 187 → 157 ms).
+- **In (R8):** warm inversion, 2 passes, residual-guarded. 6 ft 0.4 mm from today and 1.5× fewer wave sums; 12 ft
+  1.3 cm, 1.18× fewer. **Found on the way:** today's 4-pass inversion is 8 cm off converged on the 12 ft wall.
+- R3's `heldS` is unchanged (14.33 / 15.02 / 12.45 / 0.78). There are ~7 curves per physics step at 60 fps, not 30
+  (slow frames run 4 substeps).
+- **Task 10:** the 12 ft front is smooth and steep (67° at u/A 0.94), not a crease.
+
+Decisions needed: (a) GPU readback of the ribbon's curves, (b) a normal-distance tolerance, or (c) fewer station reads
+per step. Details are in `-opus.md`.
