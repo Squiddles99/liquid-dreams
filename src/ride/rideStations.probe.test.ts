@@ -7,7 +7,7 @@ import { DEFAULT_BREAK_PARAMS as P } from '../breaker/breaking';
 import { MIN_SPACING_M, type Station, type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { REFRACT_FLOOR_M, computeReefField, sampleField } from '../breaker/reefField';
 import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
-import { CurveCache, RIDE_STATION_SPACING_M, thinStations, withSections } from './sectionWater';
+import { CurveCache, RIDE_STATION_SPACING_M, type SheetFrom, thinStations, withSections } from './sectionWater';
 import { type WaterFn, waterAt } from './water';
 import { type RideEvent, TUNING, startBody, stepRide } from './ridePhysics';
 import { TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from './takeoff';
@@ -22,7 +22,7 @@ interface Variant {
   name: string;
   /** This frame's water from the frame's sheet and stations (`arrivals`: each station's wave's arrival); `stats.curves`
    * counts the curves it builds. */
-  water: (sheet: WaterFn, entries: StationEntry[], tideM: number, arrivals: readonly number[], stats: { curves: number }) => WaterFn;
+  water: (sheet: WaterFn, entries: StationEntry[], tideM: number, arrivals: readonly number[], stats: { curves: number }, along: SheetFrom) => WaterFn;
   /** Called once a frame. */
   nextFrame?: () => void;
 }
@@ -36,12 +36,13 @@ const kept = (name: string, maxAge: number, bucketM: number, thin: number | null
     nextFrame: () => cache.nextFrame(),
   };
 };
-const variants = (): Variant[] => [
+const variants = (): Variant[] => ([
   { name: 'direct', water: (sheet, entries, tide, _a, stats) => withSections(sheet, entries, tide, { stats }) },
   ...[RIDE_STATION_SPACING_M, 0.5, 0.25].map((m): Variant => ({ name: `thinned ${m} m`, water: (sheet, entries, tide, _a, stats) => withSections(sheet, thinStations(entries, m), tide, { stats }) })),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, every station, ${MIN_SPACING_M} m buckets`, a, MIN_SPACING_M, null)),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, thinned 1 m (R7 as written)`, a, 1, 1)),
-];
+  ...[1, 2, 3].map((passes): Variant => ({ name: `warm ${passes} pass${passes > 1 ? 'es' : ''} (R8)`, water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, along: { at, passes } }) })),
+] as Variant[]).filter((v) => !process.env.PROBE_VARIANTS || new RegExp(process.env.PROBE_VARIANTS).test(v.name));
 
 describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations thinned and their curves kept', () => {
   it.each([6, 12])('%i ft intermediate', { timeout: 1_800_000 }, (ft) => {
@@ -53,10 +54,11 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
     const big = set.reduce((a, b) => (b.heightM > a.heightM ? b : a));
     const o = { ...breakOptions(field, P), pile: false, shape: 'lean' as const }, minHeightM = minRibbonHeight(fieldBreakingHeight(field, P), P);
     const VARIANTS = variants();
-    const frame = (t: number, cx: number, cz: number): { sheet: WaterFn; entries: StationEntry[]; arrivals: number[] } => {
+    const frame = (t: number, cx: number, cz: number): { sheet: WaterFn; along: SheetFrom; entries: StationEntry[]; arrivals: number[] } => {
       const events = wavesNear(t, c, DEFAULT_SET_PARAMS), waves = events.map(toActiveWave);
       const sheet: WaterFn = (x, z) => waterAt(x, z, c.tideM, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
-      return { sheet, entries: traceStations(field, waves, t, ctx, { cameraX: cx, cameraZ: cz, params: P, minHeightM }), arrivals: events.map((e) => e.arrivalS) };
+      const along: SheetFrom = (x, z, start, passes) => waterAt(x, z, c.tideM, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o), start, passes);
+      return { sheet, along, entries: traceStations(field, waves, t, ctx, { cameraX: cx, cameraZ: cz, params: P, minHeightM }), arrivals: events.map((e) => e.arrivalS) };
     };
     const { x: sx, z: sz } = takeoffSpot(field, big.heightM, P);
     let t = big.arrivalS - takeoffLeadS(field, { x: sx, z: sz });
@@ -82,7 +84,7 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
       if (under.onSection) {
         rows++;
         VARIANTS.forEach((v, i) => {
-          const stats = { curves: 0 }, w = v.water(fr.sheet, fr.entries, c.tideM, fr.arrivals, stats), r = rowsOf[i];
+          const stats = { curves: 0 }, w = v.water(fr.sheet, fr.entries, c.tideM, fr.arrivals, stats, fr.along), r = rowsOf[i];
           const got = w(b.x, b.z);
           const d = Math.abs(got.y - under.y);
           r.all.push(d);
