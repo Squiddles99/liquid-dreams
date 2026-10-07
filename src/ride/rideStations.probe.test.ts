@@ -8,7 +8,7 @@ import { MIN_SPACING_M, type Station, type StationEntry, minRibbonHeight, traceS
 import { REFRACT_FLOOR_M, computeReefField, sampleField } from '../breaker/reefField';
 import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { CurveCache, RIDE_STATION_SPACING_M, type SheetFrom, thinStations, withSections } from './sectionWater';
-import { type WaterFn, waterAt } from './water';
+import { INVERT_ITERATIONS, type WaterFn, waterAt } from './water';
 import { type RideEvent, TUNING, startBody, stepRide } from './ridePhysics';
 import { TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from './takeoff';
 
@@ -69,7 +69,7 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
     const b = startBody(sx, sz, swellHeading, withSections(f0.sheet, f0.entries, c.tideM));
     const line = swellHeading - 35;
     const dt = 1 / 60, tune = TUNING.intermediate, events: RideEvent[] = [];
-    const rowsOf = VARIANTS.map(() => ({ dy: 0, ds: 0, curves: 0, all: [] as number[], over: [] as number[], worst: '' }));
+    const rowsOf = VARIANTS.map(() => ({ dy: 0, ds: 0, curves: 0, all: [] as number[], over: [] as number[], worst: '', sums: 0 }));
     let popped = false, rows = 0;
     for (let k = 0; k < 60 * 20; k++) {
       t += dt;
@@ -87,7 +87,11 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
         const refV = process.env.PROBE_REF ? VARIANTS.find((v) => new RegExp(process.env.PROBE_REF!).test(v.name)) : undefined;
         const ref = refV ? refV.water(fr.sheet, fr.entries, c.tideM, fr.arrivals, { curves: 0 }, fr.along)(b.x, b.z) : under;
         VARIANTS.forEach((v, i) => {
-          const stats = { curves: 0 }, w = v.water(fr.sheet, fr.entries, c.tideM, fr.arrivals, stats, fr.along), r = rowsOf[i];
+          const r = rowsOf[i];
+          // Wave sums: a sheet read is INVERT_ITERATIONS + 1 of them, an along read its passes + 1.
+          const sheetC: WaterFn = (x, z) => { r.sums += INVERT_ITERATIONS + 1; return fr.sheet(x, z); };
+          const alongC: SheetFrom = (x, z, st, p) => { r.sums += p + 1; return fr.along(x, z, st, p); };
+          const stats = { curves: 0 }, w = v.water(sheetC, fr.entries, c.tideM, fr.arrivals, stats, alongC);
           const got = w(b.x, b.z);
           const d = Math.abs(got.y - ref.y);
           r.all.push(d);
@@ -110,7 +114,7 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
     const out = [`${ft} ft: ${rows} rows on a section; events ${events.join(' ')}; reference ${process.env.PROBE_REF ?? 'direct'}`, 'variant | max |Δy| cm | max |Δslope| | curves built per frame (one physics step)'];
     VARIANTS.forEach((v, i) => {
       const r = rowsOf[i], sorted = [...r.all].sort((p, q) => p - q), pc = (f: number): string => (100 * (sorted[Math.floor(f * (sorted.length - 1))] ?? 0)).toFixed(2);
-      out.push(`${v.name} | ${(100 * r.dy).toFixed(2)} | ${r.ds.toFixed(4)} | ${(r.curves / Math.max(1, rows)).toFixed(1)} | p50 ${pc(0.5)} p95 ${pc(0.95)} p99 ${pc(0.99)} cm, rows > 2 cm ${sorted.filter((d) => d > 0.02).length}`);
+      out.push(`${v.name} | ${(100 * r.dy).toFixed(2)} | ${r.ds.toFixed(4)} | ${(r.curves / Math.max(1, rows)).toFixed(1)} | wave sums per frame ${(r.sums / Math.max(1, rows)).toFixed(0)} | p50 ${pc(0.5)} p95 ${pc(0.95)} p99 ${pc(0.99)} cm, rows > 2 cm ${sorted.filter((d) => d > 0.02).length}`);
       if (r.over.length) out.push(`  slope under the board on the rows > 2 cm: ${r.over.map((x) => x.toFixed(2)).join(' ')}`);
       if (r.worst) out.push(`  worst: ${r.worst.slice(0, 400)}`);
     });
