@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { describe, it } from 'vitest';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
@@ -70,7 +71,7 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
     const line = swellHeading - 35;
     const dt = 1 / 60, tune = TUNING.intermediate, events: RideEvent[] = [];
     const rowsOf = VARIANTS.map(() => ({ dy: 0, ds: 0, curves: 0, all: [] as number[], over: [] as number[], worst: '', sums: 0 }));
-    let popped = false, rows = 0;
+    let popped = false, rows = 0, savedNormal = false;
     for (let k = 0; k < 60 * 20; k++) {
       t += dt;
       const fr = frame(t, b.x, b.z);
@@ -84,6 +85,25 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
       const input = { paddle: b.phase === 'paddle' && t > arrive - PADDLE_FROM_S, steer: popped ? Math.max(-1, Math.min(1, -err / 30)) : 0, crouch: 0, popup };
       if (under.onSection) {
         rows++;
+        // Task 10 (PROBE_SHEET_NORMAL=<file>): the first 12 ft frame on the clamped-steep wall, its nearest station's sheet
+        // along the normal, 400 samples over ±8 A, for the wave-form work (the sharp feature: the step crease?).
+        if (process.env.PROBE_SHEET_NORMAL && ft === 12 && !savedNormal && Math.hypot(under.slopeX, under.slopeZ) >= 1.99) {
+          const near = fr.entries.filter((e): e is Station => !e.gap).map((st) => ({ st, v: Math.abs(-(b.x - st.x) * st.nz + (b.z - st.z) * st.nx), u: (b.x - st.x) * st.nx + (b.z - st.z) * st.nz })).sort((p, q) => p.v - q.v)[0];
+          if (near) {
+            const st = near.st, A = st.section.A, lines = [
+              `# 12 ft, t ${t.toFixed(3)} s: the board on the section at u ${near.u.toFixed(3)} m (slope under it ${Math.hypot(under.slopeX, under.slopeZ).toFixed(2)}, clamped at 2)`,
+              `# station x ${st.x.toFixed(3)} z ${st.z.toFixed(3)} n (${st.nx.toFixed(4)}, ${st.nz.toFixed(4)}) A ${A.toFixed(4)} phase ${st.section.phase.toFixed(4)} hollow ${st.section.hollow.toFixed(4)} rho ${st.section.rho.toFixed(3)} H ${st.H.toFixed(3)}`,
+              '# u (m, along the normal) | u/A | sheet y above still water (m) | slope dy/du | label offset along n (m)',
+            ];
+            for (let i = 0; i < 400; i++) {
+              const u = -8 * A + (16 * A * i) / 399, w = fr.sheet(st.x + st.nx * u, st.z + st.nz * u), y = w.y - c.tideM;
+              const slope = w.slopeX * st.nx + w.slopeZ * st.nz, lab = ((w.lx ?? 0) - st.x) * st.nx + ((w.lz ?? 0) - st.z) * st.nz;
+              lines.push(`${u.toFixed(4)} | ${(u / A).toFixed(4)} | ${y.toFixed(4)} | ${slope.toFixed(3)} | ${lab.toFixed(4)}`);
+            }
+            writeFileSync(process.env.PROBE_SHEET_NORMAL, lines.join('\n') + '\n');
+            savedNormal = true;
+          }
+        }
         const refV = process.env.PROBE_REF ? VARIANTS.find((v) => new RegExp(process.env.PROBE_REF!).test(v.name)) : undefined;
         const ref = refV ? refV.water(fr.sheet, fr.entries, c.tideM, fr.arrivals, { curves: 0 }, fr.along)(b.x, b.z) : under;
         VARIANTS.forEach((v, i) => {
