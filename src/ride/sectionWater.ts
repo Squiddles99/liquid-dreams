@@ -24,20 +24,115 @@ export const MAX_SECTION_SLOPE = 2;
 export const MAX_ALONG_M = 6;
 
 /**
- * `base`'s water, with the stations' sections where they draw. `tideM` is the still-water level the sections stand on
- * (the drawn tide: base's own, as App.rideWater passes it).
+ * The ride's stations are this far apart along the crest (m; spec 2026-10-07 ride-framerate R6). The ribbon spaces them by
+ * the camera's distance (crestTrace.SPACING_PER_M: 8 cm under the ride camera), but their sections are smoothed over
+ * SECTION_SMOOTHING_M (4 m) of crest, so a curve every metre draws the same water for a fraction of the curves.
+ * PROBE_ROW_THIN
  */
-export function withSections(base: WaterFn, entries: readonly StationEntry[], tideM: number): WaterFn {
+export const RIDE_STATION_SPACING_M = 1;
+/** No two thinned stations are closer than this share of the spacing. */
+const THIN_MIN_SHARE = 0.9;
+
+/**
+ * The stations of each run (between gaps) thinned to about one per `spacingM` of arc: the first, then the station nearest
+ * `spacingM` on from the last kept (no nearer than THIN_MIN_SHARE of it), and the run's last (in place of the last kept if
+ * that one is too near it, unless that is the first). Gaps are kept; a run shorter than the spacing keeps its first.
+ */
+export function thinStations(entries: readonly StationEntry[], spacingM: number): StationEntry[] {
+  const out: StationEntry[] = [];
+  let run: Station[] = [];
+  const flush = (): void => {
+    if (run.length === 0) return;
+    const dir = Math.sign(run[run.length - 1].arc - run[0].arc) || 1, p = (s: Station): number => dir * (s.arc - run[0].arc);
+    const kept = [0];
+    for (;;) {
+      const last = kept[kept.length - 1], from = p(run[last]), target = from + spacingM;
+      let j = last + 1;
+      while (j < run.length && p(run[j]) < from + THIN_MIN_SHARE * spacingM) j++;
+      if (j >= run.length) break;
+      while (j + 1 < run.length && Math.abs(p(run[j + 1]) - target) < Math.abs(p(run[j]) - target)) j++;
+      kept.push(j);
+    }
+    const end = run.length - 1;
+    if (kept[kept.length - 1] !== end) {
+      if (p(run[end]) - p(run[kept[kept.length - 1]]) >= THIN_MIN_SHARE * spacingM) kept.push(end);
+      else if (kept.length > 1) kept[kept.length - 1] = end;
+    }
+    for (const i of kept) out.push(run[i]);
+    run = [];
+  };
+  for (const e of entries) {
+    if (e.gap) { flush(); out.push(e); } else run.push(e);
+  }
+  flush();
+  return out;
+}
+
+/** A cached curve is reused while the station's A (m), phase and hollow are each within this of the ones it was built at. */
+export const CURVE_REUSE_STEP = 1 / 64;
+
+interface KeptCurve { A: number; phase: number; hollow: number; frame: number; curve: P2[] }
+
+/**
+ * Station curves kept across frames (spec 2026-10-07 ride-framerate R7): the stations ride their crest and are traced anew
+ * every frame, but in its own units (A, along its normal) the sheet under a station is near steady from frame to frame.
+ * `keyOf` names a station's place on its wave (null: not kept); a curve is reused for the station at that place while
+ * its numbers are within CURVE_REUSE_STEP and it is at most `maxAge` frames old (the station's x, z and normal are this
+ * frame's; only the curve is reused). `built` counts the curves built.
+ */
+export class CurveCache {
+  built = 0;
+  private frame = 0;
+  private readonly kept = new Map<string, KeptCurve>();
+
+  constructor(readonly maxAge: number, readonly keyOf: (s: Station) => string | null) {}
+
+  /** A new frame: curves older than maxAge are dropped. */
+  nextFrame(): void {
+    this.frame++;
+    for (const [k, e] of this.kept) if (this.frame - e.frame > this.maxAge) this.kept.delete(k);
+  }
+
+  clear(): void {
+    this.kept.clear();
+  }
+
+  get(key: string, n: Station['section']): P2[] | undefined {
+    const e = this.kept.get(key);
+    if (!e || this.frame - e.frame > this.maxAge) return undefined;
+    const near = Math.abs(e.A - n.A) <= CURVE_REUSE_STEP && Math.abs(e.phase - n.phase) <= CURVE_REUSE_STEP && Math.abs(e.hollow - n.hollow) <= CURVE_REUSE_STEP;
+    return near ? e.curve : undefined;
+  }
+
+  set(key: string, n: Station['section'], curve: P2[]): void {
+    this.kept.set(key, { A: n.A, phase: n.phase, hollow: n.hollow, frame: this.frame, curve });
+    this.built++;
+  }
+}
+
+/**
+ * `base`'s water, with the stations' sections where they draw. `tideM` is the still-water level the sections stand on
+ * (the drawn tide: base's own, as App.rideWater passes it). `stats.curves` counts the station curves built (the probe);
+ * `kept` keeps them across frames.
+ */
+export function withSections(base: WaterFn, entries: readonly StationEntry[], tideM: number, stats?: { curves: number }, kept?: CurveCache): WaterFn {
   const live = entries.filter((e): e is Station => !e.gap && curlWeight(e.section) > 0);
   if (live.length === 0) return base;
   const cache = new Map<Station, P2[]>();
   /** The station's curve (units of A, back to front), its knots sampled from `base` along its normal. */
   const cached = (s: Station): P2[] => {
     let c = cache.get(s);
+    const key = c ? null : kept?.keyOf(s) ?? null;
+    if (!c && key !== null) {
+      c = kept!.get(key, s.section);
+      if (c) cache.set(s, c);
+    }
     if (!c) {
       const sheet = (u: number): P2 => [u, base(s.x + s.nx * u, s.z + s.nz * u).y - tideM], A = s.section.A;
       c = sectionSamples(s.section, sheet).curve.map((q): P2 => { const p = sectionPoint(q, A, sheet); return [p[0] / A, p[1] / A]; });
       cache.set(s, c);
+      if (stats) stats.curves++;
+      if (key !== null) kept!.set(key, s.section, c);
     }
     return c;
   };
