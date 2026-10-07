@@ -41,6 +41,7 @@ const variants = (): Variant[] => ([
   ...[RIDE_STATION_SPACING_M, 0.5, 0.25].map((m): Variant => ({ name: `thinned ${m} m`, water: (sheet, entries, tide, _a, stats) => withSections(sheet, thinStations(entries, m), tide, { stats }) })),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, every station, ${MIN_SPACING_M} m buckets`, a, MIN_SPACING_M, null)),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, thinned 1 m (R7 as written)`, a, 1, 1)),
+  { name: 'cold 12 passes (converged)', water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, along: { at: (x, z) => at(x, z, undefined, 12), passes: 12 } }) },
   ...[1, 2, 3].map((passes): Variant => ({ name: `warm ${passes} pass${passes > 1 ? 'es' : ''} (R8)`, water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, along: { at, passes } }) })),
 ] as Variant[]).filter((v) => !process.env.PROBE_VARIANTS || new RegExp(process.env.PROBE_VARIANTS).test(v.name));
 
@@ -83,10 +84,12 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
       const input = { paddle: b.phase === 'paddle' && t > arrive - PADDLE_FROM_S, steer: popped ? Math.max(-1, Math.min(1, -err / 30)) : 0, crouch: 0, popup };
       if (under.onSection) {
         rows++;
+        const refV = process.env.PROBE_REF ? VARIANTS.find((v) => new RegExp(process.env.PROBE_REF!).test(v.name)) : undefined;
+        const ref = refV ? refV.water(fr.sheet, fr.entries, c.tideM, fr.arrivals, { curves: 0 }, fr.along)(b.x, b.z) : under;
         VARIANTS.forEach((v, i) => {
           const stats = { curves: 0 }, w = v.water(fr.sheet, fr.entries, c.tideM, fr.arrivals, stats, fr.along), r = rowsOf[i];
           const got = w(b.x, b.z);
-          const d = Math.abs(got.y - under.y);
+          const d = Math.abs(got.y - ref.y);
           r.all.push(d);
           if (d > 0.02) r.over.push(Math.hypot(under.slopeX, under.slopeZ));
           if (d > r.dy && process.env.PROBE_DETAIL) {
@@ -95,7 +98,7 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
             r.worst = `t ${t.toFixed(3)} slope under ${Math.hypot(under.slopeX, under.slopeZ).toFixed(2)} y ${under.y.toFixed(3)} vs ${got.y.toFixed(3)} (on ${!!got.onSection}); stations by v: ` + near.map((q) => `${kept.has(q.s) ? '*' : ''}v${q.v.toFixed(2)} u${q.u.toFixed(2)} ph${q.s.section.phase.toFixed(3)} A${q.s.section.A.toFixed(2)} rho${q.s.section.rho.toFixed(2)}`).join(', ');
           }
           r.dy = Math.max(r.dy, d);
-          r.ds = Math.max(r.ds, Math.hypot(got.slopeX - under.slopeX, got.slopeZ - under.slopeZ));
+          r.ds = Math.max(r.ds, Math.hypot(got.slopeX - ref.slopeX, got.slopeZ - ref.slopeZ));
           stepRide(structuredClone(b), input, w, dt, tune);
           r.curves += stats.curves;
         });
@@ -104,7 +107,7 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
       if (ev) events.push(ev);
       if (ev === 'wipeout' || ev === 'kickout') break;
     }
-    const out = [`${ft} ft: ${rows} rows on a section; events ${events.join(' ')}`, 'variant | max |Δy| cm | max |Δslope| | curves built per frame (one physics step)'];
+    const out = [`${ft} ft: ${rows} rows on a section; events ${events.join(' ')}; reference ${process.env.PROBE_REF ?? 'direct'}`, 'variant | max |Δy| cm | max |Δslope| | curves built per frame (one physics step)'];
     VARIANTS.forEach((v, i) => {
       const r = rowsOf[i], sorted = [...r.all].sort((p, q) => p - q), pc = (f: number): string => (100 * (sorted[Math.floor(f * (sorted.length - 1))] ?? 0)).toFixed(2);
       out.push(`${v.name} | ${(100 * r.dy).toFixed(2)} | ${r.ds.toFixed(4)} | ${(r.curves / Math.max(1, rows)).toFixed(1)} | p50 ${pc(0.5)} p95 ${pc(0.95)} p99 ${pc(0.99)} cm, rows > 2 cm ${sorted.filter((d) => d > 0.02).length}`);
