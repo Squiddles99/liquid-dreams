@@ -131,3 +131,39 @@ describe('CurveCache: a station’s curve kept across frames (plan 2026-10-07 ri
   });
 });
 
+describe('the station curve reads the sheet only where it is used (exact; ride-framerate, after Task 8)', () => {
+  // A sheet with a bump and a steep step along x: every curve sample that reads it gets a different value.
+  const bumpy = (x: number): number => 0.4 * Math.sin(0.7 * x) + 0.8 / (1 + Math.exp(-4 * (x - 2)));
+  const sheetAlong = (u: number): [number, number] => [u, bumpy(u)];
+  const sections = [{ A: 3, phase: 0.45, hollow: 1, rho: 1 }, { A: 3, phase: 1, hollow: 0.6, rho: 1 }, { A: 2, phase: 1.4, hollow: 1, rho: 0.7 }];
+  const counting = (): { water: ReturnType<typeof flatWater>; n: () => number } => {
+    const flat = flatWater(0); let n = 0;
+    return { water: (x, z) => { n++; return { ...flat(x, z), y: bumpy(x) }; }, n: () => n };
+  };
+
+  it('is the curve sectionPoint builds, bit for bit', () => {
+    for (const sec of sections) {
+      const want = sectionSamples(sec, sheetAlong).curve.map((q): [number, number] => { const p = sectionPoint(q, sec.A, sheetAlong); return [p[0] / sec.A, p[1] / sec.A]; });
+      const water = withSections(counting().water, crest(sec), 0);
+      for (const u of [-6, -1, 0.3, 1.2, 2.5, 4, 6.5]) {
+        const hit = lowestWetCrossing(want, u / sec.A);
+        if (hit) expect(water(u, 0).y, `phase ${sec.phase} u ${u}`).toBe(sec.A * hit.y);
+      }
+    }
+  });
+
+  it('reads no sheet for a sample at sheet weight 0', () => {
+    let some = 0;
+    for (const sec of sections) {
+      const curve = sectionSamples(sec, sheetAlong).curve, zero = curve.filter((q) => q[5] === 0).length;
+      some += zero;
+      let knots = 0;
+      sectionSamples(sec, (u) => { knots++; return sheetAlong(u); });
+      const c = counting();
+      withSections(c.water, [crest(sec)[10]], 0)(1, 0);
+      // The point's own read, the knots', and one per sample the sheet weighs into.
+      expect(c.n(), `phase ${sec.phase}`).toBe(1 + knots + curve.length - zero);
+    }
+    expect(some).toBeGreaterThan(0);
+  });
+});
