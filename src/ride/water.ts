@@ -34,15 +34,18 @@ export const INVERT_ITERATIONS = 4;
 
 /**
  * The set waves' surface at world (x, z): `sum` evaluates the waves at a reference point (sumWaves with the render's break
- * options) and `field` samples the reef field there. Plus the tide.
+ * options) and `field` samples the reef field there. Plus the tide. The inversion starts at (x, z) and takes
+ * INVERT_ITERATIONS passes; a caller reading a run of nearby points (a station's sheet along its normal) can start it at
+ * a neighbour's label (`start`) and take fewer `passes` (ride-framerate R8).
  */
 export function waterAt(
   x: number, z: number, tideM: number, omega: number,
   field: (x: number, z: number) => FieldSample,
   sum: (x: number, z: number, f: FieldSample) => SetWaveResult,
+  start?: { x: number; z: number }, passes = INVERT_ITERATIONS,
 ): WaterAt {
-  let x0 = x, z0 = z;
-  for (let i = 0; i < INVERT_ITERATIONS; i++) {
+  let x0 = start ? start.x : x, z0 = start ? start.z : z;
+  for (let i = 0; i < passes; i++) {
     const r = sum(x0, z0, field(x0, z0));
     x0 = x - r.dx;
     z0 = z - r.dz;
