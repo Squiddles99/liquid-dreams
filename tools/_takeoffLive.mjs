@@ -23,7 +23,7 @@ app.whenReady().then(async () => {
   await win.webContents.executeJavaScript(`localStorage.setItem('liquid-dreams.front-settings.v1', JSON.stringify({ takeoffSlowMo: '${slow}', experience: '${experience}' }))`);
   for (let i = 0; i < 120; i++) { if (await win.webContents.executeJavaScript('!!window.liquidDreams?.field')) break; await sleep(1000); }
   // R3 §4: the nearest station's settle span (breaking.settleSpan), to name a bail a closeout (tb ≥ settle) or not.
-  await win.webContents.executeJavaScript(`(async () => { const a = window.liquidDreams, B = await import('/src/breaker/breaking.ts'); window.__settle = (H) => B.settleSpan(H, a.breakParams); })()`);
+  await win.webContents.executeJavaScript(`(async () => { const a = window.liquidDreams; try { const B = await import('/src/breaker/breaking.ts'); window.__settle = (H) => B.settleSpan(H, a.breakParams); } catch { window.__settle = () => NaN; } })()`);
   await sleep(12000);
   if (ft !== null) await win.webContents.executeJavaScript(`(async () => {
     const a = window.liquidDreams, before = a.field, c = JSON.parse(JSON.stringify(a.conditions));
