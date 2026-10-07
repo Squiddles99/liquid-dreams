@@ -23,6 +23,8 @@ export interface WaterAt {
   /** Where this water sits undisplaced (the Lagrangian label, world xz), as the breaking ribbon's crest stations are. */
   lx?: number;
   lz?: number;
+  /** How far one more inversion pass would move the label (m): its convergence (waterAt). */
+  residual?: number;
   /** true where a breaking ribbon section is the surface (sectionWater.withSections): the drawn wave, not the sheet under it. */
   onSection?: boolean;
 }
@@ -54,7 +56,7 @@ export function waterAt(
   const u = flowFromEta(r.eta, f, omega, 0);
   return {
     y: tideM + r.eta, slopeX: r.slopeX, slopeZ: r.slopeZ, foam: r.foam, ux: u.ux, uz: u.uz,
-    c: f.k > 1e-6 ? omega / f.k : 0, dirX: f.dirX, dirZ: f.dirZ, lx: x0, lz: z0,
+    c: f.k > 1e-6 ? omega / f.k : 0, dirX: f.dirX, dirZ: f.dirZ, lx: x0, lz: z0, residual: Math.hypot(x - r.dx - x0, z - r.dz - z0),
   };
 }
 

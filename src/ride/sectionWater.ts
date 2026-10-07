@@ -113,6 +113,10 @@ export class CurveCache {
 /** base's water at (x, z) with its inversion started at `start` (cold when undefined) and `passes` passes (water.waterAt). */
 export type SheetFrom = (x: number, z: number, start: { x: number; z: number } | undefined, passes: number) => WaterAt;
 
+/** A warm read whose inversion would still move its label by more than this (m) is read again cold (as before R8): on the
+ * steep face at 12 ft a neighbour's label can start the inversion on the wrong side of it. */
+export const WARM_RESIDUAL_M = 0.001;
+
 export interface SectionOptions {
   /** `curves` counts the station curves built (the probe). */
   stats?: { curves: number };
@@ -149,7 +153,9 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
           let j = -1;
           for (let i = 0; i < us.length; i++) if (j < 0 || Math.abs(us[i] - u) < Math.abs(us[j] - u)) j = i;
           const start = j < 0 ? undefined : { x: lxs[j] + s.nx * (u - us[j]), z: lzs[j] + s.nz * (u - us[j]) };
-          const r = along.at(s.x + s.nx * u, s.z + s.nz * u, start, start ? along.passes : INVERT_ITERATIONS);
+          const px = s.x + s.nx * u, pz = s.z + s.nz * u;
+          let r = along.at(px, pz, start, start ? along.passes : INVERT_ITERATIONS);
+          if (start && !((r.residual ?? Infinity) <= WARM_RESIDUAL_M)) r = along.at(px, pz, undefined, INVERT_ITERATIONS);
           if (r.lx !== undefined && r.lz !== undefined) { us.push(u); lxs.push(r.lx); lzs.push(r.lz); }
           return [u, r.y - tideM];
         };
