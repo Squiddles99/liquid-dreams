@@ -1,7 +1,7 @@
 import type { Station, StationEntry } from '../breaker/crestTrace';
 import { EDGE_OUTER_UNITS, curlWeight, sectionPoint, sectionSamples } from '../breaker/wombSection';
 import type { P2 } from '../breaker/wombProfile';
-import type { WaterFn } from './water';
+import { INVERT_ITERATIONS, type WaterAt, type WaterFn } from './water';
 
 /**
  * The water the ride stands on where the breaking ribbon draws (plan 2026-10-05-womb-profile-step3 3d): the crest
@@ -110,12 +110,25 @@ export class CurveCache {
   }
 }
 
+/** base's water at (x, z) with its inversion started at `start` (cold when undefined) and `passes` passes (water.waterAt). */
+export type SheetFrom = (x: number, z: number, start: { x: number; z: number } | undefined, passes: number) => WaterAt;
+
+export interface SectionOptions {
+  /** `curves` counts the station curves built (the probe). */
+  stats?: { curves: number };
+  /** Keeps the curves across frames (CurveCache; the probe: R7 failed the tolerance). */
+  kept?: CurveCache;
+  /** The station's sheet read along its normal warm (ride-framerate R8): the first read cold, each later one started from
+   * the nearest read so far (its label moved along the normal by the distance between them) with `passes` passes. */
+  along?: { at: SheetFrom; passes: number };
+}
+
 /**
  * `base`'s water, with the stations' sections where they draw. `tideM` is the still-water level the sections stand on
- * (the drawn tide: base's own, as App.rideWater passes it). `stats.curves` counts the station curves built (the probe);
- * `kept` keeps them across frames.
+ * (the drawn tide: base's own, as App.rideWater passes it).
  */
-export function withSections(base: WaterFn, entries: readonly StationEntry[], tideM: number, stats?: { curves: number }, kept?: CurveCache): WaterFn {
+export function withSections(base: WaterFn, entries: readonly StationEntry[], tideM: number, opts: SectionOptions = {}): WaterFn {
+  const { stats, kept, along } = opts;
   const live = entries.filter((e): e is Station => !e.gap && curlWeight(e.section) > 0);
   if (live.length === 0) return base;
   const cache = new Map<Station, P2[]>();
@@ -128,7 +141,19 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
       if (c) cache.set(s, c);
     }
     if (!c) {
-      const sheet = (u: number): P2 => [u, base(s.x + s.nx * u, s.z + s.nz * u).y - tideM], A = s.section.A;
+      const A = s.section.A;
+      let sheet = (u: number): P2 => [u, base(s.x + s.nx * u, s.z + s.nz * u).y - tideM];
+      if (along) {
+        const us: number[] = [], lxs: number[] = [], lzs: number[] = [];
+        sheet = (u) => {
+          let j = -1;
+          for (let i = 0; i < us.length; i++) if (j < 0 || Math.abs(us[i] - u) < Math.abs(us[j] - u)) j = i;
+          const start = j < 0 ? undefined : { x: lxs[j] + s.nx * (u - us[j]), z: lzs[j] + s.nz * (u - us[j]) };
+          const r = along.at(s.x + s.nx * u, s.z + s.nz * u, start, start ? along.passes : INVERT_ITERATIONS);
+          if (r.lx !== undefined && r.lz !== undefined) { us.push(u); lxs.push(r.lx); lzs.push(r.lz); }
+          return [u, r.y - tideM];
+        };
+      }
       // A sample the sheet does not weigh into (weight 0: on the drawn curl) is its drawn offset alone: the sheet at its home
       // would be multiplied by 0, so it is not read (each read is a full wave sum; exact, up to the sign of a zero).
       c = sectionSamples(s.section, sheet).curve.map((q): P2 => {

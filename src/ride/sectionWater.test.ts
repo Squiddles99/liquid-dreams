@@ -3,7 +3,7 @@ import type { Station, StationEntry } from '../breaker/crestTrace';
 import { profileKnots } from '../breaker/wombProfile';
 import { sectionPoint, sectionSamples } from '../breaker/wombSection';
 import { CurveCache, lowestWetCrossing, thinStations, withSections } from './sectionWater';
-import { flatWater } from './water';
+import { INVERT_ITERATIONS, flatWater } from './water';
 
 /** A straight crest along z through x = 0, the wave travelling +x, stations 1 m apart, all at one section. */
 function crest(section: Station['section']): Station[] {
@@ -99,7 +99,7 @@ describe('CurveCache: a station’s curve kept across frames (plan 2026-10-07 ri
   };
   const read = (cache: CurveCache, stations: Station[], x: number): number => {
     const sheet = counting();
-    const water = withSections(sheet.water, stations, 0, undefined, cache);
+    const water = withSections(sheet.water, stations, 0, { kept: cache });
     water(stations[0].x + 1, 0);
     return sheet.n() - 1; // less the point's own read
   };
@@ -126,7 +126,7 @@ describe('CurveCache: a station’s curve kept across frames (plan 2026-10-07 ri
 
   it('reads the same water as without it on the frame it builds', () => {
     const plain = withSections(flatWater(0.5), crest(sec), 0.5);
-    const cached = withSections(flatWater(0.5), crest(sec), 0.5, undefined, new CurveCache(4, (s) => `w0|${s.arc}`));
+    const cached = withSections(flatWater(0.5), crest(sec), 0.5, { kept: new CurveCache(4, (s) => `w0|${s.arc}`) });
     for (const u of [0.3, 1.5, 4]) expect(cached(u, 0.2)).toEqual(plain(u, 0.2));
   });
 });
@@ -167,3 +167,29 @@ describe('the station curve reads the sheet only where it is used (exact; ride-f
     expect(some).toBeGreaterThan(0);
   });
 });
+
+describe('the station curve’s sheet read warm along the normal (ride-framerate R8)', () => {
+  const sec = { A: 3, phase: 1, hollow: 0.8, rho: 1 };
+  const bumpy = (x: number): number => 0.4 * Math.sin(0.7 * x) + 0.8 / (1 + Math.exp(-4 * (x - 2)));
+  const base = (x: number, z: number): ReturnType<ReturnType<typeof flatWater>> => ({ ...flatWater(0)(x, z), y: bumpy(x), lx: x - 0.1, lz: z });
+
+  it('the first read is cold (INVERT_ITERATIONS passes), every later one starts from the nearest read so far, moved along the normal', () => {
+    const calls: { x: number; start?: { x: number; z: number }; passes: number }[] = [];
+    const at = (x: number, z: number, start: { x: number; z: number } | undefined, passes: number) => { calls.push({ x, start, passes }); return base(x, z); };
+    withSections(base, [crest(sec)[10]], 0, { along: { at, passes: 1 } })(1, 0);
+    expect(calls[0].start).toBeUndefined();
+    expect(calls[0].passes).toBe(INVERT_ITERATIONS);
+    for (const c of calls.slice(1)) {
+      expect(c.passes).toBe(1);
+      // base's label is x − 0.1 wherever it is read: the start moved along the normal (+x here) lands on the label exactly.
+      expect(c.start!.x).toBeCloseTo(c.x - 0.1, 12);
+    }
+  });
+
+  it('with an along read that is the base itself, the water is unchanged', () => {
+    const plain = withSections(base, crest(sec), 0);
+    const warm = withSections(base, crest(sec), 0, { along: { at: (x, z) => base(x, z), passes: 1 } });
+    for (const u of [-5, 0.4, 1.3, 2.6, 5]) expect(warm(u, 0.3)).toEqual(plain(u, 0.3));
+  });
+});
+
