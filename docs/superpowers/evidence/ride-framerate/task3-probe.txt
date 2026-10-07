@@ -1,0 +1,28 @@
+# Task 3 probe: the station curve from a sheet table (STOPPED, spec R3)
+
+Probe: src/ride/sheetTable.probe.test.ts (PROBE_SHEET_TABLE=1, not committed; withSections given a tableN parameter, 0 = direct, negative = Catmull-Rom). R3's rider (35° line), 6 ft and 12 ft intermediate, driven on today's sections; at every frame she is on a section the section under the board read with each table. Rows N>0: linear (the spec's method), N<0: cubic (Catmull-Rom, information only).
+
+6 ft: 975 rows on a section; events caught popup
+N | max |Δy| cm | max |Δslope| | base calls/row | ms/row (first read of a frame: the curves built)
+direct | 0 | 0 | 393 | 10.97
+24 | 10.05 | 0.2981 | 51 | 1.66
+32 | 7.08 | 0.3520 | 67 | 2.03
+48 | 7.02 | 0.4137 | 99 | 2.83
+64 | 2.19 | 0.3172 | 131 | 3.64
+96 | 0.73 | 0.1069 | 195 | 5.23
+-32 | 2.31 | 0.1840 | 67 | 2.03
+-48 | 1.03 | 0.1107 | 99 | 2.82
+-64 | 0.49 | 0.1154 | 131 | 3.60
+-96 | 0.12 | 0.0654 | 195 | 5.17
+12 ft: 1098 rows on a section; events caught popup
+N | max |Δy| cm | max |Δslope| | base calls/row | ms/row (first read of a frame: the curves built)
+direct | 0 | 0 | 393 | 11.49
+24 | 73.83 | 1.0074 | 51 | 1.77
+32 | 51.40 | 0.9489 | 67 | 2.14
+48 | 18.69 | 0.5948 | 99 | 2.96
+64 | 14.49 | 0.4633 | 131 | 3.76
+96 | 12.32 | 0.2720 | 195 | 5.40
+-32 | 48.56 | 0.9544 | 67 | 2.13
+-48 | 16.33 | 0.5521 | 99 | 2.95
+-64 | 12.17 | 0.5927 | 131 | 3.77
+-96 | 9.76 | 0.3517 | 195 | 5.39
