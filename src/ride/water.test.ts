@@ -36,4 +36,12 @@ describe('waterAt: the inversion’s start and passes (ride-framerate R8)', () =
     waterAt(1, 0, 0, 1, field, counted);
     expect(n).toBe(INVERT_ITERATIONS + 1);
   });
+
+  it('reports how far its last step would still move the label (the inversion’s residual)', () => {
+    const converged = waterAt(2.5, 0.5, 0, 1, field, sum, undefined, 40);
+    expect(converged.residual!).toBeLessThan(1e-9);
+    const one = waterAt(2.5, 0.5, 0, 1, field, sum, undefined, 1);
+    expect(one.residual!).toBeGreaterThan(1e-3);
+  });
 });
+

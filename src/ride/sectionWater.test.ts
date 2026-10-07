@@ -171,7 +171,7 @@ describe('the station curve reads the sheet only where it is used (exact; ride-f
 describe('the station curve’s sheet read warm along the normal (ride-framerate R8)', () => {
   const sec = { A: 3, phase: 1, hollow: 0.8, rho: 1 };
   const bumpy = (x: number): number => 0.4 * Math.sin(0.7 * x) + 0.8 / (1 + Math.exp(-4 * (x - 2)));
-  const base = (x: number, z: number): ReturnType<ReturnType<typeof flatWater>> => ({ ...flatWater(0)(x, z), y: bumpy(x), lx: x - 0.1, lz: z });
+  const base = (x: number, z: number): ReturnType<ReturnType<typeof flatWater>> => ({ ...flatWater(0)(x, z), y: bumpy(x), lx: x - 0.1, lz: z, residual: 0 });
 
   it('the first read is cold (INVERT_ITERATIONS passes), every later one starts from the nearest read so far, moved along the normal', () => {
     const calls: { x: number; start?: { x: number; z: number }; passes: number }[] = [];
@@ -190,6 +190,21 @@ describe('the station curve’s sheet read warm along the normal (ride-framerate
     const plain = withSections(base, crest(sec), 0);
     const warm = withSections(base, crest(sec), 0, { along: { at: (x, z) => base(x, z), passes: 1 } });
     for (const u of [-5, 0.4, 1.3, 2.6, 5]) expect(warm(u, 0.3)).toEqual(plain(u, 0.3));
+  });
+
+  it('a warm read that has not converged (residual over WARM_RESIDUAL_M) is read again cold', () => {
+    const calls: { start?: { x: number; z: number }; passes: number }[] = [];
+    const at = (x: number, z: number, start: { x: number; z: number } | undefined, passes: number) => {
+      calls.push({ start, passes });
+      return { ...base(x, z), residual: start ? 1 : 0 };
+    };
+    withSections(base, [crest(sec)[10]], 0, { along: { at, passes: 2 } })(1, 0);
+    // Every warm read is followed by a cold one.
+    for (let i = 1; i < calls.length; i += 2) {
+      expect(calls[i].passes).toBe(2);
+      expect(calls[i + 1].start).toBeUndefined();
+      expect(calls[i + 1].passes).toBe(INVERT_ITERATIONS);
+    }
   });
 });
 
