@@ -129,7 +129,12 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
     }
     if (!c) {
       const sheet = (u: number): P2 => [u, base(s.x + s.nx * u, s.z + s.nz * u).y - tideM], A = s.section.A;
-      c = sectionSamples(s.section, sheet).curve.map((q): P2 => { const p = sectionPoint(q, A, sheet); return [p[0] / A, p[1] / A]; });
+      // A sample the sheet does not weigh into (weight 0: on the drawn curl) is its drawn offset alone: the sheet at its home
+      // would be multiplied by 0, so it is not read (each read is a full wave sum; exact, up to the sign of a zero).
+      c = sectionSamples(s.section, sheet).curve.map((q): P2 => {
+        const p = q[5] === 0 ? [A * q[3], A * q[4]] : sectionPoint(q, A, sheet);
+        return [p[0] / A, p[1] / A];
+      });
       cache.set(s, c);
       if (stats) stats.curves++;
       if (key !== null) kept!.set(key, s.section, c);
