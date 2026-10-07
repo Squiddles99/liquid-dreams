@@ -3,7 +3,7 @@ import type { GangStaging } from '../frontend/staging';
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
 import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
-import { withSections } from '../ride/sectionWater';
+import { RIDE_WARM_PASSES, type SheetFrom, withSections } from '../ride/sectionWater';
 import { TAKEOFF_ANCHOR, TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from '../ride/takeoff';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
@@ -27,7 +27,8 @@ import { ticksToHear } from '../sound/hits';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
 import { ReefFlow } from '../breaker/flowNodes';
-import { type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import { type SetWaveResult, type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import type { FieldSample } from '../breaker/fieldSample';
 import { currentBindings, keyLabel } from '../ride/bindings';
 import { RideSession, rideMessage } from '../ride/RideSession';
 import { type Experience, TUNING } from '../ride/ridePhysics';
@@ -1591,14 +1592,17 @@ export class App {
     // The sheet as SetWaves draws it: no whitewater pile, the swell's front leaned and no breaking shape (the ribbon draws it).
     const o = this.breakParams.enabled ? { ...breakOptions(field, this.breakParams, this.offshoreMs), pile: false, shape: 'lean' as const } : undefined;
     // The land and the rocks under the board (null while the land loads): the board runs aground on them.
+    const fieldAt = (a: number, b: number): FieldSample => sampleField(field, a, b);
+    const sum = (a: number, b: number, f: FieldSample): SetWaveResult => sumWaves(a, b, t, f, waves, ctx, o);
     const sheet: WaterFn = (x, z) => {
-      const w = waterAt(x, z, tide, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
+      const w = waterAt(x, z, tide, ctx.omega, fieldAt, sum);
       const bed = this.groundAt(x, z);
       return bed === null ? w : { ...w, bedY: bed };
     };
     // Where the breaking ribbon draws, the board stands on its sections (the wave that is drawn), from this frame's
-    // stations (traced at the clock's time).
-    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide) : sheet;
+    // stations (traced at the clock's time); a station's sheet along its normal is read warm (sectionWater R8).
+    const along: SheetFrom = (x, z, start, passes) => waterAt(x, z, tide, ctx.omega, fieldAt, sum, start, passes);
+    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide, { along: { at: along, passes: RIDE_WARM_PASSES } }) : sheet;
   }
 
   /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */
