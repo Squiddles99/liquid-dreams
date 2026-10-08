@@ -432,3 +432,90 @@ At 12 ft the self time is the field: `bilinear` 13%, `waveAtCrest` 10.5%, `sampl
 
 **Rulings:** in `-fable.md` "Task 15". **Deferred:** the four R9 minors, the bot's frame quantisation, the frame-rate-dependent
 sub-step, the paddling stall, the in-game g = 1 share, and the `:219` line attribution across file versions.
+
+## Task 16, 2026-10-08
+
+**Done, still red. One exact change: a field sample finds its grid cell once.** It was measured first and is bit-identical.
+
+| commit | what |
+|---|---|
+| 284574a | `tools/_profileSelfTime.mjs`; `r10b-table.txt`, `r10b-selftime.txt`, the count probe and the one-sample microbenchmark (scratch scripts kept as `.txt`) |
+| b9dcb59 | `sampleInside` locates the cell once; `reefFieldCell.test.ts` (red first: 128 grid reads, bound 20) |
+| 2750a65 | `r10b-probe.txt`, identical to `r10a-probe.txt` |
+| 733f64c | `r10b-*-report.txt`, `r10b-ab-old-*-report.txt`, `r10b-ab-selftime.txt` |
+
+**The table** (`r10b-table.txt`; self time inside `sumWaves` across the five kept R10a runs, % of a sum, 12 ft | 6 ft):
+
+| item | 12 ft | 6 ft | exact removal? |
+|---|---|---|---|
+| crest-lookup field samples (`sampleField` inclusive) | 23.9–24.7% | 21.3–22.3% | the samples: no (0 repeats). The cell located 10× per sample: **yes** |
+| `waveAtCrest` self (the shape arithmetic) | 19.3–20.2% | 18.8–20.2% | no |
+| onset record (`sampleOnset`) | 14.3–14.9% | 14.3–14.7% | no (one per wave, distinct points) |
+| `breakPoint` inclusive | 10.7–11.2% | 10.5–12.2% | no |
+| `lifecycle` inclusive | 8.2–8.6% | 6.6–6.9% | no |
+| onset readers (`onsetTime`/`Until`/`Psi`/`Level`/…) | ~9% | ~9% | no |
+| `sumWaves` self (loop, beyond-envelope waves, `{ ...ZERO }`) | 4.5–4.7% | 4.1–5.6% | below 20% |
+| GC | 2.2–2.4% of the pass | | |
+
+Inside `waterAt`, the 5 sums are 95% and all field samples 24–25% (the 5 outer ones 4–5%).
+
+**Counts** (the game's lazy read on R3's ride, every frame on a section): 5 sums per `waterAt` and 972 / 982 sums per
+frame (the probe's numbers). Each sum has 8 waves, 2.5–2.6 of them inside the envelope. Per sum: 1 field sample at the
+point, plus 2 per in-envelope wave (`CREST_STEPS`), plus 1 onset record per in-envelope wave. Each crest lookup happens
+once per wave per point. Exact repeats of one point: 0 in 1.08 M sums at 12 ft, 1 in 948 k at 6 ft, and none within a
+`waterAt`.
+
+**The change.** `sampleInside` interpolated ten arrays, and each `bilinear` call found the cell again (clamp, floor,
+index). Now it finds the cell once and runs `bilinear`'s own expressions per array. The microbenchmark gave 168–195 →
+68–78 ns per sample, identical at 200 000 / 200 000 points. `bilinear` stays for its other caller (line 508).
+
+**Checks.**
+- `reefFieldCell.test.ts` compares against a local copy of the old build, `toEqual`, at 20 000 points: inside, on nodes,
+  on all four edges, and outside every side. Grid reads per sample: ≤ 20, was 128.
+- Breaker + whitewater: 385 passed, 39 failed, the failures identical by name to `fails-t15.txt`.
+- tsc is clean. `src/ride`: 91 passed, 1 failed (expert 0.78), 3 skipped.
+- Probe: every row identical to r10a. `lazy (R9)` is 972 / 982 at 0.00 cm.
+- `heldS` is 14.33 / 15.02 / 12.45 / 0.78.
+
+**Profiles** (same-session A/B on 5174, sim-t 300, focused at all three points in all 8 runs, cam 5.6–6.0 ms):
+
+| riding mean / median ms | new | old (221bad2's `reefField.ts` copied in) |
+|---|---|---|
+| 12 ft | 73.6 / 58.6, 103.1 / 58.2 | 77.3 / 57.1, 101.4 / 65.3 |
+| 6 ft | 45.0 / 35.6, 41.3 / 32.6 | 38.9 / 33.0, 44.8 / 34.8 |
+
+The frame times don't resolve the change. Every run in this session has one ~500 ms frame inside the riding pass. The
+12 ft passes are only 50–70 frames, and the two 12 ft lines end 10 m apart. The profiles do show it:
+- field samples go from 20–22% of a sum to 10–12%;
+- `sumWaves` falls 1–5 points as a share of the pass (12 ft 41.6 → 37.6%, 6 ft 35.0 → 30.3%, 31.0 → 27.8%).
+
+So the expected ~5–7% of riding is real and below this session's noise.
+
+**Where the frame goes** (new runs, inclusive): `lazyOf` 30–42%, `sectionFrameKnots` 30–41%, `sumWaves` 27–37%,
+`stepRide` 23–36%, `cameraPose` 6–12%, spray 7–8% (12 ft), `traceStations` 5–11%. Inside a sum, the cost is now the
+crest lookup's own breaking state (`lifecycle`, onset readers, `withSheetShape`), the onset record (15–18%) and
+`waveAtCrest` (37–39% inclusive). No exact removal is left.
+
+### Rulings (Task 16)
+
+- **The field sample counts as the ≥ 20% item, and finding its cell once counts as an exact removal.** The samples
+  themselves are at distinct points, so none can be dropped; the cell lookup repeated ten times at one point is the
+  "repeated work at one point" the brief names. Cost if wrong: a reverted commit; no number changes either way.
+- The old build lives in the test as a local copy (Task 15's pattern). Cost if wrong: a legitimate later change to
+  `sampleField` means editing the copy.
+- The grid-read bound (≤ 20) is the red-then-green structural check. Cost if wrong: it pins an implementation detail.
+- `at` takes `ArrayLike<number>`, as `bilinear` does, not `Float32Array`. Cost if wrong: none.
+- I did not chase the 500 ms frames or rerun for cleaner frame times. The A/B is bracketed by the self-time numbers.
+  Cost if wrong: the frame-time gain stays unquantified (~5–7% expected).
+- `tools/_profileSelfTime.mjs` is committed; the count and microbenchmark scripts are in evidence as `.txt`, not in
+  `src` ("no scratch in src"). Cost if wrong: none.
+- I profiled on 5174 (a temporary `ld-5174` entry, reverted; server stopped). 5173 served a tree without the change.
+  Cost if wrong: none.
+
+### Deferred minors
+
+- The four R9 minors, the bot's frame quantisation, the frame-rate-dependent sub-step, the in-game g = 1 share.
+- The ~500 ms frame inside every riding pass this session (it was in paddling before). Not investigated.
+- `waveAt` and `waveAtCrest` each compute `phaseXi` at the same point, and `rayCrestPoint` a third time. That's cheap,
+  exact to share, and under 1% of a sum.
+- The `{ ...ZERO }` spread for each wave beyond the envelope (5.4 of 8 per sum). It's inside `sumWaves`' 4–6% self time.

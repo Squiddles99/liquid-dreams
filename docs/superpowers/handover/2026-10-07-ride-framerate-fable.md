@@ -231,3 +231,74 @@ with a bit-identity test; if no single item is ≥ 20% of a sum, write the table
 
 **Then stop.** After Task 16 the decision is Andrew's (spec addendum 3): ship the ride at its frame rate for the beta, or
 approve an approximation at ≤ 2 cm normal distance.
+
+---
+
+## Task 16, Opus → Fable (2026-10-08)
+
+**Done; riding still red. One exact change, measured first: a field sample finds its grid cell once.** Pushed, not merged.
+
+**Step 1, the table** (`r10b-table.txt`, self time inside `sumWaves`, five kept R10a runs, % of a sum, 12 ft | 6 ft):
+- crest-lookup field samples: 24–25 | 21–22
+- `waveAtCrest` self: 19–20 | 19–20
+- onset record: 14–15 | 14–15
+- `breakPoint`: 11 | 11–12
+- `lifecycle`: 8–9 | 7
+- onset readers: ~9
+- `sumWaves` self: 4–6
+
+GC is 2.3% of the whole pass. Counts: 8 waves per sum, 2.5–2.6 inside the envelope. Each sum takes 1 field sample at the
+point, 2 per in-envelope wave and 1 onset per in-envelope wave. One crest lookup per wave per point. **0 repeated points**
+in 1.08 M sums at 12 ft (1 in 948 k at 6 ft).
+
+**Step 2.** The only item ≥ 20% is the field sample. Its points are all distinct, but each sample located its cell ten
+times, once per array, and that was ~60% of a sample (microbenchmark: 168–195 → 68–78 ns, bit-identical at 200 k
+points). `sampleInside` now finds it once and runs `bilinear`'s own expressions (b9dcb59). The test came first:
+`reefFieldCell.test.ts`, red at 128 grid reads against a bound of 20. It compares with `toEqual` against the old build at
+20 k points, inside, on nodes, on edges and outside. Breaker + whitewater: 385 passed, 39 failed, the baseline by name.
+tsc is clean.
+
+**Step 3.** Probe identical to r10a in every row: `lazy (R9)` **972 / 982** sums per frame at 0.00 cm. `heldS` **14.33 /
+15.02 / 12.45 / 0.78**. `src/ride` 91 passed, 1 failed (expert), 3 skipped.
+
+**Step 4, same-session A/B** (5174, sim-t 300, focused ×3 in all 8 runs), riding mean / median:
+
+| | new | old |
+|---|---|---|
+| 12 ft | 73.6 / 58.6, 103.1 / 58.2 | 77.3 / 57.1, 101.4 / 65.3 |
+| 6 ft | 45.0 / 35.6, 41.3 / 32.6 | 38.9 / 33.0, 44.8 / 34.8 |
+
+The frame times are within noise: every run has one ~500 ms frame in the riding pass, and the 12 ft passes are 50–70
+frames. The profiles do show the change: field samples **20–22% → 10–12% of a sum**, `sumWaves`' share of the pass
+down 1–5 points. Expected ~5–7% of riding.
+
+**Where the frame goes** (new, inclusive): `lazyOf` 30–42%, `sectionFrameKnots` 30–41%, `sumWaves` 27–37%, `stepRide`
+23–36%, `cameraPose` 6–12%, `traceStations` 5–11%, spray 7–8% at 12 ft. Inside a sum, what's left is the wave's own
+breaking state and shape: `waveAtCrest` 37–39% inclusive, onset 15–18%, `lifecycle`/readers. Nothing in that is repeated
+work.
+
+**Rulings** (cost if wrong):
+- The field sample counts as the ≥ 20% item, and finding its cell once counts as its exact removal (the cell was
+  repeated ten times at one point). Cost: a reverted commit; no number changes either way.
+- The old build is a local copy in the test. Cost: a later legitimate change to `sampleField` means editing the copy.
+- The grid-read bound is the structural red. Cost: it pins an implementation detail.
+- No reruns to beat the noise; the self-time A/B carries it. Cost: the gain in ms is unquantified.
+- `tools/_profileSelfTime.mjs` is committed; the scratch probes are in evidence as `.txt`. Cost: none.
+- 5174 via a temporary `launch.json` entry, reverted. Cost: none.
+
+**Deferred minors:** the four R9 minors; the bot quantisation and sub-step; the in-game g = 1 share. The ~500 ms frame now
+inside every riding pass. `phaseXi` computed 2–3× at one point per wave (< 1%). The `{ ...ZERO }` spread per
+beyond-envelope wave (inside 4–6%).
+
+**In the way:** 5173 served another tree again. The `.superpowers` ledger is git-ignored, so it is updated locally and
+not pushed. The ~500 ms frames made frame times useless for a 5–7% change.
+
+**For Andrew.** The exact speed-ups are used up. In today's runs riding is about **33–36 ms median at 6 ft (41–45 ms
+mean)** and **58 ms median at 12 ft (74–103 ms mean, pulled up by one half-second stall per run)**. The target is 20 ms,
+so 6 ft runs at about half speed and 12 ft at about a third. Measured across Tasks 14–16, the ride's water is now about
+1,000 wave sums per frame, each an honest evaluation of 8 waves with no repeated work left in it. Getting to 20 ms
+needs one of two things, and it's your call (spec addendum 3):
+- ship the ride at this frame rate for the beta and move on;
+- or approve an approximation of the ride's water at ≤ 2 cm, which can be checked against the exact water.
+
+The branch changes no number a player could see, so it's safe to merge either way.
