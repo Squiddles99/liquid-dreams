@@ -41,7 +41,7 @@ const kept = (name: string, maxAge: number, bucketM: number, thin: number | null
 const variants = (): Variant[] => ([
   { name: 'direct', water: (sheet, entries, tide, _a, stats) => withSections(sheet, entries, tide, { stats, dense: true }) },
   { name: 'lazy (R9)', water: (sheet, entries, tide, _a, stats) => withSections(sheet, entries, tide, { stats }) },
-  { name: `lazy + warm ${RIDE_WARM_PASSES} passes (R9 + R8: the game)`, water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, along: { at, passes: RIDE_WARM_PASSES } }) },
+  { name: `lazy + warm ${RIDE_WARM_PASSES} passes (R8, not the game)`, water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, along: { at, passes: RIDE_WARM_PASSES } }) },
   ...[RIDE_STATION_SPACING_M, 0.5, 0.25].map((m): Variant => ({ name: `thinned ${m} m`, water: (sheet, entries, tide, _a, stats) => withSections(sheet, thinStations(entries, m), tide, { stats, dense: true }) })),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, every station, ${MIN_SPACING_M} m buckets`, a, MIN_SPACING_M, null)),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, thinned 1 m (R7 as written)`, a, 1, 1)),
