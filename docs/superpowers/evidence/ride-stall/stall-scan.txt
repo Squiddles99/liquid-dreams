@@ -1,0 +1,110 @@
+
+######## r10b-6ft-ride.cpuprofile  7972 samples over 5135 ms
+-- idle runs >= 200 ms
+  276 ms @ +190 ms  [107..552]
+   before: (program) :0 < (root) :0
+   after : withSections src/ride/sectionWater.ts:125 < rideWater src/app/App.ts:1765 < frame src/app/App.ts:2202 < update nm/three_webgpu.js:20373 < (root) :0
+  440 ms @ +1576 ms  [2317..3040]
+   before: submit :0 < submit nm/three_webgpu.js:52683 < finishRender nm/three_webgpu.js:59641 < _renderScene nm/three_webgpu.js:43645 < render nm/three_webgpu.js:26773 < updateBefore nm/three_addons_tsl_display_BloomNode__js.js:298
+   after : sheet src/app/App.ts:1778 < (anon) src/ride/sectionWater.ts:214 < stepRide src/ride/ridePhysics.ts:179 < step src/ride/RideSession.ts:69 < frame src/app/App.ts:2202 < update nm/three_webgpu.js:20373
+-- biggest single sample gaps
+  125.2 ms @ +125 ms  (program) :0 < (root) :0
+    1.6 ms @ +3570 ms  waveAtCrest src/breaker/setWaveModel.ts:324 < sectionFrameKnots src/breaker/wombSection.ts:191 < sectionFrame src/breaker/wombSection.ts:354 < breakEmitters src/whitewater/sprayEmitters.ts:118 < emittersAt src/app/App.ts:1032 < sprayBirthsAt src/app/App.ts:1063
+    1.5 ms @ +4632 ms  at src/breaker/wombProfile.ts:347 < profileKnots src/breaker/wombProfile.ts:340 < sectionFrame src/breaker/wombSection.ts:354 < breakEmitters src/whitewater/sprayEmitters.ts:118 < emittersAt src/app/App.ts:1032 < sprayBirthsAt src/app/App.ts:1063
+
+######## r10b-6ft-b-ride.cpuprofile  7994 samples over 5164 ms
+-- idle runs >= 200 ms
+  324 ms @ +315 ms  [250..756]
+   before: (program) :0 < (root) :0
+   after : stepRide src/ride/ridePhysics.ts:179 < step src/ride/RideSession.ts:69 < frame src/app/App.ts:2202 < update nm/three_webgpu.js:20373 < (root) :0
+  455 ms @ +1735 ms  [2508..3222]
+   before: writeBuffer :0 < updateBinding nm/three_webgpu.js:57533 < _update nm/three_webgpu.js:22753 < _updateBindings nm/three_webgpu.js:22744 < updateForRender nm/three_webgpu.js:22651 < _renderObjectDirect nm/three_webgpu.js:44928
+   after : (anon) src/ride/sectionWater.ts:214 < stepRide src/ride/ridePhysics.ts:179 < step src/ride/RideSession.ts:69 < frame src/app/App.ts:2202 < update nm/three_webgpu.js:20373 < (root) :0
+  312 ms @ +4852 ms  [7493..7992]
+   before: _renderScene nm/three_webgpu.js:43645 < render nm/three_webgpu.js:26773 < updateBefore nm/three_addons_tsl_display_BloomNode__js.js:298 < updateBefore nm/three_webgpu.js:40320 < _renderObjectDirect nm/three_webgpu.js:44928 < renderObject nm/three_webgpu.js:44846
+   after : (program) :0 < (root) :0
+-- biggest single sample gaps
+  159.3 ms @ +159 ms  (program) :0 < (root) :0
+    1.7 ms @ +1737 ms  (idle) :0 < (root) :0
+    1.6 ms @ +4703 ms  (program) :0 < (root) :0
+
+######## r10b-12ft-ride.cpuprofile  8084 samples over 5207 ms
+-- idle runs >= 200 ms
+  378 ms @ +221 ms  [114..724]
+   before: (garbage collector) :0 < (root) :0
+   after : lifecycle src/breaker/breaking.ts:383 < crestAt src/breaker/setWaveModel.ts:227 < sumWaves src/breaker/setWaveModel.ts:518 < sum src/app/App.ts:1777 < waterAt src/ride/water.ts:10 < sheet src/ride/sectionWater.ts:132
+  458 ms @ +1664 ms  [2444..3163]
+   before: (program) :0 < (root) :0
+   after : withSections src/ride/sectionWater.ts:125 < rideWater src/app/App.ts:1765 < frame src/app/App.ts:2202 < update nm/three_webgpu.js:20373 < (root) :0
+  390 ms @ +2761 ms  [4184..4803]
+   before: (program) :0 < (root) :0
+   after : (program) :0 < (root) :0
+-- biggest single sample gaps
+  157.2 ms @ +157 ms  (program) :0 < (root) :0
+    1.5 ms @ +163 ms  onsetTime src/breaker/breaking.ts:240 < crestAt src/breaker/setWaveModel.ts:227 < sumWaves src/breaker/setWaveModel.ts:518 < sum src/app/App.ts:1777 < waterAt src/ride/water.ts:10 < sheet src/ride/sectionWater.ts:132
+    1.4 ms @ +943 ms  waveAtCrest src/breaker/setWaveModel.ts:324 < sumWaves src/breaker/setWaveModel.ts:518 < sum src/app/App.ts:1777 < waterAt src/ride/water.ts:10 < sheet src/app/App.ts:1778 < sheet src/ride/sectionWater.ts:132
+
+######## r10b-12ft-b-ride.cpuprofile  7936 samples over 5273 ms
+-- idle runs >= 200 ms
+  255 ms @ +293 ms  [112..513]
+   before: (program) :0 < (root) :0
+   after : (program) :0 < (root) :0
+  442 ms @ +1286 ms  [1696..2367]
+   before: (program) :0 < (root) :0
+   after : frontStanding src/breaker/setWaveModel.ts:77 < waveAtCrest src/breaker/setWaveModel.ts:324 < sumWaves src/breaker/setWaveModel.ts:518 < sum src/app/App.ts:1777 < waterAt src/ride/water.ts:10 < sheet src/app/App.ts:1778
+  397 ms @ +2358 ms  [3336..3966]
+   before: (program) :0 < (root) :0
+   after : update nm/three_webgpu.js:20373 < (root) :0
+  393 ms @ +3363 ms  [4900..5515]
+   before: (program) :0 < (root) :0
+   after : (program) :0 < (root) :0
+  371 ms @ +4504 ms  [6731..7303]
+   before: (program) :0 < (root) :0
+   after : straysAfterSet src/swell/sets.ts:99 < wavesNear src/swell/sets.ts:128 < rideWater src/app/App.ts:1765 < frame src/app/App.ts:2202 < update nm/three_webgpu.js:20373 < (root) :0
+-- biggest single sample gaps
+  220.6 ms @ +221 ms  (program) :0 < (root) :0
+    1.5 ms @ +2356 ms  (idle) :0 < (root) :0
+    1.5 ms @ +4878 ms  point src/breaker/wombSection.ts:304 < walk src/breaker/wombProfile.ts:457 < curveSamples src/breaker/wombProfile.ts:454 < sectionSamples src/breaker/wombSection.ts:301 < lazyOf src/ride/sectionWater.ts:181 < at src/ride/sectionWater.ts:232
+
+######## r10b-6ft-paddle.cpuprofile  10269 samples over 6422 ms
+-- idle runs >= 200 ms
+  516 ms @ +158 ms  [9..829]
+   before: (program) :0 < (root) :0
+   after : fetch nm/tweakpane.js:1199 < onTick_ nm/tweakpane.js:1202 < emit nm/tweakpane.js:118 < onTick_ nm/tweakpane.js:2481 < (root) :0
+ 2847 ms @ +675 ms  [831..5422]
+   before: fetch nm/tweakpane.js:1199 < onTick_ nm/tweakpane.js:1202 < emit nm/tweakpane.js:118 < onTick_ nm/tweakpane.js:2481 < (root) :0
+   after : waveAtCrest src/breaker/setWaveModel.ts:324 < sumWaves src/breaker/setWaveModel.ts:518 < sum src/app/App.ts:1777 < waterAt src/ride/water.ts:10 < sheet src/app/App.ts:1778 < (anon) src/ride/sectionWater.ts:214
+-- biggest single sample gaps
+  150.8 ms @ +151 ms  (program) :0 < (root) :0
+    1.9 ms @ +156 ms  (program) :0 < (root) :0
+    1.6 ms @ +2607 ms  (idle) :0 < (root) :0
+
+######## r10b-12ft-paddle.cpuprofile  9790 samples over 6146 ms
+-- idle runs >= 200 ms
+ 3582 ms @ +230 ms  [154..5940]
+   before: (program) :0 < (root) :0
+   after : updateWorldMatrix nm/three.core-BTfOrhf1.js:10050 < updateWorldMatrix nm/three.core-BTfOrhf1.js:32833 < getWorldDirection nm/three.core-BTfOrhf1.js:32824 < frame src/app/App.ts:2202 < update nm/three_webgpu.js:20373 < (root) :0
+ 2096 ms @ +4050 ms  [6365..9788]
+   before: (program) :0 < (root) :0
+   after : (program) :0 < (root) :0
+-- biggest single sample gaps
+  136.3 ms @ +136 ms  (program) :0 < (root) :0
+    4.4 ms @ +186 ms  (anon) nm/three_addons_loaders_GLTFLoader__js.js:1727 < (root) :0
+    2.9 ms @ +170 ms  GLTFBinaryExtension nm/three_addons_loaders_GLTFLoader__js.js:1061 < parse nm/three_addons_loaders_GLTFLoader__js.js:323 < (anon) nm/three_addons_loaders_GLTFLoader__js.js:249 < (anon) nm/three.core-BTfOrhf1.js:31849 < (root) :0
+
+######## r10b-6ft-cam.cpuprofile  10176 samples over 6225 ms
+-- idle runs >= 200 ms
+-- biggest single sample gaps
+  214.7 ms @ +215 ms  (program) :0 < (root) :0
+   10.9 ms @ +4260 ms  (program) :0 < (root) :0
+    3.6 ms @ +4228 ms  (garbage collector) :0 < (root) :0
+
+######## r10b-6ft-b-cam.cpuprofile  10043 samples over 6283 ms
+-- idle runs >= 200 ms
+  352 ms @ +325 ms  [101..691]
+   before: (program) :0 < (root) :0
+   after : setComponents nm/three.core-BTfOrhf1.js:15223 < setFromProjectionMatrix nm/three.core-BTfOrhf1.js:18737 < update src/heath/KitMeshes.ts:106 < updateBeach src/app/App.ts:1520 < frame src/app/App.ts:2202 < update nm/three_webgpu.js:20373
+-- biggest single sample gaps
+  267.2 ms @ +267 ms  (program) :0 < (root) :0
+   13.9 ms @ +3325 ms  (program) :0 < (root) :0
+    1.5 ms @ +4806 ms  (idle) :0 < (root) :0
