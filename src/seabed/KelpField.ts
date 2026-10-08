@@ -63,6 +63,11 @@ export class KelpField {
     if (on) this.invalidate();
   }
 
+  /** Its compute passes, for App.prewarm to build while the game loads (built on the first frame, they froze it). */
+  get computePasses(): THREE.ComputeNode[] {
+    return [this.pass];
+  }
+
   /** Runs this frame's ticks; `prepare(t)` points the set waves at tick time t (App.pointFoamSourceAt). Returns the ticks run. */
   advance(renderer: THREE.WebGPURenderer, simTime: number, camX: number, camZ: number, prepare: (t: number) => void): number {
     if (!this.enabled) return 0;

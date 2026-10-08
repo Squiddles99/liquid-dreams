@@ -83,6 +83,11 @@ export const BREAK_TAIL_M = 20;
  * which smoothing along travel leaves as it is.
  */
 export const BREAK_TRAVEL_SMOOTHING_M = 8;
+/** The crest-line spread may lift a node's breaking gain at most this much above its own (R1 §2). */
+export const SPREAD_LIFT_MAX = 1.2;
+/** A node whose own gain (amp / breaking depth, ∝ the breaking ratio at unit height) is at least this is on the face: the
+ * spread is free there. */
+export const SPREAD_FREE_GAIN = 0.2;
 
 /**
  * The slurp (Andrew): as a section stands up it draws the reef's water into itself, and the swell line either side is
@@ -117,9 +122,13 @@ export const STEP_SMOOTHING_M = 2;
 export const STEP_SAMPLE_M = 1;
 /**
  * Andrew's step anchors (2026-09-30: 1.3 gentle, 1.85 normal, 2.25 heavy) on the sheet's ψ anchors (SHEET_POINTS: oval,
- * cylinder, thrown); linear between, in proportion below the first, the last segment's slope past the last.
+ * cylinder, thrown); linear between, in proportion below the first, the last segment's slope past the last. The step
+ * column is his × 0.57 (R1 §2, 2026-10-06): with the wave breaking on the face in about 0.8 × its height of water
+ * instead of 0.44, the step reads 2.5 breaking depths ahead of a much shallower onset and every step read smaller (6 ft
+ * mid tide fell to hollow 0); 0.57 puts 6 ft mid at 0.82 and 8 ft at 1.0 with 4 ft below 0.6 (0.59). Every step is ≥ 1,
+ * so nothing now reads below about 0.45 hollow.
  */
-export const STEP_PSI_POINTS: readonly (readonly [number, number])[] = [[1.3, 0.035], [1.85, 0.065], [2.25, 0.09]];
+export const STEP_PSI_POINTS: readonly (readonly [number, number])[] = [[0.741, 0.035], [1.0545, 0.065], [1.2825, 0.09]];
 
 /** The step at a point of still-water depth d0 (depthAlong(s): s metres ahead along its ray): never below 1. */
 export function reefStep(depthAlong: (s: number) => number, d0: number): number {
@@ -223,6 +232,28 @@ export function smoothAlongCrest(a: Float32Array, dirX: Float32Array, dirZ: Floa
 /** `a` smoothed along the travel direction through each node (as smoothAlongCrest, along the ray instead). */
 export function smoothAlongTravel(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, sigmaM: number): Float32Array {
   return smoothAlongLine(a, dirX, dirZ, grid, sigmaM, false);
+}
+
+/**
+ * `a` smoothed along the travel direction but only from the seaward side: each node averages itself and the nodes up
+ * its own ray (against the travel), a half Gaussian of σ = sigmaM. The ledge's gain then reaches shoreward, down the
+ * ray, and never lifts a node seaward of it (R1 §2: the symmetric smoothing declared the wave broken 8 m out in deep water).
+ */
+export function smoothAlongTravelBehind(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, sigmaM: number): Float32Array {
+  const { nx, cellM } = grid;
+  const out = new Float32Array(a.length);
+  const sigma = sigmaM / cellM, step = Math.max(1, sigma / 3), R = Math.ceil((3 * sigma) / step);
+  const at = bilinearCells(a, grid);
+  for (let i = 0; i < a.length; i++) {
+    const col = i % nx, row = (i - col) / nx, tx = -dirX[i] * step, tz = -dirZ[i] * step;
+    let w = 0, sum = 0;
+    for (let j = 0; j <= R; j++) {
+      const g = Math.exp(-0.5 * ((j * step) / sigma) ** 2);
+      w += g; sum += g * at(col + j * tx, row + j * tz);
+    }
+    out[i] = sum / w;
+  }
+  return out;
 }
 
 function smoothAlongLine(a: Float32Array, dirX: Float32Array, dirZ: Float32Array, grid: GridSpec, sigmaM: number, crest: boolean): Float32Array {
@@ -483,8 +514,13 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   for (let i = 0; i < n; i++) gain[i] = amp[i] / breakingDepth(hmin[i]);
   const near = smoothAlongCrest(maxAlongCrest(gain, dirX, dirZ, grid, BREAK_REACH_M), dirX, dirZ, grid, BREAK_SMOOTHING_M);
   const tail = smoothAlongCrest(gain, dirX, dirZ, grid, BREAK_TAIL_M);
-  for (let i = 0; i < n; i++) near[i] = Math.max(near[i], tail[i]);
-  const smoothGain = smoothAlongTravel(near, dirX, dirZ, grid, BREAK_TRAVEL_SMOOTHING_M);
+  // The crest-line spread smooths the ratio's jitter; it may not lift a node's gain more than SPREAD_LIFT_MAX above its own
+  // unless the node is already near breaking (R1 §2: the tail's σ 20 m reached 7 m across the ledge and moved the onset out).
+  for (let i = 0; i < n; i++) {
+    const lifted = Math.max(near[i], tail[i]);
+    near[i] = gain[i] >= SPREAD_FREE_GAIN ? lifted : Math.min(lifted, gain[i] * SPREAD_LIFT_MAX);
+  }
+  const smoothGain = smoothAlongTravelBehind(near, dirX, dirZ, grid, BREAK_TRAVEL_SMOOTHING_M);
   const hminBreak = new Float32Array(n);
   for (let i = 0; i < n; i++) hminBreak[i] = smoothGain[i] > 0 ? amp[i] / smoothGain[i] : breakingDepth(hmin[i]);
   const slurp = slurpAlongCrest(smoothGain, dirX, dirZ, grid, SLURP_REACH_M);
