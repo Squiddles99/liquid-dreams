@@ -167,9 +167,10 @@ app.whenReady().then(async () => {
   const fc = await frames(`riding (phase ${r0.phase} -> ${r1.phase})`);
   await saveStall('ride');
   const rideFrom = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
-  await traceStop('ride');
   const where = await win.webContents.executeJavaScript(`(() => { const b = window.liquidDreams.ride.body; return b ? b.x.toFixed(1) + ', ' + b.z.toFixed(1) : 'none'; })()`);
+  // Before the trace stops: writing it took the focus (3 of 4 traced runs read minimized after it).
   const focusEnd = focusNow();
+  await traceStop('ride');
 
   const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s ending at x, z ${where} (${ft} ft, ${experience}); window at cam: ${focusCam}; at riding: ${focusRide}; at the end: ${focusEnd}`;
   const report = [times, `# stall log ${stall ? 'on' : 'off'}, trace ${trace ? 'on' : 'off'}`, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding')].join('\n');
