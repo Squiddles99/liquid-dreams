@@ -171,3 +171,36 @@ against the 4-pass build (the probe). `INVERT_ITERATIONS` itself unchanged for e
 - [ ] The 12 ft sheet-along-the-normal sample for the wave-form work (spec addendum's last paragraph), saved as
       `evidence/ride-framerate/sheet-normal-12ft.txt`.
 - [ ] Handovers updated in place; push. Do not merge.
+
+## Addendum 2, 2026-10-08 (Fable): Tasks 11–13, the curve read lazily (spec addendum 2, R9)
+
+Same global constraints. Nothing under `src/breaker` changes: `wombSection.ts`, `wombProfile.ts`, `crestTrace.ts` are read,
+not edited. Only `src/ride/sectionWater.ts`, its test, the probe and `App.ts` if a signature needs it.
+
+### Task 11: the station curve read lazily (R9, exact)
+
+- [ ] **Test first** (`sectionWater.test.ts`): on the probe's 6 ft frame (or the file's existing station fixture), for ≥ 200
+      random (station, u) pairs including u on the fold (several crossings) and u past the curve's ends, the lazy water's
+      y and slope **equal** the dense build's (`toBe`, or `toBeCloseTo` to 12 digits if a bit differs; say which). A counting
+      sheet asserts reads per curve: 36 for the knots + 2 per interval bracketing u, and a second probe at the same station
+      and a different u reads only the new interval's ends. Red first: today reads 196 − weight-0.
+- [ ] `cached(s)` returns the samples' u (all 160, from `sectionSamples`, no sheet beyond the knots) with y filled on demand;
+      `lowestWetCrossing` takes that lazy curve (keep a `P2[]` path for the probe's `CurveCache` variants, or store filled
+      samples in it; your call, say which). The u is `sectionPoint`'s first component / A by the same expression. Weight-0
+      samples' y is A × q[4] / A with no read, as today.
+- [ ] R8's warm read is unchanged; its nearest prior read is now usually a knot, and the residual guard covers it. Report
+      wave sums per frame (the probe's metric) beside `warm 2 passes`.
+- [ ] Probe: a `lazy (R9)` variant. Required: max |Δy| **0** at 6 ft and 12 ft; sums per frame reported.
+- [ ] `src/ride` tests green, `npx tsc --noEmit` clean. Commit, push, ledger line.
+
+### Task 12: profile and the ride's numbers
+
+- [ ] Profiler at 6 ft and 12 ft with the dev server warm: `evidence/ride-framerate/r9-6ft-report.txt`, `r9-12ft-report.txt`.
+      If cam differs from the r8 reports' by more than 15%, an A/B against R8-only in the same session as well.
+- [ ] R3's `heldS` with R9 in the loop: 14.33 / 15.02 / 12.45 / 0.78 s expected exactly (R9 is exact); ± 0.1 s is the gate.
+- [ ] If riding mean is > 20 ms at either size: **stop**, paste where the frame goes now (inclusive %, curves and reads per
+      step), do not start R10. Fable rules on R10.
+
+### Task 13: evidence and handovers
+
+- [ ] Both handover files updated in place (an "R9 pass" section), ledger, memory line for Fable; push. **Do not merge.**

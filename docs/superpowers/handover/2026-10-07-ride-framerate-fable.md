@@ -44,3 +44,18 @@ this morning).
 
 Decisions needed: (a) GPU readback of the ribbon's curves, (b) a normal-distance tolerance, or (c) fewer station reads
 per step. Details are in `-opus.md`.
+
+---
+
+## Fable's ruling, 2026-10-08 (Andrew on Rottnest, tethered; link dropping)
+
+Spec addendum 2 + plan Tasks 11–13 on the branch. **R9: read the curve lazily, exact.** A curve's 160 sample positions
+along the normal come from its 36 knot reads alone (the sheet's u is the home; `curveSamples` reads no sheet); only the
+ends of the one to three intervals bracketing the probe's u need their y read. ~196 → ~40 reads per curve, bit-identical.
+(a) GPU readback rejected. (b) Normal distance becomes the measure for approximations only (R10 reserve, not started).
+
+**When Opus's R9 handover lands, check:** (1) the equality test exists, was red on the read count, green after; (2)
+`r9-6ft` / `r9-12ft` reports: riding mean ≤ 20 ms at both sizes, cam and paddling no slower; (3) `heldS` unchanged; (4) the
+probe's `lazy` row shows max |Δy| 0; (5) scope: only `sectionWater.ts`, its test, the probe (and `App.ts` for a
+signature); nothing under `src/breaker`; (6) the suite's same 39 failures. Then recommend merging `ride-framerate` (and
+`r3-staying-on` with it) when 2, 3 and 5 hold. Andrew merges.

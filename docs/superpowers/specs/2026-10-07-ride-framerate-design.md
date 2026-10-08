@@ -90,3 +90,38 @@ sample's, 1–2 passes instead of 4) only if R6 + R7 miss 20 ms; its error measu
 
 **For the wave-form work, not for this branch:** at 12 ft, save one station's sheet along its normal (400 samples of
 u, y over ±8 A, with the station's A, phase, hollow) as evidence of the sharp feature Opus saw: it may be the step crease.
+
+## Addendum 2, 2026-10-08 (Fable's ruling after the addendum pass: riding ~120–210 ms, R1–R8 spent)
+
+**What the evidence says now.** A station curve costs 196 sheet reads: 36 for its knots (`sectionFrameKnots`: 5 back, 5
+front, 4 beyond, 11 curl knots × 2) and 160 for its samples, ~44 of which are weight 0 and already free. The ride reads the
+curve at **one u per probe** (`lowestWetCrossing`), yet builds all 160 samples. Every sample's u along the normal is known
+from the knots alone: `sectionPoint`'s u is w × (the sheet's u at the home) + A × a_u, and the ride's sheet function returns
+its own argument as the sheet's u, so the sheet's u *is* the home; `curveSamples` spreads the samples with `hermitePoint`
+and reads no sheet. Only a sample's **y** needs the sheet. So of the 160 sample reads, all but the ends of the one to three
+intervals that bracket the probe's u are wasted. R6 and R7 failed because they moved the surface; this moves nothing.
+
+**R9, the curve read lazily, exact.** `cached(s)` builds the knots and all 160 samples' u (36 reads) and reads a sample's y
+only when `lowestWetCrossing` needs it: for every interval [u_i, u_i+1] (u_i+1 > u_i) containing the probe's u, both ends,
+each read at most once per station per frame (the frame's water keeps them). The u is computed by the same expression as
+`sectionPoint`'s first component (over A), so the result is bit-identical to today's; the lowest-wet-crossing rule, the
+weight-0 skip and R8's warm read are unchanged. Expected: ~196 → ~40 reads per curve, ~4–5× fewer wave sums per physics
+step, and the substep spiral (`MAX_STEP_S` = 1/60, up to 4 substeps a slow frame) winds down with it.
+
+**(a) GPU readback: rejected.** A curve one frame late is what R7 measured (92 cm at a fixed point at age 1); the ribbon's
+curves sit at the drawing's spacing; WebGPU staging readback in Electron is plumbing with its own failure modes; and R9
+removes most of the cost a readback would save. Not pursued.
+
+**(b) Normal distance is the measure for approximations, and R9 is not one.** Height at a fixed point is ill-conditioned on
+the clamped wall (slope 2: a few cm along the normal is a metre of y), so from now any lever that *moves* the surface
+(thinning, reuse, fewer stations) is measured as the distance from today's point to the variant's surface along the normal,
+|Δy| / √(1 + s²) with s today's clamped slope magnitude there: ≤ 2 cm at 6 ft over the ride test's rows, **and** `heldS`
+per case within 0.1 s, **and** the largest frame-to-frame step of the board's y no larger than today's. No such lever is
+in R9.
+
+**(c) R10, reserve: fewer station reads per step.** Only if R9's riding mean is still > 20 ms at 6 ft or 12 ft, and only
+after Fable has seen where the frame goes then. Candidates, under (b): the nose and tail probes reading the middle's station
+pair; the camera's probe on the frame's existing curves. Not started by Opus.
+
+**For the wave-form work, not this branch:** the 4-pass inversion is 8.24 cm off converged on the 12 ft wall (Opus, R8
+probe); the 12 ft front is smooth and steep (67° at u/A 0.94), not a crease (`evidence/ride-framerate/sheet-normal-12ft.txt`).
