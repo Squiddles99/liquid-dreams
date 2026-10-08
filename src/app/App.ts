@@ -1577,10 +1577,10 @@ export class App {
   /** Re-solve the reef wave field (off-thread) when the swell period or direction, the tide or the reef changes. */
   private requestFieldIfNeeded(force: boolean): void {
     const c = this.conditions;
-    const key = fieldKey(c, this.reefParams, this.breakParams.peel);
+    const key = fieldKey(c, this.reefParams, this.breakParams.peel, this.breakParams.curlMaxMs);
     if (!force && key === this.fieldKey) return;
     this.fieldKey = key;
-    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M });
   }
 
   /** Reef sliders rebuild the bathymetry (~2M cells) once you stop dragging, then re-solve the field on it. */
