@@ -1129,6 +1129,7 @@ export class App {
    */
   attachLoading(loading: LoadingScreen | null, frontEnd: boolean): void {
     this.loadingScreen = loading;
+    loading?.setPendingLabels(() => this.asyncPipelines.inflight());
     this.frontEndAtBoot = frontEnd;
     if (!loading) return;
     loading.setCalm(this.calmMenus());
@@ -1168,8 +1169,11 @@ export class App {
         this.bootReported = true;
       }
     }
-    // A frame drawn with pipelines still building is missing them: it doesn't count as smooth.
-    l.frameDrawn(this.asyncPipelines.pending > 0 ? Infinity : dtMs);
+    // A frame drawn with pipelines still building is missing them: it doesn't count as smooth. At boot the cover also
+    // waits for them (one-curl Task 0: it dissolved on the give-up without the ocean); the transitions keep the give-up.
+    const pending = this.asyncPipelines.pending > 0;
+    if (l.booting) l.frameDrawn(dtMs, pending);
+    else l.frameDrawn(pending ? Infinity : dtMs);
     if (this.frontEnd) this.frontEnd.inputHeld = l.blocking;
   }
 
