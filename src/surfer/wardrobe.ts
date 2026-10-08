@@ -13,8 +13,8 @@ export function seasonOf(dateISO: string): Season {
   return Number.isInteger(m) && m >= 1 && m <= 12 ? SEASON_BY_MONTH[m - 1] : 'winter';
 }
 
-/** The rider's outfits: the seasons', then the walking clothes (walking spec §4). */
-export const presetOutfits = (p: SurferPreset): Outfit[] => [...new Set<Outfit>([...Object.values(p.outfits), 'walking'])];
+/** The rider's outfits: their painted wardrobe (which holds the seasons'), then the walking clothes (walking spec §4). */
+export const presetOutfits = (p: SurferPreset): Outfit[] => [...new Set<Outfit>([...p.wardrobe, ...Object.values(p.outfits), 'walking'])];
 
 /** What the body's masks and the boardies mesh show: the swimwear under the walking clothes. */
 export const bodyOutfit = (p: SurferPreset, o: Outfit): SurfOutfit => (o === 'walking' ? p.walking.under : o);
@@ -25,7 +25,8 @@ export function outfitFor(p: SurferPreset, choice: OutfitChoice, dateISO: string
 }
 
 export const OUTFIT_LABELS: Record<Outfit, string> = {
-  boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', rashieAndBottoms: 'bikini bottoms + rash vest', shortArmSteamer: 'short-arm steamer', rashieAndBoardies: 'boardies + rash vest', walking: 'walking clothes',
+  boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', rashieAndBottoms: 'rash vest + shorts', shortArmSteamer: 'short-arm steamer', rashieAndBoardies: 'boardies + rash vest',
+  steamer: 'steamer', onePiece: 'one-piece', walking: 'walking clothes',
 };
 
 /** Dry on land or in clothes; Grommet's glasses only with the walking clothes: at the water's edge they're in his bag

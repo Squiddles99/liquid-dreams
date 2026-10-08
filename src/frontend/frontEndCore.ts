@@ -4,7 +4,7 @@ import type { SettingsStorage } from '../dev/devSettings';
 import type { CameraPose } from '../dev/momentLink';
 import type { LandSpot } from '../surfer/placement';
 import type { PresetName } from '../surfer/presets';
-import { crewFor, easePose, gearShot, lookoutShot, riderShot } from './beatCamera';
+import { easePose, lookoutShot } from './beatCamera';
 import { ConditionsGate } from './conditionsGate';
 import { lineFor } from './conditionsView';
 import { type Beat, type FrontAction, type FrontEvent, type FrontState, type SessionChoice, focusTo, initialFront, savedOf, step, tick } from './frontEnd';
@@ -124,14 +124,14 @@ export class FrontEndCore {
     return cue;
   }
 
-  /** The camera for a state's beat, or null before the land is ready. */
-  private shot(s: FrontState): CameraPose | null {
+  /**
+   * The camera, or null before the land is ready: the lookout on every screen (painted riders spec). The riders are
+   * painted now, so the screens cross-fade their grounds and riders instead of flying the camera between 3D poses.
+   */
+  private shot(_s: FrontState): CameraPose | null {
     const stand = this.host.standSpot();
     if (!stand) return null;
-    const ground = (x: number, z: number): number => this.host.groundAt(x, z) ?? 0;
-    if (s.beat === 'conditions' || s.beat === 'out') return lookoutShot(stand, ground);
-    const place = crewFor(s.beat === 'gear' ? 'gear' : 'rider', stand).find((p) => p.preset === s.rider)!;
-    return s.beat === 'gear' ? gearShot(place, ground) : riderShot(place, ground);
+    return lookoutShot(stand, (x: number, z: number): number => this.host.groundAt(x, z) ?? 0);
   }
 
   private stage(): void {
@@ -139,6 +139,8 @@ export class FrontEndCore {
     if (!stand || this.s.beat === 'out') return;
     let pose = this.shot(this.s);
     if (this.s.move && this.moveFrom && pose) pose = easePose(this.moveFrom, pose, this.s.move.t);
-    this.host.stage(stagingFor(this.s, stand, { turnT: this.turnT, pickT: this.pickT }), pose);
+    // The select screens show Andrew's paintings, so the 3D crew stay as on Conditions on every screen: behind the
+    // lookout camera, out of shot, but loaded (the loading cover waits for them, and a hidden rider never loads).
+    this.host.stage(stagingFor({ ...this.s, beat: 'conditions', move: null }, stand, { turnT: this.turnT, pickT: this.pickT }), pose);
   }
 }

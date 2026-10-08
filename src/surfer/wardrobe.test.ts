@@ -20,7 +20,9 @@ describe('wardrobe (Andrew’s months, spec §4.3)', () => {
   it('lets the override win, but only with one of that surfer’s own outfits', () => {
     expect(outfitFor(PRESETS.male, 'shortArmSteamer', '2026-02-01')).toBe('shortArmSteamer');
     expect(outfitFor(PRESETS.male, 'bikini', '2026-02-01')).toBe('boardies');
-    expect(presetOutfits(PRESETS.female).sort()).toEqual(['bikini', 'rashieAndBottoms', 'shortArmSteamer', 'walking']);
+    expect(presetOutfits(PRESETS.female)).toEqual(['bikini', 'onePiece', 'rashieAndBottoms', 'springsuit', 'shortArmSteamer', 'steamer', 'walking']);
+    // Every season's outfit is one Andrew painted (painted riders spec).
+    for (const p of Object.values(PRESETS)) for (const o of Object.values(p.outfits)) expect(p.wardrobe).toContain(o);
   });
 
   it('falls back to winter for a date it can’t read', () => expect(seasonOf('nonsense')).toBe('winter'));

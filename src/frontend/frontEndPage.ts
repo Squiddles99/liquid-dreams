@@ -65,7 +65,7 @@ export class FrontEnd {
   /** The Controls page (View or C, on any beat): the drawn pad and keys, and remapping. */
   private controlsPage: ControlsPage | null = null;
   private size = { w: window.innerWidth, h: window.innerHeight };
-  private readonly today = new Date();
+  readonly today = new Date();
 
   constructor(private readonly host: FrontEndHost, private readonly parent: HTMLElement, private readonly sound: SoundHooks, private readonly storage: SettingsStorage | null) {}
 
