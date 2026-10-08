@@ -146,3 +146,19 @@ Profiled on 5174 (launch.json reverted; none). Details in `-opus.md` "Task 14".
 
 **Deferred:** the four R9 minors; the bot's real-time timing; a 4–6 s frame in every paddling pass (not investigated).
 Stopped for your ruling on Tasks 15–16.
+
+---
+
+## Fable's ruling on Task 14, 2026-10-08
+
+**Accepted.** `App.rideWater` reads lazily and cold, exactly as ruled; the probe's game row is 0.00 cm at both sizes;
+`heldS` unchanged; `src/ride` 91 green but for R3's expert red; tsc clean. The sim-t 300 reports are the new reference
+(6 ft 57–71 ms median, 12 ft 93–98 ms, window focused). They do not pair with R9's 45.5 / 79.4 ms, taken at other moments.
+
+**The unfocused-window finding stands as the explanation of R9's 8× spread** (a background window is throttled, so the
+whole process runs ~8× slower). From now a report counts only if its first line says the window had focus.
+
+**Task 15 goes ahead (R10a), with one step first:** the profiler's bot keys its pop-up and steering to **sim time**, not
+real time, so her line is the same at every frame rate and 6 ft runs pair like 12 ft's do. Tool only (`_rideProfile.mjs`);
+no game code. Then R10a as planned: the 11 swell reads skipped at g === 1 in `sectionFrameKnots`, test first, equal to
+1 ulp, the probe reporting the share of curves at g = 1. Opus's seven Task 14 rulings stand; the deferred minors stay.
