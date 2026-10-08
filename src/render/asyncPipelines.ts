@@ -8,6 +8,13 @@ interface Labelled {
   context?: { renderTarget?: { texture?: { name?: string } } | null };
 }
 
+/**
+ * A build still pending after this long is named once at console.warn (dev: which object). It still counts: at boot
+ * hundreds build together and, on a loaded machine, legitimate ones take 10+ s. (ride-stall Task 4c: a build left over
+ * from boot, "MeshBasicNodeMaterial (output)", held the paddle-out cover to its 4 s give-up.)
+ */
+export const BUILD_WARN_MS = 10_000;
+
 /** "material object (target)": what is building, for the stall log (ride-stall Task 4c). */
 function label(ro: RenderObject): string {
   const r = ro as Labelled;
@@ -38,6 +45,8 @@ export class AsyncPipelines {
   private buildList: Promise<unknown>[] | null = null;
   /** Builds started since construction (dev readout). */
   started = 0;
+  /** Labels already named (a build unsettled after BUILD_WARN_MS), so each is named once. */
+  private readonly warned = new Set<string>();
 
   constructor(renderer: THREE.WebGPURenderer) {
     const pipelines = (renderer as unknown as { _pipelines: Pipelines })._pipelines;
@@ -47,10 +56,19 @@ export class AsyncPipelines {
       const started: Promise<unknown>[] = [];
       const pipeline = getForRender(renderObject, started);
       for (const p of started) {
+        const name = label(renderObject);
         this.buildList?.push(p);
-        this.building.set(p, label(renderObject));
+        this.building.set(p, name);
         this.started++;
-        void p.finally(() => this.building.delete(p));
+        const timer = setTimeout(() => {
+          if (!this.building.has(p) || this.warned.has(name)) return;
+          this.warned.add(name);
+          console.warn(`[AsyncPipelines] a pipeline build has not settled after ${BUILD_WARN_MS} ms: ${name}`);
+        }, BUILD_WARN_MS);
+        void p.finally(() => {
+          clearTimeout(timer);
+          this.building.delete(p);
+        });
       }
       return pipeline;
     };
