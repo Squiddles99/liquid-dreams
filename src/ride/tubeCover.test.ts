@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Station, StationEntry } from '../breaker/crestTrace';
-import { tubeCover } from './tubeCover';
+import { coverCurve, tubeCover } from './tubeCover';
 
 /** A straight crest along z at x = 0, the wave running +x, every metre from z = −30 to 30, each at its section's phase. */
 const crest = (phase: (z: number) => number, H = 3, hollow = 1): StationEntry[] => {
@@ -43,5 +43,12 @@ describe('tube cover (Andrew 2026-10-04: the camera goes over the shoulder when 
 
   it('skips gaps', () => {
     expect(tubeCover([{ gap: true }, ...crest(() => BARREL)], 2, 0)).toBeGreaterThan(0.9);
+  });
+
+  it('reads one curve per (phase, hollow) to 1/64, not one per frame’s station (plan 2026-10-07 ride-framerate Task 4)', () => {
+    expect(coverCurve(1 + 0.001, 0.8)).toBe(coverCurve(1 + 0.002, 0.8 + 0.001));
+    expect(coverCurve(1, 0.8)).not.toBe(coverCurve(1 + 1 / 32, 0.8));
+    // Two frames' stations with the same numbers: the same cover, read from one curve.
+    expect(tubeCover(crest(() => BARREL + 0.001), 2, 0)).toBe(tubeCover(crest(() => BARREL + 0.002), 2, 0));
   });
 });
