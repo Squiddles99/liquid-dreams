@@ -823,13 +823,22 @@ export function sampleOnset(f: ReefField, x: number, z: number, out = new Float3
   return out;
 }
 
+/** bilinear on every array of the sample, with the cell found once (ride-framerate Task 16): the same arithmetic per array,
+ * so bit-identical to bilinear on each. Found once per array, the cell was ~60% of a sample. */
 function sampleInside(f: ReefField, x: number, z: number): FieldSample {
-  const g = f.grid;
-  const dirX = bilinear(f.dirX, g, x, z), dirZ = bilinear(f.dirZ, g, x, z);
+  const g = f.grid, nx = g.nx;
+  const fx = Math.min(nx - 1, Math.max(0, (x - g.x0) / g.cellM)), fz = Math.min(g.nz - 1, Math.max(0, (z - g.z0) / g.cellM));
+  const c = Math.min(nx - 2, Math.floor(fx)), r = Math.min(g.nz - 2, Math.floor(fz));
+  const tx = fx - c, tz = fz - r, i = r * nx + c, j = i + nx;
+  const at = (a: ArrayLike<number>): number => {
+    const top = a[i] + (a[i + 1] - a[i]) * tx, bottom = a[j] + (a[j + 1] - a[j]) * tx;
+    return top + (bottom - top) * tz;
+  };
+  const dirX = at(f.dirX), dirZ = at(f.dirZ);
   const len = Math.hypot(dirX, dirZ) || 1;
   return {
-    tau: bilinear(f.tau, g, x, z), amp: bilinear(f.amp, g, x, z), hmin: bilinear(f.hmin, g, x, z), hminBreak: bilinear(f.hminBreak, g, x, z), hminSlurp: bilinear(f.hminSlurp, g, x, z), hminLean: bilinear(f.hminLean, g, x, z),
-    k: bilinear(f.k, g, x, z), dirX: dirX / len, dirZ: dirZ / len, depth: bilinear(f.depth, g, x, z),
+    tau: at(f.tau), amp: at(f.amp), hmin: at(f.hmin), hminBreak: at(f.hminBreak), hminSlurp: at(f.hminSlurp), hminLean: at(f.hminLean),
+    k: at(f.k), dirX: dirX / len, dirZ: dirZ / len, depth: at(f.depth),
   };
 }
 
