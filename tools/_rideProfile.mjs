@@ -125,6 +125,8 @@ app.whenReady().then(async () => {
   // C: wait for the ride phase, then 6 s standing.
   for (let i = 0; i < 300; i++) { const r = await win.webContents.executeJavaScript('window.__ride'); if (r.phase === 'ride' || r.phase === 'bail' || r.phase === 'ended') break; await sleep(100); }
   const r0 = await win.webContents.executeJavaScript('window.__ride');
+  grab();
+  const focusRide = focusNow();
   const rideStart = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
   await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true');
   await dbg.sendCommand('Profiler.start');
@@ -137,7 +139,7 @@ app.whenReady().then(async () => {
   const where = await win.webContents.executeJavaScript(`(() => { const b = window.liquidDreams.ride.body; return b ? b.x.toFixed(1) + ', ' + b.z.toFixed(1) : 'none'; })()`);
   const focusEnd = focusNow();
 
-  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s ending at x, z ${where} (${ft} ft, ${experience}); window at cam: ${focusCam}; at the end: ${focusEnd}`;
+  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s ending at x, z ${where} (${ft} ft, ${experience}); window at cam: ${focusCam}; at riding: ${focusRide}; at the end: ${focusEnd}`;
   const report = [times, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding')].join('\n');
   writeFileSync(out + 'report.txt', report);
   writeFileSync(out + 'cam.cpuprofile', JSON.stringify(pa));
