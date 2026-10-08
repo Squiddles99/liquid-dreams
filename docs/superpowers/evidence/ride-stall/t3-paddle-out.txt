@@ -1,0 +1,52 @@
+The paddle-out replay frame in the real path (ride-stall Task 3 step 5, Opus, 2026-10-08)
+
+VERDICT: hidden by the cover (the replay frame drew 4011 ms before the dissolve; the frame carrying its GPU cost ended
+3188 ms before it).
+
+1. From the code (line numbers at a41ec05/b572619, ride-stall):
+- App.ts:1251-1264 paddleOut -> underCover('Paddling out…', PADDLE_OUT_MS.uiOut, work): work() calls startRide()
+  (App.ts:1264) -> catchSetWave: clock jump + resetFoam + invalidateParticles.
+- App.ts:1232-1235 underCover: `work(); resume = this.clock.paused; this.setPaused(true); cover.release();` all in one
+  task, after cover.cover() resolved (the cover is opaque: phase 'in').
+- loadingScreen.ts:117-121 release(): phase 'in' -> `this.gate ??= new SmoothFramesGate(this.now())`: only frames
+  AFTER the release count.
+- loadingScreen.ts:154-162 tick(): dissolves only when `ready && this.gate?.open && holdMet(coverInAt, now, minHoldMs)`.
+- smoothFrames.ts:3,13-17: the gate opens after 10 frames in a row under 33 ms, or 4000 ms (giveUpMs) after release.
+- App.ts:1172 reportLoading: `l.frameDrawn(this.asyncPipelines.pending > 0 ? Infinity : dtMs)`: a frame drawn with a
+  pipeline still building never counts as smooth.
+- foamStep.ts:86-94 planTicks: the replay is keyed to tickIndex(simTime) with `last === null` after invalidate(), so it
+  runs on the very next App.frame even with the clock paused (paused only stops NEW ticks).
+=> The replay frame is the first App.frame after release(); the dissolve needs that frame and more after it (10 smooth
+   ones, or 4 s). No rAF fires while the GPU drains the replay, so the cover's own tick loop cannot dissolve during it.
+   The cover can never dissolve before the replay frame has drawn.
+
+2. Live (Playwright Chromium on my dev server http://localhost:5174/, front end ON, RTX 4060 "lovelace" adapter; a
+   temporary `console.info('[ride-stall TEMP] dissolve at', performance.now())` in loadingScreen.dissolve, reverted
+   before the commit). Fresh page load, waited for the select screen (beat "conditions", cover gone), then
+   liquidDreams.frameLog.on = true and liquidDreams.probePaddleOut() (= frontEnd.act('start'), START as a player).
+   Times in ms from START (t0 = 47677.1):
+
+   t      dt    sim     gpu    foam/spray/impact/kelp  pending
+   3      90    7.50    0      2/2/2/2                 1      (cover coming in, dune sim)
+   ...    80-108 per frame
+   713    87    389.82  17.6   240/58/58/80            1      <- THE REPLAY FRAME (clock jumped to 389.82, paused)
+   1536   823   389.82  17.6   0/0/0/0                 1      <- the frame that waited for the replay's GPU work
+   1582   46    389.82  140.4  0/0/0/0                 1      (the replay's GPU ms resolves here: 140 ms)
+   1582-3511  25-54 ms frames, sim held at 389.82, pending 1 throughout
+   4724   ---   DISSOLVE (console.info)
+   4792   68    389.93  9.6    1/1/1/1                 0      (sim runs again; pending 0)
+   after the dissolve: max frame 108 ms, median 66.7 ms (Playwright Chromium, not the Electron app)
+
+   Frames over 500 ms in the whole capture: one, the 823 ms at +1536, which ended 3188 ms before the dissolve.
+   An earlier run in the same browser (first paddle-out after its load): worst frame 221 ms, the rider's pipelines built
+   through createRenderPipelineAsync (12) + createShaderModule (14) under the cover; dissolve +2092 ms after START.
+
+3. Side finding (not the stall): in the fresh-load run asyncPipelines.pending stayed 1 for the whole time under the
+   cover, so every frame fed the gate Infinity and the dissolve came from SMOOTH.giveUpMs (release ~+700, dissolve
+   +4724 = 4.0 s), not from 10 smooth frames: the cover held ~2.5 s longer than the work needed. Which pipeline sat
+   pending was not identified (the creation hooks were installed after load and saw 0 creations in that run).
+
+4. Contrast, the profiler's path (?frontend=off): the rider is drawn for the first time on the board, and 114-115
+   objects are created with the SYNC createRenderPipeline/createShaderModule (hair, eyes, hairBraid, teeth, body,
+   hairTie, lashes), followed by 1-4.5 s GPU-process Flushes per frame: the 3.5-5.4 s "paddling" max in every profiler
+   report is that plus the replay, a profiler-path artefact (stall-table.md, paddling section).
