@@ -3,6 +3,9 @@
 // The window stays on top and focused (an unfocused run is ~8x slower); the first line says whether it was.
 // --sim-t (ride-framerate Task 14): the sim time the conditions are applied at, the cam pass starts at (once the field is
 // built) and, 6 s later, the set is called from, so two runs ride the same moment of the same wave. Unset: the page's own.
+// The bot (Task 15) keys its pop-up, Space release and steering to sim time (the clock and the board's own phaseT), not
+// real time, so its inputs land at the same moments of the ride at every frame rate. It reads the board once per frame
+// (after the game's step), so an input still lands on a frame boundary.
 import { app, BrowserWindow } from 'electron';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
@@ -87,24 +90,25 @@ app.whenReady().then(async () => {
   await win.webContents.executeJavaScript('window.__ft.on = false');
   const fa = await frames('cam mode');
 
-  // Ride: the bot (W from 3 s before arrival, Space 0.4 s after caught, A on the ride).
+  // Ride: the bot (W from 3 s before arrival, Space 0.4 s of sim time after caught, A from phaseT 0.25 on the ride).
   if (simT !== null) await win.webContents.executeJavaScript(`window.liquidDreams.clock.setTime(${simT + CAM_S})`);
   const callFrom = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
   await win.webContents.executeJavaScript(`(() => {
     const a = window.liquidDreams; if (!a.ride.active) a.toggleRide();
     const key = (type, code) => window.dispatchEvent(new KeyboardEvent(type, { code, key: code === 'Space' ? ' ' : code.slice(-1).toLowerCase() }));
-    let paddling = false, caughtReal = null, popped = false, left = false, t0 = performance.now();
+    let paddling = false, caughtSim = null, popped = false, spaceUp = false, left = false;
     window.__ride = { phase: 'wait', caught: false };
     const loop = () => {
       const b = a.ride.body; if (!b) { window.__ride.phase = 'ended'; return; }
-      const real = (performance.now() - t0) / 1000;
-      if (!paddling && a.clock.simTime > a.rideArriveS - 3) { key('keydown', 'KeyW'); paddling = true; }
-      if (b.caught && caughtReal === null) { caughtReal = real; }
-      if (!popped && caughtReal !== null && real > caughtReal + 0.4) { key('keydown', 'Space'); setTimeout(() => key('keyup', 'Space'), 50); key('keyup', 'KeyW'); popped = true; }
+      const sim = a.clock.simTime;
+      if (!paddling && sim > a.rideArriveS - 3) { key('keydown', 'KeyW'); paddling = true; }
+      if (b.caught && caughtSim === null) { caughtSim = sim; }
+      if (popped && !spaceUp) { key('keyup', 'Space'); spaceUp = true; }
+      if (!popped && caughtSim !== null && sim > caughtSim + 0.4) { key('keydown', 'Space'); key('keyup', 'KeyW'); popped = true; }
       if (b.phase === 'ride' && !left && b.phaseT > 0.25) { key('keydown', 'KeyA'); left = true; }
       const travel = Math.atan2(b.water.dirX, -b.water.dirZ) * 180 / Math.PI, off = ((b.headingDeg - travel + 540) % 360) - 180;
       if (left) { if (off < -65) key('keyup', 'KeyA'); else if (off > -55) key('keydown', 'KeyA'); }
-      window.__ride = { phase: b.phase, caught: b.caught, popped };
+      window.__ride = { phase: b.phase, caught: b.caught, popped, caughtSim };
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
@@ -130,9 +134,10 @@ app.whenReady().then(async () => {
   const r1 = await win.webContents.executeJavaScript('window.__ride');
   const fc = await frames(`riding (phase ${r0.phase} -> ${r1.phase})`);
   const rideFrom = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
+  const where = await win.webContents.executeJavaScript(`(() => { const b = window.liquidDreams.ride.body; return b ? b.x.toFixed(1) + ', ' + b.z.toFixed(1) : 'none'; })()`);
   const focusEnd = focusNow();
 
-  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s (${ft} ft, ${experience}); window at cam: ${focusCam}; at the end: ${focusEnd}`;
+  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s ending at x, z ${where} (${ft} ft, ${experience}); window at cam: ${focusCam}; at the end: ${focusEnd}`;
   const report = [times, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding')].join('\n');
   writeFileSync(out + 'report.txt', report);
   writeFileSync(out + 'cam.cpuprofile', JSON.stringify(pa));
