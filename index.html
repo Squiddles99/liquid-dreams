@@ -8,6 +8,11 @@
     <link rel="preload" as="image" href="/loading/emblem.webp" />
     <style>
       /* The loading cover (loading screens spec §1.1): inline so it paints before the game's code loads. */
+      @font-face { font-family: 'Knewave'; src: url('/fonts/knewave-400.woff2') format('woff2'); font-weight: 400; font-display: block; }
+      @font-face { font-family: 'Caveat Brush'; src: url('/fonts/caveat-brush-400.woff2') format('woff2'); font-weight: 400; font-display: block; }
+      @font-face { font-family: 'Barlow Semi Condensed'; src: url('/fonts/barlow-semi-condensed-500.woff2') format('woff2'); font-weight: 500; font-display: block; }
+      @font-face { font-family: 'Barlow Semi Condensed'; src: url('/fonts/barlow-semi-condensed-600.woff2') format('woff2'); font-weight: 600; font-display: block; }
+      @font-face { font-family: 'Barlow'; src: url('/fonts/barlow-500.woff2') format('woff2'); font-weight: 500; font-display: block; }
       :root { --ld-sand: #e8dbc4; --ld-teal: #3f959b; --ld-orange: #f7931e; --ld-cream: #f7ecd2; --ld-ink: #0a1a1f; }
       html, body { background: var(--ld-sand); }
       .ld-cover { position: fixed; inset: 0; z-index: 2147483000; background: var(--ld-ink); overflow: hidden; pointer-events: none;
@@ -47,15 +52,41 @@
       .ld-line { color: var(--ld-cream); font: 500 max(14px, 2vh) 'Barlow', system-ui, sans-serif; letter-spacing: 0.02em; white-space: nowrap;
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
       .ld-cover[data-mode="cover"] .ld-bar { display: none; }
+      /* A picture's fact card (art/loading/cards.json): above the coin, over a deeper shade; hidden for pictures without one. */
+      .ld-cover.has-card .ld-shade { background:
+        radial-gradient(ellipse 58vw 82vh at 0% 78%, rgba(4, 16, 22, 0.82), rgba(4, 16, 22, 0.5) 50%, rgba(4, 16, 22, 0) 100%),
+        linear-gradient(0deg, rgba(4, 16, 22, 0.45), rgba(4, 16, 22, 0) 40%); }
+      .ld-card { position: absolute; left: 3.3vw; bottom: 24vh; width: 38vw; color: var(--ld-cream); opacity: 0; transition: opacity 300ms ease-out; }
+      .ld-cover:not(.has-card) .ld-card { display: none; }
+      .ld-cover.is-ready .ld-card { opacity: 1; }
+      .ld-kicker { font: 600 1.75vh/1 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: #ffa14f;
+        display: flex; align-items: center; gap: 1.2vh; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 12px rgba(0, 0, 0, 0.5); }
+      .ld-kicker::before { content: ''; width: 4.4vh; height: 0.37vh; background: var(--ld-orange); border-radius: 2px; }
+      .ld-name { margin: 1.4vh 0 0; font: 400 9.4vh/1 'Knewave', system-ui, sans-serif; color: var(--ld-cream);
+        text-shadow: 0.4vh 0.4vh 0 #1d6b74, 0 0.2vh 1.7vh rgba(0, 0, 0, 0.35); -webkit-text-stroke: 0.14vh #ef7d2e; }
+      .ld-sub { margin: 0.9vh 0 0; font: 400 3.5vh/1.1 'Caveat Brush', cursive; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); }
+      .ld-latin { opacity: 0.8; }
+      .ld-fact { margin: 2.2vh 0 0; max-width: 34vw; font: 500 2.45vh/1.42 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif;
+        color: rgba(247, 236, 210, 0.94); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7); }
+      .ld-noongar { margin-top: 1.6vh; padding-left: 1.6vh; border-left: 0.37vh solid var(--ld-teal); }
+      .ld-noongar:empty { display: none; }
+      .ld-noongar b { font-weight: 600; letter-spacing: 0.04em; color: #8fd3d0; }
       .ld-cover[data-mode="cover"] .ld-line { animation: ld-pulse 1.6s ease-in-out infinite alternate; }
       .ld-cover.is-calm .ld-line { animation: none; }
       @keyframes ld-pulse { from { opacity: 1; } to { opacity: 0.55; } }
     </style>
   </head>
   <body>
-    <div id="ld-cover" class="ld-cover is-in is-blocking" data-mode="boot" data-slides="crew-wave" aria-label="Loading Liquid Dreams" role="status">
+    <div id="ld-cover" class="ld-cover is-in is-blocking" data-mode="boot" data-slides="crew-wave flora-balga flora-coast-daisy-bush flora-coast-sword-sedge flora-cockies-tongues flora-fan-flower flora-parrot-bush flora-peppermint flora-pigface flora-prickly-conostylis flora-rice-flower flora-sea-spurge flora-spyridium" aria-label="Loading Liquid Dreams" role="status">
       <div class="ld-cover-bg"><img alt="" sizes="100vw" /></div>
       <div class="ld-shade"></div>
+      <div class="ld-card">
+        <div class="ld-kicker"></div>
+        <div class="ld-name"></div>
+        <div class="ld-sub"><span class="ld-common"></span><span class="ld-latin"></span></div>
+        <p class="ld-fact"></p>
+        <p class="ld-fact ld-noongar"></p>
+      </div>
       <div class="ld-brand">
         <div class="ld-coin-scene" aria-hidden="true">
           <div class="ld-coin"><div class="ld-rim"></div><div class="ld-face ld-face-front"></div><div class="ld-face ld-face-back"></div></div>
@@ -66,6 +97,8 @@
         </div>
       </div>
     </div>
+    <!-- The pictures' fact cards: written by tools/loadingArt.py from art/loading/cards.json (don't edit here). -->
+    <script type="application/json" id="ld-cards">{"flora-balga":{"kicker":"Local flora · Cape to Cape","name":"Balga","common":"Grass tree","latin":"Xanthorrhoea preissii","fact":"Grows only a centimetre or so a year, so a tall one can be centuries old. Its blackened trunk shrugs off bushfire, and a fire makes it flower all the more.","noongar":"people named it balga. Its gum, spears for fishing and fire drills all came from it, and the bardi grubs living inside were good tucker."},"flora-coast-daisy-bush":{"kicker":"Local flora · Cape to Cape","name":"Daisy-bush","common":"Coast daisy-bush","latin":"Olearia axillaris","fact":"A silvery, scented shrub that thrives in the salt wind. The Dutch explorer Willem de Vlamingh is said to have cooked with its leaves on Rottnest in 1696."},"flora-coast-sword-sedge":{"kicker":"Local flora · Cape to Cape","name":"Sword-sedge","common":"Coast sword-sedge","latin":"Lepidosperma gladiatum","fact":"Big clumps of flat, sharp-pointed leaves, as long as swords, with spiky brown flower heads standing on tall stalks through summer and autumn.","noongar":"people call it kerbein, and ate the tender part of its stem all year round."},"flora-cockies-tongues":{"kicker":"Local flora · Cape to Cape","name":"Cockies’ tongues","common":"","latin":"Templetonia retusa","fact":"Its bright red pea flowers light up the limestone cliffs in winter.","noongar":"people call the flower inji, and Injidup, one of the coast’s best-known surf breaks, takes its name from it."},"flora-fan-flower":{"kicker":"Local flora · Cape to Cape","name":"Fan-flower","common":"Thick-leaved fan-flower","latin":"Scaevola crassifolia","fact":"Every flower looks cut in half, its petals all fanned out to one side. Scaevola means “left-handed” in Latin, and crassifolia “thick-leaved”."},"flora-parrot-bush":{"kicker":"Local flora · Cape to Cape","name":"Parrot bush","common":"","latin":"Banksia sessilis","fact":"It pours out nectar for honeyeaters, and black cockatoos and ringneck parrots feast on its seed. Fire kills it, but it drops so much seed that it bounces straight back.","noongar":"names for it include budjan and butyak."},"flora-peppermint":{"kicker":"Local flora · Cape to Cape","name":"Peppermint","common":"WA peppermint","latin":"Agonis flexuosa","fact":"The critically endangered western ringtail possum depends on it, feeding at night on its young leaves, flowers and fruit.","noongar":"people call it wonnil (spellings vary). Its leaves were used as an antiseptic, and young trunks became spear shafts."},"flora-pigface":{"kicker":"Local flora · Cape to Cape","name":"Pigface","common":"","latin":"Carpobrotus virescens","fact":"A fleshy succulent that sprawls metres across the dunes and cliffs, with big purple-pink flowers around a white centre.","noongar":"people ate its fruit in late December, and used its juice to soothe burns, scalds and stings."},"flora-prickly-conostylis":{"kicker":"Local flora · Cape to Cape","name":"Conostylis","common":"Prickly conostylis","latin":"Conostylis aculeata","fact":"Aculeata means “with prickles”: its strappy leaves are edged with spines. In spring, bright yellow, furry tube flowers cluster on tall stalks."},"flora-rice-flower":{"kicker":"Local flora · Cape to Cape","name":"Rice flower","common":"Pink rice flower","latin":"Pimelea ferruginea","fact":"Round heads of tiny tube flowers top every branch, usually pink, sometimes white. Gardeners grow it around the world. Ferruginea means “rust-coloured”."},"flora-sea-spurge":{"kicker":"Coastal weed · Cape to Cape","name":"Sea spurge","common":"","latin":"Euphorbia paralias","fact":"An invader from southern Europe and North Africa, first recorded in WA at Albany in 1927. Its seeds float along the coast, and its bitter sap stings skin and eyes."},"flora-spyridium":{"kicker":"Local flora · Cape to Cape","name":"Basket bush","common":"","latin":"Spyridium globulosum","fact":"Its name is Greek for “little basket”: each head of tiny cream flowers sits in a cup of white, furry leaves. Common on the dunes along this coast."}}</script>
     <script>
       // Inline so the cover paints before the game's code loads: pick the start-up picture from data-slides (the
       // copies tools/loadingArt.py makes), build the coin's rim, and show the art only once picture and emblem are
@@ -73,11 +106,30 @@
       (function () {
         var cover = document.getElementById('ld-cover');
         var names = (cover.dataset.slides || '').split(/\s+/).filter(Boolean);
-        var name = names[Math.floor(Math.random() * names.length)];
+        // ?slide=<name> shows that picture (to review a card); otherwise one at random.
+        var asked = new URLSearchParams(location.search).get('slide');
+        var name = names.indexOf(asked) >= 0 ? asked : names[Math.floor(Math.random() * names.length)];
         var img = cover.querySelector('.ld-cover-bg img');
         img.srcset = '/loading/' + name + '-1920.webp 1920w, /loading/' + name + '-full.webp 3840w';
         img.src = '/loading/' + name + '-1920.webp';
         cover.dataset.slide = name;
+        // The picture's fact card, if it has one (window.ldFillCard: loadingScreen.ts fills later covers the same way).
+        var cards = {};
+        try { cards = JSON.parse(document.getElementById('ld-cards').textContent || '{}'); } catch (e) {}
+        window.ldFillCard = function (el, card) {
+          el.classList.toggle('has-card', !!card);
+          if (!card) return;
+          var q = function (c) { return el.querySelector(c); };
+          q('.ld-kicker').textContent = card.kicker;
+          q('.ld-name').textContent = card.name;
+          q('.ld-common').textContent = card.common ? card.common + ' · ' : '';
+          q('.ld-latin').textContent = card.latin;
+          q('.ld-fact').textContent = card.fact;
+          var n = q('.ld-noongar');
+          n.textContent = '';
+          if (card.noongar) { var b = document.createElement('b'); b.textContent = 'Noongar '; n.append(b, card.noongar); }
+        };
+        window.ldFillCard(cover, cards[name] || null);
         var rim = cover.querySelector('.ld-rim');
         for (var i = 0; i < 96; i++) {
           var panel = document.createElement('span');
@@ -86,7 +138,10 @@
         }
         var emblem = new Image();
         emblem.src = '/loading/emblem.webp';
-        Promise.all([img.decode(), emblem.decode()].map(function (p) { return p.catch(function () {}); }))
+        // A card waits for its fonts too, so it never shows in a stand-in font first.
+        var fonts = cards[name] ? ['400 10px Knewave', '400 10px "Caveat Brush"', '500 10px "Barlow Semi Condensed"', '600 10px "Barlow Semi Condensed"']
+          .map(function (f) { return document.fonts.load(f); }) : [];
+        Promise.all([img.decode(), emblem.decode()].concat(fonts).map(function (p) { return p.catch(function () {}); }))
           .then(function () { cover.classList.add('is-ready'); });
       })();
     </script>

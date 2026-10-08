@@ -1,7 +1,7 @@
 // The loading cover (loading screens spec): adopts index.html's #ld-cover, runs the start-up bar and its dissolve, and
 // covers Paddle out and Back to the dune. The cover is the same element throughout: hidden between uses, never rebuilt.
 import { BarFollower, BootProgress, type StageId } from './loadingProgress';
-import { parseSlides, pickSlide, slideImage } from './loadingSlides';
+import { type SlideCard, parseCards, parseSlides, pickSlide, slideImage } from './loadingSlides';
 import { SmoothFramesGate, holdMet } from './smoothFrames';
 
 export interface CoverOptions {
@@ -211,9 +211,33 @@ export class LoadingScreen {
         img.srcset = srcset;
         img.src = src;
         this.el.dataset.slide = name;
+        this.fillCard(parseCards(this.doc.getElementById('ld-cards')?.textContent)[name] ?? null);
       },
       () => {},
     );
+  }
+
+  /** The picture's fact card (index.html's inline script fills the start-up one the same way); hidden when it has none. */
+  private fillCard(card: SlideCard | null): void {
+    this.el.classList.toggle('has-card', !!card);
+    if (!card) return;
+    const set = (sel: string, text: string): void => {
+      const e = this.el.querySelector<HTMLElement>(sel);
+      if (e) e.textContent = text;
+    };
+    set('.ld-kicker', card.kicker);
+    set('.ld-name', card.name);
+    set('.ld-common', card.common ? `${card.common} · ` : '');
+    set('.ld-latin', card.latin);
+    set('.ld-fact', card.fact);
+    const n = this.el.querySelector<HTMLElement>('.ld-noongar');
+    if (!n) return;
+    n.textContent = '';
+    if (card.noongar) {
+      const b = this.doc.createElement('b');
+      b.textContent = 'Noongar ';
+      n.append(b, card.noongar);
+    }
   }
 
   private showLine(text: string): void {

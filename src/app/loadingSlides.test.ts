@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSlides, pickSlide, slideImage } from './loadingSlides';
+import { parseCards, parseSlides, pickSlide, slideImage } from './loadingSlides';
 
 describe('loading slides', () => {
   it('reads the list from the cover attribute, ignoring blanks', () => {
@@ -31,5 +31,14 @@ describe('loading slides', () => {
       src: '/loading/crew-wave-1920.webp',
       srcset: '/loading/crew-wave-1920.webp 1920w, /loading/crew-wave-full.webp 3840w',
     });
+  });
+});
+
+describe('the slides\' fact cards', () => {
+  it('reads the cards, and none from missing or broken JSON', () => {
+    expect(parseCards('{"flora-balga":{"kicker":"k","name":"Balga","common":"c","latin":"l","fact":"f"}}')['flora-balga'].name).toBe('Balga');
+    expect(parseCards(null)).toEqual({});
+    expect(parseCards('{oops')).toEqual({});
+    expect(parseCards('[1]')).toEqual({});
   });
 });

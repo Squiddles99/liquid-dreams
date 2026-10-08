@@ -19,3 +19,28 @@ export function slideImage(name: string): { src: string; srcset: string } {
   const small = `/loading/${name}-1920.webp`;
   return { src: small, srcset: `${small} 1920w, /loading/${name}-full.webp 3840w` };
 }
+
+/** A picture's fact card (art/loading/cards.json, written into index.html's #ld-cards by tools/loadingArt.py). */
+export interface SlideCard {
+  /** The small heading, e.g. "Local flora · Cape to Cape". */
+  kicker: string;
+  /** The big name, e.g. "Balga". */
+  name: string;
+  /** Under it: another everyday name (may be empty, when the big name is the only one) and the Latin name. */
+  common: string;
+  latin: string;
+  fact: string;
+  /** A Noongar name or use, only from a checked source (Andrew 2026-10-08); absent when none is known. */
+  noongar?: string;
+}
+
+/** The cards by picture name, from #ld-cards' JSON; empty when it is missing or broken (the cover then shows none). */
+export function parseCards(json: string | null | undefined): Record<string, SlideCard> {
+  try {
+    const v = JSON.parse(json ?? '{}') as unknown;
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, SlideCard>) : {};
+  } catch {
+    return {};
+  }
+}
+
