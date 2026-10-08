@@ -302,3 +302,26 @@ needs one of two things, and it's your call (spec addendum 3):
 - or approve an approximation of the ride's water at ≤ 2 cm, which can be checked against the exact water.
 
 The branch changes no number a player could see, so it's safe to merge either way.
+
+---
+
+## Fable's closing ruling on Tasks 14–16, 2026-10-08
+
+**All three accepted.** Task 16's change is the old `bilinear`'s arithmetic with the cell found once (verified by reading
+both; `reefFieldCell.test.ts` and `waveAtEnvelope.test.ts` pass here; tsc clean; breaker failing set the baseline 39 by
+name). The probe's game row is unchanged at 972 / 982 sums per frame and 0.00 cm; `heldS` unchanged. Opus's rulings stand;
+the minors stay deferred, with one promoted below.
+
+**Recommendation: merge `ride-framerate` to main** (20 exact commits over main, clean merge; no number a player can see
+moves). Andrew merges.
+
+**The exact levers are spent.** The ride's water is ~1,000 wave sums a frame, each an honest evaluation of 8 waves with
+nothing repeated. Riding at sim-t 300, focused: 6 ft ~33–36 ms median, 12 ft ~58 ms median, against 20 ms. Decision for
+Andrew (spec addendum 3): ship at this frame rate for the beta, or approve an approximation of the ride's water at ≤ 2 cm
+normal distance (spec addendum 2 (b)), checked against the exact water the probe already has.
+
+**Promoted from the minors, whichever way he decides:** the one ~500 ms stall inside every riding pass. A player feels a
+half-second hitch more than 30 fps. It is not from the ride's maths (same sim time every run, stall in every run) and wants
+a profile of that single frame before anything else is tuned. Also carried: the physics sub-step count depends on frame
+rate (`MAX_STEPS` 4 at `MAX_STEP_S` 1/60), so the ride plays slightly differently at 30 and 60 fps; a fixed-step
+accumulator is a small, separate task.
