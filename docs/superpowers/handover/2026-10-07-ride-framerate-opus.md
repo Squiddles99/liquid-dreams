@@ -176,3 +176,120 @@ The options are Fable's to rule on, none started:
 - (b) Measure the tolerance as distance to the surface (normal distance), not |Δy| at a fixed point. Under that
   measure, thinning and reuse may pass.
 - (c) Build fewer curves per step: the nose, middle and tail read the same two stations.
+
+---
+
+## R9 pass (Tasks 11–13), 2026-10-08
+
+**Still red, but about 4× closer.** Riding is 45.5 ms at 6 ft (median 39.8) and 79.4 ms at 12 ft (median 82.7). R8 was
+181.9 and 210.0 ms. Cam is 4.4 ms on both runs, the same machine state as the R8 reports. Per Task 12 I stopped there.
+R10 is not started.
+
+| commit | what |
+|---|---|
+| ae717f2 | R9: the station curve read lazily (`sectionWater.ts`), its tests, the probe's `lazy` rows |
+| 286ab28 | `evidence/ride-framerate/r9-probe.txt` |
+| dcbba51 | `r9-*-report.txt` profiles |
+
+### What changed
+
+`withSections` builds a station's curve from its knots (36 sheet reads) and every sample's u. A sample's y is read only
+when a crossing at the probe's u needs it, once per station per frame. The u is `sectionPoint`'s first component, with the
+sheet's u being its own argument (A × home). The dense build stays behind `{ dense: true }`; the probe uses it as its
+reference, and `CurveCache` builds dense. Only `src/ride/sectionWater.ts`, its test and the probe changed. `App.ts` and
+`src/breaker` are untouched.
+
+### Tests
+
+- `sectionWater.test.ts`, the read count: red 197 vs 39 before the change, green after. It expects the 36 knot reads plus
+  the w ≠ 0 ends of the intervals holding u; a second point on the same station reads only the ends not read yet.
+- Equality: 240 seeded random points over 13 stations with differing sections on a curved crest. A third of the points
+  are between the tube's floor and the tip, and over 40 of them have several crossings; some are past the curve's ends.
+  Lazy vs dense is compared with `toEqual`, so every field matches by `Object.is`. It passed before the change too: it
+  guards equality, it does not drive the change.
+- The old weight-0 read-count test now runs on `{ dense: true }`.
+- `src/ride`: 92 passed, 3 skipped. `npx tsc --noEmit` is clean.
+- Full suite: 64 failed under load. Re-running the 23 failing files alone (`--no-file-parallelism`) gives 39 failed |
+  397 passed, the baseline's count. All 39 are in `src/breaker` and `src/whitewater`, which R9 doesn't touch.
+
+### Probe (`r9-probe.txt`; R3's rider; reference = the dense cold build)
+
+| variant | 6 ft max \|Δy\| | 6 ft wave sums / frame | 12 ft max \|Δy\| | 12 ft sums / frame |
+|---|---|---|---|---|
+| direct (dense, cold: before R9) | 0 | 5187 | 0 | 5272 |
+| **lazy (R9)** | **0.00 cm** | **1297** | **0.00 cm** | **1251** |
+| lazy + warm 2 passes (the game) | 0.04 cm | 1120 | 1.30 cm | 1330 |
+| warm 2 passes (R8, dense) | 0.04 cm | 3469 | 1.30 cm | 4482 |
+
+Curves per physics step are unchanged (7.0 / 6.7). Lazy plus warm reads the same water as R8 did, to the probe's two
+decimals.
+
+### Profiles (dev server warm, cam 4.4 ms on every clean run)
+
+| run | cam | paddling | riding mean / median |
+|---|---|---|---|
+| r9-6ft-c | 4.4 | 22.9 | **45.5 / 39.8 ms** (117 frames) |
+| r9-6ft | 4.5 | 112.4 | 55.6 / 51.5 (97 frames) |
+| r9-12ft | 4.4 | 1614.7 (3 frames) | **79.4 / 82.7 ms** (67 frames) |
+| r9-6ft-b | 4.4 | 26.5 | 458.4 / 449.3 (14 frames) |
+| R8 only (dense in App), 6 ft | 36.1 (loaded) | 184.4 | 829.6 (9 frames) |
+| R8 only, 12 ft | 4.4 | 1703.7 | 1007.0 (8 frames) |
+
+- **Run-to-run spread is large.** r9-6ft-b has the same function mix per sampled ms as r9-6ft-c, but about 8× the work
+  per frame. The profiler applies the conditions at whatever sim time the page loads at, so each run rides a different
+  moment of a different wave. Read the 6 ft number as 40–55 ms, with outlier moments. The A/B's R8-only rows are on
+  moments as slow as -b's, so they don't pair with the R9 rows run for run.
+- **Machine:** Epic Games Launcher and its overlay loaded the GPU (59%, 88 °C) and CPU at times, giving cam 30–36 ms. I
+  left them alone and re-ran on quiet stretches.
+- **Port:** after I closed the browser pane at ~11:15, another session's dev server took 5173. It serves `../ld-select-ui`
+  (`select-screen-ui`). Three early runs measured that branch, and I deleted them. Every report kept was run on my own
+  server on 5174, after checking it served the lazy code.
+
+### Where the riding frame goes now (r9-6ft-c / r9-12ft, inclusive)
+
+| | 6 ft | 12 ft |
+|---|---|---|
+| `lazyOf` (the ride's curves built) | 48.2% | 55.6% |
+| `sectionFrameKnots`, all callers (the ride's 36 knot reads + the spray/camera's `sectionFrame`) | 48.6% | 60.3% |
+| the curl knots inside it (`wombSection.ts:219`: the swell home + the knot's own home) | 32.7% | 36.6% |
+| `curveSamples` (160 Hermite samples, no sheet) | 10.3% | < 6% (not in the top 40) |
+| `stepRide` (physics) | 35.3% | 48.6% |
+| `cameraPose` | 14.4% | 11.2% |
+| spray (`breakEmitters`, not the ride) | 12.3% | 15.3% |
+| `traceStations` | 12.4% | 8.1% |
+
+The knots are now the frame. A curve costs 36 reads plus ~4 for its samples. There are ~7 curves per physics step and up
+to 4 steps in a slow frame, plus the camera's curves. Inside the knots, the 22 curl-knot reads (11 at the swell homes,
+11 at the knots' own homes) cost about twice the 14 sheet-end reads.
+
+### R3's numbers
+
+R3's ride test (`r3-staying-on`'s `rideOnSections.test.ts` + `rideLine.ts`, copied in, then removed) gives held
+14.33 / 15.02 / 12.45 / 0.78 s on the lazy cold read and the same with lazy plus warm 2 passes (the game's read).
+That's identical to R3; the expert case is R3's committed red.
+
+### Rulings (R9 pass)
+
+- The weight-0 read-count test (added on this branch) runs on `{ dense: true }`. The new R9 count covers the default.
+  Cost if wrong: none.
+- The dense build is kept behind `SectionOptions.dense`, used by the probe's reference, the thinned/converged/R8-only rows,
+  and `CurveCache`. Cost if wrong: an option only the probe uses.
+- Max |Δy| 0 is required of lazy with cold reads. Lazy plus R8's warm read reads samples in a different order, so warm
+  starts differ. It is measured against direct like R8 was, and comes out at R8's numbers. Cost if wrong: R8's accepted
+  ~1.3 cm at 12 ft.
+- Profiled on my own server on 5174 (a temporary `launch.json` entry, reverted). Cost if wrong: none.
+- The R8-only A/B was run although the cam trigger came from machine load, not from code. Cost if wrong: one noisy row.
+- The final reviewer ran on Opus, not Fable, because Fable reviews this evidence next. Cost if wrong: a subtler finding
+  waits for Fable.
+- The final review had no Critical findings and confirmed bit-identity. Its one Important finding is a plan question:
+  R8 on top of R9 costs more at 12 ft and is inexact. App keeps R8 as wired, for Fable to rule on. Cost if wrong: ~6% more
+  sums at 12 ft and 1.3 cm until then.
+
+### Deferred minors (R9 final review)
+
+- NaN as the unread sentinel re-reads a sample whose sheet y is NaN. That only happens on water that is already broken.
+- `stats.reads` is not used by the tests or the probe.
+- The equality test's fold counter uses a flat-sheet curve of the chosen station, not the curve under test. The 240
+  equalities still hold.
+- The read-count test never asserts that some u brackets 2 or more intervals.
+

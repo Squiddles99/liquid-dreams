@@ -59,3 +59,41 @@ ends of the one to three intervals bracketing the probe's u need their y read. ~
 probe's `lazy` row shows max |Δy| 0; (5) scope: only `sectionWater.ts`, its test, the probe (and `App.ts` for a
 signature); nothing under `src/breaker`; (6) the suite's same 39 failures. Then recommend merging `ride-framerate` (and
 `r3-staying-on` with it) when 2, 3 and 5 hold. Andrew merges.
+
+---
+
+## R9 pass, Opus → Fable (2026-10-08)
+
+**Still red, ~4× closer: riding 45.5 ms at 6 ft (median 39.8), 79.4 ms at 12 ft (median 82.7).** R8 was 181.9 / 210.0.
+Cam 4.4 ms, the same as the R8 reports. Stopped at Task 12. R10 is not started.
+
+Your six checks:
+1. **The equality test exists, was red on the read count, and is green after.** The count was 197 vs 39 before the
+   change. Lazy vs dense at 240 seeded points, `toEqual` (`Object.is` on every field).
+2. **Profiles: riding is over 20 ms at both sizes.** Cam 4.4 ms on both, as in the R8 reports. Paddling is 22.9 ms at
+   6 ft. The 12 ft paddling window caught only 3 frames, so that number is unusable.
+3. **`heldS` is unchanged:** 14.33 / 15.02 / 12.45 / 0.78 s, both with lazy cold reads and with lazy plus warm 2 passes.
+4. **The probe's `lazy (R9)` row shows max |Δy| 0.00 cm at both sizes.** Wave sums per frame: 5187 → 1297 at 6 ft,
+   5272 → 1251 at 12 ft.
+5. **Scope:** `sectionWater.ts`, its test and the probe only. Nothing under `src/breaker`; `App.ts` untouched.
+6. **The suite:** the full run under load had 64 failed. Re-running the 23 failing files alone gives **39 failed**, the baseline count, all in `src/breaker` and `src/whitewater` (none import `sectionWater`). The other 25 were load timeouts.
+
+**Where the frame goes now:** building the curves' knots. `lazyOf` is 48% of riding at 6 ft and 56% at 12 ft. A curve
+costs 36 knot reads plus about 4 sample reads, and the 22 curl-knot reads cost about twice the 14 sheet-end reads.
+There are about 7 curves per physics step and up to 4 steps in a slow frame. Then come the physics' other reads, the
+camera (11–14%), the spray's `sectionFrame` (12–15%, not the ride) and `traceStations` (8–12%).
+
+**For you to rule on:**
+- **R10, from the knots.** Candidates: the nose and tail reading the middle's station pair; the camera on the frame's
+  curves; the curl knots' two reads per knot.
+- **Whether to keep R8.** On top of R9 it now costs more than it saves at 12 ft (1330 vs 1251 wave sums per frame) and
+  is 1.30 cm off cold, while saving 14% at 6 ft. Dropping it from `App.rideWater` is free and exact. The final reviewer
+  rated this Important as a plan question, so I left it for you.
+- **The profiler's run-to-run spread is about 8× by moment.** One 6 ft run gave 458 ms over 14 frames, with the same
+  function mix per sampled ms. If the gate is going to be judged on it, a seeded sim time in `_rideProfile.mjs` would
+  make runs comparable.
+
+**Environment notes:** Epic Games Launcher loaded the GPU (88 °C) at times. Another session's `ld-select-ui` dev server
+took over 5173 mid-session, so I profiled on my own server on 5174.
+
+Details are in `-opus.md`, under "R9 pass".
