@@ -8,13 +8,14 @@ import { DEFAULT_BREAK_PARAMS as P } from '../breaker/breaking';
 import { MIN_SPACING_M, type Station, type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { REFRACT_FLOOR_M, computeReefField, sampleField } from '../breaker/reefField';
 import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
-import { CurveCache, RIDE_STATION_SPACING_M, type SheetFrom, thinStations, withSections } from './sectionWater';
+import { CurveCache, RIDE_STATION_SPACING_M, RIDE_WARM_PASSES, type SheetFrom, thinStations, withSections } from './sectionWater';
 import { INVERT_ITERATIONS, type WaterFn, waterAt } from './water';
 import { type RideEvent, TUNING, startBody, stepRide } from './ridePhysics';
 import { TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from './takeoff';
 
 /**
- * Plan 2026-10-07 ride-framerate addendum probe (PROBE_RIDE_STATIONS=1; run with --silent=false). R3's rider (a 35° line,
+ * Plan 2026-10-07 ride-framerate addendum probe (R9: the reference and every variant but the lazy ones build dense curves, as
+ * before R9) (PROBE_RIDE_STATIONS=1; run with --silent=false). R3's rider (a 35° line,
  * intermediate) at 6 ft and 12 ft, driven on today's water (every station, curves built fresh). At every frame she is on
  * a section, each variant's section under the board beside it: max |Δy| and max |Δslope|; and the station curves a
  * physics step builds on each variant's water (a copy of the body stepped on it), per frame.
@@ -38,12 +39,14 @@ const kept = (name: string, maxAge: number, bucketM: number, thin: number | null
   };
 };
 const variants = (): Variant[] => ([
-  { name: 'direct', water: (sheet, entries, tide, _a, stats) => withSections(sheet, entries, tide, { stats }) },
-  ...[RIDE_STATION_SPACING_M, 0.5, 0.25].map((m): Variant => ({ name: `thinned ${m} m`, water: (sheet, entries, tide, _a, stats) => withSections(sheet, thinStations(entries, m), tide, { stats }) })),
+  { name: 'direct', water: (sheet, entries, tide, _a, stats) => withSections(sheet, entries, tide, { stats, dense: true }) },
+  { name: 'lazy (R9)', water: (sheet, entries, tide, _a, stats) => withSections(sheet, entries, tide, { stats }) },
+  { name: `lazy + warm ${RIDE_WARM_PASSES} passes (R9 + R8: the game)`, water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, along: { at, passes: RIDE_WARM_PASSES } }) },
+  ...[RIDE_STATION_SPACING_M, 0.5, 0.25].map((m): Variant => ({ name: `thinned ${m} m`, water: (sheet, entries, tide, _a, stats) => withSections(sheet, thinStations(entries, m), tide, { stats, dense: true }) })),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, every station, ${MIN_SPACING_M} m buckets`, a, MIN_SPACING_M, null)),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, thinned 1 m (R7 as written)`, a, 1, 1)),
-  { name: 'cold 12 passes (converged)', water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, along: { at: (x, z) => at(x, z, undefined, 12), passes: 12 } }) },
-  ...[1, 2, 3].map((passes): Variant => ({ name: `warm ${passes} pass${passes > 1 ? 'es' : ''} (R8)`, water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, along: { at, passes } }) })),
+  { name: 'cold 12 passes (converged)', water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, dense: true, along: { at: (x, z) => at(x, z, undefined, 12), passes: 12 } }) },
+  ...[1, 2, 3].map((passes): Variant => ({ name: `warm ${passes} pass${passes > 1 ? 'es' : ''} (R8)`, water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, dense: true, along: { at, passes } }) })),
 ] as Variant[]).filter((v) => !process.env.PROBE_VARIANTS || new RegExp(process.env.PROBE_VARIANTS).test(v.name));
 
 describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations thinned and their curves kept', () => {
@@ -76,7 +79,7 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
       t += dt;
       const fr = frame(t, b.x, b.z);
       for (const v of VARIANTS) v.nextFrame?.();
-      const water = withSections(fr.sheet, fr.entries, c.tideM);
+      const water = withSections(fr.sheet, fr.entries, c.tideM, { dense: true });
       if (b.phase === 'paddle' && !popped) b.headingDeg = swellHeading;
       const err = ((b.headingDeg - line + 540) % 360) - 180;
       const under = water(b.x, b.z);

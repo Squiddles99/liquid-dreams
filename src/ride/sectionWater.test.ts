@@ -152,7 +152,7 @@ describe('the station curve reads the sheet only where it is used (exact; ride-f
     }
   });
 
-  it('reads no sheet for a sample at sheet weight 0', () => {
+  it('reads no sheet for a sample at sheet weight 0 (the dense build)', () => {
     let some = 0;
     for (const sec of sections) {
       const curve = sectionSamples(sec, sheetAlong).curve, zero = curve.filter((q) => q[5] === 0).length;
@@ -160,11 +160,80 @@ describe('the station curve reads the sheet only where it is used (exact; ride-f
       let knots = 0;
       sectionSamples(sec, (u) => { knots++; return sheetAlong(u); });
       const c = counting();
-      withSections(c.water, [crest(sec)[10]], 0)(1, 0);
+      withSections(c.water, [crest(sec)[10]], 0, { dense: true })(1, 0);
       // The point's own read, the knots', and one per sample the sheet weighs into.
       expect(c.n(), `phase ${sec.phase}`).toBe(1 + knots + curve.length - zero);
     }
     expect(some).toBeGreaterThan(0);
+  });
+
+  it('reads the knots, then only the ends of the intervals around the point, each once (R9)', () => {
+    for (const sec of sections) {
+      const curve = sectionSamples(sec, sheetAlong).curve;
+      let knots = 0;
+      sectionSamples(sec, (u) => { knots++; return sheetAlong(u); });
+      expect(knots).toBe(36);
+      // Every sample's u along the normal (units of A), from the knots alone.
+      const us = curve.map((q) => sectionPoint(q, sec.A, sheetAlong)[0] / sec.A);
+      /** The samples the sheet weighs into at the ends of the intervals that hold u. */
+      const ends = (u: number): Set<number> => {
+        const out = new Set<number>();
+        for (let i = 0; i + 1 < us.length; i++) {
+          if (!(us[i + 1] > us[i]) || u < us[i] || u > us[i + 1]) continue;
+          for (const j of [i, i + 1]) if (curve[j][5] !== 0) out.add(j);
+        }
+        return out;
+      };
+      const c = counting(), water = withSections(c.water, [crest(sec)[10]], 0);
+      const first = ends(1 / sec.A);
+      water(1, 0);
+      // The point's own read, the knots', and the bracketing intervals' ends.
+      expect(c.n(), `phase ${sec.phase}`).toBe(1 + knots + first.size);
+      // A second point on the same station: its own read and only the ends not read yet.
+      const second = ends(4 / sec.A), fresh = [...second].filter((j) => !first.has(j)).length, before = c.n();
+      water(4, 0);
+      expect(c.n() - before, `phase ${sec.phase} second`).toBe(1 + fresh);
+    }
+  });
+});
+
+describe('the station curve read lazily is the dense build, bit for bit (ride-framerate R9)', () => {
+  const bumpy = (x: number, z: number): number => 0.4 * Math.sin(0.7 * x) + 0.8 / (1 + Math.exp(-4 * (x - 2))) + 0.1 * Math.sin(0.5 * z);
+  const base: ReturnType<typeof flatWater> = (x, z) => ({ ...flatWater(0.2)(x, z), y: 0.2 + bumpy(x, z), slopeX: 0.3 * Math.cos(0.7 * x), slopeZ: 0.05 * Math.cos(0.5 * z) });
+  const phases = [0.45, 0.6, 0.8, 1, 1.2, 1.4];
+  // A gently curved crest of stations with differing sections, so points fall between two of them.
+  const stations: Station[] = Array.from({ length: 13 }, (_, i): Station => {
+    const a = (i - 6) * 0.04, section = { A: 2 + 0.15 * i, phase: phases[i % phases.length], hollow: 0.6 + 0.05 * i, rho: i === 12 ? 0.5 : 1 };
+    return { ...crest(section)[0], x: 0.3 * Math.sin(i), z: i - 6, arc: i - 6, nx: Math.cos(a), nz: Math.sin(a), section };
+  });
+  let seed = 0x2f6e2b1;
+  const rnd = (): number => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+
+  it('y and slope equal (toEqual: Object.is on every field) at 240 random points, on the folds and past the curves’ ends', () => {
+    const dense = withSections(base, stations, 0.2, { dense: true }), lazy = withSections(base, stations, 0.2);
+    const flat = (u: number): [number, number] => [u, 0];
+    let onFold = 0, past = 0, on = 0;
+    const points: [number, number][] = [];
+    for (let k = 0; k < 240; k++) {
+      const s = stations[Math.floor(rnd() * stations.length)], A = s.section.A;
+      // A third of the points between the tube's floor and the lip's tip (the overhang, several crossings).
+      const kn = profileKnots(s.section.phase, s.section.hollow);
+      const u = k % 3 === 0 ? A * (kn[10][0] + (kn[6][0] - kn[10][0]) * rnd()) : A * (-8.5 + 17 * rnd()), v = -0.6 + 1.2 * rnd();
+      points.push([s.x + s.nx * u - s.nz * v, s.z + s.nz * u + s.nx * v]);
+      const curve = sectionSamples(s.section, flat).curve.map((q) => sectionPoint(q, A, flat)[0] / A);
+      let crossings = 0;
+      for (let i = 0; i + 1 < curve.length; i++) if (curve[i + 1] > curve[i] && u / A >= curve[i] && u / A <= curve[i + 1]) crossings++;
+      if (crossings >= 2) onFold++;
+      if (Math.abs(u / A) > 7) past++;
+    }
+    for (const [x, z] of points) {
+      const want = dense(x, z), got = lazy(x, z);
+      if (want.onSection) on++;
+      expect(got, `(${x}, ${z})`).toEqual(want);
+    }
+    expect(onFold).toBeGreaterThan(40);
+    expect(past).toBeGreaterThan(10);
+    expect(on).toBeGreaterThan(120);
   });
 });
 
