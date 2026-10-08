@@ -1,0 +1,72 @@
+{
+ "female": {
+  "size": [
+   6000,
+   3375
+  ],
+  "box": [
+   2416,
+   21,
+   3613,
+   3344
+  ],
+  "headY": 48.5,
+  "solesY": 3280.5,
+  "centreX": 2962.0,
+  "outfits": [
+   "bikini",
+   "onePiece",
+   "rashieAndBottoms",
+   "shortArmSteamer",
+   "springsuit",
+   "steamer",
+   "walking"
+  ]
+ },
+ "grommet": {
+  "size": [
+   6000,
+   3375
+  ],
+  "box": [
+   2398,
+   23,
+   3638,
+   3335
+  ],
+  "headY": 63.0,
+  "solesY": 3282.0,
+  "centreX": 2939.5,
+  "outfits": [
+   "boardies",
+   "rashieAndBoardies",
+   "shortArmSteamer",
+   "springsuit",
+   "steamer",
+   "walking"
+  ]
+ },
+ "male": {
+  "size": [
+   6000,
+   3375
+  ],
+  "box": [
+   2412,
+   18,
+   3558,
+   3287
+  ],
+  "headY": 83.0,
+  "solesY": 3233.0,
+  "centreX": 2981.5,
+  "outfits": [
+   "boardies",
+   "rashieAndBoardies",
+   "shortArmSteamer",
+   "springsuit",
+   "steamer",
+   "walking"
+  ]
+ }
+}

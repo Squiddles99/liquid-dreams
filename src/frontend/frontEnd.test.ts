@@ -90,7 +90,7 @@ describe('the front end\'s state machine (dune select spec §3, §4)', () => {
     s = run(s, 'tabPlus');
     expect(s.gearTab).toBe('outfit');
     s = run(s, 'down', 'confirm');
-    expect(s.outfits.female).toBe('rashieAndBottoms');
+    expect(s.outfits.female).toBe('onePiece');
     s = run(s, 'toggle');
     expect(s.showSpecs).toBe(true);
   });

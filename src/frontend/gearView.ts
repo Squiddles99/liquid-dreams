@@ -58,8 +58,8 @@ export function gearView(s: FrontState, today: Date, seed: number): GearView {
   const date = dateForMonth(s.setup.month, today), season = outfitFor(p, 'season', date), chosen = outfitFor(p, s.outfits[r] ?? 'season', date);
   const outfits = gearRows(s) as Outfit[], focused = outfits[s.gearFocus];
   const mate = r === 'male' ? 'female' : 'male';
-  // A bikini or boardies in the WA winter (June–August; months are 0-based) gets a mate's tease (spec §9).
-  const tease = focused !== season && (focused === 'bikini' || focused === 'boardies') && s.setup.month >= 5 && s.setup.month <= 7;
+  // A bikini, one-piece or boardies in the WA winter (June–August; months are 0-based) gets a mate's tease (spec §9).
+  const tease = focused !== season && (focused === 'bikini' || focused === 'onePiece' || focused === 'boardies') && s.setup.month >= 5 && s.setup.month <= 7;
   return {
     tab: 'outfit',
     rows: outfits.map((o, i) => ({

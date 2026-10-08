@@ -36,9 +36,9 @@ describe('Grab your gear\'s panel (spec §4.3, §8, §9)', () => {
     expect(v.rows.map((r) => r.name)).toEqual(['Bodyboard']);
     expect(v.rows[0].pick).toBe("Grommet's pick");
   });
-  it('lists the outfits on the Outfit tab, the month\'s marked "for July", with the looks-only note and no bars', () => {
+  it('lists every painted outfit on the Outfit tab, the month\'s marked "for July", with the looks-only note and no bars', () => {
     const v = gearView(front({ rider: 'female', gearTab: 'outfit' }), today, 1);
-    expect(v.rows.length).toBe(3);
+    expect(v.rows.map((r) => r.id)).toEqual(['bikini', 'onePiece', 'rashieAndBottoms', 'springsuit', 'shortArmSteamer', 'steamer']);
     expect(v.rows.filter((r) => r.season).map((r) => r.season)).toEqual(['for July']);
     expect(v.note).toBe('Looks only, no effect on your surfing.');
     expect(v.bars).toBeNull();

@@ -69,7 +69,8 @@ import { createWaterOpticsUniforms, updateWaterOpticsUniforms } from '../ocean/w
 import { DEFAULT_SHALLOW_SWELL, type ShallowSwellParams, WaterSurfaceModel } from '../ocean/waterSurface';
 import { DEFAULT_PICTURE, type PictureParams, PicturePipeline } from '../render/PicturePipeline';
 import { LookoutBackdrop } from '../frontend/backdrop/LookoutBackdrop';
-import { backdropFade } from '../frontend/backdrop/backdropMath';
+import { backdropShow } from '../frontend/backdrop/backdropMath';
+import { portraitOf } from '../frontend/backdrop/riderPortrait';
 import { AsyncPipelines } from '../render/asyncPipelines';
 import { withOnlyShown } from '../render/prewarm';
 import { bedHeightAt, buildBathymetry, downsample } from '../seabed/bathymetry';
@@ -1997,7 +1998,8 @@ export class App {
     this.frontEnd?.update(realDt);
     const fwd = this.camera.getWorldDirection(this.lookoutFwd);
     this.lookout.update(realDt, {
-      fade: backdropFade(this.frontEnd?.isOpen ? this.frontEnd.state : null),
+      show: backdropShow(this.frontEnd?.isOpen ? this.frontEnd.state : null),
+      portrait: this.frontEnd?.isOpen && this.frontEnd.state ? portraitOf(this.frontEnd.state, this.frontEnd.today) : null,
       aspect: this.camera.aspect,
       windMs: this.conditions.wind.speedMs,
       windFromDeg: this.conditions.wind.directionDeg,

@@ -3,7 +3,7 @@ import { type BoardDims, type BoardKind, type BoardSpec, makeBoard } from '../bo
 
 export type PresetName = 'female' | 'male' | 'grommet';
 export type Stance = 'regular' | 'goofy';
-export type Outfit = 'boardies' | 'bikini' | 'springsuit' | 'rashieAndBottoms' | 'shortArmSteamer' | 'rashieAndBoardies' | 'walking';
+export type Outfit = 'boardies' | 'bikini' | 'springsuit' | 'rashieAndBottoms' | 'shortArmSteamer' | 'rashieAndBoardies' | 'steamer' | 'onePiece' | 'walking';
 /** What the body wears in the water: every outfit but the walking clothes. */
 export type SurfOutfit = Exclude<Outfit, 'walking'>;
 export type WalkingPart = 'tee' | 'shorts' | 'straps' | 'hat' | 'hatTrim' | 'pack' | 'packTrim' | 'thongs' | 'towel' | 'neoprene' | 'fins';
@@ -32,6 +32,8 @@ export interface SurferPreset {
   glbUrl: string;
   manifestUrl: string;
   outfits: { summer: SurfOutfit; shoulder: SurfOutfit; winter: SurfOutfit };
+  /** Every surf outfit Andrew painted for this rider (painted riders spec), in Grab your gear's order. */
+  wardrobe: SurfOutfit[];
   walking: WalkingLook;
   /** The boards this rider may ride (Grommet: only his bodyboard). */
   quiver: Partial<Record<BoardKind, BoardDims>>;
@@ -74,6 +76,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     name: 'female', label: 'Female', nickname: 'Shazza', realName: 'Sharon', heightM: 1.65, weightKg: 55, defaultStance: 'regular',
     glbUrl: 'surfer/female.glb', manifestUrl: 'surfer/female.manifest.json',
     outfits: { summer: 'bikini', shoulder: 'rashieAndBottoms', winter: 'shortArmSteamer' },
+    wardrobe: ['bikini', 'onePiece', 'rashieAndBottoms', 'springsuit', 'shortArmSteamer', 'steamer'],
     // A washed sage tee knotted at the hip, mid-blue denim cutoffs, her bikini's straps; a canvas rucksack and towel.
     walking: { under: 'bikini', hat: null, carrySide: 'l', colors: { tee: [0.3, 0.38, 0.28], shorts: [0.12, 0.2, 0.38], straps: [0.55, 0.12, 0.1], pack: [0.45, 0.36, 0.22], packTrim: [0.18, 0.1, 0.05], thongs: [0.55, 0.18, 0.22], towel: [0.7, 0.35, 0.08] } },
     quiver: {
@@ -90,6 +93,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     name: 'male', label: 'Male', nickname: 'T-Bone', realName: 'Tom', heightM: 1.78, weightKg: 68, defaultStance: 'goofy',
     glbUrl: 'surfer/male.glb', manifestUrl: 'surfer/male.manifest.json',
     outfits: { summer: 'boardies', shoulder: 'springsuit', winter: 'shortArmSteamer' },
+    wardrobe: ['boardies', 'rashieAndBoardies', 'springsuit', 'shortArmSteamer', 'steamer'],
     // A faded charcoal tee, a navy and white trucker cap; a worn black surf pack with a wetsuit hanging off it.
     walking: { under: 'boardies', hat: 'cap', carrySide: 'r', colors: { tee: [0.07, 0.07, 0.075], hat: [0.02, 0.03, 0.09], hatTrim: [0.75, 0.75, 0.72], pack: [0.04, 0.04, 0.045], packTrim: [0.3, 0.05, 0.03], thongs: [0.03, 0.03, 0.03], neoprene: [0.02, 0.02, 0.025], towel: [0.1, 0.25, 0.55] } },
     quiver: {
@@ -106,6 +110,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     name: 'grommet', label: 'Grommet', nickname: 'Grommet', realName: 'Bradley', heightM: 1.52, weightKg: 40, defaultStance: 'regular',
     glbUrl: 'surfer/grommet.glb', manifestUrl: 'surfer/grommet.manifest.json',
     outfits: { summer: 'rashieAndBoardies', shoulder: 'springsuit', winter: 'shortArmSteamer' },
+    wardrobe: ['rashieAndBoardies', 'boardies', 'springsuit', 'shortArmSteamer', 'steamer'],
     // A big sun-faded tee in his bodyboard's yellow, a khaki bucket hat; a stuffed navy school bag with his fins on it.
     walking: { under: 'boardies', hat: 'bucket', carrySide: 'l', colors: { tee: [0.75, 0.55, 0.02], hat: [0.35, 0.3, 0.17], pack: [0.02, 0.03, 0.12], packTrim: [0.5, 0.05, 0.03], thongs: [0.02, 0.15, 0.45], fins: [0.03, 0.03, 0.035] } },
     quiver: { bodyboard: { lengthIn: 38, widthIn: 20, thicknessIn: 2.5 } },

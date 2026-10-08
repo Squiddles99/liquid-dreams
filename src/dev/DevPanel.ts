@@ -252,7 +252,7 @@ export const surferBoardOptions = (preset: PresetName): Record<string, BoardKind
 const SURFER_OPTIONS = {
   preset: SURFER_PRESET_OPTIONS,
   stance: { regular: 'regular', goofy: 'goofy' },
-  outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'bikini bottoms + rash vest': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer', 'boardies + rash vest': 'rashieAndBoardies', 'walking clothes': 'walking' },
+  outfit: { season: 'season', boardies: 'boardies', bikini: 'bikini', springsuit: 'springsuit', 'rash vest + shorts': 'rashieAndBottoms', 'short-arm steamer': 'shortArmSteamer', 'boardies + rash vest': 'rashieAndBoardies', steamer: 'steamer', 'one-piece': 'onePiece', 'walking clothes': 'walking' },
   carrySide: { auto: 'auto', left: 'l', right: 'r' },
   motion: { 'code poses': 'code', 'motion clip': 'clip' },
   pose: Object.fromEntries(ALL_POSES.map((p) => [p, p])),

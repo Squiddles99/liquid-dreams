@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PLATE_ASPECT, backdropFade, coverUV, easeToward, insideLayer, layerUV, windDrive } from './backdropMath';
+import { PLATE_ASPECT, type RiderArt, backdropShow, coverUV, easeToward, insideLayer, layerUV, riderRect, windDrive } from './backdropMath';
 
 const KN = 1 / 1.943844; // m/s per knot
 
@@ -69,26 +69,51 @@ describe('windDrive: the game wind drives the shrubs (spec §4 table)', () => {
   });
 });
 
-describe('backdropFade: the painting shows on Conditions only, and never in the surf (spec §5)', () => {
-  it('is 0 when the menu is closed', () => expect(backdropFade(null)).toBe(0));
-  it('is 1 on Conditions and while paddling out under the cover, 0 on Rider and Gear', () => {
-    expect(backdropFade({ beat: 'conditions', move: null })).toBe(1);
-    expect(backdropFade({ beat: 'out', move: null })).toBe(1);
-    expect(backdropFade({ beat: 'rider', move: null })).toBe(0);
-    expect(backdropFade({ beat: 'gear', move: null })).toBe(0);
+describe('backdropShow: each screen has its painted ground under one camera (painted riders spec)', () => {
+  it('shows nothing when the menu is closed', () => expect(backdropShow(null)).toEqual({ conditions: 0, select: 0 }));
+  it('shows the heath crest on Conditions and the bank on Rider and Gear', () => {
+    expect(backdropShow({ beat: 'conditions', move: null })).toEqual({ conditions: 1, select: 0 });
+    expect(backdropShow({ beat: 'rider', move: null })).toEqual({ conditions: 0, select: 1 });
+    expect(backdropShow({ beat: 'gear', move: null })).toEqual({ conditions: 0, select: 1 });
   });
-  it('fades out over the first half of the move to Rider, and back in over the second half of the move back', () => {
-    const out = (t: number) => backdropFade({ beat: 'rider', move: { from: 'conditions', to: 'rider', t } });
-    const back = (t: number) => backdropFade({ beat: 'conditions', move: { from: 'rider', to: 'conditions', t } });
-    expect(out(0)).toBe(1);
-    expect(out(0.5)).toBe(0);
-    expect(out(0.25)).toBeGreaterThan(0);
-    expect(out(0.25)).toBeLessThan(1);
-    expect(back(0.5)).toBe(0);
-    expect(back(1)).toBe(1);
+  it('holds whatever was showing while paddling out (under the cover)', () => expect(backdropShow({ beat: 'out', move: null })).toBeNull());
+  it('cross-fades the grounds over the move between Conditions and Rider, both ways', () => {
+    const go = (t: number) => backdropShow({ beat: 'rider', move: { from: 'conditions', to: 'rider', t } })!;
+    const back = (t: number) => backdropShow({ beat: 'conditions', move: { from: 'rider', to: 'conditions', t } })!;
+    expect(go(0)).toEqual({ conditions: 1, select: 0 });
+    expect(go(0.5).conditions).toBeCloseTo(0.5, 9);
+    expect(go(0.5).select).toBeCloseTo(0.5, 9);
+    expect(go(1)).toEqual({ conditions: 0, select: 1 });
+    expect(back(1)).toEqual({ conditions: 1, select: 0 });
   });
-  it('stays 0 on a move between Rider and Gear', () => {
-    expect(backdropFade({ beat: 'gear', move: { from: 'rider', to: 'gear', t: 0.5 } })).toBe(0);
+  it('keeps the bank on a move between Rider and Gear', () => {
+    expect(backdropShow({ beat: 'gear', move: { from: 'rider', to: 'gear', t: 0.5 } })).toEqual({ conditions: 0, select: 1 });
+  });
+});
+
+describe('riderRect: the painted rider stands on the track at their real height (painted riders spec)', () => {
+  // A 6000×3375 original: the figure from y 100 to 3200, centred at x 3000, cropped to a box around it.
+  const art: RiderArt = { size: [6000, 3375], box: [2400, 50, 3600, 3300], headY: 100, solesY: 3200, centreX: 3000, outfits: ['walking'] };
+  const head = (r: ReturnType<typeof riderRect>) => r.y + ((art.headY - art.box[1]) / (art.box[3] - art.box[1])) * r.h;
+  const soles = (r: ReturnType<typeof riderRect>) => r.y + ((art.solesY - art.box[1]) / (art.box[3] - art.box[1])) * r.h;
+  const centre = (r: ReturnType<typeof riderRect>) => r.x + ((art.centreX - art.box[0]) / (art.box[2] - art.box[0])) * r.w;
+  it('puts the soles 95 % down and the figure 30 % across, at every aspect', () => {
+    for (const aspect of [4 / 3, 16 / 9, 21 / 9]) {
+      const r = riderRect(art, 1.78, aspect);
+      expect(soles(r)).toBeCloseTo(0.95, 9);
+      expect(centre(r)).toBeCloseTo(0.3, 9);
+    }
+  });
+  it('makes T-Bone 80 % of the screen tall and Grommet shorter by his real height', () => {
+    const t = riderRect(art, 1.78, 16 / 9), g = riderRect(art, 1.52, 16 / 9);
+    expect(soles(t) - head(t)).toBeCloseTo(0.8, 9);
+    expect(soles(g) - head(g)).toBeCloseTo((0.8 * 1.52) / 1.78, 9);
+  });
+  it("keeps the picture's own proportions on screen (never stretched)", () => {
+    for (const aspect of [4 / 3, 16 / 9, 21 / 9]) {
+      const r = riderRect(art, 1.65, aspect);
+      expect((r.w * aspect) / r.h).toBeCloseTo((art.box[2] - art.box[0]) / (art.box[3] - art.box[1]), 9);
+    }
   });
 });
 
