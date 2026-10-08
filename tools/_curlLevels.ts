@@ -37,3 +37,17 @@ for (const [d, i, k] of bad.slice(0, 8)) {
     console.log(`level ${k}: ${row.join(' | ')}`);
   }
 }
+// Level 5 along z (10 m bins, z −60..260): the earliest physical onset (τ − tb − delay) and the earliest curl time (τ − tb)
+// among broken nodes within 30 m inshore of the ledges (x ≤ 45).
+{
+  const k = 5, bins = new Map<number, [number, number]>();
+  for (let i = 0; i < f.tau.length; i++) {
+    const x = x0 + (i % nx) * cellM, z = z0 + Math.floor(i / nx) * cellM;
+    if (z < -60 || z > 260 || x > 45 || f.onset[i * R] < br.ONSET_LEVEL_Q[k]) continue;
+    const tbS = f.onset[i * R + 1 + 2 * k], d = f.onset[i * R + D + k], b = Math.round(z / 10) * 10;
+    const cur = bins.get(b) ?? [Infinity, Infinity];
+    bins.set(b, [Math.min(cur[0], f.tau[i] - tbS - d), Math.min(cur[1], f.tau[i] - tbS)]);
+  }
+  console.log('level 5, z: physical / curl (earliest in bin, s)');
+  console.log([...bins.entries()].sort((a, b) => b[0] - a[0]).map(([z, [p, c]]) => `${z}:${p.toFixed(1)}/${c.toFixed(1)}`).join('  '));
+}

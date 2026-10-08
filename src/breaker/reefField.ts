@@ -566,7 +566,7 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
 /** The peel stretch links a level's onset nodes this many cells apart into one breaking section (curlClock's, shared). */
 export { PEEL_NEIGHBOUR_CELLS };
 /** The curl's top speed along the crest (m/s) when the request names none (BreakParams.curlMaxMs's default). */
-export const CURL_MAX_MS_DEFAULT = 20;
+export const CURL_MAX_MS_DEFAULT = 40;
 /** Where a breaking section meets one that broke less than this (s) earlier, they are one line (peelLines). */
 export const PEEL_MERGE_S = 1.5;
 /** A held section's turn comes at most this long (s) after the reef broke it, so a held wall never runs on into the
