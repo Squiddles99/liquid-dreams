@@ -97,11 +97,11 @@ describe('riderRect: the painted rider stands on the track at their real height 
   const head = (r: ReturnType<typeof riderRect>) => r.y + ((art.headY - art.box[1]) / (art.box[3] - art.box[1])) * r.h;
   const soles = (r: ReturnType<typeof riderRect>) => r.y + ((art.solesY - art.box[1]) / (art.box[3] - art.box[1])) * r.h;
   const centre = (r: ReturnType<typeof riderRect>) => r.x + ((art.centreX - art.box[0]) / (art.box[2] - art.box[0])) * r.w;
-  it('puts the soles 95 % down and the figure 30 % across, at every aspect', () => {
+  it("puts the soles 95 % down and the figure 36 % across (off the bank's rock), at every aspect", () => {
     for (const aspect of [4 / 3, 16 / 9, 21 / 9]) {
       const r = riderRect(art, 1.78, aspect);
       expect(soles(r)).toBeCloseTo(0.95, 9);
-      expect(centre(r)).toBeCloseTo(0.3, 9);
+      expect(centre(r)).toBeCloseTo(0.36, 9);
     }
   });
   it('makes T-Bone 80 % of the screen tall and Grommet shorter by his real height', () => {
