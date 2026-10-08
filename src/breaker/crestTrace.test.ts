@@ -247,6 +247,53 @@ describe('one hold channel: until carries the hold to the stations (one-curl Tas
   });
 });
 
+describe('one curl per wave on one clock (one-curl Task 4)', () => {
+  // The game's field (smoothed, the refraction floor, the default curl), the biggest set wave of each size.
+  const game = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, smooth: true, refractFloorM: FLOOR_M });
+  const gctx: WaveContext = { omega: game.omega, travelX: game.far.dirX, travelZ: game.far.dirZ };
+  for (const ft of [6, 8, 12]) {
+    it(`${ft} ft: along each side from the curl the onset never comes earlier, and the wait beyond it never shortens`, { timeout: 120_000 }, () => {
+      const w = testWave(setWaveHeight(ft));
+      const tb0 = timeSinceOnset(game, w, 0, 0, gctx, P), peak = w.arrivalS + sampleField(game, 0, 0).tau - (tb0 ?? 0);
+      console.log(`${ft} ft: the peak's section broke at ${peak.toFixed(3)} s (tb at the crest's arrival ${tb0?.toFixed(3) ?? 'null'})`);
+      const bad: string[] = [];
+      let brokenChecked = 0, waitChecked = 0;
+      for (const dt of [1, 3, 6]) {
+        const entries = traceStations(game, [w], peak + dt, gctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H, spacingM: 1 });
+        // Runs of drawn stations (gaps split them); the curl is the run's station with the largest tb.
+        const runs: Station[][] = [[]];
+        for (const e of entries) { if (e.gap) runs.push([]); else runs[runs.length - 1].push(e); }
+        for (const run of runs) {
+          let top = -1;
+          run.forEach((s, i) => { if (s.tb !== null && Number.isFinite(s.tb) && (top < 0 || s.tb > run[top].tb!)) top = i; });
+          if (top < 0) continue;
+          for (const dir of [1, -1]) {
+            let prev = run[top], broken = true;
+            for (let i = top + dir; i >= 0 && i < run.length; i += dir) {
+              const s = run[i], tag = `t + ${dt}, arc ${s.arc.toFixed(1)}`;
+              if (broken && s.tb !== null && Number.isFinite(s.tb) && prev.tb !== null) {
+                brokenChecked++;
+                if (s.tb > prev.tb + 0.05) bad.push(`${tag}: tb ${s.tb.toFixed(2)} after ${prev.tb.toFixed(2)}`);
+              } else if (s.tb === null) {
+                if (!broken && s.until !== null && prev.until !== null && Number.isFinite(s.until) && Number.isFinite(prev.until)) {
+                  waitChecked++;
+                  if (s.until < prev.until - 0.05) bad.push(`${tag}: until ${s.until.toFixed(2)} after ${prev.until.toFixed(2)}`);
+                }
+                broken = false;
+              }
+              prev = s;
+            }
+          }
+        }
+      }
+      console.log(`${ft} ft: ${brokenChecked} broken and ${waitChecked} waiting station steps checked`);
+      expect(brokenChecked, 'broken station steps checked').toBeGreaterThan(30);
+      expect(waitChecked, 'waiting station steps checked').toBeGreaterThan(30);
+      expect(bad).toEqual([]);
+    });
+  }
+});
+
 describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause step 1)', () => {
   const H6 = setWaveHeight(6), w6 = testWave(H6);
   /** The first leg's places (m along NORTH_LEDGE from the peak). */
@@ -265,7 +312,7 @@ describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause s
   // 5% is the plan's bar; the record's carried size still drifts 3–4% down a ray (the bilinear carry mixes neighbouring
   // rays), and the smoothing along the crest mixes in the unbroken stations ahead of the curl. Step 4's one clock per wave
   // (the size read once, as the curl passes) removes both. Until then: 8%.
-  it('A along the first leg holds within 8% through the throw (phase 0.55 to 1.5), at 6 ft mid tide', { timeout: 120_000 }, () => {
+  it('A along the first leg holds within 5% through the throw (phase 0.55 to 1.5), at 6 ft mid tide', { timeout: 120_000 }, () => {
     const seen = PLACES.map(() => [] as number[]);
     for (let t = -2; t <= 12; t += 0.1) {
       const st = live(traceStations(field, [w6], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 1 }));
@@ -280,7 +327,7 @@ describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause s
       expect(seen[i].length, `${s} m: frames through the throw`).toBeGreaterThan(5);
       const lo = Math.min(...seen[i]), hi = Math.max(...seen[i]);
       console.log(`${s} m along the first leg: A ${lo.toFixed(2)}–${hi.toFixed(2)} m over ${seen[i].length} frames`);
-      expect(hi / lo, `${s} m`).toBeLessThan(1.08);
+      expect.soft(hi / lo, `${s} m`).toBeLessThan(1.05);
     });
   });
   it('over the shelf, where the depth caps the height under it, the barrel keeps the height it broke at', () => {
