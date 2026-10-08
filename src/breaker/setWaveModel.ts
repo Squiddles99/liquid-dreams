@@ -507,6 +507,8 @@ export function rayCrestPoint(x: number, z: number, t: number, f: FieldSample, w
 
 /** One wave at one point. Without `o` (or with breaking disabled) this is the Phase 1 wave. */
 export function waveAt(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, o?: BreakOptions): SetWaveResult {
+  // Beyond the envelope waveAtCrest is zero whatever the crest: skip the lookup (the GPU skips such waves too).
+  if (beyondEnvelope(phaseXi(x, z, t, f, w, ctx), w)) return { ...ZERO };
   return waveAtCrest(x, z, t, f, w, ctx, crestAt(x, z, t, f, w, ctx, o), o);
 }
 
