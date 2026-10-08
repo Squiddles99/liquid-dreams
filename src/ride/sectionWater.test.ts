@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Station, StationEntry } from '../breaker/crestTrace';
 import { profileKnots } from '../breaker/wombProfile';
-import { sectionPoint, sectionSamples } from '../breaker/wombSection';
+import { curlWeight, sectionPoint, sectionSamples } from '../breaker/wombSection';
 import { CurveCache, lowestWetCrossing, thinStations, withSections } from './sectionWater';
 import { INVERT_ITERATIONS, flatWater } from './water';
 
@@ -172,7 +172,8 @@ describe('the station curve reads the sheet only where it is used (exact; ride-f
       const curve = sectionSamples(sec, sheetAlong).curve;
       let knots = 0;
       sectionSamples(sec, (u) => { knots++; return sheetAlong(u); });
-      expect(knots).toBe(36);
+      // 14 sheet ends + 11 curl homes, + 11 swell homes below curlWeight 1 (at 1 they are skipped: R10a, Task 15).
+      expect(knots).toBe(curlWeight(sec) === 1 ? 25 : 36);
       // Every sample's u along the normal (units of A), from the knots alone.
       const us = curve.map((q) => sectionPoint(q, sec.A, sheetAlong)[0] / sec.A);
       /** The samples the sheet weighs into at the ends of the intervals that hold u. */
