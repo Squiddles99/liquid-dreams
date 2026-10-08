@@ -1,0 +1,13 @@
+# R9 probe (PROBE_RIDE_STATIONS=1 PROBE_VARIANTS='direct|lazy|warm 2'), 2026-10-08, branch at ae717f2
+6 ft: 975 rows on a section; events caught popup; reference direct
+variant | max |Δy| cm | max |Δslope| | curves built per frame (one physics step)
+direct | 0.00 | 0.0000 | 7.0 | wave sums per frame 5187 | p50 0.00 p95 0.00 p99 0.00 cm, rows > 2 cm 0
+lazy (R9) | 0.00 | 0.0000 | 7.0 | wave sums per frame 1297 | p50 0.00 p95 0.00 p99 0.00 cm, rows > 2 cm 0
+lazy + warm 2 passes (R9 + R8: the game) | 0.04 | 0.0601 | 7.0 | wave sums per frame 1120 | p50 0.00 p95 0.01 p99 0.02 cm, rows > 2 cm 0
+warm 2 passes (R8) | 0.04 | 0.0601 | 7.0 | wave sums per frame 3469 | p50 0.00 p95 0.01 p99 0.02 cm, rows > 2 cm 0
+12 ft: 1098 rows on a section; events caught popup; reference direct
+variant | max |Δy| cm | max |Δslope| | curves built per frame (one physics step)
+direct | 0.00 | 0.0000 | 6.7 | wave sums per frame 5272 | p50 0.00 p95 0.00 p99 0.00 cm, rows > 2 cm 0
+lazy (R9) | 0.00 | 0.0000 | 6.7 | wave sums per frame 1251 | p50 0.00 p95 0.00 p99 0.00 cm, rows > 2 cm 0
+lazy + warm 2 passes (R9 + R8: the game) | 1.30 | 0.0849 | 6.7 | wave sums per frame 1330 | p50 0.00 p95 0.08 p99 0.44 cm, rows > 2 cm 0
+warm 2 passes (R8) | 1.30 | 0.0849 | 6.7 | wave sums per frame 4482 | p50 0.00 p95 0.08 p99 0.44 cm, rows > 2 cm 0

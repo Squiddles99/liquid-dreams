@@ -54,7 +54,24 @@ export function tubeCover(stations: readonly StationEntry[], x: number, z: numbe
   return best;
 }
 
-const curves = new WeakMap<Station, P2[]>();
+/** The profile curve's numbers are rounded to this step (phase and hollow) and the curves kept by them, up to
+ * COVER_CURVES_MAX (cleared when full): traceStations makes new Station objects every frame, so a cache keyed on the
+ * station missed every frame (plan 2026-10-07 ride-framerate Task 4). */
+export const COVER_CURVE_STEP = 1 / 64;
+export const COVER_CURVES_MAX = 256;
+const curves = new Map<string, P2[]>();
+
+/** wombProfile's curve at (phase, hollow), each rounded to COVER_CURVE_STEP. */
+export function coverCurve(phase: number, hollow: number): P2[] {
+  const p = Math.round(phase / COVER_CURVE_STEP), h = Math.round(hollow / COVER_CURVE_STEP), key = `${p}|${h}`;
+  let curve = curves.get(key);
+  if (!curve) {
+    if (curves.size >= COVER_CURVES_MAX) curves.clear();
+    curve = profileCurve(p * COVER_CURVE_STEP, h * COVER_CURVE_STEP);
+    curves.set(key, curve);
+  }
+  return curve;
+}
 
 function coverAt(s: Station, x: number, z: number): number {
   const { A, phase, hollow, rho } = s.section;
@@ -63,8 +80,7 @@ function coverAt(s: Station, x: number, z: number): number {
   const ahead = dx * s.nx + dz * s.nz, along = Math.abs(-dx * s.nz + dz * s.nx);
   const reach = Math.max(TUBE_REACH_M, TUBE_REACH_H * s.H);
   if (along > reach || ahead <= 0 || ahead > 3 * A) return 0;
-  let curve = curves.get(s);
-  if (!curve) { curve = profileCurve(phase, hollow); curves.set(s, curve); }
+  const curve = coverCurve(phase, hollow);
   const u = ahead / A;
   let room = 0;
   for (const k of [-1, 0, 1]) room += smoothstep(TUBE_ROOM_M[0], TUBE_ROOM_M[1], A * roomOver(curve, u + k * TUBE_SOFT_UNITS)) / 3;
