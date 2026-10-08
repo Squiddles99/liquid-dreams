@@ -97,3 +97,26 @@ camera (11–14%), the spray's `sectionFrame` (12–15%, not the ride) and `trac
 took over 5173 mid-session, so I profiled on my own server on 5174.
 
 Details are in `-opus.md`, under "R9 pass".
+
+---
+
+## Fable's ruling on the R9 pass, 2026-10-08
+
+**R9 accepted.** I re-ran `src/ride` (92 passed, 3 skipped) and `npx tsc --noEmit` (clean) here; the probe, `heldS`, scope
+and suite checks hold as reported. Only the 20 ms target fails: 45.5 ms at 6 ft, 79.4 ms at 12 ft.
+
+**Merge recommendation revised: merge now.** The target is not a merge gate for exact work. The water is bit-identical, the
+ride tests keep their numbers, riding is 4× faster, and the branch merges clean onto `origin/main`; `r3-staying-on` merges
+clean onto both. Andrew: merge `ride-framerate` and `r3-staying-on` to main. The 20 ms target stays the project's target.
+
+**R8 comes out of the game** (Task 14): on R9 it costs more at 12 ft than it saves and is 1.30 cm off; exact wins.
+
+**R10, two exact steps then stop** (spec addendum 3, plan Tasks 14–16): the profiler at a fixed sim time; the 11 swell reads
+skipped at g = 1 in `sectionFrameKnots` (the breaker ban lifted for that function; equal to 1 ulp); self time inside one wave
+sum, removals only if exact and ≥ 20% of a sum. After that the exact levers are spent and the floor is the design's
+(~7 curves × ~25–40 reads × a 4-pass inversion per step).
+
+**For Andrew, not blocking Opus:** if Tasks 14–16 leave riding over 20 ms, the choice is to ship the ride at 25–30 fps for
+the beta, or to approve an approximation at ≤ 2 cm normal distance (spec addendum 2 (b)). Opus does not start one.
+
+Deferred minors stay deferred. Opus's eight rulings on the R9 pass stand.

@@ -125,3 +125,43 @@ pair; the camera's probe on the frame's existing curves. Not started by Opus.
 
 **For the wave-form work, not this branch:** the 4-pass inversion is 8.24 cm off converged on the 12 ft wall (Opus, R8
 probe); the 12 ft front is smooth and steep (67° at u/A 0.94), not a crease (`evidence/ride-framerate/sheet-normal-12ft.txt`).
+
+## Addendum 3, 2026-10-08 (Fable's ruling after the R9 pass: riding 45.5 ms at 6 ft, 79.4 ms at 12 ft)
+
+**R9 accepted.** Verified here: `src/ride` 92 passed, `npx tsc --noEmit` clean, the probe's `lazy (R9)` row at 0.00 cm with
+5187 → 1297 (6 ft) and 5272 → 1251 (12 ft) wave sums per frame, `heldS` 14.33 / 15.02 / 12.45 / 0.78 unchanged, scope held.
+Of the six checks only the target (≤ 20 ms) fails.
+
+**The target is not a merge gate for exact work.** This revises the 2026-10-08 ruling that made check 2 a condition of the
+merge recommendation. The branch changes no number anywhere a player can tell (the water is bit-identical, the ride tests
+keep their numbers) and is 4× faster; holding it back only grows drift (24 commits over main). `ride-framerate` merges
+clean onto `origin/main`, and `r3-staying-on` merges clean onto both. **Recommendation to Andrew: merge both now.** The
+20 ms target stands as the project's target.
+
+**R8 comes out of the game (Task 14).** On top of R9 the warm read costs more than it saves at 12 ft (1330 against 1251 sums
+per frame) and is 1.30 cm off cold there; at 6 ft it saves 14% of the sums (1120 against 1297), about 7% of the frame. The
+exact read wins: the slower size gets faster, every row is 0.00 cm, and the game's water is the probe's `lazy (R9)` row
+exactly. `App.rideWater` passes no `along`; the `along` plumbing stays for the probe's R8 rows.
+
+**Where the frame goes, and what is left that is exact.** `lazyOf` is 48–56% of riding; inside it the 22 curl-knot reads
+(11 at the swell drawing's homes, 11 at the knots' own homes) cost about twice the 14 sheet-end reads. At `curlWeight` g = 1
+(a pitched section, ρ 1) the swell reads are multiplied by (1 − g) = 0 and the knot's home is `SWELL_CURL_U[i]` without a
+read. **R10a (Task 15): skip the 11 swell reads when g === 1.** This touches `sectionFrameKnots` in `src/breaker/wombSection.ts`,
+so the breaker ban is lifted for that one function only, and the result is equal to 1 ulp (s + (d − s) × 1 is not always d
+bit for bit), bit-identical at g < 1. Expected: up to 11 of a curve's ~40 reads, ~15% of riding, if the stations under the
+board are pitched; the probe reports the share of curves at g = 1 so the yield is known either way.
+
+**R10b (Task 16, measurement first): inside the wave sum.** 73% of the ride sat under `sumWaves` before R9 and the ride's
+remaining cost is wave sums. The spec's ban on `setWaveModel.ts` is lifted for *exact* removals only (allocation in the hot
+path, a field sampled twice at one point, work for a wave whose envelope excludes the point): a bit-identity test at random
+points and times is the gate, as R1's was. Opus profiles self time inside one sum first; if no single item is ≥ 20% of a
+sum, stop and report, do not optimise by feel.
+
+**Then stop.** After Tasks 14–16 the exact levers are spent. If riding is still over 20 ms, that is the floor of this design:
+each physics step builds ~7 station curves of ~25–40 sheet reads, each read a 4-pass inversion of the wave sum. Reaching
+20 ms from there needs an approximation under (b)'s normal-distance measure, or a cheaper wave model for the ride's water,
+and that is Andrew's decision, not Opus's: ship the ride at 25–30 fps for the beta and move on, or approve an approximation
+at ≤ 2 cm normal distance. The profiler gets a fixed sim time first (Task 14) so that decision rests on runs that pair.
+
+**Deferred minors stay deferred:** the NaN sentinel re-read, unused `stats.reads`, the test's flat-sheet fold counter, and
+the read-count test's single-interval u. None changes a number.

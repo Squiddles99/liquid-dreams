@@ -204,3 +204,44 @@ not edited. Only `src/ride/sectionWater.ts`, its test, the probe and `App.ts` if
 ### Task 13: evidence and handovers
 
 - [ ] Both handover files updated in place (an "R9 pass" section), ledger, memory line for Fable; push. **Do not merge.**
+
+## Addendum 3, 2026-10-08 (Fable): Tasks 14–16, R8 out, the swell reads at g = 1, inside the wave sum (spec addendum 3)
+
+Scope: `src/app/App.ts` (`rideWater` only), `tools/_rideProfile.mjs`, `src/ride/sectionWater.ts` and its test, the probe,
+**`sectionFrameKnots` in `src/breaker/wombSection.ts` (Task 15 only)**, and `src/breaker/setWaveModel.ts` for exact removals
+with a bit-identity test (Task 16 only). Nothing else under `src/breaker`. Each task: `src/ride` and the touched breaker
+tests green, `npx tsc --noEmit` clean, commit, push, ledger line. **Do not merge.**
+
+### Task 14: R8 out of the game; the profiler at a fixed sim time
+
+- [ ] `App.rideWater` calls `withSections(sheet, this.ribbonStations, tide)` with no `along`; drop the `RIDE_WARM_PASSES`
+      import. The probe's `lazy + warm` row is renamed `lazy + warm 2 passes (R8, not the game)`; its `lazy (R9)` row is
+      now the game. Re-run the probe: `lazy (R9)` 0.00 cm at both sizes (unchanged by this task).
+- [ ] `tools/_rideProfile.mjs` takes a sim time (`--sim-t=<s>`, or an env var; say which) applied before the conditions, so
+      two runs ride the same moment of the same wave. Record the times used in the reports' first line. Profile 6 ft and
+      12 ft: `r10-6ft-report.txt`, `r10-12ft-report.txt`, then re-run each once at the same sim time to show the spread.
+- [ ] R3's `heldS` with the cold lazy read: 14.33 / 15.02 / 12.45 / 0.78 s (Opus already measured this on R9; confirm after
+      the App change by the same copied-in test).
+
+### Task 15: R10a, the swell reads skipped at g = 1 (exact to 1 ulp)
+
+- [ ] **Test first** (`wombSection.test.ts` or a new file beside it): for sections at g = 1 (phase ≥ CURL_PHASE, ρ 1) and a
+      counting sheet, `sectionFrameKnots` makes 25 reads (14 sheet ends + 11 own homes), not 36, and every knot equals the
+      old build to 1e-12 relative (keep the old build in the test as a local copy of the loop, or compare against a
+      snapshot taken before the change; say which). For g in (0, 1) the knots are `toEqual` the old build and the read count
+      is 36. Red first.
+- [ ] In the curl loop, when `g === 1`: no `at(SWELL_CURL_U[i])`; the knot is `[d[0], dy, dh, under[0], under[1]]` with
+      `under = at(dh)`. Nothing else in the function moves.
+- [ ] Probe: report the share of curves built at g = 1 per size, and wave sums per frame for `lazy (R9)`, beside the Task 14
+      numbers. The ribbon's own tests (`src/breaker`) show the same failing set as the baseline (39, diffed by name).
+- [ ] Profile both sizes at Task 14's sim times: `r10a-6ft-report.txt`, `r10a-12ft-report.txt`.
+
+### Task 16: R10b, inside one wave sum (measurement first)
+
+- [ ] Self time by function and line inside `sumWaves` and `waterAt`'s inversion on the riding profile (the cpuprofile is in
+      `.superpowers/sdd/2026-10-07-ride-framerate/cpuprofiles`). A table: item, % of a sum.
+- [ ] If an item ≥ 20% of a sum is removable **exactly** (an allocation or spread on the hot path, a field sampled twice at
+      one point, work for a wave whose envelope excludes the point), remove it with a bit-identity test first
+      (`waveAtEnvelope.test.ts`'s pattern: random points and times, `toEqual`). Otherwise **stop** and write the table down.
+- [ ] Profile both sizes at the same sim times: `r10b-*-report.txt`. Then the handovers (an "R10 pass" section: riding mean
+      and median at both sizes, where the frame goes, the g = 1 share, the sum table), ledger, memory line. **Do not merge.**
