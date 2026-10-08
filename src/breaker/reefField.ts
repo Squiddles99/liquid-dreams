@@ -711,8 +711,9 @@ const UNTIL_AHEAD_CELLS = 1;
  * The time until onset per level (breaking.ONSET_UNTIL_OFFSET; plan 2026-10-06-wave-root-cause, the wall down the line):
  * the same march run backwards, in reverse arrival order, each node reading the record UNTIL_AHEAD_CELLS ahead along its
  * ray, over the corners that arrive later than it (so already filled). A node whose running maximum has reached the level
- * has 0 (it has broken, or is held for its turn: the time slot is negative then); else the time ahead plus the arrival time
- * between, so along a ray the value falls at the ray's own speed to 0 at the breaking line; UNTIL_NEVER where the ray
+ * has the time to its turn, max(0, −tb): 0 once broken, the hold while held (one-curl spec §3b: until carries the hold);
+ * else the time ahead plus the arrival time between, so along a ray the value falls at the ray's own speed to 0 at the
+ * section's turn; UNTIL_NEVER where the ray
  * leaves the grid unbroken (and, bilinear between such a node and one that breaks, a time far past any wall's lead).
  * Smoothed along the crest for the game with the onset times (smoothOnsetTimes).
  */
@@ -739,7 +740,8 @@ function fillUntil(f: { grid: GridSpec; tau: Float32Array; dirX: Float32Array; d
     }
     const dTau = wSum > 0 ? Math.max(0, tauA / wSum - tauI) : 0;
     for (let k = 0; k < ONSET_LEVELS; k++) {
-      if (out[base] >= ONSET_LEVEL_Q[k]) { out[base + U + k] = 0; continue; }
+      // Broken: 0, or while held for its turn the time to it (−tb), so along the ray the value falls to 0 at the turn.
+      if (out[base] >= ONSET_LEVEL_Q[k]) { out[base + U + k] = Math.max(0, -out[base + 1 + 2 * k]); continue; }
       if (!(wSum > 0)) continue;
       let uA = 0;
       for (let q = 0; q < 4; q++) if (weights[q] > 0) uA += (weights[q] / wSum) * out[corners[q] * R + U + k];
