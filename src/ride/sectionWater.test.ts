@@ -8,7 +8,7 @@ import { INVERT_ITERATIONS, flatWater } from './water';
 /** A straight crest along z through x = 0, the wave travelling +x, stations 1 m apart, all at one section. */
 function crest(section: Station['section']): Station[] {
   return Array.from({ length: 21 }, (_, i): Station => ({
-    gap: false, wave: 0, x: 0, z: i - 10, arc: i - 10, nx: 1, nz: 0, H: 4, c: 9, r: 1.2, tb: 0.5, wait: null, psi: 0.09, lipH: null, Hb: null, until: null, section,
+    gap: false, wave: 0, x: 0, z: i - 10, arc: i - 10, nx: 1, nz: 0, H: 4, c: 9, r: 1.2, tb: 0.5, psi: 0.09, lipH: null, Hb: null, until: null, section,
   }));
 }
 

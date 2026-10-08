@@ -5,7 +5,7 @@ import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
 import { RUN_DIP, computeReefField, gainAhead, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
-import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, onsetGain, onsetHeight, onsetTime } from './breaking';
+import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, ONSET_UNTIL_OFFSET, onsetGain, onsetHeight, onsetTime } from './breaking';
 import { BREAKING_RATIO } from './setWaveModel';
 
 const reef05 = buildBathymetry();
@@ -308,5 +308,45 @@ describe('smoothFieldAmplitude: the field as the game draws it', () => {
       expect(a / hl[i]).toBeCloseTo(ratios[i][2], 5);
       expect(Math.hypot(dirX[i], dirZ[i])).toBeCloseTo(1, 5);
     });
+  });
+});
+
+describe('until carries the hold (one-curl Task 1)', () => {
+  // Held sections need the peel stretch: 1.7, as the stretch's own tests.
+  const f = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0, peel: 1.7 });
+  const R = ONSET_RECORD_LENGTH, U = ONSET_UNTIL_OFFSET, { nx, cellM, x0, z0 } = f.grid;
+  // Held onset nodes on the north ledge's first leg (within 3 m of its first 80 m), per level.
+  const [a, b] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const held: { i: number; k: number }[] = [];
+  for (let i = 0; i < f.tau.length; i++) {
+    const x = x0 + (i % nx) * cellM, z = z0 + Math.floor(i / nx) * cellM;
+    const s = ((x - a[0]) * (b[0] - a[0]) + (z - a[1]) * (b[1] - a[1])) / len;
+    const off = Math.abs((x - a[0]) * (b[1] - a[1]) - (z - a[1]) * (b[0] - a[0])) / len;
+    if (s < 5 || s > 80 || off > 3) continue;
+    for (let k = 0; k < ONSET_LEVELS; k++) if (f.onset[i * R] >= ONSET_LEVEL_Q[k] && f.onset[i * R + 1 + 2 * k] < -0.2) held.push({ i, k });
+  }
+  it('at a held node until is the hold (−tb)', () => {
+    expect(held.length).toBeGreaterThan(5);
+    for (const { i, k } of held) expect(f.onset[i * R + U + k], `node ${i} level ${k}`).toBeCloseTo(-f.onset[i * R + 1 + 2 * k], 4);
+  });
+  it('back along its ray until grows by the arrival time between (no jump at the turn)', () => {
+    const errs: string[] = [];
+    let checked = 0;
+    for (const { i, k } of held) {
+      const x = x0 + (i % nx) * cellM, z = z0 + Math.floor(i / nx) * cellM, u0 = f.onset[i * R + U + k];
+      for (const cells of [1, 2]) {
+        const bx = x - f.dirX[i] * cells * cellM, bz = z - f.dirZ[i] * cells * cellM;
+        const rec = sampleOnset(f, bx, bz)!;
+        if (rec[0] >= ONSET_LEVEL_Q[k]) continue; // broken back there too: the hold's own record, not the carry
+        const err = rec[U + k] - u0 - (f.tau[i] - sampleField(f, bx, bz).tau);
+        if (process.env.PROBE_UNTIL) console.log(`ERR ${cells} ${err.toFixed(3)} u0 ${u0.toFixed(2)}`);
+        // One cell back the read is (nearly) the node's own ray: 0.02 s. Two cells back the bilinear blends neighbouring rays,
+        // whose holds differ along the crest by the stretch's gradient (~0.07 s per metre at 1.7): within 0.1 s (max 0.09).
+        if (Math.abs(err) >= (cells === 1 ? 0.02 : 0.1)) errs.push(`node ${i} level ${k}, ${cells} cell(s) back: ${err.toFixed(3)} s`);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(3);
+    expect(errs).toEqual([]);
   });
 });

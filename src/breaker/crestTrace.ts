@@ -53,10 +53,9 @@ export interface Station {
   r: number;
   /** Time since onset (s): null before breaking, Infinity once past the hand-back. */
   tb: number | null;
-  /** While the peel stretch holds the section for its turn: how long until its turn (s); null otherwise. */
-  wait: number | null;
-  /** Unbroken: how long until the section breaks (s; the record's, breaking.onsetUntil), Infinity if it never will: the wall
-   * down the line stands up over the last WALL_LEAD_S of it (wombSection.wallWeight). 0 once broken; null off the record. */
+  /** Unbroken: how long until the section breaks, or held, until its turn (s; the record's, breaking.onsetUntil, and −tb
+   * while held: one-curl spec §3b, one channel), Infinity if it never will: the wall down the line stands up over the last
+   * WALL_LEAD_S of it (wombSection.wallWeight). 0 once broken; null off the record. */
   until: number | null;
   /** The crest's ψ, as the sheet's crest there (setWaveModel.crestAt): the lip's shape. */
   psi: number;
@@ -133,13 +132,15 @@ export function timeSinceOnset(field: ReefField, w: ActiveWave, x: number, z: nu
  * with its ratio as the sheet stands it (breaking.peelRatio: held at 1, fading in after its turn), so the ribbon's lip
  * stands as the water under it does (spec 2026-10-04 §3-4).
  */
-export function stationOnset(field: ReefField, w: ActiveWave, s: Pick<Station, 'x' | 'z' | 'H' | 'r' | 'tb' | 'wait' | 'until'>, p: BreakParams): void {
+export function stationOnset(field: ReefField, w: ActiveWave, s: Pick<Station, 'x' | 'z' | 'H' | 'r' | 'tb' | 'until'>, p: BreakParams): void {
   const rec = sampleOnset(field, s.x, s.z, onsetScratch);
   const tb = rec ? onsetTime(rec, 0, w.heightM, p) : null;
   if (tb !== null) s.r = peelRatio(s.r, tb, onsetDelay(rec!, 0, w.heightM, p), landingEstimate(s.H, p));
   s.tb = tb !== null && tb < 0 ? null : tb;
-  s.wait = tb !== null && tb < 0 ? -tb : null;
-  s.until = rec ? onsetUntil(rec, 0, w.heightM, p) : null;
+  // Held: the time to its turn, as the record's until channel holds it there (reefField.fillUntil), so along the ray the
+  // clock falls to 0 at the turn. (breaking.onsetUntil, shared with the sheet, reads 0 for any broken section: the sheet
+  // reads the held section by its own rule.)
+  s.until = tb !== null && tb < 0 ? -tb : rec ? onsetUntil(rec, 0, w.heightM, p) : null;
 }
 
 /** How long (s) until the section at (x, z) breaks for wave w (breaking.onsetUntil): Infinity if never, or off the record. */
@@ -202,7 +203,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
     for (let n = 0; n < 20000; n++) {
       const nrm = crestNormal(w, f, ctx);
       if (sign > 0 || n > 0) {
-        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, wait: null, until: null, psi: PSI_NORMAL, lipH: null, Hb: null, section: { A: 0, phase: 0, hollow: 0, rho: 0 } });
+        side.push({ gap: false, wave, x, z, arc, nx: nrm.nx, nz: nrm.nz, H: localHeight(w, f), c: ctx.omega / f.k, r: breakingRatio(w.heightM * f.amp, f.hminBreak, p), tb: null, until: null, psi: PSI_NORMAL, lipH: null, Hb: null, section: { A: 0, phase: 0, hollow: 0, rho: 0 } });
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = toCrest(field, w, t, ctx, project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS));
@@ -230,24 +231,6 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveC
 }
 
 /**
- * Down the line past a section held for its turn (the peel stretch), the crest waits too: from the curl outward, each
- * unbroken station beyond a held one takes the held one's wait. The record knows a hold only where the reef has broken the
- * wave already; further down the line, where the wave is still steepening toward its break, the ratio alone stood the
- * ribbon up, so a second breaking section stood 60–80 m down the line with a held stretch of sheet between them (on
- * Andrew's satellite reef, 2026-10-05).
- */
-export function holdDownTheLine(line: Station[]): void {
-  for (const order of [line, [...line].reverse()]) {
-    let carry: number | null = null;
-    for (const s of order) {
-      if (s.wait !== null) carry = Math.max(carry ?? 0, s.wait);
-      else if (s.tb !== null) carry = null;
-      else if (carry !== null) s.wait = carry;
-    }
-  }
-}
-
-/**
  * The cross-section's numbers are smoothed along the crest by a Gaussian of this σ (m of arc): read station by station from
  * the reef's record, they jump between neighbours over reef heads (a height of 0.6 m beside 1.7 m 2 m along, a barrel
  * beside a wall still standing: spec 2026-10-05-womb-profile-design §2, "neighbouring slices never jump"; the ribbon
@@ -268,7 +251,7 @@ export const LINE_END_FADE_M = 6;
  */
 export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'>): void {
   const normals = line.map((s) => [s.nx, s.nz]);
-  const raw = line.map((s) => sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, wait: s.wait, until: s.until, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
+  const raw = line.map((s) => sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
   const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
   let lo = 0;
   line.forEach((s, i) => {
@@ -301,7 +284,6 @@ export function traceStations(field: ReefField, waves: readonly ActiveWave[], t:
       if (sides.length === 0) return;
       const line = [...sides[1].reverse(), ...sides[0]];
       fillTimes(field, w, line, ctx, input);
-      holdDownTheLine(line);
       fillSections(line, field.periodS, input.params);
       for (const s of line) {
         if (alive(s)) out.push(s);

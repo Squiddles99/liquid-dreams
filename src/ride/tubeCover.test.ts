@@ -6,7 +6,7 @@ import { coverCurve, tubeCover } from './tubeCover';
 const crest = (phase: (z: number) => number, H = 3, hollow = 1): StationEntry[] => {
   const out: Station[] = [];
   for (let z = -30; z <= 30; z += 1) {
-    out.push({ gap: false, wave: 0, x: 0, z, arc: z, nx: 1, nz: 0, H, c: 9, r: 1.2, tb: 1, wait: null, psi: 0.09, lipH: H, Hb: null, until: null, section: { A: H / 1.3, phase: phase(z), hollow, rho: 1 } });
+    out.push({ gap: false, wave: 0, x: 0, z, arc: z, nx: 1, nz: 0, H, c: 9, r: 1.2, tb: 1, psi: 0.09, lipH: H, Hb: null, until: null, section: { A: H / 1.3, phase: phase(z), hollow, rho: 1 } });
   }
   return out;
 };
