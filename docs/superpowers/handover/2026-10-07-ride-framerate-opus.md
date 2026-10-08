@@ -376,3 +376,59 @@ The mix is R9's. The curl knots are still a third of the frame, which is R10a's 
   ride build or a pipeline compile. Not investigated.
 - Another session's `python tools/riderArt.py` held a core during the early runs, and Epic Games Launcher was resident
   (GPU 0–57% between runs).
+
+## Task 15, 2026-10-08
+
+**Done, still red.** Exact only: R10a is equal to 1 ulp at g = 1 and bit-identical below.
+
+| commit | what |
+|---|---|
+| 96ddad5 | `_rideProfile.mjs`: bot pop-up at caught + 0.4 s sim, Space up next frame; line 1 adds caught time and end x, z; `t15-bot-6ft*` |
+| 51bf906 | R10a in `sectionFrameKnots`; `wombSectionSkip.test.ts`; `sectionWater.test` read count by g |
+| 741d8e6 | `stats.full` (curves at g = 1) in `withSections`, probe column; `r10a-probe.txt` |
+| de4c6eb | profiler re-grabs focus before the riding pass; line 1 "at riding" |
+| 10217d2 | `r10a-*` reports and the same-session A/B (`r10a-ab-old-*`) |
+
+**Bot on sim time (6 ft, sim-t 300):** 59.6 / 57.1 (89 frames, caught 397.33, ends 5.9, −2.9) and 62.0 / 53.9 ms (86
+frames, caught 397.35, ends 7.9, −5.6). Means are 4% apart and medians 6%.
+
+**R10a test** (old build as a local copy of the loop): g = 1 gives 126 sections (flat and leaning swell, phases CURL_PHASE–2.4,
+hollow 0 / 0.4 / 1, A 1.4 / 2.5 / 4.1), 25 reads, ≤ 1e-12 × max(1, |old|), `beyond` `toEqual`. 0 < g < 1 gives 36
+sections, 36 reads, `toEqual`. g = 0 gives 25 reads, `toEqual`. It was red first (36 ≠ 25). Breaker + whitewater: 383
+passed, 39 failed, equal by name to `fails-r9.txt`. `src/ride` 91 passed, 1 failed (expert 0.78), 3 skipped. tsc clean.
+
+**Probe:**
+
+| | g = 1 share | lazy (R9) sums / frame | direct |
+|---|---|---|---|
+| 6 ft | 84.4% | 972 (Task 14: 1297) | 4862 (5187) |
+| 12 ft | 72.8% | 982 (1251) | 5004 (5272) |
+
+All rows keep Task 14's max |Δy|. `heldS` is 14.33 / 15.02 / 12.45 / 0.78.
+
+**Profiles** (5174, focused at all three points): see the table in `-fable.md`. Same-session A/B: R10a −20% at 6 ft
+(≈ 51 → 40 ms mean), −5% at 12 ft (80.6 → 76.5). Excluded and kept git-ignored in `cpuprofiles`:
+- `r10a-12ft`: a 5 s stall in paddling, riding 94.4 / 59.2.
+- `-12ft-b`: minimized by the end.
+- `-12ft-c`: cam 263 ms.
+- `-12ft-d` / `-e`: unfocused at the end, 82.9 / 76.1 ms.
+- `r10a-6ft-d`: 1 fps paddling; the pass began in paddle.
+- One old 12 ft run: a 4.4 s cam frame.
+
+**Where the frame goes** (R10a, inclusive):
+
+| | 6 ft | 12 ft |
+|---|---|---|
+| `lazyOf` | 44–45% | 54% |
+| `sectionFrameKnots` | 43% (old 51–53%) | 57% (old 56%) |
+| `sumWaves` | 41–42% | 55% |
+| `stepRide` | 32% | 46–47% |
+| `boardSurface` | 21% | 31% |
+| `cameraPose` | 15% | 11% |
+| `traceStations` | 14% | 9% |
+| spray `breakEmitters` | < 12% | 14% |
+
+At 12 ft the self time is the field: `bilinear` 13%, `waveAtCrest` 10.5%, `sampleOnset` 9.5%, `sampleInside` 4%.
+
+**Rulings:** in `-fable.md` "Task 15". **Deferred:** the four R9 minors, the bot's frame quantisation, the frame-rate-dependent
+sub-step, the paddling stall, the in-game g = 1 share, and the `:219` line attribution across file versions.

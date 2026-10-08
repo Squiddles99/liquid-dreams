@@ -162,3 +162,55 @@ whole process runs ~8× slower). From now a report counts only if its first line
 real time, so her line is the same at every frame rate and 6 ft runs pair like 12 ft's do. Tool only (`_rideProfile.mjs`);
 no game code. Then R10a as planned: the 11 swell reads skipped at g === 1 in `sectionFrameKnots`, test first, equal to
 1 ulp, the probe reporting the share of curves at g = 1. Opus's seven Task 14 rulings stand; the deferred minors stay.
+
+## Task 15, Opus → Fable (2026-10-08)
+
+**Done; riding still red, R10a pays at 6 ft and barely at 12 ft.** All exact. Pushed, not merged.
+
+**Step 1, the bot on sim time.** The profiler's pop-up fires at caught + 0.4 s of sim time, Space is released on the next
+frame (it was a 50 ms timer), and steering still keys on the board's `phaseT`. Two 6 ft runs at sim-t 300 now pair:
+**59.6 / 57.1 and 62.0 / 53.9 ms** (mean / median; 4% and 6% apart; `t15-bot-6ft*`). Her line is closer, not identical:
+caught 397.33 / 397.35 s, but the riding pass ends 3 m apart. Each input still lands on a frame boundary, and the game's
+physics sub-step (dt / n) depends on the frame rate. That's game code, not the tool.
+
+**Step 2, R10a.** At `g === 1` the knot is `[d[0], dy, dh, at(dh)]`, with no swell read. The test came first
+(`wombSectionSkip.test.ts`, red at 36 reads), and it keeps the old build as a local copy of the loop. At g = 1: 126
+sections make 25 reads, every knot within 1e-12 relative. At 0 < g < 1: 36 sections make 36 reads, `toEqual`. At g = 0:
+`toEqual`. Breaker + whitewater show the baseline's 39 failures, identical by name. `src/ride` 91 / 1 (expert 0.78), tsc
+clean. `sectionWater.test`'s R9 read count pinned 36 knot reads, so it now expects 25 at g = 1.
+
+**Step 3, probe** (`r10a-probe.txt`). **Curves at g = 1: 84.4% at 6 ft, 72.8% at 12 ft.** `lazy (R9)` wave sums per frame:
+**972 at 6 ft (was 1297, −25%) and 982 at 12 ft (was 1251, −21%)**, still 0.00 cm. `heldS` 14.33 / 15.02 / 12.45 / 0.78,
+unchanged.
+
+**Step 4, profiles** (sim-t 300, focused at cam, at riding and at the end, cam 4.4–5.6 ms):
+
+| | 6 ft | 12 ft |
+|---|---|---|
+| R10a | **39.7 / 35.0, 41.1 / 37.9** (and 30.8 / 28.6 earlier) | **76.2 / 77.0, 76.7 / 77.5** (and 91.8 / 88.9, 112.4 / 115.4) |
+| old wombSection copied in, same session | 48.6 / 42.6, 54.2 / 45.7 | 80.6 / 81.2 |
+
+The machine drifts about 15% within an hour: the old code gave 59.6 / 62.0 in step 1 and 48.6 / 54.2 in the A/B. So
+**only the same-session A/B measures R10a: about −20% at 6 ft and −5% at 12 ft.** The two slow 12 ft runs pass the gate
+but came right after a spell of lost focus. At 12 ft the spread across sessions is wider than R10a's gain.
+
+**Where the frame goes** (R10a, inclusive): at 6 ft `lazyOf` 44%, `sectionFrameKnots` 43% (old 51–53%), `sumWaves` 41%,
+`stepRide` 32%, `cameraPose` 15%, `traceStations` 14%. At 12 ft `sectionFrameKnots` 57% (old 56%), `sumWaves` 55%,
+`lazyOf` 54%, `stepRide` 46%, spray 14%, `cameraPose` 11%. **At 12 ft R10a's share did not drop.** The probe's rider
+builds 73% of her curves at g = 1, but the game's 12 ft line probably builds fewer. The in-game share is not measured.
+
+**Rulings** (cost if wrong):
+- Space is released on the next frame, not after 50 ms. Cost: none, since the pop-up is the keydown edge.
+- The old build is a local copy in the test, not a snapshot. Cost: a later legitimate change to the function means editing that copy.
+- `sectionWater.test`'s read count now depends on g. Cost: none.
+- `stats.full` is added to `withSections` (an optional counter for the probe; no number changes). Cost: one optional field.
+- The profiler takes focus again before the riding pass and records it. Cost: none.
+- The A/B ran with `cb257d4`'s `wombSection.ts` copied in and then restored (`git diff` clean). Cost: none.
+- 1e-12 relative is measured as |a − b| ≤ 1e-12 × max(1, |b|). Cost: absolute 1e-12 near zero.
+
+**Deferred minors:** the four R9 minors. The bot's frame quantisation and the frame-rate-dependent sub-step. The 4–6 s
+paddling frame, which at 12 ft lands across the catch, so the paddling pass is 2 frames. The in-game g = 1 share. The
+`wombSection.ts:219` "curl knots" row is not comparable across file versions, because line numbers move.
+
+**In the way:** 5173 served another tree again, so I profiled on my own 5174 server (now stopped). 12 ft runs lost focus
+mid-run until the re-grab. The machine drifted between runs, hence the A/B. Stopped for your ruling on Task 16.
