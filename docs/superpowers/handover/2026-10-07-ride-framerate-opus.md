@@ -318,8 +318,8 @@ don't compare to R9's 45.5 / 79.4 run for run. The probe gives R8's removal: wav
 |---|---|
 | 5eb7502 | R8 out of `App.rideWater`; probe row `lazy + warm 2 passes (R8, not the game)` |
 | a19741a | `_rideProfile.mjs --sim-t` |
-| 1cd7cc1 | `r10-probe.txt` |
-| (focus) | the profiler stays on top and focused, and line 1 says whether it was |
+| 1f5d9da | `r10-probe.txt` |
+| 448234a | the profiler stays on top and focused, and line 1 says whether it was |
 | 4a4872e | `r10-6ft`, `-6ft-b`, `-12ft`, `-12ft-b` reports |
 
 **Checks.** `src/ride`: 91 passed, 1 failed (the expert `heldS` 0.78 s, R3's committed red), 3 skipped. `npx tsc --noEmit`
