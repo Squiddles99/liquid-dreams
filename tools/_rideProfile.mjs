@@ -1,5 +1,6 @@
 // Profiles the frame loop in cam mode, then on the board (CPU profile via CDP + rAF frame times).
 // npx electron <this file> [--base=http://localhost:5173/] [--ft=6] [--experience=intermediate] [--out=<prefix>] [--sim-t=<s>]
+// The window stays on top and focused (an unfocused run is ~8x slower); the first line says whether it was.
 // --sim-t (ride-framerate Task 14): the sim time the conditions are applied at, the cam pass starts at (once the field is
 // built) and, 6 s later, the set is called from, so two runs ride the same moment of the same wave. Unset: the page's own.
 import { app, BrowserWindow } from 'electron';
@@ -36,6 +37,12 @@ function summarise(profile, label) {
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ width: 1600, height: 900, show: true, webPreferences: { backgroundThrottling: false } });
+  // Unfocused, Windows runs this process ~8x slower (Task 14: cam ~35 ms not 4.4, riding ~500 ms not ~50, the same sim
+  // time and place): keep the window on top and focused, and say in the report whether it was.
+  win.setAlwaysOnTop(true, 'screen-saver');
+  const grab = () => { win.show(); win.moveTop(); app.focus({ steal: true }); win.focus(); };
+  const focusNow = () => `focused ${win.isFocused()}, visible ${win.isVisible()}, minimized ${win.isMinimized()}`;
+  grab();
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   await win.loadURL(base + '?frontend=off');
   await win.webContents.executeJavaScript(`localStorage.setItem('liquid-dreams.front-settings.v1', JSON.stringify({ takeoffSlowMo: 'off', experience: '${experience}' }))`);
@@ -55,7 +62,9 @@ app.whenReady().then(async () => {
   await dbg.sendCommand('Profiler.enable');
   await dbg.sendCommand('Profiler.setSamplingInterval', { interval: 200 });
   // The field's build takes as long as it takes: the clock goes back to the fixed time before the cam pass.
+  grab();
   if (simT !== null) await win.webContents.executeJavaScript(`window.liquidDreams.clock.setTime(${simT})`);
+  const focusCam = focusNow();
   const camFrom = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
 
   // Frame-time recorder in the page.
@@ -121,8 +130,9 @@ app.whenReady().then(async () => {
   const r1 = await win.webContents.executeJavaScript('window.__ride');
   const fc = await frames(`riding (phase ${r0.phase} -> ${r1.phase})`);
   const rideFrom = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
+  const focusEnd = focusNow();
 
-  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s (${ft} ft, ${experience})`;
+  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s (${ft} ft, ${experience}); window at cam: ${focusCam}; at the end: ${focusEnd}`;
   const report = [times, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding')].join('\n');
   writeFileSync(out + 'report.txt', report);
   writeFileSync(out + 'cam.cpuprofile', JSON.stringify(pa));
