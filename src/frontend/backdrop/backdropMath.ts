@@ -127,6 +127,12 @@ export interface ScreenRect {
  */
 export const RIDER_STAND = { solesV: 0.95, centreU: 0.36, tallM: 1.78, tallH: 0.8 } as const;
 
+/**
+ * How far the widest painted rider reaches left of the figure's centre at 16:9, in screen width: T-Bone with his pack
+ * (riders.json: 569 px of the 3150 px figure, at 80 % of the screen tall), plus a hair. Text beside the rider ends here.
+ */
+export const RIDER_HALF_W = 0.085;
+
 export function riderRect(art: RiderArt, heightM: number, screenAspect: number): ScreenRect {
   const figPx = art.solesY - art.headY, perPx = (RIDER_STAND.tallH * heightM) / RIDER_STAND.tallM / figPx;
   const [bx0, by0, bx1, by1] = art.box;
