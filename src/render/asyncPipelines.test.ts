@@ -17,6 +17,29 @@ function fakeRenderer() {
 }
 
 describe('AsyncPipelines', () => {
+  it('names the builds still in flight (material, object, target) and counts the builds started, only inside run', async () => {
+    const { renderer, pipelines, builds } = fakeRenderer();
+    const ap = new AsyncPipelines(renderer);
+    pipelines.getForRender({ material: { name: 'Outside' }, context: {} });
+    expect(ap.inflight()).toEqual([]);
+    expect(ap.started).toBe(0);
+    ap.run(() => pipelines.getForRender({ material: { name: 'Foo' }, context: {} }));
+    expect(ap.inflight()).toEqual(['Foo (canvas)']);
+    expect(ap.started).toBe(1);
+    builds[0]();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ap.inflight()).toEqual([]);
+    expect(ap.started).toBe(1);
+  });
+
+  it('labels a build by material type, object name and render target when they are there', () => {
+    const { renderer, pipelines } = fakeRenderer();
+    const ap = new AsyncPipelines(renderer);
+    ap.run(() => pipelines.getForRender({ material: { name: '', type: 'MeshBasicNodeMaterial' }, object: { name: 'hair' }, context: { renderTarget: { texture: { name: 'capture' } } } }));
+    expect(ap.inflight()).toEqual(['MeshBasicNodeMaterial hair (capture)']);
+  });
+
   it('builds in the background only inside run, and counts the builds until they land', async () => {
     const { renderer, pipelines, given, builds } = fakeRenderer();
     const ap = new AsyncPipelines(renderer);

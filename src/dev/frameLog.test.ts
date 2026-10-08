@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FRAME_LOG_CAP, FrameLog, type FrameRecord } from './frameLog';
 
-const rec = (t: number): FrameRecord => ({ t, dt: 16, sim: t / 1000, gpu: 3, foam: 0, spray: 0, impact: 0, kelp: 0, under: 0, ribbon: 0, pending: 0 });
+const rec = (t: number): FrameRecord => ({ t, dt: 16, sim: t / 1000, gpu: 3, foam: 0, spray: 0, impact: 0, kelp: 0, under: 0, ribbon: 0, pending: 0, building: '' });
 
 describe('FrameLog', () => {
   it('records nothing while off', () => {

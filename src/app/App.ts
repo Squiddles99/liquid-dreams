@@ -2176,7 +2176,8 @@ export class App {
     if (this.frameLog.on) {
       const gpu = (window as unknown as { __ldGpuMs?: number[] }).__ldGpuMs?.at(-1) ?? 0;
       this.frameLog.record({ t: now, dt: now - prevMs, sim: this.clock.simTime, gpu, foam: this.frameTicks.foam, spray: this.frameTicks.spray,
-        impact: this.frameTicks.impact, kelp: this.frameTicks.kelp, under: this.underwater ? 1 : 0, ribbon: this.frameTicks.ribbon, pending: this.asyncPipelines.pending });
+        impact: this.frameTicks.impact, kelp: this.frameTicks.kelp, under: this.underwater ? 1 : 0, ribbon: this.frameTicks.ribbon, pending: this.asyncPipelines.pending,
+        building: this.asyncPipelines.inflight().join('|') });
     }
     this.frameTicks.foam = this.frameTicks.spray = this.frameTicks.impact = this.frameTicks.kelp = 0;
     this.frameTicks.ribbon = 0;
