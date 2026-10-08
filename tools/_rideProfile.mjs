@@ -7,7 +7,7 @@
 // real time, so its inputs land at the same moments of the ride at every frame rate. It reads the board once per frame
 // (after the game's step), so an input still lands on a frame boundary.
 // --stall (ride-stall Task 2): the page's frame log on and GPUDevice creation hooks, saved per pass as <prefix>frames-*.json
-// and <prefix>creates-*.json. --trace: Electron content tracing of the paddling and riding passes, <prefix>*.trace.json.
+// and <prefix>creates-*.json. --trace: Electron content tracing of the paddling and riding passes, one <prefix>ride.trace.json.
 import { app, BrowserWindow, contentTracing } from 'electron';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
@@ -92,8 +92,8 @@ app.whenReady().then(async () => {
     }
     window.liquidDreams.frameLog.on = true; window.liquidDreams.frameLog.drain(); window.__creates.length = 0;
   })()`);
-  // A pass's log starts empty (its first record is within a frame of its trace's start: _traceStall.mjs aligns on it).
-  const stallBegin = async () => { if (stall) await win.webContents.executeJavaScript('window.liquidDreams.frameLog.drain(); window.__creates.length = 0'); };
+  // A pass's log starts empty; the mark ties the page's clock to the trace's (blink.user_timing): _traceStall.mjs reads it.
+  const stallBegin = async () => { if (stall) await win.webContents.executeJavaScript("window.liquidDreams.frameLog.drain(); window.__creates.length = 0; performance.mark('ldStall:' + performance.now())"); };
   const saveStall = async (label) => {
     if (!stall) return;
     const frames = await win.webContents.executeJavaScript('window.liquidDreams.frameLog.drain()');
@@ -101,7 +101,7 @@ app.whenReady().then(async () => {
     writeFileSync(`${out}frames-${label}.json`, JSON.stringify(frames));
     writeFileSync(`${out}creates-${label}.json`, JSON.stringify(creates));
   };
-  const traceStart = async () => { if (trace) await contentTracing.startRecording({ included_categories: ['toplevel', 'gpu', 'viz', 'cc', 'disabled-by-default-gpu.dawn'], excluded_categories: ['*'] }); };
+  const traceStart = async () => { if (trace) await contentTracing.startRecording({ included_categories: ['toplevel', 'gpu', 'viz', 'cc', 'disabled-by-default-gpu.dawn', 'blink.user_timing'], excluded_categories: ['*'] }); };
   const traceStop = async (label) => { if (trace) await contentTracing.stopRecording(`${out}${label}.trace.json`); };
 
   // A: cam mode, 6 s.
@@ -140,12 +140,14 @@ app.whenReady().then(async () => {
   const arrive = await win.webContents.executeJavaScript('window.liquidDreams.rideArriveS');
   // B: from the paddle (ride active, in the water) for 6 s.
   await sleep(500);
+  // One trace covers the paddling and riding passes (stopping one writes ~60-100 MB and took ~2 s, which pushed the
+  // riding pass past the 6 ft stall's sim time): it starts here and stops after the riding pass's frames are saved.
+  await traceStart();
   await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true');
-  await stallBegin(); await traceStart();
+  await stallBegin();
   await dbg.sendCommand('Profiler.start');
   await sleep(6000);
   const pb = (await dbg.sendCommand('Profiler.stop')).profile;
-  await traceStop('paddle');
   await win.webContents.executeJavaScript('window.__ft.on = false');
   const fb = await frames('paddling (ride active)');
   await saveStall('paddle');
@@ -156,16 +158,16 @@ app.whenReady().then(async () => {
   const focusRide = focusNow();
   const rideStart = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
   await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true');
-  await stallBegin(); await traceStart();
+  await stallBegin();
   await dbg.sendCommand('Profiler.start');
   await sleep(5000);
   const pc = (await dbg.sendCommand('Profiler.stop')).profile;
-  await traceStop('ride');
   await win.webContents.executeJavaScript('window.__ft.on = false');
   const r1 = await win.webContents.executeJavaScript('window.__ride');
   const fc = await frames(`riding (phase ${r0.phase} -> ${r1.phase})`);
   await saveStall('ride');
   const rideFrom = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
+  await traceStop('ride');
   const where = await win.webContents.executeJavaScript(`(() => { const b = window.liquidDreams.ride.body; return b ? b.x.toFixed(1) + ', ' + b.z.toFixed(1) : 'none'; })()`);
   const focusEnd = focusNow();
 

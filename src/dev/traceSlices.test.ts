@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { slices } from './traceSlices';
+import { passMarker, slices } from './traceSlices';
 
 describe('slices', () => {
   it('names processes and threads from the metadata and keeps slices over the threshold in time order', () => {
@@ -22,5 +22,18 @@ describe('slices', () => {
       { ph: 'E', name: 'Swap', pid: 1, tid: 1, ts: 50_000 },
     ], 30);
     expect(out).toEqual([{ startMs: 0, durMs: 50, process: 'pid 1', thread: 'tid 1', name: 'Swap', cat: '' }]);
+  });
+  it('reads a trace of a million events (a 58 MB riding trace overflowed Math.min(...spread))', () => {
+    const events = Array.from({ length: 1_000_000 }, (_, i) => ({ ph: 'X', name: 'tick', pid: 1, tid: 1, ts: 5_000 + i, dur: 1 }));
+    events.push({ ph: 'X', name: 'Long', pid: 1, tid: 1, ts: 2_000_000, dur: 40_000 });
+    expect(slices(events, 30)).toEqual([{ startMs: 1995, durMs: 40, process: 'pid 1', thread: 'tid 1', name: 'Long', cat: '' }]);
+  });
+  it('finds the pass marker: performance.now() at the mark, in trace ms', () => {
+    const out = passMarker([
+      { ph: 'X', name: 'a', pid: 1, tid: 1, ts: 1_000_000, dur: 1 },
+      { ph: 'R', name: 'ldStall:68400.5', cat: 'blink.user_timing', pid: 2, tid: 2, ts: 1_250_000 },
+    ]);
+    expect(out).toEqual({ nowMs: 68400.5, traceMs: 250 });
+    expect(passMarker([{ ph: 'X', name: 'a', pid: 1, tid: 1, ts: 0, dur: 1 }])).toBeNull();
   });
 });

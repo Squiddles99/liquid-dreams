@@ -21,6 +21,21 @@ export interface Slice {
   cat: string;
 }
 
+/** The earliest non-metadata ts (µs): the origin of every Slice.startMs. A loop: a riding trace has millions of events. */
+export function traceT0(events: TraceEvent[]): number {
+  let t0 = Infinity;
+  for (const e of events) if (e.ph !== 'M' && e.ts < t0) t0 = e.ts;
+  return t0;
+}
+
+/** The profiler's pass marker (performance.mark('ldStall:<performance.now()>'), category blink.user_timing): the page's
+ * clock and the trace's at one instant, so a frame's t maps to trace ms exactly. Null when the trace has none. */
+export function passMarker(trace: TraceJson): { nowMs: number; traceMs: number } | null {
+  const events = Array.isArray(trace) ? trace : trace.traceEvents;
+  const m = events.find((e) => e.name.startsWith('ldStall:'));
+  return m ? { nowMs: Number(m.name.slice(8)), traceMs: (m.ts - traceT0(events)) / 1000 } : null;
+}
+
 /** Complete ('X') and begin/end ('B'/'E') events lasting at least minMs, named by process and thread, in time order. */
 export function slices(trace: TraceJson, minMs: number): Slice[] {
   const events = Array.isArray(trace) ? trace : trace.traceEvents;
@@ -31,7 +46,7 @@ export function slices(trace: TraceJson, minMs: number): Slice[] {
     if (e.name === 'process_name') processes.set(e.pid, name);
     if (e.name === 'thread_name') threads.set(`${e.pid}:${e.tid}`, name);
   }
-  const t0 = Math.min(...events.filter((e) => e.ph !== 'M').map((e) => e.ts));
+  const t0 = traceT0(events);
   const out: Slice[] = [];
   const push = (e: TraceEvent, durUs: number) => {
     if (durUs / 1000 < minMs) return;
