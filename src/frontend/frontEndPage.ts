@@ -14,6 +14,7 @@ import { GearPanel } from './ui/gearPanel';
 import { applyLayout, layoutFor, mountFrontEndRoot } from './ui/layout';
 import { Legend, legendFor } from './ui/legend';
 import { RiderLine } from './ui/riderLine';
+import { RIDER_HALF_W, RIDER_STAND } from './backdrop/backdropMath';
 import { SlidePanel } from './ui/slidePanel';
 import { type Device, UiInput } from './uiInput';
 import { UiSounds, hapticPulse } from './uiSounds';
@@ -265,10 +266,11 @@ export class FrontEnd {
       p.legend.set(legend, this.device);
     }
     p.line.update(now);
-    // The mockup's spots: over the sea left of the panel in Grab your gear (ending 40 px short of its column, at any text
-    // size), over the water in Conditions.
+    // Grab your gear: over the sky under the title, ending 24 px short of the painted rider's widest outline (T-Bone and
+    // his pack reach RIDER_HALF_W left of the figure's centre), so a mate's line never crosses the rider's face (Andrew
+    // 2026-10-08). Conditions: over the water, as the mockup.
     const pos = s.beat === 'gear'
-      ? { left: '700px', top: '250px', maxWidth: 'calc(100% - var(--fe-safe-x) - 600px * (0.6 + 0.4 * var(--fe-text)) - 740px)' }
+      ? { left: 'var(--fe-safe-x)', top: '24vh', maxWidth: `calc(${((RIDER_STAND.centreU - RIDER_HALF_W) * 100).toFixed(2)}vw - var(--fe-safe-x) - 24px)` }
       : { left: '760px', top: '438px', maxWidth: '760px' };
     Object.assign(p.line.el.style, pos);
   }
