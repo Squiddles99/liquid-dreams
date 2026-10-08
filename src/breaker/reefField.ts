@@ -361,7 +361,7 @@ export function smoothOnsetTimes(field: ReefField, sigmaM = ONSET_SMOOTHING_M): 
  * dips in a streak behind every reef head a ray crossed (2.6 m to 1.7 m and back within 3 m), and the height capped on
  * it stood a comb of 0.3 m ridges on the sheet; a real wave fills that shadow back in along its crest.
  */
-export function smoothFieldAmplitude(field: ReefField, sigmaM = FIELD_SMOOTHING_M, tauSigmaM = TAU_SMOOTHING_M): void {
+export function smoothFieldAmplitude(field: ReefField, sigmaM = FIELD_SMOOTHING_M, tauSigmaM = TAU_SMOOTHING_M, onsetSigmaM = ONSET_SMOOTHING_M): void {
   const { nx, nz, cellM } = field.grid;
   const s = sigmaM / cellM, r = Math.ceil(3 * s);
   const kern = Array.from({ length: 2 * r + 1 }, (_, i) => Math.exp(-((i - r) ** 2) / (2 * s * s)));
@@ -403,7 +403,7 @@ export function smoothFieldAmplitude(field: ReefField, sigmaM = FIELD_SMOOTHING_
     const l = Math.hypot(dx[i], dz[i]);
     if (l > 1e-6) { field.dirX[i] = dx[i] / l; field.dirZ[i] = dz[i] / l; }
   }
-  smoothOnsetTimes(field);
+  smoothOnsetTimes(field, onsetSigmaM);
 }
 
 export function computeReefField(req: ReefFieldRequest): ReefField {
