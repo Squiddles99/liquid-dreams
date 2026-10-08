@@ -162,20 +162,22 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       const x = grid.x0 + col * grid.cellM;
       const i = row * grid.nx + col;
       const background = depthBg(x);
-      // Domain-warp the query point: the ledges, the shelf polygon, the reef heads and the sand pockets
-      // are all read at p' = p + w(p), so their edges wander naturally instead of following dead-straight
-      // lines. depthBg/background above stay on the unwarped coast profile. w is interpolated from the
+      // Domain-warp the query point: the rock's reach, the reef heads and the sand pockets are read at p' = p + w(p), so
+      // their edges wander naturally instead of following dead-straight lines (the depth profile reads p itself: below). depthBg/background above stay on the unwarped coast profile. w is interpolated from the
       // coarse warpDxField/warpDzField lattice (bilinear interpolation of already amplitude-clamped
       // vectors is a convex combination of them, so it stays within the same cap); the 15 m peak taper
       // is re-applied here at the exact query point so the take-off corner is untouched exactly, not just
       // approximately, regardless of how (0, 0) happens to sit relative to the coarse lattice.
       const warpTaper = smoothstep(0, 15, Math.hypot(x, z));
       const xw = x + lattice(warpDxField, x, z) * warpTaper, zw = z + lattice(warpDzField, x, z) * warpTaper;
-      const sd = lattice(sdf, xw, zw);
+      // The depth profile (the ledge, the face, the shelf's ramp) reads the ledge at the unwarped point, so the breaking line
+      // follows the drawn ledges (one-curl spec §3c: read at the warped point it wandered ±5–7 m every 35 m, and the onset
+      // with it); the rock's look (its reach, the heads, pockets and weed) keeps the warped point.
+      const sd = lattice(sdf, xw, zw), sdDepth = lattice(sdf, x, z);
       let d: number, s: number, w = 0;
-      if (sd < 0) {
+      if (sdDepth < 0) {
         // Outside the shelf: the reef face, then the steady slope out to the open sea (seawardDepth, spec 2026-10-02 §3).
-        d = background + (seawardDepth(-sd, x, p) - background) * edgeFade;
+        d = background + (seawardDepth(-sdDepth, x, p) - background) * edgeFade;
         // Seaward the reef's rock runs on down the slope (spec 2026-10-02 §4): weedy rock with scattered sand pockets out to
         // rockReachM(z) seaward of the ledge line, then the open coast's bed; the map's edges fade to the open coast too.
         const rock = 1 - smoothstep(rockReachM(zw) - ROCK_EDGE_M, rockReachM(zw) + ROCK_EDGE_M, -sd);
@@ -195,7 +197,7 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
         let interior = Math.max(p.minDepthM, p.shelfDepthM - p.headReliefM * heads);
         const pocket = Math.max(lattice(pockets, xw, zw), smoothstep(-0.4, -0.7, relief));
         interior = interior + (p.pocketDepthM - interior) * pocket;
-        const dShelf = p.ledgeDepthM + (interior - p.ledgeDepthM) * smoothstep(0, 20, sd);
+        const dShelf = p.ledgeDepthM + (interior - p.ledgeDepthM) * smoothstep(0, 20, sdDepth);
         const sShelf = pocket * smoothstep(0, 3, sd);
         // Weed dominates rock over most of the shelf; the noise only carves occasional bare-rock gaps,
         // and reef heads carry extra weed of their own.

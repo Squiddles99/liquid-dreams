@@ -47,7 +47,9 @@ export interface BreakParams {
   peel: number;
   /** The curl's top speed along the crest (m/s; one-curl spec §3d): each breaking line's curl reaches a section no sooner
    * than this from the section up the line (and never before it). Baked into the reef field's onset record. The reef's
-   * own first-leg peel is 8–14 m/s: the default only filters noise. */
+   * own first-leg peel is 8–14 m/s, but each level's line starts at the south ledge's far end and sweeps up the right at
+   * ~20 m/s: at 20 the floor's holds piled up and reached the peak 1.4 s late at 6 ft (one-curl Task 3). At 40 the peak
+   * and the first leg are the bake's own; the curl's running max still holds the pockets. */
   curlMaxMs: number;
   /** The pile's churn (render only; the CPU model ignores it): lumps up to this fraction of the pile's height… */
   churnSize: number;
@@ -75,7 +77,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   psiNudge: 0,
   randomDial: 0,
   peel: 1,
-  curlMaxMs: 20,
+  curlMaxMs: 40,
   churnSize: 0.2,
   churnSpeed: 1,
 };
