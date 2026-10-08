@@ -20,26 +20,31 @@ function tree() {
 const state = (os: THREE.Object3D[]) => os.map((o) => [o.visible, o.frustumCulled]);
 
 describe('withOnlyShown (a load-time render that builds just the objects that first show mid-game)', () => {
-  it('shows the given objects (and the groups holding them) with culling off, and hides everything else', async () => {
+  it('shows the given objects (and the groups holding them) with culling off, and hides everything else', () => {
     const t = tree();
     let seen: boolean[][] = [];
-    await withOnlyShown(t.root, [t.target, t.nested], async () => {
+    withOnlyShown(t.root, [t.target, t.nested], () => {
       seen = state([t.root, t.other, t.target, t.hiddenGroup, t.nested, t.sibling]);
     });
     expect(seen).toEqual([[true, true], [false, true], [true, false], [true, true], [true, false], [false, false]]);
   });
 
-  it('puts visibility and culling back as they were afterwards', async () => {
+  it('puts visibility and culling back as soon as the render returns, and hands back what it returned', async () => {
     const t = tree();
     const before = state([t.root, t.other, t.target, t.hiddenGroup, t.nested, t.sibling]);
-    await withOnlyShown(t.root, [t.target, t.nested], async () => {});
+    let finish = (): void => undefined;
+    const built = new Promise<void>((resolve) => { finish = resolve; });
+    const out = withOnlyShown(t.root, [t.target, t.nested], () => built);
+    expect(out).toBe(built);
     expect(state([t.root, t.other, t.target, t.hiddenGroup, t.nested, t.sibling])).toEqual(before);
+    finish();
+    await out;
   });
 
-  it('puts them back when the render fails, and passes the failure on', async () => {
+  it('puts them back when the render fails, and passes the failure on', () => {
     const t = tree();
     const before = state([t.root, t.other, t.target, t.hiddenGroup, t.nested, t.sibling]);
-    await expect(withOnlyShown(t.root, [t.target], async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    expect(() => withOnlyShown(t.root, [t.target], () => { throw new Error('boom'); })).toThrow('boom');
     expect(state([t.root, t.other, t.target, t.hiddenGroup, t.nested, t.sibling])).toEqual(before);
   });
 });

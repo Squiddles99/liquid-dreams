@@ -75,9 +75,9 @@ const AIRBORNE = STAGES.filter((s) => stageCurves(ratioFor(s), P).collapse <= FO
 const LANDED_OPEN = STAGES.filter((s) => { const c = stageCurves(ratioFor(s), P).collapse; return c > FOAM_ONSET_COLLAPSE + 0.02 && c < FOAM_SETTLE_COLLAPSE; });
 
 describe('breaking criterion and stage', () => {
-  it('breaks once H ≥ 0.44·hmin (γ = 0.78, δ = 1): about 2.6 m over the 6 m ledge', () => {
-    expect(breakingRatio(0.43 * 6, 6, P)).toBeLessThan(1);
-    expect(breakingRatio(0.45 * 6, 6, P)).toBeGreaterThan(1);
+  it('breaks once H ≥ 0.67·hmin (γ = 0.78, δ = 0.2: R1 §2): about 4 m over the 6 m ledge', () => {
+    expect(breakingRatio(0.66 * 6, 6, P)).toBeLessThan(1);
+    expect(breakingRatio(0.69 * 6, 6, P)).toBeGreaterThan(1);
   });
   it('breakingHeightThreshold: r > 1 exactly above it, on both sides of the depth floor', () => {
     for (const p of [P, { ...P, gamma: 0.6, delta: 0.3, hFloorM: 1 }]) for (const amp of [0.3, 1, 2.2]) for (const hmin of [0.05, 0.3, 0.6, 1.5, 6, 30]) {
@@ -96,7 +96,7 @@ describe('breaking criterion and stage', () => {
     for (let h = 0.5; h <= 60; h += 0.25) { const d = breakingDepth(h); expect(d).toBeGreaterThanOrEqual(prev); prev = d; }
   });
   it('floors the drained depth, so a wave taller than the water stays finite', () => {
-    expect(breakingRatio(5, 0.4, P)).toBeCloseTo(5 / (0.78 * 0.3), 9);
+    expect(breakingRatio(5, 0.3, P)).toBeCloseTo(5 / (0.78 * 0.3), 9);
     expect(breakingRatio(0, 6, P)).toBe(0);
   });
   it('is proportional to the height and to 1/hmin above the floor (no blow-up as the drained depth nears it)', () => {
@@ -105,7 +105,7 @@ describe('breaking criterion and stage', () => {
       expect(breakingRatio(H, hmin / 2, P)).toBeCloseTo(2 * breakingRatio(H, hmin, P), 12);
     }
     // A wave twice its breaking height (the old ratio: ~2.7e1 at the floor) reads 2.
-    expect(breakingRatio(2 * 0.78 * 6 / 1.78, 6, P)).toBeCloseTo(2, 12);
+    expect(breakingRatio((2 * 0.78 * 6) / (1 + 0.78 * P.delta), 6, P)).toBeCloseTo(2, 12);
   });
   it('stage is 0 below r = 1, 1 from r = 1 + Δ, and never decreases as r grows', () => {
     expect(breakingStage(0.99, P)).toBe(0);

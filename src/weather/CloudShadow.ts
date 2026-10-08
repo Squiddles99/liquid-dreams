@@ -74,6 +74,11 @@ export class CloudShadow implements SunlightSource {
     })().compute(SHADOW_SIZE * SHADOW_SIZE) as THREE.ComputeNode;
   }
 
+  /** Its compute passes, for App.prewarm to build while the game loads (built on the first frame, they froze it). */
+  get computePasses(): THREE.ComputeNode[] {
+    return [this.slicePass, this.allPass, this.clearPass];
+  }
+
   /** March every texel (after a jump) or the next quarter of the rows. */
   update(renderer: THREE.WebGPURenderer, all: boolean): void {
     if (all) {

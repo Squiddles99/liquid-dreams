@@ -1,10 +1,15 @@
-// Scratch: rides the set's wave live (the real frame loop: slow-mo, takeoff camera), a key-pressing bot (W from 4 s before
-// the peak, Space 0.4 s real after "caught", then A to go left), and saves frames at the takeoff's moments.
-// npx electron tools/_takeoffLive.mjs [--base=http://localhost:5188/] [--out=<prefix>] [--slow=full|gentle|off]
+// Scratch: rides the set's wave live (the real frame loop: slow-mo, takeoff camera), a key-pressing bot (W from 3 s before
+// the crest reaches the take-off spot, App.rideArriveS (R1 §3), Space 0.4 s real after "caught", then A to go left), and
+// saves frames at the takeoff's moments.
+// npx electron tools/_takeoffLive.mjs [--base=http://localhost:5188/] [--out=<prefix>] [--slow=full|gentle|off] [--ft=7]
+//   [--experience=beginner|intermediate|expert] (the front setting, default intermediate) [--until=<sim s after the peak, default 12>]
+//   [--pop=<real s after caught before Space, default 0.4>]
 import { app, BrowserWindow } from 'electron';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base') ?? 'http://localhost:5173/', out = arg('out') ?? 'takeoff-', slow = arg('slow') ?? 'full', aim = Number(arg('aim') ?? 60);
+const ft = arg('ft') ? Number(arg('ft')) : null;
+const experience = arg('experience') ?? 'intermediate', until = Number(arg('until') ?? 12), pop = Number(arg('pop') ?? 0.4);
 app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -15,12 +20,20 @@ app.whenReady().then(async () => {
   const win = new BrowserWindow({ width: 1600, height: 900, show: true, webPreferences: { backgroundThrottling: false } });
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   await win.loadURL(base + '?frontend=off');
-  await win.webContents.executeJavaScript(`localStorage.setItem('liquid-dreams.front-settings.v1', JSON.stringify({ takeoffSlowMo: '${slow}' }))`);
+  await win.webContents.executeJavaScript(`localStorage.setItem('liquid-dreams.front-settings.v1', JSON.stringify({ takeoffSlowMo: '${slow}', experience: '${experience}' }))`);
   for (let i = 0; i < 120; i++) { if (await win.webContents.executeJavaScript('!!window.liquidDreams?.field')) break; await sleep(1000); }
   await sleep(12000);
+  if (ft !== null) await win.webContents.executeJavaScript(`(async () => {
+    const a = window.liquidDreams, before = a.field, c = JSON.parse(JSON.stringify(a.conditions));
+    c.swell = { ...c.swell, sizeFt: ${ft}, periodS: 15, directionDeg: 225 }; c.tideM = 0;
+    a.applyMoment({ conditions: c, camera: a.rig.getPose(), simTime: a.clock.simTime, paused: false });
+    for (let i = 0; i < 120 && (a.field === before || !a.field); i++) await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 3000));
+  })()`);
   await win.webContents.executeJavaScript(`(() => {
     document.querySelector('#loading')?.remove();
     window.__aim = ${aim};
+    window.__until = ${until};
     const a = window.liquidDreams;
     a.setPaused(false);
     if (!a.ride.active) a.toggleRide();
@@ -30,9 +43,9 @@ app.whenReady().then(async () => {
     const loop = () => {
       const b = a.ride.body; if (!b) return;
       const sim = a.clock.simTime - arr, real = (performance.now() - t0) / 1000;
-      if (!paddling && sim > -4) { key('keydown', 'KeyW'); paddling = true; }
+      if (!paddling && a.clock.simTime > a.rideArriveS - 3) { key('keydown', 'KeyW'); paddling = true; }
       if (b.caught && caughtReal === null) { caughtReal = real; snaps.push('caught'); }
-      if (!popped && caughtReal !== null && real > caughtReal + 0.4) { key('keydown', 'Space'); setTimeout(() => key('keyup', 'Space'), 50); key('keyup', 'KeyW'); popped = true; snaps.push('popup'); }
+      if (!popped && caughtReal !== null && real > caughtReal + ${pop}) { key('keydown', 'Space'); setTimeout(() => key('keyup', 'Space'), 50); key('keyup', 'KeyW'); popped = true; snaps.push('popup'); }
       if (b.phase === 'ride' && !left && b.phaseT > 0.25) { key('keydown', 'KeyA'); left = true; snaps.push('turn'); }
       const travel = Math.atan2(b.water.dirX, -b.water.dirZ) * 180 / Math.PI, off = ((b.headingDeg - travel + 540) % 360) - 180;
       const aim = window.__aim ?? 60; if (left) { if (off < -aim - 5) key('keyup', 'KeyA'); else if (off > -aim + 5) key('keydown', 'KeyA'); }

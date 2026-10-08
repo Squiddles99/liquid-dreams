@@ -7,15 +7,17 @@ import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from './peakFace';
 import { computeReefField } from './reefField';
 
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
-const set = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+// 6 ft, not the 4 ft default (R1 §2): a 4 ft wave no longer breaks at the peak, only soft on the shelf inshore of it.
+const SIX = (() => { const c = cloneConditions(DEFAULT_CONDITIONS); c.swell.sizeFt = 6; return c; })();
+const set = wavesOfSet(1, SIX, DEFAULT_SET_PARAMS);
 const biggest = set.reduce((a, b) => (b.heightM > a.heightM ? b : a));
 
 describe('the face-height readout at the peak', () => {
-  it('reads the biggest default wave as breaking, with a face of 3.5–6.5 m', () => {
+  it('reads the biggest 6 ft wave as breaking, with a face of 2.5–6.5 m (3.0 m since R1 §2: it breaks on the face, not on the slope)', () => {
     const t = biggest.arrivalS;
-    const face = peakFace(field, wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS), t, DEFAULT_BREAK_PARAMS)!;
+    const face = peakFace(field, wavesNear(t, SIX, DEFAULT_SET_PARAMS), t, DEFAULT_BREAK_PARAMS)!;
     expect(face.stage).toBeGreaterThan(0);
-    expect(face.faceM).toBeGreaterThan(3.5);
+    expect(face.faceM).toBeGreaterThan(2.5);
     // 5.9 m on the reef build's face, which stands the wave up taller at the peak (under 5 m on the softened ramp; plan 2026-10-02 Task 4).
     expect(face.faceM).toBeLessThan(6.5);
     expect(formatPeakFace(face, true)).toMatch(/^\d+\.\d m \(\d+ ft\) face, breaking$/);

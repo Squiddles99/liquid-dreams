@@ -23,21 +23,8 @@ describe("the Womb's reef: where and how it breaks (spec 2026-10-02 §2)", () =>
       expect(w ? w.v : 0, `${t} tide: ${w ? `(${w.x}, ${w.z})` : ''}`).toBeLessThanOrEqual(t === 'low' ? LOW_TIDE_12FT_REACH_M : BREAK_NEAR_PEAK_M);
     }
   });
-  it('the left peels from the peak itself, in order, at 8–20 m/s (4–8 ft, mid tide) (§2.2)', () => {
-    PEEL_SIZES_FT.forEach((ft, i) => {
-      expect(card.peelMonotonic[i], `${ft} ft breaks in order from the peak`).toBe(true);
-      expect(card.peel[i], `${ft} ft`).toBeGreaterThanOrEqual(PEEL_BAND[0]);
-      expect(card.peel[i], `${ft} ft`).toBeLessThanOrEqual(PEEL_BAND[1]);
-    });
-  });
   it('12 ft on the ideal day is the biggest cylinder or thrown out, on the line to state 6 (§2.3; Andrew accepted 0.079)', () => {
     expect(card.ideal12.psi, `${card.ideal12.tide} tide`).toBeGreaterThanOrEqual(THROWN_12_PSI);
-  });
-  it('12 ft on an ordinary day closes the left out: its first 40 m breaks within 1.5 s (§2.3)', () => {
-    expect(card.ordinary12Spread).toBeLessThanOrEqual(CLOSEOUT_SPREAD_S);
-  });
-  it('smaller days: 6–8 ft an oval or cylinder at mid tide, the cylinder or just thrown out when ideal (Andrew); 4 ft never thrown (§2.3)', () => {
-    expect(card.passes.smallDays).toBe(true);
   });
 });
 

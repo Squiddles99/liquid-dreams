@@ -60,20 +60,20 @@ export interface ReefParams {
  * The Womb's reef. The ledges are Andrew's satellite line (Google Earth, 2026-10-05: "the red line is the breaking reef of
  * our left-handed ride"), turned into the game's frame, whose beach runs north–south (the real one runs 347°), with the
  * take-off 100–110 m off the sand (coastProfile.SHORE_X). The depths are round 2's (spec 2026-10-05-womb-profile-design
- * §3.1) but for the basin: deep water right up to a short, steep face (20 m rising to 3.5 m over 20 m), so the wave breaks
+ * §3.1) but for the basin: deep water right up to a short, steep face (15 m rising to 3.5 m over 15 m), so the wave breaks
  * at the edge and throws instead of tripping on a slope in front of the take-off. The basin is the coast's own offshore
- * depth (coastProfile.REEF_SURROUND_DEPTH_M), so it is open to the sea: round 2's 25–30 m, ringed by the coast's 13 m,
- * spread the swell out before this broad edge (it reached the reef at 0.66× its open-sea height, the 6 ft curl ~2.4 m:
- * Andrew, "TINY"), and a 20 m basin in that 13 m coast bent the swell a right angle at its walls and focused a band of it
- * through the take-off (Andrew, 2026-10-05: "the adjacent right-angle swell", "the v shaped wedge"). Round 2's left ran at
- * 40°, along the swell's own travel: the swell slid along it and bent a right angle onto the shelf (Andrew, 2026-10-05:
- * "the wave goes into a right angle").
+ * depth (coastProfile.REEF_SURROUND_DEPTH_M) and runs at that one depth to the far field (R1 §1, 2026-10-06): along a
+ * straight ledge the curl runs c / sin α, and Snell's law conserves that from wherever the swell's direction is set, so a
+ * coast ramp in front of the reef turned every swell toward east and the curl ran 12–15 m/s; a shallower shelf never slows
+ * it. At one depth the swell arrives unbent and the first section peeled 9.7 and 10.1 m/s at 6 and 8 ft, hollow 1.0
+ * (measured 2026-10-06). History: round 2's 25–30 m basin in a 13 m coast spread the swell out (Andrew, "TINY") and a
+ * 20 m basin bent it a right angle at its walls (Andrew, 2026-10-05: "the adjacent right-angle swell").
  */
 export const DEFAULT_REEF_PARAMS: ReefParams = {
   ledgeDepthM: 3.5,
-  faceBaseDepthM: 20,
-  faceWidthM: 20,
-  slopeDepthM: 20,
+  faceBaseDepthM: 15,
+  faceWidthM: 15,
+  slopeDepthM: 15,
   slopeEndM: 200,
   shelfDepthM: 4,
   headReliefM: 2.5,
