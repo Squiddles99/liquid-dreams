@@ -110,3 +110,21 @@ it. If the cover can dissolve before the replay frame, treat it as H1 under the 
 
 Fixed-step physics accumulator; R3's 6 ft expert red; in-game curve share at curl weight 1; R9 minors; the agreed
 order after this segment (wave form step 4 → lineup truth → blocky patches → R4).
+
+## 8. Addendum 1 (Fable, 2026-10-08 evening): Gate A ruling
+
+Evidence: `evidence/ride-stall/stall-table.md`, `t3-paddle-out.txt`, handover `2026-10-08-ride-stall-gate-a-opus.md`.
+
+- **§2's stall was machine state.** 0 of 17 focused riding passes reproduced it on either code; the r10b passes two
+  hours earlier had it in every pass while other sessions loaded the GPU. Ruled H3 "not the game", confirmed by one
+  deliberate contention run (plan Task 4a). The 6 ft "same sim time" in §2 was two back-to-back runs in the same
+  machine state, not an in-game trigger.
+- **§3's gate is restated.** Frames #0–1 of every pass were CDP `Profiler.start` (164–314 ms); the recorder now starts
+  after it (plan 4b). Gate: **no riding frame ≥ 150 ms in two focused no-flag runs per size, riding median within
+  ±10 % of Task 3's no-flag runs** (6 ft ~32–34 ms, 12 ft ~60–68 ms); the ride probe unchanged.
+- **The paddling frame is hidden by the paddle-out cover** (replay frame 4.0 s before the dissolve). The profiler's
+  `?frontend=off` path drew the rider for the first time on the board (114–115 sync pipelines): a profiler artefact,
+  removed in 4b by drawing her once before the cam pass.
+- **Promoted:** `asyncPipelines.pending` stays 1 under the paddle-out cover, so the cover dissolves on the 4 s
+  give-up, ~2.5 s late, every paddle-out. Plan 4c finds the build (never-settling promise, per-frame churn, or the
+  capture-target context) and fixes it, timeboxed 90 min; its gate: dissolve by smooth frames within ~2.1 s of release.

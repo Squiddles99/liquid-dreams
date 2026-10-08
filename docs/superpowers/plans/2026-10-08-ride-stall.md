@@ -640,12 +640,135 @@ writes Task 4 as an addendum below.
 
 ---
 
-### Task 4: the fix (addendum by Fable after Gate A)
+### Task 4: Fable's Gate A ruling (2026-10-08 evening) and the work that follows
 
-Written once the stall table is read. It will be one of the spec's §5 rows, in this plan's step style, with its test
-first. The gate it must meet (spec §3): two focused runs per size, `riding max ≤ 2 × riding median` in all four,
-median within ±10 % of Task 3's, and `PROBE_RIDE_STATIONS=1 npx vitest run src/ride/rideStations.probe.test.ts`
-reading `lazy (R9)` 0.00 cm, 972 / 982 sums. The three recipes, so the addendum is a choice, not a design:
+**Ruling, from `evidence/ride-stall/stall-table.md` and `t3-paddle-out.txt` (Opus, 17 focused passes):**
+
+1. **The ~450 ms riding stall is machine state, not the game.** Zero of 17 focused riding passes reproduced it, on the
+   branch's code and on main's, with and without the instruments; the r10b passes two hours earlier (same code) had it
+   in every pass, with a ~1.1 s period at 12 ft-b, while other sessions loaded the GPU (`riderArt.py`, a second dev
+   server, Epic). Spec §5's nearest row is H3 "not the game". Accepted, with one deliberate reproduction (4a) so the
+   claim rests on an experiment, not an absence.
+2. **The spec §3 gate had a profiler artefact**: frames #0–1 of every pass are CDP `Profiler.start` (164–314 ms on
+   the renderer main thread, `blink.mojom.DevToolsSession`). The recorder must start after `Profiler.start` returns
+   (4b). With those frames out, today's worst riding frame is 59–127 ms. **The gate is restated** (spec §3, addendum):
+   no riding frame ≥ 150 ms in two focused runs per size, riding median within ±10 % of Task 3's no-flag runs.
+3. **The paddling frame is hidden by the paddle-out cover** in the real path (the replay frame drew 4.0 s before the
+   dissolve). In the profiler's `?frontend=off` path it is the rider's first draw (114–115 *sync* pipelines) plus the
+   replay: a profiler artefact, removed by drawing the rider once before the cam pass (4b).
+4. **One game-facing find, promoted:** under the paddle-out cover `asyncPipelines.pending` stayed 1 the whole time, so
+   every frame fed the gate `Infinity` and the cover dissolved on `SmoothFramesGate`'s 4 s give-up, ~2.5 s after the
+   work was done. Every paddle-out pays it. Note `pending` reads 0 after the dissolve only because renders outside
+   `run()` take the sync path and are never counted, so that reading says nothing: the pending build is either a
+   promise that never settles, a pipeline rebuilt every frame (a cache-key churn, which would cost a sync compile per
+   frame in play too), or a build against the cover-time `captureTarget` context. 4c finds which, timeboxed.
+5. Opus's rulings in the ledger are all accepted (port 5174, the `ldStall:` marker, one trace over both passes, the
+   loop for t0, main-code A/B, Playwright for step 5).
+6. Not this segment's: the four untracked `src/dev/_probe.test.ts`, `_spike.test.ts`, `_spk2.test.ts`, `_spk3.test.ts`
+   (2026-09-29 scratch, 196 lines) break `tsc` in the main checkout. Andrew decides their deletion; Fable has asked.
+
+The three pre-written recipes below (H1/H2/H3) stay as reference; none is executed as written. The work is 4a–4c.
+
+#### Task 4a: reproduce the stall on purpose (timebox 30 min)
+
+**Files:** `docs/superpowers/evidence/ride-stall/t4a-contention.md`
+
+- [ ] **Step 1:** Open the game in a second window that presents on the same GPU: Chrome at `http://localhost:5174/`
+  (front end on, the lookout animating; WebGPU on), placed beside the profiler's window, not behind it (it must keep
+  presenting: an occluded page stops). Keep the profiler window focused (its `grab()` does).
+- [ ] **Step 2:** One focused run per size with `--stall` (no `--trace`): `t4a-6ft-`, `t4a-12ft-`. Run
+  `_stallScan.mjs --min=150` on the riding cpuprofiles and `_traceStall.mjs`-style reading of the frames json (dt ≥ 200
+  rows: gpu ms, creations).
+- [ ] **Step 3:** Write `t4a-contention.md`: the riding lines; idle runs ≥ 150 ms (count, ms, sim time); for each, gpu
+  ms and creations (expected: gpu small, creations 0, as in r10b). Verdict line: "reproduced under contention:
+  idle runs return with no page-side cause" or "did not reproduce under a second WebGPU page". Either closes item 1;
+  the second means the r10b contention was something else (a non-browser GPU user), still not the game. Close the
+  second window.
+- [ ] **Step 4: Commit.** `evidence(ride-stall): the stall under deliberate GPU contention (Task 4a)`.
+
+#### Task 4b: the profiler's own artefacts (recorder start, the rider's first draw, the ride-phase wait)
+
+**Files:** `tools/_rideProfile.mjs`, `docs/superpowers/evidence/ride-stall/t4b-{6ft,6ft-b,12ft,12ft-b}-report.txt`
+
+- [ ] **Step 1: Recorder after `Profiler.start`.** In all three passes, move
+  `await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true')` and `await stallBegin()` to
+  *after* `await dbg.sendCommand('Profiler.start')` (the cpuprofile then begins a frame or two before the frame
+  stats; that is fine, the stats are the gate). Add to the report's first line: `recorder after Profiler.start`.
+- [ ] **Step 2: Draw the rider once before the cam pass.** After the field is built and before
+  `clock.setTime(simT)` for the cam pass, run in the page:
+
+```js
+  await win.webContents.executeJavaScript(`(async () => {
+    const a = window.liquidDreams; a.toggleRide();
+    for (let i = 0; i < 180; i++) await new Promise((r) => requestAnimationFrame(r));
+    a.toggleRide();
+  })()`);
+```
+
+  (three seconds of frames with the rider on the board: her 114–115 pipelines build, the replay drains; `toggleRide`
+  off ends the ride and the clock is set to `simT` next anyway). Comment it: the real path builds these under the
+  paddle-out cover; the profiler path has no cover.
+- [ ] **Step 3: The ride-phase wait** at the `for (let i = 0; i < 300; i++)` loop: 300 → 600 (60 s), and if the loop
+  exits without `phase === 'ride'`, write `riding pass began in phase <phase>` into the report's first line (it
+  already prints `phase ${r0.phase} -> ${r1.phase}`; make the first line say it too so a paddle-start run is never
+  mistaken for a riding one).
+- [ ] **Step 4: Four focused runs, no flags** (`t4b-6ft-`, `t4b-6ft-b-`, `t4b-12ft-`, `t4b-12ft-b-`), reports copied to
+  evidence. Expected: paddling max well under 1 s (no rider build, no replay burst in the pass), riding max < 150 ms,
+  riding medians within ±10 % of Task 3's no-flag runs (6 ft ~32–34 ms, 12 ft ~60–68 ms). Paste the four riding and
+  four paddling lines into the commit message.
+- [ ] **Step 5: Commit.** `tools(ride-stall): frame stats start after Profiler.start; the rider drawn once before the cam pass; 60 s ride wait (Task 4b)`.
+
+#### Task 4c: the pipeline that holds the paddle-out cover (timebox 90 min; a write-up if the box runs out)
+
+**Files:**
+- Modify: `src/render/asyncPipelines.ts` (a dev readout of what is building), `src/render/asyncPipelines.test.ts` (new
+  or existing)
+- Create: `docs/superpowers/evidence/ride-stall/t4c-pending.md`
+- Then the fix's own files, by cause (step 4)
+
+**Interfaces:**
+- Produces: `AsyncPipelines.inflight(): string[]` — one label per build still pending, from the render object three
+  hands `getForRender` (`renderObject.material?.name || renderObject.material?.type`, plus `renderObject.object?.name`
+  and the render context's target: `renderObject.context?.renderTarget?.texture?.name ?? 'canvas'`), and
+  `AsyncPipelines.started: number` (builds started since construction). The frame log gets a `building: string`
+  field: `inflight().join('|')` (empty when none).
+
+- [ ] **Step 1: Failing test** (`src/render/asyncPipelines.test.ts`): with a fake renderer whose `_pipelines.getForRender(ro, promises)` pushes a promise it controls when `promises` is an array, inside `run()` the wrapper reports `inflight()` as `['Foo (canvas)']` for `ro = { material: { name: 'Foo' }, context: {} }` until the promise resolves, then `[]`, and `started` is 1; outside `run()` nothing is counted.
+- [ ] **Step 2:** Run it: FAIL (`inflight` not a function).
+- [ ] **Step 3:** Implement: keep a `Map<Promise, string>` beside `building`; `inflight()` returns its values. Add
+  `building` to `FrameRecord` and to `App.frame`'s record. Test green, `tsc` clean.
+- [ ] **Step 4: Measure the real path** as Task 3 step 5 did (Playwright Chromium on 5174, front end on, fresh load,
+  `probePaddleOut()`), with the creation hooks installed **before the app boots** (`page.addInitScript` with the same
+  prototype patches as the profiler's, labels included) and the frame log on from the select screen. Write
+  `t4c-pending.md`: the `building` label(s) per frame from release to dissolve, the creations in those frames, and
+  which of the three causes it is:
+  - **a never-settling promise**: the same label every frame, no creations after the first: three's
+    `createRenderPipelineAsync` promise for that object never resolved (a WGSL error surfaces as a rejected promise;
+    `p.finally` still deletes it, so a *pending* one is a promise three never resolves, e.g. a pipeline three
+    dropped from its cache before it finished). Fix: in `AsyncPipelines`, time a build out of `building` after
+    `BUILD_TIMEOUT_MS = 2000` (it still completes; only the gate stops waiting), and log the label once at
+    `console.warn` in dev so the object is named for a later fix of its own.
+  - **a churn**: a new creation every frame with the same material: its cache key changes per frame (a node whose
+    value is baked into the key, a texture swapped per frame). Fix at the material: make the per-frame value a
+    `uniform`. Measure play too: the same churn costs a sync compile per frame outside the cover.
+  - **the capture-target context**: the label names the `captureTarget`; the on-screen context's pipelines then build
+    sync at the dissolve. Fix: under the cover, render into the canvas (the cover is opaque) or feed the gate from the
+    canvas target's builds only; choose the one that keeps `loadingScreen`'s screenshot path working.
+- [ ] **Step 5: The fix**, test-first where a test can see it (the timeout: a unit test with a never-resolving fake;
+  the churn: a test that two frames' keys are equal; the context: the Playwright measurement). Gate: in the same
+  Playwright flow, the paddle-out dissolves by smooth frames, i.e. within `minHold` 1500 ms + 10 frames of `release`
+  (≤ ~2.1 s after release, not ~4.0 s), and `pending` reads 0 within 10 frames of release. Paste the frame rows into
+  `t4c-pending.md`.
+- [ ] **Step 6: Commit** (`fix(ride-stall): …` naming the cause) and push. If the box runs out at step 4, commit the
+  measurement and the `inflight()` readout with the write-up and move on to Task 5: the follow-up goes in the handover.
+
+#### Closing check for the segment (after 4b and 4c)
+
+`PROBE_RIDE_STATIONS=1 npx vitest run src/ride/rideStations.probe.test.ts` reads `lazy (R9)` 0.00 cm, 972 / 982 sums
+(no ride code changed; run it anyway so the handover can say so). `npx vitest run` full suite: the baseline count and
+any new reds by file. `npx tsc --noEmit` clean (with the four stray files deleted or moved out, per Andrew).
+
+#### Reference: the three recipes as written before Gate A (not executed)
 
 - **H1 (a GPU burst): a per-frame tick cap in `FoamSchedule.planTicks`** (`src/whitewater/foamStep.ts` L86–94),
   `planTicks(simTime, replayTicks, maxPerFrame = Infinity)`: on a replay, `clear` is true and the plan holds the first
