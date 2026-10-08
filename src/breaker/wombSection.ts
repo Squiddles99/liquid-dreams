@@ -251,8 +251,11 @@ export function sectionFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): {
   const oBack = back[SHEET_KNOTS - 1][0] - back[SHEET_KNOTS - 1][2], oFront = front[0][0] - front[0][2];
   const drawn = roundedCurl(k, tipLife(Math.min(2, Math.max(0, phase))));
   const curl = drawn.map((d, i): SectionKnot => {
-    const s = at(SWELL_CURL_U[i]), f = (i + 1) / (CURL_KNOTS + 1);
-    const dy = d[1] + shift, dh = d[0] - (oBack + (oFront - oBack) * f), h = s[2] + (dh - s[2]) * g;
+    const f = (i + 1) / (CURL_KNOTS + 1), dy = d[1] + shift, dh = d[0] - (oBack + (oFront - oBack) * f);
+    // At g = 1 the sheet at the swell drawing's home is weighted 1 − g = 0: not read (ride-framerate R10a; equal to 1 ulp,
+    // s + (d − s) × 1 is not always d bit for bit).
+    if (g === 1) { const under = at(dh); return [d[0], dy, dh, under[0], under[1]]; }
+    const s = at(SWELL_CURL_U[i]), h = s[2] + (dh - s[2]) * g;
     // Its offset is from the sheet at its own home (at phase 0, s itself: no offset).
     const under = g > 0 ? at(h) : s;
     return [s[0] + (d[0] - s[0]) * g, s[1] + (dy - s[1]) * g, h, under[0], under[1]];

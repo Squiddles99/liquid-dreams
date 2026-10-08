@@ -118,16 +118,17 @@ export type SheetFrom = (x: number, z: number, start: { x: number; z: number } |
 export const WARM_RESIDUAL_M = 0.001;
 
 /**
- * The ride reads a station's sheet warm with this many inversion passes (R8; the first read of a curve, and any warm read
- * that has not converged, cold). Probe (rideStations.probe, R3's rider) max |Δy| under the board against the cold
+ * R8's warm read of a station's sheet, this many inversion passes (the first read of a curve, and any warm read that has
+ * not converged, cold). Not the game's since Task 14 (App reads lazily and cold, R9); the probe's R8 rows only. Probe (rideStations.probe, R3's rider) max |Δy| under the board against the cold
  * 4-pass build, and wave sums per frame (cold 5187 at 6 ft, 5272 at 12 ft): 1 pass 0.05 cm, 4189 / 12 ft 1.24 cm, 5543;
  * 2 passes 0.04 cm, 3469 / 1.30 cm, 4482; 3 passes 0.01 cm, 4310 / 3.45 cm, 4771.
  */
 export const RIDE_WARM_PASSES = 2;
 
 export interface SectionOptions {
-  /** `curves` counts the station curves built (the probe); `reads`, if given, the samples' sheet reads a lazy curve makes. */
-  stats?: { curves: number; reads?: number };
+  /** `curves` counts the station curves built (the probe); `reads`, if given, the samples' sheet reads a lazy curve makes;
+   * `full`, if given, the curves built at curlWeight 1 (R10a skips their swell reads). */
+  stats?: { curves: number; reads?: number; full?: number };
   /** Keeps the curves across frames (CurveCache; the probe: R7 failed the tolerance). */
   kept?: CurveCache;
   /** The station's sheet read along its normal warm (ride-framerate R8): the first read cold, each later one started from
@@ -194,7 +195,7 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
         return [p[0] / A, p[1] / A];
       });
       cache.set(s, c);
-      if (stats) stats.curves++;
+      if (stats) { stats.curves++; if (stats.full !== undefined && curlWeight(s.section) === 1) stats.full++; }
       if (key !== null) kept!.set(key, s.section, c);
     }
     return c;
@@ -218,7 +219,7 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
       };
       c = { u, y, yAt };
       lazy.set(s, c);
-      if (stats) stats.curves++;
+      if (stats) { stats.curves++; if (stats.full !== undefined && curlWeight(s.section) === 1) stats.full++; }
     }
     return c;
   };
