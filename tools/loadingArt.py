@@ -4,12 +4,14 @@
   public/loading/<name>-full.webp  the picture at its own width, capped at 3840 px (1440p and 4K)
   public/loading/emblem.webp       the spinning coin's face: the emblem alone, square, 1024 px, transparent outside
 
-The slide names it prints go on index.html's #ld-cover data-slides (the cover picks one at random each time).
+It then writes index.html itself: the slide names onto #ld-cover's data-slides (the cover picks one at random each time),
+and art/loading/cards.json (each picture's fact card, keyed by its name) into the inline #ld-cards block.
 
 Run with: python tools/loadingArt.py   (rerun whenever art/loading/ changes; the outputs are committed)
 """
 import base64
 import io
+import json
 import os
 import re
 from PIL import Image
@@ -56,4 +58,16 @@ square.paste(emblem, ((side - emblem.size[0]) // 2, (side - emblem.size[1]) // 2
 square.resize((1024, 1024), Image.LANCZOS).save(os.path.join(OUT, "emblem.webp"), "WEBP", quality=90, method=6)
 report("emblem.webp")
 
-print(f'data-slides="{" ".join(names)}"')
+# The page: the slide list and the cards (only cards whose picture exists; a card naming a missing picture is reported).
+cards = json.load(open(os.path.join(SRC, "cards.json"), encoding="utf-8"))
+for k in sorted(set(cards) - set(names)):
+    print(f"warning: cards.json has a card for '{k}' but art/loading/slides/ has no picture of that name")
+shown = {k: cards[k] for k in names if k in cards}
+page_path = os.path.join(ROOT, "index.html")
+page = open(page_path, encoding="utf-8", newline="").read()  # keeps its CRLFs
+page, n1 = re.subn(r'data-slides="[^"]*"', f'data-slides="{" ".join(names)}"', page, count=1)
+blob = json.dumps(shown, ensure_ascii=False, separators=(",", ":")).replace("</", r"<\/")
+page, n2 = re.subn(r'(<script type="application/json" id="ld-cards">).*?(</script>)', lambda m: m.group(1) + blob + m.group(2), page, count=1, flags=re.S)
+assert n1 == 1 and n2 == 1, "index.html has lost #ld-cover's data-slides or the #ld-cards block"
+open(page_path, "w", encoding="utf-8", newline="").write(page)
+print(f'index.html: {len(names)} slides, {len(shown)} with cards')
