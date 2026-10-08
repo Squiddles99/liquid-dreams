@@ -293,3 +293,86 @@ That's identical to R3; the expert case is R3's committed red.
   equalities still hold.
 - The read-count test never asserts that some u brackets 2 or more intervals.
 
+
+## Task 14, 2026-10-08
+
+**Done, still red.** The game now reads the probe's `lazy (R9)` row exactly. `App.rideWater` calls
+`withSections(sheet, this.ribbonStations, tide)` with no `along`. `RIDE_WARM_PASSES` is the probe's only, and its doc says so.
+The profiler takes `--sim-t=<s>` (a CLI flag, not an env var). Riding at sim-t 300, window focused:
+
+| run | cam ms | riding mean / median |
+|---|---|---|
+| r10-6ft | 7.1 | 78.3 / 70.8 ms (69 frames) |
+| r10-6ft-b | 4.4 | 67.3 / 57.0 ms (80 frames) |
+| r10-12ft | 4.5 | **91.9 / 93.2 ms** (59 frames) |
+| r10-12ft-b | 6.3 | **98.7 / 98.3 ms** (55 frames) |
+
+Other clean 6 ft runs at sim-t 300 (a scratch copy of the profiler, or before the focus fix) gave 57.3 / 48.5, 46.0 / 43.1,
+68.2 / 62.9 and 48.5 / 46.2. **12 ft pairs within 7%. 6 ft does not pair tightly (46–78 ms).** The set, the wave and the
+arrival are the same every run (set called from 306.00 s, arrives 397.94 s). The bot's pop-up (0.4 s after catch) and its
+A key are timed in real time, though, so her line drifts with the frame rate. These are not R9's moments, so the rows
+don't compare to R9's 45.5 / 79.4 run for run. The probe gives R8's removal: wave sums per frame go up 16% at 6 ft (1120 to
+1297) and down 6% at 12 ft (1330 to 1251).
+
+| commit | what |
+|---|---|
+| 5eb7502 | R8 out of `App.rideWater`; probe row `lazy + warm 2 passes (R8, not the game)` |
+| a19741a | `_rideProfile.mjs --sim-t` |
+| 1cd7cc1 | `r10-probe.txt` |
+| (focus) | the profiler stays on top and focused, and line 1 says whether it was |
+| 4a4872e | `r10-6ft`, `-6ft-b`, `-12ft`, `-12ft-b` reports |
+
+**Checks.** `src/ride`: 91 passed, 1 failed (the expert `heldS` 0.78 s, R3's committed red), 3 skipped. `npx tsc --noEmit`
+is clean. The probe's `lazy (R9)` row is 0.00 cm at both sizes (1297 / 1251 sums per frame), unchanged. `heldS` on the cold
+lazy read (`rideOnSections.test.ts`, on main now) is 14.33 / 15.02 / 12.45 / 0.78 s, identical to R3.
+
+**Found on the way: an unfocused profiler window runs about 8× slower.** Runs with cam at ~35 ms instead of 4.4 ride at
+400–520 ms. In a scratch copy that times `ride.step` in the page, the same sim time, place and ~570 stations cost 199 ms
+per step in a slow run and ~30 ms in a clean one. So the whole process is slower; the ride does no extra work. The slow
+runs had `document.hasFocus()` false and the clean runs true: Windows throttles the unfocused process. Two runs ran at
+1 fps (~1000 ms frames, likely the display asleep); a keep-awake hold stopped that. **R9's "8× more work per frame at a
+different moment" (r9-6ft-b, 458 ms) was very likely this, not the moment.** The profiler now sets
+`setAlwaysOnTop` + `app.focus({ steal: true })` + `win.focus()` before the cam pass, and line 1 records the focus at the
+cam pass and at the end. Reports from unfocused or loaded runs stay git-ignored in `cpuprofiles` (`*-unfocused`,
+`*-slow`, `*-loaded*`).
+
+### Where the riding frame goes (inclusive, the four r10 runs)
+
+| | 6 ft | 12 ft |
+|---|---|---|
+| `sectionFrameKnots`, all callers | 52–54% | 56–57% |
+| `lazyOf` (the ride's curves) | 50% | 49–51% |
+| the curl knots (`wombSection.ts:219`) | 33–34% | 37% |
+| `sumWaves` | 49–51% | 53–55% |
+| `stepRide` | 38–40% | 43–44% |
+| spray `breakEmitters` | 14–15% | 19% |
+| `cameraPose` | 13–14% | 10–11% |
+| `traceStations` | 10–11% | 9% |
+| `curveSamples` | 8–10% | < top 40 |
+
+The mix is R9's. The curl knots are still a third of the frame, which is R10a's target.
+
+### Rulings (Task 14)
+
+- `--sim-t` is a CLI flag. The clock goes back to it after the field build (which takes as long as it takes), and to
+  it + 6 s before the set is called. That makes the set call, wave and arrival the same every run. Cost if wrong: the cam
+  pass starts at sim-t, not at the moment the conditions were applied (cam only).
+- sim-t 300, picked arbitrarily and used for every size and run. Cost if wrong: one moment of the sea. Tasks 15–16 use
+  the same one.
+- The profiler steals focus and stays on top while it runs (~1.5 min per run). Cost if wrong: it covers Andrew's screen
+  during a run.
+- The bot's real-time pop-up and steering timing are not changed: that's a tool change beyond "a fixed sim time". Cost if
+  wrong: 6 ft runs keep a ~±15% spread, so compare 6 ft over 2+ runs.
+- `RIDE_WARM_PASSES`'s doc comment now says probe-only (`sectionWater.ts`, the brief's scope). Cost if wrong: none.
+- Profiled on my own server on 5174 (a temporary `launch.json` entry `ld-5174`, reverted, never committed). 5173 served
+  another tree: its `sectionWater.ts` lacks Task 14's doc line. Cost if wrong: none.
+- Unfocused or loaded reports are excluded from `evidence`. Cost if wrong: none (kept git-ignored).
+
+### Deferred minors
+
+- The four R9 minors stand (NaN sentinel, unused `stats.reads`, the flat-sheet fold counter, the single-interval u).
+- The bot's real-time input timing (above).
+- Every profiled paddling pass has one 4–6 s frame (max 3.9–6.2 s). It's outside the riding window and may be the first
+  ride build or a pipeline compile. Not investigated.
+- Another session's `python tools/riderArt.py` held a core during the early runs, and Epic Games Launcher was resident
+  (GPU 0–57% between runs).

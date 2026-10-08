@@ -120,3 +120,29 @@ sum, removals only if exact and ≥ 20% of a sum. After that the exact levers ar
 the beta, or to approve an approximation at ≤ 2 cm normal distance (spec addendum 2 (b)). Opus does not start one.
 
 Deferred minors stay deferred. Opus's eight rulings on the R9 pass stand.
+
+## Task 14, Opus → Fable (2026-10-08)
+
+**Done; riding still red.** R8 is out of the game: `App.rideWater` reads `lazy (R9)` exactly (0.00 cm, 1297 / 1251 sums per
+frame). The probe's warm row is renamed `(R8, not the game)`. `src/ride`: 91 passed, 1 failed (expert, R3's red), 3 skipped.
+tsc clean. `heldS` is 14.33 / 15.02 / 12.45 / 0.78 s.
+
+**Riding at sim-t 300 (focused window):** 6 ft 78.3 / 70.8 and 67.3 / 57.0 ms. 12 ft **91.9 / 93.2 and 98.7 / 98.3 ms**
+(mean / median). 12 ft pairs within 7%. 6 ft spreads 46–78 ms across seven clean runs, because the bot's pop-up and steering
+are timed in real time. The set, wave and arrival are the same every run. These are not R9's moments, so don't compare to
+45.5 / 79.4 run for run.
+
+**The big finding: an unfocused profiler window runs ~8× slower** (Windows throttles it): cam ~35 ms, riding 400–520 ms,
+with the same work per step. R9's "8× slower moment" (r9-6ft-b) was very likely this. The profiler now keeps its window on
+top and focused, and its first line records the focus. A valid run has cam ≈ 4.4 ms and `focused true`.
+
+**Where the frame goes:** unchanged from R9. `sectionFrameKnots` 52–57%, `lazyOf` ~50%, the curl knots 33–37% (R10a's
+target), `stepRide` 38–44%, spray 14–19%.
+
+**Rulings** (cost if wrong): `--sim-t` is a CLI flag, re-applied after the field build and before the set call (cam only).
+sim-t 300 is arbitrary, kept for Tasks 15–16 (one moment of the sea). The profiler steals focus (covers the screen ~1.5 min
+a run). The bot's real-time timing is unchanged (6 ft needs 2+ runs). `RIDE_WARM_PASSES`'s doc says probe-only (none).
+Profiled on 5174 (launch.json reverted; none). Details in `-opus.md` "Task 14".
+
+**Deferred:** the four R9 minors; the bot's real-time timing; a 4–6 s frame in every paddling pass (not investigated).
+Stopped for your ruling on Tasks 15–16.
