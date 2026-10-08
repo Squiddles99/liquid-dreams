@@ -3,7 +3,7 @@ import type { Plant } from '../heath/plants';
 import { AudioEngine } from './AudioEngine';
 import type { Point3 } from './hits';
 import { NearbyCache } from './levels';
-import { MUSIC_FILES } from './musicFiles';
+import { FRONT_END_FILES, MUSIC_FILES } from './musicFiles';
 import { type Deck, MusicPlayer, type Track, buildPlaylist, mediaDeck, musicStatusText } from './musicPlayer';
 import { type SoundFrame, type SoundInput, SoundModel } from './soundModel';
 import type { SoundParams } from './soundParams';
@@ -51,9 +51,12 @@ export class SoundSystem {
   private ctx: ReturnType<SoundAudio['context']> | null = null;
   private engine: ReturnType<SoundAudio['engine']> | null = null;
   private music: MusicPlayer | null = null;
+  /** The select screens' song, looping (a one-track playlist crossfades into itself). */
+  private frontMusic: MusicPlayer | null = null;
   private running = false;
   private frontEndMusic = false;
-  private resumeMusic = false;
+  /** Whether the album plays when the menus close: yes, unless the player had paused it before they opened. */
+  private resumeMusic = true;
   private readonly model = new SoundModel();
   private readonly nearby = new NearbyCache();
   private disarm: (() => void) | null = null;
@@ -63,6 +66,7 @@ export class SoundSystem {
     private readonly params: SoundParams,
     private readonly playlist: readonly Track[] = buildPlaylist(MUSIC_FILES),
     private readonly audio: SoundAudio = BROWSER_AUDIO,
+    private readonly frontPlaylist: readonly Track[] = buildPlaylist(FRONT_END_FILES),
   ) {}
 
   /** The audio is actually running (not merely created and still suspended by the browser). */
@@ -97,6 +101,7 @@ export class SoundSystem {
       this.ctx = ctx;
       this.engine = engine;
       this.music = new MusicPlayer(this.playlist, (url) => this.audio.deck(ctx, engine.groups.music, url));
+      this.frontMusic = new MusicPlayer(this.frontPlaylist, (url) => this.audio.deck(ctx, engine.groups.music, url));
       this.applyParams();
       ctx.addEventListener('statechange', () => this.checkRunning());
     }
@@ -110,7 +115,8 @@ export class SoundSystem {
     this.disarm?.();
     this.disarm = null;
     this.engine?.setEffectsOn(!hidden());
-    if (!this.frontEndMusic) this.music?.play();
+    if (this.frontEndMusic) this.frontMusic?.play();
+    else this.music?.play();
     this.syncStatus();
   }
 
@@ -119,15 +125,20 @@ export class SoundSystem {
     return this.running && this.ctx && this.engine ? { ctx: this.ctx as unknown as BaseAudioContext, out: this.engine.groups.ui } : null;
   }
 
-  /** The front end's music slot: its own track if one ships (none this step), the playlist paused meanwhile. */
+  /** The front end's music slot: its own song while the select screens are open, the album paused meanwhile. */
   setFrontEndMusic(on: boolean): void {
     if (on === this.frontEndMusic) return;
     this.frontEndMusic = on;
     if (!this.music) return;
     if (on) {
-      this.resumeMusic = this.music.status !== 'no music' && this.music.playing;
+      // Before the sound runs the album hasn't started yet: it still plays once the menus close.
+      if (this.running) this.resumeMusic = this.music.status !== 'no music' && this.music.playing;
       this.music.pause();
-    } else if (this.resumeMusic) this.music.play();
+      if (this.running) this.frontMusic?.play();
+    } else {
+      this.frontMusic?.pause();
+      if (this.resumeMusic) this.music.play();
+    }
   }
 
   private onVisibility = (): void => {
@@ -164,6 +175,7 @@ export class SoundSystem {
     this.engine.setListener(listener.position, listener.forward, listener.up);
     this.engine.apply(frame);
     this.music?.update(realDtS);
+    this.frontMusic?.update(realDtS);
     this.syncStatus();
     this.lastFrame = frame;
     this.lastUpdateMs = performance.now() - t0;
