@@ -132,4 +132,6 @@ Candidate plants of that coast:
 - rice flower (*Pimelea ferruginea*)
 - coast spyridium (*Spyridium globulosum*)
 
-I'll write each plant's fact from a checked source when its picture lands, never from memory.
+I'll write each plant's fact from a checked source when its picture lands, never from memory. Where a Noongar name
+or use exists and is interesting, the card carries it too, as a second line (Andrew, 2026-10-08), from a checked source.
+The first card's mockup: `docs/select-ui-refs/_mockups/loading-balga.html` (the balga, grass tree).
