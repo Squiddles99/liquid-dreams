@@ -5,7 +5,8 @@ loads (into `public/loading/`), so only originals go here.
 
 | File | What |
 |---|---|
-| `slides/*.png` | the loading pictures, full-bleed behind the coin; the cover picks one at random each time (aim for 3840 px wide or more) |
+| `boot/crew-wave.png` | the start-up picture: the crew surfing (Andrew's redraw, 2026-10-08), shown only while the game first loads into the menus (aim for 3840 px wide or more) |
+| `slides/*.png` | the later covers' pictures (paddling out, back to the dune), full-bleed behind the coin; each cover picks one at random |
 | `logo-emblem.svg` | the grasstree emblem alone, transparent background; the script bakes it into the spinning coin's face |
 | `photo-wide.png` | the first loading photo (surf shot, AI-generated, composed in Canva); kept, no longer shown |
 | `logo-wordmark.svg` | "Liquid Dreams" alone, transparent background; kept, no longer shown |

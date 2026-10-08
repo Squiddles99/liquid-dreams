@@ -1,6 +1,7 @@
-// The loading cover's pictures: index.html lists them on #ld-cover's data-slides (names of the copies
-// tools/loadingArt.py makes from art/loading/slides/). Its inline script picks the start-up one; each later cover picks
-// again here, never the one just shown when there is another.
+// The loading cover's pictures: index.html names the start-up one on #ld-cover's data-boot (the crew surfing, shown only
+// while the game first loads) and lists the slides on data-slides (copies tools/loadingArt.py makes from
+// art/loading/slides/). Each later cover (paddling out, back to the dune) picks a slide here, never the one just shown
+// when there is another.
 
 /** The names in a data-slides attribute. */
 export function parseSlides(attr: string | undefined): string[] {
