@@ -4,9 +4,10 @@ import { SHORE_X, depthBg } from '../seabed/coastProfile';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
-import { RUN_DIP, computeReefField, gainAhead, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
-import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, ONSET_UNTIL_OFFSET, onsetGain, onsetHeight, onsetTime } from './breaking';
+import { PEEL_MAX_HOLD_S, RUN_DIP, computeOnsetRecord, computeReefField, gainAhead, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
+import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_UNTIL_OFFSET, onsetGain, onsetHeight, onsetTime } from './breaking';
 import { BREAKING_RATIO } from './setWaveModel';
+import { setWaveHeight } from './reefReport';
 
 const reef05 = buildBathymetry();
 const reef1 = downsample(reef05, 2);
@@ -206,7 +207,9 @@ describe('the onset record', () => {
   it('a higher level breaks no earlier: at every node the time since onset never rises from level to level, 0 where unbroken', () => {
     let worst = 0, unbrokenRunning = 0;
     for (let i = 0; i < f.tau.length; i += 13) {
-      for (let k = 1; k < ONSET_LEVELS; k++) worst = Math.max(worst, f.onset[i * R + 1 + 2 * k] - f.onset[i * R + 1 + 2 * (k - 1)]);
+      // Where both levels have broken: an unbroken level reads 0, and a level below held for its turn (the curl, one-curl
+      // Task 2) reads negative beside it.
+      for (let k = 1; k < ONSET_LEVELS; k++) if (f.onset[i * R] >= ONSET_LEVEL_Q[k]) worst = Math.max(worst, f.onset[i * R + 1 + 2 * k] - f.onset[i * R + 1 + 2 * (k - 1)]);
       // Unbroken: the running maximum below the level by more than the dips the carry bridges (3%).
       for (let k = 0; k < ONSET_LEVELS; k++) if (0.97 * ONSET_LEVEL_Q[k] > f.onset[i * R] && f.onset[i * R + 1 + 2 * k] !== 0) unbrokenRunning++;
     }
@@ -341,12 +344,85 @@ describe('until carries the hold (one-curl Task 1)', () => {
         const err = rec[U + k] - u0 - (f.tau[i] - sampleField(f, bx, bz).tau);
         if (process.env.PROBE_UNTIL) console.log(`ERR ${cells} ${err.toFixed(3)} u0 ${u0.toFixed(2)}`);
         // One cell back the read is (nearly) the node's own ray: 0.02 s. Two cells back the bilinear blends neighbouring rays,
-        // whose holds differ along the crest by the stretch's gradient (~0.07 s per metre at 1.7): within 0.1 s (max 0.09).
-        if (Math.abs(err) >= (cells === 1 ? 0.02 : 0.1)) errs.push(`node ${i} level ${k}, ${cells} cell(s) back: ${err.toFixed(3)} s`);
+        // whose holds differ along the crest (the stretch's gradient, ~0.07 s per metre at 1.7, and with the curl a step at a
+        // held pocket's edge): within 0.2 s (max 0.09 stretch alone, 0.15 with the curl).
+        if (Math.abs(err) >= (cells === 1 ? 0.02 : 0.2)) errs.push(`node ${i} level ${k}, ${cells} cell(s) back: ${err.toFixed(3)} s`);
         checked++;
       }
     }
     expect(checked).toBeGreaterThan(3);
     expect(errs).toEqual([]);
+  });
+});
+
+/** Points every `step` m along a polyline's first `metres` (its distance from the start, and the point). */
+const walk = (line: readonly (readonly [number, number])[], metres: number, step: number): { s: number; x: number; z: number }[] => {
+  const out: { s: number; x: number; z: number }[] = [];
+  for (let sAt = 0; sAt <= metres; sAt += step) {
+    let base = 0;
+    for (let j = 0; j + 1 < line.length; j++) {
+      const [a, b] = [line[j], line[j + 1]], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (sAt <= base + len || j + 2 === line.length) { const d = sAt - base; out.push({ s: sAt, x: a[0] + ((b[0] - a[0]) * d) / len, z: a[1] + ((b[1] - a[1]) * d) / len }); break; }
+      base += len;
+    }
+  }
+  return out;
+};
+
+describe('one curl per breaking line, in the bake (one-curl Task 2)', () => {
+  const h6 = setWaveHeight(6), P = DEFAULT_BREAK_PARAMS, R = ONSET_RECORD_LENGTH;
+  const k = Math.floor(Math.log(1 / (h6 * onsetGain(P) * ONSET_LEVEL_Q0)) / Math.log(ONSET_LEVEL_RATIO));
+  it("along the north ledge's first 120 m the 6 ft level's onset (as held) never comes earlier down the line", () => {
+    const f = f225;
+    const pts: { s: number; T: number }[] = [];
+    for (const p of walk(NORTH_LEDGE, 120, 1)) {
+      // 4 m inshore along the swell: the level has broken there, and τ − tb (stretched) is its ray's curl time.
+      const d = sampleField(f, p.x, p.z), x = p.x + 4 * d.dirX, z = p.z + 4 * d.dirZ;
+      const rec = sampleOnset(f, x, z);
+      if (!rec || rec[0] < ONSET_LEVEL_Q[k]) continue;
+      pts.push({ s: p.s, T: sampleField(f, x, z).tau - rec[1 + 2 * k] });
+    }
+    expect(pts.length).toBeGreaterThan(80);
+    let worst = 0, at = 0, latest = -Infinity;
+    for (const q of pts) { if (latest - q.T > worst) { worst = latest - q.T; at = q.s; } latest = Math.max(latest, q.T); }
+    if (process.env.PROBE_CURL) console.log(`level ${k}: ${pts.map((q) => `${q.s}:${q.T.toFixed(2)}`).join(' ')}`);
+    expect(worst, `the most the onset comes early down the line (s), at ${at} m`).toBeLessThanOrEqual(0.05);
+  });
+});
+
+describe('the curl pass leaves a reef with no pockets as it was (one-curl Task 2, Review Focus 1)', () => {
+  // The peel stretch tests' synthetic shelf (peelStretch.test.ts): the swell runs +x at 8 m/s over a 1 m grid and every
+  // level breaks along x = line(z) + 15·ln(q/0.3).
+  const NX = 140, NZ = 120, C = 8, R = ONSET_RECORD_LENGTH;
+  const shelf = (line: (z: number) => number, curl: boolean, curlMaxMs?: number) => {
+    const n = NX * NZ, grid = { x0: 0, z0: 0, cellM: 1, nx: NX, nz: NZ };
+    const tau = new Float32Array(n), amp = new Float32Array(n).fill(1), hmin = new Float32Array(n).fill(6), hminBreak = new Float32Array(n);
+    const kk = new Float32Array(n), dirX = new Float32Array(n).fill(1), dirZ = new Float32Array(n), fixed = new Uint8Array(n);
+    const psiHere = new Float32Array(n * ONSET_LEVELS).fill(0.05), omega = (2 * Math.PI) / 14;
+    for (let row = 0; row < NZ; row++) for (let col = 0; col < NX; col++) {
+      const i = row * NX + col;
+      tau[i] = col / C; kk[i] = omega / C; hminBreak[i] = 1 / (0.3 * Math.exp((col - line(row)) / 15));
+    }
+    const order = Uint32Array.from(Array.from({ length: n }, (_, i) => i).sort((a, b) => tau[a] - tau[b] || a - b));
+    return computeOnsetRecord({ grid, tau, amp, hmin, hminBreak, k: kk, dirX, dirZ, fixed, order, omega, psiHere, peel: 1, curl, curlMaxMs });
+  };
+  it('a line breaking ever later down the line: the record is the same with the curl (unbounded) as without', () => {
+    const line = (z: number) => 30 + 0.25 * z;
+    const a = shelf(line, false), b = shelf(line, true, Infinity);
+    let worst = 0;
+    for (let i = 0; i < a.length; i++) worst = Math.max(worst, Math.abs(a[i] - b[i]));
+    expect(worst).toBeLessThanOrEqual(1e-6);
+  });
+  it('a pocket down the line: only the pocket is held, up to its cap, and the line before it is as it was', () => {
+    // From row 0 the line breaks later row by row (0.03 s per metre of crest); rows 70–80 jut 8 m seaward (break 1 s early).
+    const line = (z: number) => 30 + 0.25 * z - (z >= 70 && z <= 80 ? 8 : 0);
+    const a = shelf(line, false), b = shelf(line, true, Infinity);
+    const lvl = 3, slot = 1 + 2 * lvl, at = (r: Float32Array, row: number, j: number) => r[(row * NX + 130) * R + j];
+    for (let row = 0; row < 66; row++) expect(Math.abs(at(b, row, slot) - at(a, row, slot)), `row ${row}`).toBeLessThanOrEqual(1e-6);
+    for (let row = 72; row <= 78; row++) {
+      const d = at(b, row, ONSET_DELAY_OFFSET + lvl);
+      expect(d, `row ${row} held`).toBeGreaterThan(0.5);
+      expect(d, `row ${row} capped`).toBeLessThanOrEqual(PEEL_MAX_HOLD_S);
+    }
   });
 });
