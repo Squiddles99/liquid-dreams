@@ -3,7 +3,7 @@ import type { GangStaging } from '../frontend/staging';
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
 import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
-import { withSections } from '../ride/sectionWater';
+import { RIDE_WARM_PASSES, type SheetFrom, withSections } from '../ride/sectionWater';
 import { TAKEOFF_ANCHOR, TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from '../ride/takeoff';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
@@ -27,7 +27,8 @@ import { ticksToHear } from '../sound/hits';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { SetWaves } from '../breaker/SetWaves';
 import { ReefFlow } from '../breaker/flowNodes';
-import { type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import { type SetWaveResult, type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import type { FieldSample } from '../breaker/fieldSample';
 import { currentBindings, keyLabel } from '../ride/bindings';
 import { RideSession, rideMessage } from '../ride/RideSession';
 import { type Experience, TUNING } from '../ride/ridePhysics';
@@ -202,6 +203,10 @@ export class App {
    * lens from it (Andrew 2026-10-04: over her shoulder in the tube, and the surfacing drops on the lens). */
   private ribbonStations: readonly StationEntry[] = [];
   private rideCover = 0;
+  /** This frame's ride water (App.rideWater at the clock's time), built once while riding and read by the ride step, the
+   * camera and the underwater check (plan 2026-10-07 ride-framerate Task 2), at its sim time (a reset jumps the clock); null
+   * between frames and when not riding. */
+  private frameRideWater: { t: number; water: WaterFn } | null = null;
   private tubeLensWet = 0;
   private rideWave = 0;
   /** Sim time the crest reaches the take-off spot (the capture bots paddle from 3 s before it). */
@@ -837,7 +842,8 @@ export class App {
     // Under the breaking ribbon the surface is the drawn section, not the sheet under it: inside a 6 ft tube the sheet stood
     // 1.45 m over an eye at 0.29 m and the view went underwater (Opus, 2026-10-06). The eye in the tube is over the floor.
     if (water !== null && this.ribbonStations.length > 0) {
-      const drawn = this.rideWater(this.clock.simTime)(cam.x, cam.z);
+      const t = this.clock.simTime, shared = this.frameRideWater?.t === t ? this.frameRideWater.water : null;
+      const drawn = (shared ?? this.rideWater(t))(cam.x, cam.z);
       if (drawn.onSection) water = drawn.y;
     }
     // The lineup camera too: a steep face can outrun its float and bury it for a second or two as a set passes.
@@ -1594,14 +1600,17 @@ export class App {
     // The sheet as SetWaves draws it: no whitewater pile, the swell's front leaned and no breaking shape (the ribbon draws it).
     const o = this.breakParams.enabled ? { ...breakOptions(field, this.breakParams, this.offshoreMs), pile: false, shape: 'lean' as const } : undefined;
     // The land and the rocks under the board (null while the land loads): the board runs aground on them.
+    const fieldAt = (a: number, b: number): FieldSample => sampleField(field, a, b);
+    const sum = (a: number, b: number, f: FieldSample): SetWaveResult => sumWaves(a, b, t, f, waves, ctx, o);
     const sheet: WaterFn = (x, z) => {
-      const w = waterAt(x, z, tide, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
+      const w = waterAt(x, z, tide, ctx.omega, fieldAt, sum);
       const bed = this.groundAt(x, z);
       return bed === null ? w : { ...w, bedY: bed };
     };
     // Where the breaking ribbon draws, the board stands on its sections (the wave that is drawn), from this frame's
-    // stations (traced at the clock's time).
-    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide) : sheet;
+    // stations (traced at the clock's time); a station's sheet along its normal is read warm (sectionWater R8).
+    const along: SheetFrom = (x, z, start, passes) => waterAt(x, z, tide, ctx.omega, fieldAt, sum, start, passes);
+    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide, { along: { at: along, passes: RIDE_WARM_PASSES } }) : sheet;
   }
 
   /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */
@@ -2045,6 +2054,7 @@ export class App {
       // The drawn sea under the board (the FFT's long swell rides on the set waves), matched to the request it answers.
       this.rideOffset.read(this.probe.latestSeq, this.probe.heightAt(RIDE_PROBE), realDt);
       const water = this.rideWater(this.clock.simTime);
+      this.frameRideWater = { t: this.clock.simTime, water };
       const event = this.ride.step(simDt, this.input, water);
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
       else if (event) this.perf.flash(rideMessage(event));
@@ -2087,6 +2097,7 @@ export class App {
     this.stepKelp(events);
     this.stepSpray();
     this.updateUnderwater();
+    this.frameRideWater = null;
     // The Bombie (4c-3): its latest two bursts (final review I4), hidden underwater.
     const bursts = burstsAt(this.clock.simTime, this.bombieWaves(this.clock.simTime));
     this.bombieBurst = bursts[0] ?? null;

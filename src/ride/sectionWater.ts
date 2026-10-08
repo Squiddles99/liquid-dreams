@@ -1,7 +1,7 @@
 import type { Station, StationEntry } from '../breaker/crestTrace';
-import { EDGE_OUTER_UNITS, curlWeight, sectionPoint, sectionSamples } from '../breaker/wombSection';
+import { EDGE_OUTER_UNITS, type SectionSample, curlWeight, sectionPoint, sectionSamples } from '../breaker/wombSection';
 import type { P2 } from '../breaker/wombProfile';
-import type { WaterFn } from './water';
+import { INVERT_ITERATIONS, type WaterAt, type WaterFn } from './water';
 
 /**
  * The water the ride stands on where the breaking ribbon draws (plan 2026-10-05-womb-profile-step3 3d): the crest
@@ -24,23 +24,205 @@ export const MAX_SECTION_SLOPE = 2;
 export const MAX_ALONG_M = 6;
 
 /**
+ * The ride's stations are this far apart along the crest (m; spec 2026-10-07 ride-framerate R6). The ribbon spaces them by
+ * the camera's distance (crestTrace.SPACING_PER_M: 8 cm under the ride camera), but their sections are smoothed over
+ * SECTION_SMOOTHING_M (4 m) of crest, so a curve every metre draws the same water for a fraction of the curves.
+ * PROBE_ROW_THIN
+ */
+export const RIDE_STATION_SPACING_M = 1;
+/** No two thinned stations are closer than this share of the spacing. */
+const THIN_MIN_SHARE = 0.9;
+
+/**
+ * The stations of each run (between gaps) thinned to about one per `spacingM` of arc: the first, then the station nearest
+ * `spacingM` on from the last kept (no nearer than THIN_MIN_SHARE of it), and the run's last (in place of the last kept if
+ * that one is too near it, unless that is the first). Gaps are kept; a run shorter than the spacing keeps its first.
+ */
+export function thinStations(entries: readonly StationEntry[], spacingM: number): StationEntry[] {
+  const out: StationEntry[] = [];
+  let run: Station[] = [];
+  const flush = (): void => {
+    if (run.length === 0) return;
+    const dir = Math.sign(run[run.length - 1].arc - run[0].arc) || 1, p = (s: Station): number => dir * (s.arc - run[0].arc);
+    const kept = [0];
+    for (;;) {
+      const last = kept[kept.length - 1], from = p(run[last]), target = from + spacingM;
+      let j = last + 1;
+      while (j < run.length && p(run[j]) < from + THIN_MIN_SHARE * spacingM) j++;
+      if (j >= run.length) break;
+      while (j + 1 < run.length && Math.abs(p(run[j + 1]) - target) < Math.abs(p(run[j]) - target)) j++;
+      kept.push(j);
+    }
+    const end = run.length - 1;
+    if (kept[kept.length - 1] !== end) {
+      if (p(run[end]) - p(run[kept[kept.length - 1]]) >= THIN_MIN_SHARE * spacingM) kept.push(end);
+      else if (kept.length > 1) kept[kept.length - 1] = end;
+    }
+    for (const i of kept) out.push(run[i]);
+    run = [];
+  };
+  for (const e of entries) {
+    if (e.gap) { flush(); out.push(e); } else run.push(e);
+  }
+  flush();
+  return out;
+}
+
+/** A cached curve is reused while the station's A (m), phase and hollow are each within this of the ones it was built at. */
+export const CURVE_REUSE_STEP = 1 / 64;
+
+interface KeptCurve { A: number; phase: number; hollow: number; frame: number; curve: P2[] }
+
+/**
+ * Station curves kept across frames (spec 2026-10-07 ride-framerate R7): the stations ride their crest and are traced anew
+ * every frame, but in its own units (A, along its normal) the sheet under a station is near steady from frame to frame.
+ * `keyOf` names a station's place on its wave (null: not kept); a curve is reused for the station at that place while
+ * its numbers are within CURVE_REUSE_STEP and it is at most `maxAge` frames old (the station's x, z and normal are this
+ * frame's; only the curve is reused). `built` counts the curves built.
+ */
+export class CurveCache {
+  built = 0;
+  private frame = 0;
+  private readonly kept = new Map<string, KeptCurve>();
+
+  constructor(readonly maxAge: number, readonly keyOf: (s: Station) => string | null) {}
+
+  /** A new frame: curves older than maxAge are dropped. */
+  nextFrame(): void {
+    this.frame++;
+    for (const [k, e] of this.kept) if (this.frame - e.frame > this.maxAge) this.kept.delete(k);
+  }
+
+  clear(): void {
+    this.kept.clear();
+  }
+
+  get(key: string, n: Station['section']): P2[] | undefined {
+    const e = this.kept.get(key);
+    if (!e || this.frame - e.frame > this.maxAge) return undefined;
+    const near = Math.abs(e.A - n.A) <= CURVE_REUSE_STEP && Math.abs(e.phase - n.phase) <= CURVE_REUSE_STEP && Math.abs(e.hollow - n.hollow) <= CURVE_REUSE_STEP;
+    return near ? e.curve : undefined;
+  }
+
+  set(key: string, n: Station['section'], curve: P2[]): void {
+    this.kept.set(key, { A: n.A, phase: n.phase, hollow: n.hollow, frame: this.frame, curve });
+    this.built++;
+  }
+}
+
+/** base's water at (x, z) with its inversion started at `start` (cold when undefined) and `passes` passes (water.waterAt). */
+export type SheetFrom = (x: number, z: number, start: { x: number; z: number } | undefined, passes: number) => WaterAt;
+
+/** A warm read whose inversion would still move its label by more than this (m) is read again cold (as before R8): on the
+ * steep face at 12 ft a neighbour's label can start the inversion on the wrong side of it. */
+export const WARM_RESIDUAL_M = 0.001;
+
+/**
+ * The ride reads a station's sheet warm with this many inversion passes (R8; the first read of a curve, and any warm read
+ * that has not converged, cold). Probe (rideStations.probe, R3's rider) max |Δy| under the board against the cold
+ * 4-pass build, and wave sums per frame (cold 5187 at 6 ft, 5272 at 12 ft): 1 pass 0.05 cm, 4189 / 12 ft 1.24 cm, 5543;
+ * 2 passes 0.04 cm, 3469 / 1.30 cm, 4482; 3 passes 0.01 cm, 4310 / 3.45 cm, 4771.
+ */
+export const RIDE_WARM_PASSES = 2;
+
+export interface SectionOptions {
+  /** `curves` counts the station curves built (the probe); `reads`, if given, the samples' sheet reads a lazy curve makes. */
+  stats?: { curves: number; reads?: number };
+  /** Keeps the curves across frames (CurveCache; the probe: R7 failed the tolerance). */
+  kept?: CurveCache;
+  /** The station's sheet read along its normal warm (ride-framerate R8): the first read cold, each later one started from
+   * the nearest read so far (its label moved along the normal by the distance between them) with `passes` passes. */
+  along?: { at: SheetFrom; passes: number };
+  /** Every sample of a station's curve read when it is built, as before R9 (the probe's reference; `kept` builds so too). */
+  dense?: boolean;
+}
+
+/**
+ * A station's curve (units of A, back to front) read lazily (spec 2026-10-07 ride-framerate R9): every sample's u along the
+ * normal is known from the knots alone (the ride's sheet returns its own argument as the sheet's u, so sectionPoint's u is
+ * w × A × home + A × a_u), and a sample's y is read from the sheet only when a crossing needs it, once. Bit for bit the dense
+ * build's: the same expressions, in the same order.
+ */
+interface LazyCurve {
+  u: Float64Array;
+  /** NaN until read. */
+  y: Float64Array;
+  yAt: (i: number) => number;
+}
+
+/**
  * `base`'s water, with the stations' sections where they draw. `tideM` is the still-water level the sections stand on
  * (the drawn tide: base's own, as App.rideWater passes it).
  */
-export function withSections(base: WaterFn, entries: readonly StationEntry[], tideM: number): WaterFn {
+export function withSections(base: WaterFn, entries: readonly StationEntry[], tideM: number, opts: SectionOptions = {}): WaterFn {
+  const { stats, kept, along } = opts;
   const live = entries.filter((e): e is Station => !e.gap && curlWeight(e.section) > 0);
   if (live.length === 0) return base;
-  const cache = new Map<Station, P2[]>();
-  /** The station's curve (units of A, back to front), its knots sampled from `base` along its normal. */
+  const cache = new Map<Station, P2[]>(), lazy = new Map<Station, LazyCurve>();
+  /** The station's sheet along its normal (u in m from the station; y above `tideM`): its own argument as the sheet's u. */
+  const sheetOf = (s: Station): ((u: number) => P2) => {
+    let sheet = (u: number): P2 => [u, base(s.x + s.nx * u, s.z + s.nz * u).y - tideM];
+    if (along) {
+      const us: number[] = [], lxs: number[] = [], lzs: number[] = [];
+      sheet = (u) => {
+        let j = -1;
+        for (let i = 0; i < us.length; i++) if (j < 0 || Math.abs(us[i] - u) < Math.abs(us[j] - u)) j = i;
+        const start = j < 0 ? undefined : { x: lxs[j] + s.nx * (u - us[j]), z: lzs[j] + s.nz * (u - us[j]) };
+        const px = s.x + s.nx * u, pz = s.z + s.nz * u;
+        let r = along.at(px, pz, start, start ? along.passes : INVERT_ITERATIONS);
+        if (start && !((r.residual ?? Infinity) <= WARM_RESIDUAL_M)) r = along.at(px, pz, undefined, INVERT_ITERATIONS);
+        if (r.lx !== undefined && r.lz !== undefined) { us.push(u); lxs.push(r.lx); lzs.push(r.lz); }
+        return [u, r.y - tideM];
+      };
+    }
+    return sheet;
+  };
+  /** The station's curve (units of A, back to front), its knots sampled from `base` along its normal (dense: every sample). */
   const cached = (s: Station): P2[] => {
     let c = cache.get(s);
+    const key = c ? null : kept?.keyOf(s) ?? null;
+    if (!c && key !== null) {
+      c = kept!.get(key, s.section);
+      if (c) cache.set(s, c);
+    }
     if (!c) {
-      const sheet = (u: number): P2 => [u, base(s.x + s.nx * u, s.z + s.nz * u).y - tideM], A = s.section.A;
-      c = sectionSamples(s.section, sheet).curve.map((q): P2 => { const p = sectionPoint(q, A, sheet); return [p[0] / A, p[1] / A]; });
+      const A = s.section.A, sheet = sheetOf(s);
+      // A sample the sheet does not weigh into (weight 0: on the drawn curl) is its drawn offset alone: the sheet at its home
+      // would be multiplied by 0, so it is not read (each read is a full wave sum; exact, up to the sign of a zero).
+      c = sectionSamples(s.section, sheet).curve.map((q): P2 => {
+        const p = q[5] === 0 ? [A * q[3], A * q[4]] : sectionPoint(q, A, sheet);
+        return [p[0] / A, p[1] / A];
+      });
       cache.set(s, c);
+      if (stats) stats.curves++;
+      if (key !== null) kept!.set(key, s.section, c);
     }
     return c;
   };
+  /** The station's curve read lazily (R9): its knots read now, a sample's y when a crossing needs it. */
+  const lazyOf = (s: Station): LazyCurve => {
+    let c = lazy.get(s);
+    if (!c) {
+      const A = s.section.A, sheet = sheetOf(s), q: readonly SectionSample[] = sectionSamples(s.section, sheet).curve, n = q.length;
+      const u = new Float64Array(n), y = new Float64Array(n).fill(NaN);
+      // sectionPoint's u with the sheet's u its own argument (A × home); weight 0 as the dense build: the drawn offset alone.
+      for (let i = 0; i < n; i++) { const p = q[i]; u[i] = (p[5] === 0 ? A * p[3] : p[5] * (A * p[2]) + A * p[3]) / A; }
+      const yAt = (i: number): number => {
+        let v = y[i];
+        if (v !== v) {
+          const p = q[i];
+          v = y[i] = (p[5] === 0 ? A * p[4] : p[5] * sheet(A * p[2])[1] + A * p[4]) / A;
+          if (stats?.reads !== undefined) stats.reads++;
+        }
+        return v;
+      };
+      c = { u, y, yAt };
+      lazy.set(s, c);
+      if (stats) stats.curves++;
+    }
+    return c;
+  };
+  const dense = opts.dense || kept !== undefined;
   return (x, z) => {
     const w = base(x, z);
     // The two stations either side of the point along the crest (by its offset along each one's t̂), the nearest first.
@@ -54,7 +236,7 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
     const at = (s: Station): { y: number; slopeU: number } | null => {
       const u = (x - s.x) * s.nx + (z - s.z) * s.nz, A = s.section.A;
       if (!(A > 0)) return null;
-      const hit = lowestWetCrossing(cached(s), u / A);
+      const hit = dense ? lowestWetCrossing(cached(s), u / A) : lazyCrossing(lazyOf(s), u / A);
       return hit ? { y: tideM + A * hit.y, slopeU: Math.max(-MAX_SECTION_SLOPE, Math.min(MAX_SECTION_SLOPE, hit.slope)) } : null;
     };
     const a = at(best);
@@ -80,11 +262,20 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
  * toward the beach there: the water lies on its right, below), its height and its slope dy/du. Null if it never crosses u.
  */
 export function lowestWetCrossing(curve: readonly P2[], u: number): { y: number; slope: number } | null {
+  return crossing(curve.length, (i) => curve[i][0], (i) => curve[i][1], u);
+}
+
+/** lowestWetCrossing on a curve read lazily: only the ends of the intervals that hold u are read. */
+function lazyCrossing(c: LazyCurve, u: number): { y: number; slope: number } | null {
+  return crossing(c.u.length, (i) => c.u[i], c.yAt, u);
+}
+
+function crossing(n: number, uAt: (i: number) => number, yAt: (i: number) => number, u: number): { y: number; slope: number } | null {
   let best: { y: number; slope: number } | null = null;
-  for (let i = 0; i + 1 < curve.length; i++) {
-    const [u0, y0] = curve[i], [u1, y1] = curve[i + 1];
+  for (let i = 0; i + 1 < n; i++) {
+    const u0 = uAt(i), u1 = uAt(i + 1);
     if (!(u1 > u0) || u < u0 || u > u1) continue;
-    const f = (u - u0) / (u1 - u0), y = y0 + (y1 - y0) * f;
+    const y0 = yAt(i), y1 = yAt(i + 1), f = (u - u0) / (u1 - u0), y = y0 + (y1 - y0) * f;
     if (!best || y < best.y) best = { y, slope: (y1 - y0) / (u1 - u0) };
   }
   return best;

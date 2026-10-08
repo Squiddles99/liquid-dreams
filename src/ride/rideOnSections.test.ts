@@ -11,13 +11,14 @@ import { withSections } from './sectionWater';
 import { type WaterFn, waterAt } from './water';
 import { type Experience, type RideEvent, TUNING, startBody, stepRide } from './ridePhysics';
 import { TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from './takeoff';
+import { LINE_OFF_DEG, aheadOf } from './rideLine';
 
 /**
  * A rider on the drawn wave (Andrew, 2026-10-05: "the surfer wipes out instantly"): each size's set's biggest wave from the
  * take-off spot, as App.catchSetWave starts it (takeoff.takeoffSpot), the ride standing on the ribbon's sections (App.rideWater).
  * The rider faces the swell and paddles until caught, pops up once the face is steep under the board (as a surfer waits
  * for the wave to stand up: popped as soon as it lifted, the rider was left on the gentle front and the wave ran on), then
- * steers to hold a line along the left.
+ * steers to hold a surfer's line, LINE_OFF_DEG off the swell toward the left, and is gated on riding in front of the crest.
  */
 describe('a ride on the drawn sections', () => {
   // 6 ft at every Experience level (plan Review Focus 5: the assist is forgiveness, not the engine), 12 ft at intermediate.
@@ -29,14 +30,14 @@ describe('a ride on the drawn sections', () => {
     const set = wavesBetween(0, 600, c, DEFAULT_SET_PARAMS).filter((e) => e.arrivalS > 10).slice(0, 8);
     const big = set.reduce((a, b) => (b.heightM > a.heightM ? b : a));
     const o = { ...breakOptions(field, P), pile: false, shape: 'lean' as const }, minHeightM = minRibbonHeight(fieldBreakingHeight(field, P), P);
-    // Her wave's live stations at the last step traced (R2 §3: the ride must not end because they vanished).
-    let herLive = 0;
+    // Her wave's live stations at the last step traced (the ride test reads `ahead` from them).
+    let herStations: Station[] = [];
     const waterAtT = (t: number, cx: number, cz: number): WaterFn => {
       const events = wavesNear(t, c, DEFAULT_SET_PARAMS), waves = events.map(toActiveWave);
       const mine = events.findIndex((e) => Math.abs(e.arrivalS - big.arrivalS) < 1e-6);
       const sheet: WaterFn = (x, z) => waterAt(x, z, c.tideM, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
       const entries = traceStations(field, waves, t, ctx, { cameraX: cx, cameraZ: cz, params: P, minHeightM });
-      herLive = entries.filter((e): e is Station => !e.gap && e.wave === mine).length;
+      herStations = entries.filter((e): e is Station => !e.gap && e.wave === mine);
       return withSections(sheet, entries, c.tideM);
     };
     const { x: sx, z: sz } = takeoffSpot(field, big.heightM, P);
@@ -47,10 +48,12 @@ describe('a ride on the drawn sections', () => {
     const start = waterAtT(t, sx, sz)(sx, sz);
     const swellHeading = Math.atan2(start.dirX, -start.dirZ) / (Math.PI / 180);
     const b = startBody(sx, sz, swellHeading, waterAtT(t, sx, sz));
-    // The left: facing the beach, the rider's left, a little toward the beach (heading 330° at the default swell).
-    const line = swellHeading - 88;
-    const dt = 1 / 60, events: RideEvent[] = [];
-    let popped = false, rodeS = 0;
+    // A surfer's line (R3 §1): LINE_OFF_DEG off the swell toward the left. To hold a place on the face her speed along the
+    // travel must be c; at 12 m/s against c 10 that is 33° off it. (88°, R1–R2, left her ~0.3 m/s along the travel: over the
+    // back within a second of the pop-up, and the "ride" was the board coasting behind the wave.)
+    const line = swellHeading - LINE_OFF_DEG;
+    const dt = 1 / 60, events: RideEvent[] = [], aheadAt: Record<string, number | undefined> = {};
+    let popped = false, rodeS = 0, heldS = 0;
     for (let k = 0; k < 60 * 20; k++) {
       t += dt;
       const water = waterAtT(t, b.x, b.z);
@@ -61,17 +64,25 @@ describe('a ride on the drawn sections', () => {
       if (popup) popped = true;
       const ev = stepRide(b, { paddle: b.phase === 'paddle' && t > arrive - PADDLE_FROM_S, steer: popped ? Math.max(-1, Math.min(1, -err / 30)) : 0, crouch: 0, popup }, water, dt, TUNING[experience]);
       if (ev) events.push(ev);
-      if (b.phase === 'ride') rodeS += dt;
+      const ahead = aheadOf(herStations, b.water, b.x, b.z);
+      if (ev === 'popup') aheadAt.popup = ahead;
+      if (b.phase === 'ride') {
+        rodeS += dt;
+        if (ahead !== undefined && ahead > 0) heldS += dt;
+        for (const s of [1, 2, 3]) if (Math.abs(rodeS - s) < dt / 2) aheadAt[`ride+${s}`] = ahead;
+      }
       if (ev === 'wipeout' || ev === 'kickout') break;
     }
+    const last = b.water;
+    console.log(`${ft} ft ${experience}: line ${LINE_OFF_DEG}°, held ${heldS.toFixed(2)} s of ${rodeS.toFixed(2)} s, end ${events[events.length - 1]} (foam ${last.foam.toFixed(2)}, section ${!!last.onSection}), ahead ${JSON.stringify(aheadAt)}`);
     expect(events).toContain('caught');
     expect(events).toContain('popup');
     expect(events).not.toContain('wipeout');
     expect(rodeS).toBeGreaterThan(5);
-    // Not ended by her wave vanishing from under her (R2 §3): at the end it is still traced, or the end is the wave's
-    // (foam, or on a drawn section), or the window's. (The kickouts here at 10-14 s are stalls behind the wave, R2 §1's
-    // probe: she is over the back within ~1 s of the pop-up on this line, 88° off the swell.)
-    const last = b.water;
-    expect({ herLive, foam: last.foam, onSection: !!last.onSection, rodeS, real: herLive > 0 || last.foam > 0 || last.onSection === true || rodeS >= 15 }).toMatchObject({ real: true });
+    // The ride is in front of the crest (R3 §1): 5 s or more of riding with her wave's nearest station behind her. A section's
+    // back does not count (onSection is true there too), and a wave still traced while she coasts behind it does not count.
+    expect(heldS).toBeGreaterThan(5);
+    // A real end: the wave's (foam, or on a drawn section at the last step) or the window's. A stall behind the wave is not.
+    expect({ foam: last.foam, onSection: !!last.onSection, rodeS, real: last.foam > 0 || last.onSection === true || rodeS >= 15 }).toMatchObject({ real: true });
   });
 });
