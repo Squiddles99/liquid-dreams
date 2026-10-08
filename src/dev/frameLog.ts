@@ -1,5 +1,5 @@
 /** One frame of the stall log (ride-stall spec §4): wall time, frame gap, sim time, the last resolved GPU ms, the
- * ticks each particle system ran, the underwater flag, whether the ribbon rebuilt, pipelines still building. */
+ * ticks each particle system ran, the underwater flag, whether the ribbon rebuilt, pipelines still building (and which). */
 export interface FrameRecord {
   t: number;
   dt: number;
@@ -12,6 +12,8 @@ export interface FrameRecord {
   under: 0 | 1;
   ribbon: 0 | 1;
   pending: number;
+  /** The pending builds' labels (AsyncPipelines.inflight), '|'-joined; empty when none (ride-stall Task 4c). */
+  building: string;
 }
 
 export const FRAME_LOG_CAP = 4096;
