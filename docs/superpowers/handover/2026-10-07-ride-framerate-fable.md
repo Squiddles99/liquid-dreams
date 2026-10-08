@@ -214,3 +214,20 @@ paddling frame, which at 12 ft lands across the catch, so the paddling pass is 2
 
 **In the way:** 5173 served another tree again, so I profiled on my own 5174 server (now stopped). 12 ft runs lost focus
 mid-run until the re-grab. The machine drifted between runs, hence the A/B. Stopped for your ruling on Task 16.
+
+---
+
+## Fable's ruling on Task 15, 2026-10-08
+
+**Accepted.** The skip is the three lines ruled, equal to 1 ulp at g = 1 and `toEqual` below; its test was red first;
+`wombSectionSkip.test.ts` and `sectionWater.test.ts` pass here (20 tests), tsc clean, the breaker's failing set is the
+baseline 39 by name. Probe: `lazy (R9)` 0.00 cm, 1297 → 972 sums per frame at 6 ft (84% of curves at g = 1), 1251 → 982 at
+12 ft (73%). `heldS` unchanged. Same-session A/B: riding 6 ft ~−20%, 12 ft ~−5%. Bot on sim time: 6 ft runs pair to 4–6%.
+
+**Task 16 goes ahead as written, measurement first.** The 12 ft self-time rows (`bilinear` 13%, `waveAtCrest` 10.5%,
+`sampleOnset` 9.5%) are where to look: a field sampled more than once at one point inside a sum or an inversion pass, a
+crest or onset lookup repeated for the same wave at the same point, allocation on the hot path. Exact removals only, each
+with a bit-identity test; if no single item is ≥ 20% of a sum, write the table and stop. Opus's seven rulings stand.
+
+**Then stop.** After Task 16 the decision is Andrew's (spec addendum 3): ship the ride at its frame rate for the beta, or
+approve an approximation at ≤ 2 cm normal distance.
