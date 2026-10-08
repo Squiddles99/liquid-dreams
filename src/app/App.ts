@@ -56,6 +56,7 @@ import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
 import { PauseMenu } from '../frontend/ui/pauseMenu';
 import { frontEndCheck } from '../dev/frontEndCheck';
 import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
+import { FrameLog } from '../dev/frameLog';
 import { PerfOverlay } from '../dev/perf';
 import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
 import { HeightProbe } from '../ocean/HeightProbe';
@@ -429,6 +430,10 @@ export class App {
   private devUiVisible = false;
   /** While a dev measurement reads window.__ldGpuMs: the perf overlay samples even with the dev tools hidden. */
   private gpuSampling = false;
+  /** Dev readout (window.liquidDreams.frameLog): the stall log, on only while the profiler asks (ride-stall spec §4). */
+  readonly frameLog = new FrameLog();
+  /** This frame's ticks per particle system and whether the ribbon rebuilt, for the frame log. */
+  private readonly frameTicks = { foam: 0, spray: 0, impact: 0, kelp: 0, ribbon: 0 as 0 | 1 };
 
   /** `hashMoment` is the moment a #m= / #ref= link opened, or null to open the saved (or default) moment. */
   constructor(
@@ -868,6 +873,7 @@ export class App {
    */
   private stepFoam(events: readonly WaveEvent[]): void {
     const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t));
+    this.frameTicks.foam = steps;
     if (steps === 0) return;
     this.ocean.time.value = this.clock.simTime;
     this.setWaves.setEvents(events);
@@ -876,6 +882,7 @@ export class App {
   /** The kelp's ticks this frame (none while paused; a replay after a jump), like the foam's: each tick points the set waves at its time. */
   private stepKelp(events: readonly WaveEvent[]): void {
     const steps = this.kelp.advance(this.renderer, this.clock.simTime, this.camera.position.x, this.camera.position.z, (t) => this.pointFoamSourceAt(t));
+    this.frameTicks.kelp = steps;
     if (steps === 0) return;
     this.ocean.time.value = this.clock.simTime;
     this.setWaves.setEvents(events);
@@ -947,8 +954,8 @@ export class App {
     const w = windToVector(this.conditions.wind.directionDeg), s = this.conditions.wind.speedMs;
     this.spray.setWind(w[0] * s, w[1] * s);
     this.impact.setWind(w[0] * s, w[1] * s);
-    this.spray.advance(this.renderer, this.clock.simTime, (k) => this.sprayBirthsAt(k));
-    this.impact.advance(this.renderer, this.clock.simTime, (k) => this.impactBirthsAt(k));
+    this.frameTicks.spray = this.spray.advance(this.renderer, this.clock.simTime, (k) => this.sprayBirthsAt(k));
+    this.frameTicks.impact = this.impact.advance(this.renderer, this.clock.simTime, (k) => this.impactBirthsAt(k));
   }
 
   /** Tick k's emitters, computed once per frame (both systems ask for the same ticks). */
@@ -1026,6 +1033,7 @@ export class App {
     const key = `${tracing}|${this.clock.simTime}|${cam.x}|${cam.z}|${sun.x}|${sun.y}|${sun.z}`;
     if (key === this.ribbonKey) return;
     this.ribbonKey = key;
+    this.frameTicks.ribbon = 1;
     let entries: StationEntry[] = [];
     if (tracing) {
       const waves = events.map(toActiveWave);
@@ -1999,6 +2007,7 @@ export class App {
   private frame = (): void => {
     const now = performance.now();
     if (!this.frameLimiter.shouldRender(now)) return;
+    const prevMs = this.lastMs;
     const realDt = clampFrameDt((now - this.lastMs) / 1000);
     this.lastMs = now;
     this.reportLoading(realDt * 1000);
@@ -2162,7 +2171,14 @@ export class App {
       this.screenshotRequested = false;
       captureScreenshot(this.renderer.domElement, screenshotFilename(this.conditions));
     }
-    // GPU timestamp readback only matters while the stats are on screen.
-    if (this.devUiVisible || this.gpuSampling) this.perf.update();
+    // GPU timestamp readback only matters while the stats are on screen (or the stall log wants the GPU ms).
+    if (this.devUiVisible || this.gpuSampling || this.frameLog.on) this.perf.update();
+    if (this.frameLog.on) {
+      const gpu = (window as unknown as { __ldGpuMs?: number[] }).__ldGpuMs?.at(-1) ?? 0;
+      this.frameLog.record({ t: now, dt: now - prevMs, sim: this.clock.simTime, gpu, foam: this.frameTicks.foam, spray: this.frameTicks.spray,
+        impact: this.frameTicks.impact, kelp: this.frameTicks.kelp, under: this.underwater ? 1 : 0, ribbon: this.frameTicks.ribbon, pending: this.asyncPipelines.pending });
+    }
+    this.frameTicks.foam = this.frameTicks.spray = this.frameTicks.impact = this.frameTicks.kelp = 0;
+    this.frameTicks.ribbon = 0;
   };
 }
