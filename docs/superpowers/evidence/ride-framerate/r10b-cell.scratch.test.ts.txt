@@ -1,0 +1,33 @@
+import { DEFAULT_CONDITIONS, cloneConditions } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/conditions/defaults';
+import { buildBathymetry, downsample } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/seabed/bathymetry';
+import { DEFAULT_REEF_PARAMS } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/seabed/wombReef';
+import { DEFAULT_BREAK_PARAMS as P } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/breaker/breaking';
+import { REFRACT_FLOOR_M, computeReefField, sampleField, type ReefField } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/breaker/reefField';
+import { takeoffSpot } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/ride/takeoff';
+// sampleInside with the cell found once (bilinear's arithmetic, term for term): how much of a field sample is the index.
+function shared(f: ReefField, x: number, z: number) {
+  const g = f.grid;
+  const fx = Math.min(g.nx - 1, Math.max(0, (x - g.x0) / g.cellM)), fz = Math.min(g.nz - 1, Math.max(0, (z - g.z0) / g.cellM));
+  const c = Math.min(g.nx - 2, Math.floor(fx)), r = Math.min(g.nz - 2, Math.floor(fz));
+  const tx = fx - c, tz = fz - r, i = r * g.nx + c, j = i + g.nx;
+  const bl = (a: Float32Array): number => { const top = a[i] + (a[i + 1] - a[i]) * tx, bottom = a[j] + (a[j + 1] - a[j]) * tx; return top + (bottom - top) * tz; };
+  const dirX = bl(f.dirX), dirZ = bl(f.dirZ), len = Math.hypot(dirX, dirZ) || 1;
+  return { tau: bl(f.tau), amp: bl(f.amp), hmin: bl(f.hmin), hminBreak: bl(f.hminBreak), hminSlurp: bl(f.hminSlurp), hminLean: bl(f.hminLean), k: bl(f.k), dirX: dirX / len, dirZ: dirZ / len, depth: bl(f.depth) };
+}
+it('shared cell vs sampleField', { timeout: 600_000 }, () => {
+  const c = cloneConditions(DEFAULT_CONDITIONS); c.swell.sizeFt = 12;
+  const field = computeReefField({ bed: downsample(buildBathymetry(DEFAULT_REEF_PARAMS), 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: P.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+  const s = takeoffSpot(field, 3, P);
+  const N = 200_000, xs = new Float64Array(N), zs = new Float64Array(N);
+  let seed = 7; const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let i = 0; i < N; i++) { xs[i] = s.x + (rnd() - 0.5) * 60; zs[i] = s.z + (rnd() - 0.5) * 60; }
+  let same = 0;
+  for (let i = 0; i < N; i++) { const a = sampleField(field, xs[i], zs[i]), b = shared(field, xs[i], zs[i]); if (JSON.stringify(a) === JSON.stringify(b)) same++; }
+  const time = (fn: (x: number, z: number) => { tau: number }) => { let acc = 0; const t0 = performance.now(); for (let rep = 0; rep < 20; rep++) for (let i = 0; i < N; i++) acc += fn(xs[i], zs[i]).tau; return [(performance.now() - t0) / (20 * N) * 1e6, acc] as const; };
+  const res: string[] = [];
+  for (let round = 0; round < 3; round++) {
+    const a = time((x, z) => sampleField(field, x, z)), b = time((x, z) => shared(field, x, z));
+    res.push(`round ${round}: sampleField ${a[0].toFixed(1)} ns, shared cell ${b[0].toFixed(1)} ns (${(100 * (1 - b[0] / a[0])).toFixed(0)}% less)`);
+  }
+  console.log(`identical ${same} / ${N}\n` + res.join('\n'));
+});

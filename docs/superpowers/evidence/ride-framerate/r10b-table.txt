@@ -1,0 +1,58 @@
+# Task 16 step 1 (ride-framerate R10b): inside one wave sum and one inversion pass, measured before any change. Branch at 221bad2.
+# Sources: r10b-selftime.txt (tools/_profileSelfTime.mjs over the five kept R10a riding profiles, sim-t 300, focused: 12 ft x2,
+# 6 ft x3), r10b-counts (a scratch count probe: the game's lazy (R9) read on R3's 35-degree intermediate ride, every frame on a
+# section, one physics step + the under-board read), r10b-cell (a scratch microbenchmark of one field sample, node).
+
+## Self time inside sumWaves, % of a sum (range over the five runs; 12 ft | 6 ft)
+item                                                          | 12 ft        | 6 ft         | removable exactly?
+waveAtCrest self (the wave's shape arithmetic)                | 19.3-20.2%   | 18.8-20.2%   | no: one evaluation per in-envelope wave, all used
+crest-lookup field samples (o.sample -> sampleField inclusive)| 23.9-24.7%   | 21.3-22.3%   | samples: no (0 repeats, below); the cell located 10x per sample: YES (Task 16 step 2)
+   of which bilinear self                                     | 15.3-16.4%   | 15.5-16.5%   |
+   of which sampleInside self                                 | 4.5%         | 4.6-5.3%     |
+   of which the `sample` closure (breakOptions) self          | 3.5-3.6%     | ~1-3%        |
+onset record (o.onset -> sampleOnset inclusive)               | 14.3-14.9%   | 14.3-14.7%   | no: one per in-envelope wave, 0 repeats
+breakPoint (inclusive)                                        | 10.7-11.2%   | 10.5-12.2%   | no
+lifecycle (inclusive)                                         | 8.2-8.6%     | 6.6-6.9%     | no
+the onset readers (onsetTime/Until/Psi/Level/Height/Delay)    | ~9%          | ~9%          | no (each reads a different level)
+withSheetShape (inclusive)                                    | 3.3-3.4%     | 1.4-2.3%     | no
+crestAt self                                                  | 1.9-2.2%     | 3.4-3.9%     | no
+sumWaves self (the loop, waveAt inlined: phaseXi + beyondEnvelope for every wave, { ...ZERO } for waves beyond, accumulate) | 4.5-4.7% | 4.1-5.6% | below 20%: not touched
+GC (whole riding pass, not attributable to a sum)             | 2.2-2.4% of the pass | 2.2-2.3% |
+crestAt inclusive                                             | 60.5-61.2%   | 58.9-60.6%   |
+waveAtCrest inclusive                                         | 33.9-34.4%   | 33.8-35.9%   |
+
+## Inside waterAt (4 passes + the final sum), % of a waterAt
+the 5 sums (sumWaves inclusive)                               | 94.6-95.0%   | 94.6-95.7%
+all field samples (sampleField inclusive: outer + crest)      | 24.0-24.2%   | 23.8-25.3%
+  of which the 5 outer samples (fieldAt inclusive)            | 4.6-4.9%     | 4.0-4.8%
+waterAt self, flowFromEta, the return object                  | < 1%         | < 1%
+
+## Counts (r10b-counts: every frame on a section; 6 ft 975 frames, 12 ft 1098 frames)
+                                                              | 12 ft   | 6 ft
+waterAt per frame / wave sums per frame (probe lazy (R9): 982 / 972) | 196.5 / 982.4 | 194.5 / 972.3
+sums per waterAt                                              | 5.000   | 5.000
+waves per sum (wavesNear)                                     | 8 (min 8, max 8) | 8
+waves inside the envelope per sum (crest looked up)           | 2.513   | 2.631
+field samples per sum: the sum's own point (outer)            | 1       | 1
+field samples per sum: crest lookup (CREST_STEPS per in-envelope wave) | 5.026 (2.000 per wave) | 5.263 (2.000)
+onset records per sum (1 per in-envelope wave)                | 2.513   | 2.631
+crest lookups per wave per point per sum                      | 1 (crestAt once per in-envelope wave; 0 beyond) | 1
+exact repeats: the same field point twice within one sum      | 0 of 1078725 sums | 1 of 948015
+exact repeats: the same onset point twice within one sum      | 0       | 0
+exact repeats within one waterAt (all 10+ field samples)      | 0       | 1
+exact repeats: the same sum point twice within one waterAt    | 0       | 0
+So a field sample is never taken twice at one point, nor a crest or onset looked up twice for one wave at one point, and
+work for a wave beyond its envelope is already skipped (Task 1, 585d3b5): what is left of it is phaseXi + the test + a
+{ ...ZERO } spread, inside sumWaves' 4-6% self.
+
+## One field sample (r10b-cell, node, 200000 points within 30 m of the 12 ft take-off spot, 3 rounds)
+sampleField (sampleInside: 10 bilinear calls, each locating the cell again)   | 168-195 ns
+the same with the cell located once (the same expressions per array)           | 68-78 ns (57-64% less)
+bit-identical (JSON of the whole FieldSample)                                 | 200000 / 200000
+
+## Ruling (step 2)
+The only item at or over 20% of a sum is the field sample (21-25% of a sum, 24-25% of a waterAt). Its samples are all at
+distinct points, so none can be dropped, but each sample locates its grid cell ten times (once per array): that repeat is
+exact to remove (the same arithmetic, bit-identical), and measured at ~60% of a sample. Expected: ~14% of a waterAt, ~7% of
+riding at 12 ft and ~5% at 6 ft. Nothing else reaches 20%: waveAtCrest's 19-20% is the shape arithmetic itself, the onset
+record (14-15%) is read once per wave at distinct points.
