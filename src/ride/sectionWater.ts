@@ -126,8 +126,9 @@ export const WARM_RESIDUAL_M = 0.001;
 export const RIDE_WARM_PASSES = 2;
 
 export interface SectionOptions {
-  /** `curves` counts the station curves built (the probe); `reads`, if given, the samples' sheet reads a lazy curve makes. */
-  stats?: { curves: number; reads?: number };
+  /** `curves` counts the station curves built (the probe); `reads`, if given, the samples' sheet reads a lazy curve makes;
+   * `full`, if given, the curves built at curlWeight 1 (R10a skips their swell reads). */
+  stats?: { curves: number; reads?: number; full?: number };
   /** Keeps the curves across frames (CurveCache; the probe: R7 failed the tolerance). */
   kept?: CurveCache;
   /** The station's sheet read along its normal warm (ride-framerate R8): the first read cold, each later one started from
@@ -194,7 +195,7 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
         return [p[0] / A, p[1] / A];
       });
       cache.set(s, c);
-      if (stats) stats.curves++;
+      if (stats) { stats.curves++; if (stats.full !== undefined && curlWeight(s.section) === 1) stats.full++; }
       if (key !== null) kept!.set(key, s.section, c);
     }
     return c;
@@ -218,7 +219,7 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
       };
       c = { u, y, yAt };
       lazy.set(s, c);
-      if (stats) stats.curves++;
+      if (stats) { stats.curves++; if (stats.full !== undefined && curlWeight(s.section) === 1) stats.full++; }
     }
     return c;
   };
