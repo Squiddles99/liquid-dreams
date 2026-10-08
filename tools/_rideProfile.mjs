@@ -69,6 +69,14 @@ app.whenReady().then(async () => {
   await dbg.sendCommand('Profiler.setSamplingInterval', { interval: 200 });
   // The field's build takes as long as it takes: the clock goes back to the fixed time before the cam pass.
   grab();
+  // Draw the rider once (3 s on the board) before the cam pass: the real path builds her 114-115 pipelines and drains
+  // the set call's replay under the paddle-out cover; ?frontend=off has no cover, so they landed in the paddling pass.
+  await win.webContents.executeJavaScript(`(async () => {
+    const a = window.liquidDreams, pose = a.rig.getPose(); a.toggleRide();
+    for (let i = 0; i < 180; i++) await new Promise((r) => requestAnimationFrame(r));
+    a.toggleRide(); a.rig.setPose(pose, a.conditions.tideM); // stopRide put the camera at the board: the cam pass looks where it did
+  })()`);
+  grab(); // again: the window can lose the focus in those 3 s
   if (simT !== null) await win.webContents.executeJavaScript(`window.liquidDreams.clock.setTime(${simT})`);
   const focusCam = focusNow();
   const camFrom = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
@@ -105,9 +113,10 @@ app.whenReady().then(async () => {
   const traceStop = async (label) => { if (trace) await contentTracing.stopRecording(`${out}${label}.trace.json`); };
 
   // A: cam mode, 6 s.
+  // The frame stats start after Profiler.start returns: its own 160-310 ms renderer task was frame #1 of every pass.
+  await dbg.sendCommand('Profiler.start');
   await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true');
   await stallBegin();
-  await dbg.sendCommand('Profiler.start');
   await sleep(CAM_S * 1000);
   const pa = (await dbg.sendCommand('Profiler.stop')).profile;
   await win.webContents.executeJavaScript('window.__ft.on = false');
@@ -143,23 +152,25 @@ app.whenReady().then(async () => {
   // One trace covers the paddling and riding passes (stopping one writes ~60-100 MB and took ~2 s, which pushed the
   // riding pass past the 6 ft stall's sim time): it starts here and stops after the riding pass's frames are saved.
   await traceStart();
+  // The frame stats start after Profiler.start returns: its own 160-310 ms renderer task was frame #1 of every pass.
+  await dbg.sendCommand('Profiler.start');
   await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true');
   await stallBegin();
-  await dbg.sendCommand('Profiler.start');
   await sleep(6000);
   const pb = (await dbg.sendCommand('Profiler.stop')).profile;
   await win.webContents.executeJavaScript('window.__ft.on = false');
   const fb = await frames('paddling (ride active)');
   await saveStall('paddle');
   // C: wait for the ride phase, then 6 s standing.
-  for (let i = 0; i < 300; i++) { const r = await win.webContents.executeJavaScript('window.__ride'); if (r.phase === 'ride' || r.phase === 'bail' || r.phase === 'ended') break; await sleep(100); }
+  for (let i = 0; i < 600; i++) { const r = await win.webContents.executeJavaScript('window.__ride'); if (r.phase === 'ride' || r.phase === 'bail' || r.phase === 'ended') break; await sleep(100); }
   const r0 = await win.webContents.executeJavaScript('window.__ride');
   grab();
   const focusRide = focusNow();
   const rideStart = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
+  // The frame stats start after Profiler.start returns: its own 160-310 ms renderer task was frame #1 of every pass.
+  await dbg.sendCommand('Profiler.start');
   await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true');
   await stallBegin();
-  await dbg.sendCommand('Profiler.start');
   await sleep(5000);
   const pc = (await dbg.sendCommand('Profiler.stop')).profile;
   await win.webContents.executeJavaScript('window.__ft.on = false');
@@ -172,7 +183,7 @@ app.whenReady().then(async () => {
   const focusEnd = focusNow();
   await traceStop('ride');
 
-  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s ending at x, z ${where} (${ft} ft, ${experience}); window at cam: ${focusCam}; at riding: ${focusRide}; at the end: ${focusEnd}`;
+  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s${r0.phase === 'ride' ? '' : ` (riding pass began in phase ${r0.phase})`} ending at x, z ${where} (${ft} ft, ${experience}); window at cam: ${focusCam}; at riding: ${focusRide}; at the end: ${focusEnd}; recorder after Profiler.start`;
   const report = [times, `# stall log ${stall ? 'on' : 'off'}, trace ${trace ? 'on' : 'off'}`, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding')].join('\n');
   writeFileSync(out + 'report.txt', report);
   writeFileSync(out + 'cam.cpuprofile', JSON.stringify(pa));
