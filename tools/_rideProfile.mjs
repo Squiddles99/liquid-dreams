@@ -1,10 +1,18 @@
 // Profiles the frame loop in cam mode, then on the board (CPU profile via CDP + rAF frame times).
-// npx electron <this file> [--base=http://localhost:5173/] [--ft=6] [--experience=intermediate] [--out=<prefix>]
+// npx electron <this file> [--base=http://localhost:5173/] [--ft=6] [--experience=intermediate] [--out=<prefix>] [--sim-t=<s>]
+// The window stays on top and focused (an unfocused run is ~8x slower); the first line says whether it was.
+// --sim-t (ride-framerate Task 14): the sim time the conditions are applied at, the cam pass starts at (once the field is
+// built) and, 6 s later, the set is called from, so two runs ride the same moment of the same wave. Unset: the page's own.
+// The bot (Task 15) keys its pop-up, Space release and steering to sim time (the clock and the board's own phaseT), not
+// real time, so its inputs land at the same moments of the ride at every frame rate. It reads the board once per frame
+// (after the game's step), so an input still lands on a frame boundary.
 import { app, BrowserWindow } from 'electron';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base') ?? 'http://localhost:5173/', out = arg('out') ?? 'prof-';
 const ft = Number(arg('ft') ?? 6), experience = arg('experience') ?? 'intermediate';
+const simT = arg('sim-t') === undefined ? null : Number(arg('sim-t'));
+const CAM_S = 6;
 app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -32,6 +40,12 @@ function summarise(profile, label) {
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ width: 1600, height: 900, show: true, webPreferences: { backgroundThrottling: false } });
+  // Unfocused, Windows runs this process ~8x slower (Task 14: cam ~35 ms not 4.4, riding ~500 ms not ~50, the same sim
+  // time and place): keep the window on top and focused, and say in the report whether it was.
+  win.setAlwaysOnTop(true, 'screen-saver');
+  const grab = () => { win.show(); win.moveTop(); app.focus({ steal: true }); win.focus(); };
+  const focusNow = () => `focused ${win.isFocused()}, visible ${win.isVisible()}, minimized ${win.isMinimized()}`;
+  grab();
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   await win.loadURL(base + '?frontend=off');
   await win.webContents.executeJavaScript(`localStorage.setItem('liquid-dreams.front-settings.v1', JSON.stringify({ takeoffSlowMo: 'off', experience: '${experience}' }))`);
@@ -40,7 +54,7 @@ app.whenReady().then(async () => {
   await win.webContents.executeJavaScript(`(async () => {
     const a = window.liquidDreams, before = a.field, c = JSON.parse(JSON.stringify(a.conditions));
     c.swell = { ...c.swell, sizeFt: ${ft}, periodS: 15, directionDeg: 225 }; c.tideM = 0;
-    a.applyMoment({ conditions: c, camera: a.rig.getPose(), simTime: a.clock.simTime, paused: false });
+    a.applyMoment({ conditions: c, camera: a.rig.getPose(), simTime: ${simT ?? 'a.clock.simTime'}, paused: false });
     for (let i = 0; i < 120 && (a.field === before || !a.field); i++) await new Promise((r) => setTimeout(r, 500));
     await new Promise((r) => setTimeout(r, 3000));
     document.querySelector('#loading')?.remove();
@@ -50,6 +64,11 @@ app.whenReady().then(async () => {
   dbg.attach('1.3');
   await dbg.sendCommand('Profiler.enable');
   await dbg.sendCommand('Profiler.setSamplingInterval', { interval: 200 });
+  // The field's build takes as long as it takes: the clock goes back to the fixed time before the cam pass.
+  grab();
+  if (simT !== null) await win.webContents.executeJavaScript(`window.liquidDreams.clock.setTime(${simT})`);
+  const focusCam = focusNow();
+  const camFrom = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
 
   // Frame-time recorder in the page.
   await win.webContents.executeJavaScript(`(() => {
@@ -66,31 +85,35 @@ app.whenReady().then(async () => {
   // A: cam mode, 6 s.
   await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true');
   await dbg.sendCommand('Profiler.start');
-  await sleep(6000);
+  await sleep(CAM_S * 1000);
   const pa = (await dbg.sendCommand('Profiler.stop')).profile;
   await win.webContents.executeJavaScript('window.__ft.on = false');
   const fa = await frames('cam mode');
 
-  // Ride: the bot (W from 3 s before arrival, Space 0.4 s after caught, A on the ride).
+  // Ride: the bot (W from 3 s before arrival, Space 0.4 s of sim time after caught, A from phaseT 0.25 on the ride).
+  if (simT !== null) await win.webContents.executeJavaScript(`window.liquidDreams.clock.setTime(${simT + CAM_S})`);
+  const callFrom = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
   await win.webContents.executeJavaScript(`(() => {
     const a = window.liquidDreams; if (!a.ride.active) a.toggleRide();
     const key = (type, code) => window.dispatchEvent(new KeyboardEvent(type, { code, key: code === 'Space' ? ' ' : code.slice(-1).toLowerCase() }));
-    let paddling = false, caughtReal = null, popped = false, left = false, t0 = performance.now();
+    let paddling = false, caughtSim = null, popped = false, spaceUp = false, left = false;
     window.__ride = { phase: 'wait', caught: false };
     const loop = () => {
       const b = a.ride.body; if (!b) { window.__ride.phase = 'ended'; return; }
-      const real = (performance.now() - t0) / 1000;
-      if (!paddling && a.clock.simTime > a.rideArriveS - 3) { key('keydown', 'KeyW'); paddling = true; }
-      if (b.caught && caughtReal === null) { caughtReal = real; }
-      if (!popped && caughtReal !== null && real > caughtReal + 0.4) { key('keydown', 'Space'); setTimeout(() => key('keyup', 'Space'), 50); key('keyup', 'KeyW'); popped = true; }
+      const sim = a.clock.simTime;
+      if (!paddling && sim > a.rideArriveS - 3) { key('keydown', 'KeyW'); paddling = true; }
+      if (b.caught && caughtSim === null) { caughtSim = sim; }
+      if (popped && !spaceUp) { key('keyup', 'Space'); spaceUp = true; }
+      if (!popped && caughtSim !== null && sim > caughtSim + 0.4) { key('keydown', 'Space'); key('keyup', 'KeyW'); popped = true; }
       if (b.phase === 'ride' && !left && b.phaseT > 0.25) { key('keydown', 'KeyA'); left = true; }
       const travel = Math.atan2(b.water.dirX, -b.water.dirZ) * 180 / Math.PI, off = ((b.headingDeg - travel + 540) % 360) - 180;
       if (left) { if (off < -65) key('keyup', 'KeyA'); else if (off > -55) key('keydown', 'KeyA'); }
-      window.__ride = { phase: b.phase, caught: b.caught, popped };
+      window.__ride = { phase: b.phase, caught: b.caught, popped, caughtSim };
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
   })()`);
+  const arrive = await win.webContents.executeJavaScript('window.liquidDreams.rideArriveS');
   // B: from the paddle (ride active, in the water) for 6 s.
   await sleep(500);
   await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true');
@@ -102,6 +125,9 @@ app.whenReady().then(async () => {
   // C: wait for the ride phase, then 6 s standing.
   for (let i = 0; i < 300; i++) { const r = await win.webContents.executeJavaScript('window.__ride'); if (r.phase === 'ride' || r.phase === 'bail' || r.phase === 'ended') break; await sleep(100); }
   const r0 = await win.webContents.executeJavaScript('window.__ride');
+  grab();
+  const focusRide = focusNow();
+  const rideStart = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
   await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true');
   await dbg.sendCommand('Profiler.start');
   await sleep(5000);
@@ -109,8 +135,12 @@ app.whenReady().then(async () => {
   await win.webContents.executeJavaScript('window.__ft.on = false');
   const r1 = await win.webContents.executeJavaScript('window.__ride');
   const fc = await frames(`riding (phase ${r0.phase} -> ${r1.phase})`);
+  const rideFrom = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
+  const where = await win.webContents.executeJavaScript(`(() => { const b = window.liquidDreams.ride.body; return b ? b.x.toFixed(1) + ', ' + b.z.toFixed(1) : 'none'; })()`);
+  const focusEnd = focusNow();
 
-  const report = [fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding')].join('\n');
+  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s ending at x, z ${where} (${ft} ft, ${experience}); window at cam: ${focusCam}; at riding: ${focusRide}; at the end: ${focusEnd}`;
+  const report = [times, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding')].join('\n');
   writeFileSync(out + 'report.txt', report);
   writeFileSync(out + 'cam.cpuprofile', JSON.stringify(pa));
   writeFileSync(out + 'paddle.cpuprofile', JSON.stringify(pb));

@@ -3,7 +3,7 @@ import type { GangStaging } from '../frontend/staging';
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
 import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
-import { RIDE_WARM_PASSES, type SheetFrom, withSections } from '../ride/sectionWater';
+import { withSections } from '../ride/sectionWater';
 import { TAKEOFF_ANCHOR, TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from '../ride/takeoff';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
@@ -1608,9 +1608,8 @@ export class App {
       return bed === null ? w : { ...w, bedY: bed };
     };
     // Where the breaking ribbon draws, the board stands on its sections (the wave that is drawn), from this frame's
-    // stations (traced at the clock's time); a station's sheet along its normal is read warm (sectionWater R8).
-    const along: SheetFrom = (x, z, start, passes) => waterAt(x, z, tide, ctx.omega, fieldAt, sum, start, passes);
-    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide, { along: { at: along, passes: RIDE_WARM_PASSES } }) : sheet;
+    // stations (traced at the clock's time), read lazily and cold (sectionWater R9; R8's warm read is the probe's only).
+    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide) : sheet;
   }
 
   /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */

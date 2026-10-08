@@ -24,7 +24,7 @@ interface Variant {
   name: string;
   /** This frame's water from the frame's sheet and stations (`arrivals`: each station's wave's arrival); `stats.curves`
    * counts the curves it builds. */
-  water: (sheet: WaterFn, entries: StationEntry[], tideM: number, arrivals: readonly number[], stats: { curves: number }, along: SheetFrom) => WaterFn;
+  water: (sheet: WaterFn, entries: StationEntry[], tideM: number, arrivals: readonly number[], stats: { curves: number; full: number }, along: SheetFrom) => WaterFn;
   /** Called once a frame. */
   nextFrame?: () => void;
 }
@@ -41,7 +41,7 @@ const kept = (name: string, maxAge: number, bucketM: number, thin: number | null
 const variants = (): Variant[] => ([
   { name: 'direct', water: (sheet, entries, tide, _a, stats) => withSections(sheet, entries, tide, { stats, dense: true }) },
   { name: 'lazy (R9)', water: (sheet, entries, tide, _a, stats) => withSections(sheet, entries, tide, { stats }) },
-  { name: `lazy + warm ${RIDE_WARM_PASSES} passes (R9 + R8: the game)`, water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, along: { at, passes: RIDE_WARM_PASSES } }) },
+  { name: `lazy + warm ${RIDE_WARM_PASSES} passes (R8, not the game)`, water: (sheet, entries, tide, _a, stats, at) => withSections(sheet, entries, tide, { stats, along: { at, passes: RIDE_WARM_PASSES } }) },
   ...[RIDE_STATION_SPACING_M, 0.5, 0.25].map((m): Variant => ({ name: `thinned ${m} m`, water: (sheet, entries, tide, _a, stats) => withSections(sheet, thinStations(entries, m), tide, { stats, dense: true }) })),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, every station, ${MIN_SPACING_M} m buckets`, a, MIN_SPACING_M, null)),
   ...[1, 2, 4].map((a) => kept(`kept ${a}, thinned 1 m (R7 as written)`, a, 1, 1)),
@@ -73,7 +73,7 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
     const b = startBody(sx, sz, swellHeading, withSections(f0.sheet, f0.entries, c.tideM));
     const line = swellHeading - 35;
     const dt = 1 / 60, tune = TUNING.intermediate, events: RideEvent[] = [];
-    const rowsOf = VARIANTS.map(() => ({ dy: 0, ds: 0, curves: 0, all: [] as number[], over: [] as number[], worst: '', sums: 0 }));
+    const rowsOf = VARIANTS.map(() => ({ dy: 0, ds: 0, curves: 0, full: 0, all: [] as number[], over: [] as number[], worst: '', sums: 0 }));
     let popped = false, rows = 0, savedNormal = false;
     for (let k = 0; k < 60 * 20; k++) {
       t += dt;
@@ -108,13 +108,13 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
           }
         }
         const refV = process.env.PROBE_REF ? VARIANTS.find((v) => new RegExp(process.env.PROBE_REF!).test(v.name)) : undefined;
-        const ref = refV ? refV.water(fr.sheet, fr.entries, c.tideM, fr.arrivals, { curves: 0 }, fr.along)(b.x, b.z) : under;
+        const ref = refV ? refV.water(fr.sheet, fr.entries, c.tideM, fr.arrivals, { curves: 0, full: 0 }, fr.along)(b.x, b.z) : under;
         VARIANTS.forEach((v, i) => {
           const r = rowsOf[i];
           // Wave sums: a sheet read is INVERT_ITERATIONS + 1 of them, an along read its passes + 1.
           const sheetC: WaterFn = (x, z) => { r.sums += INVERT_ITERATIONS + 1; return fr.sheet(x, z); };
           const alongC: SheetFrom = (x, z, st, p) => { r.sums += p + 1; return fr.along(x, z, st, p); };
-          const stats = { curves: 0 }, w = v.water(sheetC, fr.entries, c.tideM, fr.arrivals, stats, alongC);
+          const stats = { curves: 0, full: 0 }, w = v.water(sheetC, fr.entries, c.tideM, fr.arrivals, stats, alongC);
           const got = w(b.x, b.z);
           const d = Math.abs(got.y - ref.y);
           r.all.push(d);
@@ -127,7 +127,7 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
           r.dy = Math.max(r.dy, d);
           r.ds = Math.max(r.ds, Math.hypot(got.slopeX - ref.slopeX, got.slopeZ - ref.slopeZ));
           stepRide(structuredClone(b), input, w, dt, tune);
-          r.curves += stats.curves;
+          r.curves += stats.curves; r.full += stats.full;
         });
       }
       const ev = stepRide(b, input, water, dt, tune);
@@ -137,7 +137,7 @@ describe.runIf(process.env.PROBE_RIDE_STATIONS)('probe: the ride’s stations th
     const out = [`${ft} ft: ${rows} rows on a section; events ${events.join(' ')}; reference ${process.env.PROBE_REF ?? 'direct'}`, 'variant | max |Δy| cm | max |Δslope| | curves built per frame (one physics step)'];
     VARIANTS.forEach((v, i) => {
       const r = rowsOf[i], sorted = [...r.all].sort((p, q) => p - q), pc = (f: number): string => (100 * (sorted[Math.floor(f * (sorted.length - 1))] ?? 0)).toFixed(2);
-      out.push(`${v.name} | ${(100 * r.dy).toFixed(2)} | ${r.ds.toFixed(4)} | ${(r.curves / Math.max(1, rows)).toFixed(1)} | wave sums per frame ${(r.sums / Math.max(1, rows)).toFixed(0)} | p50 ${pc(0.5)} p95 ${pc(0.95)} p99 ${pc(0.99)} cm, rows > 2 cm ${sorted.filter((d) => d > 0.02).length}`);
+      out.push(`${v.name} | ${(100 * r.dy).toFixed(2)} | ${r.ds.toFixed(4)} | ${(r.curves / Math.max(1, rows)).toFixed(1)} | wave sums per frame ${(r.sums / Math.max(1, rows)).toFixed(0)} | curves at g = 1 ${(100 * r.full / Math.max(1, r.curves)).toFixed(1)}% | p50 ${pc(0.5)} p95 ${pc(0.95)} p99 ${pc(0.99)} cm, rows > 2 cm ${sorted.filter((d) => d > 0.02).length}`);
       if (r.over.length) out.push(`  slope under the board on the rows > 2 cm: ${r.over.map((x) => x.toFixed(2)).join(' ')}`);
       if (r.worst) out.push(`  worst: ${r.worst.slice(0, 400)}`);
     });
