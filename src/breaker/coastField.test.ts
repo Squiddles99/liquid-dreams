@@ -144,7 +144,7 @@ describe('the drawn sea outside the reef grid (lineup truth, Task 3: sampleField
 });
 
 describe('the coast field keeps the reef\'s hmin over the reef map (review I1)', () => {
-  it('at the reef grid\'s north (outflow) edge the coast\'s hmin is the reef\'s within 15 % (water ≥ 3 m), so the drawn breaking does not switch off 40 m out', () => {
+  it('at the reef grid\'s north (outflow) edge the coast\'s hmin is the reef\'s within 5 % (water ≥ 3 m; measured 1.3 %), so the drawn breaking does not switch off 40 m out', () => {
     const field = computeReefField({ bed: reefBed, ...SWELL, coast: buildCoastMap(reefBed, DEFAULT_COAST_PARAMS) });
     const g = field.grid, coast = field.coast!;
     let worst = 0, where = '', n = 0;
