@@ -13,3 +13,14 @@
   the painting); head kept realistic size (the painting's head is ~1/6.5 of her height, stylised); the clay jaw is a
   little wider than the painting's (hair covers it there). Andrew to sign off Gate 1a.
   Sheets: docs/superpowers/specs/2026-10-10-shazza-hero-gates/gate1a-*.jpg.
+- Tasks 5–10 round 1 (Gate 1b r1, NOT passed — for Andrew): `tools/hero/build.py` builds body (fitted preset,
+  old build's sculpt + trim + landmarks, lash strips removed, face expression keys), procedural Cycles skin
+  (`skin.py`: tan, rosy zones, freckle field, pores, lash line, RW-skin SSS), eyes (`eyes.py`: procedural iris under a
+  refractive cornea), strand hair (`strands.py`: 1900 guide locks × 16 fibres over the old hairline, plaits filled
+  with fibres round a core, long tails below the elastics, brows, lashes), bikini + thongs (`garments.py`: Coons
+  patches projected onto the skin with bindings; halter, band, bows, knotted tie ends; EVA thongs). Arms posed down
+  for the renders. Base body re-fitted with muscle 0.72 (ruling) — face 2.1 % IOD, body 0.55 %.
+  Known gaps, worst first: face reads doll-like (eyes small/staring, no strong lash line yet, MPFB's smile unit is a
+  grimace → needs an authored smile); scalp hair lies like a helmet (needs the painting's volume and waves over the
+  temples); no muscle definition (abs, shoulders) — wants a baked detail normal; skin a little plastic.
+  Sheets: gates/gate1b-face-r1.jpg, gate1b-body-r1.jpg. Renders ~1 min/view at 192 samples on the RTX 4060.

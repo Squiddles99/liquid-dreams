@@ -352,11 +352,5 @@
  "extent": {
   "top": 63,
   "sole": 3255
- },
- "overrides": {
-  "note": "By eye where one front view can't measure (overnight ruling 2026-10-10): the painting's bust is fuller than the game body's.",
-  "macro": {
-   "cupsize": 0.55
-  }
  }
 }

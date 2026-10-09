@@ -103,9 +103,13 @@ eye_R = eyes[base[eyes, 0] < 0]
 eye_L = eyes[base[eyes, 0] > 0]
 
 
-def point_fn(spec):
+MARK_IDS = {}
+
+
+def point_fn(spec, name=None):
     if "px" in spec:
         vi = resolve_px(*spec["px"])
+        MARK_IDS[name] = vi
         return lambda P: P[vi]
     if "eye" in spec:
         ix = eye_R if spec["eye"] == "R" else eye_L
@@ -146,7 +150,7 @@ def build_residuals(group, unit, ref_marks):
     for name, spec in specs.items():
         if "sil" in spec or "silw" in spec:
             continue
-        fns[name] = point_fn(spec)
+        fns[name] = point_fn(spec, name)
     band = 0.004
 
     def res(c, P, report=None):
@@ -264,10 +268,14 @@ for i, n in enumerate(names):
 for k, v in json.load(open(ref_path)).get("overrides", {}).get("macro", {}).items():
     macro[k] = v
 preset["macro"], preset["face"] = macro, face
+# The painting's own expression, for the gate renders (the shape stays at rest).
+preset["paintedExpression"] = {"smile": round(float(a[names.index("xp:smile")]), 3), "squint": round(float(a[names.index("xp:squint")]), 3)}
 json.dump(preset, open(out_path, "w", encoding="utf-8"), indent=2)
 report = {"chosen": chosen, "camBody": cam_b.tolist(), "camFace": cam_f.tolist(),
           "bodyPctHeight": {"before": bb, "after": ba}, "facePctIOD": {"before": fb, "after": fa},
           "faceMeanPctIOD": {"before": float(np.mean(list(fb.values()))), "after": float(np.mean(list(fa.values())))},
           "bodyMeanPctHeight": {"before": float(np.mean(list(bb.values()))), "after": float(np.mean(list(ba.values())))}}
 json.dump(report, open(os.path.join(build, "fit_report.json"), "w"), indent=1)
+# The marks' base-mesh vertex ids (body vertices keep their index through the helper deletion), for the hero build.
+json.dump(MARK_IDS, open(os.path.join(os.path.dirname(out_path), os.path.basename(out_path).replace(".json", ".marks.json")), "w"), indent=1)
 print(json.dumps({k: report[k] for k in ("chosen", "faceMeanPctIOD", "bodyMeanPctHeight")}, indent=1))
