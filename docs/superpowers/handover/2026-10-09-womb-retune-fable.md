@@ -205,3 +205,31 @@ Also for the ruling / Andrew:
    1.4e-4 (< 1e-6), one-curl 6/8 ft order; plus lineup-truth's carried list. Task 6 re-takes the suite idle and diffs.
 6. Housekeeping: `liquid-dreaming/.claude/launch.json` got an `ld-lineup-truth` config (port 5189) for the worktree's
    server; reverted at this stop.
+
+**RULED (Fable, 2026-10-09), Task 5 and the rest:**
+1. **TAKEOFF_ANCHOR at the tip: accepted.** The diagnosis is sound (the anchor was the old right-side spot; from there the
+   right's closeout carries her into the corner) and the fix is game data. Comment it "the corner, where the left starts
+   peeling on the real shelf". Re-run the four cases, paste the heldS table, then Task 5 step 3 (frames).
+2. **Fun at Low: offered.** The matrix is the rule and it passes there (72/72, start 1.1 s, peel 9.3); my "not offered" was
+   about Fun at every tide. `BREAKS.Fun = [true, false, false, false]`; FACE_FT at Low; the presets that moved to Solid
+   stay Solid unless their tide is Low. Say in the evidence that Fun is a low-tide-only day at the Womb.
+3. **Big at High 12.1: the 12.5 bar applies** (same noise argument), with the comment.
+4. **FACE_FT: re-read uncapped.** Solid 6 ft = Pumping 6 ft at High is the cap talking (`min(H·amp, 0.78·depth)` at a
+   smoothed depth), not the wave. The face a surfer names is the height the wave carries into its break: read `H·amp` at the
+   first-break point on the peak's ray, no cap. Expect Solid ~5, Pumping ~6.5–7, Big ~8, Huge ~9+ at every tide. If a
+   bigger band still reads smaller than a smaller band at any tide, paste both reads and stop there (a one-line ruling).
+5. **coastBreaking's 8 ft closeout 1 km north (167 cells, ~130 m off the beach): carried.** It is on the hand-set inner
+   shelf, which is not survey; the no-closeout rule's 60 m shore band predates the buoy dial. Note it in -fable.md for
+   Andrew's lookout look; a shore-band re-pin is a later segment.
+6. **Breaker physics reds: carried, named.** Task 6 re-takes the suite idle. Every red that is a bar on the new field (lean/
+   slurp, until-hold, march, breakingField, crestTrace, station ψ, one-curl order, lineup-truth's list) goes into `-opus.md`
+   as name + measured + bar, no fix this segment; they are the merge's debt for a "re-pin the breaker bars on the real
+   shelf" segment, like one-curl's unwarp reds. Anything that is not a bar (a crash, a NaN, a GPU/CPU mismatch) stops.
+7. **The marks in the frames (Task 6 item, before captures):** in the stand frame a row of ~6 flat beige quads sits on the
+   breaking line, evenly spaced, like a sprite layer seen edge-on or unlit; in the down-the-line frame a row of small white
+   dots runs along the lip. Find which layer they are (dev panel: toggle whitewater, spray/spit, the pile, the ribbon's
+   debug points, at the stand camera) and whether a size/placement did not follow the tip move (likely); fix only that
+   kind of cause; otherwise name the layer and carry. Capture the stand frame again after.
+8. launch.json revert: fine. Keep the worktree entry out of main's checkout.
+
+Then Task 6 as planned (suite idle + diff, captures at Solid / Pumping / Huge, both handovers, push). Andrew's look is next.
