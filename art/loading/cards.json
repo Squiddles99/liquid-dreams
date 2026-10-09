@@ -268,5 +268,113 @@
   "common": "",
   "latin": "Scytothalia dorycarpa",
   "fact": "One of the big habitat-making seaweeds of WA’s temperate coast, up to 2 metres long, on rough-water reefs like this one. The 2011 marine heatwave pushed its range back about 100 km."
+ },
+ "birds-osprey": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Osprey",
+  "common": "Eastern osprey",
+  "latin": "Pandion haliaetus cristatus",
+  "fact": "A fish hawk that plunges feet-first into the sea. Ospreys nest on rock stacks along this coast and keep adding to the same nest year after year, until it can stand 2 metres tall.",
+  "noongar": "names for it include yoondoordo, and around Busselton it was recorded as koomagert."
+ },
+ "birds-hooded-plover": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Hooded plover",
+  "common": "",
+  "latin": "Thinornis cucullatus",
+  "fact": "Lays its eggs in a bare scrape in the sand above the tide line, on surf beaches like Gallows, South Point and Left Handers. Only about 14 pairs breed on the Capes, so give them room."
+ },
+ "birds-oystercatcher": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Sooty oystercatcher",
+  "common": "",
+  "latin": "Haematopus fuliginosus",
+  "fact": "All black, with a red bill, eyes and legs. It works the rock platforms at low tide, and nests on lonely headlands like Gnarabup and Redgate. Females eat crabs, while males go for mussels and urchins.",
+  "noongar": "names for it include kwikan. Around the Vasse it was recorded as kwee-kern."
+ },
+ "birds-tropicbird": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Red-tailed tropicbird",
+  "common": "",
+  "latin": "Phaethon rubricauda",
+  "fact": "It dives for flying fish and squid far out at sea. Tropicbirds once nested on Sugarloaf Rock, off Cape Naturaliste, but they stopped around 2008. Now a pair or two nest on Rottnest instead."
+ },
+ "birds-kestrel": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Nankeen kestrel",
+  "common": "Australian kestrel",
+  "latin": "Falco cenchroides",
+  "fact": "A small falcon that hangs in the wind on one spot, then drops onto grasshoppers, beetles and lizards. Nankeen is a yellowish cotton cloth, first made in Nanjing, China.",
+  "noongar": "names for it include martiet."
+ },
+ "birds-sea-eagle": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "White-bellied sea eagle",
+  "common": "",
+  "latin": "Icthyophaga leucogaster",
+  "fact": "A big female can spread her wings 2.2 metres. Pairs stay together for life, and some nests are used for decades.",
+  "noongar": "names for it include djilyon and ngoolar."
+ },
+ "birds-albatross": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Shy albatross",
+  "common": "",
+  "latin": "Thalassarche cauta",
+  "fact": "Australia’s own albatross: it breeds on only three islands off Tasmania, with wings up to 2.5 metres across. In winter, albatrosses glide past Cape Leeuwin and Cape Naturaliste."
+ },
+ "birds-fairywren": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Splendid fairywren",
+  "common": "Blue wren",
+  "latin": "Malurus splendens",
+  "fact": "The male turns electric blue for the breeding season, and courts females with pink and purple petals he plucks himself. In autumn the blue fades away.",
+  "noongar": "names for it include djorrdjilya and djodjal."
+ },
+ "birds-carnabys": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Carnaby’s cockatoo",
+  "common": "White-tailed black cockatoo",
+  "latin": "Zanda latirostris",
+  "fact": "Endangered, and found only in WA’s south-west. Flocks crack open banksia, hakea and marri for the seeds. Pairs mate for life, and one bird lived to 35.",
+  "noongar": "people call it ngolyenok."
+ },
+ "birds-ringneck": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Twenty-eight",
+  "common": "Australian ringneck",
+  "latin": "Barnardius zonarius semitorquatus",
+  "fact": "Named for its call, which sounds like “twenty-eight”. One early French listener heard “vingt-huit”.",
+  "noongar": "names for it include dowarn, recorded around the Vasse, and doomolok."
+ },
+ "birds-kookaburra": {
+  "kicker": "Introduced bird · Cape to Cape",
+  "name": "Laughing kookaburra",
+  "common": "",
+  "latin": "Dacelo novaeguineae",
+  "fact": "Not from here: it was brought over from the eastern states from 1883, hundreds of birds in all, probably for its name as a snake-killer. Family groups laugh together to mark their patch."
+ },
+ "birds-brown-honeyeater": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Brown honeyeater",
+  "common": "",
+  "latin": "Lichmera indistincta",
+  "fact": "Only about 10 grams, but it has one of the loudest, sweetest songs of any Australian honeyeater.",
+  "noongar": "names for it include djindjoko and kyeet."
+ },
+ "birds-wattlebird": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Red wattlebird",
+  "common": "",
+  "latin": "Anthochaera carunculata",
+  "fact": "Australia’s second-biggest honeyeater, named for the pinkish-red wattles on its cheeks. It guards a flowering tree noisily against all comers.",
+  "noongar": "names for it include wodjalok. Around the Vasse it was recorded as dangong."
+ },
+ "birds-spinebill": {
+  "kicker": "Birds · Cape to Cape",
+  "name": "Western spinebill",
+  "common": "",
+  "latin": "Acanthorhynchus superciliosus",
+  "fact": "Found only in the south-west. Its long, curved bill reaches the nectar deep inside tube flowers, like kangaroo paw, that other honeyeaters can’t get to.",
+  "noongar": "people call it booldjit."
  }
 }

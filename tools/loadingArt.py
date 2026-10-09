@@ -38,13 +38,28 @@ def save_photo(photo, width, name):
     report(name)
 
 
+# A picture taller than 16:9 (the birds come 4:3) is cut to 16:9 here, so the screen's cover crop doesn't take the top
+# and bottom off evenly and clip a wingtip: framing.json gives, per picture, where the cut sits (0 = keep the top,
+# 1 = keep the bottom; 0.5 when not listed).
+FRAMING = json.load(open(os.path.join(SRC, "framing.json"), encoding="utf-8"))
+
+
+def frame(photo, stem):
+    w, h = photo.size
+    keep = round(w * 9 / 16)
+    if h <= keep + 1:
+        return photo
+    top = round((h - keep) * FRAMING.get(stem, 0.5))
+    return photo.crop((0, top, w, top + keep))
+
+
 def pictures(folder):
     names = []
     for file in sorted(os.listdir(folder)):
         stem, ext = os.path.splitext(file)
         if ext.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
             continue
-        photo = Image.open(os.path.join(folder, file)).convert("RGB")
+        photo = frame(Image.open(os.path.join(folder, file)).convert("RGB"), stem)
         save_photo(photo, min(1920, photo.size[0]), f"{stem}-1920.webp")
         save_photo(photo, min(3840, photo.size[0]), f"{stem}-full.webp")
         names.append(stem)
