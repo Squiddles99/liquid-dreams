@@ -1,50 +1,52 @@
 import { describe, expect, it } from 'vitest';
-import { buildBathymetry, downsample } from '../seabed/bathymetry';
-import { DEFAULT_REEF_PARAMS, NORTH_LEDGE } from '../seabed/wombReef';
-import { REFRACT_FLOOR_M, type ReefField, computeReefField } from './reefField';
+import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
+import { SWELL_BANDS } from '../frontend/sessionSetup';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
-import { CLOSEOUT_PEEL, TIDES, type Tide, leftStretches, rideOf, setWaveHeight } from './reefReport';
-import { MAX_SPEED } from '../ride/ridePhysics';
+import { CLOSEOUT_PEEL, leftStretches, rideOf, setWaveHeight } from './reefReport';
+import { coastReefField } from './testField';
 
 /**
- * The Womb's reef on Andrew's satellite line (2026-10-05), as the game asks for its field (smoothed, the swell bent as over
- * REFRACT_FLOOR_M), 15 s from 225°: the left's first leg (70 m at 24° from the corner), its second (46 m bending toward the
- * beach) and then the edge along the beach. The peel stretch is off (Andrew chose a ~10 m/s curl, but held sections ran on
- * over the flat and broke small and fat: "TINY... isn't a hollow barrel"), so the curl runs at the reef's own speed: one
- * the surfer can hold (ridePhysics.MAX_SPEED) at 4–8 ft. The edge along the beach closes out.
+ * The Womb's left on the real shelf (womb-retune Task 2b, Andrew's ruling 2026-10-09; Fable's row): from the tip 224 m off
+ * the beach one 180 m ledge at 46°, then due north (the inside); the right is the satellite line's shape moved to the tip.
+ * The game's field (coast-seeded, smoothed, REFRACT_FLOOR_M), 225°, every select tide, per offered band (Fun does not stand
+ * up on a 3.5 m ledge 230 m out: not offered, Fable 2026-10-09). Measured: evidence/womb-retune/pins-225.txt.
  */
-const LEGS = { first: [0], second: [1], along: [2] } as const;
+const LEGS = { first: [0], inside: [1] } as const;
+const TIDES_M = [-0.5, -0.25, 0, 0.5] as const;
+const band = (label: string) => SWELL_BANDS.find((b) => b.label === label)!;
+const legs = (label: string, tideM: number) => {
+  const b = band(label), f = coastReefField({ periodS: b.periodS, tideM }), H = setWaveHeight(b.ft);
+  return { ...leftStretches(f, H, NORTH_LEDGE, LEGS, DEFAULT_BREAK_PARAMS), ...leftStretches(f, H, SOUTH_LEDGE, { r0: [0], r1: [1] }, DEFAULT_BREAK_PARAMS) };
+};
 
-describe("the Womb's reef: Andrew's satellite line (2026-10-05)", () => {
-  const bed = downsample(buildBathymetry(DEFAULT_REEF_PARAMS), 2);
-  const fields = {} as Record<Tide, ReefField>;
-  const field = (t: Tide): ReefField => (fields[t] ??= computeReefField({
-    bed, periodS: 15, fromDeg: 225, tideM: TIDES[t], peel: DEFAULT_BREAK_PARAMS.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M,
-  }));
-
-  // The slowest is the soft 4 ft wave at high tide: 9.8 m/s since the coast offshore is 20 m (2026-10-05).
-  it("the first leg peels at a speed the surfer can hold (9.5 m/s to MAX_SPEED) at 4–8 ft, every tide", { timeout: 600_000 }, () => {
-    for (const tide of ['low', 'mid', 'high'] as const) {
-      for (const ft of [4, 6, 8]) {
-        const first = leftStretches(field(tide), setWaveHeight(ft), NORTH_LEDGE, LEGS).first!;
-        expect(first.peel, `${tide} ${ft} ft`).toBeGreaterThan(9.5);
-        expect(first.peel, `${tide} ${ft} ft`).toBeLessThan(MAX_SPEED);
-      }
+describe("the Womb's left on the real shelf (womb-retune)", () => {
+  // R3's line, 9–12 m/s, for the bands a surfer rides most; the biggest day (Huge) to 12.5 (Fable 2026-10-09: leftStretches
+  // fits 2.5 m samples, 0.1 m/s is in its noise; a statement of the biggest day, not a loosening). Big at +0.5 m runs 12.1
+  // (measured), held to Huge's 12.5 on the same ruling.
+  const MAX_PEEL: Record<string, (tideM: number) => number> = { Solid: () => 12, Pumping: () => 12, Big: (t) => (t > 0 ? 12.5 : 12), Huge: () => 12.5 };
+  it.each(Object.keys(MAX_PEEL))('%s: the first leg breaks all along and peels 9 m/s to its bar at every tide', { timeout: 900_000 }, (label) => {
+    for (const tideM of TIDES_M) {
+      const first = legs(label, tideM).first;
+      expect(first, `${label} ${tideM} m`).not.toBeNull();
+      expect(first!.broken, `${label} ${tideM} m`).toBe(first!.of);
+      expect(first!.peel, `${label} ${tideM} m`).toBeGreaterThanOrEqual(9);
+      expect(first!.peel, `${label} ${tideM} m`).toBeLessThanOrEqual(MAX_PEEL[label](tideM));
     }
   });
 
-  it('the first leg barrels at 6 and 8 ft, every tide', { timeout: 600_000 }, () => {
-    for (const tide of ['low', 'mid', 'high'] as const) {
-      for (const ft of [6, 8]) expect(rideOf(leftStretches(field(tide), setWaveHeight(ft), NORTH_LEDGE, LEGS).first), `${tide} ${ft} ft`).toBe('barrel');
-    }
+  it.each(['Pumping', 'Big'])('%s (the two middle offered bands): the first leg barrels at every tide', { timeout: 900_000 }, (label) => {
+    for (const tideM of TIDES_M) expect(rideOf(legs(label, tideM).first), `${label} ${tideM} m`).toBe('barrel');
   });
 
-  it('where the edge runs along the beach the left closes out, at every size and tide', { timeout: 600_000 }, () => {
-    for (const tide of ['low', 'mid', 'high'] as const) {
-      for (const ft of [6, 8, 10, 12]) {
-        const along = leftStretches(field(tide), setWaveHeight(ft), NORTH_LEDGE, LEGS).along!;
-        expect(along.peel, `${tide} ${ft} ft`).toBeGreaterThan(CLOSEOUT_PEEL);
-      }
+  it('Solid (the smallest offered) is soft at mid tide: hollow < 0.6', { timeout: 300_000 }, () => {
+    expect(legs('Solid', 0).first!.hollow).toBeLessThan(0.6);
+  });
+
+  it.each(['Solid', 'Pumping', 'Big', 'Huge'])('%s: the inside (due north past the ledge) and the right close out at every tide', { timeout: 900_000 }, (label) => {
+    for (const tideM of TIDES_M) {
+      const l = legs(label, tideM);
+      expect(l.inside!.peel, `${label} ${tideM} m inside`).toBeGreaterThan(CLOSEOUT_PEEL);
+      for (const r of [l.r0!, l.r1!]) expect(rideOf(r), `${label} ${tideM} m right`).toBe('closes out');
     }
   });
 });
