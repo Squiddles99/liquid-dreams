@@ -1083,9 +1083,9 @@ export class App {
   }
 
   /** Dev checks: drives the front end to a beat (opening it if needed) and waits for the move to land. */
-  async frontEndGoTo(beat: 'conditions' | 'rider' | 'gear'): Promise<void> {
+  async frontEndGoTo(beat: 'map' | 'conditions' | 'rider' | 'gear'): Promise<void> {
     this.openFrontEnd();
-    const order = ['conditions', 'rider', 'gear'] as const;
+    const order = ['map', 'conditions', 'rider', 'gear'] as const;
     for (let k = 0; k < 900; k++) {
       const s = this.frontEnd?.state;
       if (!s) return;

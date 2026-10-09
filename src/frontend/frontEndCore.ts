@@ -101,10 +101,12 @@ export class FrontEndCore {
         cue.line = lineFor(this.s, e.kind === 'value' ? e.row : 'swell', this.lineSeed++);
       }
       if (e.kind === 'end') this.gate.hold(nowMs);
+      // Surf here swaps in today's forecast (or the custom setup): the sea follows the panel.
+      if (e.kind === 'surfHere' && before.setup !== this.s.setup) this.gate.edit(nowMs);
       if (e.kind === 'move') {
         this.moveFrom = this.shot(before);
         if (e.from === 'conditions' && e.to === 'rider') this.turnT = 0;
-        cue.haptic ||= e.to !== 'conditions';
+        cue.haptic ||= e.to !== 'conditions' && e.to !== 'map';
       }
       if (e.kind === 'pick') { this.pickT = 1e-3; cue.haptic = true; }
       if (e.kind === 'chosen') cue.haptic = true;
