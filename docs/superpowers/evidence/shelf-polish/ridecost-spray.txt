@@ -1,0 +1,12 @@
+# shelf-polish Task 1 step 2 (ruling C): the spray/impact/spit emitters per 20 Hz tick, riding, 7 ft 15 s, same Node process
+# npx tsx tools/_rideCost.ts --ft=7 --s=14 --spray --old   (old = tools/_sprayEmittersOld.ts, a verbatim copy of HEAD's)
+# old emitters ms median 41.47 mean 45.58; ticks whose emitters differ (old vs new, exact JSON): 0 of 170
+# spray ticks 170 (riding, 20 Hz): breakEmitters ms median 13.97 mean 13.88; trace-only ms median 3.74 mean 3.85; stations median 101.00 mean 101.05; with tb median 59.00 mean 53.41; in view cone median 34.00 mean 35.08; emitters spray/impact/spit median 15.00 mean 13.06 / median 4.00 mean 3.61 / median 3.00 mean 2.52; births median 37.00 mean 34.56
+#
+# What changed: every breaking station (59 a tick) paid for its section frame (the lip's drawn points: ~27 sheet sums each);
+# ~20 of them emit. The frame's timing and weights (prog, weight, rho, tauLand) read no sheet (wombSection.sectionTiming),
+# so the emitters test them first and frame only the stations that emit (spray mid-throw, impact in its window, spit
+# mouths). The output is identical (0 of 170 ticks differ, exact JSON), so the camera cull the ruling allowed was not
+# needed: no camera dependence, the sound's impacts (App.updateSound reads the same emitters, all round the listener) and
+# a replay are unchanged. The in-view cone count (34 of 59, margin 60 m) is what a camera cull would have kept: less saving
+# than this, and it would have cut the sound's impacts behind the camera.

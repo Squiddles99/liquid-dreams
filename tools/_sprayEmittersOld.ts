@@ -1,16 +1,16 @@
-import type { BreakParams } from '../breaker/breaking';
-import { offshoreSpeed } from '../breaker/overturn';
-import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
-import { type Station, type StationEntry, traceStations } from '../breaker/crestTrace';
-import { GRAVITY_MS2 } from '../breaker/lipProfile';
-import { type SectionFrame, type SectionTiming, sectionFrame, sectionTiming } from '../breaker/wombSection';
-import type { P2 as Vec2 } from '../breaker/wombProfile';
-import { type ReefField, sampleField } from '../breaker/reefField';
-import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWave } from '../breaker/setWaveModel';
-import { smoothstep } from '../math/smoothstep';
-import type { WaveEvent } from '../swell/sets';
-import { FOAM_TICK_S } from './foamStep';
-import { SPRAY_KIND } from './particleKinds';
+import type { BreakParams } from '../src/breaker/breaking';
+import { offshoreSpeed } from '../src/breaker/overturn';
+import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../src/bombie/bombieModel';
+import { type Station, type StationEntry, traceStations } from '../src/breaker/crestTrace';
+import { GRAVITY_MS2 } from '../src/breaker/lipProfile';
+import { type SectionFrame, sectionFrame } from '../src/breaker/wombSection';
+import type { P2 as Vec2 } from '../src/breaker/wombProfile';
+import { type ReefField, sampleField } from '../src/breaker/reefField';
+import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWave } from '../src/breaker/setWaveModel';
+import { smoothstep } from '../src/math/smoothstep';
+import type { WaveEvent } from '../src/swell/sets';
+import { FOAM_TICK_S } from '../src/whitewater/foamStep';
+import { SPRAY_KIND } from '../src/whitewater/particleKinds';
 
 /**
  * Offshore spray's emitters and births (spec 2026-09-27-offshore-spray-design.md §3.1), on the CPU: each 20 Hz tick, the
@@ -232,20 +232,11 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
   const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M, offshoreMs });
   // The lip is thrown from the wave as it stood: the frame reads the sheet without the whitewater pile (as the ribbon's).
   const opts: BreakOptions = { ...breakOptions(field, params, offshoreMs), pile: false, shape: 'lean' };
-  // Each station's timing (no sheet read) decides whether it emits; only the stations that do pay for the frame (the lip's
-  // drawn points), so the result is the same as framing every station (shelf-polish Task 1, ruling C: on the real shelf
-  // ~59 breaking stations a tick, ~20 of them emit).
-  const timing: (SectionTiming | null)[] = stations.map(() => null);
   const frames: (SectionFrame | null)[] = stations.map(() => null);
   for (const [si, s] of stations.entries()) {
     if (s.gap || s.tb === null || !Number.isFinite(s.tb)) continue;
     const wind = wantSpray ? offshoreFactor(i.wind, s.nx, s.nz) : 0;
     if (!(wind > 0) && !wantImpact) continue;
-    const ft = sectionTiming(s.section, s.H);
-    if (wantImpact) timing[si] = ft;
-    const emitsSpray = wind > 0 && ft.prog > 0 && ft.prog < 1 && ft.weight * ft.rho > MIN_EMIT_WEIGHT;
-    const emitsImpact = wantImpact && ft.tauLand <= s.tb && s.tb < ft.tauLand + IMPACT_WINDOW_S && ft.rho > MIN_EMIT_WEIGHT;
-    if (!emitsSpray && !emitsImpact && !(wantImpact && spitCandidate(s, ft))) continue;
     // The station's own wave only: a set wave's envelope is tight (exp(−(ξ/0.7T)⁶)), so the others add nothing at its
     // crest, and summing all of them was most of the lip maths' cost (measured, final cost pass).
     const own = [waves[s.wave]];
@@ -258,7 +249,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
     const f = sectionFrame(s.section, s.H, s.c, base);
     if (wantImpact) frames[si] = f;
     const waveId = i.events[s.wave].id, arc = Math.round(s.arc / SPRAY_SPACING_M);
-    if (emitsSpray) {
+    if (wind > 0 && f.prog > 0 && f.prog < 1 && f.weight * f.rho > MIN_EMIT_WEIGHT) {
       // The lip's tip now.
       const u = f.tip[0], y = f.tip[1];
       spray.push({
@@ -266,7 +257,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
         strength: f.weight * f.rho * wind * i.amount, lip: Math.min(1, f.weight * f.rho), waveId, arc,
       });
     }
-    if (emitsImpact) {
+    if (wantImpact && f.tauLand <= s.tb && s.tb < f.tauLand + IMPACT_WINDOW_S && f.rho > MIN_EMIT_WEIGHT) {
       // Where the lip lands: its tip as it reaches the water (the round barrel, τ_land after onset).
       const u = f.tip[0], y = f.tip[1];
       impact.push({
@@ -275,17 +266,12 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       });
     }
   }
-  if (wantImpact) spitEmitters(stations, timing, frames, i, impactAmount, spit);
+  if (wantImpact) spitEmitters(stations, frames, i, impactAmount, spit);
   return { spray, impact, spit };
 }
 
-/** A station whose own lip may spit (spitEmitters' first test): still in the air, well through its throw, drawn. */
-function spitCandidate(s: Station, t: SectionTiming): boolean {
-  return s.tb !== null && s.tb < t.tauLand && t.prog > 0.4 && t.weight * t.rho > MIN_EMIT_WEIGHT;
-}
-
-/** The stations' spit (SpitEmitter), from their timings (null: not breaking) and, for the mouths, their frames, into `out`. */
-function spitEmitters(stations: readonly StationEntry[], timing: readonly (SectionTiming | null)[], frames: readonly (SectionFrame | null)[], i: EmitterInput, amount: number, out: SpitEmitter[]): void {
+/** The stations' spit (SpitEmitter), from their frames (null: no frame), into `out`. */
+function spitEmitters(stations: readonly StationEntry[], frames: readonly (SectionFrame | null)[], i: EmitterInput, amount: number, out: SpitEmitter[]): void {
   // The station k steps from j along its run (same wave, no gap between), or -1.
   const at = (j: number): Station | null => {
     const e = j >= 0 && j < stations.length ? stations[j] : null;
@@ -299,17 +285,16 @@ function spitEmitters(stations: readonly StationEntry[], timing: readonly (Secti
     }
     return q;
   };
-  const tbOf = (j: number): number => (timing[j] ? (at(j)?.tb ?? -Infinity) : -Infinity);
+  const tbOf = (j: number): number => (frames[j] ? (at(j)?.tb ?? -Infinity) : -Infinity);
   for (let j = 0; j < stations.length; j++) {
-    const s = at(j), ft = timing[j];
-    if (!s || !ft || s.tb === null || !spitCandidate(s, ft)) continue;
-    const f = frames[j] as SectionFrame;
+    const s = at(j), f = frames[j];
+    if (!s || !f || s.tb === null || !(s.tb < f.tauLand) || !(f.prog > 0.4) || !(f.weight * f.rho > MIN_EMIT_WEIGHT)) continue;
     // Behind the mouth: the side further through its break.
     const back = tbOf(step(j, -1)) > tbOf(step(j, 1)) ? -1 : 1;
     if (!(tbOf(step(j, back)) > s.tb)) continue;
     let age = -1, from = -1;
     for (let k = 1; k <= SPIT_REACH_STATIONS; k++) {
-      const q = step(j, back * k), fq = q >= 0 ? timing[q] : null, tq = q >= 0 ? at(q)?.tb : null;
+      const q = step(j, back * k), fq = q >= 0 ? frames[q] : null, tq = q >= 0 ? at(q)?.tb : null;
       if (fq && tq !== null && tq !== undefined && tq >= fq.tauLand) { age = tq - fq.tauLand; from = q; break; }
     }
     if (from < 0) continue;

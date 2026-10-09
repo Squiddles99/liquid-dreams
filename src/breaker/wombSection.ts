@@ -382,6 +382,15 @@ export interface SectionFrame {
 export const LIP_PHASES: readonly [number, number, number, number] = [0.4, 0.55, 1.2, 1.45];
 export const lipWeight = (phase: number): number => smoothstep(LIP_PHASES[0], LIP_PHASES[1], phase) * (1 - smoothstep(LIP_PHASES[2], LIP_PHASES[3], phase));
 
+/** A section frame's timing and weights, which read no sheet: what the emitters test before they pay for the frame. */
+export type SectionTiming = Pick<SectionFrame, 'prog' | 'weight' | 'rho' | 'tauLand'>;
+
+/** The station's SectionTiming from its numbers and height alone (sectionFrame's same fields, bit for bit). */
+export function sectionTiming(numbers: SectionNumbers, H: number): SectionTiming {
+  const { phase, rho } = numbers;
+  return { prog: Math.min(1, Math.max(0, (phase - STOOD_PHASE) / (STAGES.barrel - STOOD_PHASE))), weight: lipWeight(phase), rho, tauLand: flightTime(H) };
+}
+
 /** The station's section frame: its numbers (smoothed, Station.section), its height H, crest speed c and the sheet. */
 export function sectionFrame(numbers: SectionNumbers, H: number, c: number, sheet: SheetAlong): SectionFrame {
   const { A, phase, hollow, rho } = numbers;
