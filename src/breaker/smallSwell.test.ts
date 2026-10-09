@@ -1,48 +1,34 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE } from '../seabed/wombReef';
-import { DEFAULT_BREAK_PARAMS as P, breakingRatio } from './breaking';
-import { REFRACT_FLOOR_M, computeReefField, sampleField } from './reefField';
+import { SWELL_BANDS } from '../frontend/sessionSetup';
+import { DEFAULT_BREAK_PARAMS as P } from './breaking';
 import { leftStretches, setWaveHeight } from './reefReport';
+import { coastReefField } from './testField';
 
-// Plan 2026-10-09-small-swell-low-tide Task 2: the shallow breaking floor (3 → 2 m) lets a small set stand up at low
-// tide; the big sets do not move. Main's reef, 2 m grid, smooth, refractFloorM (as the game bakes it).
-const bed = downsample(buildBathymetry(), 2);
-const field = (periodS: number, tideM: number) =>
-  computeReefField({ bed, periodS, fromDeg: 225, tideM, smooth: true, refractFloorM: REFRACT_FLOOR_M });
-const legs = (f: ReturnType<typeof computeReefField>, ft: number) =>
-  leftStretches(f, setWaveHeight(ft), NORTH_LEDGE, { first: [0], second: [1] }, P);
+// The select screen's matrix (womb-retune Task 4: docs/superpowers/evidence/womb-retune/matrix-225.txt, tools/_smallSwell.ts)
+// re-measured here on the game's field (coast-seeded, the take-off moved to the real shelf) at its ends: the smallest band
+// that stands up (Fun, at Low only: ruled not offered), the smallest offered (Solid) and the biggest (Huge).
+const MATRIX = readFileSync(resolve(__dirname, '../../docs/superpowers/evidence/womb-retune/matrix-225.txt'), 'utf8');
+/** The matrix's row for band × tide: [broken, of, start s, peel m/s, hollow]. */
+function row(label: string, tideM: number): number[] {
+  const line = MATRIX.split('\n').find((l) => l.startsWith(label) && Number(l.split('|')[1]) === tideM)!;
+  const [broken, of] = line.split('|')[3].split(',')[0].trim().split('/').map(Number);
+  return [broken, of, ...line.split('|')[3].split(',').slice(1, 4).map(Number)];
+}
 
-describe('a small set at low tide (small-swell Task 2)', () => {
-  it('3.5 ft, 13 s, tide −0.5 (the select’s Low): the first leg breaks all along, peels 9–12 m/s; the second leg peels forward', () => {
-    const st = legs(field(13, -0.5), 3.5);
-    expect(st.first, 'first leg breaks').not.toBeNull();
-    expect(st.first!.broken).toBe(st.first!.of);
-    expect(st.first!.of).toBe(28);
-    expect(st.first!.peel).toBeGreaterThanOrEqual(9);
-    expect(st.first!.peel).toBeLessThanOrEqual(12);
-    expect(st.second, 'second leg breaks').not.toBeNull();
-    expect(st.second!.peel).toBeGreaterThan(0);
-    expect(st.second!.peel).toBeLessThan(20);
-  }, 300_000);
-  it('3.5 ft, 13 s, tide −0.8 (the clamped minimum): it stands up at the take-off, or the first leg starts by 0.5 s', () => {
-    const f = field(13, -0.8), s = sampleField(f, 0, 0);
-    const ratio = breakingRatio(setWaveHeight(3.5) * s.amp, s.hminBreak, P);
-    const start = legs(f, 3.5).first?.start ?? Infinity;
-    expect(ratio >= 1 || start <= 0.5, `ratio ${ratio.toFixed(2)}, start ${start.toFixed(2)} s`).toBe(true);
-  }, 300_000);
-});
-
-describe('the big sets do not move (small-swell Task 2; pinned from one-curl t3-reef.txt, mid tide, 15 s)', () => {
-  const mid = field(15, 0);
+describe('the select matrix holds on the game field (womb-retune Task 4)', () => {
   it.each([
-    [6, -0.1, 11.4, 0.76],
-    [8, -0.7, 11.3, 1.0],
-    [12, -0.7, 11.7, 1.0],
-  ])('%i ft: first-leg start %f s, peel %f m/s, hollow %f', (ft, start, peel, hollow) => {
-    const st = legs(mid, ft).first!;
-    expect(Math.abs(st.start - start)).toBeLessThanOrEqual(0.1 + 0.05);
-    expect(Math.abs(st.peel - peel)).toBeLessThanOrEqual(0.2 + 0.05);
-    expect(Math.abs(st.hollow - hollow)).toBeLessThanOrEqual(0.02 + 0.005);
-  }, 300_000);
+    ['Fun', -0.5], ['Solid', -0.5], ['Solid', 0.5], ['Huge', 0.5],
+  ] as const)('%s at tide %f m: the first leg as the matrix says', (label, tideM) => {
+    const b = SWELL_BANDS.find((x) => x.label === label)!;
+    const first = leftStretches(coastReefField({ periodS: b.periodS, tideM }), setWaveHeight(b.ft), NORTH_LEDGE, { first: [0] }, P).first!;
+    const [broken, of, start, peel, hollow] = row(label, tideM);
+    expect(first.broken).toBe(broken);
+    expect(first.of).toBe(of);
+    expect(Math.abs(first.start - start)).toBeLessThanOrEqual(0.05 + 0.01);
+    expect(Math.abs(first.peel - peel)).toBeLessThanOrEqual(0.05 + 0.01);
+    expect(Math.abs(first.hollow - hollow)).toBeLessThanOrEqual(0.005 + 0.001);
+  }, 600_000);
 });
