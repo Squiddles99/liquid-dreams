@@ -37,23 +37,32 @@ bend is over the shelf and the features.
 
 ## 3. Design
 
-### 3a. The data (Andrew exports; Fable's request)
+### 3a. The data (revised 2026-10-09: no export; traced)
 
-From Seamap Australia, WGS84, for the box **lat −33.908 to −33.878, lon 114.965 to 114.990** (Lefthanders to
-Ellensbrook, 1.5 km offshore to the dune):
-1. the **bathymetry raster** behind the 1 m contours in image 7 (GeoTIFF, metres below datum, any resolution ≤ 10 m;
-   if only contours exist, the contour lines as GeoJSON with their depth attribute);
-2. the **substrate / habitat polygons** (reef vs sand vs seagrass) as GeoJSON, from the "South-west Corner" or
-   "high-resolution seafloor classification" layers.
-Saved under `reference/place/seamap/` (git-ignored with the rest of `reference/`). Fallback if the export fails: the
-contours traced from image 7 and the reef extents from images 2–3 by hand, as a GeoJSON Opus writes.
+Andrew's check of the Seamap bathymetry (image 8, `reference/place/new-sattelite-and-bathymetry-references/8-contours-gracetown-to-ellensbrook.webp`)
+shows the survey **stops 300–500 m short of the beach**: its innermost "1 m" line is the survey's edge, not the sea's,
+and all four breaks sit in the unsurveyed strip. So the data's value is the **outer slope only**: from about 10 m
+(≈ 400–500 m offshore) out to 30–40 m, where the contours are sound and nearly parallel to the coast. That is the
+water the swell bends over, which is what the lineup's "swell angle" needs.
+
+Sources, by zone:
+1. **Outer shelf (depth ≥ 10 m):** the contours **traced by hand** from images 7 (right panel) and 8 into
+   `src/seabed/coastContours.ts` as polylines with depths, in local metres about the Womb's peak (the scale bars:
+   image 8 is 1:31 691 with a 500 m bar; image 7's right panel is the 1 m-contour zoom). Tracing accuracy ±30 m along
+   the coast, ±1 m in depth, is enough: the eikonal at 4 m cells cannot see finer.
+2. **Inner shelf (the beach to ~450 m out):** a hand-built profile: the Womb's own reef map inside its footprint
+   (unchanged), elsewhere the satellite's reef/sand reading (dark = reef, teal = sand; images 2–3) as the substrate,
+   with depths from the reef map's own ledge/shelf figures (`DEFAULT_REEF_PARAMS`) and the features of §3b: the
+   inner shelf 2–8 m over reef, sand gutters 4–7 m, the shore-break slope as `depthBg` today near the sand.
+3. **Join:** a smoothstep over 100 m between the inner profile's outer edge (~8–10 m) and the traced 10 m contour.
+No Seamap export, no `geotiff` dependency, no `reference/place/seamap/`.
 
 ### 3b. The coast map (`src/seabed/coastMap.ts`)
 
 A coarse depth grid in the game's frame: `COAST_GRID = { x0: −1500, z0: −2100, cellM: 4, nx: 438, nz: 875 }`
 (x to +250 m, z to +1 400 m: 1.75 × 3.5 km, 383 k cells), built **once at boot in the worker** from:
-- the data, reprojected to local metres about the Womb's peak (`WOMB_LOCATION`), resampled to the grid (bilinear from
-  the raster; or contours rasterised by nearest-contour interpolation);
+- the traced outer contours (§3a.1), rasterised by interpolation between the two nearest contours along the
+  offshore direction; the inner profile (§3a.2) inside them, joined over 100 m;
 - the **four features** laid over it where the data's resolution cannot carry them (named, parametric, like
   `wombReef.ts`): Lefthanders' ledge (a polyline along the shelf edge at z ≈ −1 666, a ledge profile like the Womb's,
   default 5 m ledge over 12 m water); the Bombie (a mound: top depth `BOMBIE_TOP_M` 5, radius 60 m, in 12–15 m);
@@ -61,9 +70,8 @@ A coarse depth grid in the game's frame: `COAST_GRID = { x0: −1500, z0: −210
   from the satellite along the whole map (the dune shift as today near the Womb);
 - **the Womb's own reef map, unchanged**: inside `REEF_GRID`'s footprint the coast map takes the reef map's depths,
   downsampled 8×, so the two agree where they overlap.
-`depthBg(x)` stays as the background outside the coast map only. Deterministic; a baked binary
-(`public/terrain/womb-coast.bin`, built by `tools/bakeCoast.ts` from the data, the same shape as `womb-land.bin`'s
-grids) so the worker does not parse GeoTIFF at boot; the builder's tests run on the baked file.
+`depthBg(x)` stays as the background outside the coast map only. Deterministic and built from code and the traced
+tables at boot in the worker (under a second at 383 k cells; no baked file: the inputs are TypeScript).
 
 ### 3c. The coast field (`src/breaker/coastField.ts`)
 
@@ -109,8 +117,8 @@ coast map's west edge).
 
 ## 4. Tests and gates
 
-1. **The map** (`coastMap.test.ts`): deterministic; depth at 20 sample points from the data within 0.5 m of the
-   source; inside the reef footprint equal to the reef map downsampled (< 1 cm); the four features at their places
+1. **The map** (`coastMap.test.ts`): deterministic; depth at 20 points on the traced contours equals the contour's
+   depth within 0.5 m; inside the reef footprint equal to the reef map downsampled (< 1 cm); the four features at their places
    (Lefthanders' ledge 5 m at z −1 666; the Bombie's top 5 m at its centre and ≥ 11 m 150 m from it; Ellensbrook's bar
    ≤ 2.5 m at its line); monotone deepening offshore away from features.
 2. **The coast field reduces to the far field** (`coastField.test.ts`): with the coast bed set to `depthBg(x)`, τ and
@@ -137,8 +145,8 @@ painting); riding any break but the Womb; a far foam layer; the capes' wrap (the
 
 ## 6. Constraints
 
-`src/seabed/bathymetry.ts` (the Womb's reef) and `src/ride` untouched; `wombReef.ts` untouched. Zero budget: Seamap
-data is open; `geotiff` (npm, MIT) may be added as a dev dependency for the bake tool only. Probes in `tools/_*` or
+`src/seabed/bathymetry.ts` (the Womb's reef) and `src/ride` untouched; `wombReef.ts` untouched. Zero budget: nothing
+to download; no new dependency. Probes in `tools/_*` or
 env-gated tests; `tsc` clean; commit + ledger (`.superpowers/sdd/2026-10-09-lineup-truth/progress.md`) + push per
 task; commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. `reference/` never in a
-public repo; the baked `womb-coast.bin` is derived data and may ship.
+public repo; the traced contour tables are derived data and may ship.

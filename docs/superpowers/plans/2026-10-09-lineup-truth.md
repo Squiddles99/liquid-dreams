@@ -11,14 +11,12 @@ field from it; the GPU sheet and the CPU sampler read the coast field outside th
 ratio alone on the sheet's existing lifecycle. No change to the reef map, the onset record, the ribbon or the ride.
 
 **Tech Stack:** TypeScript, three.js 0.186 WebGPU/TSL, vitest, the field worker (`src/breaker/fieldWorker.ts`,
-`ReefFieldClient.ts`), a Node bake tool (`tools/bakeCoast.ts`, Node 24 strips types) with `geotiff` (dev dependency)
-for the raster; the baked file loaded like `womb-land.bin` (`src/land/Land.ts` L16–20).
+`ReefFieldClient.ts`). No new dependency: the coast map is built in the worker from traced contour tables and code.
 
 **Spec:** `docs/superpowers/specs/2026-10-09-lineup-truth-design.md` (read it first; §3 design, §4 gates).
 
 **Written by:** Fable (orchestrator), 2026-10-09, for Opus (executor). Branch `lineup-truth` from `main` (3095079).
-Push after every task; no merge without Andrew's say-so. **Task 1 waits for Andrew's Seamap export**
-(`reference/place/seamap/`); Tasks 2–3 can start on the flat-bed fallback (spec §4.2–4.3) before it lands.
+Push after every task; no merge without Andrew's say-so. Nothing waits on data (spec §3a revised 2026-10-09: traced).
 
 ## Global Constraints
 
@@ -48,32 +46,29 @@ Push after every task; no merge without Andrew's say-so. **Task 1 waits for Andr
 
 ---
 
-### Task 0: the data, and the bake tool
+### Task 0: the traced contours (no download)
 
 **Files:**
-- Create: `tools/bakeCoast.ts` (GeoTIFF or contour GeoJSON + habitat GeoJSON → `public/terrain/womb-coast.bin`)
-- Create: `src/seabed/coastData.ts` (the binary's reader: grids like `landData.ts`'s), `src/seabed/coastData.test.ts`
-- Modify: `package.json` (`geotiff` dev dependency; script `bake:coast`)
+- Create: `src/seabed/coastContours.ts` (the traced outer contours as polylines with depths, local metres), `src/seabed/coastContours.test.ts`
+- Create: `docs/superpowers/evidence/lineup-truth/t0-tracing.md` (how each contour was read: image, pixel scale, the points)
 
 **Interfaces:**
-- Produces: `womb-coast.bin` = header `LDCO`, version 1, then one depth grid `{ x0, z0, cellM, nx, nz }` of float32
-  metres below the datum (positive down) on `COAST_GRID` and one substrate grid (uint8: 0 unknown, 1 sand, 2 reef,
-  3 seagrass) on the same grid. `loadCoastData(bytes: Uint8Array): { depth: Float32Array; substrate: Uint8Array; grid: GridSpec }`.
-- Consumes: Andrew's files under `reference/place/seamap/` (names recorded in the ledger). Reprojection: WGS84 →
-  local metres about `WOMB_LOCATION` (equirectangular at lat −33.895: 1° lat = 110 950 m, 1° lon = 92 400 m; +x east,
-  +z south). Record the formula and the two constants in the file header comment.
+- Produces: `COAST_CONTOURS: readonly { depthM: number; points: readonly [number, number][] }[]` for depths 10, 15,
+  20, 25, 30, 40 m (at least), each polyline running the map's full z range (−2 100 … +1 400), in game metres
+  (+x east, +z south, origin the Womb's peak); `contourDepthAt(x, z): number | null` = the depth interpolated between
+  the two nearest contours along x (null inshore of the 10 m line or beyond the outermost).
+- Consumes: `reference/place/new-sattelite-and-bathymetry-references/7.png` (right panel) and
+  `8-contours-gracetown-to-ellensbrook.webp` (Andrew, 2026-10-09: 1:31 691, a 500 m scale bar, the Womb at about
+  lat −33.895, lon 114.983, Gracetown's town block at the top for registration).
 
-- [ ] **Step 1: Failing test** (`coastData.test.ts`): a 3 × 2 grid written by a test helper `encodeCoast(...)` (put it
-  in `coastData.ts` too: the bake tool uses it) round-trips through `loadCoastData` exactly; a wrong magic throws.
-- [ ] **Step 2: Implement** `encodeCoast` / `loadCoastData`. Test green.
-- [ ] **Step 3: The bake tool.** `node tools/bakeCoast.ts --raster=<tif> [--contours=<geojson>] --habitat=<geojson> --out=public/terrain/womb-coast.bin`:
-  read the raster with `geotiff` (`fromFile`, `readRasters`, the geokeys for the bounds), bilinear-resample onto
-  `COAST_GRID`; where the raster has no data (land, gaps), fill from the contours if given (nearest two contours'
-  depths, inverse-distance) else from `depthBg(x)`; habitat polygons rasterised by point-in-polygon per cell (a small
-  ray-casting function in the tool). Print: the grid, the share of cells from the raster / contours / fallback, and the
-  depths at the four breaks' spec positions. Run it on Andrew's files; commit the `.bin` (derived data, ~1.9 MB) and
-  the printed summary as `docs/superpowers/evidence/lineup-truth/t0-bake.txt`.
-- [ ] **Step 4: Commit.** `feat(lineup-truth): coast data bake (Seamap raster + habitat → womb-coast.bin) and its reader (Task 0)`.
+- [ ] **Step 1: Failing test**: every contour has ≥ 12 points spanning the full z range; depth increases offshore at
+  z = 0, −1 666 and +1 080 (`contourDepthAt` monotone along x at those rows); the 10 m contour at z = 0 lies
+  350–550 m offshore (x in [−550, −350]) and the 20 m at 650–900 m, per image 7.
+- [ ] **Step 2: Trace.** Register image 8's pixel frame to metres with its scale bar and two landmarks (Gracetown's
+  town block, the Ellensbrook river mouth); read each contour's x at 12–16 z values; write the tables with a comment
+  per contour naming the image and the pixel rows read. Where image 7's zoom disagrees with image 8 near the Womb,
+  image 7 wins (finer). Record the method in `t0-tracing.md`. Test green.
+- [ ] **Step 3: Commit.** `feat(lineup-truth): the outer shelf's contours traced from the bathymetry screenshots (Task 0)`.
 
 ---
 
@@ -85,7 +80,7 @@ Push after every task; no merge without Andrew's say-so. **Task 1 waits for Andr
 - Modify: `src/seabed/coastProfile.ts` (export `COAST_GRID`; `depthBg` documented as "outside the coast map")
 
 **Interfaces:**
-- Produces: `buildCoastMap(data: CoastData, reef: Bathymetry, p: CoastParams): Bathymetry` on `COAST_GRID`
+- Produces: `buildCoastMap(reef: Bathymetry, p: CoastParams): Bathymetry` on `COAST_GRID` (contours from `coastContours.ts`)
   (`Bathymetry` = `{ grid, bed: Float32Array }` as the reef's, bed = height, negative below datum, so depth = tide − bed);
   `COAST_GRID = { x0: -1500, z0: -2100, cellM: 4, nx: 438, nz: 875 }`;
   `interface CoastParams { lefthandersLedgeM: number; bombieTopM: number; bombieRadiusM: number; ellensbrookBarM: number; ellensbrookBarOffM: number }`,
@@ -94,22 +89,23 @@ Push after every task; no merge without Andrew's say-so. **Task 1 waits for Andr
   refined in step 3 from the habitat raster's reef edge), `BOMBIE_CENTRE: [−280, 1020]`, `ELLENSBROOK_BAR: { z0: 930, z1: 1230 }`,
   `BREAK_FOOTPRINTS` (four polygons for §4.4's test).
 
-- [ ] **Step 1: Failing tests** (`coastMap.test.ts`, on the baked file via `readFileSync('public/terrain/womb-coast.bin')`):
+- [ ] **Step 1: Failing tests** (`coastMap.test.ts`):
   deterministic (two builds equal); inside `REEF_GRID`'s footprint the coast bed equals `downsample(buildBathymetry(), 8)`
   within 1 cm at every cell; the Bombie's top depth at its centre equals `bombieTopM` ± 0.1 and ≥ 11 m 150 m away;
   Lefthanders' ledge depth along its polyline equals `lefthandersLedgeM` ± 0.3; Ellensbrook's bar ≤ `ellensbrookBarM`
-  + 0.2 along its line; 20 data sample points (hard-coded from `t0-bake.txt`'s raster values) within 0.5 m; away from
+  + 0.2 along its line; 20 points on the traced contours within 0.5 m of their depth; the join band (the 100 m inside the 10 m contour)
+  monotone; away from
   the features, depth never decreases moving offshore along any row (monotone within 0.2 m noise).
-- [ ] **Step 2: Implement.** The data's depth as the base; the reef map blended in over its footprint with a 40 m
-  smoothstep rim (so the coast map agrees with the reef map inside and the data outside); each feature as an
+- [ ] **Step 2: Implement.** Outer: `contourDepthAt`; inner: the hand profile (spec §3a.2: reef 2–8 m where the
+  satellite reads reef, sand gutters 4–7 m, the shore slope as `depthBg` near the sand), joined over 100 m inside the
+  10 m line; the reef map blended in over its footprint with a 40 m smoothstep rim; each feature as an
   analytic shape added to the bed (`min` of depths for shoals: a ledge profile `reefProfileDepth`-like across
   Lefthanders' polyline using `ledgeSignedDistance` with that polyline; the Bombie a smooth mound
   `top + (bg − top) · smoothstep(0, radius, r)`; the bar a ridge along the beach line); the waterline from the data
   (cells of depth ≤ 0 are land → `SHORE_FLAT_DEPTH_M` as today).
-- [ ] **Step 3: Refine the features from the data.** Print the habitat raster's reef cells around z −1 666 and the
-  depths around (−280, 1 020); move `LEFTHANDERS_LEDGE` onto the mapped reef edge and the Bombie onto the shallowest
-  mapped mound within 150 m of the spec position if one exists (say so in the ledger; keep the spec position if not).
-  Tests green.
+- [ ] **Step 3: Place the features from the satellite.** From images 1–3, set `LEFTHANDERS_LEDGE` along the dark
+  reef's seaward edge at z ≈ −1 666 and the Bombie at the spec position (no survey there); note the pixel reads in
+  `t0-tracing.md`. Tests green.
 - [ ] **Step 4: Commit.** `feat(lineup-truth): the coast map: Seamap bed with the Womb's reef nested and Lefthanders, the Bombie and Ellensbrook as features (Task 1)`.
 
 ---
@@ -141,8 +137,8 @@ Push after every task; no merge without Andrew's say-so. **Task 1 waits for Andr
   `refactor(lineup-truth): the eikonal + flux march as solveWaveField, shared by the reef and the coast (Task 2a)`.
 - [ ] **Step 3: Implement `computeCoastField`** with `solveWaveField` on the coast grid (seed: `farSample`), then
   `coastAt` in `computeReefField` when `req.coast` is given. Worker + client carry it (the coast bed is ~1.5 MB: send
-  it once and cache in the worker, keyed by the coast params, not per request). `App` fetches `womb-coast.bin` at
-  boot (with the land, behind the cover), builds the map, and includes it in every field request. Tests green.
+  it once and cache in the worker, keyed by the coast params, not per request). `App` builds the coast map once
+  at boot (in the worker, from the tables) and the worker caches it by coast params. Tests green.
 - [ ] **Step 4: Cost.** `console.info('[field] coast eikonal <ms>, reef <ms>')` in the worker; three boots, the numbers
   in the ledger and `evidence/lineup-truth/t2-cost.txt` (gate ≤ +4 s on Andrew's machine; on yours, report).
 - [ ] **Step 5: Commit.** `feat(lineup-truth): the coast field (eikonal over the coast map) seeds the reef field (Task 2)`.
@@ -208,6 +204,6 @@ Push after every task; no merge without Andrew's say-so. **Task 1 waits for Andr
   lineup (`DEFAULT_LINEUP_POSITION`, yaw north then south, pitch −2) at 6 and 10 ft at a set's third wave; the lookout
   shot (`frontend/beatCamera.lookoutShot`'s pose) at 6 ft; the one-curl down-the-line frames at 6 ft for "unchanged".
   `t5-captures.md` lists each with one line (what breaks, what does not, the lines between).
-- [ ] **Step 3: Handovers**, as the previous segments': commits; suite baseline vs after; the bake summary; the cost
+- [ ] **Step 3: Handovers**, as the previous segments': commits; suite baseline vs after; the tracing note; the cost
   lines; the breaking maps; the ride lines; the captures list; gotchas; what is left (spec §5 + anything found).
 - [ ] **Step 4: Commit and push.** `docs(lineup-truth): evidence, captures and handovers (Task 5)`.
