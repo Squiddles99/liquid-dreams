@@ -52,6 +52,10 @@ export class BreakDetails {
       }));
     }
     const max = Math.max(0, this.inner.scrollHeight - this.body.clientHeight);
-    this.inner.style.transform = `translateY(${-Math.min(max, s.detailsScroll * STEP_PX)}px)`;
+    const y = Math.min(max, s.detailsScroll * STEP_PX);
+    this.inner.style.transform = `translateY(${-y}px)`;
+    // Fade the edges where text runs on: the top once scrolled, the bottom while more is below.
+    this.body.classList.toggle('is-scrolled', y > 0);
+    this.body.classList.toggle('is-more', y < max);
   }
 }

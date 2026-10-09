@@ -51,6 +51,8 @@ export class SurfMapPanel {
     const b = breakById(s.breakId) ?? SURF_BREAKS[0];
     const key = JSON.stringify([s.source, s.breakId, now]);
     for (const el of this.sw.children) (el as HTMLElement).classList.toggle('is-on', (el as HTMLElement).dataset.src === s.source);
+    // The details page covers the map's own UI: it fades out under the page rather than showing through the dim.
+    this.el.classList.toggle('is-details', s.breakDetails);
     if (key === this.key) return;
     this.key = key;
     this.chart.setConditions(now);
