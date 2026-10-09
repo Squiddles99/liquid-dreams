@@ -8,7 +8,7 @@ import { CONDITION_RANGES } from '../conditions/sanitize';
 import { WEATHER_PRESETS } from '../weather/weather';
 import {
   FIRST_PRESET, FROM_WINDOW, SESSION_PRESETS, SKY_ROWS, SWELL_BANDS, TIDE_STOPS, TIME_STOPS, WIND_ROWS,
-  type SessionSetup, BREAKS, BREAKS_TIDES_M, dateForMonth, fineRow, offered, offeredSetup, presetById, presetOfSetup, rollSetup, rowDisplay, rowWords,
+  type SessionSetup, BREAKS, BREAKS_TIDES_M, FACE_FT, dateForMonth, fineRow, offered, offeredSetup, presetById, presetOfSetup, rollSetup, rowDisplay, rowWords,
   stepRow, sunTimes, swellBand, timeOfDayFor, toConditions,
 } from './sessionSetup';
 import { sanitizeSetup } from './frontSettings';
@@ -104,7 +104,7 @@ describe('the conditions model (dune select spec §6)', () => {
     expect(rowDisplay(winter, 'sky', TODAY)).toEqual({ value: 'Clear', small: '0% cloud' });
     expect(rowDisplay(winter, 'wind', TODAY)).toEqual({ value: 'Light offshore', small: '6 kn E' });
     expect(rowDisplay({ ...winter, wind: 0 }, 'wind', TODAY)).toEqual({ value: 'Glassy', small: '1 kn' });
-    expect(rowDisplay(winter, 'swell', TODAY)).toEqual({ value: 'Solid 5–6 ft', small: '5½ ft · 14 s' });
+    expect(rowDisplay(winter, 'swell', TODAY)).toEqual({ value: 'Solid 5–6 ft', small: '5½ ft · 14 s · Womb faces ~5 ft' });
     expect(rowDisplay(winter, 'period', TODAY)).toEqual({ value: 'Groundswell', small: '14 s' });
     expect(rowDisplay({ ...winter, periodS: 9 }, 'period', TODAY)).toEqual({ value: 'Wind swell', small: '9 s' });
     expect(rowDisplay(winter, 'from', TODAY)).toEqual({ value: 'South-west', small: 'SW 225°' });
@@ -147,19 +147,22 @@ describe('every word a row can show (the value box is sized to the longest, so t
 // Small-swell plan Task 4 (Andrew, 2026-10-09: "not offering a swell and tide option that won't break").
 describe('only swell × tide pairs that break at the Womb are offered', () => {
   const bandOf = (s: SessionSetup): number => swellBand(s.swellFt);
-  it('the table is the measured matrix (docs/superpowers/evidence/small-swell/t4-matrix.txt)', () => {
-    const txt = readFileSync(resolve(__dirname, '../../docs/superpowers/evidence/small-swell/t4-matrix.txt'), 'utf8');
+  it('the table is the measured matrix on the real shelf (docs/superpowers/evidence/womb-retune/matrix-225.txt), Fun ruled out', () => {
+    const txt = readFileSync(resolve(__dirname, '../../docs/superpowers/evidence/womb-retune/matrix-225.txt'), 'utf8');
     const tides = JSON.parse(/^# tides \(m\): (.*)$/m.exec(txt)![1]), breaks = JSON.parse(/^# BREAKS: (.*)$/m.exec(txt)![1]);
+    const faces = JSON.parse(/^# FACE_FT: (.*)$/m.exec(txt)![1]);
     expect(BREAKS_TIDES_M).toEqual(tides);
-    expect(BREAKS).toEqual(breaks);
+    // Fable 2026-10-09: Fun is not offered (the matrix passes it at Low alone).
+    expect(BREAKS).toEqual({ ...breaks, Fun: [false, false, false, false] });
+    expect(FACE_FT).toEqual({ ...faces, Fun: [null, null, null, null] });
+    for (const [k, row] of Object.entries(FACE_FT)) row.forEach((f, i) => expect(f !== null, `${k} ${i}`).toBe(BREAKS[k][i]));
     expect(Object.keys(BREAKS)).toEqual(SWELL_BANDS.map((b) => b.label));
     for (const t of TIDE_STOPS) expect(BREAKS_TIDES_M).toContain(t.m);
   });
-  it('Flat-ish and Small are never offered; Fun and up are at every tide', () => {
+  it('Flat-ish, Small and Fun are never offered; Solid and up are at every tide', () => {
     for (let tide = 0; tide < TIDE_STOPS.length; tide++) {
-      expect(offered(0, tide)).toBe(false);
-      expect(offered(1, tide)).toBe(false);
-      for (let band = 2; band < SWELL_BANDS.length; band++) expect(offered(band, tide)).toBe(true);
+      for (let band = 0; band < 3; band++) expect(offered(band, tide)).toBe(false);
+      for (let band = 3; band < SWELL_BANDS.length; band++) expect(offered(band, tide)).toBe(true);
     }
   });
   it('every pair Random rolls is offered (1 000 rolls)', () => {
@@ -172,18 +175,17 @@ describe('only swell × tide pairs that break at the Womb are offered', () => {
     for (const p of SESSION_PRESETS) expect(offered(bandOf(p.setup), p.setup.tide), p.id).toBe(true);
   });
   it('left on the swell row stops at the first offered band; LT stops at its bottom half-foot', () => {
-    const fun = { ...winter, swellFt: SWELL_BANDS[2].ft, periodS: SWELL_BANDS[2].periodS };
-    expect(stepRow(fun, 'swell', -1, TODAY)).toEqual({ setup: fun, changed: false, atEnd: true });
-    const three = { ...fun, swellFt: 3 };
-    expect(fineRow(three, 'swell', -1, TODAY).atEnd).toBe(true);
-    expect(stepRow(winter, 'swell', -1, TODAY).setup.swellFt).toBe(3.5);
+    const solid = { ...winter, swellFt: SWELL_BANDS[3].ft, periodS: SWELL_BANDS[3].periodS };
+    expect(stepRow(solid, 'swell', -1, TODAY)).toEqual({ setup: solid, changed: false, atEnd: true });
+    const five = { ...solid, swellFt: 5 };
+    expect(fineRow(five, 'swell', -1, TODAY).atEnd).toBe(true);
   });
   it('a stored swell below the first offered band moves to it (the tide row and old saves)', () => {
     const flat = { ...winter, swellFt: 1.5, periodS: 9 };
-    expect(offeredSetup(flat)).toEqual({ ...flat, swellFt: 3.5, periodS: 13 });
-    expect(stepRow(flat, 'tide', 1, TODAY).setup.swellFt).toBe(3.5);
-    expect(sanitizeSetup({ ...flat }).swellFt).toBe(3.5);
-    expect(sanitizeSetup({ ...flat }).periodS).toBe(13);
+    expect(offeredSetup(flat)).toEqual({ ...flat, swellFt: 5.5, periodS: 14 });
+    expect(stepRow(flat, 'tide', 1, TODAY).setup.swellFt).toBe(5.5);
+    expect(sanitizeSetup({ ...flat }).swellFt).toBe(5.5);
+    expect(sanitizeSetup({ ...flat }).periodS).toBe(14);
     expect(sanitizeSetup({ ...winter }).swellFt).toBe(winter.swellFt);
   });
 });
