@@ -142,3 +142,22 @@ describe('the drawn sea outside the reef grid (lineup truth, Task 3: sampleField
     expect(worst, where).toBeLessThanOrEqual(0.02);
   });
 });
+
+describe('the coast field keeps the reef\'s hmin over the reef map (review I1)', () => {
+  it('at the reef grid\'s north (outflow) edge the coast\'s hmin is the reef\'s within 15 % (water ≥ 3 m), so the drawn breaking does not switch off 40 m out', () => {
+    const field = computeReefField({ bed: reefBed, ...SWELL, coast: buildCoastMap(reefBed, DEFAULT_COAST_PARAMS) });
+    const g = field.grid, coast = field.coast!;
+    let worst = 0, where = '', n = 0;
+    for (let x = g.x0 + 20; x < g.x0 + (g.nx - 1) * g.cellM - 20; x += 10) {
+      const z = g.z0 + g.cellM;
+      const reef = sampleField(field, x, z);
+      if (reef.depth < 3) continue;
+      const c = coastSample(coast, coast.far, x, z);
+      const d = Math.abs(c.hmin - reef.hmin) / reef.hmin;
+      if (d > worst) { worst = d; where = `(${x}, ${z}) reef ${reef.hmin.toFixed(2)} coast ${c.hmin.toFixed(2)}`; }
+      n++;
+    }
+    expect(n).toBeGreaterThan(20);
+    expect(worst, where).toBeLessThan(0.05);
+  }, 300_000);
+});
