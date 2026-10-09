@@ -26,3 +26,4 @@ tools/surfer/previews-before/
 
 # Brainstorming companion mockups (local only)
 .superpowers/
+/build/
