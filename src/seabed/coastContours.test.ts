@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COAST_CONTOURS, contourDepthAt } from './coastContours';
+import { COAST_CONTOURS, contourDepthAt, contourXAt } from './coastContours';
 
 describe('the outer shelf\'s traced contours (lineup truth, Task 0)', () => {
   it('has the 10–30 m contours, each with at least 12 points spanning the coast map\'s z range', () => {
@@ -10,6 +10,14 @@ describe('the outer shelf\'s traced contours (lineup truth, Task 0)', () => {
       const zs = c.points.map((p) => p[1]);
       expect(Math.min(...zs)).toBeLessThanOrEqual(-2100);
       expect(Math.max(...zs)).toBeGreaterThanOrEqual(1400);
+    }
+  });
+
+  it('keeps every contour west of the one shallower than it, all along the coast (no line crosses another)', () => {
+    for (let z = -2100; z <= 1400; z += 10) {
+      for (let i = 1; i < COAST_CONTOURS.length; i++) {
+        expect(contourXAt(COAST_CONTOURS[i], z)).toBeLessThan(contourXAt(COAST_CONTOURS[i - 1], z) - 5);
+      }
     }
   });
 
@@ -47,5 +55,18 @@ describe('the outer shelf\'s traced contours (lineup truth, Task 0)', () => {
       const [x, z] = c.points[5];
       expect(contourDepthAt(x, z)).toBeCloseTo(c.depthM, 6);
     }
+  });
+});
+
+describe('the coast\'s waterline table', () => {
+  it('follows the land\'s waterline (LandHeight.waterlineAt) within 2 m (half a coast cell)', async () => {
+    const { decodeLandFile } = await import('../land/landData');
+    const { readBakedLand } = await import('../land/bakedLand.testutil');
+    const { LandHeight } = await import('../land/landHeight');
+    const { waterlineX } = await import('./coastContours');
+    const land = new LandHeight(decodeLandFile(readBakedLand()));
+    let worst = 0;
+    for (let z = -2100; z <= 1400; z += 4) worst = Math.max(worst, Math.abs(waterlineX(z) - land.waterlineAt(z)));
+    expect(worst).toBeLessThan(2);
   });
 });
