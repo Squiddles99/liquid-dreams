@@ -4,7 +4,8 @@
 // npx electron tools/_takeoffLive.mjs [--base=http://localhost:5188/] [--out=<prefix>] [--slow=full|gentle|off] [--ft=7]
 //   [--experience=beginner|intermediate|expert] (the front setting, default intermediate) [--until=<sim s after the peak, default 12>]
 //   [--pop=<real s after caught before Space, default 0.4>]
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base') ?? 'http://localhost:5173/', out = arg('out') ?? 'takeoff-', slow = arg('slow') ?? 'full', aim = Number(arg('aim') ?? 60);
@@ -17,7 +18,7 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 1600, height: 900, show: true, webPreferences: { backgroundThrottling: false } });
+  const win = quietWindow({ width: 1600, height: 900, webPreferences: { backgroundThrottling: false } });
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   await win.loadURL(base + '?frontend=off');
   await win.webContents.executeJavaScript(`localStorage.setItem('liquid-dreams.front-settings.v1', JSON.stringify({ takeoffSlowMo: '${slow}', experience: '${experience}' }))`);

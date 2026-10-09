@@ -1,7 +1,8 @@
 // Dev tool (lookout backdrop spec, Testing): npx electron tools/captureLookout.mjs --base=http://localhost:5180/ --out=<prefix> [--size=1920x1080] [--only=<case>]
 // Opens the game on Conditions; for each case sets the weather, time and wind, waits, saves a captureFrame() PNG, then a
 // second frame 0.5 s later (<prefix>-<case>-b.png), so a short Python pass can check the sand holds still and the shrubs move.
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -36,7 +37,7 @@ const CASES = [
 ].filter((c) => !only || c[0] === only);
 const grab = (win) => win.webContents.executeJavaScript(`window.liquidDreams.captureFrame().then(async (b) => { const a = new Uint8Array(await b.arrayBuffer()); let s = ''; for (let i = 0; i < a.length; i += 32768) s += String.fromCharCode(...a.subarray(i, i + 32768)); return btoa(s); })`).then((s) => Buffer.from(s, 'base64'));
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: W, height: H, useContentSize: true, show: true, webPreferences: { backgroundThrottling: false } });
+  const win = quietWindow({ width: W, height: H, useContentSize: true, webPreferences: { backgroundThrottling: false } });
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   await win.loadURL(base);
   for (let i = 0; i < 300; i++) {

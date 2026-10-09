@@ -1,7 +1,8 @@
 // womb-retune Task 4: the Conditions screen (its DOM panel over the lookout) at 1080p, at the first preset and after
 // stepping the preset row on `--steps` presets, with the swell row's words printed. Whole-window capture (capturePage), not
 // captureFrame (the canvas alone). npx electron tools/_captureConditions.mjs --base=http://localhost:5189/ --out=<prefix> [--steps=1]
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -18,7 +19,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const key = async (win, keyCode) => { win.webContents.sendInputEvent({ type: 'keyDown', keyCode }); win.webContents.sendInputEvent({ type: 'keyUp', keyCode }); await sleep(400); };
 const swellText = (win) => win.webContents.executeJavaScript(`[...document.querySelectorAll('*')].map((e) => e.childElementCount === 0 ? e.textContent : '').filter((t) => /ft · .*s/.test(t) && t.length < 80).join(' | ')`);
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 1920, height: 1080, useContentSize: true, show: true, webPreferences: { backgroundThrottling: false } });
+  const win = quietWindow({ width: 1920, height: 1080, useContentSize: true, webPreferences: { backgroundThrottling: false } });
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   await win.loadURL(base);
   for (let i = 0; i < 400; i++) { if (await win.webContents.executeJavaScript(`document.documentElement.dataset.ldLoading === 'done'`)) break; await sleep(1000); }

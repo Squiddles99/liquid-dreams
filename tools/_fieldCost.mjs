@@ -2,7 +2,8 @@
 // timed from load to the first field with its coast, with the worker's [field] lines (coast map, coast eikonal, reef).
 // Alternates ?coast=off (the far-field seed, as on main) and the coast, so the two are compared in one session.
 // npx electron tools/_fieldCost.mjs [--base=http://localhost:5173/] [--boots=3] [--out=<file>]
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base') ?? 'http://localhost:5173/', boots = Number(arg('boots') ?? 3), out = arg('out');
@@ -16,7 +17,7 @@ app.whenReady().then(async () => {
   const lines = [];
   for (let b = 1; b <= 2 * boots; b++) {
     const coastOff = b % 2 === 1;
-    const win = new BrowserWindow({ width: 1600, height: 900, show: true, webPreferences: { backgroundThrottling: false } });
+    const win = quietWindow({ width: 1600, height: 900, webPreferences: { backgroundThrottling: false } });
     win.setAlwaysOnTop(true, 'screen-saver'); win.focus();
     const log = [];
     win.webContents.on('console-message', (_e, _lvl, msg) => { if (msg.includes('[field]')) log.push(msg); });

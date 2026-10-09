@@ -1,7 +1,8 @@
 // lineup-truth Task 5: the lookout (the select screen's Conditions beat) at 6 ft, clear morning, a frame every 10 s for one
 // dune set cycle (a set every 120 s), so one frame shows set lines on the shelf.
 // npx electron tools/_lookoutSets.mjs --base=http://localhost:5173/ --out=<prefix> [--ft=6] [--frames=14]
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -17,7 +18,7 @@ app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const grab = (win) => win.webContents.executeJavaScript(`window.liquidDreams.captureFrame().then(async (b) => { const a = new Uint8Array(await b.arrayBuffer()); let s = ''; for (let i = 0; i < a.length; i += 32768) s += String.fromCharCode(...a.subarray(i, i + 32768)); return btoa(s); })`).then((s) => Buffer.from(s, 'base64'));
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 1920, height: 1080, useContentSize: true, show: true, webPreferences: { backgroundThrottling: false } });
+  const win = quietWindow({ width: 1920, height: 1080, useContentSize: true, webPreferences: { backgroundThrottling: false } });
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   await win.loadURL(base);
   for (let i = 0; i < 300; i++) {

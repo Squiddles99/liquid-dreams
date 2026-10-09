@@ -4,7 +4,8 @@
 // Writes <out>frames.json (the frame log from the first frame liquidDreams exists), <out>creates.json (GPUDevice
 // creations), <out>log.txt ([loading] console lines + the dissolve time) and <out>shot-<ms>.png every 500 ms (ms relative
 // to the dissolve; shots from 1 s before it are kept).
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -39,7 +40,7 @@ writeFileSync(preload, `
 `);
 
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 1600, height: 900, show: true, webPreferences: { backgroundThrottling: false, contextIsolation: false, preload } });
+  const win = quietWindow({ width: 1600, height: 900, webPreferences: { backgroundThrottling: false, contextIsolation: false, preload } });
   win.setAlwaysOnTop(true, 'screen-saver');
   win.show(); win.moveTop(); app.focus({ steal: true }); win.focus();
   const log = [];

@@ -1,7 +1,8 @@
 // Dev tool (painted riders spec, testing): npx electron tools/captureRiders.mjs --base=http://localhost:5180/ --out=<prefix> [--size=1920x1080]
 // Opens the game, goes to Choose your rider and shoots each rider (the whole window, menus and all), then Grab your gear's
 // Outfit tab and shoots every outfit of the last rider focused.
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -17,7 +18,7 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: W, height: H, useContentSize: true, show: true, webPreferences: { backgroundThrottling: false } });
+  const win = quietWindow({ width: W, height: H, useContentSize: true, webPreferences: { backgroundThrottling: false } });
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   await win.loadURL(base);
   for (let i = 0; i < 300; i++) {

@@ -1,6 +1,7 @@
 // Scratch: rides the set's wave with a physics bot at several aims to the left, at a peel dial, and prints each ride.
 // npx electron tools/_peelRide.mjs [--base=http://localhost:5189/] [--cond=<json>] [--peel=1.7]
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base') ?? 'http://localhost:5189/';
 const cond = arg('cond') ? JSON.parse(arg('cond')) : null;
@@ -8,7 +9,7 @@ const peel = arg('peel') ? Number(arg('peel')) : null;
 app.commandLine.appendSwitch('force_high_performance_gpu');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 800, height: 450, show: true, webPreferences: { backgroundThrottling: false } });
+  const win = quietWindow({ width: 800, height: 450, webPreferences: { backgroundThrottling: false } });
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   await win.loadURL(base + '?frontend=off');
   for (let i = 0; i < 120; i++) { if (await win.webContents.executeJavaScript('!!window.liquidDreams?.field')) break; await sleep(1000); }

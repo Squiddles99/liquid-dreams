@@ -1,7 +1,8 @@
 // Dev tool: npx electron tools/captureMoments.mjs --base=http://localhost:5183/ --out=<prefix> --times=<t1,t2,…> --m=<base64 moment JSON> [--pre=<js>] [--settle=<ms>] [--run]
 // Loads the moment once (paused at the first time), waits for the game, then for each sim time applies the moment in the
 // page (App.applyMoment, no reload), runs --pre, lets the frame settle and saves a captureFrame() PNG as <prefix>-<t>.png.
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base'), out = arg('out'), pre = arg('pre'), times = arg('times').split(',').map(Number);
@@ -17,7 +18,7 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 1600, height: 900, show: true, webPreferences: { backgroundThrottling: false } });
+  const win = quietWindow({ width: 1600, height: 900, webPreferences: { backgroundThrottling: false } });
   // Stored dev settings would override the code's defaults: start from the defaults.
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   const first = { ...moment, simTime: times[0], paused };

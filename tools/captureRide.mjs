@@ -3,7 +3,8 @@
 // spot, App.rideArriveS (R1 §3; it paddled 4 s before the peak, after the wave had passed the spot), pops up when caught,
 // carves left or right along the wave) stepping the physics at 60 Hz, and saves a captureFrame() PNG at each time (s from
 // the wave reaching the peak) as <prefix>-<s>.png, with the ride's state and its events (caught, popup, …) logged.
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base'), out = arg('out');
@@ -18,7 +19,7 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 1600, height: 900, show: true, webPreferences: { backgroundThrottling: false } });
+  const win = quietWindow({ width: 1600, height: 900, webPreferences: { backgroundThrottling: false } });
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   await win.loadURL(base);
   for (let i = 0; i < 120; i++) { if (await win.webContents.executeJavaScript('!!window.liquidDreams?.field')) break; await sleep(1000); }

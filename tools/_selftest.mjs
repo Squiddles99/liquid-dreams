@@ -1,12 +1,13 @@
 // Scratch: runs the in-app GPU self-tests (?selftest=<filter>) in Electron on the RTX and prints the report.
 // npx electron tools/_selftest.mjs [--base=http://localhost:5189/] [--filter=breaker] [--max-s=600]
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base') ?? 'http://localhost:5189/', filter = arg('filter') ?? 'breaker', maxS = Number(arg('max-s') ?? 600);
 app.commandLine.appendSwitch('force_high_performance_gpu');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 1200, height: 800, show: true });
+  const win = quietWindow({ width: 1200, height: 800 });
   await win.loadURL(`${base}?frontend=off&selftest=${encodeURIComponent(filter)}`);
   for (let i = 0; i < maxS; i++) {
     const text = await win.webContents.executeJavaScript('document.body.innerText');

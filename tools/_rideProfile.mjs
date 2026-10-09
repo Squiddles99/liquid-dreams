@@ -8,7 +8,8 @@
 // (after the game's step), so an input still lands on a frame boundary.
 // --stall (ride-stall Task 2): the page's frame log on and GPUDevice creation hooks, saved per pass as <prefix>frames-*.json
 // and <prefix>creates-*.json. --trace: Electron content tracing of the paddling and riding passes, one <prefix>ride.trace.json.
-import { app, BrowserWindow, contentTracing } from 'electron';
+import { app, contentTracing } from 'electron';
+import { quietWindow } from './quietWindow.mjs';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base') ?? 'http://localhost:5173/', out = arg('out') ?? 'prof-';
@@ -42,7 +43,7 @@ function summarise(profile, label) {
 }
 
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 1600, height: 900, show: true, webPreferences: { backgroundThrottling: false } });
+  const win = quietWindow({ width: 1600, height: 900, webPreferences: { backgroundThrottling: false } });
   // Unfocused, Windows runs this process ~8x slower (Task 14: cam ~35 ms not 4.4, riding ~500 ms not ~50, the same sim
   // time and place): keep the window on top and focused, and say in the report whether it was.
   win.setAlwaysOnTop(true, 'screen-saver');
