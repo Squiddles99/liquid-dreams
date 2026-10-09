@@ -436,5 +436,61 @@
   "latin": "Varanus rosenbergi",
   "fact": "A goanna up to 1.5 metres long, black with fine yellow dots and pale bands right to the tip of its tail. A female can lay her eggs inside a termite mound, and the termites seal them in.",
   "noongar": "names for goannas include kaarda."
+ },
+ "marsupials-ringtail-possum": {
+  "kicker": "Marsupials · Cape to Cape",
+  "name": "Western ringtail possum",
+  "common": "",
+  "latin": "Pseudocheirus occidentalis",
+  "fact": "Critically endangered, and this coast is its stronghold. It lives on peppermint trees, curls its tail round the branches, and sleeps in a ball-shaped nest of shredded bark called a drey.",
+  "noongar": "people call it ngwayir."
+ },
+ "marsupials-quenda": {
+  "kicker": "Marsupials · Cape to Cape",
+  "name": "Quenda",
+  "common": "Southern brown bandicoot",
+  "latin": "Isoodon fusciventer",
+  "fact": "Often seen by day along the Cape to Cape Track. It digs up to 45 little pits a night hunting for food, turning over as much as four tonnes of soil a year.",
+  "noongar": "people call it kwenda, and English took its name from that. Around the Vasse it was recorded as gwinda."
+ },
+ "marsupials-grey-kangaroo": {
+  "kicker": "Marsupials · Cape to Cape",
+  "name": "Western grey kangaroo",
+  "common": "",
+  "latin": "Macropus fuliginosus",
+  "fact": "Plentiful in Leeuwin-Naturaliste National Park. Big males can grow twice the size of females, and give off a curry-like smell that earns them the nickname “stinker”.",
+  "noongar": "people call the male yongka, a name used right across the south-west."
+ },
+ "marsupials-honey-possum": {
+  "kicker": "Marsupials · Cape to Cape",
+  "name": "Honey possum",
+  "common": "",
+  "latin": "Tarsipes rostratus",
+  "fact": "Lives on nothing but nectar and pollen, licked up with a bristle-tipped tongue. It has the smallest newborn young of any mammal, yet the longest sperm.",
+  "noongar": "people call it noolbenger, and for some Noongar families it is a totem animal."
+ },
+ "marsupials-pygmy-possum": {
+  "kicker": "Marsupials · Cape to Cape",
+  "name": "Western pygmy possum",
+  "common": "Mundarda",
+  "latin": "Cercartetus concinnus",
+  "fact": "Weighs as little as 8 grams. When food runs short it drops into torpor, cooling almost to the temperature of the air, and has been known to stay that way for 11 days.",
+  "noongar": "gave it its other name: mundarda comes from mandada."
+ },
+ "marsupials-chuditch": {
+  "kicker": "Marsupials · Cape to Cape",
+  "name": "Chuditch",
+  "common": "Western quoll",
+  "latin": "Dasyurus geoffroii",
+  "fact": "WA’s biggest meat-eating marsupial. It once lived across most of Australia, but now survives mainly in WA’s south-west, and the Leeuwin-Naturaliste Ridge is one of its refuges.",
+  "noongar": "gave it its name. Around the Vasse it was recorded as ngooldjangit."
+ },
+ "marsupials-tammar": {
+  "kicker": "Once lived here · Cape to Cape",
+  "name": "Tammar wallaby",
+  "common": "",
+  "latin": "Notamacropus eugenii",
+  "fact": "Tammars once lived around Margaret River, but today they survive on islands and in inland reserves. A tammar was the first kangaroo Europeans ever saw, after the Batavia was wrecked in 1629.",
+  "noongar": "people around Margaret River and the Vasse called it bonin."
  }
 }
