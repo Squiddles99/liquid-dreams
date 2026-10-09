@@ -89,7 +89,7 @@ describe('breaking criterion and stage', () => {
   });
   it('the breaking depth is hmin on the reef and deeper over deep water (a 6 m wave does not break over the 13 m shelf)', () => {
     for (const h of [3, 4, 6, 7]) expect(breakingDepth(h)).toBeCloseTo(h, 12);
-    expect(breakingDepth(0.6)).toBe(3); // the reef flat: long broken either way
+    expect(breakingDepth(0.6)).toBe(2); // the reef flat reads SHALLOW_BREAKING_DEPTH_M (2 m since small-swell): long broken either way
     expect(breakingDepth(13)).toBeGreaterThan(20);
     expect(breakingRatio(6, breakingDepth(13), P)).toBeLessThan(0.65);
     let prev = 0;

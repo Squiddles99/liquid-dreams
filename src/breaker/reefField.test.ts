@@ -213,7 +213,9 @@ describe('the onset record', () => {
       // Unbroken: the running maximum below the level by more than the dips the carry bridges (3%).
       for (let k = 0; k < ONSET_LEVELS; k++) if (0.97 * ONSET_LEVEL_Q[k] > f.onset[i * R] && f.onset[i * R + 1 + 2 * k] !== 0) unbrokenRunning++;
     }
-    expect(worst, "the most a level's time exceeds the level below it (s)").toBeLessThanOrEqual(1e-4);
+    // 1 ms (was 0.1 ms): after the 2 m breaking floor (small-swell) the record's Float32 rounding reads 0.175 ms here; a
+    // real inversion would be frames, and 1 ms is still far under one.
+    expect(worst, "the most a level's time exceeds the level below it (s)").toBeLessThanOrEqual(1e-3);
     expect(unbrokenRunning, 'unbroken levels with a clock running (a broken neighbour blended in)').toBe(0);
   });
   it('the time since onset and the height of the throw match a march up the ray, for the waves that break at the Womb', () => {
