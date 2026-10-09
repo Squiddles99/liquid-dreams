@@ -18,7 +18,12 @@ const base = arg('base') ?? 'http://localhost:5173/', out = arg('out') ?? '../li
 const bed = downsample(buildBathymetry(), 2);
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64');
 const lineup = (yawDeg: number) => ({ mode: 'lineup', position: [...DEFAULT_LINEUP_POSITION], yawDeg, pitchDeg: -2 });
-const dtl = { mode: 'free', position: [30, 3, -75], yawDeg: 200, pitchDeg: -3 };
+// Down the line: on the shelf 100 m along the left's ledge from the tip and 20 m inshore of it, looking back at the ledge
+// 30 m from the tip (womb-retune: the take-off at wombReef.TIP, the ledge at LEFT_BEARING_DEG).
+const { TIP, LEFT_BEARING_DEG } = await imp<typeof import('../src/seabed/wombReef')>('/src/seabed/wombReef.ts');
+const br = (LEFT_BEARING_DEG * Math.PI) / 180, along = [Math.sin(br), -Math.cos(br)], inshore = [Math.cos(br), Math.sin(br)];
+const camXZ = [TIP[0] + 100 * along[0] + 20 * inshore[0], TIP[1] + 100 * along[1] + 20 * inshore[1]], lookXZ = [TIP[0] + 30 * along[0], TIP[1] + 30 * along[1]];
+const dtl = { mode: 'free', position: [+camXZ[0].toFixed(1), 3, +camXZ[1].toFixed(1)], yawDeg: +(((Math.atan2(lookXZ[0] - camXZ[0], -(lookXZ[1] - camXZ[1])) * 180) / Math.PI + 360) % 360).toFixed(1), pitchDeg: -3 };
 const PLACES: Record<string, [number, number]> = { lefthanders: [-231, -1670], bombie: [-280, 1020], ellensbrook: [323, 1080] };
 
 for (const ft of [6, 10]) {

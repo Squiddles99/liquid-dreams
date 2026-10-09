@@ -13,7 +13,7 @@ const { REFRACT_FLOOR_M, computeReefField, sampleField } = await imp<typeof impo
 const { DEFAULT_BREAK_PARAMS: P, SHALLOW_BREAKING_DEPTH_M, breakingRatio } = await imp<typeof import('../src/breaker/breaking')>('/src/breaker/breaking.ts');
 const { setWaveHeight, leftStretches } = await imp<typeof import('../src/breaker/reefReport')>('/src/breaker/reefReport.ts');
 const { NORTH_LEDGE } = await imp<typeof import('../src/seabed/wombReef')>('/src/seabed/wombReef.ts');
-const { DEFAULT_REEF_PARAMS } = await imp<typeof import('../src/seabed/wombReef')>('/src/seabed/wombReef.ts');
+const { DEFAULT_REEF_PARAMS, TIP } = await imp<typeof import('../src/seabed/wombReef')>('/src/seabed/wombReef.ts');
 const { DEFAULT_COAST_PARAMS } = await imp<typeof import('../src/seabed/coastFeatures')>('/src/seabed/coastFeatures.ts');
 const { buildCoastMap } = await imp<typeof import('../src/seabed/coastMap')>('/src/seabed/coastMap.ts');
 const { SWELL_BANDS, TIDE_STOPS } = await imp<typeof import('../src/frontend/sessionSetup')>('/src/frontend/sessionSetup.ts');
@@ -34,7 +34,7 @@ for (const b of SWELL_BANDS) {
   const H = setWaveHeight(b.ft), row: boolean[] = [];
   for (const tideM of tides) {
     const f = computeReefField({ bed, periodS: b.periodS, fromDeg, tideM, smooth: true, refractFloorM: REFRACT_FLOOR_M, ...(coast ? { coast } : {}) });
-    const s = sampleField(f, 0, 0), ratio = breakingRatio(H * s.amp, s.hminBreak, P);
+    const s = sampleField(f, TIP[0], TIP[1]), ratio = breakingRatio(H * s.amp, s.hminBreak, P);
     const st = leftStretches(f, H, NORTH_LEDGE, { first: [0], second: [1] }, P), a = st.first, c = st.second;
     const ok = !!a && a.of === 28 && a.broken === a.of && a.start <= 2.0 && a.peel >= 8 && a.peel <= 13;
     row.push(ok);

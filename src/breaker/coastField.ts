@@ -2,7 +2,7 @@ import { smoothstep } from '../math/smoothstep';
 import type { Bathymetry } from '../seabed/bathymetry';
 import { wombHalo } from '../seabed/coastMap';
 import { depthBg } from '../seabed/coastProfile';
-import type { GridSpec } from '../seabed/wombReef';
+import { type GridSpec, TIP } from '../seabed/wombReef';
 import { breakingDepth } from './breaking';
 import { AMP_CAP, type FarField, computeFarField, farSample } from './coastFarField';
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
@@ -144,7 +144,7 @@ export function computeCoastField(req: CoastFieldRequest): CoastField {
     }
   }
   const tau32 = new Float32Array(n), hminBreak = new Float32Array(n);
-  const tauPeak = bilinear(tau, g, 0, 0);
+  const tauPeak = bilinear(tau, g, TIP[0], TIP[1]);
   for (let i = 0; i < n; i++) { tau32[i] = tau[i] - tauPeak; hminBreak[i] = breakingDepth(hmin[i]); }
   far.tauOffset = tauPeak;
   return { grid: g, tau: tau32, dirX, dirZ, k, amp, hmin, hminBreak, depth, omega, far };

@@ -3,7 +3,7 @@ import {
   Fn, If, Loop, abs, clamp, cos, dot, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, storage, tanh,
   textureLoad, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
-import { REEF_GRID } from '../seabed/wombReef';
+import { REEF_GRID, TIP } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, TUBE_THROWN_PSI, breakingDepth, normalizeBreakParams } from './breaking';
 import { PSI_NORMAL, sheetShape } from './overturn';
@@ -418,7 +418,8 @@ export class SetWaves {
       const stokesPerA = f.k.mul(float(3.0).sub(sigma.mul(sigma))).div(sigma.mul(sigma).mul(sigma).mul(4.0)).toVar();
       const cLocal = this.meanOmega.div(f.k).toVar();
       const dXiDs = f.k.negate().div(this.meanOmega).toVar();
-      const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(xz)).toVar();
+      const fromTip = xz.sub(vec2(TIP[0], TIP[1])).toVar();
+      const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(fromTip)).toVar();
       const brk = this.brk;
       Loop(MAX_ACTIVE_WAVES, ({ i }: N) => {
         const a = this.waves.element(i.mul(3));
@@ -430,7 +431,7 @@ export class SetWaves {
         const canBreak = b.w.greaterThan(0.5).toVar();
         /** Time since this wave's crest passed a point (negative: still to come), for field speed `cLoc` and arrival time `tau`. */
         const phaseXi = (p: N, tau: N, cLoc: N): N => {
-          const dTau = b.x.sub(this.meanTravel.x).mul(p.x).add(b.y.sub(this.meanTravel.y).mul(p.y)).div(cLoc);
+          const dTau = b.x.sub(this.meanTravel.x).mul(p.x.sub(TIP[0])).add(b.y.sub(this.meanTravel.y).mul(p.y.sub(TIP[1]))).div(cLoc);
           return this.time.sub(a.x).sub(tau).sub(dTau);
         };
         // The Phase 1 wave here: waveAtCrest's first half.
@@ -447,7 +448,7 @@ export class SetWaves {
           const r4 = r2.mul(r2);
           const env = exp(r4.mul(r2).negate()).toVar();
           const dEnv = r4.mul(rEnv).mul(-6.0).div(width).mul(env).toVar();
-          const q = xz.x.negate().mul(b.y).add(xz.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
+          const q = fromTip.x.negate().mul(b.y).add(fromTip.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
           const q2 = q.mul(q);
           const lateral = mix(float(1.0), exp(q2.mul(q2).negate()), wFar).toVar();
           const theta = a.z.mul(xi).toVar();
