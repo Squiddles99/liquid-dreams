@@ -34,7 +34,9 @@ describe('settings and remembered choices (dune select spec §3, §11; Review Fo
     const w = presetById(FIRST_PRESET)!.setup;
     expect(sanitizeSetup({ ...w, month: 14, sky: 'tornado', swellFt: 30, periodS: 3.3, fromDeg: 180, tide: -1, wind: 2.5, timeStop: 9, timeFineMin: 1e6 }))
       .toEqual({ ...w, month: w.month, sky: w.sky, swellFt: 12, periodS: 8, fromDeg: w.fromDeg, tide: w.tide, wind: w.wind, timeStop: w.timeStop, timeFineMin: 0 });
-    expect(sanitizeSetup({ ...w, swellFt: 4.3 }).swellFt).toBe(4.5);
+    // 4.3 ft is below the first offered band on the real shelf (Solid, womb-retune): it moves there.
+    expect(sanitizeSetup({ ...w, swellFt: 4.3 }).swellFt).toBe(5.5);
+    expect(sanitizeSetup({ ...w, swellFt: 6.3 }).swellFt).toBe(6.5);
   });
   it('drops boards a rider doesn\'t own and outfits that aren\'t theirs', () => {
     const c = sanitizeChoices({ setup: {}, rider: 'grommet', boards: { grommet: 'thruster', female: 'stepUp' }, outfits: { female: 'boardies', male: 'season' } });
