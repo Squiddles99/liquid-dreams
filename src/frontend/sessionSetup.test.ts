@@ -104,7 +104,7 @@ describe('the conditions model (dune select spec §6)', () => {
     expect(rowDisplay(winter, 'sky', TODAY)).toEqual({ value: 'Clear', small: '0% cloud' });
     expect(rowDisplay(winter, 'wind', TODAY)).toEqual({ value: 'Light offshore', small: '6 kn E' });
     expect(rowDisplay({ ...winter, wind: 0 }, 'wind', TODAY)).toEqual({ value: 'Glassy', small: '1 kn' });
-    expect(rowDisplay(winter, 'swell', TODAY)).toEqual({ value: 'Solid 5–6 ft', small: '5½ ft · 14 s · Womb faces ~5 ft' });
+    expect(rowDisplay(winter, 'swell', TODAY)).toEqual({ value: 'Solid 5–6 ft', small: '5½ ft · 14 s · Womb faces ~6 ft' });
     expect(rowDisplay(winter, 'period', TODAY)).toEqual({ value: 'Groundswell', small: '14 s' });
     expect(rowDisplay({ ...winter, periodS: 9 }, 'period', TODAY)).toEqual({ value: 'Wind swell', small: '9 s' });
     expect(rowDisplay(winter, 'from', TODAY)).toEqual({ value: 'South-west', small: 'SW 225°' });
@@ -147,21 +147,21 @@ describe('every word a row can show (the value box is sized to the longest, so t
 // Small-swell plan Task 4 (Andrew, 2026-10-09: "not offering a swell and tide option that won't break").
 describe('only swell × tide pairs that break at the Womb are offered', () => {
   const bandOf = (s: SessionSetup): number => swellBand(s.swellFt);
-  it('the table is the measured matrix on the real shelf (docs/superpowers/evidence/womb-retune/matrix-225.txt), Fun ruled out', () => {
+  it('the table is the measured matrix on the real shelf (docs/superpowers/evidence/womb-retune/matrix-225.txt)', () => {
     const txt = readFileSync(resolve(__dirname, '../../docs/superpowers/evidence/womb-retune/matrix-225.txt'), 'utf8');
     const tides = JSON.parse(/^# tides \(m\): (.*)$/m.exec(txt)![1]), breaks = JSON.parse(/^# BREAKS: (.*)$/m.exec(txt)![1]);
     const faces = JSON.parse(/^# FACE_FT: (.*)$/m.exec(txt)![1]);
     expect(BREAKS_TIDES_M).toEqual(tides);
-    // Fable 2026-10-09: Fun is not offered (the matrix passes it at Low alone).
-    expect(BREAKS).toEqual({ ...breaks, Fun: [false, false, false, false] });
-    expect(FACE_FT).toEqual({ ...faces, Fun: [null, null, null, null] });
+    expect(BREAKS).toEqual(breaks);
+    expect(FACE_FT).toEqual(faces);
     for (const [k, row] of Object.entries(FACE_FT)) row.forEach((f, i) => expect(f !== null, `${k} ${i}`).toBe(BREAKS[k][i]));
     expect(Object.keys(BREAKS)).toEqual(SWELL_BANDS.map((b) => b.label));
     for (const t of TIDE_STOPS) expect(BREAKS_TIDES_M).toContain(t.m);
   });
-  it('Flat-ish, Small and Fun are never offered; Solid and up are at every tide', () => {
+  it('Flat-ish and Small are never offered; Fun at Low only (Fable 2026-10-09); Solid and up at every tide', () => {
     for (let tide = 0; tide < TIDE_STOPS.length; tide++) {
-      for (let band = 0; band < 3; band++) expect(offered(band, tide)).toBe(false);
+      for (let band = 0; band < 2; band++) expect(offered(band, tide)).toBe(false);
+      expect(offered(2, tide), TIDE_STOPS[tide].label).toBe(TIDE_STOPS[tide].m === -0.5);
       for (let band = 3; band < SWELL_BANDS.length; band++) expect(offered(band, tide)).toBe(true);
     }
   });

@@ -13,23 +13,23 @@ Fun        3.5 13 | -0.50 |       0.61 | 72/72, 1.1, 9.3, 0.61                  
 Fun        3.5 13 | -0.25 |       0.56 | 71/72, 1.7, 8.8, 0.71                    | 20.1 | no | face – ft
 Fun        3.5 13 |  0.00 |       0.52 | 60/72, 2.2, 9.3, 0.86                    | 21.0 | no | face – ft
 Fun        3.5 13 |  0.50 |       0.45 | 39/72, 3.4, 9.7, 0.54                    | 20.3 | no | face – ft
-Solid      5.5 14 | -0.50 |       1.07 | 72/72, -0.1, 11.4, 0.66                  | 23.0 | YES | face 4.5 ft
-Solid      5.5 14 | -0.25 |       0.96 | 72/72, 0.0, 11.4, 0.57                   | 22.7 | YES | face 5 ft
-Solid      5.5 14 |  0.00 |       0.89 | 72/72, 0.1, 11.3, 0.56                   | 22.5 | YES | face 5.5 ft
+Solid      5.5 14 | -0.50 |       1.07 | 72/72, -0.1, 11.4, 0.66                  | 23.0 | YES | face 6 ft
+Solid      5.5 14 | -0.25 |       0.96 | 72/72, 0.0, 11.4, 0.57                   | 22.7 | YES | face 6 ft
+Solid      5.5 14 |  0.00 |       0.89 | 72/72, 0.1, 11.3, 0.56                   | 22.5 | YES | face 6 ft
 Solid      5.5 14 |  0.50 |       0.77 | 72/72, 0.4, 10.5, 0.54                   | 22.1 | YES | face 6 ft
-Pumping      7 15 | -0.50 |       1.44 | 72/72, -0.3, 11.6, 1.00                  | 24.6 | YES | face 6 ft
-Pumping      7 15 | -0.25 |       1.30 | 72/72, -0.3, 11.7, 1.00                  | 24.4 | YES | face 5.5 ft
-Pumping      7 15 |  0.00 |       1.20 | 72/72, -0.2, 11.7, 0.81                  | 24.3 | YES | face 5.5 ft
-Pumping      7 15 |  0.50 |       1.03 | 72/72, -0.1, 11.8, 0.64                  | 24.0 | YES | face 6 ft
-Big          9 16 | -0.50 |       1.98 | 72/72, -0.5, 11.8, 1.00                  | 25.9 | YES | face 8 ft
-Big          9 16 | -0.25 |       1.75 | 72/72, -0.5, 11.9, 1.00                  | 25.8 | YES | face 7 ft
-Big          9 16 |  0.00 |       1.62 | 72/72, -0.4, 11.9, 1.00                  | 25.6 | YES | face 7.5 ft
-Big          9 16 |  0.50 |       1.40 | 72/72, -0.3, 12.1, 1.00                  | 25.3 | YES | face 7 ft
-Huge        12 17 | -0.50 |       2.78 | 72/72, -0.7, 11.9, 1.00                  | 26.8 | YES | face 9 ft
-Huge        12 17 | -0.25 |       2.47 | 72/72, -0.6, 12.1, 1.00                  | 26.8 | YES | face 9 ft
-Huge        12 17 |  0.00 |       2.29 | 72/72, -0.6, 12.1, 1.00                  | 26.8 | YES | face 9 ft
-Huge        12 17 |  0.50 |       1.97 | 72/72, -0.5, 12.2, 1.00                  | 26.6 | YES | face 9 ft
+Pumping      7 15 | -0.50 |       1.44 | 72/72, -0.3, 11.6, 1.00                  | 24.6 | YES | face 8 ft
+Pumping      7 15 | -0.25 |       1.30 | 72/72, -0.3, 11.7, 1.00                  | 24.4 | YES | face 8 ft
+Pumping      7 15 |  0.00 |       1.20 | 72/72, -0.2, 11.7, 0.81                  | 24.3 | YES | face 7.5 ft
+Pumping      7 15 |  0.50 |       1.03 | 72/72, -0.1, 11.8, 0.64                  | 24.0 | YES | face 7.5 ft
+Big          9 16 | -0.50 |       1.98 | 72/72, -0.5, 11.8, 1.00                  | 25.9 | YES | face 10 ft
+Big          9 16 | -0.25 |       1.75 | 72/72, -0.5, 11.9, 1.00                  | 25.8 | YES | face 10 ft
+Big          9 16 |  0.00 |       1.62 | 72/72, -0.4, 11.9, 1.00                  | 25.6 | YES | face 10 ft
+Big          9 16 |  0.50 |       1.40 | 72/72, -0.3, 12.1, 1.00                  | 25.3 | YES | face 9.5 ft
+Huge        12 17 | -0.50 |       2.78 | 72/72, -0.7, 11.9, 1.00                  | 26.8 | YES | face 13 ft
+Huge        12 17 | -0.25 |       2.47 | 72/72, -0.6, 12.1, 1.00                  | 26.8 | YES | face 13 ft
+Huge        12 17 |  0.00 |       2.29 | 72/72, -0.6, 12.1, 1.00                  | 26.8 | YES | face 13 ft
+Huge        12 17 |  0.50 |       1.97 | 72/72, -0.5, 12.2, 1.00                  | 26.6 | YES | face 13 ft
 
 # tides (m): [-0.5,-0.25,0,0.5]
 # BREAKS: {"Flat-ish":[false,false,false,false],"Small":[false,false,false,false],"Fun":[true,false,false,false],"Solid":[true,true,true,true],"Pumping":[true,true,true,true],"Big":[true,true,true,true],"Huge":[true,true,true,true]}
-# FACE_FT: {"Flat-ish":[null,null,null,null],"Small":[null,null,null,null],"Fun":[4,null,null,null],"Solid":[4.5,5,5.5,6],"Pumping":[6,5.5,5.5,6],"Big":[8,7,7.5,7],"Huge":[9,9,9,9]}
+# FACE_FT: {"Flat-ish":[null,null,null,null],"Small":[null,null,null,null],"Fun":[4,null,null,null],"Solid":[6,6,6,6],"Pumping":[8,8,7.5,7.5],"Big":[10,10,10,9.5],"Huge":[13,13,13,13]}

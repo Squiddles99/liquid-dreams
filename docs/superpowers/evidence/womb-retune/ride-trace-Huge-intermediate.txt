@@ -1,82 +1,82 @@
-# Huge (12 ft, 17 s) intermediate: wave 8.35 m; spot (-149.2, 44.8), 9.24 s lead; t from the crest at the spot
+# Huge (12 ft, 17 s) intermediate: wave 8.35 m; spot (-143.7, 4.9), 7.38 s lead; t from the crest at the spot
 # t      phase    s along ledge, curl s | rider speed, along travel, crest c | slope | ahead
- -5.75 paddle   s  -45.0 curl -165.9 | speed 1.08 along-travel -1.08 c 11.47 | slope 0.03 | ahead 70.66
- -5.50 paddle   s  -45.4 curl -160.1 | speed 1.66 along-travel -1.66 c 11.53 | slope 0.04 | ahead 67.63
- -5.25 paddle   s  -45.8 curl -154.2 | speed 2.00 along-travel -2.00 c 11.59 | slope 0.04 | ahead 64.46
- -5.00 paddle   s  -46.3 curl -149.1 | speed 2.18 along-travel -2.18 c 11.65 | slope 0.04 | ahead 61.11
- -4.75 paddle   s  -46.8 curl -143.9 | speed 2.27 along-travel -2.26 c 11.68 | slope 0.04 | ahead 57.66
- -4.50 paddle   s  -47.3 curl -138.7 | speed 2.29 along-travel -2.29 c 11.70 | slope 0.04 | ahead 54.12
- -4.25 paddle   s  -47.8 curl -133.4 | speed 2.28 along-travel -2.27 c 11.71 | slope 0.03 | ahead 50.53
- -4.00 paddle   s  -48.4 curl -128.0 | speed 2.25 along-travel -2.24 c 11.71 | slope 0.03 | ahead 46.87
- -3.75 paddle   s  -48.9 curl -123.1 | speed 2.16 along-travel -2.16 c 11.71 | slope 0.06 | ahead 43.14
- -3.50 paddle   s  -49.4 curl -118.2 | speed 2.04 along-travel -2.04 c 11.71 | slope 0.05 | ahead 39.40
- -3.25 paddle   s  -49.8 curl -113.0 | speed 1.96 along-travel -1.96 c 11.71 | slope 0.03 | ahead 35.68
- -3.00 paddle   s  -50.3 curl -108.2 | speed 1.91 along-travel -1.91 c 11.71 | slope 0.02 | ahead 31.98
- -2.75 paddle   s  -50.7 curl -103.6 | speed 1.90 along-travel -1.90 c 11.71 | slope 0.01 | ahead 28.30
- -2.50 paddle   s  -51.2 curl  -98.7 | speed 1.90 along-travel -1.90 c 11.71 | slope 0.00 | ahead 24.62
- -2.25 paddle   s  -51.6 curl  -93.7 | speed 1.89 along-travel -1.89 c 11.71 | slope 0.02 | ahead 20.92
- -2.00 paddle   s  -52.1 curl  -89.2 | speed 1.94 along-travel -1.94 c 11.71 | slope 0.06 | ahead 17.21
- -1.75 paddle   s  -52.5 curl  -84.4 | speed 1.76 along-travel -1.76 c 11.71 | slope 0.02 | ahead 13.49
- -1.50 paddle   s  -52.8 curl  -79.7 | speed 0.32 along-travel -0.31 c 11.71 | slope 0.58 | ahead 9.75
- -1.25 popup  P s  -52.2 curl  -75.1 | speed 6.48 along-travel 6.48 c 11.71 | slope 1.71 | ahead 6.85
- -1.00 popup  P s  -50.2 curl  -70.4 | speed 9.78 along-travel 9.78 c 11.71 | slope 1.98 | ahead 6.01
- -0.75 ride   P s  -47.7 curl  -65.8 | speed 10.44 along-travel 10.15 c 11.71 | slope 2.00 | ahead 5.63
- -0.50 ride   P s  -45.1 curl  -61.2 | speed 10.92 along-travel 10.14 c 11.63 | slope 2.00 | ahead 5.26
- -0.25 ride   P s  -42.3 curl  -56.7 | speed 11.40 along-travel 10.35 c 11.33 | slope 2.00 | ahead 4.92
- -0.00 ride   P s  -39.4 curl  -52.1 | speed 11.87 along-travel 10.65 c 10.80 | slope 2.00 | ahead 4.73
-  0.25 ride   P s  -36.3 curl  -47.5 | speed 12.29 along-travel 10.92 c 10.07 | slope 2.00 | ahead 4.84
-  0.50 ride   P s  -33.2 curl  -43.0 | speed 12.66 along-travel 11.05 c 9.17 | slope 1.87 | ahead 5.32
-  0.75 ride   P s  -30.0 curl  -38.5 | speed 13.01 along-travel 11.02 c 8.18 | slope 1.27 | ahead 5.99
-  1.00 ride   P s  -26.8 curl  -34.1 | speed 13.20 along-travel 10.47 c 7.29 | slope 0.55 | ahead 6.48
-  1.25 ride   P s  -23.6 curl  -29.7 | speed 13.15 along-travel 9.82 c 6.60 | slope 0.31 | ahead 6.50
-  1.50 ride   P s  -20.5 curl  -25.3 | speed 12.92 along-travel 9.42 c 6.13 | slope 0.32 | ahead 6.17
-  1.75 ride   P s  -17.5 curl  -20.8 | speed 12.68 along-travel 9.30 c 5.87 | slope 0.33 | ahead 5.79
-  2.00 ride   P s  -14.5 curl  -16.4 | speed 12.46 along-travel 9.29 c 5.82 | slope 0.30 | ahead 5.44
-  2.25 ride   P s  -11.5 curl  -12.0 | speed 12.35 along-travel 9.35 c 5.82 | slope 0.41 | ahead 5.18
-  2.50 ride   P s   -8.6 curl   -7.5 | speed 12.27 along-travel 9.33 c 5.82 | slope 0.39 | ahead 5.00
-  2.75 ride   P s   -5.6 curl   -3.1 | speed 12.31 along-travel 9.38 c 5.83 | slope 0.43 | ahead 4.82
-  3.00 ride   P s   -2.6 curl    0.5 | speed 12.44 along-travel 9.51 c 5.87 | slope 0.57 | ahead 4.64
-  3.25 ride   P s    0.4 curl    3.5 | speed 12.63 along-travel 9.69 c 5.91 | slope 0.74 | ahead 4.52
-  3.50 ride   P s    3.5 curl    6.3 | speed 12.89 along-travel 9.90 c 5.93 | slope 1.07 | ahead 4.45
-  3.75 ride   P s    6.7 curl    9.1 | speed 13.13 along-travel 10.04 c 5.91 | slope 1.18 | ahead 4.42
-  4.00 ride   P s    9.9 curl   11.8 | speed 13.35 along-travel 10.10 c 5.84 | slope 1.21 | ahead 4.43
-  4.25 ride   P s   13.2 curl   14.7 | speed 13.53 along-travel 10.03 c 5.79 | slope 1.21 | ahead 4.45
-  4.50 ride   P s   16.5 curl   17.5 | speed 13.69 along-travel 9.89 c 5.85 | slope 1.19 | ahead 4.46
-  4.75 ride   P s   19.8 curl   20.4 | speed 13.83 along-travel 9.65 c 5.84 | slope 1.14 | ahead 4.47
-  5.00 ride   P s   23.2 curl   23.3 | speed 13.91 along-travel 9.37 c 5.83 | slope 0.72 | ahead 4.43
-  5.25 ride   P s   26.6 curl   26.3 | speed 13.90 along-travel 9.14 c 5.81 | slope 0.56 | ahead 4.32
-  5.50 ride   P s   29.9 curl   29.3 | speed 13.72 along-travel 9.00 c 5.81 | slope 0.63 | ahead 4.11
-  5.75 ride   P s   33.3 curl   32.3 | speed 13.44 along-travel 9.13 c 5.83 | slope 0.42 | ahead 3.86
-  6.00 ride   P s   36.5 curl   35.4 | speed 13.18 along-travel 9.36 c 5.85 | slope 0.36 | ahead 3.70
-  6.25 ride   P s   39.8 curl   38.4 | speed 12.94 along-travel 9.49 c 5.91 | slope 0.42 | ahead 3.61
-  6.50 ride   P s   43.0 curl   41.4 | speed 12.77 along-travel 9.56 c 5.95 | slope 0.30 | ahead 3.56
-  6.75 ride   P s   46.1 curl   44.5 | speed 12.59 along-travel 9.56 c 6.00 | slope 0.42 | ahead 3.50
-  7.00 ride   P s   49.3 curl   47.6 | speed 12.55 along-travel 9.66 c 6.05 | slope 0.37 | ahead 3.45
-  7.25 ride   P s   52.4 curl   50.7 | speed 12.47 along-travel 9.67 c 6.08 | slope 0.33 | ahead 3.41
-  7.50 ride   P s   55.5 curl   53.8 | speed 12.38 along-travel 9.65 c 6.10 | slope 0.31 | ahead 3.37
-  7.75 ride   P s   58.6 curl   56.9 | speed 12.30 along-travel 9.65 c 6.11 | slope 0.49 | ahead 3.31
-  8.00 ride   P s   61.7 curl   59.9 | speed 12.23 along-travel 9.65 c 6.12 | slope 0.50 | ahead 3.25
-  8.25 ride   P s   64.7 curl   63.0 | speed 12.20 along-travel 9.69 c 6.12 | slope 0.53 | ahead 3.19
-  8.50 ride   P s   67.8 curl   66.1 | speed 12.20 along-travel 9.72 c 6.12 | slope 0.55 | ahead 3.15
-  8.75 ride   P s   70.8 curl   69.2 | speed 12.20 along-travel 9.75 c 6.11 | slope 0.56 | ahead 3.13
-  9.00 ride   P s   73.9 curl   72.3 | speed 12.23 along-travel 9.79 c 6.10 | slope 0.58 | ahead 3.11
-  9.25 ride   P s   76.9 curl   75.4 | speed 12.26 along-travel 9.82 c 6.08 | slope 0.59 | ahead 3.11
-  9.50 ride   P s   80.0 curl   78.5 | speed 12.30 along-travel 9.85 c 6.07 | slope 0.47 | ahead 3.11
-  9.75 ride   P s   83.1 curl   81.6 | speed 12.34 along-travel 9.87 c 6.05 | slope 0.57 | ahead 3.13
- 10.00 ride   P s   86.2 curl   84.7 | speed 12.37 along-travel 9.87 c 6.04 | slope 0.42 | ahead 3.16
- 10.25 ride   P s   89.3 curl   87.8 | speed 12.39 along-travel 9.86 c 6.03 | slope 0.36 | ahead 3.19
- 10.50 ride   P s   92.4 curl   90.9 | speed 12.41 along-travel 9.85 c 6.04 | slope 0.36 | ahead 3.21
- 10.75 ride   P s   95.5 curl   94.0 | speed 12.41 along-travel 9.83 c 6.04 | slope 0.36 | ahead 3.22
- 11.00 ride   P s   98.6 curl   97.1 | speed 12.41 along-travel 9.81 c 6.03 | slope 0.35 | ahead 3.23
- 11.25 ride   P s  101.7 curl  100.2 | speed 12.39 along-travel 9.79 c 6.03 | slope 0.36 | ahead 3.23
- 11.50 ride   P s  104.8 curl  103.3 | speed 12.41 along-travel 9.81 c 6.03 | slope 0.37 | ahead 3.24
- 11.75 ride   P s  107.9 curl  106.4 | speed 12.43 along-travel 9.82 c 6.04 | slope 0.37 | ahead 3.25
- 12.00 ride   P s  111.0 curl  109.5 | speed 12.44 along-travel 9.81 c 6.04 | slope 0.37 | ahead 3.25
- 12.25 ride   P s  114.1 curl  112.6 | speed 12.45 along-travel 9.80 c 6.05 | slope 0.37 | ahead 3.26
- 12.50 ride   P s  117.2 curl  115.7 | speed 12.44 along-travel 9.79 c 6.05 | slope 0.36 | ahead 3.26
- 12.75 ride   P s  120.3 curl  118.8 | speed 12.43 along-travel 9.78 c 6.06 | slope 0.35 | ahead 3.25
- 13.00 ride   P s  123.4 curl  121.9 | speed 12.41 along-travel 9.77 c 6.06 | slope 0.55 | ahead 3.23
- 13.25 ride   P s  126.5 curl  125.0 | speed 12.38 along-travel 9.76 c 6.07 | slope 0.56 | ahead 3.21
- 13.50 ride   P s  129.6 curl  128.1 | speed 12.36 along-travel 9.77 c 6.08 | slope 0.55 | ahead 3.18
- 13.75 ride   P s  132.7 curl  131.1 | speed 12.34 along-travel 9.78 c 6.08 | slope 0.55 | ahead 3.16
- 14.00 ride   P s  135.8 curl  134.3 | speed 12.33 along-travel 9.80 c 6.08 | slope 0.55 | ahead 3.14
+ -5.75 paddle   s  -13.4 curl -126.2 | speed 1.09 along-travel -1.09 c 11.50 | slope 0.04 | ahead 70.38
+ -5.50 paddle   s  -13.7 curl -120.9 | speed 1.68 along-travel -1.68 c 11.54 | slope 0.04 | ahead 67.34
+ -5.25 paddle   s  -14.1 curl -116.5 | speed 2.01 along-travel -2.01 c 11.61 | slope 0.04 | ahead 64.18
+ -5.00 paddle   s  -14.6 curl -111.3 | speed 2.21 along-travel -2.21 c 11.66 | slope 0.04 | ahead 60.93
+ -4.75 paddle   s  -15.1 curl -106.3 | speed 2.31 along-travel -2.31 c 11.69 | slope 0.04 | ahead 57.53
+ -4.50 paddle   s  -15.7 curl -101.5 | speed 2.35 along-travel -2.35 c 11.70 | slope 0.04 | ahead 54.00
+ -4.25 paddle   s  -16.2 curl  -96.8 | speed 2.35 along-travel -2.35 c 11.71 | slope 0.03 | ahead 50.40
+ -4.00 paddle   s  -16.7 curl  -92.2 | speed 2.31 along-travel -2.31 c 11.71 | slope 0.07 | ahead 46.72
+ -3.75 paddle   s  -17.3 curl  -87.3 | speed 2.19 along-travel -2.19 c 11.71 | slope 0.06 | ahead 42.99
+ -3.50 paddle   s  -17.8 curl  -82.6 | speed 2.10 along-travel -2.10 c 11.71 | slope 0.04 | ahead 39.25
+ -3.25 paddle   s  -18.2 curl  -78.1 | speed 2.03 along-travel -2.03 c 11.71 | slope 0.03 | ahead 35.51
+ -3.00 paddle   s  -18.7 curl  -73.4 | speed 2.00 along-travel -2.00 c 11.71 | slope 0.02 | ahead 31.78
+ -2.75 paddle   s  -19.2 curl  -68.6 | speed 2.00 along-travel -2.00 c 11.71 | slope 0.01 | ahead 28.04
+ -2.50 paddle   s  -19.6 curl  -64.1 | speed 2.00 along-travel -2.00 c 11.71 | slope 0.01 | ahead 24.30
+ -2.25 paddle   s  -20.1 curl  -59.5 | speed 2.01 along-travel -2.01 c 11.71 | slope 0.02 | ahead 20.54
+ -2.00 paddle   s  -20.6 curl  -54.8 | speed 2.14 along-travel -2.14 c 11.71 | slope 0.07 | ahead 16.76
+ -1.75 paddle   s  -21.1 curl  -50.2 | speed 1.61 along-travel -1.61 c 11.71 | slope 0.18 | ahead 12.92
+ -1.50 paddle   s  -21.2 curl  -45.7 | speed 0.55 along-travel 0.54 c 11.71 | slope 0.93 | ahead 9.14
+ -1.25 popup  P s  -19.7 curl  -41.3 | speed 8.86 along-travel 8.86 c 11.71 | slope 1.65 | ahead 7.42
+ -1.00 ride   P s  -17.4 curl  -36.7 | speed 10.25 along-travel 10.19 c 11.71 | slope 1.66 | ahead 6.94
+ -0.75 ride   P s  -14.8 curl  -32.4 | speed 10.82 along-travel 10.18 c 11.70 | slope 1.79 | ahead 6.58
+ -0.50 ride   P s  -12.0 curl  -27.9 | speed 11.43 along-travel 10.38 c 11.56 | slope 1.67 | ahead 6.22
+ -0.25 ride   P s   -9.1 curl  -23.4 | speed 12.00 along-travel 10.71 c 11.18 | slope 1.48 | ahead 5.99
+ -0.00 ride   P s   -6.0 curl  -19.1 | speed 12.52 along-travel 11.06 c 10.58 | slope 1.42 | ahead 5.96
+  0.25 ride   P s   -2.8 curl  -14.6 | speed 12.99 along-travel 11.33 c 10.02 | slope 1.47 | ahead 6.14
+  0.50 ride   P s    0.4 curl  -10.1 | speed 13.36 along-travel 11.47 c 9.91 | slope 1.42 | ahead 6.43
+  0.75 ride   P s    3.8 curl   -5.6 | speed 13.67 along-travel 11.54 c 10.07 | slope 1.42 | ahead 6.80
+  1.00 ride   P s    7.2 curl   -1.4 | speed 13.90 along-travel 11.50 c 10.24 | slope 0.99 | ahead 7.29
+  1.25 ride   P s   10.7 curl    1.8 | speed 14.06 along-travel 11.33 c 10.43 | slope 0.87 | ahead 7.78
+  1.50 ride   P s   14.2 curl    4.7 | speed 14.13 along-travel 11.17 c 10.64 | slope 0.73 | ahead 8.16
+  1.75 ride   P s   17.7 curl    7.4 | speed 14.17 along-travel 11.08 c 10.86 | slope 0.69 | ahead 8.42
+  2.00 ride   P s   21.2 curl   10.2 | speed 14.20 along-travel 11.08 c 11.07 | slope 0.68 | ahead 8.58
+  2.25 ride   P s   24.7 curl   13.0 | speed 14.29 along-travel 11.22 c 11.26 | slope 0.81 | ahead 8.69
+  2.50 ride   P s   28.2 curl   15.9 | speed 14.42 along-travel 11.42 c 11.42 | slope 0.88 | ahead 8.80
+  2.75 ride   P s   31.8 curl   18.7 | speed 14.57 along-travel 11.67 c 11.55 | slope 0.95 | ahead 8.96
+  3.00 ride   P s   35.4 curl   21.6 | speed 14.75 along-travel 11.92 c 11.63 | slope 0.98 | ahead 9.16
+  3.25 ride   P s   39.1 curl   24.5 | speed 14.93 along-travel 12.18 c 11.69 | slope 0.91 | ahead 9.41
+  3.50 ride   P s   42.8 curl   27.5 | speed 15.11 along-travel 12.41 c 11.71 | slope 0.97 | ahead 9.71
+  3.75 ride   P s   46.5 curl   30.5 | speed 15.27 along-travel 12.63 c 11.71 | slope 0.99 | ahead 10.05
+  4.00 ride   P s   50.3 curl   33.6 | speed 15.42 along-travel 12.82 c 11.71 | slope 0.95 | ahead 10.43
+  4.25 ride   P s   54.1 curl   36.6 | speed 15.56 along-travel 12.99 c 11.71 | slope 0.88 | ahead 10.84
+  4.50 ride   P s   57.9 curl   39.6 | speed 15.68 along-travel 13.14 c 11.71 | slope 0.92 | ahead 11.28
+  4.75 ride   P s   61.8 curl   42.6 | speed 15.78 along-travel 13.26 c 11.71 | slope 0.87 | ahead 11.74
+  5.00 ride   P s   65.6 curl   45.8 | speed 15.85 along-travel 13.35 c 11.71 | slope 0.80 | ahead 12.22
+  5.25 ride   P s   69.5 curl   48.8 | speed 15.89 along-travel 13.41 c 11.71 | slope 0.83 | ahead 12.71
+  5.50 ride   P s   73.4 curl   51.9 | speed 15.92 along-travel 13.45 c 11.71 | slope 0.77 | ahead 13.19
+  5.75 ride   P s   77.3 curl   54.9 | speed 15.91 along-travel 13.44 c 11.71 | slope 0.69 | ahead 13.68
+  6.00 ride   P s   81.2 curl   58.1 | speed 15.88 along-travel 13.41 c 11.71 | slope 0.72 | ahead 14.16
+  6.25 ride   P s   85.1 curl   61.2 | speed 15.83 along-travel 13.36 c 11.71 | slope 0.64 | ahead 14.61
+  6.50 ride   P s   88.9 curl   64.3 | speed 15.73 along-travel 13.26 c 11.71 | slope 0.56 | ahead 15.05
+  6.75 ride   P s   92.7 curl   67.4 | speed 15.61 along-travel 13.14 c 11.71 | slope 0.58 | ahead 15.44
+  7.00 ride   P s   96.5 curl   70.5 | speed 15.46 along-travel 13.00 c 11.71 | slope 0.50 | ahead 15.80
+  7.25 ride   P s  100.2 curl   73.5 | speed 15.29 along-travel 12.83 c 11.71 | slope 0.51 | ahead 16.11
+  7.50 ride   P s  103.9 curl   76.6 | speed 15.10 along-travel 12.64 c 11.71 | slope 0.43 | ahead 16.38
+  7.75 ride   P s  107.6 curl   79.8 | speed 14.93 along-travel 12.49 c 11.71 | slope 0.44 | ahead 16.59
+  8.00 ride   P s  111.1 curl   82.8 | speed 14.68 along-travel 12.25 c 11.71 | slope 0.45 | ahead 16.75
+  8.25 ride   P s  114.7 curl   86.0 | speed 14.46 along-travel 12.06 c 11.71 | slope 0.37 | ahead 16.85
+  8.50 ride   P s  118.1 curl   88.9 | speed 14.27 along-travel 11.89 c 11.71 | slope 0.37 | ahead 16.89
+  8.75 ride   P s  121.6 curl   92.1 | speed 14.09 along-travel 11.73 c 11.71 | slope 0.37 | ahead 16.90
+  9.00 ride   P s  125.0 curl   95.3 | speed 13.93 along-travel 11.59 c 11.71 | slope 0.37 | ahead 16.86
+  9.25 ride   P s  128.3 curl   98.2 | speed 13.78 along-travel 11.47 c 11.71 | slope 0.45 | ahead 16.78
+  9.50 ride   P s  131.6 curl  101.3 | speed 13.64 along-travel 11.35 c 11.71 | slope 0.44 | ahead 16.67
+  9.75 ride   P s  134.9 curl  104.4 | speed 13.53 along-travel 11.26 c 11.71 | slope 0.43 | ahead 16.53
+ 10.00 ride   P s  138.2 curl  107.6 | speed 13.50 along-travel 11.25 c 11.71 | slope 0.42 | ahead 16.38
+ 10.25 ride   P s  141.5 curl  110.7 | speed 13.47 along-travel 11.23 c 11.71 | slope 0.41 | ahead 16.23
+ 10.50 ride   P s  144.7 curl  113.8 | speed 13.42 along-travel 11.19 c 11.71 | slope 0.49 | ahead 16.07
+ 10.75 ride   P s  148.0 curl  116.9 | speed 13.36 along-travel 11.13 c 11.71 | slope 0.48 | ahead 15.90
+ 11.00 ride   P s  151.2 curl  120.0 | speed 13.39 along-travel 11.18 c 11.71 | slope 0.46 | ahead 15.73
+ 11.25 ride   P s  154.4 curl  123.1 | speed 13.40 along-travel 11.19 c 11.71 | slope 0.44 | ahead 15.56
+ 11.50 ride   P s  157.7 curl  126.3 | speed 13.39 along-travel 11.18 c 11.71 | slope 0.52 | ahead 15.40
+ 11.75 ride   P s  160.9 curl  129.1 | speed 13.35 along-travel 11.14 c 11.71 | slope 0.49 | ahead 15.23
+ 12.00 ride   P s  164.2 curl  132.2 | speed 13.35 along-travel 11.14 c 11.71 | slope 0.45 | ahead 15.05
+ 12.25 ride   P s  167.4 curl  135.3 | speed 13.36 along-travel 11.15 c 11.71 | slope 0.43 | ahead 14.88
+ 12.50 ride   P s  170.6 curl  138.4 | speed 13.33 along-travel 11.11 c 11.71 | slope 0.39 | ahead 14.71
+ 12.75 ride   P s  173.9 curl  141.5 | speed 13.24 along-travel 11.02 c 11.71 | slope 0.46 | ahead 14.51
+ 13.00 ride   P s  177.0 curl  144.6 | speed 13.13 along-travel 10.91 c 11.71 | slope 0.42 | ahead 14.29
+ 13.25 ride   P s  180.2 curl  147.7 | speed 13.10 along-travel 10.89 c 11.71 | slope 0.37 | ahead 14.05
+ 13.50 ride   P s  183.4 curl  150.8 | speed 13.00 along-travel 10.79 c 11.71 | slope 0.32 | ahead 13.80
+ 13.75 ride   P s  186.5 curl  153.9 | speed 12.84 along-travel 10.64 c 11.71 | slope 0.39 | ahead 13.51
+ 14.00 ride   P s  189.6 curl  157.0 | speed 12.74 along-travel 10.55 c 11.71 | slope 0.32 | ahead 13.19

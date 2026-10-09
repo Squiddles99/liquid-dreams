@@ -40,10 +40,12 @@ for (const b of SWELL_BANDS) {
     const st = leftStretches(f, H, NORTH_LEDGE, { first: [0], second: [1] }, P), a = st.first, c = st.second;
     const ok = !!a && a.of > 0 && a.broken === a.of && a.start <= 2.0 && a.peel >= 8 && a.peel <= 13;
     row.push(ok);
-    // womb-retune Task 4: the face where the set's biggest wave first breaks on the peak's ray, min(H·amp, 0.78·depth) there,
-    // on the dial's scale (the ft whose set-1 biggest wave is that height), to the half foot; null where it doesn't break.
+    // womb-retune Task 4: the face where the set's biggest wave first breaks on the peak's ray: H·amp there, uncapped (Fable's
+    // Task 5 ruling: the height the wave carries into its break, not min(H·amp, 0.78·depth) at a smoothed depth, which read
+    // Solid = Pumping at High), on the dial's scale (the ft whose set-1 biggest wave is that height), to the half foot; null
+    // where it doesn't break.
     const fb = firstBreakDepth(f, H, P), fs = fb ? sampleField(f, fb.x, fb.z) : null;
-    face.push(ok && fs ? Math.round(2 * heightToFt(Math.min(H * fs.amp, 0.78 * fb!.depth))) / 2 : null);
+    face.push(ok && fs ? Math.round(2 * heightToFt(H * fs.amp)) / 2 : null);
     const line = `${b.label.padEnd(9)} ${String(b.ft).padStart(4)} ${String(b.periodS).padStart(2)} | ${tideM.toFixed(2).padStart(5)} | ${ratio.toFixed(2).padStart(10)} | `
       + (a ? `${a.broken}/${a.of}, ${a.start.toFixed(1)}, ${a.peel.toFixed(1)}, ${a.hollow.toFixed(2)}` : 'none').padEnd(40)
       + ` | ${c ? c.peel.toFixed(1) : 'none'} | ${ok ? 'YES' : 'no'} | face ${face[face.length - 1] ?? '–'} ft`;
