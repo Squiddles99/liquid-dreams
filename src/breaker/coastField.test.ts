@@ -105,3 +105,40 @@ describe('the coast field (lineup truth, Task 2)', () => {
     expect(outflow).toBeLessThanOrEqual(0.03);
   }, 300_000);
 });
+
+describe('the drawn sea outside the reef grid (lineup truth, Task 3: sampleField)', () => {
+  let field: ReefField;
+  beforeAll(() => {
+    field = computeReefField({ bed: reefBed, ...SWELL, coast: buildCoastMap(reefBed, DEFAULT_COAST_PARAMS) });
+  }, 300_000);
+
+  it('is the 1-D far field beyond the coast grid, exactly (x −1 600)', () => {
+    for (const z of [-2000, -500, 0, 800]) expect(sampleField(field, -1600, z)).toEqual(farSample(field.far, -1600, z));
+  });
+
+  it('is the coast field away from the reef grid and the coast grid\'s edges (Lefthanders, the Bombie)', () => {
+    for (const [x, z] of [[-250, -1666], [-400, -1600], [-280, 1020], [-150, 900]]) {
+      expect(sampleField(field, x, z)).toEqual(coastSample(field.coast!, field.far, x, z));
+    }
+  });
+
+  it('has no step at the reef grid\'s edges or the coast grid\'s: τ either side of each within 0.02 s (water ≥ 3 m)', () => {
+    const g = field.grid, x1 = g.x0 + (g.nx - 1) * g.cellM, z1 = g.z0 + (g.nz - 1) * g.cellM, e = 0.05;
+    const C = COAST_GRID, cz1 = C.z0 + (C.nz - 1) * C.cellM;
+    const pairs: [number, number, number, number][] = [];
+    for (let z = g.z0 + 20; z < z1; z += 60) pairs.push([g.x0 + e, z, g.x0 - e, z]);
+    for (let x = g.x0 + 20; x < x1; x += 50) { pairs.push([x, g.z0 + e, x, g.z0 - e]); pairs.push([x, z1 - e, x, z1 + e]); }
+    for (let z = C.z0 + 200; z < cz1; z += 300) pairs.push([C.x0 + e, z, C.x0 - e, z]);
+    for (const x of [-1400, -1000, -600, -300]) { pairs.push([x, C.z0 + e, x, C.z0 - e]); pairs.push([x, cz1 - e, x, cz1 + e]); }
+    let worst = 0, where = '', n = 0;
+    for (const [ax, az, bx, bz] of pairs) {
+      const a = sampleField(field, ax, az), b = sampleField(field, bx, bz);
+      if (a.depth < 3) continue;
+      const d = Math.abs(a.tau - b.tau);
+      if (d > worst) { worst = d; where = `(${ax}, ${az})`; }
+      n++;
+    }
+    expect(n).toBeGreaterThan(40);
+    expect(worst, where).toBeLessThanOrEqual(0.02);
+  });
+});

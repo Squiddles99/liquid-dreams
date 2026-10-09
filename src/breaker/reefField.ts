@@ -4,7 +4,7 @@ import type { GridSpec } from '../seabed/wombReef';
 import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_SIZE_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, UNTIL_NEVER, breakingDepth, onsetLevelHeight } from './breaking';
 import { type FarField, computeFarField, farSample } from './coastFarField';
 import { solveWaveField } from './waveField';
-import { type CoastField, coastSeed, computeCoastField } from './coastField';
+import { type CoastField, coastDrawn, coastSeed, computeCoastField, mixSamples } from './coastField';
 import type { FieldSample } from './fieldSample';
 import { PEEL_NEIGHBOUR_CELLS, breakingLines, curlTimes } from './curlClock';
 
@@ -819,8 +819,18 @@ export function sampleField(f: ReefField, x: number, z: number): FieldSample {
   const inside = x >= g.x0 && z >= g.z0 && x <= x1 && z <= z1;
   if (inside) return sampleInside(f, x, z);
   const xc = Math.min(x1, Math.max(g.x0, x)), zc = Math.min(z1, Math.max(g.z0, z));
+  if (f.coast) {
+    // With the coast (lineup truth spec §3d): the grid's edge continued along its rays, easing over REEF_BLEND_M into
+    // the coast field (which already carries the reef, at 4 m), so the sea has no step at the grid's edge either way.
+    const e = sampleInside(f, xc, zc);
+    const edge = { ...e, tau: e.tau + (e.k / f.omega) * (e.dirX * (x - xc) + e.dirZ * (z - zc)) };
+    return mixSamples(edge, coastDrawn(f.coast, f.far, x, z), smoothstep(0, REEF_BLEND_M, Math.hypot(x - xc, z - zc)));
+  }
   const far = farSample(f.far, x, z);
   if (far.dirX * (x - xc) + far.dirZ * (z - zc) <= 0) return far;
   const e = sampleInside(f, xc, zc);
   return { ...e, tau: e.tau + (e.k / f.omega) * (e.dirX * (x - xc) + e.dirZ * (z - zc)) };
 }
+
+/** Outside the reef grid the drawn sea eases from the grid's edge into the coast field over this far (m). */
+export const REEF_BLEND_M = 40;

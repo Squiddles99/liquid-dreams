@@ -7,6 +7,8 @@ import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, ONSET_LEVELS, ONSET_UNTIL_OFFSET, UNTIL_NEVER, normalizeBreakParams, onsetDelay, onsetPsi, onsetTime, onsetUntil } from './breaking';
 import { REFRACT_FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
+import { DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
+import { buildCoastMap } from '../seabed/coastMap';
 import { SetWaves } from './SetWaves';
 import { type BreakOptions, breakOptions, crestAt, frontStanding, sumWaves, toActiveWave } from './setWaveModel';
 import { wallWeight } from './wombSection';
@@ -18,8 +20,8 @@ const POINTS: [number, number][] = [
   [0, 0], [-20, 30], [-30, -60], [25, 28], [50, -110], [-300, 100], [150, -300], [-800, 50], [0, 600], [300, 0], [50, -600],
 ];
 
-function readPass(n: number, body: (xz: any) => [any, any]) {
-  const inAttr = new THREE.StorageBufferAttribute(new Float32Array(POINTS.flatMap(([x, z]) => [x, z, 0, 0])), 4);
+function readPass(n: number, body: (xz: any) => [any, any], points: [number, number][] = POINTS) {
+  const inAttr = new THREE.StorageBufferAttribute(new Float32Array(points.flatMap(([x, z]) => [x, z, 0, 0])), 4);
   const outAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 8), 4);
   const input = storage(inAttr, 'vec4', n).toReadOnly();
   const output = storage(outAttr, 'vec4', n * 2);
@@ -63,6 +65,54 @@ registerSelfTest({
       notes.push(`(${x},${z}) τ ${g[0].toFixed(2)}/${c.tau.toFixed(2)} amp ${g[1].toFixed(2)}/${c.amp.toFixed(2)} depth ${g[7].toFixed(2)}/${c.hminBreak.toFixed(2)}`);
     });
     return { pass: worst < 0.02, detail: `worst ${worst.toFixed(4)}; ${notes.join('; ')}` };
+  },
+});
+
+// Lineup truth Task 3: around Lefthanders and the Bombie the sheet reads the coast field; and either side of the reef grid's
+// west and north edges and the coast grid's west edge (the blend bands), and beyond the coast grid.
+const COAST_POINTS: [number, number][] = [
+  [-226, -1560], [-231, -1670], [-261, -1780], [-330, -1600], [-150, -1720], [-400, -1766],
+  [-280, 1020], [-220, 1020], [-280, 940], [-340, 1080], [-200, 1120], [-380, 960],
+  [-410, 0], [-430, -100], [-200, -470], [-150, -500], [-1450, -500], [-1520, 200], [-1600, 900],
+];
+let coastShared: ReefField | undefined;
+const getCoastField = (): ReefField => (coastShared ??= (() => {
+  const bed = downsample(buildBathymetry(), 2);
+  return computeReefField({ bed, periodS: 15, fromDeg: 225, tideM: 0, peel: DEFAULT_BREAK_PARAMS.peel, refractFloorM: REFRACT_FLOOR_M, coast: buildCoastMap(bed, DEFAULT_COAST_PARAMS) });
+})());
+
+registerSelfTest({
+  name: 'breaker: coast: the GPU field and set-wave height match the CPU around Lefthanders, the Bombie and the blend bands (≤ 2 cm)',
+  async run(renderer) {
+    const field = getCoastField();
+    // A set's third wave at the Bombie's latitude: its travel time from the peak is the coast field's τ there.
+    const t = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS)[2].arrivalS;
+    const notes: string[] = [];
+    let worstField = 0, worstEta = 0;
+    for (const dt of [sampleField(field, -250, -1666).tau, sampleField(field, -280, 1020).tau]) {
+      const at = t + dt;
+      const events = wavesNear(at, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+      const sets = new SetWaves(uniform(at));
+      sets.setField(field);
+      sets.setEvents(events);
+      const { pass, outAttr } = readPass(COAST_POINTS.length, (xz) => {
+        const s = sets.sample(xz), d = sets.displacementNode(xz);
+        return [vec4(s.tau, s.amp, s.hminBreak, s.depth), vec4(d, s.dir.x)];
+      }, COAST_POINTS);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+      const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
+      const waves = events.map(toActiveWave);
+      COAST_POINTS.forEach(([x, z], i) => {
+        const f = sampleField(field, x, z), c = sumWaves(x, z, at, f, waves, ctx, o), g = out.slice(i * 8, i * 8 + 8);
+        worstField = Math.max(worstField, Math.abs(g[0] - f.tau), Math.abs(g[1] - f.amp), Math.abs(g[3] - f.depth) / 10, Math.abs(g[7] - f.dirX),
+          Math.abs(g[2] - f.hminBreak) / Math.max(1, f.hminBreak / 10));
+        worstEta = Math.max(worstEta, Math.abs(g[5] - c.eta));
+        if (i % 3 === 0) notes.push(`(${x},${z}) τ ${g[0].toFixed(2)}/${f.tau.toFixed(2)} η ${g[5].toFixed(3)}/${c.eta.toFixed(3)}`);
+      });
+    }
+    return { pass: worstField < 0.02 && worstEta < 0.02, detail: `field worst ${worstField.toFixed(4)}, η worst ${worstEta.toFixed(4)} m; ${notes.join('; ')}` };
   },
 });
 

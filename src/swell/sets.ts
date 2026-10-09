@@ -41,8 +41,11 @@ export const DEFAULT_SET_PARAMS: SetParams = {
   straysPerLull: 1.5,
   strayHeightMin: 0.5,
   strayHeightMax: 0.7,
-  crestLengthMinM: 300,
-  crestLengthMaxM: 600,
+  // Lineup truth (2026-10-09): a swell line runs kilometres along the coast, so a set reaches Lefthanders (1.7 km north)
+  // and Ellensbrook (1.1 km south) and breaks there on the coast field. Was 300–600 m: every line ended within ±300 m of
+  // the Womb's. The taper acts only beyond 250–500 m from the peak (setWaveModel.TAPER_NEAR_M), so the Womb is as it was.
+  crestLengthMinM: 5000,
+  crestLengthMaxM: 7000,
 };
 
 /**
@@ -94,8 +97,9 @@ export interface WaveEvent {
 
 /** A wave is in flight from this long before it reaches the peak (on the horizon)… */
 export const WAVE_WINDOW_BEFORE_S = 300;
-/** …until this long after (faded over the shelf). */
-export const WAVE_WINDOW_AFTER_S = 60;
+/** …until this long after: it reaches the coast map's north end (z −2 100, past Lefthanders) ~125 s after the peak
+ * (lineup truth; was 60 s, the shelf around the Womb). */
+export const WAVE_WINDOW_AFTER_S = 150;
 export const MAX_ACTIVE_WAVES = 12;
 /** "Call a set now" lands this long before the set's first wave reaches the peak. */
 export const CALL_SET_LEAD_S = 45;
