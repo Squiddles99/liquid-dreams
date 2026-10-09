@@ -1,0 +1,16 @@
+{
+ "_": "Where tools/loadingArt.py cuts a picture taller than 16:9 down to 16:9: 0 keeps the top, 1 the bottom, 0.5 (the default) the middle.",
+ "birds-albatross": 0.31,
+ "birds-fairywren": 0.4,
+ "birds-kestrel": 0.17,
+ "birds-kookaburra": 0.3,
+ "birds-ringneck": 0.35,
+ "birds-sea-eagle": 0.17,
+ "birds-tropicbird": 0.2,
+ "birds-wattlebird": 0.4,
+ "marsupials-brush-wallaby": 0.4,
+ "marsupials-grey-kangaroo": 0.2,
+ "marsupials-tammar": 0.45,
+ "reptiles-bearded-dragon": 0.1,
+ "reptiles-bobtail": 0.4
+}
