@@ -7,13 +7,16 @@ import { type ProfileInput, type Vec2, profileFrame } from './lipProfile';
 import { withSheetShape } from './overturn';
 import { type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, type BreakOptions, breakOptions, localHeight, sumWaves } from './setWaveModel';
+import { reefBeds } from './testField';
 
 /**
  * Stations on the peak's ray for tests and the drawings (not a test file itself, so importing it doesn't rerun tests):
  * the biggest set wave at a size and tide, every crest forced to one ψ, the sheet and the lip on one clock.
  */
 export function peakSetup(sizeFt = 12, tideM = 0): { field: ReefField; wave: ActiveWave; ctx: { omega: number; travelX: number; travelZ: number } } {
-  const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM });
+  // Seeded by the coast field, as the game's (womb-retune: the moved take-off).
+  const { bed, coast } = reefBeds(2);
+  const field = computeReefField({ bed, periodS: 15, fromDeg: 225, tideM, coast });
   const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
   const c = cloneConditions(DEFAULT_CONDITIONS); c.swell.sizeFt = sizeFt;
   const big = wavesOfSet(1, c, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));

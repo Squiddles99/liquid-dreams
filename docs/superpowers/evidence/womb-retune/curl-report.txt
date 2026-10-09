@@ -1,0 +1,7 @@
+band     curl  | first: peel m/s, hollow, broke t | second: peel, hollow | first-leg onset nodes (≤ 30 m inshore of the ledge): held > 0.05 s, at the cap
+Solid      40  | 11.3, 0.56, 0.1–15.3 s | 22.5, 0.47 | level 6: 108 nodes, 0.0% held, 0.0% capped
+Pumping    40  | 11.7, 0.81, -0.2–14.6 s | 24.3, 0.90 | level 5: 114 nodes, 0.0% held, 0.0% capped
+Big        40  | 11.9, 1.00, -0.4–14.2 s | 25.6, 1.00 | level 4: 107 nodes, 0.0% held, 0.0% capped
+Solid      20  | 12.7, 0.56, 2.1–15.3 s | 20.0, 0.46 | level 6: 108 nodes, 26.9% held, 0.0% capped
+Pumping    20  | 13.3, 0.79, 1.9–14.6 s | 19.5, 0.67 | level 5: 114 nodes, 31.6% held, 0.0% capped
+Big        20  | 13.6, 1.00, 1.6–14.2 s | 19.7, 1.00 | level 4: 107 nodes, 32.7% held, 0.0% capped
