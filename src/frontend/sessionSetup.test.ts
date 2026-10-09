@@ -158,10 +158,10 @@ describe('only swell × tide pairs that break at the Womb are offered', () => {
     expect(Object.keys(BREAKS)).toEqual(SWELL_BANDS.map((b) => b.label));
     for (const t of TIDE_STOPS) expect(BREAKS_TIDES_M).toContain(t.m);
   });
-  it('Flat-ish and Small are never offered; Fun at Low only (Fable 2026-10-09); Solid and up at every tide', () => {
+  it('Flat-ish and Small are never offered; Fun breaks at Low but carries no rider, so never offered (Fable 2026-10-10); Solid and up at every tide', () => {
     for (let tide = 0; tide < TIDE_STOPS.length; tide++) {
-      for (let band = 0; band < 2; band++) expect(offered(band, tide)).toBe(false);
-      expect(offered(2, tide), TIDE_STOPS[tide].label).toBe(TIDE_STOPS[tide].m === -0.5);
+      for (let band = 0; band < 3; band++) expect(offered(band, tide), `${SWELL_BANDS[band].label} ${TIDE_STOPS[tide].label}`).toBe(false);
+      expect(BREAKS.Fun[0]).toBe(true);
       for (let band = 3; band < SWELL_BANDS.length; band++) expect(offered(band, tide)).toBe(true);
     }
   });

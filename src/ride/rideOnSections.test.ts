@@ -26,10 +26,9 @@ import { NORTH_LEDGE } from '../seabed/wombReef';
 describe('a ride on the drawn sections', () => {
   // The smallest offered band at every Experience level (plan Review Focus 5: the assist is forgiveness, not the engine), the
   // biggest at intermediate (womb-retune Task 5: the select screen offers Solid to Huge on the real shelf). The game's field:
-  // coast-seeded, the take-off 224 m off the beach, the band's own ft and period, 225°, mid tide. Fun is offered at Low only
-  // (Fable's Task 5 ruling), so the smallest offered band overall is pinned there at every level too.
-  it.each([['Solid', 'intermediate', 0], ['Huge', 'intermediate', 0], ['Solid', 'beginner', 0], ['Solid', 'expert', 0],
-    ['Fun', 'intermediate', -0.5], ['Fun', 'beginner', -0.5], ['Fun', 'expert', -0.5]] as [string, Experience, number][])('a %s set wave (%s, tide %s m): caught, popped up and ridden along the left for 10 s or more without a wipeout', { timeout: 300_000 }, (label, experience, tideM) => {
+  // coast-seeded, the take-off 224 m off the beach, the band's own ft and period, 225°, mid tide. Fun breaks at Low but carries no
+  // rider (traces evidence/womb-retune/ride-trace-Fun-*.txt; Fable 2026-10-10: not offered), so Solid is the smallest.
+  it.each([['Solid', 'intermediate', 0], ['Huge', 'intermediate', 0], ['Solid', 'beginner', 0], ['Solid', 'expert', 0]] as [string, Experience, number][])('a %s set wave (%s, tide %s m): caught, popped up and ridden along the left for 10 s or more without a wipeout', { timeout: 300_000 }, (label, experience, tideM) => {
     const c = cloneConditions(DEFAULT_CONDITIONS), band = SWELL_BANDS.find((x) => x.label === label)!, ft = band.ft;
     c.swell.sizeFt = ft; c.swell.periodS = band.periodS; c.swell.directionDeg = 225; c.tideM = tideM;
     const field = coastReefField({ periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: true });

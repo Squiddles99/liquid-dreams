@@ -124,9 +124,17 @@ export function faceFt(band: number, tide: number): number | null {
   return FACE_FT[SWELL_BANDS[band].label]?.[BREAKS_TIDES_M.indexOf(TIDE_STOPS[tide].m)] ?? null;
 }
 
+/**
+ * Bands that break but carry no rider (womb-retune Task 6, Fable's ruling 2026-10-10: the offering means "a day you can
+ * surf", the matrix's "breaks" rule AND the ride gate at the smallest offered band). Fun breaks at Low, but a 2 m wave on a
+ * ledge peeling 9–10 m/s drops every level inside 2 s (evidence/womb-retune/ride-trace-Fun-*.txt): not offered.
+ */
+export const UNRIDEABLE: ReadonlySet<string> = new Set(['Fun']);
+
 /** Whether the select screen offers swell band `band` (index into SWELL_BANDS) at tide stop `tide` (index into TIDE_STOPS). */
 export function offered(band: number, tide: number): boolean {
-  return BREAKS[SWELL_BANDS[band].label]?.[BREAKS_TIDES_M.indexOf(TIDE_STOPS[tide].m)] ?? false;
+  const label = SWELL_BANDS[band].label;
+  return !UNRIDEABLE.has(label) && (BREAKS[label]?.[BREAKS_TIDES_M.indexOf(TIDE_STOPS[tide].m)] ?? false);
 }
 
 /** The offered band nearest `band` at tide stop `tide` (ties go to the bigger band), or -1 if none is. */
