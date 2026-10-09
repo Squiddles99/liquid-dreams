@@ -19,7 +19,8 @@ function shelf(line: (z: number) => number, peel: number, gain = 0.3, rayDeg = 0
     hminBreak[i] = 1 / (gain * Math.exp((col - line(row)) / 15));
   }
   const order = Uint32Array.from(Array.from({ length: n }, (_, i) => i).sort((a, b) => tau[a] - tau[b] || a - b));
-  const rec = computeOnsetRecord({ grid, tau, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel });
+  // The stretch (and the wall) alone: the curl at no top speed leaves these monotone shelves as they were (one-curl).
+  const rec = computeOnsetRecord({ grid, tau, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, curlMaxMs: Infinity, peel });
   const at = (col: number, row: number, j: number): number => rec[(row * NX + col) * ONSET_RECORD_LENGTH + j];
   // Level k's onset time on the ray at `row`, read where the section has long broken (col), and its delay there.
   const onsetT = (row: number, lvl: number, col = 130): number => (col * ca + row * sa) / C - at(col, row, 1 + 2 * lvl);

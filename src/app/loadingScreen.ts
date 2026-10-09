@@ -35,6 +35,7 @@ export class LoadingScreen {
   private raf = 0;
   private lastTick: number;
   private readonly bootAt: number;
+  private pendingLabels: (() => string[]) | null = null;
 
   /** Adopts index.html's #ld-cover in boot mode (null if the page has none). */
   static adopt(doc: Document, now: () => number = () => performance.now()): LoadingScreen | null {
@@ -72,10 +73,24 @@ export class LoadingScreen {
     this.el.classList.toggle('is-calm', calm);
   }
 
-  /** Every drawn frame (App.frame): feeds the gate. */
-  frameDrawn(dtMs: number): void {
-    if (this.gate) this.gate.frame(dtMs, this.now());
+  /** The pipeline builds still pending (AsyncPipelines.inflight): named in the log when the boot cover dissolves. */
+  setPendingLabels(labels: () => string[]): void {
+    this.pendingLabels = labels;
+  }
+
+  /**
+   * Every drawn frame (App.frame): feeds the gate. `blocked`: drawn with pipeline builds pending. At boot the gate's
+   * give-up then waits for them (up to BOOT_BUILD_CAP_MS: one-curl Task 0); the transitions' gate ignores it (ride-stall
+   * 4c: their builds are slow, not stuck, and the ride can start), so App feeds them Infinity for such a frame instead.
+   */
+  frameDrawn(dtMs: number, blocked = false): void {
+    if (this.gate) this.gate.frame(dtMs, this.now(), this.phase === 'boot' && blocked);
     this.tick(0);
+  }
+
+  /** Whether the cover is still in its start-up phase. */
+  get booting(): boolean {
+    return this.phase === 'boot';
   }
 
   /**
@@ -174,6 +189,7 @@ export class LoadingScreen {
   }
 
   private dissolve(now: number): void {
+    if (this.phase === 'boot') console.info(`[loading] dissolve at ${(now - this.bootAt).toFixed(0)} ms; builds pending:`, this.pendingLabels?.() ?? []);
     this.phase = 'out';
     this.outAt = now;
     this.el.classList.add('is-out');

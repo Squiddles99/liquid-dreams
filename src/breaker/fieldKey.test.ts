@@ -10,4 +10,8 @@ describe('the reef field key (what re-bakes the field)', () => {
     expect(fieldKey({ ...c, tideM: 0 }, { a: 1 }, 1.7)).not.toBe(base);
     expect(fieldKey(c, { a: 2 }, 1.7)).not.toBe(base);
   });
+  it("changes with the curl's top speed (one-curl §3d: baked into the record)", () => {
+    expect(fieldKey(c, { a: 1 }, 1.7, 12)).not.toBe(fieldKey(c, { a: 1 }, 1.7, 20));
+    expect(fieldKey(c, { a: 1 }, 1.7, 20)).toBe(fieldKey(c, { a: 1 }, 1.7, 20));
+  });
 });
