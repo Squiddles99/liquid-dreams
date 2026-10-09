@@ -21,7 +21,7 @@ export const CHART_LABELS: readonly ChartLabel[] = [
   { text: 'GEOGRAPHE BAY', lonLat: [115.27, -33.555], kind: 'water', dx: 0, dy: 0, anchor: 'middle', dot: false },
   { text: 'INDIAN OCEAN', lonLat: [114.56, -33.93], kind: 'water', dx: 0, dy: 0, anchor: 'middle', dot: false },
   { text: 'YALLINGUP', lonLat: [115.03, -33.645], kind: 'town', dx: 14, dy: 8, anchor: 'start', dot: true },
-  { text: 'DUNSBOROUGH', lonLat: [115.105, -33.615], kind: 'town', dx: 22, dy: 58, anchor: 'start', dot: true },
+  { text: 'DUNSBOROUGH', lonLat: [115.105, -33.615], kind: 'town', dx: 30, dy: 66, anchor: 'start', dot: true },
   { text: 'BUSSELTON', lonLat: [115.345, -33.652], kind: 'town', dx: 14, dy: 26, anchor: 'start', dot: true },
   { text: 'GRACETOWN', lonLat: [114.99, -33.866], kind: 'town', dx: 16, dy: -6, anchor: 'start', dot: true },
   { text: 'MARGARET RIVER', lonLat: [115.075, -33.955], kind: 'town', dx: 14, dy: 8, anchor: 'start', dot: true },

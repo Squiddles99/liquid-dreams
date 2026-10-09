@@ -68,11 +68,6 @@ export class CapesChart {
       this.svg.appendChild(t);
     }
     this.svg.appendChild(this.pins);
-    if (this.opts.view === 'full') {
-      const c = el('text', { x: 24, y: CHART.h - 16, class: 'fe-chart-credit' });
-      c.textContent = 'Coastline © OpenStreetMap contributors';
-      this.svg.appendChild(c);
-    }
   }
 
   setConditions(c: { swellFromDeg: number; periodS: number; swellFt: number; windFromDeg: number | null; windMs: number }): void {

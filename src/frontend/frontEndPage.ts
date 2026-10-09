@@ -15,6 +15,7 @@ import { Legend, legendFor } from './ui/legend';
 import { RiderLine } from './ui/riderLine';
 import { RIDER_HALF_W, RIDER_STAND } from './backdrop/backdropMath';
 import { SlidePanel } from './ui/slidePanel';
+import { SurfMapPanel } from './ui/surfMapPanel';
 import { type Device, UiInput } from './uiInput';
 import { UiSounds, hapticPulse } from './uiSounds';
 
@@ -52,8 +53,10 @@ export class FrontEnd {
   private input: UiInput | null = null;
   private sounds: UiSounds | null = null;
   private device: Device = 'keyboard';
-  private beatEls: Record<'conditions' | 'rider' | 'gear', HTMLElement> | null = null;
-  private parts: { cond: ConditionsPanel; map: BreakMap; slide: SlidePanel; gear: GearPanel; legend: Legend; line: RiderLine; bottom: HTMLElement } | null = null;
+  private beatEls: Record<'map' | 'conditions' | 'rider' | 'gear', HTMLElement> | null = null;
+  private toastEl: HTMLElement | null = null;
+  private toastTimer = 0;
+  private parts: { surf: SurfMapPanel; cond: ConditionsPanel; map: BreakMap; slide: SlidePanel; gear: GearPanel; legend: Legend; line: RiderLine; bottom: HTMLElement } | null = null;
   private shownBeat: string | null = null;
   /** Black over everything until the crew have loaded and the land is ready (no boards floating without riders). */
   /** While the loading cover is up, key presses are read and dropped, so nothing changes under it (loading screens §2). */
@@ -106,7 +109,10 @@ export class FrontEnd {
     const legend = new Legend((a) => routed(a));
     this.settingsCtl = new SettingsController(this.root, this.storage, () => this.applySettings(), legend, () => this.sounds);
     const saved = sanitizeChoices(this.storage ? loadJson(this.storage, FRONT_CHOICES_KEY) : null);
-    this.core = new FrontEndCore(this.host, saved, { today: this.today, seed: Date.now() % 100000, calm: this.settings.calmMenus, storage: this.storage });
+    this.core = new FrontEndCore(this.host, saved, { today: this.today, seed: Date.now() % 100000, calm: this.settings.calmMenus, storage: this.storage, source: this.settings.conditionsSource });
+    const surf = new SurfMapPanel((p) => (p.kind === 'pin' ? this.cue(this.core!.pointer({ pin: p.id }, performance.now()))
+      : p.kind === 'locked' ? this.toast(p.what === 'library' ? 'Library: coming soon' : 'Real-time conditions: coming soon') : act(p.action)));
+    void surf.load().then(() => { if (this.core) surf.render(this.core.state, this.today); });
     const cond = new ConditionsPanel((p) => (p.kind === 'focus' ? this.cue(this.core!.pointer({ row: p.row }, performance.now())) : act(p.action)));
     const slide = new SlidePanel((p) => (p.kind === 'rider' ? this.cue(this.core!.pointer({ rider: p.rider }, performance.now())) : act(p.action)));
     const gear = new GearPanel((p) => {
@@ -118,9 +124,9 @@ export class FrontEnd {
     bottom.className = 'fe-scrim-bottom';
     void map.load().then(() => { const s = this.host.standSpot(); if (s) map.setLookout(s); map.setConditions(this.core!.state.setup, true); });
     const wrap = (...els: HTMLElement[]): HTMLElement => { const d = document.createElement('div'); d.append(...els); return d; };
-    this.beatEls = { conditions: wrap(cond.el, map.el, beatHead('conditions')), rider: wrap(slide.el, beatHead('rider')), gear: wrap(gear.el, beatHead('gear')) };
-    this.root.append(bottom, this.beatEls.conditions, this.beatEls.rider, this.beatEls.gear, line.el, legend.el);
-    this.parts = { cond, map, slide, gear, legend, line, bottom };
+    this.beatEls = { map: wrap(surf.el), conditions: wrap(cond.el, map.el, beatHead('conditions')), rider: wrap(slide.el, beatHead('rider')), gear: wrap(gear.el, beatHead('gear')) };
+    this.root.append(bottom, this.beatEls.map, this.beatEls.conditions, this.beatEls.rider, this.beatEls.gear, line.el, legend.el);
+    this.parts = { surf, cond, map, slide, gear, legend, line, bottom };
     this.input = new UiInput(window);
     this.sound.setFrontEndMusic(true);
     this.resize(this.size.w, this.size.h);
@@ -151,7 +157,8 @@ export class FrontEnd {
     this.root?.remove();
     this.host.stage(null, null);
     this.sound.setFrontEndMusic(false);
-    this.root = this.core = this.input = this.parts = this.beatEls = null;
+    this.root = this.core = this.input = this.parts = this.beatEls = this.toastEl = null;
+    window.clearTimeout(this.toastTimer);
     this.settingsCtl = null;
     this.shownBeat = null;
   }
@@ -171,6 +178,8 @@ export class FrontEnd {
           const s = this.core.state, line = gearView(s, this.today, Math.floor(performance.now())).line;
           if (line.speaker !== PRESETS[s.rider].nickname) this.parts.line.show(line.speaker, line.text, performance.now());
         }
+        if (e.kind === 'source' && this.settingsCtl) this.settingsCtl.set({ ...this.settingsCtl.settings, conditionsSource: e.source });
+        if (e.kind === 'locked') this.toast(e.what === 'library' ? 'Library: coming soon' : 'Real-time conditions: coming soon');
       }
     }
     if (c.settings) this.settingsCtl?.open();
@@ -190,6 +199,16 @@ export class FrontEnd {
     if (this.parts) this.root.appendChild(this.parts.legend.el); // the legend stays above the page's scrim
   }
 
+  /** A short message at the top (locked items: Library, Real-time), gone after 1.8 s. */
+  toast(text: string): void {
+    if (!this.root) return;
+    if (!this.toastEl) { this.toastEl = document.createElement('div'); this.toastEl.className = 'fe-toast'; this.root.appendChild(this.toastEl); }
+    this.toastEl.textContent = text;
+    this.toastEl.classList.add('is-on');
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => this.toastEl?.classList.remove('is-on'), 1800);
+  }
+
   /** A settings change (saved by the controller): the layout re-applied (text size, safe area), calm passed on, glyphs overridden. */
   private applySettings(): void {
     this.resize(this.size.w, this.size.h);
@@ -207,8 +226,10 @@ export class FrontEnd {
         el.style.opacity = on ? '1' : '0';
         el.classList.toggle('fe-beat-off', !on);
       }
+      this.root?.classList.toggle('is-map', visibleBeat === 'map');
       this.shownBeat = visibleBeat;
     }
+    if (visibleBeat === 'map' || s.beat === 'map') { p.surf.render(s, this.today); p.surf.update(now); }
     p.cond.render(s, this.today);
     p.cond.update(now);
     p.slide.setDevice(this.device);
