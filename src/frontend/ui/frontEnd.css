@@ -179,3 +179,10 @@
 .fe-title-row { grid-template-columns: 1fr auto; }
 .fe-title-row.is-locked .fe-value { opacity: .5; }
 .fe-title-soon { font: 700 calc(18px * var(--fe-text)) 'Barlow Semi Condensed'; letter-spacing: .18em; color: #a9c3c2; align-self: center; }
+/* Details over the map: the map's UI fades away; the text fades at the edges it runs past. */
+.fe-map > :not(.fe-chart) { transition: opacity 220ms var(--fe-ease-out); }
+.fe-map.is-details > :not(.fe-chart) { opacity: 0; }
+.fe-details-body.is-more { mask-image: linear-gradient(#000 calc(100% - 72px), transparent); }
+.fe-details-body.is-scrolled { mask-image: linear-gradient(transparent, #000 56px); }
+.fe-details-body.is-scrolled.is-more { mask-image: linear-gradient(transparent, #000 56px, #000 calc(100% - 72px), transparent); }
+.is-calm .fe-map > :not(.fe-chart) { transition: none; }
