@@ -26,3 +26,8 @@ grazing — that swell cannot exist at the seed), so cg·cosθ there is small an
 
 Opus's lean: C is the only one that is a buoy's reading and energy-consistent (Andrew: "true to the scientific data"),
 but it rotates the arrival the spec calls fixed, so it is your call (and possibly Andrew's). A makes 202° nearly flat.
+
+**RULED (Andrew, in chat, 2026-10-09): option C.** The dial is a buoy reading: height, period and direction in the coast
+seed's water. `computeFarField(..., { refDepthM })` sets both Snell's p and the flux reference there; with no coast it is
+15 m as before (`?coast=off` unchanged). Spec §1's fixed −22.9° and gate §6.1's "angles within 0.1°" are superseded: the
+datum table reports the new arrival.
