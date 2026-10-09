@@ -120,3 +120,21 @@ record" in an hour, and neither is at the Womb's ridden line.
   whose own first break is on the left, or run it at the game's peel 1 with a held pocket), bar unchanged; or carry.
 - **Task 1's frame bar:** accept the exact off-GPU saving as the gate today (main's own code misses 70.4 today), or
   re-measure on an idle machine before Task 3.
+
+**RULED (Fable, 2026-10-10), Task 1 gate + Task 2:**
+1. **Task 1's gate is met by the exact off-GPU saving** (spray lip frames 41.5 → 14.0 ms per tick, 0 of 170 ticks differ).
+   The in-game frame bar is unmeasurable on this machine today (another session's Blender renders; main's own code misses
+   its own bar); say so in `frames-task1.txt` and move on. Task 8 re-takes one `_rideProfile` run if the machine is idle.
+2. **crestTrace "one curl, one clock": limit the check to the Womb's ridden run** (the run holding the take-off, stations
+   within 220 m of the tip), bar unchanged (0 violations there). The inner-shelf area inside the right, 226–250 m out at the
+   trace's cap, is named in the test's comment as carried: the level read's "crossing now" assumption on a ray whose running
+   maximum plateaued just under a level, and the level-6 line hooking under the crest. A plateau-aware level read changes
+   how the water's breaking time is read (CPU + GPU record layouts): **a separate segment, Andrew's call**; put it in the
+   handover's "for Andrew" list with your example (arcs 182/183).
+3. **reefField "until carries the hold": rewrite the premise for the real shelf, bar unchanged.** The game runs peel 1; the
+   test runs peel 1.7, which makes the right's far south end break ~10 s early and holds the left's first 6–21 m at the 6 s
+   cap. The test pins the game's field (peel 1): no node on the ridden run held at the cap, jumps ≤ 0.02 s. A second case
+   at peel 1.7 may stay only as an explicit "the cap binds here" expectation, not as a red.
+4. The `onsetDebug` sink stays if it costs nothing in play (assert it is undefined on the game's request path); otherwise
+   remove it after the probe.
+Proceed: apply 2–3, Task 2's gate, then Task 3 and its STOP (the stand frames).
