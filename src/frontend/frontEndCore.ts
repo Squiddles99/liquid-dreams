@@ -25,6 +25,8 @@ export interface FrontEndHost {
   paddleOut(choice: SessionChoice): void;
   /** Whether the crew's bodies have loaded (absent: always); the loading cover waits for it. */
   crewReady?(): boolean;
+  /** B on the map: the title screen again (App shows it; absent in tests). */
+  backToTitle?(): void;
 }
 
 export interface CoreCue {
@@ -50,8 +52,8 @@ export class FrontEndCore {
   private moveFrom: CameraPose | null = null;
   private calm: boolean;
 
-  constructor(private readonly host: FrontEndHost, saved: SavedChoices, private readonly opts: { today: Date; seed: number; calm: boolean; storage: SettingsStorage | null }) {
-    this.s = initialFront(saved);
+  constructor(private readonly host: FrontEndHost, saved: SavedChoices, private readonly opts: { today: Date; seed: number; calm: boolean; storage: SettingsStorage | null; source?: 'forecast' | 'custom' }) {
+    this.s = initialFront(saved, opts.source ?? 'forecast');
     this.calm = opts.calm;
     this.lineSeed = opts.seed;
     // The world takes the shown conditions at once: the sky, sea and light match the panel from the first frame.
@@ -115,6 +117,7 @@ export class FrontEndCore {
         this.moveFrom = null;
         if (e.beat === 'gear') { const v = gearView(this.s, this.opts.today, this.lineSeed++); cue.line = { speaker: this.s.rider, text: v.line.text }; }
       }
+      if (e.kind === 'title') this.host.backToTitle?.();
       if (e.kind === 'settings') cue.settings = true;
       if (e.kind === 'controls') cue.controls = true;
       if (e.kind === 'paddleOut') {

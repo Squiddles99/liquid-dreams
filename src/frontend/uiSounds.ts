@@ -9,13 +9,15 @@ export const focusDetune = (r: number): number => Math.round((r * 2 - 1) * 100);
 
 export function soundFor(e: FrontEvent): UiSound | null {
   switch (e.kind) {
-    case 'focus': case 'riderFocus': return 'focus';
-    case 'value': case 'roll': case 'details': return 'value';
+    case 'focus': case 'riderFocus': case 'pinFocus': return 'focus';
+    case 'value': case 'roll': case 'details': case 'breakDetails': return 'value';
     case 'end': return 'end';
     case 'move': return 'swing';
     case 'pick': return 'pick';
     case 'back': return 'back';
-    case 'chosen': case 'paddleOut': return 'confirm';
+    // Surf here: the confirm (its move event already swings).
+    case 'chosen': case 'paddleOut': case 'surfHere': return 'confirm';
+    case 'title': return 'back';
     default: return null;
   }
 }

@@ -1,6 +1,7 @@
 // src/frontend/surfMap.selftest.ts: the surf chart, the map beat and the details page in the page (surf-map hub plan).
 import { registerSelfTest } from '../dev/selfTest';
-import { withRoot } from './frontEnd.selftest';
+import { fakeHost, frames, memory, noSound, withRoot } from './frontEnd.selftest';
+import { FrontEnd } from './frontEndPage';
 import { capesToChart } from './capesGeom';
 import { CapesChart } from './ui/capesChart';
 
@@ -43,5 +44,28 @@ registerSelfTest({
       const ok = arrows === 0 && a !== b;
       return { pass: ok, detail: `arrows ${arrows}, transform ${a} → ${b}` };
     });
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the map beat shows the Womb panel, On/Fair/Off, the leader and the Local tag; no undefined',
+  async run() {
+    const host = document.createElement('div'); document.body.appendChild(host);
+    const fe = new FrontEnd(fakeHost(), host, noSound, memory());
+    try {
+      fe.open();
+      await frames(fe, 40);
+      await new Promise((r) => setTimeout(r, 300)); // the chart's JSON
+      await frames(fe, 5);
+      const panel = host.querySelector('.fe-map-panel'), text = host.innerText;
+      const problems: string[] = [];
+      if (!panel?.textContent?.includes('The Womb')) problems.push('no Womb panel');
+      if (!host.querySelector('.fe-map-verdict.is-on, .fe-map-verdict.is-fair, .fe-map-verdict.is-off')) problems.push('no verdict');
+      if (!host.querySelector('.fe-map-leader path')) problems.push('no leader');
+      if (!text.includes('LOCAL')) problems.push('no Local tag');
+      if (/undefined|NaN/.test(text)) problems.push('undefined/NaN on screen');
+      if (host.querySelectorAll('.fe-map-stat').length < 1) problems.push('no stats');
+      return { pass: problems.length === 0, detail: problems.join('; ') || 'map beat renders' };
+    } finally { fe.close(); host.remove(); }
   },
 });
