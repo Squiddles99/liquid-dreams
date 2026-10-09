@@ -1,19 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { type Bathymetry, buildBathymetry, downsample } from '../seabed/bathymetry';
 import { SHORE_X, depthBg } from '../seabed/coastProfile';
-import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
+import { NORTH_LEDGE, SOUTH_LEDGE, TIP } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
 import { PEEL_MAX_HOLD_S, RUN_DIP, computeOnsetRecord, computeReefField, gainAhead, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
 import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_UNTIL_OFFSET, onsetGain, onsetHeight, onsetTime } from './breaking';
 import { BREAKING_RATIO } from './setWaveModel';
 import { setWaveHeight } from './reefReport';
+import { reefBeds } from './testField';
 
 const reef05 = buildBathymetry();
 const reef1 = downsample(reef05, 2);
 const reef2 = downsample(reef05, 4);
 // Solve the full 1 m field once (~1 s) and share it between the tests that inspect it.
-const f225 = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0 });
+// Seeded by the coast field, as the game's (womb-retune Task 3: the far field alone reaches the moved take-off too oblique).
+const coast1 = reefBeds(2).coast;
+const f225 = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0, coast: coast1 });
 
 function coastOnly(): Bathymetry {
   const grid = { x0: -400, z0: -100, cellM: 2, nx: 326, nz: 101 };
@@ -23,6 +26,13 @@ function coastOnly(): Bathymetry {
 }
 
 const allFinite = (a: Float32Array) => a.every(Number.isFinite);
+/** A point `s` m along the left's ledge from the tip (womb-retune: the pins moved with the take-off). */
+const onLeft = (s: number): [number, number] => {
+  const [a, b] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return [Math.round((a[0] + ((b[0] - a[0]) * s) / L) * 10) / 10, Math.round((a[1] + ((b[1] - a[1]) * s) / L) * 10) / 10];
+};
+/** (x, z) from the tip: the right and the water around the corner moved with it unchanged. */
+const fromTip = (x: number, z: number): [number, number] => [TIP[0] + x, TIP[1] + z];
 const along = (line: readonly (readonly [number, number])[], metres: number, step: number): [number, number][] => {
   const [a, b] = [line[0], line[1]];
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -42,7 +52,7 @@ describe('reef wave field', () => {
   });
   it('arrives at the peak at τ = 0', () => {
     const f = f225;
-    expect(Math.abs(sampleField(f, 0, 0).tau)).toBeLessThan(0.05);
+    expect(Math.abs(sampleField(f, TIP[0], TIP[1]).tau)).toBeLessThan(0.05);
   });
   it('peels along the north ledge and stands up at once along the south ledge (the A-frame)', () => {
     const f = f225;
@@ -170,16 +180,19 @@ describe("the front's lean feels the reef ahead (Andrew's bump, 2026-10-02)", ()
     for (let c = 1; c < 100; c++) expect(g[row + c], `${c} m`).toBeGreaterThanOrEqual(g[row + c - 1]);
   });
   it("the lean's depth is never deeper than the slurp's, and over deep water in front of the ledge it is shallower", { timeout: 60_000 }, () => {
-    const f = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0 });
+    const f = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0, coast: coast1 });
     for (let i = 0; i < f.hminLean.length; i++) expect(f.hminLean[i]).toBeLessThanOrEqual(f.hminSlurp[i]);
-    const s = sampleField(f, -25, 15);
+    // 25 m outside the peak on its ray (the swell reaches the moved tip ~18° off shore-normal, not from (−25, 15)).
+    let [x, z] = TIP as readonly number[];
+    for (let d = 0; d < 25; d += 0.5) { const q = sampleField(f, x, z); x -= q.dirX * 0.5; z -= q.dirZ * 0.5; }
+    const s = sampleField(f, x, z);
     expect(s.depth, '25 m outside the peak').toBeGreaterThan(12);
     expect(s.hminLean).toBeLessThan(0.5 * s.hminSlurp);
   });
 });
 
 describe('the onset record', () => {
-  const f = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
+  const f = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, coast: coast1 });
   const R = ONSET_RECORD_LENGTH;
   it("its running maximum of amp/hminBreak is never below the node's own, and never falls along a ray", () => {
     const n = f.tau.length;
@@ -187,7 +200,8 @@ describe('the onset record', () => {
     // Along rays through both ledges: sampled every 0.5 m, 60 m in from 40 m out. Not through the wedge's tip: ~26 m
     // inshore of it the rays from the two ledges meet (the field's direction swings 40° in 2 m), and past that line the
     // water is the other ledge's rays, with their own maximum.
-    for (const [px, pz] of [[11, -30], [27, -75], [25, 28]] as const) {
+    // The right's rays fan out from ~60 m in on the moved reef (womb-retune: 0.2% under at (−105, 28) + 65 m).
+    for (const [px, pz, reach] of [[...onLeft(32), 75], [...onLeft(80), 75], [...fromTip(25, 28), 60]]) {
       let x = px, z = pz;
       for (let d = 0; d < 40; d += 0.5) { const s = sampleField(f, x, z); x -= s.dirX * 0.5; z -= s.dirZ * 0.5; }
       let last = 0;
@@ -198,7 +212,7 @@ describe('the onset record', () => {
         // lifecycle is continuous in it.
         // To 35 m inshore: on the reef build's face the south ledge's rays fan out from ~37 m in from (25, 28) (plan
         // 2026-10-02 Task 4; 40 m on the softened ramp).
-        if (d <= 75) expect(r[0], `(${px}, ${pz}) + ${d} m`).toBeGreaterThanOrEqual(last * 0.98);
+        if (d <= reach) expect(r[0], `(${px}, ${pz}) + ${d} m`).toBeGreaterThanOrEqual(last * 0.98);
         last = Math.max(last, r[0]);
         const s = sampleField(f, x, z); x += s.dirX * 0.5; z += s.dirZ * 0.5;
       }
@@ -230,7 +244,7 @@ describe('the onset record', () => {
     // for 30 m on the north ledge), where no level spacing places the crossing, and they barely collapse.
     const P = DEFAULT_BREAK_PARAMS;
     let checked = 0;
-    const ledge: readonly [number, number][] = [[0, 0], [5.5, -15], [11, -30], [16.4, -45], [21.9, -60], [27, -75], [12.5, 14], [25, 28], [42, 33]];
+    const ledge: readonly [number, number][] = [...[0, 15, 30, 45, 60, 75].map(onLeft), fromTip(12.5, 14), fromTip(25, 28), fromTip(42, 33)];
     for (const heightM of [1.7, 2.34, 3.5]) for (const [px, pz] of ledge) for (const inshore of [5, 10, 20, 30, 45, 60]) {
       const q = 1 / (heightM * onsetGain(P));
       let x = px, z = pz;
@@ -318,7 +332,7 @@ describe('smoothFieldAmplitude: the field as the game draws it', () => {
 
 describe('until carries the hold (one-curl Task 1)', () => {
   // Held sections need the peel stretch: 1.7, as the stretch's own tests.
-  const f = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0, peel: 1.7 });
+  const f = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0, peel: 1.7, coast: coast1 });
   const R = ONSET_RECORD_LENGTH, U = ONSET_UNTIL_OFFSET, { nx, cellM, x0, z0 } = f.grid;
   // Held onset nodes on the north ledge's first leg (within 3 m of its first 80 m), per level.
   const [a, b] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
