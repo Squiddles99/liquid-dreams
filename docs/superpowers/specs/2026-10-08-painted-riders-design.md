@@ -24,7 +24,7 @@ review.
 2. **The 3D crew are hidden on every select screen.** They still load and stage, because the loading cover waits for
    them, but they never show. The paintings replace them.
 3. **Where the rider stands** (`RIDER_STAND` in `backdropMath.ts`): soles 95 % down the screen and the figure's centre
-   30 % across, clear of the panel, matching his choose-rider mockups. T-Bone (1.78 m) is 80 % of the screen tall; the
+   36 % across, clear of the panel and of the bank's big rock (Andrew 2026-10-08: they all stood on it at 30 %), matching his choose-rider mockups. T-Bone (1.78 m) is 80 % of the screen tall; the
    others are scaled by their real heights, so Shazza (1.65 m) and Grommet (1.52 m) stand shorter. This is placed in
    screen space, not on the ground's uv: the 4:3 cover crop cuts the ground's left, and the rider must stay in frame.
 4. **Lit like the ground.** The rider takes the same sky-and-sun light as the paintings around them, so they grey under

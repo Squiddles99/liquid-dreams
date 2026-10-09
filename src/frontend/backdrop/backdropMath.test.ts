@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PLATE_ASPECT, type RiderArt, backdropShow, coverUV, easeToward, insideLayer, layerUV, riderRect, windDrive } from './backdropMath';
+import { readFileSync } from 'node:fs';
+import { PLATE_ASPECT, RIDER_HALF_W, RIDER_STAND, type RiderArt, backdropShow, coverUV, easeToward, insideLayer, layerUV, riderRect, windDrive } from './backdropMath';
 
 const KN = 1 / 1.943844; // m/s per knot
 
@@ -97,17 +98,26 @@ describe('riderRect: the painted rider stands on the track at their real height 
   const head = (r: ReturnType<typeof riderRect>) => r.y + ((art.headY - art.box[1]) / (art.box[3] - art.box[1])) * r.h;
   const soles = (r: ReturnType<typeof riderRect>) => r.y + ((art.solesY - art.box[1]) / (art.box[3] - art.box[1])) * r.h;
   const centre = (r: ReturnType<typeof riderRect>) => r.x + ((art.centreX - art.box[0]) / (art.box[2] - art.box[0])) * r.w;
-  it('puts the soles 95 % down and the figure 30 % across, at every aspect', () => {
+  it("puts the soles 95 % down and the figure 36 % across (off the bank's rock), at every aspect", () => {
     for (const aspect of [4 / 3, 16 / 9, 21 / 9]) {
       const r = riderRect(art, 1.78, aspect);
       expect(soles(r)).toBeCloseTo(0.95, 9);
-      expect(centre(r)).toBeCloseTo(0.3, 9);
+      expect(centre(r)).toBeCloseTo(0.36, 9);
     }
   });
   it('makes T-Bone 80 % of the screen tall and Grommet shorter by his real height', () => {
     const t = riderRect(art, 1.78, 16 / 9), g = riderRect(art, 1.52, 16 / 9);
     expect(soles(t) - head(t)).toBeCloseTo(0.8, 9);
     expect(soles(g) - head(g)).toBeCloseTo((0.8 * 1.52) / 1.78, 9);
+  });
+  it('keeps every painted rider right of RIDER_HALF_W, where text beside them ends (the Gear line, Andrew 2026-10-08)', () => {
+    const riders = JSON.parse(readFileSync('public/riders/riders.json', 'utf8')) as Record<string, RiderArt>;
+    const heights: Record<string, number> = { male: 1.78, female: 1.65, grommet: 1.52 };
+    for (const [name, a] of Object.entries(riders)) {
+      // The crop's box is the outfits' union widened by 24 px: the figure's leftmost pixel is 24 px inside it.
+      const r = riderRect(a, heights[name], 16 / 9), leftmost = r.x + (24 / (a.box[2] - a.box[0])) * r.w;
+      expect(leftmost).toBeGreaterThanOrEqual(RIDER_STAND.centreU - RIDER_HALF_W);
+    }
   });
   it("keeps the picture's own proportions on screen (never stretched)", () => {
     for (const aspect of [4 / 3, 16 / 9, 21 / 9]) {

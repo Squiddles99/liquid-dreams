@@ -121,11 +121,17 @@ export interface ScreenRect {
 
 /**
  * Where the rider stands (Andrew's choose-rider and grab-your-gear mockups): soles on the track 95 % down the screen, the
- * figure's centre 30 % across (clear of the panel on the right), and T-Bone (1.78 m) 80 % of the screen tall; the others
+ * figure's centre 36 % across (clear of the panel on the right, and of the bank's big rock at 28 %, Andrew 2026-10-08), and T-Bone (1.78 m) 80 % of the screen tall; the others
  * by their real heights, so Grommet is a head shorter. In screen space, not the ground's: the 4:3 cover crop cuts the
  * ground's left, and the rider must stay in the frame and clear of the panel at every aspect.
  */
-export const RIDER_STAND = { solesV: 0.95, centreU: 0.3, tallM: 1.78, tallH: 0.8 } as const;
+export const RIDER_STAND = { solesV: 0.95, centreU: 0.36, tallM: 1.78, tallH: 0.8 } as const;
+
+/**
+ * How far the widest painted rider reaches left of the figure's centre at 16:9, in screen width: T-Bone with his pack
+ * (riders.json: 569 px of the 3150 px figure, at 80 % of the screen tall), plus a hair. Text beside the rider ends here.
+ */
+export const RIDER_HALF_W = 0.085;
 
 export function riderRect(art: RiderArt, heightM: number, screenAspect: number): ScreenRect {
   const figPx = art.solesY - art.headY, perPx = (RIDER_STAND.tallH * heightM) / RIDER_STAND.tallM / figPx;
