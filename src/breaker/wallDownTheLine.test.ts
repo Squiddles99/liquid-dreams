@@ -30,7 +30,8 @@ function shelf(line: (z: number) => number) {
     hminBreak[i] = 1 / (0.3 * Math.exp((col - line(row)) / 15));
   }
   const order = Uint32Array.from(Array.from({ length: n }, (_, i) => i).sort((a, b) => tau[a] - tau[b] || a - b));
-  const rec = computeOnsetRecord({ grid, tau, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel: 1 });
+  // The stretch (and the wall) alone: the curl at no top speed leaves these monotone shelves as they were (one-curl).
+  const rec = computeOnsetRecord({ grid, tau, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, curlMaxMs: Infinity, peel: 1 });
   const at = (col: number, row: number, j: number): number => rec[(row * NX + col) * ONSET_RECORD_LENGTH + j];
   return { rec, at };
 }

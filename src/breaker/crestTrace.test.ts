@@ -4,16 +4,16 @@ import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
-import { DEFAULT_BREAK_PARAMS, ONSET_DELAY_OFFSET, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, landingEstimate, onsetGain } from './breaking';
+import { DEFAULT_BREAK_PARAMS, ONSET_DELAY_OFFSET, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, landingEstimate, onsetGain, onsetTime } from './breaking';
 import { HAND_BACK_S } from './lipProfile';
 import {
   CREST_TOLERANCE_S, MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, stationOnset, stationPsi, timeSinceOnset, traceStations,
 } from './crestTrace';
 import { PSI_NORMAL } from './overturn';
-import { type ReefField, computeReefField, sampleField } from './reefField';
+import { REFRACT_FLOOR_M as FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi, sumWaves } from './setWaveModel';
 import { setWaveHeight } from './reefReport';
-import { SECTION_CREST, SECTION_TROUGH, sectionKnots, sectionOf, sectionPoint, sectionSamples, sectionScale } from './wombSection';
+import { SECTION_CREST, SECTION_TROUGH, STOOD_PHASE, sectionKnots, sectionOf, sectionPhase, sectionPoint, sectionSamples, sectionScale, wallWeight } from './wombSection';
 
 const P = DEFAULT_BREAK_PARAMS;
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
@@ -214,42 +214,84 @@ describe("the crest's ψ at the reef grid's edge (final review I2)", () => {
   });
 });
 
-describe('a held section reads as unbroken to the stations (spec 2026-10-04 §4)', () => {
-  it('timeSinceOnset is null while the stretched clock is negative, the time once it runs', () => {
-    const k = 5, q = ONSET_LEVEL_Q[k], heightM = 1 / (q * onsetGain(DEFAULT_BREAK_PARAMS));
-    const fieldWith = (tb: number): ReefField => {
-      const onset = new Float32Array(4 * ONSET_RECORD_LENGTH);
-      for (let i = 0; i < 4; i++) { onset[i * ONSET_RECORD_LENGTH] = 1.3; for (let j = 0; j <= k + 1; j++) onset[i * ONSET_RECORD_LENGTH + 1 + 2 * j] = tb; }
-      return { grid: { x0: 0, z0: 0, cellM: 1, nx: 2, nz: 2 }, onset } as unknown as ReefField;
-    };
-    const w = { heightM } as Parameters<typeof timeSinceOnset>[1];
-    const ctx = { omega: 1, travelX: 1, travelZ: 0 };
-    expect(timeSinceOnset(fieldWith(-0.5), w, 0.5, 0.5, ctx, DEFAULT_BREAK_PARAMS)).toBeNull();
-    expect(timeSinceOnset(fieldWith(0.5), w, 0.5, 0.5, ctx, DEFAULT_BREAK_PARAMS)).toBeCloseTo(0.5, 5);
+describe('one hold channel: until carries the hold to the stations (one-curl Task 1)', () => {
+  // The peel stretch at 1.7 makes held sections; the game's field otherwise (smoothed, the refraction floor).
+  const held = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, peel: 1.7, smooth: true, refractFloorM: FLOOR_M });
+  const hctx: WaveContext = { omega: held.omega, travelX: held.far.dirX, travelZ: held.far.dirZ };
+  const w = testWave(REF_BIGGEST.heightM);
+  const f0 = sampleField(held, 0, 0), tb0 = timeSinceOnset(held, w, 0, 0, hctx, P);
+  const t = w.arrivalS + f0.tau - (tb0 ?? 0) + 3;
+  const stations = live(traceStations(held, [w], t, hctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H }));
+  const recTb = (s: Station): number | null => { const r = sampleOnset(held, s.x, s.z); return r ? onsetTime(r, 0, w.heightM, P) : null; };
+  const input = (s: Station) => ({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS: held.periodS });
+  it('a held station: tb null, until the hold, r ≤ 1, and its phase the wall on the clock', () => {
+    const hs = stations.filter((s) => { const tb = recTb(s); return tb !== null && tb < -0.2; });
+    expect(hs.length, 'held stations at peak + 3 s').toBeGreaterThan(3);
+    for (const s of hs) {
+      const tag = `station at arc ${s.arc.toFixed(1)}`;
+      expect(s.tb, tag).toBeNull();
+      expect(Math.abs(s.until! + recTb(s)!), `${tag}: until ${s.until} vs hold ${-recTb(s)!}`).toBeLessThan(0.05);
+      expect(s.r, tag).toBeLessThanOrEqual(1);
+      expect(sectionPhase(input(s), { ribbonOnset: P.ribbonOnset }), tag).toBeCloseTo(STOOD_PHASE * wallWeight(s.until), 3);
+    }
+  });
+  it('an unbroken station ahead of the curl stands on the clock alone, whatever its ratio', () => {
+    const early = live(traceStations(held, [w], t - 2, hctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H }));
+    const ahead = [...stations, ...early].filter((s) => s.tb === null && recTb(s) === null && s.until !== null && s.until >= 0.5 && s.until <= 7);
+    if (process.env.PROBE_UNTIL) console.log('ahead', ahead.map((s) => s.until!.toFixed(2)).join(' '));
+    expect(ahead.length, 'unbroken stations 0.5–7 s ahead of the curl (peak + 1 s and + 3 s)').toBeGreaterThan(3);
+    for (const s of ahead) {
+      const phase = sectionPhase({ ...input(s), r: 1.2 }, { ribbonOnset: P.ribbonOnset });
+      expect(phase, `station at arc ${s.arc.toFixed(1)}, until ${s.until!.toFixed(2)}`).toBeCloseTo(STOOD_PHASE * wallWeight(s.until), 3);
+    }
   });
 });
 
-describe("a held section's station carries the held ratio, so the ribbon stands as the sheet does (spec 2026-10-04 §3-4)", () => {
-  it('stationOnset: held → tb null and r capped at 1; turned → the time and its ratio', () => {
-    const k = 5, q = ONSET_LEVEL_Q[k], heightM = 1 / (q * onsetGain(DEFAULT_BREAK_PARAMS));
-    const fieldWith = (tb: number, d: number): ReefField => {
-      const onset = new Float32Array(4 * ONSET_RECORD_LENGTH);
-      for (let i = 0; i < 4; i++) {
-        onset[i * ONSET_RECORD_LENGTH] = 1.3;
-        for (let j = 0; j <= k + 1; j++) { onset[i * ONSET_RECORD_LENGTH + 1 + 2 * j] = tb; onset[i * ONSET_RECORD_LENGTH + ONSET_DELAY_OFFSET + j] = d; }
+describe('one curl per wave on one clock (one-curl Task 4)', () => {
+  // The game's field (smoothed, the refraction floor, the default curl), the biggest set wave of each size.
+  const game = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, smooth: true, refractFloorM: FLOOR_M });
+  const gctx: WaveContext = { omega: game.omega, travelX: game.far.dirX, travelZ: game.far.dirZ };
+  for (const ft of [6, 8, 12]) {
+    it(`${ft} ft: along each side from the curl the onset never comes earlier, and the wait beyond it never shortens`, { timeout: 120_000 }, () => {
+      const w = testWave(setWaveHeight(ft));
+      const tb0 = timeSinceOnset(game, w, 0, 0, gctx, P), peak = w.arrivalS + sampleField(game, 0, 0).tau - (tb0 ?? 0);
+      console.log(`${ft} ft: the peak's section broke at ${peak.toFixed(3)} s (tb at the crest's arrival ${tb0?.toFixed(3) ?? 'null'})`);
+      const bad: string[] = [];
+      let brokenChecked = 0, waitChecked = 0;
+      for (const dt of [1, 3, 6]) {
+        const entries = traceStations(game, [w], peak + dt, gctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H, spacingM: 1 });
+        // Runs of drawn stations (gaps split them); the curl is the run's station with the largest tb.
+        const runs: Station[][] = [[]];
+        for (const e of entries) { if (e.gap) runs.push([]); else runs[runs.length - 1].push(e); }
+        for (const run of runs) {
+          let top = -1;
+          run.forEach((s, i) => { if (s.tb !== null && Number.isFinite(s.tb) && (top < 0 || s.tb > run[top].tb!)) top = i; });
+          if (top < 0) continue;
+          for (const dir of [1, -1]) {
+            let prev = run[top], broken = true;
+            for (let i = top + dir; i >= 0 && i < run.length; i += dir) {
+              const s = run[i], tag = `t + ${dt}, arc ${s.arc.toFixed(1)}`;
+              if (broken && s.tb !== null && Number.isFinite(s.tb) && prev.tb !== null) {
+                brokenChecked++;
+                if (s.tb > prev.tb + 0.05) bad.push(`${tag}: tb ${s.tb.toFixed(2)} after ${prev.tb.toFixed(2)}`);
+              } else if (s.tb === null) {
+                if (!broken && s.until !== null && prev.until !== null && Number.isFinite(s.until) && Number.isFinite(prev.until)) {
+                  waitChecked++;
+                  if (s.until < prev.until - 0.05) bad.push(`${tag}: until ${s.until.toFixed(2)} after ${prev.until.toFixed(2)}`);
+                }
+                broken = false;
+              }
+              prev = s;
+            }
+          }
+        }
       }
-      return { grid: { x0: 0, z0: 0, cellM: 1, nx: 2, nz: 2 }, onset } as unknown as ReefField;
-    };
-    const w = { heightM } as Parameters<typeof stationOnset>[1];
-    const held = { x: 0.5, z: 0.5, H: 3, r: 2.4, tb: null } as Station;
-    stationOnset(fieldWith(-0.5, 2), w, held, DEFAULT_BREAK_PARAMS);
-    expect(held.tb).toBeNull();
-    expect(held.r).toBe(1);
-    const late = { x: 0.5, z: 0.5, H: 3, r: 2.4, tb: null } as Station;
-    stationOnset(fieldWith(5, 2), w, late, DEFAULT_BREAK_PARAMS);
-    expect(late.tb).toBeCloseTo(5, 5);
-    expect(late.r).toBeCloseTo(2.4, 6);
-  });
+      console.log(`${ft} ft: ${brokenChecked} broken and ${waitChecked} waiting station steps checked`);
+      expect(brokenChecked, 'broken station steps checked').toBeGreaterThan(30);
+      expect(waitChecked, 'waiting station steps checked').toBeGreaterThan(30);
+      expect(bad).toEqual([]);
+    });
+  }
 });
 
 describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause step 1)', () => {
@@ -270,7 +312,7 @@ describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause s
   // 5% is the plan's bar; the record's carried size still drifts 3–4% down a ray (the bilinear carry mixes neighbouring
   // rays), and the smoothing along the crest mixes in the unbroken stations ahead of the curl. Step 4's one clock per wave
   // (the size read once, as the curl passes) removes both. Until then: 8%.
-  it('A along the first leg holds within 8% through the throw (phase 0.55 to 1.5), at 6 ft mid tide', { timeout: 120_000 }, () => {
+  it('A along the first leg holds within 5% through the throw (phase 0.55 to 1.5), at 6 ft mid tide', { timeout: 120_000 }, () => {
     const seen = PLACES.map(() => [] as number[]);
     for (let t = -2; t <= 12; t += 0.1) {
       const st = live(traceStations(field, [w6], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 1 }));
@@ -285,7 +327,7 @@ describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause s
       expect(seen[i].length, `${s} m: frames through the throw`).toBeGreaterThan(5);
       const lo = Math.min(...seen[i]), hi = Math.max(...seen[i]);
       console.log(`${s} m along the first leg: A ${lo.toFixed(2)}–${hi.toFixed(2)} m over ${seen[i].length} frames`);
-      expect(hi / lo, `${s} m`).toBeLessThan(1.08);
+      expect.soft(hi / lo, `${s} m`).toBeLessThan(1.05);
     });
   });
   it('over the shelf, where the depth caps the height under it, the barrel keeps the height it broke at', () => {
