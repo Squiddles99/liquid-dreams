@@ -38,3 +38,9 @@ Self-hosted woff2 files (the Latin subset, as served by Google Fonts), each with
 
 - The surfer bodies, clothes, hair and boards: see `public/surfer/LICENSES.md`.
 - The heath (dune shrubs and ground): see `public/heath/LICENSES.md`.
+
+## Coastline (surf chart)
+
+The surf chart's coastline is derived from OpenStreetMap data, © OpenStreetMap contributors, available under the Open
+Database License (ODbL) 1.0: https://www.openstreetmap.org/copyright. Baked by tools/bakeCapesChart.ts into
+public/ui/capesChart.json; the chart shows "Coastline © OpenStreetMap contributors".
