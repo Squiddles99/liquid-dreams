@@ -6,7 +6,7 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, ONSET_LEVELS, ONSET_UNTIL_OFFSET, UNTIL_NEVER, normalizeBreakParams, onsetDelay, onsetPsi, onsetTime, onsetUntil } from './breaking';
 import { REFRACT_FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
-import { DEFAULT_REEF_PARAMS, TIP } from '../seabed/wombReef';
+import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, TIP } from '../seabed/wombReef';
 import { DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
 import { buildCoastMap } from '../seabed/coastMap';
 import { SetWaves } from './SetWaves';
@@ -604,9 +604,11 @@ registerSelfTest({
     const sets = new SetWaves(time, { pile: false, shape: 'lean' });
     sets.setField(field);
     sets.setBreakParams(DEFAULT_BREAK_PARAMS);
-    // Down the left from the peak (toward −z), 5 m apart: where the wall stands up ahead of the curl.
+    // Down the left from the peak along its ledge (wombReef.NORTH_LEDGE's first leg), 5 m apart, from 20 m seaward to 30 m
+    // inshore of it: where the wall stands up ahead of the curl.
     const points: [number, number][] = [];
-    for (let x = -10; x <= 60; x += 5) for (let z = -160; z <= 20; z += 5) points.push([x, z]);
+    const [la, lb] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], lL = Math.hypot(lb[0] - la[0], lb[1] - la[1]), ux = (lb[0] - la[0]) / lL, uz = (lb[1] - la[1]) / lL;
+    for (let s = -10; s <= lL; s += 5) for (let v = -20; v <= 30; v += 5) points.push([Math.round(la[0] + ux * s - uz * v), Math.round(la[1] + uz * s + ux * v)]);
     // 1. The record's time until onset (the third record texture), for the biggest wave and a bigger one.
     let worstUntil = 0, atUntil = '', within = 0, neverMismatch = 0;
     for (const h of [REF_BIGGEST.heightM, 1.6 * REF_BIGGEST.heightM]) {
@@ -619,7 +621,9 @@ registerSelfTest({
         const c = onsetUntil(rec, 0, h, DEFAULT_BREAK_PARAMS), g = out[i * 4 + 3];
         if (!Number.isFinite(c) || g >= UNTIL_NEVER) { if (Number.isFinite(c) || g < UNTIL_NEVER) neverMismatch++; return; }
         if (c > 0 && c < 8) within++;
-        const e = Math.abs(g - c);
+        // Measured against max(1 ms, 1e-6 of the value): the record is float32 (2.4e-4 s a step at 2 000 s), and up the long
+        // left the time until onset runs to thousands of seconds.
+        const e = Math.abs(g - c) / Math.max(1, 1e3 * 1e-6 * Math.abs(c));
         if (e > worstUntil) { worstUntil = e; atUntil = `h ${h.toFixed(2)} (${x}, ${z}) GPU ${g.toFixed(4)} CPU ${c.toFixed(4)}`; }
       });
     }
@@ -669,7 +673,7 @@ registerSelfTest({
     const pass2 = disp.value < 0.05 && onWall.value < 0.05 && wallSamples >= 10 && moved > 0.05;
     return {
       pass: pass1 && pass2,
-      detail: `time until onset: ${points.length} points × 2 heights, worst |Δ| ${worstUntil.toExponential(2)} s ${atUntil} (< 1e-3); never-flag mismatches ${neverMismatch} (0); samples 0–8 s before onset ${within} (> 0). `
+      detail: `time until onset: ${points.length} points × 2 heights, worst |Δ| ${worstUntil.toExponential(2)} s (÷ max(1, value / 1 000 s)) ${atUntil} (< 1e-3); never-flag mismatches ${neverMismatch} (0); samples 0–8 s before onset ${within} (> 0). `
         + `The sheet: ${points.length} points × dt −1…9 s, worst |Δdisp| ${disp} m (< 0.05); on the wall (standing = wallWeight, above the ratio's ramp, 0.05–0.95) ${wallSamples} samples (≥ 10), worst |Δdisp| there ${onWall} m (< 0.05); largest change the wall makes to the CPU's sheet there ${moved.toFixed(3)} m (${movedAt || 'none'}) (> 0.05)`,
     };
   },
