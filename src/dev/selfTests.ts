@@ -29,4 +29,5 @@ import '../surfer/surfer.selftest';
 import '../sound/sound.selftest';
 import '../surfer/walking.selftest';
 import '../frontend/frontEnd.selftest';
+import '../frontend/surfMap.selftest';
 import '../app/loading.selftest';
