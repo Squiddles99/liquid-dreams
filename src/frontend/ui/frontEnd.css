@@ -93,3 +93,24 @@
 .fe-remap-listen { color: var(--fe-teal); font-weight: 600; animation: fe-listen 0.9s ease-in-out infinite alternate; }
 .fe-root.is-calm .fe-remap-listen { animation: none; }
 @keyframes fe-listen { from { opacity: 1; } to { opacity: 0.45; } }
+
+/* The surf chart (surf-map hub, mockup A). */
+.fe-chart { position: absolute; inset: 0; overflow: hidden; background: #0a2c34; }
+.fe-chart > svg { width: 100%; height: 100%; display: block; }
+.fe-chart-sounding { font: 400 13px Barlow; fill: #9ccac4; opacity: .55; }
+.fe-chart-rose { fill: none; stroke: #cfe6df; stroke-width: 1.2; opacity: .7; }
+.fe-chart-rose path { fill: #cfe6df; fill-opacity: .18; }
+.fe-chart-rose text { fill: #cfe6df; stroke: none; font: 700 18px 'Barlow Semi Condensed'; }
+.fe-chart-town { font: 700 17px 'Barlow Semi Condensed'; letter-spacing: .16em; fill: #3b3226; }
+.fe-chart-cape { font: 400 30px 'Caveat Brush'; fill: #f6ecd6; }
+.fe-chart-water { font: 600 22px 'Barlow Semi Condensed'; letter-spacing: .3em; fill: #7fb1b0; }
+.fe-chart-dot { fill: #f4ead2; stroke: #333; stroke-width: 2; }
+.fe-chart-wind path { stroke: #8a6f45; stroke-width: 3; fill: none; stroke-linecap: round; opacity: .7; }
+.fe-chart-credit { font: 500 12px Barlow; fill: #7fb1b0; opacity: .7; }
+.fe-chart-pin { cursor: pointer; }
+.fe-chart-pin-dot { fill: var(--fe-sun); stroke: #fff3dc; stroke-width: 4; }
+.fe-chart-pin-pulse { fill: none; stroke: var(--fe-sun); stroke-width: 3; opacity: 0; }
+.fe-chart-pin.is-focus .fe-chart-pin-pulse { animation: fe-pin-pulse 1.8s var(--fe-ease-out) infinite; }
+.fe-chart-pin-name { font: 400 34px Knewave; fill: #fff3dc; paint-order: stroke; stroke: #0b2a31; stroke-width: 7px; }
+@keyframes fe-pin-pulse { from { r: 14; opacity: 1; } to { r: 34; opacity: 0; } }
+.is-calm .fe-chart-pin.is-focus .fe-chart-pin-pulse { animation: none; opacity: .8; }
