@@ -22,7 +22,7 @@ import { wombSection } from './wombSection';
 import { TB_INFINITY, TB_NULL } from './lipProfileNodes';
 import { REEF_GRID } from '../seabed/wombReef';
 
-const station = (x: number, tb: number | null): Station => ({ gap: false, wave: 0, x, z: -x, arc: x, nx: 0.6, nz: 0.8, H: 2 + x, c: 9, r: 1.2, tb, wait: null, psi: PSI_NORMAL, lipH: null, Hb: null, until: null, section: { A: 2, phase: 0.8, hollow: 1, rho: 1 } });
+const station = (x: number, tb: number | null): Station => ({ gap: false, wave: 0, x, z: -x, arc: x, nx: 0.6, nz: 0.8, H: 2 + x, c: 9, r: 1.2, tb, psi: PSI_NORMAL, lipH: null, Hb: null, until: null, section: { A: 2, phase: 0.8, hollow: 1, rho: 1 } });
 const GAP: StationEntry = { gap: true };
 const ROW = STATION_VEC4S * 4;
 const row = (d: Float32Array, i: number): number[] => Array.from(d.subarray(i * ROW, (i + 1) * ROW));
@@ -77,7 +77,7 @@ describe('BreakingRibbon detail coordinate (developed u)', () => {
   const BETWEEN: readonly [number, number] = [60, 100];
   /** A thrown lip on a flat sea: the section's points (front → back), its homes (A × the profile's u) and its floor and crest samples. */
   const thrown = () => {
-    const input = { H: 3.9, r: 1.3, tb: 0.45, wait: null, psi: 0.09, periodS: 15 };
+    const input = { H: 3.9, r: 1.3, tb: 0.45, psi: 0.09, periodS: 15 };
     const sec = wombSection(input, (u) => [u, 0], { ribbonOnset: 0.6 });
     const { A, phase, hollow } = sec.numbers, n = PROFILE_SAMPLES;
     const { curve, marks } = profileSamples(phase, hollow);
@@ -238,13 +238,13 @@ describe('BreakingRibbon mesh', () => {
 
 describe('packStations and ψ (barrel from the maths)', () => {
   it('packStations puts the ψ in the third vec4', () => {
-    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, wait: null, psi: 1.37, lipH: null, Hb: null, until: null, section: { A: 2.3, phase: 0.9, hollow: 1, rho: 1 } };
+    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 1.37, lipH: null, Hb: null, until: null, section: { A: 2.3, phase: 0.9, hollow: 1, rho: 1 } };
     const out = new Float32Array(16);
     packStations([s], out);
     expect(out[10]).toBeCloseTo(1.37, 6);
   });
   it('packStations puts the throw height (lipH) last in the third vec4, 0 before breaking', () => {
-    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, wait: null, psi: 0.07, lipH: 3.6, Hb: null, until: null, section: { A: 2.3, phase: 0.9, hollow: 0.6, rho: 1 } };
+    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 0.07, lipH: 3.6, Hb: null, until: null, section: { A: 2.3, phase: 0.9, hollow: 0.6, rho: 1 } };
     const out = new Float32Array(32);
     packStations([s, { ...s, tb: null, lipH: null }], out);
     expect(out[11]).toBeCloseTo(3.6, 6);

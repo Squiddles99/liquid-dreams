@@ -32,6 +32,20 @@ describe('the Womb reef', () => {
       expect(depth(x, z)).toBeLessThan(DEFAULT_REEF_PARAMS.ledgeDepthM + 1.5);
     }
   });
+  it('the face 3 m seaward of the north ledge holds its depth along the first 100 m (one-curl Task 3: the line no longer wanders)', () => {
+    const depths: number[] = [];
+    let base = 0;
+    for (let j = 0; j + 1 < NORTH_LEDGE.length && base < 100; j++) {
+      const [a, b] = [NORTH_LEDGE[j], NORTH_LEDGE[j + 1]], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      // Seaward is −x: the segment's normal with negative x.
+      let nx = (b[1] - a[1]) / len, nz = -(b[0] - a[0]) / len;
+      if (nx > 0) { nx = -nx; nz = -nz; }
+      for (let d = 0; d < len && base + d <= 100; d += 1) depths.push(depth(a[0] + ((b[0] - a[0]) * d) / len + 3 * nx, a[1] + ((b[1] - a[1]) * d) / len + 3 * nz));
+      base += len;
+    }
+    expect(depths.length).toBeGreaterThanOrEqual(100);
+    expect(Math.max(...depths) - Math.min(...depths), `depths ${Math.min(...depths).toFixed(2)}–${Math.max(...depths).toFixed(2)} m`).toBeLessThan(0.3);
+  });
   it('is shallow on the shelf (its base depth or less on average), never shallower than the minimum', () => {
     let sum = 0, n = 0;
     // The shelf south of the corner, between the south ledge and the shore's platform.

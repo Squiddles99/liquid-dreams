@@ -1,6 +1,6 @@
 import type * as THREE from 'three/webgpu';
-import { describe, expect, it } from 'vitest';
-import { AsyncPipelines } from './asyncPipelines';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AsyncPipelines, BUILD_WARN_MS } from './asyncPipelines';
 
 /** A stand-in for three's pipeline cache: records what each call was given; with an array, starts a build there. */
 function fakeRenderer() {
@@ -17,6 +17,59 @@ function fakeRenderer() {
 }
 
 describe('AsyncPipelines', () => {
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it('names a build still unsettled after BUILD_WARN_MS once, and keeps counting it', () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { renderer, pipelines } = fakeRenderer();
+    const ap = new AsyncPipelines(renderer);
+    ap.run(() => pipelines.getForRender({ material: { name: 'Stuck' }, context: {} }));
+    ap.run(() => pipelines.getForRender({ material: { name: 'Stuck' }, context: {} }));
+    vi.advanceTimersByTime(BUILD_WARN_MS - 1);
+    expect(warn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('Stuck (canvas)');
+    expect(ap.pending).toBe(2);
+  });
+
+  it('a build that lands in time is not named', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { renderer, pipelines, builds } = fakeRenderer();
+    const ap = new AsyncPipelines(renderer);
+    ap.run(() => pipelines.getForRender({ material: { name: 'Quick' }, context: {} }));
+    builds[0]();
+    await Promise.resolve();
+    await Promise.resolve();
+    vi.advanceTimersByTime(BUILD_WARN_MS * 2);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('names the builds still in flight (material, object, target) and counts the builds started, only inside run', async () => {
+    const { renderer, pipelines, builds } = fakeRenderer();
+    const ap = new AsyncPipelines(renderer);
+    pipelines.getForRender({ material: { name: 'Outside' }, context: {} });
+    expect(ap.inflight()).toEqual([]);
+    expect(ap.started).toBe(0);
+    ap.run(() => pipelines.getForRender({ material: { name: 'Foo' }, context: {} }));
+    expect(ap.inflight()).toEqual(['Foo (canvas)']);
+    expect(ap.started).toBe(1);
+    builds[0]();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ap.inflight()).toEqual([]);
+    expect(ap.started).toBe(1);
+  });
+
+  it('labels a build by material type, object name and render target when they are there', () => {
+    const { renderer, pipelines } = fakeRenderer();
+    const ap = new AsyncPipelines(renderer);
+    ap.run(() => pipelines.getForRender({ material: { name: '', type: 'MeshBasicNodeMaterial' }, object: { name: 'hair' }, context: { renderTarget: { texture: { name: 'capture' } } } }));
+    expect(ap.inflight()).toEqual(['MeshBasicNodeMaterial hair (capture)']);
+  });
+
   it('builds in the background only inside run, and counts the builds until they land', async () => {
     const { renderer, pipelines, given, builds } = fakeRenderer();
     const ap = new AsyncPipelines(renderer);

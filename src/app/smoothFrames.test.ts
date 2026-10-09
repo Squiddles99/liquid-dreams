@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SMOOTH, SmoothFramesGate, holdMet } from './smoothFrames';
+import { BOOT_BUILD_CAP_MS, SMOOTH, SmoothFramesGate, holdMet } from './smoothFrames';
 
 describe('SmoothFramesGate', () => {
   it('opens after 10 frames in a row under 33 ms', () => {
@@ -29,6 +29,30 @@ describe('SmoothFramesGate', () => {
     const g = new SmoothFramesGate(0);
     for (let i = 1; i <= 10; i++) g.frame(16, i * 16);
     expect(g.frame(500, 700)).toBe(true);
+  });
+});
+
+describe('SmoothFramesGate while pipeline builds are pending (one-curl Task 0)', () => {
+  it('does not give up while blocked: 6 s of blocked frames leaves it closed', () => {
+    const g = new SmoothFramesGate(0);
+    for (let t = 33; t <= 6000; t += 33) expect(g.frame(16, t, true), `t ${t}`).toBe(false);
+  });
+  it('blocked frames never count as smooth', () => {
+    const g = new SmoothFramesGate(0);
+    for (let i = 1; i <= 30; i++) g.frame(16, i * 16, true);
+    expect(g.open).toBe(false);
+  });
+  it('gives up after 4 s of unblocked time', () => {
+    const g = new SmoothFramesGate(0);
+    for (let t = 50; t <= 3000; t += 50) g.frame(50, t, true);
+    for (let t = 3050; t < 7000; t += 50) expect(g.frame(50, t, false), `t ${t}`).toBe(false);
+    expect(g.frame(50, 7000, false)).toBe(true);
+  });
+  it('opens anyway BOOT_BUILD_CAP_MS after the start, blocked throughout', () => {
+    const g = new SmoothFramesGate(0);
+    let openedAt = -1;
+    for (let t = 50; t <= 20_000 && openedAt < 0; t += 50) if (g.frame(50, t, true)) openedAt = t;
+    expect(openedAt).toBe(BOOT_BUILD_CAP_MS);
   });
 });
 

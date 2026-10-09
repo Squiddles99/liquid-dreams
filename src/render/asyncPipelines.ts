@@ -1,6 +1,26 @@
 import type * as THREE from 'three/webgpu';
 
 type RenderObject = object;
+/** The fields of three's RenderObject the dev label reads (all optional: fakes and odd objects lack some). */
+interface Labelled {
+  material?: { name?: string; type?: string };
+  object?: { name?: string };
+  context?: { renderTarget?: { texture?: { name?: string } } | null };
+}
+
+/**
+ * A build still pending after this long is named once at console.warn (dev: which object). It still counts: at boot
+ * hundreds build together and, on a loaded machine, legitimate ones take 10+ s. (ride-stall Task 4c: a build left over
+ * from boot, "MeshBasicNodeMaterial (output)", held the paddle-out cover to its 4 s give-up.)
+ */
+export const BUILD_WARN_MS = 10_000;
+
+/** "material object (target)": what is building, for the stall log (ride-stall Task 4c). */
+function label(ro: RenderObject): string {
+  const r = ro as Labelled;
+  const what = [r.material?.name || r.material?.type || '?', r.object?.name].filter(Boolean).join(' ');
+  return `${what} (${r.context?.renderTarget?.texture?.name || (r.context?.renderTarget ? 'target' : 'canvas')})`;
+}
 interface Pipelines {
   getForRender(renderObject: RenderObject, promises?: Promise<unknown>[] | null): unknown;
 }
@@ -18,10 +38,15 @@ interface Pipelines {
  * which misses the picture's nested scene pass).
  */
 export class AsyncPipelines {
-  private readonly building = new Set<Promise<unknown>>();
+  /** Each build still in flight, with its label (dev readout: inflight()). */
+  private readonly building = new Map<Promise<unknown>, string>();
   private depth = 0;
   /** The builds started by the innermost build() call running now. */
-  private started: Promise<unknown>[] | null = null;
+  private buildList: Promise<unknown>[] | null = null;
+  /** Builds started since construction (dev readout). */
+  started = 0;
+  /** Labels already named (a build unsettled after BUILD_WARN_MS), so each is named once. */
+  private readonly warned = new Set<string>();
 
   constructor(renderer: THREE.WebGPURenderer) {
     const pipelines = (renderer as unknown as { _pipelines: Pipelines })._pipelines;
@@ -31,9 +56,19 @@ export class AsyncPipelines {
       const started: Promise<unknown>[] = [];
       const pipeline = getForRender(renderObject, started);
       for (const p of started) {
-        this.started?.push(p);
-        this.building.add(p);
-        void p.finally(() => this.building.delete(p));
+        const name = label(renderObject);
+        this.buildList?.push(p);
+        this.building.set(p, name);
+        this.started++;
+        const timer = setTimeout(() => {
+          if (!this.building.has(p) || this.warned.has(name)) return;
+          this.warned.add(name);
+          console.warn(`[AsyncPipelines] a pipeline build has not settled after ${BUILD_WARN_MS} ms: ${name}`);
+        }, BUILD_WARN_MS);
+        void p.finally(() => {
+          clearTimeout(timer);
+          this.building.delete(p);
+        });
       }
       return pipeline;
     };
@@ -54,13 +89,13 @@ export class AsyncPipelines {
    * started elsewhere: the frames behind the cover keep starting their own).
    */
   build(render: () => void): Promise<void> {
-    const outer = this.started;
+    const outer = this.buildList;
     const mine: Promise<unknown>[] = [];
-    this.started = mine;
+    this.buildList = mine;
     try {
       this.run(render);
     } finally {
-      this.started = outer;
+      this.buildList = outer;
     }
     return Promise.all(mine).then(() => undefined);
   }
@@ -68,5 +103,10 @@ export class AsyncPipelines {
   /** How many render pipelines are still building. */
   get pending(): number {
     return this.building.size;
+  }
+
+  /** Dev: one label per build still pending ("material object (target)"), oldest first. */
+  inflight(): string[] {
+    return [...this.building.values()];
   }
 }

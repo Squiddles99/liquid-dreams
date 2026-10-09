@@ -3,7 +3,7 @@ import type { GangStaging } from '../frontend/staging';
 import * as THREE from 'three/webgpu';
 import { sunForConditions } from '../astro/sunForConditions';
 import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/BreakingRibbon';
-import { RIDE_WARM_PASSES, type SheetFrom, withSections } from '../ride/sectionWater';
+import { withSections } from '../ride/sectionWater';
 import { TAKEOFF_ANCHOR, TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from '../ride/takeoff';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
@@ -56,6 +56,7 @@ import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
 import { PauseMenu } from '../frontend/ui/pauseMenu';
 import { frontEndCheck } from '../dev/frontEndCheck';
 import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
+import { FrameLog } from '../dev/frameLog';
 import { PerfOverlay } from '../dev/perf';
 import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
 import { HeightProbe } from '../ocean/HeightProbe';
@@ -429,6 +430,10 @@ export class App {
   private devUiVisible = false;
   /** While a dev measurement reads window.__ldGpuMs: the perf overlay samples even with the dev tools hidden. */
   private gpuSampling = false;
+  /** Dev readout (window.liquidDreams.frameLog): the stall log, on only while the profiler asks (ride-stall spec §4). */
+  readonly frameLog = new FrameLog();
+  /** This frame's ticks per particle system and whether the ribbon rebuilt, for the frame log. */
+  private readonly frameTicks = { foam: 0, spray: 0, impact: 0, kelp: 0, ribbon: 0 as 0 | 1 };
 
   /** `hashMoment` is the moment a #m= / #ref= link opened, or null to open the saved (or default) moment. */
   constructor(
@@ -868,6 +873,7 @@ export class App {
    */
   private stepFoam(events: readonly WaveEvent[]): void {
     const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t));
+    this.frameTicks.foam = steps;
     if (steps === 0) return;
     this.ocean.time.value = this.clock.simTime;
     this.setWaves.setEvents(events);
@@ -876,6 +882,7 @@ export class App {
   /** The kelp's ticks this frame (none while paused; a replay after a jump), like the foam's: each tick points the set waves at its time. */
   private stepKelp(events: readonly WaveEvent[]): void {
     const steps = this.kelp.advance(this.renderer, this.clock.simTime, this.camera.position.x, this.camera.position.z, (t) => this.pointFoamSourceAt(t));
+    this.frameTicks.kelp = steps;
     if (steps === 0) return;
     this.ocean.time.value = this.clock.simTime;
     this.setWaves.setEvents(events);
@@ -947,8 +954,8 @@ export class App {
     const w = windToVector(this.conditions.wind.directionDeg), s = this.conditions.wind.speedMs;
     this.spray.setWind(w[0] * s, w[1] * s);
     this.impact.setWind(w[0] * s, w[1] * s);
-    this.spray.advance(this.renderer, this.clock.simTime, (k) => this.sprayBirthsAt(k));
-    this.impact.advance(this.renderer, this.clock.simTime, (k) => this.impactBirthsAt(k));
+    this.frameTicks.spray = this.spray.advance(this.renderer, this.clock.simTime, (k) => this.sprayBirthsAt(k));
+    this.frameTicks.impact = this.impact.advance(this.renderer, this.clock.simTime, (k) => this.impactBirthsAt(k));
   }
 
   /** Tick k's emitters, computed once per frame (both systems ask for the same ticks). */
@@ -1026,6 +1033,7 @@ export class App {
     const key = `${tracing}|${this.clock.simTime}|${cam.x}|${cam.z}|${sun.x}|${sun.y}|${sun.z}`;
     if (key === this.ribbonKey) return;
     this.ribbonKey = key;
+    this.frameTicks.ribbon = 1;
     let entries: StationEntry[] = [];
     if (tracing) {
       const waves = events.map(toActiveWave);
@@ -1121,6 +1129,7 @@ export class App {
    */
   attachLoading(loading: LoadingScreen | null, frontEnd: boolean): void {
     this.loadingScreen = loading;
+    loading?.setPendingLabels(() => this.asyncPipelines.inflight());
     this.frontEndAtBoot = frontEnd;
     if (!loading) return;
     loading.setCalm(this.calmMenus());
@@ -1160,8 +1169,11 @@ export class App {
         this.bootReported = true;
       }
     }
-    // A frame drawn with pipelines still building is missing them: it doesn't count as smooth.
-    l.frameDrawn(this.asyncPipelines.pending > 0 ? Infinity : dtMs);
+    // A frame drawn with pipelines still building is missing them: it doesn't count as smooth. At boot the cover also
+    // waits for them (one-curl Task 0: it dissolved on the give-up without the ocean); the transitions keep the give-up.
+    const pending = this.asyncPipelines.pending > 0;
+    if (l.booting) l.frameDrawn(dtMs, pending);
+    else l.frameDrawn(pending ? Infinity : dtMs);
     if (this.frontEnd) this.frontEnd.inputHeld = l.blocking;
   }
 
@@ -1565,10 +1577,10 @@ export class App {
   /** Re-solve the reef wave field (off-thread) when the swell period or direction, the tide or the reef changes. */
   private requestFieldIfNeeded(force: boolean): void {
     const c = this.conditions;
-    const key = fieldKey(c, this.reefParams, this.breakParams.peel);
+    const key = fieldKey(c, this.reefParams, this.breakParams.peel, this.breakParams.curlMaxMs);
     if (!force && key === this.fieldKey) return;
     this.fieldKey = key;
-    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M });
   }
 
   /** Reef sliders rebuild the bathymetry (~2M cells) once you stop dragging, then re-solve the field on it. */
@@ -1608,9 +1620,8 @@ export class App {
       return bed === null ? w : { ...w, bedY: bed };
     };
     // Where the breaking ribbon draws, the board stands on its sections (the wave that is drawn), from this frame's
-    // stations (traced at the clock's time); a station's sheet along its normal is read warm (sectionWater R8).
-    const along: SheetFrom = (x, z, start, passes) => waterAt(x, z, tide, ctx.omega, fieldAt, sum, start, passes);
-    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide, { along: { at: along, passes: RIDE_WARM_PASSES } }) : sheet;
+    // stations (traced at the clock's time), read lazily and cold (sectionWater R9; R8's warm read is the probe's only).
+    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide) : sheet;
   }
 
   /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */
@@ -2000,6 +2011,7 @@ export class App {
   private frame = (): void => {
     const now = performance.now();
     if (!this.frameLimiter.shouldRender(now)) return;
+    const prevMs = this.lastMs;
     const realDt = clampFrameDt((now - this.lastMs) / 1000);
     this.lastMs = now;
     this.reportLoading(realDt * 1000);
@@ -2163,7 +2175,15 @@ export class App {
       this.screenshotRequested = false;
       captureScreenshot(this.renderer.domElement, screenshotFilename(this.conditions));
     }
-    // GPU timestamp readback only matters while the stats are on screen.
-    if (this.devUiVisible || this.gpuSampling) this.perf.update();
+    // GPU timestamp readback only matters while the stats are on screen (or the stall log wants the GPU ms).
+    if (this.devUiVisible || this.gpuSampling || this.frameLog.on) this.perf.update();
+    if (this.frameLog.on) {
+      const gpu = (window as unknown as { __ldGpuMs?: number[] }).__ldGpuMs?.at(-1) ?? 0;
+      this.frameLog.record({ t: now, dt: now - prevMs, sim: this.clock.simTime, gpu, foam: this.frameTicks.foam, spray: this.frameTicks.spray,
+        impact: this.frameTicks.impact, kelp: this.frameTicks.kelp, under: this.underwater ? 1 : 0, ribbon: this.frameTicks.ribbon, pending: this.asyncPipelines.pending,
+        building: this.asyncPipelines.inflight().join('|') });
+    }
+    this.frameTicks.foam = this.frameTicks.spray = this.frameTicks.impact = this.frameTicks.kelp = 0;
+    this.frameTicks.ribbon = 0;
   };
 }

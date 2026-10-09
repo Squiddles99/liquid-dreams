@@ -1,0 +1,87 @@
+
+import { DEFAULT_CONDITIONS, cloneConditions } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/conditions/defaults';
+import { buildBathymetry, downsample } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/seabed/bathymetry';
+import { DEFAULT_REEF_PARAMS } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/seabed/wombReef';
+import { DEFAULT_SET_PARAMS, wavesBetween, wavesNear } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/swell/sets';
+import { DEFAULT_BREAK_PARAMS as P } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/breaker/breaking';
+import { minRibbonHeight, traceStations } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/breaker/crestTrace';
+import { REFRACT_FLOOR_M, computeReefField, sampleField } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/breaker/reefField';
+import { type BreakOptions, beyondEnvelope, breakOptions, fieldBreakingHeight, phaseXi, sumWaves, toActiveWave } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/breaker/setWaveModel';
+import { withSections } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/ride/sectionWater';
+import { type WaterFn, waterAt } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/ride/water';
+import { TUNING, startBody, stepRide } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/ride/ridePhysics';
+import { TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming/src/ride/takeoff';
+
+describe('counts inside one wave sum', () => {
+  it.each([6, 12])('%i ft', { timeout: 1_800_000 }, (ft) => {
+    const c = cloneConditions(DEFAULT_CONDITIONS);
+    c.swell.sizeFt = ft;
+    const field = computeReefField({ bed: downsample(buildBathymetry(DEFAULT_REEF_PARAMS), 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: P.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    const set = wavesBetween(0, 600, c, DEFAULT_SET_PARAMS).filter((e) => e.arrivalS > 10).slice(0, 8);
+    const big = set.reduce((a, b) => (b.heightM > a.heightM ? b : a));
+    const base = { ...breakOptions(field, P), pile: false, shape: 'lean' as const }, minHeightM = minRibbonHeight(fieldBreakingHeight(field, P), P);
+    // counters
+    const k = (x: number, z: number): string => x + ',' + z;
+    let sumPts: string[] = [], invPts: string[] = [], invOn: string[] = [], invSumPts: string[] = [];
+    let sumOn: string[] = [];
+    const C = { sums: 0, waterAts: 0, waves: 0, inEnv: 0, crestSamples: 0, onsets: 0, outer: 0,
+      dupInSum: 0, dupOnInSum: 0, dupInInv: 0, dupOnInv: 0, dupSumPointInInv: 0, sumAtOwnSample: 0, maxWaves: 0, minWaves: 1e9 };
+    let tNow = 0, wavesNow: ReturnType<typeof toActiveWave>[] = [];
+    const o: BreakOptions = { ...base, sample: (x, z) => { C.crestSamples++; sumPts.push(k(x, z)); invPts.push(k(x, z)); return sampleField(field, x, z); },
+      onset: (x, z) => { C.onsets++; sumOn.push(k(x, z)); invOn.push(k(x, z)); return base.onset!(x, z); } };
+    const fieldAt = (a: number, b: number) => { C.outer++; invPts.push(k(a, b)); return sampleField(field, a, b); };
+    const dups = (a: string[]): number => a.length - new Set(a).size;
+    const sum = (a: number, b: number, f: ReturnType<typeof sampleField>) => {
+      C.sums++; sumPts = [k(a, b)]; sumOn = []; invSumPts.push(k(a, b));
+      C.waves += wavesNow.length; C.maxWaves = Math.max(C.maxWaves, wavesNow.length); C.minWaves = Math.min(C.minWaves, wavesNow.length);
+      for (const w of wavesNow) if (!beyondEnvelope(phaseXi(a, b, tNow, f, w, ctx), w)) C.inEnv++;
+      const r = sumWaves(a, b, tNow, f, wavesNow, ctx, o);
+      C.dupInSum += dups(sumPts); C.dupOnInSum += dups(sumOn);
+      return r;
+    };
+    const sheet: WaterFn = (x, z) => {
+      C.waterAts++; invPts = []; invOn = []; invSumPts = [];
+      const w = waterAt(x, z, c.tideM, ctx.omega, fieldAt, sum);
+      C.dupInInv += dups(invPts); C.dupOnInv += dups(invOn); C.dupSumPointInInv += dups(invSumPts);
+      return w;
+    };
+    const { x: sx, z: sz } = takeoffSpot(field, big.heightM, P);
+    let t = big.arrivalS - takeoffLeadS(field, { x: sx, z: sz });
+    const arrive = t + TAKEOFF_ARRIVE_S;
+    const setT = (tt: number) => { tNow = tt; wavesNow = wavesNear(tt, c, DEFAULT_SET_PARAMS).map(toActiveWave); };
+    setT(t);
+    const entries0 = traceStations(field, wavesNow, t, ctx, { cameraX: sx, cameraZ: sz, params: P, minHeightM });
+    const start = withSections(sheet, entries0, c.tideM)(sx, sz);
+    const swellHeading = Math.atan2(start.dirX, -start.dirZ) / (Math.PI / 180);
+    const b = startBody(sx, sz, swellHeading, withSections(sheet, entries0, c.tideM));
+    const line = swellHeading - 35, dt = 1 / 60, tune = TUNING.intermediate;
+    let popped = false, rows = 0;
+    const snap = () => ({ ...C });
+    let acc = Object.fromEntries(Object.keys(C).map((q) => [q, 0])) as Record<string, number>;
+    for (let i = 0; i < 60 * 20; i++) {
+      t += dt; setT(t);
+      const entries = traceStations(field, wavesNow, t, ctx, { cameraX: b.x, cameraZ: b.z, params: P, minHeightM });
+      const water = withSections(sheet, entries, c.tideM);
+      if (b.phase === 'paddle' && !popped) b.headingDeg = swellHeading;
+      const err = ((b.headingDeg - line + 540) % 360) - 180;
+      const before = snap();
+      const under = water(b.x, b.z);
+      const popup = b.phase === 'paddle' && b.caught && !popped && Math.hypot(under.slopeX, under.slopeZ) > 0.6;
+      if (popup) popped = true;
+      const input = { paddle: b.phase === 'paddle' && t > arrive - 2, steer: popped ? Math.max(-1, Math.min(1, -err / 30)) : 0, crouch: 0, popup };
+      const ev = stepRide(b, input, water, dt, tune);
+      if (under.onSection) { rows++; for (const q of Object.keys(C)) if (!q.startsWith('m')) acc[q] += (C as any)[q] - (before as any)[q]; }
+      if (ev === 'wipeout' || ev === 'kickout') break;
+    }
+    const per = (q: string, d: string) => (acc[q] / Math.max(1, acc[d])).toFixed(3);
+    console.log([
+      `${ft} ft, ${rows} frames on a section (game read: lazy R9, one physics step + the under-board read per frame)`,
+      `waterAt per frame ${per('waterAts', 'waterAts') && (acc.waterAts / rows).toFixed(1)}, sums per frame ${(acc.sums / rows).toFixed(1)}, sums per waterAt ${per('sums', 'waterAts')}`,
+      `waves per sum ${per('waves', 'sums')} (min ${C.minWaves}, max ${C.maxWaves}), in envelope per sum ${per('inEnv', 'sums')}`,
+      `field samples: outer per waterAt ${per('outer', 'waterAts')} (per sum ${per('outer', 'sums')}), crest-lookup per sum ${per('crestSamples', 'sums')}, per in-envelope wave ${per('crestSamples', 'inEnv')}`,
+      `onset records per sum ${per('onsets', 'sums')}, per in-envelope wave ${per('onsets', 'inEnv')}`,
+      `exact repeats: field point within one sum ${acc.dupInSum}, onset point within one sum ${acc.dupOnInSum}; within one waterAt (outer + crest field samples) ${acc.dupInInv}, onset ${acc.dupOnInv}, sum points ${acc.dupSumPointInInv} (of ${acc.sums} sums)`,
+    ].join('\n'));
+  });
+});

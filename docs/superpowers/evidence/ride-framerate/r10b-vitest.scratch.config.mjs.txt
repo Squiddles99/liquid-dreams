@@ -1,0 +1,1 @@
+export default { root: 'C:/Dev/andrew-dev-personal-projects/liquid-dreaming', server: { fs: { allow: ['C:/'] } }, test: { globals: true, include: ['C:/Users/Andre/AppData/Local/Temp/claude/C--Dev-andrew-dev-personal-projects-liquid-dreaming/e460e58c-bf13-4fde-bc46-31af1df4423d/scratchpad/*.scratch.test.ts'], environment: 'node' } };

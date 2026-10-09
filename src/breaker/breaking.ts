@@ -45,6 +45,12 @@ export interface BreakParams {
    * runs on over the reef's flat top before its turn and breaks there small and fat (2026-10-05: 6 and 12 ft both ~2 m,
    * no barrel). */
   peel: number;
+  /** The curl's top speed along the crest (m/s; one-curl spec §3d): each breaking line's curl reaches a section no sooner
+   * than this from the section up the line (and never before it). Baked into the reef field's onset record. The reef's
+   * own first-leg peel is 8–14 m/s, but each level's line starts at the south ledge's far end and sweeps up the right at
+   * ~20 m/s: at 20 the floor's holds piled up and reached the peak 1.4 s late at 6 ft (one-curl Task 3). At 40 the peak
+   * and the first leg are the bake's own; the curl's running max still holds the pockets. */
+  curlMaxMs: number;
   /** The pile's churn (render only; the CPU model ignores it): lumps up to this fraction of the pile's height… */
   churnSize: number;
   /** …churning at this rate (× CHURN_RATE_PER_S, pileChurn.ts). */
@@ -71,6 +77,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   psiNudge: 0,
   randomDial: 0,
   peel: 1,
+  curlMaxMs: 40,
   churnSize: 0.2,
   churnSpeed: 1,
 };
@@ -125,6 +132,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.psiNudge = clampTo(p.psiNudge, -0.5, 0.5, d.psiNudge);
   p.randomDial = clampTo(p.randomDial, 0, 0.15, d.randomDial);
   p.peel = clampTo(p.peel, 1, 3, d.peel);
+  p.curlMaxMs = clampTo(p.curlMaxMs, 4, 40, d.curlMaxMs);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }

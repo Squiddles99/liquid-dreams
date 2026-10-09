@@ -1,0 +1,16 @@
+# Task 16 probe (PROBE_RIDE_STATIONS=1 PROBE_VARIANTS='direct|lazy|warm 2'), 2026-10-08, branch at b9dcb59 (sampleInside finds the cell once). Every row identical to r10a-probe.txt (Task 15): lazy (R9) 972 (6 ft) / 982 (12 ft) wave sums per frame, 0.00 cm.
+stdout | src/ride/rideStations.probe.test.ts > probe: the ride’s stations thinned and their curves kept > 6 ft intermediate
+6 ft: 975 rows on a section; events caught popup; reference direct
+variant | max |Δy| cm | max |Δslope| | curves built per frame (one physics step)
+direct | 0.00 | 0.0000 | 7.0 | wave sums per frame 4862 | curves at g = 1 84.4% | p50 0.00 p95 0.00 p99 0.00 cm, rows > 2 cm 0
+lazy (R9) | 0.00 | 0.0000 | 7.0 | wave sums per frame 972 | curves at g = 1 84.4% | p50 0.00 p95 0.00 p99 0.00 cm, rows > 2 cm 0
+lazy + warm 2 passes (R8, not the game) | 0.04 | 0.0601 | 7.0 | wave sums per frame 838 | curves at g = 1 84.4% | p50 0.00 p95 0.01 p99 0.02 cm, rows > 2 cm 0
+warm 2 passes (R8) | 0.04 | 0.0601 | 7.0 | wave sums per frame 3187 | curves at g = 1 84.4% | p50 0.00 p95 0.01 p99 0.02 cm, rows > 2 cm 0
+stdout | src/ride/rideStations.probe.test.ts > probe: the ride’s stations thinned and their curves kept > 12 ft intermediate
+12 ft: 1098 rows on a section; events caught popup; reference direct
+variant | max |Δy| cm | max |Δslope| | curves built per frame (one physics step)
+direct | 0.00 | 0.0000 | 6.7 | wave sums per frame 5004 | curves at g = 1 72.8% | p50 0.00 p95 0.00 p99 0.00 cm, rows > 2 cm 0
+lazy (R9) | 0.00 | 0.0000 | 6.7 | wave sums per frame 982 | curves at g = 1 72.8% | p50 0.00 p95 0.00 p99 0.00 cm, rows > 2 cm 0
+lazy + warm 2 passes (R8, not the game) | 1.30 | 0.0849 | 6.7 | wave sums per frame 1092 | curves at g = 1 72.8% | p50 0.00 p95 0.08 p99 0.44 cm, rows > 2 cm 0
+warm 2 passes (R8) | 1.30 | 0.0849 | 6.7 | wave sums per frame 4250 | curves at g = 1 72.8% | p50 0.00 p95 0.08 p99 0.44 cm, rows > 2 cm 0
+      Tests  2 passed (2)

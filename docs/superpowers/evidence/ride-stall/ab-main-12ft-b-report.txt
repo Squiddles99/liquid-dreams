@@ -1,0 +1,227 @@
+# sim-t 300: cam from 300.00 s, set called from 306.00 s, ride arrives 397.41 s, caught 396.18 s, riding pass 397.12–402.48 s ending at x, z -0.8, -31.8 (12 ft, intermediate); window at cam: focused true, visible true, minimized false; at riding: focused true, visible true, minimized false; at the end: focused true, visible true, minimized false
+# stall log off, trace off
+cam mode: 1385 frames, mean 4.5 ms (220.9 fps), median 4.1 ms, p90 9.0 ms, max 270.8 ms
+paddling (ride active): 2 frames, mean 2203.9 ms (0.5 fps), median 4376.7 ms, p90 4376.7 ms, max 4376.7 ms
+riding (phase ride -> ride): 91 frames, mean 58.7 ms (17.0 fps), median 59.6 ms, p90 67.3 ms, max 236.8 ms
+
+== cam mode: 6247 ms sampled
+-- self time
+ 65.3%    4078 ms  (idle) :0
+  7.5%     470 ms  (program) :0
+  7.2%     452 ms  writeBuffer :0
+  2.2%     138 ms  _update nm/.vite/deps/three_webgpu.js?v=c78115ef:22753
+  1.4%      88 ms  _renderObjectDirect nm/.vite/deps/three_webgpu.js?v=c78115ef:44928
+  1.4%      88 ms  update nm/.vite/deps/three_webgpu.js?v=c78115ef:45457
+  0.9%      54 ms  updateNumber nm/.vite/deps/three_webgpu.js?v=c78115ef:45492
+  0.8%      48 ms  (garbage collector) :0
+  0.8%      48 ms  submit :0
+  0.6%      35 ms  updateAttributes nm/.vite/deps/three_webgpu.js?v=c78115ef:21613
+  0.5%      32 ms  updateForRender nm/.vite/deps/three_webgpu.js?v=c78115ef:40371
+  0.4%      27 ms  updateAttribute nm/.vite/deps/three_webgpu.js?v=c78115ef:21628
+  0.4%      27 ms  get nm/.vite/deps/three_webgpu.js?v=c78115ef:21229
+  0.4%      24 ms  updateMatrixWorld nm/.vite/deps/three.core-BTfOrhf1.js?v=766dd6f4:10028
+  0.3%      22 ms  wavesOfSet src/swell/sets.ts:67
+  0.3%      21 ms  _projectObject nm/.vite/deps/three_webgpu.js?v=c78115ef:44638
+  0.3%      19 ms  createCommandEncoder :0
+  0.3%      16 ms  get value nm/.vite/deps/three_webgpu.js?v=c78115ef:8533
+  0.2%      14 ms  beginRenderPass :0
+  0.2%      13 ms  _needsRenderUpdate nm/.vite/deps/three_webgpu.js?v=c78115ef:22545
+  0.2%      13 ms  getCacheKey nm/.vite/deps/three_webgpu.js?v=c78115ef:1328
+  0.2%      13 ms  renderObject nm/.vite/deps/three_webgpu.js?v=c78115ef:44846
+  0.2%      12 ms  update nm/.vite/deps/three_webgpu.js?v=c78115ef:3444
+  0.2%      12 ms  _getChildren nm/.vite/deps/three_webgpu.js?v=c78115ef:1291
+  0.2%      12 ms  needsRenderUpdate nm/.vite/deps/three_webgpu.js?v=c78115ef:60170
+  0.2%      12 ms  frame src/app/App.ts?t=1791459045042:2203
+  0.2%      12 ms  sampleInside src/breaker/reefField.ts:898
+  0.2%      11 ms  sort nm/.vite/deps/three_webgpu.js?v=c78115ef:23099
+  0.2%      11 ms  setVertexBuffer :0
+  0.2%      11 ms  sampleField src/breaker/reefField.ts:930
+-- inclusive
+100.0%    6247 ms  (root) :0
+ 65.3%    4078 ms  (idle) :0
+ 26.1%    1631 ms  update nm/.vite/deps/three_webgpu.js?v=c78115ef:20373
+ 25.8%    1614 ms  frame src/app/App.ts?t=1791459045042:2203
+ 21.4%    1337 ms  render src/render/PicturePipeline.ts:110
+ 21.4%    1336 ms  render nm/.vite/deps/three_webgpu.js?v=c78115ef:26773
+ 21.4%    1336 ms  render nm/.vite/deps/three_webgpu.js?v=c78115ef:61112
+ 21.4%    1334 ms  _renderScene nm/.vite/deps/three_webgpu.js?v=c78115ef:43645
+ 21.0%    1310 ms  _renderObjectDirect nm/.vite/deps/three_webgpu.js?v=c78115ef:44928
+ 21.0%    1310 ms  renderObject nm/.vite/deps/three_webgpu.js?v=c78115ef:44846
+ 21.0%    1310 ms  _renderObjects nm/.vite/deps/three_webgpu.js?v=c78115ef:44737
+ 20.6%    1289 ms  updateBefore nm/.vite/deps/three_webgpu.js?v=c78115ef:40320
+ 18.0%    1127 ms  updateBefore nm/.vite/deps/three_webgpu.js?v=c78115ef:29156
+ 18.0%    1126 ms  render nm/.vite/deps/three_webgpu.js?v=c78115ef:43547
+ 12.5%     778 ms  _update nm/.vite/deps/three_webgpu.js?v=c78115ef:22753
+  7.5%     470 ms  (program) :0
+  7.4%     462 ms  updateBinding nm/.vite/deps/three_webgpu.js?v=c78115ef:57533
+  7.2%     452 ms  writeBuffer :0
+  2.6%     161 ms  updateBefore nm/.vite/deps/three_addons_tsl_display_BloomNode__js.js?v=5808f100:298
+  2.5%     154 ms  update nm/.vite/deps/three_webgpu.js?v=c78115ef:45457
+  1.8%     110 ms  compute nm/.vite/deps/three_webgpu.js?v=c78115ef:44425
+  1.1%      69 ms  get nm/.vite/deps/three_webgpu.js?v=c78115ef:21229
+  1.0%      64 ms  updateForRender nm/.vite/deps/three_webgpu.js?v=c78115ef:40371
+  1.0%      62 ms  updateAttributes nm/.vite/deps/three_webgpu.js?v=c78115ef:21613
+  0.9%      58 ms  beginRender nm/.vite/deps/three_webgpu.js?v=c78115ef:59365
+  0.9%      54 ms  updateNumber nm/.vite/deps/three_webgpu.js?v=c78115ef:45492
+  0.8%      52 ms  update src/weather/Clouds.ts:163
+  0.8%      48 ms  submit nm/.vite/deps/three_webgpu.js?v=c78115ef:52683
+  0.8%      48 ms  (garbage collector) :0
+  0.8%      48 ms  submit :0
+  0.7%      45 ms  draw nm/.vite/deps/three_webgpu.js?v=c78115ef:60086
+  0.7%      42 ms  getDynamicCacheKey nm/.vite/deps/three_webgpu.js?v=c78115ef:21119
+  0.6%      40 ms  _draw nm/.vite/deps/three_webgpu.js?v=c78115ef:59997
+  0.6%      39 ms  _updateBindings nm/.vite/deps/three_webgpu.js?v=c78115ef:22744
+  0.6%      36 ms  getCacheKey nm/.vite/deps/three_webgpu.js?v=c78115ef:40098
+  0.6%      35 ms  updateBeach src/app/App.ts?t=1791459045042:1521
+  0.5%      31 ms  getCacheKey nm/.vite/deps/three_webgpu.js?v=c78115ef:1328
+  0.5%      31 ms  finishRender nm/.vite/deps/three_webgpu.js?v=c78115ef:59641
+  0.5%      31 ms  update src/ocean/HeightProbe.ts:69
+  0.5%      29 ms  updateMatrixWorld nm/.vite/deps/three.core-BTfOrhf1.js?v=766dd6f4:10028
+
+== paddling: 6134 ms sampled
+-- self time
+ 93.7%    5748 ms  (idle) :0
+  2.2%     135 ms  (program) :0
+  0.5%      29 ms  copyExternalImageToTexture :0
+  0.3%      18 ms  _getChildren nm/.vite/deps/three_webgpu.js?v=c78115ef:1291
+  0.3%      16 ms  build nm/.vite/deps/three_webgpu.js?v=c78115ef:1584
+  0.2%      10 ms  getDataFromNode nm/.vite/deps/three_webgpu.js?v=c78115ef:38022
+  0.1%       8 ms  getEntry nm/.vite/deps/three_webgpu.js?v=c78115ef:13007
+  0.1%       7 ms  (garbage collector) :0
+  0.1%       6 ms  sampleInside src/breaker/reefField.ts:898
+  0.1%       4 ms  createAttribute nm/.vite/deps/three_webgpu.js?v=c78115ef:57162
+  0.1%       4 ms  waveAtCrest src/breaker/setWaveModel.ts:324
+  0.1%       4 ms  analyze nm/.vite/deps/three_webgpu.js?v=c78115ef:1511
+  0.1%       4 ms  writeBuffer :0
+  0.1%       4 ms  sampleOnset src/breaker/reefField.ts:882
+  0.1%       4 ms  getW nm/.vite/deps/three.core-BTfOrhf1.js?v=766dd6f4:13085
+  0.1%       3 ms  build nm/.vite/deps/three_webgpu.js?v=c78115ef:24291
+  0.1%       3 ms  getNodeType nm/.vite/deps/three_webgpu.js?v=c78115ef:1422
+  0.1%       3 ms  getHash nm/.vite/deps/three_webgpu.js?v=c78115ef:1363
+  0.1%       3 ms  getNodeFromHash nm/.vite/deps/three_webgpu.js?v=c78115ef:37404
+  0.1%       3 ms  getCacheKey nm/.vite/deps/three_webgpu.js?v=c78115ef:1328
+  0.0%       3 ms  crestAt src/breaker/setWaveModel.ts:227
+  0.0%       3 ms  setData nm/.vite/deps/three_webgpu.js?v=c78115ef:36091
+  0.0%       3 ms  setHashNode nm/.vite/deps/three_webgpu.js?v=c78115ef:37284
+  0.0%       3 ms  generate nm/.vite/deps/three_webgpu.js?v=c78115ef:4130
+  0.0%       2 ms  keyVelocity src/breaker/wombProfile.ts:332
+  0.0%       2 ms  getTypeLength nm/.vite/deps/three_webgpu.js?v=c78115ef:37911
+  0.0%       2 ms  writeTexture :0
+  0.0%       2 ms  generateNodeType nm/.vite/deps/three_webgpu.js?v=c78115ef:4101
+  0.0%       2 ms  format nm/.vite/deps/three_webgpu.js?v=c78115ef:38856
+  0.0%       1 ms  generate nm/.vite/deps/three_webgpu.js?v=c78115ef:3628
+-- inclusive
+100.0%    6134 ms  (root) :0
+ 93.7%    5748 ms  (idle) :0
+  4.0%     243 ms  frame src/app/App.ts?t=1791459045042:2203
+  4.0%     243 ms  update nm/.vite/deps/three_webgpu.js?v=c78115ef:20373
+  3.2%     194 ms  _renderScene nm/.vite/deps/three_webgpu.js?v=c78115ef:43645
+  3.2%     194 ms  render nm/.vite/deps/three_webgpu.js?v=c78115ef:26773
+  3.2%     194 ms  render nm/.vite/deps/three_webgpu.js?v=c78115ef:61112
+  3.2%     194 ms  render src/render/PicturePipeline.ts:110
+  3.2%     194 ms  renderObject nm/.vite/deps/three_webgpu.js?v=c78115ef:44846
+  3.2%     194 ms  _renderObjects nm/.vite/deps/three_webgpu.js?v=c78115ef:44737
+  3.2%     194 ms  _renderObjectDirect nm/.vite/deps/three_webgpu.js?v=c78115ef:44928
+  3.2%     193 ms  updateBefore nm/.vite/deps/three_webgpu.js?v=c78115ef:40320
+  3.1%     191 ms  render nm/.vite/deps/three_webgpu.js?v=c78115ef:43547
+  3.1%     191 ms  updateBefore nm/.vite/deps/three_webgpu.js?v=c78115ef:29156
+  2.2%     135 ms  (program) :0
+  1.9%     119 ms  build nm/.vite/deps/three_webgpu.js?v=c78115ef:38768
+  1.9%     119 ms  getForRender nm/.vite/deps/three_webgpu.js?v=c78115ef:39874
+  1.9%     119 ms  needsRefresh nm/.vite/deps/three_webgpu.js?v=c78115ef:40382
+  1.9%     117 ms  build nm/.vite/deps/three_webgpu.js?v=c78115ef:24291
+  1.6%     100 ms  build nm/.vite/deps/three_webgpu.js?v=c78115ef:1584
+  1.6%      98 ms  build nm/.vite/deps/three_webgpu.js?v=c78115ef:1911
+  1.6%      96 ms  build nm/.vite/deps/three_webgpu.js?v=c78115ef:5932
+  0.8%      52 ms  build nm/.vite/deps/three_webgpu.js?v=c78115ef:2697
+  0.7%      45 ms  _renderTransparents nm/.vite/deps/three_webgpu.js?v=c78115ef:44718
+  0.7%      43 ms  flowChildNode nm/.vite/deps/three_webgpu.js?v=c78115ef:38500
+  0.7%      42 ms  updateForRender nm/.vite/deps/three_webgpu.js?v=c78115ef:22651
+  0.7%      41 ms  generate nm/.vite/deps/three_webgpu.js?v=c78115ef:3868
+  0.7%      40 ms  flowNode nm/.vite/deps/three_webgpu.js?v=c78115ef:38355
+  0.6%      37 ms  generate nm/.vite/deps/three_webgpu.js?v=c78115ef:1867
+  0.6%      36 ms  generate nm/.vite/deps/three_webgpu.js?v=c78115ef:4130
+  0.6%      35 ms  _createBindings nm/.vite/deps/three_webgpu.js?v=c78115ef:22692
+  0.5%      34 ms  build nm/.vite/deps/three_webgpu.js?v=c78115ef:7495
+  0.5%      34 ms  generate nm/.vite/deps/three_webgpu.js?v=c78115ef:4604
+  0.5%      33 ms  updateTexture nm/.vite/deps/three_webgpu.js?v=c78115ef:23649
+  0.5%      32 ms  updateTexture nm/.vite/deps/three_webgpu.js?v=c78115ef:54320
+  0.5%      32 ms  updateTexture nm/.vite/deps/three_webgpu.js?v=c78115ef:60309
+  0.5%      29 ms  copyExternalImageToTexture :0
+  0.5%      29 ms  _copyImageToTexture nm/.vite/deps/three_webgpu.js?v=c78115ef:54497
+  0.5%      29 ms  sprayBirthsAt src/app/App.ts?t=1791459045042:1064
+  0.5%      29 ms  (anon) src/app/App.ts?t=1791459045042:1029
+
+== riding: 5216 ms sampled
+-- self time
+ 12.1%     632 ms  waveAtCrest src/breaker/setWaveModel.ts:324
+ 11.4%     593 ms  sampleOnset src/breaker/reefField.ts:882
+  8.1%     424 ms  sampleInside src/breaker/reefField.ts:898
+  4.9%     254 ms  (program) :0
+  3.9%     201 ms  lifecycle src/breaker/breaking.ts:383
+  3.8%     198 ms  point src/breaker/wombSection.ts:304
+  3.7%     193 ms  breakPoint src/breaker/breaking.ts:675
+  2.9%     153 ms  (anon) src/breaker/crestTrace.ts:244
+  2.9%     152 ms  sumWaves src/breaker/setWaveModel.ts:518
+  2.9%     149 ms  (garbage collector) :0
+  2.2%     114 ms  writeBuffer :0
+  1.9%      99 ms  sample src/breaker/setWaveModel.ts:146
+  1.8%      95 ms  withSheetShape src/breaker/overturn.ts:154
+  1.5%      78 ms  lazyOf src/ride/sectionWater.ts:181
+  1.5%      77 ms  onsetTime src/breaker/breaking.ts:240
+  1.4%      74 ms  crestAt src/breaker/setWaveModel.ts:227
+  1.4%      71 ms  onsetUntil src/breaker/breaking.ts:285
+  1.3%      70 ms  sharpenDropSlope src/breaker/breaking.ts:516
+  1.3%      70 ms  onsetLevel src/breaker/breaking.ts:223
+  1.3%      69 ms  sharpenDrop src/breaker/breaking.ts:504
+  1.3%      69 ms  roomOver src/ride/tubeCover.ts:28
+  1.1%      56 ms  (anon) src/breaker/wombProfile.ts:483
+  1.0%      50 ms  onsetPsi src/breaker/breaking.ts:301
+  0.9%      46 ms  _update nm/.vite/deps/three_webgpu.js?v=c78115ef:22753
+  0.9%      45 ms  keyVelocity src/breaker/wombProfile.ts:332
+  0.8%      43 ms  stageCurves src/breaker/breaking.ts:453
+  0.7%      36 ms  move src/heath/plantRing.ts:34
+  0.7%      35 ms  curveSamples src/breaker/wombProfile.ts:454
+  0.6%      31 ms  update nm/.vite/deps/three_webgpu.js?v=c78115ef:45457
+  0.6%      30 ms  crestFrame src/breaker/setWaveModel.ts:420
+-- inclusive
+100.0%    5216 ms  (root) :0
+ 92.0%    4799 ms  update nm/.vite/deps/three_webgpu.js?v=c78115ef:20373
+ 91.9%    4794 ms  frame src/app/App.ts?t=1791459045042:2203
+ 59.8%    3119 ms  (anon) src/ride/sectionWater.ts:214
+ 58.5%    3051 ms  at src/ride/sectionWater.ts:232
+ 54.2%    2828 ms  lazyOf src/ride/sectionWater.ts:181
+ 53.5%    2791 ms  sumWaves src/breaker/setWaveModel.ts:518
+ 53.3%    2779 ms  sectionFrameKnots src/breaker/wombSection.ts:191
+ 52.0%    2711 ms  at src/breaker/wombSection.ts:193
+ 48.6%    2536 ms  waterAt src/ride/water.ts:10
+ 48.1%    2510 ms  sheet src/ride/sectionWater.ts:132
+ 47.2%    2461 ms  step src/ride/RideSession.ts:69
+ 47.1%    2459 ms  stepRide src/ride/ridePhysics.ts:179
+ 47.1%    2458 ms  sum src/app/App.ts?t=1791459045042:1778
+ 46.6%    2429 ms  sheet src/app/App.ts?t=1791459045042:1779
+ 33.8%    1763 ms  (anon) src/breaker/wombSection.ts:219
+ 31.2%    1628 ms  boardSurface src/ride/ridePhysics.ts:136
+ 29.5%    1539 ms  crestAt src/breaker/setWaveModel.ts:227
+ 29.3%    1531 ms  sectionSamples src/breaker/wombSection.ts:301
+ 20.9%    1090 ms  waveAtCrest src/breaker/setWaveModel.ts:324
+ 11.4%     593 ms  sampleOnset src/breaker/reefField.ts:882
+ 11.1%     580 ms  stepSpray src/app/App.ts?t=1791459045042:1024
+ 11.1%     579 ms  advance src/whitewater/SprayParticles.ts:149
+ 10.8%     566 ms  sprayBirthsAt src/app/App.ts?t=1791459045042:1064
+ 10.8%     566 ms  (anon) src/app/App.ts?t=1791459045042:1029
+ 10.8%     565 ms  emittersAt src/app/App.ts?t=1791459045042:1033
+ 10.8%     563 ms  breakEmitters src/whitewater/sprayEmitters.ts:118
+ 10.6%     555 ms  cameraPose src/ride/RideSession.ts:94
+ 10.6%     551 ms  update src/ride/ridePose.ts:150
+ 10.6%     550 ms  (anon) src/ride/RideSession.ts:100
+  8.9%     467 ms  onset src/breaker/setWaveModel.ts:148
+  8.7%     453 ms  sectionFrame src/breaker/wombSection.ts:354
+  8.4%     439 ms  traceStations src/breaker/crestTrace.ts:276
+  8.4%     438 ms  sampleField src/breaker/reefField.ts:930
+  8.4%     438 ms  (anon) src/breaker/crestTrace.ts:280
+  8.1%     424 ms  sampleInside src/breaker/reefField.ts:898
+  7.5%     393 ms  _renderScene nm/.vite/deps/three_webgpu.js?v=c78115ef:43645
+  7.3%     383 ms  render nm/.vite/deps/three_webgpu.js?v=c78115ef:61112
+  7.3%     383 ms  render src/render/PicturePipeline.ts:110
+  7.3%     383 ms  render nm/.vite/deps/three_webgpu.js?v=c78115ef:26773
