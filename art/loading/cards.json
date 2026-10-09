@@ -428,5 +428,13 @@
   "latin": "Pseudonaja affinis",
   "fact": "Found only in the south-west, in shades from grey to green to brown. Shy: leave it alone and it leaves you alone. If you meet one, stop, stay still and back away slowly.",
   "noongar": "gave English its name: dugite comes from the Noongar word, recorded as dukitj and toogitj."
+ },
+ "reptiles-heath-monitor": {
+  "kicker": "Reptiles · Cape to Cape",
+  "name": "Heath monitor",
+  "common": "Southern heath monitor",
+  "latin": "Varanus rosenbergi",
+  "fact": "A goanna up to 1.5 metres long, black with fine yellow dots and pale bands right to the tip of its tail. A female can lay her eggs inside a termite mound, and the termites seal them in.",
+  "noongar": "names for goannas include kaarda."
  }
 }
