@@ -16,12 +16,14 @@ export interface FrontSettings {
   /** 0.02–0.10, or null for the display mode's (PC 3%, TV 5%). */
   safeArea: number | null;
   displayMode: 'pc' | 'tv';
+  /** Where the surf map's conditions come from (surf-map hub spec §7); real-time is locked, so never saved. */
+  conditionsSource: 'forecast' | 'custom';
   glyphs: 'auto' | 'xbox' | 'playstation' | 'keyboard';
   /** How much help catching waves (R1 §3): the paddle assist and the face slope that catches you. */
   experience: Experience;
 }
 
-export const DEFAULT_FRONT_SETTINGS: Readonly<FrontSettings> = { textScale: 1, calmMenus: false, opaqueBackplates: false, safeArea: null, displayMode: 'pc', glyphs: 'auto', experience: 'intermediate' };
+export const DEFAULT_FRONT_SETTINGS: Readonly<FrontSettings> = { textScale: 1, calmMenus: false, opaqueBackplates: false, safeArea: null, displayMode: 'pc', glyphs: 'auto', experience: 'intermediate', conditionsSource: 'forecast' };
 export const FRONT_SETTINGS_KEY = 'liquid-dreams.front-settings.v1';
 export const FRONT_CHOICES_KEY = 'liquid-dreams.front-choices.v1';
 
@@ -44,6 +46,7 @@ export function sanitizeFrontSettings(raw: unknown): FrontSettings {
     displayMode: oneOf(raw.displayMode, ['pc', 'tv'] as const, d.displayMode),
     glyphs: oneOf(raw.glyphs, ['auto', 'xbox', 'playstation', 'keyboard'] as const, d.glyphs),
     experience: oneOf(raw.experience, ['beginner', 'intermediate', 'expert'] as const, d.experience),
+    conditionsSource: oneOf(raw.conditionsSource, ['forecast', 'custom'] as const, d.conditionsSource),
   };
 }
 

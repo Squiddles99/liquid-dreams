@@ -17,7 +17,12 @@ describe('settings and remembered choices (dune select spec §3, §11; Review Fo
     expect(DEFAULT_CHOICES.rider).toBe('female');
   });
   it('defaults the settings', () => {
-    expect(DEFAULT_FRONT_SETTINGS).toEqual({ textScale: 1, calmMenus: false, opaqueBackplates: false, safeArea: null, displayMode: 'pc', glyphs: 'auto', experience: 'intermediate' });
+    expect(DEFAULT_FRONT_SETTINGS).toEqual({ textScale: 1, calmMenus: false, opaqueBackplates: false, safeArea: null, displayMode: 'pc', glyphs: 'auto', experience: 'intermediate', conditionsSource: 'forecast' });
+  });
+  it('keeps the conditions source, forecast by default, never real-time', () => {
+    expect(sanitizeFrontSettings({}).conditionsSource).toBe('forecast');
+    expect(sanitizeFrontSettings({ conditionsSource: 'custom' }).conditionsSource).toBe('custom');
+    expect(sanitizeFrontSettings({ conditionsSource: 'realtime' }).conditionsSource).toBe('forecast');
   });
   it('takes the safe area from the display mode unless overridden', () => {
     expect(safeAreaFraction(DEFAULT_FRONT_SETTINGS)).toBe(0.03);
