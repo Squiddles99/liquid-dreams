@@ -4,7 +4,7 @@ import { SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { beachHeight } from '../land/landHeight';
 import { fbm2, valueNoise2 } from './noise';
-import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_INNER_X, SHELF_POLYGON, SOUTH_LEDGE, rockReachM, shelfPolygon } from './wombReef';
+import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_INNER_X, SHELF_POLYGON, SOUTH_LEDGE, TIP, rockReachM, shelfPolygon } from './wombReef';
 
 /** Weed dominates rock across most of the shelf; baseline coverage before the patchy noise carves gaps. */
 const SHELF_WEED_BASE = 0.78;
@@ -48,8 +48,10 @@ export function ledgeSignedDistance(x: number, z: number, north: readonly Pt[] =
   return insidePolygon(x, z, shelf) ? d : -d;
 }
 
-function pocketWeight(x: number, z: number): number {
+/** The sand pockets were traced around the peak: they move with the tip. */
+function pocketWeight(x: number, z: number, tip: Pt = TIP): number {
   let w = 0;
+  x -= tip[0]; z -= tip[1];
   for (const [cx, cz, rx, rz] of SAND_POCKETS) {
     const r = Math.hypot((x - cx) / rx, (z - cz) / rz);
     w = Math.max(w, 1 - smoothstep(0.7, 1.1, r));
@@ -63,10 +65,10 @@ const SDF_CELL_M = 2;
  * Domain warp for the whole reef: nudges a query point by up to REEF_WARP.ampM + REEF_WARP.detailAmpM
  * metres through two-octave value noise (a broad wander plus finer detail), so the ledges, the shelf
  * polygon, the reef heads and the sand pockets all read as natural, uneven edges instead of the
- * ruler-straight originals. Tapers to zero within 15 m of the peak (0, 0) so the take-off corner keeps
+ * ruler-straight originals. Tapers to zero within 15 m of the peak (`tip`, TIP by default) so the take-off corner keeps
  * its exact 6 m ledge depth. Seeded from REEF_SEED plus fixed offsets, never Conditions.seed.
  */
-export function reefWarp(x: number, z: number): [number, number] {
+export function reefWarp(x: number, z: number, tip: Pt = TIP): [number, number] {
   const cap = REEF_WARP.ampM + REEF_WARP.detailAmpM;
   let dx = REEF_WARP.ampM * valueNoise2(x / REEF_WARP.featureM, z / REEF_WARP.featureM, REEF_SEED + 401)
     + REEF_WARP.detailAmpM * valueNoise2(x / REEF_WARP.detailFeatureM, z / REEF_WARP.detailFeatureM, REEF_SEED + 402);
@@ -76,7 +78,7 @@ export function reefWarp(x: number, z: number): [number, number] {
   // stated amplitude, however the two independent noise fields happen to line up.
   const mag = Math.hypot(dx, dz);
   if (mag > cap) { const s = cap / mag; dx *= s; dz *= s; }
-  const taper = smoothstep(0, 15, Math.hypot(x, z));
+  const taper = smoothstep(0, 15, Math.hypot(x - tip[0], z - tip[1]));
   return [dx * taper, dz * taper];
 }
 
@@ -136,11 +138,12 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   const patchOutField = new Float32Array(sx * sz);
   const north = p.northLedge ?? NORTH_LEDGE, south = p.southLedge ?? SOUTH_LEDGE;
   const shelf = p.northLedge || p.southLedge ? shelfPolygon(north, south) : SHELF_POLYGON;
+  const tip = p.tip ?? TIP;
   for (let r = 0; r < sz; r++) for (let c = 0; c < sx; c++) {
     const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M;
     sdf[r * sx + c] = ledgeSignedDistance(x, z, north, shelf, south);
-    pockets[r * sx + c] = pocketWeight(x, z);
-    const [dx, dz] = reefWarp(x, z);
+    pockets[r * sx + c] = pocketWeight(x, z, tip);
+    const [dx, dz] = reefWarp(x, z, tip);
     warpDxField[r * sx + c] = dx;
     warpDzField[r * sx + c] = dz;
     patchOutField[r * sx + c] = smoothstep(-0.5, 0.05, fbm2(x / 5, z / 5, REEF_SEED + 3));
@@ -168,7 +171,7 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       // vectors is a convex combination of them, so it stays within the same cap); the 15 m peak taper
       // is re-applied here at the exact query point so the take-off corner is untouched exactly, not just
       // approximately, regardless of how (0, 0) happens to sit relative to the coarse lattice.
-      const warpTaper = smoothstep(0, 15, Math.hypot(x, z));
+      const warpTaper = smoothstep(0, 15, Math.hypot(x - tip[0], z - tip[1]));
       const xw = x + lattice(warpDxField, x, z) * warpTaper, zw = z + lattice(warpDzField, x, z) * warpTaper;
       // The depth profile (the ledge, the face, the shelf's ramp) reads the ledge at the unwarped point, so the breaking line
       // follows the drawn ledges (one-curl spec §3c: read at the warped point it wandered ±5–7 m every 35 m, and the onset

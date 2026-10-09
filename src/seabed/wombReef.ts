@@ -54,6 +54,8 @@ export interface ReefParams {
   northLedge?: readonly Pt[];
   /** The right's seaward edge, from the tip (the shelf follows it). Absent: SOUTH_LEDGE. */
   southLedge?: readonly Pt[];
+  /** The take-off corner, where the two ledges meet: the warp's taper and the sand pockets follow it. Absent: TIP. */
+  tip?: Pt;
 }
 
 /**
@@ -81,6 +83,19 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
   pocketDepthM: 5.5,
   offshoreBand: [SHORE_X - 40, SHORE_X - 100],
 };
+
+/** The take-off corner (x, z), where the left's and the right's ledges meet. */
+export const TIP: Pt = [0, 0];
+/** The left's bearing (degrees from north toward the beach) on the real shelf: a left peels only along a ledge running
+ * downstream of the crest, north-east toward the beach (womb-retune Fable finding, 2026-10-09). */
+export const LEFT_BEARING_DEG = 42;
+/** The left from `tip`: one straight ledge at `bearingDeg` for `lengthM`, then due north (the inside) to the map's edge. */
+export function leftLedgeFrom(tip: Pt, lengthM: number, bearingDeg = LEFT_BEARING_DEG): Pt[] {
+  const r = (bearingDeg * Math.PI) / 180, end: Pt = [tip[0] + lengthM * Math.sin(r), tip[1] - lengthM * Math.cos(r)];
+  return [tip, end, [end[0], -450]];
+}
+/** The right from `tip`: SOUTH_LEDGE's shape moved to it. */
+export const rightLedgeFrom = (tip: Pt): Pt[] => SOUTH_LEDGE.map(([x, z]) => [x + tip[0], z + tip[1]] as Pt);
 
 /** The left's edge: from the corner it runs 24° for 70 m, then bends to run along the beach 54 m off the waterline (his
  * line closes on the beach there). */
