@@ -152,3 +152,15 @@
 .fe-map-credit { font: 500 calc(18px * var(--fe-text)) Barlow; color: #7fb1b0; opacity: .8; }
 /* On the map the legend sits over pale land: it gets the chart's panel backing (spec §3: the prompt bar on its own backing). */
 .fe-root.is-map .fe-legend { background: #0b2a31; border: 1.5px solid #3f6f72; border-radius: 10px; padding: 10px 22px; }
+
+/* The break details page (surf-map hub spec §8). */
+.fe-details { position: absolute; inset: 0; background: rgba(6, 22, 27, .82); opacity: 0; pointer-events: none; transition: opacity 220ms var(--fe-ease-out); }
+.fe-details.is-open { opacity: 1; pointer-events: auto; }
+.fe-details-left { position: absolute; left: var(--fe-safe-x); top: calc(var(--fe-safe-y) + 40px); width: 760px; color: #f6ecd6; }
+.fe-details-hero { width: 760px; height: 428px; object-fit: cover; border-radius: 8px; border-top: 6px solid var(--fe-sun); display: block; margin-bottom: 22px; }
+.fe-details-body { position: absolute; right: var(--fe-safe-x); top: calc(var(--fe-safe-y) + 40px); bottom: 130px; width: 860px; overflow: hidden; color: #f6ecd6; }
+.fe-details-inner { transition: transform 220ms var(--fe-ease-out); }
+.fe-details-sec { margin-bottom: 30px; }
+.fe-details-h { font: 600 calc(18px * var(--fe-text)) 'Barlow Semi Condensed'; letter-spacing: .22em; color: var(--fe-sun); margin-bottom: 10px; }
+.fe-details-sec p { font: 400 calc(23px * var(--fe-text)) / 1.5 Barlow; margin: 0 0 12px; max-width: 800px; }
+.is-calm .fe-details, .is-calm .fe-details-inner { transition: none; }
