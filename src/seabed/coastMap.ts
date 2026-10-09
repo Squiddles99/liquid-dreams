@@ -8,17 +8,21 @@ import { REEF_GRID } from './wombReef';
 
 /**
  * The inner shelf's depth (m), from the shore ramp's end out to where it rises into the traced 10 m line (spec §3a.2).
- * The survey stops 300–500 m short of the beach, so this is hand-set: 8 m keeps every set up to 12 ft standing until the
- * shore band or a break (Task 4's maps), and a linear rise from it meets the traced 10 m contour at 10 m.
+ * The survey stops 300–500 m short of the beach, so this is hand-set: 9 m keeps a set up to 8 ft standing until the shore
+ * band or a break (Task 4's maps, tools/_coastBreaks.ts); a 10 ft set (5.7 m) breaks on it, as on the real inside on a big
+ * day. A linear rise from it meets the traced 10 m contour at 10 m.
  */
-export const INNER_SHELF_M = 8;
+export const INNER_SHELF_M = 9;
 /** The beach's ramp: SHORE_FLAT_DEPTH_M → 1.5 m over the first 30 m, then up to the shelf by this far off the
- * waterline (m). A steep beach: the shore-break stays within the spec's 60 m shore band. */
-export const SHORE_RAMP_END_M = 80;
+ * waterline (m). A steep beach: up to 8 ft the shore-break stays within the spec's 60 m shore band. */
+export const SHORE_RAMP_END_M = 60;
 /** The Womb's basin (the reef map's 15 m, coastProfile.REEF_SURROUND_DEPTH_M) is open to the sea in front of the reef
  * map and fades into the shelf over this far along the coast beyond the map's north and south edges (m). Inside it the
  * coast is depthBg's profile exactly, so the coast map meets the reef map's edges without a step. */
 export const WOMB_HALO_M = 300;
+/** The Womb's own beach (depthBg's gentle ramp to 15 m by 140 m) eases into the coast's steep one over this far beyond the
+ * reef map's ends (m), inside the Womb's footprint (coastFeatures.BREAK_FOOTPRINTS.womb). */
+export const WOMB_BEACH_HALO_M = 120;
 /** Past the deepest traced contour the bed keeps its last slope, to at most this (m). */
 export const OUTER_CAP_M = 40;
 /** The reef map's footprint in coast cells: every 4 m cell whose 8 × 8 reef cells all lie inside REEF_GRID. */
@@ -39,12 +43,13 @@ function shoreRamp(s: number, plateau: number, rampEnd: number): number {
 }
 
 /** Per row: the traced contours' x and the waterline, read once. */
-interface RowFrame { z: number; shore: number; xs: Float64Array; halo: number }
+interface RowFrame { z: number; shore: number; xs: Float64Array; halo: number; beachHalo: number }
 
 function rowFrame(z: number): RowFrame {
   const xs = new Float64Array(COAST_CONTOURS.length);
   for (let i = 0; i < xs.length; i++) xs[i] = contourXAt(COAST_CONTOURS[i], z);
-  return { z, shore: waterlineX(z), xs, halo: wombHalo(z) };
+  const out = Math.max(0, REEF_Z[0] - z, z - REEF_Z[1]);
+  return { z, shore: waterlineX(z), xs, halo: wombHalo(z), beachHalo: 1 - smoothstep(0, WOMB_BEACH_HALO_M, out) };
 }
 
 /** The traced depth at x on this row: the contours, the linear rise into the 10 m line inshore of it, and the last slope
@@ -72,7 +77,7 @@ function shelfDepth(x: number, f: RowFrame, rampEnd: number): number {
 function openCoastDepth(x: number, f: RowFrame): number {
   const w = f.halo;
   const plateau = INNER_SHELF_M + (REEF_SURROUND_DEPTH_M - INNER_SHELF_M) * w;
-  const rampEnd = SHORE_RAMP_END_M + (140 - SHORE_RAMP_END_M) * w;
+  const rampEnd = SHORE_RAMP_END_M + (140 - SHORE_RAMP_END_M) * f.beachHalo;
   const s = f.shore - x;
   const ramp = shoreRamp(s, plateau, rampEnd);
   if (s < rampEnd) return ramp;
