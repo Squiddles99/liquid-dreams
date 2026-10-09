@@ -1190,7 +1190,7 @@ export class App {
   titleSurf(): void {
     this.sound.gestureNow();
     this.title?.hide();
-    this.frontEnd?.dropInput();
+    this.frontEnd?.resume();
   }
 
   soundOut(): { ctx: BaseAudioContext; out: AudioNode } | null {

@@ -33,6 +33,12 @@ export class SettingsController {
     return this.current;
   }
 
+  /** Re-reads the saved settings: the title and the front end each hold a controller, and the other may have saved since. */
+  reload(): void {
+    this.current = sanitizeFrontSettings(this.storage ? loadJson(this.storage, FRONT_SETTINGS_KEY) : null);
+    this.onApply(this.current);
+  }
+
   /** Save and apply new settings without opening the overlay (the surf map's source switch). */
   set(s: FrontSettings): void {
     this.current = s;

@@ -2,6 +2,7 @@
 import { registerSelfTest } from '../dev/selfTest';
 import { fakeHost, frames, memory, noSound, press } from './frontEnd.selftest';
 import { FrontEnd } from './frontEndPage';
+import { FRONT_SETTINGS_KEY } from './frontSettings';
 import { TitleScreen } from './ui/titleScreen';
 
 registerSelfTest({
@@ -26,7 +27,7 @@ registerSelfTest({
   async run() {
     let fe: FrontEnd | null = null;
     const host = document.createElement('div'); document.body.appendChild(host);
-    const t = new TitleScreen(document.body, { storage: null, soundOut: () => null, electron: false, onSurf: () => fe?.dropInput() });
+    const t = new TitleScreen(document.body, { storage: null, soundOut: () => null, electron: false, onSurf: () => fe?.resume() });
     fe = new FrontEnd(fakeHost(() => t.show()), host, noSound, memory());
     try {
       fe.open();
@@ -44,6 +45,29 @@ registerSelfTest({
       fe.inputHeld = t.isOpen;
       const ok = afterSurf === 'map' && back && t.isOpen;
       return { pass: ok, detail: `after Enter: ${afterSurf}; Esc showed the title ${back}; still open ${t.isOpen}` };
+    } finally { fe.close(); host.remove(); document.querySelector('.fe-title-screen')?.remove(); }
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: a setting changed on the title survives a later change on the map (one settings store)',
+  async run() {
+    let fe: FrontEnd | null = null;
+    const store = memory(), host = document.createElement('div'); document.body.appendChild(host);
+    const t = new TitleScreen(document.body, { storage: store, soundOut: () => null, electron: false, onSurf: () => fe?.resume() });
+    fe = new FrontEnd(fakeHost(() => t.show()), host, noSound, store);
+    try {
+      fe.open();
+      await frames(fe, 5);
+      t.act('down'); t.act('down'); t.act('confirm'); // Settings
+      t.act('right');                                 // text size up
+      t.act('back'); t.act('up'); t.act('up'); t.act('confirm'); // Surf
+      const onTitle = JSON.parse(store.getItem(FRONT_SETTINGS_KEY) ?? '{}').textScale;
+      fe.act('toggle');                               // the map's source switch saves the settings
+      await frames(fe, 3);
+      const after = JSON.parse(store.getItem(FRONT_SETTINGS_KEY) ?? '{}');
+      const ok = onTitle > 1 && after.textScale === onTitle && after.conditionsSource === 'custom';
+      return { pass: ok, detail: `title set text ${onTitle}; after the map's switch: text ${after.textScale}, source ${after.conditionsSource}` };
     } finally { fe.close(); host.remove(); document.querySelector('.fe-title-screen')?.remove(); }
   },
 });

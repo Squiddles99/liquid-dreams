@@ -148,7 +148,7 @@ describe('the front end\'s state machine (dune select spec §3, §4)', () => {
     expect(step(fresh(), 'settings', CTX).events).toEqual([{ kind: 'settings' }]);
   });
   it('saves what it should remember', () => {
-    const s = run(fresh(), 'down', 'right');
+    const s = run({ ...fresh(), source: 'custom' }, 'down', 'right'); // on Custom: the forecast's own tweaks are the session's
     expect(savedOf(s)).toEqual({ setup: s.setup, rider: 'female', boards: {}, outfits: {}, stances: {} });
   });
 });
@@ -165,7 +165,7 @@ describe('the map beat (surf-map hub)', () => {
     expect(r.events).toContainEqual({ kind: 'surfHere', breakId: 'womb' });
   });
   it("Surf here on custom keeps the player's setup", () => {
-    const s = { ...onMap(), source: 'custom' as const, setup: { ...onMap().setup, swellFt: 9 } };
+    const s = { ...onMap(), source: 'custom' as const, customSetup: { ...onMap().setup, swellFt: 9 } };
     expect(step(s, 'confirm', CTX).state.setup.swellFt).toBe(9);
   });
   it('Back on the map asks for the title; Back on Conditions returns to the map', () => {
@@ -192,5 +192,31 @@ describe('the map beat (surf-map hub)', () => {
   });
   it('pointer focus on a pin selects that break', () => {
     expect(focusTo(onMap(), { pin: 'womb' }).state.breakId).toBe('womb');
+  });
+});
+
+describe('review fixes (surf-map hub final review)', () => {
+  it("keeps the player's custom setup when they Surf here on the forecast, and saves it, not the forecast", () => {
+    const saved = onMap().setup;
+    let s = settle(step(onMap(), 'confirm', CTX).state); // forecast → Conditions
+    expect(s.setup).toEqual(todaysSetup(CTX.today));
+    s = settle(step(s, 'back', CTX).state);              // back to the map
+    s = step(s, 'toggle', CTX).state;                    // Custom
+    expect(s.customSetup).toEqual(saved);
+    expect(savedOf(s).setup).toEqual(saved);
+    expect(step(s, 'confirm', CTX).state.setup).toEqual(saved);
+  });
+  it('remembers Conditions edits made on Custom as the custom setup', () => {
+    let s = step(onMap(), 'toggle', CTX).state;
+    s = settle(step(s, 'confirm', CTX).state);
+    s = run(s, 'down', 'right');                         // the month row, one month on
+    expect(s.customSetup).toEqual(s.setup);
+    expect(s.customSetup.month).not.toBe(onMap().setup.month);
+  });
+  it('never scrolls the details page past its end', () => {
+    let s = { ...step(onMap(), 'details', CTX).state, detailsMax: 2 };
+    for (let k = 0; k < 9; k++) s = step(s, 'down', CTX).state;
+    expect(s.detailsScroll).toBe(2);
+    expect(step(s, 'up', CTX).state.detailsScroll).toBe(1);
   });
 });

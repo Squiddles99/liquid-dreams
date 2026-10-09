@@ -63,7 +63,7 @@ export class TitleScreen {
   };
 
   /** Shown again (B on the map): presses made while hidden, the B among them, are dropped. */
-  show(): void { this.input.poll(performance.now()); this.open = true; this.root.style.display = ''; this.render(); }
+  show(): void { this.input.poll(performance.now()); this.settingsCtl.reload(); this.open = true; this.root.style.display = ''; this.render(); }
   hide(): void { this.open = false; this.root.style.display = 'none'; }
 
   act(a: Parameters<typeof stepTitle>[1]): void {
