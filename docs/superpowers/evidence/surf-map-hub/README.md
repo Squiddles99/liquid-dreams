@@ -50,7 +50,7 @@ Other evidence in this folder:
 4. Claims with no game check are written as failed, "no game check yet", so they stay off screen.
 5. The Library tab is on the map but locked: LB/RB shows "Library: coming soon".
 
-The executor's own rulings are in the session's final message and the commit messages.
+The executor's own rulings, task by task, are in `execution-ledger.md`, with the final review's fixes and deferred minors.
 
 ## Known reds (not from this branch)
 
