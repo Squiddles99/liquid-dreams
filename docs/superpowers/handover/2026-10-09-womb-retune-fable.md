@@ -280,3 +280,29 @@ fades; the beginner's assist doesn't reach the curl at all. Size against peel: a
 - `?coast=off` kept (plan 6.3). launch.json entry removed.
 
 Next: your Fun ruling, then Andrew's look; merge is his.
+
+## Fable's closing review (2026-10-10): ready for Andrew's look; merge is his
+
+**Fun at Low: option A, not offered.** The offering means "a day you can surf": the matrix's "breaks" rule AND the ride gate
+at the smallest offered band. `BREAKS.Fun` all false; the three Fun ride cases dropped (keep their traces in the evidence);
+a one-line comment on `BREAKS` saying Fun breaks at Low but a 2 m wave on a 9–10 m/s ledge carries no rider. Option C (a
+slower small-swell leg) is a later segment if Andrew wants small days.
+
+**Spec §6 gates, from the evidence:** 1 datum ✓ (buoy dial, amp ~1.0 at 225°); 2 reef ✓ (tip (−130, 0), 46°, 180 m; Solid
+10.2 soft, Pumping 11.7 barrel, Big 11.9, Huge 12.1; the right closes out); 3 ride ✓ (Solid int/beg/exp 14.3 s, Huge int
+15.1 s, anchor at the tip); 4 select ✓ (Solid–Huge, faces 6 / 7.5–8 / 9.5–10 / 13 ft, three presets moved to Solid); 5 suite:
+52 red of 2050 vs an idle baseline of 65; 17 new bars carried as named merge debt; 6 frames ✗ **riding median 46 → 51.7 ms
+(+12 %, bar ±10 %), p90 53 → 76 ms**: carried, but it is the first item of the follow-up (one FOCUSED profile naming the
+pass that grew: the ribbon is 180 m of hollow ledge now, or the sheet past its end); 7 Andrew's eyes: captures.md.
+
+**Carried, in the order the follow-up segment should take them:** (1) the frame cost; (2) `crestTrace: one curl, one clock`
+9 violations at 6 ft and `reefField: until carries the hold` 8 jumps: the one-curl invariant is by construction, so a
+violation on the new ledge is a real seam (likely where the ledge turns north into the inside), not noise; (3) the sheet's
+far grid folding past the ribbon's run end (the beige quads from the stand): either run the ribbon on into the inside or
+stop the sheet standing a front the ribbon does not draw; (4) the remaining breakingField/crestTrace bars; (5) the 8 ft
+shore closeout 1 km north; (6) `?coast=off` removal after Andrew's look. The two Bombies, the seabed outside the reef map
+and the far foam layer stay on lineup truth's list.
+
+**For Andrew's look:** `captures.md`. From the stand the Womb is now 230 m out and reads small; the long wall at Huge is the
+honest shape of a 12 ft day on this reef. Down the line, Solid is a soft shoulder, Pumping and Huge hollow. If the look
+passes: merge `lineup-truth` into main (Andrew), then the follow-up segment above.
