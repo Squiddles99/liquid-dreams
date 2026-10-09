@@ -1,6 +1,6 @@
 import type { Bathymetry } from '../seabed/bathymetry';
 import { smoothstep } from '../math/smoothstep';
-import type { GridSpec } from '../seabed/wombReef';
+import { type GridSpec, TIP } from '../seabed/wombReef';
 import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_SIZE_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, UNTIL_NEVER, breakingDepth, onsetLevelHeight } from './breaking';
 import { type FarField, computeFarField, farSample } from './coastFarField';
 import { solveWaveField } from './waveField';
@@ -424,8 +424,8 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const seed = coast ? coastSeed(coast, far) : (x: number, z: number) => farSample(far, x, z);
   const { depth, k, tau, dirX, dirZ, amp, hmin, fixed, order } = solveWaveField(req.bed, omega, req.tideM, seed, { refractFloorM: req.refractFloorM });
 
-  // Normalise so the crest reaches the peak at τ = 0.
-  const tauPeak = bilinear(tau, grid, 0, 0);
+  // Normalise so the crest reaches the peak (the reef's take-off corner, TIP) at τ = 0.
+  const tauPeak = bilinear(tau, grid, TIP[0], TIP[1]);
   const tau32 = new Float32Array(n);
   for (let i = 0; i < n; i++) tau32[i] = tau[i] - tauPeak;
   // One clock for the reef, the coast and the far field (the seed's τ was already on the far field's, offset or not).

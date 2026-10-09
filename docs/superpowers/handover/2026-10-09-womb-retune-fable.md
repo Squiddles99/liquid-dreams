@@ -100,3 +100,42 @@ arrival −18.4°; at 247° −7.8°, amp 1.33; at 202° −22.6°, amp 0.57. Th
 
 **RULED (Andrew, in chat, 2026-10-09): move the take-off seaward.** Task 2b below is the instruction; then Tasks 3–6 run as
 written on the new reef.
+
+## Task 2b ruling wanted (Opus, 2026-10-09): no row passes; one near-pass
+
+Code (no game change yet: `TIP` stays [0, 0]): `ReefParams.tip`, `TIP`, `LEFT_BEARING_DEG`, `leftLedgeFrom`, `rightLedgeFrom`
+(wombReef.ts); the warp's 15 m taper and the sand pockets follow the tip (bathymetry.ts); the reef field's τ is normalised
+at `TIP` (reefField.ts). Sweep: `tools/_reefSweep.ts --tip [--bearings= --tips= --lens=]`, coast map rebuilt per row, times
+on the tip's clock. Evidence: `evidence/womb-retune/sweep-tip-{0,1,2}.txt` (the plan's 9 rows at 42°), `sweep-tip-b-*.txt`
+(follow-up: bearing 44/46/48 at tip −100/−130, 180 m), `sweep-tip-leave.txt` (the leave measure re-run).
+
+**What the move fixed:** at every tip, Pumping breaks within ~4 m of the ledge along its whole length (150, 180 and 210 m),
+the beach ramp never takes over (Fable's finding holds: the left now runs out of ledge, not water). Big/Huge break a steady
+4 / 7 m out on the face along all of it. Hollow: Solid 0.48–0.56 (smallest, < 0.6), Pumping 0.86–0.90, Big/Huge 1.00. The
+right closes out (r0/r1 −22…−24) at every row. Fun (2 ft-ish) is never offered at −100/−130: it breaks 10–60 m inshore on
+the shelf (at −160 it is offered, peel 9–10, hollow 0.72–0.77, which fails "smallest < 0.6" and makes Solid a mid at 0.5).
+The ledge length barely moves anything (peel ±0.3): 180 m is the middle.
+
+**What fails:** the peel bar 9–12. At 42° Pumping 12.0–12.3, Big 12.3–12.5, Huge 12.4–12.6 (every row). Turning the ledge
+further from the crest slows it but flattens Pumping:
+
+| tip x | bearing | Solid peel/h | Pumping peel/h | Big peel | Huge peel | 202° Pump/Big | 247° Pump/Big | verdict |
+|---|---|---|---|---|---|---|---|---|
+| −100 | 42 | 11.9 / 0.49 | 12.2 / 0.86 | 12.4 | 12.5 | 9.5 (64/72) / 11.0 | 14.1 / 14.3 | Pump, Big, Huge peel |
+| −130 | 42 | 11.9 / 0.54 | 12.2 / 0.89 | 12.4 | 12.5 | 10.0 / 11.3 | 14.2 / 14.3 | Pump, Big, Huge peel |
+| −100 | 44 | 11.6 / 0.51 | 11.9 / 0.83 | 12.2 | 12.3 | 8.8 (60/72) / 10.6 | 13.8 / 13.9 | Big, Huge peel |
+| −130 | 44 | 11.7 / 0.55 | 12.0 / 0.88 | 12.2 | 12.3 | 9.3 / 10.9 | 13.8 / 13.9 | Big, Huge peel |
+| −100 | 46 | 11.3 / 0.55 | 11.8 / 0.79 | 11.9 | 12.2 | 8.2 (57/72) / 9.8 | 13.4 / 13.6 | Huge peel, Pump hollow |
+| **−130** | **46** | 11.3 / 0.56 | 11.7 / 0.81 | 11.9 | **12.1** | 8.7 (58/72) / 10.1 | 13.5 / 13.6 | **Huge peel only (0.1 over)** |
+| −100 | 48 | 11.0 / 0.54 | 11.5 / 0.75 | 11.7 | 11.9 | 8.6 / 8.7 | 13.1 / 13.3 | Pump hollow |
+| −130 | 48 | 10.8 / 0.51 | 11.5 / 0.74 | 11.7 | 11.9 | 8.5 / 8.8 (65/72) | 13.1 / 13.3 | Pump hollow |
+
+(180 m rows; all four bands Solid–Huge offered in each; 247° runs 13–14 m/s in every row, 202° Pumping does not fully break
+at −100.)
+
+**Opus's recommendation:** tip (−130, 0), 46°, 180 m (to (−1, −125), then north): the only near-pass, Huge 12.1 against 12.
+At −100 the same bearing loses Pumping's hollow (0.79) and 202° Pumping breaks only 57/72. Alternatives: accept 42°/44° at
+−100 (smallest move, peel ~12.2–12.5 at the big bands) or read the bar as "≤ 12.5 at Big/Huge".
+
+Questions: (1) the row; (2) Huge at 12.1 (or the bar); (3) Fun not offered at −100/−130 (the select list then starts at
+Solid). **STOPPED** before Task 2b step 3 (no constant changed).

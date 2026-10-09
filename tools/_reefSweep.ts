@@ -6,7 +6,12 @@
 // select rule holds (first leg 28/28-of-its-points broken, start ≤ 2.0 s, peel 8–13 m/s). PASS = every §3 target met.
 // The coast field is solved once per swell over today's reef and reused for every row (`--rebuild-coast` solves it per
 // row: the check that reuse moves nothing that matters).
-// Run: npx node tools/_reefSweep.ts <out.txt> [--shard=i/n] [--rows=0,5] [--bands=Fun,Solid,...] [--lever3] [--lever4] [--rebuild-coast]
+// Task 2b (--tip): the take-off moves seaward (Andrew's ruling 2026-10-09). Rows: tip x {-100, -130, -160} (z 0) x the
+// left's one 42 deg ledge {150, 180, 210} m, then due north (the inside); the right is SOUTH_LEDGE moved to the tip; ledge
+// 3.5, face 15/15, shelf 4. The coast map is rebuilt per row (the reef moves inside the coast's halo). Times are on the
+// tip's clock (tau at the tip subtracted). Per band: the first leg, where its first break leaves the ledge by > 5 m (the
+// inside takes over), the inside's peel, the right's two legs; 202/247 deg first-leg peel at Pumping and Big.
+// Run: npx node tools/_reefSweep.ts <out.txt> [--shard=i/n] [--rows=0,5] [--bands=Fun,Solid,...] [--lever3] [--lever4] [--rebuild-coast] [--tip]
 import { writeFileSync } from 'node:fs';
 import { runnerImport } from 'vite';
 const imp = async <T>(p: string) => (await runnerImport<T>(p)).module;
@@ -15,10 +20,12 @@ const { REFRACT_FLOOR_M, computeReefField } = await imp<typeof import('../src/br
 const { computeCoastField } = await imp<typeof import('../src/breaker/coastField')>('/src/breaker/coastField.ts');
 const { DEFAULT_BREAK_PARAMS: P } = await imp<typeof import('../src/breaker/breaking')>('/src/breaker/breaking.ts');
 const { setWaveHeight, leftStretches, firstBreakDepth } = await imp<typeof import('../src/breaker/reefReport')>('/src/breaker/reefReport.ts');
-const { DEFAULT_REEF_PARAMS, NORTH_LEDGE, SOUTH_LEDGE } = await imp<typeof import('../src/seabed/wombReef')>('/src/seabed/wombReef.ts');
+const { DEFAULT_REEF_PARAMS, NORTH_LEDGE, SOUTH_LEDGE, leftLedgeFrom, rightLedgeFrom } = await imp<typeof import('../src/seabed/wombReef')>('/src/seabed/wombReef.ts');
 const { DEFAULT_COAST_PARAMS } = await imp<typeof import('../src/seabed/coastFeatures')>('/src/seabed/coastFeatures.ts');
 const { buildCoastMap } = await imp<typeof import('../src/seabed/coastMap')>('/src/seabed/coastMap.ts');
 const { SWELL_BANDS } = await imp<typeof import('../src/frontend/sessionSetup')>('/src/frontend/sessionSetup.ts');
+const { sampleField, sampleOnset } = await imp<typeof import('../src/breaker/reefField')>('/src/breaker/reefField.ts');
+const { onsetTime } = await imp<typeof import('../src/breaker/breaking')>('/src/breaker/breaking.ts');
 
 type Pt = readonly [number, number];
 const args = process.argv.slice(2);
@@ -34,6 +41,88 @@ function ledge(b0: number, b1: number): Pt[] {
   const r = Math.PI / 180, p1: Pt = [L0 * Math.sin(b0 * r), -L0 * Math.cos(b0 * r)];
   const p2: Pt = [p1[0] + L1 * Math.sin(b1 * r), p1[1] - L1 * Math.cos(b1 * r)];
   return [[0, 0], p1, p2, [p2[0], -450]];
+}
+
+if (flag('tip')) {
+  type F = ReturnType<typeof computeReefField>;
+  const rowsT: { id: number; tipX: number; lenM: number; bearing: number }[] = [];
+  const list = (k: string, d: number[]) => opt(k)?.split(',').map(Number) ?? d;
+  // --bearings (womb-retune Task 2b follow-up rows): the left turned further from the crest, to slow its peel.
+  for (const bearing of list('bearings', [42])) for (const tipX of list('tips', [-100, -130, -160])) for (const lenM of list('lens', [150, 180, 210])) rowsT.push({ id: rowsT.length, tipX, lenM, bearing });
+  let pickT = rowsT;
+  if (opt('rows')) { const ids = opt('rows')!.split(',').map(Number); pickT = rowsT.filter((r) => ids.includes(r.id)); }
+  if (opt('shard')) { const [i, n] = opt('shard')!.split('/').map(Number); pickT = pickT.filter((_, k) => k % n === i); }
+  const f1 = (v: number | undefined | null, d = 1) => (v === undefined || v === null || !Number.isFinite(v) ? '  –  ' : v.toFixed(d).padStart(5));
+  /** Along the left's first leg every 2.5 m: the first broken point on its ray (120 m seaward to 60 m inshore), d m along the
+   * ray from the ledge (negative: seaward). `leave`: where the break leaves the ledge for good (> 5 m off it to the ledge's
+   * end: the inside or the beach ramp takes over). */
+  const leaveAt = (f: F, H: number, a: Pt, b: Pt): { leave: number; len: number; offs: number[] } => {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]), offs: number[] = [];
+    let leave = NaN;
+    for (let s = 0; s < L; s += 2.5) {
+      let x = a[0] + ((b[0] - a[0]) * s) / L, z = a[1] + ((b[1] - a[1]) * s) / L, hit = NaN;
+      for (let d = 0; d < 120; d++) { const sf = sampleField(f, x, z); x -= sf.dirX; z -= sf.dirZ; }
+      for (let d = -120; d <= 60 && Number.isNaN(hit); d += 0.5) {
+        const r = sampleOnset(f, x, z), sf = sampleField(f, x, z);
+        if (r && onsetTime(r, 0, H, P) !== null) hit = d;
+        x += sf.dirX * 0.5; z += sf.dirZ * 0.5;
+      }
+      offs.push(hit);
+    }
+    // The inside takes over for good: the start of the last run of points > 5 m off the ledge that reaches the ledge's
+    // end (NaN: the ledge's last point still breaks on it). Off-ledge runs that return to the ledge (the corner) don't count.
+    let i = offs.length;
+    while (i > 0 && !(Math.abs(offs[i - 1]) <= 5)) i--;
+    if (i < offs.length) leave = i * 2.5;
+    return { leave, len: L, offs };
+  };
+  const lines: string[] = [];
+  const out = args.find((a) => !a.startsWith('--'));
+  for (const r of pickT) {
+    const t0 = Date.now();
+    const tip: Pt = [r.tipX, 0], north = leftLedgeFrom(tip, r.lenM, r.bearing), south = rightLedgeFrom(tip);
+    const params = { ...DEFAULT_REEF_PARAMS, tip, northLedge: north, southLedge: south };
+    const bed = downsample(buildBathymetry(params), 2), coast = buildCoastMap(bed, DEFAULT_COAST_PARAMS);
+    const field = (periodS: number, fromDeg: number) => computeReefField({ bed, periodS, fromDeg, tideM: 0, smooth: true, refractFloorM: REFRACT_FLOOR_M, coast });
+    const per: { label: string; offered: boolean; peel: number; hollow: number; leave: number; len: number; rightPeel: number[] }[] = [];
+    const body: string[] = [];
+    let tipDepth = NaN;
+    for (const b of bands) {
+      const f = field(b.periodS, 225), H = setWaveHeight(b.ft), tTip = sampleField(f, tip[0], tip[1]).tau;
+      tipDepth = sampleField(f, tip[0] - 2, tip[1]).depth;
+      const st = leftStretches(f, H, north, { first: [0], inside: [1] }, P);
+      const rt = leftStretches(f, H, south, { r0: [0], r1: [1] }, P);
+      const lv = leaveAt(f, H, north[0], north[1]);
+      const a = st.first, start = a ? a.start - tTip : NaN;
+      const offered = !!a && a.broken === a.of && start <= 2.0 && a.peel >= 8 && a.peel <= 13;
+      per.push({ label: b.label, offered, peel: a?.peel ?? NaN, hollow: a?.hollow ?? NaN, leave: lv.leave, len: lv.len, rightPeel: [rt.r0?.peel ?? NaN, rt.r1?.peel ?? NaN] });
+      const offs = lv.offs.filter((_, i) => i % 8 === 0).map((d) => (Number.isNaN(d) ? '–' : d.toFixed(0))).join(' ');
+      body.push(`   ${b.label.padEnd(8)} ${offered ? 'OFFER' : '  -  '} | first ${a ? `${a.broken}/${a.of}` : ' – '} start ${f1(start)} peel ${f1(a?.peel)} hollow ${f1(a?.hollow, 2)} | leaves ledge at ${f1(lv.leave, 0)} of ${lv.len.toFixed(0)} m (off every 20 m: ${offs}) | inside ${f1(st.inside?.peel)} h ${f1(st.inside?.hollow, 2)} | right r0 ${f1(rt.r0?.peel)} r1 ${f1(rt.r1?.peel)}`);
+    }
+    const off = per.filter((p) => p.offered);
+    const inner = off.slice(1, -1), mids = inner.length > 2 ? inner.slice(Math.floor((inner.length - 2) / 2), Math.floor((inner.length - 2) / 2) + 2) : off.length >= 3 ? inner : off.slice(-2);
+    const fails: string[] = [];
+    if (off.length === 0) fails.push('nothing offered');
+    for (const p of off) if (!(p.peel >= 9 && p.peel <= 12)) fails.push(`${p.label} peel`);
+    for (const p of mids) if (!(p.hollow >= 0.8)) fails.push(`${p.label} hollow`);
+    if (off[0] && !(off[0].hollow < 0.6)) fails.push(`${off[0].label} (smallest) hollow ≥ 0.6`);
+    const pump = per.find((p) => p.label === 'Pumping');
+    if (pump && Number.isFinite(pump.leave) && pump.leave < pump.len - 20) fails.push(`Pumping leaves the ledge at ${pump.leave.toFixed(0)} m`);
+    for (const p of off) if (!p.rightPeel.every((v) => !Number.isFinite(v) || v > 18 || v < 0)) fails.push(`${p.label} right peels`);
+    const outer: string[] = [];
+    for (const label of ['Pumping', 'Big']) for (const fromDeg of [202, 247]) {
+      const b = SWELL_BANDS.find((x) => x.label === label)!;
+      const st = leftStretches(field(b.periodS, fromDeg), setWaveHeight(b.ft), north, { first: [0] }, P);
+      outer.push(`${label} ${fromDeg}° ${f1(st.first?.peel)} (${st.first ? `${st.first.broken}/${st.first.of}` : '–'})`);
+    }
+    const head = `row ${r.id} | tip (${r.tipX}, 0), ${94 - r.tipX} m off the beach, ${tipDepth.toFixed(1)} m 2 m seaward | left ${r.lenM} m at ${r.bearing}° to (${north[1][0].toFixed(0)}, ${north[1][1].toFixed(0)}), then north`;
+    const verdict = fails.length ? `fails: ${fails.join(', ')}` : 'PASS';
+    const block = [head, ...body, `   offered [${off.map((p) => p.label).join(', ')}] mids [${mids.map((p) => p.label).join(', ')}] | outer first-leg peel: ${outer.join('; ')}`, `   => ${verdict}   (${((Date.now() - t0) / 1000).toFixed(0)} s)`];
+    console.log(block.join('\n'));
+    lines.push(...block);
+    if (out) writeFileSync(out, lines.join('\n') + '\n');
+  }
+  process.exit(0);
 }
 
 interface Row { id: number; b0: number; b1: number; ledgeDepthM: number; faceWidthM: number; faceBaseDepthM: number; shelfDepthM: number; today?: boolean }
