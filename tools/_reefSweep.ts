@@ -40,12 +40,13 @@ interface Row { id: number; b0: number; b1: number; ledgeDepthM: number; faceWid
 const rows: Row[] = [];
 const base = { faceWidthM: DEFAULT_REEF_PARAMS.faceWidthM, faceBaseDepthM: DEFAULT_REEF_PARAMS.faceBaseDepthM, shelfDepthM: DEFAULT_REEF_PARAMS.shelfDepthM };
 rows.push({ id: 0, b0: bearing(NORTH_LEDGE[0], NORTH_LEDGE[1]), b1: bearing(NORTH_LEDGE[1], NORTH_LEDGE[2]), ledgeDepthM: DEFAULT_REEF_PARAMS.ledgeDepthM, ...base, today: true });
-for (const b0 of [24, 30, 34, 38, 42]) for (const d1 of [9, 5]) for (const ledgeDepthM of [3.5, 3.0, 2.5]) rows.push({ id: rows.length, b0, b1: b0 - d1, ledgeDepthM, ...base });
-if (flag('lever3')) for (const b0 of [34, 38, 42]) for (const faceWidthM of [15, 10]) for (const faceBaseDepthM of [15, 10]) {
-  if (faceWidthM === 15 && faceBaseDepthM === 15) continue;
-  rows.push({ id: rows.length, b0, b1: b0 - 5, ledgeDepthM: 3.0, ...base, faceWidthM, faceBaseDepthM });
-}
-if (flag('lever4')) for (const b0 of [34, 38, 42]) for (const shelfDepthM of [4, 5]) rows.push({ id: rows.length, b0, b1: b0 - 5, ledgeDepthM: 3.0, ...base, shelfDepthM });
+for (const b0 of [24, 30, 34, 38, 42]) for (const d1 of [20, 15, 9, 5]) for (const ledgeDepthM of [3.5, 3.0, 2.5]) rows.push({ id: rows.length, b0, b1: b0 - d1, ledgeDepthM, ...base });
+// Follow-up rows (Task 2.2 rulings): at leg 0 42° (the first leg's best) and today's 3.5 m ledge, leg 1 turned sharper
+// (lever 1: the second leg ran 35–80 m/s at every b0 − 5…20), the face (lever 3) and the shelf (lever 4) at leg 1 22°.
+if (flag('lever3')) for (const [faceWidthM, faceBaseDepthM] of [[10, 15], [15, 10], [10, 10]]) rows.push({ id: rows.length, b0: 42, b1: 22, ledgeDepthM: 3.5, ...base, faceWidthM, faceBaseDepthM });
+if (flag('lever4')) for (const shelfDepthM of [5, 6]) rows.push({ id: rows.length, b0: 42, b1: 22, ledgeDepthM: 3.5, ...base, shelfDepthM });
+if (flag('turn')) for (const b1 of [12, 7, 2]) rows.push({ id: rows.length, b0: 42, b1, ledgeDepthM: 3.5, ...base });
+if (flag('turn')) for (const b1 of [12, 2]) rows.push({ id: rows.length, b0: 42, b1, ledgeDepthM: 3.5, ...base, shelfDepthM: 5 });
 
 let pick = rows;
 if (opt('rows')) { const ids = opt('rows')!.split(',').map(Number); pick = rows.filter((r) => ids.includes(r.id)); }
