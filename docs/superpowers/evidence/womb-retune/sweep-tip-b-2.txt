@@ -1,0 +1,16 @@
+row 2 | tip (-100, 0), 194 m off the beach, 4.1 m 2 m seaward | left 180 m at 46° to (29, -125), then north
+   Fun        -   | first 67/72 start   2.6 peel   9.3 hollow  0.67 | leaves ledge at     0 of 180 m (off every 20 m: 21 10 28 22 49 32 23 – 47) | inside  26.0 h  0.95 | right r0 -15.5 r1 -13.1
+   Solid    OFFER | first 72/72 start   0.1 peel  11.3 hollow  0.55 | leaves ledge at   –   of 180 m (off every 20 m: 2 -2 2 7 4 6 8 5 6) | inside  26.4 h  0.49 | right r0 -23.2 r1 -23.1
+   Pumping  OFFER | first 72/72 start  -0.2 peel  11.8 hollow  0.79 | leaves ledge at   –   of 180 m (off every 20 m: -2 -5 -2 -1 -1 -1 0 -1 -1) | inside  27.1 h  0.94 | right r0 -22.1 r1 -23.6
+   Big      OFFER | first 72/72 start  -0.4 peel  11.9 hollow  1.00 | leaves ledge at   –   of 180 m (off every 20 m: -4 -7 -4 -4 -4 -4 -4 -4 -4) | inside  27.6 h  1.00 | right r0 -22.5 r1 -23.7
+   Huge     OFFER | first 72/72 start  -0.6 peel  12.2 hollow  1.00 | leaves ledge at     0 of 180 m (off every 20 m: -6 -10 -7 -7 -7 -7 -7 -7 -7) | inside  28.0 h  1.00 | right r0 -22.2 r1 -23.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   8.2 (57/72); Pumping 247°  13.4 (72/72); Big 202°   9.8 (72/72); Big 247°  13.6 (72/72)
+   => fails: Huge peel, Pumping hollow   (165 s)
+row 5 | tip (-130, 0), 224 m off the beach, 4.1 m 2 m seaward | left 180 m at 48° to (4, -120), then north
+   Fun        -   | first 58/72 start   2.1 peel   9.1 hollow  0.58 | leaves ledge at     0 of 180 m (off every 20 m: 23 8 24 36 41 59 46 – 38) | inside  22.0 h  0.82 | right r0 -11.6 r1 -15.1
+   Solid    OFFER | first 72/72 start   0.1 peel  10.8 hollow  0.51 | leaves ledge at    78 of 180 m (off every 20 m: 2 -3 2 8 7 8 7 10 9) | inside  23.2 h  0.49 | right r0 -22.3 r1 -23.6
+   Pumping  OFFER | first 72/72 start  -0.2 peel  11.5 hollow  0.74 | leaves ledge at   –   of 180 m (off every 20 m: -2 -6 -2 0 0 1 0 1 1) | inside  25.0 h  0.92 | right r0 -22.2 r1 -23.6
+   Big      OFFER | first 72/72 start  -0.4 peel  11.7 hollow  1.00 | leaves ledge at   –   of 180 m (off every 20 m: -4 -8 -4 -4 -4 -4 -4 -4 -4) | inside  26.1 h  1.00 | right r0 -22.2 r1 -23.5
+   Huge     OFFER | first 72/72 start  -0.6 peel  11.9 hollow  1.00 | leaves ledge at     0 of 180 m (off every 20 m: -6 -11 -7 -7 -7 -7 -7 -7 -7) | inside  27.1 h  1.00 | right r0 -22.1 r1 -23.4
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   8.5 (53/72); Pumping 247°  13.1 (72/72); Big 202°   8.8 (65/72); Big 247°  13.3 (72/72)
+   => fails: Pumping hollow   (145 s)

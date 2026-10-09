@@ -5,6 +5,7 @@ import { type SectionNumbers, WALL_LEAD_S, curlWeight, sectionNumbers } from './
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
+import { TIP } from '../seabed/wombReef';
 import { type ActiveWave, TAPER_NEAR_M, type WaveContext, localHeight, phaseXi } from './setWaveModel';
 
 /**
@@ -207,7 +208,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = toCrest(field, w, t, ctx, project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS));
-      if (!(Math.abs(next.xi) < CREST_TOLERANCE_S) || !inGrid(field, next.x, next.z) || Math.hypot(next.x, next.z) > TAPER_NEAR_M) break;
+      if (!(Math.abs(next.xi) < CREST_TOLERANCE_S) || !inGrid(field, next.x, next.z) || Math.hypot(next.x - TIP[0], next.z - TIP[1]) > TAPER_NEAR_M) break;
       arc += sign * Math.hypot(next.x - x, next.z - z);
       ({ x, z, f } = next);
       below = breakingRatio(w.heightM * f.amp, f.hminBreak, p) < p.ribbonOnset && !(timeUntilOnset(field, w, x, z, p) < WALL_LEAD_S) ? below + ds : 0;

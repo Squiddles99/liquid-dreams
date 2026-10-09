@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { TIP } from '../seabed/wombReef';
 import { DEFAULT_SURFER_PARAMS, PADDLE_CYCLE_S, POPUP_S, SURFER_PARAM_RANGES, balanceApplies, carrySideOf, landedAt, normalizeSurferParams, playPhase, sanitizeSurferParams } from './surferParams';
 
 describe('surfer params', () => {
   it('start off, on the female surfer sitting on the thruster in the lineup', () => {
-    expect(DEFAULT_SURFER_PARAMS).toMatchObject({ enabled: false, preset: 'female', board: 'thruster', pose: 'sit', outfit: 'season', x: -25, z: 45 });
+    expect(DEFAULT_SURFER_PARAMS).toMatchObject({ enabled: false, preset: 'female', board: 'thruster', pose: 'sit', outfit: 'season', x: TIP[0] - 25, z: TIP[1] + 45 });
+    // womb-retune: the lineup moved with the reef's tip (TIP (−130, 0)); the spot is the same 25 m out, 45 m south of it.
   });
   it('repair a pose that doesn’t exist on the board, and an outfit from the other preset (Review Focus 3)', () => {
     const p = { ...DEFAULT_SURFER_PARAMS, board: 'thruster' as const, pose: 'dropKnee' as const, preset: 'male' as const, outfit: 'bikini' as const };

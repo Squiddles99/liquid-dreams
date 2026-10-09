@@ -1,0 +1,15 @@
+boot 1 (coast off): first field 45350 ms after load (coast false); [field] coast map 0 ms, coast eikonal 0 ms, reef 41694 ms
+boot 2 (coast on ): first field 42612 ms after load (coast true); [field] coast map 175 ms, coast eikonal 5400 ms, reef 33876 ms
+boot 3 (coast off): first field 29949 ms after load (coast false); [field] coast map 0 ms, coast eikonal 0 ms, reef 26735 ms
+boot 4 (coast on ): first field 56719 ms after load (coast true); [field] coast map 359 ms, coast eikonal 5700 ms, reef 32955 ms
+boot 5 (coast off): first field 50051 ms after load (coast false); [field] coast map 0 ms, coast eikonal 0 ms, reef 41608 ms
+boot 6 (coast on ): first field 54580 ms after load (coast true); [field] coast map 367 ms, coast eikonal 5731 ms, reef 30958 ms
+
+Summary (Opus's machine, 2026-10-09; tools/_fieldCost.mjs, six fresh boots into the water alternating ?coast=off,
+dev server on 5173, nothing else running):
+- coast map build 175-367 ms; coast eikonal 5.4-5.7 s (two 4 m solves: the real coast and the 1-D-profile reference
+  that corrects the 4 m solve alongside the Womb; each ~0.6 s in Node unloaded, ~2.7 s in the boot's worker).
+- the reef field itself 27-42 s in the same boots, coast on or off (unchanged code; it dominates the first field).
+- added at boot: +5.6 to +6.1 s on this machine. Spec gate: <= +4 s on Andrew's machine; not measured there.
+  Both coast solves are cached in the worker while the swell, tide and coast dials hold (a peel or curl change pays
+  only the reef). Single node run (vitest, unloaded): coast map 0.1 s, coast field 1.2 s.

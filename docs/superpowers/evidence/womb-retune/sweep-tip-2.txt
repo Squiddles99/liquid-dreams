@@ -1,0 +1,24 @@
+row 2 | tip (-100, 0), 194 m off the beach, 4.1 m 2 m seaward | left 210 m at 42° to (41, -156), then north
+   Fun        -   | first 84/84 start   2.8 peel  10.9 hollow  0.84 | leaves ledge at     0 of 210 m (off every 20 m: 21 15 29 18 48 35 31 32 19 40 31) | inside  27.8 h  1.00 | right r0 -16.0 r1 -13.1
+   Solid    OFFER | first 84/84 start   0.1 peel  11.9 hollow  0.49 | leaves ledge at   195 of 210 m (off every 20 m: 2 -1 2 5 3 4 5 4 4 3 6) | inside  27.1 h  0.66 | right r0 -23.2 r1 -23.1
+   Pumping  OFFER | first 84/84 start  -0.2 peel  12.3 hollow  0.87 | leaves ledge at   –   of 210 m (off every 20 m: -2 -4 -2 -1 -2 -2 -1 -1 -1 -2 -1) | inside  27.6 h  1.00 | right r0 -22.1 r1 -23.6
+   Big      OFFER | first 84/84 start  -0.4 peel  12.4 hollow  1.00 | leaves ledge at     3 of 210 m (off every 20 m: -4 -6 -5 -4 -5 -4 -5 -4 -5 -5 -5) | inside  28.3 h  1.00 | right r0 -22.5 r1 -23.7
+   Huge     OFFER | first 84/84 start  -0.6 peel  12.6 hollow  1.00 | leaves ledge at     0 of 210 m (off every 20 m: -6 -9 -7 -7 -7 -7 -7 -7 -7 -7 -8) | inside  28.7 h  1.00 | right r0 -22.2 r1 -23.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°  10.0 (76/84); Pumping 247°  14.2 (84/84); Big 202°  11.2 (84/84); Big 247°  14.3 (84/84)
+   => fails: Pumping peel, Big peel, Huge peel   (174 s)
+row 5 | tip (-130, 0), 224 m off the beach, 4.1 m 2 m seaward | left 210 m at 42° to (11, -156), then north
+   Fun        -   | first 84/84 start   2.3 peel  11.6 hollow  0.75 | leaves ledge at     0 of 210 m (off every 20 m: 24 12 28 24 34 22 16 42 28 21 22) | inside  22.0 h  0.73 | right r0 -11.8 r1 -15.1
+   Solid    OFFER | first 84/84 start   0.1 peel  12.0 hollow  0.51 | leaves ledge at   –   of 210 m (off every 20 m: 2 -2 2 5 4 5 3 3 4 4 4) | inside  23.7 h  0.50 | right r0 -22.3 r1 -23.6
+   Pumping  OFFER | first 84/84 start  -0.2 peel  12.3 hollow  0.86 | leaves ledge at     8 of 210 m (off every 20 m: -2 -4 -2 -1 -2 -1 -1 -2 -2 -1 -2) | inside  25.3 h  0.90 | right r0 -22.2 r1 -23.6
+   Big      OFFER | first 84/84 start  -0.4 peel  12.5 hollow  1.00 | leaves ledge at     3 of 210 m (off every 20 m: -4 -6 -5 -4 -5 -4 -5 -4 -5 -4 -5) | inside  26.5 h  1.00 | right r0 -22.2 r1 -23.5
+   Huge     OFFER | first 84/84 start  -0.6 peel  12.5 hollow  1.00 | leaves ledge at     0 of 210 m (off every 20 m: -6 -9 -7 -7 -7 -7 -7 -7 -7 -7 -7) | inside  27.5 h  1.00 | right r0 -22.1 r1 -23.4
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°  10.5 (84/84); Pumping 247°  14.2 (84/84); Big 202°  11.5 (84/84); Big 247°  14.3 (84/84)
+   => fails: Solid peel, Pumping peel, Big peel, Huge peel, Pumping leaves the ledge at 8 m   (156 s)
+row 8 | tip (-160, 0), 254 m off the beach, 4.1 m 2 m seaward | left 210 m at 42° to (-19, -156), then north
+   Fun      OFFER | first 84/84 start   1.5 peel  10.0 hollow  0.72 | leaves ledge at     0 of 210 m (off every 20 m: 16 7 20 25 17 43 27 32 55 39 20) | inside  20.7 h  0.60 | right r0 -90.7 r1 -10.9
+   Solid    OFFER | first 84/84 start   0.1 peel  12.0 hollow  0.52 | leaves ledge at   –   of 210 m (off every 20 m: 1 -2 2 4 3 4 4 4 4 4 5) | inside  18.7 h  0.49 | right r0 -21.8 r1 -23.8
+   Pumping  OFFER | first 84/84 start  -0.3 peel  12.3 hollow  0.86 | leaves ledge at     8 of 210 m (off every 20 m: -2 -4 -2 -1 -1 -2 -1 -1 -1 -1 -1) | inside  20.7 h  0.91 | right r0 -21.9 r1 -23.3
+   Big      OFFER | first 84/84 start  -0.4 peel  12.5 hollow  1.00 | leaves ledge at     3 of 210 m (off every 20 m: -4 -6 -5 -4 -5 -4 -5 -4 -4 -4 -4) | inside  22.3 h  1.00 | right r0 -21.7 r1 -23.2
+   Huge     OFFER | first 84/84 start  -0.6 peel  12.5 hollow  1.00 | leaves ledge at     0 of 210 m (off every 20 m: -6 -9 -7 -7 -7 -7 -7 -7 -7 -7 -7) | inside  24.2 h  1.00 | right r0 -22.3 r1 -23.3
+   offered [Fun, Solid, Pumping, Big, Huge] mids [Solid, Pumping] | outer first-leg peel: Pumping 202°   9.7 (84/84); Pumping 247°  14.1 (84/84); Big 202°  11.4 (84/84); Big 247°  14.3 (84/84)
+   => fails: Pumping peel, Big peel, Huge peel, Solid hollow, Fun (smallest) hollow ≥ 0.6, Pumping leaves the ledge at 8 m   (157 s)

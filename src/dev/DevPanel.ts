@@ -12,6 +12,7 @@ import type { ShallowSwellParams } from '../ocean/waterSurface';
 import type { PictureParams } from '../render/PicturePipeline';
 import type { LookoutLight } from '../frontend/backdrop/backdropLight';
 import type { ReefParams } from '../seabed/wombReef';
+import type { CoastParams } from '../seabed/coastFeatures';
 import type { AtmosphereParams } from '../sky/atmosphereParams';
 import type { SetParams } from '../swell/sets';
 import { FOAM_PARAM_RANGES, type FoamParams } from '../whitewater/foamStep';
@@ -39,6 +40,8 @@ export interface DevPanelModel {
   frameLimiter: { maxFps: number };
   sets: SetParams;
   reef: ReefParams;
+  /** The coast's breaks (lineup truth spec §3g). */
+  coast: CoastParams;
   shallow: ShallowSwellParams;
   overlays: DebugOverlays;
   breaking: BreakParams;
@@ -77,6 +80,8 @@ export interface DevPanelHandlers {
   onTogglePause(): void;
   onSets(): void;
   onReef(): void;
+  /** A Coast dial moved: the worker rebuilds the coast map and re-solves (debounced). */
+  onCoast(): void;
   onShallow(): void;
   onOverlays(): void;
   onCallSet(): void;
@@ -498,6 +503,13 @@ export class DevPanel {
     for (const [key, opts] of Object.entries(OVERLAY_BINDINGS) as [keyof DebugOverlays, { label: string }][]) {
       reef.addBinding(m.overlays, key, opts).on('change', h.onOverlays);
     }
+
+    const coast = this.pane.addFolder({ title: 'Coast', expanded: false });
+    coast.addBinding(m.coast, 'lefthandersLedgeM', { label: 'Lefthanders ledge (m)', min: 3, max: 8, step: 0.1 }).on('change', h.onCoast);
+    coast.addBinding(m.coast, 'bombieTopM', { label: 'Bombie top (m)', min: 3, max: 8, step: 0.1 }).on('change', h.onCoast);
+    coast.addBinding(m.coast, 'bombieRadiusM', { label: 'Bombie radius (m)', min: 20, max: 150, step: 5 }).on('change', h.onCoast);
+    coast.addBinding(m.coast, 'ellensbrookBarM', { label: 'Ellensbrook bar (m)', min: 1, max: 3, step: 0.1 }).on('change', h.onCoast);
+    coast.addBinding(m.coast, 'ellensbrookBarOffM', { label: 'Ellensbrook bar offshore (m)', min: 40, max: 160, step: 5 }).on('change', h.onCoast);
 
     const ocean = this.pane.addFolder({ title: 'Ocean', expanded: false });
     ocean.addBinding(m.spectrum, 'offshoreFetchM', { label: 'offshore fetch (m)', min: 50, max: 5000, step: 10 }).on('change', h.onSpectrum);

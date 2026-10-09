@@ -4,7 +4,7 @@ import { depthBg } from './coastProfile';
 import { bedHeightAt, bedMaterialAt, buildBathymetry, downsample, ledgeSignedDistance, reefProfileDepth, reefWarp, seawardDepth } from './bathymetry';
 import { OPEN_COAST_MATERIAL } from './shoreReef';
 import { SHORE_X } from './coastProfile';
-import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, REEF_GRID, REEF_WARP, SHELF_INNER_X, SOUTH_LEDGE, rockReachM } from './wombReef';
+import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, REEF_GRID, REEF_WARP, SHELF_INNER_X, SOUTH_LEDGE, TIP, rockReachM } from './wombReef';
 
 const bathy = buildBathymetry();
 const depth = (x: number, z: number) => -bedHeightAt(bathy, x, z);
@@ -17,17 +17,18 @@ describe('the Womb reef', () => {
     expect(again.sand[654321]).toBe(bathy.sand[654321]);
   });
   it('is 6 m deep at the take-off corner (Andrew)', () => {
-    expect(depth(0, 0)).toBeCloseTo(DEFAULT_REEF_PARAMS.ledgeDepthM, 1);
+    expect(depth(TIP[0], TIP[1])).toBeCloseTo(DEFAULT_REEF_PARAMS.ledgeDepthM, 1);
   });
   it('the warp actually used by buildBathymetry (coarse lattice, interpolated) is still exactly zero at the peak', () => {
-    // (0, 0) sits exactly on the SDF_CELL_M coarse lattice, so ledgeSignedDistance(0, 0) = 0 is read back
+    // TIP sits exactly on the SDF_CELL_M coarse lattice, so ledgeSignedDistance(TIP) = 0 is read back
     // without interpolation error. If the warp lookup inside buildBathymetry were not exactly [0, 0] here,
     // the take-off corner would sit at a nonzero signed distance from the ledge vertex and this would miss.
-    const i = Math.round((0 - REEF_GRID.z0) / REEF_GRID.cellM) * REEF_GRID.nx + Math.round((0 - REEF_GRID.x0) / REEF_GRID.cellM);
+    const i = Math.round((TIP[1] - REEF_GRID.z0) / REEF_GRID.cellM) * REEF_GRID.nx + Math.round((TIP[0] - REEF_GRID.x0) / REEF_GRID.cellM);
     expect(bathy.bed[i]).toBe(-DEFAULT_REEF_PARAMS.ledgeDepthM);
   });
   it('holds ledge depth along both ledges', () => {
-    for (const [x, z] of [...NORTH_LEDGE.slice(0, 3), ...SOUTH_LEDGE.slice(0, 2)]) {
+    // The left's ledge ends, a point up its inside (the third vertex is the map's north edge, where the reef fades out), the right's first leg.
+    for (const [x, z] of [...NORTH_LEDGE.slice(0, 2), [NORTH_LEDGE[1][0], -300] as const, ...SOUTH_LEDGE.slice(0, 2)]) {
       expect(depth(x, z)).toBeGreaterThan(DEFAULT_REEF_PARAMS.ledgeDepthM - 1.5);
       expect(depth(x, z)).toBeLessThan(DEFAULT_REEF_PARAMS.ledgeDepthM + 1.5);
     }
@@ -76,8 +77,8 @@ describe('reef domain warp', () => {
   it('is deterministic', () => {
     expect(reefWarp(37.2, -164.8)).toEqual(reefWarp(37.2, -164.8));
   });
-  it('is zero at the peak (0, 0), so the take-off corner is untouched', () => {
-    const [dx, dz] = reefWarp(0, 0);
+  it('is zero at the peak (TIP), so the take-off corner is untouched', () => {
+    const [dx, dz] = reefWarp(TIP[0], TIP[1]);
     expect(dx).toBeCloseTo(0, 9);
     expect(dz).toBeCloseTo(0, 9);
   });
@@ -156,9 +157,9 @@ describe('the reef seaward of the ledges (spec 2026-10-02 §3)', () => {
     for (const [x, z] of [[SHORE_X - 15, 200], [SHORE_X - 20, 120], [SHORE_X - 25, 250]]) expect(depth(x, z)).toBeCloseTo(depthBg(x), 0);
   });
   it('along the peak’s south-west line the bed deepens steadily from the ledge to 300 m out (no step back up > 2 cm)', () => {
-    let prev = depth(0, 0);
+    let prev = depth(TIP[0], TIP[1]);
     for (let s = 1; s <= 300; s++) {
-      const d = depth(-s * Math.SQRT1_2, s * Math.SQRT1_2);
+      const d = depth(TIP[0] - s * Math.SQRT1_2, TIP[1] + s * Math.SQRT1_2);
       expect(d, `${s} m out`).toBeGreaterThanOrEqual(prev - 0.02);
       prev = Math.max(prev, d);
     }
@@ -217,12 +218,17 @@ describe('the bed’s material (spec 2026-10-02 §4)', () => {
     expect(areas.filter((a) => a >= 40).length).toBeGreaterThanOrEqual(6);
   });
   it('the rock runs down the deep slope north of the peak; south of the peak, past the face, the open coast', () => {
-    for (const [x, z] of [[-59, -113], [-109, -113], [-80, -200]]) {
-      const i = cell(x, z);
-      expect(bathy.sand[i], `(${x}, ${z})`).toBeLessThan(0.3);
-      expect(bathy.weed[i], `(${x}, ${z})`).toBeGreaterThan(0.4);
+    // 40 and 100 m seaward, square off the left's ledge 60 and 120 m from the tip; and 60 m seaward of the inside.
+    const [a, b] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
+    const off = (sAlong: number, v: number): [number, number] => [Math.round(a[0] + ux * sAlong + uz * v), Math.round(a[1] + uz * sAlong - ux * v)];
+    // Averaged over 9 cells 4 m apart: the weed's 5 m patch noise carves bare gaps anywhere.
+    for (const [x, z] of [off(60, 40), off(120, 100), [b[0] - 60, -200]]) {
+      let sand = 0, weed = 0;
+      for (let dx = -4; dx <= 4; dx += 4) for (let dz = -4; dz <= 4; dz += 4) { const i = cell(x + dx, z + dz); sand += bathy.sand[i] / 9; weed += bathy.weed[i] / 9; }
+      expect(sand, `(${x}, ${z})`).toBeLessThan(0.3);
+      expect(weed, `(${x}, ${z})`).toBeGreaterThan(0.4);
     }
-    const [s, w] = bedMaterialAt(bathy, -100, 180, undefined, false);
+    const [s, w] = bedMaterialAt(bathy, TIP[0] - 100, TIP[1] + 180, undefined, false);
     expect(s).toBeCloseTo(OPEN_COAST_MATERIAL[0], 1);
     expect(w).toBeCloseTo(OPEN_COAST_MATERIAL[1], 1);
   });

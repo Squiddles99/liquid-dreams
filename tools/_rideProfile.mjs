@@ -1,5 +1,5 @@
 // Profiles the frame loop in cam mode, then on the board (CPU profile via CDP + rAF frame times).
-// npx electron <this file> [--base=http://localhost:5173/] [--ft=6] [--experience=intermediate] [--out=<prefix>] [--sim-t=<s>] [--stall] [--trace]
+// npx electron <this file> [--base=http://localhost:5173/] [--query=coast=off] [--ft=6] [--experience=intermediate] [--out=<prefix>] [--sim-t=<s>] [--stall] [--trace]
 // The window stays on top and focused (an unfocused run is ~8x slower); the first line says whether it was.
 // --sim-t (ride-framerate Task 14): the sim time the conditions are applied at, the cam pass starts at (once the field is
 // built) and, 6 s later, the set is called from, so two runs ride the same moment of the same wave. Unset: the page's own.
@@ -50,7 +50,7 @@ app.whenReady().then(async () => {
   const focusNow = () => `focused ${win.isFocused()}, visible ${win.isVisible()}, minimized ${win.isMinimized()}`;
   grab();
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
-  await win.loadURL(base + '?frontend=off');
+  await win.loadURL(base + '?frontend=off' + (arg('query') ? '&' + arg('query') : ''));
   await win.webContents.executeJavaScript(`localStorage.setItem('liquid-dreams.front-settings.v1', JSON.stringify({ takeoffSlowMo: 'off', experience: '${experience}' }))`);
   for (let i = 0; i < 120; i++) { if (await win.webContents.executeJavaScript('!!window.liquidDreams?.field')) break; await sleep(1000); }
   await sleep(12000);

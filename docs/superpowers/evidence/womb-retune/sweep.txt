@@ -1,0 +1,572 @@
+# womb-retune Task 2 reef sweep, 225° mid tide, coast-seeded field (dial at the coast seed, ruling C); bands Fun..Huge
+# OFFER = select rule (first leg all broken, start ≤ 2.0 s, peel 8–13); targets (spec §3): offered first-leg peel 9–12; hollow ≥ 0.8 at mids, < 0.6 at the smallest;
+# smallest first break ≤ 5 m off the ledge; second leg 8–15 m/s at mids; leg 2 > 18 m/s. right = SOUTH_LEDGE legs 0/1 (start s, peel m/s; negative = peels toward the corner).
+
+row  0 | leg0 23.6° leg1 14.6° ledge 3.5 m face 15/15 shelf 4 (today) | north (0,0) (28,-64) (40,-110) (40,-450)
+   Fun        -   | first 28/28 start   1.9 peel  16.1 hollow  0.67 | fb depth   2.4 off ledge -18.0 | second  11.5 h  1.00 | leg2  26.7 | right r0 start  -0.1 peel  -6.9 r1 start  -4.0 peel -13.2
+   Solid      -   | first 28/28 start   0.4 peel  15.8 hollow  0.52 | fb depth   3.5 off ledge  -4.0 | second  18.5 h  0.52 | leg2  26.7 | right r0 start  -1.7 peel -24.5 r1 start  -5.7 peel -26.6
+   Pumping    -   | first 28/28 start  -0.0 peel  15.5 hollow  0.87 | fb depth   3.5 off ledge   0.0 | second  18.0 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  15.8 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  18.4 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  15.7 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  19.7 h  1.00 | leg2  28.4 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (272 s)
+row  1 | leg0 24.0° leg1 4.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (28,-64) (32,-111) (32,-450)
+   Fun        -   | first 28/28 start   1.9 peel  16.0 hollow  0.65 | fb depth   2.4 off ledge -18.0 | second  11.5 h  1.00 | leg2  26.1 | right r0 start  -0.1 peel  -6.9 r1 start  -4.0 peel -13.2
+   Solid      -   | first 28/28 start   0.4 peel  15.4 hollow  0.52 | fb depth   3.5 off ledge  -4.0 | second  23.9 h  0.48 | leg2  26.2 | right r0 start  -1.7 peel -24.5 r1 start  -5.7 peel -26.6
+   Pumping    -   | first 28/28 start  -0.0 peel  15.4 hollow  0.88 | fb depth   3.5 off ledge   0.0 | second  23.6 h  0.98 | leg2  27.0 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  15.6 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  23.8 h  1.00 | leg2  27.5 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  15.6 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  24.2 h  1.00 | leg2  27.9 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (312 s)
+row  2 | leg0 24.0° leg1 4.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (28,-64) (32,-111) (32,-450)
+   Fun        -   | first 28/28 start   1.6 peel  15.3 hollow  0.71 | fb depth   2.2 off ledge -15.5 | second  16.0 h  0.46 | leg2  25.0 | right r0 start  -0.2 peel  -8.6 r1 start  -3.6 peel -13.6
+   Solid      -   | first 28/28 start   0.1 peel  15.4 hollow  0.58 | fb depth   3.0 off ledge  -1.5 | second  24.5 h  0.67 | leg2  26.1 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  15.4 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  23.8 h  1.00 | leg2  26.9 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  15.5 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  23.8 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  15.6 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  24.0 h  1.00 | leg2  27.9 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (325 s)
+row  3 | leg0 24.0° leg1 4.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (28,-64) (32,-111) (32,-450)
+   Fun        -   | first 28/28 start   0.9 peel  15.4 hollow  0.50 | fb depth   2.9 off ledge  -9.0 | second  25.3 h  0.46 | leg2  24.1 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid      -   | first 28/28 start  -0.0 peel  15.3 hollow  0.99 | fb depth   2.6 off ledge   0.5 | second  23.7 h  1.00 | leg2  26.0 | right r0 start  -2.3 peel -22.8 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  15.4 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  23.4 h  1.00 | leg2  26.8 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  16.0 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  24.1 h  1.00 | leg2  27.4 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  15.7 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  24.2 h  1.00 | leg2  27.9 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (311 s)
+row  4 | leg0 24.0° leg1 9.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (28,-64) (36,-111) (36,-450)
+   Fun        -   | first 28/28 start   1.9 peel  16.0 hollow  0.65 | fb depth   2.4 off ledge -18.0 | second  11.6 h  1.00 | leg2  26.4 | right r0 start  -0.1 peel  -6.9 r1 start  -4.0 peel -13.2
+   Solid      -   | first 28/28 start   0.4 peel  15.4 hollow  0.52 | fb depth   3.5 off ledge  -4.0 | second  20.6 h  0.51 | leg2  26.5 | right r0 start  -1.7 peel -24.5 r1 start  -5.7 peel -26.6
+   Pumping    -   | first 28/28 start  -0.0 peel  15.4 hollow  0.88 | fb depth   3.5 off ledge   0.0 | second  20.4 h  0.99 | leg2  27.1 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  15.6 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  20.5 h  1.00 | leg2  27.6 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  15.6 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  21.1 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (318 s)
+row  5 | leg0 24.0° leg1 9.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (28,-64) (36,-111) (36,-450)
+   Fun        -   | first 28/28 start   1.6 peel  15.3 hollow  0.71 | fb depth   2.2 off ledge -15.5 | second  14.5 h  0.49 | leg2  25.5 | right r0 start  -0.2 peel  -8.6 r1 start  -3.6 peel -13.6
+   Solid      -   | first 28/28 start   0.1 peel  15.4 hollow  0.58 | fb depth   3.0 off ledge  -1.5 | second  20.7 h  0.72 | leg2  26.4 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  15.4 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  20.8 h  1.00 | leg2  27.1 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  15.5 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  20.7 h  1.00 | leg2  27.6 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  15.6 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  21.3 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (317 s)
+row  6 | leg0 24.0° leg1 9.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (28,-64) (36,-111) (36,-450)
+   Fun        -   | first 28/28 start   0.9 peel  15.4 hollow  0.50 | fb depth   2.9 off ledge  -9.0 | second  21.4 h  0.48 | leg2  24.8 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid      -   | first 28/28 start  -0.0 peel  15.3 hollow  0.99 | fb depth   2.6 off ledge   0.5 | second  20.5 h  1.00 | leg2  26.2 | right r0 start  -2.3 peel -22.8 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  15.4 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  20.4 h  1.00 | leg2  27.0 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  16.0 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  20.7 h  1.00 | leg2  27.5 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  15.7 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  20.8 h  1.00 | leg2  28.2 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (326 s)
+row  7 | leg0 24.0° leg1 15.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (28,-64) (41,-110) (41,-450)
+   Fun        -   | first 28/28 start   1.9 peel  16.0 hollow  0.65 | fb depth   2.4 off ledge -18.0 | second  11.7 h  1.00 | leg2  26.7 | right r0 start  -0.1 peel  -6.9 r1 start  -4.0 peel -13.2
+   Solid      -   | first 28/28 start   0.4 peel  15.4 hollow  0.52 | fb depth   3.5 off ledge  -4.0 | second  18.2 h  0.54 | leg2  26.8 | right r0 start  -1.7 peel -24.5 r1 start  -5.7 peel -26.6
+   Pumping    -   | first 28/28 start  -0.0 peel  15.4 hollow  0.88 | fb depth   3.5 off ledge   0.0 | second  18.2 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  15.6 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  18.1 h  1.00 | leg2  28.0 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  15.6 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  20.3 h  1.00 | leg2  28.4 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (283 s)
+row  8 | leg0 24.0° leg1 15.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (28,-64) (41,-110) (41,-450)
+   Fun        -   | first 28/28 start   1.6 peel  15.3 hollow  0.71 | fb depth   2.2 off ledge -15.5 | second  14.6 h  0.48 | leg2  26.2 | right r0 start  -0.2 peel  -8.6 r1 start  -3.6 peel -13.6
+   Solid      -   | first 28/28 start   0.1 peel  15.4 hollow  0.58 | fb depth   3.0 off ledge  -1.5 | second  17.8 h  0.79 | leg2  26.7 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  15.4 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  18.3 h  1.00 | leg2  27.3 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  15.5 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  17.8 h  1.00 | leg2  28.0 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  15.6 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  19.9 h  1.00 | leg2  28.4 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (280 s)
+row  9 | leg0 24.0° leg1 15.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (28,-64) (41,-110) (41,-450)
+   Fun        -   | first 28/28 start   0.9 peel  15.4 hollow  0.50 | fb depth   2.9 off ledge  -9.0 | second  18.3 h  0.49 | leg2  25.4 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid      -   | first 28/28 start  -0.0 peel  15.3 hollow  0.99 | fb depth   2.6 off ledge   0.5 | second  18.2 h  1.00 | leg2  26.6 | right r0 start  -2.3 peel -22.8 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  15.4 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  18.1 h  1.00 | leg2  27.2 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  16.0 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  17.8 h  1.00 | leg2  28.0 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  15.7 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  19.8 h  1.00 | leg2  28.4 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (327 s)
+row 10 | leg0 24.0° leg1 19.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (28,-64) (44,-109) (44,-450)
+   Fun        -   | first 28/28 start   1.9 peel  16.0 hollow  0.65 | fb depth   2.4 off ledge -18.0 | second  11.9 h  1.00 | leg2  26.8 | right r0 start  -0.1 peel  -6.9 r1 start  -4.0 peel -13.2
+   Solid      -   | first 28/28 start   0.4 peel  15.4 hollow  0.52 | fb depth   3.5 off ledge  -4.0 | second  17.2 h  0.57 | leg2  26.7 | right r0 start  -1.7 peel -24.5 r1 start  -5.7 peel -26.6
+   Pumping    -   | first 28/28 start  -0.0 peel  15.4 hollow  0.88 | fb depth   3.5 off ledge   0.0 | second  17.5 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  15.6 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  17.9 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  15.6 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  20.7 h  1.00 | leg2  28.4 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (279 s)
+row 11 | leg0 24.0° leg1 19.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (28,-64) (44,-109) (44,-450)
+   Fun        -   | first 28/28 start   1.6 peel  15.3 hollow  0.71 | fb depth   2.2 off ledge -15.5 | second  13.9 h  0.52 | leg2  26.3 | right r0 start  -0.2 peel  -8.6 r1 start  -3.6 peel -13.6
+   Solid      -   | first 28/28 start   0.1 peel  15.4 hollow  0.58 | fb depth   3.0 off ledge  -1.5 | second  17.0 h  0.88 | leg2  26.7 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  15.4 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  17.2 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  15.5 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  17.5 h  1.00 | leg2  27.9 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  15.6 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  20.5 h  1.00 | leg2  28.4 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (280 s)
+row 12 | leg0 24.0° leg1 19.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (28,-64) (44,-109) (44,-450)
+   Fun        -   | first 28/28 start   0.9 peel  15.4 hollow  0.51 | fb depth   2.9 off ledge  -9.0 | second  17.1 h  0.50 | leg2  25.6 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid      -   | first 28/28 start  -0.0 peel  15.3 hollow  0.99 | fb depth   2.6 off ledge   0.5 | second  16.6 h  1.00 | leg2  26.6 | right r0 start  -2.3 peel -22.8 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  15.4 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  16.9 h  1.00 | leg2  27.3 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  16.3 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  17.3 h  1.00 | leg2  27.9 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  15.7 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  20.0 h  1.00 | leg2  28.4 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (328 s)
+row 13 | leg0 30.0° leg1 10.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (35,-60) (43,-107) (43,-450)
+   Fun      OFFER | first 28/28 start   1.9 peel   8.4 hollow  1.00 | fb depth   2.7 off ledge -18.5 | second  35.6 h  1.00 | leg2  26.8 | right r0 start  -0.1 peel  -7.0 r1 start  -4.0 peel -13.2
+   Solid      -   | first 28/28 start   0.4 peel  13.6 hollow  0.59 | fb depth   3.5 off ledge  -4.0 | second  20.9 h  0.60 | leg2  26.8 | right r0 start  -1.7 peel -24.4 r1 start  -5.7 peel -26.6
+   Pumping    -   | first 28/28 start  -0.0 peel  14.0 hollow  0.93 | fb depth   3.5 off ledge   0.0 | second  21.9 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  14.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  23.3 h  1.00 | leg2  28.0 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  14.3 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  27.7 h  1.00 | leg2  28.4 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°   –   (–); Fun 247°  14.8 (28/28)
+   => fails: Fun peel, Fun (smallest) hollow ≥ 0.6, Fun second leg   (488 s)
+row 14 | leg0 30.0° leg1 10.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (35,-60) (43,-107) (43,-450)
+   Fun      OFFER | first 28/28 start   1.6 peel   8.4 hollow  0.57 | fb depth   2.3 off ledge -16.0 | second  18.8 h  0.60 | leg2  26.4 | right r0 start  -0.2 peel  -8.6 r1 start  -3.6 peel -13.6
+   Solid      -   | first 28/28 start   0.1 peel  13.8 hollow  0.65 | fb depth   3.0 off ledge  -1.5 | second  21.0 h  0.87 | leg2  26.8 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  13.9 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  21.3 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  14.3 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  21.8 h  1.00 | leg2  28.0 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  14.3 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  27.1 h  1.00 | leg2  28.4 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°  13.2 (4/28); Fun 247°  15.5 (28/28)
+   => fails: Fun peel, Fun hollow, Fun second leg   (491 s)
+row 15 | leg0 30.0° leg1 10.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (35,-60) (43,-107) (43,-450)
+   Fun        -   | first 28/28 start   0.9 peel  13.0 hollow  0.52 | fb depth   2.8 off ledge  -8.5 | second  21.3 h  0.50 | leg2  25.6 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid      -   | first 28/28 start  -0.1 peel  13.7 hollow  1.00 | fb depth   2.6 off ledge   0.5 | second  20.0 h  1.00 | leg2  26.6 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  13.9 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  20.1 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  14.1 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  20.7 h  1.00 | leg2  28.0 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  14.3 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  26.5 h  1.00 | leg2  28.4 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [] mids [] | outer first-leg peel: 
+   => fails: nothing offered   (316 s)
+row 16 | leg0 30.0° leg1 15.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (35,-60) (47,-106) (47,-450)
+   Fun      OFFER | first 28/28 start   1.9 peel   8.4 hollow  1.00 | fb depth   2.7 off ledge -18.5 | second  40.9 h  1.00 | leg2  26.5 | right r0 start  -0.1 peel  -7.0 r1 start  -4.0 peel -13.2
+   Solid      -   | first 28/28 start   0.4 peel  13.6 hollow  0.59 | fb depth   3.5 off ledge  -4.0 | second  20.7 h  0.71 | leg2  26.8 | right r0 start  -1.7 peel -24.4 r1 start  -5.7 peel -26.6
+   Pumping    -   | first 28/28 start  -0.0 peel  14.0 hollow  0.93 | fb depth   3.5 off ledge   0.0 | second  22.1 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  14.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  24.2 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  14.3 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  29.1 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°   –   (–); Fun 247°  14.8 (28/28)
+   => fails: Fun peel, Fun (smallest) hollow ≥ 0.6, Fun second leg   (488 s)
+row 17 | leg0 30.0° leg1 15.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (35,-60) (47,-106) (47,-450)
+   Fun      OFFER | first 28/28 start   1.6 peel   8.3 hollow  0.57 | fb depth   2.3 off ledge -16.0 | second  18.5 h  0.70 | leg2  26.3 | right r0 start  -0.2 peel  -8.6 r1 start  -3.6 peel -13.6
+   Solid      -   | first 28/28 start   0.1 peel  13.8 hollow  0.65 | fb depth   3.0 off ledge  -1.5 | second  20.0 h  1.00 | leg2  26.8 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  13.9 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  20.9 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  14.3 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  22.9 h  1.00 | leg2  27.9 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  14.3 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  28.8 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°  13.2 (4/28); Fun 247°  15.5 (28/28)
+   => fails: Fun peel, Fun hollow, Fun second leg   (498 s)
+row 18 | leg0 30.0° leg1 15.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (35,-60) (47,-106) (47,-450)
+   Fun      OFFER | first 28/28 start   0.9 peel  13.0 hollow  0.51 | fb depth   2.8 off ledge  -8.5 | second  19.9 h  0.54 | leg2  25.8 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid      -   | first 28/28 start  -0.1 peel  13.7 hollow  1.00 | fb depth   2.6 off ledge   0.5 | second  19.6 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  13.9 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  20.2 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  14.1 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  21.1 h  1.00 | leg2  27.9 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  14.3 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  27.5 h  1.00 | leg2  28.3 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°  13.7 (5/28); Fun 247°  16.0 (28/28)
+   => fails: Fun peel, Fun hollow, Fun second leg   (498 s)
+row 19 | leg0 30.0° leg1 21.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (35,-60) (52,-105) (52,-450)
+   Fun      OFFER | first 28/28 start   1.9 peel   8.4 hollow  1.00 | fb depth   2.7 off ledge -18.5 | second -14.2 h  1.00 | leg2  25.9 | right r0 start  -0.1 peel  -7.0 r1 start  -4.0 peel -13.2
+   Solid      -   | first 28/28 start   0.4 peel  13.6 hollow  0.59 | fb depth   3.5 off ledge  -4.0 | second  22.8 h  0.83 | leg2  26.8 | right r0 start  -1.7 peel -24.4 r1 start  -5.7 peel -26.6
+   Pumping    -   | first 28/28 start  -0.0 peel  14.0 hollow  0.93 | fb depth   3.5 off ledge   0.0 | second  23.6 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  14.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  25.9 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  14.3 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  31.9 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°   –   (–); Fun 247°  14.7 (28/28)
+   => fails: Fun peel, Fun (smallest) hollow ≥ 0.6, Fun second leg   (501 s)
+row 20 | leg0 30.0° leg1 21.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (35,-60) (52,-105) (52,-450)
+   Fun      OFFER | first 28/28 start   1.6 peel   8.3 hollow  0.57 | fb depth   2.3 off ledge -16.0 | second  24.6 h  0.56 | leg2  25.9 | right r0 start  -0.2 peel  -8.6 r1 start  -3.6 peel -13.6
+   Solid      -   | first 28/28 start   0.1 peel  13.8 hollow  0.65 | fb depth   3.0 off ledge  -1.5 | second  21.2 h  1.00 | leg2  26.8 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  13.9 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  22.1 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  14.3 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  24.2 h  1.00 | leg2  27.9 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  14.3 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  31.0 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°  13.2 (4/28); Fun 247°  15.5 (28/28)
+   => fails: Fun peel, Fun hollow, Fun second leg   (503 s)
+row 21 | leg0 30.0° leg1 21.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (35,-60) (52,-105) (52,-450)
+   Fun      OFFER | first 28/28 start   0.9 peel  13.0 hollow  0.51 | fb depth   2.8 off ledge  -8.5 | second  19.9 h  0.58 | leg2  25.8 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid      -   | first 28/28 start  -0.1 peel  13.7 hollow  1.00 | fb depth   2.6 off ledge   0.5 | second  19.6 h  1.00 | leg2  26.8 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  13.9 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  20.3 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  14.1 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  20.9 h  1.00 | leg2  27.9 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  14.3 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  29.9 h  1.00 | leg2  28.3 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°  13.7 (5/28); Fun 247°  16.0 (28/28)
+   => fails: Fun peel, Fun hollow, Fun second leg   (504 s)
+row 22 | leg0 30.0° leg1 25.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (35,-60) (55,-104) (55,-450)
+   Fun      OFFER | first 28/28 start   1.9 peel   8.4 hollow  1.00 | fb depth   2.7 off ledge -18.5 | second -61.2 h  1.00 | leg2  25.8 | right r0 start  -0.1 peel  -7.0 r1 start  -4.0 peel -13.2
+   Solid      -   | first 28/28 start   0.4 peel  13.6 hollow  0.59 | fb depth   3.5 off ledge  -4.0 | second  22.7 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.4 r1 start  -5.7 peel -26.6
+   Pumping    -   | first 28/28 start  -0.0 peel  14.0 hollow  0.93 | fb depth   3.5 off ledge   0.0 | second  24.2 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  14.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  27.6 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  14.3 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  33.4 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°   –   (–); Fun 247°  14.6 (28/28)
+   => fails: Fun peel, Fun (smallest) hollow ≥ 0.6, Fun second leg   (497 s)
+row 23 | leg0 30.0° leg1 25.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (35,-60) (55,-104) (55,-450)
+   Fun      OFFER | first 28/28 start   1.6 peel   8.2 hollow  0.57 | fb depth   2.3 off ledge -16.0 | second  32.4 h  0.57 | leg2  25.8 | right r0 start  -0.2 peel  -8.6 r1 start  -3.6 peel -13.6
+   Solid      -   | first 28/28 start   0.1 peel  13.8 hollow  0.65 | fb depth   3.0 off ledge  -1.5 | second  21.0 h  1.00 | leg2  26.7 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  13.9 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  23.2 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  14.3 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  25.4 h  1.00 | leg2  27.9 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  14.3 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  32.9 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°  13.2 (4/28); Fun 247°  15.5 (28/28)
+   => fails: Fun peel, Fun hollow, Fun second leg   (490 s)
+row 24 | leg0 30.0° leg1 25.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (35,-60) (55,-104) (55,-450)
+   Fun      OFFER | first 28/28 start   0.9 peel  13.0 hollow  0.51 | fb depth   2.8 off ledge  -8.5 | second  20.9 h  0.67 | leg2  25.8 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid      -   | first 28/28 start  -0.1 peel  13.7 hollow  1.00 | fb depth   2.6 off ledge   0.5 | second  20.2 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  13.9 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  21.4 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  14.1 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  22.2 h  1.00 | leg2  27.9 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  14.3 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  31.3 h  1.00 | leg2  28.3 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Fun] mids [Fun] | outer first-leg peel: Fun 202°  13.7 (5/28); Fun 247°  16.0 (28/28)
+   => fails: Fun peel, Fun hollow, Fun second leg   (490 s)
+row 25 | leg0 34.0° leg1 14.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (39,-58) (51,-104) (51,-450)
+   Fun        -   | first 28/28 start   2.0 peel   8.4 hollow  1.00 | fb depth   3.0 off ledge -19.0 | second -26.0 h  1.00 | leg2  26.3 | right r0 start  -0.1 peel  -7.0 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.3 peel  12.4 hollow  0.54 | fb depth   3.5 off ledge  -4.0 | second  27.3 h  0.96 | leg2  26.8 | right r0 start  -1.7 peel -24.6 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  13.0 hollow  0.93 | fb depth   3.5 off ledge   0.0 | second  27.3 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  13.4 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  31.3 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  13.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  32.8 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping] mids [Solid, Pumping] | outer first-leg peel: Solid 202°   8.0 (28/28); Solid 247°  15.4 (28/28); Pumping 202°   7.4 (28/28); Pumping 247°  15.6 (28/28)
+   => fails: Solid peel, Pumping peel, Solid hollow, Solid second leg, Pumping second leg   (679 s)
+row 26 | leg0 34.0° leg1 14.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (39,-58) (51,-104) (51,-450)
+   Fun        -   | first 28/28 start   1.6 peel   7.7 hollow  1.00 | fb depth   2.4 off ledge -16.0 | second 121.7 h  0.85 | leg2  25.8 | right r0 start  -0.2 peel  -8.5 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  12.8 hollow  0.66 | fb depth   3.0 off ledge  -1.5 | second  23.2 h  1.00 | leg2  26.8 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  13.1 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  25.6 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  13.3 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  30.2 h  1.00 | leg2  27.9 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  13.5 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  32.7 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid] mids [Solid] | outer first-leg peel: Solid 202°   7.6 (28/28); Solid 247°  15.3 (28/28)
+   => fails: Solid peel, Solid hollow, Solid (smallest) hollow ≥ 0.6, Solid second leg   (491 s)
+row 27 | leg0 34.0° leg1 14.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (39,-58) (51,-104) (51,-450)
+   Fun      OFFER | first 28/28 start   0.9 peel  10.1 hollow  0.49 | fb depth   2.8 off ledge  -9.0 | second  23.0 h  0.60 | leg2  25.8 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  12.9 hollow  1.00 | fb depth   2.5 off ledge   0.0 | second  21.3 h  1.00 | leg2  26.8 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  13.2 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  24.0 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  13.5 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  28.5 h  1.00 | leg2  27.9 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  13.5 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  32.4 h  1.00 | leg2  28.3 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Fun, Solid] mids [Fun, Solid] | outer first-leg peel: Fun 202°  12.3 (10/28); Fun 247°  14.6 (28/28); Solid 202°   6.7 (28/28); Solid 247°  15.9 (28/28)
+   => fails: Solid peel, Fun hollow, Fun second leg, Solid second leg   (631 s)
+row 28 | leg0 34.0° leg1 19.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (39,-58) (55,-103) (55,-450)
+   Fun        -   | first 28/28 start   2.0 peel   8.4 hollow  1.00 | fb depth   3.0 off ledge -19.0 | second -36.7 h  1.00 | leg2  26.3 | right r0 start  -0.1 peel  -7.0 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.3 peel  12.4 hollow  0.54 | fb depth   3.5 off ledge  -4.0 | second  29.2 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.6 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  13.0 hollow  0.93 | fb depth   3.5 off ledge   0.0 | second  28.9 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  13.4 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  33.1 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  13.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  35.4 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping] mids [Solid, Pumping] | outer first-leg peel: Solid 202°   8.0 (28/28); Solid 247°  15.4 (28/28); Pumping 202°   7.4 (28/28); Pumping 247°  15.6 (28/28)
+   => fails: Solid peel, Pumping peel, Solid hollow, Solid second leg, Pumping second leg   (680 s)
+row 29 | leg0 34.0° leg1 19.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (39,-58) (55,-103) (55,-450)
+   Fun        -   | first 28/28 start   1.6 peel   7.6 hollow  1.00 | fb depth   2.4 off ledge -16.0 | second  70.6 h  0.96 | leg2  25.8 | right r0 start  -0.2 peel  -8.5 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  12.8 hollow  0.66 | fb depth   3.0 off ledge  -1.5 | second  25.4 h  1.00 | leg2  26.7 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  13.1 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  26.2 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  13.3 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  31.6 h  1.00 | leg2  27.9 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  13.5 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  35.2 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid] mids [Solid] | outer first-leg peel: Solid 202°   7.6 (28/28); Solid 247°  15.3 (28/28)
+   => fails: Solid peel, Solid hollow, Solid (smallest) hollow ≥ 0.6, Solid second leg   (512 s)
+row 30 | leg0 34.0° leg1 19.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (39,-58) (55,-103) (55,-450)
+   Fun      OFFER | first 28/28 start   0.9 peel  10.0 hollow  0.49 | fb depth   2.8 off ledge  -9.0 | second  24.5 h  0.67 | leg2  25.8 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  12.9 hollow  1.00 | fb depth   2.5 off ledge   0.0 | second  22.6 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  13.2 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  25.1 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  13.5 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  31.0 h  1.00 | leg2  27.9 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  13.5 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  34.6 h  1.00 | leg2  28.3 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Fun, Solid] mids [Fun, Solid] | outer first-leg peel: Fun 202°  12.3 (10/28); Fun 247°  14.6 (28/28); Solid 202°   6.7 (28/28); Solid 247°  15.9 (28/28)
+   => fails: Solid peel, Fun hollow, Fun second leg, Solid second leg   (634 s)
+row 31 | leg0 34.0° leg1 25.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (39,-58) (59,-101) (59,-450)
+   Fun        -   | first 28/28 start   2.0 peel   8.5 hollow  1.00 | fb depth   3.0 off ledge -19.0 | second  -7.1 h  1.00 | leg2  26.3 | right r0 start  -0.1 peel  -7.0 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.3 peel  12.3 hollow  0.54 | fb depth   3.5 off ledge  -4.0 | second  32.9 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.6 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  13.0 hollow  0.93 | fb depth   3.5 off ledge   0.0 | second  31.8 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  13.4 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  36.4 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  13.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  38.9 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping] mids [Solid, Pumping] | outer first-leg peel: Solid 202°   8.0 (28/28); Solid 247°  15.4 (28/28); Pumping 202°   7.3 (28/28); Pumping 247°  15.6 (28/28)
+   => fails: Solid peel, Pumping peel, Solid hollow, Solid second leg, Pumping second leg   (687 s)
+row 32 | leg0 34.0° leg1 25.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (39,-58) (59,-101) (59,-450)
+   Fun        -   | first 28/28 start   1.6 peel   7.7 hollow  1.00 | fb depth   2.4 off ledge -16.0 | second  35.3 h  1.00 | leg2  25.8 | right r0 start  -0.2 peel  -8.5 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  12.8 hollow  0.66 | fb depth   3.0 off ledge  -1.5 | second  25.8 h  1.00 | leg2  26.7 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  13.1 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  28.6 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  13.3 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  34.5 h  1.00 | leg2  27.9 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  13.5 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  38.6 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid] mids [Solid] | outer first-leg peel: Solid 202°   7.6 (28/28); Solid 247°  15.3 (28/28)
+   => fails: Solid peel, Solid hollow, Solid (smallest) hollow ≥ 0.6, Solid second leg   (471 s)
+row 33 | leg0 34.0° leg1 25.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (39,-58) (59,-101) (59,-450)
+   Fun      OFFER | first 28/28 start   0.9 peel   9.8 hollow  0.49 | fb depth   2.8 off ledge  -9.0 | second  27.9 h  0.82 | leg2  25.8 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  12.9 hollow  1.00 | fb depth   2.5 off ledge   0.0 | second  23.7 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  13.2 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  27.2 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  13.5 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  33.4 h  1.00 | leg2  27.9 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  13.5 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  38.2 h  1.00 | leg2  28.3 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Fun, Solid] mids [Fun, Solid] | outer first-leg peel: Fun 202°  12.3 (10/28); Fun 247°  14.7 (28/28); Solid 202°   6.7 (28/28); Solid 247°  15.9 (28/28)
+   => fails: Solid peel, Fun hollow, Fun second leg, Solid second leg   (669 s)
+row 34 | leg0 34.0° leg1 29.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (39,-58) (62,-99) (62,-450)
+   Fun        -   | first 28/28 start   2.0 peel   8.5 hollow  1.00 | fb depth   3.0 off ledge -19.0 | second   8.7 h  1.00 | leg2  26.4 | right r0 start  -0.1 peel  -7.0 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.3 peel  12.4 hollow  0.54 | fb depth   3.5 off ledge  -4.0 | second  36.6 h  1.00 | leg2  26.8 | right r0 start  -1.7 peel -24.6 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  13.0 hollow  0.93 | fb depth   3.5 off ledge   0.0 | second  33.2 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big        -   | first 28/28 start  -0.3 peel  13.4 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  38.5 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  13.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  41.7 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping] mids [Solid, Pumping] | outer first-leg peel: Solid 202°   8.0 (28/28); Solid 247°  15.4 (28/28); Pumping 202°   7.4 (28/28); Pumping 247°  15.6 (28/28)
+   => fails: Solid peel, Pumping peel, Solid hollow, Solid second leg, Pumping second leg   (674 s)
+row 35 | leg0 34.0° leg1 29.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (39,-58) (62,-99) (62,-450)
+   Fun        -   | first 28/28 start   1.6 peel   7.7 hollow  1.00 | fb depth   2.4 off ledge -16.0 | second  36.1 h  1.00 | leg2  25.8 | right r0 start  -0.2 peel  -8.5 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  12.8 hollow  0.66 | fb depth   3.0 off ledge  -1.5 | second  28.6 h  1.00 | leg2  26.8 | right r0 start  -2.1 peel -23.2 r1 start  -6.2 peel -24.7
+   Pumping    -   | first 28/28 start  -0.2 peel  13.1 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  30.7 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big        -   | first 28/28 start  -0.4 peel  13.3 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  36.5 h  1.00 | leg2  27.9 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  13.5 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  41.9 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid] mids [Solid] | outer first-leg peel: Solid 202°   7.6 (28/28); Solid 247°  15.3 (28/28)
+   => fails: Solid peel, Solid hollow, Solid (smallest) hollow ≥ 0.6, Solid second leg   (525 s)
+row 36 | leg0 34.0° leg1 29.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (39,-58) (62,-99) (62,-450)
+   Fun      OFFER | first 28/28 start   0.9 peel   9.8 hollow  0.49 | fb depth   2.8 off ledge  -9.0 | second  30.5 h  0.99 | leg2  25.8 | right r0 start  -0.7 peel -27.7 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  12.9 hollow  1.00 | fb depth   2.5 off ledge   0.0 | second  24.1 h  1.00 | leg2  26.8 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping    -   | first 28/28 start  -0.3 peel  13.2 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  28.7 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big        -   | first 28/28 start  -0.5 peel  13.5 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  36.3 h  1.00 | leg2  27.8 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge       -   | first 28/28 start  -0.6 peel  13.5 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  40.9 h  1.00 | leg2  28.3 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Fun, Solid] mids [Fun, Solid] | outer first-leg peel: Fun 202°  12.3 (10/28); Fun 247°  14.7 (28/28); Solid 202°   6.7 (28/28); Solid 247°  15.9 (28/28)
+   => fails: Solid peel, Fun hollow, Fun second leg, Solid second leg   (670 s)
+row 37 | leg0 38.0° leg1 18.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (43,-55) (58,-100) (58,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.5 hollow  1.00 | fb depth   3.2 off ledge -19.5 | second  53.2 h  1.00 | leg2  26.4 | right r0 start  -0.1 peel  -7.1 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.3 peel  11.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  38.2 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  12.3 hollow  0.88 | fb depth   3.5 off ledge   0.0 | second  34.8 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.6 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  35.0 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  13.0 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  35.8 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big] mids [Pumping] | outer first-leg peel: Pumping 202°   7.1 (28/28); Pumping 247°  14.8 (28/28)
+   => fails: Pumping peel, Big peel, Pumping second leg   (526 s)
+row 38 | leg0 38.0° leg1 18.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (43,-55) (58,-100) (58,-450)
+   Fun        -   | first 28/28 start   1.6 peel   7.6 hollow  1.00 | fb depth   2.5 off ledge -16.0 | second   6.4 h  1.00 | leg2  25.8 | right r0 start  -0.2 peel  -8.3 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  11.8 hollow  0.60 | fb depth   3.0 off ledge  -1.5 | second  30.6 h  1.00 | leg2  26.7 | right r0 start  -2.1 peel -23.1 r1 start  -6.2 peel -24.7
+   Pumping  OFFER | first 28/28 start  -0.2 peel  12.4 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  31.3 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big      OFFER | first 28/28 start  -0.4 peel  12.6 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  34.9 h  1.00 | leg2  27.9 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  13.1 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  35.9 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid, Pumping, Big] mids [Pumping] | outer first-leg peel: Pumping 202°   7.4 (28/28); Pumping 247°  14.8 (28/28)
+   => fails: Pumping peel, Big peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg   (520 s)
+row 39 | leg0 38.0° leg1 18.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (43,-55) (58,-100) (58,-450)
+   Fun        -   | first 28/28 start   0.9 peel   7.9 hollow  0.53 | fb depth   2.7 off ledge  -9.0 | second  33.9 h  0.82 | leg2  25.8 | right r0 start  -0.7 peel -27.5 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  12.2 hollow  1.00 | fb depth   2.5 off ledge   0.0 | second  27.0 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping  OFFER | first 28/28 start  -0.3 peel  12.5 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  29.7 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big      OFFER | first 28/28 start  -0.5 peel  12.6 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  34.6 h  1.00 | leg2  27.9 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.6 peel  12.9 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  35.9 h  1.00 | leg2  28.3 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°  10.3 (28/28); Pumping 247°  14.9 (28/28); Big 202°  11.2 (28/28); Big 247°  15.0 (28/28)
+   => fails: Solid peel, Pumping peel, Big peel, Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (642 s)
+row 40 | leg0 38.0° leg1 23.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (43,-55) (62,-99) (62,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.6 hollow  1.00 | fb depth   3.2 off ledge -19.5 | second  59.3 h  1.00 | leg2  26.4 | right r0 start  -0.1 peel  -7.1 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.3 peel  11.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  42.1 h  1.00 | leg2  26.8 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  12.3 hollow  0.88 | fb depth   3.5 off ledge   0.0 | second  37.5 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.6 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  37.8 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  13.0 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  38.9 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big] mids [Pumping] | outer first-leg peel: Pumping 202°   7.1 (28/28); Pumping 247°  14.8 (28/28)
+   => fails: Pumping peel, Big peel, Pumping second leg   (462 s)
+row 41 | leg0 38.0° leg1 23.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (43,-55) (62,-99) (62,-450)
+   Fun        -   | first 28/28 start   1.6 peel   7.7 hollow  1.00 | fb depth   2.5 off ledge -16.0 | second  35.1 h  1.00 | leg2  25.9 | right r0 start  -0.2 peel  -8.3 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  11.8 hollow  0.60 | fb depth   3.0 off ledge  -1.5 | second  32.6 h  1.00 | leg2  26.8 | right r0 start  -2.1 peel -23.1 r1 start  -6.2 peel -24.7
+   Pumping  OFFER | first 28/28 start  -0.2 peel  12.4 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  34.0 h  1.00 | leg2  27.4 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big      OFFER | first 28/28 start  -0.4 peel  12.6 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  37.6 h  1.00 | leg2  27.8 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  13.1 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  39.1 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid, Pumping, Big] mids [Pumping] | outer first-leg peel: Pumping 202°   7.4 (28/28); Pumping 247°  14.8 (28/28)
+   => fails: Pumping peel, Big peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg   (479 s)
+row 42 | leg0 38.0° leg1 23.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (43,-55) (62,-99) (62,-450)
+   Fun        -   | first 28/28 start   0.9 peel   7.8 hollow  0.54 | fb depth   2.7 off ledge  -9.0 | second  38.9 h  1.00 | leg2  25.8 | right r0 start  -0.7 peel -27.5 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  12.2 hollow  1.00 | fb depth   2.5 off ledge   0.0 | second  28.6 h  1.00 | leg2  26.8 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping  OFFER | first 28/28 start  -0.3 peel  12.5 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  31.4 h  1.00 | leg2  27.4 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big      OFFER | first 28/28 start  -0.5 peel  12.6 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  37.5 h  1.00 | leg2  27.8 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.6 peel  12.9 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  39.1 h  1.00 | leg2  28.3 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°  10.3 (28/28); Pumping 247°  14.9 (28/28); Big 202°  11.2 (28/28); Big 247°  15.0 (28/28)
+   => fails: Solid peel, Pumping peel, Big peel, Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (624 s)
+row 43 | leg0 38.0° leg1 29.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (43,-55) (66,-97) (66,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.6 hollow  1.00 | fb depth   3.2 off ledge -19.5 | second  73.0 h  1.00 | leg2  26.4 | right r0 start  -0.1 peel  -7.1 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.3 peel  11.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  48.0 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  12.3 hollow  0.88 | fb depth   3.5 off ledge   0.0 | second  41.3 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.6 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  42.5 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  13.0 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  44.0 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big] mids [Pumping] | outer first-leg peel: Pumping 202°   7.1 (28/28); Pumping 247°  14.8 (28/28)
+   => fails: Pumping peel, Big peel, Pumping second leg   (488 s)
+row 44 | leg0 38.0° leg1 29.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (43,-55) (66,-97) (66,-450)
+   Fun        -   | first 28/28 start   1.6 peel   7.7 hollow  1.00 | fb depth   2.5 off ledge -16.0 | second  61.2 h  1.00 | leg2  25.9 | right r0 start  -0.2 peel  -8.3 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  11.8 hollow  0.60 | fb depth   3.0 off ledge  -1.5 | second  35.8 h  1.00 | leg2  26.7 | right r0 start  -2.1 peel -23.1 r1 start  -6.2 peel -24.7
+   Pumping  OFFER | first 28/28 start  -0.2 peel  12.4 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  37.6 h  1.00 | leg2  27.3 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big      OFFER | first 28/28 start  -0.4 peel  12.6 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  42.5 h  1.00 | leg2  27.8 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  13.1 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  44.1 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid, Pumping, Big] mids [Pumping] | outer first-leg peel: Pumping 202°   7.4 (28/28); Pumping 247°  14.8 (28/28)
+   => fails: Pumping peel, Big peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg   (478 s)
+row 45 | leg0 38.0° leg1 29.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (43,-55) (66,-97) (66,-450)
+   Fun        -   | first 28/28 start   0.9 peel   7.8 hollow  0.54 | fb depth   2.7 off ledge  -9.0 | second  47.0 h  1.00 | leg2  25.8 | right r0 start  -0.7 peel -27.5 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  12.2 hollow  1.00 | fb depth   2.5 off ledge   0.0 | second  31.4 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping  OFFER | first 28/28 start  -0.3 peel  12.5 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  35.0 h  1.00 | leg2  27.3 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big      OFFER | first 28/28 start  -0.5 peel  12.6 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  42.0 h  1.00 | leg2  27.8 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.6 peel  12.9 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  44.0 h  1.00 | leg2  28.2 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°  10.3 (28/28); Pumping 247°  14.9 (28/28); Big 202°  11.2 (28/28); Big 247°  15.0 (28/28)
+   => fails: Solid peel, Pumping peel, Big peel, Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (643 s)
+row 46 | leg0 38.0° leg1 33.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (43,-55) (69,-95) (69,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.7 hollow  1.00 | fb depth   3.2 off ledge -19.5 | second  85.4 h  1.00 | leg2  26.4 | right r0 start  -0.1 peel  -7.1 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.3 peel  11.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  56.4 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  12.3 hollow  0.88 | fb depth   3.5 off ledge   0.0 | second  44.9 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.6 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  46.8 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.1 r1 start  -6.5 peel -24.8
+   Huge       -   | first 28/28 start  -0.5 peel  13.0 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  48.2 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big] mids [Pumping] | outer first-leg peel: Pumping 202°   7.1 (28/28); Pumping 247°  14.8 (28/28)
+   => fails: Pumping peel, Big peel, Pumping second leg   (498 s)
+row 47 | leg0 38.0° leg1 33.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (43,-55) (69,-95) (69,-450)
+   Fun        -   | first 28/28 start   1.6 peel   7.7 hollow  1.00 | fb depth   2.5 off ledge -16.0 | second  79.6 h  1.00 | leg2  25.9 | right r0 start  -0.2 peel  -8.3 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  11.8 hollow  0.60 | fb depth   3.0 off ledge  -1.5 | second  41.9 h  1.00 | leg2  26.7 | right r0 start  -2.1 peel -23.1 r1 start  -6.2 peel -24.7
+   Pumping  OFFER | first 28/28 start  -0.2 peel  12.4 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  40.8 h  1.00 | leg2  27.3 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big      OFFER | first 28/28 start  -0.4 peel  12.6 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  46.5 h  1.00 | leg2  27.8 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge       -   | first 28/28 start  -0.5 peel  13.1 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  48.3 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid, Pumping, Big] mids [Pumping] | outer first-leg peel: Pumping 202°   7.4 (28/28); Pumping 247°  14.8 (28/28)
+   => fails: Pumping peel, Big peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg   (482 s)
+row 48 | leg0 38.0° leg1 33.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (43,-55) (69,-95) (69,-450)
+   Fun        -   | first 28/28 start   0.9 peel   7.8 hollow  0.54 | fb depth   2.7 off ledge  -9.0 | second  53.5 h  1.00 | leg2  25.8 | right r0 start  -0.7 peel -27.5 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  12.2 hollow  1.00 | fb depth   2.5 off ledge   0.0 | second  33.3 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping  OFFER | first 28/28 start  -0.3 peel  12.5 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  36.8 h  1.00 | leg2  27.3 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big      OFFER | first 28/28 start  -0.5 peel  12.6 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  46.0 h  1.00 | leg2  27.8 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.6 peel  12.9 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  48.3 h  1.00 | leg2  28.2 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°  10.3 (28/28); Pumping 247°  14.9 (28/28); Big 202°  11.2 (28/28); Big 247°  15.0 (28/28)
+   => fails: Solid peel, Pumping peel, Big peel, Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (562 s)
+row 49 | leg0 42.0° leg1 22.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (65,-96) (65,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.7 hollow  1.00 | fb depth   3.3 off ledge -20.0 | second  68.8 h  1.00 | leg2  26.4 | right r0 start  -0.1 peel  -6.8 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.4 peel  10.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  47.6 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.5 hollow  0.86 | fb depth   3.5 off ledge   0.0 | second  39.8 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  38.6 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.8
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  39.6 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.1 (28/28); Big 202°   7.9 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (516 s)
+row 50 | leg0 42.0° leg1 22.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (47,-52) (65,-96) (65,-450)
+   Fun        -   | first 28/28 start   1.7 peel   7.9 hollow  1.00 | fb depth   2.5 off ledge -16.5 | second  69.5 h  1.00 | leg2  25.9 | right r0 start  -0.2 peel  -8.4 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  10.9 hollow  0.63 | fb depth   3.0 off ledge  -1.5 | second  41.1 h  1.00 | leg2  26.7 | right r0 start  -2.1 peel -23.1 r1 start  -6.2 peel -24.7
+   Pumping  OFFER | first 28/28 start  -0.2 peel  11.7 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  37.5 h  1.00 | leg2  27.3 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big      OFFER | first 28/28 start  -0.4 peel  12.0 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  38.5 h  1.00 | leg2  27.8 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  39.0 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.0 (28/28); Big 202°   9.9 (28/28); Big 247°  14.2 (28/28)
+   => fails: Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (498 s)
+row 51 | leg0 42.0° leg1 22.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (65,-96) (65,-450)
+   Fun        -   | first 28/28 start   0.9 peel   7.9 hollow  0.59 | fb depth   2.7 off ledge  -9.0 | second  50.5 h  1.00 | leg2  25.8 | right r0 start  -0.7 peel -27.4 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  11.2 hollow  0.93 | fb depth   2.5 off ledge   0.0 | second  34.3 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping  OFFER | first 28/28 start  -0.3 peel  11.9 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  34.7 h  1.00 | leg2  27.3 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big      OFFER | first 28/28 start  -0.5 peel  12.1 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  38.4 h  1.00 | leg2  27.8 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.6 peel  12.6 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  39.2 h  1.00 | leg2  28.2 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   9.1 (28/28); Pumping 247°  14.2 (28/28); Big 202°  10.5 (28/28); Big 247°  14.1 (28/28)
+   => fails: Big peel, Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (564 s)
+row 52 | leg0 42.0° leg1 27.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (68,-94) (68,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.7 hollow  1.00 | fb depth   3.3 off ledge -20.0 | second  74.6 h  1.00 | leg2  26.4 | right r0 start  -0.1 peel  -6.8 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.4 peel  10.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  53.7 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.5 hollow  0.86 | fb depth   3.5 off ledge   0.0 | second  44.5 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  42.4 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.8
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  43.6 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.1 (28/28); Big 202°   8.0 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (514 s)
+row 53 | leg0 42.0° leg1 27.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (47,-52) (68,-94) (68,-450)
+   Fun        -   | first 28/28 start   1.7 peel   7.9 hollow  1.00 | fb depth   2.5 off ledge -16.5 | second  74.9 h  1.00 | leg2  26.0 | right r0 start  -0.2 peel  -8.4 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  10.9 hollow  0.63 | fb depth   3.0 off ledge  -1.5 | second  45.3 h  1.00 | leg2  26.7 | right r0 start  -2.1 peel -23.1 r1 start  -6.2 peel -24.7
+   Pumping  OFFER | first 28/28 start  -0.2 peel  11.7 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  41.2 h  1.00 | leg2  27.3 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big      OFFER | first 28/28 start  -0.4 peel  12.0 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  42.2 h  1.00 | leg2  27.8 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  43.4 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.0 (28/28); Big 202°   9.9 (28/28); Big 247°  14.2 (28/28)
+   => fails: Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (538 s)
+row 54 | leg0 42.0° leg1 27.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (68,-94) (68,-450)
+   Fun        -   | first 28/28 start   0.9 peel   7.9 hollow  0.59 | fb depth   2.7 off ledge  -9.0 | second  56.4 h  1.00 | leg2  25.8 | right r0 start  -0.7 peel -27.4 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  11.2 hollow  0.93 | fb depth   2.5 off ledge   0.0 | second  36.2 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping  OFFER | first 28/28 start  -0.3 peel  11.9 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  37.9 h  1.00 | leg2  27.3 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big      OFFER | first 28/28 start  -0.5 peel  12.1 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  42.3 h  1.00 | leg2  27.8 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.6 peel  12.6 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  43.6 h  1.00 | leg2  28.2 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   9.1 (28/28); Pumping 247°  14.2 (28/28); Big 202°  10.5 (28/28); Big 247°  14.1 (28/28)
+   => fails: Big peel, Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (535 s)
+row 55 | leg0 42.0° leg1 33.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (73,-92) (73,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.7 hollow  1.00 | fb depth   3.3 off ledge -20.0 | second  85.4 h  1.00 | leg2  26.5 | right r0 start  -0.1 peel  -6.8 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.4 peel  10.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  69.2 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.5 hollow  0.86 | fb depth   3.5 off ledge   0.0 | second  51.1 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  48.6 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.8
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  50.1 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.1 (28/28); Big 202°   8.0 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (469 s)
+row 56 | leg0 42.0° leg1 33.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (47,-52) (73,-92) (73,-450)
+   Fun        -   | first 28/28 start   1.7 peel   8.0 hollow  1.00 | fb depth   2.5 off ledge -16.5 | second  86.5 h  1.00 | leg2  26.0 | right r0 start  -0.2 peel  -8.4 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  10.9 hollow  0.63 | fb depth   3.0 off ledge  -1.5 | second  53.3 h  1.00 | leg2  26.7 | right r0 start  -2.1 peel -23.1 r1 start  -6.2 peel -24.7
+   Pumping  OFFER | first 28/28 start  -0.2 peel  11.7 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  47.0 h  1.00 | leg2  27.3 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big      OFFER | first 28/28 start  -0.4 peel  12.0 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  48.6 h  1.00 | leg2  27.8 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  50.1 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   6.9 (28/28); Pumping 247°  14.0 (28/28); Big 202°   9.9 (28/28); Big 247°  14.2 (28/28)
+   => fails: Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (544 s)
+row 57 | leg0 42.0° leg1 33.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (73,-92) (73,-450)
+   Fun        -   | first 28/28 start   0.9 peel   7.9 hollow  0.59 | fb depth   2.7 off ledge  -9.0 | second  67.9 h  1.00 | leg2  25.8 | right r0 start  -0.7 peel -27.4 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  11.2 hollow  0.93 | fb depth   2.5 off ledge   0.0 | second  42.3 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping  OFFER | first 28/28 start  -0.3 peel  11.9 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  41.4 h  1.00 | leg2  27.3 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big      OFFER | first 28/28 start  -0.5 peel  12.1 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  48.5 h  1.00 | leg2  27.8 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.6 peel  12.6 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  50.3 h  1.00 | leg2  28.2 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   9.1 (28/28); Pumping 247°  14.2 (28/28); Big 202°  10.5 (28/28); Big 247°  14.1 (28/28)
+   => fails: Big peel, Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (491 s)
+row 58 | leg0 42.0° leg1 37.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (75,-90) (75,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.7 hollow  1.00 | fb depth   3.3 off ledge -20.0 | second  97.1 h  1.00 | leg2  26.5 | right r0 start  -0.1 peel  -6.8 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.4 peel  10.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  78.0 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.5 hollow  0.86 | fb depth   3.5 off ledge   0.0 | second  58.4 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  54.3 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.8
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  57.5 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.1 (28/28); Big 202°   8.0 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (474 s)
+row 59 | leg0 42.0° leg1 37.0° ledge 3 m face 15/15 shelf 4 | north (0,0) (47,-52) (75,-90) (75,-450)
+   Fun        -   | first 28/28 start   1.7 peel   8.0 hollow  1.00 | fb depth   2.5 off ledge -16.5 | second  98.2 h  1.00 | leg2  26.0 | right r0 start  -0.2 peel  -8.4 r1 start  -3.6 peel -13.6
+   Solid    OFFER | first 28/28 start   0.1 peel  10.9 hollow  0.63 | fb depth   3.0 off ledge  -1.5 | second  60.5 h  1.00 | leg2  26.7 | right r0 start  -2.1 peel -23.1 r1 start  -6.2 peel -24.7
+   Pumping  OFFER | first 28/28 start  -0.2 peel  11.7 hollow  1.00 | fb depth   3.3 off ledge   1.5 | second  52.7 h  1.00 | leg2  27.3 | right r0 start  -2.4 peel -22.8 r1 start  -6.4 peel -24.5
+   Big      OFFER | first 28/28 start  -0.4 peel  12.0 hollow  1.00 | fb depth   4.4 off ledge   3.5 | second  54.1 h  1.00 | leg2  27.8 | right r0 start  -2.6 peel -23.0 r1 start  -6.7 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   5.0 | second  57.4 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.0 (28/28); Big 202°   9.9 (28/28); Big 247°  14.2 (28/28)
+   => fails: Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (495 s)
+row 60 | leg0 42.0° leg1 37.0° ledge 2.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (75,-90) (75,-450)
+   Fun        -   | first 28/28 start   0.9 peel   7.9 hollow  0.58 | fb depth   2.7 off ledge  -9.0 | second  80.8 h  1.00 | leg2  25.8 | right r0 start  -0.7 peel -27.4 r1 start  -4.5 peel -20.2
+   Solid    OFFER | first 28/28 start  -0.1 peel  11.2 hollow  0.93 | fb depth   2.5 off ledge   0.0 | second  45.6 h  1.00 | leg2  26.7 | right r0 start  -2.3 peel -23.1 r1 start  -6.5 peel -24.3
+   Pumping  OFFER | first 28/28 start  -0.3 peel  11.9 hollow  1.00 | fb depth   3.3 off ledge   2.5 | second  46.8 h  1.00 | leg2  27.3 | right r0 start  -2.6 peel -22.3 r1 start  -6.7 peel -24.5
+   Big      OFFER | first 28/28 start  -0.5 peel  12.1 hollow  1.00 | fb depth   4.3 off ledge   4.0 | second  54.6 h  1.00 | leg2  27.8 | right r0 start  -2.7 peel -22.9 r1 start  -6.8 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.6 peel  12.6 hollow  1.00 | fb depth   5.7 off ledge   5.5 | second  57.6 h  1.00 | leg2  28.2 | right r0 start  -2.9 peel -22.4 r1 start  -6.8 peel -24.6
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   9.1 (28/28); Pumping 247°  14.2 (28/28); Big 202°  10.5 (28/28); Big 247°  14.1 (28/28)
+   => fails: Big peel, Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (492 s)
+row 61 | leg0 42.0° leg1 22.0° ledge 3.5 m face 10/15 shelf 4 | north (0,0) (47,-52) (65,-96) (65,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.5 hollow  1.00 | fb depth   3.2 off ledge -20.0 | second  69.4 h  1.00 | leg2  26.2 | right r0 start  -0.1 peel  -6.9 r1 start  -4.0 peel -13.3
+   Solid    OFFER | first 28/28 start   0.5 peel  10.9 hollow  0.51 | fb depth   3.5 off ledge  -6.0 | second  40.2 h  1.00 | leg2  26.7 | right r0 start  -1.6 peel -25.3 r1 start  -5.6 peel -26.3
+   Pumping  OFFER | first 28/28 start   0.1 peel  12.2 hollow  0.79 | fb depth   3.5 off ledge  -2.0 | second  36.2 h  1.00 | leg2  27.3 | right r0 start  -2.0 peel -23.0 r1 start  -6.1 peel -24.8
+   Big      OFFER | first 28/28 start  -0.1 peel  12.6 hollow  1.00 | fb depth   3.7 off ledge   0.5 | second  36.8 h  1.00 | leg2  27.8 | right r0 start  -2.3 peel -23.1 r1 start  -6.4 peel -24.6
+   Huge       -   | first 28/28 start  -0.3 peel  13.3 hollow  1.00 | fb depth   5.0 off ledge   2.5 | second  37.9 h  1.00 | leg2  28.2 | right r0 start  -2.5 peel -22.7 r1 start  -6.5 peel -24.8
+   offered [Solid, Pumping, Big] mids [Pumping] | outer first-leg peel: Pumping 202°   6.7 (28/28); Pumping 247°  14.5 (28/28)
+   => fails: Pumping peel, Big peel, Pumping hollow, Pumping second leg   (400 s)
+row 62 | leg0 42.0° leg1 22.0° ledge 3.5 m face 15/10 shelf 4 | north (0,0) (47,-52) (65,-96) (65,-450)
+   Fun        -   | first 28/28 start   2.7 peel   9.1 hollow  1.00 | fb depth   3.3 off ledge -19.5 | second  56.9 h  1.00 | leg2  27.6 | right r0 start  -0.2 peel  -9.8 r1 start  -4.2 peel -14.4
+   Solid    OFFER | first 28/28 start   0.0 peel  12.4 hollow  1.00 | fb depth   3.5 off ledge  -1.5 | second  33.6 h  1.00 | leg2  28.6 | right r0 start  -2.0 peel -24.4 r1 start  -6.1 peel -26.1
+   Pumping  OFFER | first 28/28 start  -0.4 peel  12.1 hollow  1.00 | fb depth   4.1 off ledge   3.0 | second  35.8 h  1.00 | leg2  29.1 | right r0 start  -2.5 peel -23.2 r1 start  -6.6 peel -24.4
+   Big      OFFER | first 28/28 start  -0.7 peel  12.1 hollow  1.00 | fb depth   5.7 off ledge   6.5 | second  39.1 h  1.00 | leg2  29.5 | right r0 start  -2.9 peel -23.1 r1 start  -7.0 peel -24.4
+   Huge       -   | first 28/28 start  -1.1 peel  13.2 hollow  1.00 | fb depth   7.7 off ledge  10.0 | second  33.0 h  1.00 | leg2  29.8 | right r0 start  -3.2 peel -23.7 r1 start  -7.2 peel -24.7
+   offered [Solid, Pumping, Big] mids [Pumping] | outer first-leg peel: Pumping 202°  10.8 (28/28); Pumping 247°  13.3 (28/28)
+   => fails: Solid peel, Pumping peel, Big peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg   (403 s)
+row 63 | leg0 42.0° leg1 22.0° ledge 3.5 m face 10/10 shelf 4 | north (0,0) (47,-52) (65,-96) (65,-450)
+   Fun        -   | first 28/28 start   2.7 peel   9.2 hollow  1.00 | fb depth   3.4 off ledge -20.0 | second  60.2 h  1.00 | leg2  27.6 | right r0 start  -0.1 peel  -9.7 r1 start  -3.5 peel -15.5
+   Solid    OFFER | first 28/28 start   0.3 peel  11.7 hollow  0.84 | fb depth   3.5 off ledge  -3.5 | second  39.3 h  1.00 | leg2  28.5 | right r0 start  -1.8 peel -23.9 r1 start  -5.9 peel -25.9
+   Pumping  OFFER | first 28/28 start  -0.2 peel  11.8 hollow  1.00 | fb depth   3.6 off ledge   0.5 | second  38.2 h  1.00 | leg2  29.1 | right r0 start  -2.3 peel -23.1 r1 start  -6.4 peel -24.4
+   Big      OFFER | first 28/28 start  -0.4 peel  11.9 hollow  1.00 | fb depth   5.0 off ledge   3.5 | second  40.5 h  1.00 | leg2  29.5 | right r0 start  -2.6 peel -22.9 r1 start  -6.7 peel -24.4
+   Huge     OFFER | first 28/28 start  -0.7 peel  12.5 hollow  1.00 | fb depth   7.5 off ledge   6.5 | second  34.5 h  1.00 | leg2  29.7 | right r0 start  -2.9 peel -23.4 r1 start  -6.9 peel -24.5
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°  10.5 (28/28); Pumping 247°  13.5 (28/28); Big 202°  11.2 (28/28); Big 247°  13.6 (28/28)
+   => fails: Huge peel, Solid (smallest) hollow ≥ 0.6, Pumping second leg, Big second leg   (447 s)
+row 64 | leg0 42.0° leg1 22.0° ledge 3.5 m face 15/15 shelf 5 | north (0,0) (47,-52) (65,-96) (65,-450)
+   Fun        -   | first 28/28 start   5.9 peel  20.9 hollow  1.00 | fb depth   2.8 off ledge -58.5 | second  53.8 h  1.00 | leg2  25.8 | right r0 start   –   peel   –   r1 start   –   peel   –  
+   Solid    OFFER | first 28/28 start   0.4 peel   9.9 hollow  0.50 | fb depth   3.6 off ledge  -4.5 | second  48.2 h  1.00 | leg2  26.7 | right r0 start  -1.6 peel -24.9 r1 start  -4.9 peel -28.1
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.4 hollow  0.83 | fb depth   3.5 off ledge   0.0 | second  39.8 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.3 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  38.6 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  39.5 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.1 (28/28); Big 202°   7.6 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (441 s)
+row 65 | leg0 42.0° leg1 22.0° ledge 3.5 m face 15/15 shelf 6 | north (0,0) (47,-52) (65,-96) (65,-450)
+   Fun        -   | first 26/28 start   6.4 peel  23.1 hollow  1.00 | fb depth   –   off ledge   –   | second  52.5 h  1.00 | leg2  25.8 | right r0 start   –   peel   –   r1 start   –   peel   –  
+   Solid    OFFER | first 28/28 start   0.4 peel   9.6 hollow  0.49 | fb depth   3.6 off ledge  -4.5 | second  48.9 h  1.00 | leg2  26.7 | right r0 start  -1.6 peel -25.0 r1 start  -3.9 peel -34.3
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.4 hollow  0.82 | fb depth   3.5 off ledge   0.0 | second  39.9 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.2 r1 start  -6.2 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  38.6 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.8
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  39.5 h  1.00 | leg2  28.2 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   6.9 (28/28); Pumping 247°  14.1 (28/28); Big 202°   7.5 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (441 s)
+row 66 | leg0 42.0° leg1 12.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (57,-98) (57,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.6 hollow  1.00 | fb depth   3.3 off ledge -20.0 | second  58.1 h  1.00 | leg2  26.5 | right r0 start  -0.1 peel  -6.8 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.4 peel  10.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  39.6 h  1.00 | leg2  26.8 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.5 hollow  0.86 | fb depth   3.5 off ledge   0.0 | second  34.7 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  33.5 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.8
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  33.9 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.1 (28/28); Big 202°   7.9 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (441 s)
+row 67 | leg0 42.0° leg1 7.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (53,-99) (53,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.5 hollow  1.00 | fb depth   3.3 off ledge -20.0 | second  54.9 h  0.73 | leg2  26.6 | right r0 start  -0.1 peel  -6.8 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.4 peel  10.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  36.5 h  1.00 | leg2  26.8 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.5 hollow  0.86 | fb depth   3.5 off ledge   0.0 | second  32.6 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  31.7 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.8
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  31.9 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.1 (28/28); Big 202°   8.0 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (441 s)
+row 68 | leg0 42.0° leg1 2.0° ledge 3.5 m face 15/15 shelf 4 | north (0,0) (47,-52) (48,-99) (48,-450)
+   Fun        -   | first 28/28 start   2.1 peel   8.5 hollow  1.00 | fb depth   3.3 off ledge -20.0 | second  67.4 h  1.00 | leg2  26.7 | right r0 start  -0.1 peel  -6.8 r1 start  -4.0 peel -13.2
+   Solid    OFFER | first 28/28 start   0.4 peel  10.2 hollow  0.54 | fb depth   3.5 off ledge  -4.5 | second  33.9 h  1.00 | leg2  26.7 | right r0 start  -1.7 peel -24.7 r1 start  -5.7 peel -26.6
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.5 hollow  0.86 | fb depth   3.5 off ledge   0.0 | second  31.5 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.2 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  30.3 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.8
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  30.6 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.1 (28/28); Big 202°   8.0 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (443 s)
+row 69 | leg0 42.0° leg1 12.0° ledge 3.5 m face 15/15 shelf 5 | north (0,0) (47,-52) (57,-98) (57,-450)
+   Fun        -   | first 28/28 start   5.9 peel  19.9 hollow  1.00 | fb depth   2.8 off ledge -58.5 | second  30.2 h  1.00 | leg2  25.8 | right r0 start   –   peel   –   r1 start   –   peel   –  
+   Solid    OFFER | first 28/28 start   0.4 peel   9.9 hollow  0.50 | fb depth   3.6 off ledge  -4.5 | second  40.0 h  1.00 | leg2  26.8 | right r0 start  -1.6 peel -24.9 r1 start  -4.9 peel -28.1
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.4 hollow  0.83 | fb depth   3.5 off ledge   0.0 | second  34.7 h  1.00 | leg2  27.3 | right r0 start  -2.2 peel -23.3 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  33.5 h  1.00 | leg2  27.8 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  33.9 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   7.0 (28/28); Pumping 247°  14.1 (28/28); Big 202°   7.6 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (445 s)
+row 70 | leg0 42.0° leg1 2.0° ledge 3.5 m face 15/15 shelf 5 | north (0,0) (47,-52) (48,-99) (48,-450)
+   Fun        -   | first 28/28 start   5.9 peel  19.1 hollow  1.00 | fb depth   2.8 off ledge -58.5 | second  98.0 h  1.00 | leg2  26.1 | right r0 start   –   peel   –   r1 start   –   peel   –  
+   Solid    OFFER | first 28/28 start   0.4 peel   9.9 hollow  0.50 | fb depth   3.6 off ledge  -4.5 | second  34.2 h  1.00 | leg2  26.7 | right r0 start  -1.6 peel -24.9 r1 start  -4.9 peel -28.1
+   Pumping  OFFER | first 28/28 start  -0.0 peel  11.4 hollow  0.83 | fb depth   3.5 off ledge   0.0 | second  31.5 h  1.00 | leg2  27.4 | right r0 start  -2.2 peel -23.3 r1 start  -6.3 peel -24.7
+   Big      OFFER | first 28/28 start  -0.3 peel  12.1 hollow  1.00 | fb depth   4.2 off ledge   2.5 | second  30.3 h  1.00 | leg2  27.9 | right r0 start  -2.5 peel -23.2 r1 start  -6.5 peel -24.7
+   Huge     OFFER | first 28/28 start  -0.5 peel  12.5 hollow  1.00 | fb depth   5.6 off ledge   4.5 | second  30.6 h  1.00 | leg2  28.3 | right r0 start  -2.7 peel -23.0 r1 start  -6.7 peel -24.8
+   offered [Solid, Pumping, Big, Huge] mids [Pumping, Big] | outer first-leg peel: Pumping 202°   6.7 (28/28); Pumping 247°  14.1 (28/28); Big 202°   7.6 (28/28); Big 247°  14.4 (28/28)
+   => fails: Big peel, Huge peel, Pumping second leg, Big second leg   (445 s)

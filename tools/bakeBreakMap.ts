@@ -37,7 +37,7 @@ const path = (v: Float32Array, level: number, closed: boolean, tol = 0.6) =>
 // at the edge of their data (NaN), so no line runs along the view's or the reef grid's border.
 const landField = field(landH, -1000), landLines = field(landH, NaN);
 const deep = field((x, z) => { const b = seabed(x, z); return b === null ? null : -b; }, NaN);
-const [px, py] = worldToMap(-25, 45);
+const [px, py] = worldToMap(reef.TIP[0] - 25, reef.TIP[1] + 45); // the lineup (tracks.WOMB_LINEUP)
 
 // The inset: the whole ring's coastline (0 m) squeezed into the 78 px strip, the main view boxed in orange.
 const R = land.ring, rnx = R.nx + 2, rnz = R.nz + 2, ringField = new Float32Array(rnx * rnz).fill(-1000);

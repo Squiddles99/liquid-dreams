@@ -11,10 +11,20 @@ import {
 import { PSI_NORMAL } from './overturn';
 import { peakLanding, peakStation } from './peakStation.fixture';
 import { computeReefField, sampleField, sampleOnset } from './reefField';
+import { reefBeds } from './testField';
+import { NORTH_LEDGE, TIP } from '../seabed/wombReef';
 import { type ActiveWave, type BreakOptions, breakOptions, type WaveContext, localHeight, sumWaves } from './setWaveModel';
 
 // The app's field (1 m cells, default swell and tide) and the Task 2 sheet: Phase 1 + front sharpening + drain + bore.
-const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
+// Seeded by the coast field (womb-retune); the pins sit on the moved take-off (TIP) and the left's one ledge.
+const field = computeReefField({ bed: reefBeds(2).bed, periodS: 15, fromDeg: 225, tideM: 0, coast: reefBeds(2).coast });
+const [PX, PZ] = TIP;
+/** A point `s` m along the left's ledge from the tip. */
+const onLeft = (s: number): [number, number] => {
+  const [a, b] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return [Math.round((a[0] + ((b[0] - a[0]) * s) / L) * 10) / 10, Math.round((a[1] + ((b[1] - a[1]) * s) / L) * 10) / 10];
+};
+const fromTip = (x: number, z: number): [number, number] => [PX + x, PZ + z];
 const ctx: WaveContext = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
 // Every crest at the normal ψ (state 5): these tests measure one fixed shape.
 const SHEET: BreakOptions = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), force: { psi: PSI_NORMAL } };
@@ -50,7 +60,7 @@ describe('lipProfile', () => {
     // The shoulders ahead of the peel faded the constructed curve in before they broke: a face from the foot to the
     // crest, the curl folded into the crest, blended with the sheet at the samples' homes. The leaned front stands steeper
     // than that face, and the blend of two different places bulged 2 m off the water: a second swell down the shoulder.
-    for (const [x, z] of [[0, 0], [20, -40], [35, -90]] as const) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 3 * HS]) {
+    for (const [x, z] of [[PX, PZ], onLeft(45), onLeft(96)]) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 3 * HS]) {
       const { base, frameBase, input } = stationAt(x, z, testWave(h), null);
       for (const r of [0.75, 0.85, 0.95, 0.99, 1.2]) {
         const pr = buildProfile(base, { ...input, r }, LIP, frameBase);
@@ -59,10 +69,10 @@ describe('lipProfile', () => {
     }
   });
   it('the lip peels out of the water over the throw: barely off it as it starts, the whole curl by LIP_EMERGE_PROGRESS', () => {
-    const probe = stationAt(0, 0, big, 0);
+    const probe = stationAt(PX, PZ, big, 0);
     const tau = profileFrame(probe.frameBase, probe.input, LIP).tauLand;
     const off = (tb: number) => {
-      const { base, frameBase, input } = stationAt(0, 0, big, tb);
+      const { base, frameBase, input } = stationAt(PX, PZ, big, tb);
       const pr = buildProfile(base, input, LIP, frameBase);
       return { off: Math.max(...pr.points.map((pt, j) => Math.hypot(pt[0] - base(pr.homes[j])[0], pt[1] - base(pr.homes[j])[1]))), weight: pr.frame.weight };
     };
@@ -71,10 +81,10 @@ describe('lipProfile', () => {
     expect(off(LIP_EMERGE_PROGRESS * tau).weight).toBeCloseTo(1, 6);
   });
   it('as the whitewater rises under the curl the lip keeps falling: it never pulls back or flips up level', () => {
-    const probe = stationAt(0, 0, big, 0);
+    const probe = stationAt(PX, PZ, big, 0);
     const tau = profileFrame(probe.base, probe.input, LIP).tauLand;
     const tipAt = (tb: number) => {
-      const { base, frameBase, input } = stationAt(0, 0, big, tb);
+      const { base, frameBase, input } = stationAt(PX, PZ, big, tb);
       const p = buildProfile(base, input, LIP, frameBase);
       return { reach: p.frame.reach, y: p.frame.tip[1] };
     };
@@ -109,7 +119,7 @@ describe('lipProfile', () => {
     // the face's chord: where a wave sat on that line, a hair's change in it moved the face's foot 0.15 H, and the GPU's
     // f32 and the CPU took different sides of it (ribbon self-test, after the face's floor ran down from one width). The
     // peak's own landing jump (impactHeight's scan) is pinned in the next test.
-    for (const [x0, z0] of [[11, -30], [21.9, -60]] as const) {
+    for (const [x0, z0] of [onLeft(32), onLeft(64)]) {
       const sheet: BreakOptions = { ...SHEET, force: { psi: 0.09 }, pile: false };
       const f0 = sampleField(field, x0, z0);
       let prev = NaN, worst = 0, where = '';
@@ -128,7 +138,7 @@ describe('lipProfile', () => {
     }
   });
   it('has PROFILE_SAMPLES samples whose homes run monotonically from the front edge to the back edge', () => {
-    const { base, input } = stationAt(0, 0, big, 0.3);
+    const { base, input } = stationAt(PX, PZ, big, 0.3);
     const f = profileFrame(base, input, LIP);
     expect(PROFILE_SAMPLES).toBe(160);
     const homes = Array.from({ length: PROFILE_SAMPLES }, (_, j) => sampleHome(j, f));
@@ -138,7 +148,7 @@ describe('lipProfile', () => {
   });
 
   it('the biggest default wave at the peak lands its lip 0.4–1.5 s after onset (a free fall from the crest)', () => {
-    const { base, input } = stationAt(0, 0, big, 0);
+    const { base, input } = stationAt(PX, PZ, big, 0);
     // Read at the landing: the frame's P is the curl's point as it stands, the landing point once it has landed.
     const f = profileFrame(base, { ...input, psi: PSI_NORMAL, tb: profileFrame(base, { ...input, psi: PSI_NORMAL }, LIP).tauLand }, LIP);
     expect(f.tauLand).toBeGreaterThan(0.4);
@@ -151,13 +161,13 @@ describe('lipProfile', () => {
   it('never crosses itself before the lip lands (peak, ledge points, bigger waves, ψ and face-width ends)', () => {
     const cases: { x: number; z: number; h: number; p: LipParams; psi?: number }[] = [];
     // Only where the crest has broken (r ≥ 1): a time since onset means the section broke.
-    for (const [x, z] of [[0, 0], [20, -40], [35, -90], [15, 16], [50, 36]] as const) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 2.4 * HS, 3 * HS]) {
+    for (const [x, z] of [[PX, PZ], onLeft(45), onLeft(96), fromTip(15, 16), fromTip(50, 36)]) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 2.4 * HS, 3 * HS]) {
       const f = sampleField(field, x, z);
       if (breakingRatio(h * f.amp, f.hmin, DEFAULT_BREAK_PARAMS) >= 1) cases.push({ x, z, h, p: LIP });
     }
     expect(cases.length).toBeGreaterThanOrEqual(10);
-    for (const psi of [0.015, 0.3]) cases.push({ x: 0, z: 0, h: REF_BIGGEST.heightM, p: LIP, psi });
-    for (const p of [{ ...LIP, faceWidth: 0.1 }, { ...LIP, faceWidth: 3 }]) cases.push({ x: 0, z: 0, h: REF_BIGGEST.heightM, p });
+    for (const psi of [0.015, 0.3]) cases.push({ x: PX, z: PZ, h: REF_BIGGEST.heightM, p: LIP, psi });
+    for (const p of [{ ...LIP, faceWidth: 0.1 }, { ...LIP, faceWidth: 3 }]) cases.push({ x: PX, z: PZ, h: REF_BIGGEST.heightM, p });
     let worst = 0;
     for (const c of cases) {
       const w = testWave(c.h);
@@ -185,7 +195,7 @@ describe('lipProfile', () => {
 
   it('is exactly the sheet before it steepens and after it collapses', () => {
     for (const [r, tb] of [[0.6, null], [0.69, null], [2, Infinity], [2, 10]] as const) {
-      const { base, input } = stationAt(0, 0, big, tb);
+      const { base, input } = stationAt(PX, PZ, big, tb);
       const p = buildProfile(base, { ...input, r }, LIP);
       p.points.forEach((pt, j) => expect(near(pt, base(p.homes[j]), 1e-9)).toBe(true));
     }
@@ -193,7 +203,7 @@ describe('lipProfile', () => {
 
   it('its edges are the sheet at every stage', () => {
     for (const tb of [null, 0, 0.4, 0.9, 1.4, 3]) {
-      const { base, input } = stationAt(0, 0, big, tb);
+      const { base, input } = stationAt(PX, PZ, big, tb);
       const p = buildProfile(base, { ...input, r: tb === null ? 0.9 : input.r }, LIP);
       expect(near(p.points[0], base(p.frame.uFront))).toBe(true);
       expect(near(p.points.at(-1) as Vec2, base(p.frame.uBack))).toBe(true);
@@ -270,7 +280,7 @@ describe('lipProfile', () => {
 
   it('stays finite at the extremes (12 ft, 0.5 ft, huge and tiny times)', () => {
     for (const h of [0.05, surferFeetToHs(12) * 1.8]) for (const tb of [null, 0, 0.5, 5, 1e6, Infinity]) {
-      const { base, input } = stationAt(0, 0, testWave(h), tb);
+      const { base, input } = stationAt(PX, PZ, testWave(h), tb);
       const p = buildProfile(base, { ...input, r: tb === null ? 0.95 : input.r }, LIP);
       for (const pt of p.points) { expect(Number.isFinite(pt[0])).toBe(true); expect(Number.isFinite(pt[1])).toBe(true); }
     }

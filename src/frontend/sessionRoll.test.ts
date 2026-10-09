@@ -99,7 +99,8 @@ describe('Roll the dice (spec §6.9)', () => {
     for (let seed = 1; seed <= 4000; seed++) {
       const s = rollSetup(seed);
       if (s.month >= 5 && s.month <= 8) { winterN++; if (s.swellFt >= 5) winterBig++; }
-      if (s.month === 11 || s.month <= 2) { summerN++; if (s.swellFt <= 4) summerSmall++; }
+      // Summers roll the smallest offered band (Solid, 5–6 ft, since the Womb moved onto the real shelf: womb-retune).
+      if (s.month === 11 || s.month <= 2) { summerN++; if (s.swellFt <= 6) summerSmall++; }
     }
     expect(winterBig / winterN).toBeGreaterThan(0.9);
     expect(summerSmall / summerN).toBeGreaterThan(0.9);

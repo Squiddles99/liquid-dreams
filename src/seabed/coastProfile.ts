@@ -1,4 +1,5 @@
 import { smoothstep } from '../math/smoothstep';
+import type { GridSpec } from './wombReef';
 
 /** Beach waterline, metres east of the peak: Andrew's satellite views put the take-off 100–110 m off the sand
  * (2026-10-05; he first measured 189–192 m to the reef's outer corner), and the dry sand starts 12 m above the waterline
@@ -22,7 +23,14 @@ export const REEF_SURROUND_DEPTH_M = 15;
 export const FAR_RAMP_S: readonly [number, number] = [260, SHORE_X + 400];
 
 /**
- * Still-water depth (m) of the reef-free coast as a function of x only (the coast runs north–south).
+ * The coast map's grid (lineup truth spec §3b): 4 m cells, x ∈ [−1 500, +500], z ∈ [−2 100, +1 396] around the Womb's
+ * peak: Lefthanders to Ellensbrook, the shore out to ~28 m of water. coastMap.buildCoastMap fills it.
+ */
+export const COAST_GRID: GridSpec = { x0: -1500, z0: -2100, cellM: 4, nx: 501, nz: 875 };
+
+/**
+ * Still-water depth (m) of the reef-free coast as a function of x only (the coast runs north–south): the background
+ * outside the coast map (COAST_GRID) only; inside it, coastMap.buildCoastMap's bed rules.
  * Offshore distance s = SHORE_X − x. Monotonic: never deepens shoreward. Used inside the map as the
  * background the reef sits on, and outside it everywhere, so the far field matches the map at its edges.
  */

@@ -186,7 +186,7 @@ describe('the set timeline stays put', () => {
       [
         {
           "arrivalS": 1406.339834,
-          "crestLengthM": 457.18,
+          "crestLengthM": 6047.865,
           "crestOffsetM": 39.174,
           "fromDeg": 227.871434,
           "heightM": 1.488601,
@@ -195,7 +195,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 1422.463099,
-          "crestLengthM": 535.042,
+          "crestLengthM": 6566.946,
           "crestOffsetM": 56.692,
           "fromDeg": 223.814987,
           "heightM": 1.89544,
@@ -204,7 +204,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 1438.044562,
-          "crestLengthM": 528.574,
+          "crestLengthM": 6523.825,
           "crestOffsetM": 7.695,
           "fromDeg": 224.726223,
           "heightM": 1.936171,
@@ -213,7 +213,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 1453.410468,
-          "crestLengthM": 595.048,
+          "crestLengthM": 6966.987,
           "crestOffsetM": -28.178,
           "fromDeg": 221.939184,
           "heightM": 1.411958,
@@ -222,7 +222,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 1467.485806,
-          "crestLengthM": 325.599,
+          "crestLengthM": 5170.663,
           "crestOffsetM": 56.875,
           "fromDeg": 228.76911,
           "heightM": 1.9855,
@@ -231,7 +231,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 1482.416242,
-          "crestLengthM": 486.978,
+          "crestLengthM": 6246.521,
           "crestOffsetM": 44.335,
           "fromDeg": 221.040722,
           "heightM": 1.698431,
@@ -240,7 +240,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 1497.666617,
-          "crestLengthM": 530.031,
+          "crestLengthM": 6533.537,
           "crestOffsetM": -5.639,
           "fromDeg": 226.977551,
           "heightM": 1.389631,
@@ -249,7 +249,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 1512.600005,
-          "crestLengthM": 305.791,
+          "crestLengthM": 5038.609,
           "crestOffsetM": 32.03,
           "fromDeg": 226.115449,
           "heightM": 1.840774,
@@ -258,7 +258,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 2230.54306,
-          "crestLengthM": 340.861,
+          "crestLengthM": 5272.406,
           "crestOffsetM": -21.227,
           "fromDeg": 223.92009,
           "heightM": 0.935957,
@@ -267,7 +267,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 2349.661137,
-          "crestLengthM": 409.022,
+          "crestLengthM": 5726.816,
           "crestOffsetM": -44.067,
           "fromDeg": 225.8108,
           "heightM": 1.887734,
@@ -276,7 +276,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 2365.735593,
-          "crestLengthM": 469.126,
+          "crestLengthM": 6127.504,
           "crestOffsetM": 7.857,
           "fromDeg": 222.522179,
           "heightM": 1.834931,
@@ -285,7 +285,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 2382.057724,
-          "crestLengthM": 425.071,
+          "crestLengthM": 5833.808,
           "crestOffsetM": -34.335,
           "fromDeg": 224.30329,
           "heightM": 2.690853,
@@ -294,7 +294,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 2397.87825,
-          "crestLengthM": 563.877,
+          "crestLengthM": 6759.179,
           "crestOffsetM": -59.918,
           "fromDeg": 225.892682,
           "heightM": 2.252301,
@@ -303,7 +303,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 2412.023509,
-          "crestLengthM": 589.347,
+          "crestLengthM": 6928.98,
           "crestOffsetM": -27.939,
           "fromDeg": 224.25146,
           "heightM": 1.991813,
@@ -312,7 +312,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 2427.817214,
-          "crestLengthM": 557.921,
+          "crestLengthM": 6719.476,
           "crestOffsetM": -20.434,
           "fromDeg": 221.048811,
           "heightM": 1.426725,
@@ -321,7 +321,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 2443.566801,
-          "crestLengthM": 514.34,
+          "crestLengthM": 6428.932,
           "crestOffsetM": -32.442,
           "fromDeg": 223.750652,
           "heightM": 1.908112,
@@ -330,7 +330,7 @@ describe('the set timeline stays put', () => {
         },
         {
           "arrivalS": 2535.543163,
-          "crestLengthM": 466.657,
+          "crestLengthM": 6111.043,
           "crestOffsetM": 35.001,
           "fromDeg": 222.275557,
           "heightM": 0.976579,

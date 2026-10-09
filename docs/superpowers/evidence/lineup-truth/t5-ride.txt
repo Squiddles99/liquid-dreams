@@ -1,0 +1,32 @@
+lineup-truth Task 5: the ride (Opus, 2026-10-09)
+
+1. src/ride (npx vitest run src/ride), branch and main (../ld-main-ab) same session. These tests solve the reef field
+   WITHOUT a coast (src/ride is untouched), so they check the no-coast path and the longer set lines:
+     both: 10 files passed, 2 skipped; 92 tests passed, 3 skipped (R3's expert red no longer red on main either)
+     heldS per case, branch = main: 6 ft intermediate 14.33 s, 12 ft intermediate 15.00, 6 ft beginner 12.32, 6 ft expert 14.37
+
+2. The same four rides with the coast (tools/_coastRide.ts, a copy of rideOnSections' loop; t5-ride-coast.txt):
+     case                 far-field seed (main)   coast seed (this branch in game)
+     6 ft intermediate    held 14.33 / 14.33 s    held 0.00 / 4.92 s, kickout
+     12 ft intermediate   held 15.00 / 15.00 s    held 14.52 / 14.52 s
+     6 ft beginner        held 12.32 / 12.32 s    held 0.15 / 6.45 s, kickout
+     6 ft expert          held 14.37 / 14.37 s    held 2.23 / 10.58 s, kickout
+   GATE FAILED with the coast: heldS moves -14.3 / -0.5 / -12.2 / -12.1 s (gate +-0.3 s).
+
+3. The probe: PROBE_RIDE_STATIONS=1 PROBE_VARIANTS='lazy' rideStations.probe: lazy (R9) max |dy| 0.00 cm (both rows). Gate holds
+   (the probe's field is the no-coast one, as 1).
+
+4. In game (_rideProfile --ft=6 --sim-t=300, same session): main ride -> ride, caught 396.71 s, ends (2.9, -10.6);
+   branch ride -> paddle twice, caught 396.61 s, ends (1.2, 16.4) / (2.0, 16.6); branch ?coast=off ride -> ride, ends (0.0, -6.7).
+   Cam median main 3.8 ms, branch 3.8 / 3.1 ms (gate +-10 % holds). Riding median main 40.0 ms, branch ?coast=off 44.7 ms
+   (the 5-7 km set lines; on the branch with the coast she is off the wave, 10.8 ms).
+
+5. Why (reefReport.leftStretches, 2 m reef grid, game request: smooth, refraction floor 10 m):
+     ft   far-field seed: first leg peel, hollow   coast seed: first leg peel, hollow
+     6    11.4 m/s, 0.76                          12.7 m/s, 0.79   (second leg 15.0 -> 17.3, hollow 0.82 -> 0.50)
+     8    11.3 m/s, 1.00                          14.0 m/s, 0.55
+     12   11.7 m/s, 1.00                          13.7 m/s, 1.00
+   Arrival at the reef map: west edge -45.0 deg -> -35.7 deg, amp 1.00 -> 0.84; peak -33.5 -> -22.9 deg, amp 1.15 -> 0.72.
+   With an 800 m halo (15 m basin wider along the coast) the west edge is the same (-35.7 deg, 0.84) and the peel 12.8-13.3:
+   it is the survey's 15-28 m shelf turning the swell east (R1 spec 1's "the 20 -> 30 m ramp turned every swell east and
+   the curl ran 12-15 m/s"), not the halo. The first leg leaves 9-12 m/s at every size: the spec says Andrew decides.

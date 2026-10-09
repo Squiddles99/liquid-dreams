@@ -6,6 +6,7 @@ import { BREAKING_RATIO, type BreakParams, DEFAULT_BREAK_PARAMS, type Lifecycle,
 import { PSI_MIN, PSI_NONE, PSI_NORMAL, drainFactor, effectivePsi, withSheetShape } from './overturn';
 import { MIN_DEPTH_M } from './dispersion';
 import type { FieldSample } from './fieldSample';
+import { TIP } from '../seabed/wombReef';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
 
 export { BREAKING_RATIO };
@@ -238,7 +239,7 @@ export function localHeight(w: ActiveWave, f: FieldSample): number {
 /** ξ: time since w's crest passed (x, z) (negative: still to come). */
 export function phaseXi(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext): number {
   const cLocal = ctx.omega / f.k;
-  const dTau = ((w.travelX - ctx.travelX) * x + (w.travelZ - ctx.travelZ) * z) / cLocal;
+  const dTau = ((w.travelX - ctx.travelX) * (x - TIP[0]) + (w.travelZ - ctx.travelZ) * (z - TIP[1])) / cLocal;
   return t - w.arrivalS - f.tau - dTau;
 }
 
@@ -397,8 +398,8 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const stokesPerA = (f.k * (3 - sigma * sigma)) / (4 * sigma * sigma * sigma);
   const B = Math.min(STOKES_CAP, stokesPerA * A);
   const settle = boreSettle(A, B, H0 / 2, Math.min(STOKES_CAP, (stokesPerA * H0) / 2));
-  const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, Math.hypot(x, z));
-  const q = (2 * (-x * w.travelZ + z * w.travelX - w.crestOffsetM)) / w.crestLengthM;
+  const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, Math.hypot(x - TIP[0], z - TIP[1]));
+  const q = (2 * (-(x - TIP[0]) * w.travelZ + (z - TIP[1]) * w.travelX - w.crestOffsetM)) / w.crestLengthM;
   const lateral = 1 + (Math.exp(-(q * q * q * q)) - 1) * wFar;
   const theta = w.omega * xi;
   const aE = A * env * lateral;
@@ -521,8 +522,8 @@ export function waveAt(x: number, z: number, t: number, f: FieldSample, w: Activ
 export function crestPileTop(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, o: BreakOptions): { top: number; own: number; floor: number } | null {
   const crest = crestAt(x, z, t, f, w, ctx, o);
   if (!crest || crest.lipH === null || !(crest.lc.pile > 0)) return null;
-  const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, Math.hypot(x, z));
-  const q = (2 * (-x * w.travelZ + z * w.travelX - w.crestOffsetM)) / w.crestLengthM;
+  const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, Math.hypot(x - TIP[0], z - TIP[1]));
+  const q = (2 * (-(x - TIP[0]) * w.travelZ + (z - TIP[1]) * w.travelX - w.crestOffsetM)) / w.crestLengthM;
   const lateral = 1 + (Math.exp(-(q * q * q * q)) - 1) * wFar;
   const cf = crestFrame(w, crest, lateral, o);
   const floor = settledCrestTop(cf.etaCrest, cf.Hc * lateral, crest.f.hminBreak, lateral, o.params);

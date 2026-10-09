@@ -5,6 +5,7 @@ import { WEATHER_PRESETS } from '../weather/weather';
 import type { CameraPose, Moment } from './momentLink';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_SURFER_PARAMS, type SurferParams, sanitizeSurferParams } from '../surfer/surferParams';
+import { TIP } from '../seabed/wombReef';
 
 /**
  * How a custom-mode pick carries a moment over (see `pickMoment` in devSettings.ts):
@@ -21,7 +22,7 @@ export interface ReferenceMoment {
 }
 
 /** In the deep water just south-west of the peak, where Andrew waits for sets (outside the right's closeout). */
-export const DEFAULT_LINEUP_POSITION: [number, number, number] = [-25, 0.8, 45];
+export const DEFAULT_LINEUP_POSITION: [number, number, number] = [TIP[0] - 25, 0.8, TIP[1] + 45];
 export const DEFAULT_MOMENT_NAME = 'morning-offshore';
 const REFERENCE_SIM_TIME = 30;
 

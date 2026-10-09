@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { TIP } from '../seabed/wombReef';
+import { reefBeds } from './testField';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { GRAVITY } from '../ocean/spectrum';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
@@ -8,7 +10,9 @@ import { flowAt, flowCap, flowFromEta, flowGain } from './flow';
 import { computeReefField, sampleField } from './reefField';
 import { breakOptions, toActiveWave } from './setWaveModel';
 
-const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
+// Seeded by the coast field, as the game's; the peak is the moved take-off (womb-retune: wombReef.TIP).
+const field = computeReefField({ bed: reefBeds(2).bed, periodS: 15, fromDeg: 225, tideM: 0, coast: reefBeds(2).coast });
+const [PX, PZ] = TIP;
 const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
 const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
 const BED_Y = 0.5; // the kelp reads the flow 0.5 m above the bed
@@ -19,11 +23,11 @@ function peakSeries(ft: number): { along: number; dt: number }[] {
   c.swell = { sizeFt: ft, periodS: 15, directionDeg: 225 };
   c.tideM = 0;
   const big = wavesOfSet(1, c, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
-  const f = sampleField(field, 0, 0);
+  const f = sampleField(field, PX, PZ);
   const out: { along: number; dt: number }[] = [];
   for (let dt = -20; dt <= 20; dt += 0.1) {
     const t = big.arrivalS + dt;
-    const u = flowAt(0, 0, -f.depth + BED_Y, t, f, wavesNear(t, c, DEFAULT_SET_PARAMS).map(toActiveWave), ctx, o);
+    const u = flowAt(PX, PZ, -f.depth + BED_Y, t, f, wavesNear(t, c, DEFAULT_SET_PARAMS).map(toActiveWave), ctx, o);
     out.push({ along: u.ux * f.dirX + u.uz * f.dirZ, dt });
   }
   return out;
@@ -31,12 +35,12 @@ function peakSeries(ft: number): { along: number; dt: number }[] {
 
 describe('the flow under the waves (spec §4.1)', () => {
   it('still water: exactly zero', () => {
-    const f = sampleField(field, 0, 0);
-    expect(flowAt(0, 0, -3, 100, f, [], ctx, o)).toEqual({ ux: 0, uz: 0, eta: 0 });
+    const f = sampleField(field, PX, PZ);
+    expect(flowAt(PX, PZ, -3, 100, f, [], ctx, o)).toEqual({ ux: 0, uz: 0, eta: 0 });
     expect(flowFromEta(0, f, field.omega, -3)).toEqual({ ux: 0, uz: 0 });
   });
   it('runs along the local ray: shoreward under a crest (η > 0), seaward under a trough (η < 0)', () => {
-    const f = sampleField(field, 0, 0);
+    const f = sampleField(field, PX, PZ);
     const up = flowFromEta(1, f, field.omega, -f.depth), down = flowFromEta(-1, f, field.omega, -f.depth);
     expect(up.ux * f.dirX + up.uz * f.dirZ).toBeGreaterThan(0);
     expect(down.ux * f.dirX + down.uz * f.dirZ).toBeLessThan(0);

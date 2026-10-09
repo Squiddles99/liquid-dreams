@@ -1,0 +1,6 @@
+Solid (5.5 ft) intermediate: line 35°, held 1.97 s of 8.08 s, end kickout (foam 0.00, section false), ahead {
+Huge (12 ft) intermediate: line 35°, held 14.95 s of 14.95 s, end popup (foam 0.00, section true), ahead {"po
+Solid (5.5 ft) beginner: line 35°, held 14.12 s of 14.12 s, end popup (foam 0.00, section true), ahead {"popu
+Solid (5.5 ft) expert: line 35°, held 0.83 s of 7.55 s, end kickout (foam 0.00, section false), ahead {"popup
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 2 passed (4)
