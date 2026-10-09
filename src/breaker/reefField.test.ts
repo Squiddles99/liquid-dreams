@@ -4,7 +4,7 @@ import { SHORE_X, depthBg } from '../seabed/coastProfile';
 import { NORTH_LEDGE, SOUTH_LEDGE, TIP } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
-import { PEEL_MAX_HOLD_S, RUN_DIP, computeOnsetRecord, computeReefField, gainAhead, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel } from './reefField';
+import { PEEL_MAX_HOLD_S, REFRACT_FLOOR_M, RUN_DIP, computeOnsetRecord, computeReefField, gainAhead, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel, smoothFieldAmplitude } from './reefField';
 import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_UNTIL_OFFSET, onsetGain, onsetHeight, onsetTime } from './breaking';
 import { BREAKING_RATIO } from './setWaveModel';
 import { setWaveHeight } from './reefReport';
@@ -331,22 +331,36 @@ describe('smoothFieldAmplitude: the field as the game draws it', () => {
 });
 
 describe('until carries the hold (one-curl Task 1)', () => {
-  // Held sections need the peel stretch: 1.7, as the stretch's own tests.
-  const f = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0, peel: 1.7, coast: coast1 });
+  // shelf-polish Task 2 (Fable's ruling): the premise is the game's field on the real shelf: peel 1 (DEFAULT_BREAK_PARAMS, the
+  // App's request), the refraction floor, smoothed. Its holds are the curl's, on the Womb's ridden run (within 220 m of the
+  // tip). The old premise (peel 1.7, held nodes on the left's first leg stretched from the peak) is the old peak's: on the
+  // real shelf the level's one line first breaks at the right's far south end (T ≈ −10 s), so 1.7 holds the left's first
+  // 6–21 m at the PEEL_MAX_HOLD_S cap (the third case pins that the cap binds there; it is not in play). Bars unchanged.
+  // until = −tb is the bake's identity (the record before smoothFieldAmplitude, which smooths tb and until on their own
+  // masks); the carry back along the ray is checked on the field as the game reads it (smoothed).
+  const f = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0, coast: coast1, refractFloorM: REFRACT_FLOOR_M });
   const R = ONSET_RECORD_LENGTH, U = ONSET_UNTIL_OFFSET, { nx, cellM, x0, z0 } = f.grid;
-  // Held onset nodes on the north ledge's first leg (within 3 m of its first 80 m), per level.
-  const [a, b] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  const held: { i: number; k: number }[] = [];
-  for (let i = 0; i < f.tau.length; i++) {
-    const x = x0 + (i % nx) * cellM, z = z0 + Math.floor(i / nx) * cellM;
-    const s = ((x - a[0]) * (b[0] - a[0]) + (z - a[1]) * (b[1] - a[1])) / len;
-    const off = Math.abs((x - a[0]) * (b[1] - a[1]) - (z - a[1]) * (b[0] - a[0])) / len;
-    if (s < 5 || s > 80 || off > 3) continue;
-    for (let k = 0; k < ONSET_LEVELS; k++) if (f.onset[i * R] >= ONSET_LEVEL_Q[k] && f.onset[i * R + 1 + 2 * k] < -0.2) held.push({ i, k });
-  }
-  it('at a held node until is the hold (−tb)', () => {
-    expect(held.length).toBeGreaterThan(5);
-    for (const { i, k } of held) expect(f.onset[i * R + U + k], `node ${i} level ${k}`).toBeCloseTo(-f.onset[i * R + 1 + 2 * k], 4);
+  const heldOn = (onset: Float32Array): { i: number; k: number }[] => {
+    const out: { i: number; k: number }[] = [];
+    for (let i = 0; i < f.tau.length; i++) {
+      const x = x0 + (i % nx) * cellM, z = z0 + Math.floor(i / nx) * cellM;
+      if (Math.hypot(x - TIP[0], z - TIP[1]) > 220) continue;
+      for (let k = 0; k < ONSET_LEVELS; k++) if (onset[i * R] >= ONSET_LEVEL_Q[k] && onset[i * R + 1 + 2 * k] < -0.2) out.push({ i, k });
+    }
+    return out;
+  };
+  const bake = f.onset.slice(), heldBake = heldOn(bake);
+  smoothFieldAmplitude(f);
+  const held = heldOn(f.onset);
+  it('at a held node until is the hold (−tb), and no node on the ridden run is held at the cap', () => {
+    expect(heldBake.length).toBeGreaterThan(100);
+    let maxHold = 0;
+    for (const { i, k } of heldBake) {
+      expect(bake[i * R + U + k], `node ${i} level ${k}`).toBeCloseTo(-bake[i * R + 1 + 2 * k], 4);
+      maxHold = Math.max(maxHold, -bake[i * R + 1 + 2 * k]);
+    }
+    console.log(`game field (peel 1): ${heldBake.length} held nodes within 220 m of the tip, max hold ${maxHold.toFixed(2)} s`);
+    expect(maxHold).toBeLessThan(PEEL_MAX_HOLD_S - 0.25);
   });
   it('back along its ray until grows by the arrival time between (no jump at the turn)', () => {
     const errs: string[] = [];
@@ -360,14 +374,27 @@ describe('until carries the hold (one-curl Task 1)', () => {
         const err = rec[U + k] - u0 - (f.tau[i] - sampleField(f, bx, bz).tau);
         if (process.env.PROBE_UNTIL) console.log(`ERR ${cells} ${err.toFixed(3)} u0 ${u0.toFixed(2)}`);
         // One cell back the read is (nearly) the node's own ray: 0.02 s. Two cells back the bilinear blends neighbouring rays,
-        // whose holds differ along the crest (the stretch's gradient, ~0.07 s per metre at 1.7, and with the curl a step at a
-        // held pocket's edge): within 0.2 s (max 0.09 stretch alone, 0.15 with the curl).
+        // whose holds differ along the crest (with the curl a step at a held pocket's edge): within 0.2 s.
         if (Math.abs(err) >= (cells === 1 ? 0.02 : 0.2)) errs.push(`node ${i} level ${k}, ${cells} cell(s) back: ${err.toFixed(3)} s`);
         checked++;
       }
     }
-    expect(checked).toBeGreaterThan(3);
+    expect(checked).toBeGreaterThan(50);
     expect(errs).toEqual([]);
+  });
+  it('at peel 1.7 (not in play) the cap binds on the left\'s first metres: the line first breaks at the right\'s far south end', { timeout: 120_000 }, () => {
+    const g = computeReefField({ bed: reef1, periodS: 15, fromDeg: 225, tideM: 0, peel: 1.7, coast: coast1 });
+    const [a, b] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let atCap = 0;
+    for (let i = 0; i < g.tau.length; i++) {
+      const x = x0 + (i % nx) * cellM, z = z0 + Math.floor(i / nx) * cellM;
+      const s = ((x - a[0]) * (b[0] - a[0]) + (z - a[1]) * (b[1] - a[1])) / len;
+      const off = Math.abs((x - a[0]) * (b[1] - a[1]) - (z - a[1]) * (b[0] - a[0])) / len;
+      if (s < 5 || s > 80 || off > 3) continue;
+      for (let k = 0; k < ONSET_LEVELS; k++) if (g.onset[i * R] >= ONSET_LEVEL_Q[k] && -g.onset[i * R + 1 + 2 * k] >= PEEL_MAX_HOLD_S - 0.25) atCap++;
+    }
+    console.log(`peel 1.7: ${atCap} nodes on the left's first 5–80 m held within 0.25 s of the ${PEEL_MAX_HOLD_S} s cap`);
+    expect(atCap).toBeGreaterThan(0);
   });
 });
 

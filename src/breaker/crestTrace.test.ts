@@ -251,6 +251,9 @@ describe('one hold channel: until carries the hold to the stations (one-curl Tas
   });
 });
 
+/** The Womb's ridden run: stations within this distance of the tip (shelf-polish Task 2). */
+const RIDDEN_M = 220;
+
 describe('one curl per wave on one clock (one-curl Task 4)', () => {
   // The game's field (smoothed, the refraction floor, the default curl), the biggest set wave of each size.
   const game = computeReefField({ bed: reefBeds(2).bed, coast: reefBeds(2).coast, periodS: 15, fromDeg: 225, tideM: 0, smooth: true, refractFloorM: FLOOR_M });
@@ -265,8 +268,13 @@ describe('one curl per wave on one clock (one-curl Task 4)', () => {
       for (const dt of [1, 3, 6]) {
         const entries = traceStations(game, [w], peak + dt, gctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H, spacingM: 1 });
         // Runs of drawn stations (gaps split them); the curl is the run's station with the largest tb.
+        // shelf-polish Task 2 (Fable's ruling): the Womb's ridden run only, stations within RIDDEN_M of the tip; bar unchanged.
+        // Carried (a separate segment, Andrew's call): the inner shelf inside the right, 226–250 m out at the trace's cap
+        // (TAPER_NEAR_M), where the level read takes the crossing as "now" on a ray whose running maximum plateaued just under
+        // the next level (6 ft arcs 182/183: run 0.220 < Q6 0.225 reads tb 0.58, run 0.229 reads level 6's 2.53), and the
+        // level-6 line hooks under the crest (T′ monotone along the line, out of order along the crest).
         const runs: Station[][] = [[]];
-        for (const e of entries) { if (e.gap) runs.push([]); else runs[runs.length - 1].push(e); }
+        for (const e of entries) { if (e.gap || Math.hypot(e.x - PX, e.z - PZ) > RIDDEN_M) { if (runs[runs.length - 1].length) runs.push([]); } else runs[runs.length - 1].push(e); }
         for (const run of runs) {
           let top = -1;
           run.forEach((s, i) => { if (s.tb !== null && Number.isFinite(s.tb) && (top < 0 || s.tb > run[top].tb!)) top = i; });
