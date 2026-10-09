@@ -7,7 +7,7 @@ import type { PresetName } from '../surfer/presets';
 import { easePose, lookoutShot } from './beatCamera';
 import { ConditionsGate } from './conditionsGate';
 import { lineFor } from './conditionsView';
-import { type Beat, type FrontAction, type FrontEvent, type FrontState, type SessionChoice, focusTo, initialFront, savedOf, step, tick } from './frontEnd';
+import { type Beat, type FrontAction, type FrontEvent, type FrontState, type SessionChoice, focusTo, initialFront, savedOf, step, tick, withDetailsMax } from './frontEnd';
 import { FRONT_CHOICES_KEY, type SavedChoices, saveJson } from './frontSettings';
 import { gearView } from './gearView';
 import { toConditions } from './sessionSetup';
@@ -62,6 +62,11 @@ export class FrontEndCore {
 
   get state(): FrontState {
     return this.s;
+  }
+
+  /** The details page's last scroll step (the page lays it out). */
+  setDetailsMax(max: number): void {
+    if (max !== this.s.detailsMax) this.s = withDetailsMax(this.s, max);
   }
 
   setCalm(on: boolean): void {

@@ -134,6 +134,12 @@ export class FrontEnd {
     this.resize(this.size.w, this.size.h);
   }
 
+  /** Back from the title (its Surf): drops the press it saw. */
+  resume(): void {
+    this.dropInput();
+    this.settingsCtl?.reload(); // the title's Settings may have changed them
+  }
+
   /** Drops input seen so far (the title's Surf press must not also press Surf here on the map). */
   dropInput(): void {
     this.input?.poll(performance.now());
@@ -236,7 +242,7 @@ export class FrontEnd {
       this.root?.classList.toggle('is-map', visibleBeat === 'map');
       this.shownBeat = visibleBeat;
     }
-    if (visibleBeat === 'map' || s.beat === 'map') { p.surf.render(s, this.today); p.surf.update(now); p.details.render(s, this.today); }
+    if (visibleBeat === 'map' || s.beat === 'map') { p.surf.render(s, this.today); p.surf.update(now); p.details.render(s, this.today); const m = p.details.maxStep; if (m !== null) this.core!.setDetailsMax(m); }
     p.cond.render(s, this.today);
     p.cond.update(now);
     p.slide.setDevice(this.device);

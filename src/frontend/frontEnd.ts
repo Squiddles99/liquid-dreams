@@ -43,8 +43,11 @@ export interface FrontState {
   source: 'forecast' | 'custom';
   /** The focused break's details page is open over the map. */
   breakDetails: boolean;
-  /** The details page's scroll step (up/down). */
+  /** The details page's scroll step (up/down), and its last step (the page reports it once laid out). */
   detailsScroll: number;
+  detailsMax: number;
+  /** The player's own setup (Custom): kept apart from `setup`, which Surf here may fill with today's forecast. */
+  customSetup: SessionSetup;
 }
 
 export type FrontEvent =
@@ -96,7 +99,7 @@ export function gearRows(s: FrontState): (BoardKind | OutfitChoice | Stance)[] {
 
 export function initialFront(saved: SavedChoices, source: 'forecast' | 'custom' = 'forecast'): FrontState {
   return {
-    beat: 'map', breakId: SURF_BREAKS[0].id, source, breakDetails: false, detailsScroll: 0, setup: saved.setup, presetId: presetOfSetup(saved.setup), rowFocus: 'preset', detailsOpen: false,
+    beat: 'map', breakId: SURF_BREAKS[0].id, source, breakDetails: false, detailsScroll: 0, detailsMax: Infinity, customSetup: saved.setup, setup: saved.setup, presetId: presetOfSetup(saved.setup), rowFocus: 'preset', detailsOpen: false,
     rider: saved.rider, gearTab: 'board', gearFocus: 0, boards: { ...saved.boards }, outfits: { ...saved.outfits }, stances: { ...saved.stances },
     showSpecs: false, move: null, buffer: [],
   };
@@ -108,7 +111,7 @@ export const stanceOf = (s: FrontState, rider: PresetName): Stance => s.stances[
 
 export const choiceOf = (s: FrontState): SessionChoice => ({ setup: s.setup, rider: s.rider, board: boardOf(s, s.rider), outfit: s.outfits[s.rider] ?? 'season', stance: stanceOf(s, s.rider) });
 
-export const savedOf = (s: FrontState): SavedChoices => ({ setup: s.setup, rider: s.rider, boards: { ...s.boards }, outfits: { ...s.outfits }, stances: { ...s.stances } });
+export const savedOf = (s: FrontState): SavedChoices => ({ setup: s.customSetup, rider: s.rider, boards: { ...s.boards }, outfits: { ...s.outfits }, stances: { ...s.stances } });
 
 type Ctx = { seed: number; today: Date; calm: boolean };
 type Out = { state: FrontState; events: FrontEvent[] };
@@ -131,7 +134,7 @@ function gearFocusFor(s: FrontState): number {
 function stepMap(s: FrontState, a: FrontAction, ctx: Ctx): Out {
   if (s.breakDetails) {
     switch (a) {
-      case 'down': return { state: { ...s, detailsScroll: s.detailsScroll + 1 }, events: [] };
+      case 'down': return { state: { ...s, detailsScroll: Math.min(s.detailsMax, s.detailsScroll + 1) }, events: [] };
       case 'up': return { state: { ...s, detailsScroll: Math.max(0, s.detailsScroll - 1) }, events: [] };
       case 'back': case 'details': return { state: { ...s, breakDetails: false, detailsScroll: 0 }, events: [{ kind: 'breakDetails', open: false }] };
       case 'confirm': return surfHere(s, ctx);
@@ -156,7 +159,7 @@ function stepMap(s: FrontState, a: FrontAction, ctx: Ctx): Out {
 
 /** Surf here: today's forecast or the player's own setup, then Conditions. */
 function surfHere(s: FrontState, ctx: Ctx): Out {
-  const setup = s.source === 'forecast' ? todaysSetup(ctx.today) : s.setup;
+  const setup = s.source === 'forecast' ? todaysSetup(ctx.today) : s.customSetup;
   return moveTo({ ...s, setup, presetId: presetOfSetup(setup), breakDetails: false, detailsScroll: 0 }, 'conditions', ctx, [{ kind: 'surfHere', breakId: s.breakId }]);
 }
 
@@ -238,8 +241,20 @@ function stepGear(s: FrontState, a: FrontAction, ctx: Ctx): Out {
   }
 }
 
+/** The details page's last scroll step, from its layout: the scroll never runs past it. */
+export function withDetailsMax(s: FrontState, max: number): FrontState {
+  return { ...s, detailsMax: max, detailsScroll: Math.min(s.detailsScroll, max) };
+}
+
 /** One action (spec §3, §4): A on, B back, START out from anywhere; a move skips on A or B and buffers the rest. */
 export function step(s: FrontState, a: FrontAction, ctx: Ctx): Out {
+  const out = stepAny(s, a, ctx), t = out.state;
+  // Edits on Custom are the player's own setup; on the forecast they stay this session's.
+  if (t.source === 'custom' && t.beat !== 'map' && t.setup !== t.customSetup) return { state: { ...t, customSetup: t.setup }, events: out.events };
+  return out;
+}
+
+function stepAny(s: FrontState, a: FrontAction, ctx: Ctx): Out {
   if (s.beat === 'out') return { state: s, events: [] };
   if (a === 'settings') return { state: s, events: [{ kind: 'settings' }] };
   if (a === 'controls') return { state: s, events: [{ kind: 'controls' }] };

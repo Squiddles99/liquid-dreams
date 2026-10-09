@@ -13,6 +13,9 @@ export class BreakDetails {
   private readonly body = document.createElement('div');
   private readonly inner = document.createElement('div');
   private key = '';
+  private wheel = 0;
+  /** The last scroll step once laid out (null until the page has opened). */
+  maxStep: number | null = null;
 
   constructor(onAction: (a: FrontAction) => void) {
     this.el.className = 'fe-details';
@@ -21,7 +24,12 @@ export class BreakDetails {
     this.inner.className = 'fe-details-inner';
     this.body.appendChild(this.inner);
     this.el.append(this.left, this.body);
-    this.body.addEventListener('wheel', (e) => { e.preventDefault(); onAction(e.deltaY > 0 ? 'down' : 'up'); }, { passive: false });
+    // A trackpad sends many small wheel events: whole steps of STEP_PX only.
+    this.body.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.wheel += e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
+      while (Math.abs(this.wheel) >= STEP_PX) { onAction(this.wheel > 0 ? 'down' : 'up'); this.wheel -= Math.sign(this.wheel) * STEP_PX; }
+    }, { passive: false });
   }
 
   render(s: FrontState, today: Date): void {
@@ -29,10 +37,11 @@ export class BreakDetails {
     if (!s.breakDetails) return;
     const b = breakById(s.breakId);
     if (!b) return;
-    const key = `${b.id}|${s.source}`;
+    const now = conditionsNow(s.source, { forecast: todaysSetup(today), custom: s.customSetup });
+    const key = JSON.stringify([b.id, s.source, now]);
     if (key !== this.key) {
       this.key = key;
-      const t = breakToday(conditionsNow(s.source, { forecast: todaysSetup(today), custom: s.setup }), b.best);
+      const t = breakToday(now, b.best);
       const img = document.createElement('img');
       img.className = 'fe-details-hero'; img.src = `${import.meta.env.BASE_URL}${b.hero}`; img.alt = '';
       const name = document.createElement('div'); name.className = 'fe-map-name'; name.textContent = b.name;
@@ -52,6 +61,7 @@ export class BreakDetails {
       }));
     }
     const max = Math.max(0, this.inner.scrollHeight - this.body.clientHeight);
+    this.maxStep = Math.ceil(max / STEP_PX);
     const y = Math.min(max, s.detailsScroll * STEP_PX);
     this.inner.style.transform = `translateY(${-y}px)`;
     // Fade the edges where text runs on: the top once scrolled, the bottom while more is below.

@@ -91,3 +91,50 @@ registerSelfTest({
     } finally { fe.close(); host.remove(); }
   },
 });
+
+registerSelfTest({
+  name: 'frontend: details scroll stops at the end (Up works at once after holding Down); its verdict matches the panel after a Custom edit',
+  async run() {
+    const host = document.createElement('div'); document.body.appendChild(host);
+    const fe = new FrontEnd(fakeHost(), host, noSound, memory());
+    const problems: string[] = [];
+    try {
+      fe.open(); await frames(fe, 20);
+      fe.act('details'); await frames(fe, 10);
+      for (let k = 0; k < 40; k++) { fe.act('down'); await frames(fe, 1); }
+      await frames(fe, 5);
+      const inner = host.querySelector<HTMLElement>('.fe-details-inner')!, bottom = inner.style.transform;
+      fe.act('up'); await frames(fe, 5);
+      if (inner.style.transform === bottom) problems.push(`Up after 40 Downs did nothing (${bottom})`);
+      if ((fe.state?.detailsScroll ?? 99) > 20) problems.push(`scroll step ${fe.state?.detailsScroll}`);
+      fe.act('back'); await frames(fe, 5);
+      // Custom, Surf here, change the wind on Conditions, back to the map, open the details.
+      fe.act('toggle'); fe.act('details'); await frames(fe, 5); fe.act('back'); await frames(fe, 5);
+      fe.act('confirm'); await frames(fe, 120);
+      for (let k = 0; k < 12 && (fe.state?.rowFocus ?? 'wind') !== 'wind'; k++) fe.act('down');
+      fe.act('right'); fe.act('right'); fe.act('right'); fe.act('right'); await frames(fe, 3);
+      fe.act('back'); await frames(fe, 120);
+      fe.act('details'); await frames(fe, 10);
+      const panel = host.querySelector('.fe-map-panel .fe-map-verdict-s')?.textContent, page = host.querySelector('.fe-details .fe-map-verdict-s')?.textContent;
+      if (panel !== page) problems.push(`details "${page}" vs panel "${panel}"`);
+      return { pass: problems.length === 0, detail: problems.join('; ') || `scroll bounded; verdict "${page}"` };
+    } finally { fe.close(); host.remove(); }
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the map leader follows the pin after a resize',
+  async run() {
+    const host = document.createElement('div'); document.body.appendChild(host);
+    const fe = new FrontEnd(fakeHost(), host, noSound, memory());
+    try {
+      fe.open(); fe.resize(1920, 1080); await frames(fe, 20);
+      await new Promise((r) => setTimeout(r, 300)); await frames(fe, 5);
+      fe.resize(1440, 1080); await frames(fe, 10);
+      const map = host.querySelector<HTMLElement>('.fe-map')!, box = map.getBoundingClientRect(), sx = box.width / map.offsetWidth || 1;
+      const dot = host.querySelector('.fe-chart-pin-dot')!.getBoundingClientRect(), pinY = (dot.top + dot.height / 2 - box.top) / sx;
+      const d = host.querySelector('.fe-map-leader path')?.getAttribute('d') ?? '', y = Number(/,(-?[\d.]+) L/.exec(d)?.[1]);
+      return { pass: Math.abs(y - pinY) < 3, detail: `leader y ${y}, pin y ${pinY.toFixed(1)}` };
+    } finally { fe.close(); host.remove(); }
+  },
+});

@@ -57,6 +57,10 @@ describe('breakToday', () => {
   it('is Fair with one miss and names it', () => {
     expect(breakToday(now({ swellFromDeg: 247, swellFt: 6, windFromDeg: 270, windMs: 9, tideM: 0 }), BEST)).toEqual({ verdict: 'fair', reason: 'Wind onshore from the W' });
   });
+  it('calls a cross-offshore or cross-shore wind by its direction, not onshore', () => {
+    expect(breakToday(now({ swellFromDeg: 247, swellFt: 6, windFromDeg: 160, windMs: 5, tideM: 0 }), BEST).reason).toBe('Wind from the SSE');
+    expect(breakToday(now({ swellFromDeg: 247, swellFt: 6, windFromDeg: 180, windMs: 6, tideM: 0 }), BEST).reason).toBe('Wind from the S');
+  });
   it('is Off with two or more misses and names them', () => {
     expect(breakToday(now({ swellFromDeg: 202, swellFt: 2, windFromDeg: 90, windMs: 3, tideM: 0 }), BEST))
       .toEqual({ verdict: 'off', reason: 'Swell from the SSW · Swell too small' });

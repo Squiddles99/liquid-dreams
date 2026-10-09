@@ -63,7 +63,9 @@ export function breakToday(c: ConditionsNow, best: BreakBest): { verdict: Verdic
   if (c.swellFt < best.sizeFt[0]) misses.push('Swell too small');
   else if (c.swellFt > best.sizeFt[1]) misses.push('Swell too big');
   const glassy = c.windFromDeg === null || c.windMs < 1;
-  if (!glassy && !inArc(c.windFromDeg!, best.windFromDeg)) misses.push(`Wind onshore from the ${compass16(c.windFromDeg!)}`);
+  // The Capes face west: a wind from the SW round to the NW blows onshore; anything else (cross-shore, cross-offshore) is
+  // named by its direction only.
+  if (!glassy && !inArc(c.windFromDeg!, best.windFromDeg)) misses.push(`Wind ${inArc(c.windFromDeg!, [200, 340]) ? 'onshore ' : ''}from the ${compass16(c.windFromDeg!)}`);
   const tide = tideOf(c.tideM);
   if (!best.tide.includes(tide)) {
     const order: Tide[] = ['low', 'mid', 'high'], want = best.tide.map((t) => order.indexOf(t));
