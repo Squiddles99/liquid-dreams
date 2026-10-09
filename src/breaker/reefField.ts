@@ -31,6 +31,16 @@ export interface ReefFieldRequest {
   /** The coast field already solved over `coast` (the worker caches it across requests that keep the swell and the tide).
    * Its clock is moved onto this field's, so pass a copy you can give away. */
   coastField?: CoastField;
+  /** Probes only: filled with the bake's onset nodes, curl times and breaking lines (computeOnsetRecord's OnsetDebug). */
+  onsetDebug?: OnsetDebug;
+}
+
+/** The curl pass's inside, for probes (tools/_curlSeams.ts): per level, the first march's onset time T at each onset node
+ * (NaN elsewhere), its curl time T′ and its breaking line (−1 off the onset nodes). Index [i · ONSET_LEVELS + k]. */
+export interface OnsetDebug {
+  onsetT?: Float32Array;
+  curlT?: Float32Array;
+  line?: Int32Array;
 }
 
 export interface ReefField {
@@ -465,7 +475,7 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const step = smoothAlongCrest(rawStep, dirX, dirZ, grid, STEP_SMOOTHING_M);
   const psiHere = new Float32Array(n * ONSET_LEVELS);
   for (let i = 0; i < n; i++) psiHere.fill(psiFromStep(step[i]), i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
-  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel: req.peel ?? 1, curlMaxMs: req.curlMaxMs ?? CURL_MAX_MS_DEFAULT });
+  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel: req.peel ?? 1, curlMaxMs: req.curlMaxMs ?? CURL_MAX_MS_DEFAULT, debug: req.onsetDebug });
   const field: ReefField = { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM, ...(coast ? { coast } : {}) };
   if (req.smooth) smoothFieldAmplitude(field);
   return field;
@@ -507,6 +517,8 @@ export function computeOnsetRecord(f: {
   curlMaxMs?: number;
   /** Test only: false leaves the curl pass out (one march at peel 1, as before one-curl). */
   curl?: boolean;
+  /** Probes only: filled with the curl pass's inside. */
+  debug?: OnsetDebug;
 }): Float32Array {
   const { grid, dirX, dirZ } = f;
   const { nx, nz } = grid;
@@ -633,7 +645,9 @@ export function computeOnsetRecord(f: {
   };
   march();
   if (stretch > 0 || curl) {
-    curlT = curlPass(onsetT, nx, nz, grid.cellM, stretch, curl ? curlMaxMs : Infinity, curl);
+    if (f.debug) { f.debug.onsetT = onsetT.slice(); f.debug.line = new Int32Array(n * ONSET_LEVELS).fill(-1); }
+    curlT = curlPass(onsetT, nx, nz, grid.cellM, stretch, curl ? curlMaxMs : Infinity, curl, f.debug?.line);
+    if (f.debug) f.debug.curlT = curlT.slice();
     out = new Float32Array(n * R);
     onsetT.fill(Number.NaN);
     march();
@@ -647,7 +661,7 @@ export function computeOnsetRecord(f: {
  * section's first break (peelLines), then, with `curl`, one curl along each breaking line (curlClock.curlTimes, the hold
  * capped at PEEL_MAX_HOLD_S). NaN off the onset nodes.
  */
-function curlPass(onsetT: Float32Array, nx: number, nz: number, cellM: number, stretch: number, curlMaxMs: number, curl: boolean): Float32Array {
+function curlPass(onsetT: Float32Array, nx: number, nz: number, cellM: number, stretch: number, curlMaxMs: number, curl: boolean, lineOut?: Int32Array): Float32Array {
   const L = ONSET_LEVELS, n = nx * nz, out = new Float32Array(n * L).fill(Number.NaN);
   const first = stretch > 0 ? peelLines(onsetT, nx, nz) : null;
   const T = new Float32Array(n), Ts = new Float32Array(n);
@@ -657,7 +671,9 @@ function curlPass(onsetT: Float32Array, nx: number, nz: number, cellM: number, s
       T[i] = t;
       Ts[i] = Number.isFinite(t0) ? t + Math.min(Math.max(0, stretch * (t - t0)), PEEL_MAX_HOLD_S) : t;
     }
-    const tk = curl ? curlTimes(Ts, breakingLines(T, nx, nz), nx, nz, cellM, curlMaxMs, PEEL_MAX_HOLD_S) : Ts;
+    const lines = curl ? breakingLines(T, nx, nz) : null;
+    if (lines && lineOut) for (let i = 0; i < n; i++) lineOut[i * L + k] = lines[i];
+    const tk = lines ? curlTimes(Ts, lines, nx, nz, cellM, curlMaxMs, PEEL_MAX_HOLD_S) : Ts;
     for (let i = 0; i < n; i++) out[i * L + k] = tk[i];
   }
   return out;
