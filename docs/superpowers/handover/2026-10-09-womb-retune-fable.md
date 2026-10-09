@@ -233,3 +233,50 @@ Also for the ruling / Andrew:
 8. launch.json revert: fine. Keep the worktree entry out of main's checkout.
 
 Then Task 6 as planned (suite idle + diff, captures at Solid / Pumping / Huge, both handovers, push). Andrew's look is next.
+
+## Task 5 ruling applied + Task 6 (Opus, 2026-10-09 late): one ruling wanted (Fun at Low)
+
+Applied (a38b4eb): TAKEOFF_ANCHOR = TIP ("the corner, where the left starts peeling on the real shelf"); `BREAKS.Fun =
+[true, false, false, false]`; Big at High under the 12.5 bar (already in satelliteReef); FACE_FT uncapped (`H·amp` at the
+first break on the peak's ray). Presets unchanged: none sits at Low. Evidence `matrix-225.txt` (re-run), 203/203 frontend.
+
+**FACE_FT, uncapped (ft, tides Low / Low pushing / Mid / High):** Fun 4 / – / – / – · Solid 6 / 6 / 6 / 6 · Pumping 8 / 8 /
+7.5 / 7.5 · Big 10 / 10 / 10 / 9.5 · Huge 13 / 13 / 13 / 13. Bigger band ≥ smaller at every tide: no stop. (Huge reads
+above its 12 ft dial: shoaling onto the ledge, amp > 1.)
+
+**The ride, anchor at the tip (225°):** Solid int 14.28 · Huge int 15.08 · Solid beg 14.27 · Solid exp 14.28 s: all hold.
+
+### Ruling wanted: Fun at Low is offered but nobody can ride it
+
+With Fun now the smallest offered band I pinned it too (plan Task 5: smallest offered × every level), at −0.5 m:
+
+| case | held s (≥ 10) | rode s |
+|---|---|---|
+| Fun × intermediate | 1.63 | 7.63 |
+| Fun × beginner | 0.00 | 3.60 |
+| Fun × expert | 0.00 | 4.18 |
+
+Trace (`evidence/womb-retune/ride-trace-Fun-*.txt`): wave 2.02 m; caught and popped normally; the curl runs ~10.6 m/s along
+the ledge (s 0 → 79 m in 7.5 s); the slope under the board is 0.04–0.12 once she is up, she peaks at 8.4 m/s (crest c 5.4) and
+fades; the beginner's assist doesn't reach the curl at all. Size against peel: a 2 m wave on a ledge that peels 9.3 m/s
+(matrix) / ~10.6 (her ride) doesn't carry a rider that fast. No bot/camera change tried (plan). Options:
+- **A. Fun not offered after all** (BREAKS.Fun all false; the select starts at Solid; your Task 2b ruling). The matrix rule
+  ("breaks") stays as is, and a second rule is added to the offering: "rideable" (the smallest band's ride gate). Opus leans A:
+  Andrew's "not offering a swell and tide option that won't break" reads, for a player, as "won't give a ride".
+- B. Fun offered at Low with no ride gate (a day to watch, not ride), the three cases dropped.
+- C. A later segment: a slower first leg at Low for small swell (bed change), then re-offer.
+
+### Task 6
+
+- **Suite, idle:** lineup-truth 2050 tests, 52 failed (after re-pinning surferParams' lineup spot to TIP); idle baseline
+  (4f70490) 2046 / 65. 17 red here and not in the baseline, all bars on the new field (no crash/NaN/mismatch): the table with
+  measured and bar is in `-opus.md` §Full suite; carried per your ruling 6, plus the Fun rides above.
+- **Marks in the frames:** the beige quads are the **water sheet** (scene-child hide test: only the sheet removes them; ribbon
+  hidden, they stay; no overlay colours them), on the inside leg past the ribbon's run end, moving with the crest. GPU and CPU
+  heights agree there (no spike): the sheet's coarse far grid folds on the steep front the ribbon no longer draws. Not a
+  placement that missed the tip; carried. Lip dots: the ribbon's own shading; carried.
+- **Frames:** riding median 46.0 (main) → 51.7 ms (p90 53 → 76), same session.
+- **Captures:** `evidence/womb-retune/captures.md` (Fun at Low, Solid, Pumping, Huge at t+3/t+5: stand, down the line, lineup).
+- `?coast=off` kept (plan 6.3). launch.json entry removed.
+
+Next: your Fun ruling, then Andrew's look; merge is his.
