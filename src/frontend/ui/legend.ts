@@ -5,12 +5,15 @@ import { type LegendAction, glyphFor } from '../glyphs';
 import type { Device } from '../uiInput';
 
 export interface LegendEntry { action: LegendAction; text: string; accent?: boolean }
-const ORDER: LegendAction[] = ['controls', 'random', 'details', 'confirm', 'back', 'start'];
+const ORDER: LegendAction[] = ['controls', 'random', 'details', 'toggle', 'confirm', 'back', 'start'];
 
 /** What each beat offers, in the fixed order View, Y, X, A, B, START (spec §5.5; View: Controls, Andrew 2026-10-04). */
 export function legendFor(s: FrontState): LegendEntry[] {
   const e: LegendEntry[] = [];
-  if (s.beat === 'conditions') e.push({ action: 'random', text: 'Roll the dice' }, { action: 'details', text: 'Swell details' }, { action: 'confirm', text: 'Done' }, { action: 'back', text: 'Back' });
+  if (s.beat === 'map') {
+    if (s.breakDetails) e.push({ action: 'confirm', text: 'Surf here', accent: true }, { action: 'back', text: 'Close' });
+    else e.push({ action: 'confirm', text: 'Surf here', accent: true }, { action: 'details', text: 'Break details' }, { action: 'toggle', text: s.source === 'forecast' ? 'Custom conditions' : 'Game forecast' }, { action: 'back', text: 'Title' });
+  } else if (s.beat === 'conditions') e.push({ action: 'random', text: 'Roll the dice' }, { action: 'details', text: 'Swell details' }, { action: 'confirm', text: 'Done' }, { action: 'back', text: 'Back' });
   else if (s.beat === 'rider') e.push({ action: 'confirm', text: `Ride as ${PRESETS[s.rider].nickname}` }, { action: 'back', text: 'Back' });
   else if (s.beat === 'gear') e.push({ action: 'confirm', text: 'Choose' }, { action: 'back', text: 'Back' }, { action: 'start', text: 'Paddle out', accent: true });
   if (s.beat !== 'out') e.push({ action: 'controls', text: 'Controls' });

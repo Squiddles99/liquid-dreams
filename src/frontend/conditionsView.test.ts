@@ -8,7 +8,7 @@ import { SKY_GLYPHS } from './ui/skyGlyphs';
 import { WEATHER_PRESET_NAMES } from '../weather/weather';
 
 const today = new Date('2026-07-10T09:00:00+08:00');
-const front = (patch: Partial<FrontState> = {}): FrontState => ({ ...initialFront(DEFAULT_CHOICES), ...patch });
+const front = (patch: Partial<FrontState> = {}): FrontState => ({ ...initialFront(DEFAULT_CHOICES), beat: 'conditions', ...patch });
 
 describe('the Conditions rows (spec §4.1)', () => {
   it('lists Preset, Month, Time, Sky, Wind, Swell, From, Tide, a gap under Preset, the focus on one row', () => {

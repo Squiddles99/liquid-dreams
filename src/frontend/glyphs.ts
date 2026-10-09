@@ -1,8 +1,8 @@
 // src/frontend/glyphs.ts
 import type { Device } from './uiInput';
 
-export type LegendAction = 'controls' | 'random' | 'details' | 'confirm' | 'back' | 'start' | 'tabPlus';
-type GlyphAction = LegendAction | 'tabMinus' | 'toggle' | 'fineMinus' | 'finePlus';
+export type LegendAction = 'controls' | 'random' | 'details' | 'toggle' | 'confirm' | 'back' | 'start' | 'tabPlus';
+type GlyphAction = LegendAction | 'tabMinus' | 'fineMinus' | 'finePlus';
 
 const CREAM = '#f7ecd2', DISC = '#1a2226';
 const svg = (w: number, body: string): string => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="40" viewBox="0 0 ${w} 40" aria-hidden="true">${body}</svg>`;

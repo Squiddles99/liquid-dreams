@@ -5,7 +5,7 @@ import { type FrontState, initialFront } from './frontEnd';
 import { glyphFor } from './glyphs';
 import { legendFor } from './ui/legend';
 
-const front = (patch: Partial<FrontState> = {}): FrontState => ({ ...initialFront(DEFAULT_CHOICES), ...patch });
+const front = (patch: Partial<FrontState> = {}): FrontState => ({ ...initialFront(DEFAULT_CHOICES), beat: 'conditions', ...patch });
 const ACTIONS = ['random', 'details', 'confirm', 'back', 'start', 'tabMinus', 'tabPlus', 'toggle', 'fineMinus', 'finePlus'] as const;
 
 describe('glyphs (spec §5.5, §10)', () => {

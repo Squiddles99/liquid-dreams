@@ -19,6 +19,13 @@ function fakeHost(landReady = true) {
   return { host, calls, makeReady: () => { ready = true; } };
 }
 const opts = { today: new Date('2026-07-10T09:00:00+08:00'), seed: 1, calm: false, storage: null };
+/** The core opens on the surf map: Surf here with the saved (custom) setup, then let the move land on Conditions. */
+function onConditions(core: FrontEndCore): FrontEndCore {
+  core.act('toggle', 0);
+  core.act('confirm', 0);
+  for (let t = 0; t <= 3000; t += 16) core.update(0.016, t);
+  return core;
+}
 
 describe('the front end\'s core (spec §3, §6.10)', () => {
   it('holds a still frame, never throws, while the land and tracks aren\'t ready, then stages (Review Focus 3)', () => {
@@ -32,21 +39,30 @@ describe('the front end\'s core (spec §3, §6.10)', () => {
   });
   it('applies the world\'s conditions once for a held Swell, after the release (Review Focus 4)', () => {
     const { host, calls } = fakeHost();
-    const core = new FrontEndCore(host, DEFAULT_CHOICES, opts);
-    for (let k = 0; k < 5; k++) core.act('down', 0);
+    const core = onConditions(new FrontEndCore(host, DEFAULT_CHOICES, opts));
+    for (let k = 0; k < 5; k++) core.act('down', 4000);
     const before = calls.applied;
-    for (let t = 0; t <= 2000; t += 16) {
+    for (let t = 4000; t <= 6000; t += 16) {
       if (t % 80 === 0) core.act('right', t);
       core.update(0.016, t);
     }
     expect(calls.applied - before).toBe(0);
-    for (let t = 2016; t <= 2400; t += 16) core.update(0.016, t);
+    for (let t = 6016; t <= 6400; t += 16) core.update(0.016, t);
     expect(calls.applied - before).toBe(1);
   });
   it('puts the shown conditions into the world as it opens (the panel and the sky agree from the first frame)', () => {
     const { host, calls } = fakeHost();
     new FrontEndCore(host, DEFAULT_CHOICES, opts);
     expect(calls.applied).toBe(1);
+  });
+  it("puts today's forecast into the world after Surf here (the panel and the sea agree)", () => {
+    let last: Conditions | null = null;
+    const { host } = fakeHost();
+    const core = new FrontEndCore({ ...host, applyConditions: (c) => { last = c; } }, DEFAULT_CHOICES, opts);
+    core.act('confirm', 0);
+    for (let t = 0; t <= 3000; t += 16) core.update(0.016, t);
+    expect(last!.swell.sizeFt).toBe(core.state.setup.swellFt);
+    expect(last!.swell.directionDeg).toBe(core.state.setup.fromDeg);
   });
   it('paddles out on START with every remaining choice at its default', () => {
     const { host, calls } = fakeHost();
@@ -58,12 +74,12 @@ describe('the front end\'s core (spec §3, §6.10)', () => {
   });
   it('cues a focus tick, a value tick, the swing on a move, a line on a value change, and the haptic on confirm', () => {
     const { host } = fakeHost();
-    const core = new FrontEndCore(host, DEFAULT_CHOICES, opts);
-    expect(core.act('down', 0).sounds).toContain('focus');
-    const v = core.act('right', 10);
+    const core = onConditions(new FrontEndCore(host, DEFAULT_CHOICES, opts));
+    expect(core.act('down', 4000).sounds).toContain('focus');
+    const v = core.act('right', 4010);
     expect(v.sounds).toContain('value');
     expect(v.line?.text.length).toBeGreaterThan(3);
-    const c = core.act('confirm', 20);
+    const c = core.act('confirm', 4020);
     expect(c.sounds).toContain('swing');
     expect(c.haptic).toBe(true);
   });
@@ -84,14 +100,15 @@ describe('the front end\'s core (spec §3, §6.10)', () => {
     for (const row of Object.keys(field)) {
       let last: Conditions | null = null;
       const { host } = fakeHost();
-      const core = new FrontEndCore({ ...host, applyConditions: (c) => { last = c; } }, DEFAULT_CHOICES, opts);
-      if (row === 'period') core.act('details', 0);
-      for (let k = 0; k < 12 && core.state.rowFocus !== row; k++) core.act('down', 0);
+      const core = onConditions(new FrontEndCore({ ...host, applyConditions: (c) => { last = c; } }, DEFAULT_CHOICES, opts));
+      for (let t = 3016; t <= 4000; t += 16) core.update(0.016, t);
+      if (row === 'period') core.act('details', 4000);
+      for (let k = 0; k < 12 && core.state.rowFocus !== row; k++) core.act('down', 4000);
       expect(core.state.rowFocus, row).toBe(row);
       const before = field[row](last!);
-      const end = core.act('right', 10).events.some((e) => e.kind === 'end');
-      if (end) core.act('left', 20);
-      for (let t = 30; t <= 600; t += 16) core.update(0.016, t);
+      const end = core.act('right', 4010).events.some((e) => e.kind === 'end');
+      if (end) core.act('left', 4020);
+      for (let t = 4030; t <= 4600; t += 16) core.update(0.016, t);
       expect(field[row](last!), `${row} reaches the world`).not.toEqual(before);
     }
   });

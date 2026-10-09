@@ -59,7 +59,7 @@ export interface PlateShow {
 }
 
 const groundOf = (beat: string): PlateShow | null =>
-  beat === 'conditions' ? { conditions: 1, select: 0 } : beat === 'rider' || beat === 'gear' ? { conditions: 0, select: 1 } : null;
+  beat === 'map' || beat === 'conditions' ? { conditions: 1, select: 0 } : beat === 'rider' || beat === 'gear' ? { conditions: 0, select: 1 } : null;
 
 /**
  * Which painted ground shows (painted riders spec): every screen has its painting, under one camera, so a move between

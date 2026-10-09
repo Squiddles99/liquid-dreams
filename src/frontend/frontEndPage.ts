@@ -165,7 +165,7 @@ export class FrontEnd {
       const calm = this.settings.calmMenus;
       for (const e of c.events) {
         this.parts.cond.event(e, calm, performance.now(), this.today);
-        if (e.kind === 'value' || e.kind === 'roll') this.parts.map.setConditions(this.core.state.setup, calm);
+        if (e.kind === 'value' || e.kind === 'roll' || e.kind === 'surfHere') this.parts.map.setConditions(this.core.state.setup, calm);
         // A mate's tease when the focus lands on a bikini or boardies in the WA winter (spec §9).
         if (e.kind === 'gear' && e.tab === 'outfit') {
           const s = this.core.state, line = gearView(s, this.today, Math.floor(performance.now())).line;

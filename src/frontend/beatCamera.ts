@@ -35,8 +35,8 @@ export const stagingReady = (land: { trackNetwork: unknown } | null): boolean =>
  * T-Bone, Shazza, Grommet left to right (the roster's order). Conditions: facing the sea, side by side. Choose your
  * rider and Grab your gear: turned to face inland and spread 1.7 m apart, the outer two side-stepping outward.
  */
-export function crewFor(beat: 'conditions' | 'rider' | 'gear', stand: LandSpot): CrewPlace[] {
-  if (beat === 'conditions') {
+export function crewFor(beat: 'map' | 'conditions' | 'rider' | 'gear', stand: LandSpot): CrewPlace[] {
+  if (beat === 'map' || beat === 'conditions') {
     const heading = (stand.headingDeg + 180) % 360, { right } = headingAxes(heading);
     const at = (k: number) => ({ x: stand.x + right[0] * k * GANG_SPACING_M, z: stand.z + right[1] * k * GANG_SPACING_M });
     // From behind, the screen's left is the crew's left (−right).
