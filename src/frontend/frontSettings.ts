@@ -5,7 +5,7 @@ import type { Experience } from '../ride/ridePhysics';
 import { PRESETS, type PresetName, type Stance, boardsFor } from '../surfer/presets';
 import { type OutfitChoice, presetOutfits } from '../surfer/wardrobe';
 import { WEATHER_PRESET_NAMES } from '../weather/weather';
-import { FIRST_PRESET, FROM_WINDOW, type SessionSetup, TIDE_STOPS, TIME_STOPS, WIND_ROWS, presetById } from './sessionSetup';
+import { FIRST_PRESET, FROM_WINDOW, type SessionSetup, TIDE_STOPS, TIME_STOPS, WIND_ROWS, offeredSetup, presetById } from './sessionSetup';
 
 /** The player's front-end settings (spec §11), in a player-facing key beside the dev settings. */
 export interface FrontSettings {
@@ -66,7 +66,8 @@ export function sanitizeSetup(raw: unknown): SessionSetup {
   const ft = typeof raw.swellFt === 'number' && Number.isFinite(raw.swellFt) ? Math.min(12, Math.max(1, Math.round(raw.swellFt * 2) / 2)) : d.swellFt;
   const periodS = typeof raw.periodS === 'number' && Number.isFinite(raw.periodS) ? Math.min(20, Math.max(8, Math.round(raw.periodS))) : d.periodS;
   const fine = typeof raw.timeFineMin === 'number' && Number.isFinite(raw.timeFineMin) && Math.abs(raw.timeFineMin) <= 600 ? Math.round(raw.timeFineMin / 15) * 15 : 0;
-  return {
+  // A save from before small-swell (a Flat-ish or Small day) loads as the nearest band that breaks on its tide.
+  return offeredSetup({
     month: int(raw.month, 0, 11, d.month),
     timeStop: int(raw.timeStop, 0, TIME_STOPS.length - 1, d.timeStop),
     timeFineMin: fine,
@@ -76,7 +77,7 @@ export function sanitizeSetup(raw: unknown): SessionSetup {
     periodS,
     fromDeg: oneOf(raw.fromDeg, FROM_WINDOW as readonly number[], d.fromDeg),
     tide: int(raw.tide, 0, TIDE_STOPS.length - 1, d.tide),
-  };
+  });
 }
 
 const RIDERS: readonly PresetName[] = ['female', 'male', 'grommet'];
