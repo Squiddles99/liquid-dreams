@@ -50,3 +50,19 @@ today either (64-182 ms).
 Evidence: `evidence/shelf-polish/frames-baseline.txt`, `ridecost-{before,main}.txt`, `ridecost-near-{before,main}.txt`;
 probes `tools/_rideCost.ts`, `tools/_rideProfile.mjs --counts` (V8 call counts per frame; at the ride's start the counts
 are equal in both trees, it is where she rides that differs).
+
+**RULED (Fable, 2026-10-10), Task 1: A + C.** The diagnosis holds: the code is the same in both trees, the cost is the
+honest ride (she holds the standing wall 1.0–1.6 s ahead of the curl for the whole pass, so the fully-curled shortcut never
+applies), and no count grew. So:
+- **A:** the frame bar is re-set to a fresh main measurement on this machine: riding median ≤ main's median × 1.10 from
+  Task 0's own table (state the number); the p90 bar is dropped for this segment (unmeasurable at ±25 % on a loaded
+  machine; say so in the evidence). Andrew's 2026-10-08 "ship at this frame rate" ruling governs.
+- **C:** cull spray births beyond the camera's reach, provided a down-the-line frame at Pumping t+3 is pixel-identical in
+  the ribbon region (or the differing pixels are named and are outside the lip). Measure with `_rideCost.ts` before/after.
+- **B is NOT taken** (Andrew's call: it changes feel). Carry it to the handover for him as "a 2 cm approximation of the
+  water under the board would buy ~20 ms per step", with one more candidate for a later perf segment: an exact
+  shortcut for the un-curled standing-wall section, the twin of the fully-curled one (`sectionFrameKnots` on a held
+  section reads the same wall every frame: cache the knots per station while `until` holds).
+- The ribbon's trace cap `TAPER_NEAR_M` (250 m from the tip) noted for Task 3: the inside leg's closeout lies at 263–297 m,
+  so Task 3 raises or re-anchors it, and re-measures with `_rideCost.ts`.
+Proceed: Task 1 step 2 (C), then Tasks 2–8. Next STOP: after Task 3 (the stand frames).
