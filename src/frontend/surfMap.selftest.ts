@@ -69,3 +69,25 @@ registerSelfTest({
     } finally { fe.close(); host.remove(); }
   },
 });
+
+registerSelfTest({
+  name: 'frontend: break details opens, shows only kept sections, scrolls and closes',
+  async run() {
+    const host = document.createElement('div'); document.body.appendChild(host);
+    const fe = new FrontEnd(fakeHost(), host, noSound, memory());
+    try {
+      fe.open(); await frames(fe, 20);
+      fe.act('details'); await frames(fe, 20);
+      const open = host.querySelector('.fe-details.is-open');
+      const secs = [...host.querySelectorAll('.fe-details-sec')];
+      const empty = secs.filter((s) => s.querySelectorAll('p').length === 0).length;
+      const inner = host.querySelector<HTMLElement>('.fe-details-inner')!;
+      fe.act('down'); fe.act('down'); await frames(fe, 20);
+      const moved = inner.style.transform;
+      fe.act('back'); await frames(fe, 20);
+      const closed = !host.querySelector('.fe-details.is-open') && fe.state?.beat === 'map';
+      const ok = !!open && secs.length >= 3 && empty === 0 && closed && /translateY\(-?\d/.test(moved) && !/undefined|NaN/.test(host.innerText);
+      return { pass: ok, detail: `open ${!!open}, sections ${secs.length}, empty ${empty}, scroll ${moved}, closed ${closed}` };
+    } finally { fe.close(); host.remove(); }
+  },
+});
