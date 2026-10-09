@@ -93,6 +93,26 @@ describe('the front end\'s music slot (spec §12)', () => {
     s.setFrontEndMusic(false);
     expect((s as unknown as { frontEndMusic: boolean }).frontEndMusic).toBe(false);
   });
+  it('plays its own song on the menus, even when the sound starts there, and the album once they close', () => {
+    const { ctx, audio } = fakeAudio(), playing = new Map<string, boolean>();
+    const deck = audio.deck;
+    audio.deck = (c, d, url) => {
+      const k = deck(c, d, url);
+      return { ...k, play: () => { playing.set(url, true); return Promise.resolve(); }, pause: () => { playing.set(url, false); } };
+    };
+    const album = [{ album: 'a', number: 1, title: 'One', url: 'album' }], menus = [{ album: 'front-end', number: null, title: 'Ambient Dreamtime', url: 'menus' }];
+    const s = new SoundSystem({ ...DEFAULT_SOUND_PARAMS }, album, audio, menus);
+    s.setFrontEndMusic(true); // the game boots into the menus, before the first click
+    s.gesture();
+    ctx.allow();
+    expect(playing.get('menus')).toBe(true);
+    expect(playing.get('album')).toBeUndefined();
+    s.setFrontEndMusic(false); // paddling out
+    expect(playing.get('menus')).toBe(false);
+    expect(playing.get('album')).toBe(true);
+    s.setFrontEndMusic(true); // back to the dune
+    expect(playing.get('menus')).toBe(true);
+  });
   it('has no UI output until the audio runs', () => {
     expect(new SoundSystem({ ...DEFAULT_SOUND_PARAMS }, []).uiOut()).toBeNull();
   });

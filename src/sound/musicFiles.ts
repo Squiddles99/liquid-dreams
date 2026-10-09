@@ -2,9 +2,14 @@
  * Every audio file under /music/ (Andrew's own copies, README "Music"), as URLs, found at build time. Nothing is fetched
  * until a track plays. Both extension cases, since Windows keeps whatever the file came with.
  */
-export const MUSIC_FILES = import.meta.glob('/music/**/*.{mp3,MP3,m4a,M4A,ogg,OGG,flac,FLAC,wav,WAV}', {
+export const MUSIC_FILES = import.meta.glob(['/music/**/*.{mp3,MP3,m4a,M4A,ogg,OGG,flac,FLAC,wav,WAV}', '!/music/front-end/**'], {
   query: '?url', import: 'default', eager: true,
 }) as Record<string, string>;
 
-/** The front end's track slot (dune select spec §12). None ships this step: the front end is quiet but for the sea. */
-export const FRONT_END_TRACK: string | null = null;
+/**
+ * The front end's own music (dune select spec §12): the files in music/front-end/, looping on the select screens while
+ * the album waits (Andrew 2026-10-08: "Ambient Dreamtime"). Not part of the album's playlist.
+ */
+export const FRONT_END_FILES = import.meta.glob('/music/front-end/*.{mp3,MP3,m4a,M4A,ogg,OGG,flac,FLAC,wav,WAV}', {
+  query: '?url', import: 'default', eager: true,
+}) as Record<string, string>;
