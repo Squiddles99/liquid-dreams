@@ -1,0 +1,12 @@
+6 ft intermediate
+  far field: take-off (-14.6, 46.0), held 14.33 s of 14.33 s, events caught popup, end (51.5, -113.1)
+  coast:     take-off (-8.8, 41.1), held 0.00 s of 4.92 s, events caught caught caught caught caught popup kickout, end (13.3, 23.8)
+12 ft intermediate
+  far field: take-off (-18.6, 49.1), held 15.00 s of 15.00 s, events caught popup, end (43.7, -120.2)
+  coast:     take-off (-16.6, 44.5), held 14.52 s of 14.52 s, events caught popup, end (76.4, -115.7)
+6 ft beginner
+  far field: take-off (-14.6, 46.0), held 12.32 s of 12.32 s, events caught popup, end (52.0, -112.4)
+  coast:     take-off (-8.8, 41.1), held 0.15 s of 6.45 s, events caught caught caught caught popup kickout, end (20.4, 14.6)
+6 ft expert
+  far field: take-off (-14.6, 46.0), held 14.37 s of 14.37 s, events caught popup, end (51.4, -113.3)
+  coast:     take-off (-8.8, 41.1), held 2.23 s of 10.58 s, events caught popup kickout, end (37.0, -12.9)

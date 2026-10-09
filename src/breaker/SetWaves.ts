@@ -58,12 +58,22 @@ function bilinearLoad(tex: THREE.Texture, g: N, maxIndex: N): N {
   return mix(mix(load(0, 0), load(1, 0), t.x), mix(load(0, 1), load(1, 1), t.x), t.y);
 }
 
-/** Linear interpolation along row 0 of a width × 1 float texture. g is in texel units. */
-function linearLoad1D(tex: THREE.Texture, g: N, maxIndex: N): N {
+/** bilinearLoad on texels offset by `dx` columns (two fields packed side by side in one texture). */
+function bilinearLoadAt(tex: THREE.Texture, g: N, maxIndex: N, dx: number): N {
+  const gc = clamp(g, vec2(0.0), maxIndex.sub(0.001));
+  const base = floor(gc);
+  const t = gc.sub(base);
+  const i0 = ivec2(base).add(ivec2(dx, 0));
+  const load = (ox: number, oz: number): N => textureLoad(tex, i0.add(ivec2(ox, oz)), int(0));
+  return mix(mix(load(0, 0), load(1, 0), t.x), mix(load(0, 1), load(1, 1), t.x), t.y);
+}
+
+/** Linear interpolation along row `row` of a float texture. g is in texel units. */
+function linearLoad1D(tex: THREE.Texture, g: N, maxIndex: N, row = 0): N {
   const gc = clamp(g, 0.0, maxIndex.sub(0.001));
   const base = floor(gc);
   const i0 = int(base);
-  return mix(textureLoad(tex, ivec2(i0, int(0)), int(0)), textureLoad(tex, ivec2(i0.add(1), int(0)), int(0)), gc.sub(base));
+  return mix(textureLoad(tex, ivec2(i0, int(row)), int(0)), textureLoad(tex, ivec2(i0.add(1), int(row)), int(0)), gc.sub(base));
 }
 
 const safeNormalize = (v: N): N => v.div(max(length(v), 1e-6));
@@ -84,11 +94,12 @@ export class SetWaves {
   /** The record's time until onset per level (ReefField.onset from ONSET_UNTIL_OFFSET; breaking.onsetUntil): texel k holds
    * (until_k, until_{k+1}), PSI_TEXELS per node as the ψ₀ texture. The wall down the line stands up on it (wombSection.WALL_LEAD_S). */
   private readonly onsetUntilTex = floatTexture(FIELD_NX * PSI_TEXELS, FIELD_NZ);
-  private readonly farA = floatTexture(FAR_COUNT, 1);
-  private readonly farB = floatTexture(FAR_COUNT, 1);
-  /** The coast field (ReefField.coast, lineup truth spec §3d): (τ, amp, hmin, k) and (dirX, dirZ, depth, breaking depth). */
-  private readonly coastA = floatTexture(COAST_GRID.nx, COAST_GRID.nz);
-  private readonly coastB = floatTexture(COAST_GRID.nx, COAST_GRID.nz);
+  /** The far field, row 0 (τ, amp, hmin, k) and row 1 (∂τ/∂x, depth, breaking depth, 0): one texture (the sheet's
+   * sampled-texture budget, with the coast's). */
+  private readonly farTex = floatTexture(FAR_COUNT, 2);
+  /** The coast field (ReefField.coast, lineup truth spec §3d): (τ, amp, hmin, k) in columns [0, nx), (dirX, dirZ, depth,
+   * breaking depth) in [nx, 2·nx): one texture, so the sheet stays within 16 sampled textures per stage. */
+  private readonly coastTex = floatTexture(2 * COAST_GRID.nx, COAST_GRID.nz);
   /** 1 when the field carries the coast: outside the reef grid the sheet then reads the coast (sampleField's coast branch). */
   private readonly hasCoast = uniform(0);
   private readonly coastOrigin = uniform(new THREE.Vector2(COAST_GRID.x0, COAST_GRID.z0));
@@ -166,7 +177,7 @@ export class SetWaves {
       od[o] = f.onset[r];
       od.set(f.onset.subarray(r + 1, r + ONSET_PSI_OFFSET), o + 4);
     }
-    const fa = this.farA.image.data as Float32Array, fb = this.farB.image.data as Float32Array;
+    const fa = this.farTex.image.data as Float32Array, fb = fa.subarray(FAR_COUNT * 4);
     for (let i = 0; i < f.far.count; i++) {
       fa[i * 4] = f.far.tau[i] - f.far.tauOffset; fa[i * 4 + 1] = f.far.amp[i]; fa[i * 4 + 2] = f.far.hmin[i]; fa[i * 4 + 3] = f.far.k[i];
       fb[i * 4] = f.far.dTauDx[i]; fb[i * 4 + 1] = f.far.depth[i]; fb[i * 4 + 2] = breakingDepth(f.far.hmin[i]); fb[i * 4 + 3] = 0;
@@ -191,15 +202,16 @@ export class SetWaves {
     const c = f.coast;
     if (c) {
       if (c.grid.nx !== COAST_GRID.nx || c.grid.nz !== COAST_GRID.nz) throw new Error('Coast field grid does not match SetWaves');
-      const ca = this.coastA.image.data as Float32Array, cb = this.coastB.image.data as Float32Array;
+      const d = this.coastTex.image.data as Float32Array, nx = COAST_GRID.nx;
       for (let i = 0; i < c.tau.length; i++) {
-        ca[i * 4] = c.tau[i]; ca[i * 4 + 1] = c.amp[i]; ca[i * 4 + 2] = c.hmin[i]; ca[i * 4 + 3] = c.k[i];
-        cb[i * 4] = c.dirX[i]; cb[i * 4 + 1] = c.dirZ[i]; cb[i * 4 + 2] = c.depth[i]; cb[i * 4 + 3] = c.hminBreak[i];
+        const col = i % nx, row = (i - col) / nx, a = (row * 2 * nx + col) * 4, b = a + nx * 4;
+        d[a] = c.tau[i]; d[a + 1] = c.amp[i]; d[a + 2] = c.hmin[i]; d[a + 3] = c.k[i];
+        d[b] = c.dirX[i]; d[b + 1] = c.dirZ[i]; d[b + 2] = c.depth[i]; d[b + 3] = c.hminBreak[i];
       }
-      this.coastA.needsUpdate = true; this.coastB.needsUpdate = true;
+      this.coastTex.needsUpdate = true;
     }
     this.hasCoast.value = c ? 1 : 0;
-    for (const t of [this.fieldA, this.fieldB, this.fieldC, this.onsetRec, this.onsetPsiTex, this.onsetUntilTex, this.farA, this.farB]) t.needsUpdate = true;
+    for (const t of [this.fieldA, this.fieldB, this.fieldC, this.onsetRec, this.onsetPsiTex, this.onsetUntilTex, this.farTex]) t.needsUpdate = true;
     this.origin.value.set(f.grid.x0, f.grid.z0);
     this.cell.value = f.grid.cellM;
     this.farP.value = f.far.p;
@@ -283,19 +295,19 @@ export class SetWaves {
       ca = vec4(0.0).toVar();
       cb = vec4(0.0).toVar();
       If(inside.not(), () => {
-        fa.assign(linearLoad1D(this.farA, fg, this.farMax));
-        fb.assign(linearLoad1D(this.farB, fg, this.farMax));
+        fa.assign(linearLoad1D(this.farTex, fg, this.farMax, 0));
+        fb.assign(linearLoad1D(this.farTex, fg, this.farMax, 1));
         // The coast's eight loads only outside the reef grid, and only with a coast.
         If(this.hasCoast.greaterThan(0.5), () => {
-          ca.assign(bilinearLoad(this.coastA, gc, this.coastMax));
-          cb.assign(bilinearLoad(this.coastB, gc, this.coastMax));
+          ca.assign(bilinearLoadAt(this.coastTex, gc, this.coastMax, 0));
+          cb.assign(bilinearLoadAt(this.coastTex, gc, this.coastMax, COAST_GRID.nx));
         });
       });
     } else {
-      fa = linearLoad1D(this.farA, fg, this.farMax);
-      fb = linearLoad1D(this.farB, fg, this.farMax);
-      ca = bilinearLoad(this.coastA, gc, this.coastMax);
-      cb = bilinearLoad(this.coastB, gc, this.coastMax);
+      fa = linearLoad1D(this.farTex, fg, this.farMax, 0);
+      fb = linearLoad1D(this.farTex, fg, this.farMax, 1);
+      ca = bilinearLoadAt(this.coastTex, gc, this.coastMax, 0);
+      cb = bilinearLoadAt(this.coastTex, gc, this.coastMax, COAST_GRID.nx);
     }
     const xc = fg.mul(FAR_DX).add(FAR_X0);
     const farTau = fa.x.add(xz.x.sub(xc).mul(fb.x)).add(this.farP.mul(xz.y));
@@ -312,7 +324,7 @@ export class SetWaves {
       tau: select(inside, a.x, select(outflow, edgeTau, farTau)),
       amp: select(useGrid, a.y, fa.y),
       hmin: select(useGrid, a.z, fa.z),
-      // The coast (far field) has no reef edges to smooth: its breaking depth is breakingDepth(hmin), baked into farB.z
+      // The coast (far field) has no reef edges to smooth: its breaking depth is breakingDepth(hmin), baked into the far texture's row 1, z
       // (coastFarField.farSample; linear between nodes there as here).
       hminBreak: select(useGrid, b.w, fb.z),
       // The coast has no slurp: its depth is the breaking depth (coastFarField.farSample).
