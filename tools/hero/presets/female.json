@@ -1,0 +1,253 @@
+{
+  "name": "female",
+  "heightM": 1.65,
+  "bodyTriangles": 27000,
+  "macro": {
+    "gender": 0.0,
+    "age": 0.34375,
+    "muscle": 0.6,
+    "weight": 0.4405,
+    "proportions": 0.8,
+    "height": 0.35,
+    "cupsize": 0.55,
+    "firmness": 0.55
+  },
+  "hair": {
+    "style": "braids",
+    "seed": 11,
+    "partX": 0.006,
+    "inset": 0.008,
+    "aoReach": 0.018
+  },
+  "boardies": false,
+  "outfits": [
+    "bikini",
+    "rashieAndBottoms",
+    "shortArmSteamer"
+  ],
+  "preview": {
+    "skin": [
+      0.52,
+      0.34,
+      0.24
+    ],
+    "hair": [
+      0.35,
+      0.26,
+      0.14
+    ],
+    "fabric": [
+      0.55,
+      0.12,
+      0.1
+    ],
+    "boardies": [
+      0.1,
+      0.2,
+      0.4
+    ],
+    "rashie": [
+      0.02,
+      0.12,
+      0.55
+    ]
+  },
+  "upperLip": 0.3,
+  "smooth": [
+    "crotch",
+    "nipples"
+  ],
+  "face": {
+    "l-eye-scale-incr": 0.899,
+    "r-eye-scale-incr": 0.899,
+    "l-eye-corner2-up": 0.3,
+    "r-eye-corner2-up": 0.3,
+    "l-eye-height2-incr": 0.2,
+    "r-eye-height2-incr": 0.2,
+    "nose-scale-horiz-decr": 0.4,
+    "nose-point-width-decr": 0.45,
+    "nose-volume-decr": 0.3,
+    "nose-point-up": 0.35,
+    "nose-scale-vert-decr": 0.2,
+    "nose-nostrils-width-decr": 0.276,
+    "mouth-cupidsbow-incr": 0.2,
+    "mouth-upperlip-volume-decr": 0.8,
+    "mouth-upperlip-height-decr": 0.35,
+    "mouth-scale-horiz-decr": 0.1,
+    "l-cheek-bones-incr": 0.45,
+    "r-cheek-bones-incr": 0.45,
+    "l-cheek-volume-incr": 0.2,
+    "r-cheek-volume-incr": 0.2,
+    "chin-width-decr": 0.45,
+    "chin-height-decr": 0.405,
+    "chin-prominent-incr": 0.1,
+    "head-oval": 0.6,
+    "head-fat-decr": 0.35,
+    "forehead-scale-vert-decr": 0.3,
+    "l-ear-wing-decr": 0.5,
+    "r-ear-wing-decr": 0.5,
+    "l-ear-scale-decr": 0.2,
+    "r-ear-scale-decr": 0.2,
+    "mouth-scale-depth-decr": 0.5,
+    "mouth-lowerlip-height-decr": 0.551,
+    "nose-scale-depth-decr": 0.15,
+    "head-scale-horiz-decr": 0.25,
+    "head-invertedtriangular": 0.4,
+    "head-age-decr": 0.25,
+    "mouth-trans-up": 0.294,
+    "chin-bones-decr": 0.3,
+    "l-eye-trans-up": 0.092,
+    "r-eye-trans-up": 0.092,
+    "l-eye-trans-down": 0.039,
+    "r-eye-trans-down": 0.039,
+    "l-eye-trans-out": 0.711,
+    "r-eye-trans-out": 0.711,
+    "l-eye-corner1-up": 0.117,
+    "r-eye-corner1-up": 0.117,
+    "l-eye-corner1-down": 0.085,
+    "r-eye-corner1-down": 0.085,
+    "l-eye-corner2-down": 0.452,
+    "r-eye-corner2-down": 0.452,
+    "l-eye-height2-decr": 0.023,
+    "r-eye-height2-decr": 0.023,
+    "l-eye-height3-decr": 0.051,
+    "r-eye-height3-decr": 0.051,
+    "l-upperleg-scale-horiz-incr": 0.034,
+    "r-upperleg-scale-horiz-incr": 0.034,
+    "l-lowerleg-scale-horiz-incr": 0.072,
+    "r-lowerleg-scale-horiz-incr": 0.072,
+    "l-lowerleg-muscle-incr": 0.115,
+    "r-lowerleg-muscle-incr": 0.115,
+    "l-upperleg-fat-incr": 0.057,
+    "r-upperleg-fat-incr": 0.057,
+    "l-lowerleg-fat-incr": 0.022,
+    "r-lowerleg-fat-incr": 0.022,
+    "eyebrows-angle-down": 0.122,
+    "eyebrows-trans-down": 0.031,
+    "nose-scale-horiz-incr": 0.188,
+    "nose-scale-vert-incr": 0.239,
+    "nose-trans-down": 0.251,
+    "nose-nostrils-width-incr": 0.25,
+    "nose-flaring-incr": 0.278,
+    "nose-flaring-decr": 0.028,
+    "nose-base-down": 0.165,
+    "nose-width3-incr": 0.25,
+    "nose-width3-decr": 0.032,
+    "nose-point-down": 0.086,
+    "mouth-scale-vert-decr": 0.058,
+    "mouth-trans-down": 0.034,
+    "mouth-lowerlip-volume-incr": 0.187,
+    "chin-height-incr": 0.127,
+    "chin-triangle": 0.023,
+    "head-scale-vert-incr": 0.057,
+    "head-scale-vert-decr": 0.208,
+    "measure-neck-height-decr": 0.06,
+    "measure-hips-circ-incr": 0.12,
+    "measure-shoulder-dist-incr": 0.056,
+    "measure-napetowaist-dist-decr": 0.093,
+    "measure-waisttohip-dist-decr": 0.052,
+    "torso-scale-horiz-incr": 0.022,
+    "torso-scale-vert-decr": 0.096,
+    "torso-vshape-incr": 0.063,
+    "hip-scale-horiz-incr": 0.115,
+    "stomach-navel-up": 0.054,
+    "measure-thigh-circ-incr": 0.034,
+    "measure-calf-circ-incr": 0.111,
+    "measure-knee-circ-incr": 0.027
+  },
+  "browWeight": 1.6,
+  "teeth": "even",
+  "lashes": {
+    "upper": 0.0105,
+    "lower": 0.0045,
+    "curl": 0.004
+  },
+  "dryHair": {
+    "style": "braids",
+    "seed": 21,
+    "partX": 0.006,
+    "inset": 0.008,
+    "aoReach": 0.028
+  },
+  "walking": {
+    "tee": {
+      "fit": "oversized",
+      "push": [
+        0.015,
+        0.03
+      ],
+      "hemAboveCrotch": 0.02,
+      "sleeveT": 0.6,
+      "knot": "l"
+    },
+    "shorts": "cutoffs",
+    "straps": true,
+    "hat": null,
+    "pack": "rucksack",
+    "under": "bikini",
+    "preview": {
+      "tee": [
+        0.3,
+        0.38,
+        0.28
+      ],
+      "denim": [
+        0.12,
+        0.2,
+        0.38
+      ],
+      "straps": [
+        0.55,
+        0.12,
+        0.1
+      ],
+      "thongs": [
+        0.55,
+        0.18,
+        0.22
+      ],
+      "pack": [
+        0.45,
+        0.36,
+        0.22
+      ],
+      "packTrim": [
+        0.18,
+        0.1,
+        0.05
+      ],
+      "towel": [
+        0.7,
+        0.35,
+        0.08
+      ]
+    }
+  },
+  "grip": {
+    "index": [
+      10,
+      20,
+      20
+    ],
+    "middle": [
+      10,
+      30,
+      50
+    ],
+    "ring": [
+      0,
+      35,
+      0
+    ],
+    "pinky": [
+      -20,
+      20,
+      10
+    ],
+    "thumb": [
+      -40,
+      0,
+      0
+    ]
+  }
+}

@@ -1,26 +1,362 @@
 {
-  "image": "art/riders/female/bikini.png",
-  "note": "Marks in the painting's own pixels (6000 x 3375), placed by eye on 3x gridded crops (2026-10-10). Sides are the character's: R = her right = the viewer's left. w = trust (hair-covered edges lower).",
-  "view": "front",
-  "marks": {
-    "eye_outer_R": [2868, 367, 1], "eye_inner_R": [2940, 377, 1], "iris_R": [2912, 367, 1], "lid_up_R": [2907, 357, 0.7], "lid_lo_R": [2907, 379, 0.7],
-    "eye_inner_L": [3020, 372, 1], "eye_outer_L": [3083, 363, 1], "iris_L": [3048, 362, 1], "lid_up_L": [3048, 352, 0.7], "lid_lo_L": [3048, 377, 0.7],
-    "brow_inner_R": [2947, 338, 0.7], "brow_peak_R": [2900, 323, 0.7], "brow_outer_R": [2862, 332, 0.5],
-    "brow_inner_L": [3003, 332, 0.7], "brow_peak_L": [3063, 317, 0.7], "brow_outer_L": [3097, 327, 0.5],
-    "nose_bridge": [2982, 373, 0.6], "nose_tip": [2987, 440, 1], "ala_R": [2947, 447, 1], "ala_L": [3010, 453, 1], "subnasale": [2982, 458, 1],
-    "mouth_R": [2925, 483, 1], "mouth_L": [3047, 478, 1], "lip_up": [2980, 489, 0.8], "lip_seam": [2980, 498, 1], "lip_lo": [2980, 515, 0.8],
-    "chin": [2980, 577, 1], "jaw_R": [2890, 540, 0.6], "jaw_L": [3082, 533, 0.6], "cheek_R": [2845, 375, 0.3], "cheek_L": [3110, 370, 0.3],
-    "hairline": [2977, 223, 0.4], "temple_R": [2880, 247, 0.3], "temple_L": [3053, 237, 0.3],
-    "neck_R": [2880, 620, 0.5], "neck_L": [3088, 620, 0.5], "notch": [2970, 700, 0.6],
-    "shoulder_R": [2610, 745, 0.8], "shoulder_L": [3340, 740, 0.8], "deltoid_R": [2575, 820, 0.6], "deltoid_L": [3378, 820, 0.6],
-    "armpit_R": [2695, 880, 0.7], "armpit_L": [3260, 880, 0.7], "bust_R": [2810, 1020, 0.5], "bust_L": [3130, 1020, 0.5],
-    "underbust_R": [2750, 1110, 0.7], "underbust_L": [3205, 1110, 0.7], "waist_R": [2758, 1250, 1], "waist_L": [3183, 1250, 1],
-    "navel": [2972, 1350, 0.8], "hip_R": [2655, 1550, 0.8], "hip_L": [3295, 1550, 0.8], "crotch": [2975, 1740, 0.8],
-    "elbow_R": [2595, 1270, 0.6], "elbow_L": [3330, 1270, 0.6], "wrist_R": [2555, 1740, 0.5], "wrist_L": [3390, 1740, 0.5],
-    "thigh_out_R": [2645, 1900, 0.8], "thigh_in_R": [2950, 1900, 0.6], "thigh_in_L": [3015, 1900, 0.6], "thigh_out_L": [3330, 1900, 0.8],
-    "knee_R": [2830, 2290, 0.8], "knee_L": [3190, 2290, 0.8],
-    "calf_out_R": [2698, 2500, 0.7], "calf_in_R": [2908, 2500, 0.7], "calf_in_L": [3168, 2500, 0.7], "calf_out_L": [3378, 2500, 0.7],
-    "ankle_R": [2845, 2990, 0.7], "ankle_L": [3310, 2990, 0.7]
-  },
-  "extent": { "top": 63, "sole": 3255 }
+ "image": "art/riders/female/bikini.png",
+ "note": "Marks in the painting's own pixels (6000 x 3375), placed by eye on 3x gridded crops (2026-10-10). Sides are the character's: R = her right = the viewer's left. w = trust (hair-covered edges lower).",
+ "view": "front",
+ "marks": {
+  "eye_outer_R": [
+   2868,
+   367,
+   1
+  ],
+  "eye_inner_R": [
+   2940,
+   377,
+   1
+  ],
+  "iris_R": [
+   2912,
+   367,
+   1
+  ],
+  "lid_up_R": [
+   2907,
+   357,
+   0.7
+  ],
+  "lid_lo_R": [
+   2907,
+   379,
+   0.7
+  ],
+  "eye_inner_L": [
+   3020,
+   372,
+   1
+  ],
+  "eye_outer_L": [
+   3083,
+   363,
+   1
+  ],
+  "iris_L": [
+   3048,
+   362,
+   1
+  ],
+  "lid_up_L": [
+   3048,
+   352,
+   0.7
+  ],
+  "lid_lo_L": [
+   3048,
+   377,
+   0.7
+  ],
+  "brow_inner_R": [
+   2947,
+   338,
+   0.7
+  ],
+  "brow_peak_R": [
+   2900,
+   323,
+   0.7
+  ],
+  "brow_outer_R": [
+   2862,
+   332,
+   0.5
+  ],
+  "brow_inner_L": [
+   3003,
+   332,
+   0.7
+  ],
+  "brow_peak_L": [
+   3063,
+   317,
+   0.7
+  ],
+  "brow_outer_L": [
+   3097,
+   327,
+   0.5
+  ],
+  "nose_bridge": [
+   2982,
+   373,
+   0.6
+  ],
+  "nose_tip": [
+   2987,
+   440,
+   1
+  ],
+  "ala_R": [
+   2947,
+   447,
+   1
+  ],
+  "ala_L": [
+   3010,
+   453,
+   1
+  ],
+  "subnasale": [
+   2982,
+   458,
+   1
+  ],
+  "mouth_R": [
+   2925,
+   483,
+   1
+  ],
+  "mouth_L": [
+   3047,
+   478,
+   1
+  ],
+  "lip_up": [
+   2980,
+   489,
+   0.8
+  ],
+  "lip_seam": [
+   2980,
+   498,
+   1
+  ],
+  "lip_lo": [
+   2980,
+   515,
+   0.8
+  ],
+  "chin": [
+   2980,
+   577,
+   1
+  ],
+  "jaw_R": [
+   2890,
+   540,
+   0.6
+  ],
+  "jaw_L": [
+   3082,
+   533,
+   0.6
+  ],
+  "cheek_R": [
+   2845,
+   375,
+   0.3
+  ],
+  "cheek_L": [
+   3110,
+   370,
+   0.3
+  ],
+  "hairline": [
+   2977,
+   223,
+   0.4
+  ],
+  "temple_R": [
+   2880,
+   247,
+   0.3
+  ],
+  "temple_L": [
+   3053,
+   237,
+   0.3
+  ],
+  "neck_R": [
+   2880,
+   620,
+   0.5
+  ],
+  "neck_L": [
+   3088,
+   620,
+   0.5
+  ],
+  "notch": [
+   2970,
+   700,
+   0.6
+  ],
+  "shoulder_R": [
+   2610,
+   745,
+   0.8
+  ],
+  "shoulder_L": [
+   3340,
+   740,
+   0.8
+  ],
+  "deltoid_R": [
+   2575,
+   820,
+   0.6
+  ],
+  "deltoid_L": [
+   3378,
+   820,
+   0.6
+  ],
+  "armpit_R": [
+   2695,
+   880,
+   0.7
+  ],
+  "armpit_L": [
+   3260,
+   880,
+   0.7
+  ],
+  "bust_R": [
+   2810,
+   1020,
+   0.5
+  ],
+  "bust_L": [
+   3130,
+   1020,
+   0.5
+  ],
+  "underbust_R": [
+   2750,
+   1110,
+   0.7
+  ],
+  "underbust_L": [
+   3205,
+   1110,
+   0.7
+  ],
+  "waist_R": [
+   2758,
+   1250,
+   1
+  ],
+  "waist_L": [
+   3183,
+   1250,
+   1
+  ],
+  "navel": [
+   2972,
+   1350,
+   0.8
+  ],
+  "hip_R": [
+   2655,
+   1550,
+   0.8
+  ],
+  "hip_L": [
+   3295,
+   1550,
+   0.8
+  ],
+  "crotch": [
+   2975,
+   1740,
+   0.8
+  ],
+  "elbow_R": [
+   2595,
+   1270,
+   0.6
+  ],
+  "elbow_L": [
+   3330,
+   1270,
+   0.6
+  ],
+  "wrist_R": [
+   2555,
+   1740,
+   0.5
+  ],
+  "wrist_L": [
+   3390,
+   1740,
+   0.5
+  ],
+  "thigh_out_R": [
+   2645,
+   1900,
+   0.8
+  ],
+  "thigh_in_R": [
+   2950,
+   1900,
+   0.6
+  ],
+  "thigh_in_L": [
+   3015,
+   1900,
+   0.6
+  ],
+  "thigh_out_L": [
+   3330,
+   1900,
+   0.8
+  ],
+  "knee_R": [
+   2830,
+   2290,
+   0.8
+  ],
+  "knee_L": [
+   3190,
+   2290,
+   0.8
+  ],
+  "calf_out_R": [
+   2698,
+   2500,
+   0.7
+  ],
+  "calf_in_R": [
+   2908,
+   2500,
+   0.7
+  ],
+  "calf_in_L": [
+   3168,
+   2500,
+   0.7
+  ],
+  "calf_out_L": [
+   3378,
+   2500,
+   0.7
+  ],
+  "ankle_R": [
+   2845,
+   2990,
+   0.3
+  ],
+  "ankle_L": [
+   3310,
+   2990,
+   0.3
+  ]
+ },
+ "extent": {
+  "top": 63,
+  "sole": 3255
+ },
+ "overrides": {
+  "note": "By eye where one front view can't measure (overnight ruling 2026-10-10): the painting's bust is fuller than the game body's.",
+  "macro": {
+   "cupsize": 0.55
+  }
+ }
 }

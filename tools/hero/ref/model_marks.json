@@ -1,0 +1,333 @@
+{
+ "note": "The painting's marks on MPFB's base mesh (hero spec \u00c2\u00a73.2). 'px' marks were picked by eye on fit_export's front clay renders (marks_head.png / marks_body.png, 2026-10-10) and resolve to the front-most body vertex there; 'joint' = an MPFB joint group's centroid; 'eye' = an eyeball's centre; 'sil' = a silhouette point re-found at the painting mark's row every iteration (region, side). 'fit' = which residual: xy (both), x, y.",
+ "face": {
+  "eye_outer_R": {
+   "px": [
+    "head",
+    398,
+    570
+   ],
+   "fit": "xy"
+  },
+  "eye_inner_R": {
+   "px": [
+    "head",
+    518,
+    583
+   ],
+   "fit": "xy"
+  },
+  "iris_R": {
+   "eye": "R",
+   "fit": "xy"
+  },
+  "lid_up_R": {
+   "px": [
+    "head",
+    457,
+    550
+   ],
+   "fit": "y"
+  },
+  "lid_lo_R": {
+   "px": [
+    "head",
+    457,
+    600
+   ],
+   "fit": "y"
+  },
+  "eye_inner_L": {
+   "px": [
+    "head",
+    682,
+    580
+   ],
+   "fit": "xy"
+  },
+  "eye_outer_L": {
+   "px": [
+    "head",
+    802,
+    568
+   ],
+   "fit": "xy"
+  },
+  "iris_L": {
+   "eye": "L",
+   "fit": "xy"
+  },
+  "lid_up_L": {
+   "px": [
+    "head",
+    743,
+    548
+   ],
+   "fit": "y"
+  },
+  "lid_lo_L": {
+   "px": [
+    "head",
+    743,
+    600
+   ],
+   "fit": "y"
+  },
+  "nose_bridge": {
+   "px": [
+    "head",
+    600,
+    580
+   ],
+   "fit": "y"
+  },
+  "nose_tip": {
+   "px": [
+    "head",
+    600,
+    725
+   ],
+   "fit": "xy"
+  },
+  "ala_R": {
+   "px": [
+    "head",
+    550,
+    755
+   ],
+   "fit": "xy"
+  },
+  "ala_L": {
+   "px": [
+    "head",
+    650,
+    755
+   ],
+   "fit": "xy"
+  },
+  "subnasale": {
+   "px": [
+    "head",
+    600,
+    765
+   ],
+   "fit": "xy"
+  },
+  "mouth_R": {
+   "px": [
+    "head",
+    512,
+    882
+   ],
+   "fit": "xy"
+  },
+  "mouth_L": {
+   "px": [
+    "head",
+    688,
+    882
+   ],
+   "fit": "xy"
+  },
+  "lip_up": {
+   "px": [
+    "head",
+    600,
+    873
+   ],
+   "fit": "y"
+  },
+  "lip_seam": {
+   "px": [
+    "head",
+    600,
+    882
+   ],
+   "fit": "y"
+  },
+  "lip_lo": {
+   "px": [
+    "head",
+    600,
+    940
+   ],
+   "fit": "y"
+  },
+  "chin": {
+   "px": [
+    "head",
+    600,
+    1050
+   ],
+   "fit": "xy"
+  }
+ },
+ "body": {
+  "notch": {
+   "px": [
+    "body",
+    500,
+    372
+   ],
+   "fit": "xy"
+  },
+  "navel": {
+   "px": [
+    "body",
+    500,
+    815
+   ],
+   "fit": "xy"
+  },
+  "crotch": {
+   "px": [
+    "body",
+    500,
+    1080
+   ],
+   "fit": "xy"
+  },
+  "bust_R": {
+   "px": [
+    "body",
+    382,
+    585
+   ],
+   "fit": "y"
+  },
+  "bust_L": {
+   "px": [
+    "body",
+    612,
+    585
+   ],
+   "fit": "y"
+  },
+  "chin": {
+   "px": [
+    "head",
+    600,
+    1050
+   ],
+   "fit": "y"
+  },
+  "neck_R": {
+   "sil": [
+    "neck",
+    "R"
+   ],
+   "fit": "x"
+  },
+  "neck_L": {
+   "sil": [
+    "neck",
+    "L"
+   ],
+   "fit": "x"
+  },
+  "underbust_R": {
+   "sil": [
+    "torso",
+    "R"
+   ],
+   "fit": "x"
+  },
+  "underbust_L": {
+   "sil": [
+    "torso",
+    "L"
+   ],
+   "fit": "x"
+  },
+  "waist_R": {
+   "sil": [
+    "torso",
+    "R"
+   ],
+   "fit": "x"
+  },
+  "waist_L": {
+   "sil": [
+    "torso",
+    "L"
+   ],
+   "fit": "x"
+  },
+  "hip_R": {
+   "sil": [
+    "torso",
+    "R"
+   ],
+   "fit": "x"
+  },
+  "hip_L": {
+   "sil": [
+    "torso",
+    "L"
+   ],
+   "fit": "x"
+  },
+  "thigh_out_R": {
+   "silw": [
+    "legR",
+    "thigh_in_R"
+   ],
+   "fit": "w"
+  },
+  "thigh_out_L": {
+   "silw": [
+    "legL",
+    "thigh_in_L"
+   ],
+   "fit": "w"
+  },
+  "calf_out_R": {
+   "silw": [
+    "legR",
+    "calf_in_R"
+   ],
+   "fit": "w"
+  },
+  "calf_out_L": {
+   "silw": [
+    "legL",
+    "calf_in_L"
+   ],
+   "fit": "w"
+  },
+  "knee_R": {
+   "joint": "joint-r-knee",
+   "fit": "y"
+  },
+  "knee_L": {
+   "joint": "joint-l-knee",
+   "fit": "y"
+  },
+  "ankle_R": {
+   "joint": "joint-r-ankle",
+   "fit": "y"
+  },
+  "ankle_L": {
+   "joint": "joint-l-ankle",
+   "fit": "y"
+  },
+  "sole": {
+   "extent": "min",
+   "fit": "y"
+  },
+  "shoulder_R": {
+   "sil": [
+    "shoulder",
+    "R"
+   ],
+   "fit": "x"
+  },
+  "shoulder_L": {
+   "sil": [
+    "shoulder",
+    "L"
+   ],
+   "fit": "x"
+  }
+ }
+}
