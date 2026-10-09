@@ -26,10 +26,12 @@ import { NORTH_LEDGE } from '../seabed/wombReef';
 describe('a ride on the drawn sections', () => {
   // The smallest offered band at every Experience level (plan Review Focus 5: the assist is forgiveness, not the engine), the
   // biggest at intermediate (womb-retune Task 5: the select screen offers Solid to Huge on the real shelf). The game's field:
-  // coast-seeded, the take-off 224 m off the beach, the band's own ft and period, 225°, mid tide.
-  it.each([['Solid', 'intermediate'], ['Huge', 'intermediate'], ['Solid', 'beginner'], ['Solid', 'expert']] as [string, Experience][])('a %s set wave (%s): caught, popped up and ridden along the left for 10 s or more without a wipeout', { timeout: 300_000 }, (label, experience) => {
+  // coast-seeded, the take-off 224 m off the beach, the band's own ft and period, 225°, mid tide. Fun is offered at Low only
+  // (Fable's Task 5 ruling), so the smallest offered band overall is pinned there at every level too.
+  it.each([['Solid', 'intermediate', 0], ['Huge', 'intermediate', 0], ['Solid', 'beginner', 0], ['Solid', 'expert', 0],
+    ['Fun', 'intermediate', -0.5], ['Fun', 'beginner', -0.5], ['Fun', 'expert', -0.5]] as [string, Experience, number][])('a %s set wave (%s, tide %s m): caught, popped up and ridden along the left for 10 s or more without a wipeout', { timeout: 300_000 }, (label, experience, tideM) => {
     const c = cloneConditions(DEFAULT_CONDITIONS), band = SWELL_BANDS.find((x) => x.label === label)!, ft = band.ft;
-    c.swell.sizeFt = ft; c.swell.periodS = band.periodS; c.swell.directionDeg = 225; c.tideM = 0;
+    c.swell.sizeFt = ft; c.swell.periodS = band.periodS; c.swell.directionDeg = 225; c.tideM = tideM;
     const field = coastReefField({ periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: true });
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
     const set = wavesBetween(0, 600, c, DEFAULT_SET_PARAMS).filter((e) => e.arrivalS > 10).slice(0, 8);
@@ -93,7 +95,7 @@ describe('a ride on the drawn sections', () => {
     if (process.env.PROBE_RIDE_TRACE) writeFileSync(resolve(__dirname, `../../docs/superpowers/evidence/womb-retune/ride-trace-${label}-${experience}.txt`),
       [`# ${label} (${ft} ft, ${band.periodS} s) ${experience}: wave ${big.heightM.toFixed(2)} m; spot (${sx.toFixed(1)}, ${sz.toFixed(1)}), ${takeoffLeadS(field, { x: sx, z: sz }).toFixed(2)} s lead; t from the crest at the spot`,
         '# t      phase    s along ledge, curl s | rider speed, along travel, crest c | slope | ahead', ...trace].join('\n') + '\n');
-    console.log(`${label} (${ft} ft) ${experience}: line ${LINE_OFF_DEG}°, held ${heldS.toFixed(2)} s of ${rodeS.toFixed(2)} s, end ${events[events.length - 1]} (foam ${last.foam.toFixed(2)}, section ${!!last.onSection}), ahead ${JSON.stringify(aheadAt)}`);
+    console.log(`${label} (${ft} ft, tide ${tideM}) ${experience}: line ${LINE_OFF_DEG}°, held ${heldS.toFixed(2)} s of ${rodeS.toFixed(2)} s, end ${events[events.length - 1]} (foam ${last.foam.toFixed(2)}, section ${!!last.onSection}), ahead ${JSON.stringify(aheadAt)}`);
     expect(events).toContain('caught');
     expect(events).toContain('popup');
     expect(events).not.toContain('wipeout');

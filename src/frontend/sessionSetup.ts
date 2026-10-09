@@ -92,14 +92,14 @@ export const TIDE_STOPS: readonly { label: string; m: number; trend: 'rising' | 
  * break"): per SWELL_BANDS label, one entry per BREAKS_TIDES_M. Re-measured on the real shelf (womb-retune Task 4: the
  * coast-seeded field, the take-off 224 m off the beach) with tools/_smallSwell.ts (each band's ft and period, 225°): a pair
  * breaks when the first leg is all broken, starts ≤ 2.0 s after the peak and peels 8–13 m/s. Hand-written data, the
- * evidence is docs/superpowers/evidence/womb-retune/matrix-225.txt (a test checks the two agree). Fun is not offered (Fable,
- * 2026-10-09: a 3.5 ft swell barely stands up on a 3.5 m ledge 230 m out; the matrix has it passing at Low alone).
+ * evidence is docs/superpowers/evidence/womb-retune/matrix-225.txt (a test checks the two agree). Fun is a low-tide-only day
+ * at the Womb: the matrix passes it at Low alone (Fable's Task 5 ruling, 2026-10-09: the matrix is the rule).
  */
 export const BREAKS_TIDES_M: readonly number[] = [-0.5, -0.25, 0, 0.5];
 export const BREAKS: Readonly<Record<string, readonly boolean[]>> = {
   'Flat-ish': [false, false, false, false],
   Small: [false, false, false, false],
-  Fun: [false, false, false, false],
+  Fun: [true, false, false, false],
   Solid: [true, true, true, true],
   Pumping: [true, true, true, true],
   Big: [true, true, true, true],
@@ -107,17 +107,17 @@ export const BREAKS: Readonly<Record<string, readonly boolean[]>> = {
 };
 /**
  * The Womb's face (ft) per offered band × BREAKS_TIDES_M, for the Conditions screen (womb-retune Task 4): where the set's
- * biggest wave first breaks on the peak's ray, its height min(H·amp, 0.78·depth) on the dial's scale (the ft whose set-1
- * biggest wave is that height), to the half foot; null where not offered. From matrix-225.txt's FACE_FT (a test checks).
+ * biggest wave first breaks on the peak's ray, the height it carries into its break, H·amp there, uncapped (Fable's Task 5
+ * ruling), on the dial's scale (the ft whose set-1 biggest wave is that height), to the half foot; null where not offered. From matrix-225.txt's FACE_FT (a test checks).
  */
 export const FACE_FT: Readonly<Record<string, readonly (number | null)[]>> = {
   'Flat-ish': [null, null, null, null],
   Small: [null, null, null, null],
-  Fun: [null, null, null, null],
-  Solid: [4.5, 5, 5.5, 6],
-  Pumping: [6, 5.5, 5.5, 6],
-  Big: [8, 7, 7.5, 7],
-  Huge: [9, 9, 9, 9],
+  Fun: [4, null, null, null],
+  Solid: [6, 6, 6, 6],
+  Pumping: [8, 8, 7.5, 7.5],
+  Big: [10, 10, 10, 9.5],
+  Huge: [13, 13, 13, 13],
 };
 /** The Womb's face (ft) for swell band `band` at tide stop `tide`, or null where it isn't offered. */
 export function faceFt(band: number, tide: number): number | null {
@@ -158,7 +158,8 @@ export const SESSION_PRESETS: readonly { id: string; label: string; setup: Sessi
   { id: 'winterOffshore', label: 'Winter offshore', setup: setup(6, 2, 'clear', 1, 3, 225, 1) },
   { id: 'bigWinterSwell', label: 'Big winter swell', setup: setup(6, 3, 'scattered', 1, 5, 247, 2) },
   { id: 'funArvo', label: 'Fun arvo', setup: setup(2, 4, 'fair', 3, 3, 225, 3) },
-  // Was Small (band 1); Small does not break at the Womb (small-swell Task 4), so the sea-breeze day is Fun.
+  // Was Small (band 1); Small does not break at the Womb (small-swell Task 4), so the sea-breeze day was Fun;
+  // on the real shelf Fun breaks at Low only (womb-retune Task 4), so at High it is Solid.
   { id: 'summerSeaBreeze', label: 'Summer sea breeze', setup: setup(0, 5, 'fair', 5, 3, 225, 4) },
   { id: 'moodyGrey', label: 'Moody and grey', setup: setup(7, 1, 'grey', 1, 4, 270, 2) },
 ];
