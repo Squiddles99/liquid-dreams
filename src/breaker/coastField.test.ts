@@ -1,10 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { travelDirectionXZ } from '../conditions/directions';
 import { type Bathymetry, buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
 import { buildCoastMap } from '../seabed/coastMap';
 import { COAST_GRID, depthBg } from '../seabed/coastProfile';
 import { type CoastField, coastSample, computeCoastField } from './coastField';
-import { farSample } from './coastFarField';
+import { computeFarField, farSample } from './coastFarField';
 import { ONSET_RECORD_LENGTH } from './breaking';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 
@@ -160,4 +161,26 @@ describe('the coast field keeps the reef\'s hmin over the reef map (review I1)',
     expect(n).toBeGreaterThan(20);
     expect(worst, where).toBeLessThan(0.05);
   }, 300_000);
+});
+
+describe('the swell dial is the offshore swell at the coast seed (womb-retune spec §2)', () => {
+  const coastBed = buildCoastMap(reefBed, DEFAULT_COAST_PARAMS);
+  const g = COAST_GRID, row = Math.round((0 - g.z0) / g.cellM);
+  for (const tideM of [-0.5, 0, 0.5]) {
+    it(`at tide ${tideM} the reference depth is the coast map's at the coast grid's west edge on the Womb's row, where the swell has the dial's height and direction (a buoy: ruling C)`, () => {
+      const c = computeCoastField({ bed: coastBed, ...SWELL, tideM });
+      const hSeed = tideM - coastBed.bed[row * g.nx];
+      expect(hSeed).toBeGreaterThan(20); // the real shelf, not the 15 m basin
+      expect(c.far.refDepthM).toBeCloseTo(hSeed, 4);
+      const seed = coastSample(c, c.far, g.x0, 0), d = travelDirectionXZ(SWELL.fromDeg);
+      expect(seed.amp).toBeCloseTo(1, 2);
+      expect(Math.abs(Math.atan2(seed.dirZ, seed.dirX) - Math.atan2(d.z, d.x)) * 180 / Math.PI).toBeLessThan(0.5);
+      // Snell's invariant set in the seed's water, so the swell is less oblique by 15 m than the 15 m-set swell was
+      const old = computeFarField(SWELL.periodS, SWELL.fromDeg, tideM);
+      expect(Math.abs(c.far.p)).toBeLessThan(Math.abs(old.p));
+    }, 120_000);
+  }
+  it('with no coast the reference is the far field\'s 15 m (plus tide), as ?coast=off has it', () => {
+    for (const tideM of [-0.5, 0, 0.5]) expect(computeFarField(15, 225, tideM).refDepthM).toBeCloseTo(depthBg(-400) + tideM, 6);
+  });
 });
