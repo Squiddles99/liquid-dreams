@@ -24,3 +24,8 @@
   grimace → needs an authored smile); scalp hair lies like a helmet (needs the painting's volume and waves over the
   temples); no muscle definition (abs, shoulders) — wants a baked detail normal; skin a little plastic.
   Sheets: gates/gate1b-face-r1.jpg, gate1b-body-r1.jpg. Renders ~1 min/view at 192 samples on the RTX 4060.
+- Gate 1b round 2: RULING (reverses spec §5's "not a projection"): the painting's face is baked onto the front of the
+  face through the Gate 1a face camera (`project.py`, with the painting's expression on), toned to the procedural tan,
+  blended by `faceproj` (front-facing, below the hairline). The likeness jump was the largest of the night; the light
+  painted into it is soft and frontal. Also: authored `smileSoft` key (MPFB's smile was a grimace), relaxed lids
+  (blink 0.1), lash-line tint, iris 34°. Sheets gates/gate1b-*-r2.jpg.

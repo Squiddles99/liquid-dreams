@@ -28,7 +28,7 @@ def paint_lidline(body, landmarks):
         dist = np.linalg.norm(d, axis=1) - r  # off the eyeball's surface
         front = d[:, 1] < -r * 0.35
         up = d[:, 2] > r * 0.05
-        rim = np.clip(1 - dist / 0.0028, 0, 1) * front
+        rim = np.clip(1 - dist / 0.0045, 0, 1) * front
         out = np.maximum(out, rim * np.where(up, 1.0, 0.35))
     att = me.attributes.get("lidline") or me.attributes.new("lidline", "FLOAT", "POINT")
     att.data.foreach_set("value", out.astype(np.float32))

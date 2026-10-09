@@ -34,6 +34,7 @@ def make(preset, marks_path):
                 att.data[v.index].value = next((e.weight for e in v.groups if e.group == vg.index), 0.0)
     landmarks = rig_trim.delete_helpers(body)
     f = rig_trim.scale_to_height(body, rig, preset["heightM"], landmarks)
+    landmarks["scale"] = f  # metres per fit-model unit (the face camera's units)
     expressions.scale(body, f)
     sculpt.smooth_anatomy(body, preset["heightM"], preset.get("smooth", []))
     if preset.get("upperLip"):
@@ -51,7 +52,7 @@ def make(preset, marks_path):
     # The game's skeleton (23 bones + fingers), as the old build trims it; the hero adds its own bones later (spec §9).
     rig_trim.trim(rig, body)
     rig_trim.limit_weights(body)
-    face_keys(body)
+    face_keys(body, marks, landmarks)
     coords = bodymap.bone_coords(body, rig)
     L = bodymap.landmarks(body, rig, preset["heightM"], landmarks, coords)
     return body, rig, landmarks, marks, L, coords
@@ -68,7 +69,7 @@ def smooth(body):
     return sub
 
 
-def face_keys(body):
+def face_keys(body, marks, landmarks):
     """The face's expression attributes (expressions.load's `xp_*`, carried through the bake, the helper deletion and
     the scaling) as shape keys, off at rest: the game's morphs, and the painting's smile for the gate renders."""
     basis = body.shape_key_add(name="Basis", from_mix=False)
@@ -80,4 +81,24 @@ def face_keys(body):
         key.value = 0.0
         for i, e in enumerate(a.data):
             key.data[i].co = basis.data[i].co + e.vector
+    # The painting's smile, authored (MPFB's corner puller pulls a grimace): closed lips, the corners up, back and a
+    # little out, the cheeks lifted forward, the lower lids raised by them.
+    import numpy as np
+    P = np.array([v.co[:] for v in body.data.vertices])
+    d = np.zeros_like(P)
+    g = lambda c, s: np.exp(-np.sum((P - np.asarray(c[:])) ** 2, axis=1) / (s * s))[:, None]
+    for S, sx in (("R", -1), ("L", 1)):
+        c = marks[f"mouth_{S}"]
+        d += g(c, 0.014) * np.array([sx * 0.0022, 0.0030, 0.0060])
+        cheek = (marks[f"eye_outer_{S}"] * 0.45 + c * 0.55) + type(c)((sx * 0.006, -0.004, 0.004))
+        d += g(cheek, 0.02) * np.array([0.0, -0.0018, 0.0032])
+        eye = landmarks["eyes"][S.lower()]
+        lid = eye + type(c)((0, -landmarks["eye_radius"] * 0.8, -landmarks["eye_radius"] * 0.75))
+        d += g(lid, 0.006) * np.array([0.0, -0.0003, 0.0011])
+    front = (P[:, 1] < marks["nose_tip"].y + 0.06)[:, None]
+    d *= front
+    key = body.shape_key_add(name="smileSoft", from_mix=False)
+    key.value = 0.0
+    for i in range(len(P)):
+        key.data[i].co = basis.data[i].co + type(basis.data[i].co)(d[i])
     body.data.shape_keys.use_relative = True

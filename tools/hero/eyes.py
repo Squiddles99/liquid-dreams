@@ -47,7 +47,7 @@ def eye_material():
     az = g.math("ARCTAN2", sep.outputs["X"], sep.outputs["Z"])
     fib_co = g.n("ShaderNodeCombineXYZ", X=g.math("MULTIPLY", az, 14.0), Y=g.math("MULTIPLY", ang, 3.0), Z=0.0).outputs["Vector"]
     fib = g.n("ShaderNodeTexNoise", Vector=fib_co, Scale=4.0, Detail=6.0, Roughness=0.6).outputs["Fac"]
-    iris_r, pupil_r = math.radians(32), math.radians(8.5)
+    iris_r, pupil_r = math.radians(34), math.radians(9)
     t = g.math("DIVIDE", g.math("SUBTRACT", ang, pupil_r), iris_r - pupil_r)  # 0 at the pupil, 1 at the limbus
     iris = g.mix(IRIS, IRIS_DARK, g.math("MULTIPLY", fib, 0.8))
     iris = g.mix(iris, COLLARETTE, g.math("MULTIPLY", g.math("SUBTRACT", 1.0, g.math("MINIMUM", g.math("MULTIPLY", t, 4.0), 1.0)), 0.55))

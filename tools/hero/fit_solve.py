@@ -35,8 +35,9 @@ EXCLUDE = {"mouth-scale-horiz-incr", "mouth-scale-horiz-decr", "mouth-upperlip-w
            # Round 2: with the jaw silhouettes (beside hair, unsure) dropped, the outline stays MPFB's; these only
            # chased it (cheek volume puffed the cheeks out).
            "cheek-volume-incr", "cheek-volume-decr", "cheek-inner-incr", "cheek-inner-decr", "head-scale-horiz-incr",
-           "head-scale-horiz-decr", "head-oval", "head-round", "head-square", "head-triangular", "head-invertedtriangular",
-           "head-diamond", "head-rectangular", "chin-width-incr", "chin-width-decr", "chin-bones-incr", "chin-bones-decr"}
+           "head-scale-horiz-decr", "head-round", "head-square", "head-diamond", "head-rectangular", "chin-bones-incr", "chin-bones-decr"}
+# Round 5: the jaw silhouettes back (the face's scale is now fixed), answered only by the jaw's own shape targets
+# (chin width, the oval/triangular head) so the lower face narrows to the painting's V.
 face_vars = [i for i, n in enumerate(names) if n.startswith(FACE_PREFIX) and n not in EXCLUDE]
 body_vars = [i for i, n in enumerate(names) if not n.startswith(FACE_PREFIX) and n not in EXCLUDE]
 
@@ -269,7 +270,10 @@ for k, v in json.load(open(ref_path)).get("overrides", {}).get("macro", {}).item
     macro[k] = v
 preset["macro"], preset["face"] = macro, face
 # The painting's own expression, for the gate renders (the shape stays at rest).
-preset["paintedExpression"] = {"smile": round(float(a[names.index("xp:smile")]), 3), "squint": round(float(a[names.index("xp:squint")]), 3)}
+# (the fit's own smile read-out goes to the report; the renders use the authored smileSoft, body.face_keys)
+preset["paintedExpression"] = {"smileSoft": 1.0, "squint": 0.2}
+preset["faceCamera"] = [float(x) for x in cam_f]  # model → painting px, for the face projection (project.py)
+preset["restExpression"] = {"blinkL": 0.1, "blinkR": 0.1}  # relaxed lids: MPFB's open eyes stare
 json.dump(preset, open(out_path, "w", encoding="utf-8"), indent=2)
 report = {"chosen": chosen, "camBody": cam_b.tolist(), "camFace": cam_f.tolist(),
           "bodyPctHeight": {"before": bb, "after": ba}, "facePctIOD": {"before": fb, "after": fa},
