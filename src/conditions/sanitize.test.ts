@@ -33,7 +33,7 @@ describe('sanitizeConditions', () => {
     expect(c.swell.sizeFt).toBe(12);
     expect(c.swell.periodS).toBe(4);
     expect(c.wind.speedMs).toBe(0);
-    expect(c.tideM).toBe(1.5);
+    expect(c.tideM).toBe(0.8);
     expect(c.timeOfDay).toBe(23.999);
   });
   it('replaces NaN / non-numbers with defaults', () => {
@@ -64,10 +64,13 @@ describe('sanitizeConditions', () => {
 });
 
 describe('tide', () => {
-  it('is clamped to the published tide range', () => {
-    expect(CONDITION_RANGES.tideM).toEqual({ min: -1.5, max: 1.5 });
-    expect(sanitizeConditions({ ...DEFAULT_CONDITIONS, tideM: 9 }).tideM).toBe(1.5);
-    expect(sanitizeConditions({ ...DEFAULT_CONDITIONS, tideM: -9 }).tideM).toBe(-1.5);
+  it('is clamped to the coast’s real range, ±0.8 m (small-swell Task 3: below that the shelf surfaces)', () => {
+    expect(CONDITION_RANGES.tideM).toEqual({ min: -0.8, max: 0.8 });
+    expect(sanitizeConditions({ ...DEFAULT_CONDITIONS, tideM: 9 }).tideM).toBe(0.8);
+    expect(sanitizeConditions({ ...DEFAULT_CONDITIONS, tideM: -9 }).tideM).toBe(-0.8);
     expect(sanitizeConditions({ ...DEFAULT_CONDITIONS, tideM: 0.37 }).tideM).toBe(0.37);
+  });
+  it('opens Andrew’s link (tide −1.5 m) at −0.8 m', () => {
+    expect(sanitizeConditions({ ...DEFAULT_CONDITIONS, tideM: -1.5 }).tideM).toBe(-0.8);
   });
 });

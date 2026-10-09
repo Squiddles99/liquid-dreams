@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   FIRST_PRESET, FROM_WINDOW, ROLL_SKIES, ROLL_WINDS, SESSION_PRESETS, SWELL_BANDS, TIDE_STOPS, TIME_STOPS,
-  dateForMonth, excludedBy, fineRow, presetById, rollSetup, stepPreset, stepRow, sunTimes, swellBand, timeOfDayFor,
+  dateForMonth, excludedBy, fineRow, offered, presetById, rollSetup, stepPreset, stepRow, sunTimes, swellBand, timeOfDayFor,
 } from './sessionSetup';
 
 const TODAY = new Date('2026-10-03T10:00:00+08:00');
@@ -82,7 +82,8 @@ describe('Roll the dice (spec §6.9)', () => {
     expect(seen.time.size).toBe(TIME_STOPS.length);
     expect([...seen.sky].sort()).toEqual([...ROLL_SKIES].sort());
     expect([...seen.wind].sort()).toEqual([...ROLL_WINDS].sort());
-    expect(seen.band.size).toBe(SWELL_BANDS.length);
+    // Every band the select screen offers (small-swell Task 4: Flat-ish and Small do not break at the Womb).
+    expect(seen.band.size).toBe(SWELL_BANDS.filter((_, b) => TIDE_STOPS.some((_, t) => offered(b, t))).length);
     expect(seen.from.size).toBe(FROM_WINDOW.length);
     expect(seen.tide.size).toBe(TIDE_STOPS.length);
   });

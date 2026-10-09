@@ -151,10 +151,14 @@ export const DEEP_WATER_EXPONENT = 0.8;
 /**
  * Water shallower than this (m) counts as this deep: a wave is long broken there, and the reef flat's ratio (hmin
  * 0.6 m, ten times the ledge's) otherwise dominates the field's smoothing around it and drags the break seaward.
+ * It was 3 m until 2026-10-09 (small-swell): that floor read the ledge at low tide (2.0–3.0 m) and the shelf's heads
+ * (1–2 m) as 3 m, so sets under ~2.5 m never reached ratio 1 at the take-off and the inner legs' onset records were
+ * wrong (a 3.5 ft set's second leg peeled backwards at −0.5 m). 2 m clears the ledge at the lowest tide (3.5 − 0.8 m)
+ * and still stands in for the flat; the big sets and the first break's distance do not move.
  */
-export const SHALLOW_BREAKING_DEPTH_M = 3;
+export const SHALLOW_BREAKING_DEPTH_M = 2;
 
-/** The depth the breaking criterion reads for minimum depth hmin (m): hmin on the reef (at least 3 m), deeper over deep water. */
+/** The depth the breaking criterion reads for minimum depth hmin (m): hmin on the reef (at least 2 m), deeper over deep water. */
 export function breakingDepth(hmin: number): number {
   return Math.max(hmin, SHALLOW_BREAKING_DEPTH_M) * Math.max(1, hmin / REEF_TOP_DEPTH_M) ** DEEP_WATER_EXPONENT;
 }
