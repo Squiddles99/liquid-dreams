@@ -54,6 +54,8 @@ export interface ReefParams {
   northLedge?: readonly Pt[];
   /** The right's seaward edge, from the tip (the shelf follows it). Absent: SOUTH_LEDGE. */
   southLedge?: readonly Pt[];
+  /** The take-off corner, where the two ledges meet: the warp's taper and the sand pockets follow it. Absent: TIP. */
+  tip?: Pt;
 }
 
 /**
@@ -82,12 +84,33 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
   offshoreBand: [SHORE_X - 40, SHORE_X - 100],
 };
 
-/** The left's edge: from the corner it runs 24° for 70 m, then bends to run along the beach 54 m off the waterline (his
- * line closes on the beach there). */
-export const NORTH_LEDGE: readonly Pt[] = [[0, 0], [28, -64], [40, -110], [40, -450]];
-/** South of the corner his line runs a little seaward of due south. The swell reaches it before the corner: the left
- * stands up first 40 m south of the corner. */
-export const SOUTH_LEDGE: readonly Pt[] = [[0, 0], [-7, 50], [-20, 150], [-30, 242]];
+/** The take-off corner (x, z), where the left's and the right's ledges meet: 224 m off the beach (womb-retune Task 2b,
+ * Andrew's ruling 2026-10-09: the take-off moves seaward; Fable's row). On the real shelf the swell reaches the Womb ~18°
+ * off shore-normal; a left peels only along a ledge running downstream of the crest, north-east toward the beach, and
+ * each metre of it costs 0.7 m of the distance to the beach. From the old corner 94 m off the sand the beach ramp
+ * (depthBg: 5.5 m about 70 m off) closed out anything past ~70 m of ledge; from here the left runs 180 m on the ledge. */
+export const TIP: Pt = [-130, 0];
+/** The left's bearing (degrees from north toward the beach): 46° peels 11.3–12.1 m/s from Solid to Huge at 225°, Pumping
+ * hollow 0.81 (sweep-tip-b; 42° ran 12.2–12.5, 48° flattened Pumping to 0.74). */
+export const LEFT_BEARING_DEG = 46;
+/** The left's ledge length (m) before the inside (due north): Pumping breaks on it to its end at 150–210 m alike. */
+export const LEFT_LEDGE_M = 180;
+/** The left from `tip`: one straight ledge at `bearingDeg` for `lengthM`, then due north (the inside) to the map's edge. */
+export function leftLedgeFrom(tip: Pt, lengthM = LEFT_LEDGE_M, bearingDeg = LEFT_BEARING_DEG): Pt[] {
+  const r = (bearingDeg * Math.PI) / 180, end: Pt = [tip[0] + lengthM * Math.sin(r), tip[1] - lengthM * Math.cos(r)];
+  return [tip, end, [end[0], -450]];
+}
+/** The right's shape from its corner: his satellite line runs a little seaward of due south. The swell reaches it before
+ * the corner: the left stands up first 40 m south of the corner; the right closes out. */
+const RIGHT_SHAPE: readonly Pt[] = [[0, 0], [-7, 50], [-20, 150], [-30, 242]];
+/** The right from `tip`: its shape moved to it. */
+export const rightLedgeFrom = (tip: Pt): Pt[] => RIGHT_SHAPE.map(([x, z]) => [x + tip[0], z + tip[1]] as Pt);
+
+/** The left's edge: from the corner one 46° ledge for 180 m to (−1, −125), then due north (R1–Task 2's three legs from a
+ * corner 94 m off the beach, [[0,0],[28,−64],[40,−110],[40,−450]], ran out of water: see TIP). */
+export const NORTH_LEDGE: readonly Pt[] = leftLedgeFrom(TIP);
+/** The right's edge, from the corner. */
+export const SOUTH_LEDGE: readonly Pt[] = rightLedgeFrom(TIP);
 /** The shelf's inshore edge (x): 10 m inside the shore's platform (shoreReef.SHORE_REEF_AT_MAP_M), so no sand strip shows
  * between them. */
 export const SHELF_INNER_X = SHORE_X - SHORE_REEF_AT_MAP_M + 10;

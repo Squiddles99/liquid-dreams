@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
-import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
+import { NORTH_LEDGE, SOUTH_LEDGE, TIP } from '../seabed/wombReef';
+import { reefBeds } from './testField';
+/** The take-off corner and points from it (womb-retune: the pins moved with the tip; the field is coast-seeded as the game's). */
+const [PX, PZ] = TIP;
+const fromTip = (x: number, z: number): [number, number] => [PX + x, PZ + z];
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, ONSET_DELAY_OFFSET, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, landingEstimate, onsetGain, onsetTime } from './breaking';
 import { HAND_BACK_S } from './lipProfile';
@@ -16,7 +20,7 @@ import { setWaveHeight } from './reefReport';
 import { SECTION_CREST, SECTION_TROUGH, STOOD_PHASE, sectionKnots, sectionOf, sectionPhase, sectionPoint, sectionSamples, sectionScale, wallWeight } from './wombSection';
 
 const P = DEFAULT_BREAK_PARAMS;
-const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
+const field = computeReefField({ bed: reefBeds(2).bed, coast: reefBeds(2).coast, periodS: 15, fromDeg: 225, tideM: 0 });
 const ctx: WaveContext = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
 // 6 ft, not the 4 ft default (R1 §2): a 4 ft wave no longer breaks on the reef top's 3.5 m, only soft on the shelf.
 const REF_CONDITIONS = (() => { const c = cloneConditions(DEFAULT_CONDITIONS); c.swell.sizeFt = 6; return c; })();
@@ -24,7 +28,7 @@ const HS = surferFeetToHs(REF_CONDITIONS.swell.sizeFt);
 const REF_BIGGEST = wavesOfSet(1, REF_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
 const testWave = (heightM: number): ActiveWave => ({ arrivalS: 0, heightM, omega: ctx.omega, travelX: ctx.travelX, travelZ: ctx.travelZ, crestLengthM: 400, crestOffsetM: 0 });
 const MIN_H = minRibbonHeight(fieldBreakingHeight(field, P), P);
-const LINEUP: [number, number] = [-25, 45];
+const LINEUP: [number, number] = fromTip(-25, 45);
 const trace = (waves: ActiveWave[], t: number, cam: [number, number] = LINEUP): StationEntry[] =>
   traceStations(field, waves, t, ctx, { cameraX: cam[0], cameraZ: cam[1], params: P, minHeightM: MIN_H });
 const live = (e: StationEntry[]): Station[] => e.filter((s): s is Station => !s.gap);
@@ -35,9 +39,9 @@ const alongLedge = (line: readonly (readonly [number, number])[], x: number, z: 
   return ((x - a[0]) * (b[0] - a[0]) + (z - a[1]) * (b[1] - a[1])) / len;
 };
 
-/** When the peak's section broke (the crest's arrival at (0, 0) less its time since onset there). */
+/** When the peak's section broke (the crest's arrival at the tip less its time since onset there). */
 const peakBreak = (w: ActiveWave): number => {
-  const f = sampleField(field, 0, 0), tb = timeSinceOnset(field, w, 0, 0, ctx, P);
+  const f = sampleField(field, PX, PZ), tb = timeSinceOnset(field, w, PX, PZ, ctx, P);
   return w.arrivalS + f.tau - (tb ?? 0);
 };
 
@@ -65,7 +69,7 @@ describe('crestTrace', () => {
 
   it('a fixed spacingM traces the same stations wherever the camera is (spray emitters, offshore-spray plan S1)', () => {
     const base = { params: P, minHeightM: MIN_H, spacingM: 1.5 };
-    const a = traceStations(field, [peeler], 2, ctx, { ...base, cameraX: 0, cameraZ: 0 });
+    const a = traceStations(field, [peeler], 2, ctx, { ...base, cameraX: PX, cameraZ: PZ });
     const b = traceStations(field, [peeler], 2, ctx, { ...base, cameraX: 500, cameraZ: -300 });
     expect(b).toEqual(a);
     const st = live(a);
@@ -78,7 +82,7 @@ describe('crestTrace', () => {
   });
 
   it('spaces stations by distance from the camera, within the cap', () => {
-    const cam: [number, number] = [8, 2];
+    const cam: [number, number] = fromTip(8, 2);
     const st = live(trace([peeler], 2, cam));
     expect(st.length).toBeGreaterThan(50);
     for (let i = 1; i < st.length; i++) {
@@ -89,7 +93,7 @@ describe('crestTrace', () => {
       expect(d).toBeGreaterThan(rule * 0.5);
       expect(d).toBeLessThan(rule * 1.5);
     }
-    const crowded = trace([peeler, big, testWave(1.6 * HS)], 2, [10, 0]);
+    const crowded = trace([peeler, big, testWave(1.6 * HS)], 2, fromTip(10, 0));
     expect(crowded.length).toBeLessThanOrEqual(MAX_STATIONS);
   });
 
@@ -137,10 +141,10 @@ describe('crestTrace', () => {
   });
 
   it('timeSinceOnset: null before breaking, grows with the crest, however long ago it broke', () => {
-    const f0 = sampleField(field, 0, 0);
+    const f0 = sampleField(field, PX, PZ);
     // The crest at the peak at t = τ(0,0) = 0, then points shoreward along the ray.
-    expect(timeSinceOnset(field, testWave(0.5), 0, 0, ctx, P)).toBeNull();
-    const along = (d: number): [number, number] => [f0.dirX * d, f0.dirZ * d];
+    expect(timeSinceOnset(field, testWave(0.5), PX, PZ, ctx, P)).toBeNull();
+    const along = (d: number): [number, number] => [PX + f0.dirX * d, PZ + f0.dirZ * d];
     const seq = [0, 5, 10, 20].map((d) => timeSinceOnset(field, peeler, ...along(d), ctx, P));
     console.log(`tb along the ray from the peak: ${seq.map((v) => (v === null ? 'null' : v.toFixed(2))).join(', ')}`);
     for (let i = 1; i < seq.length; i++) if (seq[i - 1] !== null && seq[i] !== null && Number.isFinite(seq[i] as number)) expect(seq[i] as number).toBeGreaterThanOrEqual(seq[i - 1] as number);
@@ -157,9 +161,9 @@ describe('station ψ (barrel from the maths)', () => {
   const c12 = cloneConditions(DEFAULT_CONDITIONS); c12.swell.sizeFt = 12;
   const big = wavesOfSet(1, c12, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
   const w = testWave(big.heightM);
-  const t = sampleField(field, 0, 0).tau + 0.5;
+  const t = sampleField(field, PX, PZ).tau + 0.5;
   it("each station's ψ is the sheet's crest ψ there (the lip lands on water drained for its own shape)", () => {
-    const input = { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: 0, offshoreMs: 5 };
+    const input = { cameraX: PX, cameraZ: PZ, params: DEFAULT_BREAK_PARAMS, minHeightM: 0, offshoreMs: 5 };
     const o = breakOptions(field, DEFAULT_BREAK_PARAMS, 5);
     const stations = traceStations(field, [w], t, ctx, input).filter((e): e is Station => !e.gap);
     expect(stations.length).toBeGreaterThan(20);
@@ -178,8 +182,8 @@ describe('station ψ (barrel from the maths)', () => {
 describe("each station's throw height (spec 2026-10-03 barrel-size, option A)", () => {
   it("is the sheet's crest lipH there: the tube hangs from the crest the sheet threw", () => {
     const big = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
-    const w = testWave(big.heightM), t = sampleField(field, 0, 0).tau + 0.8;
-    const input = { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: 0 };
+    const w = testWave(big.heightM), t = sampleField(field, PX, PZ).tau + 0.8;
+    const input = { cameraX: PX, cameraZ: PZ, params: DEFAULT_BREAK_PARAMS, minHeightM: 0 };
     const o = breakOptions(field, DEFAULT_BREAK_PARAMS, 0);
     const stations = traceStations(field, [w], t, ctx, input).filter((e): e is Station => !e.gap);
     let broken = 0, worst = 0;
@@ -197,7 +201,7 @@ describe("each station's throw height (spec 2026-10-03 barrel-size, option A)", 
 
 describe("the crest's ψ at the reef grid's edge (final review I2)", () => {
   it('eases to PSI_NORMAL at the edge, so a crest crossing it keeps its shape', () => {
-    const g = field.grid, w = testWave(REF_BIGGEST.heightM), input = { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0 };
+    const g = field.grid, w = testWave(REF_BIGGEST.heightM), input = { cameraX: PX, cameraZ: PZ, params: P, minHeightM: 0 };
     const x1 = g.x0 + (g.nx - 1) * g.cellM, z1 = g.z0 + (g.nz - 1) * g.cellM;
     let worst = 0, inner = 0;
     for (let k = 1; k < 20; k++) {
@@ -216,10 +220,10 @@ describe("the crest's ψ at the reef grid's edge (final review I2)", () => {
 
 describe('one hold channel: until carries the hold to the stations (one-curl Task 1)', () => {
   // The peel stretch at 1.7 makes held sections; the game's field otherwise (smoothed, the refraction floor).
-  const held = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, peel: 1.7, smooth: true, refractFloorM: FLOOR_M });
+  const held = computeReefField({ bed: reefBeds(2).bed, coast: reefBeds(2).coast, periodS: 15, fromDeg: 225, tideM: 0, peel: 1.7, smooth: true, refractFloorM: FLOOR_M });
   const hctx: WaveContext = { omega: held.omega, travelX: held.far.dirX, travelZ: held.far.dirZ };
   const w = testWave(REF_BIGGEST.heightM);
-  const f0 = sampleField(held, 0, 0), tb0 = timeSinceOnset(held, w, 0, 0, hctx, P);
+  const f0 = sampleField(held, PX, PZ), tb0 = timeSinceOnset(held, w, PX, PZ, hctx, P);
   const t = w.arrivalS + f0.tau - (tb0 ?? 0) + 3;
   const stations = live(traceStations(held, [w], t, hctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H }));
   const recTb = (s: Station): number | null => { const r = sampleOnset(held, s.x, s.z); return r ? onsetTime(r, 0, w.heightM, P) : null; };
@@ -249,12 +253,12 @@ describe('one hold channel: until carries the hold to the stations (one-curl Tas
 
 describe('one curl per wave on one clock (one-curl Task 4)', () => {
   // The game's field (smoothed, the refraction floor, the default curl), the biggest set wave of each size.
-  const game = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, smooth: true, refractFloorM: FLOOR_M });
+  const game = computeReefField({ bed: reefBeds(2).bed, coast: reefBeds(2).coast, periodS: 15, fromDeg: 225, tideM: 0, smooth: true, refractFloorM: FLOOR_M });
   const gctx: WaveContext = { omega: game.omega, travelX: game.far.dirX, travelZ: game.far.dirZ };
   for (const ft of [6, 8, 12]) {
     it(`${ft} ft: along each side from the curl the onset never comes earlier, and the wait beyond it never shortens`, { timeout: 120_000 }, () => {
       const w = testWave(setWaveHeight(ft));
-      const tb0 = timeSinceOnset(game, w, 0, 0, gctx, P), peak = w.arrivalS + sampleField(game, 0, 0).tau - (tb0 ?? 0);
+      const tb0 = timeSinceOnset(game, w, PX, PZ, gctx, P), peak = w.arrivalS + sampleField(game, PX, PZ).tau - (tb0 ?? 0);
       console.log(`${ft} ft: the peak's section broke at ${peak.toFixed(3)} s (tb at the crest's arrival ${tb0?.toFixed(3) ?? 'null'})`);
       const bad: string[] = [];
       let brokenChecked = 0, waitChecked = 0;
@@ -315,7 +319,7 @@ describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause s
   it('A along the first leg holds within 5% through the throw (phase 0.55 to 1.5), at 6 ft mid tide', { timeout: 120_000 }, () => {
     const seen = PLACES.map(() => [] as number[]);
     for (let t = -2; t <= 12; t += 0.1) {
-      const st = live(traceStations(field, [w6], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 1 }));
+      const st = live(traceStations(field, [w6], t, ctx, { cameraX: PX, cameraZ: PZ, params: P, minHeightM: 0.3, spacingM: 1 }));
       PLACES.forEach((s, i) => {
         const e = station(st, s);
         // From onset: before it the wall down the line (wallWeight) stands at the local height, the sheet's own, and the
@@ -333,7 +337,7 @@ describe('the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause s
   it('over the shelf, where the depth caps the height under it, the barrel keeps the height it broke at', () => {
     let n = 0;
     for (const t of [1, 2, 3]) {
-      const st = live(traceStations(field, [w6], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 1 }));
+      const st = live(traceStations(field, [w6], t, ctx, { cameraX: PX, cameraZ: PZ, params: P, minHeightM: 0.3, spacingM: 1 }));
       for (const s of st) {
         if (!(s.section.phase >= 1 && s.section.phase <= 1.5 && s.Hb !== null && s.H < 0.9 * s.Hb)) continue;
         n++;
@@ -351,7 +355,7 @@ describe('the lip lands (plan 2026-10-06-wave-root-cause step 2)', () => {
       const w = testWave(setWaveHeight(ft));
       let n = 0;
       for (let t = -2; t <= 10; t += 0.5) {
-        for (const S of live(traceStations(field, [w], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 2 }))) {
+        for (const S of live(traceStations(field, [w], t, ctx, { cameraX: PX, cameraZ: PZ, params: P, minHeightM: 0.3, spacingM: 2 }))) {
           // The barrel's hold (phase 1, the lip landed): not the last of its flight.
           if (S.section.phase < 0.999 || S.section.phase > 1.03 || S.section.hollow < 0.5) continue;
           const sheet = (u: number): [number, number] => {
@@ -385,7 +389,7 @@ describe('one surface on the game’s sheet (plan 2026-10-06-wave-root-cause ste
     for (const ft of [6, 8]) {
       const w = testWave(setWaveHeight(ft));
       for (let t = -3; t <= 8; t += 1) {
-        const st = live(traceStations(field, [w], t, ctx, { cameraX: 0, cameraZ: 0, params: P, minHeightM: 0.3, spacingM: 4 }));
+        const st = live(traceStations(field, [w], t, ctx, { cameraX: PX, cameraZ: PZ, params: P, minHeightM: 0.3, spacingM: 4 }));
         for (const S of st) {
           const sheet = (u: number): [number, number] => {
             const x = S.x + S.nx * u, z = S.z + S.nz * u, r = sumWaves(x, z, t, sampleField(field, x, z), [w], ctx, lean);
@@ -424,7 +428,7 @@ describe('the wave she keeps (R2 §3)', () => {
     // one frame (the seed's projection from the origin stopped converging, R2 §3 (a)).
     const p = DEFAULT_BREAK_PARAMS, c = cloneConditions(DEFAULT_CONDITIONS);
     c.swell.sizeFt = ft;
-    const f = computeReefField({ bed: downsample(buildBathymetry(DEFAULT_REEF_PARAMS), 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: p.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+    const f = computeReefField({ bed: reefBeds(2).bed, coast: reefBeds(2).coast, periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: p.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
     const cx: WaveContext = { omega: f.omega, travelX: f.far.dirX, travelZ: f.far.dirZ };
     const big = wavesBetween(0, 600, c, DEFAULT_SET_PARAMS).filter((e) => e.arrivalS > 10).slice(0, 8).reduce((a, b) => (b.heightM > a.heightM ? b : a));
     const spot = takeoffSpot(f, big.heightM, p), minHeightM = minRibbonHeight(fieldBreakingHeight(f, p), p);

@@ -3,7 +3,8 @@ import { FIXED_POINT_ITERATIONS } from '../ocean/HeightProbe';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
-import { NORTH_LEDGE, SOUTH_LEDGE } from '../seabed/wombReef';
+import { NORTH_LEDGE, SOUTH_LEDGE, TIP } from '../seabed/wombReef';
+import { reefBeds } from './testField';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { firstBreak, setWaveHeight as setWaveHeightAt } from './reefReport';
 import { DEFAULT_BREAK_PARAMS, PILE_LAND_H, PILE_RISE_S, breakingHeightThreshold, landingEstimate, onsetTime, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
@@ -19,7 +20,16 @@ import {
 
 // The app's field: 1 m cells, default swell and tide (~1 s to solve), shared by every test here.
 const reef05 = buildBathymetry();
-const field = computeReefField({ bed: downsample(reef05, 2), periodS: 15, fromDeg: 225, tideM: 0 });
+// Seeded by the coast field, as the game's; the pins sit on the moved take-off (womb-retune: wombReef.TIP).
+const coast1 = reefBeds(2).coast;
+const field = computeReefField({ bed: downsample(reef05, 2), periodS: 15, fromDeg: 225, tideM: 0, coast: coast1 });
+const [PX, PZ] = TIP;
+/** A point `s` m along the left's ledge from the tip; (x, z) from the tip (the right moved with it unchanged). */
+const onLeft = (s: number): [number, number] => {
+  const [a, b] = [NORTH_LEDGE[0], NORTH_LEDGE[1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return [Math.round((a[0] + ((b[0] - a[0]) * s) / L) * 10) / 10, Math.round((a[1] + ((b[1] - a[1]) * s) / L) * 10) / 10];
+};
+const fromTip = (x: number, z: number): [number, number] => [PX + x, PZ + z];
 const ctxOf = (f: ReefField): WaveContext => ({ omega: f.omega, travelX: f.far.dirX, travelZ: f.far.dirZ });
 const ctx = ctxOf(field);
 const optsFor = (f: ReefField, params = DEFAULT_BREAK_PARAMS): BreakOptions => breakOptions(f, params);
@@ -100,9 +110,9 @@ describe('breaking reduces to Phase 1', () => {
     const w = testWave(REF_BIGGEST.heightM);
     // 140 m seaward of the peak, on its ray: 12.8 m deep, ρ 0.30. (At 100 m, 9.5 m deep on the ramp, ρ is 0.53: the
     // shoaling front has begun to lean there, LEAN_RATIO.)
-    const crest = ray(0, 0, 140, 0)[0];
+    const crest = ray(PX, PZ, 140, 0)[0];
     for (let du = -50; du <= 50; du += 5) for (const side of [-30, 0, 30]) {
-      const x = crest.x + at(0, 0).dirX * du - at(0, 0).dirZ * side, z = crest.z + at(0, 0).dirZ * du + at(0, 0).dirX * side;
+      const x = crest.x + at(PX, PZ).dirX * du - at(PX, PZ).dirZ * side, z = crest.z + at(PX, PZ).dirZ * du + at(PX, PZ).dirX * side;
       expect(waveAt(x, z, crest.tau, at(x, z), w, ctx, sheet)).toEqual(waveAt(x, z, crest.tau, at(x, z), w, ctx));
     }
   });
@@ -191,7 +201,7 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
   // On the softened ramp a 0.95·Hs wave (between sets) broke 40 m seaward of the north ledge (Andrew, 2026-09-30); on the
   // reef build with the dial set by the face (2026-10-02) only sets break again.
   it('a 0.95·Hs wave does not break at the ledge (peak, north and south ledges)', () => {
-    const ledgePoints: [number, number][] = [[0, 0], ...along(NORTH_LEDGE, 100, 10), ...along(SOUTH_LEDGE, 40, 5)];
+    const ledgePoints: [number, number][] = [[PX, PZ], ...along(NORTH_LEDGE, 100, 10), ...along(SOUTH_LEDGE, 40, 5)];
     for (const [px, pz] of ledgePoints) {
       const seaward = ray(px, pz, 40, 0);
       const worst = Math.max(...seaward.map((p) => stageWhenCrestAt(p.x, p.z, testWave(0.95 * HS))));
@@ -214,7 +224,7 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
   });
   it('the biggest default wave takes 0.6–1.5 s from onset to tube closure at the peak (spec §3.1)', () => {
     const w = testWave(REF_BIGGEST.heightM);
-    const path = ray(0, 0, 60, 60).map((p) => ({ ...p, s: stageWhenCrestAt(p.x, p.z, w) }));
+    const path = ray(PX, PZ, 60, 60).map((p) => ({ ...p, s: stageWhenCrestAt(p.x, p.z, w) }));
     const onset = path.find((p) => p.s > 0)!, closed = path.find((p) => p.s >= 0.75)!;
     // 0.59 s with the dial set by the face (2026-10-02): the default 4 ft set wave is smaller (2.0 m, was 2.3 m).
     expect(closed.tau - onset.tau).toBeGreaterThanOrEqual(0.55);
@@ -222,9 +232,9 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
   });
   it('the tide moves the break: at low tide the biggest wave breaks earlier, at high tide later', { timeout: 60_000 }, () => {
     const onsetAtPeak = (tideM: number): number => {
-      const f = tideM === 0 ? field : computeReefField({ bed: downsample(reef05, 2), periodS: 15, fromDeg: 225, tideM });
+      const f = tideM === 0 ? field : computeReefField({ bed: downsample(reef05, 2), periodS: 15, fromDeg: 225, tideM, coast: coast1 });
       const o = optsFor(f), cx = ctxOf(f), w = testWave(REF_BIGGEST.heightM);
-      let x = 0, z = 0;
+      let x = PX, z = PZ;
       for (let d = 0; d < 40; d += 0.5) { const s = sampleField(f, x, z); x -= s.dirX * 0.5; z -= s.dirZ * 0.5; }
       for (let d = 0; d <= 80; d += 0.5) {
         const s = sampleField(f, x, z);
@@ -263,7 +273,7 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
       c.swell.sizeFt = sizeFt;
       const w = testWave(wavesOfSet(1, c, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a)).heightM);
       for (const t of [-0.5, 0, 0.75, 1.5, 3]) {
-        const st = traceStations(field, [w], t, ctx, { cameraX: 12, cameraZ: -32, params: DEFAULT_BREAK_PARAMS, minHeightM: 0 })
+        const st = traceStations(field, [w], t, ctx, { cameraX: onLeft(34)[0], cameraZ: onLeft(34)[1], params: DEFAULT_BREAK_PARAMS, minHeightM: 0 })
           .filter((s): s is Station => !s.gap).sort((a, b) => a.arc - b.arc);
         const weights = st.map((s) => ({ steep: steepening(s.r, DEFAULT_BREAK_PARAMS), ...stageCurves(s.r, DEFAULT_BREAK_PARAMS) }));
         for (let i = 1; i < st.length; i++) {
@@ -313,7 +323,7 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
 });
 
 /** The ledge rays the crest-progress tests follow: the peak, the north ledge (the left) every 15 m, the south ledge (the right). */
-const LEDGE_POINTS: readonly [number, number][] = [[0, 0], [5.5, -15], [11, -30], [16.4, -45], [21.9, -60], [27, -75], [12.5, 14], [25, 28], [42, 33]];
+const LEDGE_POINTS: readonly [number, number][] = [...[0, 15, 30, 45, 60, 75].map(onLeft), fromTip(12.5, 14), fromTip(25, 28), fromTip(42, 33)];
 
 describe('the breaking sheet on the real reef', () => {
   const P = DEFAULT_BREAK_PARAMS;
@@ -323,7 +333,7 @@ describe('the breaking sheet on the real reef', () => {
     // to where the lip lands, at the peak: the water 3–20 m behind the crest (ξ = 0) stays below the crest. From the
     // landing on, the whitewater pile is the highest water (the pile's own tests).
     const w = testWave(REF_BIGGEST.heightM);
-    const [bx, bz] = breakPoint(0, 0, w), t0 = at(bx, bz).tau;
+    const [bx, bz] = breakPoint(PX, PZ, w), t0 = at(bx, bz).tau;
     const line = ray(bx, bz, 40, 60);
     let checked = 0;
     for (let t = t0; t <= t0 + 1.5 + 1e-9; t += 0.25) {
@@ -420,7 +430,7 @@ describe('the breaking sheet on the real reef', () => {
     const w = testWave(REF_BIGGEST.heightM);
     let checked = 0;
     for (const t of [0.5, 1, 2, 3]) {
-      for (const e of traceStations(field, [w], t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: 0 })) {
+      for (const e of traceStations(field, [w], t, ctx, { cameraX: PX, cameraZ: PZ, params: DEFAULT_BREAK_PARAMS, minHeightM: 0 })) {
         if (e.gap || e.tb === null || !Number.isFinite(e.tb)) continue;
         const f = at(e.x, e.z), c = crestAt(e.x, e.z, t, f, w, ctx, sheet)!;
         expect(Math.abs((c.tb as number) - e.tb), `station at (${e.x.toFixed(1)}, ${e.z.toFixed(1)}), ${t} s`).toBeLessThan(0.05);
@@ -565,7 +575,7 @@ describe('the breaking sheet on the real reef', () => {
     // HeightProbe's loop (FIXED_POINT_ITERATIONS of x0 ← x − d(x0)) at 50 lineup positions around the peak, through the break.
     // Around where the peak's section breaks, from 0.9 s after it broke (the crest's arrival at the old ledge).
     const waves = REF_SET.map(toActiveWave);
-    const [bx, bz] = breakPoint(0, 0, testWave(REF_BIGGEST.heightM)), fb = at(bx, bz);
+    const [bx, bz] = breakPoint(PX, PZ, testWave(REF_BIGGEST.heightM)), fb = at(bx, bz);
     const positions: [number, number][] = [];
     for (let u = -20; u <= 25; u += 5) for (let side = -20; side <= 20; side += 10) {
       positions.push([bx + fb.dirX * u - fb.dirZ * side, bz + fb.dirZ * u + fb.dirX * side]);
@@ -597,7 +607,7 @@ describe('the breaking surface has no seams across the crest', () => {
   it('1 cm apart, breaking adds at most 0.15 m to Phase 1’s 3D step, and the worst pairs shrink ≥ 2× at 2.5 mm', { timeout: 120_000 }, () => {
     const waves = REF_SET.map(toActiveWave);
     const h = 0.01;
-    const game = computeReefField({ bed: downsample(reef05, 2), periodS: 15, fromDeg: 225, tideM: 0, peel: DEFAULT_BREAK_PARAMS.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+    const game = computeReefField({ bed: downsample(reef05, 2), coast: coast1, periodS: 15, fromDeg: 225, tideM: 0, peel: DEFAULT_BREAK_PARAMS.peel, smooth: true, refractFloorM: REFRACT_FLOOR_M });
     const gameCtx = { omega: game.omega, travelX: game.far.dirX, travelZ: game.far.dirZ };
     const drawn: BreakOptions = { ...optsFor(game), pile: false, shape: 'lean' };
     const pos = (x: number, z: number, t: number, o?: BreakOptions): [number, number, number] => {
@@ -699,7 +709,7 @@ describe('breaking stays finite and bounded', () => {
     for (const end of ends) {
       const o = optsFor(field, { ...DEFAULT_BREAK_PARAMS, ...end });
       for (let u = -20; u <= 30; u += 2.5) for (const dt of [0, 0.5, 1, 3]) {
-        const x = at(0, 0).dirX * u, z = at(0, 0).dirZ * u;
+        const x = PX + at(PX, PZ).dirX * u, z = PZ + at(PX, PZ).dirZ * u;
         const r = sumWaves(x, z, REF_BIGGEST.arrivalS + dt, at(x, z), waves, ctx, o);
         for (const v of Object.values(r)) expect(Number.isFinite(v), JSON.stringify(end)).toBe(true);
         expect(Math.abs(r.eta)).toBeLessThan(10);
@@ -713,7 +723,7 @@ describe('set waves do not stack on the wave ahead (Andrew)', () => {
     // The Phase 1 surface of whole sets against each wave alone, at its crest: the old Gaussian envelope left 21% of a
     // wave a period behind it, and the next wave's crest stood 1.13–1.50× its own height on it. The long tails (one wave
     // in twelve kept it) went too (Andrew, 2026-10-01: each swell line is one wave).
-    const p0 = ray(0, 0, 100, 0)[0];
+    const p0 = ray(PX, PZ, 100, 0)[0];
     const f = at(p0.x, p0.z);
     const crestOf = (waves: ActiveWave[], w: ActiveWave): number => {
       let best = -Infinity;
@@ -844,7 +854,7 @@ describe('the slurp: the draw-up reaches along the swell line either side of the
   const tx = -ctx.travelZ, tz = ctx.travelX;
   // The peak's section breaks ~130 m seaward of the ledge on the softened ramp: the line is the crest through there, as
   // it breaks.
-  const [px0, pz0] = breakPoint(0, 0, w), tPeak = at(px0, pz0).tau;
+  const [px0, pz0] = breakPoint(PX, PZ, w), tPeak = at(px0, pz0).tau;
   /** Along the crest (v m across travel from the peak) as the peak breaks: the lowest water in the 25 m in front of the
    * crest, and the crest's stage. */
   const alongCrest = (t: number) => {
@@ -880,7 +890,7 @@ describe('the peak and its shoulders at 6 ft (the slurp’s invariants, re-pinne
   const big6 = wavesOfSet(1, c6, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
   const w = testWave(big6.heightM);
   const tx = -ctx.travelZ, tz = ctx.travelX;
-  const [px0, pz0] = breakPoint(0, 0, w), tPeak = at(px0, pz0).tau;
+  const [px0, pz0] = breakPoint(PX, PZ, w), tPeak = at(px0, pz0).tau;
   const crestPoint = (v: number, t: number): [number, number] => {
     let x = 0, z = 0;
     for (let u = -200; u <= 200; u += 0.5) { x = px0 + ctx.travelX * u + tx * v; z = pz0 + ctx.travelZ * u + tz * v; if (at(x, z).tau >= t) break; }

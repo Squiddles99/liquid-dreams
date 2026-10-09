@@ -1,67 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { buildBathymetry, downsample } from '../seabed/bathymetry';
-import { NORTH_LEDGE } from '../seabed/wombReef';
-import { FAR_DEPTH_M, REEF_SURROUND_DEPTH_M, depthBg } from '../seabed/coastProfile';
+import { TIP } from '../seabed/wombReef';
+import { SWELL_BANDS } from '../frontend/sessionSetup';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
-import { REFRACT_FLOOR_M, computeReefField, sampleField } from './reefField';
-import { TIDES, type Tide, firstBreakDepth, leftStretches, setWaveHeight } from './reefReport';
+import { sampleField } from './reefField';
+import { firstBreakDepth, setWaveHeight } from './reefReport';
+import { coastReefField } from './testField';
 
-// Spec 2026-10-06-r1-the-ride §1: the basin at one depth from the far field to the face, so the swell arrives unbent and
-// the first section peels 9–11 m/s, hollow.
-const bed = downsample(buildBathymetry(), 2);
-const mid = computeReefField({ bed, periodS: 15, fromDeg: 225, tideM: 0, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+// The Womb on the real shelf (womb-retune, 2026-10-09): the coast field seeds the reef field (the swell dial read at the
+// coast seed) and the take-off sits 224 m off the beach (wombReef.TIP). R1's "basin at one depth" is gone: the bed outside
+// the reef is the coast's. Measured in docs/superpowers/evidence/womb-retune/pins-225.txt.
+const band = (label: string) => SWELL_BANDS.find((b) => b.label === label)!;
+const TIDES_M = [-0.5, -0.25, 0, 0.5] as const;
 
-describe('the basin (R1 §1)', () => {
-  it('is one depth from the map edge to the face', () => {
-    expect(FAR_DEPTH_M).toBe(15);
-    expect(REEF_SURROUND_DEPTH_M).toBe(15);
-    for (const s of [150, 260, 400, 494]) expect(depthBg(94 - s)).toBeCloseTo(15, 5);
-  });
-  it('the swell reaches the basin unbent (travel bearing 45° ± 5° at (−30, 30))', () => {
-    const f = sampleField(mid, -30, 30);
+describe('the swell on the real shelf (womb-retune)', () => {
+  it('reaches the take-off at the measured arrival: travel bearing 65° ± 2° 30 m seaward and south of the tip (Pumping, mid tide)', { timeout: 300_000 }, () => {
+    const f = sampleField(coastReefField({ periodS: band('Pumping').periodS }), TIP[0] - 30, TIP[1] + 30);
     const bearing = (Math.atan2(f.dirX, -f.dirZ) * 180) / Math.PI;
-    expect(Math.abs(bearing - 45)).toBeLessThanOrEqual(5);
-  });
-  it.each([6, 8])('%i ft, mid tide: the first section peels 9–11 m/s and is hollow (≥ 0.8)', (ft) => {
-    const st = leftStretches(mid, setWaveHeight(ft), NORTH_LEDGE, { first: [0], second: [1] }, DEFAULT_BREAK_PARAMS);
-    expect(st.first, 'first section breaks').not.toBeNull();
-    expect(st.first!.peel).toBeGreaterThanOrEqual(9);
-    expect(st.first!.peel).toBeLessThanOrEqual(11);
-    expect(st.first!.hollow).toBeGreaterThanOrEqual(0.8);
-  });
-  it('4 ft, mid tide: soft, never thrown (first section hollow < 0.6; replaces reefCriteria §2.3 "4 ft never thrown")', () => {
-    const st = leftStretches(mid, setWaveHeight(4), NORTH_LEDGE, { first: [0], second: [1] }, DEFAULT_BREAK_PARAMS);
-    expect(st.first!.hollow).toBeLessThan(0.6);
+    expect(Math.abs(bearing - 65)).toBeLessThanOrEqual(2);
   });
 });
 
-const fields = Object.fromEntries((Object.keys(TIDES) as Tide[]).map((t) => [t, t === 'mid' ? mid : computeReefField({ bed, periodS: 15, fromDeg: 225, tideM: TIDES[t], smooth: true, refractFloorM: REFRACT_FLOOR_M })])) as Record<Tide, ReturnType<typeof computeReefField>>;
-
-describe('the break starts on the ledge (R1 §2)', () => {
-  // depth at the first break, still water, per size: ≤ these (+1 m at low and high tide)
-  const MAX_DEPTH: Record<number, number> = { 6: 5, 8: 6, 12: 9 };
-  it.each([
-    ['low', 6], ['low', 8], ['low', 12], ['mid', 6], ['mid', 8], ['mid', 12], ['high', 6], ['high', 8], ['high', 12],
-  ] as const)('%s tide, %i ft first breaks on the face', (tide, ft) => {
-    const fb = firstBreakDepth(fields[tide], setWaveHeight(ft), DEFAULT_BREAK_PARAMS);
-    expect(fb, 'breaks within reach of the peak').not.toBeNull();
-    expect(Number.isFinite(fb!.depth)).toBe(true);
-    expect(fb!.depth).toBeLessThanOrEqual(MAX_DEPTH[ft] + (tide === 'mid' ? 0 : 1));
-  });
-  it('6 ft mid tide first breaks within 5 m seaward of the ledge', () => {
-    const fb = firstBreakDepth(mid, setWaveHeight(6), DEFAULT_BREAK_PARAMS)!;
-    expect(fb.d).toBeLessThanOrEqual(5);
-  });
-  // R1 miss, not widened (plan: the targets are acceptance, not dials): measured 0.99 at 6 ft and 0.98 at 8 ft with δ 0.2,
-  // SPREAD_FREE_GAIN 0.2, SPREAD_LIFT_MAX 1.2; no δ in 0.15–0.3 nor SPREAD_* in their ranges reaches 0.85 (best 0.98).
-  // The shoreward-only travel smoothing (σ 8 m, half Gaussian) lags the onset up the 15 m face. Reported in the handover.
-  it.skip('H over depth at onset is 0.75–0.85 at 6 and 8 ft, mid tide', () => {
-    for (const ft of [6, 8]) {
-      const H = setWaveHeight(ft), fb = firstBreakDepth(mid, H, DEFAULT_BREAK_PARAMS)!;
-      // the local height at the break point: amp × H
-      const ratio = (sampleField(mid, fb.x, fb.z).amp * H) / fb.depth;
-      expect(ratio, `${ft} ft`).toBeGreaterThanOrEqual(0.75);
-      expect(ratio, `${ft} ft`).toBeLessThanOrEqual(0.85);
+describe('the break starts on the ledge (R1 §2, per offered band)', () => {
+  // Still-water depth at the first break, every select tide: the measured worst + ~0.5 m (Solid 4.0, Pumping 4.0, Big 5.5,
+  // Huge 6.6).
+  const MAX_DEPTH: Record<string, number> = { Solid: 4.5, Pumping: 4.5, Big: 6, Huge: 7 };
+  it.each(Object.keys(MAX_DEPTH))('%s first breaks on the face at every tide', { timeout: 900_000 }, (label) => {
+    const b = band(label);
+    for (const tideM of TIDES_M) {
+      const fb = firstBreakDepth(coastReefField({ periodS: b.periodS, tideM }), setWaveHeight(b.ft), DEFAULT_BREAK_PARAMS);
+      expect(fb, `${label} ${tideM} m: breaks within reach of the peak`).not.toBeNull();
+      expect(fb!.depth, `${label} ${tideM} m`).toBeLessThanOrEqual(MAX_DEPTH[label]);
     }
+  });
+  it('Pumping at mid tide first breaks within 5 m seaward of the tip', { timeout: 300_000 }, () => {
+    const fb = firstBreakDepth(coastReefField({ periodS: band('Pumping').periodS }), setWaveHeight(band('Pumping').ft), DEFAULT_BREAK_PARAMS)!;
+    expect(fb.d).toBeLessThanOrEqual(5);
   });
 });

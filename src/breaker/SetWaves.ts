@@ -3,7 +3,7 @@ import {
   Fn, If, Loop, abs, clamp, cos, dot, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, storage, tanh,
   textureLoad, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
-import { REEF_GRID } from '../seabed/wombReef';
+import { REEF_GRID, TIP } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, TUBE_THROWN_PSI, breakingDepth, normalizeBreakParams } from './breaking';
 import { PSI_NORMAL, sheetShape } from './overturn';
@@ -14,7 +14,9 @@ import { boreWeightNode } from './wombSectionNodes';
 import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
-import { PSI_EDGE_FADE_M, type ReefField } from './reefField';
+import { PSI_EDGE_FADE_M, REEF_BLEND_M, type ReefField } from './reefField';
+import { COAST_EDGE_BLEND_M } from './coastField';
+import { COAST_GRID } from '../seabed/coastProfile';
 import {
   BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, FOLD_LIMIT, LEAN_FRONT_FLOOR, LEAN_FRONT_MIN, LEAN_RATIO, WOMB_FRONT_UNITS, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
   TAPER_FAR_M, TAPER_NEAR_M, fieldSteepeningHeight, toActiveWave,
@@ -56,12 +58,22 @@ function bilinearLoad(tex: THREE.Texture, g: N, maxIndex: N): N {
   return mix(mix(load(0, 0), load(1, 0), t.x), mix(load(0, 1), load(1, 1), t.x), t.y);
 }
 
-/** Linear interpolation along row 0 of a width × 1 float texture. g is in texel units. */
-function linearLoad1D(tex: THREE.Texture, g: N, maxIndex: N): N {
+/** bilinearLoad on texels offset by `dx` columns (two fields packed side by side in one texture). */
+function bilinearLoadAt(tex: THREE.Texture, g: N, maxIndex: N, dx: number): N {
+  const gc = clamp(g, vec2(0.0), maxIndex.sub(0.001));
+  const base = floor(gc);
+  const t = gc.sub(base);
+  const i0 = ivec2(base).add(ivec2(dx, 0));
+  const load = (ox: number, oz: number): N => textureLoad(tex, i0.add(ivec2(ox, oz)), int(0));
+  return mix(mix(load(0, 0), load(1, 0), t.x), mix(load(0, 1), load(1, 1), t.x), t.y);
+}
+
+/** Linear interpolation along row `row` of a float texture. g is in texel units. */
+function linearLoad1D(tex: THREE.Texture, g: N, maxIndex: N, row = 0): N {
   const gc = clamp(g, 0.0, maxIndex.sub(0.001));
   const base = floor(gc);
   const i0 = int(base);
-  return mix(textureLoad(tex, ivec2(i0, int(0)), int(0)), textureLoad(tex, ivec2(i0.add(1), int(0)), int(0)), gc.sub(base));
+  return mix(textureLoad(tex, ivec2(i0, int(row)), int(0)), textureLoad(tex, ivec2(i0.add(1), int(row)), int(0)), gc.sub(base));
 }
 
 const safeNormalize = (v: N): N => v.div(max(length(v), 1e-6));
@@ -82,8 +94,17 @@ export class SetWaves {
   /** The record's time until onset per level (ReefField.onset from ONSET_UNTIL_OFFSET; breaking.onsetUntil): texel k holds
    * (until_k, until_{k+1}), PSI_TEXELS per node as the ψ₀ texture. The wall down the line stands up on it (wombSection.WALL_LEAD_S). */
   private readonly onsetUntilTex = floatTexture(FIELD_NX * PSI_TEXELS, FIELD_NZ);
-  private readonly farA = floatTexture(FAR_COUNT, 1);
-  private readonly farB = floatTexture(FAR_COUNT, 1);
+  /** The far field, row 0 (τ, amp, hmin, k) and row 1 (∂τ/∂x, depth, breaking depth, 0): one texture (the sheet's
+   * sampled-texture budget, with the coast's). */
+  private readonly farTex = floatTexture(FAR_COUNT, 2);
+  /** The coast field (ReefField.coast, lineup truth spec §3d): (τ, amp, hmin, k) in columns [0, nx), (dirX, dirZ, depth,
+   * breaking depth) in [nx, 2·nx): one texture, so the sheet stays within 16 sampled textures per stage. */
+  private readonly coastTex = floatTexture(2 * COAST_GRID.nx, COAST_GRID.nz);
+  /** 1 when the field carries the coast: outside the reef grid the sheet then reads the coast (sampleField's coast branch). */
+  private readonly hasCoast = uniform(0);
+  private readonly coastOrigin = uniform(new THREE.Vector2(COAST_GRID.x0, COAST_GRID.z0));
+  private readonly coastCell = uniform(COAST_GRID.cellM);
+  private readonly coastMax = uniform(new THREE.Vector2(COAST_GRID.nx - 1, COAST_GRID.nz - 1));
   private readonly origin = uniform(new THREE.Vector2(REEF_GRID.x0 + REEF_GRID.cellM / 2, REEF_GRID.z0 + REEF_GRID.cellM / 2));
   private readonly cell = uniform(REEF_GRID.cellM * 2);
   private readonly fieldMax = uniform(new THREE.Vector2(FIELD_NX - 1, FIELD_NZ - 1));
@@ -156,7 +177,7 @@ export class SetWaves {
       od[o] = f.onset[r];
       od.set(f.onset.subarray(r + 1, r + ONSET_PSI_OFFSET), o + 4);
     }
-    const fa = this.farA.image.data as Float32Array, fb = this.farB.image.data as Float32Array;
+    const fa = this.farTex.image.data as Float32Array, fb = fa.subarray(FAR_COUNT * 4);
     for (let i = 0; i < f.far.count; i++) {
       fa[i * 4] = f.far.tau[i] - f.far.tauOffset; fa[i * 4 + 1] = f.far.amp[i]; fa[i * 4 + 2] = f.far.hmin[i]; fa[i * 4 + 3] = f.far.k[i];
       fb[i * 4] = f.far.dTauDx[i]; fb[i * 4 + 1] = f.far.depth[i]; fb[i * 4 + 2] = breakingDepth(f.far.hmin[i]); fb[i * 4 + 3] = 0;
@@ -178,7 +199,19 @@ export class SetWaves {
         ud[o] = f.onset[u + k]; ud[o + 1] = f.onset[u + k + 1];
       }
     }
-    for (const t of [this.fieldA, this.fieldB, this.fieldC, this.onsetRec, this.onsetPsiTex, this.onsetUntilTex, this.farA, this.farB]) t.needsUpdate = true;
+    const c = f.coast;
+    if (c) {
+      if (c.grid.nx !== COAST_GRID.nx || c.grid.nz !== COAST_GRID.nz) throw new Error('Coast field grid does not match SetWaves');
+      const d = this.coastTex.image.data as Float32Array, nx = COAST_GRID.nx;
+      for (let i = 0; i < c.tau.length; i++) {
+        const col = i % nx, row = (i - col) / nx, a = (row * 2 * nx + col) * 4, b = a + nx * 4;
+        d[a] = c.tau[i]; d[a + 1] = c.amp[i]; d[a + 2] = c.hmin[i]; d[a + 3] = c.k[i];
+        d[b] = c.dirX[i]; d[b + 1] = c.dirZ[i]; d[b + 2] = c.depth[i]; d[b + 3] = c.hminBreak[i];
+      }
+      this.coastTex.needsUpdate = true;
+    }
+    this.hasCoast.value = c ? 1 : 0;
+    for (const t of [this.fieldA, this.fieldB, this.fieldC, this.onsetRec, this.onsetPsiTex, this.onsetUntilTex, this.farTex]) t.needsUpdate = true;
     this.origin.value.set(f.grid.x0, f.grid.z0);
     this.cell.value = f.grid.cellM;
     this.farP.value = f.far.p;
@@ -236,6 +269,8 @@ export class SetWaves {
    * The field at world xz (TSL mirror of sampleField): bilinear inside the reef grid. Outside it, with c the point
    * clamped to the grid: on the inflow side the exact coast solution; on the outflow side the grid's edge sample at c,
    * with τ advanced along the edge's ray direction from c to xz, so the reef's delay and shadow continue past the map.
+   * With the coast (hasCoast): outside the grid the edge sample eases over REEF_BLEND_M into the coast field, which eases
+   * into the far field over the coast grid's last COAST_EDGE_BLEND_M (coastField.coastDrawn).
    * `hoist` (only inside an Fn) makes the texture reads vars first: each select() below becomes an if/else, and TSL
    * would otherwise emit the reads inside every branch that uses them (44 loads per sample instead of 12), and it loads
    * the far field only outside the grid (8 loads per sample inside it).
@@ -252,17 +287,27 @@ export class SetWaves {
     const fg = v(clamp(xz.x.sub(FAR_X0).div(FAR_DX), 0.0, this.farMax.sub(0.001)));
     // Hoisted, the far field's four loads run only outside the grid (inside, every value below takes the grid's side
     // of its select, and the zeros left in fa and fb are never read into the result).
-    let fa: N, fb: N;
+    const gc = v(xz.sub(this.coastOrigin).div(this.coastCell));
+    let fa: N, fb: N, ca: N, cb: N;
     if (hoist) {
       fa = vec4(0.0).toVar();
       fb = vec4(0.0).toVar();
+      ca = vec4(0.0).toVar();
+      cb = vec4(0.0).toVar();
       If(inside.not(), () => {
-        fa.assign(linearLoad1D(this.farA, fg, this.farMax));
-        fb.assign(linearLoad1D(this.farB, fg, this.farMax));
+        fa.assign(linearLoad1D(this.farTex, fg, this.farMax, 0));
+        fb.assign(linearLoad1D(this.farTex, fg, this.farMax, 1));
+        // The coast's eight loads only outside the reef grid, and only with a coast.
+        If(this.hasCoast.greaterThan(0.5), () => {
+          ca.assign(bilinearLoadAt(this.coastTex, gc, this.coastMax, 0));
+          cb.assign(bilinearLoadAt(this.coastTex, gc, this.coastMax, COAST_GRID.nx));
+        });
       });
     } else {
-      fa = linearLoad1D(this.farA, fg, this.farMax);
-      fb = linearLoad1D(this.farB, fg, this.farMax);
+      fa = linearLoad1D(this.farTex, fg, this.farMax, 0);
+      fb = linearLoad1D(this.farTex, fg, this.farMax, 1);
+      ca = bilinearLoadAt(this.coastTex, gc, this.coastMax, 0);
+      cb = bilinearLoadAt(this.coastTex, gc, this.coastMax, COAST_GRID.nx);
     }
     const xc = fg.mul(FAR_DX).add(FAR_X0);
     const farTau = fa.x.add(xz.x.sub(xc).mul(fb.x)).add(this.farP.mul(xz.y));
@@ -274,11 +319,12 @@ export class SetWaves {
     const edgeDir = safeNormalize(b.xy);
     const edgeK = max(a.w, 1e-4);
     const edgeTau = a.x.add(edgeK.div(this.meanOmega).mul(edgeDir.x.mul(toQuery.x).add(edgeDir.y.mul(toQuery.y))));
-    return {
+    // Without the coast: the far field on the inflow side, the edge continued on the outflow side (as before the coast).
+    const old = {
       tau: select(inside, a.x, select(outflow, edgeTau, farTau)),
       amp: select(useGrid, a.y, fa.y),
       hmin: select(useGrid, a.z, fa.z),
-      // The coast (far field) has no reef edges to smooth: its breaking depth is breakingDepth(hmin), baked into farB.z
+      // The coast (far field) has no reef edges to smooth: its breaking depth is breakingDepth(hmin), baked into the far texture's row 1, z
       // (coastFarField.farSample; linear between nodes there as here).
       hminBreak: select(useGrid, b.w, fb.z),
       // The coast has no slurp: its depth is the breaking depth (coastFarField.farSample).
@@ -288,6 +334,29 @@ export class SetWaves {
       k: max(select(useGrid, a.w, fa.w), 1e-4),
       dir: select(useGrid, edgeDir, farDir),
       depth: select(useGrid, b.z, fb.y),
+    };
+    // With the coast (sampleField's coast branch): the coast field, eased into the far field at the coast grid's sea edges
+    // (coastField.coastDrawn), and the reef grid's edge eased into that over REEF_BLEND_M.
+    const coastMaxW = this.coastMax.mul(this.coastCell);
+    const insideC = gc.x.greaterThanEqual(0.0).and(gc.y.greaterThanEqual(0.0)).and(gc.x.lessThanEqual(this.coastMax.x)).and(gc.y.lessThanEqual(this.coastMax.y));
+    const rel = xz.sub(this.coastOrigin);
+    const seaEdge = min(rel.x, min(rel.y, coastMaxW.y.sub(rel.y)));
+    const wC = select(insideC, smoothstep(0.0, COAST_EDGE_BLEND_M, seaEdge), float(0.0));
+    const cTau = mix(farTau, ca.x, wC), cAmp = mix(fa.y, ca.y, wC), cHmin = mix(fa.z, ca.z, wC), cK = mix(fa.w, ca.w, wC);
+    const cDir = safeNormalize(mix(farDir, safeNormalize(cb.xy), wC)), cDepth = mix(fb.y, cb.z, wC), cBreak = mix(fb.z, cb.w, wC);
+    const w = smoothstep(0.0, REEF_BLEND_M, length(toQuery));
+    const on = this.hasCoast.greaterThan(0.5);
+    const blend = (oldV: N, edgeV: N, coastV: N): N => select(on, mix(edgeV, coastV, w), oldV);
+    return {
+      tau: blend(old.tau, edgeTau, cTau),
+      amp: blend(old.amp, a.y, cAmp),
+      hmin: blend(old.hmin, a.z, cHmin),
+      hminBreak: blend(old.hminBreak, b.w, cBreak),
+      hminSlurp: blend(old.hminSlurp, c ? c.x : b.w, cBreak),
+      hminLean: blend(old.hminLean, c ? c.y : b.w, cBreak),
+      k: max(blend(old.k, a.w, cK), 1e-4),
+      dir: select(on, safeNormalize(mix(edgeDir, cDir, w)), old.dir),
+      depth: blend(old.depth, b.z, cDepth),
     };
   }
 
@@ -349,7 +418,8 @@ export class SetWaves {
       const stokesPerA = f.k.mul(float(3.0).sub(sigma.mul(sigma))).div(sigma.mul(sigma).mul(sigma).mul(4.0)).toVar();
       const cLocal = this.meanOmega.div(f.k).toVar();
       const dXiDs = f.k.negate().div(this.meanOmega).toVar();
-      const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(xz)).toVar();
+      const fromTip = xz.sub(vec2(TIP[0], TIP[1])).toVar();
+      const wFar = smoothstep(TAPER_NEAR_M, TAPER_FAR_M, length(fromTip)).toVar();
       const brk = this.brk;
       Loop(MAX_ACTIVE_WAVES, ({ i }: N) => {
         const a = this.waves.element(i.mul(3));
@@ -361,7 +431,7 @@ export class SetWaves {
         const canBreak = b.w.greaterThan(0.5).toVar();
         /** Time since this wave's crest passed a point (negative: still to come), for field speed `cLoc` and arrival time `tau`. */
         const phaseXi = (p: N, tau: N, cLoc: N): N => {
-          const dTau = b.x.sub(this.meanTravel.x).mul(p.x).add(b.y.sub(this.meanTravel.y).mul(p.y)).div(cLoc);
+          const dTau = b.x.sub(this.meanTravel.x).mul(p.x.sub(TIP[0])).add(b.y.sub(this.meanTravel.y).mul(p.y.sub(TIP[1]))).div(cLoc);
           return this.time.sub(a.x).sub(tau).sub(dTau);
         };
         // The Phase 1 wave here: waveAtCrest's first half.
@@ -378,7 +448,7 @@ export class SetWaves {
           const r4 = r2.mul(r2);
           const env = exp(r4.mul(r2).negate()).toVar();
           const dEnv = r4.mul(rEnv).mul(-6.0).div(width).mul(env).toVar();
-          const q = xz.x.negate().mul(b.y).add(xz.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
+          const q = fromTip.x.negate().mul(b.y).add(fromTip.y.mul(b.x)).sub(b.z).mul(2.0).div(a.w);
           const q2 = q.mul(q);
           const lateral = mix(float(1.0), exp(q2.mul(q2).negate()), wFar).toVar();
           const theta = a.z.mul(xi).toVar();

@@ -89,25 +89,52 @@ export const TIDE_STOPS: readonly { label: string; m: number; trend: 'rising' | 
 
 /**
  * Where the Womb breaks (small-swell plan Task 4, Andrew 2026-10-09: "not offering a swell and tide option that won't
- * break"): per SWELL_BANDS label, one entry per BREAKS_TIDES_M. Measured with tools/_smallSwell.ts (each band's ft and
- * period, 225°, the 2 m breaking floor): a pair breaks when the first leg is all broken, starts ≤ 2.0 s after the peak and
- * peels 8–13 m/s. Hand-written data, the evidence is docs/superpowers/evidence/small-swell/t4-matrix.txt (a test checks
- * the two agree). Flat-ish and Small are no-wave days at the Womb (Small at Low starts 2.2 s late, at Mid only 20/28).
+ * break"): per SWELL_BANDS label, one entry per BREAKS_TIDES_M. Re-measured on the real shelf (womb-retune Task 4: the
+ * coast-seeded field, the take-off 224 m off the beach) with tools/_smallSwell.ts (each band's ft and period, 225°): a pair
+ * breaks when the first leg is all broken, starts ≤ 2.0 s after the peak and peels 8–13 m/s. Hand-written data, the
+ * evidence is docs/superpowers/evidence/womb-retune/matrix-225.txt (a test checks the two agree). Fun is a low-tide-only day
+ * at the Womb: the matrix passes it at Low alone (Fable's Task 5 ruling, 2026-10-09: the matrix is the rule).
  */
 export const BREAKS_TIDES_M: readonly number[] = [-0.5, -0.25, 0, 0.5];
 export const BREAKS: Readonly<Record<string, readonly boolean[]>> = {
   'Flat-ish': [false, false, false, false],
   Small: [false, false, false, false],
-  Fun: [true, true, true, true],
+  Fun: [true, false, false, false],
   Solid: [true, true, true, true],
   Pumping: [true, true, true, true],
   Big: [true, true, true, true],
   Huge: [true, true, true, true],
 };
+/**
+ * The Womb's face (ft) per offered band × BREAKS_TIDES_M, for the Conditions screen (womb-retune Task 4): where the set's
+ * biggest wave first breaks on the peak's ray, the height it carries into its break, H·amp there, uncapped (Fable's Task 5
+ * ruling), on the dial's scale (the ft whose set-1 biggest wave is that height), to the half foot; null where not offered. From matrix-225.txt's FACE_FT (a test checks).
+ */
+export const FACE_FT: Readonly<Record<string, readonly (number | null)[]>> = {
+  'Flat-ish': [null, null, null, null],
+  Small: [null, null, null, null],
+  Fun: [4, null, null, null],
+  Solid: [6, 6, 6, 6],
+  Pumping: [8, 8, 7.5, 7.5],
+  Big: [10, 10, 10, 9.5],
+  Huge: [13, 13, 13, 13],
+};
+/** The Womb's face (ft) for swell band `band` at tide stop `tide`, or null where it isn't offered. */
+export function faceFt(band: number, tide: number): number | null {
+  return FACE_FT[SWELL_BANDS[band].label]?.[BREAKS_TIDES_M.indexOf(TIDE_STOPS[tide].m)] ?? null;
+}
+
+/**
+ * Bands that break but carry no rider (womb-retune Task 6, Fable's ruling 2026-10-10: the offering means "a day you can
+ * surf", the matrix's "breaks" rule AND the ride gate at the smallest offered band). Fun breaks at Low, but a 2 m wave on a
+ * ledge peeling 9–10 m/s drops every level inside 2 s (evidence/womb-retune/ride-trace-Fun-*.txt): not offered.
+ */
+export const UNRIDEABLE: ReadonlySet<string> = new Set(['Fun']);
 
 /** Whether the select screen offers swell band `band` (index into SWELL_BANDS) at tide stop `tide` (index into TIDE_STOPS). */
 export function offered(band: number, tide: number): boolean {
-  return BREAKS[SWELL_BANDS[band].label]?.[BREAKS_TIDES_M.indexOf(TIDE_STOPS[tide].m)] ?? false;
+  const label = SWELL_BANDS[band].label;
+  return !UNRIDEABLE.has(label) && (BREAKS[label]?.[BREAKS_TIDES_M.indexOf(TIDE_STOPS[tide].m)] ?? false);
 }
 
 /** The offered band nearest `band` at tide stop `tide` (ties go to the bigger band), or -1 if none is. */
@@ -135,12 +162,13 @@ const setup = (month: number, timeStop: number, sky: WeatherPresetName, wind: nu
 
 /** The presets (spec §6.8). */
 export const SESSION_PRESETS: readonly { id: string; label: string; setup: SessionSetup }[] = [
-  { id: 'dawnGlass', label: 'Dawn glass', setup: setup(3, 0, 'clear', 0, 2, 225, 2) },
+  { id: 'dawnGlass', label: 'Dawn glass', setup: setup(3, 0, 'clear', 0, 3, 225, 2) },
   { id: 'winterOffshore', label: 'Winter offshore', setup: setup(6, 2, 'clear', 1, 3, 225, 1) },
   { id: 'bigWinterSwell', label: 'Big winter swell', setup: setup(6, 3, 'scattered', 1, 5, 247, 2) },
-  { id: 'funArvo', label: 'Fun arvo', setup: setup(2, 4, 'fair', 3, 2, 225, 3) },
-  // Was Small (band 1); Small does not break at the Womb (small-swell Task 4), so the sea-breeze day is Fun.
-  { id: 'summerSeaBreeze', label: 'Summer sea breeze', setup: setup(0, 5, 'fair', 5, 2, 225, 4) },
+  { id: 'funArvo', label: 'Fun arvo', setup: setup(2, 4, 'fair', 3, 3, 225, 3) },
+  // Was Small (band 1); Small does not break at the Womb (small-swell Task 4), so the sea-breeze day was Fun;
+  // on the real shelf Fun breaks at Low only (womb-retune Task 4), so at High it is Solid.
+  { id: 'summerSeaBreeze', label: 'Summer sea breeze', setup: setup(0, 5, 'fair', 5, 3, 225, 4) },
   { id: 'moodyGrey', label: 'Moody and grey', setup: setup(7, 1, 'grey', 1, 4, 270, 2) },
 ];
 
@@ -248,8 +276,9 @@ export function rowDisplay(s: SessionSetup, row: RowId, today: Date): { value: s
       return { value: w.label, small: w.compass ? `${w.kn} kn ${w.compass}` : `${w.kn} kn` };
     }
     case 'swell': {
-      const b = SWELL_BANDS[swellBand(s.swellFt)];
-      return { value: `${b.label} ${b.minFt}–${b.maxFt} ft`, small: `${feet(s.swellFt)} ft · ${s.periodS} s` };
+      // womb-retune Task 4: what the swell gives at the Womb on this tide (FACE_FT), the swell itself being the buoy's.
+      const band = swellBand(s.swellFt), b = SWELL_BANDS[band], face = faceFt(band, s.tide);
+      return { value: `${b.label} ${b.minFt}–${b.maxFt} ft`, small: `${feet(s.swellFt)} ft · ${s.periodS} s${face === null ? '' : ` · Womb faces ~${feet(face)} ft`}` };
     }
     case 'period':
       return { value: s.periodS < 10 ? 'Wind swell' : s.periodS < 14 ? 'Mid' : 'Groundswell', small: `${s.periodS} s` };

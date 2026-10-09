@@ -1,9 +1,11 @@
 import { type BreakParams, onsetTime } from '../breaker/breaking';
 import { type ReefField, sampleField, sampleOnset } from '../breaker/reefField';
+import { TIP } from '../seabed/wombReef';
 
-/** The take-off zone's mark on the reef: on the south ledge 40 m south of the corner, where the swell reaches the left first
- * (Andrew's satellite reef, 2026-10-05: his red square). */
-export const TAKEOFF_ANCHOR = { x: -6, z: 40 } as const;
+/** The take-off zone's mark on the reef: the corner, where the left starts peeling on the real shelf (womb-retune Task 5,
+ * Fable's ruling 2026-10-09). It was 40 m south of the corner (Andrew's red square, 2026-10-05); with the tip moved seaward
+ * that spot is on the right, whose closeout carried her into the corner behind the crest. */
+export const TAKEOFF_ANCHOR = { x: TIP[0], z: TIP[1] } as const;
 /** You wait this far (m) seaward of where the wave starts to break, along the swell's travel: it lifts you as it stands up.
  * 8 (R1 §3): the onset is on the ledge's face now, and 8 m out the face stands up under the paddler about a second before
  * it breaks; the catch is the slope's, not a race to the crest's speed. */

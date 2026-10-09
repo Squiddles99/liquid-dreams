@@ -1,5 +1,6 @@
 import { smoothstep } from '../math/smoothstep';
 import type { BeachProfile } from './landHeight';
+import { TIP } from '../seabed/wombReef';
 
 /** The walk to the Womb (dune-up-close spec §4.1): rebuilt by rule on our own terrain, never traced. */
 export interface RouteLand {
@@ -18,8 +19,8 @@ export interface TrackData {
   junction: { x: number; z: number; along: [number, number] };
 }
 
-/** The Womb's lineup (DEFAULT_SURFER_PARAMS: x −25, z 45). */
-export const WOMB_LINEUP = { x: -25, z: 45 };
+/** The Womb's lineup: 25 m seaward and 45 m south of the take-off corner (wombReef.TIP; DEFAULT_SURFER_PARAMS). */
+export const WOMB_LINEUP = { x: TIP[0] - 25, z: TIP[1] + 45 };
 const STEP_M = 2;
 /** The Cape to Cape prefers 50–90 m inland of the dune toe and may wander 20–160 m. */
 const C2C_BAND: [number, number] = [50, 90];
