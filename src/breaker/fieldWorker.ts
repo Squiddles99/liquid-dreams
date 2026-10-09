@@ -4,8 +4,10 @@ import { buildCoastMap } from '../seabed/coastMap';
 import { type CoastField, computeCoastField } from './coastField';
 import { computeReefField, type ReefFieldRequest } from './reefField';
 
-/** The request as posted: the coast map is built here from its dials (lineup truth spec §3b), not sent. */
-export type FieldMessage = ReefFieldRequest & { id: number; coastParams?: CoastParams };
+/** The request as posted: the coast map is built here from its dials (lineup truth spec §3b), not sent. The probes' onset sink
+ * (`onsetDebug`) is not part of the game's request: typed out here, so the game's bake never fills it. */
+export type GameFieldRequest = Omit<ReefFieldRequest, 'onsetDebug'> & { onsetDebug?: never };
+export type FieldMessage = GameFieldRequest & { id: number; coastParams?: CoastParams };
 
 // This file runs in a dedicated worker, but the project's DOM lib types `self` as Window: cast once here.
 const worker = self as unknown as Worker;

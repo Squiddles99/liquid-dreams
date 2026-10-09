@@ -1,0 +1,29 @@
+# shelf-polish Task 2 gate (Fable's ruling 2026-10-10 applied; no record change: the bake is unchanged)
+
+## crestTrace "one curl per wave on one clock": the Womb's ridden run (stations within 220 m of the tip), bar unchanged
+npx vitest run src/breaker/crestTrace.test.ts -t "one curl per wave" --silent=false   -> 3 passed
+6 ft: 178 broken and 98 waiting station steps checked, 0 violations
+8 ft: 211 broken and 96 waiting station steps checked, 0 violations
+12 ft: 262 broken and 94 waiting station steps checked, 0 violations
+Carried (named in the test's comment): the inner shelf inside the right, 226-250 m out (the level read's "crossing now" on a
+plateaued running max: 6 ft arcs 182/183 tb 0.58 -> 2.53; the level-6 line hooking under the crest). Andrew's call.
+
+## reefField "until carries the hold": the game's field (peel 1, refraction floor, smoothed), bar unchanged -> 3 passed
+- until = -tb at every held node within 220 m of the tip, on the bake (before smoothFieldAmplitude, which smooths tb and
+  until on their own masks): 2654 held nodes (the curl's holds, levels 1/7/8/9), max hold 3.47 s < cap 6 - 0.25.
+- one cell back < 0.02 s, two cells back < 0.2 s, on the smoothed field (as the game reads it): 0 errors
+  (tools/_heldScan.ts --peel=1 --game: 195 one-cell checks, worst < 0.020).
+- peel 1.7 (not in play): 213 nodes on the left's first 5-80 m held within 0.25 s of the 6 s cap (an expectation, not a red).
+Note (probe only, not a test): the UNsmoothed peel-1 bake has 8 one-cell jumps (0.03-0.43 s) at small-wave levels 7-9,
+96-213 m from the tip (tools/_heldScan.ts --peel=1 --floor); the game never reads the unsmoothed record.
+
+## onsetDebug sink: kept, free on the game path
+fieldWorker.GameFieldRequest = Omit<ReefFieldRequest, 'onsetDebug'> & { onsetDebug?: never }; ReefFieldClient.request takes it,
+so the game's request cannot carry the sink (tsc). In the bake, with no sink: two `if (f.debug)` tests per field build.
+
+## _curlReport (CURL_V=40, the default curl; npx tsx tools/_curlReport.ts), identical to womb-retune's curl-report.txt
+band     curl  | first: peel m/s, hollow, broke t | second: peel, hollow | first-leg onset nodes (<= 30 m inshore of the ledge): held > 0.05 s, at the cap
+Solid      40  | 11.3, 0.56, 0.1–15.3 s | 22.5, 0.47 | level 6: 108 nodes, 0.0% held, 0.0% capped
+Pumping    40  | 11.7, 0.81, -0.2–14.6 s | 24.3, 0.90 | level 5: 114 nodes, 0.0% held, 0.0% capped
+Big        40  | 11.9, 1.00, -0.4–14.2 s | 25.6, 1.00 | level 4: 107 nodes, 0.0% held, 0.0% capped
+(one curl per side, no held nodes on the first leg, peel 11.3/11.7/11.9 = the retune's exactly)
