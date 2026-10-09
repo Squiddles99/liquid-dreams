@@ -376,5 +376,57 @@
   "latin": "Acanthorhynchus superciliosus",
   "fact": "Found only in the south-west. Its long, curved bill reaches the nectar deep inside tube flowers, like kangaroo paw, that other honeyeaters can’t get to.",
   "noongar": "people call it booldjit."
+ },
+ "reptiles-bobtail": {
+  "kicker": "Reptiles · Cape to Cape",
+  "name": "Bobtail",
+  "common": "Shingleback",
+  "latin": "Tiliqua rugosa",
+  "fact": "Often found sunbaking right on the Cape to Cape Track. Its stumpy tail stores fat for the cold months, and a pair can meet up again every spring for 20 years.",
+  "noongar": "people call it yoorn."
+ },
+ "reptiles-carpet-python": {
+  "kicker": "Reptiles · Cape to Cape",
+  "name": "Carpet python",
+  "common": "South-western carpet python",
+  "latin": "Morelia imbricata",
+  "fact": "Not venomous, and mostly out at night, so lucky walkers rarely see one. A mother coils around her eggs and shivers her muscles to keep them warm until they hatch.",
+  "noongar": "names for it include wakal."
+ },
+ "reptiles-marbled-gecko": {
+  "kicker": "Reptiles · Cape to Cape",
+  "name": "Marbled gecko",
+  "common": "",
+  "latin": "Christinus marmoratus",
+  "fact": "Australia’s most southerly gecko. It drops its tail to get away from a predator, then spends about eight months growing a new one."
+ },
+ "reptiles-bearded-dragon": {
+  "kicker": "Reptiles · Cape to Cape",
+  "name": "Western bearded dragon",
+  "common": "",
+  "latin": "Pogona minor",
+  "fact": "Waves a front leg to signal a rival or a mate, and the males bob their heads. Look for one basking on a fence post or a log."
+ },
+ "reptiles-crowned-snake": {
+  "kicker": "Reptiles · Cape to Cape",
+  "name": "Crowned snake",
+  "common": "Western crowned snake",
+  "latin": "Elapognathus coronatus",
+  "fact": "A small snake of the south-west’s coastal heath, about 40 cm long, with a dark band across its neck like a crown. It hunts skinks and frogs. Mildly venomous: look, don’t touch."
+ },
+ "reptiles-tiger-snake": {
+  "kicker": "Reptiles · Cape to Cape",
+  "name": "Tiger snake",
+  "common": "",
+  "latin": "Notechis scutatus",
+  "fact": "Shy, and keeps clear of noisy people, but it will strike if cornered. On warm days snakes bask on the Cape to Cape Track: give them room, and they’ll slip away."
+ },
+ "reptiles-dugite": {
+  "kicker": "Reptiles · Cape to Cape",
+  "name": "Dugite",
+  "common": "",
+  "latin": "Pseudonaja affinis",
+  "fact": "Found only in the south-west, in shades from grey to green to brown. Shy: leave it alone and it leaves you alone. If you meet one, stop, stay still and back away slowly.",
+  "noongar": "gave English its name: dugite comes from the Noongar word, recorded as dukitj and toogitj."
  }
 }
