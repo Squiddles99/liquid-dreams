@@ -87,6 +87,46 @@ export const TIDE_STOPS: readonly { label: string; m: number; trend: 'rising' | 
   { label: 'Low, dropping', m: -0.25, trend: 'falling' },
 ];
 
+/**
+ * Where the Womb breaks (small-swell plan Task 4, Andrew 2026-10-09: "not offering a swell and tide option that won't
+ * break"): per SWELL_BANDS label, one entry per BREAKS_TIDES_M. Measured with tools/_smallSwell.ts (each band's ft and
+ * period, 225°, the 2 m breaking floor): a pair breaks when the first leg is all broken, starts ≤ 2.0 s after the peak and
+ * peels 8–13 m/s. Hand-written data, the evidence is docs/superpowers/evidence/small-swell/t4-matrix.txt (a test checks
+ * the two agree). Flat-ish and Small are no-wave days at the Womb (Small at Low starts 2.2 s late, at Mid only 20/28).
+ */
+export const BREAKS_TIDES_M: readonly number[] = [-0.5, -0.25, 0, 0.5];
+export const BREAKS: Readonly<Record<string, readonly boolean[]>> = {
+  'Flat-ish': [false, false, false, false],
+  Small: [false, false, false, false],
+  Fun: [true, true, true, true],
+  Solid: [true, true, true, true],
+  Pumping: [true, true, true, true],
+  Big: [true, true, true, true],
+  Huge: [true, true, true, true],
+};
+
+/** Whether the select screen offers swell band `band` (index into SWELL_BANDS) at tide stop `tide` (index into TIDE_STOPS). */
+export function offered(band: number, tide: number): boolean {
+  return BREAKS[SWELL_BANDS[band].label]?.[BREAKS_TIDES_M.indexOf(TIDE_STOPS[tide].m)] ?? false;
+}
+
+/** The offered band nearest `band` at tide stop `tide` (ties go to the bigger band), or -1 if none is. */
+export function nearestOfferedBand(band: number, tide: number): number {
+  for (let d = 0; d < SWELL_BANDS.length; d++) {
+    if (band + d < SWELL_BANDS.length && offered(band + d, tide)) return band + d;
+    if (band - d >= 0 && offered(band - d, tide)) return band - d;
+  }
+  return -1;
+}
+
+/** The setup with its swell moved to the nearest band that breaks on its tide (its band's ft and period); unchanged if offered. */
+export function offeredSetup(s: SessionSetup): SessionSetup {
+  const band = swellBand(s.swellFt);
+  if (offered(band, s.tide)) return s;
+  const to = nearestOfferedBand(band, s.tide);
+  return to < 0 ? s : { ...s, swellFt: SWELL_BANDS[to].ft, periodS: SWELL_BANDS[to].periodS };
+}
+
 const KN_TO_MS = 0.514444;
 
 const setup = (month: number, timeStop: number, sky: WeatherPresetName, wind: number, band: number, fromDeg: number, tide: number): SessionSetup => ({
@@ -99,7 +139,8 @@ export const SESSION_PRESETS: readonly { id: string; label: string; setup: Sessi
   { id: 'winterOffshore', label: 'Winter offshore', setup: setup(6, 2, 'clear', 1, 3, 225, 1) },
   { id: 'bigWinterSwell', label: 'Big winter swell', setup: setup(6, 3, 'scattered', 1, 5, 247, 2) },
   { id: 'funArvo', label: 'Fun arvo', setup: setup(2, 4, 'fair', 3, 2, 225, 3) },
-  { id: 'summerSeaBreeze', label: 'Summer sea breeze', setup: setup(0, 5, 'fair', 5, 1, 225, 4) },
+  // Was Small (band 1); Small does not break at the Womb (small-swell Task 4), so the sea-breeze day is Fun.
+  { id: 'summerSeaBreeze', label: 'Summer sea breeze', setup: setup(0, 5, 'fair', 5, 2, 225, 4) },
   { id: 'moodyGrey', label: 'Moody and grey', setup: setup(7, 1, 'grey', 1, 4, 270, 2) },
 ];
 
@@ -270,8 +311,13 @@ export function stepRow(s: SessionSetup, row: Exclude<RowId, 'preset'>, dir: Dir
     }
     case 'wind':
       return clampStep(s, s.wind, WIND_ROWS.length, dir, (j) => ({ ...s, wind: j }));
-    case 'swell':
-      return clampStep(s, swellBand(s.swellFt), SWELL_BANDS.length, dir, (j) => ({ ...s, swellFt: SWELL_BANDS[j].ft, periodS: SWELL_BANDS[j].periodS }));
+    case 'swell': {
+      // Skip the bands that do not break on this tide (small-swell Task 4).
+      for (let j = swellBand(s.swellFt) + dir; j >= 0 && j < SWELL_BANDS.length; j += dir) {
+        if (offered(j, s.tide)) return to({ ...s, swellFt: SWELL_BANDS[j].ft, periodS: SWELL_BANDS[j].periodS });
+      }
+      return end(s);
+    }
     case 'period':
       return clampStep(s, s.periodS - 8, 13, dir, (j) => ({ ...s, periodS: 8 + j }));
     case 'from': {
@@ -279,7 +325,8 @@ export function stepRow(s: SessionSetup, row: Exclude<RowId, 'preset'>, dir: Dir
       return to({ ...s, fromDeg: FROM_WINDOW[wrap(i + dir, FROM_WINDOW.length)] });
     }
     case 'tide':
-      return clampStep(s, s.tide, TIDE_STOPS.length, dir, (j) => ({ ...s, tide: j }));
+      // A tide the band does not break on moves the band to the nearest one that does (small-swell Task 4).
+      return clampStep(s, s.tide, TIDE_STOPS.length, dir, (j) => offeredSetup({ ...s, tide: j }));
   }
 }
 
@@ -287,7 +334,7 @@ export function stepRow(s: SessionSetup, row: Exclude<RowId, 'preset'>, dir: Dir
 export function fineRow(s: SessionSetup, row: Exclude<RowId, 'preset'>, dir: Dir, today: Date): EditResult {
   if (row === 'swell') {
     const ft = s.swellFt + dir * 0.5;
-    return ft < 1 || ft > 12 ? end(s) : to({ ...s, swellFt: ft });
+    return ft < 1 || ft > 12 || !offered(swellBand(ft), s.tide) ? end(s) : to({ ...s, swellFt: ft });
   }
   if (row !== 'time') return same(s);
   const date = dateForMonth(s.month, today), { sunriseH, sunsetH } = sunTimes(date);
@@ -358,5 +405,6 @@ export function rollSetup(seed: number): SessionSetup {
   let tide = Math.floor(r() * TIDE_STOPS.length);
   if (band === 6 && TIDE_STOPS[tide].label.startsWith('Low')) tide = 2; // huge breaks outside over the flat at low tide
   if (band === 0 && wind === 5) wind = 1;
-  return { month, timeStop, timeFineMin: 0, sky, wind, swellFt: SWELL_BANDS[band].ft, periodS: SWELL_BANDS[band].periodS, fromDeg, tide };
+  // Never a pair that does not break: the band moves to the nearest that does on this tide (small-swell Task 4).
+  return offeredSetup({ month, timeStop, timeFineMin: 0, sky, wind, swellFt: SWELL_BANDS[band].ft, periodS: SWELL_BANDS[band].periodS, fromDeg, tide });
 }

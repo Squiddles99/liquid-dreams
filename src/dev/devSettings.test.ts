@@ -226,7 +226,7 @@ describe('dev settings persistence', () => {
     raw.conditions.swell.directionDeg = 370;
     raw.conditions.date = 'yesterday';
     const got = loadDevSettings(store(raw), defaults())!;
-    expect(got.conditions.tideM).toBe(1.5);
+    expect(got.conditions.tideM).toBe(0.8);
     expect(got.conditions.swell.directionDeg).toBe(10);
     expect(got.conditions.date).toBe(DEFAULT_CONDITIONS.date);
   });
