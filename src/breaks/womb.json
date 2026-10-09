@@ -1,0 +1,67 @@
+{
+  "id": "womb",
+  "name": "The Womb",
+  "kicker": "REEF BREAK · NEAR GRACETOWN",
+  "subtitle": "a bodyboarders' favourite",
+  "lonLat": [114.982, -33.8952],
+  "hero": "breaks/womb-hero.webp",
+  "best": { "swellFromDeg": [202, 248], "sizeFt": [4, 10], "windFromDeg": [45, 90], "tide": ["mid", "high"], "level": "advanced" },
+  "bestClaims": { "swell": "best-swell", "wind": "best-wind", "tide": "best-tide" },
+  "summary": [
+    { "text": "A left-hand reef break near Gracetown", "claim": "left" },
+    { "text": "Take-off drops you straight into the tube", "claim": "barrels" },
+    { "text": "Sharp reef, heavy lip. Not for beginners." }
+  ],
+  "details": [
+    { "id": "wave", "heading": "The wave", "paragraphs": [
+      { "text": "The Womb is a left-hand reef break, tucked just south of Lefthanders near Gracetown.", "claim": "left" },
+      { "text": "The take-off pitches you straight into the barrel. On a good one it spits you out the end.", "claim": "barrels" },
+      { "text": "It's short, under fifty metres, but it packs a punch.", "claim": "short" },
+      { "text": "At the end it can run into a wave breaking the other way. Then you either pull out or get caught in the tube.", "claim": "other-way" }
+    ] },
+    { "id": "when", "heading": "When it works", "paragraphs": [
+      { "text": "It likes swell from the south-west: anywhere from south-south-west round to west-south-west.", "claim": "best-swell" },
+      { "text": "It starts working around three to five feet and really turns on once it's over head height.", "claim": "best-size" },
+      { "text": "An easterly or north-easterly blows offshore here and grooms the face.", "claim": "best-wind" },
+      { "text": "Surf it from mid to high tide.", "claim": "best-tide" }
+    ] },
+    { "id": "who", "heading": "Who it's for", "paragraphs": [
+      { "text": "Experienced riders. It's a bodyboarders' favourite, but brave stand-up surfers paddle out too." },
+      { "text": "Weekdays can be quiet. Weekends get crowded, so mind your manners in the line-up." }
+    ] },
+    { "id": "hazards", "heading": "Hazards", "paragraphs": [
+      { "text": "The reef is sharp and rocky and the wave is heavy: more than one pro surfer has ended up in hospital here." },
+      { "text": "It's a long walk from the car and help is a long way off. Sharks are part of life on this coast, so surf with a mate." }
+    ] },
+    { "id": "access", "heading": "Getting there", "paragraphs": [
+      { "text": "Turn off Caves Road onto Ellen Brook Road and follow it to the beach car park in Leeuwin-Naturaliste National Park. A small lookout lets you check the swell first." },
+      { "text": "From the beach, walk north past the Ellensbrook Bombie. Entry to the park is free, there are toilets at the car park, and dogs aren't allowed." }
+    ] },
+    { "id": "story", "heading": "Name and story", "paragraphs": [
+      { "text": "Just south is Ellensbrook, a homestead built from the mid-1850s on Mokidup, a Noongar camping place on Wardandi Country." },
+      { "text": "The area is now the locality of Yebble, named in 2021 for Sam Isaacs, the Noongar man who helped Grace Bussell rescue passengers from the wrecked SS Georgette in 1876. Gracetown, up the coast, is named after her." }
+    ] },
+    { "id": "inGame", "heading": "In the game", "paragraphs": [
+      { "text": "Surf it as Shazza, T-Bone or Grommet. Take today's forecast, or set your own swell, wind and tide before you paddle out." }
+    ] }
+  ],
+  "sources": {
+    "wave": ["https://www.wannasurf.com/spot/Australia_Pacific/Australia/WA/Margaret_River_North/The_Womb/index.html", "https://www.surf-forecast.com/breaks/The-Womb", "https://www.margaretriver.com/things-to-do/attractions/beaches/the-womb/", "https://www.mondo.surf/surf-spot/the-womb/guide/10394", "https://en.wikipedia.org/wiki/Surfing_locations_in_the_Capes_region_of_South_West_Western_Australia"],
+    "when": ["https://www.wannasurf.com/spot/Australia_Pacific/Australia/WA/Margaret_River_North/The_Womb/index.html", "https://www.surf-forecast.com/breaks/The-Womb", "https://www.mondo.surf/surf-spot/the-womb/guide/10394", "https://surfsphere.com/surf-spot/the-womb-augusta-margaret-river/", "https://www.margaretriver.com/things-to-do/attractions/beaches/the-womb/"],
+    "who": ["https://www.wannasurf.com/spot/Australia_Pacific/Australia/WA/Margaret_River_North/The_Womb/index.html", "https://www.margaretriver.com/things-to-do/attractions/beaches/the-womb/", "https://www.surf-forecast.com/breaks/The-Womb", "https://www.mondo.surf/surf-spot/the-womb/guide/10394"],
+    "hazards": ["https://www.wannasurf.com/spot/Australia_Pacific/Australia/WA/Margaret_River_North/The_Womb/index.html", "https://www.mondo.surf/surf-spot/the-womb/guide/10394", "https://www.surf-forecast.com/breaks/The-Womb", "https://www.swellnet.com/news/swellnet-dispatch/2018/04/16/second-shark-attack-one-day-was-southwest", "https://exploreparks.dbca.wa.gov.au/site/ellensbrook-beach", "https://www.margaretriver.com/things-to-do/attractions/surfing/the-margaret-river-regions-surf-breaks-a-locals-guide/"],
+    "access": ["https://exploreparks.dbca.wa.gov.au/site/ellensbrook-beach", "https://www.wannasurf.com/spot/Australia_Pacific/Australia/WA/Margaret_River_North/The_Womb/index.html", "https://www.margaretriver.com/things-to-do/attractions/beaches/the-womb/", "https://www.mondo.surf/surf-spot/the-womb/guide/10394", "https://www.exploroz.com/places/425695/wa+ellensbrook-beach-carpark"],
+    "story": ["https://en.wikipedia.org/wiki/Ellensbrook", "https://inherit.dplh.wa.gov.au/Public/Inventory/Details/4da7314e-b831-4cc1-939c-10b1f4e386db", "https://nationaltrustwa.rezdy.com/485434/ellensbrook", "https://landgate.wa.gov.au/about-us/customer-news-and-media/news-and-media-articles/2021/4/new-locality-in-south-west-yebble-honours-local-noongar-hero", "https://en.wikipedia.org/wiki/Yebble,_Western_Australia", "https://en.wikipedia.org/wiki/Grace_Bussell", "https://surfingdownsouth.com.au/2025/09/03/gracetown-townsite-since-1963/"],
+    "inGame": ["game: src/surfer/presets.ts (the three riders)", "game: src/frontend/sessionSetup.ts (forecast roll and custom conditions)"]
+  },
+  "claims": [
+    { "id": "left", "text": "A left", "check": "peel-left" },
+    { "id": "barrels", "text": "Barrels at its best size", "check": "barrel" },
+    { "id": "short", "text": "Short and punchy (under 50 m)", "check": "none" },
+    { "id": "other-way", "text": "Can meet a section breaking the other way", "check": "none" },
+    { "id": "best-size", "text": "Starts at 3-5 ft, best over head height", "check": "none" },
+    { "id": "best-swell", "text": "Best swell SSW to WSW (202-248 deg)", "check": "best-swell" },
+    { "id": "best-wind", "text": "Best wind NE to E (45-90 deg), offshore", "check": "best-wind" },
+    { "id": "best-tide", "text": "Best tide mid to high", "check": "best-tide" }
+  ]
+}
