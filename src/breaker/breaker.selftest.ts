@@ -6,7 +6,7 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, ONSET_LEVELS, ONSET_UNTIL_OFFSET, UNTIL_NEVER, normalizeBreakParams, onsetDelay, onsetPsi, onsetTime, onsetUntil } from './breaking';
 import { REFRACT_FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
-import { DEFAULT_REEF_PARAMS } from '../seabed/wombReef';
+import { DEFAULT_REEF_PARAMS, TIP } from '../seabed/wombReef';
 import { DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
 import { buildCoastMap } from '../seabed/coastMap';
 import { SetWaves } from './SetWaves';
@@ -250,7 +250,7 @@ function computeAt(points: [number, number][], perPoint: number, body: (xz: any)
 
 /** Points on the ray through the peak, from 8 m seaward to 16 m shoreward, every 2 m (where the biggest wave barrels). */
 function peakRay(field: ReefField): [number, number][] {
-  let x = 0, z = 0;
+  let x = TIP[0], z = TIP[1];
   for (let d = 0; d < 8; d += 0.5) { const s = sampleField(field, x, z); x -= s.dirX * 0.5; z -= s.dirZ * 0.5; }
   const out: [number, number][] = [];
   for (let d = 0; d <= 24 + 1e-9; d += 0.5) {
@@ -282,7 +282,7 @@ function pileRay(field: ReefField): [number, number][] {
 }
 
 /** 64 points around the peak: an 8 × 8 grid 4 m apart, from −14 to +14 m in x and z. */
-const AROUND_PEAK: [number, number][] = Array.from({ length: 64 }, (_, i) => [-14 + 4 * (i % 8), -14 + 4 * Math.floor(i / 8)]);
+const AROUND_PEAK: [number, number][] = Array.from({ length: 64 }, (_, i) => [TIP[0] - 14 + 4 * (i % 8), TIP[1] - 14 + 4 * Math.floor(i / 8)]);
 
 /** The biggest wave of the default set 1, and the times after its arrival at the peak that the break tests read (1.8
  * and 2.4 s catch the whitewater rising as the section settles: foam between 0 and 1). */

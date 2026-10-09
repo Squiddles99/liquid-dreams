@@ -1,4 +1,5 @@
 import type { WaveEvent } from '../swell/sets';
+import { TIP } from '../seabed/wombReef';
 import { type BreakParams, breakingRatio, breakingStage, faceHeight } from './breaking';
 import { type ReefField, sampleField } from './reefField';
 import { psiStateLabel } from './overturn';
@@ -21,7 +22,7 @@ export function peakFace(field: ReefField | null, events: readonly WaveEvent[], 
   if (!field) return null;
   const e = events.find((w) => Math.abs(w.arrivalS - t) <= w.periodS / 2);
   if (!e) return null;
-  const f = sampleField(field, 0, 0);
+  const f = sampleField(field, TIP[0], TIP[1]);
   const w = toActiveWave(e);
   const r = p.enabled ? breakingRatio(w.heightM * f.amp, f.hminBreak, p) : 0;
   const stage = breakingStage(r, p);
@@ -41,7 +42,7 @@ export function peakPsi(field: ReefField | null, events: readonly WaveEvent[], t
   const e = events.find((w) => Math.abs(w.arrivalS - t) <= w.periodS / 2);
   if (!e) return null;
   const w = toActiveWave(e), ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-  return crestAt(0, 0, t, sampleField(field, 0, 0), w, ctx, breakOptions(field, p, offshoreMs))?.psi ?? null;
+  return crestAt(TIP[0], TIP[1], t, sampleField(field, TIP[0], TIP[1]), w, ctx, breakOptions(field, p, offshoreMs))?.psi ?? null;
 }
 
 /** "ψ 0.065, cylinder (5)" for the Sets folder. */

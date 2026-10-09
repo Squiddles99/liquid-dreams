@@ -1,5 +1,6 @@
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
+import { TIP } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetHeight, onsetTime } from './breaking';
 import { type ProfileInput, type Vec2, profileFrame } from './lipProfile';
@@ -27,8 +28,8 @@ const P = DEFAULT_BREAK_PARAMS;
  * reaches 220 m seaward: on the softened ramp a 12 ft set breaks ~130 m out. */
 export function peakStation(psi: number, tb: number | null, o: { setup?: ReturnType<typeof peakSetup>; offshoreMs?: number } = {}) {
   const { field: f, wave: w, ctx: cx } = o.setup ?? MID12;
-  const f00 = sampleField(f, 0, 0);
-  const onRay = (s: number) => ({ x: f00.dirX * s, z: f00.dirZ * s });
+  const f00 = sampleField(f, TIP[0], TIP[1]);
+  const onRay = (s: number) => ({ x: TIP[0] + f00.dirX * s, z: TIP[1] + f00.dirZ * s });
   const tbAlong = (s: number): number | null => { const p = onRay(s); const rec = sampleOnset(f, p.x, p.z); return rec ? onsetTime(rec, 0, w.heightM, P) : null; };
   let s0 = -40;
   if (tb !== null) { let lo = -220, hi = 60; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2, v = tbAlong(m); if (v === null || v < tb) lo = m; else hi = m; } s0 = (lo + hi) / 2; }

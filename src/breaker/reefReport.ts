@@ -1,6 +1,6 @@
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { type Bathymetry, bedHeightAt, ledgeSignedDistance } from '../seabed/bathymetry';
-import { NORTH_LEDGE } from '../seabed/wombReef';
+import { NORTH_LEDGE, TIP } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, onsetPsi, onsetTime } from './breaking';
 import { type PsiState, drainFactor, effectivePsi, psiState } from './overturn';
@@ -49,13 +49,13 @@ function onsetAt(f: ReefField, x: number, z: number, H: number, p: Gd): number |
 }
 
 /**
- * Where H first breaks on the peak's traced ray: d metres seaward of the peak (0, 0) (negative: inshore of it) and the
+ * Where H first breaks on the peak's traced ray: d metres seaward of the peak (TIP) (negative: inshore of it) and the
  * point. The onset record is a running maximum along the ray, so the seaward-most broken point is the first break.
  * Null when it hasn't broken within INSHORE_REACH_M inshore of the peak.
  */
 export function firstBreak(f: ReefField, H: number, p: Gd = DEFAULT_BREAK_PARAMS): { d: number; x: number; z: number } | null {
-  let x = 0, z = 0;
-  if (onsetAt(f, 0, 0, H, p) !== null) {
+  let x = TIP[0], z = TIP[1];
+  if (onsetAt(f, x, z, H, p) !== null) {
     let d = 0;
     while (d < SEAWARD_REACH_M) {
       const s = sampleField(f, x, z), nx = x - s.dirX * STEP_M, nz = z - s.dirZ * STEP_M;

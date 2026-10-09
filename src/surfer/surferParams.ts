@@ -5,6 +5,7 @@ import { SELECT_IDLE_S } from './poses';
 import { PRESETS, type PresetName, type Stance, boardsFor } from './presets';
 import { type OutfitChoice, presetOutfits } from './wardrobe';
 import type { Motion } from './motion';
+import { TIP } from '../seabed/wombReef';
 
 /** The Surfer folder (spec §6), persisted with the look and carried by moment links. */
 export interface SurferParams {
@@ -64,7 +65,7 @@ export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
   enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, motion: 'clip', onLand: false, carrySide: 'auto',
   pile: false, gang: false, pileX: 123, pileZ: 47, pileHeadingDeg: 0,
   compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
-  x: -25, z: 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
+  x: TIP[0] - 25, z: TIP[1] + 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
   idle: true, faceManual: false, expression: 'none', faceBlink: 0, faceSmile: 0, faceJaw: 0, faceBrows: 0, faceSquint: 0, gazeYawDeg: 0, gazePitchDeg: 0,
 };
 
