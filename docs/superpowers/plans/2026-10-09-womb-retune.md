@@ -57,6 +57,32 @@ Gate: both tables pasted; test green; commit "feat(swell): the dial is the offsh
 
 Gate: `sweep.txt`, the recommendation, a commit "tools: the reef sweep (womb-retune Task 2)". No reef change yet.
 
+## Task 2b: the take-off moves seaward (Andrew's ruling 2026-10-09; Fable's finding in the -fable handover)
+
+Why: on the real shelf a left peels only along a ledge heading ~42° (north-east, toward the beach); the Womb's beach ramp
+(`depthBg`, 5.5 m at ~70 m off the beach) closes out anything nearer than that, so the ledge must start further out.
+
+1. Parametrise the reef's tip. `wombReef.ts`: the ledges are built from `TIP: Pt` (today [0, 0]); `NORTH_LEDGE` = tip, then
+   a straight leg at bearing 42° of length `LEFT_LEDGE_M`, then due north to z −450; `SOUTH_LEDGE` = today's shape translated
+   to the tip. The warp's taper centre, the rock reach, `shelfPolygon`, `SHELF_INNER_X` logic, the first-break probes and
+   `reefReport`'s origin follow the tip (grep for literal `(0, 0)` / `0, 0` peak assumptions in src/breaker, src/ride,
+   src/app, tools; list every one you change in the handover). The reef grid stays (x −400 … 250); if the tip at x −160
+   needs more sea room westward for the face + slope (200 m), say so and widen `REEF_GRID` to x −500.
+2. Sweep (`tools/_reefSweep.ts --tip`): tip x ∈ {−100, −130, −160} (z 0) × `LEFT_LEDGE_M` ∈ {150, 180, 210}, ledge 3.5 m,
+   face 15/15, shelf 4. Per band Fun…Huge at 225° mid tide: first-leg peel/hollow/start, the distance along the ledge where
+   the first break leaves the ledge by > 5 m (the inside takes over), the inside's peel, the right's two legs. Plus 202°/247°
+   first-leg peel at Pumping and Big. Targets: peel 9–12 m/s at the offered bands, hollow ≥ 0.8 at the two middle offered
+   bands and < 0.6 at the smallest, the ledge peeling to within 20 m of its end at Pumping, the right closing out.
+3. Pick the smallest tip move that meets the targets (closest to today's Womb). Paste the table; Fable rules only if two
+   rows tie or none passes. Commit "feat(reef): the Womb's take-off moves seaward; one 42° ledge (Andrew's ruling)".
+4. Scene follow-through, same commit series, each one measured: the field request key (tip in it), set lines' peak and the
+   onset record's origin, the stand/crew/lookout camera aims and `_lineupMoments.ts` (aim at the new tip), the paddle-out
+   start and the bot's lineup spot (`_rideProfile`), the select-screen break map bake (`tools/bakeBreakMap.ts`), the
+   whitewater/foam origin if it reads the peak, the GPU self-test. Electron capture from the stand at Pumping t+3: the
+   take-off must be in frame.
+
+Gate: sweep table + pick; a Pumping down-the-line frame and a stand frame; `src/breaker` + GPU self-test as in Task 3's gate.
+
 ## Task 3: apply the ruling, re-pin the reef tests
 
 1. Set `NORTH_LEDGE` (and `DEFAULT_REEF_PARAMS` if ruled) to the chosen row. Update the comment block in `wombReef.ts:63-70`
@@ -110,5 +136,5 @@ Gate: heldS table; traces if any; frames; commit "test(ride): the ride pinned on
 
 ## Where Fable rules
 
-- After Task 2 (the reef pick) and after Task 5 if a ride case is lost. Everything else runs through.
+- After Task 2 (done: see the -fable handover; Andrew ruled the take-off moves), Task 2b only on a tie or no pass, and after Task 5 if a ride case is lost. Everything else runs through.
 - Fable reviews the spec §6 gates from the pasted evidence, then asks Andrew for the §6.7 look. Merge to main is Andrew's.

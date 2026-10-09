@@ -97,3 +97,6 @@ fallback if Andrew keeps the take-off.
 
 Andrew's Task 1 ruling (option C) is confirmed from the datum: at 225° the peak amp is back to ~1.0 (Pumping face 6.9 ft),
 arrival −18.4°; at 247° −7.8°, amp 1.33; at 202° −22.6°, amp 0.57. The dial is the buoy.
+
+**RULED (Andrew, in chat, 2026-10-09): move the take-off seaward.** Task 2b below is the instruction; then Tasks 3–6 run as
+written on the new reef.
