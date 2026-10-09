@@ -139,3 +139,19 @@ At −100 the same bearing loses Pumping's hollow (0.79) and 202° Pumping break
 
 Questions: (1) the row; (2) Huge at 12.1 (or the bar); (3) Fun not offered at −100/−130 (the select list then starts at
 Solid). **STOPPED** before Task 2b step 3 (no constant changed).
+
+**RULED (Fable, 2026-10-09), Task 2b:**
+1. **The row: tip (−130, 0), bearing 46°, 180 m** (to (−1, −125), then north). Set `TIP`, `LEFT_BEARING_DEG`, `LEFT_LEDGE_M`
+   to it; ledge 3.5 m, face 15/15, shelf 4 unchanged; the right translated to the tip (it closes out at every row: good).
+2. **Huge 12.1 is accepted.** The 9–12 bar is R3's line for the bands a surfer rides most; `leftStretches` fits 2.5 m samples
+   and 0.1 m/s is inside its noise. Re-pin as: Solid–Big first leg 9–12, Huge 9–12.5, and say so in the test's comment
+   (not a loosening of the rule, a statement of the biggest day). If the Task 3 pins come out above 12.5 at Huge, stop.
+3. **Fun not offered: accepted.** A 3.5 ft swell does not stand up on a 3.5 m ledge 230 m out in 15 m of water; the select
+   list starts at Solid, and the Random roll + presets follow (Task 4 lists any preset that moved). Andrew ruled the
+   screen honest; this is what honest says. The Summer sea-breeze "Fun day" preset becomes a Solid day or is relabelled.
+4. **247° runs 13–14 m/s at every row: report only** (spec §4: the offering stays band × tide). Put one line in the
+   Task 4 evidence and in the -fable handover; a direction-aware offering is a later segment.
+5. 202° Pumping at −130/46° breaks 58/72 of the ledge: report in the datum, no gate (the offering is measured at 225°).
+
+Proceed: Task 2b step 3 (commit the constants) and step 4 (scene follow-through), then Tasks 3–6. Next STOP is after Task 5
+only if a ride case is lost.
