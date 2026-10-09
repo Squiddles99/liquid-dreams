@@ -1,0 +1,92 @@
+# shelf-polish Task 0: ride frame baselines, 2026-10-10, same session, same machine (background load 12-32 % CPU: Epic, Steam, browsers)
+# npx electron tools/_rideProfile.mjs --base=<tree's dev server> --ft=7 --sim-t=300 ; before = ../ld-datum-before (4f70490, port 5194), main = shelf-polish @ a9e79ea (= main, port 5193)
+# logs + cpuprofiles: ../liquid-dreams-captures/shelf-polish-2026-10-10/prof/t0-*
+
+run           cam median | paddle median | riding median  p90
+t0-before-a   3.9 | 31.4 | 110.9 263.4
+t0-main-a   3.3 | undefined | 41.7 77.4
+t0-before-b   4.1 | 24.4 | 51.3 64.1
+t0-main-b   3.8 | 10.5 | 66.5 84.2
+t0-before-c   3.7 | 14.7 | 71.7 182.2
+t0-main-c   3.4 | 9.7 | 57.6 80.2
+t0-before-d   11.9 | 41.0 | 42.7 81.3
+t0-main-d   3.9 | 17.4 | 65.4 138.6
+t0-before-e   10.1 | 452.9 | 40.5 96.3
+t0-main-e   10.6 | 15.3 | 62.7 175.2
+(run a of each tree = first boot after the server started; paddle of main-a recorded 0 frames)
+riding median of medians, runs b-e: before 42.7-51.3 (71.7 one slow run) -> ~47; main 57.6-66.5 -> ~64. p90: before 64-182, main 80-175: the 60 ms p90 bar is not met by the pre-merge tree either on this machine today.
+
+## FOCUSED per-pass table, riding, per frame (self ms/frame averaged over runs b,d,e before vs c,d,e main)
+A runs: med 51.3 p90 64.1 cpu/frame 51.7 | med 42.7 p90 81.3 cpu/frame 53.6 | med 40.5 p90 96.3 cpu/frame 58.2
+B runs: med 57.6 p90 80.2 cpu/frame 59.2 | med 65.4 p90 138.6 cpu/frame 80.7 | med 62.7 p90 175.2 cpu/frame 92.5
+cpu ms/frame A 54.5  B 77.5  diff 23.0
+  A ms/f   B ms/f    diff  function
+    4.81     8.51    3.70  waveAtCrest src/breaker/setWaveModel.ts
+    5.64     8.96    3.31  sampleOnset src/breaker/reefField.ts
+    4.13     6.00    1.88  sampleInside src/breaker/reefField.ts
+    1.70     3.39    1.69  lifecycle src/breaker/breaking.ts
+    0.09     1.39    1.31  curveSamples src/breaker/wombProfile.ts
+    2.54     3.43    0.89  crestAt src/breaker/setWaveModel.ts
+    1.50     2.32    0.82  (anon) src/breaker/crestTrace.ts
+    4.53     5.32    0.79  (program) 
+    0.91     1.63    0.71  walk src/breaker/wombProfile.ts
+    0.68     0.03   -0.65  fillSections src/breaker/crestTrace.ts
+    1.12     1.71    0.59  (garbage collector) 
+    1.20     0.65   -0.55  hermitePoint src/breaker/wombProfile.ts
+    0.61     1.14    0.53  onsetUntil src/breaker/breaking.ts
+    0.46     0.99    0.53  onsetPsi src/breaker/breaking.ts
+    0.00     0.50    0.50  waveEnvelope src/breaker/setWaveModel.ts
+    0.47     0.94    0.48  sampleWeight src/breaker/wombSection.ts
+    1.22     1.68    0.46  breakPoint src/breaker/breaking.ts
+    0.37     0.81    0.44  onsetLevel src/breaker/breaking.ts
+    0.01     0.42    0.42  phaseXi src/breaker/setWaveModel.ts
+    0.41     0.02   -0.39  onsetDelay src/breaker/breaking.ts
+    0.40     0.77    0.36  profileKnots src/breaker/wombProfile.ts
+    0.88     1.24    0.36  sumWaves src/breaker/setWaveModel.ts
+    0.27     0.63    0.36  stageCurves src/breaker/breaking.ts
+    0.01     0.36    0.35  smoothstep src/math/smoothstep.ts
+    0.69     1.03    0.34  onsetTime src/breaker/breaking.ts
+    0.36     0.70    0.34  keyVelocity src/breaker/wombProfile.ts
+    1.13     0.80   -0.32  (anon) src/breaker/wombProfile.ts
+    0.34     0.62    0.28  sharpenDropSlope src/breaker/breaking.ts
+    0.05     0.32    0.26  waveHeightAt src/breaker/setWaveModel.ts
+    0.33     0.59    0.26  sharpenDrop src/breaker/breaking.ts
+
+## inclusive ms/frame, riding (same runs)
+  A ms/f   B ms/f    diff  function (inclusive)
+   54.49    77.46   22.97  (root) 
+   48.56    70.18   21.62  frame src/app/App.ts
+   48.62    70.22   21.60  update nm/.vite/deps/three_webgpu.js
+   22.94    42.31   19.37  sectionFrameKnots src/breaker/wombSection.ts
+   18.59    37.17   18.58  at src/breaker/wombSection.ts
+   23.52    41.88   18.36  at src/ride/sectionWater.ts
+   24.61    42.81   18.20  (anon) src/ride/sectionWater.ts
+   17.09    34.99   17.90  sheet src/app/App.ts
+   22.50    39.93   17.44  lazyOf src/ride/sectionWater.ts
+   22.23    39.55   17.32  sectionSamples src/breaker/wombSection.ts
+   14.39    30.99   16.60  sumWaves src/breaker/setWaveModel.ts
+   17.60    33.92   16.32  step src/ride/RideSession.ts
+   17.52    33.83   16.31  stepRide src/ride/ridePhysics.ts
+   18.26    34.26   16.00  sheet src/ride/sectionWater.ts
+   18.36    34.29   15.92  waterAt src/ride/water.ts
+   11.21    25.23   14.02  (anon) src/breaker/wombSection.ts
+   11.88    24.54   12.66  sum src/app/App.ts
+   12.99    23.94   10.95  crestAt src/breaker/setWaveModel.ts
+   11.64    22.36   10.72  boardSurface src/ride/ridePhysics.ts
+    1.07    10.40    9.33  waveAt src/breaker/setWaveModel.ts
+    7.60     0.11   -7.49  roundedCurl src/breaker/wombSection.ts
+    7.94    14.71    6.77  waveAtCrest src/breaker/setWaveModel.ts
+    7.51    11.91    4.40  sprayBirthsAt src/app/App.ts
+    7.77    12.16    4.39  advance src/whitewater/SprayParticles.ts
+    5.77    10.15    4.39  sectionFrame src/breaker/wombSection.ts
+    7.78    12.16    4.39  stepSpray src/app/App.ts
+    7.50    11.88    4.38  emittersAt src/app/App.ts
+    7.44    11.81    4.37  breakEmitters src/whitewater/sprayEmitters.ts
+    7.74    12.02    4.28  (anon) src/app/App.ts
+    4.85     8.46    3.61  base src/whitewater/sprayEmitters.ts
+
+## Deterministic (Node, no GPU): tools/_rideCost.ts --ft=7 --period=15 --s=14, the same file run in each tree
+## (ridecost-before.txt, ridecost-main.txt): the rideOnSections harness on the worker's coast-seeded field, per 60 Hz step
+before: riding steps 487: step ms median 67.6 (run alone; 65.8 in the run with g counts); sums/step mean 669 (on the sections 830-1165); curves/step 4.3, at curlWeight g = 1: 3.0; sums per curve 157
+main:   riding steps 510: step ms median 105.3 (run alone; 116.4 run beside the other tree); sums/step mean 1434 (1350-1540);               curves/step 7.4, at curlWeight g = 1: 0.0; sums per curve 193
+(the trace's own ms is the same in both trees, ~17 ms median: the ribbon's trace did not grow)

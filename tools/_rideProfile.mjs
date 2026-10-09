@@ -8,13 +8,15 @@
 // (after the game's step), so an input still lands on a frame boundary.
 // --stall (ride-stall Task 2): the page's frame log on and GPUDevice creation hooks, saved per pass as <prefix>frames-*.json
 // and <prefix>creates-*.json. --trace: Electron content tracing of the paddling and riding passes, one <prefix>ride.trace.json.
+// --counts (shelf-polish Task 1): precise coverage call counts over the riding pass, per frame, for src/ functions (the
+// pass's frame times are then not comparable: coverage slows the page), in the report and <prefix>counts.txt.
 import { app, BrowserWindow, contentTracing } from 'electron';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base') ?? 'http://localhost:5173/', out = arg('out') ?? 'prof-';
 const ft = Number(arg('ft') ?? 6), experience = arg('experience') ?? 'intermediate';
 const simT = arg('sim-t') === undefined ? null : Number(arg('sim-t'));
-const stall = process.argv.includes('--stall'), trace = process.argv.includes('--trace');
+const stall = process.argv.includes('--stall'), trace = process.argv.includes('--trace'), counts = process.argv.includes('--counts');
 const CAM_S = 6;
 app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -168,11 +170,26 @@ app.whenReady().then(async () => {
   const focusRide = focusNow();
   const rideStart = await win.webContents.executeJavaScript('window.liquidDreams.clock.simTime');
   // The frame stats start after Profiler.start returns: its own 160-310 ms renderer task was frame #1 of every pass.
+  if (counts) { await dbg.sendCommand('Profiler.startPreciseCoverage', { callCount: true, detailed: false }); await dbg.sendCommand('Profiler.takePreciseCoverage'); }
   await dbg.sendCommand('Profiler.start');
   await win.webContents.executeJavaScript('window.__ft.dts = []; window.__ft.on = true');
   await stallBegin();
   await sleep(5000);
   const pc = (await dbg.sendCommand('Profiler.stop')).profile;
+  let countReport = '';
+  if (counts) {
+    const cov = (await dbg.sendCommand('Profiler.takePreciseCoverage')).result;
+    await dbg.sendCommand('Profiler.stopPreciseCoverage');
+    const nf = (await win.webContents.executeJavaScript('window.__ft.dts.length')) || 1, rows = [];
+    for (const sc of cov) {
+      if (!/\/src\//.test(sc.url)) continue;
+      const file = sc.url.replace(/^.*\/src\//, 'src/').replace(/\?.*$/, '');
+      for (const fn of sc.functions) { const c = fn.ranges[0]?.count ?? 0; if (c > 0) rows.push([c / nf, `${fn.functionName || '(anon)'} ${file}`]); }
+    }
+    rows.sort((a, b) => b[0] - a[0]);
+    countReport = [`-- calls per frame over the riding pass (${nf} frames)`, ...rows.slice(0, 60).map(([c, k]) => `${c.toFixed(0).padStart(9)}  ${k}`)].join('\n');
+    writeFileSync(out + 'counts.txt', countReport);
+  }
   await win.webContents.executeJavaScript('window.__ft.on = false');
   const r1 = await win.webContents.executeJavaScript('window.__ride');
   const fc = await frames(`riding (phase ${r0.phase} -> ${r1.phase})`);
@@ -184,7 +201,7 @@ app.whenReady().then(async () => {
   await traceStop('ride');
 
   const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s${r0.phase === 'ride' ? '' : ` (riding pass began in phase ${r0.phase})`} ending at x, z ${where} (${ft} ft, ${experience}); window at cam: ${focusCam}; at riding: ${focusRide}; at the end: ${focusEnd}; recorder after Profiler.start`;
-  const report = [times, `# stall log ${stall ? 'on' : 'off'}, trace ${trace ? 'on' : 'off'}`, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding')].join('\n');
+  const report = [times, `# stall log ${stall ? 'on' : 'off'}, trace ${trace ? 'on' : 'off'}`, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding'), countReport].join('\n');
   writeFileSync(out + 'report.txt', report);
   writeFileSync(out + 'cam.cpuprofile', JSON.stringify(pa));
   writeFileSync(out + 'paddle.cpuprofile', JSON.stringify(pb));
