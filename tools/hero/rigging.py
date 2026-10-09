@@ -88,6 +88,9 @@ def bind(rig, body, meshes, rigid):
         bpy.ops.object.datalayout_transfer(modifier=dt.name)
         bpy.ops.object.modifier_move_to_index(modifier=dt.name, index=0)
         bpy.ops.object.modifier_apply(modifier=dt.name)
+        mw = o.matrix_world.copy()
+        o.parent = rig  # the rig object's turn and drop carry it, as they carry the body
+        o.matrix_world = mw
         arm = o.modifiers.new("rig", "ARMATURE")
         arm.object = rig
         arm.use_deform_preserve_volume = True
@@ -148,7 +151,7 @@ def _n(*v):
 POSES = {
     # Prone, paddling: chest up, head up, right arm reaching forward to the water, left arm finishing its stroke.
     "paddle": {"turn": 90, "lift": 0.0, "bones": {
-        "spine_02": _n(0, 0.18, 1), "spine_03": _n(0, 0.3, 1), "neck": _n(0, 0.55, 1), "head": _n(0, 0.75, 1),
+        "spine_02": _n(0, 0.3, 1), "spine_03": _n(0, 0.5, 1), "neck": _n(0, 1.0, 0.8), "head": _n(0, 1.2, 0.6),
         "upperarm_r": _n(-0.25, -0.75, 0.7), "forearm_r": _n(-0.15, -0.95, 0.4), "hand_r": _n(-0.1, -1, 0.2),
         "upperarm_l": _n(0.3, -0.85, -0.35), "forearm_l": _n(0.15, -0.35, -0.95), "hand_l": _n(0.1, -0.1, -1),
         "thigh_l": _n(0.05, 0.05, -1), "shin_l": _n(0.03, 0.12, -1), "foot_l": _n(0.0, 0.5, -1),
@@ -158,8 +161,8 @@ POSES = {
         "spine_01": _n(0, 0.2, 1), "spine_02": _n(0, 0.32, 1), "spine_03": _n(0, 0.42, 1), "neck": _n(0, 0.5, 1), "head": _n(0, 0.7, 1),
         "upperarm_l": _n(0.18, -1, -0.25), "forearm_l": _n(0.1, -1, -0.45), "hand_l": _n(0.05, -0.3, -1),
         "upperarm_r": _n(-0.18, -1, -0.25), "forearm_r": _n(-0.1, -1, -0.45), "hand_r": _n(-0.05, -0.3, -1),
-        "thigh_l": _n(0.25, -0.95, -0.35), "shin_l": _n(0.2, 0.5, -0.85), "foot_l": _n(0.2, -1, -0.3),
-        "thigh_r": _n(-0.2, -0.55, -0.85), "shin_r": _n(-0.15, 0.85, -0.55), "foot_r": _n(-0.1, -0.3, -1)}},
+        "thigh_l": _n(0.3, -1, 0.05), "shin_l": _n(0.15, 0.25, -1), "foot_l": _n(0.2, -1, -0.2),
+        "thigh_r": _n(-0.12, 0.3, -1), "shin_r": _n(-0.08, 0.45, -1), "foot_r": _n(0, 0.4, -1)}},
     # A low bottom turn (regular foot: left foot to the nose, +x): knees deep, torso leaning in, arms out for balance.
     "bottomTurn": {"turn": 0, "lift": None, "bones": {
         "spine_01": _n(0.1, -0.2, 1), "spine_02": _n(0.18, -0.32, 1), "spine_03": _n(0.22, -0.38, 1), "neck": _n(0.2, -0.2, 1), "head": _n(0.25, 0.0, 1),
@@ -175,7 +178,7 @@ POSES = {
         "thigh_l": _n(0.45, -0.85, -0.3), "shin_l": _n(0.15, 0.55, -0.85), "foot_l": _n(0.35, -1, -0.05),
         "thigh_r": _n(-0.25, -0.75, -0.65), "shin_r": _n(-0.3, 0.8, -0.35), "foot_r": _n(-0.25, -1, 0.2)}},
     # The duck dive: head and shoulders driving down, arms straight pushing the nose under, right knee on the tail.
-    "duckDive": {"turn": 118, "lift": 0.0, "bones": {
+    "duckDive": {"turn": 105, "lift": 0.0, "bones": {
         "spine_02": _n(0, -0.15, 1), "spine_03": _n(0, -0.2, 1), "neck": _n(0, -0.1, 1), "head": _n(0, 0.2, 1),
         "upperarm_l": _n(0.2, -1, 0.2), "forearm_l": _n(0.12, -1, 0.35), "hand_l": _n(0.1, -0.5, 0.8),
         "upperarm_r": _n(-0.2, -1, 0.2), "forearm_r": _n(-0.12, -1, 0.35), "hand_r": _n(-0.1, -0.5, 0.8),
@@ -219,7 +222,14 @@ def pose(rig, name, body):
     me = ev.to_mesh()
     P = np.array([(ev.matrix_world @ v.co)[:] for v in me.vertices])
     ev.to_mesh_clear()
-    rig.matrix_world = Matrix.Translation((0, 0, 0.065 - P[:, 2].min())) @ rig.matrix_world
+    if spec["turn"] != 0:
+        # Prone: the chest and belly on the deck (the hands reach below it into the water).
+        idx = {body.vertex_groups[g].index for g in ("spine_02", "spine_03", "pelvis") if g in body.vertex_groups}
+        torso = [v.index for v in body.data.vertices if any(e.group in idx and e.weight > 0.5 for e in v.groups)]
+        floor = P[torso, 2].min() - 0.01
+    else:
+        floor = P[:, 2].min()
+    dz = 0.075 - floor
+    rig.matrix_world = Matrix.Translation((0, 0, dz)) @ rig.matrix_world
     bpy.context.view_layer.update()
-    lo, hi = P.min(0) + np.array([0, 0, 0.065 - P[:, 2].min()]), P.max(0) + np.array([0, 0, 0.065 - P[:, 2].min()])
-    return lo, hi
+    return P.min(0) + np.array([0, 0, dz]), P.max(0) + np.array([0, 0, dz])

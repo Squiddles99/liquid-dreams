@@ -129,5 +129,5 @@ if pose_names:
         size = max(hi - lo) + 0.4
         cam.data.lens = 50
         cam.data.dof.use_dof = False
-        studio.shoot(cam, os.path.join(out_dir, "renders", f"{name}_pose_{pn}.png"), (c[0], c[1], c[2]), 35 if not prone else 60,
-                     size * 1.25 / (36 / 50) * 0.75, 50, 1600, 1200, pitch_deg=18 if not prone else 28)
+        studio.shoot(cam, os.path.join(out_dir, "renders", f"{name}_pose_{pn}.png"), (c[0], c[1], c[2]), 35 if not prone else 75,
+                     size * 1.25 / (36 / 50) * 0.75, 50, 1600, 1200, pitch_deg=18 if not prone else 12)

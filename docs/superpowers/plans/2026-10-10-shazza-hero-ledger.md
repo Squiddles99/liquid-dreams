@@ -29,3 +29,11 @@
   blended by `faceproj` (front-facing, below the hairline). The likeness jump was the largest of the night; the light
   painted into it is soft and frontal. Also: authored `smileSoft` key (MPFB's smile was a grimace), relaxed lids
   (blink 0.1), lash-line tint, iris 34°. Sheets gates/gate1b-*-r2.jpg.
+- Task 11–12 round 1 (Gate 1c r1): `rigging.py` adds twist bones (upper arm, forearm, thigh, shin; weights split
+  along each bone; forearm/shin copy half the hand's/foot's roll), skins the bikini from the body's weights, parents
+  hair/eyes rigidly (head / spine_03), volume-preserving skinning for the renders; a plain 6'0" board; five blocking
+  poses aimed bone by bone (`--poses paddle,popup,bottomTurn,tube,duckDive`). Deformation holds (no candy-wrapper).
+  Known gaps: the pop-up's front leg hangs off the rail and the duck dive's face goes through the deck (pose authoring,
+  not rig); the braids are rigid to the chest (bone chains + gravity not built); pose-space correctives not built
+  (volume preservation stands in for the renders; the game needs them, sub-project 5); game-variant glb export
+  (Task 11's second half) not done. Sheet gates/gate1c-r1.jpg.
