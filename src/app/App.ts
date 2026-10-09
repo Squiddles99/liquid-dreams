@@ -25,7 +25,7 @@ import { DEFAULT_SOUND_PARAMS, type SoundParams, normalizeSoundParams } from '..
 import { SoundSystem } from '../sound/SoundSystem';
 import { ticksToHear } from '../sound/hits';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
-import { type CoastParams, DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
+import { type CoastParams, DEFAULT_COAST_PARAMS, normalizeCoastParams } from '../seabed/coastFeatures';
 import { SetWaves } from '../breaker/SetWaves';
 import { ReefFlow } from '../breaker/flowNodes';
 import { type SetWaveResult, type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
@@ -424,6 +424,7 @@ export class App {
   private spectrumKey = '';
   private spectrumTimer: number | undefined;
   private reefTimer: number | undefined;
+  private coastTimer: number | undefined;
   /** The peel slider re-bakes the field once you stop dragging (as the reef sliders do). */
   private peelTimer: number | undefined;
   private saveTimer: number | undefined;
@@ -526,7 +527,7 @@ export class App {
     this.panel = new DevPanel(
       {
         conditions: this.conditions, spectrum: this.spectrumParams, sim: this.simParams, water: this.waterParams, atmosphere: this.atmosphereParams,
-        picture: this.pictureParams, lookout: this.lookout.light, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, shallow: this.shallowParams,
+        picture: this.pictureParams, lookout: this.lookout.light, frameLimiter: this.frameLimiter, sets: this.setParams, reef: this.reefParams, coast: this.coastParams, shallow: this.shallowParams,
         overlays: this.overlays, breaking: this.breakParams, foam: this.foamParams, spray: this.sprayParams, impact: this.impactParams, land: this.landParams, surf: this.surfParams, bombie: this.bombieParams, sound: this.soundParams, soundStatus: this.sound.status, surfer: this.surferParams, surferStatus: this.surferStand.status, setStatus: this.setStatus, settingsMode: this.settingsMode,
       },
       {
@@ -549,6 +550,7 @@ export class App {
           this.scheduleParticleReplay();
         },
         onReef: () => this.scheduleReefRebuild(),
+        onCoast: () => this.scheduleCoastRebuild(),
         onShallow: () => this.surfaceModel.setParams(this.shallowParams),
         onOverlays: () => {
           this.oceanSurface.setOverlays(this.overlays);
@@ -1586,6 +1588,15 @@ export class App {
     if (!force && key === this.fieldKey) return;
     this.fieldKey = key;
     this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M, ...(this.coastOn ? { coastParams: { ...this.coastParams } } : {}) });
+  }
+
+  /** Coast sliders: once you stop dragging, the worker rebuilds the coast map and re-solves (its key carries the dials). */
+  private scheduleCoastRebuild(): void {
+    clearTimeout(this.coastTimer);
+    this.coastTimer = window.setTimeout(() => {
+      normalizeCoastParams(this.coastParams);
+      this.requestFieldIfNeeded(false);
+    }, REEF_REBUILD_DEBOUNCE_MS);
   }
 
   /** Reef sliders rebuild the bathymetry (~2M cells) once you stop dragging, then re-solve the field on it. */

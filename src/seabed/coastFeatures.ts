@@ -22,8 +22,10 @@ export interface CoastParams {
 
 export const DEFAULT_COAST_PARAMS: CoastParams = {
   lefthandersLedgeM: 5,
-  bombieTopM: 5,
-  bombieRadiusM: 60,
+  // 6.5 m and 110 m (Task 4's maps; spec: 5 m, 60 m): a 6 ft set (3.2 m) passes over it, 8 ft stands up on it, and at
+  // 10 ft it breaks along ≥ 80 m of crest, an A-frame rather than a spot.
+  bombieTopM: 6.5,
+  bombieRadiusM: 110,
   ellensbrookBarM: 2,
   ellensbrookBarOffM: 80,
 };
@@ -67,13 +69,22 @@ export const ELLENSBROOK_END_FADE_M = 50;
  */
 export const BREAK_FOOTPRINTS: Readonly<Record<'lefthanders' | 'womb' | 'bombie' | 'ellensbrook', readonly Pt[]>> = {
   lefthanders: [[-430, -1480], [0, -1480], [-60, -1860], [-470, -1860]],
-  womb: [[-400, -450], [250, -450], [250, 300], [-400, 300]],
+  // The reef map, and 120 m of beach beyond its ends where the coast keeps the Womb's own beach profile (coastMap.wombHalo;
+  // the game's shore-break before the coast map).
+  womb: [[-400, -570], [500, -570], [500, 420], [-400, 420]],
   bombie: Array.from({ length: 16 }, (_, i): Pt => {
     const a = (i / 16) * 2 * Math.PI;
     return [BOMBIE_CENTRE[0] + 200 * Math.cos(a), BOMBIE_CENTRE[1] + 200 * Math.sin(a)];
   }),
   ellensbrook: [[150, 880], [520, 880], [520, 1280], [150, 1280]],
 };
+
+/**
+ * The approach to Cobblestones (2.2 km north, out of this segment's scope: spec §5): north of Lefthanders' footprint the
+ * survey's shelf turns west and focuses a south-westerly about twice over 9–11 m of water, so from 8 ft a set stands up
+ * there. Not one of the four breaks; reported apart from a closeout (Task 4).
+ */
+export const COBBLESTONES_APPROACH: readonly Pt[] = [[-1500, -2100], [-560, -2100], [-560, -1840], [-1500, -1840]];
 
 export function insidePolygon(px: number, pz: number, poly: readonly Pt[]): boolean {
   let inside = false;
