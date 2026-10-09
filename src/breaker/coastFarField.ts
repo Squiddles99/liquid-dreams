@@ -4,7 +4,7 @@ import { breakingDepth } from './breaking';
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 
-/** The map's west edge: the reference water (30 m) the set heights are defined in. */
+/** The map's west edge: with no coast, the water (15 m) the swell dial is read in (FarField.refDepthM). */
 export const FAR_X0 = -400;
 export const FAR_X1 = 250;
 export const FAR_DX = 0.5;
@@ -17,11 +17,17 @@ export interface FarField {
   periodS: number;
   fromDeg: number;
   tideM: number;
-  /** Travel direction in the reference water. */
+  /** Travel direction in the reference water (refDepthM). */
   dirX: number;
   dirZ: number;
   /** Snell's invariant: the slowness component along the coast (s/m), the same at every x. */
   p: number;
+  /** The water (m, tide in) the swell dial is read in, a buoy's (womb-retune spec §2, ruling C): amp is 1 there and the
+   * swell travels from fromDeg there. 15 m (FAR_X0's) on its own; with the coast, the coast map's depth at the coast
+   * grid's west edge on the Womb's row. */
+  refDepthM: number;
+  /** cg·cosθ at refDepthM: the energy flux every amp is measured against. */
+  fluxRef: number;
   x0: number;
   dx: number;
   count: number;
@@ -43,18 +49,20 @@ const depthWithTide = (x: number, tideM: number): number => Math.max(depthBg(x) 
  * Exact 1D refraction and shoaling over the reef-free coast (depth varies with x only):
  * ∂τ/∂z = p (constant), ∂τ/∂x = ±√(s(x)² − p²), and A²·cg·cosθ is conserved.
  */
-export function computeFarField(periodS: number, fromDeg: number, tideM: number): FarField {
+export function computeFarField(periodS: number, fromDeg: number, tideM: number, opts: { refDepthM?: number } = {}): FarField {
   const omega = (2 * Math.PI) / periodS;
   const d = travelDirectionXZ(fromDeg);
-  const hRef = depthWithTide(FAR_X0, tideM);
-  const kRef = waveNumber(omega, hRef);
+  // The swell as the dial gives it (womb-retune spec §2, Andrew's ruling C 2026-10-09: a buoy's reading): height, period
+  // AND direction in `refDepthM`'s water, the coast seed's with the coast; FAR_X0's 15 m without (`?coast=off`).
+  const refDepthM = opts.refDepthM ?? depthWithTide(FAR_X0, tideM);
+  const kRef = waveNumber(omega, refDepthM);
   const sRef = kRef / omega;
   const p = d.z * sRef;
   const sign = d.x >= 0 ? 1 : -1;
   const count = Math.round((FAR_X1 - FAR_X0) / FAR_DX) + 1;
   const tau = new Float64Array(count), dTauDx = new Float32Array(count), amp = new Float32Array(count);
   const hmin = new Float32Array(count), k = new Float32Array(count), depth = new Float32Array(count);
-  const fluxRef = groupSpeed(omega, kRef, hRef) * Math.max(Math.abs(d.x), MIN_COS);
+  const fluxRef = groupSpeed(omega, kRef, refDepthM) * Math.max(Math.abs(d.x), MIN_COS);
   const shallowEnd = depthWithTide(FAR_X1, tideM);
   let acc = 0;
   for (let i = 0; i < count; i++) {
@@ -72,7 +80,7 @@ export function computeFarField(periodS: number, fromDeg: number, tideM: number)
     amp[i] = Math.min(AMP_CAP, Math.sqrt(fluxRef / (groupSpeed(omega, ki, h) * cosTheta)));
     hmin[i] = sign > 0 ? h : Math.min(h, shallowEnd);
   }
-  return { omega, periodS, fromDeg, tideM, dirX: d.x, dirZ: d.z, p, x0: FAR_X0, dx: FAR_DX, count, tau, dTauDx, amp, hmin, k, depth, tauOffset: 0 };
+  return { omega, periodS, fromDeg, tideM, dirX: d.x, dirZ: d.z, p, refDepthM, fluxRef, x0: FAR_X0, dx: FAR_DX, count, tau, dTauDx, amp, hmin, k, depth, tauOffset: 0 };
 }
 
 /** The far field at any world point: interpolated across the coast, linear extrapolation beyond the table. */

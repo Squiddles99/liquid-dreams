@@ -52,8 +52,7 @@ export interface CoastField {
  */
 function rowSeeds(bed: Bathymetry, far: FarField, omega: number, tideM: number, refractFloorM?: number): (x: number, z: number) => FieldSample {
   const g = bed.grid, cache = new Map<number, { tau: Float64Array; dirX: Float32Array; dirZ: Float32Array; amp: Float32Array; hmin: Float32Array; k: Float32Array; depth: Float32Array }>();
-  const hRef = far.depth[0], kRef = far.k[0];
-  const fluxRef = groupSpeed(omega, kRef, hRef) * Math.max(Math.abs(far.dirX), MIN_COS);
+  const fluxRef = far.fluxRef;
   const sign = far.dirX >= 0 ? 1 : -1, p = far.p;
   const row = (r: number) => {
     let v = cache.get(r);
@@ -103,6 +102,15 @@ function solveCoast(bed: Bathymetry, far: FarField, omega: number, req: CoastFie
 let flatCache: { key: string; s: ReturnType<typeof solveCoast> } | null = null;
 
 /**
+ * The water the swell dial is read in (womb-retune spec §2): the coast map's depth (tide in) where the coast field is
+ * seeded, at the grid's west edge on the Womb's row (z 0): the offshore swell as a buoy or a forecast gives it.
+ */
+export function seedDepth(bed: Bathymetry, tideM: number): number {
+  const g = bed.grid, r = Math.min(g.nz - 1, Math.max(0, Math.round((0 - g.z0) / g.cellM)));
+  return Math.max(tideM - bed.bed[r * g.nx], MIN_DEPTH_M);
+}
+
+/**
  * The coast field (spec §3c): the shared eikonal + flux march over the coast map, seeded from the far field.
  *
  * Alongside the Womb (coastMap.wombHalo) the coast's beach is the 1-D profile's, whose exact solution the far field is,
@@ -112,9 +120,9 @@ let flatCache: { key: string; s: ReturnType<typeof solveCoast> } | null = null;
  */
 export function computeCoastField(req: CoastFieldRequest): CoastField {
   const omega = (2 * Math.PI) / req.periodS;
-  const far = computeFarField(req.periodS, req.fromDeg, req.tideM);
+  const far = computeFarField(req.periodS, req.fromDeg, req.tideM, { refDepthM: seedDepth(req.bed, req.tideM) });
   const s = solveCoast(req.bed, far, omega, req);
-  const key = `${req.bed.grid.nx}x${req.bed.grid.nz}:${req.periodS}:${req.fromDeg}:${req.tideM}:${req.refractFloorM ?? 0}`;
+  const key = `${req.bed.grid.nx}x${req.bed.grid.nz}:${req.periodS}:${req.fromDeg}:${req.tideM}:${req.refractFloorM ?? 0}:${far.refDepthM}`;
   if (flatCache?.key !== key) flatCache = { key, s: solveCoast(flatCoastBed(req.bed), far, omega, req) };
   const flat = flatCache.s;
   const g = s.grid, n = g.nx * g.nz;
