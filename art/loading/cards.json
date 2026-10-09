@@ -88,5 +88,185 @@
   "latin": "Templetonia retusa",
   "fact": "Its bright red pea flowers light up the limestone cliffs in winter.",
   "noongar": "people call the flower inji, and Injidup, one of the coast’s best-known surf breaks, takes its name from it."
+ },
+ "sea-fauna-humpback": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Humpback whale",
+  "common": "",
+  "latin": "Megaptera novaeangliae",
+  "fact": "They pass the Capes heading north to the Kimberley from June to August, and come back south from September to November. Mothers with tiny calves rest in Geographe Bay before the long swim to Antarctica.",
+  "noongar": "names for whales include mamang."
+ },
+ "sea-fauna-southern-right": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Southern right whale",
+  "common": "",
+  "latin": "Eubalaena australis",
+  "fact": "Mothers bring their calves into the sheltered water of Flinders Bay at Augusta each winter. No dorsal fin, a V-shaped blow, and pale crusty patches on the head that tell one whale from another."
+ },
+ "sea-fauna-dolphins": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Bottlenose dolphins",
+  "common": "",
+  "latin": "Tursiops",
+  "fact": "Families of dolphins play in the surf along the Capes, riding the same waves as the crew.",
+  "noongar": "people call dolphins kwilena, and fished together with them."
+ },
+ "sea-fauna-stingray": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Smooth stingray",
+  "common": "Short-tail stingray",
+  "latin": "Bathytoshia brevicaudata",
+  "fact": "One of the biggest stingrays in the world: more than 2 metres across and up to 350 kilograms. At Hamelin Bay they glide right into the shallows.",
+  "noongar": "names for stingrays include bamba."
+ },
+ "sea-fauna-fur-seal": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Long-nosed fur seal",
+  "common": "",
+  "latin": "Arctocephalus forsteri",
+  "fact": "Sealers wiped them out on the islands off Cape Leeuwin in the 1850s. In 1982, about 130 years later, they came back. They dive deeper than any other fur seal, past 300 metres.",
+  "noongar": "people call the seal manyil."
+ },
+ "sea-fauna-port-jackson": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Port Jackson shark",
+  "common": "",
+  "latin": "Heterodontus portusjacksoni",
+  "fact": "A gentle reef shark that crunches sea urchins and shellfish with flat back teeth. It lays spiral, corkscrew-shaped egg cases that wedge into cracks in the reef."
+ },
+ "sea-fauna-abalone": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Roe’s abalone",
+  "common": "",
+  "latin": "Haliotis roei",
+  "fact": "Lives on the shallow limestone reefs right where the waves break, grazing on seaweed at night. Perth’s abalone season lasts just a few hours a year, and thousands crowd the reef for it."
+ },
+ "sea-fauna-cuttlefish": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Giant cuttlefish",
+  "common": "Giant Australian cuttlefish",
+  "latin": "Ascarosepion apama",
+  "fact": "Changes colour in an instant, and raises its skin into bumps and frills to copy rock, sand or weed. It grows to about a metre long, yet lives only two to four years."
+ },
+ "sea-fauna-leafy-seadragon": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Leafy seadragon",
+  "common": "",
+  "latin": "Phycodurus eques",
+  "fact": "Most of WA’s sightings are along this coast, from Busselton to Augusta. Its leafy flaps make it look like drifting weed. The female lays her eggs under the male’s tail, and he carries them until they hatch."
+ },
+ "sea-fauna-rock-lobster": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Western rock lobster",
+  "common": "",
+  "latin": "Panulirus cygnus",
+  "fact": "Its larvae drift 9 to 11 months far out in the Indian Ocean before swimming back to the reef. On the Capes, no lobster pots are allowed in the surfing zones."
+ },
+ "sea-fauna-salmon": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Australian salmon",
+  "common": "Western Australian salmon",
+  "latin": "Arripis truttaceus",
+  "fact": "Not a true salmon. They grow up in South Australia and Tasmania, then swim west to gather between Cape Leeuwin and Busselton in late autumn and early winter to spawn.",
+  "noongar": "people call the salmon ngari. Their yearly run matters so much to the Wadandi people that Ngari Capes Marine Park is named after it."
+ },
+ "sea-fauna-herring": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Australian herring",
+  "common": "Tommy ruff",
+  "latin": "Arripis georgianus",
+  "fact": "Not a true herring. Its eggs and larvae drift south and east along the south coast, and the grown fish swim back west to spawn. A classic catch off the rocks and beaches."
+ },
+ "sea-fauna-bronze-whaler": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Bronze whaler",
+  "common": "Copper shark",
+  "latin": "Carcharhinus brachyurus",
+  "fact": "A slow-growing shark: it takes about 16 years to grow up, and a female can live past 30. It eats fish and squid, and even jellyfish."
+ },
+ "sea-fauna-white-shark": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "White shark",
+  "common": "White pointer",
+  "latin": "Carcharodon carcharias",
+  "fact": "Warm-bodied: it can keep itself up to 14 °C warmer than the sea around it. At Margaret River’s Main Break, a receiver on the seabed hears tagged sharks and sends alerts to the SharkSmart WA app."
+ },
+ "sea-fauna-tiger-shark": {
+  "kicker": "Sea life · Cape to Cape",
+  "name": "Tiger shark",
+  "common": "",
+  "latin": "Galeocerdo cuvier",
+  "fact": "A tropical shark that visits cooler southern water now and then. Its stripes are boldest when it’s young, and often fade once it grows past about 3 metres."
+ },
+ "sea-flora-kelp": {
+  "kicker": "Sea flora · Cape to Cape",
+  "name": "Golden kelp",
+  "common": "",
+  "latin": "Ecklonia radiata",
+  "fact": "The backbone of the Great Southern Reef, kelp forest that runs 8,000 km from Kalbarri round to Brisbane. Along the Capes, some kelp clones itself, its fronds growing new holdfasts that grip the reef."
+ },
+ "sea-flora-posidonia": {
+  "kicker": "Sea flora · Cape to Cape",
+  "name": "Seagrass",
+  "common": "Strapweed",
+  "latin": "Posidonia",
+  "fact": "Not a seaweed but a flowering plant. Outside Shark Bay, Geographe Bay holds WA’s biggest seagrass meadows: nurseries for fish that also lock away carbon."
+ },
+ "sea-flora-paddle-weed": {
+  "kicker": "Sea flora · Cape to Cape",
+  "name": "Paddle weed",
+  "common": "Dugong grass",
+  "latin": "Halophila ovalis",
+  "fact": "A tiny seagrass with oval leaves: a flowering plant, with separate male and female plants. Up north it’s a favourite food of dugongs, which is why it’s also called dugong grass."
+ },
+ "sea-flora-asparagopsis": {
+  "kicker": "Sea flora · Cape to Cape",
+  "name": "Harpoon weed",
+  "common": "Asparagopsis",
+  "latin": "Asparagopsis armata",
+  "fact": "Barbed branches hook it onto other seaweeds. First described from Garden Island, WA, it holds a chemical that cuts the methane cattle burp when a pinch is added to their feed."
+ },
+ "sea-flora-coralline": {
+  "kicker": "Sea flora · Cape to Cape",
+  "name": "Coralline algae",
+  "common": "Branching coralline",
+  "latin": "Corallinales",
+  "fact": "A seaweed that builds stone into its walls. The branching kinds bend at soft joints, like a string of beads. One kind grows on seagrass, and was collected at Canal Rocks near Yallingup."
+ },
+ "sea-flora-sirophysalis": {
+  "kicker": "Sea flora · Cape to Cape",
+  "name": "Three-node seaweed",
+  "common": "",
+  "latin": "Sirophysalis trinodis",
+  "fact": "Probably the first seaweed Europeans collected in Australia: William Dampier picked it up off the WA coast in 1699, and his specimen is still kept at Oxford."
+ },
+ "sea-flora-laurencia": {
+  "kicker": "Sea flora · Cape to Cape",
+  "name": "Laurencia",
+  "common": "",
+  "latin": "Laurencia",
+  "fact": "A red seaweed armed with bitter chemicals that put grazers off, though sea hares eat it anyway. In Hawaii one kind is used as a peppery seasoning."
+ },
+ "sea-flora-sargassum": {
+  "kicker": "Sea flora · Cape to Cape",
+  "name": "Sargassum",
+  "common": "",
+  "latin": "Sargassum",
+  "fact": "It floats on tiny gas-filled bladders, which reminded Portuguese sailors of grapes (sargaço). Lots of it washed up on the beach means a rough, swell-hit coast offshore."
+ },
+ "sea-flora-sea-lettuce": {
+  "kicker": "Sea flora · Cape to Cape",
+  "name": "Sea lettuce",
+  "common": "",
+  "latin": "Ulva",
+  "fact": "A bright green seaweed that thrives where the water is rich in nutrients, so it piles up near river mouths more than on the clean ocean coast. It’s edible, too."
+ },
+ "sea-flora-strapweed": {
+  "kicker": "Sea flora · Cape to Cape",
+  "name": "Western crayweed",
+  "common": "",
+  "latin": "Scytothalia dorycarpa",
+  "fact": "One of the big habitat-making seaweeds of WA’s temperate coast, up to 2 metres long, on rough-water reefs like this one. The 2011 marine heatwave pushed its range back about 100 km."
  }
 }
