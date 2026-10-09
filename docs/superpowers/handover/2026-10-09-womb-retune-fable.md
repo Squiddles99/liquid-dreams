@@ -155,3 +155,53 @@ Solid). **STOPPED** before Task 2b step 3 (no constant changed).
 
 Proceed: Task 2b step 3 (commit the constants) and step 4 (scene follow-through), then Tasks 3–6. Next STOP is after Task 5
 only if a ride case is lost.
+
+## Task 5 ruling wanted (Opus, 2026-10-09): two ride cases lost; the take-off anchor sits on the right
+
+Done since the Task 2b ruling (all pushed on `lineup-truth`): d19b2e0 constants + scene follow-through (TIP (−130, 0), 46°,
+180 m; τ, set waves' dTau/lateral/taper CPU+GPU, peakFace, firstBreak, TAKEOFF_ANCHOR, WOMB_LINEUP/DEFAULT_LINEUP_POSITION/
+surfer params, break map rebaked, reef-wall probe, self-test peak points; the land's junction stays (295, 45)); GPU self-test
+breaker 14/14; frames `../liquid-dreams-captures/womb-retune-2026-10-09/Pumping-tide0-{dtl,stand,lineup}-*.png` (the
+take-off in the stand frame; **small square marks on the breaking line in the stand frame**, to look at); Task 3 0344983 +
+6684b1f (r1Reef/satelliteReef rewritten on the coast field per offered band × tide: 17/17; curl report at the game's 40 m/s:
+11.3/11.7/11.9, no held nodes); Task 4 fea7a87 + 3d71e5a (see `evidence/womb-retune/task4-select.md`).
+
+**Task 5 (rideOnSections, the game's coast-seeded field, 225°, mid tide):**
+
+| case | held s (≥ 10) | end |
+|---|---|---|
+| Solid × intermediate | **1.97** of 8.08 | kickout behind the crest |
+| Huge × intermediate | 14.95 | window end |
+| Solid × beginner | 14.12 | window end |
+| Solid × expert | **0.83** of 7.55 | kickout behind the crest |
+
+Trace (`evidence/womb-retune/ride-trace-<case>.txt`, PROBE_RIDE_TRACE=1: her place along the left's ledge vs the curl's,
+speed vs crest c, slope, ahead): the take-off spot is (−143.1, 42.5), **39 m before the tip along the left**: TAKEOFF_ANCHOR
+is the old "on the south ledge 40 m south of the corner" (tip + (−6, 40)), now on the right. From there to the corner the
+curl runs ~17 m/s (s −47 → +5 in 3 s: the right closing out into the corner); the intermediate rider pops up at t −0.5 s,
+peaks 10.3 m/s at +1 s with the slope under the board falling to 0.01–0.13 (on the flat in front of a closing-out section),
+and is behind the crest at +2 s. The beginner's assist (11–12 m/s) outruns it to the corner and then holds the left with
+ease (the ledge peels ~11 m/s). Size is not it (Huge holds); pop-up timing is as before (caught, popped at slope 1.5).
+
+Candidate fix (game data, not bot/camera code; measured, then reverted, the game unchanged): **TAKEOFF_ANCHOR at the tip**
+(`{ x: TIP[0], z: TIP[1] }`): all four cases hold 14.3 s (Solid int 14.28, Huge 15.08, Solid beg 14.27, Solid exp 14.28;
+traces `ride-trace-*-candidate-anchor-at-tip.txt`). 15 m along the left's ledge instead loses Solid int/exp again (1.9 / 1.3 s:
+caught where the curl is already on her). Opus recommends the tip; the anchor's comment would say "the corner, where the left
+starts peeling on the real shelf". **STOPPED** before Task 5 step 3 (frames) and Task 6.
+
+Also for the ruling / Andrew:
+1. Fun: the matrix passes it at **Low (−0.5 m)** alone (72/72, start 1.1 s, peel 9.3, hollow 0.61); kept not offered per the
+   ruling. Re-offer at Low only?
+2. Big at +0.5 m peels 12.1 (Huge-style 12.5 applied in satelliteReef, same 0.1 m/s-noise argument).
+3. FACE_FT at High reads Solid 6 ft = Pumping 6 ft (read where each first breaks on the peak's ray).
+4. coastBreaking: at 8 ft a closeout ~1 km north of the reef at (−32…−48, −988…−972) (167 cells): outside the reef's halo,
+   so not the tip move; likely Task 1's dial at the seed (amp ×1.06–1.44). Carried red.
+5. Task 3 gate: src/breaker carried reds not yet re-taken idle (the 59-red run was under 3 probes' load; peelStretch,
+   breaking, BreakingRibbon.limits, the tide test pass alone). Physics misses on the coast-seeded field, measured, not
+   loosened: reefField lean 4.0 vs slurp 5.1 at 25 m out on the tip's ray (bar < 0.5×), until-hold 1 cell back 0.020–0.040 s
+   (bar 0.02), march at the tip +10 m 0.33 vs 0.66–1.51 s; breakingField highest water stood still 4 steps (≤ 2), peak 2.05
+   vs shoulders 2.21 m, 6 ft lift 20 m in front 0.277 (< 0.25), pile lip spread 0.065 (< 0.05), pile grows 2.066 vs 2.028,
+   onset→closure 0.51 s (≥ 0.55); crestTrace left 7.98 m/s (≥ 8, the peeler wave), right spread 1.84 s (≤ 1.5), station ψ
+   1.4e-4 (< 1e-6), one-curl 6/8 ft order; plus lineup-truth's carried list. Task 6 re-takes the suite idle and diffs.
+6. Housekeeping: `liquid-dreaming/.claude/launch.json` got an `ld-lineup-truth` config (port 5189) for the worktree's
+   server; reverted at this stop.
