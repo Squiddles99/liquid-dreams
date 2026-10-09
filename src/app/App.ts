@@ -51,6 +51,7 @@ import { PADDLE_OUT_MS } from '../frontend/entry';
 import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
 import { FrontEnd } from '../frontend/frontEndPage';
+import type { TitleScreen } from '../frontend/ui/titleScreen';
 import { FRONT_SETTINGS_KEY, sanitizeFrontSettings } from '../frontend/frontSettings';
 import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
 import { PauseMenu } from '../frontend/ui/pauseMenu';
@@ -140,7 +141,7 @@ const RING_MOVE_M = 2;
 const TRACE_MS_ALPHA = 0.1;
 
 /** localStorage, reached lazily: the getter itself can throw (blocked site data), and the devSettings functions catch that. */
-const browserStorage: SettingsStorage = {
+export const browserStorage: SettingsStorage = {
   getItem: (k) => window.localStorage.getItem(k),
   setItem: (k, v) => window.localStorage.setItem(k, v),
   removeItem: (k) => window.localStorage.removeItem(k),
@@ -1078,12 +1079,15 @@ export class App {
       },
       stage: (staging, pose) => this.stageFrontEnd(staging, pose),
       paddleOut: (choice) => void this.paddleOut(choice),
+      backToTitle: () => this.title?.show(),
       crewReady: () => this.gang.settled,
     };
   }
 
   /** Dev checks: drives the front end to a beat (opening it if needed) and waits for the move to land. */
   async frontEndGoTo(beat: 'map' | 'conditions' | 'rider' | 'gear'): Promise<void> {
+    // A dev check drives the menu: the title steps aside, as Surf would.
+    this.title?.hide();
     this.openFrontEnd();
     const order = ['map', 'conditions', 'rider', 'gear'] as const;
     for (let k = 0; k < 900; k++) {
@@ -1174,7 +1178,23 @@ export class App {
     const pending = this.asyncPipelines.pending > 0;
     if (l.booting) l.frameDrawn(dtMs, pending);
     else l.frameDrawn(pending ? Infinity : dtMs);
-    if (this.frontEnd) this.frontEnd.inputHeld = l.blocking;
+    if (this.frontEnd) this.frontEnd.inputHeld = l.blocking || !!this.title?.isOpen;
+  }
+
+  private title: TitleScreen | null = null;
+  attachTitle(t: TitleScreen): void {
+    this.title = t;
+  }
+
+  /** The title's Surf (or a press while the App was still starting): sound now, the title away, the map under it. */
+  titleSurf(): void {
+    this.sound.gestureNow();
+    this.title?.hide();
+    this.frontEnd?.dropInput();
+  }
+
+  soundOut(): { ctx: BaseAudioContext; out: AudioNode } | null {
+    return this.sound.uiOut();
   }
 
   /** The Electron probe's Paddle out (?probe): START on the select screen, as a player would. */
@@ -2016,6 +2036,7 @@ export class App {
     this.lastMs = now;
     this.reportLoading(realDt * 1000);
     const simDt = this.clock.tick(realDt);
+    if (this.frontEnd && !this.loadingScreen) this.frontEnd.inputHeld = !!this.title?.isOpen;
     this.frontEnd?.update(realDt);
     const fwd = this.camera.getWorldDirection(this.lookoutFwd);
     this.lookout.update(realDt, {

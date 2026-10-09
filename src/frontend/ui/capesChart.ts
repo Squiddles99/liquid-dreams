@@ -61,6 +61,7 @@ export class CapesChart {
     if (d.islands) this.svg.appendChild(el('path', { d: d.islands, fill: '#efe1c1', stroke: '#2c4a4c', 'stroke-width': 1.5 }));
     this.svg.appendChild(this.wind);
     for (const l of CHART_LABELS) {
+      if (this.opts.view === 'title' && l.kind === 'water') continue; // cut off behind the menu at 3×
       const [x, y] = capesToChart(...l.lonLat);
       if (l.dot) this.svg.appendChild(el('circle', { cx: x, cy: y, r: l.kind === 'cape' ? 4 : 5, class: 'fe-chart-dot' }));
       const t = el('text', { x: x + l.dx, y: y + l.dy, 'text-anchor': l.anchor, class: `fe-chart-${l.kind}` });

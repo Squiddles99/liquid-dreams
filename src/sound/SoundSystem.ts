@@ -76,6 +76,7 @@ export class SoundSystem {
 
   /** Show the hint and wait for a gesture the browser accepts. */
   arm(): void {
+    if (this.running) return;
     const el = document.createElement('div');
     el.textContent = 'Click or press a key for sound';
     Object.assign(el.style, {
@@ -90,6 +91,11 @@ export class SoundSystem {
       el.remove();
     };
     document.addEventListener('visibilitychange', this.onVisibility);
+  }
+
+  /** The title's first press: start the sound now, inside that press's handler (browsers allow audio only from a gesture). */
+  gestureNow(): void {
+    this.gesture();
   }
 
   /** A click or key press: create the audio on the first, then ask the browser to run it (again, until it does). */
