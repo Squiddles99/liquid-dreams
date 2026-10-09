@@ -6,6 +6,7 @@ import { AMP_CAP, type FarField, computeFarField, farSample } from './coastFarFi
 import { MIN_DEPTH_M, groupSpeed, waveNumber } from './dispersion';
 import { solveEikonal } from './eikonal';
 import type { FieldSample } from './fieldSample';
+import { PEEL_NEIGHBOUR_CELLS, breakingLines, curlTimes } from './curlClock';
 
 export interface ReefFieldRequest {
   /** The seabed on the field grid (1 m in the app: downsample(bathymetry, 2)). */
@@ -16,6 +17,8 @@ export interface ReefFieldRequest {
   /** The peel stretch (≥ 1; 1 = physics; BreakParams.peel): each part of the line breaks this much later after the part
    * up the line than the reef alone says (spec 2026-10-04 §1). Absent: 1. */
   peel?: number;
+  /** The curl's top speed along the crest (m/s; BreakParams.curlMaxMs, one-curl spec §3d). Absent: CURL_MAX_MS_DEFAULT. */
+  curlMaxMs?: number;
   /** true: the sea's height, direction, depth cap and arrival time smoothed for drawing (smoothFieldAmplitude), as the game
    * draws it; the breaking ratios are unchanged. Absent: as solved. */
   smooth?: boolean;
@@ -358,7 +361,7 @@ export function smoothOnsetTimes(field: ReefField, sigmaM = ONSET_SMOOTHING_M): 
  * dips in a streak behind every reef head a ray crossed (2.6 m to 1.7 m and back within 3 m), and the height capped on
  * it stood a comb of 0.3 m ridges on the sheet; a real wave fills that shadow back in along its crest.
  */
-export function smoothFieldAmplitude(field: ReefField, sigmaM = FIELD_SMOOTHING_M, tauSigmaM = TAU_SMOOTHING_M): void {
+export function smoothFieldAmplitude(field: ReefField, sigmaM = FIELD_SMOOTHING_M, tauSigmaM = TAU_SMOOTHING_M, onsetSigmaM = ONSET_SMOOTHING_M): void {
   const { nx, nz, cellM } = field.grid;
   const s = sigmaM / cellM, r = Math.ceil(3 * s);
   const kern = Array.from({ length: 2 * r + 1 }, (_, i) => Math.exp(-((i - r) ** 2) / (2 * s * s)));
@@ -400,7 +403,7 @@ export function smoothFieldAmplitude(field: ReefField, sigmaM = FIELD_SMOOTHING_
     const l = Math.hypot(dx[i], dz[i]);
     if (l > 1e-6) { field.dirX[i] = dx[i] / l; field.dirZ[i] = dz[i] / l; }
   }
-  smoothOnsetTimes(field);
+  smoothOnsetTimes(field, onsetSigmaM);
 }
 
 export function computeReefField(req: ReefFieldRequest): ReefField {
@@ -543,7 +546,7 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const step = smoothAlongCrest(rawStep, dirX, dirZ, grid, STEP_SMOOTHING_M);
   const psiHere = new Float32Array(n * ONSET_LEVELS);
   for (let i = 0; i < n; i++) psiHere.fill(psiFromStep(step[i]), i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
-  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel: req.peel ?? 1 });
+  const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel: req.peel ?? 1, curlMaxMs: req.curlMaxMs ?? CURL_MAX_MS_DEFAULT });
   const field: ReefField = { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
   if (req.smooth) smoothFieldAmplitude(field);
   return field;
@@ -560,14 +563,19 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
  * it broke where R crossed q (linear between the two), and the time and the throw's height start there. Off the grid's
  * march (a boundary or fixed node) a node breaks at itself.
  */
-/** The peel stretch links a level's onset nodes this many cells apart into one breaking section. */
-export const PEEL_NEIGHBOUR_CELLS = 3;
+/** The peel stretch links a level's onset nodes this many cells apart into one breaking section (curlClock's, shared). */
+export { PEEL_NEIGHBOUR_CELLS };
+/** The curl's top speed along the crest (m/s) when the request names none (BreakParams.curlMaxMs's default). */
+export const CURL_MAX_MS_DEFAULT = 40;
 /** Where a breaking section meets one that broke less than this (s) earlier, they are one line (peelLines). */
 export const PEEL_MERGE_S = 1.5;
 /** A held section's turn comes at most this long (s) after the reef broke it, so a held wall never runs on into the
  * shallows (at 5.5 ft the left's last section waits ~6 s). (A cap on the ratio instead undid the stretch: on the ledge
  * the ratio climbs past 1.6× its level within metres of breaking.) */
 export const PEEL_MAX_HOLD_S = 6;
+/** A curl time less than this (s) after a ray's own onset is no hold: the record's float32 rounding as the march carries
+ * the clock along the ray (~2e-5 s), which held every ray of a line the curl left alone. */
+const HOLD_EPS_S = 1e-3;
 /** How far back along its ray (cells) a node reads the record: past its own cell, so every node read arrived earlier. */
 const RUN_BACK_CELLS = 2;
 /** How far (fraction) the running maximum dips under a level between rays (≤ 2% measured) and still counts as broken there. */
@@ -576,19 +584,26 @@ export const RUN_DIP = 0.03;
 export function computeOnsetRecord(f: {
   grid: GridSpec; tau: Float32Array; amp: Float32Array; hmin: Float32Array; hminBreak: Float32Array; k: Float32Array; dirX: Float32Array;
   dirZ: Float32Array; fixed: Uint8Array; order: Uint32Array; omega: number; psiHere: Float32Array; peel?: number;
+  /** The curl's top speed along the crest (m/s; BreakParams.curlMaxMs). Absent: CURL_MAX_MS_DEFAULT. */
+  curlMaxMs?: number;
+  /** Test only: false leaves the curl pass out (one march at peel 1, as before one-curl). */
+  curl?: boolean;
 }): Float32Array {
   const { grid, dirX, dirZ } = f;
   const { nx, nz } = grid;
   const n = nx * nz, R = ONSET_RECORD_LENGTH, S = ONSET_PSI_OFFSET;
   let out = new Float32Array(n * R);
   const D = ONSET_DELAY_OFFSET, Z = ONSET_SIZE_OFFSET, stretch = Math.max(1, f.peel ?? 1) - 1;
-  // Each level's onset time T = τ − tb at its onset nodes (NaN elsewhere); with the stretch, each onset node's breaking
-  // line's first break T₀ (peelLines), and T₀ carried along the rays as the march goes (NaN where unbroken).
+  const curl = f.curl ?? true, curlMaxMs = f.curlMaxMs ?? CURL_MAX_MS_DEFAULT;
+  // Each level's onset time T = τ − tb at its onset nodes (NaN elsewhere). Between the two marches each onset node gets its
+  // curl time T′ (curlClock: the peel stretch's time from its section's first break, then one curl along each breaking
+  // line); the second march carries T′ along the rays (NaN where unbroken) and delays each ray from its physical onset to it.
   const onsetT = new Float32Array(n * ONSET_LEVELS).fill(Number.NaN);
-  let lineStart: Float32Array | null = null;
-  const t0 = new Float32Array(n * ONSET_LEVELS).fill(Number.NaN);
-  /** The delay of a ray that broke at T on a line that first broke at T₀. */
-  const delayOf = (T: number, T0: number): number => (Number.isFinite(T0) ? Math.min(Math.max(0, stretch * (T - T0)), PEEL_MAX_HOLD_S) : 0);
+  let curlT: Float32Array | null = null;
+  const tc = new Float32Array(n * ONSET_LEVELS).fill(Number.NaN);
+  /** The delay of a ray that broke at T whose curl time is Tc (the hold, capped at PEEL_MAX_HOLD_S; under HOLD_EPS_S it is
+   * the float32 record's rounding along the ray, not a hold). */
+  const delayFrom = (T: number, Tc: number): number => (Number.isFinite(Tc) && Tc - T > HOLD_EPS_S ? Math.min(Tc - T, PEEL_MAX_HOLD_S) : 0);
   // One bilinear cell for everything read back there.
   const xMax = (nx - 1) * grid.cellM, zMax = (nz - 1) * grid.cellM;
   let ci = 0, wx = 0, wz = 0;
@@ -603,24 +618,30 @@ export function computeOnsetRecord(f: {
     const top = a[i00] + (a[i10] - a[i00]) * wx, bottom = a[i01] + (a[i11] - a[i01]) * wx;
     return top + (bottom - top) * wz;
   };
-  /** The breaking line's first break back there for level k: bilinear over the corners that carry one. It is the same
-   * all along a line, so averaging rays together can't water it down. (Carrying the delay itself aliased where the rays
-   * cross the grid at an angle: 0.25 s beside 2 s along the onset band, and the left peeled 1.4× slower for a 1.7 dial.) */
-  const lineStartBack = (k: number): number => {
+  /** The curl time back there for level k: bilinear over the corners that carry one. (Carrying the delay itself aliased
+   * where the rays cross the grid at an angle: 0.25 s beside 2 s along the onset band, and the left peeled 1.4× slower for
+   * a 1.7 dial; the time of the curl's arrival is what the ray carries.) */
+  const curlBack = (k: number): number => {
     let sum = 0, weight = 0;
     const corners = [[ci, (1 - wx) * (1 - wz)], [ci + 1, wx * (1 - wz)], [ci + nx, (1 - wx) * wz], [ci + nx + 1, wx * wz]] as const;
     for (const [c, w] of corners) {
-      const v = t0[c * ONSET_LEVELS + k];
+      const v = tc[c * ONSET_LEVELS + k];
       if (w > 0 && Number.isFinite(v)) { sum += w * v; weight += w; }
     }
     return weight > 0 ? sum / weight : Number.NaN;
+  };
+  /** A higher level's curl comes no sooner than the level below's on the same ray (each level's curl runs on its own line:
+   * a pocket held at one level and not the next would break the higher level first there). */
+  const afterLower = (i: number, k: number, Tc: number): number => {
+    const lower = k > 0 ? tc[i * ONSET_LEVELS + k - 1] : Number.NaN;
+    return Number.isFinite(lower) && !(Tc >= lower) ? lower : Tc;
   };
   const back = RUN_BACK_CELLS * grid.cellM;
   // The throw's height factor for level k: the amplification, capped by the depth as the sheet caps a crest.
   const capOf = ONSET_LEVEL_Q.map((_, k) => BREAKING_RATIO / onsetLevelHeight(k));
   const throwAt = (amp: number, hmin: number, k: number): number => Math.min(amp, capOf[k] * hmin);
-  // The march (in arrival order). With the peel stretch it runs twice: once without, to find where and when each ray
-  // breaks and so each breaking line's first break (peelLines); then once more, stretching every ray's onset from it.
+  // The march (in arrival order). It runs twice: once without delays, to find where and when each ray breaks (and so each
+  // breaking line's first break and curl: curlPass); then once more, delaying every ray's onset to its curl time.
   const march = (): void => {
     for (let o = 0; o < n; o++) {
       const i = f.order[o];
@@ -664,8 +685,8 @@ export function computeOnsetRecord(f: {
         } else if (brokenB) {
           // The physical clock is carried as before (tbS + d, bilinear), so the ray's own onset time is τ − tb; its delay
           // comes from that and its line's first break, carried along the ray.
-          const tbP = tbSB + dB + dTau, T0 = lineStart ? lineStartBack(k) : Number.NaN, d = delayOf(f.tau[i] - tbP, T0);
-          if (lineStart) t0[i * ONSET_LEVELS + k] = T0;
+          const tbP = tbSB + dB + dTau, Tc = curlT ? afterLower(i, k, curlBack(k)) : Number.NaN, d = delayFrom(f.tau[i] - tbP, Tc);
+          if (curlT) tc[i * ONSET_LEVELS + k] = Tc;
           const tbS = tbP - d;
           out[base + 1 + 2 * k] = tbS;
           out[base + D + k] = d;
@@ -677,8 +698,8 @@ export function computeOnsetRecord(f: {
           out[base + Z + k] = tbS < 0 || !turned ? f.amp[i] : lerp(out, R, Z + k);
         } else {
           const fr = (q - runB) / (run - runB), tb = (1 - fr) * dTau, T = f.tau[i] - tb;
-          const T0 = lineStart ? lineStart[i * ONSET_LEVELS + k] : Number.NaN, d = delayOf(T, T0);
-          if (lineStart) t0[i * ONSET_LEVELS + k] = T0;
+          const Tc = curlT ? afterLower(i, k, curlT[i * ONSET_LEVELS + k]) : Number.NaN, d = delayFrom(T, Tc);
+          if (curlT) tc[i * ONSET_LEVELS + k] = Tc;
           onsetT[i * ONSET_LEVELS + k] = T;
           out[base + 1 + 2 * k] = tb - d;
           out[base + D + k] = d;
@@ -692,13 +713,34 @@ export function computeOnsetRecord(f: {
     }
   };
   march();
-  if (stretch > 0) {
-    lineStart = peelLines(onsetT, nx, nz);
+  if (stretch > 0 || curl) {
+    curlT = curlPass(onsetT, nx, nz, grid.cellM, stretch, curl ? curlMaxMs : Infinity, curl);
     out = new Float32Array(n * R);
     onsetT.fill(Number.NaN);
     march();
   }
   fillUntil(f, out);
+  return out;
+}
+
+/**
+ * Each onset node's curl time per level (one-curl spec §3a): the peel stretch's Tₛ = T + (peel − 1)(T − T₀) from its
+ * section's first break (peelLines), then, with `curl`, one curl along each breaking line (curlClock.curlTimes, the hold
+ * capped at PEEL_MAX_HOLD_S). NaN off the onset nodes.
+ */
+function curlPass(onsetT: Float32Array, nx: number, nz: number, cellM: number, stretch: number, curlMaxMs: number, curl: boolean): Float32Array {
+  const L = ONSET_LEVELS, n = nx * nz, out = new Float32Array(n * L).fill(Number.NaN);
+  const first = stretch > 0 ? peelLines(onsetT, nx, nz) : null;
+  const T = new Float32Array(n), Ts = new Float32Array(n);
+  for (let k = 0; k < L; k++) {
+    for (let i = 0; i < n; i++) {
+      const t = onsetT[i * L + k], t0 = first ? first[i * L + k] : Number.NaN;
+      T[i] = t;
+      Ts[i] = Number.isFinite(t0) ? t + Math.min(Math.max(0, stretch * (t - t0)), PEEL_MAX_HOLD_S) : t;
+    }
+    const tk = curl ? curlTimes(Ts, breakingLines(T, nx, nz), nx, nz, cellM, curlMaxMs, PEEL_MAX_HOLD_S) : Ts;
+    for (let i = 0; i < n; i++) out[i * L + k] = tk[i];
+  }
   return out;
 }
 
@@ -711,8 +753,9 @@ const UNTIL_AHEAD_CELLS = 1;
  * The time until onset per level (breaking.ONSET_UNTIL_OFFSET; plan 2026-10-06-wave-root-cause, the wall down the line):
  * the same march run backwards, in reverse arrival order, each node reading the record UNTIL_AHEAD_CELLS ahead along its
  * ray, over the corners that arrive later than it (so already filled). A node whose running maximum has reached the level
- * has 0 (it has broken, or is held for its turn: the time slot is negative then); else the time ahead plus the arrival time
- * between, so along a ray the value falls at the ray's own speed to 0 at the breaking line; UNTIL_NEVER where the ray
+ * has the time to its turn, max(0, −tb): 0 once broken, the hold while held (one-curl spec §3b: until carries the hold);
+ * else the time ahead plus the arrival time between, so along a ray the value falls at the ray's own speed to 0 at the
+ * section's turn; UNTIL_NEVER where the ray
  * leaves the grid unbroken (and, bilinear between such a node and one that breaks, a time far past any wall's lead).
  * Smoothed along the crest for the game with the onset times (smoothOnsetTimes).
  */
@@ -739,7 +782,8 @@ function fillUntil(f: { grid: GridSpec; tau: Float32Array; dirX: Float32Array; d
     }
     const dTau = wSum > 0 ? Math.max(0, tauA / wSum - tauI) : 0;
     for (let k = 0; k < ONSET_LEVELS; k++) {
-      if (out[base] >= ONSET_LEVEL_Q[k]) { out[base + U + k] = 0; continue; }
+      // Broken: 0, or while held for its turn the time to it (−tb), so along the ray the value falls to 0 at the turn.
+      if (out[base] >= ONSET_LEVEL_Q[k]) { out[base + U + k] = Math.max(0, -out[base + 1 + 2 * k]); continue; }
       if (!(wSum > 0)) continue;
       let uA = 0;
       for (let q = 0; q < 4; q++) if (weights[q] > 0) uA += (weights[q] / wSum) * out[corners[q] * R + U + k];

@@ -252,3 +252,38 @@ frame(dtMs: number, nowMs: number, blocked = false): boolean {
   `…-fable.md`: what changed and why (one clock in the record, the carried `T′`, `until` as the hold, the unwarped
   ledge); the numbers to rule on (cap share, smoothing σ, `curlMaxMs`); what is left (spec §6); Task 0's verdict.
 - [ ] **Step 4: Commit and push.** `docs(one-curl): evidence, captures and handovers (Task 5)`.
+
+---
+
+## Fable's closing ruling (2026-10-09), on Opus's Tasks 0–5 (branch head 8812780)
+
+Verified by Fable on the branch: `tsc` clean; `curlClock`, `smoothFrames`, `reefField` tests (the four reef-field reds: three
+are baseline names, one new: the 0.2 % running-max dip); the Task 4 monotone guard green under my own run; merge-tree onto
+main clean; the five down-the-line frames at 6 / 8 / 12 ft read as the spec's gate asks (one curl per side, the wall ahead
+standing over the lead, no pocket, no second section).
+
+1. **Accepted; recommend merge to main.** Andrew decides.
+2. **`curlMaxMs` 40 (effectively unbound): accepted.** Opus's finding stands as a design fact: on this reef every level's
+   line starts at the south ledge's far end, so a speed floor from the line's first break binds at the peak before it
+   filters anything. A floor that means something needs its origin at the peak (a second origin per line); not now. The
+   curl pass's real work, holding pockets so no second section opens, is in; on this reef it binds only far south.
+3. **The formula and the lines**: Opus's corrections accepted (`max(T, max_U T′, min_U (T′ + d/v))` over upwind
+   neighbours; connected components within 10 cells instead of the peel sections). The unit tests pin them.
+4. **The 6 ft expert's rescue (heldS 0.78 → 14.37 s)**: wanted. It is the straightened first leg (the unwarped ledge), the
+   reef the spec drew; the peel there is 11.4 m/s (main 10.1), over R1's 9–11 bar by 0.4. If it rides too fast for Andrew
+   on the board, the bake's `peel` dial is the lever, not the warp.
+5. **The eight unwarped-ledge reds**: not merge blockers (main carried 39 breaker reds; the suite is 54 → 40 red). Carried as
+   one small follow-up, "re-pin after the unwarp": re-measure each bar on the straight ledge and either re-pin or fix; look
+   first at breakingField's 0.48 m step 1 cm apart at (2, −5.5) at arrival, the only one that could be a real seam.
+   The A-within-5 % bar stays red as a target (it was red at 8 % on main).
+6. **Spec §3b's GPU claim was wrong** (`onsetUntil` reads 0 for any broken section): the GPU still stands a held section at
+   r = 1 from the physical break. Holds exist only on the right's far south on this reef, so no player-visible cost today.
+   Carried, low.
+7. **Smoothing σ**: the curl is 13 m wide at σ 8 / 4 and 7 m at 8 / 2. A capture A/B of `SECTION_SMOOTHING_M` 4 → 2 is the
+   next look (the 4 was for the ribbon self-test's sliced back edges: check those first). Not in this segment.
+8. **Task 0**: the sea-less select screen is fixed (water in the first frame after the dissolve, three boots); the boot cover
+   is ~3 s longer here because `MeshBasicNodeMaterial (output)` lands ~7 s after the crew. Follow-up: name that object and
+   prewarm it with the rest (`App.prewarm`), which also closes ride-stall 4c's find.
+9. Andrew's lineup link is not in the repo; the lineup pair is not his view. He can paste the link for a capture any time.
+
+Next segment per the agreed order: lineup truth (swell wrap + bathymetry, four real breaks), then blocky patches, then R4.

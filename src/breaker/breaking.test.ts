@@ -593,6 +593,17 @@ describe('the whitewater pile (spec 2026-09-29 §3.2)', () => {
   });
 });
 
+describe('the curl dial (one-curl spec §3d)', () => {
+  it('defaults to 40 m/s (one-curl Task 3 ruling) and clamps to [4, 40]', () => {
+    expect(DEFAULT_BREAK_PARAMS.curlMaxMs).toBe(40);
+    for (const [raw, want] of [[2, 4], [12, 12], [99, 40], [Number.NaN, 40]] as const) {
+      const p = { ...DEFAULT_BREAK_PARAMS, curlMaxMs: raw };
+      normalizeBreakParams(p);
+      expect(p.curlMaxMs, String(raw)).toBe(want);
+    }
+  });
+});
+
 describe('the peel dial (spec 2026-10-04 §1)', () => {
   it('defaults to 1 (off: on the satellite reef a held section breaks small and fat on the flat) and keeps any saved value usable, within [1, 3]', () => {
     expect(DEFAULT_BREAK_PARAMS.peel).toBe(1);

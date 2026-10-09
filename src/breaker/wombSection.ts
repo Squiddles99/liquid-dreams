@@ -72,10 +72,8 @@ export interface SectionInput {
   r: number;
   /** Time since onset (s): null before breaking (or while the section waits its turn), Infinity long after. */
   tb: number | null;
-  /** While the peel stretch holds the section: how long until its turn (s) (Station.wait); absent or null otherwise. */
-  wait?: number | null;
-  /** Unbroken: how long until the section breaks (s; Station.until, breaking.onsetUntil), Infinity if it never will; absent
-   * or null: unknown (the ratio alone stands it up). */
+  /** Unbroken: how long until the section breaks, or held, until its turn (s; Station.until), Infinity if it never will;
+   * absent or null: unknown (the ratio alone stands it up). */
   until?: number | null;
   /** The reef's ψ₀ where it broke (Station.psi). */
   psi: number;
@@ -105,9 +103,12 @@ export const collapseSpan = (H: number, periodS: number): number => COLLAPSE_BAS
  * barrel, the tube's hold, the collapse.
  */
 export function sectionPhase(s: SectionInput, p: SectionParams): number {
-  // Unbroken: the wall stands up over the last WALL_LEAD_S before its break (or its turn, held), or with its ratio from the
-  // ribbon's onset where the record says nothing (off the grid, or a ray that never breaks), whichever is further.
-  if (s.tb === null) return STOOD_PHASE * Math.max(smoothstep(p.ribbonOnset, 1, s.r) * standing(s), wallWeight(s.wait ?? s.until));
+  // Unbroken: on the record (until finite) the clock alone, the wall standing up over the last WALL_LEAD_S before its break
+  // (or its turn, held); off it (off the grid, or a ray that never breaks) with its ratio from the ribbon's onset. (The ratio
+  // beside the clock stood a section up at full height ahead of the curl: the pocket one curl holds. One-curl spec §3b.)
+  if (s.tb === null) {
+    return s.until !== undefined && s.until !== null && Number.isFinite(s.until) ? STOOD_PHASE * wallWeight(s.until) : STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r);
+  }
 
   if (!Number.isFinite(s.tb)) return 2;
   const H = brokeAt(s), t = Math.max(0, s.tb), fly = flightTime(H), hold = tubeHold(H, s.periodS);
@@ -148,9 +149,6 @@ export function boreWeight(tb: number | null | undefined, H: number, periodS: nu
   const t0 = flightTime(H) + tubeHold(H, periodS);
   return smoothstep(t0, t0 + collapseSpan(H, periodS), tb);
 }
-
-/** A section held for its turn: 0 more than WALL_LEAD_S before it, 1 at it; 1 for a section not held. */
-const standing = (s: SectionInput): number => (s.wait === undefined || s.wait === null ? 1 : wallWeight(s.wait));
 
 /**
  * The section's ρ: how much of the curl it draws over the sheet. 1 until the white-water wall, then handed back to the

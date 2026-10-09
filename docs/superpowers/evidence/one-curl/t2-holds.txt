@@ -1,0 +1,6 @@
+0 inversions
+level 3: north z<0: 3.6% held, 0.0% capped, max 1.25 s | south 0≤z<150: 0.0% held, 0.0% capped, max 0.06 s | south z≥150: 35.5% held, 0.0% capped, max 2.59 s
+level 4: north z<0: 2.6% held, 0.0% capped, max 0.96 s | south 0≤z<150: 15.4% held, 0.0% capped, max 0.13 s | south z≥150: 55.3% held, 0.4% capped, max 6.00 s
+level 5: north z<0: 6.5% held, 0.0% capped, max 0.68 s | south 0≤z<150: 18.1% held, 0.0% capped, max 0.84 s | south z≥150: 86.5% held, 1.3% capped, max 6.00 s
+level 6: north z<0: 19.2% held, 0.0% capped, max 1.11 s | south 0≤z<150: 31.5% held, 0.0% capped, max 1.45 s | south z≥150: 76.2% held, 1.3% capped, max 6.00 s
+level 7: north z<0: 53.9% held, 0.0% capped, max 5.62 s | south 0≤z<150: 22.9% held, 0.0% capped, max 0.84 s | south z≥150: 62.7% held, 0.0% capped, max 4.65 s

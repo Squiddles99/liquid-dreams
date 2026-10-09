@@ -47,7 +47,7 @@ describe('wombSection: a station as the Womb profile family', () => {
   });
 
   it('a section held for its turn keeps the swell’s shape down the line and stands up only over its last STAND_LEAD_S (Andrew, 2026-10-05)', () => {
-    const held = (wait: number): number => sectionPhase({ ...at(4, null, 1.2), wait }, P);
+    const held = (until: number): number => sectionPhase({ ...at(4, null, 1.2), until }, P); // one-curl: the hold is until
     expect(held(10)).toBe(0);
     expect(held(STAND_LEAD_S)).toBe(0);
     expect(held(0.5 * STAND_LEAD_S)).toBeCloseTo(0.25 * STOOD_PHASE, 12);

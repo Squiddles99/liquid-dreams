@@ -1,0 +1,33 @@
+# one-curl Task 5 step 1: the ride (2026-10-08)
+
+## npx vitest run src/ride: 92 passed / 3 skipped (10 files)
+main (branch start, baseline run):
+12 ft intermediate: line 35°, held 15.02 s of 15.02 s, end popup (foam 0.00, section true), ahead {"popup":7.289752884097105,"ride+1":4.592124040637605,"ride+2":6.886154318525767,"ride+3":6.980439155
+6 ft beginner: line 35°, held 12.45 s of 12.45 s, end popup (foam 0.00, section true), ahead {"popup":1.413550325886219,"ride+1":2.524992099938319,"ride+2":3.0872176489459404,"ride+3":3.1751217537460
+6 ft expert: line 35°, held 0.78 s of 8.58 s, end kickout (foam 0.00, section false), ahead {"popup":2.9827279209157385,"ride+1":-0.5283424434249202,"ride+2":-2.977706453072044,"ride+3":-6.0818653312
+6 ft intermediate: line 35°, held 14.33 s of 14.33 s, end popup (foam 0.00, section true), ahead {"popup":3.8162234474327987,"ride+1":1.6735867524537673,"ride+2":3.3295772804135124,"ride+3":3.2873178
+branch:
+12 ft intermediate: line 35°, held 15.00 s of 15.00 s, end popup (foam 0.00, section true), ahead {"popup":7.055872684161994,"ride+1":4.101401690707215,"ride+2":6.589687916496015,"ride+3":7.359997102
+6 ft beginner: line 35°, held 12.32 s of 12.32 s, end popup (foam 0.00, section true), ahead {"popup":1.6250636761502617,"ride+1":2.469289505701545,"ride+2":3.188768415333908,"ride+3":2.9476260160772
+6 ft expert: line 35°, held 14.37 s of 14.37 s, end popup (foam 0.00, section true), ahead {"popup":4.023387248807168,"ride+1":1.7727758010525734,"ride+2":3.273539262766743,"ride+3":4.119828181959603
+6 ft intermediate: line 35°, held 14.33 s of 14.33 s, end popup (foam 0.00, section true), ahead {"popup":4.076015534896198,"ride+1":2.9062796609951533,"ride+2":4.045264712014232,"ride+3":3.897909556
+
+heldS vs main: 12 ft int −0.02 s, 6 ft beginner −0.13 s, 6 ft int 0.00 s, 6 ft EXPERT +13.59 s (0.78 → 14.37: R3's known red now rides the whole wave).
+Attribution (toggled in place, reverted): curl off + unwarped ledge → expert 14.37 s; curl on + main's warped ledge → 0.78 s. The unwarped ledge (Task 3), not the curl.
+STOP CONDITION (plan Review Focus 5: a case moved > 0.5 s): the segment stops for Fable's ruling on the expert. No code changed after this.
+
+## PROBE_RIDE_STATIONS=1 PROBE_VARIANTS=lazy rideStations.probe.test.ts
+variant | max |Δy| cm | max |Δslope| | curves built per frame (one physics step)
+lazy (R9) | 0.00 | 0.0000 | 7.0 | wave sums per frame 988 | curves at g = 1 81.6% | p50 0.00 p95 0.00 p99 0.00 cm, rows > 2 cm 0
+lazy + warm 2 passes (R8, not the game) | 0.03 | 0.0012 | 7.0 | wave sums per frame 864 | curves at g = 1 81.6% | p50 0.00 p95 0.01 p99 0.02 cm, rows > 2 cm 0
+variant | max |Δy| cm | max |Δslope| | curves built per frame (one physics step)
+lazy (R9) | 0.00 | 0.0000 | 6.7 | wave sums per frame 1043 | curves at g = 1 58.4% | p50 0.00 p95 0.00 p99 0.00 cm, rows > 2 cm 0
+lazy + warm 2 passes (R8, not the game) | 5.46 | 0.2933 | 6.7 | wave sums per frame 1238 | curves at g = 1 58.4% | p50 0.00 p95 0.02 p99 0.56 cm, rows > 2 cm 3
+  slope under the board on the rows > 2 cm: 1.33 1.85 1.15
+
+## tools/_rideProfile.mjs --ft=6 --sim-t=300 (5174, focused)
+# sim-t 300: cam from 300.00 s, set called from 306.00 s, ride arrives 397.35 s, caught 396.69 s, riding pass 397.62–402.46 s ending at x, z 1.2, -2.4 (6 ft, intermediate); window at cam: focused true, visible true, minimized false; at riding: focused true, visible true, minimized false; at the end: focused true, visible true, minimized false; recorder after Profiler.start
+# stall log off, trace off
+cam mode: 1048 frames, mean 5.7 ms (174.0 fps), median 5.3 ms, p90 10.3 ms, max 424.6 ms
+paddling (ride active): 470 frames, mean 12.1 ms (82.8 fps), median 4.9 ms, p90 19.6 ms, max 518.3 ms
+main's same command (ride-stall evidence): arrives 397.94 s, caught ~397.3 s, pass ends near (5–8, −4…+1.5).
