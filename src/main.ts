@@ -1,10 +1,11 @@
 import './style.css';
-import { App } from './app/App';
+import { App, browserStorage } from './app/App';
 import { LoadingScreen } from './app/loadingScreen';
 import { showOverlay } from './app/overlay';
 import { WEBGPU_HELP, checkWebGpuSupport } from './app/webgpuSupport';
 import { momentFromHash, momentHashProblem } from './dev/momentLink';
 import { frontEndWanted } from './frontend/entry';
+import { TitleScreen } from './frontend/ui/titleScreen';
 import { createRenderer } from './render/createRenderer';
 
 async function main(): Promise<void> {
@@ -12,9 +13,20 @@ async function main(): Promise<void> {
   if (!container) throw new Error('#app container missing');
   // The cover index.html painted first (loading screens spec): it reports each stage, then dissolves into the dune.
   const loading = LoadingScreen.adopt(document);
-  const fail = (title: string, message: string, help = WEBGPU_HELP): void => {
+  // The title (surf-map hub spec §2) over the cover at once: the game boots behind it. A Surf pressed before the App
+  // exists is kept and applied once it does (Review Focus 1).
+  const wantFrontEnd = frontEndWanted(location.search, location.hash);
+  let appRef: App | null = null, surfPressed = false;
+  const title = wantFrontEnd ? new TitleScreen(document.body, {
+    storage: browserStorage, electron: navigator.userAgent.includes('Electron'),
+    soundOut: () => appRef?.soundOut() ?? null,
+    onSurf: () => { if (appRef) appRef.titleSurf(); else surfPressed = true; },
+  }) : null;
+  if (title) { const tick = (t: number): void => { title.update(t); requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
+  const fail = (heading: string, message: string, help = WEBGPU_HELP): void => {
     loading?.remove();
-    showOverlay(title, help ? `${message}
+    title?.hide();
+    showOverlay(heading, help ? `${message}
 
 ${help}` : message);
   };
@@ -40,13 +52,15 @@ ${help}` : message);
 
   const problem = momentHashProblem(location.hash);
   if (problem) console.warn(`Moment link ignored (${problem}); opening the saved or default moment.`);
-  const frontEnd = frontEndWanted(location.search, location.hash);
+  const frontEnd = wantFrontEnd;
   let app: App;
   try {
     // No link: the App opens the saved settings' moment (or the default one).
     app = new App(renderer, container, momentFromHash(location.hash));
     // __ldHoldCover (set in the console before a reload): the App ignores the cover, so it stays up to be looked at.
     app.attachLoading((globalThis as { __ldHoldCover?: boolean }).__ldHoldCover ? null : loading, frontEnd);
+    appRef = app;
+    if (title) app.attachTitle(title);
     loading?.stageDone('world');
     // Build what the first break would otherwise build mid-game, before the first frame.
     await app.prewarm();
@@ -57,6 +71,7 @@ ${help}` : message);
   }
   app.start();
   if (frontEnd) app.openFrontEnd();
+  if (surfPressed) app.titleSurf();
   // The Electron probe (?probe): a Paddle out and a Back to the dune it can trigger (loading screens §7).
   if (query.has('probe')) (window as unknown as { ldProbe: unknown }).ldProbe = { paddleOut: () => app.probePaddleOut(), backToDune: () => app.backToDune() };
   // Dev builds only: scripted gallery captures (window.liquidDreams.captureFrame()) and the crest trace's timing

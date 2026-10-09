@@ -134,6 +134,11 @@ export class FrontEnd {
     this.resize(this.size.w, this.size.h);
   }
 
+  /** Drops input seen so far (the title's Surf press must not also press Surf here on the map). */
+  dropInput(): void {
+    this.input?.poll(performance.now());
+  }
+
   resize(w: number, h: number): void {
     this.size = { w, h };
     if (this.root) applyLayout(this.root, layoutFor(w, h, safeAreaFraction(this.settings)), this.settings);

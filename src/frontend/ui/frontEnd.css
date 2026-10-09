@@ -164,3 +164,18 @@
 .fe-details-h { font: 600 calc(18px * var(--fe-text)) 'Barlow Semi Condensed'; letter-spacing: .22em; color: var(--fe-sun); margin-bottom: 10px; }
 .fe-details-sec p { font: 400 calc(23px * var(--fe-text)) / 1.5 Barlow; margin: 0 0 12px; max-width: 800px; }
 .is-calm .fe-details, .is-calm .fe-details-inner { transition: none; }
+
+/* The title (surf-map hub spec §2). */
+.fe-title-screen { z-index: 2147483600; pointer-events: auto; background: #0a2c34; }
+/* A left-hand shade under the logo and menu, the legend on the panel backing (over the land). */
+.fe-title-screen::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 900px; background: linear-gradient(90deg, rgba(6, 22, 27, .78), rgba(6, 22, 27, .55) 55%, rgba(6, 22, 27, 0)); pointer-events: none; z-index: 1; }
+.fe-title-screen > .fe-chart { z-index: 0; }
+.fe-title-screen > :not(.fe-chart) { z-index: 2; }
+.fe-title-screen .fe-legend { background: #0b2a31; border: 1.5px solid #3f6f72; border-radius: 10px; padding: 10px 22px; }
+.fe-title-logo { position: absolute; left: var(--fe-safe-x); top: calc(var(--fe-safe-y) + 40px); display: flex; align-items: center; gap: 28px; }
+.fe-title-logo img:first-child { width: 168px; height: 168px; }
+.fe-title-logo img:last-child { height: 132px; filter: drop-shadow(0 2px 0 #0b2a31) drop-shadow(0 0 18px rgba(246, 236, 214, .35)); }
+.fe-title-rows { position: absolute; left: var(--fe-safe-x); top: 560px; width: 520px; }
+.fe-title-row { grid-template-columns: 1fr auto; }
+.fe-title-row.is-locked .fe-value { opacity: .5; }
+.fe-title-soon { font: 700 calc(18px * var(--fe-text)) 'Barlow Semi Condensed'; letter-spacing: .18em; color: #a9c3c2; align-self: center; }
