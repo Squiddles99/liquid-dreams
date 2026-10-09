@@ -10,7 +10,9 @@ export const CONDITION_RANGES = {
   swellDirectionDeg: { min: 0, max: 360 },
   windSpeedMs: { min: 0, max: 30 },
   windDirectionDeg: { min: 0, max: 360 },
-  tideM: { min: -1.5, max: 1.5 },
+  /** The coast's real range (~1 m) with a margin; the select's stops are ±0.5. Below −0.8 the shelf's 1.5 m heads surface
+   * under the troughs and the bed shows through the ocean mesh (small-swell 2026-10-09). */
+  tideM: { min: -0.8, max: 0.8 },
 } as const;
 
 const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
