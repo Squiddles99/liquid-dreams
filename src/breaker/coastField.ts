@@ -1,3 +1,4 @@
+import { smoothstep } from '../math/smoothstep';
 import type { Bathymetry } from '../seabed/bathymetry';
 import { wombHalo } from '../seabed/coastMap';
 import { depthBg } from '../seabed/coastProfile';
@@ -194,4 +195,31 @@ export function coastSeed(c: CoastField, far: FarField): (x: number, z: number) 
       dirX: Math.cos(dirA), dirZ: Math.sin(dirA), depth: s.depth + fix((v) => v.depth),
     };
   };
+}
+
+/** Inside the coast grid's west, north and south edges the drawn sea eases from the coast field into the 1-D far field
+ * over this far (m), so the horizon's lines meet it without a kink (the far field assumes a straight beach at x 94 and
+ * 15 m of water; the coast grid's edge is 20–28 m deep). The east edge is ashore. */
+export const COAST_EDGE_BLEND_M = 100;
+
+/** Mixes two samples (t = 0: a, 1: b); the direction renormalised. */
+export function mixSamples(a: FieldSample, b: FieldSample, t: number): FieldSample {
+  if (t <= 0) return a;
+  if (t >= 1) return b;
+  const m = (p: number, q: number): number => p + (q - p) * t;
+  const dx = m(a.dirX, b.dirX), dz = m(a.dirZ, b.dirZ), len = Math.hypot(dx, dz) || 1;
+  return {
+    tau: m(a.tau, b.tau), amp: m(a.amp, b.amp), hmin: m(a.hmin, b.hmin), hminBreak: m(a.hminBreak, b.hminBreak),
+    hminSlurp: m(a.hminSlurp, b.hminSlurp), hminLean: m(a.hminLean, b.hminLean), k: m(a.k, b.k), dirX: dx / len, dirZ: dz / len, depth: m(a.depth, b.depth),
+  };
+}
+
+/** The drawn sea outside the reef grid (spec §3d; the GPU mirrors it): the coast field, easing into the far field at the
+ * coast grid's sea edges; the far field beyond. */
+export function coastDrawn(c: CoastField, far: FarField, x: number, z: number): FieldSample {
+  const g = c.grid;
+  if (!insideCoast(g, x, z)) return farSample(far, x, z);
+  const edge = Math.min(x - g.x0, z - g.z0, g.z0 + (g.nz - 1) * g.cellM - z);
+  const s = coastSample(c, far, x, z);
+  return edge >= COAST_EDGE_BLEND_M ? s : mixSamples(farSample(far, x, z), s, smoothstep(0, COAST_EDGE_BLEND_M, edge));
 }
