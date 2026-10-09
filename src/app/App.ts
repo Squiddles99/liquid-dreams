@@ -25,6 +25,7 @@ import { DEFAULT_SOUND_PARAMS, type SoundParams, normalizeSoundParams } from '..
 import { SoundSystem } from '../sound/SoundSystem';
 import { ticksToHear } from '../sound/hits';
 import { ReefFieldClient } from '../breaker/ReefFieldClient';
+import { type CoastParams, DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
 import { SetWaves } from '../breaker/SetWaves';
 import { ReefFlow } from '../breaker/flowNodes';
 import { type SetWaveResult, type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
@@ -182,6 +183,10 @@ export class App {
   readonly shallowParams: ShallowSwellParams = { ...DEFAULT_SHALLOW_SWELL };
   readonly overlays: DebugOverlays = { ...DEFAULT_DEBUG_OVERLAYS };
   readonly breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
+  /** The coast's breaks (lineup truth spec §3g): the worker builds the coast map from them. */
+  readonly coastParams: CoastParams = { ...DEFAULT_COAST_PARAMS };
+  /** ?coast=off: the field seeded by the 1-D far field as before the coast map (lineup truth's A/B and "unchanged" shots). */
+  private readonly coastOn = new URLSearchParams(location.search).get('coast') !== 'off';
   readonly foamParams: FoamParams = { ...DEFAULT_FOAM_PARAMS };
   readonly sprayParams: SprayParams = { ...DEFAULT_SPRAY_PARAMS };
   readonly impactParams: ImpactParams = { ...DEFAULT_IMPACT_PARAMS };
@@ -1577,10 +1582,10 @@ export class App {
   /** Re-solve the reef wave field (off-thread) when the swell period or direction, the tide or the reef changes. */
   private requestFieldIfNeeded(force: boolean): void {
     const c = this.conditions;
-    const key = fieldKey(c, this.reefParams, this.breakParams.peel, this.breakParams.curlMaxMs);
+    const key = `${fieldKey(c, this.reefParams, this.breakParams.peel, this.breakParams.curlMaxMs)}|${JSON.stringify(this.coastParams)}`;
     if (!force && key === this.fieldKey) return;
     this.fieldKey = key;
-    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M, ...(this.coastOn ? { coastParams: { ...this.coastParams } } : {}) });
   }
 
   /** Reef sliders rebuild the bathymetry (~2M cells) once you stop dragging, then re-solve the field on it. */

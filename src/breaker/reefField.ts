@@ -4,6 +4,7 @@ import type { GridSpec } from '../seabed/wombReef';
 import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_SIZE_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, UNTIL_NEVER, breakingDepth, onsetLevelHeight } from './breaking';
 import { type FarField, computeFarField, farSample } from './coastFarField';
 import { solveWaveField } from './waveField';
+import { type CoastField, coastSeed, computeCoastField } from './coastField';
 import type { FieldSample } from './fieldSample';
 import { PEEL_NEIGHBOUR_CELLS, breakingLines, curlTimes } from './curlClock';
 
@@ -24,6 +25,12 @@ export interface ReefFieldRequest {
   /** The swell bends (the arrival time's slowness) as though the water were never shallower than this (m): REFRACT_FLOOR_M
    * in the game. Absent: the depth itself. Its height, shoaling and breaking still read the real depth. */
   refractFloorM?: number;
+  /** The coast map (coastMap.buildCoastMap) on COAST_GRID: the coast field is solved over it first and seeds this field
+   * at its boundary (lineup truth spec §3c), and rides along in the reply. Absent: seeded by the 1-D far field. */
+  coast?: Bathymetry;
+  /** The coast field already solved over `coast` (the worker caches it across requests that keep the swell and the tide).
+   * Its clock is moved onto this field's, so pass a copy you can give away. */
+  coastField?: CoastField;
 }
 
 export interface ReefField {
@@ -51,6 +58,8 @@ export interface ReefField {
   periodS: number;
   fromDeg: number;
   tideM: number;
+  /** The coast field, on this field's clock (ReefFieldRequest.coast); absent when the request had no coast. */
+  coast?: CoastField;
 }
 
 function bilinear(a: ArrayLike<number>, g: GridSpec, x: number, z: number): number {
@@ -410,14 +419,18 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const { nx, nz, cellM } = grid;
   const n = nx * nz;
   const omega = (2 * Math.PI) / req.periodS;
-  const far = computeFarField(req.periodS, req.fromDeg, req.tideM);
-  const { depth, k, tau, dirX, dirZ, amp, hmin, fixed, order } = solveWaveField(req.bed, omega, req.tideM, (x, z) => farSample(far, x, z), { refractFloorM: req.refractFloorM });
+  const coast = req.coastField ?? (req.coast ? computeCoastField({ bed: req.coast, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM, refractFloorM: req.refractFloorM }) : undefined);
+  const far = coast ? coast.far : computeFarField(req.periodS, req.fromDeg, req.tideM);
+  const seed = coast ? coastSeed(coast, far) : (x: number, z: number) => farSample(far, x, z);
+  const { depth, k, tau, dirX, dirZ, amp, hmin, fixed, order } = solveWaveField(req.bed, omega, req.tideM, seed, { refractFloorM: req.refractFloorM });
 
   // Normalise so the crest reaches the peak at τ = 0.
   const tauPeak = bilinear(tau, grid, 0, 0);
   const tau32 = new Float32Array(n);
   for (let i = 0; i < n; i++) tau32[i] = tau[i] - tauPeak;
-  far.tauOffset = tauPeak;
+  // One clock for the reef, the coast and the far field (the seed's τ was already on the far field's, offset or not).
+  far.tauOffset += tauPeak;
+  if (coast) for (let i = 0; i < coast.tau.length; i++) coast.tau[i] -= tauPeak;
   // The breaking ratio is ∝ amp/depth (above its floor): smoothing that, not the depth, smooths the ratio itself.
   const gain = new Float32Array(n);
   for (let i = 0; i < n; i++) gain[i] = amp[i] / breakingDepth(hmin[i]);
@@ -453,7 +466,7 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const psiHere = new Float32Array(n * ONSET_LEVELS);
   for (let i = 0; i < n; i++) psiHere.fill(psiFromStep(step[i]), i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
   const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel: req.peel ?? 1, curlMaxMs: req.curlMaxMs ?? CURL_MAX_MS_DEFAULT });
-  const field: ReefField = { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM };
+  const field: ReefField = { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM, ...(coast ? { coast } : {}) };
   if (req.smooth) smoothFieldAmplitude(field);
   return field;
 }
