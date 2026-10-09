@@ -62,3 +62,38 @@ or row 63 (face 10/10: Huge offered, smallest barrels).
 Questions for the ruling: (1) the pick; (2) accept the second leg as a closeout on the real shelf (drop the "second act"
 target), or ask for a new lever (e.g. a ledge segment set seaward, which the plan did not list); (3) Big 12.1 / Huge 12.5
 against the 9–12 bar (the select rule's 13 offers them).
+
+## Fable's finding on Task 2 (2026-10-09): the second leg is the beach, not the ledge
+
+Probe (temporary `tools/_tmpLeg1.ts`, deleted; row 66's ledge, Pumping, 225°, mid tide): along leg 1 every ray breaks
+**7–19 m seaward of the ledge, in 4.8–5.3 m of water, on a line at x ≈ 38–40 running due north**. The ledge's own τ along
+leg 1 runs 19 m/s (geometry: c/sin α with α = 12° + 18.4°); the first-break times run 39 m/s because they are on that
+north-running line, not on the ledge. That line is the Womb's beach ramp (`depthBg`: 1.2 m at 20 m off the beach, 4 m at
+60 m, 7.3 m at 80 m, 11 m at 100 m, 15 m by 140 m), which `seawardDepth` lets cap the reef profile across the offshore band.
+A Pumping set (3.8 m) breaks in ~5.5 m, i.e. ~70 m off the beach; Huge (7 m) in ~10 m, ~100 m off. Leg 0 at 42° already
+touches it (s ≥ 60 m: breaks 1.5–5 m off the ledge). **So no ledge shape at the present take-off can carry a peel past
+~x 40: the left runs out of water, not out of reef.** Lever 4 (shelf) could never touch it; nor could the curl.
+
+The structural truth under it: on the real shelf the swell reaches the Womb ~18° off shore-normal. A left peels only
+along a ledge heading downstream of the crest, i.e. north-east, toward the beach (bearing ≈ 42° for 10–12 m/s; a
+north-west leg would make a right). Every metre of left costs 0.67 m of the distance to the beach. Today's take-off is
+94 m off the beach, which is exactly where the beach ramp starts breaking a 7 ft set. On main the −33.5° arrival hid this
+by letting a near-north ledge peel.
+
+### The choice (Andrew's: it moves the Womb's geography)
+
+| | take-off stays at (0,0) | take-off moves ~120–150 m seaward |
+|---|---|---|
+| the left | one ~70 m hollow section at 10–12 m/s, ~7 s, then the inside closes out (a slab) | a 150–200 m ledge at ~42°, ~14–18 s at 10–12 m/s, then the inside |
+| paddle-out | 94 m (today) | 215–245 m (what a reef break is) |
+| what changes | the ledge only (row 66-like) | the reef map's ledges, rock reach, warp centre; `SHORE_REEF_AT_MAP_M`-relative constants; the stand/crew/lookout aims and the lineup moments; the select-screen break map; the set lines' peak; every ride/reef pin |
+| truth | honest but small | honest and the shape Andrew asked for (barrel along the line) |
+
+Fable recommends the move: the ledge from about (−130, 0) to (−10, −135) at 42°, 180 m, then due north (the inside); the
+right (south ledge) mirrored from the new tip and closing out as today; ledge 3.5 m, face 15/15 kept (row 66's hollow
+pattern). Opus to sweep only the take-off x ∈ {−100, −130, −160} and the ledge length {150, 180, 210} on that bearing,
+measuring peel, hollow, where the inside takes over, and the right. Task 2's sweep stands as evidence; row 66 is the
+fallback if Andrew keeps the take-off.
+
+Andrew's Task 1 ruling (option C) is confirmed from the datum: at 225° the peak amp is back to ~1.0 (Pumping face 6.9 ft),
+arrival −18.4°; at 247° −7.8°, amp 1.33; at 202° −22.6°, amp 0.57. The dial is the buoy.
