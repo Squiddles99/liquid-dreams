@@ -1,0 +1,41 @@
+# shelf-polish Task 2 step 1: where "one curl, one clock" fails on the real shelf (tools/_curlSeams.ts; the crestTrace test's
+# game field: coast-seeded, smoothed, refraction floor, peel 1, curl on; biggest set wave per size; spacing 1 m)
+# npx tsx tools/_curlSeams.ts --ft=6 --dt=6 --around=176,200 ; --ft=8 --dt=1 ; --nodes=6,-25,15,180,235 ; --lines
+
+NOT at the ledge's turn north (TURN (-0.5, -125)), NOT at the tip. Every crestTrace violation is in a second drawn run of
+the crest on the INNER SHELF INSIDE THE RIGHT, 226-250 m from TIP (x -45..+11, z +186..+222), where the wave has decayed
+(station H 1.5-2.2 m) and the trace stops at TAPER_NEAR_M (250 m).
+
+6 ft (lq 5.857: levels 5 and 6 blended), t + 6, run arcs 170..199 (curl at arc 170 (-6.3, 181.6), tb 5.36):
+  arc  run    tb5   tb6   station tb
+  180  0.274  6.27  2.58  3.11
+  181  0.232  6.17  1.77  2.40
+  182  0.220  6.07  0.16  0.58   <- run < Q6 0.225: onsetLevel's toRun, tb = tb5 + w(-D5 - tb5), w 0.91 -> ~0.09 tb5
+  183  0.229  5.97  1.96  2.53   <- run >= Q6: tb = tb5 + w(tb6 - tb5): the level-6 clock (broke 13 m back, 1.96 s ago)
+  184..198: tb6 2.40 -> 2.71, station tb 2.90 -> 3.21 (rising away from the run's curl: the 7 later violations)
+8 ft (lq 4.953: levels 4 and 5), t + 1, arcs 196/197 (-43, 221): run 0.155 / 0.158 straddle Q5 0.156: tb 0.10 -> 1.13.
+
+Mechanism (two parts):
+1. The reader's toRun (breaking.onsetLevel/onsetTime): with the running maximum between Q[k] and Q[k+1], it reads the
+   crossing of the wave's own level as happening now (hi = -D_k). On a ray whose running maximum PLATEAUED just under
+   Q[k+1] long ago (here at 0.220, 5 m inside the level-6 band's edge), that is wrong by up to tb_k; the next ray, whose
+   plateau is a hair over Q[k+1], reads the level-(k+1) clock instead. A 1 m step along the crest jumps 2 s. The bake is
+   consistent (each level's T' is monotone along its own line); the seam is the record's level edge as the reader reads it.
+2. The level-6 line there (417685, first break (-17.8, 230.3) T 2.01, 38 nodes) hooks under the crest: its curl runs north
+   (z 230 -> 201, T' 2.01 -> 4.50) then turns east along z 192-193 (x -14.8 -> -4.8, T' 4.74 -> 5.31). The crest's stations
+   map back along their rays to the east-going band (arcs 176-182, T' 5.05-5.31) and then to the north-going leg
+   (arcs 183+, T' 4.50 -> 2.68): along the crest T' falls 0.8 s at arc 182/183 although it is monotone along the line.
+
+reefField "until carries the hold back along its ray" (8 jumps of 0.020-0.040 s, bar 0.02): nodes 284337-290174 on the
+peel-1.7 test field = (-93..-126, -4..-13), the left's first 5-40 m from the tip, one cell back: the bilinear read mixes the
+neighbouring rays' holds, whose along-crest gradient there is ~0.03 s per cell larger than the bar allows (2 s of hold over
+the first ~40 m). A read precision, not a clock that runs backwards.
+
+MEASURED (tools/_untilJumps.ts, the test's own peel-1.7 field): the 8 jumping nodes are 5.7-21 m from the tip along the left,
+each at the onset band's edge (one node across its ray unbroken), held 5.81-5.99 s: at PEEL_MAX_HOLD_S (6 s). Across the
+ray the next node's hold differs by 0.13-0.31 s, so one cell back the bilinear read mixes them: 0.020-0.040 s. Why held at
+the cap: the stretch measures from its section's first break, and on the real shelf the level's one line (5, 6 on the game field, --lines: lines 419 /
+27706, 1194 / 1044 nodes) first breaks at the RIGHT's far south end, (-158, 237) T -10.1 s / (-152, 233) T -9.4 s, so at
+peel 1.7 the left's first metres get 0.7 x ~10 s, capped to 6. The game runs peel 1 (DEFAULT_BREAK_PARAMS.peel, App's
+request): no stretch, no hold there. The test's premise (held nodes on the left's first leg stretched from the peak) is the
+old peak's.

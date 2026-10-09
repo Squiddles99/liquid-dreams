@@ -66,3 +66,57 @@ applies), and no count grew. So:
 - The ribbon's trace cap `TAPER_NEAR_M` (250 m from the tip) noted for Task 3: the inside leg's closeout lies at 263–297 m,
   so Task 3 raises or re-anchors it, and re-measures with `_rideCost.ts`.
 Proceed: Task 1 step 2 (C), then Tasks 2–8. Next STOP: after Task 3 (the stand frames).
+
+### Task 1 as ruled (Opus, 2026-10-10, second run)
+
+- **C, taken in its exact form.** `breakEmitters` framed every breaking station (59 a tick) to decide which emit (~20). The
+  frame's timing and weights (prog, weight, rho, tauLand) read no sheet, so they are tested first (`wombSection.sectionTiming`)
+  and only emitting stations pay for the frame. Off-GPU, same process (`_rideCost --spray --old`): **41.5 → 14.0 ms per 20 Hz
+  tick, 0 of 170 ticks differ (exact JSON)**. So no camera cull: the ruling's pixel gate is met by identity, and a camera
+  cull would have kept 34 of 59 stations (less saving) and cut the impacts the sound hears behind the camera
+  (`App.updateSound` reads the same emitters). `evidence/shelf-polish/ridecost-spray.txt`.
+- **A, the bar 70.4 ms (Task 0 main median 64.0 × 1.10): not demonstrable today.** Another session's Blender renders
+  (`tools/hero/build.py`, all cores) ran on and off 02:33–04:00. Clean interleaved runs: main's code 59.6 / 81.1, this
+  branch 80.2 / 56.9 / 81.6 (`frames-task1.txt`). The ~7 ms in-game saving is under the spread; main's own code misses the
+  bar today too. Ruling wanted at the end of this STOP (one line).
+- **B carried for Andrew** (as ruled): "a 2 cm approximation of the water under the board would buy ~20 ms per step"; and a
+  later perf candidate: an exact shortcut for the un-curled standing-wall section, the twin of the fully-curled one
+  (`sectionFrameKnots` on a held section reads the same wall every frame: cache the knots per station while `until` holds).
+
+### STOP at Task 2: the seams are not where the spec expected, and neither has a bounded record fix (Opus, 2026-10-10)
+
+Probes `tools/_curlSeams.ts`, `tools/_untilJumps.ts` (+ a probe-only `ReefFieldRequest.onsetDebug` sink: the first march's T,
+the curl's T′ and each node's breaking line); `evidence/shelf-polish/curl-seams.txt`.
+
+**crestTrace "one curl, one clock" (6 ft: 9, 8 ft: 1).** Not at the ledge's turn north, not at the tip: every violation is
+in a second drawn run on the **inner shelf inside the right, 226–250 m from TIP** (x −45…+11, z +186…+222; station H
+1.5–2.2 m; the trace stops at TAPER_NEAR_M 250). Two things there:
+1. **The reader's toRun on a plateau.** The wave reads levels k, k+1 (6 ft: 5 and 6). Where a ray's running maximum sits
+   between Q[k] and Q[k+1], `onsetLevel` takes the crossing of the wave's own level as happening now (hi = −D_k). On a ray
+   whose running max plateaued just under Q[k+1] long ago that is wrong by up to tb_k; the next ray, a hair over Q[k+1],
+   reads level k+1's clock. 6 ft arc 182: run 0.220 < Q6 0.225 → tb 0.58; arc 183: run 0.229 → tb 2.53 (level 6 broke 13 m
+   back, 1.96 s ago). 8 ft arcs 196/197: run 0.155 / 0.158 straddle Q5 0.156 → tb 0.10 / 1.13.
+2. **A hooked line.** Level 6's line there (38 nodes, first break (−17.8, 230.3)) curls north then turns east under the
+   crest; T′ is monotone along the line (the bake is right) but the crest maps back onto the hook out of order (T′ 5.31 →
+   4.50 between arcs 182 and 183).
+
+**reefField "until carries the hold back along its ray" (8 jumps, 0.020–0.040 s, bar 0.02).** The 8 nodes are 5.7–21 m
+along the left from the tip, at the onset band's edge, held **5.8–6.0 s, the PEEL_MAX_HOLD_S cap**, with the hold across
+the ray stepping 0.13–0.31 s per cell (the bilinear one cell back mixes it). They are held at the cap because the test
+field runs peel 1.7 and the level's one line now first breaks at the **right's far south end** ((−158, 237), T ≈ −10 s), so
+the stretch from there reaches the left's first metres at ~7 s. The game runs peel 1 (no stretch): nothing is held there in
+play. The test's premise (held nodes stretched from the peak) is the old peak's.
+
+**Why no bounded fix.** (1) needs the record to know when the running max last rose (a new per-level record field: CPU
+and GPU record layout, every reader) or a change to how `onsetLevel` reads between levels: the water's breaking clock
+everywhere, not this region's. (2) needs the curl ordered along the crest, not along the line. Neither is "fix the
+record" in an hour, and neither is at the Womb's ridden line.
+
+**Ruling wanted (one line each):**
+- **crestTrace:** (a, Opus recommends) the check covers the Womb's run (the run holding the take-off, or stations within
+  TAPER_NEAR_M − 30 m of the TIP), with the inner-shelf reform inside the right named as carried in the test comment; or
+  (b) a segment for the plateau-aware toRun (record field + GPU), Andrew's call as it changes the water's timing.
+- **reefField until:** (c) rewrite the test's premise for the real shelf (the held nodes it checks are those of a section
+  whose own first break is on the left, or run it at the game's peel 1 with a held pocket), bar unchanged; or carry.
+- **Task 1's frame bar:** accept the exact off-GPU saving as the gate today (main's own code misses 70.4 today), or
+  re-measure on an idle machine before Task 3.
