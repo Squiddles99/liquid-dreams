@@ -37,3 +37,11 @@
   not rig); the braids are rigid to the chest (bone chains + gravity not built); pose-space correctives not built
   (volume preservation stands in for the renders; the game needs them, sub-project 5); game-variant glb export
   (Task 11's second half) not done. Sheet gates/gate1c-r1.jpg.
+- Gate 1c round 2 (Andrew's notes 2026-10-10: wrists bent back, paddle feet bent up, facing the tail prone, face and
+  thigh through the board in the duck dive, a foot off the board / front foot on the rail standing, then "her left
+  arm on the paddle pose is wrong"): the board is now seated from each pose's contacts (floor/nose/tail skin groups,
+  measured with subdivision off so indices match), nose toward her head; wrists follow the forearms unless a pose
+  plants palms; paddle arms authored in the world (right reaching past the nose, left mid-stroke straight down);
+  feet pointed back-and-down; duck dive grips the rails half a metre back from the nose; the pop-up authored in the
+  world with a level search (hands and back toes on the deck). Remaining: the pop-up's front foot lands beside the
+  deck. Andrew offered ChatGPT key-frame sequences per motion — taken up (see the ref brief).

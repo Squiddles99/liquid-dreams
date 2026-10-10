@@ -152,38 +152,52 @@ POSES = {
     # Prone, paddling: chest up, head up, right arm reaching forward to the water, left arm finishing its stroke.
     "paddle": {"turn": 90, "lift": 0.0, "bones": {
         "spine_02": _n(0, 0.3, 1), "spine_03": _n(0, 0.5, 1), "neck": _n(0, 1.0, 0.8), "head": _n(0, 1.2, 0.6),
-        "upperarm_r": _n(-0.25, -0.75, 0.7), "forearm_r": _n(-0.15, -0.95, 0.4), "hand_r": _n(-0.1, -1, 0.2),
-        "upperarm_l": _n(0.3, -0.85, -0.35), "forearm_l": _n(0.15, -0.35, -0.95), "hand_l": _n(0.1, -0.1, -1),
-        "thigh_l": _n(0.05, 0.05, -1), "shin_l": _n(0.03, 0.12, -1), "foot_l": _n(0.0, 0.5, -1),
-        "thigh_r": _n(-0.05, 0.05, -1), "shin_r": _n(-0.03, 0.12, -1), "foot_r": _n(0.0, 0.5, -1)}},
-    # The pop-up: arms straight under the chest, back arched, the feet swinging under the hips.
-    "popup": {"turn": 62, "lift": 0.0, "bones": {
-        "spine_01": _n(0, 0.2, 1), "spine_02": _n(0, 0.32, 1), "spine_03": _n(0, 0.42, 1), "neck": _n(0, 0.5, 1), "head": _n(0, 0.7, 1),
-        "upperarm_l": _n(0.18, -1, -0.25), "forearm_l": _n(0.1, -1, -0.45), "hand_l": _n(0.05, -0.3, -1),
-        "upperarm_r": _n(-0.18, -1, -0.25), "forearm_r": _n(-0.1, -1, -0.45), "hand_r": _n(-0.05, -0.3, -1),
-        "thigh_l": _n(0.3, -1, 0.05), "shin_l": _n(0.15, 0.25, -1), "foot_l": _n(0.2, -1, -0.2),
-        "thigh_r": _n(-0.12, 0.3, -1), "shin_r": _n(-0.08, 0.45, -1), "foot_r": _n(0, 0.4, -1)}},
+        "thigh_l": _n(0.05, 0.05, -1), "shin_l": _n(0.03, 0.12, -1), "foot_l": _n(0.0, -0.6, -0.8),
+        "thigh_r": _n(-0.05, 0.05, -1), "shin_r": _n(-0.03, 0.12, -1), "foot_r": _n(0.0, -0.6, -0.8)},
+        # Andrew (Gate 1c r1): the wrists bent back, the feet bent up, and she faced the tail. Wrists now follow the
+        # forearms; feet point back and down; the board is seated from her contacts, nose toward her head.
+        # The arms in the world (Andrew: the left arm was wrong): the right reaching forward, entering the water past
+        # the nose; the left mid-stroke, pulling straight down through the water beside the rail under the shoulder.
+        "world": {"upperarm_r": _n(-0.22, -1, -0.35), "forearm_r": _n(-0.12, -1, -0.55),
+                  "upperarm_l": _n(0.3, 0.12, -1), "forearm_l": _n(0.12, 0.35, -1)},
+        "floor": ["spine_02", "spine_03", "pelvis"], "nose": ["spine_03"], "tail": ["thigh_l", "thigh_r"]},
+    # The pop-up, authored in the world (board along y, nose at -y; Andrew: kneeling, tipped head-down was wrong):
+    # chest up ~45 deg on straight arms, palms flat, eyes forward; back toes on the tail; front knee tucked under the
+    # chest, its foot swinging through above the deck.
+    "popup": {"turn": 0, "lift": 0.0, "bones": {}, "world": {
+        "pelvis": _n(0, -0.75, 0.66), "spine_01": _n(0, -0.75, 0.66), "spine_02": _n(0, -0.72, 0.7), "spine_03": _n(0, -0.68, 0.73),
+        "neck": _n(0, -0.45, 0.9), "head": _n(0, -0.1, 1),
+        "upperarm_l": _n(0.1, 0.06, -1), "forearm_l": _n(0.05, 0.04, -1), "hand_l": _n(0.05, -1, -0.12),
+        "upperarm_r": _n(-0.1, 0.06, -1), "forearm_r": _n(-0.05, 0.04, -1), "hand_r": _n(-0.05, -1, -0.12),
+        "thigh_r": _n(-0.06, 0.62, -0.78), "shin_r": _n(-0.04, 0.88, -0.48), "foot_r": _n(0, 0.35, -1),
+        "thigh_l": _n(0.1, -0.85, -0.5), "shin_l": _n(0.05, 0.45, -0.9), "foot_l": _n(0.05, -1, -0.1)},
+        "floor": ["hand_l", "hand_r", "foot_r"], "nose": ["hand_l", "hand_r"], "tail": ["foot_r"], "prone": True,
+        "level": (["hand_l", "hand_r"], ["foot_r"]), "levelRange": (-30, 30)},
     # A low bottom turn (regular foot: left foot to the nose, +x): knees deep, torso leaning in, arms out for balance.
     "bottomTurn": {"turn": 0, "lift": None, "bones": {
         "spine_01": _n(0.1, -0.2, 1), "spine_02": _n(0.18, -0.32, 1), "spine_03": _n(0.22, -0.38, 1), "neck": _n(0.2, -0.2, 1), "head": _n(0.25, 0.0, 1),
         "upperarm_l": _n(1, -0.35, -0.2), "forearm_l": _n(1, -0.5, 0.05), "hand_l": _n(1, -0.4, -0.1),
         "upperarm_r": _n(-0.45, -0.4, -1), "forearm_r": _n(-0.3, -0.8, -0.6), "hand_r": _n(-0.2, -0.9, -0.5),
         "thigh_l": _n(0.55, -0.7, -0.55), "shin_l": _n(0.1, 0.45, -0.9), "foot_l": _n(0.35, -1, -0.05),
-        "thigh_r": _n(-0.4, -0.75, -0.55), "shin_r": _n(-0.05, 0.55, -0.85), "foot_r": _n(-0.25, -1, -0.05)}},
+        "thigh_r": _n(-0.4, -0.75, -0.55), "shin_r": _n(-0.05, 0.55, -0.85), "foot_r": _n(-0.25, -1, -0.05)},
+        "floor": ["foot_l", "foot_r"], "nose": ["foot_l"], "tail": ["foot_r"]},
     # Crouched in the tube: compact, rear knee dropped, front hand forward, back hand trailing, eyes up the line.
     "tube": {"turn": 0, "lift": None, "bones": {
         "spine_01": _n(0.15, -0.45, 1), "spine_02": _n(0.25, -0.6, 1), "spine_03": _n(0.3, -0.6, 1), "neck": _n(0.35, -0.2, 1), "head": _n(0.45, 0.1, 1),
         "upperarm_l": _n(1, -0.6, 0.0), "forearm_l": _n(1, -0.35, 0.25), "hand_l": _n(1, -0.2, 0.1),
         "upperarm_r": _n(-0.5, 0.3, -1), "forearm_r": _n(-0.7, 0.4, -0.6), "hand_r": _n(-0.6, 0.3, -0.7),
         "thigh_l": _n(0.45, -0.85, -0.3), "shin_l": _n(0.15, 0.55, -0.85), "foot_l": _n(0.35, -1, -0.05),
-        "thigh_r": _n(-0.25, -0.75, -0.65), "shin_r": _n(-0.3, 0.8, -0.35), "foot_r": _n(-0.25, -1, 0.2)}},
+        "thigh_r": _n(-0.25, -0.75, -0.65), "shin_r": _n(-0.3, 0.8, -0.35), "foot_r": _n(-0.25, -1, 0.2)},
+        "floor": ["foot_l", "foot_r"], "nose": ["foot_l"], "tail": ["foot_r"]},
     # The duck dive: head and shoulders driving down, arms straight pushing the nose under, right knee on the tail.
     "duckDive": {"turn": 105, "lift": 0.0, "bones": {
         "spine_02": _n(0, -0.15, 1), "spine_03": _n(0, -0.2, 1), "neck": _n(0, -0.1, 1), "head": _n(0, 0.2, 1),
-        "upperarm_l": _n(0.2, -1, 0.2), "forearm_l": _n(0.12, -1, 0.35), "hand_l": _n(0.1, -0.5, 0.8),
-        "upperarm_r": _n(-0.2, -1, 0.2), "forearm_r": _n(-0.12, -1, 0.35), "hand_r": _n(-0.1, -0.5, 0.8),
+        "upperarm_l": _n(-0.1, -1, 0.2), "forearm_l": _n(-0.05, -1, 0.35),
+        "upperarm_r": _n(0.1, -1, 0.2), "forearm_r": _n(0.05, -1, 0.35),
         "thigh_r": _n(-0.1, -0.85, -0.55), "shin_r": _n(-0.08, 0.6, -0.8), "foot_r": _n(0, 0.95, -0.3),
-        "thigh_l": _n(0.08, 0.35, -1), "shin_l": _n(0.05, 0.3, -1), "foot_l": _n(0, 0.8, -0.6)}},
+        "thigh_l": _n(0.08, 0.35, -1), "shin_l": _n(0.05, 0.3, -1), "foot_l": _n(0, -0.6, -0.8)},
+        # The board tilts nose-down between her hands and her right knee (she is pushing it under).
+        "floor": ["hand_l", "hand_r", "shin_r"], "nose": ["hand_l", "hand_r"], "tail": ["shin_r"], "tilt": True},
 }
 ORDER = ["root", "pelvis", "spine_01", "spine_02", "spine_03", "neck", "head", "clavicle_l", "upperarm_l", "forearm_l", "hand_l",
          "clavicle_r", "upperarm_r", "forearm_r", "hand_r", "thigh_l", "shin_l", "foot_l", "toe_l", "thigh_r", "shin_r", "foot_r", "toe_r"]
@@ -197,14 +211,42 @@ def rest(rig):
     rig.matrix_world = Matrix.Identity(4)
 
 
-def pose(rig, name, body):
-    """Aim the bones, then turn the rig about its x axis (prone poses) and set it down: lowest skin at z = 0.06 (on
-    the deck) for standing poses, the chest on the deck for the prone ones."""
+def _skin_points(body, bones, P):
+    idx = {body.vertex_groups[b].index for b in bones if b in body.vertex_groups}
+    sel = [v.index for v in body.data.vertices if any(e.group in idx and e.weight > 0.3 for e in v.groups)]
+    return P[sel]
+
+
+def _posed_points(body):
+    """The posed skin, vertex for vertex with the base mesh (subdivision off while measuring)."""
+    subs = [m for m in body.modifiers if m.type == "SUBSURF"]
+    for m in subs:
+        m.show_viewport = False
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    ev = body.evaluated_get(dg)
+    me = ev.to_mesh()
+    P = np.array([(ev.matrix_world @ v.co)[:] for v in me.vertices])
+    ev.to_mesh_clear()
+    for m in subs:
+        m.show_viewport = True
+    return P
+
+
+def pose(rig, name, body, surf):
+    """Aim the bones (world-frame aims turned into her standing frame), turn the rig (prone poses), set her down so
+    her contact skin (the pose's `floor` bones) rests on the deck, and seat the board under it: its axis from the
+    `tail` contact to the `nose` contact, so she always faces the nose; level unless the pose tilts it (Andrew,
+    Gate 1c r1: she faced the tail prone, and standing had a foot off the board and the front foot on the rail)."""
     spec = POSES[name]
+    turn = Matrix.Rotation(math.radians(spec["turn"]), 4, "X")
+    aims = dict(spec["bones"])
+    for b, w in spec.get("world", {}).items():
+        aims[b] = (turn.inverted().to_3x3() @ w).normalized()
     rest(rig)
     _mode(rig, "POSE")
     for bname in ORDER:
-        want = spec["bones"].get(bname)
+        want = aims.get(bname)
         if want is None:
             continue
         pb = rig.pose.bones[bname]
@@ -215,21 +257,43 @@ def pose(rig, name, body):
         pb.matrix = Matrix.Translation(h) @ R @ Matrix.Translation(-h) @ pb.matrix
     bpy.context.view_layer.update()
     bpy.ops.object.mode_set(mode="OBJECT")
-    rig.matrix_world = Matrix.Rotation(math.radians(spec["turn"]), 4, "X")
+    if "level" in spec:
+        # Bisect the turn so both contact groups' lowest skin sits at the same height.
+        a_b, b_b = spec["level"]
+        lo_t, hi_t = (math.radians(x) for x in spec.get("levelRange", (40, 120)))
+        for _ in range(14):
+            mid_t = (lo_t + hi_t) / 2
+            rig.matrix_world = Matrix.Rotation(mid_t, 4, "X")
+            P = _posed_points(body)
+            diff = _skin_points(body, a_b, P)[:, 2].min() - _skin_points(body, b_b, P)[:, 2].min()
+            lo_t, hi_t = (mid_t, hi_t) if diff > 0 else (lo_t, mid_t)
+        turn = Matrix.Rotation((lo_t + hi_t) / 2, 4, "X")
+        print(f"pose {name}: turn {math.degrees((lo_t + hi_t) / 2):.1f} deg")
+    rig.matrix_world = turn
+    P = _posed_points(body)
+    DECK = 0.075
+    tilt = spec.get("tilt", False)
+    floor_pts = _skin_points(body, spec["floor"], P)
+    nose = _skin_points(body, spec["nose"], P)
+    tail = _skin_points(body, spec["tail"], P)
+    nose_c = np.array([nose[:, 0].mean(), nose[:, 1].mean(), nose[:, 2].min()])
+    tail_c = np.array([tail[:, 0].mean(), tail[:, 1].mean(), tail[:, 2].min()])
+    dz = DECK - (max(nose_c[2], tail_c[2]) if tilt else floor_pts[:, 2].min())
+    rig.matrix_world = Matrix.Translation((0, 0, dz)) @ turn
     bpy.context.view_layer.update()
-    dg = bpy.context.evaluated_depsgraph_get()
-    ev = body.evaluated_get(dg)
-    me = ev.to_mesh()
-    P = np.array([(ev.matrix_world @ v.co)[:] for v in me.vertices])
-    ev.to_mesh_clear()
-    if spec["turn"] != 0:
-        # Prone: the chest and belly on the deck (the hands reach below it into the water).
-        idx = {body.vertex_groups[g].index for g in ("spine_02", "spine_03", "pelvis") if g in body.vertex_groups}
-        torso = [v.index for v in body.data.vertices if any(e.group in idx and e.weight > 0.5 for e in v.groups)]
-        floor = P[torso, 2].min() - 0.01
-    else:
-        floor = P[:, 2].min()
-    dz = 0.075 - floor
-    rig.matrix_world = Matrix.Translation((0, 0, dz)) @ rig.matrix_world
+    nose_c[2] += dz
+    tail_c[2] += dz
+    d = nose_c - tail_c
+    yaw = math.atan2(d[1], d[0])
+    pitch = -math.atan2(d[2], math.hypot(d[0], d[1])) if tilt else 0.0
+    mid = (nose_c + tail_c) / 2
+    fwd = np.array([math.cos(yaw), math.sin(yaw), 0.0])
+    if spec.get("prone", spec["turn"] != 0) and not tilt:
+        mid = mid - fwd * 0.12  # a prone rider's chest sits ahead of the board's middle
+    if tilt:  # the hands on the rails about half a metre back from the nose, where the board is wide
+        mid = nose_c - fwd * 0.415 * math.cos(pitch) + np.array([0, 0, -0.415 * math.sin(-pitch)])
+    surf.rotation_euler = (0.0, pitch, yaw)
+    # The deck's top sits ~6 cm above the board's origin.
+    surf.location = (mid[0], mid[1], (mid[2] if tilt else DECK) - 0.06)
     bpy.context.view_layer.update()
     return P.min(0) + np.array([0, 0, dz]), P.max(0) + np.array([0, 0, dz])

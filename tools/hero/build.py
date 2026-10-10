@@ -116,16 +116,10 @@ if pose_names:
     rigging.bind(rig, body, worn, rigid)
     surf = rigging.board(f"{name}_board")
     for pn in pose_names:
-        lo, hi = rigging.pose(rig, pn, body)
+        lo, hi = rigging.pose(rig, pn, body, surf)
         expression(True)
         c = (lo + hi) / 2
-        prone = rigging.POSES[pn]["turn"] != 0
-        if prone:  # along her length (her head toward -y), under her chest and hips
-            surf.rotation_euler = (0, 0, math.radians(90))
-            surf.location = (0, c[1] + 0.12, 0.0)
-        else:  # across her stance, under her feet
-            surf.rotation_euler = (0, 0, 0)
-            surf.location = (c[0], c[1] - 0.02, 0.0)
+        prone = rigging.POSES[pn].get("prone", rigging.POSES[pn]["turn"] != 0)
         size = max(hi - lo) + 0.4
         cam.data.lens = 50
         cam.data.dof.use_dof = False
