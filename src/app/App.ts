@@ -101,7 +101,7 @@ import { FoamField } from '../whitewater/FoamField';
 import { KelpField } from '../seabed/KelpField';
 import { SprayParticles } from '../whitewater/SprayParticles';
 import {
-  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
+  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, type FeatherEmitter, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
   impactBirths, normalizeImpactParams, type SpitEmitter, spitBirths, SPRAY_BIRTH_CAP, normalizeSprayParams, sprayAndPlumeBirths, sprayCanEmit, windToVector,
 } from '../whitewater/sprayEmitters';
 import { IMPACT_KIND } from '../whitewater/particleKinds';
@@ -381,7 +381,7 @@ export class App {
   readonly impact = new SprayParticles(this.sky, IMPACT_KIND, this.sunlight);
   private impactTimer: number | undefined;
   /** This frame's emitters per tick, shared by the spray and the explosion (their replays cover different tick counts). */
-  private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] }>();
+  private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[] }>();
   private readonly fieldClient = new ReefFieldClient();
   private fieldKey = '';
   /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
@@ -986,7 +986,7 @@ export class App {
   }
 
   /** Tick k's emitters, computed once per frame (both systems ask for the same ticks). */
-  private emittersAt(k: number): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] } {
+  private emittersAt(k: number): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[] } {
     let e = this.tickEmitters.get(k);
     if (!e) {
       const t = tickTime(k);
@@ -1015,7 +1015,8 @@ export class App {
     // When the spray can't emit, don't compute the tick's emitters for it: on a calm day its replay would run the
     // shared trace for all its ticks just for the explosion's sake (final review).
     if (!sprayCanEmit(this.sprayParams.amount, this.conditions.wind.speedMs)) return [];
-    return sprayAndPlumeBirths(this.emittersAt(k).spray, k, this.sprayParams);
+    const e = this.emittersAt(k);
+    return sprayAndPlumeBirths(e.spray, k, this.sprayParams, e.feather);
   }
 
   /** Dev (3c plan Task 4): a forced impact replay, timed to the GPU's completion; cpuMs is the emitter work alone. */
