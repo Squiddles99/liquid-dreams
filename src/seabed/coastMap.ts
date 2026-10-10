@@ -16,7 +16,8 @@ export const INNER_SHELF_M = 9;
 /**
  * Where the inner shelf deepens below INNER_SHELF_M (hand-set, like the 9 m: the survey has no data there): a raised cosine
  * along the coast from INNER_SHELF_M at `zNorth` (north flank) and at `zSouth` (south flank) to `depthM` at `zPeak`.
- * Never inside the Womb's halo (wombHalo > 0 between REEF_Z[0] − WOMB_HALO_M and REEF_Z[1] + WOMB_HALO_M), so the Womb's
+ * depthM is at most the first traced contour's (10 m): deeper, openCoastDepth's max would hold the shelf flat past the 10 m
+ * line and move the survey's 10…depthM lines. Never inside the Womb's halo (wombHalo > 0 between REEF_Z[0] − WOMB_HALO_M and REEF_Z[1] + WOMB_HALO_M), so the Womb's
  * water is untouched.
  */
 export interface InnerShelfDeep { depthM: number; zNorth: number; zPeak: number; zSouth: number }
