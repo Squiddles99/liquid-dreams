@@ -31,3 +31,22 @@ None remain. Two failed on the first run and were settled as follows. Andrew sho
      check now leaves out Cross-offshore.
    - If Cross-offshore should count as "best", the research doesn't support SE, so the claim's wording would need to
      change instead.
+
+## Rerun on main after the merge with the Womb retune (2026-10-10)
+
+```
+PASS left: 7 ft WSW mid: first leg 72/72 broken, peel 12.0 m/s (band 8–20)
+PASS barrels: 7 ft WSW mid: barrel, hollow 1.00
+FAIL short / other-way / best-size: no game check yet
+FAIL best-swell: 225°: no, 247°: breaks
+PASS best-wind: the game's offshore winds blow from 90°; best arc 45–90°
+PASS best-tide: breaks at 0, 0.5 m for Solid, Pumping, Big
+```
+
+**Failing claim for Andrew: best-swell.** On the retuned reef, the 7 ft first leg at 225° (SW) no longer meets the
+checker's bar: every point of the first leg broken, and a peel of 8–20 m/s. WSW still does.
+
+- The sources say SW is the Womb's main direction, so this needs your call: retune the wave for SW, or reword the claim
+  to WSW only.
+- Until then, the panel hides "Best swell" and the details page hides the swell paragraph.
+- The claim is still listed in womb.json.
