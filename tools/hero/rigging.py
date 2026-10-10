@@ -315,9 +315,9 @@ def pose(rig, name, body, surf):
     if spec.get("prone", spec["turn"] != 0) and not tilt:
         mid = mid - fwd * 0.12  # a prone rider's chest sits ahead of the board's middle
     if not spec.get("prone", spec["turn"] != 0) and not tilt:
-        # Standing: the back foot over the tail pad, ~25 cm from the tail (Andrew's trim reference, 2026-10-10); the
-        # front foot then lands just behind the middle.
-        mid = tail_c - fwd * 0.0 + fwd * (0.915 - 0.25)
+        # Standing: the back foot 45 cm from the tail (Andrew, 2026-10-10: centred between the feet was too far forward,
+        # over the tail pad at 25 cm too far back; "somewhere between" is the trim sweet spot).
+        mid = tail_c + fwd * (0.915 - 0.45)
     if tilt:  # the hands on the rails about half a metre back from the nose, where the board is wide
         mid = nose_c - fwd * 0.415 * math.cos(pitch) + np.array([0, 0, -0.415 * math.sin(-pitch)])
     surf.rotation_euler = (0.0, pitch, yaw)
