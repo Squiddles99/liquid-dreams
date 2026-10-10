@@ -208,3 +208,30 @@ the crestTrace one-curl comment names the inner shelf as an excluded closeout wi
 move 0.1 s. In return the inner shelf's 2 s seam halves (6 ft worst step 1.95 → 1.02 s). Follow-up candidate, not
 started: a crest-ordered curl pass (per level, each τ contour from its earliest break) for the inner shelf's remaining
 closeout steps, with its own ride/curl gate.
+
+## Fable's closing review (2026-10-10): merge recommended; Andrew decides, with one departure flagged
+
+Checked from the files, not the summary: `src` at 8da193c is byte-identical to e4de42a (the revert is clean, so the
+record and every C number stand); HEAD differs from e4de42a in `src` only by the re-pin and the one-curl comment
+(ff38d44); `ride-diff-named.txt` names every differing sample; `curl-diff-named.txt` is within 0.1 m/s everywhere;
+`frame-pumping.md` is deterministic (0 px between two after-captures) and `compare-band.png` reads the same wave by
+eye, with the plume's puff reshaped and thin lines on the lip and shoulder; `breaker-names-after.txt` has 0 reds not in
+shelf-polish's list; the GPU self-test was 14/14 on code unchanged since.
+
+**On the 0.32 m.** Positions print to 0.1 m, so 0.32 is 0.3 at the measurement's resolution: accepted, no longer run.
+What matters more is that the drift grows over the sample (0.10 m at +1.5 s → 0.32 m at +5.5 s). Its cause is bounded:
+the stations' `until` moves at most 0.06 s, and the rider follows the curl at ~8–9 m/s along the line, so the offset
+saturates near 0.5 m and cannot grow past it. A 15 s ride would show about that, not metres.
+
+**Segment outcome.** The inner shelf's 2 s seam halves (6 ft worst step 1.95 → 1.02 s; 8 ft 1.03 → 0.62 s; 12 ft 0)
+by letting a level's band edge keep its own onset clock in the bake. No GPU change, no record-layout change. The
+one-curl check keeps its 220 m limit with the inner shelf named as a closeout and the crest-ordered pass as a later
+candidate. The Task 4 seed attempt is reverted and kept as evidence.
+
+**For Andrew at merge (the departure from "ridden line unchanged"):** the 7 ft ride moves up to 0.3 m and its station
+clocks 0.01–0.06 s by +5.5 s (bounded near 0.5 m over a full ride), the 12 ft ride is unchanged in position, two bands'
+first breaks move 0.1 s, and the Pumping spray plume changes shape. I accepted this as under what a player feels and
+as the more honest read at a band edge. He can veto; the revert is one commit (e4de42a's `smoothOnsetTimes` change).
+
+Merge: Andrew's call. Branch pushed at 1d656d8. Merge main via a temporary worktree if the `liquid-dreaming/` checkout is
+on another branch; remove the `node_modules` junction before any `git worktree remove`.
