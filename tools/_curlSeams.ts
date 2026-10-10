@@ -24,7 +24,7 @@ const MIN_H = ct.minRibbonHeight(sw.fieldBreakingHeight(plain, P), P);
 const [PX, PZ] = wr.TIP, TURN = wr.NORTH_LEDGE[1], LINEUP: [number, number] = [PX - 25, PZ + 45];
 const w = { arrivalS: 0, heightM: rr.setWaveHeight(ft), omega: ctx.omega, travelX: ctx.travelX, travelZ: ctx.travelZ, crestLengthM: 400, crestOffsetM: 0 };
 const tb0 = ct.timeSinceOnset(game, w, PX, PZ, ctx, P), peak = w.arrivalS + rf.sampleField(game, PX, PZ).tau - (tb0 ?? 0);
-{ const g = w.heightM * br.onsetGain(P), lq = Math.log(1 / (g * br.ONSET_LEVEL_Q[0])) / Math.log(br.ONSET_LEVEL_Q[1] / br.ONSET_LEVEL_Q[0]); console.log(`# level lq ${lq.toFixed(3)} (k = ${Math.floor(lq)} and k + 1 blended)`); }
+const KLO = ((): number => { const g = w.heightM * br.onsetGain(P), lq = Math.log(1 / (g * br.ONSET_LEVEL_Q[0])) / Math.log(br.ONSET_LEVEL_Q[1] / br.ONSET_LEVEL_Q[0]); console.log(`# level lq ${lq.toFixed(3)} (k = ${Math.floor(lq)} and k + 1 blended)`); return Math.floor(lq); })();
 console.log(`# ${ft} ft, H ${w.heightM.toFixed(2)} m, peak broke ${peak.toFixed(3)} s; TIP (${PX}, ${PZ}), TURN (${TURN[0].toFixed(1)}, ${TURN[1].toFixed(1)})`);
 /** The onset node of level k on the ray through (x, z): walk back against the ray 0.5 m at a time, up to 150 m, and take
  * the first node (of the 3 × 3 around the walk) where level k's onset time is set. */
@@ -41,6 +41,8 @@ function rayOnset(x: number, z: number, k: number): { line: number; T: number; T
   }
   return null;
 }
+const quiet = process.argv.includes('--quiet');
+let violations = 0, worstTb = 0, worstAt = '';
 const f2 = (v: number | null | undefined) => (v === null || v === undefined ? 'null' : Number.isFinite(v) ? v.toFixed(2) : String(v));
 for (const dt of dts) {
   const entries = ct.traceStations(game, [w], peak + dt, ctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H, spacingM: 1 });
@@ -54,8 +56,8 @@ for (const dt of dts) {
     console.log(`t + ${dt}: run of ${run.length}, arcs ${run[0].arc.toFixed(0)}..${run[run.length - 1].arc.toFixed(0)}, curl at arc ${c.arc.toFixed(0)} (${c.x.toFixed(1)}, ${c.z.toFixed(1)}) tb ${f2(c.tb)}`);
     const row = (s: import('../src/breaker/crestTrace').Station, why: string) => {
       const rec = rf.sampleOnset(game, s.x, s.z);
-      const ons = [5, 6].map((k) => { const o = rayOnset(s.x, s.z, k); return o ? `k${k} line ${o.line % 100000} T ${o.T.toFixed(2)} T' ${o.Tc.toFixed(2)} @(${o.x.toFixed(0)},${o.z.toFixed(0)}) ${o.back.toFixed(0)} m back` : `k${k} -`; }).join(' | ');
-      const recS = rec ? `tb5 ${rec[11].toFixed(2)} tb6 ${rec[13].toFixed(2)} D5 ${rec[br.ONSET_DELAY_OFFSET + 5].toFixed(2)} q6 ${br.ONSET_LEVEL_Q[6].toFixed(3)}` : '';
+      const ons = [KLO, KLO + 1].map((k) => { const o = rayOnset(s.x, s.z, k); return o ? `k${k} line ${o.line % 100000} T ${o.T.toFixed(2)} T' ${o.Tc.toFixed(2)} @(${o.x.toFixed(0)},${o.z.toFixed(0)}) ${o.back.toFixed(0)} m back` : `k${k} -`; }).join(' | ');
+      const recS = rec ? `tb${KLO} ${rec[1 + 2 * KLO].toFixed(2)} tb${KLO + 1} ${rec[3 + 2 * KLO].toFixed(2)} D${KLO} ${rec[br.ONSET_DELAY_OFFSET + KLO].toFixed(2)} q${KLO + 1} ${br.ONSET_LEVEL_Q[KLO + 1].toFixed(3)}` : '';
       console.log(`  ${recS} ::`);
       console.log(`  ${why.padEnd(6)} arc ${s.arc.toFixed(0).padStart(4)} (${s.x.toFixed(1)}, ${s.z.toFixed(1)}) tip ${Math.hypot(s.x - PX, s.z - PZ).toFixed(0)} m turn ${Math.hypot(s.x - TURN[0], s.z - TURN[1]).toFixed(0)} m | tb ${f2(s.tb)} until ${f2(s.until)} H ${s.H.toFixed(2)} | run ${rec ? rec[0].toFixed(3) : '-'} || ${ons}`);
     };
@@ -69,13 +71,20 @@ for (const dt of dts) {
           if (!broken && s.until !== null && prev.until !== null && Number.isFinite(s.until) && Number.isFinite(prev.until) && s.until < prev.until - 0.05) bad = 'UNTIL';
           broken = false;
         }
-        if (bad) { row(prev, 'prev'); row(s, bad); }
+        if (bad) {
+          violations++;
+          const jump = bad === 'TB' ? s.tb! - prev.tb! : prev.until! - s.until!;
+          if (jump > worstTb) { worstTb = jump; worstAt = `t + ${dt} arcs ${prev.arc.toFixed(0)}/${s.arc.toFixed(0)} (${s.x.toFixed(0)}, ${s.z.toFixed(0)}) tip ${Math.hypot(s.x - PX, s.z - PZ).toFixed(0)} m ${bad}`; }
+          if (!quiet) { row(prev, 'prev'); row(s, bad); }
+          else console.log(`  ${bad} t + ${dt} arc ${prev.arc.toFixed(0)}->${s.arc.toFixed(0)} tip ${Math.hypot(s.x - PX, s.z - PZ).toFixed(0)} m: ${bad === 'TB' ? `tb ${f2(prev.tb)} -> ${f2(s.tb)}` : `until ${f2(prev.until)} -> ${f2(s.until)}`}`);
+        }
         else if (around && s.arc >= around[0] && s.arc <= around[1]) row(s, '');
         prev = s;
       }
     }
   }
 }
+console.log(`# ${ft} ft: ${violations} violations over the whole trace (dt ${dts.join(',')}); worst ${worstTb.toFixed(2)} s at ${worstAt || '-'}`);
 
 // --lines: per level, every breaking line of the bake (onset nodes, first break place and T, extent), and the nodes in
 // --box=x0,x1,z0,z1 every --every m: their line, T, T′.

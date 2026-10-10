@@ -1,0 +1,9 @@
+4 ft: set breaking depth 2.94 m; bands 56-84 m
+4 ft H 1.99: 0 cells outside the footprints and the shore band; shore cells up to s 46 m
+6 ft: set breaking depth 4.69 m; bands 64-280 m
+6 ft H 3.17: 0 cells outside the footprints and the shore band; shore cells up to s 51 m
+8 ft: set breaking depth 6.53 m; bands 68-280 m
+8 ft H 4.41: 3 cells outside the footprints and the shore band; shore cells up to s 55 m
+  (-24, 472) s 118 depth 11.33 hmin 11.19 hminBreak 16.28 amp 2.51 ratio 1.007
+  (-20, 472) s 114 depth 11.33 hmin 11.24 hminBreak 16.41 amp 2.53 ratio 1.008
+  (-16, 472) s 110 depth 11.33 hmin 11.27 hminBreak 16.51 amp 2.54 ratio 1.004
