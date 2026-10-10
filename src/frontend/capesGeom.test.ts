@@ -1,6 +1,6 @@
 // src/frontend/capesGeom.test.ts
 import { describe, expect, it } from 'vitest';
-import { CHART, CHART_LABELS, TITLE_VIEW, capesToChart, chartSwellLines, chartWindArrows, compass16 } from './capesGeom';
+import { CHART, CHART_LABELS, TITLE_VIEW, capesToChart, chartSwellLines, chartWindArrows, compass16, compassArc } from './capesGeom';
 
 describe('capesToChart', () => {
   it('puts the frame origin at the top-left', () => {
@@ -20,10 +20,11 @@ describe('capesToChart', () => {
 });
 
 describe('labels', () => {
-  it('names both capes, Geographe Bay and the seven towns', () => {
+  it('names both capes, Geographe Bay and the towns (no Dunsborough: no waves break there, Andrew 2026-10-10)', () => {
     const t = CHART_LABELS.map((l) => l.text);
-    for (const n of ['Cape Naturaliste', 'Cape Leeuwin', 'GEOGRAPHE BAY', 'INDIAN OCEAN', 'YALLINGUP', 'DUNSBOROUGH', 'BUSSELTON', 'GRACETOWN', 'MARGARET RIVER', 'HAMELIN BAY', 'AUGUSTA'])
+    for (const n of ['Cape Naturaliste', 'Cape Leeuwin', 'GEOGRAPHE BAY', 'INDIAN OCEAN', 'YALLINGUP', 'BUSSELTON', 'GRACETOWN', 'MARGARET RIVER', 'HAMELIN BAY', 'AUGUSTA'])
       expect(t).toContain(n);
+    expect(t).not.toContain('DUNSBOROUGH');
   });
 });
 
@@ -58,6 +59,12 @@ describe('chartWindArrows', () => {
 describe('compass16', () => {
   it('names the sixteen points', () => {
     expect(compass16(247)).toBe('WSW'); expect(compass16(90)).toBe('E'); expect(compass16(359)).toBe('N'); expect(compass16(202)).toBe('SSW');
+  });
+});
+
+describe('compassArc', () => {
+  it('names an arc by its ends, once when both ends share a point', () => {
+    expect(compassArc([225, 248])).toBe('SW – WSW'); expect(compassArc([240, 255])).toBe('WSW');
   });
 });
 

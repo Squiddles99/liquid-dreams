@@ -63,6 +63,30 @@ The executor's own rulings, task by task, are in `execution-ledger.md`, with the
 - **`tools/_selftest.mjs` can stall** when its window is occluded, because background throttling is on. A copy with
   throttling off ran the same tests clean.
 
+## The details page's picture (work in progress)
+
+Andrew, 2026-10-10: not the tube cam, a shot from the beach in ideal conditions.
+
+- **The current shot:** `public/breaks/womb-hero.webp`. It shows the Womb at 7 ft @ 15 s from 247°, mid tide, light
+  offshore, 1.8 s after the set's biggest wave reaches the take-off.
+- **Camera:** on the shore 200 m down the line, eye 5 m up, a 10° field of view.
+- **The wave is still being finished. Recapture the shot when it's done:**
+
+```
+npx node tools/_heroMoment.ts --down=200 --look=40 --eye=5 --fov=10 --pitch=-0.2 --times=1.2,1.8,2.4,3 --base=http://localhost:5173/ --out=<folder>
+```
+
+Run the `captureMoments.mjs` line it prints, with `--settle=4000`. Pick a frame, then crop it to 16:9 into
+`public/breaks/womb-hero.webp` (1600×900, webp quality 86).
+
+Close any other window running the game first. A second copy on the GPU makes frames lag, and the captures come out a
+step behind.
+
+## Map labels
+
+Dunsborough is left off the chart (Andrew, 2026-10-10): no waves break there, and its label sat a long way from its
+dot to clear Yallingup's.
+
 ## Left for later builds
 
 - **Build 2, the Library (Codex layout, mockup B):** the 66 flora and fauna slides with their cards, behind the map's

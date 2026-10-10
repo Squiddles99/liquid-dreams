@@ -50,3 +50,13 @@ checker's bar: every point of the first leg broken, and a peel of 8–20 m/s. WS
   to WSW only.
 - Until then, the panel hides "Best swell" and the details page hides the swell paragraph.
 - The claim is still listed in womb.json.
+
+## Reworded (Andrew, 2026-10-10)
+
+Andrew asked for the swell claim to be accurate.
+
+- **Best swell is now WSW only, 240–255°.** The text reads "It's at its best on a swell from the west-south-west."
+- **Sources:** Surf-Forecast names WSW as the best direction, and it lies inside Mondo's S–SW sector (157.5–247.5°).
+  The SW reading from the WannaSurf group isn't claimed.
+- **Game check:** `npm run claims` shows best-swell PASS (247°: breaks). The panel shows "BEST SWELL: WSW".
+- A 225° (SW) day now reads **Fair** ("Swell from the SW") rather than On.

@@ -2,7 +2,7 @@
 // the tabs (Surf map · Library, locked), today's conditions and the source switch; top-right the Local tag; on the right
 // the focused break's panel; a dotted leader from its pin to the panel.
 import { SURF_BREAKS, breakById } from '../../breaks/index';
-import { compass16 } from '../capesGeom';
+import { compass16, compassArc } from '../capesGeom';
 import { breakToday, conditionsNow, todaysSetup } from '../conditionsSource';
 import type { FrontAction, FrontState } from '../frontEnd';
 import { CapesChart } from './capesChart';
@@ -69,8 +69,8 @@ export class SurfMapPanel {
     const verdictText = { on: 'ON TODAY', fair: 'FAIR TODAY', off: 'OFF TODAY' }[today_.verdict];
     const stat = (k: string, v: string) => { const d = h('div', 'fe-map-stat'); d.append(h('div', 'fe-map-stat-k', k), h('div', 'fe-map-stat-v', v)); return d; };
     const stats = h('div', 'fe-map-stats');
-    if (b.bestShown.swell) stats.appendChild(stat('BEST SWELL', `${compass16(b.best.swellFromDeg[0])} – ${compass16(b.best.swellFromDeg[1])}`));
-    if (b.bestShown.wind) stats.appendChild(stat('BEST WIND', `${compass16(b.best.windFromDeg[0])} – ${compass16(b.best.windFromDeg[1])} · offshore`));
+    if (b.bestShown.swell) stats.appendChild(stat('BEST SWELL', compassArc(b.best.swellFromDeg)));
+    if (b.bestShown.wind) stats.appendChild(stat('BEST WIND', `${compassArc(b.best.windFromDeg)} · offshore`));
     if (b.bestShown.tide) stats.appendChild(stat('BEST TIDE', b.best.tide.map((t) => TIDE[t]).join(', ')));
     stats.appendChild(stat('LEVEL', LEVEL[b.best.level]));
     const verdict = h('div', `fe-map-verdict is-${today_.verdict}`);

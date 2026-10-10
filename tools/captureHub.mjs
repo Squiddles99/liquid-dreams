@@ -32,7 +32,7 @@ app.whenReady().then(async () => {
   // The custom setup: Mid tide, 7 ft @ 15 s from the WSW; wind 0 glassy, 1 light offshore, 5 onshore.
   await act('toggle');
   const custom = async (name, patch) => {
-    await js(`(() => { const c = window.liquidDreams.frontEnd.core; c.s = { ...c.s, setup: { ...c.s.setup, month: 6, swellFt: 7, periodS: 15, fromDeg: 247, tide: 2, ...${JSON.stringify(patch)} } }; })()`);
+    await js(`(() => { const c = window.liquidDreams.frontEnd.core; const u = { ...c.s.customSetup, month: 6, swellFt: 7, periodS: 15, fromDeg: 247, tide: 2, ...${JSON.stringify(patch)} }; c.s = { ...c.s, setup: u, customSetup: u }; })()`);
     await shoot(name);
   };
   await custom('map-custom-glassy', { wind: 0 });
