@@ -25,6 +25,9 @@ def paint_mask(body, L, landmarks):
     head = np.clip((P[:, 2] - (eye_z - 0.105)) / 0.02, 0, 1)  # above the chin's underside
     near = np.linalg.norm(P - c, axis=1) < 0.16
     hair_clear = np.clip(1 - scalp * 2.5, 0, 1)
+    # The painting's own hair at the forehead's corners must not print on the skin: full weight up to 4 cm above the
+    # eyes, none by 5.5 cm.
+    hair_clear = hair_clear * np.clip((eye_z + 0.055 - P[:, 2]) / 0.015, 0, 1)
     w = front * head * near * hair_clear
     att = me.attributes.get("faceproj") or me.attributes.new("faceproj", "FLOAT", "POINT")
     att.data.foreach_set("value", w.astype(np.float32))

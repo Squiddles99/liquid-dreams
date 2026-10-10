@@ -63,3 +63,9 @@
   turn together (no boardYaw). Design note from Andrew: sit → paddle is not only for catching a wave (shifting the
   take-off spot, paddling out for a big set), so the keys are four joinable clips: sitIdle (1-2), sitTurn (3-4, any
   heading, the game's), sitToProne (5-6), paddleCycle (7-8, loops, any heading).
+- Hair round 4 (Andrew: "you've also given Shazza a mullet! She doesn't have a fringe"): every lock sweeps back from
+  the centre part (front locks sideways-back over the temple, over the ear's top, behind it into the braid; back locks
+  hug the head down to it); no forward fall; more lift (12-24 mm), 1100 chunkier locks x 30 fibres, soft S-waves
+  (9-13 cm, 4-8 mm), one shade per lock (`clump` curve attribute), honey blonde (melanin 0.42 → 0.14, red 0.28);
+  temple wisps cut to 18 short ones; the face projection kept below eye line + 4-5.5 cm. Sheet gates/hair-r4.jpg.
+  Open: brown smudges at the temples = the skin's scalp tint where the hairline ramps but no hair covers it.

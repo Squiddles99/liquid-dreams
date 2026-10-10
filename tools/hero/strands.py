@@ -42,12 +42,13 @@ class Curves:
     """Collects polylines with per-point radii, then makes one hair-curves object."""
 
     def __init__(self):
-        self.lines, self.radii = [], []
+        self.lines, self.radii, self.clump = [], [], []
 
-    def add(self, pts, r_root, r_tip=None):
+    def add(self, pts, r_root, r_tip=None, clump=0.5):
         if len(pts) < 2:
             return
         n = len(pts)
+        self.clump.append(clump)
         r_tip = r_root * 0.35 if r_tip is None else r_tip
         self.lines.append(pts)
         self.radii.append([r_root + (r_tip - r_root) * (i / (n - 1)) ** 1.5 for i in range(n)])
@@ -59,13 +60,15 @@ class Curves:
         c.attributes["position"].data.foreach_set("vector", flat)
         rad = c.attributes.new("radius", "FLOAT", "POINT")
         rad.data.foreach_set("value", np.array([r for rr in self.radii for r in rr], np.float32))
+        cl = c.attributes.new("clump", "FLOAT", "CURVE")
+        cl.data.foreach_set("value", np.array(self.clump, np.float32))
         obj = bpy.data.objects.new(name, c)
         c.materials.append(material)
         bpy.context.scene.collection.objects.link(obj)
         return obj
 
 
-def hair_material(name, melanin_root=0.48, melanin_tip=0.16, redness=0.36, rough=0.26):
+def hair_material(name, melanin_root=0.42, melanin_tip=0.14, redness=0.28, rough=0.26):
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     mat.use_nodes = True
     g = Nodes(mat)
@@ -73,7 +76,8 @@ def hair_material(name, melanin_root=0.48, melanin_tip=0.16, redness=0.36, rough
     # Sun-bleached toward the ends, each strand its own shade.
     t = g.math("POWER", info.outputs["Intercept"], 0.8)
     mel = g.math("ADD", melanin_root, g.math("MULTIPLY", t, melanin_tip - melanin_root))
-    mel = g.math("ADD", mel, g.math("MULTIPLY", g.math("SUBTRACT", info.outputs["Random"], 0.5), 0.16))
+    mel = g.math("ADD", mel, g.math("MULTIPLY", g.math("SUBTRACT", info.outputs["Random"], 0.5), 0.08))
+    mel = g.math("ADD", mel, g.math("MULTIPLY", g.math("SUBTRACT", g.attr("clump"), 0.5), 0.22))
     bsdf = g.n("ShaderNodeBsdfHairPrincipled", _model="CHIANG", _parametrization="MELANIN", Melanin=mel, **{"Melanin Redness": redness, "Roughness": rough,
                                                                  "Radial Roughness": 0.32, "Coat": 0.08, "Random Roughness": 0.15})
     out = g.n("ShaderNodeOutputMaterial")
@@ -169,23 +173,22 @@ def _surface_r(tree, centre, d):
 
 
 def _guide(root, n, centre, eye_z, ear, start, tree, rng, side):
-    """A scalp lock's line, root to the braid's start, in the painting's style (round 2): from the centre part the hair
-    falls down the side of the head, over the ear (covering it), to the braid's start below it; locks from behind the
-    ear fall straight down the back of the head to it. Lifted off the skin all the way (volume: most over the ear,
-    soft, as full hair stands), drawn in to the braid at the end."""
+    """A scalp lock's line, root to the braid's start, in the painting's style (round 3; Andrew: no fringe, no mullet):
+    everything sweeps back from the centre part. Locks in front of the ear go sideways and back over the temple (never
+    forward over the forehead), over the top of the ear, and behind it into the braid; locks behind the ear go down
+    the back of the head, close in, into the braid. Lifted off the skin (soft volume), drawn in to the braid at the end."""
     s = 1.0 if side == "l" else -1.0
     ctrl = [root]
-    if root.y < centre.y - 0.055:  # the front hairline: falls forward over the forehead's corner before sweeping out
-        ctrl.append(root + Vector((s * 0.022, -0.012, -0.018)))
-    if root.y < ear.y + 0.015:  # in front of the ear: down the side, over the ear
-        drop = Vector((root.x + s * 0.02, max(root.y, ear.y - 0.03), ear.z + 0.035))
-        ctrl += [drop, ear + Vector((s * 0.01, 0.012, -0.012))]
-    else:  # behind it: down the back of the head toward the braid
-        ctrl.append(Vector((root.x * 0.9 + s * 0.012, root.y, (root.z + start.z) / 2 + 0.02)))
+    if root.y < ear.y + 0.015:  # in front of the ear: sideways-back over the temple, over the ear's top, behind it
+        if root.y < centre.y - 0.03 and abs(root.x) > 0.012:
+            ctrl.append(root + Vector((s * 0.028, 0.012, -0.014)))
+        ctrl += [ear + Vector((s * 0.014, 0.004, 0.032)), ear + Vector((s * 0.008, 0.026, -0.012))]
+    else:  # behind it: down the back of the head toward the braid, hugging the head
+        ctrl.append(Vector((root.x * 0.85 + s * 0.006, root.y, (root.z + start.z) / 2 + 0.02)))
     ctrl.append(start)
     line = braids._catmull([Vector(c) for c in ctrl], 44)
     total = len(line) - 1
-    vol_peak = rng.uniform(0.008, 0.016)
+    vol_peak = rng.uniform(0.012, 0.024)
     out = []
     for i, q in enumerate(line):
         f = i / total
@@ -249,9 +252,20 @@ def build(body, rig, L, marks, preset, name, coords):
                 pts.append(q)
             tails.add(pts, FIBRE_R * 1.4, FIBRE_R * 0.5)
 
+    # Under the locks gathering from behind the ear into each braid, the skin reads as hair (soft-edged, never a root).
+    sc = body.data.attributes["g_scalp"]
+    for side in ("l", "r"):
+        ear, start = L["ears"][side], paths[side][0]
+        A, B = ear + Vector(((1 if side == "l" else -1) * 0.0, 0.01, 0.0)), start
+        AB = B - A
+        for v in body.data.vertices:
+            t = max(0.0, min(1.0, (v.co - A).dot(AB) / AB.length_squared))
+            d = (v.co - (A + AB * t)).length
+            if d < 0.035 and v.co.y > A.y - 0.01:
+                sc.data[v.index].value = max(sc.data[v.index].value, min(0.95, 1.3 * (1 - d / 0.035)))
     # The scalp: guide locks to the braids, each with a clump of fibres around it.
     pick = _scalp_sampler(body, rng)
-    for _ in range(1900):
+    for _ in range(1100):
         root, n = pick()
         side = "l" if root.x >= part_x else "r"
         ear = L["ears"][side]
@@ -263,7 +277,7 @@ def build(body, rig, L, marks, preset, name, coords):
         if len(guide) < 3:
             continue
         # A soft wave across the lock (the painting's hair is wavy, not combed flat), dying out into the braid.
-        wl, amp, ph = rng.uniform(0.03, 0.045), rng.uniform(0.0015, 0.004), rng.uniform(0, 6.28)
+        wl, amp, ph = rng.uniform(0.09, 0.13), rng.uniform(0.004, 0.008), rng.uniform(0, 6.28)
         acc = 0.0
         waved = [guide[0]]
         for i in range(1, len(guide)):
@@ -273,18 +287,19 @@ def build(body, rig, L, marks, preset, name, coords):
             out = (guide[i] - centre).normalized()
             side_ax = t.cross(out).normalized()
             fade = math.sin(math.pi * min(1.0, f * 1.25)) if f < 0.8 else 0.0
-            waved.append(guide[i] + (side_ax * math.sin(acc / wl * 6.283 + ph) + out * 0.5 * math.cos(acc / wl * 6.283 + ph)) * amp * fade)
+            waved.append(guide[i] + (side_ax * math.sin(acc / wl * 6.283 + ph) + out * 0.3 * math.cos(acc / wl * 6.283 + ph)) * amp * fade)
         guide = waved
         tight = rng.uniform(0.5, 1.0)  # how tightly this lock's fibres keep to it
-        for _ in range(16):
+        shade = rng.random()  # one shade per lock: locks, not single strands, catch the sun differently
+        for _ in range(30):
             # A fibre: its root nudged round the guide's on the scalp, drawn into the guide as it nears the braid.
-            jit = Vector((rng.gauss(0, 0.0035), rng.gauss(0, 0.0035), rng.gauss(0, 0.0035)))
+            jit = Vector((rng.gauss(0, 0.0025), rng.gauss(0, 0.0025), rng.gauss(0, 0.0025)))
             jit -= n * jit.dot(n)
             pts = []
             for i, p in enumerate(guide):
                 f = i / (len(guide) - 1)
                 pts.append(p + jit * tight * (1 - f) ** 1.3 + Vector((rng.gauss(0, 0.0003),) * 3) * f)
-            scalp.add(pts, FIBRE_R, FIBRE_R * 0.7)
+            scalp.add(pts, FIBRE_R, FIBRE_R * 0.7, shade)
 
     # Frizz: short fine curls off the scalp's surface, most at the sides and the crown's top.
     for _ in range(70):
@@ -307,7 +322,7 @@ def build(body, rig, L, marks, preset, name, coords):
         wisps.add(pts, FIBRE_R * 0.8, FIBRE_R * 0.4)
     # Face-framing wisps at the temples: loose curling tendrils to the cheekbone.
     for s in (-1, 1):
-        for _ in range(60):
+        for _ in range(18):
             root = centre + Vector((s * rng.uniform(0.055, 0.068), -rng.uniform(0.045, 0.065), rng.uniform(0.0, 0.035)))
             loc, nrm, _, _ = tree.find_nearest(root)
             root = loc + nrm * 0.004
@@ -315,7 +330,7 @@ def build(body, rig, L, marks, preset, name, coords):
             pts = []
             for k in range(22):
                 f = k / 21
-                q = root + Vector((s * 0.012 * f, -0.006 * f, -0.085 * f)) + Vector((s * math.cos(ph + f * 12), math.sin(ph + f * 12) * 0.5, 0)) * 0.004 * f
+                q = root + Vector((s * 0.012 * f, -0.006 * f, -0.05 * f)) + Vector((s * math.cos(ph + f * 12), math.sin(ph + f * 12) * 0.5, 0)) * 0.004 * f
                 lc, nm, _, _ = tree.find_nearest(q)
                 if lc is not None and (q - lc).dot(nm) < 0.003:
                     q = lc + nm * 0.003
