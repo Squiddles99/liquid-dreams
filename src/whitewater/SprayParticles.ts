@@ -35,7 +35,6 @@ export function kindValueNode(kind: N, pick: (k: ParticleKind) => number): N {
   return out;
 }
 
-export { ERODING_KINDS } from './particleKinds';
 
 /**
  * Offshore spray on the GPU (spec 2026-09-27-offshore-spray-design.md §3.2–3.3; CPU reference sprayStep.ts): a pool of
@@ -60,7 +59,7 @@ export class SprayParticles {
   private readonly schedule = new FoamSchedule();
   private readonly params: SprayParams = { ...DEFAULT_SPRAY_PARAMS };
   /** The longest life (s) a puff can have: a replay covers it (plan P2). */
-  private maxLifeS = Math.max(1.2 * DEFAULT_SPRAY_PARAMS.lifeS, PLUME_LIFE_S[1]);
+  private maxLifeS: number;
   private readonly birthPass: THREE.ComputeNode;
   private readonly stepPass: THREE.ComputeNode;
   private readonly clearPass: THREE.ComputeNode;
@@ -99,6 +98,8 @@ export class SprayParticles {
       velLife.element(i).assign(vec4(0.0));
       meta.element(i).assign(vec4(0.0));
     })().compute(SPRAY_POOL) as THREE.ComputeNode;
+    // The plume shares the spray's pool and lives longest (whitewater §4.1); the impact's pool carries none (final review R1).
+    this.maxLifeS = Math.max(1.2 * this.params.lifeS, kind === SPRAY_KIND ? PLUME_LIFE_S[1] : 0);
     this.mesh = new THREE.Sprite(this.buildMaterial(sky, sunlight));
     this.mesh.count = SPRAY_POOL;
     this.mesh.frustumCulled = false;

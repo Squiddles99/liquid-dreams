@@ -46,6 +46,8 @@ export const BORE_PUSH = 0.5;
 export const COARSE_TICKS = 10;
 /** …and its last this many seconds at 20 Hz. */
 export const FINE_REPLAY_S = 10;
+/** A texel's age stops counting here (s): FoamField's state is f32 and its step clamps the same, so the CPU mirrors it. */
+export const FOAM_AGE_MAX_S = 1e4;
 /** A source this strong (or more) makes the foam fresh: its age restarts at 0. */
 export const FRESH_SOURCE = 0.75;
 /** A coarse step samples its source this many times across the step (every 0.1 s), each decayed to the step's end: a bore
@@ -70,7 +72,7 @@ export function decayFoam(density: number, age: number, source: number, dtS: num
     if (t <= toLace) { d *= Math.exp(-k * t); t = 0; } else { d = LACE_LEVEL; t -= toLace; }
   }
   if (t > 0) d = Math.max(0, d - slope * t);
-  return [Math.min(1, Math.max(d, source)), source >= FRESH_SOURCE ? 0 : age + dtS];
+  return [Math.min(1, Math.max(d, source)), source >= FRESH_SOURCE ? 0 : Math.min(age + dtS, FOAM_AGE_MAX_S)];
 }
 
 /** The foam's drift (m/s): the shoreward drift along `dir`, plus the bore's push (dir × c × BORE_PUSH) where the foam is
