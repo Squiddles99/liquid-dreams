@@ -1,0 +1,5 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/seabed/bathymetry.test.ts > the Womb reef > is shallow on the shelf (its base depth or less on average), never shallower than the minimum
+AssertionError: expected 7.477332577228546 to be less than 4
+ Test Files  1 failed | 7 passed (8)
+      Tests  1 failed | 148 passed (149)

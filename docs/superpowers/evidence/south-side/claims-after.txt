@@ -1,0 +1,12 @@
+
+> liquid-dreams@0.0.0 claims
+> node tools/checkBreakClaims.ts
+
+PASS left: 7 ft WSW mid: first leg 72/72 broken, peel 12.0 m/s (band 8–20)
+PASS barrels: 7 ft WSW mid: barrel, hollow 1.00
+FAIL short: no game check yet
+FAIL other-way: no game check yet
+FAIL best-size: no game check yet
+PASS best-swell: 247°: breaks
+PASS best-wind: the game's offshore winds blow from 90°; best arc 45–90°
+PASS best-tide: breaks at 0, 0.5 m for Solid, Pumping, Big
