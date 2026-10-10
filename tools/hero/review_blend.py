@@ -15,7 +15,7 @@ import start_poses  # noqa: E402,F401
 import animate  # noqa: E402
 
 name, out_dir = sys.argv[sys.argv.index("--") + 1:][:2]
-ORDER = ["sitIdle", "sitTurn", "sitToProne", "paddleCycle", "duckDive", "trim"]
+ORDER = ["sitIdle", "sitTurn", "sitToProne", "paddleCycle", "duckDive", "trim", "roundhouse"]
 scene = bpy.context.scene
 rig, surf, cam = bpy.data.objects[f"{name}_armature"], bpy.data.objects[f"{name}_board"], scene.camera
 for o in (rig, surf):
@@ -51,7 +51,16 @@ for cn in ORDER:
     cam.keyframe_insert("location", frame=frame)
     cam.keyframe_insert("rotation_euler", frame=frame)
     scene.timeline_markers.new(cn, frame=int(frame))
-    frame += int((a1 - a0 - (1 if loops else 0)) * reps) + 1
+    end = frame + int((a1 - a0 - (1 if loops else 0)) * reps) + 1
+    if cn in animate.TRACK:  # she travels: the camera keeps its angle and distance and follows her pelvis
+        off = cam.location - t
+        for f in range(int(frame), int(end)):
+            scene.frame_set(f)
+            pv = rig.matrix_world @ rig.pose.bones["pelvis"].head
+            cam.location = Vector((pv.x, pv.y, t.z)) + off
+            cam.keyframe_insert("location", frame=f)
+            cam.keyframe_insert("rotation_euler", frame=f)
+    frame = end
 if cam.animation_data and cam.animation_data.action:
     for fc in animate._fcurves(cam.animation_data.action):
         for kp in fc.keyframe_points:

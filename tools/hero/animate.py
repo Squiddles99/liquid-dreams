@@ -41,11 +41,11 @@ CLIPS = {
     # Duck dive (Andrew's sheet, session 3): from the paddle, hands to the rails, push the nose under, knee on the tail,
     # resurface on hands and knees as the board pops nose-up, down flat kicking, back into the paddle cycle (~2.8 s).
     "duckDive": (["pdl1", "dd2", "dd3", "dd4", "dd5", "dd6", "dd7", "pdl1"], [8, 10, 10, 14, 8, 10, 8, 1], False,
-                 ((0.0, -1.3, 0.5), 90, 7.5, 85, 4)),
+                 ((0.0, -1.9, 0.5), 90, 8.0, 85, 4)),
     # Roundhouse cutback (Andrew's sheets + legend, session 3): the figure-8 track at ~7 m/s (~4.9 s), from his high
     # 3/4-front view; the preview camera follows her.
     "roundhouse": ([f"rh{k}" for k in range(1, 13)], [9, 10, 8, 12, 18, 11, 12, 9, 7, 9, 10, 1], False,
-                   ((0.0, 0.0, 0.6), 0, 9.0, 60, 35)),
+                   ((0.0, 0.0, 0.6), 0, 7.5, 85, 35)),
     # The four played back to back (preview only): idle once, turn, down, two paddle cycles.
     "sitToPaddleChain": (["stp1", "stp1", "stp2", "stp2", "stp3", "stp4", "stp4b", "stp5", "stp6"] + [f"{k}s" for k in _PDL * 2] + ["pdl1s"],
                          [40, 20, 36, 40, 44, 14, 14, 12, 10] + [5] * 16 + [1], False, _STP_CAM),
@@ -199,7 +199,18 @@ def preview(cam, name, out_dir, w=960, h=720):
     scene.render.engine = "BLENDER_EEVEE"
     scene.render.resolution_x, scene.render.resolution_y = w, h
     scene.render.fps = 24
+    suns = []
     if name in TRACK:
+        # She travels metres from the studio's area lights and turns her back on the key: two suns (no falloff), a
+        # warm one from high front-left and a cooler one from behind, so every heading reads.
+        for sname, rot, energy, color in (("track_key", (math.radians(40), 0, math.radians(-25)), 3.0, (1.0, 0.94, 0.86)),
+                                          ("track_back", (math.radians(50), 0, math.radians(160)), 2.0, (0.88, 0.92, 1.0))):
+            light = bpy.data.lights.new(sname, "SUN")
+            light.energy, light.color, light.angle = energy, color, math.radians(8)
+            o = bpy.data.objects.new(sname, light)
+            o.rotation_euler = rot
+            scene.collection.objects.link(o)
+            suns.append(o)
         # Follow her: the same offset from her pelvis every frame (its height held, so the bob doesn't shake the view).
         rig = next(o for o in bpy.data.objects if o.type == "ARMATURE")
         off = cam.location - t
@@ -214,5 +225,7 @@ def preview(cam, name, out_dir, w=960, h=720):
     scene.render.image_settings.file_format = "PNG"
     bpy.ops.render.render(animation=True)
     cam.animation_data_clear()
+    for o in suns:
+        bpy.data.objects.remove(o)
     scene.render.engine = engine
     return d
