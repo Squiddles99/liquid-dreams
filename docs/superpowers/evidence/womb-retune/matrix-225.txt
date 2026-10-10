@@ -16,7 +16,8 @@ Fun        3.5 13 |  0.50 |       0.45 | 39/72, 3.4, 9.7, 0.54                  
 Solid      5.5 14 | -0.50 |       1.07 | 72/72, -0.1, 11.4, 0.66                  | 23.0 | YES | face 6 ft
 Solid      5.5 14 | -0.25 |       0.96 | 72/72, 0.0, 11.4, 0.57                   | 22.7 | YES | face 6 ft
 Solid      5.5 14 |  0.00 |       0.89 | 72/72, 0.1, 11.3, 0.56                   | 22.5 | YES | face 6 ft
-Solid      5.5 14 |  0.50 |       0.77 | 72/72, 0.4, 10.5, 0.54                   | 22.1 | YES | face 6 ft
+Solid      5.5 14 |  0.50 |       0.77 | 72/72, 0.4, 10.6, 0.54                   | 22.1 | YES | face 6 ft
+# level-read (2026-10-10): Solid 0.50 first-leg peel re-pinned 10.5 -> 10.6 m/s (measured 10.58; was 10.50): the band edge keeps its own onset clock (reefField.ONSET_EDGE_LEVELS), tools/_smallSwellRow.ts
 Pumping      7 15 | -0.50 |       1.44 | 72/72, -0.3, 11.6, 1.00                  | 24.6 | YES | face 8 ft
 Pumping      7 15 | -0.25 |       1.30 | 72/72, -0.3, 11.7, 1.00                  | 24.4 | YES | face 8 ft
 Pumping      7 15 |  0.00 |       1.20 | 72/72, -0.2, 11.7, 0.81                  | 24.3 | YES | face 7.5 ft
