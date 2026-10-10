@@ -52,12 +52,18 @@ export class KelpMap {
     return local.x.greaterThanEqual(0.0).and(local.y.greaterThanEqual(0.0)).and(local.x.lessThan(size)).and(local.y.lessThan(size));
   }
 
-  /** The lean (vec2) at world xz: kelp.kelpWindowFade × the interpolated texel. */
-  leanNode(xz: N): N {
+  /** 0 at the window's edge rising to 1 KELP_FADE_M inside it (kelp.kelpWindowFade): the lean and the canopy's look both fade by it. */
+  edgeFadeNode(xz: N): N {
     const size = KELP_GRID_N * KELP_CELL_M;
     const local = xz.sub(this.windowMin.mul(KELP_CELL_M));
     const edge = min(min(local.x, float(size).sub(local.x)), min(local.y, float(size).sub(local.y)));
-    const fade = smoothstep(0.0, KELP_FADE_M, edge).mul(this.on);
+    return smoothstep(0.0, KELP_FADE_M, edge);
+  }
+
+  /** The lean (vec2) at world xz: kelp.kelpWindowFade × the interpolated texel. */
+  leanNode(xz: N): N {
+    const size = KELP_GRID_N * KELP_CELL_M;
+    const fade = this.edgeFadeNode(xz).mul(this.on);
     const s = texture(this.texture, xz.div(size)).level(float(0)); // three typings gap: level() wants a node
     return mix(s.zw, s.xy, clamp(this.alpha, 0.0, 1.0)).mul(fade);
   }

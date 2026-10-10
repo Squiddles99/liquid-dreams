@@ -16,25 +16,26 @@ async function sample(renderer: THREE.WebGPURenderer, rows: number[][], body: (q
 }
 
 registerSelfTest({
-  name: 'kelp: the canopy keeps the weed\'s tone (±20%), is build A\'s weed when off, and stays bounded on level rays',
+  name: 'kelp: the canopy keeps the weed\'s tone in every channel (±15%), is build A\'s weed when off, and stays bounded on level rays',
   async run(renderer) {
     const map = new KelpMap();
     const rows: number[][] = [];
     for (let x = 0; x < 40; x += 0.37) for (let z = 0; z < 40; z += 0.41) rows.push([x, z, 0, 0]);
     const notes: string[] = [];
     let pass = true;
-    const target = luminance(WEED_ALBEDO);
-    // The upright canopy (no lean: the map's motion off), seen straight down and along a tilted ray (parallax). The
-    // leaning canopy's tone is checked by eye in Gate 2's stills.
+    // The upright canopy (no lean: the map's motion off), seen straight down and along a tilted ray (parallax), channel
+    // by channel: through 10–15 m of water only blue and green survive, so a luminance match alone let the canopy read
+    // pale against the plain weed outside its window (2026-10-11). The leaning canopy's tone is checked by eye in Gate
+    // 2's stills.
     map.on.value = 0;
     map.show.value = 1;
     for (const tilt of [0, 0.5]) {
       const out = await sample(renderer, rows, (q) => vec4(kelpWeedAlbedoNode(vec3(q.x, -6.0, q.y), vec3(tilt, -1.0, 0.0).normalize(), map), 0.0));
-      let sum = 0;
-      for (let k = 0; k < rows.length; k++) sum += luminance([out[k * 4], out[k * 4 + 1], out[k * 4 + 2]]);
-      const mean = sum / rows.length;
-      pass &&= Math.abs(mean / target - 1) <= 0.2;
-      notes.push(`ray tilt ${tilt}: mean luminance ${(mean / target).toFixed(3)} × weed`);
+      const sum = [0, 0, 0];
+      for (let k = 0; k < rows.length; k++) for (let c = 0; c < 3; c++) sum[c] += out[k * 4 + c];
+      const ratio = sum.map((v, c) => v / rows.length / WEED_ALBEDO[c]);
+      pass &&= ratio.every((r) => Math.abs(r - 1) <= 0.15);
+      notes.push(`ray tilt ${tilt}: mean rgb ${ratio.map((r) => r.toFixed(3)).join('/')} × weed (luminance ${(luminance([sum[0], sum[1], sum[2]].map((v) => v / rows.length) as [number, number, number]) / luminance(WEED_ALBEDO)).toFixed(3)})`);
     }
     map.show.value = 0;
     const off = await sample(renderer, rows.slice(0, 50), (q) => vec4(kelpWeedAlbedoNode(vec3(q.x, -6.0, q.y), vec3(0.0, -1.0, 0.0), map), 0.0));
@@ -77,7 +78,7 @@ registerSelfTest({
 });
 
 registerSelfTest({
-  name: 'kelp: the canopy is drawn only on weed inside the lean window; elsewhere build A’s weed exactly (final review I3: its cost)',
+  name: 'kelp: the canopy is drawn only on weed inside the lean window, fading to build A’s weed at its edge; elsewhere that weed exactly (final review I3: its cost)',
   async run(renderer) {
     const map = new KelpMap(); // window centred on the origin (min −64, −64)
     const far: number[][] = [], near: number[][] = [];
@@ -88,10 +89,14 @@ registerSelfTest({
       for (let k = 0; k < n; k++) for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(out[k * 4 + c] - WEED_ALBEDO[c]));
       return worst;
     };
+    // Along the window's west edge (x = −64) and its north edge (z = +64), just inside: the look continues from the weed outside.
+    const edge: number[][] = [];
+    for (let k = 0; k < 64; k++) { edge.push([-64 + 0.02, -60 + k * 1.9, 1, 0]); edge.push([-60 + k * 1.9, 64 - 0.02, 1, 0]); }
     const farWorst = off(await run(far), far.length);
     const nearWorst = off(await run(near), near.length);
     const bare = off(await run(near.map(([x, z]) => [x, z, 0, 0])), near.length);
-    const pass = farWorst < 1e-6 && bare < 1e-6 && nearWorst > 0.01;
-    return { pass, detail: `beyond the window: worst ${farWorst.toExponential(1)} from WEED_ALBEDO; no weed: ${bare.toExponential(1)}; inside on weed: ${nearWorst.toFixed(3)} (the canopy)` };
+    const edgeWorst = off(await run(edge), edge.length);
+    const pass = farWorst < 1e-6 && bare < 1e-6 && nearWorst > 0.01 && edgeWorst < 1e-3;
+    return { pass, detail: `beyond the window: worst ${farWorst.toExponential(1)} from WEED_ALBEDO; no weed: ${bare.toExponential(1)}; inside on weed: ${nearWorst.toFixed(3)} (the canopy); at the window's edge: ${edgeWorst.toExponential(1)}` };
   },
 });

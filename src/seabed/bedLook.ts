@@ -6,8 +6,9 @@ import { extinction, transmittance, waterColumnRadiance } from './waterColumn';
 export const REEF_ALBEDO: Rgb = [0.24, 0.23, 0.19];
 export const SAND_ALBEDO: Rgb = [0.62, 0.56, 0.44];
 export const WEED_ALBEDO: Rgb = [0.05, 0.075, 0.03];
-/** The rock between kelp plants, in the canopy's shade (× REEF_ALBEDO): the canopy's mean tone stays near WEED_ALBEDO (reef build B §4.2). */
-export const KELP_GAP_SHADE = 0.55;
+/** The lit weedy rock between kelp plants (× WEED_ALBEDO): set so the upright canopy's mean albedo is WEED_ALBEDO in every
+ * channel (reef build B §4.2; kelpLook.selftest measures it), so the canopy's window has no tone of its own through the water. */
+export const KELP_GAP_LIFT = 1.76;
 
 const LUMA: Rgb = [0.2126, 0.7152, 0.0722];
 export const luminance = (c: Rgb): number => c[0] * LUMA[0] + c[1] * LUMA[1] + c[2] * LUMA[2];
