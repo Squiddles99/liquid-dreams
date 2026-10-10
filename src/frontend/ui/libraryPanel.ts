@@ -3,10 +3,12 @@
 // A opens the painting full screen with its card. Facts only from the cards (art/loading/cards.json).
 import { libraryImage, type SlideCard } from '../../app/loadingSlides';
 import type { FrontAction, FrontState } from '../frontEnd';
-import { LIBRARY, subLine } from '../library';
+import { LIBRARY, LIBRARY_COLS, subLine } from '../library';
 
 export type LibPointer = { kind: 'cat'; index: number } | { kind: 'entry'; index: number } | { kind: 'action'; action: FrontAction };
 const STEP_PX = 120;
+/** library.css's edge fades (.fe-lib-grid.is-scrolled 56 px, .is-more 72 px): a focused row stays clear of them. */
+const FADE_TOP_PX = 56, FADE_BOTTOM_PX = 72;
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag); e.className = cls; if (text) e.textContent = text; return e;
 };
@@ -74,7 +76,9 @@ export class LibraryPanel {
         const t = h('div', 'fe-lib-tile');
         t.dataset.hit = `tile:${i}`;
         t.append(img('', libraryImage(x.key, 'tile'), '248px'), h('div', 'fe-lib-tile-name', x.card.name));
-        t.addEventListener('mouseenter', () => this.onPointer({ kind: 'entry', index: i }));
+        // Only a real move takes the focus: the grid sliding under a resting cursor fires hover events with no movement,
+        // and they would yank the focus from the keyboard or the wheel.
+        t.addEventListener('pointermove', (ev) => { if (ev.movementX || ev.movementY) this.onPointer({ kind: 'entry', index: i }); });
         t.addEventListener('click', () => { this.onPointer({ kind: 'entry', index: i }); this.onPointer({ kind: 'action', action: 'confirm' }); });
         return t;
       }));
@@ -98,18 +102,24 @@ export class LibraryPanel {
   private scrollTo(index: number): void {
     const tile = this.inner.children[index] as HTMLElement | undefined;
     if (!tile) return;
-    const view = this.grid.clientHeight, max = Math.max(0, this.inner.scrollHeight - view);
+    // The grid's padding is the focus scale's room; inner rows sit clear of the edge fades (library.css is-scrolled / is-more).
+    const pad = parseFloat(getComputedStyle(this.grid).paddingTop) || 0, n = this.inner.children.length;
+    const row = Math.floor(index / LIBRARY_COLS), lastRow = Math.floor((n - 1) / LIBRARY_COLS);
+    const above = row === 0 ? pad : FADE_TOP_PX, below = row === lastRow ? pad : FADE_BOTTOM_PX;
+    const view = this.grid.clientHeight, max = Math.max(0, this.topIn(this.inner) + this.inner.offsetHeight + pad - view);
     const top = this.topIn(tile), bottom = top + tile.offsetHeight;
-    if (top < this.scrollY) this.scrollY = top;
-    else if (bottom > this.scrollY + view) this.scrollY = bottom - view;
+    if (row === 0) this.scrollY = 0;                     // the ends snap: row heights round, and a 1 px miss leaves a fade on
+    else if (row === lastRow) this.scrollY = max;
+    else if (top - above < this.scrollY) this.scrollY = top - above;
+    else if (bottom + below > this.scrollY + view) this.scrollY = bottom + below - view;
     this.scrollY = Math.min(max, Math.max(0, this.scrollY));
     this.inner.style.transform = `translateY(${-this.scrollY}px)`;
     for (const t of this.inner.children as HTMLCollectionOf<HTMLElement>) {
       const name = t.lastElementChild as HTMLElement, nTop = this.topIn(name) - this.scrollY, nBottom = nTop + name.offsetHeight;
       t.classList.toggle('is-clipped', nTop < 0 || nBottom > view);
     }
-    this.grid.classList.toggle('is-scrolled', this.scrollY > 0);
-    this.grid.classList.toggle('is-more', this.scrollY < max);
+    this.grid.classList.toggle('is-scrolled', this.scrollY > 1);
+    this.grid.classList.toggle('is-more', this.scrollY < max - 1);
   }
 
   /** An element's top inside the grid, unscrolled (offsetTop is from the nearest positioned ancestor, not the parent). */

@@ -65,6 +65,7 @@ app.whenReady().then(async () => {
       await act('tabPlus');
       const tag = text === 1 ? '' : '-text200';
       if (text === 1) for (let cat = 0; cat < 6; cat++) { await go(cat, 0); await shoot(`lib-cat${cat}`); }
+      if (text === 1) { await go(2, 13); await shoot('lib-scrolled'); await go(2, 7); await shoot('lib-scrolled-mid'); } // Sea life: the last row, then a middle one
       await go(0, 0); await shoot(`lib-balga${tag}`);                         // a Noongar entry
       await act('confirm'); await shoot(`lib-balga-open${tag}`); await act('back');
       await go(LONGEST.ci, LONGEST.ei); await shoot(`lib-longest${tag}`);

@@ -37,3 +37,16 @@ Plan: docs/superpowers/plans/2026-10-10-library.md · Spec: docs/superpowers/spe
 - Ruling: `LibraryPanel.scrollTo` measures each tile and name from the grid by walking `offsetParent` (new `topIn`). The plan's `t.offsetTop + name.offsetTop` counted twice, because the tile isn't positioned, so a name's `offsetTop` is already relative to the grid. That hid the names of tiles in full view (Coastal plants' third row). Cost if wrong: none; the captures show it right.
 - Ruling: Task 7's `--mode=game` was added to `captureLibrary.mjs` now, to do Step 7's 1080p check against the mock. Cost if wrong: none (Task 7 reuses it).
 - Step 7: lib-balga / lib-longest at 100% and 200% match the approved mock: tabs with Q/E glyphs, dimmed chart, legend Controls · Open · Title.
+
+## Task 6: in-game self-tests (2026-10-10)
+- Self-tests (`--filter=frontend`, a throttling-off copy of `tools/_selftest.mjs` in the scratchpad): **30/33**. The 3 reds are the known ones: Conditions arrows (swell clip), gear "rows 2/6/2", outfit "ticked 4, want 2". All 8 "every beat at W×H" cases pass, each now with `library`, `library sea-fauna-salmon` and `library open sea-fauna-salmon`. The new Library navigation test passes.
+- Ruling: the W×H check also measures `.fe-lib-noongar` whole. `texts()` reads leaf elements only, and the Noongar paragraph holds a `<b>`, so its body was never checked. That is the longest card's text (Review Focus 1). Cost if wrong: none (a stricter check).
+- Ruling: the Library test finishes animations before measuring, as the W×H test does, because harness frames are not real time. Cost if wrong: none.
+- Ruling (view fix, found by the self-test): `scrollTo` stopped the last row short of the end (the grid padding was left out of the maximum scroll) and brought the tile's bottom only to the edge, so the 1.04 focus scale was cut and the bottom fade dimmed its name. Now:
+  - the maximum scroll counts the padding;
+  - middle rows stay clear of the fades (56 px top, 72 px bottom), so the next row peeks under them;
+  - the first row snaps to 0 and the last row to the maximum;
+  - the fade flags allow 1 px of slack.
+  RED evidence: the "focused tile out of sight" check failed in 4 categories with the plan's code, then went GREEN. A 1080p capture probe also showed `scrollY` 398 against a maximum of 399 with `is-more` on; the snap fixed it (lib-scrolled.png). The new "no bottom fade at the last row" check passes on both versions in the harness, because its windows don't round the rows the same way. It stays as a guard. Cost if wrong: a few lines in `scrollTo`.
+- Ruling (view fix, found by the captures): a tile took the focus on `mouseenter`. The grid sliding under a resting cursor fires hover events, so keyboard or wheel scrolling jumped the focus to whatever tile landed under the mouse. The captures showed 13 → 7 with no input, and a self-test run with my cursor over its window missed half the tiles. Tiles now take the focus only on a `pointermove` with real movement. Test: a no-movement hover must not move the focus, and a real move must. RED with mouseenter, GREEN after. Cost if wrong: a mouse user has to nudge the pointer to focus a tile after a keyboard scroll.
+- Captures: added `lib-scrolled` and `lib-scrolled-mid` (Sea life, last and middle rows) to `--mode=game`.
