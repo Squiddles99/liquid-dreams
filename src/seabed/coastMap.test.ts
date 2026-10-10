@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { type Bathymetry, buildBathymetry } from './bathymetry';
 import { COAST_CONTOURS, contourXAt, waterlineX } from './coastContours';
 import { BOMBIE_CENTRE, BREAK_FOOTPRINTS, DEFAULT_COAST_PARAMS, ELLENSBROOK_BAR, LEFTHANDERS_LEDGE, insidePolygon } from './coastFeatures';
-import { WOMB_HALO_M, buildCoastMap } from './coastMap';
+import { INNER_SHELF_DEEP, INNER_SHELF_M, WOMB_HALO_M, buildCoastMap, innerShelfM, wombHalo } from './coastMap';
 import { COAST_GRID } from './coastProfile';
 import { REEF_GRID } from './wombReef';
 
@@ -133,5 +133,39 @@ describe('the coast map (lineup truth, Task 1)', () => {
   it('opens the Womb\'s basin to the sea: 15 m in front of the reef map, the shelf beyond its halo', () => {
     expect(depthAt(coast, -500, 0)).toBeCloseTo(15, 1);
     expect(depthAt(coast, -500, -450 - WOMB_HALO_M - 50)).toBeLessThan(12);
+  });
+
+  // inner-shelf (2026-10-10): the hand-set shelf deepens to 10 m about z −950, where the Womb's basin, fading back to
+  // the 9 m shelf, focused an 8 ft set into a closeout 69–189 m off the beach (tools/_innerShelf.ts).
+  it("deepens the inner shelf to 10 m at z −950, smoothly, back to 9 m by z −1 150 and at the Womb's halo (−750)", () => {
+    expect(INNER_SHELF_DEEP.length).toBe(1);
+    expect(innerShelfM(-950)).toBeCloseTo(10, 6);
+    expect(innerShelfM(-1150)).toBe(INNER_SHELF_M);
+    expect(innerShelfM(-750)).toBe(INNER_SHELF_M);
+    expect(innerShelfM(-1050)).toBeCloseTo(9.5, 6);
+    for (const q of INNER_SHELF_DEEP) expect(wombHalo(q.zSouth) + wombHalo(q.zNorth)).toBe(0);
+    for (let z = -1200; z < -700; z += 5) expect(Math.abs(innerShelfM(z + 5) - innerShelfM(z))).toBeLessThan(0.05);
+  });
+
+  it('puts the deepened shelf on the bed: 10 m from the beach ramp to the 10 m line on the row z −952', () => {
+    const z = -952, shore = waterlineX(z), x10 = contourXAt(COAST_CONTOURS[0], z);
+    for (let x = shore - 64; x > x10; x -= 20) expect(depthAt(coast, x, z)).toBeCloseTo(innerShelfM(z), 1);
+  });
+
+  it("changes nothing in the Womb's halo or on Lefthanders' ledge (1 cm against the 9 m shelf)", () => {
+    const flat = buildCoastMap(reef, DEFAULT_COAST_PARAMS, []);
+    let worstHalo = 0, worstLedge = 0, changed = 0;
+    for (let r = 0; r < G.nz; r++) {
+      const z = G.z0 + r * G.cellM;
+      for (let c = 0; c < G.nx; c++) {
+        const i = r * G.nx + c, d = Math.abs(coast.bed[i] - flat.bed[i]);
+        if (d > 0) changed++;
+        if (wombHalo(z) > 0) worstHalo = Math.max(worstHalo, d);
+        if (insidePolygon(G.x0 + c * G.cellM, z, BREAK_FOOTPRINTS.lefthanders)) worstLedge = Math.max(worstLedge, d);
+      }
+    }
+    expect(changed).toBeGreaterThan(0);
+    expect(worstHalo).toBeLessThan(0.01);
+    expect(worstLedge).toBeLessThan(0.01);
   });
 });
