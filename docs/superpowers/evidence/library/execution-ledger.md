@@ -14,7 +14,7 @@ Plan: docs/superpowers/plans/2026-10-10-library.md · Spec: docs/superpowers/spe
 - Ruling: the mock-only legend gets `white-space: pre`, and the mock sets `is-more` on the grid when it overflows, as the real view will. Cost if wrong: none (mock only).
 - Ruling: the open view's shade and text are taken from the cover card (D1's intent). The plan's shade, one bottom-left ellipse, left the Balga card unreadable over bright sand. It is now the cover's two-layer shade (radial at 0% 78% + bottom linear). Under `is-big-text`, a left-side linear shade covers the full height. The kicker, name (sun stroke + teal drop), sub and fact get the cover's text-shadows. Cost if wrong: a few CSS lines in `library.css` if Andrew prefers the lighter look.
 - Note for Andrew: the 0.72 dim turns the chart's land a muddy olive-grey. One number (`.fe-map-dim` alpha) if he wants it lighter or tinted.
-- Gate: awaiting Andrew's approval before Task 3+.
+- Gate: **APPROVED by Andrew 2026-10-10** ("approved, carry on with task 3"). The dim stays at 0.72 (no change asked).
 
 ## Task 2: tile crops (2026-10-10)
 - `python tools/loadingArt.py`: 66 × `<name>-tile.webp: 480 x 360`; `index.html` and the existing -1920/-full pictures unchanged.
