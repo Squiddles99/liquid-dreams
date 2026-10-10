@@ -41,6 +41,9 @@ export class LibraryPanel {
   private openKey = '';
   private scrollY = 0;
   private wheel = 0;
+  /** What the last render drew from (skips the DOM and layout work while nothing changes), and the focus it showed. */
+  private drawn = '';
+  private focus: FrontState['library'] | null = null;
 
   constructor(private readonly onPointer: (p: LibPointer) => void) {
     LIBRARY.forEach((c, i) => {
@@ -57,6 +60,8 @@ export class LibraryPanel {
     this.grid.addEventListener('wheel', (e) => {
       e.preventDefault();
       this.wheel += e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
+      // The wheel scrolls the grid: with the focus on the categories, it first takes the grid (at the same tile).
+      if (Math.abs(this.wheel) >= STEP_PX && this.focus?.zone === 'cats') onPointer({ kind: 'entry', index: this.focus.entry });
       while (Math.abs(this.wheel) >= STEP_PX) { onPointer({ kind: 'action', action: this.wheel > 0 ? 'down' : 'up' }); this.wheel -= Math.sign(this.wheel) * STEP_PX; }
     }, { passive: false });
     // A double click on a tile opens the picture on its first half: the second half must not close it again.
@@ -68,8 +73,15 @@ export class LibraryPanel {
     const on = s.beat === 'map' && s.hubTab === 'library' && !s.breakDetails, L = s.library;
     this.el.classList.toggle('is-on', on);
     this.el.classList.toggle('is-open', on && L.open);
-    if (!on) return;
-    this.el.classList.toggle('is-big-text', parseFloat(getComputedStyle(this.el).getPropertyValue('--fe-text')) >= 1.5);
+    if (!on) { this.drawn = ''; return; }
+    this.focus = L;
+    // The text size is the root's inline --fe-text (layout.ts): read from the style attribute, not computed style.
+    // Its whole inline style (scale, safe area, text) keys the redraw, with the window and font loading.
+    const root = this.el.closest('.fe-root') as HTMLElement | null, text = parseFloat(root?.style.getPropertyValue('--fe-text') || '1');
+    const drawn = JSON.stringify([L, root?.style.cssText, innerWidth, innerHeight, document.fonts.status]);
+    if (drawn === this.drawn) return;
+    this.drawn = drawn;
+    this.el.classList.toggle('is-big-text', text >= 1.5);
     [...this.cats.children].forEach((r, i) => { r.classList.toggle('is-on', i === L.cat); r.classList.toggle('is-focus', L.zone === 'cats' && i === L.cat); });
     const cat = LIBRARY[L.cat], e = cat.entries[L.entry];
     if (this.gridCat !== L.cat) {
