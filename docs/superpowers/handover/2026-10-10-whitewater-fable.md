@@ -59,6 +59,12 @@ Task 8
 - L3's torn lace × `tear` (the breaking foam's share of the sheet's foam): the shore's swash and surf foam keep their lace (calm identity); the ribbon passes none.
 - Pixel-identity captures taken first and alone (a change of conditions mid-batch leaves a faint residue).
 
+Final review fixes (Fable, on 5606954)
+- R1: the impact pool's replay length is its own from construction (the plume's 5 s only for the spray kind); in game App's
+  `impact.setMaxLifeS(2.4)` already set it (58 ticks), so this pins the default and adds the test.
+- R3: foamStep clamps the age at FOAM_AGE_MAX_S (1e4 s) as FoamField's step does. R4: breaking.ts's surge comment and the
+  duplicate ERODING_KINDS re-export. R2: carried (follow-up 11).
+
 ## Follow-ups (not done this segment)
 
 1. **The seam where the solid boil meets the curl** (a faint vertical seam at the curl's edge on the mound, tube view): the
@@ -76,6 +82,14 @@ Task 8
 8. Acceptance #5's opaque navy curtain belongs to the lip-look segment.
 9. L3 leaves a few small closed lace cells at the edge of accept-4's frame; a stronger tear mask (smoothstep(0, 0.4)) is the next step if they read.
 10. The paddle-out stall (~4 s) in the profiler harness, both trees (ride-stall's follow-up).
+11. **No mist under the airborne plume (final review R2, a named gap).** SetWaves' mist `lip` source is gated on the breaking
+    foam, which is 0 until the collapse, so the slab's plume share never fires over the throw (§6.1). Tried: gate it on the
+    crest band (`near × lateral`) over the throw instead: at strong offshore the share reaches 1 and the slab goes opaque —
+    a solid white wall along the whole throwing section (`evidence/whitewater/r2-lip-mist-tried.png`). Reverted. The fix
+    wants a small plume share (~0.1) and the band narrowed to the lip's back, tuned by eye.
+12. Per-frame allocations in `crestTrace.rideEntries` and `standingCrestY`'s callers (final review R5).
+13. The mist slab fetches the foam map in every near-water material before its MIST_MIN gate (final review R6): the
+    texture read is paid everywhere; a box test (`inside`) before the fetch would skip it outside the foam box.
 
 ## Process rules (this segment's)
 

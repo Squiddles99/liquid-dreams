@@ -56,7 +56,7 @@ export interface BreakParams {
   /** …churning at this rate (× CHURN_RATE_PER_S, pileChurn.ts). */
   churnSpeed: number;
   /** The surge where a pitching lip lands (whitewater §3.1; wombSection.surgeWeight): the pocket's heave at hollow 1,
-   * units of A, [0, 1]. Look only: the ride's section reads it too (one surface), only past phase 1.25. */
+   * units of A, [0, 1]. Look only: the ride's copy of the trace carries surge 0 (crestTrace.rideEntries, review F4); drawn past phase 1.25. */
   surge: number;
 }
 

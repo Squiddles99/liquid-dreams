@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Fn, Loop, clamp, exp, float, floor, instanceIndex, int, ivec2, length, log, max, min, mix, normalize, select, smoothstep, texture, textureLoad, textureStore, uniform, uvec2, vec2, vec4 } from 'three/tsl';
 import {
-  BORE_PUSH, COARSE_SOURCE_SAMPLES, COARSE_TICKS, DEFAULT_FOAM_PARAMS, FOAM_EDGE_BAND_M, FOAM_GRID, FOAM_TICK_S, FRESH_SOURCE, type FoamGrid, type FoamParams, FoamSchedule, LACE_LEVEL,
+  BORE_PUSH, COARSE_SOURCE_SAMPLES, FOAM_AGE_MAX_S, COARSE_TICKS, DEFAULT_FOAM_PARAMS, FOAM_EDGE_BAND_M, FOAM_GRID, FOAM_TICK_S, FRESH_SOURCE, type FoamGrid, type FoamParams, FoamSchedule, LACE_LEVEL,
   PATTERN_WIND_MS, WIND_DRIFT_SHARE, normalizeFoamParams, tickTime,
 } from './foamStep';
 import { MIST_DECAY_S, MIST_WIND_SHARE, mistSourceNode } from './mistSlab';
@@ -133,7 +133,7 @@ export class FoamField {
       const mid = xz.sub(drift(dir, c, own).mul(this.dtS.mul(0.5)));
       const up = bilinear(xz.sub(drift(dir, c, bilinear(mid).x).mul(this.dtS))).toVar();
       const next = max(decay(up.x, this.dtS), S).toVar();
-      const age = select(S.greaterThanEqual(FRESH_SOURCE), float(0.0), min(up.y.add(this.dtS), 1e4)).toVar();
+      const age = select(S.greaterThanEqual(FRESH_SOURCE), float(0.0), min(up.y.add(this.dtS), FOAM_AGE_MAX_S)).toVar();
       Loop({ start: int(1), end: this.samples, type: 'int' }, ({ i: j }: N) => {
         const back = this.dtS.mul(float(j)).div(float(this.samples)).toVar();
         const Sj = float(sourceAt(xz, back).foam).toVar();

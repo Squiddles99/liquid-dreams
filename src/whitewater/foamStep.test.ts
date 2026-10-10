@@ -5,7 +5,7 @@ import { setWaveHeight } from '../breaker/reefReport';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { SHORE_X } from '../seabed/coastProfile';
 import {
-  BORE_PUSH, COARSE_TICKS, DEFAULT_FOAM_PARAMS, FOAM_PARAM_RANGES, FINE_REPLAY_S, FOAM_EDGE_BAND_M, FOAM_GRID, FOAM_TICK_S, type FoamGrid, type FoamParams, FoamSchedule, type FoamSourceCpu,
+  BORE_PUSH, COARSE_TICKS, DEFAULT_FOAM_PARAMS, FOAM_AGE_MAX_S, FOAM_PARAM_RANGES, FINE_REPLAY_S, FOAM_EDGE_BAND_M, FOAM_GRID, FOAM_TICK_S, type FoamGrid, type FoamParams, FoamSchedule, type FoamSourceCpu,
   LACE_LEVEL, WIND_DRIFT_SHARE, bilinearFoam, boxWeight, decayFoam, driftVector, foamPatternAxis, normalizeFoamParams, replayTickCount, stepFoam, tickIndex, tickTime,
 } from './foamStep';
 
@@ -133,6 +133,11 @@ describe('the foam step', () => {
     const d = { ...DEFAULT_FOAM_PARAMS };
     normalizeFoamParams(d);
     expect(d).toEqual({ clearTimeS: 10, driftMps: 0.4, laceLifeS: 75, volumeExposure: 0.55 });
+  });
+  it('the age is clamped at FOAM_AGE_MAX_S as the GPU step does (final review R3)', () => {
+    expect(FOAM_AGE_MAX_S).toBe(1e4);
+    expect(decayFoam(0.3, FOAM_AGE_MAX_S - 0.01, 0, 0.05, DEFAULT_FOAM_PARAMS)[1]).toBe(FOAM_AGE_MAX_S);
+    expect(decayFoam(0.3, 2, 0, 0.05, DEFAULT_FOAM_PARAMS)[1]).toBeCloseTo(2.05, 12);
   });
   it('the foam volume’s exposure (7b S3 ruling 3) is a dial: 0.4–1.0, default 0.55, clamped', () => {
     expect(FOAM_PARAM_RANGES.volumeExposure).toEqual({ min: 0.4, max: 1 });

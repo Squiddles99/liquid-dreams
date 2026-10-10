@@ -27,7 +27,8 @@ evidence `docs/superpowers/evidence/whitewater/` (acceptance moments in `accept/
 | d0cba75, 199c287, 9055986, 4e8fe7e | 7b S3 | the solid boil: no bars; 3-D billows; the foam volume exposed for itself (0.55) |
 | 64e42c1 | 7b | the STOP evidence (seven rows, feather-wide, tube A/B, mound) |
 | d132b55 | 7b | the whitewater exposure dial |
-| 22f3647, a3b795a, (last) | 8 + L3 | acceptance moments (hidden, one process), the frame gate, L3 (the lace tears into streaks), calm identity, the suite, these handovers |
+| 22f3647, a3b795a, 5606954 | 8 + L3 | acceptance moments (hidden, one process), the frame gate, L3 (the lace tears into streaks), calm identity, the suite, these handovers |
+| (last) | review | Fable's final review: R1 the impact pool's replay default, R3 the age clamp mirrored, R4 two comments; R2 (mist under the plume) tried, reverted, carried |
 
 ## Numbers against their bars
 

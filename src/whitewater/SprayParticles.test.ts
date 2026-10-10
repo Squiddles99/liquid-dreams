@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
 import { SprayParticles } from './SprayParticles';
-import { PLUME_LIFE_S, replayTicksForMaxLife, sprayReplayTicks } from './sprayEmitters';
+import { DEFAULT_SPRAY_PARAMS, PLUME_LIFE_S, replayTicksForMaxLife, sprayReplayTicks } from './sprayEmitters';
+import { IMPACT_KIND } from './particleKinds';
 
 describe('the spray particles on the GPU', () => {
   it('replays the longest life on its first advance, one submission per tick, asking for each tick in order', () => {
@@ -19,6 +20,16 @@ describe('the spray particles on the GPU', () => {
     expect(calls.length).toBe(1 + steps);
     expect(calls.slice(1).every((c) => Array.isArray(c))).toBe(true);
     expect(spray.mesh.count).toBeGreaterThan(30000);
+  });
+});
+
+describe('the impact pool carries no plume (final review R1)', () => {
+  it('replays its own longest life, not the plume’s, from construction', () => {
+    const impact = new SprayParticles(new Sky(DEFAULT_ATMOSPHERE), IMPACT_KIND);
+    const renderer = { compute: () => {} } as unknown as THREE.WebGPURenderer;
+    const steps = impact.advance(renderer, 10, () => []);
+    expect(steps).toBe(replayTicksForMaxLife(1.2 * DEFAULT_SPRAY_PARAMS.lifeS));
+    expect(steps).toBeLessThan(replayTicksForMaxLife(PLUME_LIFE_S[1]));
   });
 });
 
