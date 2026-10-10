@@ -52,3 +52,9 @@
   more cartoon style: weighted 1/1.5 (body) and 1/2 (face); posture marks (neck, back curves) dropped. Result: front
   body 0.59 % height, side profile 0.2–2.3 %, face front 2.27 % IOD. Ruling: cupsize 0.68 (bust still ~1.6 % short in
   profile). Sheets gates/gate1a-side.jpg, gate1b-*-r3.jpg.
+- Andrew's first reference sequence (reference/anim/sit-to-paddle.png, 8 frames, ChatGPT). Workable, but its camera
+  orbits (side, behind, other side), so the keys are read by eye, not measured. `tools/hero/sequences.py` holds the 8
+  keys (stp1..8) as rig poses: new pose options `twist` (a bone about its own axis), `boardYaw`, `spin` (the whole
+  body turned on the water: she swings round over frames 2-5) and `noseGap` (the board's nose this far ahead of the
+  nose contact: 0.3 m past the hands, 0.45 m past the chest when paddling). Rendered from one fixed camera as a strip
+  (`--poses stp1,...,stp8 --mannequin`). Asked Andrew to keep the camera fixed in the next sequences.

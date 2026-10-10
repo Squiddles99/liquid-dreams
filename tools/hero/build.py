@@ -16,6 +16,7 @@ import eyes  # noqa: E402
 import garments  # noqa: E402
 import project  # noqa: E402
 import rigging  # noqa: E402
+import sequences  # noqa: E402,F401  (adds the reference sequences' keys to rigging.POSES)
 import skin  # noqa: E402
 import strands  # noqa: E402
 import studio  # noqa: E402
@@ -119,7 +120,7 @@ if pose_names:
     if mannequin:
         clay = bpy.data.materials.new("mannequin")
         clay.use_nodes = True
-        clay.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.16, 0.16, 0.17, 1)
+        clay.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.03, 0.03, 0.035, 1)
         clay.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.55
         body.data.materials.clear()
         body.data.materials.append(clay)
@@ -135,6 +136,9 @@ if pose_names:
         if mannequin:
             # Side-on to the board (prone: board along y, so from +x; standing: board along x, so from her front),
             # long lens, the whole board in frame: the view ChatGPT should keep for every frame of the sequence.
+            if pn[:-1] in ("stp",):  # a sequence's keys: one fixed camera for all of them, so they read as a strip
+                studio.shoot(cam, os.path.join(out_dir, "mannequin", f"{name}_{pn}.png"), (0.0, 0.0, 0.45), 55, 6.5, 85, 1100, 1100, pitch_deg=14)
+                continue
             yaw = (math.degrees(surf.rotation_euler.z) % 180.0)  # square to the board's side
             studio.shoot(cam, os.path.join(out_dir, "mannequin", f"{name}_{pn}_start.png"), (surf.location[0], surf.location[1], max(c[2], 0.5)),
                          yaw, 6.5, 85, 1600, 1000, pitch_deg=4)

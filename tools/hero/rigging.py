@@ -160,7 +160,7 @@ POSES = {
         # the nose; the left mid-stroke, pulling straight down through the water beside the rail under the shoulder.
         "world": {"upperarm_r": _n(-0.22, -1, -0.35), "forearm_r": _n(-0.12, -1, -0.55),
                   "upperarm_l": _n(0.3, 0.12, -1), "forearm_l": _n(0.12, 0.35, -1)},
-        "floor": ["spine_02", "spine_03", "pelvis"], "nose": ["spine_03"], "tail": ["thigh_l", "thigh_r"]},
+        "floor": ["spine_02", "spine_03", "pelvis"], "nose": ["spine_03"], "tail": ["thigh_l", "thigh_r"], "noseGap": 0.45},
     # The pop-up, authored in the world (board along y, nose at -y; Andrew: kneeling, tipped head-down was wrong):
     # chest up ~45 deg on straight arms, palms flat, eyes forward; back toes on the tail; front knee tucked under the
     # chest, its foot swinging through above the deck.
@@ -171,7 +171,7 @@ POSES = {
         "upperarm_r": _n(-0.1, 0.06, -1), "forearm_r": _n(-0.05, 0.04, -1), "hand_r": _n(-0.05, -1, -0.12),
         "thigh_r": _n(-0.06, 0.62, -0.78), "shin_r": _n(-0.04, 0.88, -0.48), "foot_r": _n(0, 0.35, -1),
         "thigh_l": _n(0.1, -0.85, -0.5), "shin_l": _n(0.05, 0.45, -0.9), "foot_l": _n(0.05, -1, -0.1)},
-        "floor": ["hand_l", "hand_r", "foot_r"], "nose": ["hand_l", "hand_r"], "tail": ["foot_r"], "prone": True,
+        "floor": ["hand_l", "hand_r", "foot_r"], "nose": ["hand_l", "hand_r"], "tail": ["foot_r"], "prone": True, "noseGap": 0.3,
         "level": (["hand_l", "hand_r"], ["foot_r"]), "levelRange": (-30, 30)},
     # A low bottom turn (regular foot: left foot to the nose, +x): knees deep, torso leaning in, arms out for balance.
     "bottomTurn": {"turn": 0, "lift": None, "bones": {
@@ -258,6 +258,7 @@ def pose(rig, name, body, surf):
     Gate 1c r1: she faced the tail prone, and standing had a foot off the board and the front foot on the rail)."""
     spec = POSES[name]
     turn = Matrix.Rotation(math.radians(spec["turn"]), 4, "X")
+    spin = Matrix.Rotation(math.radians(spec.get("spin", 0.0)), 4, "Z")  # the whole body turned on the water
     aims = dict(spec["bones"])
     for b, w in spec.get("world", {}).items():
         aims[b] = (turn.inverted().to_3x3() @ w).normalized()
@@ -273,6 +274,12 @@ def pose(rig, name, body, surf):
         R = cur.rotation_difference(want).to_matrix().to_4x4()
         h = pb.head.copy()
         pb.matrix = Matrix.Translation(h) @ R @ Matrix.Translation(-h) @ pb.matrix
+        tw = spec.get("twist", {}).get(bname)
+        if tw:  # turned about its own axis (a head looking over a shoulder)
+            bpy.context.view_layer.update()
+            axis = (pb.tail - pb.head).normalized()
+            T = Matrix.Rotation(math.radians(tw), 4, axis)
+            pb.matrix = Matrix.Translation(h) @ T @ Matrix.Translation(-h) @ pb.matrix
     bpy.context.view_layer.update()
     for bname, yaw_deg in spec.get("flat", {}).items():
         # The foot's rest orientation (sole level), turned about the vertical, at the posed ankle.
@@ -287,13 +294,13 @@ def pose(rig, name, body, surf):
         lo_t, hi_t = (math.radians(x) for x in spec.get("levelRange", (40, 120)))
         for _ in range(14):
             mid_t = (lo_t + hi_t) / 2
-            rig.matrix_world = Matrix.Rotation(mid_t, 4, "X")
+            rig.matrix_world = spin @ Matrix.Rotation(mid_t, 4, "X")
             P = _posed_points(body)
             diff = _skin_points(body, a_b, P)[:, 2].min() - _skin_points(body, b_b, P)[:, 2].min()
             lo_t, hi_t = (mid_t, hi_t) if diff > 0 else (lo_t, mid_t)
         turn = Matrix.Rotation((lo_t + hi_t) / 2, 4, "X")
         print(f"pose {name}: turn {math.degrees((lo_t + hi_t) / 2):.1f} deg")
-    rig.matrix_world = turn
+    rig.matrix_world = spin @ turn
     P = _posed_points(body)
     DECK = 0.075
     tilt = spec.get("tilt", False)
@@ -303,16 +310,20 @@ def pose(rig, name, body, surf):
     nose_c = np.array([nose[:, 0].mean(), nose[:, 1].mean(), nose[:, 2].min()])
     tail_c = np.array([tail[:, 0].mean(), tail[:, 1].mean(), tail[:, 2].min()])
     dz = DECK - (max(nose_c[2], tail_c[2]) if tilt else floor_pts[:, 2].min())
-    rig.matrix_world = Matrix.Translation((0, 0, dz)) @ turn
+    rig.matrix_world = Matrix.Translation((0, 0, dz)) @ spin @ turn
     bpy.context.view_layer.update()
     nose_c[2] += dz
     tail_c[2] += dz
     d = nose_c - tail_c
-    yaw = math.atan2(d[1], d[0])
+    yaw = math.atan2(d[1], d[0]) + math.radians(spec.get("boardYaw", 0.0))
     pitch = -math.atan2(d[2], math.hypot(d[0], d[1])) if tilt else 0.0
     mid = (nose_c + tail_c) / 2
     fwd = np.array([math.cos(yaw), math.sin(yaw), 0.0])
-    if spec.get("prone", spec["turn"] != 0) and not tilt:
+    if "noseGap" in spec and not tilt:
+        # The board's nose this far ahead of the nose contact (Andrew's sit-to-paddle: the nose well in front of a
+        # paddler's head): the board's middle is half its length (0.915 m) back from its nose.
+        mid = nose_c + fwd * (spec["noseGap"] - 0.915)
+    elif spec.get("prone", spec["turn"] != 0) and not tilt:
         mid = mid - fwd * 0.12  # a prone rider's chest sits ahead of the board's middle
     if not spec.get("prone", spec["turn"] != 0) and not tilt:
         # Standing: the back foot 45 cm from the tail (Andrew, 2026-10-10: centred between the feet was too far forward,
