@@ -1,7 +1,7 @@
 {
  "left": {
   "pass": true,
-  "detail": "7 ft WSW mid: first leg 28/28 broken, peel 15.8 m/s (band 8–20)"
+  "detail": "7 ft WSW mid: first leg 72/72 broken, peel 12.0 m/s (band 8–20)"
  },
  "barrels": {
   "pass": true,
@@ -20,8 +20,8 @@
   "detail": "no game check yet"
  },
  "best-swell": {
-  "pass": true,
-  "detail": "225°: breaks, 247°: breaks"
+  "pass": false,
+  "detail": "225°: no, 247°: breaks"
  },
  "best-wind": {
   "pass": true,
