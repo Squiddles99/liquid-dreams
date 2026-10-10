@@ -199,6 +199,22 @@ POSES = {
         # The board tilts nose-down between her hands and her right knee (she is pushing it under).
         "floor": ["hand_l", "hand_r", "shin_r"], "nose": ["hand_l", "hand_r"], "tail": ["shin_r"], "tilt": True},
 }
+POSES["sit"] = {"turn": 0, "lift": 0.0, "bones": {
+    # Sitting astride, waiting: legs dangling over the rails, hands resting on the deck in front, eyes to the horizon.
+    "spine_01": _n(0, -0.05, 1), "spine_02": _n(0, -0.08, 1), "spine_03": _n(0, -0.05, 1), "neck": _n(0, -0.15, 1), "head": _n(0, 0.0, 1),
+    "upperarm_l": _n(0.2, -0.35, -1), "forearm_l": _n(0.05, -1, -0.45),
+    "upperarm_r": _n(-0.2, -0.35, -1), "forearm_r": _n(-0.05, -1, -0.45),
+    "thigh_l": _n(0.6, -0.65, -0.45), "shin_l": _n(0.15, 0.05, -1), "foot_l": _n(0.1, -0.7, -0.7),
+    "thigh_r": _n(-0.6, -0.65, -0.45), "shin_r": _n(-0.15, 0.05, -1), "foot_r": _n(-0.1, -0.7, -0.7)},
+    "floor": ["pelvis"], "nose": ["thigh_l", "thigh_r"], "tail": ["pelvis"]}
+POSES["trim"] = {"turn": 0, "lift": None, "bones": {
+    # Trimming down the line (regular): relaxed, knees soft, front arm forward, back arm low.
+    "spine_01": _n(0.08, -0.1, 1), "spine_02": _n(0.12, -0.15, 1), "spine_03": _n(0.14, -0.15, 1), "neck": _n(0.15, -0.1, 1), "head": _n(0.3, 0.0, 1),
+    "upperarm_l": _n(0.8, -0.45, -0.6), "forearm_l": _n(0.9, -0.5, -0.2),
+    "upperarm_r": _n(-0.35, -0.3, -1), "forearm_r": _n(-0.25, -0.6, -0.8),
+    "thigh_l": _n(0.4, -0.4, -0.85), "shin_l": _n(0.1, 0.3, -0.95), "foot_l": _n(0.35, -1, -0.05),
+    "thigh_r": _n(-0.35, -0.45, -0.85), "shin_r": _n(-0.05, 0.35, -0.95), "foot_r": _n(-0.25, -1, -0.05)},
+    "floor": ["foot_l", "foot_r"], "nose": ["foot_l"], "tail": ["foot_r"]}
 ORDER = ["root", "pelvis", "spine_01", "spine_02", "spine_03", "neck", "head", "clavicle_l", "upperarm_l", "forearm_l", "hand_l",
          "clavicle_r", "upperarm_r", "forearm_r", "hand_r", "thigh_l", "shin_l", "foot_l", "toe_l", "thigh_r", "shin_r", "foot_r", "toe_r"]
 

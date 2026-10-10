@@ -25,6 +25,7 @@ preset_path, out_dir = argv[:2]
 out_dir = os.path.abspath(out_dir)
 os.makedirs(out_dir, exist_ok=True)
 views = [v for v in argv[argv.index("--views") + 1].split(",") if v] if "--views" in argv else ["face", "front", "q3", "side", "back"]
+mannequin = "--mannequin" in argv  # grey, no hair or clothes, side-on: start frames for Andrew's reference sequences
 pose_names = argv[argv.index("--poses") + 1].split(",") if "--poses" in argv else []
 samples = int(argv[argv.index("--samples") + 1]) if "--samples" in argv else 256
 preset = json.load(open(preset_path, encoding="utf-8"))
@@ -115,12 +116,29 @@ if pose_names:
             o.hide_render = True
     rigging.bind(rig, body, worn, rigid)
     surf = rigging.board(f"{name}_board")
+    if mannequin:
+        clay = bpy.data.materials.new("mannequin")
+        clay.use_nodes = True
+        clay.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.16, 0.16, 0.17, 1)
+        clay.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.55
+        body.data.materials.clear()
+        body.data.materials.append(clay)
+        for o in hair_objs + garment_objs + eye_objs:
+            o.hide_render = True
+        bpy.context.scene.world.node_tree.nodes["Background"].inputs[0].default_value = (0.9, 0.9, 0.9, 1)
     for pn in pose_names:
         lo, hi = rigging.pose(rig, pn, body, surf)
         expression(True)
         c = (lo + hi) / 2
         prone = rigging.POSES[pn].get("prone", rigging.POSES[pn]["turn"] != 0)
         size = max(hi - lo) + 0.4
+        if mannequin:
+            # Side-on to the board (prone: board along y, so from +x; standing: board along x, so from her front),
+            # long lens, the whole board in frame: the view ChatGPT should keep for every frame of the sequence.
+            yaw = (math.degrees(surf.rotation_euler.z) % 180.0)  # square to the board's side
+            studio.shoot(cam, os.path.join(out_dir, "mannequin", f"{name}_{pn}_start.png"), (surf.location[0], surf.location[1], max(c[2], 0.5)),
+                         yaw, 6.5, 85, 1600, 1000, pitch_deg=4)
+            continue
         cam.data.lens = 50
         cam.data.dof.use_dof = False
         studio.shoot(cam, os.path.join(out_dir, "renders", f"{name}_pose_{pn}.png"), (c[0], c[1], c[2]), 35 if not prone else 75,
