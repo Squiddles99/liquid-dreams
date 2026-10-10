@@ -97,3 +97,36 @@ Final review fixes (Fable, on 5606954)
 - **Evidence capture never takes the foreground**: `captureMoments.mjs` hidden by default, one process per batch (hidden ≡
   focused, 0 px). Only `_rideProfile` keeps the focus, and only in a window Andrew gives.
 - After a `sed -i` edit, `touch` the file: vite misses the new inode and serves the old module.
+
+## Fable's closing review (2026-10-11 ~04:10, overnight under Andrew's delegation)
+
+**Recommendation: merge `whitewater` (d1ab69e) to main.** Andrew merges; I did not (he said "be the decision maker", not "merge").
+Branch already contains origin/main d8b40fe (level-read + inner-shelf), merged clean; post-merge tsc clean, units = main's reds
+exactly, GPU self-tests foam 11/12, spray 5/5, ribbon 6/7, breaker 14/14 (both reds main's own), accept-1 unchanged on the merged shelf.
+
+**What I verified myself:** every STOP's captures against the five photos (Tasks 3, 6, 7b, 8), the four S3 mound zooms, the
+lace triples, the seven wind rows; an independent reviewer over the whole diff (verdict MERGEABLE; its R1–R4 fixed in c2eea5d,
+R2 tried and carried, R5/R6 carried); the frame gate's stall analysis (no-stall 0.96×, raw 1.115× from three 4 s paddle-out
+stalls in both trees — accepted on the stall-matched comparison, and the harness now prints the no-stall median itself).
+
+**Spec §7 bars, final:** riding no-stall 0.96× (bar 1.10); cam 3.6 → 3.7 ms (bar +1); births +0.4 ms (bar +2); foam tick < 0.1 ms;
+calm identity: flat sea differs only in L2's shore band, Glassy-with-break only in the inside water band; replay covered 367 ms
+(bar 400), uncovered 178 ms; replay ≡ live 0.0175 / 0.0139 (bar 0.02). L3's cam cost unmeasured (no quiet window after it; one
+noise read per lace pixel).
+
+**Rulings I made beyond the spec** (all in the ledger): the mound's surge translates knots 5–10 from phase 1.25 (a lift during the
+hold crosses the lip); the ride's copy of the stations carries surge 0 (look only, F4); the replay bar split by cover (covered
+exact ≤ 400 ms, uncovered cheap); CoastalSurf's foam confined to a 25–50 m shore band inside the map's box (L2); aged lace cover
+capped 0.35 (L1) and torn into streaks (L3); the mound's form from a 3-D billow field + the foam volume exposed for itself
+(0.55, a dial); captures never take the foreground (hidden, one process per batch — a standing rule now).
+
+**Andrew's dials (set in-game, Foam/Break folders):** surge 0.5, churnSize 0.25, foam volume exposure 0.55 (0.7 = whiter, flatter),
+spray amount 1, plume 1, laceLifeS 75.
+
+**For Andrew's eye in the morning:** `docs/superpowers/evidence/whitewater/accept/` beside `reference/wave/whitewater/1–5`; the mound
+`s3-mound.png`; the wind rows `wind-*.png`. Known honest gaps: no mist under the airborne plume yet (follow-up 11), the curtain is
+the lip-look segment's opaque navy (8), the warm 09:30/17:00 tint is the sky's white balance (5).
+
+**Next segments, my order:** (1) the lip's curtain (translucent green, photo 5) — the one thing in the acceptance frames that is not
+this segment's and reads wrong; (2) R4 whitewater physics for the surfer (the mound is look-only); (3) a perf segment: the second
+compiled breaking sum (3×), rideEntries/standingCrestY allocations, the mist fetch gate, the paddle-out stall; (4) sky white balance.
