@@ -105,3 +105,6 @@
 - APPROVED (Andrew, 2026-10-10): roundhouse cutback (first look), duck dive r2 (sinks to 1.2 m at the knee push, floats
   back up nose-first toward the surface; preview water = tinted side cut-away). Previews in docs/art/anim/shazza/
   (roundhouse.mp4, duck-dive.mp4).
+- Set-2 sequence 11 (duck-dive-surface: back on top, settles, paddles) is covered by the approved duckDive clip's
+  end (dd5-dd7 → pdl1): dropped (Andrew, 2026-10-10). Remaining set 2: prone-turn-and-paddle, turtle-roll, late-drop,
+  cutback, kickout, walk-cycle, enter-water.
