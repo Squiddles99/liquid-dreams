@@ -120,7 +120,6 @@
 .fe-map-tabs { display: flex; gap: 44px; font: 700 calc(30px * min(var(--fe-text), 1.25)) 'Barlow Semi Condensed'; letter-spacing: .12em; }
 .fe-map-tab { color: #a9c3c2; padding-bottom: 10px; }
 .fe-map-tab.is-on { color: #f6ecd6; border-bottom: 4px solid var(--fe-sun); }
-.fe-map-tab.is-locked { opacity: .55; }
 .fe-map-strip { font: 500 calc(22px * var(--fe-text)) / 1.45 Barlow; color: #a9c3c2; }
 .fe-map-strip-k { font: 600 calc(18px * var(--fe-text)) 'Barlow Semi Condensed'; letter-spacing: .22em; color: var(--fe-sun); margin-bottom: 6px; }
 .fe-map-strip-l b { color: #f6ecd6; font-weight: 600; }
@@ -186,3 +185,77 @@
 .fe-details-body.is-scrolled { mask-image: linear-gradient(transparent, #000 56px); }
 .fe-details-body.is-scrolled.is-more { mask-image: linear-gradient(transparent, #000 56px, #000 calc(100% - 72px), transparent); }
 .is-calm .fe-map > :not(.fe-chart) { transition: none; }
+
+/* The Library (library spec §4). */
+/* The Library (library spec §4): over the dimmed chart, inside the safe area. Design px at 1920×1080. */
+.fe-lib { position: absolute; inset: 0; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 220ms var(--fe-ease-out), visibility 0s 220ms; }
+.fe-lib.is-on { opacity: 1; visibility: visible; transition: opacity 220ms var(--fe-ease-out), visibility 0s; }
+.fe-lib.is-on > * { pointer-events: auto; }
+.fe-lib-cats { position: absolute; left: var(--fe-safe-x); top: calc(var(--fe-safe-y) + 104px); width: 340px; display: flex; flex-direction: column; gap: 10px; }
+.fe-lib-cat { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-radius: var(--fe-radius);
+  background: #0b2a31; border: 1.5px solid #3f6f72; font: 700 calc(20px * var(--fe-text)) / 1.1 'Barlow Semi Condensed', sans-serif; letter-spacing: .12em; color: #f6ecd6;
+  transition: transform 120ms var(--fe-ease-out), background-color 120ms linear; transform-origin: 0 50%; }
+.fe-lib-cat-n { font-weight: 500; color: #a9c3c2; }
+.fe-lib-cat.is-on { border-color: var(--fe-sun); }
+.fe-lib-cat.is-focus { background: var(--fe-cream); color: var(--fe-ink); transform: scale(1.04); box-shadow: 0 6px 22px rgba(0, 0, 0, .35); }
+.fe-lib-cat.is-focus .fe-lib-cat-n { color: #3f6f72; }
+.fe-lib-cat.is-focus::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: var(--fe-sun); border-radius: 3px 0 0 3px; }
+.fe-lib-grid { position: absolute; left: calc(var(--fe-safe-x) + 380px); top: calc(var(--fe-safe-y) + 104px); bottom: calc(var(--fe-safe-y) + 108px); width: 780px; overflow: hidden; padding: 8px; margin: -8px; }
+.fe-lib-grid-inner { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; transition: transform 220ms var(--fe-ease-out); }
+.fe-lib-tile { background: #0b2a31; border: 1.5px solid #3f6f72; border-radius: 8px; overflow: hidden; transition: transform 120ms var(--fe-ease-out), border-color 120ms linear; }
+.fe-lib-tile img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.fe-lib-tile-name { padding: 10px 12px 12px; font: 600 calc(19px * var(--fe-text)) / 1.15 'Barlow Semi Condensed', sans-serif; color: #f6ecd6; }
+.fe-lib-tile.is-sel { border-color: #a9c3c2; }
+.fe-lib-tile.is-focus { border: 3px solid var(--fe-sun); transform: scale(1.04); box-shadow: 0 6px 22px rgba(0, 0, 0, .45); }
+.fe-lib-tile.is-clipped .fe-lib-tile-name { visibility: hidden; }
+.fe-lib-grid.is-more { mask-image: linear-gradient(#000 calc(100% - 72px), transparent); }
+.fe-lib-grid.is-scrolled { mask-image: linear-gradient(transparent, #000 56px); }
+.fe-lib-grid.is-scrolled.is-more { mask-image: linear-gradient(transparent, #000 56px, #000 calc(100% - 72px), transparent); }
+.fe-lib-entry { position: absolute; right: var(--fe-safe-x); top: calc(var(--fe-safe-y) + 104px); width: 604px; color: #f6ecd6; }
+.fe-lib-entry-img { display: block; width: 100%; height: calc(453px / var(--fe-text)); object-fit: cover; border-radius: 8px; border-top: 6px solid var(--fe-sun); margin-bottom: 18px; }
+.fe-lib.is-big-text .fe-lib-entry-img { display: none; }
+.fe-lib-kicker { display: flex; align-items: center; gap: 12px; font: 600 calc(18px * min(var(--fe-text), 1.5)) / 1 'Barlow Semi Condensed', sans-serif; letter-spacing: .22em; text-transform: uppercase; color: var(--fe-sun-hi); }
+.fe-lib-kicker::before { content: ''; width: 40px; height: 4px; background: var(--fe-sun); border-radius: 2px; }
+.fe-lib-name { margin-top: 12px; font: 400 calc(64px * min(var(--fe-text), 1.25)) / 1 'Knewave', sans-serif; color: #f6ecd6; }
+.fe-lib-sub { margin-top: 8px; font: 400 calc(28px * min(var(--fe-text), 1.5)) / 1.15 'Caveat Brush', cursive; color: #f6ecd6; }
+.fe-lib-latin { font-style: normal; opacity: .8; }
+.fe-lib-fact { margin: 14px 0 0; font: 400 calc(22px * min(var(--fe-text), 1.5)) / 1.42 Barlow, sans-serif; color: #f6ecd6; }
+.fe-lib-noongar { padding-left: 14px; border-left: 4px solid var(--fe-teal); }
+.fe-lib-noongar b { font-weight: 600; letter-spacing: .04em; color: #8fd3d0; }
+.fe-lib-credit { position: absolute; left: var(--fe-safe-x); bottom: var(--fe-safe-y); font: 500 calc(18px * var(--fe-text)) Barlow; color: #7fb1b0; opacity: .8; }
+.fe-lib-open { position: absolute; inset: 0; background: #0a2c34; opacity: 0; visibility: hidden; transition: opacity 220ms var(--fe-ease-out), visibility 0s 220ms; }
+.fe-lib.is-open .fe-lib-open { opacity: 1; visibility: visible; transition: opacity 220ms var(--fe-ease-out), visibility 0s; }
+/* Closing, the picture fades for 220 ms: it takes no clicks then (a double click's second would be the Library's Back). */
+.fe-lib:not(.is-open) .fe-lib-open { pointer-events: none; }
+.fe-lib.is-open > :not(.fe-lib-open) { visibility: hidden; }
+.fe-lib-open-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.fe-lib-shade { position: absolute; inset: 0; background:
+  radial-gradient(ellipse 58% 82% at 0% 78%, rgba(4, 16, 22, .82), rgba(4, 16, 22, .5) 50%, rgba(4, 16, 22, 0) 100%),
+  linear-gradient(0deg, rgba(4, 16, 22, .45), rgba(4, 16, 22, 0) 40%); }
+/* Big text: the card climbs to the top, so the shade runs the full height of the left side. */
+.fe-lib.is-big-text .fe-lib-shade { background: linear-gradient(90deg, rgba(4, 16, 22, .86), rgba(4, 16, 22, .62) 42%, rgba(4, 16, 22, 0) 66%); }
+/* The cover card's look (index.html .ld-*): shadows lift the text off a bright picture; the name has the stroke and teal drop. */
+.fe-lib-card .fe-lib-kicker { text-shadow: 0 1px 3px rgba(0, 0, 0, .9), 0 0 12px rgba(0, 0, 0, .5); }
+.fe-lib-card .fe-lib-name { text-shadow: 4px 4px 0 #1d6b74, 0 2px 18px rgba(0, 0, 0, .35); -webkit-text-stroke: 1.5px #ef7d2e; }
+.fe-lib-card .fe-lib-sub { text-shadow: 0 2px 8px rgba(0, 0, 0, .6); }
+.fe-lib-card .fe-lib-fact, .fe-lib-card .fe-lib-count { text-shadow: 0 1px 6px rgba(0, 0, 0, .7); }
+.fe-lib-card { position: absolute; left: var(--fe-safe-x); bottom: calc(var(--fe-safe-y) + 96px); width: 900px; }
+.fe-lib-card .fe-lib-name { font-size: calc(96px * min(var(--fe-text), 1.25)); }
+.fe-lib-card .fe-lib-sub { font-size: calc(32px * min(var(--fe-text), 1.5)); }
+.fe-lib-card .fe-lib-fact { font-size: calc(26px * min(var(--fe-text), 1.6)); max-width: 860px; }
+.fe-lib-count { margin-top: 16px; font: 600 calc(18px * min(var(--fe-text), 1.5)) 'Barlow Semi Condensed', sans-serif; letter-spacing: .18em; color: #a9c3c2; }
+/* The open picture's ‹ › arrows beside its count: the mouse's way to page (left/right on pad and keys). */
+.fe-lib-count { display: flex; align-items: center; gap: 16px; margin-top: 10px; }
+.fe-lib-step { display: inline-flex; align-items: center; justify-content: center; width: calc(52px * min(var(--fe-text), 1.15)); height: calc(52px * min(var(--fe-text), 1.15));
+  border: 1.5px solid #3f6f72; border-radius: 50%; background: rgba(11, 42, 49, .82); color: #f6ecd6; font: 600 calc(34px * min(var(--fe-text), 1.15)) / 1 Barlow, sans-serif;
+  letter-spacing: 0; text-shadow: none; cursor: pointer; transition: border-color 120ms linear, background-color 120ms linear, transform 120ms var(--fe-ease-out); }
+.fe-lib-step:hover { border-color: var(--fe-sun); background: #0b2a31; transform: scale(1.08); }
+.fe-lib-step.is-off { opacity: .3; cursor: default; pointer-events: none; }
+.is-calm .fe-lib, .is-calm .fe-lib *, .is-calm .fe-lib-open { transition: none !important; }
+/* The map under the Library: its UI hides (tabs stay), a dim layer darkens the chart. */
+.fe-map-dim { position: absolute; inset: 0; background: rgba(6, 22, 27, .72); opacity: 0; pointer-events: none; transition: opacity 220ms var(--fe-ease-out); }
+.fe-map.is-library > .fe-map-dim { opacity: 1; }
+.fe-map.is-library > :not(.fe-chart):not(.fe-map-left):not(.fe-map-dim), .fe-map.is-library .fe-map-left > :not(.fe-map-tabs) { opacity: 0; visibility: hidden; }
+.fe-map.is-lib-open .fe-map-left { visibility: hidden; }
+.fe-map-tabs .fe-map-glyph { display: inline-flex; align-items: center; }
+.fe-map-tab[data-hit] { cursor: pointer; }

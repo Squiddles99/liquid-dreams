@@ -21,6 +21,11 @@ export function slideImage(name: string): { src: string; srcset: string } {
   return { src: small, srcset: `${small} 1920w, /loading/${name}-full.webp 3840w` };
 }
 
+/** The Library's pictures (library spec §3): its 4:3 tile (tools/loadingArt.py), or the full picture as the cover uses. */
+export function libraryImage(name: string, size: 'tile' | 'full'): { src: string; srcset: string } {
+  return size === 'tile' ? { src: `/loading/${name}-tile.webp`, srcset: '' } : slideImage(name);
+}
+
 /** A picture's fact card (art/loading/cards.json, written into index.html's #ld-cards by tools/loadingArt.py). */
 export interface SlideCard {
   /** The small heading, e.g. "Local flora · Cape to Cape". */

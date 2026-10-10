@@ -11,7 +11,10 @@ const ORDER: LegendAction[] = ['controls', 'random', 'details', 'toggle', 'confi
 export function legendFor(s: FrontState): LegendEntry[] {
   const e: LegendEntry[] = [];
   if (s.beat === 'map') {
-    if (s.breakDetails) e.push({ action: 'confirm', text: 'Surf here', accent: true }, { action: 'back', text: 'Close' });
+    if (s.hubTab === 'library') {
+      if (s.library.open) e.push({ action: 'back', text: 'Close' });
+      else e.push({ action: 'confirm', text: s.library.zone === 'cats' ? 'Browse' : 'Open' }, { action: 'back', text: 'Title' });
+    } else if (s.breakDetails) e.push({ action: 'confirm', text: 'Surf here', accent: true }, { action: 'back', text: 'Close' });
     else e.push({ action: 'confirm', text: 'Surf here', accent: true }, { action: 'details', text: 'Break details' }, { action: 'toggle', text: s.source === 'forecast' ? 'Custom conditions' : 'Game forecast' }, { action: 'back', text: 'Title' });
   } else if (s.beat === 'conditions') e.push({ action: 'random', text: 'Roll the dice' }, { action: 'details', text: 'Swell details' }, { action: 'confirm', text: 'Done' }, { action: 'back', text: 'Back' });
   else if (s.beat === 'rider') e.push({ action: 'confirm', text: `Ride as ${PRESETS[s.rider].nickname}` }, { action: 'back', text: 'Back' });

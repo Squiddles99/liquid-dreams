@@ -4,6 +4,7 @@ import { currentBindings, setBindings } from '../ride/bindings';
 import { registerSelfTest } from '../dev/selfTest';
 import { type FrontState, initialFront, step } from './frontEnd';
 import { DEFAULT_CHOICES, DEFAULT_FRONT_SETTINGS, FRONT_SETTINGS_KEY } from './frontSettings';
+import { LIBRARY, LIBRARY_COLS } from './library';
 import type { FrontEndHost } from './frontEndCore';
 import { FrontEnd } from './frontEndPage';
 import { gearView } from './gearView';
@@ -255,6 +256,21 @@ function texts(root: HTMLElement, scale: number) {
 }
 const overlaps = (a: { x: number; y: number; w: number; h: number }, b: typeof a): boolean => a.x < b.x + b.w - 1 && b.x < a.x + a.w - 1 && a.y < b.y + b.h - 1 && b.y < a.y + a.h - 1;
 
+/** The entry with the most card text (fact + Noongar): the Library's worst case for fitting (Review Focus 1). */
+const LONGEST = LIBRARY.flatMap((c, cat) => c.entries.map((e, entry) => ({ cat, entry, key: e.key, n: e.card.fact.length + (e.card.noongar ?? '').length })))
+  .sort((a, b) => b.n - a.n)[0];
+/** Drives the Library's focus to (cat, entry) with arrows alone. */
+async function goToEntry(fe: FrontEnd, cat: number, entry: number): Promise<void> {
+  for (let k = 0; k < 3 && fe.state?.library.zone !== 'cats'; k++) fe.act('left');
+  for (let k = 0; k < LIBRARY.length; k++) fe.act('up');
+  fe.act('down'); fe.act('up');                       // a category change resets the tile to 0, even when cat is unchanged
+  for (let k = 0; k < cat; k++) fe.act('down');
+  fe.act('right');
+  for (let k = 0; k < Math.floor(entry / LIBRARY_COLS); k++) fe.act('down');
+  for (let k = 0; k < entry % LIBRARY_COLS; k++) fe.act('right');
+  await frames(fe, 2);
+}
+
 for (const [w, h] of SIZES) for (const text of [1, 2]) {
   registerSelfTest({
     name: `frontend: every beat at ${w}×${h}, text ${text * 100}%: inside the safe area, nothing under 18 px, nothing overlapping`,
@@ -270,19 +286,30 @@ for (const [w, h] of SIZES) for (const text of [1, 2]) {
         fe.open();
         fe.resize(w, h);
         await document.fonts.ready;
-        for (const beat of ['map', 'conditions', 'rider', 'gear']) {
-          await frames(fe, 120);
+        const check = (label: string): void => {
           // The settled layout: a hidden browser pane never advances the fades and slide-ins, so finish them (not the
           // looping ones, like the map pin's pulse).
           for (const a of document.getAnimations()) if (Number.isFinite(Number(a.effect?.getComputedTiming().endTime))) a.finish();
           const root = host.querySelector('.fe-root') as HTMLElement, scale = Math.min(w / 1920, h / 1080), l = { designW: w / scale, designH: h / scale, safe: 0.03 };
-          const t = texts(root, scale);
+          // The Noongar line holds a <b> and its text, so texts() (leaves only) misses it: add it whole.
+          const t = [...texts(root, scale), ...[...root.querySelectorAll('.fe-lib-noongar')].filter((e) => getComputedStyle(e).visibility !== 'hidden' && shown(e)).map((e) => ({ e, b: designBox(e, root, scale), px: parseFloat(getComputedStyle(e).fontSize) }))];
           for (const { e, b, px } of t) {
-            if (px < 18) problems.push(`${beat}: "${e.textContent!.slice(0, 20)}" ${px.toFixed(0)} px`);
-            if (b.x < l.designW * l.safe - 0.5 || b.y < l.designH * l.safe - 0.5 || b.x + b.w > l.designW * (1 - l.safe) + 0.5 || b.y + b.h > l.designH * (1 - l.safe) + 0.5) problems.push(`${beat}: "${e.textContent!.slice(0, 20)}" outside`);
+            if (px < 18) problems.push(`${label}: "${e.textContent!.slice(0, 20)}" ${px.toFixed(0)} px`);
+            if (b.x < l.designW * l.safe - 0.5 || b.y < l.designH * l.safe - 0.5 || b.x + b.w > l.designW * (1 - l.safe) + 0.5 || b.y + b.h > l.designH * (1 - l.safe) + 0.5) problems.push(`${label}: "${e.textContent!.slice(0, 20)}" outside`);
           }
-          const blocks = ['.fe-legend', '.fe-title', '.fe-tabs', '.fe-map-tabs', '.fe-map-strip', '.fe-map-source', '.fe-map-local', '.fe-map-panel', '.fe-map-credit'].flatMap((q) => [...root.querySelectorAll(q)]).filter(shown).map((e) => designBox(e, root, scale));
-          for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) if (overlaps(blocks[i], blocks[j])) problems.push(`${beat}: blocks ${i} and ${j} overlap`);
+          const blocks = ['.fe-legend', '.fe-title', '.fe-tabs', '.fe-map-tabs', '.fe-map-strip', '.fe-map-source', '.fe-map-local', '.fe-map-panel', '.fe-map-credit', '.fe-lib-cats', '.fe-lib-grid', '.fe-lib-entry', '.fe-lib-card', '.fe-lib-credit'].flatMap((q) => [...root.querySelectorAll(q)]).filter((e) => shown(e) && getComputedStyle(e).visibility !== 'hidden').map((e) => designBox(e, root, scale));
+          for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) if (overlaps(blocks[i], blocks[j])) problems.push(`${label}: blocks ${i} and ${j} overlap`);
+        };
+        for (const beat of ['map', 'conditions', 'rider', 'gear']) {
+          await frames(fe, 120);
+          check(beat);
+          if (beat === 'map') {
+            // The Library (library spec §6): its first tile, the card with the most text (Review Focus 1), and that card open.
+            fe.act('tabPlus'); await frames(fe, 30); check('library');
+            await goToEntry(fe, LONGEST.cat, LONGEST.entry); await frames(fe, 30); check(`library ${LONGEST.key}`);
+            fe.act('confirm'); await frames(fe, 30); check(`library open ${LONGEST.key}`);
+            fe.act('back'); fe.act('tabMinus'); await frames(fe, 30);
+          }
           press('Enter');
         }
       } finally {
@@ -331,6 +358,114 @@ registerSelfTest({
       host.remove();
     }
     return { pass: problems.length === 0, detail: problems.join('; ') || `reached ${seen.size} focus states` };
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the Library: E opens it, arrows reach every category and tile, A opens, B closes, B again asks for the title',
+  async run() {
+    // At 1080p: the grid's row heights round there, which once left the last row 1 px short of the end (under the fade).
+    const host = document.createElement('div');
+    Object.assign(host.style, { position: 'fixed', left: '0', top: '0', width: '1920px', height: '1080px', overflow: 'hidden' });
+    document.body.appendChild(host);
+    let titled = 0;
+    const fe = new FrontEnd(fakeHost(() => titled++), host, noSound, memory());
+    const problems: string[] = [];
+    try {
+      fe.open();
+      fe.resize(1920, 1080);
+      await frames(fe, 30);
+      press('KeyE'); await frames(fe, 30);
+      if (fe.state?.hubTab !== 'library' || !host.querySelector('.fe-lib.is-on')) problems.push('E did not open the Library');
+      for (let cat = 0; cat < LIBRARY.length; cat++) {
+        await goToEntry(fe, cat, 0);
+        const n = LIBRARY[cat].entries.length, seen = new Set<string>();
+        for (let row = 0; row * LIBRARY_COLS < n; row++) {
+          for (let col = 0; col < LIBRARY_COLS; col++) { const f = host.querySelector('.fe-lib-tile.is-focus') as HTMLElement | null; if (f) seen.add(f.dataset.hit!); press('ArrowRight'); await frames(fe, 2); }
+          for (let col = 0; col < LIBRARY_COLS; col++) { press('ArrowLeft'); await frames(fe, 2); }
+          press('ArrowRight'); await frames(fe, 2);
+          press('ArrowDown'); await frames(fe, 2);
+          if (fe.state?.library.zone !== 'grid') { press('ArrowRight'); await frames(fe, 2); }
+        }
+        if (seen.size !== n) problems.push(`${LIBRARY[cat].label}: reached ${seen.size} of ${n} tiles`);
+        // The focused tile is in sight: inside the grid's box, once the grid's slide has settled (frames here are not real time).
+        for (const a of document.getAnimations()) if (Number.isFinite(Number(a.effect?.getComputedTiming().endTime))) a.finish();
+        const g = host.querySelector('.fe-lib-grid')!.getBoundingClientRect(), t = host.querySelector('.fe-lib-tile.is-focus')?.getBoundingClientRect();
+        if (!t || t.top < g.top - 1 || t.bottom > g.bottom + 1) problems.push(`${LIBRARY[cat].label}: the focused tile is out of sight`);
+        // The walk ends on the last row: the grid is at its end, so no bottom fade dims it.
+        if (host.querySelector('.fe-lib-grid.is-more')) problems.push(`${LIBRARY[cat].label}: the bottom fade is on at the last row`);
+        // A tile whose name is in full view shows it (only names the grid's edge cuts are hidden).
+        for (const tile of host.querySelectorAll('.fe-lib-tile.is-clipped')) {
+          const nb = tile.querySelector('.fe-lib-tile-name')!.getBoundingClientRect();
+          if (nb.top >= g.top && nb.bottom <= g.bottom) problems.push(`${LIBRARY[cat].label}: ${(tile as HTMLElement).dataset.hit}'s name hidden in full view`);
+        }
+      }
+      // A grid sliding under a resting cursor sends hover events with no movement: they must not take the focus
+      // (the keyboard's or the wheel's scroll would jump to whatever tile lands under the mouse). A real move does.
+      {
+        const before = fe.state!.library.entry, other = host.querySelectorAll('.fe-lib-tile')[before === 0 ? 1 : 0] as HTMLElement;
+        other.dispatchEvent(new MouseEvent('mouseenter'));
+        other.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+        await frames(fe, 2);
+        if (fe.state!.library.entry !== before) problems.push('a hover with no movement took the focus');
+        other.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, movementX: 4, movementY: 2 }));
+        await frames(fe, 2);
+        if (fe.state!.library.entry === before) problems.push('a real pointer move over a tile did not take the focus');
+      }
+      // The same for the categories: a row that reappears under a parked cursor (LB/RB back, picture closed) must not take the focus.
+      {
+        const before = fe.state!.library.cat, row = host.querySelectorAll('.fe-lib-cat')[before === 0 ? 1 : 0] as HTMLElement;
+        row.dispatchEvent(new MouseEvent('mouseenter'));
+        row.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+        await frames(fe, 2);
+        if (fe.state!.library.cat !== before) problems.push('a hover with no movement took the category focus');
+        row.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, movementX: 4, movementY: 2 }));
+        await frames(fe, 2);
+        if (fe.state!.library.cat === before || fe.state!.library.zone !== 'cats') problems.push('a real pointer move over a category did not take the focus');
+        press('ArrowRight'); await frames(fe, 2);
+      }
+      // A double click on the open picture: the first click closes it; the second must not land on the fading picture (its
+      // Back would then leave for the title). A click's second half (detail 2) on a just-opened picture must not close it.
+      {
+        press('Enter'); await frames(fe, 10);
+        const pic = host.querySelector('.fe-lib-open') as HTMLElement;
+        pic.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+        await frames(fe, 2);
+        if (!fe.state!.library.open) problems.push('the second click of a double click closed the picture it opened');
+        pic.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+        await frames(fe, 2);
+        if (fe.state!.library.open) problems.push('a click on the open picture did not close it');
+        const under = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+        if (under?.closest('.fe-lib-open')) problems.push('the closing picture still takes clicks (a double click would leave for the title)');
+        await frames(fe, 2);
+      }
+      // The open picture's ‹ › arrows page through the category by mouse; a click on them never closes the picture.
+      {
+        press('Enter'); await frames(fe, 10);
+        const at = fe.state!.library.entry, n = LIBRARY[fe.state!.library.cat].entries.length;
+        const next = host.querySelector('.fe-lib-step.is-next') as HTMLElement | null, prev = () => host.querySelector('.fe-lib-step.is-prev') as HTMLElement | null;
+        if (!next || !prev()) problems.push('the open picture has no ‹ › arrows');
+        else {
+          next.click(); await frames(fe, 2);
+          if (fe.state!.library.entry !== Math.min(n - 1, at + 1) || !fe.state!.library.open) problems.push(`› went to ${fe.state!.library.entry} (open ${fe.state!.library.open}), want ${at + 1}`);
+          prev()!.click(); await frames(fe, 2);
+          if (fe.state!.library.entry !== at || !fe.state!.library.open) problems.push(`‹ went to ${fe.state!.library.entry}, want ${at}`);
+          for (let k = 0; k < n; k++) { prev()!.click(); await frames(fe, 1); }
+          if (!prev()!.classList.contains('is-off')) problems.push('‹ is not off on the first painting');
+        }
+        press('Escape'); await frames(fe, 10);
+      }
+      press('Enter'); await frames(fe, 10);
+      if (!host.querySelector('.fe-lib.is-open')) problems.push('A did not open the picture');
+      press('Escape'); await frames(fe, 10);
+      if (host.querySelector('.fe-lib.is-open') || fe.state?.hubTab !== 'library') problems.push('B did not close the picture back to the Library');
+      press('Escape'); await frames(fe, 3);
+      if (titled !== 1) problems.push(`B on the Library asked for the title ${titled} times`);
+    } finally {
+      fe.close();
+      host.remove();
+    }
+    return { pass: problems.length === 0, detail: problems.join('; ') || 'clean' };
   },
 });
 
