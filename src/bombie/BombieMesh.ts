@@ -8,7 +8,8 @@ import { BOMBIE_X, BOMBIE_Z, BURST_GROW_S, BURST_LIFE_S, ROLL_DIR, ROLL_SPEED_MS
 
 type N = any;
 
-export const BOMBIE_GRID = { x0: -350, z0: 250, sizeM: 180, cells: 64 } as const;
+/** The white water's grid: 50 m seaward and 90 m along the crest either side of the Bombie, 130 m along the roll. */
+export const BOMBIE_GRID = { x0: BOMBIE_X - 50, z0: BOMBIE_Z - 90, sizeM: 180, cells: 64 } as const;
 const FOAM_ALBEDO = 0.8;
 /**
  * The white water floats this far above the sea (aerated foam is that thick). At 5 cm the flat parts dipped under the

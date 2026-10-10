@@ -3,7 +3,7 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
 import { buildCoastMap } from '../seabed/coastMap';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
-import { coastBreakingCells, reportBreaking } from './coastBreaking';
+import { coastBreakingCells, footprintBreakHeight, reportBreaking } from './coastBreaking';
 import { type CoastField, computeCoastField } from './coastField';
 import { REFRACT_FLOOR_M } from './reefField';
 import { setWaveHeight } from './reefReport';
@@ -15,11 +15,15 @@ beforeAll(() => {
   coast = computeCoastField({ bed: buildCoastMap(reef, DEFAULT_COAST_PARAMS), periodS: 15, fromDeg: 225, tideM: 0, refractFloorM: REFRACT_FLOOR_M });
 }, 120_000);
 
-const at = (ft: number) => reportBreaking(coast, coastBreakingCells(coast, setWaveHeight(ft), DEFAULT_BREAK_PARAMS));
+const at = (ft: number) => { const H = setWaveHeight(ft); return reportBreaking(coast, coastBreakingCells(coast, H, DEFAULT_BREAK_PARAMS), H, DEFAULT_BREAK_PARAMS); };
 
 describe('no closeout: a set breaks only at the four breaks and on the beach (lineup truth, Task 4)', () => {
+  // Carried at 8 ft (shelf-polish Task 5): 146 cells 69–189 m off the beach at z −988…−850 (and 3 at z ≈ 450), on the
+  // hand-set 9 m inner shelf, flat to 256 m out on those rows, where the coast field focuses the set (amp 1.77–1.92, 2.54):
+  // H·amp 8.1–8.4 m breaks there, beyond the band where the shelf breaks the unfocused set (6.5 m deep, 68–90 m out).
+  // The fix is the bed's (a deeper inner shelf there, or the focus's source): Andrew's call (tools/_shoreBand.ts).
   for (const ft of [4, 6, 8]) {
-    it(`at ${ft} ft every breaking cell is in a break's footprint, the 60 m shore band or (from 8 ft) the Cobblestones approach`, () => {
+    it(`at ${ft} ft every breaking cell is in a break's footprint, the shore band (where the shelf breaks the set, + 20 m) or (from 8 ft) the Cobblestones approach`, () => {
       const r = at(ft);
       expect(r.cells.elsewhere, `closeouts at ${JSON.stringify(r.closeouts)}`).toBe(0);
       expect(r.cells.shore).toBeGreaterThan(0);
@@ -32,6 +36,12 @@ describe('no closeout: a set breaks only at the four breaks and on the beach (li
     expect(at(4).cells.bombie).toBe(0);
     expect(at(6).cells.bombie).toBe(0);
     expect(at(8).cells.bombie).toBeGreaterThan(0);
+  });
+
+  it('footprintBreakHeight is where the Bombie starts to break (the bursts’ gate): between the 6 and 8 ft sets', () => {
+    const h = footprintBreakHeight(coast, 'bombie', DEFAULT_BREAK_PARAMS);
+    expect(h).toBeGreaterThan(setWaveHeight(6));
+    expect(h).toBeLessThanOrEqual(setWaveHeight(8));
   });
 
   it('the Bombie breaks at 10 ft as an A-frame: ≥ 80 m of crest', () => {

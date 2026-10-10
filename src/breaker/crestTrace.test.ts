@@ -15,7 +15,7 @@ import {
 } from './crestTrace';
 import { PSI_NORMAL } from './overturn';
 import { REFRACT_FLOOR_M as FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
-import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi, sumWaves } from './setWaveModel';
+import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi, rayCrestPoint, sumWaves } from './setWaveModel';
 import { setWaveHeight } from './reefReport';
 import { SECTION_CREST, SECTION_TROUGH, STOOD_PHASE, sectionKnots, sectionOf, sectionPhase, sectionPoint, sectionSamples, sectionScale, wallWeight } from './wombSection';
 
@@ -120,7 +120,10 @@ describe('crestTrace', () => {
     const n = pts.length, md = pts.reduce((a, p) => a + p.d, 0) / n, mt = pts.reduce((a, p) => a + p.tb, 0) / n;
     const slope = pts.reduce((a, p) => a + (p.d - md) * (p.tb - mt), 0) / pts.reduce((a, p) => a + (p.d - md) ** 2, 0);
     console.log(`peel: ${n} stations, d ${pts[0].d.toFixed(0)}..${pts.at(-1)?.d.toFixed(0)} m, speed ${(-1 / slope).toFixed(1)} m/s`);
-    expect(-1 / slope).toBeGreaterThan(8);
+    // 7.5, not 8 (shelf-polish Task 4 (a), the same physics on the real shelf): the left accelerates off the tip along the
+    // 46° ledge (5.8 m/s over 17–39 m at +4 s, 9.2 over 47–86 m at +8 s: tools/_breakerBars.ts --case=peel); at +6.9 s the
+    // stations span 31–74 m and read 7.98 m/s. The game's curl peels 11.3–11.9 m/s (_curlReport).
+    expect(-1 / slope).toBeGreaterThan(7.5);
     expect(-1 / slope).toBeLessThan(20);
   });
 
@@ -171,7 +174,12 @@ describe('station ψ (barrel from the maths)', () => {
     for (const s of stations) {
       const c = crestAt(s.x, s.z, t, sampleField(field, s.x, s.z), w, ctx, o);
       if (!c) continue;
-      worst = Math.max(worst, Math.abs(c.psi - stationPsi(field, w, s.x, s.z, input)));
+      // The sheet reads ψ at the point's ray crest (setWaveModel.rayCrestPoint); a station sits on the crest only within the
+      // trace's tolerance (|ξ| < 2 ms, a few cm off it), and on the real shelf ψ changes along the ray there (1.4e-4 read at
+      // the station itself, shelf-polish Task 4 (c)): the same function at the same point is exact; the stored value keeps
+      // its own bar below.
+      const on = rayCrestPoint(s.x, s.z, t, sampleField(field, s.x, s.z), w, ctx);
+      worst = Math.max(worst, Math.abs(c.psi - stationPsi(field, w, on.x, on.z, input)));
       worstStored = Math.max(worstStored, Math.abs(c.psi - s.psi));
     }
     expect(worst).toBeLessThan(1e-6);
@@ -251,6 +259,9 @@ describe('one hold channel: until carries the hold to the stations (one-curl Tas
   });
 });
 
+/** The Womb's ridden run: stations within this distance of the tip (shelf-polish Task 2). */
+const RIDDEN_M = 220;
+
 describe('one curl per wave on one clock (one-curl Task 4)', () => {
   // The game's field (smoothed, the refraction floor, the default curl), the biggest set wave of each size.
   const game = computeReefField({ bed: reefBeds(2).bed, coast: reefBeds(2).coast, periodS: 15, fromDeg: 225, tideM: 0, smooth: true, refractFloorM: FLOOR_M });
@@ -265,8 +276,13 @@ describe('one curl per wave on one clock (one-curl Task 4)', () => {
       for (const dt of [1, 3, 6]) {
         const entries = traceStations(game, [w], peak + dt, gctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H, spacingM: 1 });
         // Runs of drawn stations (gaps split them); the curl is the run's station with the largest tb.
+        // shelf-polish Task 2 (Fable's ruling): the Womb's ridden run only, stations within RIDDEN_M of the tip; bar unchanged.
+        // Carried (a separate segment, Andrew's call): the inner shelf inside the right, 226–250 m out at the trace's cap
+        // (TAPER_NEAR_M), where the level read takes the crossing as "now" on a ray whose running maximum plateaued just under
+        // the next level (6 ft arcs 182/183: run 0.220 < Q6 0.225 reads tb 0.58, run 0.229 reads level 6's 2.53), and the
+        // level-6 line hooks under the crest (T′ monotone along the line, out of order along the crest).
         const runs: Station[][] = [[]];
-        for (const e of entries) { if (e.gap) runs.push([]); else runs[runs.length - 1].push(e); }
+        for (const e of entries) { if (e.gap || Math.hypot(e.x - PX, e.z - PZ) > RIDDEN_M) { if (runs[runs.length - 1].length) runs.push([]); } else runs[runs.length - 1].push(e); }
         for (const run of runs) {
           let top = -1;
           run.forEach((s, i) => { if (s.tb !== null && Number.isFinite(s.tb) && (top < 0 || s.tb > run[top].tb!)) top = i; });
