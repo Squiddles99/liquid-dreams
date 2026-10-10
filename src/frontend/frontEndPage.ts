@@ -15,6 +15,7 @@ import { Legend, legendFor } from './ui/legend';
 import { RiderLine } from './ui/riderLine';
 import { RIDER_HALF_W, RIDER_STAND } from './backdrop/backdropMath';
 import { SlidePanel } from './ui/slidePanel';
+import { LibraryPanel } from './ui/libraryPanel';
 import { SurfMapPanel } from './ui/surfMapPanel';
 import { BreakDetails } from './ui/breakDetails';
 import { type Device, UiInput } from './uiInput';
@@ -57,7 +58,7 @@ export class FrontEnd {
   private beatEls: Record<'map' | 'conditions' | 'rider' | 'gear', HTMLElement> | null = null;
   private toastEl: HTMLElement | null = null;
   private toastTimer = 0;
-  private parts: { surf: SurfMapPanel; details: BreakDetails; cond: ConditionsPanel; map: BreakMap; slide: SlidePanel; gear: GearPanel; legend: Legend; line: RiderLine; bottom: HTMLElement } | null = null;
+  private parts: { surf: SurfMapPanel; lib: LibraryPanel; details: BreakDetails; cond: ConditionsPanel; map: BreakMap; slide: SlidePanel; gear: GearPanel; legend: Legend; line: RiderLine; bottom: HTMLElement } | null = null;
   private shownBeat: string | null = null;
   /** Black over everything until the crew have loaded and the land is ready (no boards floating without riders). */
   /** While the loading cover is up, key presses are read and dropped, so nothing changes under it (loading screens §2). */
@@ -115,6 +116,8 @@ export class FrontEnd {
       : p.kind === 'locked' ? this.toast('Real-time conditions: coming soon') : act(p.action)));
     void surf.load().then(() => { if (this.core) surf.render(this.core.state, this.today); });
     const details = new BreakDetails((a) => act(a));
+    const lib = new LibraryPanel((p) => (p.kind === 'cat' ? this.cue(this.core!.pointer({ libCat: p.index }, performance.now()))
+      : p.kind === 'entry' ? this.cue(this.core!.pointer({ libEntry: p.index }, performance.now())) : act(p.action)));
     const cond = new ConditionsPanel((p) => (p.kind === 'focus' ? this.cue(this.core!.pointer({ row: p.row }, performance.now())) : act(p.action)));
     const slide = new SlidePanel((p) => (p.kind === 'rider' ? this.cue(this.core!.pointer({ rider: p.rider }, performance.now())) : act(p.action)));
     const gear = new GearPanel((p) => {
@@ -126,9 +129,9 @@ export class FrontEnd {
     bottom.className = 'fe-scrim-bottom';
     void map.load().then(() => { const s = this.host.standSpot(); if (s) map.setLookout(s); map.setConditions(this.core!.state.setup, true); });
     const wrap = (...els: HTMLElement[]): HTMLElement => { const d = document.createElement('div'); d.append(...els); return d; };
-    this.beatEls = { map: wrap(surf.el, details.el), conditions: wrap(cond.el, map.el, beatHead('conditions')), rider: wrap(slide.el, beatHead('rider')), gear: wrap(gear.el, beatHead('gear')) };
+    this.beatEls = { map: wrap(surf.el, lib.el, details.el), conditions: wrap(cond.el, map.el, beatHead('conditions')), rider: wrap(slide.el, beatHead('rider')), gear: wrap(gear.el, beatHead('gear')) };
     this.root.append(bottom, this.beatEls.map, this.beatEls.conditions, this.beatEls.rider, this.beatEls.gear, line.el, legend.el);
-    this.parts = { surf, details, cond, map, slide, gear, legend, line, bottom };
+    this.parts = { surf, lib, details, cond, map, slide, gear, legend, line, bottom };
     this.input = new UiInput(window);
     this.sound.setFrontEndMusic(true);
     this.resize(this.size.w, this.size.h);
@@ -242,7 +245,8 @@ export class FrontEnd {
       this.root?.classList.toggle('is-map', visibleBeat === 'map');
       this.shownBeat = visibleBeat;
     }
-    if (visibleBeat === 'map' || s.beat === 'map') { p.surf.render(s, this.today); p.surf.update(now); p.details.render(s, this.today); const m = p.details.maxStep; if (m !== null) this.core!.setDetailsMax(m); }
+    if (visibleBeat === 'map' || s.beat === 'map') { p.surf.setDevice(this.device); p.surf.render(s, this.today); p.surf.update(now); p.details.render(s, this.today); const m = p.details.maxStep; if (m !== null) this.core!.setDetailsMax(m); }
+    p.lib.render(s); // every frame: it drops its is-on itself off the map
     p.cond.render(s, this.today);
     p.cond.update(now);
     p.slide.setDevice(this.device);

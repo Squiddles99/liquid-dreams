@@ -1,11 +1,13 @@
 // src/frontend/ui/surfMapPanel.ts: the surf map beat (surf-map hub spec §3, mockup A): the chart full screen; top-left
-// the tabs (Surf map · Library, locked), today's conditions and the source switch; top-right the Local tag; on the right
+// the tabs (LB · Surf map · Library · RB; the Library opens over the dimmed chart), today's conditions and the source switch; top-right the Local tag; on the right
 // the focused break's panel; a dotted leader from its pin to the panel.
 import { SURF_BREAKS, breakById } from '../../breaks/index';
 import { compass16, compassArc } from '../capesGeom';
 import { breakToday, conditionsNow, todaysSetup } from '../conditionsSource';
 import type { FrontAction, FrontState } from '../frontEnd';
 import { CapesChart } from './capesChart';
+import { glyphFor } from '../glyphs';
+import type { Device } from '../uiInput';
 
 type Pointer = { kind: 'pin'; id: string } | { kind: 'action'; action: FrontAction } | { kind: 'locked'; what: 'realtime' };
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text = ''): HTMLElementTagNameMap[K] => {
@@ -22,12 +24,19 @@ export class SurfMapPanel {
   private readonly panel = h('div', 'fe-map-panel');
   private readonly leader = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   private key = '';
+  private readonly tabMap = h('span', 'fe-map-tab is-on', 'SURF MAP');
+  private readonly tabLib = h('span', 'fe-map-tab', 'LIBRARY');
+  private readonly glyphs = [h('span', 'fe-map-glyph'), h('span', 'fe-map-glyph')];
+  private device: Device | null = null;
+  private hubTab: 'map' | 'library' = 'map';
 
   constructor(private readonly onPointer: (p: Pointer) => void) {
     const tabs = h('div', 'fe-map-tabs');
-    const map = h('span', 'fe-map-tab is-on', 'SURF MAP'), lib = h('span', 'fe-map-tab is-locked', 'LIBRARY');
-    lib.dataset.hit = 'library'; lib.addEventListener('click', () => onPointer({ kind: 'action', action: 'tabPlus' }));
-    tabs.append(map, lib);
+    // LB / RB beside the tabs (mockup B; the gear panel's tabs do the same). A click on the other tab switches.
+    this.tabMap.dataset.hit = 'tab:map'; this.tabLib.dataset.hit = 'library';
+    this.tabMap.addEventListener('click', () => { if (this.hubTab !== 'map') onPointer({ kind: 'action', action: 'tabMinus' }); });
+    this.tabLib.addEventListener('click', () => { if (this.hubTab !== 'library') onPointer({ kind: 'action', action: 'tabPlus' }); });
+    tabs.append(this.glyphs[0], this.tabMap, this.tabLib, this.glyphs[1]);
     const local = h('div', 'fe-map-local', 'LOCAL');
     for (const [id, label] of [['forecast', 'GAME FORECAST'], ['realtime', 'REAL-TIME · SOON'], ['custom', 'CUSTOM']] as const) {
       const b = h('span', 'fe-map-src', label); b.dataset.src = id; b.dataset.hit = `src:${id}`;
@@ -42,6 +51,14 @@ export class SurfMapPanel {
     const left = h('div', 'fe-map-left');
     left.append(tabs, this.strip, this.sw, credit);
     this.el.append(this.chart.el, this.leader, left, local, this.panel);
+    this.chart.el.after(h('div', 'fe-map-dim'));
+  }
+
+  setDevice(d: Device): void {
+    if (d === this.device) return;
+    this.device = d;
+    this.glyphs[0].innerHTML = glyphFor(d, 'tabMinus').svg;
+    this.glyphs[1].innerHTML = glyphFor(d, 'tabPlus').svg;
   }
 
   load(): Promise<void> { return this.chart.load(); }
@@ -50,6 +67,11 @@ export class SurfMapPanel {
     const forecast = todaysSetup(today), now = conditionsNow(s.source, { forecast, custom: s.customSetup });
     const b = breakById(s.breakId) ?? SURF_BREAKS[0];
     const key = JSON.stringify([s.source, s.breakId, now]);
+    this.hubTab = s.hubTab;
+    this.el.classList.toggle('is-library', s.hubTab === 'library');
+    this.el.classList.toggle('is-lib-open', s.hubTab === 'library' && s.library.open);
+    this.tabMap.classList.toggle('is-on', s.hubTab === 'map');
+    this.tabLib.classList.toggle('is-on', s.hubTab === 'library');
     for (const el of this.sw.children) (el as HTMLElement).classList.toggle('is-on', (el as HTMLElement).dataset.src === s.source);
     // The details page covers the map's own UI: it fades out under the page rather than showing through the dim.
     this.el.classList.toggle('is-details', s.breakDetails);

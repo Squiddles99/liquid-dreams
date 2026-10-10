@@ -26,3 +26,14 @@ Plan: docs/superpowers/plans/2026-10-10-library.md · Spec: docs/superpowers/spe
   - `sea-fauna-rock-lobster` 0.75: the body was crammed off the right edge.
   - `sea-fauna-tiger-shark` 0.9: the nose was cut.
 - Left at 0.5: the albatross and sea-eagle wingtips touch the top edge, but their sources are 4:3, so no crop can move. Heath monitor: its tail curls past the right edge, but the head is the subject and is kept.
+
+## Task 4: state machine (3d1899a)
+- 10 new Library tests RED on the old frontEnd.ts, then 38/38 GREEN; gates 277/277, tsc clean, build ok.
+- The map tab click now sends tabPlus (Task 5 finishes the tabs); the Library toast is gone.
+
+## Task 5: the view (2026-10-10)
+- `library.css` (as approved) appended to `frontEnd.css`; `.fe-map-tab.is-locked` removed.
+- Legend test (Library: Open/Browse + Title, Close) added to `glyphs.test.ts`, which already covers `legendFor`. RED on the old legend.ts, then GREEN. Gates: 278/278, tsc clean, build ok.
+- Ruling: `LibraryPanel.scrollTo` measures each tile and name from the grid by walking `offsetParent` (new `topIn`). The plan's `t.offsetTop + name.offsetTop` counted twice, because the tile isn't positioned, so a name's `offsetTop` is already relative to the grid. That hid the names of tiles in full view (Coastal plants' third row). Cost if wrong: none; the captures show it right.
+- Ruling: Task 7's `--mode=game` was added to `captureLibrary.mjs` now, to do Step 7's 1080p check against the mock. Cost if wrong: none (Task 7 reuses it).
+- Step 7: lib-balga / lib-longest at 100% and 200% match the approved mock: tabs with Q/E glyphs, dimmed chart, legend Controls · Open · Title.
