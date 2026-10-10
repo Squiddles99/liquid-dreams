@@ -69,3 +69,19 @@
   (9-13 cm, 4-8 mm), one shade per lock (`clump` curve attribute), honey blonde (melanin 0.42 → 0.14, red 0.28);
   temple wisps cut to 18 short ones; the face projection kept below eye line + 4-5.5 cm. Sheet gates/hair-r4.jpg.
   Open: brown smudges at the temples = the skin's scalp tint where the hairline ramps but no hair covers it.
+
+## Session 2 (2026-10-10): the first clips, approved by Andrew
+- Division of labour (Andrew): he makes the ChatGPT reference sequences; I build the animation in Blender from them.
+- Set-2 start frames + prompts (bbecb6c): proneWaiting, turtleRoll, duckDiveSurface, takeoffLate, cutbackSetup,
+  kickout, walkBoard; prompts in docs/art/animation-prompts-set-2.md.
+- Clips (tools/hero/animate.py, `--animate`): keys keyframed as actions, her root sampled per frame turning about the
+  pelvis, the board held in her pelvis frame per key and following her between keys; pass-through keys for continuous
+  moves. Review outputs: MP4s (frames_to_mp4.py) and build/hero/female/female_review.blend (review_blend.py).
+- Andrew's rulings over three review rounds: no leap / leg through the board going prone (lean forward onto the hands
+  first, turn finished while sitting); paddle lying further back (noseGap 0.75); the board turns and travels with her;
+  the half turn one smooth ~3.5 s move; trimming is balance by the small muscles: calm, slow (trc1-8, 6 s cycle), not
+  his sheet's pumping (trimPump kept for reference); stance narrower, weight back when deep, both feet planted
+  (pose `plant`); hair honey blonde in EEVEE too.
+- APPROVED (Andrew, 2026-10-10): sit-to-paddle (sitIdle, sitTurn, sitToProne), paddleCycle, trim. Previews committed
+  in docs/art/anim/shazza/ (sit-to-paddle.mp4, paddle-cycle.mp4, trim.mp4); the actions rebuild from code into
+  build/hero/female/female_clips.blend.
