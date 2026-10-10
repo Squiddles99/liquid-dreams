@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IMPACT_KIND, SPRAY_KIND } from './particleKinds';
+import { IMPACT_KIND, KIND_INDEX, PLUME_KIND, SPRAY_KIND } from './particleKinds';
 import { SPRAY_BIRTH_CAP, SPRAY_OPACITY, replayTicksForMaxLife, sprayReplayTicks } from './sprayEmitters';
 import { SPRAY_PHASE_ISOTROPIC, sprayPhase } from './sprayLook';
 import { SPRAY_DRAG_TAU_S, SPRAY_SETTLE_MS2, SprayPool, birthInto, stepPool } from './sprayStep';
@@ -37,5 +37,27 @@ describe('particle kinds', () => {
     expect(replayTicksForMaxLife(1.6)).toBe(42);
     expect(replayTicksForMaxLife(1.2 * 2)).toBe(sprayReplayTicks(2));
     expect(replayTicksForMaxLife(10)).toBe(100);
+  });
+});
+
+describe('one pool, every kind (whitewater §4.1)', () => {
+  const puff = { x: 0, y: 1, z: 0, vx: 1, vy: 3, vz: 0, life: 4, strength: 1 };
+  it('a birth carries its kind and its water height into the slot (meta: strength, kind, yWater, seed)', () => {
+    const pool = new SprayPool(SPRAY_BIRTH_CAP, KIND_INDEX.spray);
+    birthInto(pool, 0, [{ ...puff, kind: KIND_INDEX.plume, yWater: 0.7 }, puff]);
+    expect(pool.meta[1]).toBe(KIND_INDEX.plume);
+    expect(pool.meta[2]).toBeCloseTo(0.7, 6);
+    expect(pool.meta[5]).toBe(KIND_INDEX.spray); // the pool's own kind by default
+    expect(pool.meta[3]).not.toBe(pool.meta[7]); // a per-birth seed
+  });
+  it('each slot steps with its own kind: a mixed pool equals one pool per kind', () => {
+    const mixed = new SprayPool(SPRAY_BIRTH_CAP, KIND_INDEX.spray), a = new SprayPool(SPRAY_BIRTH_CAP), b = new SprayPool(SPRAY_BIRTH_CAP);
+    birthInto(mixed, 0, [puff, { ...puff, kind: KIND_INDEX.plume }]);
+    birthInto(a, 0, [puff]);
+    birthInto(b, 0, [puff]);
+    for (let i = 0; i < 20; i++) { stepPool(mixed, 4, 1); stepPool(a, 4, 1, SPRAY_KIND); stepPool(b, 4, 1, PLUME_KIND); }
+    expect(Array.from(mixed.posAge.slice(0, 4))).toEqual(Array.from(a.posAge.slice(0, 4)));
+    expect(Array.from(mixed.posAge.slice(4, 8))).toEqual(Array.from(b.posAge.slice(0, 4)));
+    expect(mixed.posAge[5]).toBeGreaterThan(mixed.posAge[1]); // the plume barely settles: higher after 1 s
   });
 });

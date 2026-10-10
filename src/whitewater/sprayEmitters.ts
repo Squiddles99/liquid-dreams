@@ -11,7 +11,7 @@ import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWa
 import { smoothstep } from '../math/smoothstep';
 import type { WaveEvent } from '../swell/sets';
 import { FOAM_TICK_S } from './foamStep';
-import { SPRAY_KIND } from './particleKinds';
+import { KIND_INDEX, SPRAY_KIND } from './particleKinds';
 
 /**
  * Offshore spray's emitters and births (spec 2026-09-27-offshore-spray-design.md §3.1), on the CPU: each 20 Hz tick, the
@@ -46,10 +46,12 @@ export interface SprayParams {
   amount: number;
   /** A puff's mean life (s); each lives this × U(0.6, 1.2). */
   lifeS: number;
+  /** Scales the plume over the back (whitewater §4.1; × its rate). */
+  plume: number;
 }
 
-export const DEFAULT_SPRAY_PARAMS: Readonly<SprayParams> = { amount: 1, lifeS: 2 };
-export const SPRAY_PARAM_RANGES = { amount: { min: 0, max: 3 }, lifeS: { min: 0.8, max: 4 } } as const;
+export const DEFAULT_SPRAY_PARAMS: Readonly<SprayParams> = { amount: 1, lifeS: 2, plume: 1 };
+export const SPRAY_PARAM_RANGES = { amount: { min: 0, max: 3 }, lifeS: { min: 0.8, max: 4 }, plume: { min: 0, max: 3 } } as const;
 
 export function normalizeSprayParams(p: SprayParams): void {
   for (const k of Object.keys(SPRAY_PARAM_RANGES) as (keyof SprayParams)[]) {
@@ -85,9 +87,34 @@ export function windToVector(fromDeg: number): [number, number] {
 
 /** How strongly a lip travelling along (nx, nz) throws spray in this wind: its offshore component, 0 → 1 over 1–6 m/s. */
 export function offshoreFactor(wind: Wind, nx: number, nz: number): number {
-  const [wx, wz] = windToVector(wind.fromDeg);
-  return smoothstep(WIND_CALM_MS, WIND_FULL_MS, wind.speedMs * Math.max(0, -(wx * nx + wz * nz)));
+  return smoothstep(WIND_CALM_MS, WIND_FULL_MS, Math.max(0, offshoreSpeedOn(wind, nx, nz)));
 }
+
+/** The wind's offshore speed on a crest travelling along (nx, nz) (m/s): + blowing against the wave (offshore), −
+ * onshore; 0 in a calm. */
+export function offshoreSpeedOn(wind: Wind, nx: number, nz: number): number {
+  const [wx, wz] = windToVector(wind.fromDeg);
+  return wind.speedMs * -(wx * nx + wz * nz);
+}
+
+/** Onshore (whitewater §4): the veil is a ragged mist blown forward over the face, its strength 0 → 1 over the same
+ * WIND_CALM_MS–WIND_FULL_MS of onshore speed; its puffs get this × |w_off| forward along the crest normal. */
+export const ONSHORE_VEIL_PUSH = 0.5;
+/** The veil's strength in this wind: offshore as today (offshoreFactor), onshore blown forward. */
+export function veilFactor(wind: Wind, nx: number, nz: number): number {
+  return smoothstep(WIND_CALM_MS, WIND_FULL_MS, Math.abs(offshoreSpeedOn(wind, nx, nz)));
+}
+
+/** The plume (whitewater §4.1): births per m of throwing lip per s at strength 1… */
+export const PLUME_RATE = 4;
+/** …its strength rising with the offshore wind over these speeds (m/s; none onshore)… */
+export const PLUME_WIND_MS: readonly [number, number] = [3, 9];
+/** …thrown with 0.6 × the lip's throw plus w_off × (PLUME_UPDRAFT up − PLUME_BACK along the crest normal)… */
+export const PLUME_UPDRAFT = 0.8, PLUME_BACK = 0.4;
+/** …and living U(3, 5) s. */
+export const PLUME_LIFE_S: readonly [number, number] = [3, 5];
+/** The spit is blown on (or held back) by this share of the wind vector (§4.3). */
+export const SPIT_WIND_SHARE = 0.5;
 
 export interface SprayEmitter {
   /** The lip tip (world m; y includes the tide). */
@@ -107,6 +134,10 @@ export interface SprayEmitter {
   /** The wave's event id and the station's arc index (arc / spacing): the hash keys of its births. */
   waveId: number;
   arc: number;
+  /** The wind's offshore speed on its normal (m/s; offshoreSpeedOn: + offshore, − onshore). */
+  wOff: number;
+  /** The water under the curl (world m; the tube's floor, y includes the tide): the soft particles' floor (§6.2). */
+  yWater: number;
 }
 
 export interface EmitterInput {
@@ -221,9 +252,7 @@ export const SPIT_SPEED = 2.5;
 export const SPIT_MAX_SPEED_MS = 25;
 /** Spit puffs per second per mouth at strength 1… */
 export const SPIT_RATE = 120;
-/** …each this faint (× the explosion's opacity): a mist blown out of the tube. At the explosion's own opacity the
- * overlapping puffs at the mouth read as a round cotton ball. */
-export const SPIT_OPACITY = 0.3;
+/** (Each puff's opacity is particleKinds.SPIT_KIND's: whitewater §4.3 replaced SPIT_OPACITY 0.3 × the explosion's.) */
 
 /**
  * The emitters at sim time t (spec §3.1; 3c §3.2): one camera-independent crest trace and one profile frame per breaking
@@ -251,7 +280,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
   const frames: (SectionFrame | null)[] = stations.map(() => null);
   for (const [si, s] of stations.entries()) {
     if (s.gap || s.tb === null || !Number.isFinite(s.tb)) continue;
-    const wind = wantSpray ? offshoreFactor(i.wind, s.nx, s.nz) : 0;
+    const wind = wantSpray ? veilFactor(i.wind, s.nx, s.nz) : 0;
     if (!(wind > 0) && !wantImpact) continue;
     const ft = sectionTiming(s.section, s.H);
     if (wantImpact) timing[si] = ft;
@@ -276,6 +305,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       spray.push({
         x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz,
         strength: f.weight * f.rho * wind * i.amount, lip: Math.min(1, f.weight * f.rho), waveId, arc,
+        wOff: offshoreSpeedOn(i.wind, s.nx, s.nz), yWater: f.floor[1] + i.tideM,
       });
     }
     if (emitsImpact) {
@@ -370,6 +400,10 @@ export interface SprayBirth {
   life: number;
   /** The emitter's lip weight (≤ 1): scales the puff's opacity. The wind and the amount set only how many are born. */
   strength: number;
+  /** Its kind (particleKinds.KIND_INDEX); absent: the pool's own. */
+  kind?: number;
+  /** The water it was born over (world m; §6.2's soft fade); absent 0. */
+  yWater?: number;
 }
 
 /**
@@ -385,14 +419,50 @@ export function sprayBirths(emitters: readonly SprayEmitter[], tick: number, p: 
       if (out.length >= SPRAY_BIRTH_CAP) return out;
       const r = (q: number): number => rand01(tick, e.waveId, e.arc, j * 8 + q + 1);
       const along = (r(0) * 2 - 1) * (SPRAY_SPACING_M / 2);
+      // Onshore (w_off < 0) the veil is blown forward over the face.
+      const fwd = e.wOff < 0 ? -e.wOff * ONSHORE_VEIL_PUSH : 0;
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.3, z: e.z + e.nx * along,
-        vx: 0.5 * e.vx + (r(2) * 2 - 1), vy: 2 + 2 * r(3) + (r(4) * 2 - 1), vz: 0.5 * e.vz + (r(5) * 2 - 1),
-        life: p.lifeS * (0.6 + 0.6 * r(6)), strength: Math.min(1, e.lip),
+        vx: 0.5 * e.vx + (r(2) * 2 - 1) + e.nx * fwd, vy: 2 + 2 * r(3) + (r(4) * 2 - 1), vz: 0.5 * e.vz + (r(5) * 2 - 1) + e.nz * fwd,
+        life: p.lifeS * (0.6 + 0.6 * r(6)), strength: Math.min(1, e.lip), kind: KIND_INDEX.spray, yWater: e.yWater,
       });
     }
   }
   return out;
+}
+
+/**
+ * Tick k's plume births (whitewater §4.1): floor(lip × smoothstep(PLUME_WIND_MS, w_off) × plume × PLUME_RATE × spacing × Δ
+ * + a hashed fraction) per emitter (none onshore), hashed apart from the veil's draws. Each is scattered half a spacing
+ * along the crest and 0–0.5 m up, thrown with 0.6 × the lip's throw plus w_off × (PLUME_UPDRAFT up − PLUME_BACK along the
+ * crest normal) and ±0.8 m/s per axis, for U(PLUME_LIFE_S) s; the plume kind.
+ */
+export function plumeBirths(emitters: readonly SprayEmitter[], tick: number, p: SprayParams): SprayBirth[] {
+  const out: SprayBirth[] = [];
+  for (const e of emitters) {
+    if (!(e.wOff > 0)) continue;
+    const strength = Math.min(1, e.lip) * smoothstep(PLUME_WIND_MS[0], PLUME_WIND_MS[1], e.wOff) * p.plume;
+    if (!(strength > 0)) continue;
+    const n = Math.floor(strength * PLUME_RATE * SPRAY_SPACING_M * FOAM_TICK_S + rand01(tick, e.waveId, e.arc, 0x3c6ef372));
+    for (let j = 0; j < n; j++) {
+      if (out.length >= SPRAY_BIRTH_CAP) return out;
+      const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x60000000 + j * 8 + q);
+      const along = (r(0) * 2 - 1) * (SPRAY_SPACING_M / 2);
+      const back = e.wOff * PLUME_BACK, up = e.wOff * PLUME_UPDRAFT;
+      out.push({
+        x: e.x - e.nz * along, y: e.y + r(1) * 0.5, z: e.z + e.nx * along,
+        vx: 0.6 * e.vx - e.nx * back + (r(2) * 2 - 1) * 0.8, vy: up + (r(3) * 2 - 1) * 0.8, vz: 0.6 * e.vz - e.nz * back + (r(4) * 2 - 1) * 0.8,
+        life: PLUME_LIFE_S[0] + (PLUME_LIFE_S[1] - PLUME_LIFE_S[0]) * r(5), strength: Math.min(1, e.lip), kind: KIND_INDEX.plume, yWater: e.yWater,
+      });
+    }
+  }
+  return out;
+}
+
+/** A tick's spray-pool births: the veil first, then the plume, at most SPRAY_BIRTH_CAP (the plume takes slots from the
+ * veil's leftovers, never on top: §4's guards). */
+export function sprayAndPlumeBirths(emitters: readonly SprayEmitter[], tick: number, p: SprayParams): SprayBirth[] {
+  return [...sprayBirths(emitters, tick, p), ...plumeBirths(emitters, tick, p)].slice(0, SPRAY_BIRTH_CAP);
 }
 
 /**
@@ -427,7 +497,8 @@ export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): 
  * apart from the spray's and the explosion's draws. Each is scattered over the tube's mouth (± 0.6 radius across it and up)
  * and blown out along it at U(0.7, 1.1) × its speed, ± 12% of that sideways, ± 1 m/s up, for U(0.8, 1.6) s.
  */
-export function spitBirths(emitters: readonly SpitEmitter[], tick: number): SprayBirth[] {
+export function spitBirths(emitters: readonly SpitEmitter[], tick: number, wind: readonly [number, number] = [0, 0]): SprayBirth[] {
+  const wx = wind[0] * SPIT_WIND_SHARE, wz = wind[1] * SPIT_WIND_SHARE;
   const out: SprayBirth[] = [];
   for (const e of emitters) {
     const n = Math.floor(e.strength * SPIT_RATE * FOAM_TICK_S + rand01(tick, e.waveId, e.arc, 0x5bd1e995));
@@ -438,8 +509,8 @@ export function spitBirths(emitters: readonly SpitEmitter[], tick: number): Spra
       const v = (0.7 + 0.4 * r(2)) * e.speed, side = (r(3) * 2 - 1) * 0.12 * e.speed;
       out.push({
         x: e.x + e.nx * across, y: e.y + up, z: e.z + e.nz * across,
-        vx: e.dx * v + e.nx * side, vy: r(4) * 2 - 1, vz: e.dz * v + e.nz * side,
-        life: 0.8 + 0.8 * r(5), strength: SPIT_OPACITY * Math.min(1, e.lip),
+        vx: e.dx * v + e.nx * side + wx, vy: r(4) * 2 - 1, vz: e.dz * v + e.nz * side + wz,
+        life: 0.8 + 0.8 * r(5), strength: Math.min(1, e.lip), kind: KIND_INDEX.spit,
       });
     }
   }

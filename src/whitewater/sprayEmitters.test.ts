@@ -10,8 +10,9 @@ import { IMPACT_KIND } from './particleKinds';
 import { SprayPool, birthInto, stepPool } from './sprayStep';
 import {
   DEFAULT_SPRAY_PARAMS, type EmitterInput, IMPACT_MAX_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, impactKick, inImpactWindow, IMPACT_DELAY_S, IMPACT_WINDOW_S, sprayCanEmit, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
-  spitBirths, sprayEmitters, sprayReplayTicks, windToVector,
+  spitBirths, sprayEmitters, sprayReplayTicks, windToVector, plumeBirths, PLUME_WIND_MS, PLUME_LIFE_S, offshoreSpeedOn, sprayAndPlumeBirths, SPIT_WIND_SHARE,
 } from './sprayEmitters';
+import { KIND_INDEX, PARTICLE_KINDS, PLUME_KIND, SPIT_KIND } from './particleKinds';
 
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
 const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
@@ -97,9 +98,9 @@ describe('the emitters', () => {
     expect(sprayEmitters(input(T_THROW, { amount: 0 }))).toEqual([]);
     expect(sprayEmitters(input(T_THROW, { params: { ...DEFAULT_BREAK_PARAMS, enabled: false } }))).toEqual([]);
   });
-  it('no emitters on a glassy day or in an onshore wind', () => {
+  // Onshore now makes a veil blown forward over the face (whitewater §4's table): 'onshore: a veil blown forward' below.
+  it('no emitters on a glassy day', () => {
     expect(sprayEmitters(input(T_THROW, { wind: { speedMs: 0, fromDeg: 57 } }))).toEqual([]);
-    expect(sprayEmitters(input(T_THROW, { wind: { speedMs: 8, fromDeg: 237 } }))).toEqual([]);
   });
   it('emitters do not depend on the call (deterministic)', () => {
     expect(sprayEmitters(input(T_THROW))).toEqual(sprayEmitters(input(T_THROW)));
@@ -133,14 +134,14 @@ describe('the births', () => {
   });
   it('emitters are 3 m apart (the cost lever) and births scatter half a spacing either side, so the veil stays continuous', () => {
     expect(SPRAY_SPACING_M).toBe(3);
-    const one = [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 1, lip: 1, waveId: 1, arc: 0 }];
+    const one = [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 1, lip: 1, waveId: 1, arc: 0, wOff: 6, yWater: 0 }];
     let widest = 0;
     for (let k = 0; k < 200; k++) for (const b of sprayBirths(one, k, DEFAULT_SPRAY_PARAMS)) widest = Math.max(widest, Math.abs(b.z));
     expect(widest).toBeGreaterThan(0.8 * SPRAY_SPACING_M / 2);
     expect(widest).toBeLessThanOrEqual(SPRAY_SPACING_M / 2 + 1e-9);
   });
   it('the wind and the amount set how many puffs are born, not how opaque each is (strength applied once; final review I1)', () => {
-    const at = (strength: number, lip: number) => [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength, lip, waveId: 1, arc: 0 }];
+    const at = (strength: number, lip: number) => [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength, lip, waveId: 1, arc: 0, wOff: 6, yWater: 0 }];
     let weak = 0, strong = 0;
     for (let k = 0; k < 400; k++) {
       const w = sprayBirths(at(0.3, 1), k, DEFAULT_SPRAY_PARAMS), s = sprayBirths(at(1, 1), k, DEFAULT_SPRAY_PARAMS);
@@ -152,7 +153,7 @@ describe('the births', () => {
     for (let k = 0; k < 50; k++) for (const b of sprayBirths(at(2, 0.4), k, DEFAULT_SPRAY_PARAMS)) expect(b.strength).toBeCloseTo(0.4, 12);
   });
   it('births never exceed the per-tick cap (amount 3 on a long section)', () => {
-    const many = Array.from({ length: 400 }, (_, i) => ({ x: i, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 3, lip: 1, waveId: 1, arc: i }));
+    const many = Array.from({ length: 400 }, (_, i) => ({ x: i, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 3, lip: 1, waveId: 1, arc: i, wOff: 6, yWater: 0 }));
     const b = sprayBirths(many, 7, DEFAULT_SPRAY_PARAMS);
     expect(b.length).toBe(SPRAY_BIRTH_CAP);
     expect(sprayBirths(many, 7, DEFAULT_SPRAY_PARAMS)).toEqual(b);
@@ -163,9 +164,9 @@ describe('the births', () => {
     expect(new Set(v).size).toBe(4);
   });
   it('params clamp into the slider ranges, and a replay covers the longest life plus 0.5 s', () => {
-    const p = { amount: 9, lifeS: 0.1 };
+    const p = { amount: 9, lifeS: 0.1, plume: 7 };
     normalizeSprayParams(p);
-    expect(p).toEqual({ amount: 3, lifeS: 0.8 });
+    expect(p).toEqual({ amount: 3, lifeS: 0.8, plume: 3 });
     expect(sprayReplayTicks(2)).toBe(58);
     expect(sprayReplayTicks(4)).toBe(SPRAY_HISTORY_TICKS); // capped at the pool's history (final review I2)
   });
@@ -215,7 +216,7 @@ describe('the impact explosion', () => {
     const a = impactBirths(many, 9);
     expect(a.length).toBe(SPRAY_BIRTH_CAP);
     expect(impactBirths(many, 9)).toEqual(a);
-    const s = sprayBirths(many, 9, DEFAULT_SPRAY_PARAMS);
+    const s = sprayBirths(many.map((e) => ({ ...e, wOff: 6, yWater: 0 })), 9, DEFAULT_SPRAY_PARAMS);
     expect(a[0].z).not.toBeCloseTo(s[0].z, 9); // the scatter runs along (−nz, nx) = z here
     for (const b of a) { expect(b.life).toBeGreaterThanOrEqual(1.3); expect(b.life).toBeLessThanOrEqual(IMPACT_MAX_LIFE_S); }
   });
@@ -310,5 +311,83 @@ describe("the barrel's spit (Andrew: foam, spit and spray)", () => {
     expect(up / n).toBeLessThan(0.3 * (along / n));
     expect(spitBirths([one], 7)).toEqual(spitBirths([one], 7));
     expect(spitBirths(Array.from({ length: 400 }, (_, i) => ({ ...one, arc: i, strength: 3 })), 3).length).toBeLessThanOrEqual(SPRAY_BIRTH_CAP);
+  });
+});
+
+describe('the plume, the veil and the spit under wind (whitewater §4.1, §4.3)', () => {
+  const tip = (wOff: number, strength = 1) => ({ x: 0, y: 2, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, strength, lip: 1, waveId: 7, arc: 3, wOff, yWater: 0.4 });
+  const plumeStrength = (wOff: number): number => {
+    let n = 0;
+    for (let k = 0; k < 400; k++) n += plumeBirths([tip(wOff)], k, DEFAULT_SPRAY_PARAMS).length;
+    return n;
+  };
+  it('no plume under 3 m/s offshore; full at 9 (smoothstep over PLUME_WIND_MS)', () => {
+    expect(PLUME_WIND_MS).toEqual([3, 9]);
+    expect(plumeStrength(2.9)).toBe(0);
+    expect(plumeStrength(9)).toBeGreaterThan(0);
+    expect(plumeStrength(12)).toBe(plumeStrength(9));
+    expect(plumeStrength(6)).toBeLessThan(plumeStrength(9));
+    expect(plumeStrength(-6)).toBe(0); // onshore: none
+  });
+  it('a plume puff is the plume kind, born at the tip, lifted by the updraft and blown back over the crest; it knows its water', () => {
+    const b = Array.from({ length: 40 }, (_, k) => plumeBirths([tip(9)], k, DEFAULT_SPRAY_PARAMS)).flat();
+    expect(b.length).toBeGreaterThan(0);
+    for (const p of b) {
+      expect(p.kind).toBe(KIND_INDEX.plume);
+      expect(p.yWater).toBe(0.4);
+      expect(p.vy).toBeGreaterThan(0);
+      // Back over the crest: against the crest normal (+x) once the throw's 0.6 × 6 m/s is outweighed by 0.4 × 9.
+      expect(p.vx).toBeLessThan(0.6 * 6 + 1.5);
+      expect(p.life).toBeGreaterThanOrEqual(PLUME_LIFE_S[0]);
+      expect(p.life).toBeLessThanOrEqual(PLUME_LIFE_S[1]);
+    }
+  });
+  it('the plume kind: big (2 → 6 m), long-lived, slow to settle, glowing backlit; spit denser', () => {
+    expect(PLUME_KIND).toEqual({ dragTauS: 2.0, gravityMs2: 0.3, sizeM: [2, 6], opacity: 0.12, isotropic: 0.5 });
+    // Spec §4.3 "opacity 0.3 → 0.5" on the old per-puff scale (0.3 × the impact kind's 0.32): 0.5 × 0.32 (ledger ruling).
+    expect(SPIT_KIND.opacity).toBeCloseTo(0.5 * IMPACT_KIND.opacity, 12);
+    expect(KIND_INDEX).toEqual({ spray: 0, plume: 1, impact: 2, spit: 3 });
+    expect(PARTICLE_KINDS[KIND_INDEX.plume]).toBe(PLUME_KIND);
+    expect(PARTICLE_KINDS[KIND_INDEX.spit]).toBe(SPIT_KIND);
+  });
+  it('a glassy day makes no veil and no plume, anywhere along the breaking set', () => {
+    const glassy = { speedMs: 1 * 0.5144, fromDeg: 57 };
+    for (const dt of [1, 2, 3, 4, 5]) {
+      const e = breakEmitters(input(BIGGEST.arrivalS + dt, { wind: glassy, impactAmount: 1 }));
+      expect(e.spray).toEqual([]);
+      expect(plumeBirths(e.spray, 5, DEFAULT_SPRAY_PARAMS)).toEqual([]);
+    }
+  });
+  it('onshore: a veil blown forward over the face (v·n > 0), and no plume', () => {
+    const onshore = { speedMs: 18 * 0.5144, fromDeg: 237 };
+    const e = breakEmitters(input(T_THROW, { wind: onshore })).spray;
+    expect(e.length).toBeGreaterThan(0);
+    for (const em of e) expect(em.wOff).toBeLessThan(0);
+    const births = sprayBirths(e, 9, DEFAULT_SPRAY_PARAMS);
+    expect(births.length).toBeGreaterThan(0);
+    const forward = births.reduce((s, b) => s + b.vx * e[0].nx + b.vz * e[0].nz, 0) / births.length;
+    expect(forward).toBeGreaterThan(0);
+    expect(plumeBirths(e, 9, DEFAULT_SPRAY_PARAMS)).toEqual([]);
+  });
+  it('the wind helpers stay finite in a calm and at every bearing', () => {
+    expect(Number.isFinite(offshoreFactor({ speedMs: 0, fromDeg: 123 }, 1, 0))).toBe(true);
+    expect(offshoreFactor({ speedMs: 0, fromDeg: 123 }, 1, 0)).toBe(0);
+    for (let b = -720; b <= 720; b += 7.5) expect(windToVector(b).every(Number.isFinite)).toBe(true);
+    expect(Number.isFinite(offshoreSpeedOn({ speedMs: 0, fromDeg: 0 }, 0, 0))).toBe(true);
+  });
+  it('a tick takes at most SPRAY_BIRTH_CAP births, the veil first, then the plume', () => {
+    const many = Array.from({ length: 200 }, (_, i) => ({ ...tip(9, 3), arc: i }));
+    const all = sprayAndPlumeBirths(many, 4, DEFAULT_SPRAY_PARAMS);
+    expect(all.length).toBeLessThanOrEqual(SPRAY_BIRTH_CAP);
+    const firstPlume = all.findIndex((b) => b.kind === KIND_INDEX.plume);
+    if (firstPlume >= 0) expect(all.slice(firstPlume).every((b) => b.kind === KIND_INDEX.plume)).toBe(true);
+    expect(all.slice(0, sprayBirths(many, 4, DEFAULT_SPRAY_PARAMS).length).every((b) => (b.kind ?? 0) === KIND_INDEX.spray)).toBe(true);
+  });
+  it('spit is the spit kind, held back or blown on by the wind (+ wind × SPIT_WIND_SHARE)', () => {
+    const e = { x: 0, y: 1, z: 0, dx: 1, dz: 0, nx: 0, nz: 1, speed: 8, radius: 1, strength: 1, lip: 1, waveId: 2, arc: 1 };
+    const calm = spitBirths([e], 4), blown = spitBirths([e], 4, [-6, 0]);
+    expect(calm.length).toBeGreaterThan(0);
+    for (const b of calm) expect(b.kind).toBe(KIND_INDEX.spit);
+    calm.forEach((b, i) => expect(blown[i].vx).toBeCloseTo(b.vx - 6 * SPIT_WIND_SHARE, 9));
   });
 });
