@@ -1,4 +1,4 @@
-import { abs, cameraPosition, dot, exp, float, length, max, min, mix, select, smoothstep, uniform } from 'three/tsl';
+import { Fn, If, abs, cameraPosition, dot, exp, float, length, max, min, mix, select, smoothstep, uniform, vec3 } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
 import { type FoamGrid, bilinearFoam } from './foamStep';
 import { mistLightNode } from './mistLight';
@@ -22,6 +22,8 @@ export const MIST_LAND_WINDOW_S: readonly [number, number] = [0.2, 1.2];
 export const MIST_IMPACT_SHARE = 0.5, MIST_PLUME_SHARE = 1;
 /** A level ray crosses the slab as if at this elevation (sin), and never more than MIST_PATH_MAX_M. */
 export const MIST_GRAZE = 0.05, MIST_PATH_MAX_M = 60;
+/** Below this density the slab is skipped (a transmittance within 1e-4 of 1 over the longest path). */
+export const MIST_MIN = 1e-4 / (MIST_SIGMA * MIST_PATH_MAX_M);
 
 const sstep = (a: number, b: number, x: number): number => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -107,14 +109,23 @@ export class MistSlab {
   constructor(private readonly map: MistMap, private readonly seaY: N, private readonly sky: Sky) {}
 
   apply(colour: N, worldPos: N, sunVisibility: N = float(1.0)): N {
-    const d = this.map.sampleNode(worldPos.xz);
-    const toPoint = worldPos.sub(cameraPosition);
-    const dist = length(toPoint);
-    const ray = toPoint.div(max(dist, 1e-3));
-    const h = max(this.A.mul(MIST_SLAB_A).sub(max(worldPos.y.sub(this.seaY), 0.0)), 0.0);
-    const path = min(min(h.div(max(abs(ray.y), MIST_GRAZE)), MIST_PATH_MAX_M), dist);
-    const T = exp(d.mist.mul(d.inside).mul(path).mul(-MIST_SIGMA));
-    const light = mistLightNode({ cosView: dot(ray, this.sky.sunDirection), nDotL: float(1.0), sunVisibility, isotropic: float(0.5), groundColour: colour }, this.sky);
-    return mix(light, colour, T);
+    return Fn(() => {
+      const out = vec3(colour).toVar();
+      // Only where the map holds mist (most pixels, every calm frame): the light and the path are skipped, the colour
+      // passes through exactly.
+      const m = this.map.sampleNode(worldPos.xz);
+      const d = m.mist.mul(m.inside).toVar();
+      If(d.greaterThan(MIST_MIN), () => {
+        const toPoint = worldPos.sub(cameraPosition);
+        const dist = length(toPoint);
+        const ray = toPoint.div(max(dist, 1e-3));
+        const h = max(this.A.mul(MIST_SLAB_A).sub(max(worldPos.y.sub(this.seaY), 0.0)), 0.0);
+        const path = min(min(h.div(max(abs(ray.y), MIST_GRAZE)), MIST_PATH_MAX_M), dist);
+        const T = exp(d.mul(path).mul(-MIST_SIGMA));
+        const light = mistLightNode({ cosView: dot(ray, this.sky.sunDirection), nDotL: float(1.0), sunVisibility, isotropic: float(0.5), groundColour: out }, this.sky);
+        out.assign(mix(light, out, T));
+      });
+      return out;
+    })();
   }
 }
