@@ -10,6 +10,7 @@ const fromTip = (x: number, z: number): [number, number] => [PX + x, PZ + z];
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS, ONSET_DELAY_OFFSET, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, landingEstimate, onsetGain, onsetTime } from './breaking';
 import { HAND_BACK_S } from './lipProfile';
+import { rideEntries } from './crestTrace';
 import {
   CREST_TOLERANCE_S, MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, stationOnset, stationPsi, timeSinceOnset, traceStations,
 } from './crestTrace';
@@ -463,5 +464,38 @@ describe('the wave she keeps (R2 §3)', () => {
     }
     expect(last.length).toBeGreaterThan(0);
     expect({ gone, stillBreaking }).toMatchObject({ stillBreaking: 0 });
+  });
+});
+
+describe('crestTrace: the surge is the ribbon\'s look only (whitewater F4)', () => {
+  // A 6 ft set wave well into its collapse along the line: some sections past phase 1.25.
+  const w = toActiveWave(REF_BIGGEST);
+  const times = [1, 2, 3, 4, 5].map((d) => REF_BIGGEST.arrivalS + d);
+  it('a trace without drawSurge carries no surge: the ride\'s sections are the family\'s own', () => {
+    for (const t of times) for (const s of live(traceStations(field, [w], t, ctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H }))) expect(s.section.surge ?? 0).toBe(0);
+  });
+  it('the ribbon\'s trace (drawSurge) carries it somewhere, and rideEntries strips it back to the plain trace bit for bit', () => {
+    let any = 0;
+    for (const t of times) {
+      const input = { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H };
+      const drawn = traceStations(field, [w], t, ctx, { ...input, drawSurge: true }), plain = traceStations(field, [w], t, ctx, input);
+      any += live(drawn).filter((s) => (s.section.surge ?? 0) > 0.05).length;
+      const ride = rideEntries(drawn);
+      expect(ride.length).toBe(plain.length);
+      ride.forEach((e, i) => {
+        const p = plain[i];
+        if (e.gap || p.gap) { expect(e.gap).toBe(p.gap); return; }
+        expect({ ...e.section, surge: e.section.surge ?? 0 }).toEqual({ ...p.section, surge: p.section.surge ?? 0 });
+        expect([e.x, e.z, e.nx, e.nz, e.H, e.tb]).toEqual([p.x, p.z, p.nx, p.nz, p.H, p.tb]);
+        // The ride's water: the section the board reads, from the same numbers, bit for bit.
+        const flatSheet = (u: number): [number, number] => [u, 0];
+        expect(sectionOf(e.section, flatSheet).points).toEqual(sectionOf(p.section, flatSheet).points);
+      });
+    }
+    expect(any).toBeGreaterThan(0);
+  });
+  it('rideEntries returns the same array when nothing surges', () => {
+    const plain = trace([w], times[0]);
+    expect(rideEntries(plain)).toBe(plain);
   });
 });

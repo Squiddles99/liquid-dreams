@@ -1,13 +1,13 @@
-import { boilWeight, churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
-import { curlFoamNode } from '../whitewater/curlFoam';
+import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, freshFoamWeightNode } from '../whitewater/pileChurn';
+import { curlFoamNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
 import * as THREE from 'three/webgpu';
 import {
   Break, Fn, If, Loop, abs, atan, attribute, floor, cameraPosition, clamp, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
-  storage, uniform, varying, varyingProperty, vec2, vec3, vec4, vertexIndex,
+  mx_noise_float, storage, uniform, varying, varyingProperty, vec2, vec3, vec4, vertexIndex,
 } from 'three/tsl';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
 import { CASCADE_FADES, fadeWeightNode } from '../ocean/cascadeFades';
-import { type DebugOverlays, EARTH_RADIUS_M, type SheetFoamMap, type SheetFootprint, setFoamPattern, sheetFoamWeight, sheetNormal, waterFoamFrame } from '../ocean/OceanSurface';
+import { type DebugOverlays, EARTH_RADIUS_M, SET_FOAM_MAX_COVER, type SheetFoamMap, type SheetFootprint, setFoamPattern, sheetFoamWeight, sheetNormal, waterFoamFrame } from '../ocean/OceanSurface';
 import { type WaterOpticsUniforms, shadeWater } from '../ocean/waterShading';
 import type { WaterSurfaceModel } from '../ocean/waterSurface';
 import { seabedTerms } from '../seabed/seabedShading';
@@ -55,7 +55,8 @@ export const SKIRT_DEPTH_M = 0.3;
 /** PROFILE_SAMPLES plus one skirt vertex at each end (index 0: under the front edge; last: under the back edge). */
 export const VERTS_PER_STATION = PROFILE_SAMPLES + 2;
 /** vec4s per station in the stations buffer: [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, ψ, lipH (0: none)], [A, phase, hollow, ρ]
- * (the section's numbers, smoothed along the crest: crestTrace.fillSections), [surge, boil (pileChurn.boilWeight at foam 1), 0, 0]
+ * (the section's numbers, smoothed along the crest: crestTrace.fillSections), [surge, boil (pileChurn.boilWeight at foam 1),
+ * freshness (pileChurn.boilFreshness), 0]
  * (packStations). */
 export const STATION_VEC4S = 5;
 /** A sample whose home is more than this inside both edges is `inner` (the footprint's 1 m shrink, spec R9). */
@@ -231,7 +232,7 @@ export function packStations(entries: readonly StationEntry[], out: Float32Array
     if (!e.gap) prev = e;
     const s: Station = prev;
     const q = s.section;
-    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0, q.A, q.phase, q.hollow, q.rho, q.surge ?? 0, boilWeight(s.tb, s.Hb ?? s.H, periodS, 1), 0, 0], i * STATION_VEC4S * 4);
+    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0, q.A, q.phase, q.hollow, q.rho, q.surge ?? 0, boilWeight(s.tb, s.Hb ?? s.H, periodS, 1), boilFreshness(s.tb, s.Hb ?? s.H, periodS), 0], i * STATION_VEC4S * 4);
   }
   return n;
 }
@@ -569,6 +570,8 @@ export class BreakingRibbon {
     const home: N = attribute('ribbonHome', 'vec4');
     const radial = length(home.xy.sub(this.cameraXZ));
     const vNormal: N = varying(attribute('ribbonNormal', 'vec4').xyz);
+    // The tip's fringe (F2), unpacked per vertex before it is interpolated.
+    const vFringe: N = varying(unpackFringeNode(attribute('ribbonNormal', 'vec4').w));
     const vExtra: N = varying(attribute('ribbonExtra', 'vec4'));
     const vHome: N = varying(home);
     const vDetail: N = varying(attribute('ribbonDetail', 'vec4').xy);
@@ -581,6 +584,8 @@ export class BreakingRibbon {
     const vSetFoam: N = varyingProperty('float', 'vRibbonSetFoam');
     // The boil (whitewater §3.2): the station's boil (packStations) × the fresh foam at the home × A, in metres.
     const vPile: N = varyingProperty('float', 'vRibbonPile');
+    // The station's boil freshness [0, 1] (packStations), for the fresh boil's solid foam (pileChurn.freshFoamWeight, F3).
+    const vBoil: N = varyingProperty('float', 'vRibbonBoil');
     const row = int(vertexIndex).div(V);
     const stationsRO = this.stationsNode();
     const vFrame: N = varyingProperty('vec2', 'vRibbonFrame');
@@ -588,7 +593,9 @@ export class BreakingRibbon {
       const b = model.sets.breakSampleNode(home.xy);
       vSetSlope.assign(b.slope);
       vSetFoam.assign(sheetFoamWeight(b.foam, foamMap ? foamMap.sampleNode(home.xy) : null));
-      const boil = stationsRO.element(row.mul(STATION_VEC4S).add(4)).y.mul(vSetFoam).mul(stationsRO.element(row.mul(STATION_VEC4S).add(3)).x);
+      const stationBoil = stationsRO.element(row.mul(STATION_VEC4S).add(4)).y;
+      vBoil.assign(stationsRO.element(row.mul(STATION_VEC4S).add(4)).z);
+      const boil = stationBoil.mul(vSetFoam).mul(stationsRO.element(row.mul(STATION_VEC4S).add(3)).x);
       vPile.assign(boil);
       vFrame.assign(b.foamFrame);
       return churnHeightNode(boil, b.foamFrame, model.sets.time, model.sets.churn);
@@ -615,14 +622,17 @@ export class BreakingRibbon {
     const curlOwn = saturate(curlFoam).mul(rho), clean = saturate(curlFoam.negate()).mul(rho);
     // Read at the developed coordinate (as the chop is): at the home the whole thrown lip maps onto a strip of the sheet a
     // few metres wide, and the pattern smeared into bands down the lip. At the edges the two are the same point.
-    const foamLook = setFoamPattern(max(vSetFoam.mul(float(1.0).sub(clean)), curlOwn), waterFoamFrame(vDetail, model.sets.meanTravel), model.sim.time);
+    // The tip's fringe (F2): a solid thin band with its own fine (~0.25 m) breakup, not the sheet's 2–3 m lace.
+    const fringe = saturate(vFringe).mul(mix(0.75, 1.0, smoothstep(-0.3, 0.3, mx_noise_float(vec3(vDetail.mul(4.0), model.sim.time.mul(0.5)))))).mul(SET_FOAM_MAX_COVER);
+    // Fresh boil is solid white (F3): the weight lifted to FRESH_BOIL_WEIGHT × the boil, the lace back as it ages.
+    const foamLook = setFoamPattern(freshFoamWeightNode(max(vSetFoam.mul(float(1.0).sub(clean)), curlOwn), vBoil), waterFoamFrame(vDetail, model.sets.meanTravel), model.sim.time);
     // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
     // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
     const sunVis = shading.sunlight ? shading.sunlight.visibilityNode(positionWorld.xz) : undefined;
     const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
-      { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, breakFoam: foamLook.x, lip, lipThickness: thickness, underside,
+      { normal, viewDir, distance, foam: max(max(fft.foam, foamLook.x), fringe), foamShade: mix(foamLook.y, float(1.0), saturate(vFringe)), breakFoam: max(foamLook.x, fringe), lip, lipThickness: thickness, underside,
         tube: { sunLip: vLight.x, sunBody: vLight.w, skyOpen: vLight.y, lipThickness: vLight.z },
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
@@ -777,8 +787,6 @@ export class BreakingRibbon {
       const runEnd = stations.element(i.mul(STATION_VEC4S).add(2)).y;
       const inside = A.mul(EDGE_OUTER_UNITS).sub(abs(home)).greaterThan(INNER_MARGIN_M);
       const inner = select(inside.and(runEnd.lessThan(0.5)), float(1.0), float(0.0));
-      // The normal pass fills xyz.
-      normals.element(idx).assign(vec4(0.0, 1.0, 0.0, inner));
       // The lip: the samples either side of the tip out to the crest's distance from it, while the lip is thrown; its
       // thickness the distance to the sample mirrored about the tip (the lip's other face).
       const reach = max(crest.sub(tip), 1.0);
@@ -796,6 +804,10 @@ export class BreakingRibbon {
       const inTube = select(float(j).greaterThan(min(tip, floorJ)).and(float(j).lessThan(max(tip, floorJ))), float(1.0), float(0.0));
       const ownFoam = curlFoamNode(phase, off.div(reach), inTube, float(1.0));
       extras.element(idx).assign(vec4(thickness as N, lipness as N, ownFoam as N, curl));
+      // The tip's fringe (F2): its own solid band on the lip's own samples (the tip toward the crest), × the curl (0 on gap
+      // rows and cut ends), carried beside the inner flag (curlFoam.packInnerFringe). The normal pass fills xyz.
+      const onLip = select((float(j).sub(tip).mul(crest.sub(tip)) as N).greaterThanEqual(0.0), float(1.0), float(0.0));
+      normals.element(idx).assign(vec4(0.0, 1.0, 0.0, packInnerFringeNode(inner, tipFringeNode(phase, off.div(reach), onLip).mul(curl))));
       // The home xz, and how far the curve departs from the sheet here: the develop pass moves the home into homes and
       // writes the detail coordinate over it, keeping w.
       const constructed = smoothstep(SHEET_BLEND_M[0], SHEET_BLEND_M[1], length(pos.sub(base)));
