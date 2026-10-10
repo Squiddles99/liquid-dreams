@@ -9,8 +9,8 @@ export const focusDetune = (r: number): number => Math.round((r * 2 - 1) * 100);
 
 export function soundFor(e: FrontEvent): UiSound | null {
   switch (e.kind) {
-    case 'focus': case 'riderFocus': case 'pinFocus': return 'focus';
-    case 'value': case 'roll': case 'details': case 'breakDetails': return 'value';
+    case 'focus': case 'riderFocus': case 'pinFocus': case 'hubTab': return 'focus';
+    case 'value': case 'roll': case 'details': case 'breakDetails': case 'libraryOpen': return 'value';
     case 'end': return 'end';
     case 'move': return 'swing';
     case 'pick': return 'pick';

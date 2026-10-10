@@ -47,4 +47,10 @@ describe('the legend (spec §4, §5.5): View, Y, X, A, B, START, absent actions 
     expect(l.map((e) => e.text)).toEqual(['Controls', 'Choose', 'Back', 'Paddle out']);
     expect(l[3]).toMatchObject({ action: 'start', accent: true });
   });
+  it('the Library: Open/Browse and Title, Close when the picture is open', () => {
+    const lib = { ...initialFront(DEFAULT_CHOICES), hubTab: 'library' as const };
+    expect(legendFor(lib).map((e) => e.text)).toEqual(['Controls', 'Open', 'Title']);
+    expect(legendFor({ ...lib, library: { ...lib.library, zone: 'cats' } }).map((e) => e.text)).toEqual(['Controls', 'Browse', 'Title']);
+    expect(legendFor({ ...lib, library: { ...lib.library, open: true } }).map((e) => e.text)).toEqual(['Controls', 'Close']);
+  });
 });

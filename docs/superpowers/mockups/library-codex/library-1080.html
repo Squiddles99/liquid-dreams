@@ -1,0 +1,50 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Library mock 1080p</title>
+<link href="https://fonts.googleapis.com/css2?family=Knewave&family=Caveat+Brush&family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="library.css">
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #0a2c34; }
+  .fe-root { --fe-sun: #ef7d2e; --fe-sun-hi: #ffa14f; --fe-teal: #1d6b74; --fe-cream: #f7ecd2; --fe-ink: #10171a; --fe-text: 1; --fe-safe-x: 58px; --fe-safe-y: 32px; --fe-radius: 3px;
+    --fe-ease-out: cubic-bezier(0.33, 1, 0.68, 1); position: absolute; inset: 0; color: #f7ecd2; font-family: 'Barlow Semi Condensed', sans-serif; }
+  .bg { position: absolute; inset: 0; background: url(/docs/superpowers/evidence/library/chart-bare.png) center / cover; }
+  .dim { position: absolute; inset: 0; background: rgba(6, 22, 27, .72); }
+  .tabs { position: absolute; left: 58px; top: 32px; display: flex; gap: 44px; font: 700 30px 'Barlow Semi Condensed'; letter-spacing: .12em; }
+  .tabs span { color: #a9c3c2; padding-bottom: 10px; } .tabs .on { color: #f6ecd6; border-bottom: 4px solid #ef7d2e; }
+  .legend { position: absolute; right: 58px; bottom: 32px; display: flex; gap: 34px; background: #0b2a31; border: 1.5px solid #3f6f72; border-radius: 10px; padding: 10px 22px; font: 600 22px 'Barlow Semi Condensed'; white-space: pre; }
+</style></head>
+<body><div class="fe-root" id="root"><div class="bg"></div><div class="dim"></div>
+<div class="tabs"><span>LB</span><span>SURF MAP</span><span class="on">LIBRARY</span><span>RB</span></div>
+<div class="fe-lib is-on" id="lib"></div><div class="legend" id="legend"></div></div>
+<script type="module">
+const CATS = [['COASTAL PLANTS', 'flora-'], ['SEAWEED & SEAGRASS', 'sea-flora-'], ['SEA LIFE', 'sea-fauna-'], ['BIRDS', 'birds-'], ['REPTILES', 'reptiles-'], ['MARSUPIALS', 'marsupials-']];
+const cards = await (await fetch('/art/loading/cards.json')).json();
+const byPrefix = [...CATS].sort((a, b) => b[1].length - a[1].length);
+const cats = CATS.map(([label]) => ({ label, entries: [] }));
+for (const [key, card] of Object.entries(cards)) { if (key.startsWith('_')) continue; const c = byPrefix.find((p) => key.startsWith(p[1])); cats[CATS.indexOf(c)].entries.push({ key, card }); }
+for (const c of cats) c.entries.sort((a, b) => a.card.name.localeCompare(b.card.name, 'en'));
+const longest = cats.flatMap((c, ci) => c.entries.map((e, ei) => ({ ci, ei, n: e.card.fact.length + (e.card.noongar ?? '').length }))).sort((a, b) => b.n - a.n)[0];
+const seadragon = cats[2].entries.findIndex((e) => e.key === 'sea-fauna-leafy-seadragon');
+const STATES = { grid: [2, seadragon, false, 1], noongar: [0, 0, false, 1], open: [0, 0, true, 1], text200: [longest.ci, longest.ei, false, 2], open200: [longest.ci, longest.ei, true, 2] };
+const [ci, ei, open, text] = STATES[location.hash.slice(1)] ?? STATES.grid;
+document.getElementById('root').style.setProperty('--fe-text', String(text));
+const h = (tag, cls, t = '') => { const e = document.createElement(tag); e.className = cls; if (t) e.textContent = t; return e; };
+const cardEls = (card) => {
+  const sub = h('div', 'fe-lib-sub'); sub.append(h('span', 'fe-lib-common', card.common ? `${card.common} · ` : ''), h('i', 'fe-lib-latin', card.latin));
+  const els = [h('div', 'fe-lib-kicker', card.kicker), h('div', 'fe-lib-name', card.name), sub, h('p', 'fe-lib-fact', card.fact)];
+  if (card.noongar) { const n = h('p', 'fe-lib-fact fe-lib-noongar'), b = document.createElement('b'); b.textContent = 'Noongar '; n.append(b, card.noongar); els.push(n); }
+  return els;
+};
+const lib = document.getElementById('lib'), cat = cats[ci], entry = cat.entries[ei];
+lib.classList.toggle('is-big-text', text >= 1.5); lib.classList.toggle('is-open', open);
+const catsEl = h('div', 'fe-lib-cats');
+cats.forEach((c, i) => { const r = h('div', 'fe-lib-cat' + (i === ci ? ' is-on' : '')); r.append(h('span', '', c.label), h('span', 'fe-lib-cat-n', String(c.entries.length))); catsEl.appendChild(r); });
+const grid = h('div', 'fe-lib-grid'), inner = h('div', 'fe-lib-grid-inner'); grid.appendChild(inner);
+cat.entries.forEach((e, i) => { const t = h('div', 'fe-lib-tile' + (i === ei ? ' is-focus is-sel' : '')); const img = document.createElement('img'); img.src = `/loading/${e.key}-1920.webp`; t.append(img, h('div', 'fe-lib-tile-name', e.card.name)); inner.appendChild(t); });
+const ent = h('div', 'fe-lib-entry'), pic = document.createElement('img'); pic.className = 'fe-lib-entry-img'; pic.src = `/loading/${entry.key}-1920.webp`; ent.append(pic, ...cardEls(entry.card));
+const op = h('div', 'fe-lib-open'), big = document.createElement('img'); big.className = 'fe-lib-open-img'; big.src = `/loading/${entry.key}-full.webp`;
+const card = h('div', 'fe-lib-card'); card.append(...cardEls(entry.card), h('div', 'fe-lib-count', `${ei + 1} / ${cat.entries.length}`));
+op.append(big, h('div', 'fe-lib-shade'), card);
+lib.append(catsEl, grid, ent, h('div', 'fe-lib-credit', 'Coastline © OpenStreetMap contributors'), op);
+requestAnimationFrame(() => grid.classList.toggle('is-more', inner.scrollHeight > grid.clientHeight));
+document.getElementById('legend').textContent = open ? 'B  Close' : 'A  Open      B  Title      View  Controls';
+if (open) document.querySelector('.tabs').style.visibility = 'hidden';
+</script></body></html>
