@@ -11,7 +11,7 @@ import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, type P2, PROFILE_KEY
  * it, the ride and the spray read it on the CPU.
  */
 
-const GRAVITY_MS2 = 9.81;
+export const GRAVITY_MS2 = 9.81;
 /** The profile at onset stands this many units crest to trough (wombProfile's pitching key: 1 above sea level, 0.3 below). */
 export const ONSET_HEIGHT_UNITS = 1.3;
 /**

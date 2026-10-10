@@ -237,7 +237,9 @@ export const BACKS_OFF_HOLLOW = 0.4;
 export const BACKS_OFF_PEEL = 4;
 
 /** ψ₀ as the profile family's hollowness: oval 0, thrown 1 (STEP_PSI_POINTS' ends), clamped. */
-export const hollowFromPsi = (psi: number): number => Math.min(1, Math.max(0, (psi - 0.035) / 0.055));
+/** hollowFromPsi's ramp: ψ [0] is a crumbling lip (0), [0] + [1] a pitching one (1). */
+export const HOLLOW_PSI: readonly [number, number] = [0.035, 0.055];
+export const hollowFromPsi = (psi: number): number => Math.min(1, Math.max(0, (psi - HOLLOW_PSI[0]) / HOLLOW_PSI[1]));
 
 /**
  * The left as H breaks along it, stretch by stretch: every LINE_STEP_M along `north`, the first broken point on its ray

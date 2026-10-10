@@ -4,6 +4,7 @@ import {
   BORE_PUSH, COARSE_SOURCE_SAMPLES, COARSE_TICKS, DEFAULT_FOAM_PARAMS, FOAM_EDGE_BAND_M, FOAM_GRID, FOAM_TICK_S, FRESH_SOURCE, type FoamGrid, type FoamParams, FoamSchedule, LACE_LEVEL,
   PATTERN_WIND_MS, WIND_DRIFT_SHARE, normalizeFoamParams, tickTime,
 } from './foamStep';
+import { MIST_DECAY_S, MIST_WIND_SHARE, mistSourceNode } from './mistSlab';
 
 type N = any;
 
@@ -15,8 +16,9 @@ export interface FoamSourceNodes {
   dirNode(xz: N): N;
   /** The foam weight and the bore's push on it (m/s) from one sum (App: SetWaves.breakingFoamPushNode); in place of
    * foamNode when given, `timeShift` s before the prepared time (a coarse step's samples). Absent: no push, and a coarse
-   * step samples foamNode once. */
-  foamPushNode?(xz: N, timeShift?: N | null): { foam: N; push: N };
+   * step samples foamNode once. `land` and `lip` (SetWaves' sum: the landing's and the throwing lip's foam) feed the
+   * mist channel (mistSlab.mistSource); absent, no mist. */
+  foamPushNode?(xz: N, timeShift?: N | null): { foam: N; push: N; land?: N; lip?: N };
 }
 
 /** The published map the materials sample (hardware-filtered half floats): (density, age, mist, 1). */
@@ -90,6 +92,15 @@ export class FoamField {
       const load = (dx: number, dz: number): N => textureLoad(this.state, i0.add(ivec2(dx, dz)), int(0)).xy;
       return mix(mix(load(0, 0), load(1, 0), t.x), mix(load(0, 1), load(1, 1), t.x), t.y);
     };
+    // The same bilinear on the mist channel (.z).
+    const bilinearMist = (xz: N): N => {
+      const f = clamp(xz.sub(this.origin).div(g.cellM).sub(0.5), vec2(0.0), maxIndex);
+      const base = min(floor(f), maxIndex.sub(1.0));
+      const t = f.sub(base);
+      const i0 = ivec2(base);
+      const load = (dx: number, dz: number): N => textureLoad(this.state, i0.add(ivec2(dx, dz)), int(0)).z;
+      return mix(mix(load(0, 0), load(1, 0), t.x), mix(load(0, 1), load(1, 1), t.x), t.y);
+    };
     // foamStep.driftVector.
     const drift = (dir: N, c: N, density: N): N =>
       dir.mul(this.driftMps.add(c.mul(BORE_PUSH).mul(smoothstep(0.5, 0.9, density)))).add(this.wind.mul(WIND_DRIFT_SHARE));
@@ -101,7 +112,7 @@ export class FoamField {
       const above = select(t.lessThanEqual(toLace), expo, max(float(LACE_LEVEL).sub(max(t.sub(toLace), 0.0).mul(this.laceSlope)), 0.0));
       return select(d.greaterThan(LACE_LEVEL), above, max(d.sub(t.mul(this.laceSlope)), 0.0));
     };
-    const sourceAt = (xz: N, shift: N | null): { foam: N; push: N } =>
+    const sourceAt = (xz: N, shift: N | null): { foam: N; push: N; land?: N; lip?: N } =>
       source.foamPushNode ? source.foamPushNode(xz, shift) : { foam: source.foamNode(xz), push: float(0.0) };
     // foamStep.stepFoam; on a coarse step (`samples` COARSE_SOURCE_SAMPLES) the source across the step too, each sample
     // decayed to its end. One pipeline with a uniform loop count: a second pipeline over SetWaves' buffers (a coarse step
@@ -112,6 +123,9 @@ export class FoamField {
       const src = sourceAt(xz, null);
       const S = float(src.foam).toVar(), c = float(src.push).toVar();
       const dir = vec2(source.dirNode(xz)).toVar();
+      // mistSlab.stepMist: carried by MIST_WIND_SHARE of the wind, decayed, injected.
+      const mistSrc = src.land !== undefined && src.lip !== undefined ? mistSourceNode(src.land, src.lip, dir, this.wind) : float(0.0);
+      const mist = max(bilinearMist(xz.sub(this.wind.mul(MIST_WIND_SHARE).mul(this.dtS))).mul(exp(this.dtS.div(-MIST_DECAY_S))), mistSrc).toVar();
       // The midpoint backtrace.
       const own = textureLoad(this.state, ivec2(texel(i)), int(0)).x;
       const mid = xz.sub(drift(dir, c, own).mul(this.dtS.mul(0.5)));
@@ -124,7 +138,7 @@ export class FoamField {
         next.assign(max(next, decay(Sj, back)));
         age.assign(select(Sj.greaterThanEqual(FRESH_SOURCE), min(age, back), age));
       });
-      textureStore(this.scratch, texel(i), vec4(clamp(next, 0.0, 1.0), age, 0.0, 1.0));
+      textureStore(this.scratch, texel(i), vec4(clamp(next, 0.0, 1.0), age, clamp(mist, 0.0, 1.0), 1.0));
     })().compute(count) as THREE.ComputeNode;
     this.copyPass = Fn(() => {
       const v = textureLoad(this.scratch, ivec2(texel(instanceIndex)), int(0)).toVar();
@@ -214,17 +228,18 @@ export class FoamField {
   }
 
   /**
-   * The map at base xz for the materials (any stage): density [0, 1] and age (s since fresh; hardware-filtered), and
+   * The map at base xz for the materials (any stage): density [0, 1], age (s since fresh) and mist [0, 1] (the mist
+   * slab's density, mistSlab.ts; hardware-filtered), and
    * `inside`: how much the map rather than the placeholder decides the foam (foamStep.boxWeight: 0 outside the box, 1
    * from FOAM_EDGE_BAND_M in).
    */
-  sampleNode(xz: N): { density: N; age: N; inside: N } {
+  sampleNode(xz: N): { density: N; age: N; mist: N; inside: N } {
     const g = this.grid;
     const local = xz.sub(this.origin);
     const size = vec2(g.nx * g.cellM, g.nz * g.cellM);
     const edge = min(min(local.x, size.x.sub(local.x)), min(local.y, size.y.sub(local.y)));
     const inside = clamp(edge.div(FOAM_EDGE_BAND_M), 0.0, 1.0);
     const m = texture(this.texture, local.div(size)).level(float(0)); // three typings gap: level() wants a node
-    return { density: m.x, age: m.y, inside };
+    return { density: m.x, age: m.y, mist: m.z, inside };
   }
 }

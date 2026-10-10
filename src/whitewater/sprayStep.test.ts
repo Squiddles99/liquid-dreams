@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FOAM_TICK_S, FoamSchedule } from './foamStep';
 import { SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, SPRAY_POOL, type SprayBirth, sprayReplayTicks } from './sprayEmitters';
-import { SPRAY_DRAG_TAU_S, SPRAY_SETTLE_MS2, SprayPool, birthInto, liveSlots, slotBase, stepPool } from './sprayStep';
+import { SPRAY_DRAG_TAU_S, SPRAY_SETTLE_MS2, NO_WATER, SprayPool, birthInto, liveSlots, slotBase, stepPool } from './sprayStep';
 
 const puff = (over: Partial<SprayBirth> = {}): SprayBirth => ({ x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: 0, life: 2, strength: 1, ...over });
 
@@ -48,6 +48,14 @@ describe('the spray pool (CPU reference)', () => {
     expect(pool.posAge[base]).toBe(1);
     expect(pool.posAge[base + 4]).toBe(2);
     expect(pool.meta[base]).toBe(1);
+  });
+  it('a birth with no water under it is NO_WATER (no soft fade); with one, its yWater (whitewater §6.2)', () => {
+    const pool = new SprayPool();
+    birthInto(pool, 6, [puff({ x: 1 }), puff({ x: 2, yWater: -0.6 })]);
+    const base = slotBase(6) * 4;
+    expect(pool.meta[base + 2]).toBe(NO_WATER);
+    expect(pool.meta[base + 6]).toBeCloseTo(-0.6, 6);
+    expect(NO_WATER).toBeLessThan(-1000);
   });
   it('a replay equals live stepping exactly (fixed slots per tick)', () => {
     const births = (k: number): SprayBirth[] => Array.from({ length: (k * 7) % 5 }, (_, i) => puff({ x: k + i, vy: 1 + i, life: 1 + ((k + i) % 3) * 0.5 }));

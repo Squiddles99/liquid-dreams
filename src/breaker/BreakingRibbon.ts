@@ -635,7 +635,7 @@ export class BreakingRibbon {
       { normal, viewDir, distance, foam: max(max(fft.foam, foamLook.x), fringe), foamShade: mix(foamLook.y, float(1.0), saturate(vFringe)), breakFoam: max(foamLook.x, fringe), lip, lipThickness: thickness, underside,
         tube: { sunLip: vLight.x, sunBody: vLight.w, skyOpen: vLight.y, lipThickness: vLight.z },
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
-        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
+        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld,
         landReflection: shading.skyline ? (r: N) => shading.skyline!.reflectionNode(positionWorld, r, sky) : undefined },
       sky,
       optics,

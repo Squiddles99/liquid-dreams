@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, abs, clamp, cos, dot, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, storage, tanh,
+  Fn, If, Loop, abs, clamp, cos, dot, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, sqrt, storage, tanh,
   textureLoad, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { REEF_GRID, TIP } from '../seabed/wombReef';
@@ -9,7 +9,9 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LE
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { BORE_SHARE, WALL_LEAD_S } from './wombSection';
+import { BORE_SHARE, FLIGHT_DROP_A, GRAVITY_MS2, ONSET_HEIGHT_UNITS, WALL_LEAD_S } from './wombSection';
+import { HOLLOW_PSI } from './reefReport';
+import { MIST_LAND_WINDOW_S, landingMistNode } from '../whitewater/mistSlab';
 import { boreWeightNode } from './wombSectionNodes';
 import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
@@ -403,13 +405,16 @@ export class SetWaves {
    * largest envelope there, vec2(metres behind its crest, ξ·c; metres along its crest). It moves with the crest, so
    * noise read in it is advected with the wave; the foam's noise uses it (render only, not part of the CPU model).
    */
-  private sumBreaking(xz: N, frame: boolean, pileWanted = true, timeShift: N | null = null): { eta: N; dh: N; slope: N; foam: N; stage: N; foamFrame: N; pile: N; push: N } {
+  private sumBreaking(xz: N, frame: boolean, pileWanted = true, timeShift: N | null = null, mistWanted = false): { eta: N; dh: N; slope: N; foam: N; stage: N; foamFrame: N; pile: N; push: N; land: N; lip: N } {
     const withPile = pileWanted && this.pile;
     // The sum at time − timeShift (the foam map's coarse replay steps sample their source across the step).
     const now = timeShift === null ? this.time : this.time.sub(timeShift);
     const eta = float(0.0).toVar(), dh = vec2(0.0).toVar(), slope = vec2(0.0).toVar();
     const foam = float(0.0).toVar(), stage = float(0.0).toVar(), pile = float(0.0).toVar();
     const foamFrame = vec2(0.0).toVar(), frameEnv = float(0.0).toVar(), push = float(0.0).toVar();
+    // The mist's sources (mistWanted; whitewater §6.1): the foam where a lip has just landed (× mistSlab.landingMist) and
+    // where it is still throwing (onset to the landing window's end).
+    const land = float(0.0).toVar(), lip = float(0.0).toVar();
     If(this.activeCount.greaterThan(0.5), () => {
       // Everything that does not depend on the wave is made a var here, before the loop: the field sample, wFar, the
       // Stokes ratio per metre of amplitude, the local wave speed and dξ/ds. Left as expressions, TSL emits them where
@@ -473,6 +478,8 @@ export class SetWaves {
           // The whitewater pile's curves and the lip's height (setWaveModel.Crest.lipH: 0 unbroken or off the record).
           const pc = { pile: float(0.0).toVar(), pileReach: float(0.0).toVar(), surge: float(1.0).toVar(), decay: float(1.0).toVar() };
           const lipH = float(0.0).toVar();
+          // This wave's mist weights here (mistWanted): the landing's (mistSlab.landingMist) and the throwing lip's (0/1).
+          const landW = float(0.0).toVar(), lipW = float(0.0).toVar();
           // The crest's sheet shape from its ψ (setWaveModel.crestAt: overturn.withSheetShape; PSI_NORMAL off the record).
           const shTrough = float(sheetShape(PSI_NORMAL).troughDrain).toVar(), shSurge = float(sheetShape(PSI_NORMAL).pileSurge).toVar();
           If(breaking, () => {
@@ -524,6 +531,14 @@ export class SetWaves {
             }
             if (this.shape === 'full') lean.assign(lean.mul(float(1.0).sub(l.release)));
             else if (this.shape === 'none') lean.assign(0.0);
+            if (mistWanted) {
+              const Hm = min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO));
+              const fly = sqrt(Hm.div(ONSET_HEIGHT_UNITS).mul((2 * FLIGHT_DROP_A) / GRAVITY_MS2));
+              const hollow = clamp(psi.sub(HOLLOW_PSI[0]).div(HOLLOW_PSI[1]), 0.0, 1.0);
+              const on = rec.inside.and(onset.broken).and(onset.tb.greaterThanEqual(0.0));
+              landW.assign(select(on, landingMistNode(onset.tb, fly, hollow), float(0.0)));
+              lipW.assign(select(on.and(onset.tb.lessThan(fly.add(MIST_LAND_WINDOW_S[1]))), float(1.0), float(0.0)));
+            }
             if (withPile) {
               pc.pile.assign(l.pile); pc.pileReach.assign(l.pileReach); pc.surge.assign(l.surge); pc.decay.assign(l.decay);
               lipH.assign(select(rec.inside.and(onset.broken), onset.lipH, float(0.0)));
@@ -620,6 +635,10 @@ export class SetWaves {
                   lean: { eta: e, slope: along, on: inFront },
                 }, lc.steep, brk, { drain: lc.drain, collapse: lc.collapse }, withPile ? pc : undefined, { troughDrain: shTrough });
                 foam.assign(max(foam, br.foam));
+                if (mistWanted) {
+                  land.assign(max(land, br.foam.mul(landW)));
+                  lip.assign(max(lip, br.foam.mul(lipW)));
+                }
                 if (this.shape === 'full') {
                   eta.addAssign(br.eta.sub(e));
                   slope.addAssign(f.dir.mul(br.dEtaDAhead));
@@ -639,7 +658,7 @@ export class SetWaves {
       // The bore's push on the foam (whitewater §5.2): the local wave speed where the breaking foam is.
       push.assign(foam.mul(cLocal));
     });
-    return { eta, dh, slope, foam, stage, foamFrame, pile, push };
+    return { eta, dh, slope, foam, stage, foamFrame, pile, push, land, lip };
   }
 
   /**
@@ -693,9 +712,9 @@ export class SetWaves {
 
   /** breakingFoamNode and the bore's push on the foam (the local wave speed × that foam, m/s; whitewater §5.2) from one
    * sum: the foam field's source, `timeShift` s before the clock (absent: now). Compute-safe; inside an Fn. */
-  breakingFoamPushNode(xz: N, timeShift: N | null = null): { foam: N; push: N } {
-    const s = this.sumBreaking(xz, false, true, timeShift);
-    return { foam: s.foam, push: s.push };
+  breakingFoamPushNode(xz: N, timeShift: N | null = null): { foam: N; push: N; land: N; lip: N } {
+    const s = this.sumBreaking(xz, false, true, timeShift, true);
+    return { foam: s.foam, push: s.push, land: s.land, lip: s.lip };
   }
 
   /** vec2(∂η/∂x, ∂η/∂z) of the set waves (Eulerian, Jacobian-corrected), breaking included. Self-test only. */

@@ -267,7 +267,7 @@ export class OceanSurface {
 
     material.colorNode = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y, breakFoam: min(setFoamLook.x, breakFoam),
-        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
+        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld,
         landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
         overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
           foamMap: (foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0)).add(surfFoam.mul(0.5)), foamOn: this.overlayFoam, sunOn: this.overlaySun } },
