@@ -28,27 +28,19 @@ CLIPS = {
     # Sit-to-paddle as four joinable clips (Andrew, 2026-10-10): each ends on the pose the next starts from.
     # sitIdle loops: sitting astride, hands on thighs; a slow look back over the right shoulder at the set, and back.
     "sitIdle": (["stp1", "stp1", "stp2", "stp2"], [40, 20, 36, 24], True, _STP_CAM),
-    # sitTurn: from the look back, she leans back on a hand and kicks the board round under her (120 deg here; the
-    # game sets the heading by scaling the root's turn).
-    "sitTurn": (["stp2", "stp3", "stp4"], [16, 18, 1], False, _STP_CAM),
-    # sitToProne: down onto the board, chest up on straight arms, lower, into the first paddle stroke (the last 60 deg
-    # of the reference's half turn happens as she goes down).
-    "sitToProne": (["stp4", "stp5", "stp6", "pdl1s"], [14, 12, 10, 1], False, _STP_CAM),
+    # sitTurn: from the look back, she leans back on a hand and kicks the board round under her, the whole half turn
+    # done sitting (the game sets the heading by scaling the turn).
+    "sitTurn": (["stp2", "stp3", "stp4"], [18, 20, 1], False, _STP_CAM),
+    # sitToProne: leans forward onto her hands, down onto the board, chest up on straight arms, lower, into the first
+    # paddle stroke.
+    "sitToProne": (["stp4", "stp4b", "stp5", "stp6", "pdl1s"], [12, 14, 12, 10, 1], False, _STP_CAM),
     # The four played back to back (preview only): idle once, turn, down, two paddle cycles.
-    "sitToPaddleChain": (["stp1", "stp1", "stp2", "stp2", "stp3", "stp4", "stp5", "stp6"] + [f"{k}s" for k in _PDL * 2] + ["pdl1s"],
-                         [40, 20, 36, 16, 18, 14, 12, 10] + [5] * 16 + [1], False, _STP_CAM),
+    "sitToPaddleChain": (["stp1", "stp1", "stp2", "stp2", "stp3", "stp4", "stp4b", "stp5", "stp6"] + [f"{k}s" for k in _PDL * 2] + ["pdl1s"],
+                         [40, 20, 36, 18, 20, 12, 14, 12, 10] + [5] * 16 + [1], False, _STP_CAM),
 }
 
 
-def _key_pose(rig, surf, frame, prev):
-    for o in (rig, surf):  # Euler angles kept continuous across a half turn (no ±180 deg flip between keys)
-        if o.name in prev:
-            o.rotation_euler.make_compatible(prev[o.name])
-        prev[o.name] = o.rotation_euler.copy()
-    rig.keyframe_insert("location", frame=frame)
-    rig.keyframe_insert("rotation_euler", frame=frame)
-    surf.keyframe_insert("location", frame=frame)
-    surf.keyframe_insert("rotation_euler", frame=frame)
+def _key_bones(rig, frame, prev):
     for pb in rig.pose.bones:
         if pb.rotation_mode != "QUATERNION":
             pb.rotation_mode = "QUATERNION"
@@ -61,26 +53,64 @@ def _key_pose(rig, surf, frame, prev):
         pb.keyframe_insert("location", frame=frame)
 
 
+def _ease(t):
+    return t * t * (3 - 2 * t)
+
+
 def build(rig, body, surf, name):
-    """Keyframe one clip as an action named after it; returns (first frame, last frame)."""
+    """Keyframe one clip as an action named after it; returns (first frame, last frame).
+    The board is the anchor (it doesn't jump about on the water): every key is shifted so the board's middle stays where
+    the first key put it, and she moves relative to it. Her root is sampled every frame turning about her pelvis, not the
+    rig's origin at her feet (Andrew, 2026-10-10: going from sitting to lying, she leapt through the air)."""
     keys, step, loops, _ = CLIPS[name]
     steps = step if isinstance(step, list) else [step] * len(keys)
     rig.animation_data_create()
     surf.animation_data_create()
     rig.animation_data.action = bpy.data.actions.new(f"{name}")
     surf.animation_data.action = bpy.data.actions.new(f"{name}_board")
+    rig.rotation_mode = surf.rotation_mode = "QUATERNION"
     seq = keys + ([keys[0]] if loops else [])
-    prev = {}
-    frame = 1
+    prev, poses, frame, anchor = {}, [], 1, None
     for i, k in enumerate(seq):
         rigging.pose(rig, k, body, surf)
-        _key_pose(rig, surf, frame, prev)
+        _key_bones(rig, frame, prev)
+        B = surf.matrix_world.copy()
+        anchor = anchor if anchor is not None else B.translation.copy()
+        shift = anchor - B.translation
+        R = rig.matrix_world.copy()
+        poses.append((frame, R.to_quaternion(), R.translation + shift, rig.pose.bones["pelvis"].head.copy(),
+                      B.to_quaternion(), B.translation + shift))
         last = frame
         frame += steps[i % len(keys)]
+    qprev = {}
+    for (f0, qa, ra, ha, ba, la), (f1, qb, rb, hb, bb, lb) in zip(poses, poses[1:] + [poses[-1]]):
+        if qprev:
+            if qa.dot(qprev["rig"]) < 0:
+                qa = -qa
+            if ba.dot(qprev["board"]) < 0:
+                ba = -ba
+        if qb.dot(qa) < 0:
+            qb = -qb
+        if bb.dot(ba) < 0:
+            bb = -bb
+        span = max(f1 - f0, 1)
+        for f in range(f0, f1 if f1 > f0 else f0 + 1):
+            t = _ease((f - f0) / span)
+            q = qa.slerp(qb, t)
+            pa, pb_ = ra + qa @ ha, rb + qb @ hb  # the pelvis in the world at either key
+            rig.rotation_quaternion = q
+            rig.location = pa.lerp(pb_, t) - q @ ha.lerp(hb, t)
+            surf.rotation_quaternion = ba.slerp(bb, t)
+            surf.location = la.lerp(lb, t)
+            for o in (rig, surf):
+                o.keyframe_insert("location", frame=f)
+                o.keyframe_insert("rotation_quaternion", frame=f)
+        qprev = {"rig": qb, "board": bb}
     for a in (rig.animation_data.action, surf.animation_data.action):
         for fc in _fcurves(a):
+            object_channel = not fc.data_path.startswith("pose.")
             for kp in fc.keyframe_points:
-                kp.interpolation = "BEZIER"
+                kp.interpolation = "LINEAR" if object_channel else "BEZIER"
                 kp.handle_left_type = kp.handle_right_type = "AUTO_CLAMPED"
             if loops:
                 fc.modifiers.new("CYCLES")

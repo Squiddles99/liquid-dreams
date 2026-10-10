@@ -160,7 +160,9 @@ POSES = {
         # the nose; the left mid-stroke, pulling straight down through the water beside the rail under the shoulder.
         "world": {"upperarm_r": _n(-0.22, -1, -0.35), "forearm_r": _n(-0.12, -1, -0.55),
                   "upperarm_l": _n(0.3, 0.12, -1), "forearm_l": _n(0.12, 0.35, -1)},
-        "floor": ["spine_02", "spine_03", "pelvis"], "nose": ["spine_03"], "tail": ["thigh_l", "thigh_r"], "noseGap": 0.45},
+        "floor": ["spine_02", "spine_03", "pelvis"], "nose": ["spine_03"], "tail": ["thigh_l", "thigh_r"],
+        # Andrew (2026-10-10, sit-to-paddle review): lying further back; the chin ~0.5 m behind the nose.
+        "noseGap": 0.75},
     # The pop-up, authored in the world (board along y, nose at -y; Andrew: kneeling, tipped head-down was wrong):
     # chest up ~45 deg on straight arms, palms flat, eyes forward; back toes on the tail; front knee tucked under the
     # chest, its foot swinging through above the deck.
@@ -252,6 +254,48 @@ def _posed_points(body):
 
 
 def pose(rig, name, body, surf):
+    """_pose, then (a pose with `plant`) the named feet brought down flat onto the deck by a two-bone solve of their leg
+    (Andrew, trim review: the front foot hovered), the knee keeping the side it bends to; posed again with the solved aims.
+    Standing poses only (no turn or spin: the rig's frame is her standing frame)."""
+    spec = POSES[name]
+    out = _pose(rig, name, body, surf)
+    if not spec.get("plant"):
+        return out
+    bones = dict(spec["bones"])
+    for _ in range(3):
+        P = _posed_points(body)
+        lo = {f: _skin_points(body, [f], P)[:, 2].min() for f in ("foot_l", "foot_r")}
+        deck = min(lo.values())
+        for foot in spec["plant"]:
+            side = foot[-1]
+            drop = lo[foot] - deck
+            if drop < 0.003:
+                continue
+            pb = rig.pose.bones
+            M = rig.matrix_world
+            hip = M @ pb[f"thigh_{side}"].head
+            knee = M @ pb[f"shin_{side}"].head
+            ank = M @ pb[foot].head
+            a = (knee - hip).length
+            b = (ank - knee).length
+            T = ank - Vector((0, 0, drop))
+            dv = T - hip
+            d = min(dv.length, a + b - 1e-4)
+            u = dv.normalized()
+            hint = (knee - hip) - u * (knee - hip).dot(u)
+            w = hint.normalized()
+            x = (a * a - b * b + d * d) / (2 * d)
+            y = math.sqrt(max(a * a - x * x, 0.0))
+            K = hip + u * x + w * y
+            Rinv = M.to_3x3().inverted()
+            bones[f"thigh_{side}"] = (Rinv @ (K - hip)).normalized()
+            bones[f"shin_{side}"] = (Rinv @ (hip + u * d - K)).normalized()
+        POSES["_planted"] = {**spec, "bones": bones, "plant": None}
+        out = _pose(rig, "_planted", body, surf)
+    return out
+
+
+def _pose(rig, name, body, surf):
     """Aim the bones (world-frame aims turned into her standing frame), turn the rig (prone poses), set her down so
     her contact skin (the pose's `floor` bones) rests on the deck, and seat the board under it: its axis from the
     `tail` contact to the `nose` contact, so she always faces the nose; level unless the pose tilts it (Andrew,
