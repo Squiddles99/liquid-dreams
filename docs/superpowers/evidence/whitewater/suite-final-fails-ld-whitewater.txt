@@ -1,0 +1,35 @@
+     × A along the first leg holds within 5% through the throw (phase 0.55 to 1.5), at 6 ft mid tide
+     × a fixed spacingM traces the same stations wherever the camera is (spray emitters, offshore-spray plan S1)
+     × a heavier ψ drains the water in front deeper
+     × as it breaks the lowest water in front is at the foot of the face, and from there it only rises (no shelf, no rim)
+     × at 8 ft every breaking cell is in a break's footprint, the shore band (where the shelf breaks the set, + 20 m) or (from 8 ft) the Cobblestones approach
+     × at the round barrel the lip's end is within 0.05 A of the water under it, at 6 and 8 ft
+     × behind a broken crest the settled water is smooth along the crest: where the reef focuses the swell at the crest there are no trenches (Andrew, 12 ft)
+     × between the floor knot and the trough knot the floor never dips under the trough knot: no hole in front of the face (Andrew, 8 ft, 2026-10-06)
+     × every station sits on its crest (|ξ| < 2 ms) and a trace takes a few ms at most
+     × fills the pile and churn fields a saved setting from before them lacks, and clamps them
+     × ideal 12 ft (after a lull) throws further than ordinary and is no smaller; 8 ft is smaller
+     × impact emitters only in the landing window: none before the lip lands, none long after
+     × impact happens with no wind (a glassy day still explodes) while the spray does not
+     × is finite and non-negative everywhere near the peak at both tide extremes, and smooth along the crest (≤ 0.02 per metre, 10% past thrown)
+     × is the sheet's crest lipH there: the tube hangs from the crest the sheet threw
+     × it blows along the crest, out of the open end (toward the sections that have not broken yet), from inside the tube
+     × ordinary 12 ft (mid tide, in a set): about as wide as the orange, the tip out to it, the lip as thick
+     × over the shelf, where the depth caps the height under it, the barrel keeps the height it broke at
+     × past its envelope cutoff a wave is nothing, stage included (the GPU skips it there): 12 ft at the grid edge
+     × reads the biggest 6 ft wave as breaking, with a face of 2.5–6.5 m (3.0 m since R1 §2: it breaks on the face, not on the slope)
+     × smooths the amplitude, direction and depth cap, and leaves every breaking ratio as it was (Andrew, 2026-10-05: "waves going in everywhere")
+     × stands as a wall for 20 m or more past the curl, then eases to the swell over 30 m or more, with no step along the line
+     × the breaking fades in and out along the crest over wave heights, not metres (no square channels, no right-angled bowl)
+     × the drained trough at the foot lies 0.5–0.75 H below still water once the lip has landed
+     × the foam zones (Andrew's photo): the lip whitens as it throws, most at its tip, the tube is clean, and foam fills it once the lip lands
+     × the lean's depth is never deeper than the slurp's, and over deep water in front of the ledge it is shallower
+     × the lip peels out of the water over the throw: barely off it as it starts, the whole curl by LIP_EMERGE_PROGRESS
+     × the ray profile runs from inshore to seaward, 1 m apart, with the peak at s = 0
+     × the right closes out: the south ledge’s first 40 m breaks within 1.5 s
+     × the right closes out: the south ledge’s first 40 m broke within 1.5 s of each other
+     × the sheet's slope matches its own model's derivative on the real reef (field frozen, crests fixed)
+     × the time since onset and the height of the throw match a march up the ray, for the waves that break at the Womb
+     × through the break the highest water moves with the wave: it neither stalls nor hands on to a second crest (Andrew)
+     × while a section barrels the tube spits, with or without wind; none before the break, none long after, none with the explosion off
+     × while the wave throws (onset to the landing), its crest is its highest water: nothing behind it stands above it

@@ -9,9 +9,9 @@ Commits, numbers against bars, dials, tools and gotchas: `2026-10-10-whitewater-
 
 ## For the final review
 
-- **The frame gate** (Task 8, 5 pairs interleaved, `evidence/whitewater/frames-final.txt`): **[PROFILER]**.
-- **Calm identity** (Task 3's flat-sea moment and Glassy with a break): **[CALM]**.
-- **The suite** against Task 0's names: **[SUITE]**; GPU self-tests **[COUNTS]**; tsc clean.
+- **The frame gate** (Task 8, 5 pairs interleaved, 02:49–03:00): no-stall riding main 25.85 vs branch 24.8 ms = 0.96 × (raw 1.115 ×: the branch drew 2 of the 3 paddle-out stalls); cam 3.6 / 3.7 ms; `_rideCost` +0.4 ms. Accepted on the stall-matched comparison (your ruling).
+- **Calm identity**: the flat sea differs from main only in L2's shore band (49308 px, y 643–960); Glassy with a break only in the inside water band (y 627–1165, tol 8).
+- **The suite** (full, both trees): the failing names are main's 34 exactly (after the stale churnSize expectation); GPU self-tests foam 11/12, spray 5/5, ribbon 6/7, breaker 14/14 (both failures main's own); tsc clean.
 - The acceptance moments (`accept/`) are Andrew's to judge against the five photos.
 
 ## Rulings I made (all in the ledger with what they cost if wrong; yours are recorded there too)
@@ -54,6 +54,11 @@ Task 7 (mist)
   the detail coordinate collapses down the mound's face.
 - S3 ruling 3: "the mound's median" read as the red channel's (the one reported throughout): 0.55 → R 230.
 
+Task 8
+- Acceptance #5 from a new side camera (55 m), #2 with the landing beside +60 s, #4 a new drone camera (yours accepted).
+- L3's torn lace × `tear` (the breaking foam's share of the sheet's foam): the shore's swash and surf foam keep their lace (calm identity); the ribbon passes none.
+- Pixel-identity captures taken first and alone (a change of conditions mid-batch leaves a faint residue).
+
 ## Follow-ups (not done this segment)
 
 1. **The seam where the solid boil meets the curl** (a faint vertical seam at the curl's edge on the mound, tube view): the
@@ -68,6 +73,9 @@ Task 7 (mist)
 5. The sand's warm tint at 17:00 is the sun's white balance (the sky segment), not the whitewater's.
 6. S3's billows have no silhouette lumps of their own (shading only); the churn (Andrew's churnSize) is the geometry.
 7. L2's shore band (25 m) becomes a dial if the shore break reads thin at low tide.
+8. Acceptance #5's opaque navy curtain belongs to the lip-look segment.
+9. L3 leaves a few small closed lace cells at the edge of accept-4's frame; a stronger tear mask (smoothstep(0, 0.4)) is the next step if they read.
+10. The paddle-out stall (~4 s) in the profiler harness, both trees (ride-stall's follow-up).
 
 ## Process rules (this segment's)
 

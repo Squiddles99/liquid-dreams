@@ -27,22 +27,22 @@ evidence `docs/superpowers/evidence/whitewater/` (acceptance moments in `accept/
 | d0cba75, 199c287, 9055986, 4e8fe7e | 7b S3 | the solid boil: no bars; 3-D billows; the foam volume exposed for itself (0.55) |
 | 64e42c1 | 7b | the STOP evidence (seven rows, feather-wide, tube A/B, mound) |
 | d132b55 | 7b | the whitewater exposure dial |
-| (last) | 8 | acceptance moments, the frame gate, calm identity, the suite, these handovers |
+| 22f3647, a3b795a, (last) | 8 + L3 | acceptance moments (hidden, one process), the frame gate, L3 (the lace tears into streaks), calm identity, the suite, these handovers |
 
 ## Numbers against their bars
 
 | bar | measured | |
 |---|---|---|
-| riding median, 7 ft Pumping, 18 kn from 90°, ≤ main × 1.10 (5 pairs, interleaved, idle) | **[PROFILER: main / branch, ratio]** | |
-| GPU: cam median ≤ 5.3 + 1 ms (lineup cam) | **[PROFILER]** | |
-| `_rideCost --spray --wind=18,90` breakEmitters per 20 Hz tick (births ≤ 14.0 ms; feathering ≤ +2 ms over 2.7) | **[RIDECOST]** (7b: 2.49 / 2.48 ms vs Task 6 2.49 / 2.57) | |
+| riding median, 7 ft Pumping, 18 kn from 90°, ≤ main × 1.10 (5 pairs, interleaved, idle window 02:49–03:00) | no-stall: main 25.85 / branch 24.8 ms = **0.96 ×**; raw 26.0 / 29.0 = 1.115 × (the branch drew 2 of the 3 paddle-out stalls; main-5 the third) | met on the stall-matched comparison (Fable's ruling); `frames-final.txt`, `frames-final-gate.txt` |
+| GPU: cam median ≤ 5.3 + 1 ms (lineup cam) | main 3.6, branch 3.7 ms (this window's machine state; Task 7's was 5.3 / 5.3) | met |
+| `_rideCost --spray --wind=18,90` breakEmitters per 20 Hz tick (births ≤ 14.0 ms; feathering ≤ +2 ms over 2.7) | main 3.02 / 2.85, branch 3.46 / 3.27 ms (+0.4); births median 74 / 75 | met (`ridecost-final.txt`) |
 | births per tick ≤ SPRAY_BIRTH_CAP 320 | max 150 at 8 ft, 166 at 12 ft (CPU pool replay) | met |
 | the foam map's covered replay ≤ 400 ms (Fable's Task 4 ruling) | 351–367 ms; uncovered 178 ms | met |
 | replay ≡ live within 2 % at +10 s / +60 s | 0.0175 / 0.0139 | met |
-| calm identity: flat sea 0 px vs main | **[CALM]** | |
-| Glassy with a break: differs only in the broken section and the foam | **[CALM bbox]** | |
-| GPU ≡ CPU self-tests | foam [n/n], spray 5/5, ribbon 6/7 (footprint: main's own), breaker [n/n] | |
-| unit suite vs Task 0's names | **[SUITE]** | |
+| calm identity: flat sea vs main | 49308 px, bbox (0, 643)–(2449, 960): L2's accepted shore band only (main vs its own older capture: 12867 px, the capture noise) | met as ruled at L2 |
+| Glassy with a break: differs only in the broken section and the foam | tol 8: 306862 px, bbox (0, 627)–(2540, 1165): the inside water band (broken sections, foam); sky and land unchanged | met |
+| GPU ≡ CPU self-tests (branch) | foam 11/12 (surf: main's own, identical 0.4512), spray 5/5, ribbon 6/7 (footprint: main's own), breaker 14/14 | met |
+| unit suite vs main (full `vitest run`, both trees, same session) | main 34 failed / 2123; branch 34 failed / 2203 after one stale expectation fixed (breaking.test's churnSize default 0.2 → 0.25, Andrew's dial); the failing names are identical | met |
 
 ## Andrew's dials (dev panel)
 
@@ -50,6 +50,8 @@ evidence `docs/superpowers/evidence/whitewater/` (acceptance moments in `accept/
 - Breaking › churnSize **0.25** (× A): the boil's lumps.
 - Foam › whitewater exposure **0.55** (0.4–1.0): 0.55 shows the billows' form; ~0.7 is whiter, flatter.
 - Foam › lace life 75 s; Spray › plume 1 (× rate).
+
+_rideProfile now flags a paddle-out stall (`# paddling max … STALLED`, line 2) and `tools/_frameGate.mjs` prints raw and no-stall medians.
 
 ## Tools added (kept)
 
@@ -79,6 +81,8 @@ evidence `docs/superpowers/evidence/whitewater/` (acceptance moments in `accept/
   (Andrew's game runs on the same exe). **Evidence capture never takes the foreground** (hidden window, one process per batch);
   only the profiler keeps its focus, and only when Andrew gives the window.
 - The full suite in parallel times out a few 5 s spray-emitter tests; they are main's (`fail-main.txt`) and pass alone.
+- **A capture after a change of conditions in the same batch carries a faint residue** (0.3–0.7 levels over the whole frame; looks identical): a pixel-identity check captures its moment first, alone.
+- The paddle-out stall (a ~4 s frame while paddling, either tree) shifts the riding pass ~0.6 s early onto a costlier stretch: compare stalled runs only with stalled runs.
 
 ## Left
 

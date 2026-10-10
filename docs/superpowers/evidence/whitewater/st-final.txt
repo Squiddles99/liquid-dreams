@@ -1,0 +1,4 @@
+foam: GPU self-tests: 11/12 passed | 1 fail: FAIL surf: the GPU foam, swash and wet level match the CPU model (±0.02): worst 0.4512; t;
+spray: GPU self-tests: 5/5 passed | 0 fail: 
+ribbon: GPU self-tests: 6/7 passed | 1 fail: FAIL ribbon: the footprint covers the stations' inner strip and nothing else: 275 live sta;
+breaker: GPU self-tests: 14/14 passed | 0 fail: 
