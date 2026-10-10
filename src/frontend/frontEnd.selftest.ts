@@ -299,6 +299,11 @@ for (const [w, h] of SIZES) for (const text of [1, 2]) {
           }
           const blocks = ['.fe-legend', '.fe-title', '.fe-tabs', '.fe-map-tabs', '.fe-map-strip', '.fe-map-source', '.fe-map-local', '.fe-map-panel', '.fe-map-credit', '.fe-lib-cats', '.fe-lib-grid', '.fe-lib-entry', '.fe-lib-card', '.fe-lib-credit'].flatMap((q) => [...root.querySelectorAll(q)]).filter((e) => shown(e) && getComputedStyle(e).visibility !== 'hidden').map((e) => designBox(e, root, scale));
           for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) if (overlaps(blocks[i], blocks[j])) problems.push(`${label}: blocks ${i} and ${j} overlap`);
+          // Text spilling sideways out of its own box (a leaf's box grows with it, so the checks above can't see this).
+          for (const e of root.querySelectorAll('.fe-lib-cat, .fe-lib-tile-name, .fe-lib-name, .fe-lib-sub, .fe-lib-fact')) {
+            const el = e as HTMLElement;
+            if (shown(el) && getComputedStyle(el).visibility !== 'hidden' && el.scrollWidth > el.clientWidth + 1) problems.push(`${label}: "${el.textContent!.slice(0, 20)}" spills sideways ${el.scrollWidth - el.clientWidth} px`);
+          }
         };
         for (const beat of ['map', 'conditions', 'rider', 'gear']) {
           await frames(fe, 120);
@@ -306,9 +311,15 @@ for (const [w, h] of SIZES) for (const text of [1, 2]) {
           if (beat === 'map') {
             // The Library (library spec §6): its first tile, the card with the most text (Review Focus 1), and that card open.
             fe.act('tabPlus'); await frames(fe, 30); check('library');
-            await goToEntry(fe, LONGEST.cat, LONGEST.entry); await frames(fe, 30); check(`library ${LONGEST.key}`);
-            fe.act('confirm'); await frames(fe, 30); check(`library open ${LONGEST.key}`);
-            fe.act('back'); fe.act('tabMinus'); await frames(fe, 30);
+            // At 200% every card, in the pane and opened (the tallest isn't always the longest: a name or common name can
+            // wrap); at 100% the longest one.
+            const cards = text === 1 ? [LONGEST] : LIBRARY.flatMap((c, cat) => c.entries.map((e, entry) => ({ cat, entry, key: e.key })));
+            for (const c of cards) {
+              await goToEntry(fe, c.cat, c.entry); await frames(fe, 4); check(`library ${c.key}`);
+              fe.act('confirm'); await frames(fe, 4); check(`library open ${c.key}`);
+              fe.act('back'); await frames(fe, 2);
+            }
+            fe.act('tabMinus'); await frames(fe, 30);
           }
           press('Enter');
         }
@@ -438,6 +449,25 @@ registerSelfTest({
         const under = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
         if (under?.closest('.fe-lib-open')) problems.push('the closing picture still takes clicks (a double click would leave for the title)');
         await frames(fe, 2);
+      }
+      // The wheel scrolls the grid even when the keyboard left the focus on the categories: it never changes category.
+      {
+        await goToEntry(fe, 2, 0); fe.act('left'); await frames(fe, 2);
+        host.querySelector('.fe-lib-grid')!.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, cancelable: true }));
+        await frames(fe, 2);
+        const L = fe.state!.library;
+        if (L.cat !== 2 || L.zone !== 'grid' || L.entry !== LIBRARY_COLS) problems.push(`the wheel on the grid from the categories gave ${JSON.stringify(L)}, want Sea life, grid, tile ${LIBRARY_COLS}`);
+      }
+      // Idle, the Library reads no computed style (no forced layout every frame): no more calls than the map alone.
+      {
+        const real = window.getComputedStyle; let calls = 0;
+        window.getComputedStyle = ((...a: Parameters<typeof getComputedStyle>) => { calls++; return real.apply(window, a); }) as typeof getComputedStyle;
+        try {
+          await frames(fe, 3); calls = 0; await frames(fe, 10); const lib = calls;
+          fe.act('tabMinus'); await frames(fe, 3); calls = 0; await frames(fe, 10); const map = calls;
+          fe.act('tabPlus'); await frames(fe, 3);
+          if (lib > map) problems.push(`idle, the Library read computed style ${lib} times in 10 frames (the map alone ${map})`);
+        } finally { window.getComputedStyle = real; }
       }
       // The open picture's ‹ › arrows page through the category by mouse; a click on them never closes the picture.
       {
