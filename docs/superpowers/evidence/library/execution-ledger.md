@@ -64,3 +64,12 @@ Fable's review is still to come, in Andrew's orchestrator session. The reviewer 
 ## Andrew's ask: click to the next/previous painting (2026-10-10)
 - The open view's count is now `‹ n / N ›`. The round ‹ › buttons page through the category as left/right do. A click on them never closes the picture (`stopPropagation`), and each is off (dimmed, unclickable) at its end. Design-px CSS in frontEnd.css and library.css; the size is capped at text ×1.15, because at ×1.5 the 200% card's kicker crossed the top safe line (W×H self-test, 1920×1080 and 2560×1080).
 - Self-test: "the open picture has no ‹ › arrows" RED, then GREEN (› +1 and still open, ‹ back, ‹ off on the first painting). Text-200% W×H cases 4/4 pass after the cap.
+
+## The deferred minors, fixed (2026-10-10, branch `library-polish`, Andrew: "fix the small issues")
+- **The wheel changed category:** with the focus on the categories, the wheel over the grid now first takes the grid at the same tile, then scrolls. Self-test: RED (it went to Birds and stayed on the categories), then GREEN.
+- **Layout read every frame:** `LibraryPanel.render` now redraws only when the focus, the root's inline style (scale, safe area, text) or the window size changes, or when fonts finish loading. The text size comes from the root's inline `--fe-text`, not computed style. Self-test: idle, the Library makes no more `getComputedStyle` calls than the map. RED (20 in 10 frames against 0), then GREEN.
+- **"Longest card" by length, not height:** at text 200%, every W×H case now checks all 66 cards, in the pane and opened; at 100%, still the longest. All 8 cases pass. It is a guard: no card fails today, so there was no RED.
+- **Sideways overflow:** every W×H check also flags `.fe-lib-cat`, tile names, names, sub-lines and facts whose `scrollWidth` exceeds `clientWidth` by more than 1 px. A guard: nothing spills today.
+- (Done earlier on Andrew's ask: the open view's ‹ › paging. That was the fifth minor.)
+- Note: the Library navigation self-test can flake when a real mouse moves over its visible window, because real movement legitimately takes the focus. Two reruns were clean. Keep the mouse off the self-test window.
+- Gates: self-tests 30/33 (the 3 known reds), vitest 278/278, tsc clean, build ok.
