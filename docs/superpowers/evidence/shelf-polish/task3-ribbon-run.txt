@@ -1,0 +1,49 @@
+# shelf-polish Task 3: the ribbon's run continues onto the inside leg as a closeout (spec §3, first option taken)
+
+## Step 1, measured (tools/_ribbonRun.ts; coast-seeded game field, 225°, mid tide; the band's biggest set-1 wave after 300 s)
+The quads were never the Womb's own wave: at t+3/t+5 they sit on the PRECEDING set wave (w1, 15-17 s earlier: Pumping
+3.41 m, Huge 6.34 m) closing out along the inside leg north of the turn (-0.5, -125). Its crest there (--crest rows):
+breaking (tb 0.1-4.4 s, curlWeight 1) 217-402 m from the tip, the wall ahead standing (until 0.6-4 s, curlWeight 0.9-0.1)
+to ~416 m; the sheet drops 2.3-3.2 m in 3 m in front of it (the fold). The curl runs north at ~30 m/s: a closeout.
+The cap that cut it was the trace's reach, TAPER_NEAR_M = 250 m from the tip (crestTrace.traceWave):
+  run ends (stations, spacing 2 m)        before (reach 250)              after (inside leg past the reach)
+  Pumping t+3  w1                          (10,-205) 248 m -> 197 m        (-59,-373) 380 m -> 197 m  (48 -> 139 st)
+  Pumping t+5  w1                          (35,-185) 248 m -> 234 m        (-41,-389) 399 m -> 234 m  (16 -> 125 st)
+  Huge    t+3  w1                          (40,-182) 248 m -> 225 m        (-40,-401) 411 m -> 225 m  (25 -> 142 st)
+  Huge    t+5  w1                          none (all of it past 250 m)     (-20,-413) 427 m -> 263 m  (123 st)
+  every other run (the Womb's own w2, the right's inner shelf, w3 offshore): unchanged.
+The sheet's lateral taper (setWaveModel wFar x lateral) is 1.000 at every inside-leg crest point probed (set crests are
+long), so the ribbon's A and the sheet under it agree there; no size change needed.
+
+## Step 2, the change (the drawing only; no water code touched)
+- crestTrace.TRACE_REACH_M (= TAPER_NEAR_M, unchanged) still bounds the walk everywhere except the inside leg (z north of
+  the turn, crestTrace.insideLeg): there the walk carries on to the line's own end (BELOW_ONSET_RUN_M) or the grid's edge.
+- The section draws it as the closeout it is: hollow x (1 - closeoutWeight(z)), 0 up to 10 m north of the turn, 1 from
+  30 m (CLOSEOUT_FROM_TURN_M, CLOSEOUT_FADE_M); whitewater/foam follow tb as before. The ride ends before the turn.
+- TraceInput.reachM (probes only) overrides the reach.
+
+## Ride cost (tools/_rideCost.ts --s=14 --spray, same Node, HEAD crestTrace vs new by file copy; machine fast now)
+                    step ms median   trace ms   sums/step   spray tick ms   spray-trace stations
+  7 ft  before          17.9           3.5        1434          2.86            101
+  7 ft  after           17.7           3.7        1434          3.27            140
+  12 ft before          16.1           3.1        1393          3.16            119
+  12 ft after           16.4           3.3        1393          3.53            154
+The ride itself is identical (same positions, sums, curves per step at every printed step); the cost is the extra
+stations (trace +0.2 ms/step, spray +0.4 ms per 20 Hz tick).
+
+## Gates
+- Stand frames (Fable looks): ../liquid-dreams-captures/shelf-polish-2026-10-10/task3/{Pumping-tide0-stand-404.17,406.17,
+  Huge-tide0-stand-408.31,410.31}.png (+ -dtl- at the same times); before/after crop strip vs womb-retune's task6 frames:
+  task3/stand-crops-before-after.png (rows: before, after x Pumping t+3, t+5, Huge t+3, t+5). The beige quads are gone in
+  all four; the ribbon now draws the inside closeout. Look item: on the far closeout the ribbon shows stepped vertical
+  segment edges (Huge t+3, task3/huge-closeout-zoom.png), the far stations' wide spacing.
+- GPU/CPU self-test: breaker 14/14 passed (task3/selftest-breaker.log). ribbon 6/7: "the footprint covers the stations'
+  inner strip" red, IDENTICAL on HEAD's crestTrace (same 5 missed stations at (58,-12) and (-28,19), not on the inside
+  leg): carried, not this change (task3/selftest-ribbon*.log).
+- vitest crestTrace/BreakingRibbon/sprayEmitters/wombSection: 15 red, all in the baseline or the merge's carried list; 0 new.
+- In-game frames (_rideProfile --ft=7 --sim-t=300, port 5193, HEAD crestTrace vs new by file copy, interleaved; another
+  session's Blender ran during the first pair; logs ../liquid-dreams-captures/shelf-polish-2026-10-10/prof/t3-*):
+  old-1 INVALID (the bot never caught: the riding pass is paddling) | new-1 DIRTY riding median 76.9 ms
+  old-2 riding median 78.9 ms (69 frames)                           | new-2 56.0 ms (56 frames, one 1.1 s frame)
+  No regression visible; the 70.4 ms bar is unmeasurable today as in Task 1 (main's code at 78.9). The Node A/B above is
+  the gate's evidence (ride identical, +0.2 ms trace per step, +0.4 ms spray per tick).
