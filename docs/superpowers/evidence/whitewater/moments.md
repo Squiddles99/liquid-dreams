@@ -1,0 +1,16 @@
+# Whitewater A/B moments (Task 0)
+
+From `npx node tools/_whitewaterMoments.ts --times=2,3,4,5,6` (10 ft 15 s, tide 0, seed 2002, 18 kn from 90°, 09:30; the biggest wave of the first set after 300 s reaches the tip at 401.17 s).
+M-beach = the stand's lookout camera; M-tube = a free camera 3 m up, 100 m down the line looking back at the tip (moments carry no ride camera: ledger ruling).
+
+- M-beach link: #m=eyJ2IjoxLCJjb25kaXRpb25zIjp7ImRhdGUiOiIyMDI2LTA3LTE1IiwidGltZU9mRGF5Ijo5LjUsInN3ZWxsIjp7InNpemVGdCI6MTAsInBlcmlvZFMiOjE1LCJkaXJlY3Rpb25EZWciOjIyNX0sIndpbmQiOnsic3BlZWRNcyI6OS4yNTkyLCJkaXJlY3Rpb25EZWciOjkwfSwidGlkZU0iOjAsInNlZWQiOjIwMDIsIndlYXRoZXIiOnsibG93Q292ZXIiOjAuMjIsImNvbnZlY3Rpb24iOjAuMjUsImxvd0Jhc2VNIjo5MDAsIm1pZENvdmVyIjowLCJoaWdoQ292ZXIiOjAuMDUsInJhaW4iOjAsInN0b3JtIjowLCJ2aXNpYmlsaXR5S20iOjYwLCJmb2dUb3BNIjoxNTAwLCJ3aW5kQWxvZnREZWciOjI3MCwid2luZEFsb2Z0TXMiOjh9fSwiY2FtZXJhIjp7Im1vZGUiOiJmcmVlIiwicG9zaXRpb24iOlsyMDguMzAxNDEyMDQ0NDgzNTYsMzEuNTg3NTEwOTMwMjQzNjE3LDYwLjc3NDkyOTczMzUxMDQ3Nl0sInlhd0RlZyI6MzAyLjQ4NjI4MTMwNzgwMTA1LCJwaXRjaERlZyI6LTguNX0sInNpbVRpbWUiOjQwMy4xNywicGF1c2VkIjp0cnVlfQ
+- M-tube link: #m=eyJ2IjoxLCJjb25kaXRpb25zIjp7ImRhdGUiOiIyMDI2LTA3LTE1IiwidGltZU9mRGF5Ijo5LjUsInN3ZWxsIjp7InNpemVGdCI6MTAsInBlcmlvZFMiOjE1LCJkaXJlY3Rpb25EZWciOjIyNX0sIndpbmQiOnsic3BlZWRNcyI6OS4yNTkyLCJkaXJlY3Rpb25EZWciOjkwfSwidGlkZU0iOjAsInNlZWQiOjIwMDIsIndlYXRoZXIiOnsibG93Q292ZXIiOjAuMjIsImNvbnZlY3Rpb24iOjAuMjUsImxvd0Jhc2VNIjo5MDAsIm1pZENvdmVyIjowLCJoaWdoQ292ZXIiOjAuMDUsInJhaW4iOjAsInN0b3JtIjowLCJ2aXNpYmlsaXR5S20iOjYwLCJmb2dUb3BNIjoxNTAwLCJ3aW5kQWxvZnREZWciOjI3MCwid2luZEFsb2Z0TXMiOjh9fSwiY2FtZXJhIjp7Im1vZGUiOiJmcmVlIiwicG9zaXRpb24iOlstNDQuMiwzLC01NS4xXSwieWF3RGVnIjoyNDEuOSwicGl0Y2hEZWciOi0zfSwic2ltVGltZSI6NDAzLjE3LCJwYXVzZWQiOnRydWV9
+
+Calm identity moment: `--ft=1 --wind=1,90 --tide=0.8 --times=-40 --label=calm` (361.17 s).
+- calm-beach link: #m=eyJ2IjoxLCJjb25kaXRpb25zIjp7ImRhdGUiOiIyMDI2LTA3LTE1IiwidGltZU9mRGF5Ijo5LjUsInN3ZWxsIjp7InNpemVGdCI6MSwicGVyaW9kUyI6MTUsImRpcmVjdGlvbkRlZyI6MjI1fSwid2luZCI6eyJzcGVlZE1zIjowLjUxNDQsImRpcmVjdGlvbkRlZyI6OTB9LCJ0aWRlTSI6MC44LCJzZWVkIjoyMDAyLCJ3ZWF0aGVyIjp7Imxvd0NvdmVyIjowLjIyLCJjb252ZWN0aW9uIjowLjI1LCJsb3dCYXNlTSI6OTAwLCJtaWRDb3ZlciI6MCwiaGlnaENvdmVyIjowLjA1LCJyYWluIjowLCJzdG9ybSI6MCwidmlzaWJpbGl0eUttIjo2MCwiZm9nVG9wTSI6MTUwMCwid2luZEFsb2Z0RGVnIjoyNzAsIndpbmRBbG9mdE1zIjo4fX0sImNhbWVyYSI6eyJtb2RlIjoiZnJlZSIsInBvc2l0aW9uIjpbMjA4LjMwMTQxMjA0NDQ4MzU2LDMxLjU4NzUxMDkzMDI0MzYxNyw2MC43NzQ5Mjk3MzM1MTA0NzZdLCJ5YXdEZWciOjMwMi40ODYyODEzMDc4MDEwNSwicGl0Y2hEZWciOi04LjV9LCJzaW1UaW1lIjozNjEuMTcsInBhdXNlZCI6dHJ1ZX0
+
+## Task 3 STOP pairs
+
+- `ab-task3-tube.png`: M-tube, main (left) vs branch (right) at 404.17–407.17 s.
+- `ab-task3-beach.png`: M-beach, the wave band, main vs branch at 404.17–406.17 s.
+- Full frames (1920×1080 at the window's DPI, 2541×1473): ../liquid-dreams-captures/whitewater-2026-10-10/t1-main-*, t3-ww-* (403.17, 403.47, 403.77 = the fringe triple).
