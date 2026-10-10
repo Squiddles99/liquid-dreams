@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { clamp, float, floor, fract, int, length, max, mix, pow, select, sin, smoothstep, texture, uniform, uniformArray, vec2 } from 'three/tsl';
-import { BOMBIE_X, BOMBIE_Z, MOUND_BASE_Y, MOUND_CREST_Y, MOUND_HALF_X_M, MOUND_HALF_Z_M } from '../bombie/bombieModel';
+import { clamp, float, floor, fract, int, max, mix, pow, select, sin, smoothstep, texture, uniform, uniformArray, vec2 } from 'three/tsl';
 import { DEFAULT_BEACH } from '../land/landHeight';
 import type { Bathymetry } from './bathymetry';
 import { FAR_DEPTH_M, FAR_RAMP_S, REEF_SURROUND_DEPTH_M, SHORE_FLAT_DEPTH_M, SHORE_X } from './coastProfile';
@@ -13,12 +12,6 @@ type N = any;
 export const WATERLINE_STEP_M = 25;
 export const WATERLINE_Z0 = -15000;
 export const WATERLINE_COUNT = 1201;
-
-/** TSL mirror of bombieModel.moundY: Ellensbrook Bombie's mound (Phase 4c-3 §3.1), −1e4 outside its oval. */
-export function moundYNode(xz: N): N {
-  const r = length(vec2(xz.x.sub(BOMBIE_X).div(MOUND_HALF_X_M), xz.y.sub(BOMBIE_Z).div(MOUND_HALF_Z_M)));
-  return select(r.lessThan(1.0), float(MOUND_CREST_Y).add(float(MOUND_BASE_Y - MOUND_CREST_Y).mul(smoothstep(0.0, 1.0, r))), float(-1e4));
-}
 
 /** TSL mirror of depthBg(): the same piecewise smoothstep profile, as one select chain. */
 export function depthBgNode(x: N): N {
@@ -148,12 +141,12 @@ export class Seabed {
   }
 
   /**
-   * Seabed height y (m) at world xz; outside the map, the coast profile shifted with the land's waterline, and Ellensbrook
-   * Bombie's mound unless `withMound` is false (the water model's swell depth: the mound mustn't change the sea).
+   * Seabed height y (m) at world xz; outside the map, the coast profile shifted with the land's waterline (the old Bombie
+   * mound went with shelf-polish §7).
    */
-  bedHeightNode(xz: N, withMound = true): N {
+  bedHeightNode(xz: N): N {
     const bg = depthBgNode(xz.x.sub(this.waterlineShiftNode(xz.y))).negate();
-    const bed = select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).x, withMound ? max(bg, moundYNode(xz)) : bg);
+    const bed = select(this.insideNode(xz).greaterThan(0.5), this.sample(xz).x, bg);
     const dSea = float(SHORE_X).add(this.waterlineShiftNode(xz.y)).sub(xz.x);
     // Landward of the waterline, the beach (Phase 4b §3.3): the swash is a thin film over sand, not half a metre of water.
     return select(dSea.lessThan(0.0), max(bed, beachBedNode(dSea.negate())), bed);
@@ -165,11 +158,11 @@ export class Seabed {
   }
 
   /**
-   * The depth the water model's swell sees (its long-swell fade and its clamp to the bed): the bed without the Bombie's
-   * mound, which is atmospheric (final review I3: over the mound the long swell faded out and the sea flattened).
+   * The depth the water model's swell sees (its long-swell fade and its clamp to the bed): the drawn bed's (it once left
+   * out the old Bombie mound, final review I3; the mound is gone, shelf-polish §7).
    */
   swellDepthNode(xz: N): N {
-    return max(this.tide.sub(this.bedHeightNode(xz, false)), 0.0);
+    return max(this.tide.sub(this.bedHeightNode(xz)), 0.0);
   }
 
   /**

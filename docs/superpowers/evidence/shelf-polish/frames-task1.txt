@@ -1,0 +1,15 @@
+# shelf-polish Task 1 step 3: riding frames after C, 2026-10-10 02:27-04:30, _rideProfile --ft=7 --sim-t=300, port 5193
+# Ruling A's bar: riding median <= Task 0 main median x 1.10 = 64.0 x 1.10 = 70.4 ms (main runs b-e 57.6/62.7/65.4/66.5,
+# median 64.0); p90 dropped for this segment (unmeasurable at +-25 % on a loaded machine).
+# Another session's Blender renders (tools/hero/build.py, 16 cores) ran 02:33-~04:00 on and off; runs tagged DIRTY if a
+# blender.exe was seen during them. old = HEAD's sprayEmitters.ts (= main), new = Task 1 C; same server, swapped by copy.
+t1-c-a..e (new, 02:27-02:55, Blender from 02:33): riding median 128.8 / 93.6 / 144.5 / 143.5 / 117.1 (all dirty)
+t1-ab2  old-1 DIRTY (hung)  | new-1 DIRTY 71.2
+        old-2 DIRTY 100.6   | new-2 DIRTY 74.8
+        old-3 DIRTY 84.2    | new-3 CLEAN 80.2
+t1-ab3  old-4 CLEAN 59.6    | new-4 CLEAN 56.9
+        old-5 CLEAN 81.1    | new-5 CLEAN 81.6  (both with ~500 ms frames)
+Clean: old 59.6 / 81.1, new 80.2 / 56.9 / 81.6 (median 80.2). The machine runs main's own code at 60-81 ms today, against
+Task 0's 64: the in-game saving (~7 ms of ~12 ms spray per frame, from the Node A/B) is under the run-to-run spread, and
+the 70.4 ms bar is not demonstrable today, for main's code either. Off the GPU (deterministic, same process): the
+emitters 41.5 -> 14.0 ms per 20 Hz tick, identical output (ridecost-spray.txt).

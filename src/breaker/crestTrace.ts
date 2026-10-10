@@ -5,7 +5,7 @@ import { type SectionNumbers, WALL_LEAD_S, curlWeight, sectionNumbers } from './
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
-import { TIP } from '../seabed/wombReef';
+import { NORTH_LEDGE, TIP } from '../seabed/wombReef';
 import { type ActiveWave, TAPER_NEAR_M, type WaveContext, localHeight, phaseXi } from './setWaveModel';
 
 /**
@@ -22,6 +22,23 @@ export const MAX_STATIONS = 2048;
 /** A side of the trace ends after this much crest (m) below the ribbon's onset ratio and more than WALL_LEAD_S from
  * breaking (the wall down the line is traced to its end). */
 export const BELOW_ONSET_RUN_M = 20;
+/** The crest is walked this far from the tip (m), both ways, and further on the inside leg (insideLeg). */
+export const TRACE_REACH_M = TAPER_NEAR_M;
+/** Where the left's ledge turns due north onto the inside leg (wombReef.NORTH_LEDGE's corner). */
+const TURN = NORTH_LEDGE[1];
+/**
+ * The inside leg: the crest north of the left's turn. The set waves close out along it (the curl runs north at ~30 m/s, 2–4×
+ * the left's peel), 260–400 m from the tip, past TRACE_REACH_M: the ribbon stopped at the reach and the sheet stood that
+ * front alone (its coarse far grid folding: the beige quads in the stand frames; shelf-polish spec §3, "the ribbon draws
+ * every breaking front"). So the walk carries on there to the map's edge (or the line's own end), and the section draws it
+ * as the closeout it is: its hollow fades to 0 from CLOSEOUT_FROM_TURN_M past the turn over CLOSEOUT_FADE_M (the ride ends
+ * before the turn).
+ */
+export const insideLeg = (z: number): boolean => z < TURN[1];
+export const CLOSEOUT_FROM_TURN_M = 10;
+export const CLOSEOUT_FADE_M = 20;
+/** The inside's closeout weight at z: 0 up to CLOSEOUT_FROM_TURN_M north of the turn, 1 from CLOSEOUT_FADE_M beyond. */
+export const closeoutWeight = (z: number): number => smoothstep(CLOSEOUT_FROM_TURN_M, CLOSEOUT_FROM_TURN_M + CLOSEOUT_FADE_M, TURN[1] - z);
 /** The CPU's culling margin over its landing-time estimate (s). */
 export const LOOK_BACK_MARGIN_S = 0.5;
 /** Newton projections onto ξ = 0 per step (the seed takes SEED_ITERATIONS). */
@@ -83,6 +100,8 @@ export interface TraceInput {
   spacingM?: number;
   /** The wind's offshore speed (m/s; absent 0). */
   offshoreMs?: number;
+  /** Probes only: how far from the tip the crest is walked (m; absent TRACE_REACH_M). */
+  reachM?: number;
 }
 
 const inGrid = (f: ReefField, x: number, z: number): boolean => {
@@ -208,7 +227,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = toCrest(field, w, t, ctx, project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS));
-      if (!(Math.abs(next.xi) < CREST_TOLERANCE_S) || !inGrid(field, next.x, next.z) || Math.hypot(next.x - TIP[0], next.z - TIP[1]) > TAPER_NEAR_M) break;
+      if (!(Math.abs(next.xi) < CREST_TOLERANCE_S) || !inGrid(field, next.x, next.z) || (Math.hypot(next.x - TIP[0], next.z - TIP[1]) > (input.reachM ?? TRACE_REACH_M) && !insideLeg(next.z))) break;
       arc += sign * Math.hypot(next.x - x, next.z - z);
       ({ x, z, f } = next);
       below = breakingRatio(w.heightM * f.amp, f.hminBreak, p) < p.ribbonOnset && !(timeUntilOnset(field, w, x, z, p) < WALL_LEAD_S) ? below + ds : 0;
@@ -252,7 +271,11 @@ export const LINE_END_FADE_M = 6;
  */
 export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'>): void {
   const normals = line.map((s) => [s.nx, s.nz]);
-  const raw = line.map((s) => sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
+  const raw = line.map((s) => {
+    const q = sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset });
+    q.hollow *= 1 - closeoutWeight(s.z);
+    return q;
+  });
   const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
   let lo = 0;
   line.forEach((s, i) => {

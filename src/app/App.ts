@@ -9,6 +9,8 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '..
 import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from '../breaker/peakFace';
 import { offshoreSpeed } from '../breaker/overturn';
+import { footprintBreakHeight } from '../breaker/coastBreaking';
+import { setWaveHeight } from '../breaker/reefReport';
 import { REFRACT_FLOOR_M, type ReefField, sampleField } from '../breaker/reefField';
 import { BOMBIE_X, BOMBIE_Z, type BombieWaves, type Burst, burstAt, burstWidthM, burstsAt, setIndicesFrom, setWindow } from '../bombie/bombieModel';
 import { BombieMesh } from '../bombie/BombieMesh';
@@ -186,8 +188,6 @@ export class App {
   readonly breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
   /** The coast's breaks (lineup truth spec §3g): the worker builds the coast map from them. */
   readonly coastParams: CoastParams = { ...DEFAULT_COAST_PARAMS };
-  /** ?coast=off: the field seeded by the 1-D far field as before the coast map (lineup truth's A/B and "unchanged" shots). */
-  private readonly coastOn = new URLSearchParams(location.search).get('coast') !== 'off';
   readonly foamParams: FoamParams = { ...DEFAULT_FOAM_PARAMS };
   readonly sprayParams: SprayParams = { ...DEFAULT_SPRAY_PARAMS };
   readonly impactParams: ImpactParams = { ...DEFAULT_IMPACT_PARAMS };
@@ -221,6 +221,8 @@ export class App {
   readonly bombie: BombieMesh;
   private bombieTauS: number | null = null;
   private bombieTauField: ReefField | null = null;
+  /** The set height (m) from which the coast's breaking map breaks the Bombie (coastBreaking.footprintBreakHeight). */
+  private bombieBreaksFromM = Infinity;
   /** Dev readout (window.liquidDreams.bombieBurst): the Bombie's current burst, or null. */
   bombieBurst: { n: number; ageS: number; heightM: number } | null = null;
   /** The Sound folder (Phase 5): the volumes and mute, persisted with the look. */
@@ -945,7 +947,13 @@ export class App {
   /** The Bombie's waves now (4c-3 §3.2), or null while the reef field is missing (Review Focus 1). */
   private bombieWaves(t: number): BombieWaves | null {
     if (!this.bombieParams.enabled || !this.field) return null;
-    if (this.bombieTauField !== this.field) { this.bombieTauS = sampleField(this.field, BOMBIE_X, BOMBIE_Z).tau; this.bombieTauField = this.field; } // Review Focus 3
+    if (this.bombieTauField !== this.field) {
+      this.bombieTauS = sampleField(this.field, BOMBIE_X, BOMBIE_Z).tau; // Review Focus 3
+      // One Bombie, the coast's (shelf-polish §7): it bursts only on a swell whose set the coast's breaking map breaks there.
+      this.bombieBreaksFromM = this.field.coast ? footprintBreakHeight(this.field.coast, 'bombie', this.breakParams) : Infinity;
+      this.bombieTauField = this.field;
+    }
+    if (!(setWaveHeight(this.conditions.swell.sizeFt) >= this.bombieBreaksFromM)) return null;
     const T = this.conditions.swell.periodS;
     // The Womb's set waves around the bursting waves' peak arrivals (final review I1: the window was centred on t).
     const win = setWindow(t, this.bombieTauS!, T);
@@ -1607,7 +1615,7 @@ export class App {
     const key = `${fieldKey(c, this.reefParams, this.breakParams.peel, this.breakParams.curlMaxMs)}|${JSON.stringify(this.coastParams)}`;
     if (!force && key === this.fieldKey) return;
     this.fieldKey = key;
-    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M, ...(this.coastOn ? { coastParams: { ...this.coastParams } } : {}) });
+    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M, coastParams: { ...this.coastParams } });
   }
 
   /** Coast sliders: once you stop dragging, the worker rebuilds the coast map and re-solves (its key carries the dials). */

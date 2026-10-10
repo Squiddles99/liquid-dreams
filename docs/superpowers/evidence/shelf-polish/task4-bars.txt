@@ -1,0 +1,47 @@
+# shelf-polish Task 4: the breaker bars on the real shelf (spec §4). Probes tools/_breakerBars.ts (--case=terrace, closure,
+# peak, lift, liftdump, spike, spike2, stall, pile, pilegrow, peel; the tests' own field and helpers), tools/_sprayThrow.ts.
+# Class: (a) same physics on a different reef, re-pinned; (b) a real miss, carried with a diagnosis; (c) a test assumption
+# from the old peak, rewritten. Bars moved only for (a), each with its one-line reason in the test.
+
+test                                              measured -> after          class  what
+breakingField terrace (6 ft, 40 m up, -2 s)        6.5 m -> green             (c)    the run is the crest's flat top (6.5 m within 6 cm of
+                                                                                     the top, 15 m channel 2 s before the ledge), then the
+                                                                                     sharpened front: only flat stretches 0.1 H below the top
+                                                                                     count now ("partway down"); bar 3 m unchanged
+breakingField onset -> tube closure at the peak    0.515 s -> green           (a)    0.515 / 0.516 / 0.518 s at the tip, 15 and 30 m along the
+                                                                                     left: the 3.17 m wave on the 3.5 m shelf; 0.55 -> 0.5
+breakingField highest water moves with the wave    4 steps -> 4 (RED)         (b)    at the tip only (the two ledges' meeting line): the
+                                                                                     highest water stays 3 m behind the crest for 1 s (t -0.5
+                                                                                     ..+0.5 s, 4.7-5 m of water behind the crest's 3.5 m),
+                                                                                     the same hump the baseline-red "crest is its highest
+                                                                                     water" sees; same on the game's sheet (lean). The water's
+                                                                                     own shape: carried
+breakingField the pile never grows                 2.066 vs 2.028 -> green    (c)    30 m along the left the crest's own surge is still rising
+                                                                                     at the test's first sample (1.16 -> 1.26 at +3.1 s: its
+                                                                                     landing clock runs from its own break); checked once the
+                                                                                     surge has peaked; bar unchanged
+breakingField pile reads the same lip              0.065 -> green             (a)    the left's point 45 m out: its rays cross a reef head (1.8
+                                                                                     m deep, the ray swinging 16 deg in 10 m); 8 % there, as the
+                                                                                     old far-NE point had (whose exception no longer matched:
+                                                                                     the tests' (0, 0) tip coordinates were stale, now TIP)
+breakingField the breaking peak stays tallest      2.05 vs 0.95 x 2.21 -> green (c)  the 2.21 m "shoulder" is the right at +60 m, mid-throw 3.2
+                                                                                     s before the tip breaks (the right breaks first on the real
+                                                                                     shelf): compared with the left's shoulders only
+breakingField 6 ft lift 20 m in front              0.277 -> green             (c)    a one-sample +0.30 m step at xi = -10.49 s: the FULL sheet
+                                                                                     cuts its lean at the envelope's edge; the game draws the
+                                                                                     sheet with shape 'lean', pile off, where it is continuous:
+                                                                                     measured on the game's sheet (0.02-0.20 m), bar unchanged
+crestTrace the left peels at 8-20 m/s              7.98 -> green              (a)    accelerates off the tip (5.8 m/s at 17-39 m, +4 s; 9.2 at
+                                                                                     47-86 m, +8 s); 8 -> 7.5 at the test's +6.9 s
+crestTrace station psi = sheet crest psi           1.4e-4 -> green            (c)    the sheet reads psi at the ray's crest point; a station sits
+                                                                                     within |xi| < 2 ms of it: compared at that point (exact);
+                                                                                     the stored value keeps its 0.003 bar
+sprayEmitters mid-throw emitters                   2 -> green                 (c)    +0.6 s was the old peak's throw; on the real shelf the right
+                                                                                     reaches the tip before the arrival and the left throws from
+                                                                                     +2 s (2 emitters at +0.6, 8 at +3): T_THROW = arrival + 3 s
+
+## Gate: src/breaker idle (2026-10-10 09:29-09:53): 416 tests, 31 failed
+Red not in Task 0's baseline: none. Task 0 reds now green: 39 (timeouts on the loaded machine, and the rewrites above).
+Red and not in the pre-retune idle baseline (task6-baseline-names.txt): exactly two, both carried:
+  breakingField "the highest water moves with the wave" (b, above)
+  coastBreaking "8 ft no closeout" (Task 5's)

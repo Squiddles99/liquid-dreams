@@ -1,0 +1,74 @@
+# src/breaker + src/ride, shelf-polish @ a9e79ea (= main), idle, 2026-10-10: npx vitest run src/breaker src/ride (23.6 min)
+# 27 reds beyond the merge's list (task6-fails-names.txt) are ALL timeouts (5 s / 30 s / 60 s / 300 s / 600 s); the 3 Fun ride cases left with the Fun ruling.
+# 510 tests, 71 failed, 425 passed
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits the ribbon's and the footprint's shader stages bind at most 8 storage buffers
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits the sheet's materials aboveMaterial: at most 8 storage buffers and 16 sampled textures per stage, with the foam map
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits the sheet's materials aboveMaterial: the foam map adds exactly one sampled texture to the fragment stage
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits the sheet's materials belowMaterial: at most 8 storage buffers and 16 sampled textures per stage, with the foam map
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits the sheet's materials belowMaterial: the foam map adds exactly one sampled texture to the fragment stage
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits the sheet's materials the Bombie stays within the limits
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits the sheet's materials the ribbon with the foam map stays within the limits and samples the map in its vertex stage
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits the sheet's materials the ribbon, the spray and the land with the sunlight map stay within the limits
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits the sheet's materials the sunlight map adds exactly one sampled texture to the sheet above (the skyline none), and keeps every stage within the limits
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits the sheet's materials the surf adds no sampled textures to the sheet and keeps it within the limits
+src/breaker/SetWaves.test.ts > SetWaves "can break" flags (the GPU skips the crest search and breaking for a flagged-0 wave) flags a wave above 0.98 × the field steepening height, and follows the field and the params
+src/breaker/barrelSize.test.ts > the barrel sized from the crest it was thrown from (option A) ideal 12 ft (after a lull) throws further than ordinary and is no smaller; 8 ft is smaller
+src/breaker/barrelSize.test.ts > the barrel sized from the crest it was thrown from (option A) ordinary 12 ft (mid tide, in a set): about as wide as the orange, the tip out to it, the lip as thick
+src/breaker/barrelSize.test.ts > the barrel sized from the crest it was thrown from (option A) the tube grows smoothly with the wave: no jump between waves a quarter-foot apart (10–13 ft, mid tide)
+src/breaker/breaking.test.ts > the sheet shape (sampled cross-sections) foam waits for the lip to land, then whitens the collapsed crest and the bore behind it, never the face ahead while the tube is open
+src/breaker/breakingField.test.ts > the breaking sheet on the real reef the sheet's slope matches its own model's derivative on the real reef (field frozen, crests fixed)
+src/breaker/breakingField.test.ts > the breaking sheet on the real reef through the break the highest water moves with the wave: it neither stalls nor hands on to a second crest (Andrew)
+src/breaker/breakingField.test.ts > the breaking sheet on the real reef while the wave throws (onset to the landing), its crest is its highest water: nothing behind it stands above it
+src/breaker/breakingField.test.ts > the face before it breaks (Andrew, 2026-10-02: "the step in front") runs from the crest down into the lowest water in one curve: no flat terrace partway down (6 ft, the north ledge)
+src/breaker/breakingField.test.ts > the peak and its shoulders at 6 ft (the slurp’s invariants, re-pinned for R1) the breaking peak stays the tallest point of the line while it throws
+src/breaker/breakingField.test.ts > the water in front of the break is drawn steadily down (Andrew, 2026-10-01, 12 ft) as it breaks the lowest water in front is at the foot of the face, and from there it only rises (no shelf, no rim)
+src/breaker/breakingField.test.ts > the water in front of the break is drawn steadily down (Andrew, 2026-10-01, 12 ft) smaller sets too: 20–40 m in front of where 4, 6 or 8 ft first breaks, it lifts the water under 0.25 m before its face (6 ft lifted it 1 m: Andrew, 2026-10-02)
+src/breaker/breakingField.test.ts > the water in front of the break is drawn steadily down (Andrew, 2026-10-01, 12 ft) the drained trough at the foot lies 0.5–0.75 H below still water once the lip has landed
+src/breaker/breakingField.test.ts > the whitewater pile on the real reef (spec 2026-09-29 §3.2) along a ray every point of the pile reads the same lip (it is carried along the rays)
+src/breaker/breakingField.test.ts > the whitewater pile on the real reef (spec 2026-09-29 §3.2) the sheet stands at least at the pile's height as it rolls in, and the pile never grows while it stands above the bore
+src/breaker/breakingField.test.ts > where and when the A-frame breaks (default swell, mid tide) behind a broken crest the settled water is smooth along the crest: where the reef focuses the swell at the crest there are no trenches (Andrew, 12 ft)
+src/breaker/breakingField.test.ts > where and when the A-frame breaks (default swell, mid tide) the biggest default wave takes 0.6–1.5 s from onset to tube closure at the peak (spec §3.1)
+src/breaker/breakingField.test.ts > where and when the A-frame breaks (default swell, mid tide) the breaking fades in and out along the crest over wave heights, not metres (no square channels, no right-angled bowl)
+src/breaker/breakingField.test.ts > where and when the A-frame breaks (default swell, mid tide) the right closes out: the south ledge’s first 40 m breaks within 1.5 s
+src/breaker/breakingField.test.ts > where and when the A-frame breaks (default swell, mid tide) the tide moves the break: at low tide the biggest wave breaks earlier, at high tide later
+src/breaker/coastBreaking.test.ts > no closeout: a set breaks only at the four breaks and on the beach (lineup truth, Task 4) at 8 ft every breaking cell is in a break's footprint, the 60 m shore band or (from 8 ft) the Cobblestones approach
+src/breaker/coastBreaking.test.ts > no closeout: a set breaks only at the four breaks and on the beach (lineup truth, Task 4) the Bombie stands nothing up at 4 and 6 ft, and breaks at 8 ft
+src/breaker/crestTrace.test.ts > crestTrace a fixed spacingM traces the same stations wherever the camera is (spray emitters, offshore-spray plan S1)
+src/breaker/crestTrace.test.ts > crestTrace every station sits on its crest (|ξ| < 2 ms) and a trace takes a few ms at most
+src/breaker/crestTrace.test.ts > crestTrace the left peels north along the ledge at 8–20 m/s (time since onset falls toward the shoulder)
+src/breaker/crestTrace.test.ts > crestTrace the right closes out: the south ledge’s first 40 m broke within 1.5 s of each other
+src/breaker/crestTrace.test.ts > each station's throw height (spec 2026-10-03 barrel-size, option A) is the sheet's crest lipH there: the tube hangs from the crest the sheet threw
+src/breaker/crestTrace.test.ts > one curl per wave on one clock (one-curl Task 4) 6 ft: along each side from the curl the onset never comes earlier, and the wait beyond it never shortens
+src/breaker/crestTrace.test.ts > one curl per wave on one clock (one-curl Task 4) 8 ft: along each side from the curl the onset never comes earlier, and the wait beyond it never shortens
+src/breaker/crestTrace.test.ts > station ψ (barrel from the maths) each station's ψ is the sheet's crest ψ there (the lip lands on water drained for its own shape)
+src/breaker/crestTrace.test.ts > the lip lands (plan 2026-10-06-wave-root-cause step 2) at the round barrel the lip's end is within 0.05 A of the water under it, at 6 and 8 ft
+src/breaker/crestTrace.test.ts > the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause step 1) A along the first leg holds within 5% through the throw (phase 0.55 to 1.5), at 6 ft mid tide
+src/breaker/crestTrace.test.ts > the tube keeps the size it broke at (plan 2026-10-06-wave-root-cause step 1) over the shelf, where the depth caps the height under it, the barrel keeps the height it broke at
+src/breaker/lipProfile.test.ts > lipProfile never crosses itself before the lip lands (peak, ledge points, bigger waves, ψ and face-width ends)
+src/breaker/lipProfile.test.ts > lipProfile the foam zones (Andrew's photo): the lip whitens as it throws, most at its tip, the tube is clean, and foam fills it once the lip lands
+src/breaker/lipProfile.test.ts > lipProfile the lip peels out of the water over the throw: barely off it as it starts, the whole curl by LIP_EMERGE_PROGRESS
+src/breaker/peakFace.test.ts > the face-height readout at the peak reads the biggest 6 ft wave as breaking, with a face of 2.5–6.5 m (3.0 m since R1 §2: it breaks on the face, not on the slope)
+src/breaker/peelStretch.test.ts > the peel stretch in the onset record (spec 2026-10-04 §1) a reef bump that breaks a moment early inside the line is stretched with it, not left to break seconds ahead
+src/breaker/peelStretch.test.ts > the peel stretch in the onset record (spec 2026-10-04 §1) a section starting on its own keeps its first break; the delay is constant along a ray past onset
+src/breaker/peelStretch.test.ts > the peel stretch in the onset record (spec 2026-10-04 §1) an oblique shelf peels 1/peel as fast along the line
+src/breaker/peelStretch.test.ts > the peel stretch in the onset record (spec 2026-10-04 §1) peel 1 is today: no delay anywhere, every time since onset ≥ 0
+src/breaker/peelStretch.test.ts > the peel stretch in the onset record (spec 2026-10-04 §1) the rays at an angle to the grid (as on the real reef): still 1/peel as fast, the delay not watered down by unbroken neighbours
+src/breaker/reefField.test.ts > reef wave field a grazing swell (exactly 270°) does not source the whole south edge as a numerical caustic
+src/breaker/reefField.test.ts > reef wave field extreme tide stays finite (reef heads dry at −1.5 m)
+src/breaker/reefField.test.ts > reef wave field the field joins the outside smoothly at every edge (real reef)
+src/breaker/reefField.test.ts > reef wave field unusual swell directions stay finite
+src/breaker/reefField.test.ts > smoothFieldAmplitude: the field as the game draws it smooths the amplitude, direction and depth cap, and leaves every breaking ratio as it was (Andrew, 2026-10-05: "waves going in everywhere")
+src/breaker/reefField.test.ts > the front's lean feels the reef ahead (Andrew's bump, 2026-10-02) the lean's depth is never deeper than the slurp's, and over deep water in front of the ledge it is shallower
+src/breaker/reefField.test.ts > the onset record the time since onset and the height of the throw match a march up the ray, for the waves that break at the Womb
+src/breaker/reefField.test.ts > until carries the hold (one-curl Task 1) back along its ray until grows by the arrival time between (no jump at the turn)
+src/breaker/reefPsi.test.ts > ψ₀ in the reef bake (spec 2026-09-30-barrel-from-maths §5, plan ruling 11) is finite and non-negative everywhere near the peak at both tide extremes, and smooth along the crest (≤ 0.02 per metre, 10% past thrown)
+src/breaker/reefReport.test.ts > the reef report (plan 2026-10-02 Task 1) the ray profile runs from inshore to seaward, 1 m apart, with the peak at s = 0
+src/breaker/setWaveModel.test.ts > set-wave model extreme waves in shallow water never fold and stay finite (12 ft, 25 s, 1.2 m of water; and a steep 4 s sea)
+src/breaker/setWaveModel.test.ts > ψ at the crest (barrel from the maths) a heavier ψ drains the water in front deeper
+src/breaker/setWaveModel.test.ts > ψ at the crest (barrel from the maths) past its envelope cutoff a wave is nothing, stage included (the GPU skips it there): 12 ft at the grid edge
+src/breaker/wallDownTheLine.test.ts > the wall down the line on the Womb (6 ft set, mid tide) stands as a wall for 20 m or more past the curl, then eases to the swell over 30 m or more, with no step along the line
+src/breaker/wombProfile.test.ts > wombProfile changes smoothly with phase
+src/breaker/wombProfile.test.ts > wombProfile never crosses itself
+src/breaker/wombSection.test.ts > one surface (plan 2026-10-06-wave-root-cause step 3, Andrew’s ruling) its ends are the sheet at every phase: beyond the drawing’s shoulder and front knots, within 1 cm
+src/breaker/wombSection.test.ts > the drawn curl is interpolated as drawn, the sheet as the sheet (SectionSample, sampleWeight) between the floor knot and the trough knot the floor never dips under the trough knot: no hole in front of the face (Andrew, 8 ft, 2026-10-06)
+src/ride/rideOnSections.test.ts > a ride on the drawn sections a Solid set wave (intermediate, tide 0 m): caught, popped up and ridden along the left for 10 s or more without a wipeout

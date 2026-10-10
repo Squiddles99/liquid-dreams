@@ -222,7 +222,9 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, ke
       const h00 = s3.mul(2.0).sub(s2.mul(3.0)).add(1.0), h10 = dt.mul(s3.sub(s2.mul(2.0)).add(s)), h01 = s2.mul(3.0).sub(s3.mul(2.0)), h11 = dt.mul(s3.sub(s2));
       p.assign(a0.xyz.mul(h00).add(vec3(a1.zw, a2.x).mul(h10)).add(b0n.xyz.mul(h01)).add(vec3(b1n.zw, b2n.x).mul(h11)));
       const sv = a1.xy.mul(h00).add(a2.yz.mul(h10)).add(b1n.xy.mul(h01)).add(b2n.yz.mul(h11));
-      const wa = select(isSheetKnot(sp), float(1.0), curlW), wb = select(isSheetKnot(sp.add(1)), float(1.0), curlW);
+      // Typed N: tsc's overload pick for select() here depends on the program's file order (it read never once the old Bombie
+      // mound left the bathymetry's imports, shelf-polish Task 7).
+      const wa: N = select(isSheetKnot(sp), float(1.0), curlW), wb: N = select(isSheetKnot(sp.add(1)), float(1.0), curlW);
       w.assign(wa.add(wb.sub(wa).mul(smoothNode(s))));
       off.assign(p.xy.sub(sv.mul(w)));
     });

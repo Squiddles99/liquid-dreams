@@ -6,6 +6,8 @@ import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base'), out = arg('out'), pre = arg('pre'), times = arg('times').split(',').map(Number);
 const settle = Number(arg('settle') ?? 2500);
+// --probe=<js>: an expression evaluated after each frame, printed (e.g. JSON.stringify(window.liquidDreams.bombieBurst)).
+const probe = arg('probe');
 // --run: unpaused (the frame is taken `settle` ms of sim time later): an underwater eye needs running frames to switch views.
 const paused = !process.argv.includes('--run');
 const moment = JSON.parse(Buffer.from(arg('m'), 'base64').toString('utf8'));
@@ -33,6 +35,7 @@ app.whenReady().then(async () => {
     const png = await win.webContents.executeJavaScript(`window.liquidDreams.captureFrame().then(async (b) => { const a = new Uint8Array(await b.arrayBuffer()); let s = ''; for (let i = 0; i < a.length; i += 32768) s += String.fromCharCode(...a.subarray(i, i + 32768)); return btoa(s); })`);
     writeFileSync(`${out}-${t.toFixed(2)}.png`, Buffer.from(png, 'base64'));
     console.log('saved', t);
+    if (probe) console.log('probe', t, await win.webContents.executeJavaScript(probe));
   }
   app.quit();
 });

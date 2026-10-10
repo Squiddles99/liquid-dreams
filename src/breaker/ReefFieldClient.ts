@@ -1,6 +1,7 @@
 import { LatestOnly } from './LatestOnly';
 import type { CoastParams } from '../seabed/coastFeatures';
-import type { ReefField, ReefFieldRequest } from './reefField';
+import type { ReefField } from './reefField';
+import type { GameFieldRequest } from './fieldWorker';
 
 /** Solves the reef wave field off the main thread; only the newest request's answer is delivered. */
 export class ReefFieldClient {
@@ -19,7 +20,7 @@ export class ReefFieldClient {
   }
 
   /** `coastParams`: the worker builds the coast map from them and seeds the field from the coast (lineup truth spec §3c). */
-  request(req: ReefFieldRequest & { coastParams?: CoastParams }): void {
+  request(req: GameFieldRequest & { coastParams: CoastParams }): void {
     this.worker.postMessage({ id: this.latest.next(), ...req });
   }
 

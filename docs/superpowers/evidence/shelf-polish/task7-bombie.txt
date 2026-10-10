@@ -1,0 +1,26 @@
+# shelf-polish Task 7: one Bombie, the coast's (spec §7). Taken: RE-AIM (a position and a gate), not delete.
+- Readers of src/bombie found (rg): App (bursts, impacts, sound), BombieMesh, sound hits/levels, sprayEmitters' bombie
+  impacts, Seabed/bathymetry (the mound), DevPanel/devSettings (its folder), tests. The mound was read only by the bed
+  (bathymetry.bedHeightAt, Seabed.bedHeightNode) and its own tests.
+- Position: bombieModel.BOMBIE_X/Z = coastFeatures.BOMBIE_CENTRE (-280, 1020); BombieMesh's grid follows it. Everything that
+  reads BOMBIE_X/Z (sound, impacts) moves with it.
+- Gate: coastBreaking.footprintBreakHeight(coast field, 'bombie'): the lowest set height the coast's breaking map breaks in the
+  Bombie's footprint; App.bombieWaves returns null below it (setWaveHeight(sizeFt)). 15 s test: between the 6 and 8 ft sets
+  (coastBreaking.test). Game's field: Big (9 ft, 16 s) set 5.05 m >= 3.54 m: open; Solid (5.5 ft, 14 s) 2.86 m < 3.63 m: shut.
+  The per-wave bursts (thresholdFt, the wave factor) are unchanged inside the gate.
+- The mound goes: bathymetry and Seabed beds are the coast profile there (GPU self-test: (-300, 340) gpu -15.000 cpu -15.000);
+  swellDepthNode reads the drawn bed (the mound's exception gone); the mound tests and the "mound leaves the sea alone"
+  self-test removed with it. bombie self-test 1/1, seabed 4/4.
+- tsc: removing the mound changed the program's import order and tsc picked a never-typed select() overload in
+  wombSectionNodes (line 225): the two results typed N (type-only).
+
+## Frames (../liquid-dreams-captures/shelf-polish-2026-10-10/task7/, commands.txt; tools/_retuneMoments.ts --bombie)
+- Big-tide0-bombie-300/304: the lookout turned to yaw 224 (the Bombie at 207, the old mound's spot at 241), a burst 7 s / 11 s
+  old (in-game window.liquidDreams.bombieBurst {n 21, age 7.0 s, 5.5 m}; mesh visible). At 1 km from the lookout the white
+  water is ~2 px tall on the glare: on vs off (off-Big-...-300, bombieParams.enabled = false) differ only in 22 pixels at
+  x 805-870, y 603-604, the Bombie's projected spot (x 0.359 of the width); nothing at the old spot (x 0.641).
+  big-bombie-on-off.png (crop, x6).
+- Big-close-bombie-on/off-300: from 120 m (camera (-170, 10, 960)): the white water at the coast's Bombie, none with it off.
+  big-close-bombie-on-off.png.
+- Solid-tide0-bombie-404.10: the gate is shut (no burst at either spot).
+- Look item for Andrew: from the crew's lookout the Bombie is 1 km off and reads as a 2 px line in the morning glare.
