@@ -15,3 +15,14 @@ Plan: docs/superpowers/plans/2026-10-10-library.md · Spec: docs/superpowers/spe
 - Ruling: the open view's shade and text are taken from the cover card (D1's intent). The plan's shade, one bottom-left ellipse, left the Balga card unreadable over bright sand. It is now the cover's two-layer shade (radial at 0% 78% + bottom linear). Under `is-big-text`, a left-side linear shade covers the full height. The kicker, name (sun stroke + teal drop), sub and fact get the cover's text-shadows. Cost if wrong: a few CSS lines in `library.css` if Andrew prefers the lighter look.
 - Note for Andrew: the 0.72 dim turns the chart's land a muddy olive-grey. One number (`.fe-map-dim` alpha) if he wants it lighter or tinted.
 - Gate: awaiting Andrew's approval before Task 3+.
+
+## Task 2: tile crops (2026-10-10)
+- `python tools/loadingArt.py`: 66 × `<name>-tile.webp: 480 x 360`; `index.html` and the existing -1920/-full pictures unchanged.
+- `tiles-sheet.png` (11×6). Checked by eye, with each wide original (16:9 and 3:2 sources) shown beside its 0.5 crop box. 4:3 sources have no lever.
+- framing.json `tiles` values:
+  - `birds-osprey` 0.95: the right wingtip was cut.
+  - `sea-fauna-bronze-whaler` 0.95: the tail was cut.
+  - `sea-fauna-port-jackson` 0.8: the nose was cut.
+  - `sea-fauna-rock-lobster` 0.75: the body was crammed off the right edge.
+  - `sea-fauna-tiger-shark` 0.9: the nose was cut.
+- Left at 0.5: the albatross and sea-eagle wingtips touch the top edge, but their sources are 4:3, so no crop can move. Heath monitor: its tail curls past the right edge, but the head is the subject and is kept.

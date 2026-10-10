@@ -1,5 +1,13 @@
 {
  "_": "Where tools/loadingArt.py cuts a picture taller than 16:9 down to 16:9: 0 keeps the top, 1 the bottom, 0.5 (the default) the middle.",
+ "tiles": {
+  "_": "Where the Library's 4:3 tile is cut from the original (0 = top/left, 1 = bottom/right; 0.5 when not listed).",
+  "birds-osprey": 0.95,
+  "sea-fauna-bronze-whaler": 0.95,
+  "sea-fauna-port-jackson": 0.8,
+  "sea-fauna-rock-lobster": 0.75,
+  "sea-fauna-tiger-shark": 0.9
+ },
  "birds-albatross": 0.31,
  "birds-fairywren": 0.4,
  "birds-kestrel": 0.17,

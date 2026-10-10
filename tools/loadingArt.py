@@ -3,6 +3,7 @@
   public/loading/<name>-1920.webp  each picture in art/loading/slides/ and art/loading/boot/ at 1920 px wide (1080p and
                                    smaller screens)
   public/loading/<name>-full.webp  the picture at its own width, capped at 3840 px (1440p and 4K)
+  public/loading/<name>-tile.webp  each slide's 4:3 Library tile, 480 x 360, cut from the original (framing.json "tiles")
   public/loading/emblem.webp       the spinning coin's face: the emblem alone, square, 1024 px, transparent outside
 
 It then writes index.html itself: the boot picture (art/loading/boot/, one file: the crew surfing, shown only while the
@@ -53,20 +54,44 @@ def frame(photo, stem):
     return photo.crop((0, top, w, top + keep))
 
 
-def pictures(folder):
+# The Library's tiles (library spec §5): a 4:3 crop of the ORIGINAL picture, 480 px wide. framing.json's "tiles" says
+# where the cut sits along the long axis (0 = top/left, 1 = bottom/right; 0.5 when not listed). Never hand-crop.
+TILE_W = 480
+
+
+def tile(photo, stem):
+    w, h = photo.size
+    at = FRAMING.get("tiles", {}).get(stem, 0.5)
+    if w * 3 > h * 4:  # wider than 4:3: cut the sides
+        keep = round(h * 4 / 3)
+        left = round((w - keep) * at)
+        box = (left, 0, left + keep, h)
+    else:
+        keep = round(w * 3 / 4)
+        top = round((h - keep) * at)
+        box = (0, top, w, top + keep)
+    name = f"{stem}-tile.webp"
+    photo.crop(box).resize((TILE_W, TILE_W * 3 // 4), Image.LANCZOS).save(os.path.join(OUT, name), "WEBP", quality=85, method=6)
+    report(name)
+
+
+def pictures(folder, tiles=False):
     names = []
     for file in sorted(os.listdir(folder)):
         stem, ext = os.path.splitext(file)
         if ext.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
             continue
-        photo = frame(Image.open(os.path.join(folder, file)).convert("RGB"), stem)
+        original = Image.open(os.path.join(folder, file)).convert("RGB")
+        if tiles:
+            tile(original, stem)
+        photo = frame(original, stem)
         save_photo(photo, min(1920, photo.size[0]), f"{stem}-1920.webp")
         save_photo(photo, min(3840, photo.size[0]), f"{stem}-full.webp")
         names.append(stem)
     return names
 
 
-names = pictures(os.path.join(SRC, "slides"))
+names = pictures(os.path.join(SRC, "slides"), tiles=True)
 boot = pictures(os.path.join(SRC, "boot"))
 assert len(boot) == 1, "art/loading/boot/ holds exactly one picture: the start-up one"
 
