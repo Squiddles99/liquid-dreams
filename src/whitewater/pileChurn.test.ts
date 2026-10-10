@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { boreWeight, flightTime, sectionEnd } from '../breaker/wombSection';
-import { CHURN_FADE_S, FRESH_BOIL_WEIGHT, FRESH_FADE_S, FRESH_RISE_S, boilFreshness, boilWeight, freshFoamWeight } from './pileChurn';
+import { CHURN_FADE_S, FRESH_BOIL_WEIGHT, FRESH_FADE_S, FRESH_RISE_S, boilFreshness, boilWeight, freshFoamWeight, solidBoil, BUBBLE_MOTTLE_M, BUBBLE_MOTTLE_AMP } from './pileChurn';
 
 describe('pileChurn: the boil on the ribbon\'s broken section (whitewater §3.2)', () => {
   const H = 2, T = 15, land = flightTime(H);
@@ -61,5 +61,18 @@ describe('pileChurn: boilFreshness, the mound solid through its broken life (whi
   it('makes the mound solid (weight ≥ 0.9 where the lace holes were) and lets the lace back as it ages', () => {
     for (const f of [0.3, 0.5, 0.7]) expect(freshFoamWeight(f, boilFreshness(end - 0.5, H, T))).toBeGreaterThanOrEqual(FRESH_BOIL_WEIGHT);
     expect(freshFoamWeight(0.5, boilFreshness(end + FRESH_FADE_S + 1, H, T))).toBeCloseTo(0.5, 12);
+  });
+});
+
+describe('pileChurn: the solid boil and its bubble mottle (7b S3)', () => {
+  it('solidBoil is the freshness gated by the foam: 0 off the foam, the freshness on it', () => {
+    expect(solidBoil(1, 0)).toBe(0);
+    expect(solidBoil(1, 0.05)).toBe(0);
+    expect(solidBoil(0.6, 0.5)).toBeCloseTo(0.6, 12);
+    expect(solidBoil(0, 1)).toBe(0);
+  });
+  it('the mottle: ~0.3 m bubbles, ±15 % of the foam volume\'s brightness', () => {
+    expect(BUBBLE_MOTTLE_M).toBe(0.3);
+    expect(BUBBLE_MOTTLE_AMP).toBe(0.15);
   });
 });
