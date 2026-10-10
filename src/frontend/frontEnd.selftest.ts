@@ -439,6 +439,22 @@ registerSelfTest({
         if (under?.closest('.fe-lib-open')) problems.push('the closing picture still takes clicks (a double click would leave for the title)');
         await frames(fe, 2);
       }
+      // The open picture's ‹ › arrows page through the category by mouse; a click on them never closes the picture.
+      {
+        press('Enter'); await frames(fe, 10);
+        const at = fe.state!.library.entry, n = LIBRARY[fe.state!.library.cat].entries.length;
+        const next = host.querySelector('.fe-lib-step.is-next') as HTMLElement | null, prev = () => host.querySelector('.fe-lib-step.is-prev') as HTMLElement | null;
+        if (!next || !prev()) problems.push('the open picture has no ‹ › arrows');
+        else {
+          next.click(); await frames(fe, 2);
+          if (fe.state!.library.entry !== Math.min(n - 1, at + 1) || !fe.state!.library.open) problems.push(`› went to ${fe.state!.library.entry} (open ${fe.state!.library.open}), want ${at + 1}`);
+          prev()!.click(); await frames(fe, 2);
+          if (fe.state!.library.entry !== at || !fe.state!.library.open) problems.push(`‹ went to ${fe.state!.library.entry}, want ${at}`);
+          for (let k = 0; k < n; k++) { prev()!.click(); await frames(fe, 1); }
+          if (!prev()!.classList.contains('is-off')) problems.push('‹ is not off on the first painting');
+        }
+        press('Escape'); await frames(fe, 10);
+      }
       press('Enter'); await frames(fe, 10);
       if (!host.querySelector('.fe-lib.is-open')) problems.push('A did not open the picture');
       press('Escape'); await frames(fe, 10);

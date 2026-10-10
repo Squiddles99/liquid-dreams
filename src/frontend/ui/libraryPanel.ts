@@ -94,7 +94,16 @@ export class LibraryPanel {
     const openKey = L.open ? `${e.key}` : '';
     if (openKey && openKey !== this.openKey) {
       const card = h('div', 'fe-lib-card');
-      card.append(...cardEls(e.card), h('div', 'fe-lib-count', `${L.entry + 1} / ${cat.entries.length}`));
+      // ‹ n / N ›: the mouse pages through the category as left/right do; a click here never closes the picture.
+      const step = (cls: string, glyph: string, action: FrontAction, off: boolean): HTMLElement => {
+        const b = h('span', `fe-lib-step ${cls}${off ? ' is-off' : ''}`, glyph);
+        b.dataset.hit = cls;
+        b.addEventListener('click', (ev) => { ev.stopPropagation(); if (!off) this.onPointer({ kind: 'action', action }); });
+        return b;
+      };
+      const count = h('div', 'fe-lib-count');
+      count.append(step('is-prev', '‹', 'left', L.entry === 0), h('span', '', `${L.entry + 1} / ${cat.entries.length}`), step('is-next', '›', 'right', L.entry === cat.entries.length - 1));
+      card.append(...cardEls(e.card), count);
       this.open.replaceChildren(img('fe-lib-open-img', libraryImage(e.key, 'full'), '100vw'), h('div', 'fe-lib-shade'), card);
     }
     this.openKey = openKey;
