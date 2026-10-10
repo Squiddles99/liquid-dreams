@@ -74,7 +74,7 @@ registerSelfTest({
     const wind: [number, number] = [-8, 2];
     const src: MistSourceCpu = { mist: (x, _z, tt) => [1.5 * cpuAt(x, tt, 0, 1.5), 0.6 * cpuAt(x, tt, 4, 1.5)], dir: () => [1, 0], wind };
     const field = new FoamField(nodes, SMALL);
-    const p: FoamParams = { clearTimeS: 3, driftMps: 0.4, laceLifeS: 30 };
+    const p: FoamParams = { clearTimeS: 3, driftMps: 0.4, laceLifeS: 30, volumeExposure: 0.55 };
     field.setParams(p);
     field.setWind(wind[0], wind[1]);
     const tEnd = 5.5;
@@ -94,7 +94,7 @@ registerSelfTest({
   async run(renderer) {
     const { t, nodes, cpu } = syntheticSource();
     const field = new FoamField(nodes, SMALL);
-    const p: FoamParams = { clearTimeS: 3, driftMps: 0.4, laceLifeS: 30 };
+    const p: FoamParams = { clearTimeS: 3, driftMps: 0.4, laceLifeS: 30, volumeExposure: 0.55 };
     field.setParams(p);
     field.setWind(2, 3);
     const tEnd = 8;
@@ -122,7 +122,7 @@ registerSelfTest({
     for (const drift of [0, 0.4]) {
       const { t, nodes } = syntheticSource();
       const prepare = (tt: number): void => { t.value = tt; };
-      const p: FoamParams = { clearTimeS: 3, driftMps: drift, laceLifeS: 30 };
+      const p: FoamParams = { clearTimeS: 3, driftMps: drift, laceLifeS: 30, volumeExposure: 0.55 };
       const live = new FoamField(nodes, SMALL);
       live.setParams(p);
       for (let f = 0; f <= 360; f++) live.advance(renderer, 3 + f / 60, prepare, true); // exactly 9 s at the end
@@ -173,7 +173,7 @@ registerSelfTest({
   async run(renderer) {
     const { nodes, prepare, cpu, biggest } = breakingRig();
     const foam = new FoamField(nodes, SHELF);
-    const p: FoamParams = { clearTimeS: 4, driftMps: 0.4, laceLifeS: 30 };
+    const p: FoamParams = { clearTimeS: 4, driftMps: 0.4, laceLifeS: 30, volumeExposure: 0.55 };
     foam.setParams(p);
     const tEnd = biggest.arrivalS + 4;
     foam.advance(renderer, tEnd, prepare, true);
@@ -190,7 +190,7 @@ registerSelfTest({
   name: 'foam: a covered replay into the middle of the lace (10 s and 60 s after a breaking set) matches live play within 0.02 and a 75 s jump takes at most 400 ms; the uncovered one is cheaper',
   async run(renderer) {
     const { nodes, prepare, biggest } = breakingRig();
-    const p: FoamParams = { clearTimeS: 10, driftMps: 0.4, laceLifeS: 75 };
+    const p: FoamParams = { clearTimeS: 10, driftMps: 0.4, laceLifeS: 75, volumeExposure: 0.55 };
     const notes: string[] = [];
     let ok = true;
     // Live: from 5 s before the set's biggest wave reaches the peak, stepping 60 fps frames; at +10 s and +60 s a fresh

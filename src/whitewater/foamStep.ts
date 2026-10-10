@@ -28,10 +28,13 @@ export interface FoamParams {
   driftMps: number;
   /** The lace (below LACE_LEVEL) then falls linearly to 0 over this long (s; whitewater §5.1). */
   laceLifeS: number;
+  /** The dense foam volume's exposure (whitewater 7b S3 ruling 3: a camera exposes for the whitewater; 0.55 shows the
+   * billows' form, ~0.7 is whiter). The materials read it (FoamField.volumeExposure); the step does not. */
+  volumeExposure: number;
 }
 
-export const DEFAULT_FOAM_PARAMS: Readonly<FoamParams> = { clearTimeS: 10, driftMps: 0.4, laceLifeS: 75 };
-export const FOAM_PARAM_RANGES = { clearTimeS: { min: 2, max: 30 }, driftMps: { min: 0, max: 2 }, laceLifeS: { min: 30, max: 120 } } as const;
+export const DEFAULT_FOAM_PARAMS: Readonly<FoamParams> = { clearTimeS: 10, driftMps: 0.4, laceLifeS: 75, volumeExposure: 0.55 };
+export const FOAM_PARAM_RANGES = { clearTimeS: { min: 2, max: 30 }, driftMps: { min: 0, max: 2 }, laceLifeS: { min: 30, max: 120 }, volumeExposure: { min: 0.4, max: 1 } } as const;
 
 /** Dense foam is lace below this density; it reaches it exactly clearTimeS after its source stops. */
 export const LACE_LEVEL = 0.25;

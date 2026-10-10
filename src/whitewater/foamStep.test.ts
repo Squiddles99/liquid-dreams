@@ -5,13 +5,13 @@ import { setWaveHeight } from '../breaker/reefReport';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { SHORE_X } from '../seabed/coastProfile';
 import {
-  BORE_PUSH, COARSE_TICKS, DEFAULT_FOAM_PARAMS, FINE_REPLAY_S, FOAM_EDGE_BAND_M, FOAM_GRID, FOAM_TICK_S, type FoamGrid, type FoamParams, FoamSchedule, type FoamSourceCpu,
+  BORE_PUSH, COARSE_TICKS, DEFAULT_FOAM_PARAMS, FOAM_PARAM_RANGES, FINE_REPLAY_S, FOAM_EDGE_BAND_M, FOAM_GRID, FOAM_TICK_S, type FoamGrid, type FoamParams, FoamSchedule, type FoamSourceCpu,
   LACE_LEVEL, WIND_DRIFT_SHARE, bilinearFoam, boxWeight, decayFoam, driftVector, foamPatternAxis, normalizeFoamParams, replayTickCount, stepFoam, tickIndex, tickTime,
 } from './foamStep';
 
 const G: FoamGrid = { x0: 0, z0: 0, cellM: 1, nx: 40, nz: 8 };
 const none: FoamSourceCpu = { foam: () => 0, dir: () => [1, 0] };
-const P = (clearTimeS: number, driftMps: number, laceLifeS = 75): FoamParams => ({ clearTimeS, driftMps, laceLifeS });
+const P = (clearTimeS: number, driftMps: number, laceLifeS = 75): FoamParams => ({ clearTimeS, driftMps, laceLifeS, volumeExposure: 0.55 });
 /** A map of (density, age) pairs, every texel at density d, age 0. */
 const filled = (g: FoamGrid, d: number): Float32Array<ArrayBuffer> => {
   const m = new Float32Array(2 * g.nx * g.nz);
@@ -129,10 +129,19 @@ describe('the foam step', () => {
   it('normalizeFoamParams clamps into the slider ranges', () => {
     const p = P(0.1, 9, 500);
     normalizeFoamParams(p);
-    expect(p).toEqual({ clearTimeS: 2, driftMps: 2, laceLifeS: 120 });
+    expect(p).toEqual({ clearTimeS: 2, driftMps: 2, laceLifeS: 120, volumeExposure: 0.55 });
     const d = { ...DEFAULT_FOAM_PARAMS };
     normalizeFoamParams(d);
-    expect(d).toEqual({ clearTimeS: 10, driftMps: 0.4, laceLifeS: 75 });
+    expect(d).toEqual({ clearTimeS: 10, driftMps: 0.4, laceLifeS: 75, volumeExposure: 0.55 });
+  });
+  it('the foam volume’s exposure (7b S3 ruling 3) is a dial: 0.4–1.0, default 0.55, clamped', () => {
+    expect(FOAM_PARAM_RANGES.volumeExposure).toEqual({ min: 0.4, max: 1 });
+    const p = { ...DEFAULT_FOAM_PARAMS, volumeExposure: 3 };
+    normalizeFoamParams(p);
+    expect(p.volumeExposure).toBe(1);
+    const q = { ...DEFAULT_FOAM_PARAMS, volumeExposure: Number.NaN };
+    normalizeFoamParams(q);
+    expect(q.volumeExposure).toBe(0.55);
   });
 });
 
