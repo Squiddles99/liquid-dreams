@@ -60,3 +60,30 @@ the stand, and not a jog. Softening it would mean stretching the lip's along-cre
 from the sheet's crest sits under the footprint, and the ribbon's edges still meet the sheet at their homes exactly. B is
 wired on the branch now (`INSIDE_LINE_SMOOTHING_M = 12`, uncommitted tests to follow in Task 2). Task 2 adds the
 regression test: no inside-leg station step over 2 m across, and the left's stations unchanged.
+
+## Fable's ruling (2026-10-10): B taken (σ 12 m)
+
+Task 0's refutation holds on the hide test (only hiding the ribbon removes the steps; sheet, footprint and whitewater
+hides are pixel-identical), and the along view names the mechanism: the traced crest jogs across itself where τ kinks,
+and the tube follows every jog. The frames decide it: at σ 12 m the stand sees one continuous tube at t+3 and t+5
+(`task1/stand-s0-s8-s12.png`, rows 3 and 6) and the along view is one pipe; σ 8 still leaves a step at t+5. The plan's
+lead (the sheet's far grid) was wrong and is to be corrected wherever quoted; the sheet's coarse far cells are noted as
+real but hidden under the footprint.
+
+**Rulings (one line each).**
+1. **B, σ 12 m, as wired** (`smoothInsideLine` at the end of `fillSections`, positions moved along the smoothed normal,
+   weighted by `closeoutWeight`). Not A, not the sheet candidates, not smoothing τ (the plan's rule).
+2. **Task 2 tests (vitest, CPU trace at Huge t+3 and t+5):** (a) no inside-leg station steps more than 2 m across the
+   crest per station step; (b) every station with `closeoutWeight` 0 is bit-identical to the unsmoothed trace (the
+   ridden line and the turn); (c) the worst inside-leg |ξ| stays ≤ 0.2 s (the drift from the sheet's crest is capped,
+   measured 0.15 s today). Frames as the plan lists them; the Pumping down-the-line frame identical in the ribbon region.
+3. **Self-tests:** run `--filter=breaker`; name the state of the carried red "the footprint covers the stations' inner
+   strip" before and after, since the inside-leg stations moved up to 1.8 m and the footprint must still cover them.
+4. **Cost, Task 3:** the trace CPU timing (interleaved, 140 reps) is the authoritative number for this change, since it
+   touches no vertex, pass or shader; `_rideProfile` is retaken idle and reported. If its medians differ by more than
+   5 % while the trace stays within +0.1 ms, state the machine's spread and proceed; do not chase it.
+5. **Carried (look, for Andrew, not this segment):** the one end face left at the curl front is the tube's real start
+   (lipWeight 0 → 1 over ~6 m of crest, phase 0.40 → 0.60). Stretching the lip's along-crest growth is a separate look
+   question; name it in the -opus handover with the crop.
+
+Proceed: Task 2 (tests 2a–c, frames, self-tests with 3), Task 3 (cost as in 4, suite, handovers, push, no merge).
