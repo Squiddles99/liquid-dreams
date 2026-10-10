@@ -1,16 +1,15 @@
 # Task 7 + 7b STOP: the spray tuned, the mist slab, the boil (evidence)
 
 Moments as Task 6's: 10 ft 15 s, tide 0, seed 2002, 09:30; the biggest wave of the first set after 300 s reaches the tip at
-401.17 s. Cameras M-beach (the lookout) and M-tube (free, 3 m up, 100 m down the line). Branch at 9055986 (port 5174), every
+401.17 s. Cameras M-beach (the lookout) and M-tube (free, 3 m up, 100 m down the line). Branch at 9055986 + the foam volume's exposure (port 5174), every
 frame through `captureMoments.mjs` (exact foam replay). Task 6's frames are in the captures dir (`wind/`) for comparison.
 
 | file | what |
 |---|---|
 | `wind-glassy.png` … `wind-blown-out.png` | the seven WIND_ROWS re-captured after 7 + 7b: tube above, beach below, 403.67 / 404.67 |
 | `feather-wide.png` | photo 3's moment (8 ft, strong offshore, lookout), 399.17 / 400.17 / 402.17 |
-| `ab-task6-tube.png` | strong offshore, tube cam: main (top) vs the branch after 7b (bottom), 403.67 / 404.67 |
-| `s3-mound-vs-04.png` | the mound at 403.67: as ruled (3-D billows, exposure 1) beside the ×0.4 exposure experiment |
-| `s3-mound.png` | the S3 steps: before, crease term, exposure 0.85, exposure 0.4 |
+| `ab-task6-tube.png` | strong offshore, tube cam: main (top) vs the branch after 7b with the foam volume at 0.55 (bottom), 403.67 / 404.67 |
+| `s3-mound.png` | the mound: as ruled (3-D billows, foam volume 0.55) at 403.67 and 404.67, then exposure 1.0, then the ×0.4 crease experiment |
 | `ab-task7-tube.png`, `backlit-plume.png` | Task 7: the mist slab (tube A/B against Task 6) and photo 2's backlit moment (12 ft, 17:00) |
 
 ## S1, the plume (accepted at lever 3)
@@ -42,10 +41,13 @@ not extended). None under 5 m/s offshore or at Glassy (unit tests).
   holes and ends the clean tube's hiding. No bars.
 - (b) The billows: an isotropic 3-D field over (detail x, height above the tide, detail z) (isotropy unit-tested: x 0.85, up
   0.80, z 0.75 m), its gradient a bump normal along the surface, its troughs hiding sky × (0.4 + 0.6 h) and sun × (0.6 + 0.4 h).
-  No vertical streaks. Target missed: the mound's p10–p90 spread is 3 / 5 / 8 levels (R / G / B; medians 249 / 234 / 219)
-  against ≥ 20. The foam volume's radiance sits past the tone curve's shoulder by more than the troughs' ×0.4–0.6, so even
-  the deepest trough lands within a few levels of white. At exposure 0.4 the spread is ~30 but the median falls to 199
-  (grey) — beside the ruled frame in `s3-mound-vs-04.png` for Andrew's eye. churnSize stays 0.25 (Andrew's dial).
+  No vertical streaks. At exposure 1.0 the mound sat on the tone curve's flat shoulder (spread 3 / 5 / 8 levels); ruling 3
+  exposes the foam volume for itself: FOAM_VOLUME_EXPOSURE 0.55 puts the mound's median (red) at 230 (target 228 ± 3);
+  R / G / B medians 230 / 215 / 199, p10–p90 spreads 27 / 23 / 22 at 403.67 (31 / 30 / 27 at 404.67): billows and
+  shadowed hollows show. Swept: 0.52 (R 225), 0.6 (R 236, spreads 21 / 18 / 17), 0.7 (R 242, spreads 11 / 10 / 11). The lip
+  body's grey is unchanged (lip box mean RGB 141 / 159 / 179 at 1.0, 139 / 159 / 179 at 0.55). churnSize stays 0.25.
+- Capture: the hidden one-process path (captureMoments.mjs, no focus, never on top) is pixel-identical to the focused one
+  (M-tube 403.67: 0 px differ); the ruled frames were captured with it.
 
 ## Costs
 

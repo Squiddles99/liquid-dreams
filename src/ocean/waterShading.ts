@@ -102,6 +102,9 @@ export function deepWaterUpwelling(sky: Sky, u: WaterOpticsUniforms, sunVisibili
  * glitter + light from the water column (deep upwelling + lip transmission of sun and skylight), mixed with lit foam,
  * then aerial perspective.
  */
+/** The foam volume's exposure (7b S3 ruling 3): the mound's median at the tube cam lands at ~228 / 255. */
+export const FOAM_VOLUME_EXPOSURE = 0.55;
+
 export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUniforms): N {
   const n = i.normal;
   const v = i.viewDir;
@@ -194,7 +197,9 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
     cosView: dot(v.negate(), l), nDotL: billow ? dot(billow.normal, l) : nDotL, sunVisibility: sv, isotropic: 0.6, groundColour: column,
     skyShare: shares?.sky, sunShare: shares?.sun,
   }, sky);
-  const foamSeen = foamVolume ? mix(foamLace, volumeLight, foamVolume) : foamLace;
+  // Exposed for itself (7b S3 ruling 3: a camera exposes for the whitewater): at 1 the volume's radiance sat on the tone
+  // curve's flat shoulder and its billows' shading could not show.
+  const foamSeen = foamVolume ? mix(foamLace, volumeLight.mul(FOAM_VOLUME_EXPOSURE), foamVolume) : foamLace;
   const colour = mix(water, foamSeen, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
