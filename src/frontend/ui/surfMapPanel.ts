@@ -7,7 +7,7 @@ import { breakToday, conditionsNow, todaysSetup } from '../conditionsSource';
 import type { FrontAction, FrontState } from '../frontEnd';
 import { CapesChart } from './capesChart';
 
-type Pointer = { kind: 'pin'; id: string } | { kind: 'action'; action: FrontAction } | { kind: 'locked'; what: 'realtime' | 'library' };
+type Pointer = { kind: 'pin'; id: string } | { kind: 'action'; action: FrontAction } | { kind: 'locked'; what: 'realtime' };
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag); e.className = cls; if (text) e.textContent = text; return e;
 };
@@ -26,7 +26,7 @@ export class SurfMapPanel {
   constructor(private readonly onPointer: (p: Pointer) => void) {
     const tabs = h('div', 'fe-map-tabs');
     const map = h('span', 'fe-map-tab is-on', 'SURF MAP'), lib = h('span', 'fe-map-tab is-locked', 'LIBRARY');
-    lib.dataset.hit = 'library'; lib.addEventListener('click', () => onPointer({ kind: 'locked', what: 'library' }));
+    lib.dataset.hit = 'library'; lib.addEventListener('click', () => onPointer({ kind: 'action', action: 'tabPlus' }));
     tabs.append(map, lib);
     const local = h('div', 'fe-map-local', 'LOCAL');
     for (const [id, label] of [['forecast', 'GAME FORECAST'], ['realtime', 'REAL-TIME · SOON'], ['custom', 'CUSTOM']] as const) {
