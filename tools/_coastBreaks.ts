@@ -1,6 +1,6 @@
 // lineup-truth Task 4: where a set breaks on the coast field, per size. For each of 4, 6, 8, 10, 12 ft (mid tide, 15 s,
-// 225°, the game's refraction floor): the set height, the breaking cells per zone (the four breaks' footprints, the 60 m
-// shore band, elsewhere = a closeout) and an ASCII map at 40 m per character (north up): '#' breaking outside every
+// 225°, the game's refraction floor): the set height, the breaking cells per zone (the four breaks' footprints, the shore
+// band (shoreBands), elsewhere = a closeout) and an ASCII map at 40 m per character (north up): '#' breaking outside every
 // footprint and the shore band, 'L' 'W' 'B' 'E' breaking in Lefthanders', the Womb's, the Bombie's or Ellensbrook's
 // footprint, 's' breaking in the shore band, 'C' on the Cobblestones approach, '.' sea, ' ' land.
 // npx node tools/_coastBreaks.ts [--sizes=4,6,8,10,12] [--params='{"bombieTopM":5}']
@@ -26,7 +26,7 @@ console.log(`coast params ${JSON.stringify(params)}`);
 for (const ft of sizes) {
   const H = rr.setWaveHeight(ft);
   const broken = cb.coastBreakingCells(coast, H, br.DEFAULT_BREAK_PARAMS);
-  const r = cb.reportBreaking(coast, broken);
+  const r = cb.reportBreaking(coast, broken, H, br.DEFAULT_BREAK_PARAMS), bands = cb.shoreBands(coast, H, br.DEFAULT_BREAK_PARAMS);
   console.log(`\n${ft} ft: set wave ${H.toFixed(2)} m; breaking cells ${JSON.stringify(r.cells)}; Bombie crest ${r.bombieCrestM.toFixed(0)} m`);
   if (r.closeouts.length) console.log(`  first closeouts: ${r.closeouts.map(([x, z]) => `(${x}, ${z})`).join(' ')}`);
   for (let r0 = 0; r0 < g.nz; r0 += STEP) {
@@ -37,7 +37,7 @@ for (const ft of sizes) {
       for (let dr = 0; dr < STEP && r0 + dr < g.nz; dr++) for (let dc = 0; dc < STEP && c0 + dc < g.nx; dc++) {
         const i = (r0 + dr) * g.nx + c0 + dc;
         if (!broken[i]) continue;
-        const zone = cb.breakZone(g.x0 + (c0 + dc) * g.cellM, g.z0 + (r0 + dr) * g.cellM);
+        const zone = cb.breakZone(g.x0 + (c0 + dc) * g.cellM, g.z0 + (r0 + dr) * g.cellM, bands[r0 + dr]);
         const k = zone === 'elsewhere' ? 3 : zone === 'shore' ? 1 : 2;
         if (k > rank) { rank = k; ch = mark[zone]; }
       }
