@@ -1,0 +1,35 @@
+# level-read Task 2: whole-trace seams with C (reefField.ONSET_EDGE_LEVELS = 1) as plain code
+# npx tsx tools/_curlSeams.ts --ft=<6|8|12> --dt=1,3,6 --quiet  (classes from the same run without --quiet)
+# Task 0 baseline: 6 ft 9 (worst 1.95 s) / 8 ft 1 (1.03 s) / 12 ft 0.  Now: 6 ft 11 (1.02 s) / 8 ft 6 (0.62 s) / 12 ft 0.
+  UNTIL t + 3 arc 194->195 tip 239 m: until 0.91 -> 0.85
+  UNTIL t + 3 arc 195->196 tip 240 m: until 0.85 -> 0.80
+  TB t + 6 arc 182->183 tip 233 m: tb 0.58 -> 1.37
+  TB t + 6 arc 183->184 tip 234 m: tb 1.37 -> 2.38
+  TB t + 6 arc 184->185 tip 235 m: tb 2.38 -> 2.73
+  TB t + 6 arc 186->187 tip 237 m: tb 2.74 -> 2.87
+  TB t + 6 arc 187->188 tip 238 m: tb 2.87 -> 2.93
+  TB t + 6 arc 188->189 tip 239 m: tb 2.93 -> 3.06
+  TB t + 6 arc 189->190 tip 240 m: tb 3.06 -> 3.17
+  TB t + 6 arc 192->193 tip 243 m: tb 3.20 -> 3.25
+  TB t + 6 arc 197->198 tip 248 m: tb 3.29 -> 3.37
+# 6 ft: 11 violations over the whole trace (dt 1,3,6); worst 1.02 s at t + 6 arcs 183/184 (2, 193) tip 234 m TB
+  TB t + 1 arc 196->197 tip 238 m: tb 0.11 -> 0.73
+  TB t + 1 arc 197->198 tip 239 m: tb 0.73 -> 0.87
+  TB t + 1 arc 198->199 tip 240 m: tb 0.87 -> 0.94
+  TB t + 3 arc 189->190 tip 233 m: tb 2.50 -> 2.57
+  TB t + 3 arc 190->191 tip 234 m: tb 2.57 -> 2.70
+  TB t + 3 arc 191->192 tip 235 m: tb 2.70 -> 2.81
+# 8 ft: 6 violations over the whole trace (dt 1,3,6); worst 0.62 s at t + 1 arcs 196/197 (-43, 222) tip 238 m TB
+# 12 ft: 0 violations over the whole trace (dt 1,3,6); worst 0.00 s at -
+
+Classes (line ids from rayOnset, the bake's breaking line through each violating station's ray):
+6 ft TB x9 (arcs 182-198, x 1..10, z 192..204, 233-248 m from the tip): all on the LEVEL-6 HOOK, line 17685. Its onset
+  T falls along the crest away from the run's curl (4.50 at arcs 183-185 -> 4.11, 3.94, 3.77 -> 2.68 at arc 190 -> 2.67-2.89),
+  so those rays broke earlier: the bake's own order, not the read.
+6 ft UNTIL x2 (arcs 195/196, (-20, 212), 239-240 m): NOT the hook. Unbroken stations ahead of the curl, level-5 line 35179
+  (T -0.07 / 0.06): the wait shrinks 0.05 s per metre away from the curl.
+8 ft TB x3 at t+1 (arcs 197-199, (-42, 222), 238-240 m): NOT the hook. The level-5 band's edge (run 0.158-0.167 over
+  Q5 0.156; line 35179) read between level 4 (line 409) and 5: tb 0.11 -> 0.73 -> 0.87 -> 0.94 (the baseline's 1.03 s step,
+  now a ramp).
+8 ft TB x3 at t+3 (arcs 190-192, (-27, 210), 233-235 m): NOT the hook. Level-4 line 409 (T -1.89 -> -1.69), ~0.1 s per
+  metre.
