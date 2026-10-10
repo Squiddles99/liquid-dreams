@@ -13,6 +13,33 @@ import { REEF_GRID } from './wombReef';
  * day. A linear rise from it meets the traced 10 m contour at 10 m.
  */
 export const INNER_SHELF_M = 9;
+/**
+ * Where the inner shelf deepens below INNER_SHELF_M (hand-set, like the 9 m: the survey has no data there): a raised cosine
+ * along the coast from INNER_SHELF_M at `zNorth` (north flank) and at `zSouth` (south flank) to `depthM` at `zPeak`.
+ * Never inside the Womb's halo (wombHalo > 0 between REEF_Z[0] − WOMB_HALO_M and REEF_Z[1] + WOMB_HALO_M), so the Womb's
+ * water is untouched.
+ */
+export interface InnerShelfDeep { depthM: number; zNorth: number; zPeak: number; zSouth: number }
+/**
+ * The inner shelf about 1 km north of the Womb (inner-shelf, 2026-10-10; hand-set, not the survey's): the Womb's basin,
+ * fading back to the 9 m shelf over WOMB_HALO_M, lenses the swell into a caustic that runs ~300 m north-east across the
+ * flat shelf to the beach at z −1 000 (tools/_innerShelf.ts; a 600 m halo moves it to z −1 240). On the 9 m shelf it broke
+ * an 8 ft set (amp 1.8–1.9) 69–189 m off the beach at z −988…−850; 10 m there keeps it standing (tools/_innerShelfSweep.ts:
+ * D 10 m is the least of 10–13 m that empties it at every half-width 200–400 m, and the inside's 10 ft closeout shrinks
+ * 3 357 → 3 167 cells). At 10 m the shelf meets the traced 10 m line flat, so no traced contour moves.
+ */
+export const INNER_SHELF_DEEP: readonly InnerShelfDeep[] = [{ depthM: 10, zNorth: -1150, zPeak: -950, zSouth: -750 }];
+
+/** The inner shelf's depth (m) on the row at z: INNER_SHELF_M, deepened by each of `deep` between its flanks. */
+export function innerShelfM(z: number, deep: readonly InnerShelfDeep[] = INNER_SHELF_DEEP): number {
+  let d = INNER_SHELF_M;
+  for (const q of deep) {
+    if (z <= q.zNorth || z >= q.zSouth) continue;
+    const t = z < q.zPeak ? (z - q.zNorth) / (q.zPeak - q.zNorth) : (q.zSouth - z) / (q.zSouth - q.zPeak);
+    d = Math.max(d, INNER_SHELF_M + (q.depthM - INNER_SHELF_M) * 0.5 * (1 - Math.cos(Math.PI * t)));
+  }
+  return d;
+}
 /** The beach's ramp: SHORE_FLAT_DEPTH_M → 1.5 m over the first 30 m, then up to the shelf by this far off the
  * waterline (m). A steep beach: up to 8 ft the shore-break stays within the spec's 60 m shore band. */
 export const SHORE_RAMP_END_M = 60;
@@ -43,13 +70,13 @@ function shoreRamp(s: number, plateau: number, rampEnd: number): number {
 }
 
 /** Per row: the traced contours' x and the waterline, read once. */
-interface RowFrame { z: number; shore: number; xs: Float64Array; halo: number; beachHalo: number }
+interface RowFrame { z: number; shore: number; xs: Float64Array; halo: number; beachHalo: number; inner: number }
 
-function rowFrame(z: number): RowFrame {
+function rowFrame(z: number, deep: readonly InnerShelfDeep[]): RowFrame {
   const xs = new Float64Array(COAST_CONTOURS.length);
   for (let i = 0; i < xs.length; i++) xs[i] = contourXAt(COAST_CONTOURS[i], z);
   const out = Math.max(0, REEF_Z[0] - z, z - REEF_Z[1]);
-  return { z, shore: waterlineX(z), xs, halo: wombHalo(z), beachHalo: 1 - smoothstep(0, WOMB_BEACH_HALO_M, out) };
+  return { z, shore: waterlineX(z), xs, halo: wombHalo(z), beachHalo: 1 - smoothstep(0, WOMB_BEACH_HALO_M, out), inner: innerShelfM(z, deep) };
 }
 
 /** The traced depth at x on this row: the contours, the linear rise into the 10 m line inshore of it, and the last slope
@@ -61,7 +88,7 @@ function shelfDepth(x: number, f: RowFrame, rampEnd: number): number {
     const s = f.shore - x, s10 = f.shore - xs[0];
     if (s10 <= rampEnd) return COAST_CONTOURS[0].depthM;
     const t = Math.min(1, Math.max(0, (s - rampEnd) / (s10 - rampEnd)));
-    return INNER_SHELF_M + (COAST_CONTOURS[0].depthM - INNER_SHELF_M) * t;
+    return f.inner + (COAST_CONTOURS[0].depthM - f.inner) * t;
   }
   for (let i = 1; i < n; i++) {
     if (x >= xs[i]) {
@@ -76,7 +103,7 @@ function shelfDepth(x: number, f: RowFrame, rampEnd: number): number {
 /** The coast's depth at x on this row before the features: the beach, the inner shelf, the traced shelf, the Womb's basin. */
 function openCoastDepth(x: number, f: RowFrame): number {
   const w = f.halo;
-  const plateau = INNER_SHELF_M + (REEF_SURROUND_DEPTH_M - INNER_SHELF_M) * w;
+  const plateau = f.inner + (REEF_SURROUND_DEPTH_M - f.inner) * w;
   const rampEnd = SHORE_RAMP_END_M + (140 - SHORE_RAMP_END_M) * f.beachHalo;
   const s = f.shore - x;
   const ramp = shoreRamp(s, plateau, rampEnd);
@@ -90,13 +117,13 @@ function openCoastDepth(x: number, f: RowFrame): number {
  * grid), and Lefthanders, the Bombie and Ellensbrook's bar laid over it. Bed heights (negative below mean sea level), as
  * the reef map's.
  */
-export function buildCoastMap(reef: Bathymetry, p: CoastParams): Bathymetry {
+export function buildCoastMap(reef: Bathymetry, p: CoastParams, deep: readonly InnerShelfDeep[] = INNER_SHELF_DEEP): Bathymetry {
   const g = COAST_GRID, n = g.nx * g.nz, half = g.cellM / 2;
   const bed = new Float32Array(n), sand = new Float32Array(n).fill(OPEN_COAST_MATERIAL[0]), weed = new Float32Array(n).fill(OPEN_COAST_MATERIAL[1]);
   const rg = reef.grid, per = Math.round(g.cellM / rg.cellM);
   for (let r = 0; r < g.nz; r++) {
     const z = g.z0 + r * g.cellM;
-    const f = rowFrame(z);
+    const f = rowFrame(z, deep);
     const r0 = Math.round((z - half - rg.z0) / rg.cellM);
     for (let c = 0; c < g.nx; c++) {
       const x = g.x0 + c * g.cellM, i = r * g.nx + c;
