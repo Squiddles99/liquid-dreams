@@ -74,7 +74,7 @@ export function solidBoilNode(fresh: N, foam: N): N {
 }
 /** The foam volume's bubble mottle (7b S3): ~BUBBLE_MOTTLE_M blobs, ±BUBBLE_MOTTLE_AMP of its brightness, so the solid
  * boil is not plaster. */
-export const BUBBLE_MOTTLE_M = 0.3, BUBBLE_MOTTLE_AMP = 0.15;
+export const BUBBLE_MOTTLE_M = 0.5, BUBBLE_MOTTLE_AMP = 0.3;
 /** The mottle's brightness factor at developed coordinates `uv` (m): 1 ± BUBBLE_MOTTLE_AMP, drifting slowly. */
 export function bubbleMottleNode(uv: N, time: N): N {
   return mx_noise_float(vec3(uv.div(BUBBLE_MOTTLE_M), time.mul(0.4))).mul(BUBBLE_MOTTLE_AMP).add(1.0);
