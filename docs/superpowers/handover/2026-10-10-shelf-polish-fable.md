@@ -138,3 +138,56 @@ record" in an hour, and neither is at the Womb's ridden line.
 4. The `onsetDebug` sink stays if it costs nothing in play (assert it is undefined on the game's request path); otherwise
    remove it after the probe.
 Proceed: apply 2–3, Task 2's gate, then Task 3 and its STOP (the stand frames).
+
+### Task 2 as ruled (Opus, 2026-10-10, third run) — 05a9cfc
+
+- crestTrace "one curl, one clock": stations within 220 m of the tip only; 6/8/12 ft green (178/211/262 broken steps, 0
+  violations); the inner-shelf plateau read and the hooked level-6 line named in the test's comment as carried.
+- reefField "until carries the hold": the game's field (peel 1, refraction floor). until = −tb on the bake (2654 held nodes
+  within 220 m, the curl's, max 3.47 s, none near the 6 s cap); the carry back along the ray on the smoothed field (as the
+  game reads it; smoothFieldAmplitude smooths tb and until on their own masks): 0 over the bars. Peel 1.7 kept as an
+  expectation (213 nodes at the cap). Bars unchanged. Probe-only note: the UNsmoothed peel-1 bake has 8 one-cell jumps
+  (0.03–0.43 s) at small-wave levels 7–9, 96–213 m out; the game never reads it.
+- onsetDebug kept: typed out of the game's request (fieldWorker.GameFieldRequest, `onsetDebug?: never`).
+- `_curlReport` (CURL_V=40) = the retune's exactly: Solid/Pumping/Big peel 11.3/11.7/11.9, hollow 0.56/0.81/1.00, 0 held.
+  `evidence/shelf-polish/task2-gate.txt`.
+
+**For Andrew (carried, a separate segment):** a plateau-aware level read. Where a ray's running maximum plateaued just
+under the next level, the read takes the crossing as "now": 6 ft, inner shelf inside the right, arc 182 (run 0.220 < Q6
+0.225) reads tb 0.58 s, its neighbour arc 183 (run 0.229) reads level 6's 2.53 s, a 2 s jump in 1 m of crest. Fixing it
+changes how the water's breaking time is read (CPU + GPU record layout).
+
+### STOP at Task 3 (Opus, 2026-10-10) — 46c60a8: for Fable's look
+
+**What it was.** The beige quads are not the Womb's own wave: at t+3/t+5 they sit on the PRECEDING set wave (Pumping 3.41 m,
+Huge 6.34 m, 15–17 s earlier) closing out along the inside leg north of the turn, breaking 217–402 m from the tip (its curl
+runs north at ~30 m/s), its wall standing to ~416 m. The trace stopped at its reach, TAPER_NEAR_M = 250 m.
+
+**What changed (the drawing only).** The crest walk carries on past the 250 m reach on the inside leg (north of the turn,
+`crestTrace.insideLeg`) to the line's own end; the section's hollow fades to 0 from 10 to 30 m past the turn (the closeout,
+whitewater by tb as before). TAPER_NEAR_M itself (the water's crest taper) is untouched; the sheet's lateral taper is 1.000
+at every inside crest point probed, so the ribbon and the sheet agree in size there.
+
+**The ribbon run's new end** (inside-leg run, tools/_ribbonRun.ts): Pumping t+3 248 → **380 m** (48 → 139 stations at 2 m),
+t+5 248 → **399 m**; Huge t+3 248 → **411 m**, t+5 none → **427 m** (263–427 m). Every other run unchanged.
+
+**Ride cost before → after** (`_rideCost --s=14 --spray`, HEAD vs new, same Node): 7 ft step median 17.9 → 17.7 ms, 12 ft
+16.1 → 16.4 ms; the ride is identical (same positions and sums at every step); trace 3.5 → 3.7 ms, spray tick 2.86 → 3.27 /
+3.16 → 3.53 ms (40–50 more stations). In game (`_rideProfile`, Blender again on and off): HEAD 78.9 ms, new 76.9 (dirty) /
+56.0; the 70.4 bar is unmeasurable today, no regression visible.
+
+**Frames to look at** (`../liquid-dreams-captures/shelf-polish-2026-10-10/task3/`):
+- `Pumping-tide0-stand-404.17.png`, `-406.17.png`, `Huge-tide0-stand-408.31.png`, `-410.31.png` (+ the `-dtl-` frames at the
+  same times); before/after strip against womb-retune's task6 frames: `stand-crops-before-after.png` (rows: before, after ×
+  Pumping t+3, t+5, Huge t+3, t+5). The quads are gone in all four; the ribbon draws the inside closeout.
+- Look item: at Huge the far closeout shows **stepped vertical segment edges** (`huge-closeout-zoom.png`), likely the far
+  stations' wide spacing (MAX_SPACING_M by camera distance). Ruling wanted: accept, or cap the spacing on the inside leg (cost).
+
+**Checks.** GPU self-test breaker 14/14; ribbon 6/7, the red "the footprint covers the stations' inner strip" is identical on
+HEAD's crestTrace (5 stations at (58, −12), (−28, 19), not on the inside leg): carried. vitest crestTrace / BreakingRibbon /
+sprayEmitters / wombSection: 15 red, all in the baseline or the merge's carried list, 0 new.
+`evidence/shelf-polish/task3-ribbon-run.txt`.
+
+Observation, not changed: the right's inner shelf (z +200…+280) and the offshore set wave on the right also run to the
+250 m reach (at unlimited reach they continue to 308 m and 265 m). No quads were reported there; the same rule could
+extend to them if the frames show one.
