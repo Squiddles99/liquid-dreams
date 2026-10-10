@@ -44,6 +44,8 @@ export interface WaterSurfaceInputs {
   seabed?: { radiance: N; transmittance: N };
   /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
   overlay?: { depth: N; tau: N; depthOn: N; crestOn: N; foamMap?: N; foamOn?: N; sunOn?: N };
+  /** The foam volume's brightness factor (pileChurn.bubbleMottleNode; 7b S3); absent 1. */
+  foamMottle?: N;
   /** The shaded point (world m): with it the colour is fogged through the whitewater's mist slab (sky.mist; §6.1). */
   worldPos?: N;
 }
@@ -183,7 +185,8 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // phase (it glows backlit), the sky's blue in its shadows and the water's colour bounced into it; thinning foam blends
   // back to the lace above. The churn's lumps shade it through the normal (their slope is in the ribbon's setSlope).
   const foamVolume = i.breakFoam ? smoothstep(0.6, 0.9, i.breakFoam) : null;
-  const foamSeen = foamVolume ? mix(foamLace, mistLightNode({ cosView: dot(v.negate(), l), nDotL, sunVisibility: sv, isotropic: 0.6, groundColour: column }, sky), foamVolume) : foamLace;
+  const volumeLight = mistLightNode({ cosView: dot(v.negate(), l), nDotL, sunVisibility: sv, isotropic: 0.6, groundColour: column }, sky);
+  const foamSeen = foamVolume ? mix(foamLace, i.foamMottle ? volumeLight.mul(i.foamMottle) : volumeLight, foamVolume) : foamLace;
   const colour = mix(water, foamSeen, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and

@@ -1,4 +1,4 @@
-import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, freshFoamWeightNode } from '../whitewater/pileChurn';
+import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, bubbleMottleNode, freshFoamWeightNode, solidBoilNode } from '../whitewater/pileChurn';
 import { curlFoamNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
 import * as THREE from 'three/webgpu';
 import {
@@ -619,7 +619,9 @@ export class BreakingRibbon {
     const lip = lipness;
     // The curl's foam is signed (lipProfile.ProfilePoint.curlFoam): its own foam by max, and the clean tube (< 0) hiding the
     // sheet's foam by that share; both fade with ρ, so by the hand-back the foam is the sheet's.
-    const curlOwn = saturate(curlFoam).mul(rho), clean = saturate(curlFoam.negate()).mul(rho);
+    // The solid boil (7b S3): no clean tube once the boil is fresh (it has caved in), and the lace's holes filled below.
+    const solid = solidBoilNode(vBoil, max(vSetFoam, saturate(curlFoam).mul(rho))).toVar();
+    const curlOwn = saturate(curlFoam).mul(rho), clean = saturate(curlFoam.negate()).mul(rho).mul(float(1.0).sub(solid));
     // Read at the developed coordinate (as the chop is): at the home the whole thrown lip maps onto a strip of the sheet a
     // few metres wide, and the pattern smeared into bands down the lip. At the edges the two are the same point.
     // The tip's fringe (F2): a solid thin band with its own fine (~0.25 m) breakup, not the sheet's 2–3 m lace.
@@ -628,11 +630,13 @@ export class BreakingRibbon {
     const foamLook = setFoamPattern(freshFoamWeightNode(max(vSetFoam.mul(float(1.0).sub(clean)), curlOwn), vBoil), waterFoamFrame(vDetail, foamMap?.patternAxisNode ? foamMap.patternAxisNode(model.sets.meanTravel) : model.sets.meanTravel), model.sim.time);
     // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
     // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
+    const foamCover = mix(foamLook.x, float(SET_FOAM_MAX_COVER), solid);
     const sunVis = shading.sunlight ? shading.sunlight.visibilityNode(positionWorld.xz) : undefined;
     const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
-      { normal, viewDir, distance, foam: max(max(fft.foam, foamLook.x), fringe), foamShade: mix(foamLook.y, float(1.0), saturate(vFringe)), breakFoam: max(foamLook.x, fringe), lip, lipThickness: thickness, underside,
+      { normal, viewDir, distance, foam: max(max(fft.foam, foamCover), fringe), foamShade: mix(foamLook.y, float(1.0), saturate(vFringe)), breakFoam: max(foamCover, fringe), lip, lipThickness: thickness, underside,
+        foamMottle: bubbleMottleNode(vDetail, model.sim.time),
         tube: { sunLip: vLight.x, sunBody: vLight.w, skyOpen: vLight.y, lipThickness: vLight.z },
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld,
