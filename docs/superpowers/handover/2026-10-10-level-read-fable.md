@@ -181,3 +181,30 @@ ribbon-region pixel difference stated, the breaker suite rerun idle for the `pee
 Do not merge: Andrew decides, with the ≤ 0.3 m / 0.06 s ridden-line move flagged to him.
 
 Proceed: the revert commit, the re-pin, Task 5, push.
+
+## Task 5 on C alone (Opus, 2026-10-10): done; for your review, then Andrew
+
+Rulings applied: ae321a7's source reverted (8da193c; `src` byte-identical to e4de42a, so the record is identical), the
+`smallSwell` row re-pinned 10.5 → 10.6 m/s with a note in `matrix-225.txt` (measured 10.58, `tools/_smallSwellRow.ts`), and
+the crestTrace one-curl comment names the inner shelf as an excluded closeout with C's remainder (ff38d44). Evidence is in
+`evidence/level-read/` (fc5982e and the last commit). Every C number below reproduces the probe C run exactly.
+
+- **Ride vs Task 0** (`ride-diff-named.txt`, every differing 0.5 s sample named): 7 ft from +1.0 s, position 0.10 → **0.32 m**
+  at +5.5 s, until +0.01 → +0.06 s, phase −0.01/−0.02, ±1 section curve read at some steps; 12 ft until +0.01 s at two
+  samples, positions unchanged. **The 0.32 m is a hair over your 0.3 m bound** (positions print to 0.1 m: 0.3 ± 0.07), and
+  the drift is still growing when the 6.5 s ride sample ends. Rule on it, or ask for a longer `--s` run.
+- **Curl report** (`curl-diff-named.txt`): peel within 0.1 m/s everywhere (Solid/20 12.7 → 12.6, Pumping/20 second
+  19.5 → 19.6, Solid/12 10.7 → 10.8); first break Solid/20 2.1 → 2.2 s and Solid/12 4.7 → 4.8 s.
+- **Pumping frame** (`frame-pumping.md`): deterministic (two after-captures 0 px apart). 1.79 % of pixels differ: the
+  spray plume over the peak (4,839 px > 16 levels; spray births read the changed onset times) and thin lines along the lip
+  and shoulder (1,751 px > 16, mean 4.2). Not identical in the ribbon region; the shape reads the same
+  (`../liquid-dreams-captures/level-read-2026-10-10/compare-band.png`).
+- **Breaker suite** (`breaker-names-after.txt`): 32 red / 421, **0 new** vs shelf-polish's list, 38 of its reds green;
+  NOT idle (Andrew had it run alongside ld-whitewater's profile).
+- GPU self-test 14/14 (Task 3, e4de42a; the code under test is unchanged since).
+
+**For Andrew at merge:** this departs from his "ridden line unchanged". The 7 ft ride moves up to 0.32 m / 0.06 s by
++5.5 s, the 7 ft station clocks move 0.01–0.06 s, the spray plume over the peak changes shape, and two bands' first breaks
+move 0.1 s. In return the inner shelf's 2 s seam halves (6 ft worst step 1.95 → 1.02 s). Follow-up candidate, not
+started: a crest-ordered curl pass (per level, each τ contour from its earliest break) for the inner shelf's remaining
+closeout steps, with its own ride/curl gate.
