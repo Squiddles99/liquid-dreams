@@ -40,8 +40,11 @@ const input = (t: number, over: Partial<EmitterInput> = {}): EmitterInput => ({
   field, ctx, events: wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS), t, params: DEFAULT_BREAK_PARAMS,
   minHeightM: MIN_H, wind: OFFSHORE, tideM: 0, amount: 1, ...over,
 });
-/** A time in the barrel: the biggest wave of set 1, 0.6 s after it reaches the peak (its lip is throwing). */
-const T_THROW = BIGGEST.arrivalS + 0.6;
+/** A time in the barrel: the biggest wave of set 1, 3 s after it reaches the tip, its lip throwing on the left's first
+ * 20 m (8 emitters). Was +0.6 s, the old peak's throw; on the real shelf (shelf-polish Task 4 (c)) the right closes out north
+ * to the tip before the arrival and the left throws from +2 s: at +0.6 s the line is between the two (2 emitters;
+ * tools/_sprayThrow.ts). */
+const T_THROW = BIGGEST.arrivalS + 3.0;
 
 describe('the offshore wind factor', () => {
   it('bearings: wind from the north blows toward +z (south); from the east, toward −x (west)', () => {
