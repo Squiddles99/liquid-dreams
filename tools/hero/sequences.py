@@ -163,3 +163,100 @@ TRC = {
     "trc8": _trim(0.52, 0.0, 0.05, *_LOW_OUT),
 }
 POSES.update(TRC)
+
+# duckdive-to-paddle (Andrew's sheet, 8 frames, side-on, fixed camera; session 3): 1 paddling; 2 hands to the rails
+# beside the chest, chest up; 3 arms straight, pushing the nose under (board ~25 deg nose-down), body straight above the
+# deck, toes on the tail; 4 the right knee onto the tail, the left leg up behind; 5 the board resurfacing nose-up, she's
+# on hands and knees, feet up behind; 6 lower, knees still on the deck; 7 chest up on her arms, legs kicking;
+# 8 paddling. Authored on a level board (world: board along y, nose at -y, her left +x), then rider and board pitched
+# together (`pitch`, negative = nose down). dd1 and dd8 are the paddle cycle's first pose, so the clip joins it.
+_DD_HANDS = {"nose": ["hand_l", "hand_r"], "prone": True, "levelRange": (-30, 30)}
+DD = {
+    "dd1": dict(POSES["pdl1"]),
+    "dd2": {"turn": 0, "bones": {}, "pitch": -5, "noseGap": 0.4, "world": {
+        "pelvis": _n(0, -1, 0.04), "spine_01": _n(0, -1, 0.1), "spine_02": _n(0, -0.95, 0.2), "spine_03": _n(0, -0.92, 0.28),
+        "neck": _n(0, -0.75, 0.6), "head": _n(0, -0.35, 0.94),
+        "upperarm_l": _n(0.5, 0.4, -0.3), "forearm_l": _n(0.08, -0.6, -0.7), "hand_l": _n(0.05, -1, -0.15),
+        "upperarm_r": _n(-0.5, 0.4, -0.3), "forearm_r": _n(-0.08, -0.6, -0.7), "hand_r": _n(-0.05, -1, -0.15), **_PRONE_LEGS},
+        "floor": ["hand_l", "hand_r", "pelvis", "thigh_l", "thigh_r"], "level": (["hand_l", "hand_r"], ["thigh_l", "thigh_r"]),
+        "tail": ["thigh_l", "thigh_r"], **_DD_HANDS},
+    "dd3": {"turn": 0, "bones": {}, "pitch": -25, "noseGap": 0.3, "world": {
+        "pelvis": _n(0, -1, 0.02), "spine_01": _n(0, -1, 0.05), "spine_02": _n(0, -1, 0.08), "spine_03": _n(0, -1, 0.1),
+        "neck": _n(0, -1, 0.15), "head": _n(0, -0.95, 0.3),
+        "upperarm_l": _n(0.1, -0.05, -1), "forearm_l": _n(0.08, -0.08, -1), "hand_l": _n(0.05, -1, -0.2),
+        "upperarm_r": _n(-0.1, -0.05, -1), "forearm_r": _n(-0.08, -0.08, -1), "hand_r": _n(-0.05, -1, -0.2),
+        "thigh_l": _n(0.05, 1, -0.55), "shin_l": _n(0.03, 1, -0.6), "foot_l": _n(0, 0.6, -0.8),
+        "thigh_r": _n(-0.05, 1, -0.55), "shin_r": _n(-0.03, 1, -0.6), "foot_r": _n(0, 0.6, -0.8)},
+        "floor": ["hand_l", "hand_r", "foot_l", "foot_r"], "level": (["hand_l", "hand_r"], ["foot_l", "foot_r"]),
+        "tail": ["foot_l", "foot_r"], **_DD_HANDS},
+    "dd4": {"turn": 0, "bones": {}, "pitch": -25, "noseGap": 0.3, "world": {
+        "pelvis": _n(0, -1, 0.0), "spine_01": _n(0, -1, 0.03), "spine_02": _n(0, -1, 0.06), "spine_03": _n(0, -1, 0.08),
+        "neck": _n(0, -1, 0.15), "head": _n(0, -0.95, 0.3),
+        "upperarm_l": _n(0.1, -0.05, -1), "forearm_l": _n(0.08, -0.08, -1), "hand_l": _n(0.05, -1, -0.2),
+        "upperarm_r": _n(-0.1, -0.05, -1), "forearm_r": _n(-0.08, -0.08, -1), "hand_r": _n(-0.05, -1, -0.2),
+        "thigh_r": _n(-0.1, 0.1, -1), "shin_r": _n(-0.05, 1, -0.08), "foot_r": _n(0, 1, 0.1),
+        "thigh_l": _n(0.06, 1, -0.12), "shin_l": _n(0.04, 1, -0.08), "foot_l": _n(0, 1, 0.0)},
+        "floor": ["hand_l", "hand_r", "shin_r"], "level": (["hand_l", "hand_r"], ["shin_r"]), "tail": ["shin_r"], **_DD_HANDS},
+    "dd5": {"turn": 0, "bones": {}, "pitch": 10, "noseGap": 0.35, "world": {
+        "pelvis": _n(0, -1, -0.15), "spine_01": _n(0, -1, -0.1), "spine_02": _n(0, -1, -0.05), "spine_03": _n(0, -1, 0.0),
+        "neck": _n(0, -0.8, 0.5), "head": _n(0, -0.4, 0.9),
+        "upperarm_l": _n(0.15, -0.4, -1), "forearm_l": _n(0.1, -0.5, -1), "hand_l": _n(0.05, -1, -0.15),
+        "upperarm_r": _n(-0.15, -0.4, -1), "forearm_r": _n(-0.1, -0.5, -1), "hand_r": _n(-0.05, -1, -0.15),
+        "thigh_l": _n(0.06, 0.15, -1), "shin_l": _n(0.04, 0.75, 0.6), "foot_l": _n(0, 0.8, 0.5),
+        "thigh_r": _n(-0.06, 0.15, -1), "shin_r": _n(-0.04, 0.75, 0.6), "foot_r": _n(0, 0.8, 0.5)},
+        "floor": ["hand_l", "hand_r", "shin_l", "shin_r"], "level": (["hand_l", "hand_r"], ["shin_l", "shin_r"]),
+        "tail": ["shin_l", "shin_r"], **_DD_HANDS},
+    "dd6": {"turn": 0, "bones": {}, "pitch": 7, "noseGap": 0.35, "world": {
+        "pelvis": _n(0, -1, 0.0), "spine_01": _n(0, -1, 0.05), "spine_02": _n(0, -0.97, 0.15), "spine_03": _n(0, -0.95, 0.2),
+        "neck": _n(0, -0.75, 0.65), "head": _n(0, -0.35, 0.94),
+        "upperarm_l": _n(0.3, 0.1, -1), "forearm_l": _n(0.08, -0.5, -0.9), "hand_l": _n(0.05, -1, -0.15),
+        "upperarm_r": _n(-0.3, 0.1, -1), "forearm_r": _n(-0.08, -0.5, -0.9), "hand_r": _n(-0.05, -1, -0.15),
+        "thigh_l": _n(0.06, 0.85, -0.5), "shin_l": _n(0.04, 0.7, 0.7), "foot_l": _n(0, 0.8, 0.5),
+        "thigh_r": _n(-0.06, 0.85, -0.5), "shin_r": _n(-0.04, 0.7, 0.7), "foot_r": _n(0, 0.8, 0.5)},
+        "floor": ["hand_l", "hand_r", "shin_l", "shin_r"], "level": (["hand_l", "hand_r"], ["shin_l", "shin_r"]),
+        "tail": ["shin_l", "shin_r"], **_DD_HANDS},
+    "dd7": {"turn": 0, "bones": {}, "pitch": 3, "noseGap": 0.4, "world": {
+        "pelvis": _n(0, -1, 0.06), "spine_01": _n(0, -1, 0.15), "spine_02": _n(0, -0.93, 0.35), "spine_03": _n(0, -0.88, 0.45),
+        "neck": _n(0, -0.7, 0.7), "head": _n(0, -0.3, 0.95),
+        "upperarm_l": _n(0.12, -0.75, -1), "forearm_l": _n(0.06, -0.8, -1), "hand_l": _n(0.05, -1, -0.12),
+        "upperarm_r": _n(-0.12, -0.75, -1), "forearm_r": _n(-0.06, -0.8, -1), "hand_r": _n(-0.05, -1, -0.12),
+        "thigh_l": _n(0.06, 1, 0.15), "shin_l": _n(0.04, 0.7, 0.7), "foot_l": _n(0, 0.9, 0.4),
+        "thigh_r": _n(-0.06, 1, 0.0), "shin_r": _n(-0.04, 1, -0.05), "foot_r": _n(0, 0.6, -0.8)},
+        "floor": ["hand_l", "hand_r", "pelvis", "thigh_r"], "level": (["hand_l", "hand_r"], ["pelvis", "thigh_r"]),
+        "tail": ["thigh_l", "thigh_r"], **_DD_HANDS},
+    "dd8": dict(POSES["pdl1"]),
+}
+POSES.update(DD)
+
+# roundhouse cutback (Andrew's sheets part 1 + 2, 12 frames, fixed high 3/4-front camera, and his legend's board track,
+# session 3): 1-5 the right loop (ride right, carve up the face onto her heels, turn back left), 6-10 across to the
+# breaking side and the rebound round the left loop onto her toes, 11-12 back into a rightward trim. Each key is a trim
+# stance (`_trim`, regular: nose +x at spin 0) with the board's heading (`spin`, degrees CCW from the right), the rail
+# lean (`roll`, + onto her toes, - onto her heels) and her place on the track (`offset`, metres: his legend at 2 m per
+# 100 px, +y away from the camera), read off the legend's path (positions and tangents at his frame markers).
+_RH_TRACK = [  # (x, y, heading, roll)
+    (0.0, 0.0, -25, 0), (2.6, -0.78, -7, 0), (5.42, -0.21, 38, -25), (6.29, 1.79, 100, -35), (3.6, 3.6, 180, -30),
+    (-0.8, 0.9, 221, -10), (-3.36, -0.77, 200, 20), (-6.64, -0.12, 115, 35), (-6.03, 2.33, 44, 25), (-4.04, 2.9, -14, 10),
+    (-1.6, 1.75, -27, 5), (1.26, 1.38, 0, 0)]
+_UP_FWD = (_n(0.85, -0.45, 0.25), _n(0.9, -0.35, 0.35), _n(-0.6, -0.15, -0.8), _n(-0.5, -0.3, -0.8))  # front arm up the line
+_HEELS = {"spine_02": 15, "spine_03": 25, "neck": 30, "head": 70}  # the head leads the turn back over her front shoulder
+_TOES = {"spine_02": 0, "spine_03": 5, "neck": 10, "head": 25}
+_RH_BODY = [
+    (_trim(1.1, 0.0, 0.15, *_WIDE), None),
+    (_trim(1.2, 0.05, 0.25, *_WIDE), None),
+    (_trim(1.0, 0.1, 0.05, *_UP_FWD), _HEELS),
+    (_trim(1.3, 0.0, 0.25, *_WIDE), _HEELS),
+    (_trim(1.2, -0.05, 0.3, *_WIDE), _HEELS),
+    (_trim(1.1, 0.0, 0.25, *_arms(_WIDE, _FWD_OUT, 0.5)), None),
+    (_trim(1.2, -0.1, 0.35, *_WIDE), _TOES),
+    (_trim(1.35, -0.15, 0.4, *_FWD_OUT), _TOES),
+    (_trim(1.05, 0.05, 0.2, *_WIDE), _TOES),
+    (_trim(1.1, 0.05, 0.15, *_arms(_WIDE, _POINT, 0.4)), None),
+    (_trim(0.9, 0.0, 0.1, *_WIDE), None),
+    (dict(POSES["trc1"]), None),
+]
+RH = {}
+for k, ((x, y, heading, roll), (spec, twist)) in enumerate(zip(_RH_TRACK, _RH_BODY)):
+    RH[f"rh{k + 1}"] = {**spec, "spin": heading, "roll": roll, "offset": (x, y, 0.0),
+                        **({"twist": twist} if twist else {})}
+POSES.update(RH)

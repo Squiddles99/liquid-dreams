@@ -254,6 +254,26 @@ def _posed_points(body):
 
 
 def pose(rig, name, body, surf):
+    """_planted, then the pose's rail lean and travel (session 3, the roundhouse): `roll` tips rider and board together
+    about the board's long axis through its origin (degrees, positive onto her toes, negative onto her heels), after the
+    feet are planted (so the plant solves on a level deck); `offset` moves both in the world (metres), so a sequence's
+    keys follow a track instead of posing in place."""
+    spec = POSES[name]
+    out = _planted(rig, name, body, surf)
+    roll, off = spec.get("roll", 0.0), spec.get("offset")
+    if roll or off:
+        front = rig.matrix_world.to_3x3() @ Vector((0, -1, 0))
+        front.z = 0
+        axis = Vector((0, 0, 1)).cross(front.normalized())  # a positive turn tips the deck's up toward her front
+        piv = surf.matrix_world.translation.copy()
+        T = Matrix.Translation(Vector(off or (0, 0, 0))) @ Matrix.Translation(piv) @ Matrix.Rotation(math.radians(roll), 4, axis) @ Matrix.Translation(-piv)
+        rig.matrix_world = T @ rig.matrix_world
+        surf.matrix_world = T @ surf.matrix_world
+        bpy.context.view_layer.update()
+    return out
+
+
+def _planted(rig, name, body, surf):
     """_pose, then (a pose with `plant`) the named feet brought down flat onto the deck by a two-bone solve of their leg
     (Andrew, trim review: the front foot hovered), the knee keeping the side it bends to; posed again with the solved aims.
     Standing poses only (no turn or spin: the rig's frame is her standing frame)."""

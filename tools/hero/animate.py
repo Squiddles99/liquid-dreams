@@ -38,6 +38,14 @@ CLIPS = {
     # sitToProne: leans forward onto her hands, down onto the board, chest up on straight arms, lower, into the first
     # paddle stroke.
     "sitToProne": (["stp4", "stp4b", "stp5", "stp6", "pdl1s"], [12, 14, 12, 10, 1], False, _STP_CAM),
+    # Duck dive (Andrew's sheet, session 3): from the paddle, hands to the rails, push the nose under, knee on the tail,
+    # resurface on hands and knees as the board pops nose-up, down flat kicking, back into the paddle cycle (~2.8 s).
+    "duckDive": (["pdl1", "dd2", "dd3", "dd4", "dd5", "dd6", "dd7", "pdl1"], [8, 10, 10, 14, 8, 10, 8, 1], False,
+                 ((0.0, -1.3, 0.5), 90, 7.5, 85, 4)),
+    # Roundhouse cutback (Andrew's sheets + legend, session 3): the figure-8 track at ~7 m/s (~4.9 s), from his high
+    # 3/4-front view; the preview camera follows her.
+    "roundhouse": ([f"rh{k}" for k in range(1, 13)], [9, 10, 8, 12, 18, 11, 12, 9, 7, 9, 10, 1], False,
+                   ((0.0, 0.0, 0.6), 0, 9.0, 60, 35)),
     # The four played back to back (preview only): idle once, turn, down, two paddle cycles.
     "sitToPaddleChain": (["stp1", "stp1", "stp2", "stp2", "stp3", "stp4", "stp4b", "stp5", "stp6"] + [f"{k}s" for k in _PDL * 2] + ["pdl1s"],
                          [40, 20, 36, 40, 44, 14, 14, 12, 10] + [5] * 16 + [1], False, _STP_CAM),
@@ -65,7 +73,17 @@ def _ease(t, v0=0.0, v1=0.0):
 
 # Keys (by index in a clip) her root passes through without slowing: the half turn is one continuous move (Andrew,
 # 2026-10-10: "make the part where her and the board turn 180 degrees much smoother").
-THROUGH = {"sitTurn": {1}, "sitToPaddleChain": {4}}
+THROUGH = {"sitTurn": {1}, "sitToPaddleChain": {4}, "duckDive": {2, 4, 5}, "roundhouse": set(range(12))}
+# Clips whose board glides forward at a steady speed (m/s along its nose) instead of sitting wherever each key's
+# contacts seat it (session 3: between the paddle pose and the duck-dive keys the board slid back a metre).
+GLIDE = {"duckDive": 0.6}
+# Clips that travel along a track (their keys' `offset`): her pelvis follows a Catmull-Rom curve through the keys
+# instead of straight lines, and the preview camera follows her (same angle and distance throughout).
+TRACK = {"roundhouse"}
+
+
+def _catmull(p0, p1, p2, p3, t):
+    return 0.5 * ((2 * p1) + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (3 * p1 - p0 - 3 * p2 + p3) * t ** 3)
 
 
 def build(rig, body, surf, name):
@@ -86,6 +104,19 @@ def build(rig, body, surf, name):
         # pose() sets the board's heading as Euler angles: the object channels go quaternion only after posing.
         rig.rotation_mode = surf.rotation_mode = "XYZ"
         rigging.pose(rig, k, body, surf)
+        if name in GLIDE:
+            fwd = surf.matrix_world.col[0].xyz
+            fwd.z = 0
+            loc = surf.matrix_world.translation.copy()
+            if i == 0:
+                start = loc.copy()
+                fwd0 = fwd.normalized()
+            shift = start + fwd0 * GLIDE[name] * (frame - 1) / 24 - loc
+            shift.z = 0
+            T = Matrix.Translation(shift)
+            rig.matrix_world = T @ rig.matrix_world
+            surf.matrix_world = T @ surf.matrix_world
+            bpy.context.view_layer.update()
         _key_bones(rig, frame, prev)
         R, B = rig.matrix_world.copy(), surf.matrix_world.copy()
         q, h = R.to_quaternion(), rig.pose.bones["pelvis"].head.copy()
@@ -111,6 +142,10 @@ def build(rig, body, surf, name):
             t = _ease((f - f0) / span, v0, v1)
             q = qa.slerp(qb, t)
             p = pa.lerp(pb_, t)
+            if name in TRACK:
+                p0 = poses[n - 1][2] if n > 0 else pa
+                p3 = poses[n + 2][2] if n + 2 < len(poses) else pb_
+                p = _catmull(p0, pa, pb_, p3, t)
             rig.rotation_quaternion = q
             rig.location = p - q @ ha.lerp(hb, t)
             B = Matrix.Translation(p) @ q.to_matrix().to_4x4() @ Matrix.Translation(ta.lerp(tb, t)) @ ra.slerp(rb, t).to_matrix().to_4x4()
@@ -153,6 +188,7 @@ def preview(cam, name, out_dir, w=960, h=720):
     target, yaw, dist, lens, pitch = CLIPS[name][3]
     import math
     from mathutils import Vector
+    cam.animation_data_clear()
     t = Vector(target)
     yr, pr = math.radians(yaw), math.radians(pitch)
     cam.location = t + Vector((dist * math.sin(yr) * math.cos(pr), -dist * math.cos(yr) * math.cos(pr), dist * math.sin(pr)))
@@ -163,10 +199,20 @@ def preview(cam, name, out_dir, w=960, h=720):
     scene.render.engine = "BLENDER_EEVEE"
     scene.render.resolution_x, scene.render.resolution_y = w, h
     scene.render.fps = 24
+    if name in TRACK:
+        # Follow her: the same offset from her pelvis every frame (its height held, so the bob doesn't shake the view).
+        rig = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+        off = cam.location - t
+        for f in range(scene.frame_start, scene.frame_end + 1):
+            scene.frame_set(f)
+            pv = rig.matrix_world @ rig.pose.bones["pelvis"].head
+            cam.location = Vector((pv.x, pv.y, t.z)) + off
+            cam.keyframe_insert("location", frame=f)
     d = os.path.join(out_dir, "clips", name)
     os.makedirs(d, exist_ok=True)
     scene.render.filepath = os.path.join(d, "")
     scene.render.image_settings.file_format = "PNG"
     bpy.ops.render.render(animation=True)
+    cam.animation_data_clear()
     scene.render.engine = engine
     return d
