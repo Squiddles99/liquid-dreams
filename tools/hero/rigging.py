@@ -214,6 +214,8 @@ POSES["trim"] = {"turn": 0, "lift": None, "bones": {
     "upperarm_r": _n(-0.35, -0.3, -1), "forearm_r": _n(-0.25, -0.6, -0.8),
     "thigh_l": _n(0.4, -0.4, -0.85), "shin_l": _n(0.1, 0.3, -0.95), "foot_l": _n(0.35, -1, -0.05),
     "thigh_r": _n(-0.35, -0.45, -0.85), "shin_r": _n(-0.05, 0.35, -0.95), "foot_r": _n(-0.25, -1, -0.05)},
+    # Andrew: feet planted firmly on the board: each sole kept level (its rest orientation), turned on the deck.
+    "flat": {"foot_l": 20.0, "foot_r": -15.0},
     "floor": ["foot_l", "foot_r"], "nose": ["foot_l"], "tail": ["foot_r"]}
 ORDER = ["root", "pelvis", "spine_01", "spine_02", "spine_03", "neck", "head", "clavicle_l", "upperarm_l", "forearm_l", "hand_l",
          "clavicle_r", "upperarm_r", "forearm_r", "hand_r", "thigh_l", "shin_l", "foot_l", "toe_l", "thigh_r", "shin_r", "foot_r", "toe_r"]
@@ -272,6 +274,12 @@ def pose(rig, name, body, surf):
         h = pb.head.copy()
         pb.matrix = Matrix.Translation(h) @ R @ Matrix.Translation(-h) @ pb.matrix
     bpy.context.view_layer.update()
+    for bname, yaw_deg in spec.get("flat", {}).items():
+        # The foot's rest orientation (sole level), turned about the vertical, at the posed ankle.
+        pb = rig.pose.bones[bname]
+        rest_rot = rig.data.bones[bname].matrix_local.to_3x3()
+        pb.matrix = Matrix.Translation(pb.head.copy()) @ (Matrix.Rotation(math.radians(yaw_deg), 3, "Z") @ rest_rot).to_4x4()
+        bpy.context.view_layer.update()
     bpy.ops.object.mode_set(mode="OBJECT")
     if "level" in spec:
         # Bisect the turn so both contact groups' lowest skin sits at the same height.
