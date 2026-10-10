@@ -1,7 +1,7 @@
 import type { Bathymetry } from '../seabed/bathymetry';
 import { smoothstep } from '../math/smoothstep';
 import { type GridSpec, TIP } from '../seabed/wombReef';
-import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_SIZE_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, UNTIL_NEVER, breakingDepth, onsetLevelHeight } from './breaking';
+import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_SIZE_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, UNTIL_NEVER, breakingDepth, onsetLevelHeight } from './breaking';
 import { type FarField, computeFarField, farSample } from './coastFarField';
 import { solveWaveField } from './waveField';
 import { type CoastField, coastDrawn, coastSeed, computeCoastField, mixSamples } from './coastField';
@@ -325,14 +325,20 @@ export const REFRACT_FLOOR_M = 10;
  */
 export const ONSET_SMOOTHING_M = 8;
 
+/** How far above a level (in level steps of log q) a node's onset time fades from its own to the smoothed one
+ * (smoothOnsetTimes; level-read Task 1 measured 1 level: the 6 ft seam's worst step 1.95 → 1.02 s, ½ level 1.31 s). */
+export const ONSET_EDGE_LEVELS = 1;
+
 /** Each level's time since onset smoothed along the crest over sigmaM (as smoothAlongCrest), among the nodes where that
- * level broke (the record's running maximum at least its q); a node keeps its own where it hasn't broken. */
+ * level broke (the record's running maximum at least its q), faded back to the node's own at the band's edge
+ * (ONSET_EDGE_LEVELS); a node keeps its own where it hasn't broken. */
 export function smoothOnsetTimes(field: ReefField, sigmaM = ONSET_SMOOTHING_M): void {
   const { grid, onset, dirX, dirZ } = field;
   const { nx, nz, cellM } = grid, n = nx * nz, R = ONSET_RECORD_LENGTH;
   const sigma = sigmaM / cellM, step = Math.max(1, sigma / 3), J = Math.ceil((3 * sigma) / step);
   const w = Array.from({ length: 2 * J + 1 }, (_, j) => Math.exp(-(((j - J) * step) ** 2) / (2 * sigma * sigma)));
   const masked = new Float32Array(n), mask = new Float32Array(n), out = new Float32Array(n);
+  const edgeLog = ONSET_EDGE_LEVELS * Math.log(ONSET_LEVEL_RATIO);
   for (let k = 0; k < ONSET_LEVELS; k++) {
     const q = ONSET_LEVEL_Q[k], slot = 1 + 2 * k;
     for (let i = 0; i < n; i++) {
@@ -347,6 +353,15 @@ export function smoothOnsetTimes(field: ReefField, sigmaM = ONSET_SMOOTHING_M): 
       let sum = 0, ws = 0;
       for (let j = -J; j <= J; j++) { const fx = col + j * step * tx, fz = row + j * step * tz; sum += w[j + J] * atT(fx, fz); ws += w[j + J] * atM(fx, fz); }
       out[i] = ws > 1e-6 ? sum / ws : onset[i * R + slot];
+    }
+    // At the band's edge the node keeps its own time: faded from the smoothed time back to its own over the first
+    // ONSET_EDGE_LEVELS of log q above q. Just outside the band a wave between this level and the next reads the ray's own
+    // unsmoothed "now" (breaking.onsetLevel's toRun), and an edge node holding the band's average beside it stepped 2 s
+    // across 1 m of crest (level-read Task 1: 6 ft, inner shelf inside the right, the level-6 band's edge).
+    for (let i = 0; i < n; i++) {
+      if (!mask[i]) continue;
+      const u = Math.min(1, Math.max(0, Math.log(onset[i * R] / q) / edgeLog)), e = u * u * (3 - 2 * u);
+      out[i] = onset[i * R + slot] + e * (out[i] - onset[i * R + slot]);
     }
     for (let i = 0; i < n; i++) onset[i * R + slot] = out[i];
   }
