@@ -20,7 +20,7 @@ export class ReefFieldClient {
   }
 
   /** `coastParams`: the worker builds the coast map from them and seeds the field from the coast (lineup truth spec §3c). */
-  request(req: GameFieldRequest & { coastParams?: CoastParams }): void {
+  request(req: GameFieldRequest & { coastParams: CoastParams }): void {
     this.worker.postMessage({ id: this.latest.next(), ...req });
   }
 

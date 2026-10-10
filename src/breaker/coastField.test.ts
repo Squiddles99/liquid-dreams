@@ -180,7 +180,7 @@ describe('the swell dial is the offshore swell at the coast seed (womb-retune sp
       expect(Math.abs(c.far.p)).toBeLessThan(Math.abs(old.p));
     }, 120_000);
   }
-  it('with no coast the reference is the far field\'s 15 m (plus tide), as ?coast=off has it', () => {
+  it('with no coast the reference is the far field\'s 15 m (plus tide), the flat-bed seed the tests keep', () => {
     for (const tideM of [-0.5, 0, 0.5]) expect(computeFarField(15, 225, tideM).refDepthM).toBeCloseTo(depthBg(-400) + tideM, 6);
   });
 });
