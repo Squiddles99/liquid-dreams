@@ -1,0 +1,95 @@
+# new reds (after, not before): reason from the run
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits > the ribbon's and the footprint's shader stages bind at most 8 storage buffers
+    Error: Test timed out in 5000ms.
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits > the sheet's materials > aboveMaterial: the foam map adds exactly one sampled texture to the fragment stage
+    Error: Test timed out in 5000ms.
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits > the sheet's materials > belowMaterial: the foam map adds exactly one sampled texture to the fragment stage
+    Error: Test timed out in 5000ms.
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits > the sheet's materials > the ribbon with the foam map stays within the limits and samples the map in its vertex stage
+    Error: Test timed out in 5000ms.
+src/breaker/BreakingRibbon.limits.test.ts > BreakingRibbon stays within WebGPU baseline limits > the sheet's materials > the sunlight map adds exactly one sampled texture to the sheet above (the skyline none), and keeps every stage within the limits
+    Error: Test timed out in 5000ms.
+src/breaker/breaking.test.ts > the sheet shape (sampled cross-sections) > foam waits for the lip to land, then whitens the collapsed crest and the bore behind it, never the face ahead while the tube is open
+    Error: Test timed out in 5000ms.
+src/breaker/breakingField.test.ts > the breaking sheet on the real reef > a broken section never un-breaks: at the crest the collapse only grows, however the reef deepens after the ledge
+    AssertionError: (-130, 0) + 24.0 m: expected 0.9553252099161141 to be greater than or equal to 0.9555239477952252
+src/breaker/breakingField.test.ts > the breaking sheet on the real reef > the probe's fixed-point search converges with the front sharpening
+    AssertionError: (-105.3, -3.6) arrival + 0 s: expected 0.27217908191961665 to be less than 0.03
+src/breaker/breakingField.test.ts > the face before it breaks (Andrew, 2026-10-02: "the step in front") > as it breaks at the peak (6 and 12 ft) the face only gets gentler from its steepest down to its lowest water: no shelf at the foot
+    AssertionError: 12 ft, +0 s: how much the face steepens again below a gentler stretch (m per m): expected 0.21861840468911709 to be less than 0.1
+src/breaker/breakingField.test.ts > the whitewater pile on the real reef (spec 2026-09-29 §3.2) > the sheet stands at least at the pile's height as it rolls in, and the pile never grows while it stands above the bore
+    AssertionError: (-108.4, -20.8) t 9.1 s: the pile never grows: expected 1.1114988387092375 to be less than or equal to 1.039282724576734
+src/breaker/crestTrace.test.ts > crestTrace > is deterministic, and separates waves and undrawn stretches with single gaps
+    TypeError: Cannot read properties of undefined (reading 'gap')
+src/breaker/crestTrace.test.ts > crestTrace > spaces stations by distance from the camera, within the cap
+    AssertionError: expected 0 to be greater than 50
+src/breaker/crestTrace.test.ts > crestTrace > timeSinceOnset: null before breaking, grows with the crest, however long ago it broke
+    AssertionError: expected 5.56329375638925 to be greater than 8
+src/breaker/crestTrace.test.ts > one curl per wave on one clock (one-curl Task 4) > 12 ft: along each side from the curl the onset never comes earlier, and the wait beyond it never shortens
+    AssertionError: expected [ Array(1) ] to deeply equal []
+src/breaker/crestTrace.test.ts > one curl per wave on one clock (one-curl Task 4) > 6 ft: along each side from the curl the onset never comes earlier, and the wait beyond it never shortens
+    AssertionError: expected [ Array(1) ] to deeply equal []
+src/breaker/crestTrace.test.ts > one curl per wave on one clock (one-curl Task 4) > 8 ft: along each side from the curl the onset never comes earlier, and the wait beyond it never shortens
+    AssertionError: expected [ Array(1) ] to deeply equal []
+src/breaker/crestTrace.test.ts > station ψ (barrel from the maths) > each station's ψ is the sheet's crest ψ there (the lip lands on water drained for its own shape)
+    AssertionError: expected 0 to be greater than 20
+src/breaker/flow.test.ts > the flow under the waves (spec §4.1) > 12 ft at the peak: the draw runs 3–8 m/s seaward before the crest, then shoreward under it
+    AssertionError: expected 2.777824022177041 to be greater than or equal to 3
+src/breaker/lipFoam.test.ts > the lip's outside is a clear curtain while the tube is held open, and foams from where it hit as it collapses > 4 ft, mid tide
+    AssertionError: 4 ft mid held at tb 1.10: outer 0 at tb 2.20 fell: expected 0.45 to be greater than or equal to 0.999999
+src/breaker/reefCriteria.test.ts > the Womb's reef: where and how it breaks (spec 2026-10-02 §2) > nowhere does a 12 ft set wave break more than 30 m seaward of the ledges (40 m at low tide, too big for it: Andrew) (§2.1)
+    AssertionError: low tide: (26, 120): expected 77.68456645565747 to be less than or equal to 40
+src/breaker/reefField.test.ts > the onset record > its running maximum of amp/hminBreak is never below the node's own, and never falls along a ray
+    AssertionError: (-107, -22.2) + 70 m: expected 0.3942260146141052 to be greater than or equal to 0.3943785065412521
+src/breaker/reefField.test.ts > until carries the hold (one-curl Task 1) > at a held node until is the hold (−tb), and no node on the ridden run is held at the cap
+    AssertionError: expected 5.99289083480835 to be less than 5.75
+src/breaker/reefField.test.ts > until carries the hold (one-curl Task 1) > at peel 1.7 (not in play) the cap binds on the left's first metres: the line first breaks at the right's far south end
+    AssertionError: expected 0 to be greater than 0
+src/breaker/satelliteReef.test.ts > the Womb's left on the real shelf (womb-retune) > Big: the inside (due north past the ledge) and the right close out at every tide
+    AssertionError: Big -0.5 m right: expected 'barrel' to be 'closes out' // Object.is equality
+src/breaker/satelliteReef.test.ts > the Womb's left on the real shelf (womb-retune) > Huge: the inside (due north past the ledge) and the right close out at every tide
+    AssertionError: Huge -0.5 m right: expected 'barrel' to be 'closes out' // Object.is equality
+src/breaker/satelliteReef.test.ts > the Womb's left on the real shelf (womb-retune) > Pumping: the inside (due north past the ledge) and the right close out at every tide
+    AssertionError: Pumping -0.5 m right: expected 'barrel' to be 'closes out' // Object.is equality
+src/breaker/satelliteReef.test.ts > the Womb's left on the real shelf (womb-retune) > Solid: the inside (due north past the ledge) and the right close out at every tide
+    AssertionError: Solid -0.5 m right: expected 'barrel' to be 'closes out' // Object.is equality
+src/breaker/smallSwell.test.ts > the select matrix holds on the game field (womb-retune Task 4) > Fun at tide -0.5 m: the first leg as the matrix says
+    AssertionError: expected 0.29682579706417545 to be less than or equal to 0.060000000000000005
+src/breaker/smallSwell.test.ts > the select matrix holds on the game field (womb-retune Task 4) > Solid at tide 0.5 m: the first leg as the matrix says
+    AssertionError: expected 0.1323354510484413 to be less than or equal to 0.060000000000000005
+src/breaker/tubeLight.test.ts > the light inside the tube comes out of its mouth, through its lip, or not at all (behind the wave) > 8 ft, high tide
+    AssertionError: 8 ft high held at tb 1.33: collapses: expected null not to be null
+src/breaker/wombProfile.test.ts > wombProfile > changes smoothly with phase
+    Error: Test timed out in 5000ms.
+src/heath/plants.test.ts > plant placement > keeps clear of the rocks, and clear() re-places around the rock field's current rocks
+    Error: Test timed out in 5000ms.
+src/heath/plants.test.ts > plants and the tracks (dune-up-close §4.5) > grows no dead shrubs on the dune rise
+    Error: Test timed out in 5000ms.
+src/land/landBuild.test.ts > the tracks come with the build (dune-up-close §4.1) > routes them on the real land within 500 ms, and they survive the worker boundary (Review Focus 1)
+    AssertionError: expected 538.8547000000017 to be less than 500
+src/ocean/reefWallProbe.test.ts > the underwater reef-wall probe stands where the reef is > the level ray meets the reef within the march, and goes a metre into it (the GPU march's steps can't step over it)
+    AssertionError: expected -1 to be greater than 0
+src/ocean/reefWallProbe.test.ts > the underwater reef-wall probe stands where the reef is > the rising ray meets the reef before the still surface and before the hidden surface point, a metre into it
+    AssertionError: expected -1 to be greater than 0
+src/seabed/bathymetry.test.ts > the Womb reef > builds the full grid, deterministically
+    Error: Test timed out in 5000ms.
+src/seabed/bathymetry.test.ts > the Womb reef > is shallow on the shelf (its base depth or less on average), never shallower than the minimum
+    AssertionError: expected 7.477332577228546 to be less than 4
+src/seabed/coastMap.test.ts > the coast map (lineup truth, Task 1) > changes nothing in the Womb's halo or on Lefthanders' ledge (1 cm against the 9 m shelf)
+    Error: Test timed out in 5000ms.
+src/seabed/shoreReef.test.ts > the shore reef platform (Andrew, 2026-09-28: the reef goes all the way into the shore) > turns the sand in front of the beach to weedy rock, inside the reef map and outside it; leaves the peak alone
+    Error: Test timed out in 5000ms.
+src/whitewater/sprayEmitters.test.ts > the births > about SPRAY_RATE × spacing × Δ × strength per emitter per tick, deterministic per tick
+    AssertionError: expected 0 to be greater than 0
+src/whitewater/sprayEmitters.test.ts > the emitters > none before the break, none long after it
+    AssertionError: expected [ …(9) ] to deeply equal []
+src/whitewater/sprayEmitters.test.ts > the emitters > while a wave throws, emitters sit on its lip: mid-throw stations only, one per spacing, between the trough and the crest
+    AssertionError: expected 0 to be greater than 3
+
+# fixed (red before, green after)
+src/breaker/crestTrace.test.ts > crestTrace > every station sits on its crest (|ξ| < 2 ms) and a trace takes a few ms at most
+src/breaker/lipProfile.test.ts > lipProfile > the foam zones (Andrew's photo): the lip whitens as it throws, most at its tip, the tube is clean, and foam fills it once the lip lands
+src/breaker/peakFace.test.ts > the face-height readout at the peak > reads the biggest 6 ft wave as breaking, with a face of 2.5–6.5 m (3.0 m since R1 §2: it breaks on the face, not on the slope)
+src/breaker/reefField.test.ts > the front's lean feels the reef ahead (Andrew's bump, 2026-10-02) > the lean's depth is never deeper than the slurp's, and over deep water in front of the ledge it is shallower
+src/breaker/setWaveModel.test.ts > ψ at the crest (barrel from the maths) > a heavier ψ drains the water in front deeper
+src/seabed/shoreReef.test.ts > the shore reef platform (Andrew, 2026-09-28: the reef goes all the way into the shore) > the open coast beyond the platform is mostly weedy rock, not pure sand (the reef reads dark; the turquoise is foam)
