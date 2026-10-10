@@ -291,6 +291,36 @@ export function fillSections(line: Station[], periodS: number, p: Pick<BreakPara
     const l = Math.hypot(nx, nz);
     if (l > 1e-9) { s.nx = nx / l; s.nz = nz / l; }
   });
+  smoothInsideLine(line);
+}
+
+/**
+ * The drawn line's smoothing across the crest on the inside leg (m of arc, Gaussian σ). There the field's arrival time
+ * kinks: the crest steps 2–5 m sideways over one 4 m station step (Huge, closeout-edges Task 0), and a tube following
+ * each kink drew one stretch ending beside the next (the stand's stepped closeout). The sections and normals are smoothed
+ * already (SECTION_SMOOTHING_M); this moves each station along its normal onto the line's Gaussian average, weighted by
+ * closeoutWeight, so the left's ridden line (weight 0 up to CLOSEOUT_FROM_TURN_M past the turn) is untouched.
+ */
+export const INSIDE_LINE_SMOOTHING_M = 12;
+
+function smoothInsideLine(line: Station[]): void {
+  const weights = line.map((s) => closeoutWeight(s.z));
+  if (INSIDE_LINE_SMOOTHING_M <= 0 || !weights.some((w) => w > 0)) return;
+  const xs = line.map((s) => s.x), zs = line.map((s) => s.z);
+  const reach = 3 * INSIDE_LINE_SMOOTHING_M, inv = 1 / (2 * INSIDE_LINE_SMOOTHING_M * INSIDE_LINE_SMOOTHING_M);
+  let lo = 0;
+  line.forEach((s, i) => {
+    while (line[lo].arc < s.arc - reach) lo++;
+    if (weights[i] <= 0) return;
+    let w = 0, x = 0, z = 0;
+    for (let k = lo; k < line.length && line[k].arc <= s.arc + reach; k++) {
+      const g = Math.exp(-((line[k].arc - s.arc) ** 2) * inv);
+      w += g; x += g * xs[k]; z += g * zs[k];
+    }
+    const across = ((x / w - xs[i]) * s.nx + (z / w - zs[i]) * s.nz) * weights[i];
+    s.x = xs[i] + across * s.nx;
+    s.z = zs[i] + across * s.nz;
+  });
 }
 
 /**
