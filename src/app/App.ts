@@ -6,7 +6,7 @@ import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/B
 import { withSections } from '../ride/sectionWater';
 import { TAKEOFF_ANCHOR, TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from '../ride/takeoff';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
-import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
+import { type StationEntry, minRibbonHeight, rideEntries, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from '../breaker/peakFace';
 import { offshoreSpeed } from '../breaker/overturn';
 import { footprintBreakHeight } from '../breaker/coastBreaking';
@@ -209,6 +209,9 @@ export class App {
   /** The breaking ribbon's crest stations last traced, how far the rider is under a curl (tubeCover), and the spray on the
    * lens from it (Andrew 2026-10-04: over her shoulder in the tube, and the surfacing drops on the lens). */
   private ribbonStations: readonly StationEntry[] = [];
+  /** The same stations with the surge taken out (crestTrace.rideEntries): what the ride, its cover and the eye read
+   * (whitewater F4: the surge is the ribbon's look only). */
+  private rideStations: readonly StationEntry[] = [];
   private rideCover = 0;
   /** This frame's ride water (App.rideWater at the clock's time), built once while riding and read by the ride step, the
    * camera and the underwater check (plan 2026-10-07 ride-framerate Task 2), at its sim time (a reset jumps the clock); null
@@ -1053,12 +1056,13 @@ export class App {
     let entries: StationEntry[] = [];
     if (tracing) {
       const waves = events.map(toActiveWave);
-      const input = { cameraX: cam.x, cameraZ: cam.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs: this.offshoreMs };
+      const input = { cameraX: cam.x, cameraZ: cam.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs: this.offshoreMs, drawSurge: true };
       const start = performance.now();
       entries = traceStations(field, waves, this.clock.simTime, ctx, input);
       this.traceMs += TRACE_MS_ALPHA * (performance.now() - start - this.traceMs);
     }
     this.ribbonStations = entries;
+    this.rideStations = rideEntries(entries);
     this.ribbon.setStations(entries, cam, field?.periodS ?? 15);
     this.ribbon.setSun(sun);
     this.ribbon.compute(this.renderer);
@@ -1665,7 +1669,7 @@ export class App {
     };
     // Where the breaking ribbon draws, the board stands on its sections (the wave that is drawn), from this frame's
     // stations (traced at the clock's time), read lazily and cold (sectionWater R9; R8's warm read is the probe's only).
-    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide) : sheet;
+    return sections && t === this.clock.simTime ? withSections(sheet, this.rideStations, tide) : sheet;
   }
 
   /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */
@@ -2116,7 +2120,7 @@ export class App {
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
       else if (event) this.perf.flash(rideMessage(event));
       const rb = this.ride.body;
-      this.rideCover = rb ? tubeCover(this.ribbonStations, rb.x, rb.z) : 0;
+      this.rideCover = rb ? tubeCover(this.rideStations, rb.x, rb.z) : 0;
       const pose = this.ride.cameraPose(realDt, water, mouse, this.rideCover);
       if (pose) this.rig.setPose(pose);
     } else {

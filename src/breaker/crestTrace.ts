@@ -102,6 +102,16 @@ export interface TraceInput {
   offshoreMs?: number;
   /** Probes only: how far from the tip the crest is walked (m; absent TRACE_REACH_M). */
   reachM?: number;
+  /** The ribbon's trace only: carry the surge (BreakParams.surge) in the sections. Absent: none, so the ride, the spray
+   * and every probe read the family's own sections (whitewater F4: the surge is look only). */
+  drawSurge?: boolean;
+}
+
+/** The ride's view of the ribbon's stations: the same entries with the surge taken out of their sections (whitewater F4),
+ * so the board's water is the plain trace's bit for bit. The same array when nothing surges. */
+export function rideEntries(entries: readonly StationEntry[]): readonly StationEntry[] {
+  if (!entries.some((e) => !e.gap && (e.section.surge ?? 0) !== 0)) return entries;
+  return entries.map((e) => (e.gap || (e.section.surge ?? 0) === 0 ? e : { ...e, section: { ...e.section, surge: 0 } }));
 }
 
 const inGrid = (f: ReefField, x: number, z: number): boolean => {
@@ -310,7 +320,7 @@ export function traceStations(field: ReefField, waves: readonly ActiveWave[], t:
       if (sides.length === 0) return;
       const line = [...sides[1].reverse(), ...sides[0]];
       fillTimes(field, w, line, ctx, input);
-      fillSections(line, field.periodS, input.params);
+      fillSections(line, field.periodS, input.drawSurge ? input.params : { ribbonOnset: input.params.ribbonOnset });
       for (const s of line) {
         if (alive(s)) out.push(s);
         else if (out.length > 0 && !out[out.length - 1].gap) out.push({ gap: true });

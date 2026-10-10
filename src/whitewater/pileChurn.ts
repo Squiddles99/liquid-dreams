@@ -1,5 +1,5 @@
-import { Fn, If, clamp, float, mx_noise_float, smoothstep, vec2, vec3 } from 'three/tsl';
-import { boreWeight, flightTime } from '../breaker/wombSection';
+import { Fn, If, clamp, float, max, mx_noise_float, smoothstep, vec2, vec3 } from 'three/tsl';
+import { boreWeight, flightTime, sectionEnd } from '../breaker/wombSection';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
 
 type N = any;
@@ -36,6 +36,28 @@ export function boilWeight(tb: number | null, H: number, periodS: number, foam: 
   const age = tb - flightTime(H);
   if (!(age >= 0)) return 0;
   return boreWeight(tb, H, periodS) * Math.min(1, foam) * (1 - smoothstepCpu(0, CHURN_FADE_S, age));
+}
+
+/** Fresh boil is solid white (whitewater F3): the foam pattern's weight on a fresh boil is lifted to this (the lace's holes
+ * close from ~0.75, setFoamPattern), × the boil's freshness (boilFreshness), so the lace returns as the boil ages. */
+export const FRESH_BOIL_WEIGHT = 0.9;
+/** After the white-water wall (sectionEnd) the boil's freshness fades over this long: the lace is back on the sheet. */
+export const FRESH_FADE_S = 2;
+/** How fresh the boil is at a station [0, 1]: 0 before the lip lands (τ_land = flightTime(H)), 1 from the landing through
+ * the ribbon's broken life (to sectionEnd: a peeling section up the line is seconds older than the curl, and stays solid),
+ * 0 FRESH_FADE_S after it (and long after: tb Infinity). Packed per station (packStations). */
+export function boilFreshness(tb: number | null, H: number, periodS: number): number {
+  if (tb === null || !Number.isFinite(tb) || tb < flightTime(H)) return 0;
+  const end = sectionEnd(H, periodS);
+  return 1 - smoothstepCpu(end, end + FRESH_FADE_S, tb);
+}
+/** The foam pattern's weight on the ribbon: the foam, lifted to FRESH_BOIL_WEIGHT × the freshness where there is foam
+ * (from 0.1, full at 0.3): never paints foam where there is none, never lowers it. */
+export function freshFoamWeight(foam: number, fresh: number): number {
+  return Math.max(foam, FRESH_BOIL_WEIGHT * fresh * smoothstepCpu(0.1, 0.3, foam));
+}
+export function freshFoamWeightNode(foam: N, fresh: N): N {
+  return max(foam, fresh.mul(FRESH_BOIL_WEIGHT).mul(smoothstep(0.1, 0.3, foam)));
 }
 
 /** The lumps within 2 m ahead of the crest line stand half again as tall: the front steeper than the back. */
