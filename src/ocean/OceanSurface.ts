@@ -87,6 +87,8 @@ export interface SheetFoamMap {
   patternAxisNode?(travel: N): N;
   /** How long dense foam takes to become lace (s): older map foam is drawn as threads (setFoamPattern's thin). */
   readonly clearTimeS?: number;
+  /** The dense foam volume's exposure (FoamField: FoamParams.volumeExposure, a dev dial). */
+  readonly volumeExposure?: N;
 }
 
 /** Aged lace (whitewater §5.3, Fable's L1): where the map's foam is older than its clear time the lace's rims narrow to
@@ -267,7 +269,7 @@ export class OceanSurface {
 
     material.colorNode = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y, breakFoam: min(setFoamLook.x, breakFoam),
-        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld,
+        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld, foamExposure: options.foamMap?.volumeExposure,
         landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
         overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
           foamMap: (foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0)).add(surfFoam.mul(0.5)), foamOn: this.overlayFoam, sunOn: this.overlaySun } },

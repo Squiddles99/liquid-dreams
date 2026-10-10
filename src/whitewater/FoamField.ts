@@ -66,6 +66,8 @@ export class FoamField {
   private readonly expK = uniform(Math.log(1 / LACE_LEVEL) / DEFAULT_FOAM_PARAMS.clearTimeS);
   private readonly laceSlope = uniform(LACE_LEVEL / DEFAULT_FOAM_PARAMS.laceLifeS);
   private readonly driftMps = uniform(DEFAULT_FOAM_PARAMS.driftMps);
+  /** The foam volume's exposure (FoamParams.volumeExposure), for the materials. */
+  readonly volumeExposure = uniform(DEFAULT_FOAM_PARAMS.volumeExposure);
   /** The wind vector (m/s, toward), set by the App (setWind). */
   private readonly wind = uniform(new THREE.Vector2(0, 0));
   private readonly origin: N;
@@ -163,6 +165,7 @@ export class FoamField {
     this.expK.value = Math.log(1 / LACE_LEVEL) / this.params.clearTimeS;
     this.laceSlope.value = LACE_LEVEL / this.params.laceLifeS;
     this.driftMps.value = this.params.driftMps;
+    this.volumeExposure.value = this.params.volumeExposure;
   }
 
   /** The wind vector the foam drifts with (m/s, the way it blows; foamStep.WIND_DRIFT_SHARE of it). */
