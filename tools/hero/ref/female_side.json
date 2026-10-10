@@ -1,0 +1,120 @@
+{
+ "image": "art/riders/female/bikini-side-and-behind.png",
+ "note": "Andrew's side view (left profile: her front faces the image's left), marks in its own pixels, by eye on 2x gridded crops (2026-10-10). Drawn in a more cartoon style than the front painting (bigger head and eyes): the body profile is trusted, the face profile less (w).",
+ "view": "side",
+ "marks": {
+  "nose_tip": [
+   441,
+   124,
+   0.6
+  ],
+  "subnasale": [
+   447,
+   129,
+   0.5
+  ],
+  "lip_up": [
+   450,
+   137,
+   0.4
+  ],
+  "chin_front": [
+   459,
+   155,
+   0.5
+  ],
+  "ear": [
+   525,
+   105,
+   0.5
+  ],
+  "neck_front": [
+   495,
+   170,
+   0.5
+  ],
+  "bust_front": [
+   419,
+   290,
+   0.8
+  ],
+  "underbust_front": [
+   460,
+   330,
+   0.8
+  ],
+  "waist_front": [
+   452,
+   380,
+   0.8
+  ],
+  "belly_front": [
+   447,
+   430,
+   0.8
+  ],
+  "upperback_back": [
+   565,
+   260,
+   0.7
+  ],
+  "lowback_back": [
+   550,
+   390,
+   0.8
+  ],
+  "butt_back": [
+   589,
+   485,
+   1
+  ],
+  "thigh_front": [
+   465,
+   600,
+   0.8
+  ],
+  "thigh_back": [
+   565,
+   600,
+   0.8
+  ],
+  "knee_front": [
+   485,
+   710,
+   0.6
+  ],
+  "knee_back": [
+   560,
+   710,
+   0.6
+  ],
+  "calf_back": [
+   590,
+   790,
+   0.9
+  ],
+  "shin_front": [
+   507,
+   790,
+   0.8
+  ],
+  "ankle": [
+   545,
+   970,
+   0.6
+  ],
+  "heel_back": [
+   585,
+   990,
+   0.5
+  ]
+ },
+ "extent": {
+  "top": 30,
+  "sole": 990
+ },
+ "eye": [
+  467,
+  95
+ ]
+}

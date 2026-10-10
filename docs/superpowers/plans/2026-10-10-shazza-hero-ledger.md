@@ -45,3 +45,10 @@
   feet pointed back-and-down; duck dive grips the rails half a metre back from the nose; the pop-up authored in the
   world with a level search (hands and back toes on the deck). Remaining: the pop-up's front foot lands beside the
   deck. Andrew offered ChatGPT key-frame sequences per motion — taken up (see the ref brief).
+- Andrew's side + back views arrived (art/riders/*/...-side-and-behind.png, -side-and-back.png for Grommet in rashie +
+  boardies). The fitter now takes a side view (`--side tools/hero/ref/female_side.json`): its own cameras (body; face
+  with scale fixed eye line to nose base), silhouettes along y, the ear's centroid; depth targets exported (torso/hip/
+  leg depth, buttocks, stomach, breast point/volume, head/nose/mouth/chin depth, firmness macro). The side view is in a
+  more cartoon style: weighted 1/1.5 (body) and 1/2 (face); posture marks (neck, back curves) dropped. Result: front
+  body 0.59 % height, side profile 0.2–2.3 %, face front 2.27 % IOD. Ruling: cupsize 0.68 (bust still ~1.6 % short in
+  profile). Sheets gates/gate1a-side.jpg, gate1b-*-r3.jpg.

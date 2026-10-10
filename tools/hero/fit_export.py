@@ -36,6 +36,8 @@ SIDED = [
     "upperleg-muscle-incr", "upperleg-muscle-decr", "lowerleg-muscle-incr", "lowerleg-muscle-decr",
     "upperleg-fat-incr", "upperleg-fat-decr", "lowerleg-fat-incr", "lowerleg-fat-decr",
     "leg-valgus-incr", "leg-valgus-decr",
+    # Depth, seen since Andrew's side view (2026-10-10).
+    "upperleg-scale-depth-incr", "upperleg-scale-depth-decr", "lowerleg-scale-depth-incr", "lowerleg-scale-depth-decr",
 ]
 SINGLE = [
     "eyebrows-angle-up", "eyebrows-angle-down", "eyebrows-trans-up", "eyebrows-trans-down",
@@ -71,12 +73,21 @@ SINGLE = [
     "measure-thigh-circ-incr", "measure-thigh-circ-decr", "measure-calf-circ-incr", "measure-calf-circ-decr",
     "measure-knee-circ-incr", "measure-knee-circ-decr", "measure-upperleg-height-incr", "measure-upperleg-height-decr",
     "measure-lowerleg-height-incr", "measure-lowerleg-height-decr",
+    # Depth, seen since Andrew's side view (2026-10-10).
+    "torso-scale-depth-incr", "torso-scale-depth-decr", "hip-scale-depth-incr", "hip-scale-depth-decr",
+    "buttocks-volume-incr", "buttocks-volume-decr", "stomach-pregnant-incr", "stomach-pregnant-decr",
+    "breast-point-incr", "breast-point-decr", "breast-volume-vert-up", "breast-volume-vert-down",
+    "neck-scale-depth-incr", "neck-scale-depth-decr", "torso-trans-forward", "torso-trans-backward",
+    "head-scale-depth-incr", "head-scale-depth-decr", "head-back-scale-depth-incr", "head-back-scale-depth-decr",
+    "nose-scale-depth-incr", "nose-scale-depth-decr", "nose-trans-forward", "nose-trans-backward",
+    "mouth-trans-forward", "mouth-trans-backward", "chin-prognathism-incr", "chin-prognathism-decr",
+    "chin-prominent-incr", "chin-prominent-decr", "forehead-trans-forward", "forehead-trans-backward",
 ]
 # The painting smiles: expression units join the fit as pose variables (`xp:`), reported but never baked into the
 # shape (mouth-angles, a smile-like shape target, is left out for the same reason).
 EXPRESSIONS = {"smile": ["mouth-corner-puller"], "smileUp": ["mouth-upward-retraction"],
                "squint": ["eye-left-slit", "eye-right-slit"]}
-MACROS = {"muscle": 0.05, "weight": 0.05, "proportions": 0.05, "cupsize": 0.05}
+MACROS = {"muscle": 0.05, "weight": 0.05, "proportions": 0.05, "cupsize": 0.05, "firmness": 0.05}
 
 
 def coords(obj):
@@ -147,6 +158,7 @@ body_mask = np.zeros(len(base), bool)
 body_mask[members["body"]] = True
 np.savez_compressed(os.path.join(out_dir, "fit_model.npz"), base=base, deltas=np.stack(deltas).astype(np.float32),
                     names=np.array(names), body=body_mask, eyes=np.array(members["helper-l-eye"] + members["helper-r-eye"], np.int32),
+                    ears=np.array(members.get("ears", []), np.int32),
                     **{f"J{n}": ix for n, ix in joints.items()})
 print(f"fit model: {len(names)} variables over {len(base)} vertices")
 

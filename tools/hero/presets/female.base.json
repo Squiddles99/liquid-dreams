@@ -9,7 +9,7 @@
     "weight": 0.42,
     "proportions": 0.8,
     "height": 0.35,
-    "cupsize": 0.55,
+    "cupsize": 0.68,
     "firmness": 0.55
   },
   "hair": {
@@ -192,5 +192,5 @@
       0
     ]
   },
-  "_note": "The hero fit's starting body (overnight ruling 2026-10-10): the game preset with muscle 0.6->0.72 (the painting is toned: abs, shoulders, quads) and cupsize 0.45->0.55 (fuller in the painting). tools/hero/fit_solve.py fits the rest."
+  "_note": "The hero fit's starting body (overnight ruling 2026-10-10): the game preset with muscle 0.6->0.72 (the painting is toned: abs, shoulders, quads) and cupsize 0.45->0.55 (fuller in the painting). tools/hero/fit_solve.py fits the rest. 2026-10-10 after Andrew's side view: cupsize 0.55 -> 0.68 (the profile fit left the bust ~2.5 cm short)."
 }

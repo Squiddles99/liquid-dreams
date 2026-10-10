@@ -16,6 +16,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 build, ref_path, mm_path, out_path = sys.argv[1:5]
+side_path = sys.argv[sys.argv.index("--side") + 1] if "--side" in sys.argv else None
 base_preset = sys.argv[sys.argv.index("--base-preset") + 1] if "--base-preset" in sys.argv else "tools/surfer/presets/female.json"
 M = np.load(os.path.join(build, "fit_model.npz"))
 cam = json.load(open(os.path.join(build, "marks_cam.json")))
@@ -85,6 +86,7 @@ REGION = {
     "torso": (LAB == "torso"),
     "shoulder": (LAB == "torso") | (LAB == "armR") | (LAB == "armL"),
     "legR": (LAB == "legR"), "legL": (LAB == "legL"),
+    "hipsL": (LAB == "torso") | (LAB == "legL"),
 }
 
 
@@ -117,21 +119,32 @@ def point_fn(spec, name=None):
         return lambda P: P[ix].mean(0)
     if "joint" in spec:
         return lambda P: jc(P, spec["joint"])
+    if "vid" in spec:  # the same vertex as the front view's mark of that name
+        vi = resolve_px(*mm["face"][spec["vid"]]["px"])
+        return lambda P: P[vi]
+    if "group" in spec:  # an MPFB group's centroid on one side (the ear seen in the left profile)
+        gname, side_ = spec["group"]
+        ix = M[gname]
+        ix = ix[base[ix, 0] > 0] if side_ == "L" else ix[base[ix, 0] < 0]
+        return lambda P: P[ix].mean(0)
     if spec.get("extent") == "min":
         return lambda P: P[bidx][np.argmin(P[bidx, 2])]
     raise ValueError(spec)
 
 
-def sil_x(P, region, side, z, band):
+def sil_h(P, region, side, z, band, h):
+    """The silhouette's extreme along the view's horizontal axis h (0: x, front view; 1: y, side view) at height z:
+    R/front = the smallest value, L/back = the largest."""
     m = REGION[region] & (np.abs(P[bidx, 2] - z) < band)
-    xs = P[bidx][m, 0]
+    xs = P[bidx][m, h]
     if len(xs) == 0:
         return np.nan
-    return xs.min() if side == "R" else xs.max()
+    return xs.min() if side in ("R", "front") else xs.max()
 
 
 def camera_xy(c, X, Z):
-    """Model (x, z) → painting pixels. c = (s, tx, ty[, theta]); +x (her left) is the painting's +x; +z is up."""
+    """Model (horizontal, z) → painting pixels. c = (s, tx, ty[, theta]). Front view: horizontal = x (her left is the
+    painting's +x); side view (her left profile, front to the image's left): horizontal = y."""
     s, tx, ty = c[:3]
     th = c[3] if len(c) > 3 else 0.0
     cs, sn = np.cos(th), np.sin(th)
@@ -145,8 +158,9 @@ def camera_z(c, y, X=0.0):
     return ((ty - y) / s - np.sin(th) * X) / np.cos(th)
 
 
-def build_residuals(group, unit, ref_marks):
+def build_residuals(group, unit, ref_marks, view="front", sole=None):
     specs = mm[group]
+    h = 0 if view == "front" else 1
     fns = {}
     for name, spec in specs.items():
         if "sil" in spec or "silw" in spec:
@@ -158,7 +172,7 @@ def build_residuals(group, unit, ref_marks):
         out = []
         for name, spec in specs.items():
             if name == "sole":
-                py_, w = ref_sole, 1.0
+                py_, w = (sole if sole is not None else ref_sole), 1.0
                 px_ = None
             else:
                 px_, py_, w = ref_marks[name]
@@ -166,7 +180,7 @@ def build_residuals(group, unit, ref_marks):
             if "sil" in spec:
                 region, side = spec["sil"]
                 z = camera_z(c, py_)
-                x = sil_x(P, region, side, z, band)
+                x = sil_h(P, region, side, z, band, h)
                 u, _ = camera_xy(c, x, z)
                 e = [(u - px_) / unit * w]
             elif "silw" in spec:
@@ -174,12 +188,12 @@ def build_residuals(group, unit, ref_marks):
                 ipx = ref_marks[inner][0]
                 z = camera_z(c, py_)
                 m = REGION[region] & (np.abs(P[bidx, 2] - z) < band)
-                xs = P[bidx][m, 0]
+                xs = P[bidx][m, h]
                 width = (xs.max() - xs.min()) * c[0] if len(xs) else 0.0
                 e = [(width - abs(px_ - ipx)) / unit * w]
             else:
                 p = fns[name](P)
-                u, v = camera_xy(c, p[0], p[2])
+                u, v = camera_xy(c, p[h], p[2])
                 e = []
                 if fit in ("xy", "x"):
                     e.append((u - px_) / unit * w)
@@ -192,32 +206,45 @@ def build_residuals(group, unit, ref_marks):
     return res
 
 
-def solve(group, vars_, a0, cam0, unit, lam, bounds_fn, fix_scale=False):
-    res = build_residuals(group, unit, ref)
-    nc = len(cam0)
+def solve(blocks, vars_, a0, lam, bounds_fn):
+    """blocks: [(residual fn, initial camera, fix scale)], one per view, solved together with the shape."""
+    ncs = [len(c0) for _, c0, _ in blocks]
+    offs = np.cumsum([0] + ncs)
+    nc = offs[-1]
+
+    def split(x):
+        return [x[offs[i]:offs[i + 1]] for i in range(len(blocks))]
 
     def f(x):
-        c, w = x[:nc], x[nc:]
         a = a0.copy()
-        a[vars_] = w
-        return np.concatenate([res(c, mesh(a)), lam * w])
-    clo, chi = [-np.inf] * nc, [np.inf] * nc
-    if fix_scale:  # the camera's scale held (within 0.1 %): it is set by the face's height, not traded for shape
-        clo[0], chi[0] = cam0[0] * 0.999, cam0[0] * 1.001
+        a[vars_] = x[nc:]
+        P = mesh(a)
+        return np.concatenate([res(c, P) for (res, _, _), c in zip(blocks, split(x))] + [lam * x[nc:]])
+    clo, chi = [], []
+    for _, c0, fix in blocks:
+        lo_, hi_ = [-np.inf] * len(c0), [np.inf] * len(c0)
+        if fix:  # the camera's scale held (within 0.1 %): set by the face's height, not traded for shape
+            lo_[0], hi_[0] = c0[0] * 0.999, c0[0] * 1.001
+        clo += lo_
+        chi += hi_
     lo = np.array(clo + [bounds_fn(names[i])[0] for i in vars_])
     hi = np.array(chi + [bounds_fn(names[i])[1] for i in vars_])
-    x0 = np.concatenate([cam0, np.zeros(len(vars_))])
-    before = {}
-    res(cam0, mesh(a0), before)
-    # The camera first, shape held at zero: a sound start for the joint solve.
-    rc = least_squares(lambda c: res(c, mesh(a0)), cam0, bounds=(clo, chi), x_scale="jac")
-    x0[:nc] = rc.x
+    before = [{} for _ in blocks]
+    P0_ = mesh(a0)
+    cams0 = []
+    for i, (res, c0, fix) in enumerate(blocks):
+        res(c0, P0_, before[i])
+        bl, bh = clo[offs[i]:offs[i + 1]], chi[offs[i]:offs[i + 1]]
+        cams0.append(least_squares(lambda c: res(c, P0_), c0, bounds=(bl, bh), x_scale="jac").x)  # each camera first
+    x0 = np.concatenate(cams0 + [np.zeros(len(vars_))])
     r = least_squares(f, x0, bounds=(lo, hi), diff_step=1e-3, x_scale="jac", max_nfev=200, verbose=1)
     a = a0.copy()
     a[vars_] = r.x[nc:]
-    after = {}
-    res(r.x[:nc], mesh(a), after)
-    return a, r.x[:nc], before, after
+    after = [{} for _ in blocks]
+    P1_ = mesh(a)
+    for (res, _, _), c, d in zip(blocks, split(r.x), after):
+        res(c, P1_, d)
+    return a, split(r.x), before, after
 
 
 _have = json.load(open(base_preset, encoding="utf-8")).get("face", {})
@@ -238,17 +265,37 @@ h_model = P0[:, 2].max() - P0[:, 2].min()
 s0 = (ref_sole - 90.0) / h_model
 cam_b0 = np.array([s0, 2975.0, ref_sole + s0 * P0[:, 2].min()])
 H = ref_sole - 90.0
-a, cam_b, bb, ba = solve("body", body_vars, a, cam_b0, H / 100.0, 3.0, bounds)
+side = json.load(open(side_path)) if side_path else None
+blocks = [(build_residuals("body", H / 100.0, ref), cam_b0, False)]
+if side:
+    sref = side["marks"]
+    s_sole, s_top = side["extent"]["sole"], side["extent"]["top"] + 10
+    ss0 = (s_sole - s_top) / h_model
+    blocks.append((build_residuals("body_side", (s_sole - s_top) / 100.0 * 1.5, sref, "side", s_sole),
+                   np.array([ss0, 520.0 - ss0 * P0[:, 1].mean(), s_sole + ss0 * P0[:, 2].min()]), False))
+a, cams_b, bbs, bas = solve(blocks, body_vars, a, 3.0, bounds)
+cam_b, bb, ba = cams_b[0], bbs[0], bas[0]
 iod = ref["iris_L"][0] - ref["iris_R"][0]
 P1 = mesh(a)
 eyez = P1[eyes, 2].mean()
-iod_m = P1[eye_L].mean(0)[0] - P1[eye_R].mean(0)[0]
 # The face's scale from its height (eye line to chin), so feature widths are judged against it (round 3: a free scale
 # traded eye spacing for size).
 chin_v = resolve_px(*mm["face"]["chin"]["px"])
 sf = (ref["chin"][1] - (ref["iris_L"][1] + ref["iris_R"][1]) / 2) / (eyez - P1[chin_v, 2])
 cam_f0 = np.array([sf, (ref["iris_L"][0] + ref["iris_R"][0]) / 2, (ref["iris_L"][1] + ref["iris_R"][1]) / 2 + sf * eyez, 0.0])
-a, cam_f, fb, fa = solve("face", face_vars, a, cam_f0, iod / 100.0, 4.0, bounds, fix_scale=True)
+fblocks = [(build_residuals("face", iod / 100.0, ref), cam_f0, True)]
+if side and "face_side" in mm:
+    # The side view counts for less than the front painting (body 1/1.5, face 1/2: it is drawn in a more cartoon style).
+    # The side face's own scale, from the eye line to the base of the nose (the side view draws the head larger).
+    sub_v = resolve_px(*mm["face"]["subnasale"]["px"])
+    sfs = (sref["subnasale"][1] - side["eye"][1]) / (eyez - P1[sub_v, 2])
+    fblocks.append((build_residuals("face_side", sfs * 0.062 / 100.0 * 2.0, sref, "side"),
+                    np.array([sfs, sref["subnasale"][0] - sfs * P1[sub_v, 1], side["eye"][1] + sfs * eyez]), True))
+a, cams_f, fbs, fas = solve(fblocks, face_vars, a, 4.0, bounds)
+cam_f, fb, fa = cams_f[0], fbs[0], fas[0]
+side_report = {"bodySidePctHeight": {"before": bbs[1], "after": bas[1]}} if side else {}
+if side and len(fas) > 1:
+    side_report["faceSidePctIOD"] = {"before": fbs[1], "after": fas[1]}
 
 preset = json.load(open(base_preset, encoding="utf-8"))
 face = dict(preset.get("face", {}))
@@ -275,7 +322,7 @@ preset["paintedExpression"] = {"smileSoft": 1.0, "squint": 0.2}
 preset["faceCamera"] = [float(x) for x in cam_f]  # model → painting px, for the face projection (project.py)
 preset["restExpression"] = {"blinkL": 0.1, "blinkR": 0.1}  # relaxed lids: MPFB's open eyes stare
 json.dump(preset, open(out_path, "w", encoding="utf-8"), indent=2)
-report = {"chosen": chosen, "camBody": cam_b.tolist(), "camFace": cam_f.tolist(),
+report = {**side_report, "chosen": chosen, "camBody": cam_b.tolist(), "camFace": cam_f.tolist(),
           "bodyPctHeight": {"before": bb, "after": ba}, "facePctIOD": {"before": fb, "after": fa},
           "faceMeanPctIOD": {"before": float(np.mean(list(fb.values()))), "after": float(np.mean(list(fa.values())))},
           "bodyMeanPctHeight": {"before": float(np.mean(list(bb.values()))), "after": float(np.mean(list(ba.values())))}}

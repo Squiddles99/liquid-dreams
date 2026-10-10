@@ -343,5 +343,127 @@
    ],
    "fit": "x"
   }
+ },
+ "face_side": {
+  "nose_tip": {
+   "vid": "nose_tip",
+   "fit": "xy"
+  },
+  "subnasale": {
+   "vid": "subnasale",
+   "fit": "xy"
+  },
+  "lip_up": {
+   "vid": "lip_up",
+   "fit": "x"
+  },
+  "chin_front": {
+   "sil": [
+    "head",
+    "front"
+   ],
+   "fit": "x"
+  },
+  "ear": {
+   "group": [
+    "ears",
+    "L"
+   ],
+   "fit": "xy"
+  }
+ },
+ "body_side": {
+  "bust_front": {
+   "sil": [
+    "torso",
+    "front"
+   ],
+   "fit": "x"
+  },
+  "underbust_front": {
+   "sil": [
+    "torso",
+    "front"
+   ],
+   "fit": "x"
+  },
+  "waist_front": {
+   "sil": [
+    "torso",
+    "front"
+   ],
+   "fit": "x"
+  },
+  "belly_front": {
+   "sil": [
+    "torso",
+    "front"
+   ],
+   "fit": "x"
+  },
+  "butt_back": {
+   "sil": [
+    "hipsL",
+    "back"
+   ],
+   "fit": "x"
+  },
+  "thigh_front": {
+   "sil": [
+    "legL",
+    "front"
+   ],
+   "fit": "x"
+  },
+  "thigh_back": {
+   "sil": [
+    "legL",
+    "back"
+   ],
+   "fit": "x"
+  },
+  "knee_front": {
+   "sil": [
+    "legL",
+    "front"
+   ],
+   "fit": "x"
+  },
+  "knee_back": {
+   "sil": [
+    "legL",
+    "back"
+   ],
+   "fit": "x"
+  },
+  "calf_back": {
+   "sil": [
+    "legL",
+    "back"
+   ],
+   "fit": "x"
+  },
+  "shin_front": {
+   "sil": [
+    "legL",
+    "front"
+   ],
+   "fit": "x"
+  },
+  "ankle": {
+   "joint": "joint-l-ankle",
+   "fit": "xy"
+  },
+  "heel_back": {
+   "sil": [
+    "legL",
+    "back"
+   ],
+   "fit": "x"
+  },
+  "sole": {
+   "extent": "min",
+   "fit": "y"
+  }
  }
 }
