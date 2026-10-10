@@ -154,3 +154,30 @@ inner shelf is excluded by name.
 1. Keep the Task 4 attempt (6 ft 11 → 3; it moves the ridden left's first break 0.2 s) or revert it to C alone?
 2. Carry or continue: the crest-ordered pass (new segment), or accept the inner shelf as a closeout and close at 220 m?
 3. `smallSwell` "Solid at tide 0.5 m": re-pin the matrix row to the new first-leg peel, or widen?
+
+## Fable's ruling (2026-10-10, Task 4 STOP): revert the attempt, close on C at 220 m, re-pin the row
+
+The attempt is honest and well measured, and it is not taken. It reaches 3 at 6 ft, not 0, and the 8 ft steps are not
+the hook at all. Its cost lands on the ridden wave: the reseed reaches the left's lines, and at Pumping the first break
+moves 1.9 → 2.1 s with the held share 31.6 → 33.3 % (`curl-T4.txt`). That is the Womb's ridden curl changed for a seam
+on an inner-shelf closeout 230 m from the tip that no one rides. Andrew's gate for this segment is the ridden line
+unchanged; C's ≤ 0.3 m / 0.06 s was already the limit of what I would accept on his behalf.
+
+**Rulings (one line each).**
+1. **Revert ae321a7's source** (`curlClock.ts`, `reefField.ts`, `curlClock.test.ts`) in one commit; keep `seams-T4.txt`,
+   `curl-T4.txt`, `ride-T4.txt` and the STOP memo above as the record of the attempt. `seedRank` does not ship.
+2. **Carry, close at 220 m.** Two curls meeting along one crest on the inner shelf is a closeout, which the Womb's
+   inside is; the one-curl check keeps its 220 m limit and its comment names the inner shelf as excluded for that reason,
+   with the measured remainder after C (6 ft 11 / 1.02 s, 8 ft 6 / 0.62 s, 12 ft 0). The crest-ordered pass (sweep each
+   τ contour from its earliest break, per level) goes into the handover's follow-ups as a named candidate for a later
+   segment with its own ride/curl gate; it is not started now.
+3. **Re-pin** the `smallSwell` "Solid at tide 0.5 m" row to C's first-leg peel (0.080 m/s off the old pin, inside the
+   0.1 m/s bound), with a comment naming level-read C as the cause. Do not widen the tolerance.
+
+**Task 5 on C alone** (e4de42a + the revert): `_rideCost` 7/12 ft vs Task 0 with every differing step named (ride-C is
+that measurement; re-run only if the revert changes a byte of the record, which it must not: assert the record is
+identical to e4de42a's), `_curlReport` vs Task 0 within 0.1 m/s (curl-C), the Pumping down-the-line frame with the
+ribbon-region pixel difference stated, the breaker suite rerun idle for the `peelStretch` timeout, handovers, push.
+Do not merge: Andrew decides, with the ≤ 0.3 m / 0.06 s ridden-line move flagged to him.
+
+Proceed: the revert commit, the re-pin, Task 5, push.
