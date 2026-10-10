@@ -277,11 +277,14 @@ describe('one curl per wave on one clock (one-curl Task 4)', () => {
         const entries = traceStations(game, [w], peak + dt, gctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H, spacingM: 1 });
         // Runs of drawn stations (gaps split them); the curl is the run's station with the largest tb.
         // shelf-polish Task 2 (Fable's ruling): the Womb's ridden run only, stations within RIDDEN_M of the tip; bar unchanged.
-        // Carried: the inner shelf inside the right, 226–250 m out at the trace's cap (TAPER_NEAR_M). There the level-6
-        // line hooks under the crest (T′ monotone along the line, out of order along the crest), and until level-read the
-        // along-crest smoothing gave the level-6 band's edge nodes the band's average time beside a ray reading its own
-        // "now" (6 ft arcs 182/183: 0.58 → 2.53 s; the rays there are still rising, not plateaued). The edge now keeps its
-        // own clock (reefField.ONSET_EDGE_LEVELS); the limit goes when the hook's order is fixed too (level-read Task 4).
+        // Excluded: the inner shelf inside the right, 226–250 m out at the trace's cap (TAPER_NEAR_M), is a closeout, which
+        // the Womb's inside is: two curls meet along one crest there (the level-6 line breaks from its far end and hooks
+        // under the crest, T′ monotone along the line, out of order along the crest). Its 2 s seam was the along-crest
+        // smoothing giving the level-6 band's edge nodes the band's average time beside a ray reading its own "now" (6 ft
+        // arcs 182/183: 0.58 → 2.53 s; the rays there are still rising, not plateaued); the edge now keeps its own clock
+        // (reefField.ONSET_EDGE_LEVELS). Measured there after that (level-read, whole trace): 6 ft 11 steps (worst 1.02 s),
+        // 8 ft 6 (0.62 s), 12 ft 0. Ordering the curl along the crest (per level, each τ contour from its earliest break)
+        // is a named candidate for a later segment; reseeding the lines moved the ridden left's first break 0.2 s.
         const runs: Station[][] = [[]];
         for (const e of entries) { if (e.gap || Math.hypot(e.x - PX, e.z - PZ) > RIDDEN_M) { if (runs[runs.length - 1].length) runs.push([]); } else runs[runs.length - 1].push(e); }
         for (const run of runs) {
