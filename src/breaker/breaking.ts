@@ -282,11 +282,7 @@ export function onsetLevelHeight(k: number): number {
  * the peel stretch's delay (s, spec 2026-10-04 §1); then per level the amplification where it broke, uncapped
  * (onsetSize); then per level the time until the section on this ray reaches that level (s; onsetUntil, UNTIL_NEVER where
  * it never does). The time since onset is the stretched one: negative while the section waits its turn. */
-export const ONSET_RECORD_LENGTH = 2 + 6 * ONSET_LEVELS;
-/** Offset of the running maximum's age in a record sample: the time (s, physical) since the running maximum last rose. */
-export const ONSET_AGE_OFFSET = 1 + 6 * ONSET_LEVELS;
-/** PROBE (level-read Task 1, removed at Task 2): which level read onsetTime uses: 'old', 'A' (the run's age), 'B' (extrapolated). */
-const LEVEL_READ: string = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.LEVEL_READ ?? 'old';
+export const ONSET_RECORD_LENGTH = 1 + 6 * ONSET_LEVELS;
 /** Offset of level 0's ψ₀ in a record sample. */
 export const ONSET_PSI_OFFSET = 1 + 2 * ONSET_LEVELS;
 /** Offset of level 0's peel delay in a record sample. */
@@ -314,7 +310,7 @@ export function onsetGain(p: Pick<BreakParams, 'gamma' | 'delta'>): number {
  * itself instead, where the section breaks now (`toRun`: time 0, today's amplification, which the record keeps for an
  * unbroken level). null if the section hasn't broken for this wave.
  */
-function onsetLevel(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): { k: number; w: number; toRun: boolean; hi: number } | null {
+function onsetLevel(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): { k: number; w: number; toRun: boolean } | null {
   const g = heightM * onsetGain(p), run = rec[offset];
   if (!(g > 0) || !(g * run >= 1)) return null;
   const logR = Math.log(ONSET_LEVEL_RATIO);
@@ -322,7 +318,7 @@ function onsetLevel(rec: ArrayLike<number>, offset: number, heightM: number, p: 
   const k = Math.min(ONSET_LEVELS - 2, Math.max(0, Math.floor(lq)));
   const toRun = run < ONSET_LEVEL_Q[k + 1];
   const hi = toRun ? Math.log(run / ONSET_LEVEL_Q0) / logR : k + 1;
-  return { k, w: Math.min(1, Math.max(0, (lq - k) / Math.max(hi - k, 1e-9))), toRun, hi };
+  return { k, w: Math.min(1, Math.max(0, (lq - k) / Math.max(hi - k, 1e-9))), toRun };
 }
 
 /** The time (s) since the section at a crest first broke, from the onset record there, for a wave of deep-water height
@@ -331,13 +327,7 @@ function onsetLevel(rec: ArrayLike<number>, offset: number, heightM: number, p: 
 export function onsetTime(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
   const l = onsetLevel(rec, offset, heightM, p);
   if (!l) return null;
-  const lo = rec[offset + 1 + 2 * l.k], dK = rec[offset + ONSET_DELAY_OFFSET + l.k];
-  let hi = l.toRun ? -dK : rec[offset + 3 + 2 * l.k];
-  if (l.toRun && LEVEL_READ === 'A') hi = rec[offset + ONSET_AGE_OFFSET] - dK;
-  if (l.toRun && LEVEL_READ === 'B' && l.k > 0) {
-    const pK = lo + dK, pB = rec[offset + 1 + 2 * (l.k - 1)] + rec[offset + ONSET_DELAY_OFFSET + l.k - 1];
-    hi = Math.max(0, pK - Math.max(0, pB - pK) * (l.hi - l.k)) - dK;
-  }
+  const lo = rec[offset + 1 + 2 * l.k], hi = l.toRun ? -rec[offset + ONSET_DELAY_OFFSET + l.k] : rec[offset + 3 + 2 * l.k];
   return lo + l.w * (hi - lo);
 }
 
