@@ -75,3 +75,29 @@ START = {
         "flat": {"foot_l": 8.0, "foot_r": -8.0}, "floor": ["foot_l", "foot_r"], "nose": ["foot_l"], "tail": ["foot_r"]},
 }
 POSES.update(START)
+
+# prone-turn-and-paddle (from the proneWaiting start frame above; Andrew's sheet, 8 frames, fixed side-on camera; session 3): 1 propped on her forearms
+# watching the horizon (proneWaiting); 2 chest down on the deck, an arm in the water each side; 3-6 the right arm pulls
+# back while the left pushes forward, spinning the board to her left (nose toward the camera at 90, away at 135);
+# 7 turned 180, chest up, right arm reaching (the paddle cycle's pdl5); 8 paddling. Arms in the world frame (board along
+# y, nose at -y, her left +x) before the turn (`spin`).
+_PT_BODY = {**POSES["paddle"]}
+_PT_DOWN = {"upperarm_l": _n(0.55, -0.1, -0.7), "forearm_l": _n(0.3, -0.3, -0.9),
+            "upperarm_r": _n(-0.55, -0.1, -0.7), "forearm_r": _n(-0.3, -0.3, -0.9)}
+# The sweep, hands just under the surface beside the rails: right arm forward starting its pull, left arm back starting
+# its push (A); halfway through, swapped (B).
+_PT_A = {"upperarm_r": _n(-0.45, -0.65, -0.55), "forearm_r": _n(-0.2, -0.75, -0.6),
+         "upperarm_l": _n(0.45, 0.6, -0.55), "forearm_l": _n(0.2, 0.75, -0.6)}
+_PT_B = {"upperarm_r": _n(-0.45, 0.6, -0.55), "forearm_r": _n(-0.2, 0.75, -0.6),
+         "upperarm_l": _n(0.45, -0.65, -0.55), "forearm_l": _n(0.2, -0.75, -0.6)}
+PT = {
+    "pt1": {**POSES["proneWaiting"]},
+    "pt2": {**_PT_BODY, "world": _PT_DOWN, "noseGap": 0.6},
+    "pt3": {**_PT_BODY, "world": _PT_A, "noseGap": 0.6, "spin": 20},
+    "pt4": {**_PT_BODY, "world": _PT_B, "noseGap": 0.6, "spin": 50},
+    "pt5": {**_PT_BODY, "world": _PT_A, "noseGap": 0.6, "spin": 90},
+    "pt6": {**_PT_BODY, "world": _PT_B, "noseGap": 0.6, "spin": 135},
+    "pt7": {**POSES["pdl5"], "spin": 180},
+    "pt8": {**POSES["pdl6"], "spin": 180},
+}
+POSES.update(PT)

@@ -147,10 +147,11 @@ if pose_names or clip_names:
             strip = {"stp": ((0.0, 0.0, 0.45), 55, 6.5, 85, 1100, 1100, 14), "pdl": ((0.0, -0.8, 0.35), 90, 5.2, 85, 1100, 1100, 4),
                      "trm": ((0.0, 0.0, 0.8), 0, 5.2, 85, 1100, 1100, 4),
                      "dd": ((0.0, -0.6, 0.5), 90, 6.2, 85, 1100, 1100, 4),
-                     "rh": ((0.0, 0.0, 0.6), 0, 7.5, 85, 1100, 1100, 35)}.get(pn.rstrip("0123456789"))
+                     "rh": ((0.0, 0.0, 0.6), 0, 7.5, 85, 1100, 1100, 35),
+                     "pt": ((0.0, 0.0, 0.35), 90, 6.0, 85, 1100, 1100, 6)}.get(pn.rstrip("0123456789"))
             if strip:
                 t, yw, dd, ln, ww, hh, pt = strip
-                if pn.startswith(("dd", "rh")):  # the board travels between these keys: frame each on its board
+                if pn.startswith(("dd", "rh", "pt")):  # the board travels between these keys: frame each on its board
                     t = (surf.location[0], surf.location[1], 0.45)
                 studio.shoot(cam, os.path.join(out_dir, "mannequin", f"{name}_{pn}.png"), t, yw, dd, ln, ww, hh, pitch_deg=pt)
                 continue

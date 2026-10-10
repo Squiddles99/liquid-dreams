@@ -108,3 +108,10 @@
 - Set-2 sequence 11 (duck-dive-surface: back on top, settles, paddles) is covered by the approved duckDive clip's
   end (dd5-dd7 → pdl1): dropped (Andrew, 2026-10-10). Remaining set 2: prone-turn-and-paddle, turtle-roll, late-drop,
   cutback, kickout, walk-cycle, enter-water.
+- prone-turn-and-paddle (Andrew's sheet, delivered mid-session; 8 frames side-on): keys pt1-8 in `start_poses.py`
+  (pt1 = proneWaiting; chest down, arms into the water; right arm pulls back while the left pushes forward, the board
+  spinning to her left 20/50/90/135 deg; pt7 = pdl5 turned 180). Clip `proneTurn` (~5 s): the turn on the board's
+  middle (`GLIDE` 0), then into the paddle cycle (pdl6s..pdl1s).
+- Ruling (Andrew, 2026-10-10): the turtle roll isn't something he sees in surfing; set-2 #10 is replaced by a BAIL:
+  paddling out, a big wave breaks, she pushes the board away and swims under it, surfaces, pulls the leg rope to get the
+  board back and climbs on prone. His bail sheet is ready after prone-turn-and-paddle.

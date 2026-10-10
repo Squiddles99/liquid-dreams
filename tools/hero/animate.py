@@ -46,6 +46,10 @@ CLIPS = {
     # 3/4-front view; the preview camera follows her.
     "roundhouse": ([f"rh{k}" for k in range(1, 13)], [9, 10, 8, 12, 18, 11, 12, 9, 7, 9, 10, 1], False,
                    ((0.0, 0.0, 0.6), 0, 7.5, 85, 35)),
+    # Prone turn and paddle (Andrew's sheet, session 3): from waiting on her forearms, chest down, arms sweep the board
+    # round 180 deg on its middle (~4 s), then into the paddle cycle at its pdl5 phase (right arm reaching).
+    "proneTurn": (["pt1", "pt2", "pt3", "pt4", "pt5", "pt6", "pt7", "pdl6s", "pdl7s", "pdl8s", "pdl1s"],
+                  [20, 14, 16, 16, 16, 18, 5, 5, 5, 5, 1], False, ((0.0, 0.0, 0.35), 90, 6.5, 85, 6)),
     # The four played back to back (preview only): idle once, turn, down, two paddle cycles.
     "sitToPaddleChain": (["stp1", "stp1", "stp2", "stp2", "stp3", "stp4", "stp4b", "stp5", "stp6"] + [f"{k}s" for k in _PDL * 2] + ["pdl1s"],
                          [40, 20, 36, 40, 44, 14, 14, 12, 10] + [5] * 16 + [1], False, _STP_CAM),
@@ -73,10 +77,10 @@ def _ease(t, v0=0.0, v1=0.0):
 
 # Keys (by index in a clip) her root passes through without slowing: the half turn is one continuous move (Andrew,
 # 2026-10-10: "make the part where her and the board turn 180 degrees much smoother").
-THROUGH = {"sitTurn": {1}, "sitToPaddleChain": {4}, "duckDive": {2, 4, 5}, "roundhouse": set(range(12))}
+THROUGH = {"sitTurn": {1}, "sitToPaddleChain": {4}, "duckDive": {2, 4, 5}, "roundhouse": set(range(12)), "proneTurn": {2, 3, 4, 5}}
 # Clips whose board glides forward at a steady speed (m/s along its nose) instead of sitting wherever each key's
 # contacts seat it (session 3: between the paddle pose and the duck-dive keys the board slid back a metre).
-GLIDE = {"duckDive": 0.6}
+GLIDE = {"duckDive": 0.6, "proneTurn": 0.0}  # 0: the board turns on its middle, staying put
 # Clips previewed with the sea's surface at this height (the board floats with its deck ~7 cm above the origin).
 WATER = {"duckDive": 0.03}
 # Clips that travel along a track (their keys' `offset`): her pelvis follows a Catmull-Rom curve through the keys
