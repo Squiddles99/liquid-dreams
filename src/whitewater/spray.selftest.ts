@@ -1,6 +1,7 @@
 import type * as THREE from 'three/webgpu';
 import { type ComputeNode, StorageBufferAttribute, Vector3 } from 'three/webgpu';
 import { Fn, float, storage, vec3, vec4 } from 'three/tsl';
+import { billowAt, billowNode } from './billow';
 import { mistLightCpu, mistLightNode } from './mistLight';
 import { registerSelfTest } from '../dev/selfTest';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
@@ -103,23 +104,42 @@ registerSelfTest({
       { cosView: 0.99, nDotL: 0.5, sunVisibility: 1, isotropic: 0.3, ground: [0.05, 0.2, 0.18] },
       { cosView: 0, nDotL: -0.2, sunVisibility: 1, isotropic: 0.6, ground: [0, 0, 0] },
       { cosView: -0.7, nDotL: 1, sunVisibility: 0.3, isotropic: 0.5, ground: [0.1, 0.1, 0.1] },
-    ];
+      // A billow trough (7b S3): the sky and the sun occluded.
+      { cosView: 0.2, nDotL: 0.4, sunVisibility: 1, isotropic: 0.6, ground: [0.05, 0.2, 0.18], skyShare: 0.4, sunShare: 0.6 },
+    ] as { cosView: number; nDotL: number; sunVisibility: number; isotropic: number; ground: number[]; skyShare?: number; sunShare?: number }[];
     const outAttr = new StorageBufferAttribute(new Float32Array((cases.length + 2) * 4), 4);
     const out = storage(outAttr, 'vec4', cases.length + 2);
     const pass = Fn(() => {
       out.element(0).assign(vec4(sky.sunIlluminance, 0.0));
       out.element(1).assign(vec4(sky.skyIrradiance, 0.0));
-      cases.forEach((c, i) => out.element(i + 2).assign(vec4(mistLightNode({ cosView: float(c.cosView), nDotL: float(c.nDotL), sunVisibility: float(c.sunVisibility), isotropic: float(c.isotropic), groundColour: vec3(...c.ground) }, sky), 0.0)));
+      cases.forEach((c, i) => out.element(i + 2).assign(vec4(mistLightNode({ cosView: float(c.cosView), nDotL: float(c.nDotL), sunVisibility: float(c.sunVisibility), isotropic: float(c.isotropic), groundColour: vec3(c.ground[0], c.ground[1], c.ground[2]), skyShare: c.skyShare === undefined ? undefined : float(c.skyShare), sunShare: c.sunShare === undefined ? undefined : float(c.sunShare) }, sky), 0.0)));
     })().compute(1) as ComputeNode;
     renderer.compute(pass);
     const g = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
     let worst = 0;
     cases.forEach((c, i) => {
       for (let ch = 0; ch < 3; ch++) {
-        const cpu = mistLightCpu({ sunIlluminance: g[ch], skyIrradiance: g[4 + ch], cosView: c.cosView, nDotL: c.nDotL, sunVisibility: c.sunVisibility, isotropic: c.isotropic, groundTint: c.ground as [number, number, number] })[ch];
+        const cpu = mistLightCpu({ sunIlluminance: g[ch], skyIrradiance: g[4 + ch], cosView: c.cosView, nDotL: c.nDotL, sunVisibility: c.sunVisibility, isotropic: c.isotropic, groundTint: c.ground as [number, number, number], skyShare: c.skyShare, sunShare: c.sunShare })[ch];
         worst = Math.max(worst, Math.abs(g[(i + 2) * 4 + ch] - cpu) / Math.max(Math.abs(cpu), 1e-6));
       }
     });
     return { pass: worst < 1e-4 && g[0] > 0 && g[4] > 0, detail: `worst relative error ${worst.toExponential(2)} (sun ${g[0].toFixed(3)}, sky ${g[4].toFixed(3)}: both lit)` };
+  },
+});
+
+registerSelfTest({
+  name: 'spray: the TSL billow field matches billow.billowAt (height and gradient; 7b S3)',
+  async run(renderer) {
+    const pts = Array.from({ length: 64 }, (_, i) => [(i * 7.31) % 41 - 20, (i * 3.77) % 37 - 18, (i * 2.13) % 9 - 3, (i % 9) * 0.7] as const);
+    const outAttr = new StorageBufferAttribute(new Float32Array(pts.length * 4), 4);
+    const out = storage(outAttr, 'vec4', pts.length);
+    const pass = Fn(() => {
+      pts.forEach((p, i) => { const b = billowNode(vec3(p[0], p[1], p[2]), float(p[3])); out.element(i).assign(vec4(b.h, b.grad)); });
+    })().compute(1) as ComputeNode;
+    renderer.compute(pass);
+    const g = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    let worst = 0;
+    pts.forEach((p, i) => { const c = billowAt(p[0], p[1], p[2], p[3]); worst = Math.max(worst, Math.abs(g[i * 4] - c.h), Math.abs(g[i * 4 + 1] - c.gx), Math.abs(g[i * 4 + 2] - c.gy), Math.abs(g[i * 4 + 3] - c.gz)); });
+    return { pass: worst < 1e-4, detail: `worst |GPU − CPU| ${worst.toExponential(2)} over ${pts.length} points (h, ∂x, ∂y, ∂z)` };
   },
 });

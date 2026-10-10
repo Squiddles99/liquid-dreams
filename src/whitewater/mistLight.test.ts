@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CREASE_SKY, CREASE_SUN, MIST_ALBEDO, MIST_GROUND_BOUNCE, creaseLight, mistLightCpu } from './mistLight';
+import { MIST_ALBEDO, MIST_GROUND_BOUNCE, mistLightCpu } from './mistLight';
 
 const base = { sunIlluminance: 1, skyIrradiance: 0, cosView: 0, nDotL: 0.5, sunVisibility: 1, isotropic: 0.3, groundTint: [0, 0, 0] as [number, number, number] };
 
@@ -22,15 +22,7 @@ describe('mistLight: one light for the foam volume, the spray and the mist (whit
   });
 });
 
-describe('the creases in the foam volume (7b S3 ruling): the sky and the sun occluded between the clumps', () => {
-  it('sky × (0.45 + 0.55 × clump), sun × (0.7 + 0.3 × clump); clump from the brightness of setFoamPattern (0.62 → 0, 1.07 → 1)', () => {
-    expect(CREASE_SKY).toEqual([0.45, 0.55]);
-    expect(CREASE_SUN).toEqual([0.7, 0.3]);
-    expect(creaseLight(0.62)).toEqual({ sky: 0.45, sun: 0.7 });
-    expect(creaseLight(1.07).sky).toBeCloseTo(1, 12);
-    expect(creaseLight(1.07).sun).toBeCloseTo(1, 12);
-    expect(creaseLight(2)).toEqual(creaseLight(1.07));
-  });
+describe('the foam volume’s occlusion (7b S3): the sky and the sun shares', () => {
   it('mistLightCpu takes the shares on the sky and the sun only (the ground bounce stays)', () => {
     const g: [number, number, number] = [0.1, 0.2, 0.3];
     const full = mistLightCpu({ ...base, skyIrradiance: 2, groundTint: g }), dim = mistLightCpu({ ...base, skyIrradiance: 2, groundTint: g, skyShare: 0.45, sunShare: 0.7 });

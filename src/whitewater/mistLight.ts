@@ -1,4 +1,4 @@
-import { clamp, float, max, pow } from 'three/tsl';
+import { float, max, pow } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
 import { SPRAY_PHASE_G } from './sprayLook';
 
@@ -18,21 +18,7 @@ const phase = (cosT: number, isotropic: number): number => {
   return (1 - isotropic) * ((1 - g2) / (4 * Math.PI * Math.pow(Math.max(1 + g2 - 2 * g * cosT, 1e-4), 1.5))) + isotropic / (4 * Math.PI);
 };
 
-/** The foam volume's creases (7b S3 ruling, photo 1): between the bright clumps the sky is occluded to CREASE_SKY[0] (+
- * [1] × clump) and the sun to CREASE_SUN[0] (+ [1] × clump), clump = setFoamPattern's brightness term (0.62 → 1.07)
- * normalised to [0, 1]: shadowed hollows between lit lumps. */
-export const CREASE_SKY: readonly [number, number] = [0.45, 0.55], CREASE_SUN: readonly [number, number] = [0.7, 0.3];
-const CLUMP_SHADE: readonly [number, number] = [0.62, 1.07];
-export function creaseLight(shade: number): { sky: number; sun: number } {
-  const c = Math.min(1, Math.max(0, (shade - CLUMP_SHADE[0]) / (CLUMP_SHADE[1] - CLUMP_SHADE[0])));
-  return { sky: CREASE_SKY[0] + CREASE_SKY[1] * c, sun: CREASE_SUN[0] + CREASE_SUN[1] * c };
-}
-export function creaseLightNode(shade: N): { sky: N; sun: N } {
-  const c = clamp(float(shade).sub(CLUMP_SHADE[0]).div(CLUMP_SHADE[1] - CLUMP_SHADE[0]), 0.0, 1.0);
-  return { sky: c.mul(CREASE_SKY[1]).add(CREASE_SKY[0]), sun: c.mul(CREASE_SUN[1]).add(CREASE_SUN[0]) };
-}
-
-/** `skyShare`, `sunShare` (absent 1): the creases' occlusion of the sky and the sun (creaseLight); the ground bounce stays. */
+/** `skyShare`, `sunShare` (absent 1): the occlusion of the sky and the sun (billow.billowShares); the ground bounce stays. */
 export function mistLightCpu(i: { sunIlluminance: number; skyIrradiance: number; cosView: number; nDotL: number; sunVisibility: number; isotropic: number; groundTint: [number, number, number]; skyShare?: number; sunShare?: number }): [number, number, number] {
   const sun = i.sunIlluminance * i.sunVisibility * (wrapDiffuse(i.nDotL, MIST_WRAP) * (1 - i.isotropic) + phase(i.cosView, i.isotropic)) * MIST_ALBEDO * (i.sunShare ?? 1);
   const sky = ((i.skyIrradiance * MIST_ALBEDO) / Math.PI) * (i.skyShare ?? 1);
