@@ -139,6 +139,8 @@ describe('the coast map (lineup truth, Task 1)', () => {
   // the 9 m shelf, focused an 8 ft set into a closeout 69–189 m off the beach (tools/_innerShelf.ts).
   it("deepens the inner shelf to 10 m at z −950, smoothly, back to 9 m by z −1 150 and at the Womb's halo (−750)", () => {
     expect(INNER_SHELF_DEEP.length).toBe(1);
+    // Deeper than the first traced contour would hold the shelf flat past it and move the survey's lines.
+    for (const q of INNER_SHELF_DEEP) expect(q.depthM).toBeLessThanOrEqual(COAST_CONTOURS[0].depthM);
     expect(innerShelfM(-950)).toBeCloseTo(10, 6);
     expect(innerShelfM(-1150)).toBe(INNER_SHELF_M);
     expect(innerShelfM(-750)).toBe(INNER_SHELF_M);
@@ -154,17 +156,20 @@ describe('the coast map (lineup truth, Task 1)', () => {
 
   it("changes nothing in the Womb's halo or on Lefthanders' ledge (1 cm against the 9 m shelf)", () => {
     const flat = buildCoastMap(reef, DEFAULT_COAST_PARAMS, []);
-    let worstHalo = 0, worstLedge = 0, changed = 0;
+    let worstHalo = 0, worstLedge = 0, changed = 0, stray = 0;
     for (let r = 0; r < G.nz; r++) {
       const z = G.z0 + r * G.cellM;
       for (let c = 0; c < G.nx; c++) {
-        const i = r * G.nx + c, d = Math.abs(coast.bed[i] - flat.bed[i]);
+        const i = r * G.nx + c, d = Math.abs(coast.bed[i] - flat.bed[i]), x = G.x0 + c * G.cellM;
         if (d > 0) changed++;
+        // Only the hand-set shelf, only between the deepening's flanks: inshore of the traced 10 m line.
+        if (d > 0.01) stray += Number(!INNER_SHELF_DEEP.some((q) => z > q.zNorth && z < q.zSouth) || x <= contourXAt(COAST_CONTOURS[0], z));
         if (wombHalo(z) > 0) worstHalo = Math.max(worstHalo, d);
         if (insidePolygon(G.x0 + c * G.cellM, z, BREAK_FOOTPRINTS.lefthanders)) worstLedge = Math.max(worstLedge, d);
       }
     }
     expect(changed).toBeGreaterThan(0);
+    expect(stray).toBe(0);
     expect(worstHalo).toBeLessThan(0.01);
     expect(worstLedge).toBeLessThan(0.01);
   });
