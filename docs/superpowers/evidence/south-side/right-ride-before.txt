@@ -1,0 +1,13 @@
+SOUTH_LEDGE [[-130,0],[-137,50],[-150,150],[-160,242]]
+6 ft 14 s tide -0.50: r0 closes out peel  -21.5 m/s hollow 0.75 broken 21/21 | r1 closes out peel  -22.9 m/s hollow 0.58 broken 41/41 | r01 closes out peel  -22.6 m/s hollow 0.65 broken 62/62
+6 ft 14 s tide 0.00: r0 closes out peel  -21.9 m/s hollow 0.54 broken 21/21 | r1 closes out peel  -23.4 m/s hollow 0.50 broken 41/41 | r01 closes out peel  -23.0 m/s hollow 0.53 broken 62/62
+6 ft 14 s tide 0.50: r0 closes out peel  -22.6 m/s hollow 0.47 broken 21/21 | r1 closes out peel  -23.8 m/s hollow 0.54 broken 41/41 | r01 closes out peel  -23.6 m/s hollow 0.48 broken 62/62
+8 ft 15 s tide -0.50: r0 closes out peel  -21.6 m/s hollow 1.00 broken 21/21 | r1 closes out peel  -23.0 m/s hollow 1.00 broken 41/41 | r01 closes out peel  -22.6 m/s hollow 1.00 broken 62/62
+8 ft 15 s tide 0.00: r0 closes out peel  -21.9 m/s hollow 1.00 broken 21/21 | r1 closes out peel  -23.2 m/s hollow 0.73 broken 41/41 | r01 closes out peel  -22.8 m/s hollow 0.82 broken 62/62
+8 ft 15 s tide 0.50: r0 closes out peel  -22.2 m/s hollow 0.71 broken 21/21 | r1 closes out peel  -23.4 m/s hollow 0.58 broken 41/41 | r01 closes out peel  -23.1 m/s hollow 0.66 broken 62/62
+10 ft 16 s tide -0.50: r0 closes out peel  -21.6 m/s hollow 1.00 broken 21/21 | r1 closes out peel  -23.2 m/s hollow 1.00 broken 41/41 | r01 closes out peel  -22.8 m/s hollow 1.00 broken 62/62
+10 ft 16 s tide 0.00: r0 closes out peel  -21.7 m/s hollow 1.00 broken 21/21 | r1 closes out peel  -23.4 m/s hollow 1.00 broken 41/41 | r01 closes out peel  -22.9 m/s hollow 1.00 broken 62/62
+10 ft 16 s tide 0.50: r0 closes out peel  -22.3 m/s hollow 1.00 broken 21/21 | r1 closes out peel  -23.6 m/s hollow 1.00 broken 41/41 | r01 closes out peel  -23.2 m/s hollow 1.00 broken 62/62
+12 ft 17 s tide -0.50: r0 closes out peel  -22.2 m/s hollow 1.00 broken 21/21 | r1 closes out peel  -23.4 m/s hollow 1.00 broken 41/41 | r01 closes out peel  -22.9 m/s hollow 1.00 broken 62/62
+12 ft 17 s tide 0.00: r0 closes out peel  -22.1 m/s hollow 1.00 broken 21/21 | r1 closes out peel  -23.4 m/s hollow 1.00 broken 41/41 | r01 closes out peel  -23.0 m/s hollow 1.00 broken 62/62
+12 ft 17 s tide 0.50: r0 closes out peel  -22.0 m/s hollow 1.00 broken 21/21 | r1 closes out peel  -23.6 m/s hollow 1.00 broken 41/41 | r01 closes out peel  -23.2 m/s hollow 1.00 broken 62/62
