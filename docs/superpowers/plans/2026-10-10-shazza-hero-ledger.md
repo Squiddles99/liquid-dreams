@@ -102,3 +102,6 @@
   camera; his sheet keeps her facing the camera all the way round (ChatGPT). I followed the legend and the physics.
   His sheet's squat is deeper than her planted-feet solve reaches; knees taken deeper (up to 1.35) but she stays a
   little taller than his frames.
+- APPROVED (Andrew, 2026-10-10): roundhouse cutback (first look), duck dive r2 (sinks to 1.2 m at the knee push, floats
+  back up nose-first toward the surface; preview water = tinted side cut-away). Previews in docs/art/anim/shazza/
+  (roundhouse.mp4, duck-dive.mp4).
