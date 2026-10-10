@@ -1,0 +1,11 @@
+02:49 main 1 | caught 399.25 | cam median 3.6 ms | riding median 25.0 ms | at riding: focused true
+02:50 ww 1 | caught 399.29 | cam median 3.8 ms | riding median 38.7 ms | at riding: focused true
+02:52 main 2 | caught 399.29 | cam median 3.5 ms | riding median 26.0 ms | at riding: focused true
+02:53 ww 2 | caught 399.31 | cam median 3.4 ms | riding median 39.5 ms | at riding: focused true
+02:54 main 3 | caught 399.35 | cam median 3.6 ms | riding median 25.7 ms | at riding: focused true
+02:55 ww 3 | caught 399.30 | cam median 3.8 ms | riding median 24.8 ms | at riding: focused true
+02:56 main 4 | caught 399.30 | cam median 3.9 ms | riding median 31.2 ms | at riding: focused true
+02:58 ww 4 | caught 399.32 | cam median 3.7 ms | riding median 29.0 ms | at riding: focused true
+02:59 main 5 | caught 399.28 | cam median 3.7 ms | riding median 34.9 ms | at riding: focused true
+03:00 ww 5 | caught 399.35 | cam median 3.7 ms | riding median 16.0 ms | at riding: focused true
+DONE

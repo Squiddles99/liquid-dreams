@@ -1,0 +1,4 @@
+ld-ww-main 1: breakEmitters ms median 3.02 mean 3.20 births median 74.00 
+ld-whitewater 1: breakEmitters ms median 3.46 mean 3.55 births median 75.00 
+ld-ww-main 2: breakEmitters ms median 2.85 mean 3.06 births median 74.00 
+ld-whitewater 2: breakEmitters ms median 3.27 mean 3.46 births median 75.00 

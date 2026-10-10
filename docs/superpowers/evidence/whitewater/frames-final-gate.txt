@@ -1,0 +1,5 @@
+main: riding 25 / 26 / 25.7 / 31.2 / 34.9* (* stalled); cam 3.6 / 3.5 / 3.6 / 3.9 / 3.7
+branch: riding 38.7* / 39.5* / 24.8 / 29 / 16 (* stalled); cam 3.8 / 3.4 / 3.8 / 3.7 / 3.7
+riding median raw: main 26, branch 29 → 1.115 ×
+riding median no-stall: main 25.85, branch 24.8 → 0.959 ×
+cam median: main 3.6, branch 3.7

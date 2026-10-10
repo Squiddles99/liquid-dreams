@@ -204,7 +204,11 @@ app.whenReady().then(async () => {
   await traceStop('ride');
 
   const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s${r0.phase === 'ride' ? '' : ` (riding pass began in phase ${r0.phase})`} ending at x, z ${where} (${ft} ft, ${experience}, wind ${windArg ? `${windArg[0]} kn from ${windArg[1]}°` : "the page's own"}); window at cam: ${focusCam}; at riding: ${focusRide}; at the end: ${focusEnd}; recorder after Profiler.start`;
-  const report = [times, `# stall log ${stall ? 'on' : 'off'}, trace ${trace ? 'on' : 'off'}`, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding'), countReport].join('\n');
+  // A paddle-out stall (whitewater Task 8: a ~4 s frame while paddling in either tree) starts the riding pass ~0.6 s early,
+  // on a costlier stretch: such a run is flagged so a gate compares like with like (tools/_frameGate.mjs).
+  const paddleMax = Number(/max ([0-9.]+) ms/.exec(fb)?.[1] ?? 0);
+  const stalled = `# paddling max ${paddleMax.toFixed(1)} ms${paddleMax > 1000 ? ' STALLED (a paddle-out stall: compare it only with stalled runs)' : ''}`;
+  const report = [times, stalled, `# stall log ${stall ? 'on' : 'off'}, trace ${trace ? 'on' : 'off'}`, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding'), countReport].join('\n');
   writeFileSync(out + 'report.txt', report);
   writeFileSync(out + 'cam.cpuprofile', JSON.stringify(pa));
   writeFileSync(out + 'paddle.cpuprofile', JSON.stringify(pb));
