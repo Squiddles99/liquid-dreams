@@ -46,3 +46,32 @@ rule kept it outside the halo.
   10 ft inside closeout shrinks 6 %. The 10 ft beach break stays, as the plan wanted.
 - Open: the 3 cells at z 472 (ruling 4).
 - Merge: his call.
+
+## Fable's review (2026-10-10): gates met outside the halo; merge recommended, Andrew decides
+
+Checked against the evidence, not the summary: `datum-diff.txt` (84/84 identical), `breaks-before/after.txt` (8 ft
+elsewhere 146 → 3, every footprint's count unchanged, shore 66 579 → 66 534, 10 ft 3 357 → 3 167), `sweep.txt`,
+`focus-map.txt` (the ridge starts at the halo's north edge, 130 m south of the contour kink, so the lens reading is
+right), `full-suite-ab.txt` (33 reds, the same names on and off: main's own), and the code (`innerShelfM` is a
+deepening only, flanks at halo 0, the whole-grid test pins the change to the hand-set shelf between the flanks).
+
+**Rulings on the seven (one line each).**
+1. Cause = the halo lens: accepted on the focus map and the 600 m halo check.
+2. Asymmetric profile, south flank at the halo's edge: accepted; it is what the plan's rule demands.
+3. D 10 m, half-width 200 m: accepted; the least D, no traced contour moves, and the test now forbids deeper.
+4. The 3 cells at z 472: **carried, not fixed here.** Ratio 1.004–1.008 is a set barely breaking in 11.3 m of water
+   inside the Womb's south halo; moving it means moving the Womb's water, which the plan forbids. For Andrew: the
+   fix, if he wants one, is a gentler or wider south halo fade (the same lens mirrored), its own small segment with the
+   datum as the gate. The gate's "8 ft: 0 cells" is met outside the halo and read that way.
+5. No CoastParams slider: accepted (hand-set bed, not a dial).
+6. "Before" frames from shelf-polish Task 8: accepted (same coast; the change is a few far pixels either way).
+7. Full-suite A/B instead of the task-8 names list: accepted, and stricter.
+
+**Small follow-ups, non-blocking (one commit, Opus if its session is open, else folded in at the merge):** pin the
+coastBreaking exception to the south halo (z ≥ 450) so a north-halo regression fails; assert `depthM ≥ INNER_SHELF_M`
+in the coastMap test (the max in `innerShelfM` would mask a shallowing entry silently); `buildCoastMap`'s `deep` in its
+JSDoc. The other deferred minors stay deferred.
+
+**Merge:** `git merge-tree` against main (now 63d7604, the whitewater spec and plan) reports no conflicts; the branch
+touches coastMap, its two tests and two tools only. Recommended. Andrew decides; merge main via a temporary worktree
+if the `liquid-dreaming/` checkout is on another branch.
