@@ -21,7 +21,6 @@ export const CHART_LABELS: readonly ChartLabel[] = [
   { text: 'GEOGRAPHE BAY', lonLat: [115.27, -33.555], kind: 'water', dx: 0, dy: 0, anchor: 'middle', dot: false },
   { text: 'INDIAN OCEAN', lonLat: [114.56, -33.93], kind: 'water', dx: 0, dy: 0, anchor: 'middle', dot: false },
   { text: 'YALLINGUP', lonLat: [115.03, -33.645], kind: 'town', dx: 14, dy: 8, anchor: 'start', dot: true },
-  { text: 'DUNSBOROUGH', lonLat: [115.105, -33.615], kind: 'town', dx: 30, dy: 66, anchor: 'start', dot: true },
   { text: 'BUSSELTON', lonLat: [115.345, -33.652], kind: 'town', dx: 14, dy: 26, anchor: 'start', dot: true },
   { text: 'GRACETOWN', lonLat: [114.99, -33.866], kind: 'town', dx: 16, dy: -6, anchor: 'start', dot: true },
   { text: 'MARGARET RIVER', lonLat: [115.075, -33.955], kind: 'town', dx: 14, dy: 8, anchor: 'start', dot: true },
@@ -64,6 +63,12 @@ export function chartWindArrows(fromDeg: number | null, speedMs: number): WindAr
 const POINTS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 export function compass16(deg: number): string {
   return POINTS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
+}
+
+/** A direction arc in words: its two ends, or one when both round to the same point (the panel's best swell and wind). */
+export function compassArc(arc: readonly [number, number]): string {
+  const a = compass16(arc[0]), b = compass16(arc[1]);
+  return a === b ? a : `${a} – ${b}`;
 }
 
 /** The title's close-up: a 640×360 window (3× zoom) centred between Gracetown and the river mouth. */

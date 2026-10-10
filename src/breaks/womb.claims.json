@@ -20,8 +20,8 @@
   "detail": "no game check yet"
  },
  "best-swell": {
-  "pass": false,
-  "detail": "225°: no, 247°: breaks"
+  "pass": true,
+  "detail": "247°: breaks"
  },
  "best-wind": {
   "pass": true,

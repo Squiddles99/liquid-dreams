@@ -5,7 +5,7 @@
   "subtitle": "a bodyboarders' favourite",
   "lonLat": [114.982, -33.8952],
   "hero": "breaks/womb-hero.webp",
-  "best": { "swellFromDeg": [225, 248], "sizeFt": [4, 10], "windFromDeg": [45, 90], "tide": ["mid", "high"], "level": "advanced" },
+  "best": { "swellFromDeg": [240, 255], "sizeFt": [4, 10], "windFromDeg": [45, 90], "tide": ["mid", "high"], "level": "advanced" },
   "bestClaims": { "swell": "best-swell", "wind": "best-wind", "tide": "best-tide" },
   "summary": [
     { "text": "A left-hand reef break near Gracetown", "claim": "left" },
@@ -20,7 +20,7 @@
       { "text": "At the end it can run into a wave breaking the other way. Then you either pull out or get caught in the tube.", "claim": "other-way" }
     ] },
     { "id": "when", "heading": "When it works", "paragraphs": [
-      { "text": "It likes swell from the south-west, anywhere round to west-south-west.", "claim": "best-swell" },
+      { "text": "It's at its best on a swell from the west-south-west.", "claim": "best-swell" },
       { "text": "It starts working around three to five feet and really turns on once it's over head height.", "claim": "best-size" },
       { "text": "An easterly or north-easterly blows offshore here and grooms the face.", "claim": "best-wind" },
       { "text": "Surf it from mid to high tide.", "claim": "best-tide" }
@@ -60,7 +60,7 @@
     { "id": "short", "text": "Short and punchy (under 50 m)", "check": "none" },
     { "id": "other-way", "text": "Can meet a section breaking the other way", "check": "none" },
     { "id": "best-size", "text": "Starts at 3-5 ft, best over head height", "check": "none" },
-    { "id": "best-swell", "text": "Best swell SW to WSW (225-248 deg)", "check": "best-swell" },
+    { "id": "best-swell", "text": "Best swell WSW (240-255 deg)", "check": "best-swell" },
     { "id": "best-wind", "text": "Best wind NE to E (45-90 deg), offshore", "check": "best-wind" },
     { "id": "best-tide", "text": "Best tide mid to high", "check": "best-tide" }
   ]
