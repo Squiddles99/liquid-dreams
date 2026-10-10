@@ -71,8 +71,8 @@ describe('pileChurn: the solid boil and its bubble mottle (7b S3)', () => {
     expect(solidBoil(0.6, 0.5)).toBeCloseTo(0.6, 12);
     expect(solidBoil(0, 1)).toBe(0);
   });
-  it('the mottle: ~0.3 m bubbles, ±15 % of the foam volume\'s brightness', () => {
-    expect(BUBBLE_MOTTLE_M).toBe(0.3);
-    expect(BUBBLE_MOTTLE_AMP).toBe(0.15);
+  it('the mottle: ~0.5 m bubbles, ±30 % (S3 ruling) of the foam volume\'s brightness', () => {
+    expect(BUBBLE_MOTTLE_M).toBe(0.5);
+    expect(BUBBLE_MOTTLE_AMP).toBe(0.3);
   });
 });

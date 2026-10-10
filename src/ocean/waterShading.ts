@@ -4,7 +4,7 @@ import { WATER_IOR, extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
 import { alongPathNode, cameraDepthNode, fresnelFromInsideNode, sunThroughWindowNode, waterColourAtDepthNode } from './underwaterNodes';
 import { LIP_REFERENCE_THICKNESS_M, type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
-import { mistLightNode } from '../whitewater/mistLight';
+import { creaseLightNode, mistLightNode } from '../whitewater/mistLight';
 
 type N = any;
 
@@ -100,6 +100,9 @@ export function deepWaterUpwelling(sky: Sky, u: WaterOpticsUniforms, sunVisibili
  * glitter + light from the water column (deep upwelling + lip transmission of sun and skylight), mixed with lit foam,
  * then aerial perspective.
  */
+/** The foam volume's exposure (7b S3): under the shoulder, so its creases read. */
+export const FOAM_VOLUME_EXPOSURE = 0.85;
+
 export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUniforms): N {
   const n = i.normal;
   const v = i.viewDir;
@@ -185,8 +188,12 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // phase (it glows backlit), the sky's blue in its shadows and the water's colour bounced into it; thinning foam blends
   // back to the lace above. The churn's lumps shade it through the normal (their slope is in the ribbon's setSlope).
   const foamVolume = i.breakFoam ? smoothstep(0.6, 0.9, i.breakFoam) : null;
-  const volumeLight = mistLightNode({ cosView: dot(v.negate(), l), nDotL, sunVisibility: sv, isotropic: 0.6, groundColour: column }, sky);
-  const foamSeen = foamVolume ? mix(foamLace, i.foamMottle ? volumeLight.mul(i.foamMottle) : volumeLight, foamVolume) : foamLace;
+  // The creases between the clumps (7b S3 ruling): the sky and the sun occluded by the pattern's own clump brightness.
+  const crease = creaseLightNode(i.foamShade ?? float(1.07));
+  const volumeLight = mistLightNode({ cosView: dot(v.negate(), l), nDotL, sunVisibility: sv, isotropic: 0.6, groundColour: column, skyShare: crease.sky, sunShare: crease.sun }, sky);
+  // The volume a touch under the tone curve's shoulder (7b S3 ruling's fallback): at 1 the boil's red sat at 250/255
+  // and the creases' shading compressed to a few levels.
+  const foamSeen = foamVolume ? mix(foamLace, (i.foamMottle ? volumeLight.mul(i.foamMottle) : volumeLight).mul(FOAM_VOLUME_EXPOSURE), foamVolume) : foamLace;
   const colour = mix(water, foamSeen, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
