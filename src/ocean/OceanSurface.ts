@@ -55,7 +55,7 @@ export function setFoamPattern(foam: N, frame: N, time: N, thin: N = float(0.0))
       // Aged lace (`thin` 1) is threads, fresh is clumps: the rims narrow to AGED_LACE_WIDTH.
       const width = w.pow(1.3).mul(1.2).add(0.18).mul(float(1.0).sub(float(thin).mul(1 - AGED_LACE_WIDTH)));
       const lace = float(1.0).sub(smoothstep(width.mul(0.5), width, edge));
-      const cover = lace.mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0)));
+      const cover = min(lace.mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0))), mix(float(SET_FOAM_MAX_COVER), float(AGED_LACE_COVER), float(thin)));
       // The clumps: bright over each cell's middle, and a finer mottle of bubble clusters (~0.5 m) over them.
       const fine = mx_noise_float(vec3(frame.x.mul(2.2).add(5.3), frame.y.mul(2.2), time.mul(0.6)));
       // Three scales mixed, so no one cell size repeats as spots: the cells, the bubble clusters, and the ~1 m mottle.
@@ -88,8 +88,10 @@ export interface SheetFoamMap {
   readonly clearTimeS?: number;
 }
 
-/** Aged lace (whitewater §5.3): the lace's rims narrow to this share where the map's foam is older than its clear time. */
-export const AGED_LACE_WIDTH = 0.7;
+/** Aged lace (whitewater §5.3, Fable's L1): where the map's foam is older than its clear time the lace's rims narrow to
+ * this share and its cover is capped at AGED_LACE_COVER, so by a minute the inside is water with streaks between. */
+export const AGED_LACE_WIDTH = 0.5;
+export const AGED_LACE_COVER = 0.35;
 
 /**
  * The foam weight a surface point uses: the map inside its box, the Phase 2 placeholder outside, blended over the edge

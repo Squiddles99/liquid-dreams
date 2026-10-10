@@ -60,6 +60,7 @@ export class FoamField {
   private readonly dtS = uniform(FOAM_TICK_S);
   /** How many times a step samples its source (1; COARSE_SOURCE_SAMPLES on a coarse step). */
   private readonly samples = uniform(1, 'int');
+  private coarseSamples = 0;
   private readonly expK = uniform(Math.log(1 / LACE_LEVEL) / DEFAULT_FOAM_PARAMS.clearTimeS);
   private readonly laceSlope = uniform(LACE_LEVEL / DEFAULT_FOAM_PARAMS.laceLifeS);
   private readonly driftMps = uniform(DEFAULT_FOAM_PARAMS.driftMps);
@@ -173,12 +174,21 @@ export class FoamField {
     this.schedule.invalidate();
   }
 
+  /** How many source samples the last replay's coarse steps took (COARSE_SOURCE_SAMPLES covered, 1 not). */
+  get lastCoarseSamples(): number {
+    return this.coarseSamples;
+  }
+
   /**
    * Runs this frame's ticks (FoamSchedule.plan): the coarse ones with dt = COARSE_TICKS × FOAM_TICK_S, then the fine.
+   * `covered` (Fable's Task 4 ruling): a replay behind a cover (boot, a moment link, conditions from the select screen,
+   * anything showing the loading cover) samples each coarse step's source COARSE_SOURCE_SAMPLES times (exact, ~370 ms
+   * at the game's box); without one (the FOAM_JUMP_S safety net on a stalled frame, a dev-panel jump) once (~150 ms:
+   * lace older than FINE_REPLAY_S may show stripes, a hitch would be worse).
    * Before each tick `prepare(tₖ)` points the source at that time (App: the ocean's time uniform and SetWaves' events);
    * the caller restores its own state afterwards. Returns the steps run.
    */
-  advance(renderer: THREE.WebGPURenderer, simTime: number, prepare: (t: number) => void): number {
+  advance(renderer: THREE.WebGPURenderer, simTime: number, prepare: (t: number) => void, covered: boolean): number {
     const plan = this.schedule.plan(simTime, this.params.clearTimeS + this.params.laceLifeS);
     if (plan.clear) renderer.compute(this.clearPass);
     // One submission per tick (the step and the copy together). Measured: a replay's cost was the number of submissions,
@@ -187,7 +197,8 @@ export class FoamField {
     // dtS and samples are set only around a coarse run (live ticks never change them).
     if (plan.coarse.length > 0) {
       this.dtS.value = COARSE_TICKS * FOAM_TICK_S;
-      this.samples.value = COARSE_SOURCE_SAMPLES;
+      this.coarseSamples = covered ? COARSE_SOURCE_SAMPLES : 1;
+      this.samples.value = this.coarseSamples;
       for (const k of plan.coarse) {
         prepare(tickTime(k));
         renderer.compute(tick);

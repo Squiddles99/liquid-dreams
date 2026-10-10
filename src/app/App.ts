@@ -373,6 +373,8 @@ export class App {
   private foamTimer: number | undefined;
   private sprayTimer: number | undefined;
   private foamOnlyTimer: number | undefined;
+  /** Tools only (captureMoments): every foam replay exact, as behind a cover (a capture's applyMoment has no cover). */
+  exactFoamReplays = false;
   /** Offshore spray off the throwing lips (spec 2026-09-27-offshore-spray-design.md). */
   readonly spray = new SprayParticles(this.sky, undefined, this.sunlight);
   /** The impact explosion where each lip lands (spec 2026-09-28-impact-explosion-design.md), on the same particle system. */
@@ -889,7 +891,9 @@ export class App {
    * time uniform and the waves buffer at its own time; both are restored for the frame's render and probe.
    */
   private stepFoam(events: readonly WaveEvent[]): void {
-    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t));
+    // A replay behind the loading cover is exact; one mid-play takes the cheap path (FoamField.advance, Fable's ruling).
+    const covered = this.exactFoamReplays || !!this.loadingScreen?.blocking;
+    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t), covered);
     this.frameTicks.foam = steps;
     if (steps === 0) return;
     this.ocean.time.value = this.clock.simTime;
@@ -944,7 +948,7 @@ export class App {
     await device.queue.onSubmittedWorkDone();
     this.foamField.invalidate();
     const start = performance.now();
-    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t));
+    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t), true);
     await device.queue.onSubmittedWorkDone();
     const ms = performance.now() - start;
     this.pointFoamSourceAt(this.clock.simTime);

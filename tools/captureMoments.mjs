@@ -33,6 +33,8 @@ app.whenReady().then(async () => {
   await win.loadURL(`${base}#m=${b64}`);
   for (let i = 0; i < 90; i++) { if (await win.webContents.executeJavaScript('!!window.liquidDreams')) break; await sleep(1000); }
   await sleep(25000);
+  // A capture's applyMoment has no loading cover: ask for the foam map's exact (covered) replay, as a link at boot gets.
+  await win.webContents.executeJavaScript('window.liquidDreams.exactFoamReplays = true');
   for (const t of times) {
     grab();
     const m = { conditions: moment.conditions, camera: moment.camera, simTime: t, paused };
