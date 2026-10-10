@@ -1,0 +1,35 @@
+# level lq 5.857 (k = 5 and k + 1 blended)
+# 6 ft, H 3.17 m, peak broke -0.003 s; TIP (-130, 0), TURN (-0.5, -125.0)
+t + 1: run of 111, arcs -80..30, curl at arc 30 (-97.4, 65.3) tb 4.57
+t + 1: run of 44, arcs 164..207, curl at arc 164 (-56.7, 192.9) tb 5.43
+t + 3: run of 84, arcs -91..-8, curl at arc -8 (-91.5, 23.1) tb 4.77
+t + 3: run of 34, arcs 172..205, curl at arc 172 (-33.6, 193.1) tb 4.60
+  UNTIL t + 3 arc 194->195 tip 239 m: until 0.91 -> 0.85
+  UNTIL t + 3 arc 195->196 tip 240 m: until 0.85 -> 0.80
+t + 6: run of 70, arcs -107..-38, curl at arc -38 (-73.5, -14.8) tb 5.74
+t + 6: run of 30, arcs 170..199, curl at arc 170 (-6.3, 181.6) tb 5.36
+  TB t + 6 arc 182->183 tip 233 m: tb 0.58 -> 2.53
+  TB t + 6 arc 183->184 tip 234 m: tb 2.53 -> 2.90
+  TB t + 6 arc 186->187 tip 237 m: tb 2.81 -> 2.93
+  TB t + 6 arc 189->190 tip 240 m: tb 2.93 -> 3.02
+  TB t + 6 arc 192->193 tip 243 m: tb 3.05 -> 3.13
+  TB t + 6 arc 194->195 tip 245 m: tb 3.09 -> 3.15
+  TB t + 6 arc 197->198 tip 248 m: tb 3.14 -> 3.21
+# 6 ft: 9 violations over the whole trace (dt 1,3,6); worst 1.95 s at t + 6 arcs 182/183 (1, 192) tip 233 m TB
+# level lq 4.953 (k = 4 and k + 1 blended)
+# 8 ft, H 4.41 m, peak broke -0.506 s; TIP (-130, 0), TURN (-0.5, -125.0)
+t + 1: run of 127, arcs -80..46, curl at arc 46 (-96.9, 82.1) tb 5.21
+t + 1: run of 40, arcs 169..208, curl at arc 169 (-59.0, 198.9) tb 5.09
+  TB t + 1 arc 196->197 tip 238 m: tb 0.10 -> 1.13
+t + 3: run of 100, arcs -90..9, curl at arc 9 (-90.6, 40.7) tb 5.44
+t + 3: run of 31, arcs 176..206, curl at arc 176 (-36.1, 198.1) tb 4.72
+t + 6: run of 77, arcs -107..-31, curl at arc -31 (-76.2, -6.5) tb 6.33
+# 8 ft: 1 violations over the whole trace (dt 1,3,6); worst 1.03 s at t + 1 arcs 196/197 (-43, 222) tip 238 m TB
+# level lq 3.679 (k = 3 and k + 1 blended)
+# 12 ft, H 7.02 m, peak broke -0.726 s; TIP (-130, 0), TURN (-0.5, -125.0)
+t + 1: run of 148, arcs -80..67, curl at arc 67 (-92.5, 102.7) tb 6.30
+t + 1: run of 34, arcs 175..208, curl at arc 175 (-57.8, 204.6) tb 5.38
+t + 3: run of 123, arcs -91..31, curl at arc 31 (-85.5, 62.3) tb 6.59
+t + 3: run of 24, arcs 183..206, curl at arc 183 (-34.1, 204.5) tb 5.44
+t + 6: run of 88, arcs -107..-20, curl at arc -20 (-74.7, 4.6) tb 7.06
+# 12 ft: 0 violations over the whole trace (dt 1,3,6); worst 0.00 s at -
