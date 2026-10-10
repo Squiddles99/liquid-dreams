@@ -17,6 +17,7 @@ import body as hero_body  # noqa: E402
 import eyes  # noqa: E402
 import garments  # noqa: E402
 import project  # noqa: E402
+import animate  # noqa: E402
 import rigging  # noqa: E402
 import sequences  # noqa: E402,F401  (adds the reference sequences' keys to rigging.POSES)
 import start_poses  # noqa: E402,F401  (start frames for the next reference sequences)
@@ -31,6 +32,7 @@ os.makedirs(out_dir, exist_ok=True)
 views = [v for v in argv[argv.index("--views") + 1].split(",") if v] if "--views" in argv else ["face", "front", "q3", "side", "back"]
 mannequin = "--mannequin" in argv  # grey, no hair or clothes, side-on: start frames for Andrew's reference sequences
 pose_names = argv[argv.index("--poses") + 1].split(",") if "--poses" in argv else []
+clip_names = argv[argv.index("--animate") + 1].split(",") if "--animate" in argv else []  # animate.CLIPS
 samples = int(argv[argv.index("--samples") + 1]) if "--samples" in argv else 256
 preset = json.load(open(preset_path, encoding="utf-8"))
 name = preset["name"]
@@ -106,7 +108,7 @@ for v in views:
     expression(v.endswith("smile") or v in ("front",))
     studio.shoot(cam, os.path.join(out_dir, "renders", f"{name}_{v}.png"), t, yaw, dist, lens, w, h)
 
-if pose_names:
+if pose_names or clip_names:
     # Gate 1c: the rig's twist bones, what she wears bound to it, and the surf poses on a board (no thongs in the surf).
     arms_down(False)
     rigging.add_twists(rig, body)
@@ -139,8 +141,13 @@ if pose_names:
         if mannequin:
             # Side-on to the board (prone: board along y, so from +x; standing: board along x, so from her front),
             # long lens, the whole board in frame: the view ChatGPT should keep for every frame of the sequence.
-            if pn[:-1] in ("stp",):  # a sequence's keys: one fixed camera for all of them, so they read as a strip
-                studio.shoot(cam, os.path.join(out_dir, "mannequin", f"{name}_{pn}.png"), (0.0, 0.0, 0.45), 55, 6.5, 85, 1100, 1100, pitch_deg=14)
+            # A sequence's keys: one fixed camera for all of them, so they read as a strip (paddle: side-on, as Andrew's
+            # sheet; trim: from her front).
+            strip = {"stp": ((0.0, 0.0, 0.45), 55, 6.5, 85, 1100, 1100, 14), "pdl": ((0.0, -0.8, 0.35), 90, 5.2, 85, 1100, 1100, 4),
+                     "trm": ((0.0, 0.0, 0.8), 0, 5.2, 85, 1100, 1100, 4)}.get(pn[:-1])
+            if strip:
+                t, yw, dd, ln, ww, hh, pt = strip
+                studio.shoot(cam, os.path.join(out_dir, "mannequin", f"{name}_{pn}.png"), t, yw, dd, ln, ww, hh, pitch_deg=pt)
                 continue
             bx = surf.matrix_world.col[0]
             yaw = (math.degrees(math.atan2(bx[1], bx[0])) + 90.0) % 180.0 - 90.0  # square to the board's side, her front's side
@@ -159,3 +166,11 @@ if pose_names:
         cam.data.dof.use_dof = False
         studio.shoot(cam, os.path.join(out_dir, "renders", f"{name}_pose_{pn}.png"), (c[0], c[1], c[2]), 35 if not prone else 75,
                      size * 1.25 / (36 / 50) * 0.75, 50, 1600, 1200, pitch_deg=18 if not prone else 12)
+    for cn in clip_names:
+        # A clip: the sequence's keys keyframed as an action (Blender fills the in-betweens), previewed with EEVEE.
+        expression(True)
+        f0, f1 = animate.build(rig, body, surf, cn)
+        bpy.context.scene.frame_start, bpy.context.scene.frame_end = f0, f1
+        animate.preview(cam, cn, out_dir)
+    if clip_names:
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out_dir, f"{name}_clips.blend"))

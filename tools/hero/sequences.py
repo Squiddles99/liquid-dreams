@@ -69,3 +69,68 @@ STP = {
 for k, sp in (("stp3", -60), ("stp4", -120), ("stp5", -180), ("stp6", -180), ("stp7", -180), ("stp8", -180)):
     STP[k] = {**STP[k], "spin": sp}
 POSES.update(STP)
+
+# paddle-cycle (Andrew's sheet, fixed camera, 8 frames = the 4-phase stroke twice): one arm reaches and enters past the
+# nose while the other is out of the water recovering, elbow high; then each pulls straight down under the chest,
+# pushes back under the hip, exits at the hip. The arms are opposite (half a cycle apart), so 8 phases loop.
+# Left-arm aims in the world (x out, -y toward the nose, z up); the right arm mirrors x.
+_STROKE = [  # one per frame of his sheet (left arm = the near arm; frame k+4 shows the same with the arms swapped)
+    (_n(0.2, -1, -0.4), _n(0.12, -1, -0.65)),    # 0 entry, the hand dipping in ahead of the nose
+    (_n(0.25, -0.15, -1), _n(0.1, 0.2, -1)),     # 1 pull, straight down under the chest
+    (_n(0.25, 0.45, -0.9), _n(0.1, 0.8, -0.6)),  # 2 push, back toward the hip
+    (_n(0.3, 0.95, -0.15), _n(0.2, 0.9, 0.1)),   # 3 exit beside the hip, hand at the rail
+    (_n(0.35, 0.7, 0.6), _n(0.1, 0.95, -0.15)),  # 4 recovery, elbow up, hand over the back
+    (_n(0.4, 0.15, 0.9), _n(0.15, 0.6, -0.8)),   # 5 recovery, elbow high over the shoulder
+    (_n(0.35, -0.6, 0.7), _n(0.15, -0.95, -0.2)),  # 6 swinging forward, hand ahead of the face
+    (_n(0.25, -1, -0.1), _n(0.15, -1, -0.3)),    # 7 reaching for the water past the nose
+]
+
+
+def _mirror(v):
+    return _n(-v.x, v.y, v.z)
+
+
+PDL = {}
+for k in range(8):
+    lu, lf = _STROKE[k]
+    ru, rf = _STROKE[(k + 4) % 8]
+    PDL[f"pdl{k + 1}"] = {**POSES["paddle"], "world": {"upperarm_l": lu, "forearm_l": lf, "upperarm_r": _mirror(ru), "forearm_r": _mirror(rf)}}
+POSES.update(PDL)
+
+# trimming (Andrew's sheet, fixed camera, 8 frames): a pumping trim down the line, twice: 1 settled trim, arms out low
+# either side; 2 sinking, arms reaching forward; 3 deep compression, hips low, chest over the knees; 4 extended tall,
+# legs long; 5 settled again; 6 leaning to the nose, front arm pointing down the line; 7 deep again; 8 tall again.
+# Eyes down the line (toward the nose) throughout. Standing frame, regular: nose +x.
+def _lerp(a, b, t):
+    return _n(*(a[i] + (b[i] - a[i]) * t for i in range(3)))
+
+
+def _trim(knee, lean, fwd, arm_l, fore_l, arm_r, fore_r):
+    """knee 0 tall .. 1 deep; lean: torso toward the nose (+x); fwd: torso forward over the knees (-y).
+    The feet stay ~0.75 m apart as in Andrew's sheet: sinking drives the front knee toward the nose (thigh near level,
+    shin slanting in) and folds the back leg under the hip (weight back over the tail, as in his frames 3 and 7)."""
+    return {"turn": 0, "lift": None, "bones": {
+        "spine_01": _n(0.05 + lean * 0.5, -0.05 - fwd * 0.5, 1), "spine_02": _n(0.08 + lean * 0.7, -0.08 - fwd * 0.8, 1),
+        "spine_03": _n(0.1 + lean * 0.8, -0.08 - fwd, 1), "neck": _n(0.1 + lean * 0.6, -0.05 - fwd * 0.4, 1), "head": _n(0.15 + lean * 0.5, 0.0, 1),
+        "upperarm_l": arm_l, "forearm_l": fore_l, "upperarm_r": arm_r, "forearm_r": fore_r,
+        "thigh_l": _lerp((0.4, -0.05, -1), (1, -0.3, -0.35), knee), "shin_l": _lerp((0.42, 0.05, -1), (0.25, 0.2, -1), knee),
+        "thigh_r": _lerp((-0.4, -0.05, -1), (-0.25, -0.7, -0.65), knee), "shin_r": _lerp((-0.42, 0.05, -1), (-0.45, 0.4, -0.8), knee)},
+        "twist": {"spine_02": 10, "spine_03": 12, "neck": 25, "head": 45},
+        "flat": {"foot_l": 20.0, "foot_r": -15.0}, "floor": ["foot_l", "foot_r"], "nose": ["foot_l"], "tail": ["foot_r"]}
+
+
+_LOW_OUT = (_n(0.6, -0.2, -0.8), _n(0.55, -0.35, -0.75), _n(-0.6, -0.2, -0.8), _n(-0.55, -0.35, -0.75))
+_FWD_OUT = (_n(0.55, -0.55, -0.65), _n(0.5, -0.7, -0.5), _n(-0.65, -0.4, -0.65), _n(-0.55, -0.55, -0.6))
+_WIDE = (_n(0.7, -0.55, -0.45), _n(0.65, -0.65, -0.4), _n(-0.75, -0.45, -0.4), _n(-0.65, -0.55, -0.45))
+_POINT = (_n(0.85, -0.35, 0.05), _n(0.9, -0.3, 0.2), _n(-0.7, -0.1, -0.7), _n(-0.6, -0.2, -0.7))
+TRM = {
+    "trm1": _trim(0.55, 0.0, 0.05, *_LOW_OUT),
+    "trm2": _trim(0.72, 0.0, 0.15, *_FWD_OUT),
+    "trm3": _trim(1.0, 0.05, 0.35, *_WIDE),
+    "trm4": _trim(0.3, 0.0, 0.0, *_LOW_OUT),
+    "trm5": _trim(0.55, 0.0, 0.05, *_LOW_OUT),
+    "trm6": _trim(0.6, 0.15, 0.1, *_POINT),
+    "trm7": _trim(1.0, 0.05, 0.35, *_WIDE),
+    "trm8": _trim(0.3, 0.0, 0.0, *_LOW_OUT),
+}
+POSES.update(TRM)
