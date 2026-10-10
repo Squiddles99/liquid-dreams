@@ -50,6 +50,11 @@ CLIPS = {
     # round 180 deg on its middle (~4 s), then into the paddle cycle at its pdl5 phase (right arm reaching).
     "proneTurn": (["pt1", "pt2", "pt3", "pt4", "pt5", "pt6", "pt7", "pdl6s", "pdl7s", "pdl8s", "pdl1s"],
                   [20, 14, 16, 16, 16, 18, 5, 5, 5, 5, 1], False, ((0.0, 0.0, 0.35), 90, 6.5, 85, 6)),
+    # The bail (Andrew's sheet, session 3; it replaces the turtle roll): a big wave breaking in front of her, she shoves
+    # the board away, dives under, swims, comes up reaching for the leg rope, pulls the board back, climbs on prone and
+    # paddles (~5.5 s).
+    "bail": (["bl1", "bl2", "bl3", "bl4", "bl5", "bl6", "bl7", "bl8"], [10, 12, 14, 16, 18, 16, 26, 1], False,
+             ((0.0, -0.5, -0.4), 90, 12.0, 85, 6)),
     # The four played back to back (preview only): idle once, turn, down, two paddle cycles.
     "sitToPaddleChain": (["stp1", "stp1", "stp2", "stp2", "stp3", "stp4", "stp4b", "stp5", "stp6"] + [f"{k}s" for k in _PDL * 2] + ["pdl1s"],
                          [40, 20, 36, 40, 44, 14, 14, 12, 10] + [5] * 16 + [1], False, _STP_CAM),
@@ -77,12 +82,15 @@ def _ease(t, v0=0.0, v1=0.0):
 
 # Keys (by index in a clip) her root passes through without slowing: the half turn is one continuous move (Andrew,
 # 2026-10-10: "make the part where her and the board turn 180 degrees much smoother").
-THROUGH = {"sitTurn": {1}, "sitToPaddleChain": {4}, "duckDive": {2, 4, 5}, "roundhouse": set(range(12)), "proneTurn": {2, 3, 4, 5}}
+THROUGH = {"sitTurn": {1}, "sitToPaddleChain": {4}, "duckDive": {2, 4, 5}, "roundhouse": set(range(12)), "proneTurn": {2, 3, 4, 5}, "bail": {3, 4}}
 # Clips whose board glides forward at a steady speed (m/s along its nose) instead of sitting wherever each key's
 # contacts seat it (session 3: between the paddle pose and the duck-dive keys the board slid back a metre).
 GLIDE = {"duckDive": 0.6, "proneTurn": 0.0}  # 0: the board turns on its middle, staying put
 # Clips previewed with the sea's surface at this height (the board floats with its deck ~7 cm above the origin).
-WATER = {"duckDive": 0.03}
+WATER = {"duckDive": 0.03, "bail": 0.03}
+# Clips where the board leaves her (the bail): between keys it moves in the world, not held in her pelvis frame, so it
+# stays on the surface while she swims under it and climbs back on.
+WORLD_BOARD = {"bail"}
 # Clips that travel along a track (their keys' `offset`): her pelvis follows a Catmull-Rom curve through the keys
 # instead of straight lines, and the preview camera follows her (same angle and distance throughout).
 TRACK = {"roundhouse"}
@@ -129,13 +137,13 @@ def build(rig, body, surf, name):
         pelvis = R.translation + q @ h
         P = Matrix.Translation(pelvis) @ q.to_matrix().to_4x4()
         rel = P.inverted() @ B  # the board in her pelvis frame
-        poses.append((frame, q, pelvis, h, rel.to_quaternion(), rel.translation.copy()))
+        poses.append((frame, q, pelvis, h, rel.to_quaternion(), rel.translation.copy(), B.copy()))
         last = frame
         frame += steps[i % len(keys)]
     rig.rotation_mode = surf.rotation_mode = "QUATERNION"
     qprev = None
     through = THROUGH.get(name, set())
-    for n, ((f0, qa, pa, ha, ra, ta), (f1, qb, pb_, hb, rb, tb)) in enumerate(zip(poses, poses[1:] + [poses[-1]])):
+    for n, ((f0, qa, pa, ha, ra, ta, Ba), (f1, qb, pb_, hb, rb, tb, Bb)) in enumerate(zip(poses, poses[1:] + [poses[-1]])):
         v0, v1 = (1.0 if n in through else 0.0), (1.0 if n + 1 in through else 0.0)
         if qprev is not None and qa.dot(qprev) < 0:
             qa = -qa
@@ -155,6 +163,11 @@ def build(rig, body, surf, name):
             rig.rotation_quaternion = q
             rig.location = p - q @ ha.lerp(hb, t)
             B = Matrix.Translation(p) @ q.to_matrix().to_4x4() @ Matrix.Translation(ta.lerp(tb, t)) @ ra.slerp(rb, t).to_matrix().to_4x4()
+            if name in WORLD_BOARD:  # the board on its own: from where it floats at one key to the next, in the world
+                qba, qbb = Ba.to_quaternion(), Bb.to_quaternion()
+                if qbb.dot(qba) < 0:
+                    qbb = -qbb
+                B = Matrix.Translation(Ba.translation.lerp(Bb.translation, t)) @ qba.slerp(qbb, t).to_matrix().to_4x4()
             surf.rotation_quaternion = B.to_quaternion()
             surf.location = B.translation
             for o in (rig, surf):
@@ -173,6 +186,16 @@ def build(rig, body, surf, name):
                 fc.modifiers.new("CYCLES")
     rig.animation_data.action.use_fake_user = True
     surf.animation_data.action.use_fake_user = True
+    sag = next((o for o in bpy.data.objects if o.name.endswith("_leash_sag")), None)
+    if sag is not None:
+        # The leg rope's slack, frame by frame, for where she and the board are (an action per clip, like hers).
+        sag.animation_data_create()
+        sag.animation_data.action = bpy.data.actions.new(f"{name}_leash")
+        for f in range(1, last + 1):
+            bpy.context.scene.frame_set(f)
+            rigging.leash_sag(rig, surf, sag)
+            sag.keyframe_insert("location", frame=f)
+        sag.animation_data.action.use_fake_user = True
     return 1, last - (1 if loops else 0)
 
 

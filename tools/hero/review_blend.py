@@ -15,10 +15,11 @@ import start_poses  # noqa: E402,F401
 import animate  # noqa: E402
 
 name, out_dir = sys.argv[sys.argv.index("--") + 1:][:2]
-ORDER = ["sitIdle", "sitTurn", "sitToProne", "paddleCycle", "proneTurn", "duckDive", "trim", "roundhouse"]
+ORDER = ["sitIdle", "sitTurn", "sitToProne", "paddleCycle", "proneTurn", "duckDive", "bail", "trim", "roundhouse"]
 scene = bpy.context.scene
 rig, surf, cam = bpy.data.objects[f"{name}_armature"], bpy.data.objects[f"{name}_board"], scene.camera
-for o in (rig, surf):
+sag = bpy.data.objects.get(f"{name}_leash_sag")  # the leg rope's slack, keyed per clip
+for o in (rig, surf) + ((sag,) if sag else ()):
     o.animation_data_create()
     o.animation_data.action = None
     for t in list(o.animation_data.nla_tracks):
@@ -33,7 +34,10 @@ for cn in ORDER:
     keys, step, loops, (target, yaw, dist, lens, pitch) = animate.CLIPS[cn]
     a0, a1 = act.frame_range
     reps = 3 if loops else 1
-    for o, a in ((rig, act), (surf, bpy.data.actions[f"{cn}_board"])):
+    pairs = [(rig, act), (surf, bpy.data.actions[f"{cn}_board"])]
+    if sag and bpy.data.actions.get(f"{cn}_leash"):
+        pairs.append((sag, bpy.data.actions[f"{cn}_leash"]))
+    for o, a in pairs:
         tr = o.animation_data.nla_tracks.new()
         tr.name = cn
         st = tr.strips.new(cn, int(frame), a)

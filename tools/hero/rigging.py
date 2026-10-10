@@ -13,7 +13,7 @@ import math
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Matrix, Vector
+from mathutils import Euler, Matrix, Vector
 
 TWISTS = [("upperarm", 0.25, 0.85, None), ("forearm", 0.3, 0.95, "hand"), ("thigh", 0.25, 0.85, None), ("shin", 0.3, 0.95, "foot")]
 
@@ -270,7 +270,85 @@ def pose(rig, name, body, surf):
         rig.matrix_world = T @ rig.matrix_world
         surf.matrix_world = T @ surf.matrix_world
         bpy.context.view_layer.update()
+    if spec.get("board"):
+        # The board off on its own (the bail: pushed away, floating at the surface on the leash): its middle at (dx, dy)
+        # from her pelvis in the pose's world frame (turned with her `spin`), its origin at height z, nose the way she
+        # faces, pitched (degrees, + nose down).
+        dx, dy, z, p = spec["board"]
+        sp = math.radians(spec.get("spin", 0.0))
+        d = Matrix.Rotation(sp, 3, "Z") @ Vector((dx, dy, 0.0))
+        pv = rig.matrix_world @ rig.pose.bones["pelvis"].head
+        R = Euler((0.0, math.radians(p), sp - math.pi / 2), "XYZ").to_matrix().to_4x4()
+        surf.matrix_world = Matrix.Translation((pv.x + d.x, pv.y + d.y, z)) @ R
+        bpy.context.view_layer.update()
     return out
+
+
+LEASH = 1.83  # a 6'0" leg rope
+
+
+def leash(rig, surf, name):
+    """The leg rope: a thin black curve from her right (back) ankle to the board's tail plug. Its ends are hooked to an
+    empty on the ankle bone and one on the board; its middle to a `sag` empty under their midpoint, set per frame by
+    leash_sag (slack when she is near the board, straight when the rope is stretched)."""
+    rest(rig)
+    bpy.context.view_layer.update()
+
+    def empty(n, parent, bone=None, local=None):
+        e = bpy.data.objects.new(n, None)
+        e.empty_display_size = 0.03
+        bpy.context.scene.collection.objects.link(e)
+        if bone:
+            e.parent, e.parent_type, e.parent_bone = parent, "BONE", bone
+            bpy.context.view_layer.update()
+            e.matrix_world = Matrix.Translation(rig.matrix_world @ rig.pose.bones[bone].head)
+        else:
+            e.parent = parent
+            e.location = local
+        return e
+    ankle = empty(f"{name}_leash_ankle", rig, bone="foot_r")
+    plug = empty(f"{name}_leash_plug", surf, local=(-0.86, 0.0, 0.07))
+    mid = empty(f"{name}_leash_mid", None, local=(0, 0, 0))
+    for tgt, infl in ((ankle, 1.0), (plug, 0.5)):
+        c = mid.constraints.new("COPY_LOCATION")
+        c.target, c.influence = tgt, infl
+    sag = empty(f"{name}_leash_sag", mid, local=(0, 0, -0.3))
+    bpy.context.view_layer.update()
+    cu = bpy.data.curves.new(f"{name}_leash", "CURVE")
+    cu.dimensions = "3D"
+    cu.bevel_depth = 0.0045
+    cu.bevel_resolution = 2
+    sp = cu.splines.new("NURBS")
+    sp.points.add(2)
+    sp.order_u, sp.use_endpoint_u, sp.resolution_u = 3, True, 16
+    ends = [ankle, sag, plug]
+    for i, e in enumerate(ends):
+        sp.points[i].co = (*e.matrix_world.translation, 1.0)
+    o = bpy.data.objects.new(f"{name}_leash", cu)
+    bpy.context.scene.collection.objects.link(o)
+    mat = bpy.data.materials.new("leash")
+    mat.use_nodes = True
+    mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.01, 0.01, 0.012, 1)
+    mat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.4
+    cu.materials.append(mat)
+    for i, e in enumerate(ends):
+        h = o.modifiers.new(f"hook{i}", "HOOK")
+        h.object = e
+        h.vertex_indices_set([i])
+        h.matrix_inverse = e.matrix_world.inverted()
+    return sag
+
+
+def leash_sag(rig, surf, sag):
+    """Hang the rope's middle for where she and the board are now: a slack rope dips, a stretched one runs straight
+    (the NURBS middle point is a control point, so it sits twice the dip below the chord)."""
+    bpy.context.view_layer.update()
+    a = rig.matrix_world @ rig.pose.bones["foot_r"].head
+    b = surf.matrix_world @ Vector((-0.86, 0.0, 0.07))
+    d = (a - b).length
+    dip = min(0.5, 0.5 * math.sqrt(max(LEASH * LEASH - d * d, 0.0)))
+    sag.location = (0.0, 0.0, -2.0 * dip * 0.6)
+    bpy.context.view_layer.update()
 
 
 def _planted(rig, name, body, surf):

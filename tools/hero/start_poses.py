@@ -101,3 +101,41 @@ PT = {
     "pt8": {**POSES["pdl6"], "spin": 180},
 }
 POSES.update(PT)
+
+# bail (Andrew's sheet, 8 frames, side-on; session 3; he ruled it replaces the turtle roll: "a massive wave breaks
+# forcing her to push her board away from her and swim under the wave"): 1 paddling; 2 up on her hands; 3 shoves the
+# board away ahead and slides off into the water; 4 dives head-first under, arms over her head, the board left at the
+# surface on the leash; 5 swims along under the wave; 6 coming up, her right hand reaching back for the leg rope;
+# 7 at the surface pulling the rope, the board coming back to her; 8 back on, paddling. World frame as the paddle
+# (board along y, nose at -y, her left +x); `board` floats the board on its own (dx, dy from her pelvis, origin height,
+# pitch), `offset` sinks her.
+_STREAM = {  # streamlined: straight body, arms over the head, legs together, toes pointed
+    "pelvis": _n(0, -1, 0.0), "spine_01": _n(0, -1, 0.0), "spine_02": _n(0, -1, 0.02), "spine_03": _n(0, -1, 0.03),
+    "neck": _n(0, -1, 0.1), "head": _n(0, -1, 0.15),
+    "upperarm_l": _n(0.08, -1, 0.12), "forearm_l": _n(0.04, -1, 0.06), "hand_l": _n(0.0, -1, 0.0),
+    "upperarm_r": _n(-0.08, -1, 0.12), "forearm_r": _n(-0.04, -1, 0.06), "hand_r": _n(0.0, -1, 0.0),
+    "thigh_l": _n(0.04, 1, 0.0), "shin_l": _n(0.02, 1, 0.0), "foot_l": _n(0, 1, -0.25),
+    "thigh_r": _n(-0.04, 1, 0.0), "shin_r": _n(-0.02, 1, 0.0), "foot_r": _n(0, 1, -0.25)}
+_SWIM = {"turn": 0, "bones": {}, "floor": ["pelvis", "spine_02", "thigh_l", "thigh_r"], "nose": ["spine_03"],
+         "tail": ["thigh_l", "thigh_r"], "prone": True}
+BL = {
+    "bl1": dict(POSES["pdl1"]),
+    "bl2": {**POSES["dd2"], "pitch": 0, "offset": (0, 0, 0)},
+    "bl3": {**_SWIM, "offset": (0, 0, -0.3), "board": (0, -2.1, -0.02, 0), "world": {**_STREAM,
+        "neck": _n(0, -0.9, 0.45), "head": _n(0, -0.45, 0.9),
+        "upperarm_l": _n(0.15, -1, 0.05), "forearm_l": _n(0.1, -1, 0.05), "hand_l": _n(0.05, -1, -0.1),
+        "upperarm_r": _n(-0.15, -1, 0.05), "forearm_r": _n(-0.1, -1, 0.05), "hand_r": _n(-0.05, -1, -0.1)}},
+    "bl4": {**_SWIM, "pitch": -35, "offset": (0, 0, -0.75), "board": (0, -1.3, -0.02, 0), "world": _STREAM},
+    "bl5": {**_SWIM, "offset": (0, 0, -1.2), "board": (0, -1.2, -0.02, 0), "world": _STREAM},
+    "bl6": {**_SWIM, "pitch": 12, "offset": (0, 0, -0.7), "board": (0.15, -1.5, -0.02, 0), "world": {**_STREAM,
+        "spine_02": _n(0, -1, 0.1), "spine_03": _n(0, -1, 0.15), "neck": _n(0, -0.85, 0.5), "head": _n(0, -0.4, 0.9),
+        "upperarm_r": _n(-0.4, 0.6, -0.2), "forearm_r": _n(-0.15, 0.95, -0.2), "hand_r": _n(-0.05, 1, -0.2),
+        "thigh_r": _n(-0.04, 1, -0.1), "shin_r": _n(-0.02, 0.6, 0.8), "foot_r": _n(0, 0.4, 0.9)}},
+    "bl7": {**_SWIM, "pitch": 5, "offset": (0, 0, -0.28), "board": (0.4, -1.75, -0.02, 0), "world": {**_STREAM,
+        "spine_02": _n(0, -1, 0.12), "spine_03": _n(0, -1, 0.18), "neck": _n(0, -0.8, 0.6), "head": _n(0, -0.35, 0.94),
+        "upperarm_l": _n(0.25, -1, -0.1), "forearm_l": _n(0.15, -1, 0.0),
+        "upperarm_r": _n(-0.45, 0.25, -0.5), "forearm_r": _n(-0.1, 0.95, 0.25), "hand_r": _n(0, 1, 0.1),
+        "thigh_r": _n(-0.04, 1, 0.0), "shin_r": _n(-0.02, 0.45, 0.9), "foot_r": _n(0, 0.3, 0.95)}},
+    "bl8": dict(POSES["pdl1"]),
+}
+POSES.update(BL)

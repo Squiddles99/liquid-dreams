@@ -123,6 +123,7 @@ if pose_names or clip_names:
             o.hide_render = True
     rigging.bind(rig, body, worn, rigid)
     surf = rigging.board(f"{name}_board")
+    sag = rigging.leash(rig, surf, name)  # the leg rope, right ankle to the tail plug
     if mannequin:
         clay = bpy.data.materials.new("mannequin")
         clay.use_nodes = True
@@ -135,6 +136,7 @@ if pose_names or clip_names:
         bpy.context.scene.world.node_tree.nodes["Background"].inputs[0].default_value = (0.9, 0.9, 0.9, 1)
     for pn in pose_names:
         lo, hi = rigging.pose(rig, pn, body, surf)
+        rigging.leash_sag(rig, surf, sag)
         expression(True)
         c = (lo + hi) / 2
         prone = rigging.POSES[pn].get("prone", rigging.POSES[pn]["turn"] != 0)
@@ -148,11 +150,15 @@ if pose_names or clip_names:
                      "trm": ((0.0, 0.0, 0.8), 0, 5.2, 85, 1100, 1100, 4),
                      "dd": ((0.0, -0.6, 0.5), 90, 6.2, 85, 1100, 1100, 4),
                      "rh": ((0.0, 0.0, 0.6), 0, 7.5, 85, 1100, 1100, 35),
-                     "pt": ((0.0, 0.0, 0.35), 90, 6.0, 85, 1100, 1100, 6)}.get(pn.rstrip("0123456789"))
+                     "pt": ((0.0, 0.0, 0.35), 90, 6.0, 85, 1100, 1100, 6),
+                     "bl": ((0.0, 0.0, -0.3), 90, 7.0, 85, 1100, 1100, 6)}.get(pn.rstrip("0123456789"))
             if strip:
                 t, yw, dd, ln, ww, hh, pt = strip
-                if pn.startswith(("dd", "rh", "pt")):  # the board travels between these keys: frame each on its board
+                if pn.startswith(("dd", "rh", "pt", "bl")):  # the board travels between these keys: frame each on its board
                     t = (surf.location[0], surf.location[1], 0.45)
+                if pn.startswith("bl"):  # she and the board part: frame the pair
+                    pv = rig.matrix_world @ rig.pose.bones["pelvis"].head
+                    t = ((surf.location[0] + pv.x) / 2, (surf.location[1] + pv.y) / 2, -0.3)
                 studio.shoot(cam, os.path.join(out_dir, "mannequin", f"{name}_{pn}.png"), t, yw, dd, ln, ww, hh, pitch_deg=pt)
                 continue
             bx = surf.matrix_world.col[0]

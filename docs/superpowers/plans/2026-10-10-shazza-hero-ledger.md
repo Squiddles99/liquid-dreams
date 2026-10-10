@@ -115,3 +115,11 @@
 - Ruling (Andrew, 2026-10-10): the turtle roll isn't something he sees in surfing; set-2 #10 is replaced by a BAIL:
   paddling out, a big wave breaks, she pushes the board away and swims under it, surfaces, pulls the leg rope to get the
   board back and climbs on prone. His bail sheet is ready after prone-turn-and-paddle.
+- bail (Andrew's sheet, 8 frames side-on): keys bl1-8 in `start_poses.py` (paddle → hands to the rails → shoves the
+  board away and slides in → dives head-first, streamlined → swims under → comes up reaching back for the rope → at the
+  surface pulling it, the board alongside → back on, paddling). New pose option `board` floats the board on its own
+  (offset from her pelvis, origin height, pitch); `animate.WORLD_BOARD` moves it in the world between keys so it stays
+  on the surface. Clip `bail` (~5 s), previewed with the water cut-away.
+- The leg rope (`rigging.leash`): a 6'0" black NURBS curve from her right ankle to the tail plug, its ends hooked to
+  empties on the foot bone and the board, its middle to a `sag` empty keyed per frame per clip (`<clip>_leash` actions,
+  in the review file's NLA too): it hangs slack near the board and runs straight when stretched. It shows in every clip.
