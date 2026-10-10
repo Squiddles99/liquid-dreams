@@ -60,3 +60,7 @@ Fable's review is still to come, in Andrew's orchestrator session. The reviewer 
 - Final: minor (deferred): the self-test can't see text spilling sideways inside a box (`scrollWidth > clientWidth`); MARSUPIALS at 200% only just fits its row.
 - Final: minor (deferred): the open view gives no hint that left/right page through the paintings (the spec's "◄► Next" was dropped in the plan).
 - Final: minor (deferred): `LibraryPanel.render` reads computed style and layout every frame while the Library is up.
+
+## Andrew's ask: click to the next/previous painting (2026-10-10)
+- The open view's count is now `‹ n / N ›`. The round ‹ › buttons page through the category as left/right do. A click on them never closes the picture (`stopPropagation`), and each is off (dimmed, unclickable) at its end. Design-px CSS in frontEnd.css and library.css; the size is capped at text ×1.15, because at ×1.5 the 200% card's kicker crossed the top safe line (W×H self-test, 1920×1080 and 2560×1080).
+- Self-test: "the open picture has no ‹ › arrows" RED, then GREEN (› +1 and still open, ‹ back, ‹ off on the first painting). Text-200% W×H cases 4/4 pass after the cap.

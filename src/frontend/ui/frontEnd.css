@@ -244,6 +244,13 @@
 .fe-lib-card .fe-lib-sub { font-size: calc(32px * min(var(--fe-text), 1.5)); }
 .fe-lib-card .fe-lib-fact { font-size: calc(26px * min(var(--fe-text), 1.6)); max-width: 860px; }
 .fe-lib-count { margin-top: 16px; font: 600 calc(18px * min(var(--fe-text), 1.5)) 'Barlow Semi Condensed', sans-serif; letter-spacing: .18em; color: #a9c3c2; }
+/* The open picture's ‹ › arrows beside its count: the mouse's way to page (left/right on pad and keys). */
+.fe-lib-count { display: flex; align-items: center; gap: 16px; margin-top: 10px; }
+.fe-lib-step { display: inline-flex; align-items: center; justify-content: center; width: calc(52px * min(var(--fe-text), 1.15)); height: calc(52px * min(var(--fe-text), 1.15));
+  border: 1.5px solid #3f6f72; border-radius: 50%; background: rgba(11, 42, 49, .82); color: #f6ecd6; font: 600 calc(34px * min(var(--fe-text), 1.15)) / 1 Barlow, sans-serif;
+  letter-spacing: 0; text-shadow: none; cursor: pointer; transition: border-color 120ms linear, background-color 120ms linear, transform 120ms var(--fe-ease-out); }
+.fe-lib-step:hover { border-color: var(--fe-sun); background: #0b2a31; transform: scale(1.08); }
+.fe-lib-step.is-off { opacity: .3; cursor: default; pointer-events: none; }
 .is-calm .fe-lib, .is-calm .fe-lib *, .is-calm .fe-lib-open { transition: none !important; }
 /* The map under the Library: its UI hides (tabs stay), a dim layer darkens the chart. */
 .fe-map-dim { position: absolute; inset: 0; background: rgba(6, 22, 27, .72); opacity: 0; pointer-events: none; transition: opacity 220ms var(--fe-ease-out); }
