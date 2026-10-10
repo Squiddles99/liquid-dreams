@@ -3,7 +3,7 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
 import { buildCoastMap } from '../seabed/coastMap';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
-import { coastBreakingCells, reportBreaking } from './coastBreaking';
+import { coastBreakingCells, footprintBreakHeight, reportBreaking } from './coastBreaking';
 import { type CoastField, computeCoastField } from './coastField';
 import { REFRACT_FLOOR_M } from './reefField';
 import { setWaveHeight } from './reefReport';
@@ -36,6 +36,12 @@ describe('no closeout: a set breaks only at the four breaks and on the beach (li
     expect(at(4).cells.bombie).toBe(0);
     expect(at(6).cells.bombie).toBe(0);
     expect(at(8).cells.bombie).toBeGreaterThan(0);
+  });
+
+  it('footprintBreakHeight is where the Bombie starts to break (the bursts’ gate): between the 6 and 8 ft sets', () => {
+    const h = footprintBreakHeight(coast, 'bombie', DEFAULT_BREAK_PARAMS);
+    expect(h).toBeGreaterThan(setWaveHeight(6));
+    expect(h).toBeLessThanOrEqual(setWaveHeight(8));
   });
 
   it('the Bombie breaks at 10 ft as an A-frame: ≥ 80 m of crest', () => {

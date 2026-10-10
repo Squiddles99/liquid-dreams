@@ -1,6 +1,6 @@
 import { waterlineX } from '../seabed/coastContours';
 import { BREAK_FOOTPRINTS, COBBLESTONES_APPROACH, insidePolygon } from '../seabed/coastFeatures';
-import { type BreakParams, breakingDepth, breakingHeight, breakingRatio } from './breaking';
+import { type BreakParams, breakingDepth, breakingHeight, breakingHeightThreshold, breakingRatio } from './breaking';
 import type { CoastField } from './coastField';
 
 /**
@@ -53,6 +53,19 @@ export function coastBreakingCells(c: CoastField, H: number, p: Pick<BreakParams
   const out = new Uint8Array(c.tau.length);
   for (let i = 0; i < out.length; i++) out[i] = breakingRatio(H * c.amp[i], c.hminBreak[i], p as BreakParams) >= 1 ? 1 : 0;
   return out;
+}
+
+/** The smallest set height (m, deep water) the coast field breaks anywhere in a break's footprint: the lowest
+ * breakingHeightThreshold over its cells (coastBreakingCells breaks a cell exactly when H reaches its threshold). Infinity
+ * if none. The Bombie's bursts fire from it (shelf-polish §7: one Bombie, the coast's). */
+export function footprintBreakHeight(c: CoastField, zone: keyof typeof BREAK_FOOTPRINTS, p: Gd): number {
+  const g = c.grid, poly = BREAK_FOOTPRINTS[zone];
+  let min = Infinity;
+  for (let r = 0; r < g.nz; r++) for (let col = 0; col < g.nx; col++) {
+    const x = g.x0 + col * g.cellM, z = g.z0 + r * g.cellM, i = r * g.nx + col;
+    if (c.depth[i] > 0 && insidePolygon(x, z, poly)) min = Math.min(min, breakingHeightThreshold(c.amp[i], c.hminBreak[i], p as BreakParams));
+  }
+  return min;
 }
 
 export interface CoastBreakReport {

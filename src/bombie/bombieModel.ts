@@ -1,17 +1,15 @@
 import { hash3 } from '../beach/procedural';
-import { smoothstep } from '../math/smoothstep';
+import { BOMBIE_CENTRE } from '../seabed/coastFeatures';
 
 /**
- * Ellensbrook Bombie (spec 2026-09-28-the-bombie-design.md): a reef mound 450 m south-west of the Womb's peak that, on big
- * days, bursts into white water on its own waves. Atmospheric background, never surfable.
+ * Ellensbrook Bombie (spec 2026-09-28-the-bombie-design.md): on big days it bursts into white water on its own waves.
+ * Atmospheric background, never surfable. One Bombie, the coast's (shelf-polish spec §7): the bursts sit on the coast
+ * map's Bombie (coastFeatures.BOMBIE_CENTRE, 360 m off Ellensbrook) and fire only when the coast's breaking map breaks a
+ * set there (App.bombieWaves: from 8 ft); its seabed is the coast map's. The old atmospheric mound at (−300, 340), inside
+ * the reef map's south fade and breaking nowhere on the coast map, is gone.
  */
-export const BOMBIE_X = -300;
-export const BOMBIE_Z = 340;
-/** The mound's oval: long along z (the crests), 80 × 50 m; crest 5 m below mean sea level, meeting the ~25 m bed. */
-export const MOUND_HALF_X_M = 25;
-export const MOUND_HALF_Z_M = 40;
-export const MOUND_CREST_Y = -5;
-export const MOUND_BASE_Y = -26;
+export const BOMBIE_X = BOMBIE_CENTRE[0];
+export const BOMBIE_Z = BOMBIE_CENTRE[1];
 export const BURST_LIFE_S = 40;
 export const BURST_GROW_S = 3;
 export const ROLL_SPEED_MS = 4;
@@ -20,12 +18,6 @@ export const ROLL_DIR = [0.94, -0.34] as const;
 const FACTOR_SPREAD = 0.35;
 const BREAK_RATIO = 1.8;
 const BREAK_HEIGHT = 0.55;
-
-export function moundY(x: number, z: number): number {
-  const r = Math.hypot((x - BOMBIE_X) / MOUND_HALF_X_M, (z - BOMBIE_Z) / MOUND_HALF_Z_M);
-  if (r >= 1) return -Infinity;
-  return MOUND_CREST_Y + (MOUND_BASE_Y - MOUND_CREST_Y) * smoothstep(0, 1, r);
-}
 
 /** Wave n's own size factor at the Bombie: exp(0.35 g), g standard normal (Box–Muller on two hashes of n and the seed). */
 export function waveFactor(n: number, seed: number): number {
