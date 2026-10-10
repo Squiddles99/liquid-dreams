@@ -17,10 +17,10 @@ import body as hero_body  # noqa: E402
 import eyes  # noqa: E402
 import garments  # noqa: E402
 import project  # noqa: E402
-import animate  # noqa: E402
 import rigging  # noqa: E402
 import sequences  # noqa: E402,F401  (adds the reference sequences' keys to rigging.POSES)
 import start_poses  # noqa: E402,F401  (start frames for the next reference sequences)
+import animate  # noqa: E402  (after sequences: its clips read their keys)
 import skin  # noqa: E402
 import strands  # noqa: E402
 import studio  # noqa: E402
@@ -33,6 +33,7 @@ views = [v for v in argv[argv.index("--views") + 1].split(",") if v] if "--views
 mannequin = "--mannequin" in argv  # grey, no hair or clothes, side-on: start frames for Andrew's reference sequences
 pose_names = argv[argv.index("--poses") + 1].split(",") if "--poses" in argv else []
 clip_names = argv[argv.index("--animate") + 1].split(",") if "--animate" in argv else []  # animate.CLIPS
+preview_names = argv[argv.index("--preview") + 1].split(",") if "--preview" in argv else clip_names
 samples = int(argv[argv.index("--samples") + 1]) if "--samples" in argv else 256
 preset = json.load(open(preset_path, encoding="utf-8"))
 name = preset["name"]
@@ -171,6 +172,7 @@ if pose_names or clip_names:
         expression(True)
         f0, f1 = animate.build(rig, body, surf, cn)
         bpy.context.scene.frame_start, bpy.context.scene.frame_end = f0, f1
-        animate.preview(cam, cn, out_dir)
+        if cn in preview_names:
+            animate.preview(cam, cn, out_dir)
     if clip_names:
         bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out_dir, f"{name}_clips.blend"))
