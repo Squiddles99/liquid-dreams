@@ -15,7 +15,7 @@ import start_poses  # noqa: E402,F401
 import animate  # noqa: E402
 
 name, out_dir = sys.argv[sys.argv.index("--") + 1:][:2]
-ORDER = ["sitIdle", "sitTurn", "sitToProne", "paddleCycle", "trimPump"]
+ORDER = ["sitIdle", "sitTurn", "sitToProne", "paddleCycle", "trim"]
 scene = bpy.context.scene
 rig, surf, cam = bpy.data.objects[f"{name}_armature"], bpy.data.objects[f"{name}_board"], scene.camera
 for o in (rig, surf):

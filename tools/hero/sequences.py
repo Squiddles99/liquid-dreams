@@ -143,3 +143,22 @@ TRM = {
     "trm8": _trim(0.3, 0.0, 0.0, *_LOW_OUT),
 }
 POSES.update(TRM)
+
+# The trim the game plays (Andrew, 2026-10-10 review: "less lungey and smoother ... balance is achieved by using the
+# smaller muscles in the body - not such fast animations"): his sheet's moves damped to small weight shifts. Knees
+# flex a little, the weight rocks gently fore and aft, the hands make small corrections; one cycle is 6 s.
+def _arms(a, b, t):
+    return tuple(_lerp(a[i], b[i], t) for i in range(4))
+
+
+TRC = {
+    "trc1": _trim(0.5, 0.0, 0.05, *_LOW_OUT),
+    "trc2": _trim(0.56, 0.03, 0.07, *_arms(_LOW_OUT, _FWD_OUT, 0.35)),
+    "trc3": _trim(0.62, -0.05, 0.1, *_arms(_LOW_OUT, _WIDE, 0.3)),
+    "trc4": _trim(0.53, -0.02, 0.06, *_LOW_OUT),
+    "trc5": _trim(0.47, 0.0, 0.04, *_arms(_LOW_OUT, _FWD_OUT, 0.15)),
+    "trc6": _trim(0.55, 0.06, 0.07, *_arms(_LOW_OUT, _POINT, 0.3)),
+    "trc7": _trim(0.6, -0.04, 0.09, *_arms(_LOW_OUT, _WIDE, 0.25)),
+    "trc8": _trim(0.52, 0.0, 0.05, *_LOW_OUT),
+}
+POSES.update(TRC)

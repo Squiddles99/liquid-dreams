@@ -81,7 +81,20 @@ def hair_material(name, melanin_root=0.42, melanin_tip=0.14, redness=0.28, rough
     bsdf = g.n("ShaderNodeBsdfHairPrincipled", _model="CHIANG", _parametrization="MELANIN", Melanin=mel, **{"Melanin Redness": redness, "Roughness": rough,
                                                                  "Radial Roughness": 0.32, "Coat": 0.08, "Random Roughness": 0.15})
     out = g.n("ShaderNodeOutputMaterial")
+    out.target = "CYCLES"
     g.nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    # EEVEE (the animation previews) and the game exporters can't draw the melanin hair shader: it came out dark brown
+    # (Andrew, 2026-10-10: "why does Shazza have brown hair?"). The same honey blonde as a plain colour, root to tip.
+    mix = g.nt.nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    g.nt.links.new(t, mix.inputs[0])  # the float Factor: sun-bleached toward the tips
+    mix.inputs[6].default_value = srgb((168, 118, 62))
+    mix.inputs[7].default_value = srgb((226, 186, 124))
+    flat = g.n("ShaderNodeBsdfPrincipled", **{"Roughness": 0.45})
+    g.nt.links.new(mix.outputs[2], flat.inputs["Base Color"])
+    out_e = g.n("ShaderNodeOutputMaterial")
+    out_e.target = "EEVEE"
+    g.nt.links.new(flat.outputs["BSDF"], out_e.inputs["Surface"])
     return mat
 
 
@@ -89,7 +102,7 @@ def core_material():
     mat = bpy.data.materials.get("braid_core") or bpy.data.materials.new("braid_core")
     mat.use_nodes = True
     g = Nodes(mat)
-    bsdf = g.n("ShaderNodeBsdfPrincipled", **{"Base Color": srgb((120, 78, 38)), "Roughness": 0.6})
+    bsdf = g.n("ShaderNodeBsdfPrincipled", **{"Base Color": srgb((168, 120, 64)), "Roughness": 0.6})  # honey, under the plait
     out = g.n("ShaderNodeOutputMaterial")
     g.nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
     return mat
