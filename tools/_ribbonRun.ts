@@ -14,6 +14,8 @@ const ct = await imp<typeof import('../src/breaker/crestTrace')>('/src/breaker/c
 const ws = await imp<typeof import('../src/breaker/wombSection')>('/src/breaker/wombSection.ts');
 const { coastReefField } = await imp<typeof import('../src/breaker/testField')>('/src/breaker/testField.ts');
 const arg = (n: string) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
+// --camera=x,z: the game's spacing rule from that camera (the stand: 208.3,60.8) instead of 2 m; prints each run's spacing.
+const cam = arg('camera')?.split(',').map(Number);
 const bands = (arg('bands') ?? 'Pumping,Huge').split(','), times = (arg('times') ?? '3,5').split(',').map(Number), reach = Number(arg('reach') ?? 400);
 const d = (x: number, z: number) => Math.hypot(x - TIP[0], z - TIP[1]);
 for (const label of bands) {
@@ -30,10 +32,10 @@ for (const label of bands) {
   for (const dt of times) {
     const t = big.arrivalS + dt;
     for (const R of [ct.TRACE_REACH_M, reach]) {
-      const e = ct.traceStations(field, all, t, ctx, { cameraX: TIP[0], cameraZ: TIP[1], params: P, minHeightM: minH, spacingM: 2, reachM: R });
+      const e = ct.traceStations(field, all, t, ctx, { cameraX: TIP[0], cameraZ: TIP[1], params: P, minHeightM: minH, spacingM: cam ? undefined : 2, reachM: R, ...(cam ? { cameraX: cam[0], cameraZ: cam[1] } : {}) });
       const runs: { x: number; z: number; wave: number }[][] = [[]];
       for (const s of e) { if (s.gap) runs.push([]); else runs[runs.length - 1].push(s); }
-      const desc = runs.filter((r) => r.length).map((r) => { const a = r[0], z = r[r.length - 1]; return `w${r[0].wave} (${(all[r[0].wave].arrivalS - big.arrivalS).toFixed(1)} s, ${all[r[0].wave].heightM.toFixed(2)} m) ${r.length} st (${a.x.toFixed(0)}, ${a.z.toFixed(0)}) ${d(a.x, a.z).toFixed(0)} m -> (${z.x.toFixed(0)}, ${z.z.toFixed(0)}) ${d(z.x, z.z).toFixed(0)} m`; });
+      const desc = runs.filter((r) => r.length).map((r) => { const a = r[0], z = r[r.length - 1]; const sp = r.slice(1).map((q, i) => Math.hypot(q.x - r[i].x, q.z - r[i].z)); const spTxt = cam && sp.length ? ` sp ${Math.min(...sp).toFixed(2)}-${Math.max(...sp).toFixed(2)} m` : ''; return `w${r[0].wave} (${(all[r[0].wave].arrivalS - big.arrivalS).toFixed(1)} s, ${all[r[0].wave].heightM.toFixed(2)} m) ${r.length} st (${a.x.toFixed(0)}, ${a.z.toFixed(0)}) ${d(a.x, a.z).toFixed(0)} m -> (${z.x.toFixed(0)}, ${z.z.toFixed(0)}) ${d(z.x, z.z).toFixed(0)} m${spTxt}`; });
       console.log(`${label} ${big.heightM.toFixed(2)} m t+${dt} reach ${R}: ${desc.join(' | ')}`);
     }
   }

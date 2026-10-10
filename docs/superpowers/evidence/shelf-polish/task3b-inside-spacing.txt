@@ -1,0 +1,25 @@
+# shelf-polish Task 3 follow-on (Fable's ruling): cap the inside leg's station spacing at the near run's; keep it only if
+# _rideCost shows <= +1 ms/step at 12 ft AND the Huge stand frame shows a continuous closeout edge. Result: NOT kept.
+
+## Spacing measured from the stand (tools/_ribbonRun.ts --camera=208.3,60.8; achieved distance between stations)
+  near run (the Womb's own w2)        3.4-4.0 m (the rule's MAX_SPACING_M 4 at 300+ m)
+  inside leg w1, no cap               Huge t+3 3.04-4.84 m, t+5 3.42-6.50 m (the crest curls, so projected steps exceed ds)
+  cap 3 m                             Huge t+5 3.00-5.24 m (still over the near run's)
+  cap 2 m                             Huge t+3 run CUT at 279 m (was 411): a step's projection stalls at |xi| 0.010057 s >
+                                      CREST_TOLERANCE_S 0.01 at (25.3, -236.5): toCrest's convergence, path dependent
+  cap 1.5 m (taken for the test)      Huge t+3 1.50-2.17 m, t+5 1.50-2.82 m; Pumping 1.50-3.09 m; run ends unchanged
+
+## Cost (_rideCost --ft=12 --period=17 --s=14 --spray, HEAD vs cap 1.5, same Node, interleaved)
+  pair 1   HEAD step 17.9 ms, trace 3.4, spray tick 3.80 | cap step 17.3 ms, trace 3.6, spray tick 3.54   -> trace +0.2 ms/step
+  pair 2   HEAD 96.3 ms (machine loaded during that run: discarded) | cap 17.7 ms, trace 3.6
+  Within the +1 ms bar.
+
+## Look (Huge stand t+3/t+5 re-captured with cap 1.5: ../liquid-dreams-captures/shelf-polish-2026-10-10/task3b/;
+## strip task3b/huge-closeout-before-after.png, rows: t+3 before, after, t+5 before, after; crop x 1450-1900, y 500-620)
+  The stepped vertical edges are still there, at the same width, with 2-3x the stations: the spacing is not their cause.
+  The section numbers along that crest are smooth (tools/_ribbonRun.ts --crest, Huge t+3, every 3 m z -280..-409):
+  H 2.5-6.8 m, tb 1.70 -> 0.29 s in 0.11 s steps, then until 0.35 -> 3.76 s in 0.1-0.15 s steps, curlWeight 1.0 -> 0.16
+  in 0.025-0.04 steps; one bump at z -322/-325 (H 5.35 -> 6.76 m where tb ends and until starts: the curl's front).
+  So the cap is reverted (it costs +0.2 ms for no change in the look) and the steps are CARRIED, not diagnosed: the lead
+  is the far water sheet's coarse grid at ~500 m showing through or beside the ribbon's closeout (the same grid that drew
+  the beige quads), not the ribbon's stations. A hide test (ribbon off / sheet off at Huge t+3 from the stand) names it.
