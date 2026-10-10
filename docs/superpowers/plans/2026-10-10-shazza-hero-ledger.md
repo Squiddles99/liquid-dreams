@@ -85,3 +85,20 @@
 - APPROVED (Andrew, 2026-10-10): sit-to-paddle (sitIdle, sitTurn, sitToProne), paddleCycle, trim. Previews committed
   in docs/art/anim/shazza/ (sit-to-paddle.mp4, paddle-cycle.mp4, trim.mp4); the actions rebuild from code into
   build/hero/female/female_clips.blend.
+
+## Session 3 (2026-10-10): duck dive and roundhouse cutback from Andrew's sheets
+- duckdive-to-paddle (8 frames, side-on): keys dd1-8 in `sequences.py`, authored on a level board in the world frame,
+  then rider and board pitched together (`pitch`: -5 hands to the rails, -25 pushing under and knee on the tail, +10/+7/+3
+  resurfacing). dd1 = dd8 = pdl1, so the clip `duckDive` (pdl1 → dd2..dd7 → pdl1, ~2.8 s) joins the paddle cycle both
+  ways. Each key seated its board differently (the board slid back a metre mid-dive): `animate.GLIDE` holds the board
+  to a steady 0.6 m/s forward glide. Not modelled: sinking under the water (the game's water depth, not the clip).
+- roundhouse cutback (12 frames, high 3/4 front + his legend SVG): keys rh1-12 are trim stances (`_trim`) with the
+  board's heading (`spin`), rail lean (new pose option `roll`, + toes / - heels, after the feet are planted) and place on
+  the track (new pose option `offset`), read off the legend's path at his markers (2 m per 100 px: a ~34 m figure 8;
+  ~7 m/s, 4.8 s). The right loop turns +205 deg onto her heels, the left loop -235 deg onto her toes: two opposite
+  turns, not one spin. Her pelvis follows a Catmull-Rom curve through the keys (`animate.TRACK`), the preview camera
+  follows her, two suns light every heading. Ends on trc1 (the approved trim).
+- Ruling (mine, flagged to Andrew): where the legend heads her left (frames 5-8), a regular-footer has her back to his
+  camera; his sheet keeps her facing the camera all the way round (ChatGPT). I followed the legend and the physics.
+  His sheet's squat is deeper than her planted-feet solve reaches; knees taken deeper (up to 1.35) but she stays a
+  little taller than his frames.
