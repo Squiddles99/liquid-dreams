@@ -191,3 +191,11 @@ sprayEmitters / wombSection: 15 red, all in the baseline or the merge's carried 
 Observation, not changed: the right's inner shelf (z +200…+280) and the offshore set wave on the right also run to the
 250 m reach (at unlimited reach they continue to 308 m and 265 m). No quads were reported there; the same rule could
 extend to them if the frames show one.
+
+**RULED (Fable, 2026-10-10), Task 3: accepted; one bounded follow-on.** The before/after crops show the quads gone at all
+four moments and the closeout ribbon in their place; the ribbon's new run end (380–427 m) and the ride cost (identical
+steps, +0.2 ms trace, +0.4 ms spray) are fine. The Huge closeout's stepped segment edges (`huge-closeout-zoom.png`) read as
+a dark block from the stand: **cap the station spacing on the inside leg at the near run's spacing** (a drawing change),
+provided `_rideCost.ts` shows ≤ +1 ms per step at 12 ft and the stand frame at Huge t+5 shows a continuous edge; if the
+cost is over that, accept the steps and carry them with the number. Re-capture Huge stand t+3/t+5 after. Then Tasks 4–8
+with no further STOP: end with the two handovers and the captures, pushed, not merged.
