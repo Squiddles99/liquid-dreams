@@ -19,6 +19,7 @@ import { PROFILE_SAMPLES } from './BreakingRibbon';
 import { curlWeight, sectionOf, sectionSamples } from './wombSection';
 import { WOMB_FRAME_VEC4S } from './wombSectionNodes';
 import { hollowFromPsi } from './reefReport';
+import { smoothstep } from '../math/smoothstep';
 import { type ReefField, computeReefField, sampleField } from './reefField';
 import { SetWaves } from './SetWaves';
 import { type ActiveWave, type BreakOptions, breakOptions, type SetWaveResult, type WaveContext, fieldBreakingHeight, sumWaves, toActiveWave } from './setWaveModel';
@@ -127,13 +128,14 @@ registerSelfTest({
   async run(renderer) {
     const { time, sets, ribbon } = setsRig();
     const pos = new Worst(), skirt = new Worst(), numbers = new Worst(), marks = new Worst(), rhoX = new Worst(), slide = new Worst();
-    let stations = 0, deadLive = 0, nonFinite = 0, thrown = 0, collapsing = 0, standing = 0, worstDetail = '';
+    let stations = 0, deadLive = 0, nonFinite = 0, thrown = 0, collapsing = 0, standing = 0, surged = 0, worstDetail = '';
     for (const psi of MIRROR_PSI) for (const dt of MIRROR_DTS) {
       const t = REF_BIGGEST.arrivalS + dt;
       time.value = t;
       const traced = traceAt(t, sets);
-      // Every station's hollowness forced from ψ (the smoothed numbers otherwise as traced).
-      const entries = traced.entries.map((e) => (e.gap ? e : { ...e, psi, section: { ...e.section, hollow: hollowFromPsi(psi) } }));
+      // Every station's hollowness forced from ψ (the smoothed numbers otherwise as traced), and its surge to 0.8 × the
+      // surge's rise in phase (wombSection.surgeWeight's envelope: whitewater Task 1).
+      const entries = traced.entries.map((e) => (e.gap ? e : { ...e, psi, section: { ...e.section, hollow: hollowFromPsi(psi), surge: 0.8 * smoothstep(1.25, 1.5, e.section.phase) } }));
       ribbon.setStations(entries, LINEUP);
       ribbon.compute(renderer);
       const gp = await read(renderer, ribbon.positions), gf = await read(renderer, ribbon.frames), ge = await read(renderer, ribbon.extras), gl = await read(renderer, ribbon.lights);
@@ -146,6 +148,7 @@ registerSelfTest({
         const { A, phase, hollow } = sec.numbers, rho = curlWeight(sec.numbers);
         if (phase > 0.6 && phase < 1.2 && rho > 0.9) thrown++;
         if (phase > 1.2 && rho > 0.5) collapsing++;
+        if ((sec.numbers.surge ?? 0) > 0.4 && rho > 0.5) surged++;
         if (phase > 0.1 && phase <= 0.45) standing++;
         for (let j = 0; j < PROFILE_SAMPLES; j++) {
           const k = (i * V + j + 1) * 4;
@@ -174,11 +177,11 @@ registerSelfTest({
     }
     // Bounds: the samples are the mirror plus the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest), 5 mm; the
     // numbers 1e-4 relative; the marks within one sample (a walk's threshold in f32 against f64).
-    const ok = stations > 0 && thrown > 0 && collapsing > 0 && standing > 0 && deadLive === 0 && nonFinite === 0 && pos.value < 5e-3 && skirt.value < 5e-3 &&
+    const ok = stations > 0 && thrown > 0 && collapsing > 0 && standing > 0 && surged > 0 && deadLive === 0 && nonFinite === 0 && pos.value < 5e-3 && skirt.value < 5e-3 &&
       numbers.value < 1e-4 && marks.value <= 1 && rhoX.value < 1e-4;
     return {
       pass: ok,
-      detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${standing} standing up, ${thrown} thrown, ${collapsing} collapsing); ` +
+      detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${standing} standing up, ${thrown} thrown, ${collapsing} collapsing, ${surged} surged); ` +
         `worst distance from the CPU's curve ${pos} (< 5e-3), sample-to-sample ${slide} (diagnostic), skirts ${skirt} (< 5e-3); numbers (A, phase, hollow, ρ; relative) ${numbers} (< 1e-4); marks ${marks} samples (≤ 1); ` +
         `extras' ρ ${rhoX} (< 1e-4); live rows flagged dead ${deadLive}, non-finite values ${nonFinite} (0). Worst sample: ${worstDetail}`,
     };

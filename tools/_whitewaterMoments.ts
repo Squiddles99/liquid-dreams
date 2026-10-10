@@ -38,6 +38,6 @@ const ts = times.map((t) => +(big.arrivalS + t).toFixed(2));
 console.log(`# ${ft} ft ${periodS} s tide ${tide} seed 2002 ${windKn} kn from ${windFrom}° ${hour} h: slot ${big.slot}, biggest ${big.heightM.toFixed(2)} m reaches the tip at ${big.arrivalS.toFixed(2)} s`);
 for (const [name, camera] of [['beach', look], ['tube', tube]] as const) {
   const m = { conditions: c, camera, simTime: ts[0], paused: true };
-  console.log(`# ${label}-${name} link: #m=${encodeMoment(m as never)}`);
+  console.log(`# ${label}-${name} link: ${encodeMoment(m as never)}`);
   console.log(`npx electron tools/captureMoments.mjs --base=${base} --out=${out}/${label}-${name} --times=${ts.join(',')} --m=${b64(m)}`);
 }

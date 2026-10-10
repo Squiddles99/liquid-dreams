@@ -1,8 +1,9 @@
-import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
+import { boilWeight, churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
+import { curlFoamNode } from '../whitewater/curlFoam';
 import * as THREE from 'three/webgpu';
 import {
   Break, Fn, If, Loop, abs, atan, attribute, floor, cameraPosition, clamp, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
-  storage, uniform, varying, varyingProperty, vec2, vec3, vec4,
+  storage, uniform, varying, varyingProperty, vec2, vec3, vec4, vertexIndex,
 } from 'three/tsl';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
 import { CASCADE_FADES, fadeWeightNode } from '../ocean/cascadeFades';
@@ -54,8 +55,9 @@ export const SKIRT_DEPTH_M = 0.3;
 /** PROFILE_SAMPLES plus one skirt vertex at each end (index 0: under the front edge; last: under the back edge). */
 export const VERTS_PER_STATION = PROFILE_SAMPLES + 2;
 /** vec4s per station in the stations buffer: [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, ψ, lipH (0: none)], [A, phase, hollow, ρ]
- * (the section's numbers, smoothed along the crest: crestTrace.fillSections) (packStations). */
-export const STATION_VEC4S = 4;
+ * (the section's numbers, smoothed along the crest: crestTrace.fillSections), [surge, boil (pileChurn.boilWeight at foam 1), 0, 0]
+ * (packStations). */
+export const STATION_VEC4S = 5;
 /** A sample whose home is more than this inside both edges is `inner` (the footprint's 1 m shrink, spec R9). */
 export const INNER_MARGIN_M = 1;
 /**
@@ -219,7 +221,7 @@ export interface RibbonShading {
  * first live one. With no live station at all, nothing is in use (0). runEnd is 1 on a live station near its run's
  * end (runEndFlags), 0 otherwise (gap rows too: they are dead anyway).
  */
-export function packStations(entries: readonly StationEntry[], out: Float32Array): number {
+export function packStations(entries: readonly StationEntry[], out: Float32Array, periodS = 15): number {
   const n = Math.min(entries.length, MAX_STATIONS);
   let prev = entries.slice(0, n).find((e): e is Station => !e.gap);
   if (!prev) return 0;
@@ -229,7 +231,7 @@ export function packStations(entries: readonly StationEntry[], out: Float32Array
     if (!e.gap) prev = e;
     const s: Station = prev;
     const q = s.section;
-    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0, q.A, q.phase, q.hollow, q.rho], i * STATION_VEC4S * 4);
+    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0, q.A, q.phase, q.hollow, q.rho, q.surge ?? 0, boilWeight(s.tb, s.Hb ?? s.H, periodS, 1), 0, 0], i * STATION_VEC4S * 4);
   }
   return n;
 }
@@ -457,12 +459,12 @@ export class BreakingRibbon {
   }
 
   /** Uploads this frame's stations (≤ MAX_STATIONS; gaps included) and the camera position. */
-  setStations(entries: readonly StationEntry[], camera: THREE.Vector3): void {
+  setStations(entries: readonly StationEntry[], camera: THREE.Vector3, periodS = 15): void {
     this.camera.copy(camera);
     this.cameraXZ.value.set(camera.x, camera.z);
     this.surface.setCamera?.(camera);
     this.shading?.model.sim.slopeVariance.forEach((v, c) => { this.slopeVariance[c].value = v; });
-    const n = packStations(entries, this.stationsAttr.array as Float32Array);
+    const n = packStations(entries, this.stationsAttr.array as Float32Array, periodS);
     this.stationCount = n;
     this.rows.value = n;
     this.geometry.setDrawRange(0, ribbonDrawCount(n));
@@ -577,15 +579,19 @@ export class BreakingRibbon {
     // lifts the sheet there, so the ribbon's edges stay on the sheet.
     const vSetSlope: N = varyingProperty('vec2', 'vRibbonSetSlope');
     const vSetFoam: N = varyingProperty('float', 'vRibbonSetFoam');
+    // The boil (whitewater §3.2): the station's boil (packStations) × the fresh foam at the home × A, in metres.
     const vPile: N = varyingProperty('float', 'vRibbonPile');
+    const row = int(vertexIndex).div(V);
+    const stationsRO = this.stationsNode();
     const vFrame: N = varyingProperty('vec2', 'vRibbonFrame');
     const churn = Fn(() => {
       const b = model.sets.breakSampleNode(home.xy);
       vSetSlope.assign(b.slope);
       vSetFoam.assign(sheetFoamWeight(b.foam, foamMap ? foamMap.sampleNode(home.xy) : null));
-      vPile.assign(b.pile);
+      const boil = stationsRO.element(row.mul(STATION_VEC4S).add(4)).y.mul(vSetFoam).mul(stationsRO.element(row.mul(STATION_VEC4S).add(3)).x);
+      vPile.assign(boil);
       vFrame.assign(b.foamFrame);
-      return churnHeightNode(b.pile, b.foamFrame, model.sets.time, model.sets.churn);
+      return churnHeightNode(boil, b.foamFrame, model.sets.time, model.sets.churn);
     })();
     material.positionNode = vec3(pos.x, model.seabed.tide.add(pos.y).add(churn).sub(radial.mul(radial).div(2 * EARTH_RADIUS_M)), pos.z);
 
@@ -616,7 +622,7 @@ export class BreakingRibbon {
     const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
-      { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, lip, lipThickness: thickness, underside,
+      { normal, viewDir, distance, foam: max(fft.foam, foamLook.x), foamShade: foamLook.y, breakFoam: foamLook.x, lip, lipThickness: thickness, underside,
         tube: { sunLip: vLight.x, sunBody: vLight.w, skyOpen: vLight.y, lipThickness: vLight.z },
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
@@ -690,7 +696,7 @@ export class BreakingRibbon {
       const idx: N = int(instanceIndex).toVar();
       const i: N = idx.div(per).toVar(), r: N = idx.sub(i.mul(per)).toVar();
       const q = stations.element(i.mul(STATION_VEC4S).add(3)).toVar();
-      const nums = { phase: q.y, hollow: q.z, rho: q.w };
+      const nums = { phase: q.y, hollow: q.z, rho: q.w, surge: stations.element(i.mul(STATION_VEC4S).add(4)).x };
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const A = max(q.x, 1e-6).toVar();
       const h = curl
@@ -715,7 +721,7 @@ export class BreakingRibbon {
       const i: N = int(instanceIndex).toVar();
       // The section's numbers, smoothed along the crest on the CPU (crestTrace.fillSections).
       const q = stations.element(i.mul(STATION_VEC4S).add(3)).toVar();
-      const nums = { A: q.x, phase: q.y, hollow: q.z, rho: q.w };
+      const nums = { A: q.x, phase: q.y, hollow: q.z, rho: q.w, surge: stations.element(i.mul(STATION_VEC4S).add(4)).x };
       const f = wombFrameNode(nums, keys, (k: N) => knots.element(i.mul(WOMB_KNOT_VEC4S).add(k)),
         (j: N, v: N) => { sections.element(i.mul(PROFILE_SAMPLES).add(j)).assign(v); }, (r: number) => reads.element(i.mul(SHEET_READS).add(r)).xyz);
       frames.element(i.mul(WOMB_FRAME_VEC4S)).assign(vec4(f.A, f.phase, f.hollow, f.curl));
@@ -783,7 +789,13 @@ export class BreakingRibbon {
       // (The mirrored sample's a, home and w: the sheet under the two read as level between their homes, its u as the home.)
       const qm = sections.element(i.mul(PROFILE_SAMPLES).add(jm));
       const thickness = length(vec2(q.x.add(q.w.mul(q.z)).sub(qm.x.add(qm.w.mul(qm.z))), q.y.sub(qm.y))).mul(A);
-      extras.element(idx).assign(vec4(thickness as N, lipness as N, 0.0, curl));
+      // The curl's own foam (curlFoam: photo 5's timing): the tip's fringe, the clean tube's inside (samples strictly between
+      // the tip and the floor), foam climbing from the tip as the tube caves in. Signed; the material weights it by ρ (.w),
+      // so it is written with curl 1 here (× curl once, not twice).
+      const floorJ: N = f1.z;
+      const inTube = select(float(j).greaterThan(min(tip, floorJ)).and(float(j).lessThan(max(tip, floorJ))), float(1.0), float(0.0));
+      const ownFoam = curlFoamNode(phase, off.div(reach), inTube, float(1.0));
+      extras.element(idx).assign(vec4(thickness as N, lipness as N, ownFoam as N, curl));
       // The home xz, and how far the curve departs from the sheet here: the develop pass moves the home into homes and
       // writes the detail coordinate over it, keeping w.
       const constructed = smoothstep(SHEET_BLEND_M[0], SHEET_BLEND_M[1], length(pos.sub(base)));

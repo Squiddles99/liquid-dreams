@@ -1,12 +1,14 @@
-import { Fn, If, clamp, float, mx_noise_float, vec2, vec3 } from 'three/tsl';
+import { Fn, If, clamp, float, mx_noise_float, smoothstep, vec2, vec3 } from 'three/tsl';
+import { boreWeight, flightTime } from '../breaker/wombSection';
+import { smoothstep as smoothstepCpu } from '../math/smoothstep';
 
 type N = any;
 
 /**
- * The whitewater pile's churn (spec 2026-09-29 §3.3): lumps on the pile's top, rolling with the wave (read in its crest
- * frame, SetWaves' foamFrame: m behind the crest, m along it) and changing over time, up to ± half of churnSize × the
- * pile's height. Render detail like the FFT chop: the height probe reads the smooth pile; the sheet and the ribbon add
- * this in their vertex stages and its slope to their shading normals.
+ * The whitewater's churn (spec 2026-09-29 §3.3; re-gated by whitewater §3.2): lumps on the ribbon's broken section,
+ * rolling with the wave (read in its crest frame, SetWaves' foamFrame: m behind the crest, m along it) and changing over
+ * time, up to ± churnSize × the boil (boilWeight × A), half again ahead of the crest line. Render detail like the FFT chop:
+ * the ride never reads it; the ribbon adds it in its vertex stage and its slope to its shading normal.
  */
 /** The lumps: this many cycles per metre in the crest frame (about 2 m across)… */
 export const CHURN_SCALE_PER_M = 0.5;
@@ -23,29 +25,45 @@ function churnNoise(p: N, time: N, speed: N): N {
   return clamp(n1.mul(0.7).add(n2.mul(0.3)).mul(1.7), -1.0, 1.0);
 }
 
-/** The churn's height (m) for a pile `pile` m high: 0 off the pile. */
-export function churnHeightNode(pile: N, frame: N, time: N, u: { churnSize: N; churnSpeed: N }): N {
+/** The boil is a low simmer by ~50 m behind the landing (the bore's speed × this). */
+export const CHURN_FADE_S = 6;
+
+/** The ribbon's boil at a station [0, 1]: the section's bore weight × the fresh foam there, fading over CHURN_FADE_S after
+ * the lip lands (τ_land = flightTime(H): the round barrel). The ribbon packs boilWeight(…, foam 1) per station on the CPU
+ * (packStations) and multiplies it on the GPU by the fresh foam at the vertex and by A, for the churn's height. */
+export function boilWeight(tb: number | null, H: number, periodS: number, foam: number): number {
+  if (tb === null || !(foam > 0)) return 0;
+  const age = tb - flightTime(H);
+  if (!(age >= 0)) return 0;
+  return boreWeight(tb, H, periodS) * Math.min(1, foam) * (1 - smoothstepCpu(0, CHURN_FADE_S, age));
+}
+
+/** The lumps within 2 m ahead of the crest line stand half again as tall: the front steeper than the back. */
+const frontLean = (frame: N): N => smoothstep(0.0, 2.0, frame.x.negate()).mul(0.5).add(1.0);
+const churnAt = (boil: N, frame: N, time: N, u: { churnSize: N; churnSpeed: N }): N => churnNoise(frame, time, u.churnSpeed).mul(boil).mul(u.churnSize).mul(frontLean(frame));
+
+/** The churn's height (m) for a boil `boil` m (boilWeight × A): 0 off the boil. */
+export function churnHeightNode(boil: N, frame: N, time: N, u: { churnSize: N; churnSpeed: N }): N {
   return Fn(() => {
     const h = float(0.0).toVar();
-    If(pile.greaterThan(1e-3), () => { h.assign(churnNoise(frame, time, u.churnSpeed).mul(pile).mul(u.churnSize).mul(0.5)); });
+    If(boil.greaterThan(1e-3), () => { h.assign(churnAt(boil, frame, time, u)); });
     return h;
   })();
 }
 
 /**
- * The churn's world slope (∂h/∂x, ∂h/∂z), the pile's height held constant (its own slope is in SetWaves' analytic
- * slope): central differences in the crest frame, turned to world axes by the wave's travel `travel` (the frame's x runs
- * back against it, its y across it: SetWaves' foamFrame).
+ * The churn's world slope (∂h/∂x, ∂h/∂z), the boil held constant: central differences in the crest frame, turned to world
+ * axes by the wave's travel `travel` (the frame's x runs back against it, its y across it: SetWaves' foamFrame).
  */
-export function churnSlopeNode(pile: N, frame: N, travel: N, time: N, u: { churnSize: N; churnSpeed: N }): N {
+export function churnSlopeNode(boil: N, frame: N, travel: N, time: N, u: { churnSize: N; churnSpeed: N }): N {
   return Fn(() => {
     const s = vec2(0.0).toVar();
-    If(pile.greaterThan(1e-3), () => {
+    If(boil.greaterThan(1e-3), () => {
       const e = SLOPE_STEP_M;
-      const gx = churnNoise(frame.add(vec2(e, 0.0)), time, u.churnSpeed).sub(churnNoise(frame.sub(vec2(e, 0.0)), time, u.churnSpeed)).div(2 * e);
-      const gy = churnNoise(frame.add(vec2(0.0, e)), time, u.churnSpeed).sub(churnNoise(frame.sub(vec2(0.0, e)), time, u.churnSpeed)).div(2 * e);
+      const gx = churnAt(boil, frame.add(vec2(e, 0.0)), time, u).sub(churnAt(boil, frame.sub(vec2(e, 0.0)), time, u)).div(2 * e);
+      const gy = churnAt(boil, frame.add(vec2(0.0, e)), time, u).sub(churnAt(boil, frame.sub(vec2(0.0, e)), time, u)).div(2 * e);
       const across = vec2(travel.y.negate(), travel.x);
-      s.assign(travel.mul(gx.negate()).add(across.mul(gy)).mul(pile.mul(u.churnSize).mul(0.5)));
+      s.assign(travel.mul(gx.negate()).add(across.mul(gy)));
     });
     return s;
   })();

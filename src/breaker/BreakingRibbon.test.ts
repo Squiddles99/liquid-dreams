@@ -1,3 +1,4 @@
+import { boilWeight } from '../whitewater/pileChurn';
 import { describe, expect, it } from 'vitest';
 import type * as THREE from 'three/webgpu';
 import { DEFAULT_DEBUG_OVERLAYS } from '../ocean/OceanSurface';
@@ -32,12 +33,12 @@ describe('BreakingRibbon stations', () => {
     expect(VERTS_PER_STATION).toBe(PROFILE_SAMPLES + 2);
   });
 
-  it('packs [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, psi, 0], [A, phase, hollow, ρ] with tb encoded, and a gap as a dead copy of the previous live station', () => {
+  it('packs [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, psi, 0], [A, phase, hollow, ρ], [surge, boil, 0, 0] with tb encoded, and a gap as a dead copy of the previous live station', () => {
     const d = new Float32Array(MAX_STATIONS * ROW);
     const n = packStations([station(1, 0.25), station(2, null), GAP, station(3, Infinity)], d);
     expect(n).toBe(4);
     // Every live station here is within FOOTPRINT_END_MARGIN_M of its run's end (runs 1–2 m and 3 m of arc): runEnd 1.
-    expect(row(d, 0)).toEqual([1, -1, 0.6, 0.8, 3, 9, 1.2, 0.25, 0, 1, PSI_NORMAL, 0, 2, 0.8, 1, 1].map(Math.fround));
+    expect(row(d, 0)).toEqual([1, -1, 0.6, 0.8, 3, 9, 1.2, 0.25, 0, 1, PSI_NORMAL, 0, 2, 0.8, 1, 1, 0, boilWeight(0.25, 3, 15, 1), 0, 0].map(Math.fround));
     expect(row(d, 1)[7]).toBe(TB_NULL);
     expect(row(d, 2)).toEqual([...row(d, 1).slice(0, 8), 1, 0, Math.fround(PSI_NORMAL), 0, ...row(d, 1).slice(12)]);
     expect(row(d, 3)[7]).toBe(TB_INFINITY);
@@ -239,15 +240,24 @@ describe('BreakingRibbon mesh', () => {
 describe('packStations and ψ (barrel from the maths)', () => {
   it('packStations puts the ψ in the third vec4', () => {
     const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 1.37, lipH: null, Hb: null, until: null, section: { A: 2.3, phase: 0.9, hollow: 1, rho: 1 } };
-    const out = new Float32Array(16);
+    const out = new Float32Array(ROW);
     packStations([s], out);
     expect(out[10]).toBeCloseTo(1.37, 6);
   });
   it('packStations puts the throw height (lipH) last in the third vec4, 0 before breaking', () => {
     const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 0.4, psi: 0.07, lipH: 3.6, Hb: null, until: null, section: { A: 2.3, phase: 0.9, hollow: 0.6, rho: 1 } };
-    const out = new Float32Array(32);
+    const out = new Float32Array(2 * ROW);
     packStations([s, { ...s, tb: null, lipH: null }], out);
     expect(out[11]).toBeCloseTo(3.6, 6);
-    expect(out[27]).toBe(0);
+    expect(out[ROW + 11]).toBe(0);
+  });
+  it('packStations puts the surge and the boil (pileChurn.boilWeight at foam 1, the period given) in the fifth vec4', () => {
+    const s: Station = { gap: false, wave: 0, x: 1, z: 2, arc: 0, nx: 1, nz: 0, H: 3, c: 9, r: 1.2, tb: 4, psi: 0.09, lipH: null, Hb: 3.5, until: null, section: { A: 2.3, phase: 1.6, hollow: 1, rho: 1, surge: 0.4 } };
+    const out = new Float32Array(2 * ROW);
+    packStations([s, { ...s, tb: null, section: { A: 2.3, phase: 0.3, hollow: 1, rho: 1 } }], out, 12);
+    expect(out[16]).toBeCloseTo(0.4, 6);
+    expect(out[17]).toBeCloseTo(boilWeight(4, 3.5, 12, 1), 6);
+    expect(out[17]).toBeGreaterThan(0);
+    expect([out[ROW + 16], out[ROW + 17]]).toEqual([0, 0]);
   });
 });

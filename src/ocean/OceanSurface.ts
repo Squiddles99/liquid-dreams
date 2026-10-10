@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { rainRipplesNode } from '../weather/rainRipples';
 import {
-  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, mix, mx_noise_float, mx_worley_noise_vec2, normalize, positionLocal, positionWorld, saturate, select, smoothstep, sqrt,
+  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, min, mix, mx_noise_float, mx_worley_noise_vec2, normalize, positionLocal, positionWorld, saturate, select, smoothstep, sqrt,
   textureLoad, uniform, varying, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { seabedTerms } from '../seabed/seabedShading';
@@ -239,11 +239,12 @@ export class OceanSurface {
             .mul(float(1.0).sub(smoothstep(0.0, 10.0, options.surf.dEdgeNode(vBaseXZ, model.seabed))))
             .mul(smoothstep(0.01, 0.05, options.surf.swashLevelNode(vBaseXZ.y))).mul(0.8)
           : float(0.0);
-    const foamWeight = max(sheetFoamWeight(setFoam, foamOverlay), max(surfFoam, swashLace));
+    const breakFoam = sheetFoamWeight(setFoam, foamOverlay);
+    const foamWeight = max(breakFoam, max(surfFoam, swashLace));
     const setFoamLook = setFoamPattern(foamWeight, waterFoamFrame(vBaseXZ, model.sets.meanTravel), model.sim.time);
 
     material.colorNode = shadeWater(
-      { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y,
+      { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y, breakFoam: min(setFoamLook.x, breakFoam),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
         landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
         overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { smoothstep } from '../math/smoothstep';
 import { setWaveHeight } from './reefReport';
 import { leanPhase } from './setWaveModel';
 import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, TIP_KNOT, TROUGH_KNOT, profileKnots, roundedTip, tipLife } from './wombProfile';
 import {
   type SectionInput, type SectionNumbers, CURL_PHASE, SEAT_DIP_UNITS, SECTION_CREST, SECTION_FLOOR, SECTION_HAND_BACK_S, SECTION_TIP, SECTION_TROUGH, STAND_LEAD_S,
   STOOD_PHASE, collapseSpan, flightTime, sectionEnd, sectionKnots, sectionKnot, sectionOf, sectionPhase, sectionScale, sectionWeight, seatShift, tubeHold,
-  wombSection, type SheetAlong, sectionSamples, sectionPoint, curlWeight, sampleWeight, SHEET_KNOTS, CURL_KNOTS,
+  wombSection, type SheetAlong, sectionSamples, sectionPoint, curlWeight, sampleWeight, SHEET_KNOTS, CURL_KNOTS, SURGE_FALL_BASE_S, SURGE_FALL_PER_M,
+  surgeWeight, surgeLift, sectionNumbers,
 } from './wombSection';
 
 const P = { ribbonOnset: 0.6 };
@@ -226,5 +228,57 @@ describe('no rim at the foot (R1 §5)', () => {
     }
     expect(worst, 'drawn − sheet beyond the trough (m)').toBeLessThanOrEqual(0.02);
     expect(maxRise, 'rise within 10 m of the trough (m)').toBeLessThanOrEqual(0.05);
+  });
+});
+
+describe('wombSection: the surge where a pitching lip lands (whitewater §3.1)', () => {
+  // When (s after onset) a 6 ft / 15 s section's phase passes 1.25 (the tube starts to fill) and 1.5.
+  const H6 = 6 * 0.3048, power6 = H6;
+  const tAt = (H: number, phase: number): number => flightTime(H) + tubeHold(H, 15) + (phase - 1) * collapseSpan(H, 15);
+  const w = (H: number, tb: number | null, hollow: number): number => {
+    const s = at(H, tb);
+    return surgeWeight(s, sectionPhase(s, P), hollow);
+  };
+
+  it('is 0 before the break, through the hold, at hollow 0 and long after', () => {
+    expect(w(H6, null, 1)).toBe(0);
+    expect(surgeWeight(at(H6, 0.5), 1.0, 1)).toBe(0);
+    expect(surgeWeight(at(H6, 0.5), 0.8, 1)).toBe(0);
+    for (let tb = 0; tb < 15; tb += 0.05) expect(w(H6, tb, 0), `tb ${tb}`).toBe(0);
+    expect(w(H6, Infinity, 1)).toBe(0);
+  });
+
+  it('is full as the tube caves in (phase 1.5) on a pitching lip, gone after its fall', () => {
+    expect(w(H6, tAt(H6, 1.5), 1)).toBeGreaterThan(0.9);
+    const gone = tAt(H6, 1.25) + SURGE_FALL_BASE_S + SURGE_FALL_PER_M * power6 + 0.5;
+    expect(w(H6, gone, 1)).toBeLessThan(0.1);
+    for (let tb = 0; tb < 15; tb += 0.05) {
+      const v = w(H6, tb, 1), ph = sectionPhase(at(H6, tb), P);
+      expect(v).toBeGreaterThanOrEqual(0);
+      // No more than its rise in phase: the envelope wombProfile.test's "never crosses itself with the surge on" sweeps.
+      expect(v).toBeLessThanOrEqual(smoothstep(1.25, 1.5, ph) + 1e-12);
+    }
+  });
+
+  it('lifts the cavity knots 5–10 by k·w, the trough half that, nothing else', () => {
+    for (let m = 0; m < 14; m++) {
+      const want = m >= 5 && m <= 10 ? 0.6 * 0.7 : m === 11 ? 0.5 * 0.6 * 0.7 : 0;
+      expect(surgeLift(m, 0.7, 0.6), `knot ${m}`).toBeCloseTo(want, 12);
+    }
+  });
+
+  it('carries the dial into the numbers: surge = surgeWeight × the dial', () => {
+    const s = at(H6, tAt(H6, 1.5));
+    const n = sectionNumbers(s, { ...P, surge: 0.5 });
+    expect(n.surge).toBeCloseTo(0.5 * surgeWeight(s, n.phase, n.hollow), 12);
+    expect(sectionNumbers(s, P).surge).toBe(0);
+  });
+
+  it('raises the drawn curl by the surge in units of A, the sheet ends untouched', () => {
+    const base = sectionKnots(numbers(2, 1.5, 1, 1), flat), up = sectionKnots({ ...numbers(2, 1.5, 1, 1), surge: 0.8 }, flat);
+    for (let k = 0; k < SHEET_KNOTS; k++) expect(up[k]).toEqual(base[k]);
+    expect(up[SECTION_FLOOR][1] - base[SECTION_FLOOR][1]).toBeCloseTo(0.8, 9);
+    expect(up[SECTION_TROUGH][1] - base[SECTION_TROUGH][1]).toBeCloseTo(0.4, 9);
+    expect(up[SECTION_CREST][1]).toBeCloseTo(base[SECTION_CREST][1], 12);
   });
 });

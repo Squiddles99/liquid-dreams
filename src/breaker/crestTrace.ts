@@ -269,25 +269,27 @@ export const LINE_END_FADE_M = 6;
  * its normal too: over reef heads the crest's own normal swings ±17° between stations 2 m apart, and the sections, reaching
  * 7 A behind the crest, crossed each other there (the ribbon folded behind the wave: Andrew's GPU run, 2026-10-05).
  */
-export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'>): void {
+export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'> & Partial<Pick<BreakParams, 'surge'>>): void {
   const normals = line.map((s) => [s.nx, s.nz]);
   const raw = line.map((s) => {
-    const q = sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset });
-    q.hollow *= 1 - closeoutWeight(s.z);
+    const q = sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset, surge: p.surge });
+    // The surge is × hollow (surgeWeight): it closes out with it.
+    const open = 1 - closeoutWeight(s.z);
+    q.hollow *= open; q.surge = (q.surge ?? 0) * open;
     return q;
   });
   const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
   let lo = 0;
   line.forEach((s, i) => {
     while (line[lo].arc < s.arc - reach) lo++;
-    let w = 0, A = 0, phase = 0, hollow = 0, rho = 0, nx = 0, nz = 0;
+    let w = 0, A = 0, phase = 0, hollow = 0, rho = 0, surge = 0, nx = 0, nz = 0;
     for (let k = lo; k < line.length && line[k].arc <= s.arc + reach; k++) {
       const g = Math.exp(-((line[k].arc - s.arc) ** 2) * inv);
-      w += g; A += g * raw[k].A; phase += g * raw[k].phase; hollow += g * raw[k].hollow; rho += g * raw[k].rho;
+      w += g; A += g * raw[k].A; phase += g * raw[k].phase; hollow += g * raw[k].hollow; rho += g * raw[k].rho; surge += g * (raw[k].surge ?? 0);
       nx += g * normals[k][0]; nz += g * normals[k][1];
     }
     const end = Math.min(s.arc - line[0].arc, line[line.length - 1].arc - s.arc);
-    s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: (rho / w) * smoothstep(0, LINE_END_FADE_M, end) };
+    s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: (rho / w) * smoothstep(0, LINE_END_FADE_M, end), surge: surge / w };
     const l = Math.hypot(nx, nz);
     if (l > 1e-9) { s.nx = nx / l; s.nz = nz / l; }
   });

@@ -3,7 +3,7 @@ import { BOMBIE_X, BOMBIE_Z } from '../bombie/bombieModel';
 import { BOMBIE_WAVE_ID_BASE, type ImpactEmitter } from '../whitewater/sprayEmitters';
 import { HIT_CAP, HIT_LOOKBACK_TICKS, HIT_MIN_GAP_S, type HitInput, HitTracker, SPEED_OF_SOUND_MS, airCutoffHz, hitGain, thumpHz, ticksToHear } from './hits';
 
-const imp = (waveId: number, arc: number, x: number, z: number, H = 2, lip = 1): ImpactEmitter => ({ x, y: 0, z, vx: 0, vz: 0, nx: 1, nz: 0, H, strength: 1, lip, waveId, arc });
+const imp = (waveId: number, arc: number, x: number, z: number, H = 2, lip = 1): ImpactEmitter => ({ x, y: 0, z, vx: 0, vz: 0, nx: 1, nz: 0, H, hollow: 0, strength: 1, lip, waveId, arc });
 const T = (k: number): number => k / 20;
 function input(ticks: { k: number; impact: ImpactEmitter[] }[], over: Partial<HitInput> = {}): HitInput {
   const last = ticks.length ? T(ticks[ticks.length - 1].k) : 0;

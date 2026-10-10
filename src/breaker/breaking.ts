@@ -51,10 +51,13 @@ export interface BreakParams {
    * ~20 m/s: at 20 the floor's holds piled up and reached the peak 1.4 s late at 6 ft (one-curl Task 3). At 40 the peak
    * and the first leg are the bake's own; the curl's running max still holds the pockets. */
   curlMaxMs: number;
-  /** The pile's churn (render only; the CPU model ignores it): lumps up to this fraction of the pile's height… */
+  /** The broken section's churn (render only; the CPU model ignores it): lumps up to this fraction of A × the boil… */
   churnSize: number;
   /** …churning at this rate (× CHURN_RATE_PER_S, pileChurn.ts). */
   churnSpeed: number;
+  /** The surge where a pitching lip lands (whitewater §3.1; wombSection.surgeWeight): the pocket's heave at hollow 1,
+   * units of A, [0, 1]. Look only: the ride's section reads it too (one surface), only past phase 1.25. */
+  surge: number;
 }
 
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
@@ -78,8 +81,9 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   randomDial: 0,
   peel: 1,
   curlMaxMs: 40,
-  churnSize: 0.2,
+  churnSize: 0.25,
   churnSpeed: 1,
+  surge: 0.5,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
@@ -134,6 +138,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.peel = clampTo(p.peel, 1, 3, d.peel);
   p.curlMaxMs = clampTo(p.curlMaxMs, 4, 40, d.curlMaxMs);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
+  p.surge = clampTo(p.surge, 0, 1, d.surge);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
 

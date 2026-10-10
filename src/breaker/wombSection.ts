@@ -84,6 +84,8 @@ export interface SectionInput {
 export interface SectionParams {
   /** The ribbon's onset ratio: below it there is no section (BreakParams.ribbonOnset). */
   ribbonOnset: number;
+  /** The surge's dial [0, 1] (BreakParams.surge): its height (units of A) at a fully pitching lip. Absent: 0. */
+  surge?: number;
 }
 
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
@@ -161,12 +163,26 @@ export function sectionWeight(s: SectionInput, _p?: SectionParams): number {
   return 1 - smoothstep(0, SECTION_HAND_BACK_S, s.tb - sectionEnd(brokeAt(s), s.periodS));
 }
 
-export interface SectionNumbers { A: number; phase: number; hollow: number; rho: number }
+/** `surge`: the heave at the landing (units of A; surgeWeight × the dial), absent 0. */
+export interface SectionNumbers { A: number; phase: number; hollow: number; rho: number; surge?: number }
 
 export function sectionNumbers(s: SectionInput, p: SectionParams): SectionNumbers {
-  const phase = sectionPhase(s, p);
-  return { A: sectionSize(s, phase), phase, hollow: hollowFromPsi(s.psi), rho: sectionWeight(s, p) };
+  const phase = sectionPhase(s, p), hollow = hollowFromPsi(s.psi);
+  return { A: sectionSize(s, phase), phase, hollow, rho: sectionWeight(s, p), surge: surgeWeight(s, phase, hollow) * (p.surge ?? 0) };
 }
+
+/** The heave where a pitching lip landed: 0 until the tube starts to fill (phase 1.25), full by 1.5, gone over
+ *  SURGE_FALL_BASE_S + SURGE_FALL_PER_M × power after that; × hollow (a crumbling lip heaves nothing). */
+export const SURGE_FALL_BASE_S = 1.0, SURGE_FALL_PER_M = 0.25;
+export function surgeWeight(s: SectionInput, phase: number, hollow: number): number {
+  if (s.tb === null || !Number.isFinite(s.tb) || hollow <= 0) return 0;
+  const H = brokeAt(s), t15 = flightTime(H) + tubeHold(H, s.periodS) + 0.5 * collapseSpan(H, s.periodS);
+  const fall = SURGE_FALL_BASE_S + SURGE_FALL_PER_M * power(H, s.periodS);
+  return smoothstep(1.25, 1.5, phase) * (1 - smoothstep(t15, t15 + fall, s.tb)) * clamp01(hollow);
+}
+/** Lift (units of A) per profile knot m at surge w and dial k: knots 5–10 (the pocket at the landing) translate up k·w,
+ *  the trough (11) by half that, the rest 0: the crest, the back and the flat sea in front stay where the family has them. */
+export const surgeLift = (m: number, w: number, k: number): number => (m >= 5 && m <= 10 ? k * w : m === TROUGH_KNOT ? 0.5 * k * w : 0);
 
 /** The sheet along the station: at home u m from the crest along the wave's travel, the displaced (u, y) of the sea there. */
 export type SheetAlong = (u: number) => P2;
@@ -235,7 +251,7 @@ export function sectionKnots(numbers: SectionNumbers, sheet: SheetAlong): Sectio
  * knot (their slope: sectionTangents).
  */
 export function sectionFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): { knots: SectionKnot[]; beyond: SectionKnot[] } {
-  const { A, phase, hollow } = numbers, k = profileKnots(phase, hollow);
+  const { A, phase, hollow } = numbers, k = profileKnots(phase, hollow), surge = numbers.surge ?? 0;
   const at = (h: number): SectionKnot => { const p = sheet(A * h); return [p[0] / A, p[1] / A, h, p[0] / A, p[1] / A]; };
   const back: SectionKnot[] = [], front: SectionKnot[] = [];
   const b0 = -EDGE_OUTER_UNITS, b1 = k[CREST_KNOT - 1][0], f0 = k[FRONT_KNOT][0], f1 = EDGE_OUTER_UNITS;
@@ -247,7 +263,10 @@ export function sectionFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): {
   const beyond = [at(b0 - db), at(b1 - JOIN_SLOPE_UNITS), at(f0 + JOIN_SLOPE_UNITS), at(f1 + df)];
   const g = curlWeight(numbers), shift = seatShift(k[TROUGH_KNOT][1], front[0][1]);
   const oBack = back[SHEET_KNOTS - 1][0] - back[SHEET_KNOTS - 1][2], oFront = front[0][0] - front[0][2];
-  const drawn = roundedCurl(k, tipLife(Math.min(2, Math.max(0, phase))));
+  // The surge lifts the drawn pocket after the seat is set from the family's own trough (a lifted trough would seat the
+  // whole curl lower and drop the crest with it).
+  const lifted = surge > 0 ? k.map((p, m): P2 => [p[0], p[1] + surgeLift(m, surge, 1)]) : k;
+  const drawn = roundedCurl(lifted, tipLife(Math.min(2, Math.max(0, phase))));
   const curl = drawn.map((d, i): SectionKnot => {
     const f = (i + 1) / (CURL_KNOTS + 1), dy = d[1] + shift, dh = d[0] - (oBack + (oFront - oBack) * f);
     // At g = 1 the sheet at the swell drawing's home is weighted 1 − g = 0: not read (ride-framerate R10a; equal to 1 ulp,
