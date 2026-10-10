@@ -51,7 +51,7 @@ Four changes, all in the ribbon and the profile family; none in the sheet, the r
 family's curve = `SURGE × A × hollow × pulse(t − τ_land)`. SURGE ≈ 0.5 (half a wave height above the crest for a fully
 pitching lip; a dial, measured against photo 1's right side), `hollow` from ψ (`hollowFromPsi`) so a crumbling lip gets
 none, the pulse rising over 0.3 s after the landing and falling over ~1.5 s × the wave's power (the H×T rule
-`collapseSpan` uses). It sits forward of the landing, never on the face: `hollowFace.test` stays green. CPU family and GPU
+`collapseSpan` uses). It sits forward of the landing, never on the face: `wombProfile.test`'s "never crosses itself" and "lip from the crest" tests stay green and are extended to the surge (`hollowFace.test` was retired in 09e8591). CPU family and GPU
 mirror both carry it (`wombProfile`/`wombSectionNodes`). The impact explosion's rise reads the same `SURGE × hollow`
 (`IMPACT_RISE_H` becomes a function of it), so burst and mound agree.
 
@@ -153,7 +153,7 @@ branch, the machine's state stated):
   ribbon's broken section and the foam (regions named); the spray pools empty.
 
 **Unit and self-tests** (CPU reference ↔ GPU mirror, the house rule): surge ∝ hollow, 0 at hollow 0, never on the face
-(`hollowFace.test` green); the lip's timing (tip fringe from the throw, face foam 0 before phase 1.2, impact window from
+(`wombProfile.test` "never crosses itself" extended to the surge); the lip's timing (tip fringe from the throw, face foam 0 before phase 1.2, impact window from
 τ_land); churn amplitude by age (0 at age 0's clean tube, < 0.2 A by 50 m); the two-stage decay (a dense patch < 0.25 by
 12 s, > 0 at 60 s) and the summed drift vector; replay ≡ live within 2 % at 10 s and 60 s; slab transmittance; births per
 wind row match §4's table (no plume at Glassy, no feathering under 5 m/s offshore); every existing self-test and the suite
