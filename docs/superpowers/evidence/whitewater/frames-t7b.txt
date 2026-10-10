@@ -1,0 +1,6 @@
+main 1 | cam mode: 1115 frames, mean 5.4 ms (185.0 fps), median 5.4 ms focused true riding (phase ride -> ride): 191 frames, mean 26.6 ms (37.6 fps), median 26.6 ms 
+ww 1 | cam mode: 1019 frames, mean 5.9 ms (169.1 fps), median 5.4 ms focused true riding (phase ride -> ride): 150 frames, mean 33.8 ms (29.6 fps), median 27.3 ms 
+main 2 | cam mode: 1114 frames, mean 5.4 ms (185.2 fps), median 5.3 ms focused true riding (phase ride -> ride): 182 frames, mean 27.7 ms (36.1 fps), median 27.9 ms 
+ww 2 | cam mode: 1020 frames, mean 5.9 ms (169.0 fps), median 5.3 ms focused true riding (phase ride -> ride): 167 frames, mean 30.4 ms (32.9 fps), median 26.8 ms 
+main 3 | cam mode: 1041 frames, mean 5.8 ms (172.6 fps), median 5.3 ms focused true riding (phase ride -> ride): 188 frames, mean 26.9 ms (37.2 fps), median 26.2 ms 
+ww 3 | cam mode: 1111 frames, mean 5.4 ms (184.4 fps), median 5.3 ms focused true riding (phase ride -> ride): 154 frames, mean 32.9 ms (30.4 fps), median 28.7 ms 
