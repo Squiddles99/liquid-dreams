@@ -7,7 +7,7 @@ import type { PresetName } from '../surfer/presets';
 import { easePose, lookoutShot } from './beatCamera';
 import { ConditionsGate } from './conditionsGate';
 import { lineFor } from './conditionsView';
-import { type Beat, type FrontAction, type FrontEvent, type FrontState, type SessionChoice, focusTo, initialFront, savedOf, step, tick } from './frontEnd';
+import { type Beat, type FrontAction, type FrontEvent, type FrontState, type SessionChoice, focusTo, initialFront, savedOf, step, tick, withDetailsMax } from './frontEnd';
 import { FRONT_CHOICES_KEY, type SavedChoices, saveJson } from './frontSettings';
 import { gearView } from './gearView';
 import { toConditions } from './sessionSetup';
@@ -25,6 +25,8 @@ export interface FrontEndHost {
   paddleOut(choice: SessionChoice): void;
   /** Whether the crew's bodies have loaded (absent: always); the loading cover waits for it. */
   crewReady?(): boolean;
+  /** B on the map: the title screen again (App shows it; absent in tests). */
+  backToTitle?(): void;
 }
 
 export interface CoreCue {
@@ -50,8 +52,8 @@ export class FrontEndCore {
   private moveFrom: CameraPose | null = null;
   private calm: boolean;
 
-  constructor(private readonly host: FrontEndHost, saved: SavedChoices, private readonly opts: { today: Date; seed: number; calm: boolean; storage: SettingsStorage | null }) {
-    this.s = initialFront(saved);
+  constructor(private readonly host: FrontEndHost, saved: SavedChoices, private readonly opts: { today: Date; seed: number; calm: boolean; storage: SettingsStorage | null; source?: 'forecast' | 'custom' }) {
+    this.s = initialFront(saved, opts.source ?? 'forecast');
     this.calm = opts.calm;
     this.lineSeed = opts.seed;
     // The world takes the shown conditions at once: the sky, sea and light match the panel from the first frame.
@@ -60,6 +62,11 @@ export class FrontEndCore {
 
   get state(): FrontState {
     return this.s;
+  }
+
+  /** The details page's last scroll step (the page lays it out). */
+  setDetailsMax(max: number): void {
+    if (max !== this.s.detailsMax) this.s = withDetailsMax(this.s, max);
   }
 
   setCalm(on: boolean): void {
@@ -101,10 +108,12 @@ export class FrontEndCore {
         cue.line = lineFor(this.s, e.kind === 'value' ? e.row : 'swell', this.lineSeed++);
       }
       if (e.kind === 'end') this.gate.hold(nowMs);
+      // Surf here swaps in today's forecast (or the custom setup): the sea follows the panel.
+      if (e.kind === 'surfHere' && before.setup !== this.s.setup) this.gate.edit(nowMs);
       if (e.kind === 'move') {
         this.moveFrom = this.shot(before);
         if (e.from === 'conditions' && e.to === 'rider') this.turnT = 0;
-        cue.haptic ||= e.to !== 'conditions';
+        cue.haptic ||= e.to !== 'conditions' && e.to !== 'map';
       }
       if (e.kind === 'pick') { this.pickT = 1e-3; cue.haptic = true; }
       if (e.kind === 'chosen') cue.haptic = true;
@@ -113,6 +122,7 @@ export class FrontEndCore {
         this.moveFrom = null;
         if (e.beat === 'gear') { const v = gearView(this.s, this.opts.today, this.lineSeed++); cue.line = { speaker: this.s.rider, text: v.line.text }; }
       }
+      if (e.kind === 'title') this.host.backToTitle?.();
       if (e.kind === 'settings') cue.settings = true;
       if (e.kind === 'controls') cue.controls = true;
       if (e.kind === 'paddleOut') {

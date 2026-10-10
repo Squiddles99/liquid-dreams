@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_CHOICES } from './frontSettings';
 import { BEAT_MOVE_S, type FrontAction, type FrontState, choiceOf, conditionRows, focusTo, initialFront, savedOf, step, tick } from './frontEnd';
 import { presetById } from './sessionSetup';
+import { todaysSetup } from './conditionsSource';
 
 const CTX = { seed: 99, today: new Date('2026-10-03T10:00:00+08:00'), calm: false };
 const run = (s: FrontState, ...actions: FrontAction[]): FrontState => actions.reduce((acc, a) => step(acc, a, CTX).state, s);
 const settle = (s: FrontState): FrontState => tick(s, 10, CTX).state;
-const fresh = (): FrontState => initialFront(DEFAULT_CHOICES);
+/** The older beats' tests start on Conditions with the saved setup (the map's Surf here would swap in today's forecast). */
+const fresh = (): FrontState => ({ ...initialFront(DEFAULT_CHOICES), beat: 'conditions' });
+const onMap = (): FrontState => initialFront(DEFAULT_CHOICES);
 
 describe('the front end\'s state machine (dune select spec §3, §4)', () => {
   it('opens on Conditions, Winter offshore, Shazza in focus', () => {
@@ -63,7 +66,7 @@ describe('the front end\'s state machine (dune select spec §3, §4)', () => {
     expect(s.beat).toBe('rider');
     s = settle(run(s, 'back'));
     expect(s.beat).toBe('conditions');
-    expect(step(s, 'back', CTX).events).toEqual([]);
+    expect(step(s, 'back', CTX).state.beat).toBe('map');
   });
   it('moves the rider focus with LB/RB or left/right, wrapping through T-Bone, Shazza, Grommet', () => {
     let s = settle(run(fresh(), 'confirm'));
@@ -145,7 +148,75 @@ describe('the front end\'s state machine (dune select spec §3, §4)', () => {
     expect(step(fresh(), 'settings', CTX).events).toEqual([{ kind: 'settings' }]);
   });
   it('saves what it should remember', () => {
-    const s = run(fresh(), 'down', 'right');
+    const s = run({ ...fresh(), source: 'custom' }, 'down', 'right'); // on Custom: the forecast's own tweaks are the session's
     expect(savedOf(s)).toEqual({ setup: s.setup, rider: 'female', boards: {}, outfits: {}, stances: {} });
+  });
+});
+
+describe('the map beat (surf-map hub)', () => {
+  it('opens on the map with the first break focused', () => {
+    const s = onMap();
+    expect(s.beat).toBe('map'); expect(s.breakId).toBe('womb'); expect(s.breakDetails).toBe(false);
+  });
+  it("Surf here on the forecast loads today's forecast and moves to Conditions", () => {
+    const r = step(onMap(), 'confirm', CTX);
+    expect(r.state.beat).toBe('conditions');
+    expect(r.state.setup).toEqual(todaysSetup(CTX.today));
+    expect(r.events).toContainEqual({ kind: 'surfHere', breakId: 'womb' });
+  });
+  it("Surf here on custom keeps the player's setup", () => {
+    const s = { ...onMap(), source: 'custom' as const, customSetup: { ...onMap().setup, swellFt: 9 } };
+    expect(step(s, 'confirm', CTX).state.setup.swellFt).toBe(9);
+  });
+  it('Back on the map asks for the title; Back on Conditions returns to the map', () => {
+    expect(step(onMap(), 'back', CTX).events).toEqual([{ kind: 'title' }]);
+    const onCond = settle(step(onMap(), 'confirm', CTX).state);
+    const r = step(onCond, 'back', CTX);
+    expect(r.state.beat).toBe('map'); expect(r.events).toContainEqual({ kind: 'back' });
+  });
+  it('Tab flips forecast and custom; LB/RB say the Library is locked', () => {
+    expect(step(onMap(), 'toggle', CTX).state.source).toBe('custom');
+    expect(step(onMap(), 'toggle', CTX).events).toEqual([{ kind: 'source', source: 'custom' }]);
+    expect(step(onMap(), 'tabPlus', CTX).events).toEqual([{ kind: 'locked', what: 'library' }]);
+  });
+  it('Details opens the break page; up/down scroll it; Back closes it, not the map', () => {
+    let s = step(onMap(), 'details', CTX).state;
+    expect(s.breakDetails).toBe(true);
+    s = step(s, 'down', CTX).state; s = step(s, 'down', CTX).state; s = step(s, 'up', CTX).state;
+    expect(s.detailsScroll).toBe(1);
+    const r = step(s, 'back', CTX);
+    expect(r.state.breakDetails).toBe(false); expect(r.state.beat).toBe('map'); expect(r.events).toEqual([{ kind: 'breakDetails', open: false }]);
+  });
+  it('never scrolls above the top', () => {
+    expect(step(step(onMap(), 'details', CTX).state, 'up', CTX).state.detailsScroll).toBe(0);
+  });
+  it('pointer focus on a pin selects that break', () => {
+    expect(focusTo(onMap(), { pin: 'womb' }).state.breakId).toBe('womb');
+  });
+});
+
+describe('review fixes (surf-map hub final review)', () => {
+  it("keeps the player's custom setup when they Surf here on the forecast, and saves it, not the forecast", () => {
+    const saved = onMap().setup;
+    let s = settle(step(onMap(), 'confirm', CTX).state); // forecast → Conditions
+    expect(s.setup).toEqual(todaysSetup(CTX.today));
+    s = settle(step(s, 'back', CTX).state);              // back to the map
+    s = step(s, 'toggle', CTX).state;                    // Custom
+    expect(s.customSetup).toEqual(saved);
+    expect(savedOf(s).setup).toEqual(saved);
+    expect(step(s, 'confirm', CTX).state.setup).toEqual(saved);
+  });
+  it('remembers Conditions edits made on Custom as the custom setup', () => {
+    let s = step(onMap(), 'toggle', CTX).state;
+    s = settle(step(s, 'confirm', CTX).state);
+    s = run(s, 'down', 'right');                         // the month row, one month on
+    expect(s.customSetup).toEqual(s.setup);
+    expect(s.customSetup.month).not.toBe(onMap().setup.month);
+  });
+  it('never scrolls the details page past its end', () => {
+    let s = { ...step(onMap(), 'details', CTX).state, detailsMax: 2 };
+    for (let k = 0; k < 9; k++) s = step(s, 'down', CTX).state;
+    expect(s.detailsScroll).toBe(2);
+    expect(step(s, 'up', CTX).state.detailsScroll).toBe(1);
   });
 });

@@ -18,7 +18,7 @@ const shown = (e: Element): boolean => (e.closest('.fe-root > [style*="opacity"]
  */
 export async function frontEndCheck(app: App): Promise<{ contrast: { beat: string; text: string; ratio: number; need: number }[]; faces: { beat: string; rider: string; covered: string | null }[]; pass: boolean }> {
   const contrast: { beat: string; text: string; ratio: number; need: number }[] = [], faces: { beat: string; rider: string; covered: string | null }[] = [];
-  for (const beat of ['conditions', 'rider', 'gear'] as const) {
+  for (const beat of ['map', 'conditions', 'rider', 'gear'] as const) {
     await app.frontEndGoTo(beat);
     const root = document.querySelector('.fe-root') as HTMLElement;
     root.style.visibility = 'hidden';

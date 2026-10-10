@@ -48,7 +48,7 @@ const RIDERS: PresetName[] = ['male', 'female', 'grommet'];
  * is on (Andrew 2026-10-04: she stays in what's ticked until something else is).
  */
 export function stagingFor(s: FrontState, stand: LandSpot, opts: { turnT: number; pickT: number }): GangStaging {
-  const toConditions = s.beat === 'conditions';
+  const toConditions = s.beat === 'map' || s.beat === 'conditions';
   const cond = crewFor('conditions', stand), select = crewFor(s.beat === 'gear' ? 'gear' : 'rider', stand);
   const gearSettled = s.beat === 'gear' && !s.move;
   const out = {} as GangStaging;

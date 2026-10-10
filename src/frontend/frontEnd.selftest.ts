@@ -227,17 +227,17 @@ registerSelfTest({
 });
 
 const SIZES: [number, number][] = [[1920, 1080], [1280, 800], [2560, 1080], [1024, 768]];
-const fakeHost = (): FrontEndHost => ({
+export const fakeHost = (onTitle: () => void = () => {}): FrontEndHost => ({
   standSpot: () => ({ x: 305, z: 49.8, headingDeg: 90 }), groundAt: () => 20, baseConditions: () => DEFAULT_CONDITIONS,
-  applyConditions: () => {}, stage: () => {}, paddleOut: () => {},
+  applyConditions: () => {}, stage: () => {}, paddleOut: () => {}, backToTitle: onTitle,
 });
-const memory = (): { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } => {
+export const memory = (): { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } => {
   const m = new Map<string, string>();
   return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => { m.set(k, v); }, removeItem: (k) => { m.delete(k); } };
 };
-const noSound = { uiOut: () => null, setFrontEndMusic: () => {} };
-const press = (code: string): void => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); window.dispatchEvent(new KeyboardEvent('keyup', { code })); };
-const frames = async (fe: FrontEnd, n: number): Promise<void> => { for (let i = 0; i < n; i++) { fe.update(1 / 60); await new Promise((r) => setTimeout(r, 0)); } };
+export const noSound = { uiOut: () => null, setFrontEndMusic: () => {} };
+export const press = (code: string): void => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); window.dispatchEvent(new KeyboardEvent('keyup', { code })); };
+export const frames = async (fe: FrontEnd, n: number): Promise<void> => { for (let i = 0; i < n; i++) { fe.update(1 / 60); await new Promise((r) => setTimeout(r, 0)); } };
 
 /**
  * Whether an element is in the shown beat: its beat wrapper's (or the rider's line's) target opacity, not the computed
@@ -248,9 +248,9 @@ const shown = (e: Element): boolean => {
   return !wrap || wrap.style.opacity !== '0';
 };
 
-/** Every visible text box in the root: its design box and font size. */
+/** Every visible text box in the root: its design box and font size. The surf chart's own lettering is map art, not UI. */
 function texts(root: HTMLElement, scale: number) {
-  return [...root.querySelectorAll('*')].filter((e) => e.childElementCount === 0 && e.textContent?.trim() && getComputedStyle(e).visibility !== 'hidden' && shown(e))
+  return [...root.querySelectorAll('*')].filter((e) => e.childElementCount === 0 && e.textContent?.trim() && getComputedStyle(e).visibility !== 'hidden' && shown(e) && !e.closest('.fe-chart'))
     .map((e) => ({ e, b: designBox(e, root, scale), px: parseFloat(getComputedStyle(e).fontSize) }));
 }
 const overlaps = (a: { x: number; y: number; w: number; h: number }, b: typeof a): boolean => a.x < b.x + b.w - 1 && b.x < a.x + a.w - 1 && a.y < b.y + b.h - 1 && b.y < a.y + a.h - 1;
@@ -270,17 +270,18 @@ for (const [w, h] of SIZES) for (const text of [1, 2]) {
         fe.open();
         fe.resize(w, h);
         await document.fonts.ready;
-        for (const beat of ['conditions', 'rider', 'gear']) {
+        for (const beat of ['map', 'conditions', 'rider', 'gear']) {
           await frames(fe, 120);
-          // The settled layout: a hidden browser pane never advances the fades and slide-ins, so finish them.
-          for (const a of document.getAnimations()) a.finish();
+          // The settled layout: a hidden browser pane never advances the fades and slide-ins, so finish them (not the
+          // looping ones, like the map pin's pulse).
+          for (const a of document.getAnimations()) if (Number.isFinite(Number(a.effect?.getComputedTiming().endTime))) a.finish();
           const root = host.querySelector('.fe-root') as HTMLElement, scale = Math.min(w / 1920, h / 1080), l = { designW: w / scale, designH: h / scale, safe: 0.03 };
           const t = texts(root, scale);
           for (const { e, b, px } of t) {
             if (px < 18) problems.push(`${beat}: "${e.textContent!.slice(0, 20)}" ${px.toFixed(0)} px`);
             if (b.x < l.designW * l.safe - 0.5 || b.y < l.designH * l.safe - 0.5 || b.x + b.w > l.designW * (1 - l.safe) + 0.5 || b.y + b.h > l.designH * (1 - l.safe) + 0.5) problems.push(`${beat}: "${e.textContent!.slice(0, 20)}" outside`);
           }
-          const blocks = ['.fe-legend', '.fe-title', '.fe-tabs'].flatMap((q) => [...root.querySelectorAll(q)]).filter(shown).map((e) => designBox(e, root, scale));
+          const blocks = ['.fe-legend', '.fe-title', '.fe-tabs', '.fe-map-tabs', '.fe-map-strip', '.fe-map-source', '.fe-map-local', '.fe-map-panel', '.fe-map-credit'].flatMap((q) => [...root.querySelectorAll(q)]).filter(shown).map((e) => designBox(e, root, scale));
           for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) if (overlaps(blocks[i], blocks[j])) problems.push(`${beat}: blocks ${i} and ${j} overlap`);
           press('Enter');
         }
@@ -298,11 +299,14 @@ registerSelfTest({
   async run() {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const fe = new FrontEnd(fakeHost(), host, noSound, memory());
+    let titled = 0;
+    const fe = new FrontEnd(fakeHost(() => titled++), host, noSound, memory());
     const seen = new Set<string>(), problems: string[] = [];
     try {
       fe.open();
       await frames(fe, 30);
+      press('Enter'); // the map's Surf here
+      await frames(fe, 120);
       // The shown beat's focused row (Conditions, gear), else its focused tab (the roster).
       const focusedEl = (): HTMLElement | null => ([...host.querySelectorAll('.fe-row.is-focus'), ...host.querySelectorAll('.fe-tab.is-focus')].find(shown) as HTMLElement | undefined) ?? null;
       const focused = (): string => { const f = focusedEl(); return f?.dataset.rider ?? f?.dataset.index ?? f?.dataset.hit ?? f?.textContent ?? '?'; };
@@ -318,7 +322,10 @@ registerSelfTest({
       press('KeyE');
       await frames(fe, 10);
       for (let k = 0; k < 4; k++) { seen.add(`o:${focused()}`); press('ArrowDown'); await frames(fe, 3); }
-      for (const beat of ['gear', 'rider']) { press('Escape'); await frames(fe, 120); if (!host.querySelector('.fe-root')) problems.push(`B from ${beat} closed the front end`); }
+      for (const beat of ['gear', 'rider', 'conditions']) { press('Escape'); await frames(fe, 120); if (!host.querySelector('.fe-root')) problems.push(`B from ${beat} closed the front end`); }
+      if (fe.state?.beat !== 'map') problems.push(`B from Conditions went to ${fe.state?.beat}`);
+      press('Escape'); await frames(fe, 3);
+      if (titled !== 1) problems.push(`B on the map asked for the title ${titled} times`);
     } finally {
       fe.close();
       host.remove();
@@ -345,7 +352,8 @@ registerSelfTest({
       pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, connected: true, mapping: 'standard', timestamp: performance.now(), axes: [0, 0, 0, 0], buttons } as unknown as Gamepad;
       await frames(fe, 5);
       const pads = [...host.querySelectorAll('.fe-legend [data-glyph]')].map((g) => (g as HTMLElement).dataset.glyph).join(',');
-      return { pass: keys === 'C,R,F,Enter,Esc' && pads === 'View,Y,X,A,B', detail: `keys ${keys} → pad ${pads}` };
+      // The map's legend: Controls, Break details, the source switch, Surf here, Title.
+      return { pass: keys === 'C,F,Tab,Enter,Esc' && pads === 'View,X,RS,A,B', detail: `keys ${keys} → pad ${pads}` };
     } finally {
       Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: real });
       fe.close();
@@ -367,7 +375,7 @@ registerSelfTest({
       try {
         fe.open();
         fe.resize(1920, 1080);
-        for (const a of ['confirm', 'confirm', 'confirm', 'confirm'] as const) { fe.act(a); await frames(fe, 2); }
+        for (const a of ['confirm', 'confirm', 'confirm', 'confirm', 'confirm'] as const) { fe.act(a); await frames(fe, 2); }
         const line = host.querySelector('.fe-root > .fe-line') as HTMLElement;
         // The longest a board line runs, give or take.
         line.lastElementChild!.textContent = 'Five and a half foot and hollow, I’m taking the thruster, no worries at all.';
@@ -488,7 +496,7 @@ registerSelfTest({
       if (!legend().includes('Remap')) bad.push(`Controls legend ${legend()}`);
       press('Escape');
       await frames(fe, 3);
-      if (fe.controls || root.classList.contains('is-controls-open') || fe.state?.beat !== 'conditions') bad.push(`Esc left ${fe.controls ? 'Controls open' : fe.state?.beat}`);
+      if (fe.controls || root.classList.contains('is-controls-open') || fe.state?.beat !== 'map') bad.push(`Esc left ${fe.controls ? 'Controls open' : fe.state?.beat}`);
     } finally {
       fe.close();
       host.remove();

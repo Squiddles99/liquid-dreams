@@ -12,6 +12,8 @@
     "build:surfers": "node tools/surfer/buildSurfers.ts",
     "build:heath": "node tools/heath/buildHeath.ts",
     "bake:map": "node tools/bakeBreakMap.ts",
+    "bake:chart": "node tools/bakeCapesChart.ts",
+    "claims": "node tools/checkBreakClaims.ts",
     "electron": "npm run build && electron .",
     "electron:dev": "electron . --dev",
     "build:clips": "node tools/surfer/bakeClips.mjs"
