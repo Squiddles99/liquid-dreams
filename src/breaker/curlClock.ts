@@ -57,22 +57,16 @@ export function breakingLines(T: ArrayLike<number>, nx: number, nz: number): Int
  * upwind neighbour at curlMaxMs); the first break keeps T₀. The cap is the peel stretch's (a held wall never runs on into the
  * shallows): where the reef would hold a section longer, the curl steps back there. A line already non-decreasing in s, at
  * an unbounded speed, comes out unchanged.
- *
- * With `seedRank` a line's curl starts at its node of smallest rank instead (where finite): the level below's onset time on
- * that node's ray (reefField.curlPass), so a level's curl runs the way the level below peeled. (level-read Task 4: on the
- * inner shelf inside the right the level-6 line broke first at its far end and peeled back toward the level-5 curl, two
- * curls meeting along one crest.)
  */
-export function curlTimes(T: ArrayLike<number>, lineOf: Int32Array, nx: number, nz: number, cellM: number, curlMaxMs: number, maxHoldS: number, seedRank?: ArrayLike<number>): Float32Array {
+export function curlTimes(T: ArrayLike<number>, lineOf: Int32Array, nx: number, nz: number, cellM: number, curlMaxMs: number, maxHoldS: number): Float32Array {
   const n = nx * nz, out = new Float32Array(n).fill(Number.NaN);
   const s = new Float64Array(n).fill(Infinity), done = new Uint8Array(n);
   const first = new Map<number, number>();
-  const key = (i: number): number => (seedRank && Number.isFinite(seedRank[i]) ? seedRank[i] : T[i]);
   for (let i = 0; i < n; i++) {
     const l = lineOf[i];
     if (l < 0 || !Number.isFinite(T[i])) continue;
     const f = first.get(l);
-    if (f === undefined || key(i) < key(f)) first.set(l, i);
+    if (f === undefined || T[i] < T[f]) first.set(l, i);
   }
   const R = CURL_LINK_CELLS, slow = Number.isFinite(curlMaxMs) && curlMaxMs > 0 ? 1 / curlMaxMs : 0;
   const heap = new MinHeap();
