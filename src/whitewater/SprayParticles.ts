@@ -11,7 +11,7 @@ import {
 } from './sprayEmitters';
 import { NEAR_FADE_M, SPRAY_PHASE_G, SPRAY_PHASE_ISOTROPIC, SPRAY_SKY_SCALE } from './sprayLook';
 import { KIND_INDEX, PARTICLE_KINDS, type ParticleKind, SPRAY_KIND, kindIndexOf } from './particleKinds';
-import { birthSeed, slotBase } from './sprayStep';
+import { NO_WATER, SOFT_FADE_M, birthSeed, slotBase } from './sprayStep';
 
 type N = any;
 
@@ -148,10 +148,14 @@ export class SprayParticles {
         const radiance = sky.sunIlluminance.mul(vis).mul(sprayPhaseNode(dot(viewDir, sky.sunDirection), kindValueNode(kd, (q) => q.isotropic))).add(sky.skyIrradiance.mul(SPRAY_SKY_SCALE));
     // sprayLook.nearCameraFade: puffs within a few metres of the eye fade out.
     const vNear: N = varying(smoothstep(NEAR_FADE_M[0], NEAR_FADE_M[1], dist));
-    const colour: N = varying(sky.applyAerialPerspective(radiance, dist, viewDir));
+    // The puffs are in the mist too (whitewater §6.1), at their centres.
+    const colour: N = varying(sky.applyAerialPerspective(sky.mist ? sky.mist(radiance, centre, vis) : radiance, dist, viewDir));
+    // Soft particles without depth (whitewater §6.2): a puff fades in over its first SOFT_FADE_M above the water it was born
+    // over (meta.z; NO_WATER: no fade).
+    const vSoft: N = varying(smoothstep(0.0, SOFT_FADE_M, centre.y.sub(mt.z)));
     const ageColour = mix(vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vAgeFrac).mul(this.inverseExposure.mul(0.5));
     m.colorNode = mix(colour, ageColour, this.tint.mul(0.8));
-    m.opacityNode = clamp(shape.mul(fades).mul(vStrength).mul(vNear).mul(vOpacity), 0.0, 1.0);
+    m.opacityNode = clamp(shape.mul(fades).mul(vStrength).mul(vNear).mul(vOpacity).mul(vSoft), 0.0, 1.0);
     return m;
   }
 
@@ -193,7 +197,7 @@ export class SprayParticles {
     for (const k of plan.ticks) {
       const births = birthsAt(k).slice(0, SPRAY_BIRTH_CAP);
       births.forEach((b, i) => {
-        data.set([b.x, b.y, b.z, b.life, b.vx, b.vy, b.vz, b.strength, b.kind ?? this.defaultKind, b.yWater ?? 0, birthSeed(k, i), 0], i * 12);
+        data.set([b.x, b.y, b.z, b.life, b.vx, b.vy, b.vz, b.strength, b.kind ?? this.defaultKind, b.yWater ?? NO_WATER, birthSeed(k, i), 0], i * 12);
       });
       this.birthAttr.needsUpdate = true;
       this.birthCount.value = births.length;

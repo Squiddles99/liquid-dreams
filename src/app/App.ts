@@ -98,6 +98,8 @@ import { CoastalSurf } from '../surf/CoastalSurf';
 import { DEFAULT_SURF_PARAMS, type SurfParams, normalizeSurfParams } from '../surf/surfModel';
 import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FoamField } from '../whitewater/FoamField';
+import { MistSlab } from '../whitewater/mistSlab';
+import { sectionScale } from '../breaker/wombSection';
 import { KelpField } from '../seabed/KelpField';
 import { SprayParticles } from '../whitewater/SprayParticles';
 import {
@@ -366,6 +368,12 @@ export class App {
     dirNode: (xz) => this.setWaves.sample(xz, true).dir,
     foamPushNode: (xz, shift) => this.setWaves.breakingFoamPushNode(xz, shift ?? null),
   });
+  /** The whitewater's mist slab (whitewater §6.1): the foam map's mist, fogging every near-water material built after it. */
+  readonly mist = ((): MistSlab => {
+    const slab = new MistSlab(this.foamField, this.seabed.tide, this.sky);
+    this.sky.mist = (colour, worldPos, sunVisibility) => slab.apply(colour, worldPos, sunVisibility);
+    return slab;
+  })();
   /** The water's flow under the waves (reef build B §4.1): the set waves' surface plus the FFT long swell where it runs. */
   readonly reefFlow = new ReefFlow(this.setWaves, (xz) => this.surfaceModel.fftCascadeDisplacement(xz, 0, float(1.0)).y);
   /** The kelp's lean grid around the camera (reef build B §4.2–4.3), stepped with the foam's ticks. */
@@ -978,6 +986,9 @@ export class App {
    */
   private stepSpray(): void {
     this.tickEmitters.clear();
+    // The mist slab's depth: the waves about now, their mean scale A (the slab's height is a look, not a measurement).
+    const near = wavesNear(this.clock.simTime, this.conditions, this.sets);
+    if (near.length > 0) this.mist.A.value = sectionScale(near.reduce((s, e) => s + e.heightM, 0) / near.length);
     const w = windToVector(this.conditions.wind.directionDeg), s = this.conditions.wind.speedMs;
     this.spray.setWind(w[0] * s, w[1] * s);
     this.impact.setWind(w[0] * s, w[1] * s);

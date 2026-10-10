@@ -68,7 +68,7 @@ export class BombieMesh {
     const nWorld = normalize(cameraViewMatrix.transpose().mul(vec4(normalFlat, 0.0)).xyz);
     const wrap = max(dot(nWorld, l).add(0.5).div(1.5), 0.0);
     const lit = sky.sunIlluminance.mul(vis).mul(wrap).add(sky.skyIrradiance).mul(FOAM_ALBEDO).div(PI);
-    m.colorNode = sky.applyAerialPerspective(lit, dist, toCam.div(max(dist, 1e-3)).negate());
+    m.colorNode = sky.applyAerialPerspective(sky.mist ? sky.mist(lit, positionWorld, vis) : lit, dist, toCam.div(max(dist, 1e-3)).negate());
     // Crisp white water with ragged edges, not a soft veil.
     m.opacityNode = smoothstep(0.1, 0.25, cover).mul(0.97);
     this.mesh = new THREE.Mesh(g, m);

@@ -201,6 +201,13 @@ export class Sky {
     return this.cloudSun.element(0).x;
   }
 
+  /**
+   * The whitewater's mist slab (whitewater §6.1; mistSlab.MistSlab.apply), when the App has one: the near-water materials
+   * (the sheet, the ribbon, the rider and board, the spray, the Bombie) fog their lit colour at their world position
+   * through it before the aerial perspective. Set before any of them is built.
+   */
+  mist: ((colour: N, worldPos: N, sunVisibility?: N) => N) | null = null;
+
   /** Near-sea-level aerial perspective along a ray from the camera. */
   applyAerialPerspective(color: N, distanceM: N, rayDir: N): N {
     const transmittance = exp(this.seaLevelExtinction.mul(distanceM.mul(0.001).mul(this.aerialScale)).negate());

@@ -18,6 +18,11 @@ export function slotBase(tick: number): number {
   return (((tick % h) + h) % h) * SPRAY_BIRTH_CAP;
 }
 
+/** A birth with no water under it (SprayBirth.yWater absent): meta.z, far enough down that the soft fade is 1. */
+export const NO_WATER = -1e4;
+/** Soft particles (whitewater §6.2): a puff fades in over this height (m) above the water it was born over. */
+export const SOFT_FADE_M = 0.5;
+
 /** Per slot: posAge = (x, y, z, age), velLife = (vx, vy, vz, life), meta = (strength, kind, yWater, seed). Zeroed slots
  * are dead. `kind` (particleKinds.KIND_INDEX) is a birth's own or the pool's `defaultKind`. */
 export class SprayPool {
@@ -38,7 +43,7 @@ export function birthInto(pool: SprayPool, tick: number, births: readonly SprayB
     if (j + 3 >= pool.posAge.length) return;
     pool.posAge.set([b.x, b.y, b.z, 0], j);
     pool.velLife.set([b.vx, b.vy, b.vz, b.life], j);
-    pool.meta.set([b.strength, b.kind ?? pool.defaultKind, b.yWater ?? 0, birthSeed(tick, i)], j);
+    pool.meta.set([b.strength, b.kind ?? pool.defaultKind, b.yWater ?? NO_WATER, birthSeed(tick, i)], j);
   });
 }
 

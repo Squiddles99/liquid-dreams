@@ -123,6 +123,9 @@ export const FEATHER_WIND_MS: readonly [number, number] = [5, 10];
 /** …this many puffs per m of crest per s at strength 1, each living U(0.6, 1.2) s. */
 export const FEATHER_RATE = 6;
 export const FEATHER_LIFE_S: readonly [number, number] = [0.6, 1.2];
+/** A feather puff's soft fade (§6.2) counts from this far under the crest it smokes off: the crest is a thin edge with the
+ * water falling away behind it, so the puffs show from birth. */
+export const FEATHER_SOFT_DROP_M = 0.5;
 
 /** A standing crest that feathers: no section frame read (the frame is the expensive part), its crest from the station's
  * own smoothed numbers (standingCrestY). */
@@ -523,7 +526,7 @@ export function featherBirths(emitters: readonly FeatherEmitter[], tick: number)
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.2, z: e.z + e.nx * along,
         vx: -e.nx * e.wOff * 0.5 + (r(2) * 2 - 1) * 0.5, vy: e.wOff * 0.3 + (r(3) * 2 - 1) * 0.5, vz: -e.nz * e.wOff * 0.5 + (r(4) * 2 - 1) * 0.5,
-        life: FEATHER_LIFE_S[0] + (FEATHER_LIFE_S[1] - FEATHER_LIFE_S[0]) * r(5), strength: Math.min(1, e.strength), kind: KIND_INDEX.spray, yWater: e.y,
+        life: FEATHER_LIFE_S[0] + (FEATHER_LIFE_S[1] - FEATHER_LIFE_S[0]) * r(5), strength: Math.min(1, e.strength), kind: KIND_INDEX.spray, yWater: e.y - FEATHER_SOFT_DROP_M,
       });
     }
   }
@@ -556,7 +559,7 @@ export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): 
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.4, z: e.z + e.nx * along,
         vx: 0.6 * e.vx + (r(2) * 2 - 1) * 1.5, vy: (0.6 + 0.6 * r(3)) * kick + (r(4) * 2 - 1) * 1.5, vz: 0.6 * e.vz + (r(5) * 2 - 1) * 1.5,
-        life: 1.3 + (IMPACT_MAX_LIFE_S - 1.3) * r(6), strength: Math.min(1, e.lip),
+        life: 1.3 + (IMPACT_MAX_LIFE_S - 1.3) * r(6), strength: Math.min(1, e.lip), yWater: e.y,
       });
     }
   }

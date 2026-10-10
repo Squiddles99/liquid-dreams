@@ -10,6 +10,7 @@ import { AGED_LACE_COVER, SET_FOAM_MAX_COVER, setFoamPattern, sheetFoamWeight, w
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { FoamField } from './FoamField';
+import { type MistSourceCpu, stepMist } from './mistSlab';
 import { COARSE_TICKS, FOAM_TICK_S, type FoamGrid, type FoamParams, type FoamPlan, type FoamSourceCpu, FoamSchedule, stepFoam, tickTime } from './foamStep';
 
 type N = any;
@@ -54,6 +55,39 @@ function syntheticSource() {
 }
 
 const SMALL: FoamGrid = { x0: 0, z0: 0, cellM: 1, nx: 48, nz: 8 };
+
+registerSelfTest({
+  name: 'foam: the GPU mist channel matches mistSlab.stepMist (landing + plume shares, the carry by the wind, the decay) over a coarse + fine replay',
+  async run(renderer) {
+    const t = uniform(0);
+    // A landing band 3 m wide moving +x at 6 m/s (land 1.5) with the throwing lip 4 m ahead of it (lip 0.6); offshore 8 m/s.
+    const at = (x: N, tt: N, off: number, w: number): N => select(abs(x.sub(tt.mul(6.0)).sub(off)).lessThan(w), float(1.0), float(0.0));
+    const nodes = {
+      foamNode: (xz: N) => at(xz.x, t, 0, 2),
+      dirNode: (): N => vec2(1.0, 0.0),
+      foamPushNode: (xz: N, shift?: N | null) => {
+        const tt = shift ? t.sub(shift) : t;
+        return { foam: at(xz.x, tt, 0, 2), push: float(0.0), land: at(xz.x, tt, 0, 1.5).mul(1.5), lip: at(xz.x, tt, 4, 1.5).mul(0.6) };
+      },
+    };
+    const cpuAt = (x: number, tt: number, off: number, w: number): number => (Math.abs(x - 6 * tt - off) < w ? 1 : 0);
+    const wind: [number, number] = [-8, 2];
+    const src: MistSourceCpu = { mist: (x, _z, tt) => [1.5 * cpuAt(x, tt, 0, 1.5), 0.6 * cpuAt(x, tt, 4, 1.5)], dir: () => [1, 0], wind };
+    const field = new FoamField(nodes, SMALL);
+    const p: FoamParams = { clearTimeS: 3, driftMps: 0.4, laceLifeS: 30 };
+    field.setParams(p);
+    field.setWind(wind[0], wind[1]);
+    const tEnd = 5.5;
+    field.advance(renderer, tEnd, (tt) => { t.value = tt; }, true);
+    const gpu = await readMap(renderer, field, 2);
+    const plan = new FoamSchedule().plan(tEnd, p.clearTimeS + p.laceLifeS);
+    let ref = new Float32Array(SMALL.nx * SMALL.nz);
+    for (const k of plan.coarse) ref = stepMist(ref, SMALL, tickTime(k), COARSE_TICKS * FOAM_TICK_S, src);
+    for (const k of plan.ticks) ref = stepMist(ref, SMALL, tickTime(k), FOAM_TICK_S, src);
+    const d = maxDiff(gpu, ref), peak = Math.max(...ref);
+    return { pass: d < 0.01 && peak > 0.5, detail: `max |GPU − CPU| mist ${d.toFixed(5)} over ${plan.coarse.length} coarse + ${plan.ticks.length} ticks; CPU peak ${peak.toFixed(3)}` };
+  },
+});
 
 registerSelfTest({
   name: 'foam: the GPU step matches the CPU reference (density and age; drift, push, wind, the two lives) over a coarse + fine replay',

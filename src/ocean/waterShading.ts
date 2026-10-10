@@ -44,6 +44,8 @@ export interface WaterSurfaceInputs {
   seabed?: { radiance: N; transmittance: N };
   /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
   overlay?: { depth: N; tau: N; depthOn: N; crestOn: N; foamMap?: N; foamOn?: N; sunOn?: N };
+  /** The shaded point (world m): with it the colour is fogged through the whitewater's mist slab (sky.mist; §6.1). */
+  worldPos?: N;
 }
 
 export function createWaterOpticsUniforms(p: WaterOpticsParams) {
@@ -216,7 +218,8 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
       return c;
     })()
     : colour;
-  return sky.applyAerialPerspective(withOverlay, i.distance, v.negate());
+  const misted = sky.mist && i.worldPos ? sky.mist(withOverlay, i.worldPos, sv) : withOverlay;
+  return sky.applyAerialPerspective(misted, i.distance, v.negate());
 }
 
 /**
