@@ -16,6 +16,7 @@ import type { WaterSurfaceModel } from './waterSurface';
 import type { SunlightSource } from '../land/SunlightMap';
 import type { SkylineTable } from '../land/SkylineTable';
 import type { CoastalSurf } from '../surf/CoastalSurf';
+import { SHORE_FOAM_BAND_M } from '../surf/surfModel';
 
 type N = any;
 
@@ -242,7 +243,12 @@ export class OceanSurface {
     // pattern rides the water. setFoamFrame (the crest frame) is the churn's.
     // One sample, shared by the weight and the overlay (one texture binding).
     const foamOverlay = options.foamMap ? options.foamMap.sampleNode(vBaseXZ) : null;
-        const surfFoam = options.surf ? options.surf.foamNode(vBaseXZ, model.seabed, viewDir.y) : float(0.0);
+        // Inside the foam map's box CoastalSurf keeps to a shore band (surfModel.shoreFoamShare, whitewater L2): the map's lace
+        // owns the rest of the inside. Outside the box (inside 0) it is unchanged.
+        const shoreShare = options.surf && foamOverlay
+          ? float(1.0).sub(foamOverlay.inside.mul(smoothstep(SHORE_FOAM_BAND_M, 2 * SHORE_FOAM_BAND_M, options.surf.dEdgeNode(vBaseXZ, model.seabed))))
+          : float(1.0);
+        const surfFoam = options.surf ? options.surf.foamNode(vBaseXZ, model.seabed, viewDir.y).mul(shoreShare) : float(0.0);
         // The swash's edge (Phase 4b §3.3): lifted water under 0.1 m deep over the beach near the shore shows a foam lace.
         const swashLace = options.surf
           ? float(1.0).sub(smoothstep(0.02, 0.1, positionWorld.y.sub(model.seabed.bedHeightNode(vBaseXZ))))

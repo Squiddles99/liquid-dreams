@@ -234,3 +234,13 @@ export function wetLevel(z: number, t: number, s: SurfState): number {
 export function swashLift(d: number, e: number): number {
   return 1 - smoothstep(e, e + LIFT_REACH_M, d);
 }
+
+/** Inside the foam map's box, CoastalSurf's foam keeps to a shore band (whitewater L2, Fable): full within this of the
+ * water's edge, gone by twice it; the map's lace owns the rest of the inside. Outside the box it is unchanged. */
+export const SHORE_FOAM_BAND_M = 25;
+/** The share of CoastalSurf's foam kept `dEdgeM` metres seaward of the water's edge, the foam map's box weight `inside`
+ * (0 outside the box, 1 from its edge band in): 1 − inside × smoothstep(band, 2 × band, dEdge). */
+export function shoreFoamShare(dEdgeM: number, inside: number): number {
+  const t = Math.min(1, Math.max(0, (dEdgeM - SHORE_FOAM_BAND_M) / SHORE_FOAM_BAND_M));
+  return 1 - inside * t * t * (3 - 2 * t);
+}
