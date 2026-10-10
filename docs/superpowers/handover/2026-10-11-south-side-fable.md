@@ -100,3 +100,32 @@ and the old square's west wall (z 200: −4 m to x −160) and south leg (x −1
 the shelf is now a wedge pointing at the peak with its south side running east into the platform, not a rectangle. The
 corner at (−12, 30)–(9, 40), the "tongue", reads as a visible kink in the capture; the spec allows ≤ 5 m smoothing and I
 left the points as traced. What the right does is the open question above: on this model it is a second makeable wave.
+
+## Fable's review and ruling (2026-10-11, Andrew asleep, delegated)
+
+Evidence verified: Andrew's camera after the change shows open basin (the square is gone); the north-facing capture shows
+a sharp-tipped wedge with its south side running east into the platform, the satellite's plan shape, with one visible
+kink at (−12, 30)–(9, 40). The bed lines across the new edge are the ledges' own face. The claims are unchanged.
+
+**The left's "regression" is the shape, not a bug.** On main with only `southLedge` swapped, the bed north of the tip
+differs in 562 cells by at most 0.089 m (at (−102, −0.5)); the 0.30 / 0.13 m/s peel moves in the select matrix come from
+the field solving over the traced shape (the swell now crosses a south edge 14 m from the tip), not from the drawn left.
+Any south edge this close to the tip moves those rows; re-pinning them is the honest fix if the shape stays.
+
+**The right is the open ruling, and it is Andrew's** (the spec's STOP, which he set). In this model a 225° swell meets
+an edge running east at ~45° and peels along it at the left's own speed; the engine is built for one curl, one clock
+(R2/R3), so the one-curl checks, the until/hold bars and the ride stack now see a second curl they do not model. The
+satellite's shape and the game's physics disagree about the right. I do not spend more of the budget on a shape
+experiment without him. Branch held at e6cde28, pushed, **not merged**.
+
+Options for Andrew, cheapest first:
+
+1. **Rounded corner, old right (no physics change).** Keep the 242 m closeout ledge; replace only the square closing leg
+   with a slanted or rounded south-west corner, ~60 m radius. Fixes the view from his camera; the shelf stays wider than the
+   satellite's. One Opus task, the regression set should stay green but for the bars that sample the old corner.
+2. **This branch, plus a gentler south edge.** Keep the trace but drop the shelf to the basin over 60–80 m along the south
+   edge instead of the ledge face, so no lip stands up on it (soft or no break; the stub keeps its closeout). Needs a probe
+   first: the one-curl checks may still see a curl there. One Opus task plus a re-pin of the select matrix rows.
+3. **Accept a two-wave peak.** The engine would need to model a second curl. Not this phase.
+
+Recommendation: 1 now (the ask was the square), 2 as the next experiment if he wants the satellite's wedge.
