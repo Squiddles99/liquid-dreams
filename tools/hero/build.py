@@ -9,6 +9,8 @@ import os
 import sys
 
 import bpy
+import numpy as np
+from mathutils import Vector
 
 sys.path.append(os.path.dirname(__file__))
 import body as hero_body  # noqa: E402
@@ -17,6 +19,7 @@ import garments  # noqa: E402
 import project  # noqa: E402
 import rigging  # noqa: E402
 import sequences  # noqa: E402,F401  (adds the reference sequences' keys to rigging.POSES)
+import start_poses  # noqa: E402,F401  (start frames for the next reference sequences)
 import skin  # noqa: E402
 import strands  # noqa: E402
 import studio  # noqa: E402
@@ -139,9 +142,18 @@ if pose_names:
             if pn[:-1] in ("stp",):  # a sequence's keys: one fixed camera for all of them, so they read as a strip
                 studio.shoot(cam, os.path.join(out_dir, "mannequin", f"{name}_{pn}.png"), (0.0, 0.0, 0.45), 55, 6.5, 85, 1100, 1100, pitch_deg=14)
                 continue
-            yaw = (math.degrees(surf.rotation_euler.z) % 180.0)  # square to the board's side
-            studio.shoot(cam, os.path.join(out_dir, "mannequin", f"{name}_{pn}_start.png"), (surf.location[0], surf.location[1], max(c[2], 0.5)),
-                         yaw, 6.5, 85, 1600, 1000, pitch_deg=4)
+            bx = surf.matrix_world.col[0]
+            yaw = (math.degrees(math.atan2(bx[1], bx[0])) + 90.0) % 180.0 - 90.0  # square to the board's side, her front's side
+            yaw = rigging.POSES[pn].get("camYaw", 90.0 if abs(yaw) > 89.0 else yaw)
+            print(f"cam {pn}: board x {tuple(round(v, 2) for v in bx[:3])}, yaw {yaw:.1f}")
+            target, dist = (surf.location[0], surf.location[1], max(c[2], 0.5)), 6.5
+            if rigging.POSES[pn].get("pitch") or rigging.POSES[pn].get("carry"):
+                # A tipped or carried board runs out of the usual frame: frame her and the board together (85 mm, 1600x1000).
+                corners = np.array([(surf.matrix_world @ Vector(b))[:] for b in surf.bound_box])
+                ulo, uhi = np.minimum(lo, corners.min(0)), np.maximum(hi, corners.max(0))
+                target = tuple((ulo + uhi) / 2)
+                dist = max(6.5, (uhi[2] - ulo[2]) * 1.15 * 85 / 22.5, max(uhi[:2] - ulo[:2]) * 1.1 * 85 / 36)
+            studio.shoot(cam, os.path.join(out_dir, "mannequin", f"{name}_{pn}_start.png"), target, yaw, dist, 85, 1600, 1000, pitch_deg=4)
             continue
         cam.data.lens = 50
         cam.data.dof.use_dof = False

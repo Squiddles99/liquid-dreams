@@ -335,4 +335,36 @@ def pose(rig, name, body, surf):
     # The deck's top sits ~6 cm above the board's origin.
     surf.location = (mid[0], mid[1], (mid[2] if tilt else DECK) - 0.06)
     bpy.context.view_layer.update()
+    if spec.get("carry"):
+        # On the sand, the board on its rail under her right arm: nose forward, deck against her right hip, the top
+        # rail just under the armpit, between her body and the arm (the hand cups the bottom rail).
+        Pc = _posed_points(body)
+        fwd_h = rig.matrix_world.to_3x3() @ Vector((0, -1, 0))
+        fwd_h.z = 0
+        fwd_h.normalize()
+        side = rig.matrix_world.to_3x3() @ Vector((-1, 0, 0))  # her right
+        hips = _skin_points(body, ["pelvis", "spine_01"], Pc)
+        out = float((hips @ np.array(side[:])).max())
+        arm = rig.pose.bones["upperarm_r"].head
+        top = (rig.matrix_world @ arm).z - 0.07
+        x_ax = (fwd_h + Vector((0, 0, 0.12))).normalized()  # the nose a touch up
+        z_ax = -side  # the deck faces her
+        y_ax = z_ax.cross(x_ax)
+        M = Matrix((x_ax, y_ax, z_ax)).transposed().to_4x4()
+        base = Vector(Pc[:, :2].mean(0).tolist() + [0.0])
+        c = base + side * (out - float(Vector(base[:]) @ side) + 0.04)
+        c.z = top - 0.24
+        M.translation = c
+        surf.matrix_world = M
+        bpy.context.view_layer.update()
+    if spec.get("pitch"):
+        # The rider and board tipped together about the board's middle (negative: nose down, into the drop).
+        R = Matrix.Rotation(math.radians(spec["pitch"]), 4, Vector((math.cos(yaw), math.sin(yaw), 0)).cross(Vector((0, 0, 1))))
+        piv = Vector(surf.location)
+        T = Matrix.Translation(piv) @ R @ Matrix.Translation(-piv)
+        rig.matrix_world = T @ rig.matrix_world
+        surf.matrix_world = T @ surf.matrix_world
+        bpy.context.view_layer.update()
+        P = _posed_points(body)
+        return P.min(0), P.max(0)
     return P.min(0) + np.array([0, 0, dz]), P.max(0) + np.array([0, 0, dz])
