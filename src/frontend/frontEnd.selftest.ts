@@ -412,6 +412,33 @@ registerSelfTest({
         await frames(fe, 2);
         if (fe.state!.library.entry === before) problems.push('a real pointer move over a tile did not take the focus');
       }
+      // The same for the categories: a row that reappears under a parked cursor (LB/RB back, picture closed) must not take the focus.
+      {
+        const before = fe.state!.library.cat, row = host.querySelectorAll('.fe-lib-cat')[before === 0 ? 1 : 0] as HTMLElement;
+        row.dispatchEvent(new MouseEvent('mouseenter'));
+        row.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+        await frames(fe, 2);
+        if (fe.state!.library.cat !== before) problems.push('a hover with no movement took the category focus');
+        row.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, movementX: 4, movementY: 2 }));
+        await frames(fe, 2);
+        if (fe.state!.library.cat === before || fe.state!.library.zone !== 'cats') problems.push('a real pointer move over a category did not take the focus');
+        press('ArrowRight'); await frames(fe, 2);
+      }
+      // A double click on the open picture: the first click closes it; the second must not land on the fading picture (its
+      // Back would then leave for the title). A click's second half (detail 2) on a just-opened picture must not close it.
+      {
+        press('Enter'); await frames(fe, 10);
+        const pic = host.querySelector('.fe-lib-open') as HTMLElement;
+        pic.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+        await frames(fe, 2);
+        if (!fe.state!.library.open) problems.push('the second click of a double click closed the picture it opened');
+        pic.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+        await frames(fe, 2);
+        if (fe.state!.library.open) problems.push('a click on the open picture did not close it');
+        const under = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+        if (under?.closest('.fe-lib-open')) problems.push('the closing picture still takes clicks (a double click would leave for the title)');
+        await frames(fe, 2);
+      }
       press('Enter'); await frames(fe, 10);
       if (!host.querySelector('.fe-lib.is-open')) problems.push('A did not open the picture');
       press('Escape'); await frames(fe, 10);

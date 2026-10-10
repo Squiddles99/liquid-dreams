@@ -47,7 +47,8 @@ export class LibraryPanel {
       const r = h('div', 'fe-lib-cat');
       r.dataset.hit = `cat:${i}`;
       r.append(h('span', '', c.label), h('span', 'fe-lib-cat-n', String(c.entries.length)));
-      r.addEventListener('mouseenter', () => onPointer({ kind: 'cat', index: i }));
+      // As the tiles: only a real move takes the focus (rows reappear under a parked cursor on LB/RB back or a close).
+      r.addEventListener('pointermove', (ev) => { if (ev.movementX || ev.movementY) onPointer({ kind: 'cat', index: i }); });
       r.addEventListener('click', () => onPointer({ kind: 'cat', index: i }));
       this.cats.appendChild(r);
     });
@@ -58,7 +59,8 @@ export class LibraryPanel {
       this.wheel += e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
       while (Math.abs(this.wheel) >= STEP_PX) { onPointer({ kind: 'action', action: this.wheel > 0 ? 'down' : 'up' }); this.wheel -= Math.sign(this.wheel) * STEP_PX; }
     }, { passive: false });
-    this.open.addEventListener('click', () => onPointer({ kind: 'action', action: 'back' }));
+    // A double click on a tile opens the picture on its first half: the second half must not close it again.
+    this.open.addEventListener('click', (ev) => { if (ev.detail <= 1) onPointer({ kind: 'action', action: 'back' }); });
     this.el.append(this.cats, this.grid, this.entry, h('div', 'fe-lib-credit', 'Coastline © OpenStreetMap contributors'), this.open);
   }
 
