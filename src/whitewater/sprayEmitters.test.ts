@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { smoothstep } from '../math/smoothstep';
 import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
 import { minRibbonHeight, timeSinceOnset, traceStations } from '../breaker/crestTrace';
 import { computeReefField, sampleField } from '../breaker/reefField';
@@ -11,9 +12,9 @@ import { IMPACT_KIND } from './particleKinds';
 import { SprayPool, birthInto, stepPool } from './sprayStep';
 import {
   DEFAULT_SPRAY_PARAMS, type EmitterInput, IMPACT_MAX_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, impactKick, inImpactWindow, IMPACT_DELAY_S, IMPACT_WINDOW_S, sprayCanEmit, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
-  spitBirths, sprayEmitters, sprayReplayTicks, windToVector, plumeBirths, PLUME_WIND_MS, PLUME_LIFE_S, offshoreSpeedOn, sprayAndPlumeBirths, SPIT_WIND_SHARE, FEATHER_WALL, FEATHER_LIFE_S, featherBirths, standingCrestY,
+  spitBirths, sprayEmitters, sprayReplayTicks, windToVector, plumeBirths, PLUME_WIND_MS, PLUME_LIFE_S, offshoreSpeedOn, sprayAndPlumeBirths, SPIT_WIND_SHARE, FEATHER_FLOOR, FEATHER_WIND_MS, FEATHER_LIFE_S, FEATHER_RATE, featherBirths, standingCrestY,
 } from './sprayEmitters';
-import { KIND_INDEX, PARTICLE_KINDS, PLUME_KIND, SPIT_KIND } from './particleKinds';
+import { ERODING_KINDS, FEATHER_KIND, KIND_INDEX, PARTICLE_KINDS, PLUME_KIND, SPIT_KIND } from './particleKinds';
 
 const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
 const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
@@ -344,10 +345,11 @@ describe('the plume, the veil and the spit under wind (whitewater §4.1, §4.3)'
     }
   });
   it('the plume kind: big (2 → 6 m), long-lived, slow to settle, glowing backlit; spit denser', () => {
-    expect(PLUME_KIND).toEqual({ dragTauS: 2.0, gravityMs2: 0.3, sizeM: [2, 6], opacity: 0.12, isotropic: 0.5 });
+    expect(PLUME_KIND).toEqual({ dragTauS: 2.0, gravityMs2: 0.3, sizeM: [3, 10], opacity: 0.3, isotropic: 0.7 }); // 7b S1
     // Spec §4.3 "opacity 0.3 → 0.5" on the old per-puff scale (0.3 × the impact kind's 0.32): 0.5 × 0.32 (ledger ruling).
     expect(SPIT_KIND.opacity).toBeCloseTo(0.5 * IMPACT_KIND.opacity, 12);
-    expect(KIND_INDEX).toEqual({ spray: 0, plume: 1, impact: 2, spit: 3 });
+    expect(KIND_INDEX).toEqual({ spray: 0, plume: 1, impact: 2, spit: 3, feather: 4 });
+    expect(PARTICLE_KINDS[KIND_INDEX.feather]).toBe(FEATHER_KIND);
     expect(PARTICLE_KINDS[KIND_INDEX.plume]).toBe(PLUME_KIND);
     expect(PARTICLE_KINDS[KIND_INDEX.spit]).toBe(SPIT_KIND);
   });
@@ -398,7 +400,7 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
   const standing = (t: number) => {
     const waves = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave);
     return traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M })
-      .filter((s): s is Exclude<typeof s, { gap: true }> => !s.gap && s.tb === null && s.until !== null && s.until !== undefined && Number.isFinite(s.until) && wallWeight(s.until) > FEATHER_WALL);
+      .filter((s): s is Exclude<typeof s, { gap: true }> => !s.gap && s.tb === null && s.until !== null && s.until !== undefined && Number.isFinite(s.until));
   };
   it('feathers along the standing wall at 10 m/s offshore; none under 5 m/s, none on a glassy day, none onshore', () => {
     const t = BIGGEST.arrivalS - 2;
@@ -408,17 +410,25 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     expect(breakEmitters(input(t, { wind: { speedMs: 1 * 0.5144, fromDeg: 57 } })).feather).toEqual([]);
     expect(breakEmitters(input(t, { wind: { speedMs: 18 * 0.5144, fromDeg: 237 } })).feather).toEqual([]);
   });
-  it('only where the wall stands (wallWeight > FEATHER_WALL), never a broken station', () => {
+  it('every stood station feathers (7b S2 ruling), strength (FEATHER_FLOOR + (1 − FEATHER_FLOOR) × wallWeight) × wind × amount; never a broken one', () => {
     const t = BIGGEST.arrivalS - 2, f = breakEmitters(input(t, { wind: strong })).feather;
-    expect(FEATHER_WALL).toBe(0.6);
-    const keys = new Set(standing(t).map((s) => Math.round(s.arc / SPRAY_SPACING_M)));
-    for (const e of f) expect(keys.has(e.arc)).toBe(true);
+    expect(FEATHER_FLOOR).toBe(0.25);
+    const st = standing(t), byArc = new Map(st.map((s) => [Math.round(s.arc / SPRAY_SPACING_M) * 1000 + s.wave, s]));
+    expect(f.length).toBe(st.length);
+    const wind = smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], offshoreSpeedOn(strong, st[0].nx, st[0].nz));
+    for (const e of f) {
+      const s = [...byArc.values()].find((q) => Math.round(q.arc / SPRAY_SPACING_M) === e.arc && Math.abs(q.x - e.x) < 1e-9)!;
+      expect(s).toBeDefined();
+      expect(e.strength).toBeCloseTo((FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wallWeight(s.until)) * smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], offshoreSpeedOn(strong, s.nx, s.nz)), 9);
+    }
+    expect(wind).toBeGreaterThan(0);
   });
   it('the cheap crest height (no sheet read) is the drawn crest within 0.1 m', () => {
     const t = BIGGEST.arrivalS - 2, waves = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave);
     const o = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), pile: false, shape: 'lean' as const };
     let worst = 0, n = 0;
-    for (const s of standing(t)) {
+    // The fitted range (the wall near its break, where the strong puffs are); the stood swell's floor puffs are faint.
+    for (const s of standing(t).filter((q) => wallWeight(q.until) > 0.6)) {
       const own = [waves[s.wave]];
       const base = (u: number): [number, number] => {
         const x = s.x + s.nx * u, z = s.z + s.nz * u, r = sumWaves(x, z, t, sampleField(field, x, z), own, ctx, o);
@@ -431,12 +441,17 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     expect(n).toBeGreaterThan(5);
     expect(worst).toBeLessThan(0.1);
   });
-  it('a feather puff is mist (the spray kind) blown back off the crest, short-lived', () => {
+  it('the feather kind (7b S2): big enough to read from the lookout, faint, slow to settle; twice the old rate', () => {
+    expect(FEATHER_KIND).toEqual({ dragTauS: 0.8, gravityMs2: 0.5, sizeM: [1, 4], opacity: 0.2, isotropic: 0.6 });
+    expect(FEATHER_RATE).toBe(12);
+    expect(ERODING_KINDS).not.toContain(KIND_INDEX.feather);
+  });
+  it('a feather puff is the feather kind, blown back off the crest, short-lived', () => {
     const e = { x: 0, y: 3, z: 0, nx: 1, nz: 0, strength: 1, waveId: 4, arc: 2, wOff: 9 };
     const b = Array.from({ length: 40 }, (_, k) => featherBirths([e], k)).flat();
     expect(b.length).toBeGreaterThan(0);
     for (const p of b) {
-      expect(p.kind).toBe(KIND_INDEX.spray);
+      expect(p.kind).toBe(KIND_INDEX.feather);
       expect(p.vx).toBeLessThan(0);
       expect(p.vy).toBeGreaterThan(0);
       expect(p.life).toBeGreaterThanOrEqual(FEATHER_LIFE_S[0]);

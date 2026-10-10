@@ -106,7 +106,7 @@ export function veilFactor(wind: Wind, nx: number, nz: number): number {
 }
 
 /** The plume (whitewater §4.1): births per m of throwing lip per s at strength 1… */
-export const PLUME_RATE = 4;
+export const PLUME_RATE = 12;
 /** …its strength rising with the offshore wind over these speeds (m/s; none onshore)… */
 export const PLUME_WIND_MS: readonly [number, number] = [3, 9];
 /** …thrown with 0.6 × the lip's throw plus w_off × (PLUME_UPDRAFT up − PLUME_BACK along the crest normal)… */
@@ -116,12 +116,13 @@ export const PLUME_LIFE_S: readonly [number, number] = [3, 5];
 /** The spit is blown on (or held back) by this share of the wind vector (§4.3). */
 export const SPIT_WIND_SHARE = 0.5;
 
-/** Crest feathering (whitewater §4.2): the unbroken crest smokes where the wall stands above this wallWeight… */
-export const FEATHER_WALL = 0.6;
+/** Crest feathering (whitewater §4.2; 7b S2 ruling): in a strong offshore every stood crest smokes, this share of full on
+ * the stood swell, rising with the wall (wallWeight) to full at the curl… */
+export const FEATHER_FLOOR = 0.25;
 /** …its strength rising with the offshore wind over these speeds (m/s)… */
 export const FEATHER_WIND_MS: readonly [number, number] = [5, 10];
 /** …this many puffs per m of crest per s at strength 1, each living U(0.6, 1.2) s. */
-export const FEATHER_RATE = 6;
+export const FEATHER_RATE = 12;
 export const FEATHER_LIFE_S: readonly [number, number] = [0.6, 1.2];
 /** A feather puff's soft fade (§6.2) counts from this far under the crest it smokes off: the crest is a thin edge with the
  * water falling away behind it, so the puffs show from birth. */
@@ -135,7 +136,7 @@ export interface FeatherEmitter {
   z: number;
   nx: number;
   nz: number;
-  /** smoothstep(FEATHER_WIND_MS, w_off) × how far the wall stands past FEATHER_WALL × amount. */
+  /** (FEATHER_FLOOR + (1 − FEATHER_FLOOR) × wallWeight) × smoothstep(FEATHER_WIND_MS, w_off) × amount. */
   strength: number;
   waveId: number;
   arc: number;
@@ -325,8 +326,8 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
     // The standing wall ahead of the curl feathers in a strong offshore (§4.2): no frame read.
     if (s.tb === null && wantSpray && s.until !== null && s.until !== undefined && Number.isFinite(s.until)) {
       const wall = wallWeight(s.until), wOff = offshoreSpeedOn(i.wind, s.nx, s.nz);
-      const strength = smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], wOff) * Math.min(1, (wall - FEATHER_WALL) / (1 - FEATHER_WALL)) * i.amount;
-      if (wall > FEATHER_WALL && strength > 0) {
+      const strength = (FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wall) * smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], wOff) * i.amount;
+      if (strength > 0) {
         feather.push({ x: s.x, y: standingCrestY(s.section, s.H, i.tideM), z: s.z, nx: s.nx, nz: s.nz, strength, waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M), wOff });
       }
     }
@@ -513,7 +514,7 @@ export function plumeBirths(emitters: readonly SprayEmitter[], tick: number, p: 
 /**
  * Tick k's feather births (§4.2): floor(strength × FEATHER_RATE × spacing × Δ + a hashed fraction) per emitter, hashed apart
  * from the other draws: mist off the crest top, blown w_off × (0.3 up − 0.5 back along the crest normal) ± 0.5 m/s, for
- * U(FEATHER_LIFE_S) s; the spray kind.
+ * U(FEATHER_LIFE_S) s; the feather kind (FEATHER_KIND).
  */
 export function featherBirths(emitters: readonly FeatherEmitter[], tick: number): SprayBirth[] {
   const out: SprayBirth[] = [];
@@ -526,7 +527,7 @@ export function featherBirths(emitters: readonly FeatherEmitter[], tick: number)
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.2, z: e.z + e.nx * along,
         vx: -e.nx * e.wOff * 0.5 + (r(2) * 2 - 1) * 0.5, vy: e.wOff * 0.3 + (r(3) * 2 - 1) * 0.5, vz: -e.nz * e.wOff * 0.5 + (r(4) * 2 - 1) * 0.5,
-        life: FEATHER_LIFE_S[0] + (FEATHER_LIFE_S[1] - FEATHER_LIFE_S[0]) * r(5), strength: Math.min(1, e.strength), kind: KIND_INDEX.spray, yWater: e.y - FEATHER_SOFT_DROP_M,
+        life: FEATHER_LIFE_S[0] + (FEATHER_LIFE_S[1] - FEATHER_LIFE_S[0]) * r(5), strength: Math.min(1, e.strength), kind: KIND_INDEX.feather, yWater: e.y - FEATHER_SOFT_DROP_M,
       });
     }
   }

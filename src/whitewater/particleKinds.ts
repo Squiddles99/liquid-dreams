@@ -21,12 +21,17 @@ export const SPRAY_KIND: Readonly<ParticleKind> = { dragTauS: 0.45, gravityMs2: 
 export const IMPACT_KIND: Readonly<ParticleKind> = { dragTauS: 1.1, gravityMs2: 7, sizeM: [0.8, 3.5], opacity: 0.32, isotropic: 0.6 };
 /** The plume (whitewater §4.1): spray blown up and back over a pitching lip by an offshore wind: fewer, bigger (2 → 6 m),
  * longer-lived puffs, slow to settle, glowing backlit without going grey side-on. */
-export const PLUME_KIND: Readonly<ParticleKind> = { dragTauS: 2.0, gravityMs2: 0.3, sizeM: [2, 6], opacity: 0.12, isotropic: 0.5 };
+export const PLUME_KIND: Readonly<ParticleKind> = { dragTauS: 2.0, gravityMs2: 0.3, sizeM: [3, 10], opacity: 0.3, isotropic: 0.7 };
 /** The tube's spit (§4.3): a denser, wider blast, held back or blown on by the wind. Its opacity is the spec's "0.3 → 0.5"
  * on the old per-puff scale (SPIT_OPACITY 0.3 × the impact kind's 0.32 drew 0.096; now 0.5 × 0.32). */
 export const SPIT_KIND: Readonly<ParticleKind> = { dragTauS: 0.8, gravityMs2: 3, sizeM: [1, 4], opacity: 0.5 * IMPACT_KIND.opacity, isotropic: 0.6 };
+/** Crest feathering (whitewater §4.2, 7b S2): mist off a standing crest, big and faint enough to read as a pale haze along
+ * the line from the lookout (the spray kind's 0.3–2 m puffs were sub-pixel there), slower to settle than the veil. */
+export const FEATHER_KIND: Readonly<ParticleKind> = { dragTauS: 0.8, gravityMs2: 0.5, sizeM: [1, 4], opacity: 0.2, isotropic: 0.6 };
 /** A particle's kind (meta.y): one pool draws every kind; a pool's constructor kind is its births' default. */
-export const KIND_INDEX = { spray: 0, plume: 1, impact: 2, spit: 3 } as const;
-export const PARTICLE_KINDS: readonly Readonly<ParticleKind>[] = [SPRAY_KIND, PLUME_KIND, IMPACT_KIND, SPIT_KIND];
+export const KIND_INDEX = { spray: 0, plume: 1, impact: 2, spit: 3, feather: 4 } as const;
+export const PARTICLE_KINDS: readonly Readonly<ParticleKind>[] = [SPRAY_KIND, PLUME_KIND, IMPACT_KIND, SPIT_KIND, FEATHER_KIND];
+/** Plume and spit puffs dissolve by an animated noise threshold with age (whitewater §4.1), not a uniform fade. */
+export const ERODING_KINDS: readonly number[] = [KIND_INDEX.plume, KIND_INDEX.spit];
 /** The kind's index in PARTICLE_KINDS (by identity; an unknown kind is the spray). */
 export const kindIndexOf = (k: Readonly<ParticleKind>): number => Math.max(0, PARTICLE_KINDS.indexOf(k));

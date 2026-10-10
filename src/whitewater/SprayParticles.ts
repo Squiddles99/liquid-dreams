@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, atan, cameraPosition, cameraViewMatrix, clamp, dot, float, instanceIndex, length, max, mix, mx_noise_float, pow, select, smoothstep,
+  Fn, If, abs, atan, cameraPosition, cameraViewMatrix, clamp, dot, float, instanceIndex, length, max, mix, mx_noise_float, pow, select, smoothstep,
   storage, uint, uniform, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
@@ -10,7 +10,7 @@ import {
   DEFAULT_SPRAY_PARAMS, PLUME_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_POOL, type SprayBirth, type SprayParams, normalizeSprayParams, replayTicksForMaxLife,
 } from './sprayEmitters';
 import { NEAR_FADE_M, SPRAY_PHASE_G, SPRAY_PHASE_ISOTROPIC, SPRAY_SKY_SCALE } from './sprayLook';
-import { KIND_INDEX, PARTICLE_KINDS, type ParticleKind, SPRAY_KIND, kindIndexOf } from './particleKinds';
+import { ERODING_KINDS, PARTICLE_KINDS, type ParticleKind, SPRAY_KIND, kindIndexOf } from './particleKinds';
 import { NO_WATER, SOFT_FADE_M, birthSeed, slotBase } from './sprayStep';
 
 type N = any;
@@ -35,8 +35,7 @@ export function kindValueNode(kind: N, pick: (k: ParticleKind) => number): N {
   return out;
 }
 
-/** Plume and spit puffs dissolve by an animated noise threshold with age (whitewater §4.1), not a uniform fade. */
-export const ERODING_KINDS: readonly number[] = [KIND_INDEX.plume, KIND_INDEX.spit];
+export { ERODING_KINDS } from './particleKinds';
 
 /**
  * Offshore spray on the GPU (spec 2026-09-27-offshore-spray-design.md §3.2–3.3; CPU reference sprayStep.ts): a pool of
@@ -127,7 +126,9 @@ export class SprayParticles {
     const vAgeFrac: N = varying(ageFrac), vAgeS: N = varying(pa.w), vStrength: N = varying(mt.x);
     const vSeed: N = varying(float(instanceIndex));
     const vOpacity: N = varying(kindValueNode(kd, (q) => q.opacity));
-    const vEroding: N = varying(select(kd.greaterThan(0.5).and(kd.lessThan(1.5)).or(kd.greaterThan(2.5)), float(1.0), float(0.0)));
+    let eroding: N = float(0.0);
+    for (const k of ERODING_KINDS) eroding = select(abs(kd.sub(k)).lessThan(0.5), float(1.0), eroding);
+    const vEroding: N = varying(eroding);
     const vBirthSeed: N = varying(mt.w);
     // Shape: a soft round puff broken by one octave of noise seeded per slot.
     const q = uv().sub(0.5);
