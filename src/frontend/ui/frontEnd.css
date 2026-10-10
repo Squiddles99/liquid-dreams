@@ -225,6 +225,8 @@
 .fe-lib-credit { position: absolute; left: var(--fe-safe-x); bottom: var(--fe-safe-y); font: 500 calc(18px * var(--fe-text)) Barlow; color: #7fb1b0; opacity: .8; }
 .fe-lib-open { position: absolute; inset: 0; background: #0a2c34; opacity: 0; visibility: hidden; transition: opacity 220ms var(--fe-ease-out), visibility 0s 220ms; }
 .fe-lib.is-open .fe-lib-open { opacity: 1; visibility: visible; transition: opacity 220ms var(--fe-ease-out), visibility 0s; }
+/* Closing, the picture fades for 220 ms: it takes no clicks then (a double click's second would be the Library's Back). */
+.fe-lib:not(.is-open) .fe-lib-open { pointer-events: none; }
 .fe-lib.is-open > :not(.fe-lib-open) { visibility: hidden; }
 .fe-lib-open-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .fe-lib-shade { position: absolute; inset: 0; background:
