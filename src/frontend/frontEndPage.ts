@@ -112,7 +112,7 @@ export class FrontEnd {
     const saved = sanitizeChoices(this.storage ? loadJson(this.storage, FRONT_CHOICES_KEY) : null);
     this.core = new FrontEndCore(this.host, saved, { today: this.today, seed: Date.now() % 100000, calm: this.settings.calmMenus, storage: this.storage, source: this.settings.conditionsSource });
     const surf = new SurfMapPanel((p) => (p.kind === 'pin' ? this.cue(this.core!.pointer({ pin: p.id }, performance.now()))
-      : p.kind === 'locked' ? this.toast(p.what === 'library' ? 'Library: coming soon' : 'Real-time conditions: coming soon') : act(p.action)));
+      : p.kind === 'locked' ? this.toast('Real-time conditions: coming soon') : act(p.action)));
     void surf.load().then(() => { if (this.core) surf.render(this.core.state, this.today); });
     const details = new BreakDetails((a) => act(a));
     const cond = new ConditionsPanel((p) => (p.kind === 'focus' ? this.cue(this.core!.pointer({ row: p.row }, performance.now())) : act(p.action)));
@@ -192,7 +192,7 @@ export class FrontEnd {
           if (line.speaker !== PRESETS[s.rider].nickname) this.parts.line.show(line.speaker, line.text, performance.now());
         }
         if (e.kind === 'source' && this.settingsCtl) this.settingsCtl.set({ ...this.settingsCtl.settings, conditionsSource: e.source });
-        if (e.kind === 'locked') this.toast(e.what === 'library' ? 'Library: coming soon' : 'Real-time conditions: coming soon');
+        if (e.kind === 'locked') this.toast('Real-time conditions: coming soon');
       }
     }
     if (c.settings) this.settingsCtl?.open();
@@ -212,7 +212,7 @@ export class FrontEnd {
     if (this.parts) this.root.appendChild(this.parts.legend.el); // the legend stays above the page's scrim
   }
 
-  /** A short message at the top (locked items: Library, Real-time), gone after 1.8 s. */
+  /** A short message at the top (locked items: Real-time), gone after 1.8 s. */
   toast(text: string): void {
     if (!this.root) return;
     if (!this.toastEl) { this.toastEl = document.createElement('div'); this.toastEl.className = 'fe-toast'; this.root.appendChild(this.toastEl); }
