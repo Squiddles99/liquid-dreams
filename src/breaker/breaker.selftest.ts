@@ -512,7 +512,7 @@ registerSelfTest({
 });
 
 registerSelfTest({
-  name: "breaker: the pile's churn is bounded by churnSize × pile, zero off the pile, and its slope is finite",
+  name: "breaker: the churn is bounded by churnSize × boil (× 1.5 just ahead of the crest), zero off the boil, and its slope is finite",
   async run(renderer) {
     const time = uniform(3.7);
     const u = { churnSize: uniform(0.2), churnSpeed: uniform(1) };
@@ -529,7 +529,9 @@ registerSelfTest({
       const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
       frames.forEach((_, i) => {
         const [h, sx, sz] = out.slice(i * 4, i * 4 + 3);
-        worstOver = Math.max(worstOver, Math.abs(h) - 0.5 * 0.2 * pile);
+        // pileChurn: ± churnSize × boil, half again within 2 m ahead of the crest line (frame x < 0: whitewater §3.2).
+        const lean = 1 + 0.5 * smoothstep(0, 2, -frames[i][0]);
+        worstOver = Math.max(worstOver, Math.abs(h) - 0.2 * pile * lean);
         if (pile === 0 && h !== 0) zeroOff = false;
         if (pile > 0 && Math.abs(h) > 0.02 * pile) nonZero++;
         if (![h, sx, sz].every(Number.isFinite)) finite = false;

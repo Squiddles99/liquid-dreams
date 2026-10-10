@@ -9,7 +9,7 @@ import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { IMPACT_KIND } from './particleKinds';
 import { SprayPool, birthInto, stepPool } from './sprayStep';
 import {
-  DEFAULT_SPRAY_PARAMS, type EmitterInput, IMPACT_MAX_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, sprayCanEmit, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
+  DEFAULT_SPRAY_PARAMS, type EmitterInput, IMPACT_MAX_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, impactKick, inImpactWindow, IMPACT_DELAY_S, IMPACT_WINDOW_S, sprayCanEmit, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
   spitBirths, sprayEmitters, sprayReplayTicks, windToVector,
 } from './sprayEmitters';
 
@@ -181,6 +181,13 @@ describe('the impact explosion', () => {
     expect(counts[0]).toBe(0);
     expect(imp(LONG_AFTER).length).toBe(0);
   });
+  it('the burst waits IMPACT_DELAY_S after the lip lands (photo 5: the curtain lands, then the explosion)', () => {
+    expect(IMPACT_DELAY_S).toBe(0.2);
+    expect(inImpactWindow(10.1, 10)).toBe(false);
+    expect(inImpactWindow(10.3, 10)).toBe(true);
+    expect(inImpactWindow(10 + IMPACT_DELAY_S + IMPACT_WINDOW_S + 0.01, 10)).toBe(false);
+    expect(inImpactWindow(9.9, 10)).toBe(false);
+  });
   it('impact happens with no wind (a glassy day still explodes) while the spray does not', () => {
     let any = 0;
     for (const dt of [0.3, 0.6, 0.9, 1.2, 1.6, 2, 3]) {
@@ -190,13 +197,21 @@ describe('the impact explosion', () => {
     }
     expect(any).toBeGreaterThan(0);
   });
+  it('a pitching lip bursts twice as high as a crumbling one (the surge, whitewater §3.1): kick × √2', () => {
+    expect(impactKick(2, 1) / impactKick(2, 0)).toBeCloseTo(Math.SQRT2, 12);
+    const one = (hollow: number) => ({ x: 0, y: 0, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, H: 2, hollow, strength: 1, lip: 1, waveId: 1, arc: 0 });
+    const a = impactBirths([one(0)], 5), b = impactBirths([one(1)], 5);
+    expect(b.length).toBe(a.length);
+    expect(a.length).toBeGreaterThan(0);
+    for (let j = 0; j < a.length; j++) expect(b[j].vy).toBeGreaterThan(a[j].vy);
+  });
   it('an explosion throws higher for a bigger wave', () => {
-    const one = (H: number) => ({ x: 0, y: 0, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, H, strength: 1, lip: 1, waveId: 1, arc: 0 });
+    const one = (H: number) => ({ x: 0, y: 0, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, H, hollow: 0, strength: 1, lip: 1, waveId: 1, arc: 0 });
     const meanVy = (H: number) => { let s = 0, n = 0; for (let k = 0; k < 200; k++) for (const b of impactBirths([one(H)], k)) { s += b.vy; n++; } return s / n; };
     expect(meanVy(3)).toBeGreaterThan(meanVy(1) * 1.4);
   });
   it('impact births are capped, deterministic and salted apart from the spray', () => {
-    const many = Array.from({ length: 300 }, (_, i) => ({ x: i, y: 0, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, H: 2, strength: 3, lip: 1, waveId: 1, arc: i }));
+    const many = Array.from({ length: 300 }, (_, i) => ({ x: i, y: 0, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, H: 2, hollow: 0, strength: 3, lip: 1, waveId: 1, arc: i }));
     const a = impactBirths(many, 9);
     expect(a.length).toBe(SPRAY_BIRTH_CAP);
     expect(impactBirths(many, 9)).toEqual(a);
@@ -212,7 +227,7 @@ describe('the impact explosion', () => {
 
 describe('the impact explosion falls back (final review I1)', () => {
   it('most puffs are back below their launch height before they die, not fading out at the top of the throw', () => {
-    const e = [{ x: 0, y: 0, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, H: 2, strength: 1, lip: 1, waveId: 1, arc: 0 }];
+    const e = [{ x: 0, y: 0, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, H: 2, hollow: 0, strength: 1, lip: 1, waveId: 1, arc: 0 }];
     let below = 0, n = 0;
     for (let k = 0; k < 400; k++) for (const b of impactBirths(e, k)) {
       const pool = new SprayPool(SPRAY_BIRTH_CAP);

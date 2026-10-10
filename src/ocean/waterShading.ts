@@ -4,6 +4,7 @@ import { WATER_IOR, extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
 import { alongPathNode, cameraDepthNode, fresnelFromInsideNode, sunThroughWindowNode, waterColourAtDepthNode } from './underwaterNodes';
 import { LIP_REFERENCE_THICKNESS_M, type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
+import { mistLightNode } from '../whitewater/mistLight';
 
 type N = any;
 
@@ -14,6 +15,9 @@ export interface WaterSurfaceInputs {
   distance: N;
   foam: N;
   /** Brightness of the foam colour (1 when absent): the set foam's pattern darkens its hollows a little. */
+  /** The break's own foam weight [0, 1] (the set waves and the foam map, not the shore's): its dense part (0.6 → 0.9) is
+   * lit as a foam volume (whitewater §3.3). Absent: none (the shore's swash and surf foam keep today's look). */
+  breakFoam?: N;
   foamShade?: N;
   /** The lip mask (0..1): the thin, curling lip. Keys the turquoise transmission. Absent means 0 (the ocean sheet). */
   lip?: N;
@@ -172,7 +176,12 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // a heap of bubble clumps that shadow each other, so the creases lose the sun far more than the sky. The clumps' tops
   // catch the sun and the creases go sky-lit blue-grey; shaded as one smooth surface it read as flat peach plasticine.
   const shade = i.foamShade ? saturate(i.foamShade.sub(0.62).div(0.45)) : null;
-  const foamSeen = shade ? foamSky.mul(mix(0.75, 1.0, shade)).add(foamSun.mul(mix(0.3, 1.0, shade.mul(shade)))) : foamLight;
+  const foamLace = shade ? foamSky.mul(mix(0.75, 1.0, shade)).add(foamSun.mul(mix(0.3, 1.0, shade.mul(shade)))) : foamLight;
+  // Fresh, dense foam is a foam volume, not paint on water (whitewater §3.3): mistLight's wrapped diffuse + the spray's
+  // phase (it glows backlit), the sky's blue in its shadows and the water's colour bounced into it; thinning foam blends
+  // back to the lace above. The churn's lumps shade it through the normal (their slope is in the ribbon's setSlope).
+  const foamVolume = i.breakFoam ? smoothstep(0.6, 0.9, i.breakFoam) : null;
+  const foamSeen = foamVolume ? mix(foamLace, mistLightNode({ cosView: dot(v.negate(), l), nDotL, sunVisibility: sv, isotropic: 0.6, groundColour: column }, sky), foamVolume) : foamLace;
   const colour = mix(water, foamSeen, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and

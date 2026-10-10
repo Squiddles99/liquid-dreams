@@ -1059,7 +1059,7 @@ export class App {
       this.traceMs += TRACE_MS_ALPHA * (performance.now() - start - this.traceMs);
     }
     this.ribbonStations = entries;
-    this.ribbon.setStations(entries, cam);
+    this.ribbon.setStations(entries, cam, field?.periodS ?? 15);
     this.ribbon.setSun(sun);
     this.ribbon.compute(this.renderer);
     this.ribbon.renderFootprint(this.renderer);

@@ -1,4 +1,5 @@
 import type { BreakParams } from '../breaker/breaking';
+import { hollowFromPsi } from '../breaker/reefReport';
 import { offshoreSpeed } from '../breaker/overturn';
 import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
 import { type Station, type StationEntry, traceStations } from '../breaker/crestTrace';
@@ -125,12 +126,21 @@ export interface EmitterInput {
 
 /** A lip landing emits the impact explosion for this long after τ_land (s) (spec 2026-09-28-impact-explosion §3.2). */
 export const IMPACT_WINDOW_S = 0.35;
+/** The burst waits this long after the lip lands (whitewater §3.4, photo 5: the curtain lands clean, then explodes). */
+export const IMPACT_DELAY_S = 0.2;
+/** Whether a station tb s after onset is in its impact window: [τ_land + IMPACT_DELAY_S, + IMPACT_WINDOW_S). */
+export const inImpactWindow = (tb: number, tauLand: number): boolean => tauLand + IMPACT_DELAY_S <= tb && tb < tauLand + IMPACT_DELAY_S + IMPACT_WINDOW_S;
 /** Impact particles per metre of landing lip per second at strength 1 (Ruling I3: denser than the mist). */
 export const IMPACT_RATE = 40;
 /** The explosion's kick is sized against this gravity (m/s², IMPACT_KIND's): it rises about 0.25–1 H. */
 export const IMPACT_G = 7;
 /** The full kick throws a puff this many wave heights above the landing (before drag). */
 export const IMPACT_RISE_H = 1.5;
+/** A pitching lip (hollow 1) throws its burst (1 + SURGE_RISE) × as high as a crumbling one (whitewater §3.1: the burst and
+ * the surge agree; the surge dial scales the mound, not the burst). */
+export const SURGE_RISE = 1.0;
+/** The full upward kick (m/s) of a station's burst: √(2·IMPACT_G·IMPACT_RISE_H·(1 + SURGE_RISE·hollow)·max(H, 0.5)). */
+export const impactKick = (H: number, hollow: number): number => Math.sqrt(2 * IMPACT_G * IMPACT_RISE_H * (1 + SURGE_RISE * hollow) * Math.max(H, 0.5));
 /** An impact puff lives U(1.3, 2.4) s: long enough to fall back below its launch after the tuned throw (final review I1). */
 export const IMPACT_MAX_LIFE_S = 2.4;
 
@@ -164,6 +174,8 @@ export interface ImpactEmitter {
   nz: number;
   /** The station's wave height (m): bigger waves explode higher. */
   H: number;
+  /** The reef's hollowness where it broke (hollowFromPsi(ψ)): a pitching lip explodes higher (impactKick). */
+  hollow: number;
   /** min(1, H / 2 m) · ρ · impact amount: how many puffs are born. */
   strength: number;
   /** min(1, ρ): each puff's opacity. */
@@ -216,7 +228,7 @@ export const SPIT_OPACITY = 0.3;
 /**
  * The emitters at sim time t (spec §3.1; 3c §3.2): one camera-independent crest trace and one profile frame per breaking
  * station feed the spray (the lip tip mid-throw, off an offshore wind), the impact explosion (the landing point, for
- * IMPACT_WINDOW_S after the lip lands, with or without wind) and the barrel's spit (SpitEmitter).
+ * IMPACT_WINDOW_S from IMPACT_DELAY_S after the lip lands, with or without wind) and the barrel's spit (SpitEmitter).
  */
 export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] } {
   const { field, ctx, params } = i;
@@ -244,7 +256,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
     const ft = sectionTiming(s.section, s.H);
     if (wantImpact) timing[si] = ft;
     const emitsSpray = wind > 0 && ft.prog > 0 && ft.prog < 1 && ft.weight * ft.rho > MIN_EMIT_WEIGHT;
-    const emitsImpact = wantImpact && ft.tauLand <= s.tb && s.tb < ft.tauLand + IMPACT_WINDOW_S && ft.rho > MIN_EMIT_WEIGHT;
+    const emitsImpact = wantImpact && inImpactWindow(s.tb, ft.tauLand) && ft.rho > MIN_EMIT_WEIGHT;
     if (!emitsSpray && !emitsImpact && !(wantImpact && spitCandidate(s, ft))) continue;
     // The station's own wave only: a set wave's envelope is tight (exp(−(ξ/0.7T)⁶)), so the others add nothing at its
     // crest, and summing all of them was most of the lip maths' cost (measured, final cost pass).
@@ -270,7 +282,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       // Where the lip lands: its tip as it reaches the water (the round barrel, τ_land after onset).
       const u = f.tip[0], y = f.tip[1];
       impact.push({
-        x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz, H: s.H,
+        x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz, H: s.H, hollow: hollowFromPsi(s.psi),
         strength: Math.min(1, s.H / 2) * f.rho * impactAmount, lip: Math.min(1, f.rho), waveId, arc,
       });
     }
@@ -310,7 +322,8 @@ function spitEmitters(stations: readonly StationEntry[], timing: readonly (Secti
     let age = -1, from = -1;
     for (let k = 1; k <= SPIT_REACH_STATIONS; k++) {
       const q = step(j, back * k), fq = q >= 0 ? timing[q] : null, tq = q >= 0 ? at(q)?.tb : null;
-      if (fq && tq !== null && tq !== undefined && tq >= fq.tauLand) { age = tq - fq.tauLand; from = q; break; }
+      // The spit's pulse runs from the same delayed landing as the burst (IMPACT_DELAY_S).
+      if (fq && tq !== null && tq !== undefined && tq >= fq.tauLand + IMPACT_DELAY_S) { age = tq - fq.tauLand - IMPACT_DELAY_S; from = q; break; }
     }
     if (from < 0) continue;
     const pulse = 1 - smoothstep(SPIT_PULSE_S[0], SPIT_PULSE_S[1], age);
@@ -385,7 +398,7 @@ export function sprayBirths(emitters: readonly SprayEmitter[], tick: number, p: 
 /**
  * Tick k's impact births (3c spec §3.2): floor(strength × IMPACT_RATE × spacing × Δ + a hashed fraction) per emitter, at
  * most SPRAY_BIRTH_CAP, hashed apart from the spray's draws. Each is scattered half a spacing along the crest and 0–0.4 m
- * up, thrown with 0.6 × the lip's throw, an upward kick of U(0.6, 1.2)·√(2·IMPACT_G·IMPACT_RISE_H·max(H, 0.5)) and ±1.5 m/s per axis, for
+ * up, thrown with 0.6 × the lip's throw, an upward kick of U(0.6, 1.2)·impactKick(H, hollow) and ±1.5 m/s per axis, for
  * U(1.3, IMPACT_MAX_LIFE_S) s (long enough to fall back, final review I1); its opacity follows the lip.
  */
 export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): SprayBirth[] {
@@ -394,7 +407,7 @@ export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): 
     const n = Math.floor(e.strength * IMPACT_RATE * SPRAY_SPACING_M * FOAM_TICK_S + rand01(tick, e.waveId, e.arc, 0x7f4a7c15));
     // Sized to rise 1.5 × H above the landing at full kick (tuned overnight: at 1 × H the burst stayed below the lip and
     // hid against the wave's white face).
-    const kick = Math.sqrt(2 * IMPACT_G * IMPACT_RISE_H * Math.max(e.H, 0.5));
+    const kick = impactKick(e.H, e.hollow);
     for (let j = 0; j < n; j++) {
       if (out.length >= SPRAY_BIRTH_CAP) return out;
       const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x40000000 + j * 8 + q);
@@ -448,7 +461,7 @@ export function bombieImpactEmitters(burst: { n: number; ageS: number; heightM: 
     out.push({
       x: BOMBIE_X - ROLL_DIR[1] * v, y: tideM + 0.5, z: BOMBIE_Z + ROLL_DIR[0] * v,
       vx: ROLL_DIR[0] * 4, vz: ROLL_DIR[1] * 4, nx: ROLL_DIR[0], nz: ROLL_DIR[1],
-      H, strength: Math.min(2, size), lip: 1, waveId: BOMBIE_WAVE_ID_BASE + burst.n, arc: i,
+      H, hollow: 0, strength: Math.min(2, size), lip: 1, waveId: BOMBIE_WAVE_ID_BASE + burst.n, arc: i,
     });
   }
   return out;

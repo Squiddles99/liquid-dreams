@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import approved from './wombProfile.approved.json';
-import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, KNOTS, type P2, PROFILE_KEYS, TIP_KNOT, TROUGH_KNOT, profileCurve, profileKnots } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, KNOTS, type P2, PROFILE_KEYS, SPAN_SAMPLES, TIP_KNOT, TROUGH_KNOT, densePoint, profileCurve, profileKnots, roundedTip, tipLife } from './wombProfile';
+import { surgeLift } from './wombSection';
+import { smoothstep } from '../math/smoothstep';
 
 const range = (a: number, b: number, step: number): number[] => Array.from({ length: Math.round((b - a) / step) + 1 }, (_, i) => a + i * step);
 const PHASES = range(0, 2, 0.02);
@@ -45,6 +47,18 @@ describe('wombProfile', () => {
 
   it('never crosses itself', () => {
     for (const ph of PHASES) for (const hv of HOLLOWS) expect(selfCrossings(profileCurve(ph, hv)), `phase ${ph} hollow ${hv}`).toBe(0);
+  });
+
+  // The surge's weight can be no more than its rise in phase (surgeWeight: smoothstep(1.25, 1.5, phase) × fall × hollow)
+  // × the dial (≤ 1); here without the hollow factor (stricter). A full lift at phase 1.25 lifts the cavity through the lip's
+  // outside (knot 4, unlifted): a state surgeWeight never makes.
+  it('never crosses itself with the surge on (whitewater §3.1: phases 1.25–2, the dial at half and its max)', () => {
+    for (const ph of range(1.25, 2, 0.05)) for (const hv of HOLLOWS) for (const dial of [0.5, 1]) {
+      const w = dial * smoothstep(1.25, 1.5, ph);
+      const lifted = profileKnots(ph, hv).map((p, m): P2 => [p[0], p[1] + surgeLift(m, w, 1)]);
+      const k = roundedTip(lifted, tipLife(ph)), dense = Array.from({ length: (k.length - 1) * SPAN_SAMPLES + 1 }, (_, d) => densePoint(k, d));
+      expect(selfCrossings(dense), `phase ${ph} hollow ${hv} w ${w}`).toBe(0);
+    }
   });
 
   it('changes smoothly with phase', () => {

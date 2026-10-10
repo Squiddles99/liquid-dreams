@@ -185,8 +185,9 @@ export const BREAK_BINDINGS = {
   randomDial: { label: 'random dial', min: 0, max: 0.15, step: 0.01 },
   peel: { label: 'peel stretch (× slower along the line)', min: 1, max: 3, step: 0.05 },
   curlMaxMs: { label: 'curl top speed (m/s)', min: 4, max: 40, step: 1 },
-  churnSize: { label: 'churn size (× pile)', min: 0, max: 0.4, step: 0.01 },
+  churnSize: { label: 'churn size (× A)', min: 0, max: 0.4, step: 0.01 },
   churnSpeed: { label: 'churn speed', min: 0, max: 3, step: 0.05 },
+  surge: { label: 'surge at the landing (× A)', min: 0, max: 1, step: 0.05 },
 } as const;
 
 /** Debug overlay toggles (Reef folder), one per DebugOverlays field, checked by DevPanel.test.ts. */

@@ -6,6 +6,7 @@ import {
 import {
   COLLAPSE_BASE_S, COLLAPSE_PER_M, CURL_KNOTS, CURL_PHASE, EDGE_OUTER_UNITS, FLIGHT_DROP_A, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, SECTION_HAND_BACK_S,
   JOIN_SLOPE_UNITS, SECTION_KNOTS, SECTION_MARKED, SEAT_DIP_UNITS, SEAT_SHIFT_MAX, SHEET_ENDS, SHEET_KNOTS, STOOD_PHASE, SWELL_CURL_U,
+  SURGE_FALL_BASE_S, SURGE_FALL_PER_M, surgeLift,
 } from './wombSection';
 
 type N = any;
@@ -37,6 +38,12 @@ export const WOMB_KNOT_VEC4S = KNOT_VEC4S * SECTION_KNOTS;
 /** The section's dense points (wombSection.sectionSamples). */
 export const SECTION_DENSE_POINTS = (SECTION_KNOTS - 1) * SPAN_SAMPLES + 1;
 
+/** The profile knot each drawn curl knot comes from (crest … trough, the tip as three: wombSection's roundedCurl). */
+const DRAWN_FROM: readonly number[] = [
+  ...Array.from({ length: TIP_KNOT - CREST_KNOT }, (_, i) => CREST_KNOT + i), TIP_KNOT, TIP_KNOT, TIP_KNOT,
+  ...Array.from({ length: TROUGH_KNOT - TIP_KNOT }, (_, i) => TIP_KNOT + 1 + i),
+];
+
 /** The keyframe table (wombProfile.keyTable) as a read-only storage buffer's attribute, built once. */
 export function createKeyTable(): THREE.StorageBufferAttribute {
   return new THREE.StorageBufferAttribute(keyTable(), 4);
@@ -55,7 +62,7 @@ export interface WombFrameNodes {
 const smoothNode = (t: N): N => t.mul(t).mul(float(3.0).sub(t.mul(2.0)));
 
 /** wombSection's numbers from the station: H, r, tb (encoded: < 0 none, ≥ 1e8 long past), ψ. */
-export function sectionNumbersNode(st: { H: N; r: N; tb: N; psi: N }, u: { periodS: N; ribbonOnset: N }): { A: N; phase: N; hollow: N; rho: N } {
+export function sectionNumbersNode(st: { H: N; r: N; tb: N; psi: N }, u: { periodS: N; ribbonOnset: N; surge?: N }): { A: N; phase: N; hollow: N; rho: N; surge: N } {
   const A = max(st.H, 0.0).div(ONSET_HEIGHT_UNITS).toVar();
   const fly: N = sqrt(A.mul(2 * FLIGHT_DROP_A / GRAVITY_MS2)).toVar();
   const power = max(st.H, 0.0).mul(u.periodS.div(15.0));
@@ -72,7 +79,12 @@ export function sectionNumbersNode(st: { H: N; r: N; tb: N; psi: N }, u: { perio
   const end = fly.add(hold).add(span);
   const rhoAfter = float(1.0).sub(smoothstep(0.0, SECTION_HAND_BACK_S, t.sub(end)));
   const rho = select(unbroken, float(1.0), select(past, float(0.0), rhoAfter)).toVar();
-  return { A, phase, hollow, rho };
+  // wombSection.surgeWeight × the dial: in over phases 1.25–1.5, out over SURGE_FALL_* after phase 1.5, × hollow.
+  const t15 = fly.add(hold).add(span.mul(0.5));
+  const fall = power.mul(SURGE_FALL_PER_M).add(SURGE_FALL_BASE_S);
+  const surgeW = smoothstep(1.25, 1.5, phase).mul(float(1.0).sub(smoothstep(t15, t15.add(fall), t))).mul(hollow);
+  const surge = select(unbroken.or(past), float(0.0), surgeW).mul(u.surge ?? 0.0).toVar();
+  return { A, phase, hollow, rho, surge };
 }
 
 /**
@@ -83,7 +95,7 @@ export function sectionNumbersNode(st: { H: N; r: N; tb: N; psi: N }, u: { perio
  */
 /** The drawing at the station's (phase, hollow) (wombProfile.profileKnots from the key table), its curl's knots with the
  * lip's end rounded (wombSection's roundedCurl), and the tip's life. */
-export function drawnNode(numbers: { phase: N; hollow: N }, keys: N): { knot: N[]; drawn: N[]; life: N } {
+export function drawnNode(numbers: { phase: N; hollow: N; surge?: N }, keys: N): { knot: N[]; drawn: N[]; life: N } {
   const ph = clamp(numbers.phase, 0.0, 2.0).toVar(), hv = clamp(numbers.hollow, 0.0, 1.0).toVar();
   const K = PROFILE_KEYS, last = K.length - 1;
   // The span: keys i and i + 1 with i the count of keys after the first whose phase ph has passed (profileKnots' while).
@@ -115,7 +127,12 @@ export function drawnNode(numbers: { phase: N; hollow: N }, keys: N): { knot: N[
   const rA = select(dA.greaterThan(0.0), dd.div(max(dA, 1e-30)), float(0.0)), rB = select(dB.greaterThan(0.0), dd.div(max(dB, 1e-30)), float(0.0));
   const tA = T.add(Ak.sub(T).mul(rA)).toVar(), tB = T.add(Bk.sub(T).mul(rB)).toVar();
   const tT = T.add(tA.add(tB).mul(0.5).sub(T).mul(life.mul(TIP_PULL))).toVar();
-  const drawn = [...knot.slice(CREST_KNOT, TIP_KNOT), tA, tT, tB, ...knot.slice(TIP_KNOT + 1, TROUGH_KNOT + 1)];
+  const drawn0 = [...knot.slice(CREST_KNOT, TIP_KNOT), tA, tT, tB, ...knot.slice(TIP_KNOT + 1, TROUGH_KNOT + 1)];
+  // The surge (wombSection.surgeLift, dial folded into it): each drawn knot lifted by its profile knot's share. The knots
+  // themselves stay the family's (the seat is set from the unlifted trough, as sectionFrameKnots does).
+  const from = [...DRAWN_FROM];
+  const drawn = numbers.surge === undefined ? drawn0
+    : drawn0.map((p, j) => { const s = surgeLift(from[j], 1, 1); return s === 0 ? p : vec2(p.x, p.y.add(numbers.surge!.mul(s))).toVar(); });
 
   return { knot, drawn, life };
 }
@@ -161,12 +178,12 @@ function curlKnotsNode(numbers: { phase: N; rho: N }, drawn: N[], knot: N[], rea
 }
 
 /** The home of second-round sheet read k (the curl's knot k at its own home). */
-export function curlReadHomeNode(k: N, numbers: { phase: N; hollow: N; rho: N }, keys: N, read: (r: number) => N): N {
+export function curlReadHomeNode(k: N, numbers: { phase: N; hollow: N; rho: N; surge?: N }, keys: N, read: (r: number) => N): N {
   const { knot, drawn } = drawnNode(numbers, keys);
   return pick(curlKnotsNode(numbers, drawn, knot, read).map((p) => p.z), k);
 }
 
-export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N }, keys: N, knots: (k: N) => N, write: (j: N, v: N) => void, read: (r: number) => N): WombFrameNodes {
+export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N; surge?: N }, keys: N, knots: (k: N) => N, write: (j: N, v: N) => void, read: (r: number) => N): WombFrameNodes {
   const ph = clamp(numbers.phase, 0.0, 2.0).toVar();
   // (write(j, v): sample j's vec4 (a u, a y, home, w): wombSection.SectionSample; the vertex pass places it at w × the sheet
   // at the home + A × a.)
