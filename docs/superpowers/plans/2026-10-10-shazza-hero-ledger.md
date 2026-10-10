@@ -58,3 +58,8 @@
   body turned on the water: she swings round over frames 2-5) and `noseGap` (the board's nose this far ahead of the
   nose contact: 0.3 m past the hands, 0.45 m past the chest when paddling). Rendered from one fixed camera as a strip
   (`--poses stp1,...,stp8 --mannequin`). Asked Andrew to keep the camera fixed in the next sequences.
+- sit-to-paddle r2 (Andrew: "your sequence is wrong, mine is correct"): frames 3-4 had the board turned under her
+  (side-saddle) then back; now she stays astride, leaning back with the legs kicking either side, and she and the board
+  turn together (no boardYaw). Design note from Andrew: sit → paddle is not only for catching a wave (shifting the
+  take-off spot, paddling out for a big set), so the keys are four joinable clips: sitIdle (1-2), sitTurn (3-4, any
+  heading, the game's), sitToProne (5-6), paddleCycle (7-8, loops, any heading).
