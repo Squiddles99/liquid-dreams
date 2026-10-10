@@ -10,6 +10,7 @@
 // and <prefix>creates-*.json. --trace: Electron content tracing of the paddling and riding passes, one <prefix>ride.trace.json.
 // --counts (shelf-polish Task 1): precise coverage call counts over the riding pass, per frame, for src/ functions (the
 // pass's frame times are then not comparable: coverage slows the page), in the report and <prefix>counts.txt.
+// --wind=<kn>,<fromDeg> (whitewater Task 0): the wind the conditions are applied with (unset: the page's own), in line 1.
 import { app, BrowserWindow, contentTracing } from 'electron';
 import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
@@ -17,6 +18,8 @@ const base = arg('base') ?? 'http://localhost:5173/', out = arg('out') ?? 'prof-
 const ft = Number(arg('ft') ?? 6), experience = arg('experience') ?? 'intermediate';
 const simT = arg('sim-t') === undefined ? null : Number(arg('sim-t'));
 const stall = process.argv.includes('--stall'), trace = process.argv.includes('--trace'), counts = process.argv.includes('--counts');
+const windArg = arg('wind')?.split(',').map(Number) ?? null;
+const windJs = windArg ? `c.wind = { speedMs: ${windArg[0]} * 0.5144, directionDeg: ${windArg[1]} };` : '';
 const CAM_S = 6;
 app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -58,7 +61,7 @@ app.whenReady().then(async () => {
   await sleep(12000);
   await win.webContents.executeJavaScript(`(async () => {
     const a = window.liquidDreams, before = a.field, c = JSON.parse(JSON.stringify(a.conditions));
-    c.swell = { ...c.swell, sizeFt: ${ft}, periodS: 15, directionDeg: 225 }; c.tideM = 0;
+    c.swell = { ...c.swell, sizeFt: ${ft}, periodS: 15, directionDeg: 225 }; c.tideM = 0; ${windJs}
     a.applyMoment({ conditions: c, camera: a.rig.getPose(), simTime: ${simT ?? 'a.clock.simTime'}, paused: false });
     for (let i = 0; i < 120 && (a.field === before || !a.field); i++) await new Promise((r) => setTimeout(r, 500));
     await new Promise((r) => setTimeout(r, 3000));
@@ -200,7 +203,7 @@ app.whenReady().then(async () => {
   const focusEnd = focusNow();
   await traceStop('ride');
 
-  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s${r0.phase === 'ride' ? '' : ` (riding pass began in phase ${r0.phase})`} ending at x, z ${where} (${ft} ft, ${experience}); window at cam: ${focusCam}; at riding: ${focusRide}; at the end: ${focusEnd}; recorder after Profiler.start`;
+  const times = `# sim-t ${simT ?? "unset (the page's own)"}: cam from ${camFrom.toFixed(2)} s, set called from ${callFrom.toFixed(2)} s, ride arrives ${arrive.toFixed(2)} s, caught ${r1.caughtSim?.toFixed(2) ?? 'never'} s, riding pass ${rideStart.toFixed(2)}–${rideFrom.toFixed(2)} s${r0.phase === 'ride' ? '' : ` (riding pass began in phase ${r0.phase})`} ending at x, z ${where} (${ft} ft, ${experience}, wind ${windArg ? `${windArg[0]} kn from ${windArg[1]}°` : "the page's own"}); window at cam: ${focusCam}; at riding: ${focusRide}; at the end: ${focusEnd}; recorder after Profiler.start`;
   const report = [times, `# stall log ${stall ? 'on' : 'off'}, trace ${trace ? 'on' : 'off'}`, fa, fb, fc, '', summarise(pa, 'cam mode'), '', summarise(pb, 'paddling'), '', summarise(pc, 'riding'), countReport].join('\n');
   writeFileSync(out + 'report.txt', report);
   writeFileSync(out + 'cam.cpuprofile', JSON.stringify(pa));

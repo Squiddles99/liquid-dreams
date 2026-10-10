@@ -25,6 +25,8 @@ const tk = await imp<typeof import('../src/ride/takeoff')>('/src/ride/takeoff.ts
 const rl = await imp<typeof import('../src/ride/rideLine')>('/src/ride/rideLine.ts');
 const se = await imp<typeof import('../src/whitewater/sprayEmitters')>('/src/whitewater/sprayEmitters.ts');
 const sprayOn = process.argv.includes('--spray');
+// --wind=<kn>,<fromDeg> (whitewater Task 0): the conditions' wind (unset: DEFAULT_CONDITIONS.wind), in line 1.
+const windArg = arg('wind')?.split(',').map(Number) ?? null;
 // --old: also run the pre-Task-1 emitters (tools/_sprayEmittersOld.ts, a verbatim copy) on the same input: timed, and the
 // two outputs compared exactly.
 const old = process.argv.includes('--old') ? await imp<typeof import('./_sprayEmittersOld')>('/tools/_sprayEmittersOld.ts') : null;
@@ -33,6 +35,7 @@ let oldMs: number[] = [], mismatches = 0;
 const P = br.DEFAULT_BREAK_PARAMS;
 const c = defaults.cloneConditions(defaults.DEFAULT_CONDITIONS);
 c.swell.sizeFt = ft; c.swell.periodS = periodS; c.swell.directionDeg = 225; c.tideM = 0;
+if (windArg) c.wind = { speedMs: windArg[0] * 0.5144, directionDeg: windArg[1] };
 const bed = bathy.downsample(bathy.buildBathymetry(reef.DEFAULT_REEF_PARAMS), 2);
 const map = coastMap.buildCoastMap(bed, coastFeat.DEFAULT_COAST_PARAMS);
 const cf = coastField.computeCoastField({ bed: map, periodS, fromDeg: 225, tideM: 0, refractFloorM: rf.REFRACT_FLOOR_M });
@@ -62,7 +65,7 @@ const swellHeading = Math.atan2(start.dirX, -start.dirZ) / (Math.PI / 180);
 const b = rp.startBody(sx, sz, swellHeading, waterAtT(t, sx, sz));
 const line = swellHeading - rl.LINE_OFF_DEG, dt = 1 / 60;
 let popped = false;
-console.log(`# ${ft} ft ${periodS} s, wave ${big.heightM.toFixed(2)} m, take-off (${sx.toFixed(1)}, ${sz.toFixed(1)}), arrive ${arrive.toFixed(2)} s`);
+console.log(`# ${ft} ft ${periodS} s, wave ${big.heightM.toFixed(2)} m, take-off (${sx.toFixed(1)}, ${sz.toFixed(1)}), arrive ${arrive.toFixed(2)} s, wind ${(c.wind.speedMs / 0.5144).toFixed(1)} kn from ${c.wind.directionDeg}°`);
 console.log('#  t-arrive  phase   x      z     stepMs  traceMs  sums  curves  live  waves | nearest station: phase rho tb until');
 /** The live station nearest the board: its section phase, rho, tb and until (what the board's water stands on). */
 const near = (): string => {

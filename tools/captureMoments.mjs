@@ -1,4 +1,4 @@
-// Dev tool: npx electron tools/captureMoments.mjs --base=http://localhost:5183/ --out=<prefix> --times=<t1,t2,…> --m=<base64 moment JSON> [--pre=<js>] [--settle=<ms>] [--run]
+// Dev tool: npx electron tools/captureMoments.mjs --base=http://localhost:5183/ --out=<prefix> --times=<t1,t2,…> --m=<base64 moment JSON> [--pre=<js>] [--settle=<ms>] [--run] [--size=1920x1080]
 // Loads the moment once (paused at the first time), waits for the game, then for each sim time applies the moment in the
 // page (App.applyMoment, no reload), runs --pre, lets the frame settle and saves a captureFrame() PNG as <prefix>-<t>.png.
 import { app, BrowserWindow } from 'electron';
@@ -6,6 +6,8 @@ import { writeFileSync } from 'node:fs';
 const arg = (n) => process.argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
 const base = arg('base'), out = arg('out'), pre = arg('pre'), times = arg('times').split(',').map(Number);
 const settle = Number(arg('settle') ?? 2500);
+// --size (whitewater Task 0): the content size, 1920x1080 by default (was a 1600x900 window).
+const [W, H] = (arg('size') ?? '1920x1080').split('x').map(Number);
 // --probe=<js>: an expression evaluated after each frame, printed (e.g. JSON.stringify(window.liquidDreams.bombieBurst)).
 const probe = arg('probe');
 // --run: unpaused (the frame is taken `settle` ms of sim time later): an underwater eye needs running frames to switch views.
@@ -19,7 +21,11 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 1600, height: 900, show: true, webPreferences: { backgroundThrottling: false } });
+  const win = new BrowserWindow({ width: W, height: H, useContentSize: true, show: true, webPreferences: { backgroundThrottling: false } });
+  // An unfocused window runs ~8x slower: keep it on top and focused, as _rideProfile does.
+  win.setAlwaysOnTop(true, 'screen-saver');
+  const grab = () => { win.show(); win.moveTop(); app.focus({ steal: true }); win.focus(); };
+  grab();
   // Stored dev settings would override the code's defaults: start from the defaults.
   await win.webContents.session.clearStorageData({ storages: ['localstorage'] });
   const first = { ...moment, simTime: times[0], paused };
@@ -28,6 +34,7 @@ app.whenReady().then(async () => {
   for (let i = 0; i < 90; i++) { if (await win.webContents.executeJavaScript('!!window.liquidDreams')) break; await sleep(1000); }
   await sleep(25000);
   for (const t of times) {
+    grab();
     const m = { conditions: moment.conditions, camera: moment.camera, simTime: t, paused };
     await win.webContents.executeJavaScript(`window.liquidDreams.applyMoment(${JSON.stringify(m)})`);
     if (pre) await win.webContents.executeJavaScript(pre);
