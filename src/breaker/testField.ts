@@ -8,7 +8,7 @@ import { REFRACT_FLOOR_M, type ReefField, computeReefField } from './reefField';
 /**
  * The game's field for tests (womb-retune spec §5, plan Task 3): the Womb's reef map, the coast map built from it, and the
  * reef field seeded by the coast field (the swell dial read at the coast seed). One per swell × tide × grid factor for the
- * test file's run. The no-coast field is `?coast=off`'s alone; tests that need a flat bed build it themselves.
+ * test file's run. The game always seeds from the coast (shelf-polish §6); tests that need a flat bed build it themselves.
  */
 export interface TestFieldOpts {
   periodS: number;

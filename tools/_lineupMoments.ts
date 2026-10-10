@@ -42,6 +42,5 @@ for (const ft of [6, 10]) {
   cmd('south', lineup(180), [at.bombie, at.ellensbrook + 2]);
   if (ft === 6) {
     cmd('dtl-coast', dtl, [at.peak + 3, at.peak + 5]);
-    cmd('dtl-coastoff', dtl, [at.peak + 3, at.peak + 5], '?coast=off');
   }
 }

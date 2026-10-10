@@ -185,8 +185,6 @@ export class App {
   readonly breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
   /** The coast's breaks (lineup truth spec §3g): the worker builds the coast map from them. */
   readonly coastParams: CoastParams = { ...DEFAULT_COAST_PARAMS };
-  /** ?coast=off: the field seeded by the 1-D far field as before the coast map (lineup truth's A/B and "unchanged" shots). */
-  private readonly coastOn = new URLSearchParams(location.search).get('coast') !== 'off';
   readonly foamParams: FoamParams = { ...DEFAULT_FOAM_PARAMS };
   readonly sprayParams: SprayParams = { ...DEFAULT_SPRAY_PARAMS };
   readonly impactParams: ImpactParams = { ...DEFAULT_IMPACT_PARAMS };
@@ -1587,7 +1585,7 @@ export class App {
     const key = `${fieldKey(c, this.reefParams, this.breakParams.peel, this.breakParams.curlMaxMs)}|${JSON.stringify(this.coastParams)}`;
     if (!force && key === this.fieldKey) return;
     this.fieldKey = key;
-    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M, ...(this.coastOn ? { coastParams: { ...this.coastParams } } : {}) });
+    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M, coastParams: { ...this.coastParams } });
   }
 
   /** Coast sliders: once you stop dragging, the worker rebuilds the coast map and re-solves (its key carries the dials). */

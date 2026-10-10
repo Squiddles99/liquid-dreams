@@ -53,7 +53,7 @@ export function computeFarField(periodS: number, fromDeg: number, tideM: number,
   const omega = (2 * Math.PI) / periodS;
   const d = travelDirectionXZ(fromDeg);
   // The swell as the dial gives it (womb-retune spec §2, Andrew's ruling C 2026-10-09: a buoy's reading): height, period
-  // AND direction in `refDepthM`'s water, the coast seed's with the coast; FAR_X0's 15 m without (`?coast=off`).
+  // AND direction in `refDepthM`'s water, the coast seed's with the coast; FAR_X0's 15 m without (the tests' flat-bed far field).
   const refDepthM = opts.refDepthM ?? depthWithTide(FAR_X0, tideM);
   const kRef = waveNumber(omega, refDepthM);
   const sRef = kRef / omega;

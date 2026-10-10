@@ -1,5 +1,5 @@
 // Profiles the frame loop in cam mode, then on the board (CPU profile via CDP + rAF frame times).
-// npx electron <this file> [--base=http://localhost:5173/] [--query=coast=off] [--ft=6] [--experience=intermediate] [--out=<prefix>] [--sim-t=<s>] [--stall] [--trace]
+// npx electron <this file> [--base=http://localhost:5173/] [--query=<extra query>] [--ft=6] [--experience=intermediate] [--out=<prefix>] [--sim-t=<s>] [--stall] [--trace]
 // The window stays on top and focused (an unfocused run is ~8x slower); the first line says whether it was.
 // --sim-t (ride-framerate Task 14): the sim time the conditions are applied at, the cam pass starts at (once the field is
 // built) and, 6 s later, the set is called from, so two runs ride the same moment of the same wave. Unset: the page's own.
