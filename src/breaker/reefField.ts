@@ -661,7 +661,7 @@ export function computeOnsetRecord(f: {
   march();
   if (stretch > 0 || curl) {
     if (f.debug) { f.debug.onsetT = onsetT.slice(); f.debug.line = new Int32Array(n * ONSET_LEVELS).fill(-1); }
-    curlT = curlPass(onsetT, nx, nz, grid.cellM, stretch, curl ? curlMaxMs : Infinity, curl, f.debug?.line, { record: out, tau: f.tau });
+    curlT = curlPass(onsetT, nx, nz, grid.cellM, stretch, curl ? curlMaxMs : Infinity, curl, f.debug?.line);
     if (f.debug) f.debug.curlT = curlT.slice();
     out = new Float32Array(n * R);
     onsetT.fill(Number.NaN);
@@ -676,11 +676,8 @@ export function computeOnsetRecord(f: {
  * section's first break (peelLines), then, with `curl`, one curl along each breaking line (curlClock.curlTimes, the hold
  * capped at PEEL_MAX_HOLD_S). NaN off the onset nodes.
  */
-function curlPass(onsetT: Float32Array, nx: number, nz: number, cellM: number, stretch: number, curlMaxMs: number, curl: boolean, lineOut?: Int32Array, below?: { record: Float32Array; tau: Float32Array }): Float32Array {
-  const L = ONSET_LEVELS, n = nx * nz, out = new Float32Array(n * L).fill(Number.NaN), R = ONSET_RECORD_LENGTH;
-  // Each level-k onset node's level k − 1 onset time on its ray (the first march's record: physical, undelayed), where a
-  // level's curl starts (curlClock.curlTimes' seedRank).
-  const rank = new Float32Array(n);
+function curlPass(onsetT: Float32Array, nx: number, nz: number, cellM: number, stretch: number, curlMaxMs: number, curl: boolean, lineOut?: Int32Array): Float32Array {
+  const L = ONSET_LEVELS, n = nx * nz, out = new Float32Array(n * L).fill(Number.NaN);
   const first = stretch > 0 ? peelLines(onsetT, nx, nz) : null;
   const T = new Float32Array(n), Ts = new Float32Array(n);
   for (let k = 0; k < L; k++) {
@@ -691,8 +688,7 @@ function curlPass(onsetT: Float32Array, nx: number, nz: number, cellM: number, s
     }
     const lines = curl ? breakingLines(T, nx, nz) : null;
     if (lines && lineOut) for (let i = 0; i < n; i++) lineOut[i * L + k] = lines[i];
-    if (lines && below && k > 0) for (let i = 0; i < n; i++) rank[i] = Number.isFinite(T[i]) ? below.tau[i] - below.record[i * R + 1 + 2 * (k - 1)] : Number.NaN;
-    const tk = lines ? curlTimes(Ts, lines, nx, nz, cellM, curlMaxMs, PEEL_MAX_HOLD_S, below && k > 0 ? rank : undefined) : Ts;
+    const tk = lines ? curlTimes(Ts, lines, nx, nz, cellM, curlMaxMs, PEEL_MAX_HOLD_S) : Ts;
     for (let i = 0; i < n; i++) out[i * L + k] = tk[i];
   }
   return out;
