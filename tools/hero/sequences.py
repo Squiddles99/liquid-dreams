@@ -25,18 +25,19 @@ STP = {
     "stp1": {"turn": 0, "bones": {**_SIT_SPINE, **_HANDS_ON_THIGHS, **_SIT_LEGS}, **_SIT_CONTACT},
     "stp2": {"turn": 0, "bones": {**_SIT_SPINE, **_HANDS_ON_THIGHS, **_SIT_LEGS},
              "twist": {"spine_03": -12, "neck": -20, "head": -55}, **_SIT_CONTACT},
+    # (Andrew, 2026-10-10 clip review: the turn much smoother: stp3/stp4 lean back and kick less than his sheet.)
     # The turn (Andrew, r1: still astride the whole way, never side-saddle; she and the board turn together, the
     # board's nose swinging to wherever she will paddle). Leaning back, a hand behind on the deck, the legs kicking
     # either side of the board.
     "stp3": {"turn": 0, "bones": {
-        "spine_01": _n(0, 0.25, 1), "spine_02": _n(0, 0.38, 1), "spine_03": _n(0, 0.42, 1), "neck": _n(0, 0.12, 1), "head": _n(0, 0.0, 1),
+        "spine_01": _n(0, 0.15, 1), "spine_02": _n(0, 0.22, 1), "spine_03": _n(0, 0.25, 1), "neck": _n(0, 0.08, 1), "head": _n(0, 0.0, 1),
         "upperarm_r": _n(-0.3, 0.75, -0.6), "forearm_r": _n(-0.2, 0.5, -0.85),
         "upperarm_l": _n(0.15, -0.15, -1), "forearm_l": _n(0.1, -0.75, -0.65),
-        "thigh_l": _n(0.5, -0.8, -0.3), "shin_l": _n(0.15, -0.6, -0.8), "foot_l": _n(0.1, -0.9, -0.4),
-        "thigh_r": _n(-0.5, -0.7, -0.5), "shin_r": _n(-0.1, 0.2, -1), "foot_r": _n(-0.08, -0.7, -0.7)},
+        "thigh_l": _n(0.5, -0.75, -0.4), "shin_l": _n(0.15, -0.3, -0.95), "foot_l": _n(0.1, -0.9, -0.4),
+        "thigh_r": _n(-0.5, -0.7, -0.5), "shin_r": _n(-0.1, 0.1, -1), "foot_r": _n(-0.08, -0.7, -0.7)},
         "twist": {"head": -20}, **_SIT_CONTACT},
     "stp4": {"turn": 0, "bones": {
-        "spine_01": _n(0, 0.45, 1), "spine_02": _n(0, 0.6, 1), "spine_03": _n(0, 0.62, 1), "neck": _n(0, 0.25, 1), "head": _n(0, 0.0, 1),
+        "spine_01": _n(0, 0.25, 1), "spine_02": _n(0, 0.35, 1), "spine_03": _n(0, 0.38, 1), "neck": _n(0, 0.15, 1), "head": _n(0, 0.0, 1),
         "upperarm_r": _n(-0.35, 0.55, -0.75), "forearm_r": _n(-0.2, 0.3, -1),
         "upperarm_l": _n(0.35, 0.55, -0.75), "forearm_l": _n(0.2, 0.3, -1),
         "thigh_l": _n(0.55, -0.75, -0.35), "shin_l": _n(0.15, -0.5, -0.85), "foot_l": _n(0.1, -0.9, -0.4),

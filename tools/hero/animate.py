@@ -34,13 +34,13 @@ CLIPS = {
     "sitIdle": (["stp1", "stp1", "stp2", "stp2"], [40, 20, 36, 24], True, _STP_CAM),
     # sitTurn: from the look back, she leans back on a hand and kicks the board round under her, the whole half turn
     # done sitting (the game sets the heading by scaling the turn).
-    "sitTurn": (["stp2", "stp3", "stp4"], [18, 20, 1], False, _STP_CAM),
+    "sitTurn": (["stp2", "stp3", "stp4"], [40, 44, 1], False, _STP_CAM),
     # sitToProne: leans forward onto her hands, down onto the board, chest up on straight arms, lower, into the first
     # paddle stroke.
     "sitToProne": (["stp4", "stp4b", "stp5", "stp6", "pdl1s"], [12, 14, 12, 10, 1], False, _STP_CAM),
     # The four played back to back (preview only): idle once, turn, down, two paddle cycles.
     "sitToPaddleChain": (["stp1", "stp1", "stp2", "stp2", "stp3", "stp4", "stp4b", "stp5", "stp6"] + [f"{k}s" for k in _PDL * 2] + ["pdl1s"],
-                         [40, 20, 36, 18, 20, 12, 14, 12, 10] + [5] * 16 + [1], False, _STP_CAM),
+                         [40, 20, 36, 40, 44, 14, 14, 12, 10] + [5] * 16 + [1], False, _STP_CAM),
 }
 
 
@@ -57,8 +57,15 @@ def _key_bones(rig, frame, prev):
         pb.keyframe_insert("location", frame=frame)
 
 
-def _ease(t):
-    return t * t * (3 - 2 * t)
+def _ease(t, v0=0.0, v1=0.0):
+    """Cubic Hermite from 0 to 1 with start and end slopes v0, v1 (0, 0: ease in and out; 1 at a key she passes
+    through without stopping, so a move split over several keys reads as one)."""
+    return (t ** 3 - 2 * t * t + t) * v0 + (-2 * t ** 3 + 3 * t * t) + (t ** 3 - t * t) * v1
+
+
+# Keys (by index in a clip) her root passes through without slowing: the half turn is one continuous move (Andrew,
+# 2026-10-10: "make the part where her and the board turn 180 degrees much smoother").
+THROUGH = {"sitTurn": {1}, "sitToPaddleChain": {4}}
 
 
 def build(rig, body, surf, name):
@@ -90,7 +97,9 @@ def build(rig, body, surf, name):
         frame += steps[i % len(keys)]
     rig.rotation_mode = surf.rotation_mode = "QUATERNION"
     qprev = None
-    for (f0, qa, pa, ha, ra, ta), (f1, qb, pb_, hb, rb, tb) in zip(poses, poses[1:] + [poses[-1]]):
+    through = THROUGH.get(name, set())
+    for n, ((f0, qa, pa, ha, ra, ta), (f1, qb, pb_, hb, rb, tb)) in enumerate(zip(poses, poses[1:] + [poses[-1]])):
+        v0, v1 = (1.0 if n in through else 0.0), (1.0 if n + 1 in through else 0.0)
         if qprev is not None and qa.dot(qprev) < 0:
             qa = -qa
         if qb.dot(qa) < 0:
@@ -99,7 +108,7 @@ def build(rig, body, surf, name):
             rb = -rb
         span = max(f1 - f0, 1)
         for f in range(f0, f1 if f1 > f0 else f0 + 1):
-            t = _ease((f - f0) / span)
+            t = _ease((f - f0) / span, v0, v1)
             q = qa.slerp(qb, t)
             p = pa.lerp(pb_, t)
             rig.rotation_quaternion = q
@@ -111,12 +120,14 @@ def build(rig, body, surf, name):
                 o.keyframe_insert("location", frame=f)
                 o.keyframe_insert("rotation_quaternion", frame=f)
         qprev = qb
+    through_frames = {poses[i][0] for i in through if i < len(poses)}
     for a in (rig.animation_data.action, surf.animation_data.action):
         for fc in _fcurves(a):
             object_channel = not fc.data_path.startswith("pose.")
             for kp in fc.keyframe_points:
                 kp.interpolation = "LINEAR" if object_channel else "BEZIER"
-                kp.handle_left_type = kp.handle_right_type = "AUTO_CLAMPED"
+                # A pass-through key keeps its pose's motion flowing (unclamped: no flat spot there).
+                kp.handle_left_type = kp.handle_right_type = "AUTO" if round(kp.co.x) in through_frames else "AUTO_CLAMPED"
             if loops:
                 fc.modifiers.new("CYCLES")
     rig.animation_data.action.use_fake_user = True
