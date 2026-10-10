@@ -168,19 +168,21 @@ POSES.update(TRC)
 # beside the chest, chest up; 3 arms straight, pushing the nose under (board ~25 deg nose-down), body straight above the
 # deck, toes on the tail; 4 the right knee onto the tail, the left leg up behind; 5 the board resurfacing nose-up, she's
 # on hands and knees, feet up behind; 6 lower, knees still on the deck; 7 chest up on her arms, legs kicking;
-# 8 paddling. Authored on a level board (world: board along y, nose at -y, her left +x), then rider and board pitched
+# 8 paddling. Andrew (session 3 review): she goes deeper under the water, then floats back up angling forward to the
+# surface: each key's `offset` sinks rider and board (to 1.2 m at the knee push), and the rise is nose-up (+22 deg).
+# Authored on a level board (world: board along y, nose at -y, her left +x), then rider and board pitched
 # together (`pitch`, negative = nose down). dd1 and dd8 are the paddle cycle's first pose, so the clip joins it.
 _DD_HANDS = {"nose": ["hand_l", "hand_r"], "prone": True, "levelRange": (-30, 30)}
 DD = {
     "dd1": dict(POSES["pdl1"]),
-    "dd2": {"turn": 0, "bones": {}, "pitch": -5, "noseGap": 0.4, "world": {
+    "dd2": {"turn": 0, "bones": {}, "pitch": -5, "noseGap": 0.4, "offset": (0, 0, -0.05), "world": {
         "pelvis": _n(0, -1, 0.04), "spine_01": _n(0, -1, 0.1), "spine_02": _n(0, -0.95, 0.2), "spine_03": _n(0, -0.92, 0.28),
         "neck": _n(0, -0.75, 0.6), "head": _n(0, -0.35, 0.94),
         "upperarm_l": _n(0.5, 0.4, -0.3), "forearm_l": _n(0.08, -0.6, -0.7), "hand_l": _n(0.05, -1, -0.15),
         "upperarm_r": _n(-0.5, 0.4, -0.3), "forearm_r": _n(-0.08, -0.6, -0.7), "hand_r": _n(-0.05, -1, -0.15), **_PRONE_LEGS},
         "floor": ["hand_l", "hand_r", "pelvis", "thigh_l", "thigh_r"], "level": (["hand_l", "hand_r"], ["thigh_l", "thigh_r"]),
         "tail": ["thigh_l", "thigh_r"], **_DD_HANDS},
-    "dd3": {"turn": 0, "bones": {}, "pitch": -25, "noseGap": 0.3, "world": {
+    "dd3": {"turn": 0, "bones": {}, "pitch": -25, "noseGap": 0.3, "offset": (0, 0, -0.6), "world": {
         "pelvis": _n(0, -1, 0.02), "spine_01": _n(0, -1, 0.05), "spine_02": _n(0, -1, 0.08), "spine_03": _n(0, -1, 0.1),
         "neck": _n(0, -1, 0.15), "head": _n(0, -0.95, 0.3),
         "upperarm_l": _n(0.1, -0.05, -1), "forearm_l": _n(0.08, -0.08, -1), "hand_l": _n(0.05, -1, -0.2),
@@ -189,7 +191,7 @@ DD = {
         "thigh_r": _n(-0.05, 1, -0.55), "shin_r": _n(-0.03, 1, -0.6), "foot_r": _n(0, 0.6, -0.8)},
         "floor": ["hand_l", "hand_r", "foot_l", "foot_r"], "level": (["hand_l", "hand_r"], ["foot_l", "foot_r"]),
         "tail": ["foot_l", "foot_r"], **_DD_HANDS},
-    "dd4": {"turn": 0, "bones": {}, "pitch": -25, "noseGap": 0.3, "world": {
+    "dd4": {"turn": 0, "bones": {}, "pitch": -22, "noseGap": 0.3, "offset": (0, 0, -1.2), "world": {
         "pelvis": _n(0, -1, 0.0), "spine_01": _n(0, -1, 0.03), "spine_02": _n(0, -1, 0.06), "spine_03": _n(0, -1, 0.08),
         "neck": _n(0, -1, 0.15), "head": _n(0, -0.95, 0.3),
         "upperarm_l": _n(0.1, -0.05, -1), "forearm_l": _n(0.08, -0.08, -1), "hand_l": _n(0.05, -1, -0.2),
@@ -197,7 +199,7 @@ DD = {
         "thigh_r": _n(-0.1, 0.1, -1), "shin_r": _n(-0.05, 1, -0.08), "foot_r": _n(0, 1, 0.1),
         "thigh_l": _n(0.06, 1, -0.12), "shin_l": _n(0.04, 1, -0.08), "foot_l": _n(0, 1, 0.0)},
         "floor": ["hand_l", "hand_r", "shin_r"], "level": (["hand_l", "hand_r"], ["shin_r"]), "tail": ["shin_r"], **_DD_HANDS},
-    "dd5": {"turn": 0, "bones": {}, "pitch": 10, "noseGap": 0.35, "world": {
+    "dd5": {"turn": 0, "bones": {}, "pitch": 22, "noseGap": 0.35, "offset": (0, 0, -0.95), "world": {
         "pelvis": _n(0, -1, -0.15), "spine_01": _n(0, -1, -0.1), "spine_02": _n(0, -1, -0.05), "spine_03": _n(0, -1, 0.0),
         "neck": _n(0, -0.8, 0.5), "head": _n(0, -0.4, 0.9),
         "upperarm_l": _n(0.15, -0.4, -1), "forearm_l": _n(0.1, -0.5, -1), "hand_l": _n(0.05, -1, -0.15),
@@ -206,7 +208,7 @@ DD = {
         "thigh_r": _n(-0.06, 0.15, -1), "shin_r": _n(-0.04, 0.75, 0.6), "foot_r": _n(0, 0.8, 0.5)},
         "floor": ["hand_l", "hand_r", "shin_l", "shin_r"], "level": (["hand_l", "hand_r"], ["shin_l", "shin_r"]),
         "tail": ["shin_l", "shin_r"], **_DD_HANDS},
-    "dd6": {"turn": 0, "bones": {}, "pitch": 7, "noseGap": 0.35, "world": {
+    "dd6": {"turn": 0, "bones": {}, "pitch": 14, "noseGap": 0.35, "offset": (0, 0, -0.45), "world": {
         "pelvis": _n(0, -1, 0.0), "spine_01": _n(0, -1, 0.05), "spine_02": _n(0, -0.97, 0.15), "spine_03": _n(0, -0.95, 0.2),
         "neck": _n(0, -0.75, 0.65), "head": _n(0, -0.35, 0.94),
         "upperarm_l": _n(0.3, 0.1, -1), "forearm_l": _n(0.08, -0.5, -0.9), "hand_l": _n(0.05, -1, -0.15),
@@ -215,7 +217,7 @@ DD = {
         "thigh_r": _n(-0.06, 0.85, -0.5), "shin_r": _n(-0.04, 0.7, 0.7), "foot_r": _n(0, 0.8, 0.5)},
         "floor": ["hand_l", "hand_r", "shin_l", "shin_r"], "level": (["hand_l", "hand_r"], ["shin_l", "shin_r"]),
         "tail": ["shin_l", "shin_r"], **_DD_HANDS},
-    "dd7": {"turn": 0, "bones": {}, "pitch": 3, "noseGap": 0.4, "world": {
+    "dd7": {"turn": 0, "bones": {}, "pitch": 5, "noseGap": 0.4, "offset": (0, 0, -0.08), "world": {
         "pelvis": _n(0, -1, 0.06), "spine_01": _n(0, -1, 0.15), "spine_02": _n(0, -0.93, 0.35), "spine_03": _n(0, -0.88, 0.45),
         "neck": _n(0, -0.7, 0.7), "head": _n(0, -0.3, 0.95),
         "upperarm_l": _n(0.12, -0.75, -1), "forearm_l": _n(0.06, -0.8, -1), "hand_l": _n(0.05, -1, -0.12),

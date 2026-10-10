@@ -41,7 +41,7 @@ CLIPS = {
     # Duck dive (Andrew's sheet, session 3): from the paddle, hands to the rails, push the nose under, knee on the tail,
     # resurface on hands and knees as the board pops nose-up, down flat kicking, back into the paddle cycle (~2.8 s).
     "duckDive": (["pdl1", "dd2", "dd3", "dd4", "dd5", "dd6", "dd7", "pdl1"], [8, 10, 10, 14, 8, 10, 8, 1], False,
-                 ((0.0, -1.9, 0.5), 90, 8.0, 85, 4)),
+                 ((0.0, -1.9, -0.2), 90, 9.0, 85, 8)),
     # Roundhouse cutback (Andrew's sheets + legend, session 3): the figure-8 track at ~7 m/s (~4.9 s), from his high
     # 3/4-front view; the preview camera follows her.
     "roundhouse": ([f"rh{k}" for k in range(1, 13)], [9, 10, 8, 12, 18, 11, 12, 9, 7, 9, 10, 1], False,
@@ -77,6 +77,8 @@ THROUGH = {"sitTurn": {1}, "sitToPaddleChain": {4}, "duckDive": {2, 4, 5}, "roun
 # Clips whose board glides forward at a steady speed (m/s along its nose) instead of sitting wherever each key's
 # contacts seat it (session 3: between the paddle pose and the duck-dive keys the board slid back a metre).
 GLIDE = {"duckDive": 0.6}
+# Clips previewed with the sea's surface at this height (the board floats with its deck ~7 cm above the origin).
+WATER = {"duckDive": 0.03}
 # Clips that travel along a track (their keys' `offset`): her pelvis follows a Catmull-Rom curve through the keys
 # instead of straight lines, and the preview camera follows her (same angle and distance throughout).
 TRACK = {"roundhouse"}
@@ -200,6 +202,25 @@ def preview(cam, name, out_dir, w=960, h=720):
     scene.render.resolution_x, scene.render.resolution_y = w, h
     scene.render.fps = 24
     suns = []
+    if name in WATER:
+        # The sea as a side cut-away (Andrew, duck dive review: she must go under and float back up): a block of
+        # tinted, non-reflective water from the surface down, its near face between her and the camera, so all of her
+        # below the surface line reads as underwater.
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(-0.5, 0, WATER[name] - 2.0))
+        plane = bpy.context.active_object
+        plane.scale = (3.0, 24.0, 4.0)
+        mat = bpy.data.materials.new("preview_water")
+        mat.use_nodes = True
+        bsdf = mat.node_tree.nodes["Principled BSDF"]
+        bsdf.inputs["Base Color"].default_value = (0.04, 0.3, 0.38, 1)
+        bsdf.inputs["Roughness"].default_value = 1.0
+        bsdf.inputs["Specular IOR Level"].default_value = 0.0
+        bsdf.inputs["Alpha"].default_value = 0.3
+        mat.surface_render_method = "BLENDED"
+        mat.use_backface_culling = True
+        plane.data.materials.append(mat)
+        plane.visible_shadow = False
+        suns.append(plane)
     if name in TRACK:
         # She travels metres from the studio's area lights and turns her back on the key: two suns (no falloff), a
         # warm one from high front-left and a cooler one from behind, so every heading reads.
