@@ -1,0 +1,2 @@
+# diff <(tail -n +2 datum-before.txt) <(tail -n +2 datum-after.txt): 84 rows (7 bands x 4 tides x 202/225/247 deg), identical
+(no differences)
