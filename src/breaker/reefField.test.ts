@@ -4,7 +4,7 @@ import { SHORE_X, depthBg } from '../seabed/coastProfile';
 import { NORTH_LEDGE, SOUTH_LEDGE, TIP } from '../seabed/wombReef';
 import { AMP_CAP, farSample } from './coastFarField';
 import type { FieldSample } from './fieldSample';
-import { PEEL_MAX_HOLD_S, REFRACT_FLOOR_M, RUN_DIP, computeOnsetRecord, computeReefField, gainAhead, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel, smoothFieldAmplitude } from './reefField';
+import { PEEL_MAX_HOLD_S, REFRACT_FLOOR_M, RUN_DIP, computeOnsetRecord, computeReefField, gainAhead, maxAlongCrest, sampleField, sampleOnset, smoothAlongCrest, smoothAlongTravel, smoothFieldAmplitude, smoothOnsetTimes, type ReefField } from './reefField';
 import { DEFAULT_BREAK_PARAMS, LIP_THROW_S, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_UNTIL_OFFSET, onsetGain, onsetHeight, onsetTime } from './breaking';
 import { BREAKING_RATIO } from './setWaveModel';
 import { setWaveHeight } from './reefReport';
@@ -467,5 +467,39 @@ describe('the curl pass leaves a reef with no pockets as it was (one-curl Task 2
       expect(d, `row ${row} held`).toBeGreaterThan(0.5);
       expect(d, `row ${row} capped`).toBeLessThanOrEqual(PEEL_MAX_HOLD_S);
     }
+  });
+});
+
+describe('smoothOnsetTimes keeps a band edge on its own clock (level-read Task 2)', () => {
+  // One row of crest along x (travel +z), 1 m cells, level K. Columns 0–19 broke a full level and more above Q_K (time 3 s,
+  // a 9 s spike at column 5); column 20 broke just over Q_K (its own 0.5 s); column 21 broke half a level above Q_K (its own
+  // 0.5 s); columns 22–40 haven't broken at level K (time 0).
+  const K = 5, NX = 41, NZ = 3, R = ONSET_RECORD_LENGTH, Q = ONSET_LEVEL_Q[K];
+  const make = (): ReefField => {
+    const n = NX * NZ, onset = new Float32Array(n * R);
+    for (let row = 0; row < NZ; row++) for (let col = 0; col < NX; col++) {
+      const b = (row * NX + col) * R;
+      const run = col < 20 ? Q * ONSET_LEVEL_RATIO ** 1.5 : col === 20 ? Q * 1.001 : col === 21 ? Q * ONSET_LEVEL_RATIO ** 0.5 : Q * 0.9;
+      onset[b] = run;
+      onset[b + 1 + 2 * K] = col === 5 ? 9 : col < 20 ? 3 : col <= 21 ? 0.5 : 0;
+    }
+    return { grid: { x0: 0, z0: 0, cellM: 1, nx: NX, nz: NZ }, onset, dirX: new Float32Array(n), dirZ: new Float32Array(n).fill(1) } as unknown as ReefField;
+  };
+  const f = make();
+  smoothOnsetTimes(f);
+  const tb = (col: number): number => f.onset[(1 * NX + col) * R + 1 + 2 * K];
+  it('a node just over the level keeps its own time', () => {
+    expect(tb(20)).toBeCloseTo(0.5, 2);
+  });
+  it('a node a full level above takes the smoothed time', () => {
+    expect(tb(5)).toBeLessThan(6);
+    expect(tb(5)).toBeGreaterThan(3);
+  });
+  it('a node half a level above lies between its own and the smoothed time', () => {
+    expect(tb(21)).toBeGreaterThan(0.6);
+    expect(tb(21)).toBeLessThan(2.9);
+  });
+  it('a node that has not broken at the level is untouched', () => {
+    for (let col = 22; col < NX; col++) expect(tb(col)).toBe(0);
   });
 });
