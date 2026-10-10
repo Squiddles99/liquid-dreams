@@ -72,14 +72,6 @@ export function solidBoil(fresh: number, foam: number): number {
 export function solidBoilNode(fresh: N, foam: N): N {
   return fresh.mul(smoothstep(0.1, 0.3, foam));
 }
-/** The foam volume's bubble mottle (7b S3): ~BUBBLE_MOTTLE_M blobs, ±BUBBLE_MOTTLE_AMP of its brightness, so the solid
- * boil is not plaster. */
-export const BUBBLE_MOTTLE_M = 0.5, BUBBLE_MOTTLE_AMP = 0.3;
-/** The mottle's brightness factor at developed coordinates `uv` (m): 1 ± BUBBLE_MOTTLE_AMP, drifting slowly. */
-export function bubbleMottleNode(uv: N, time: N): N {
-  return mx_noise_float(vec3(uv.div(BUBBLE_MOTTLE_M), time.mul(0.4))).mul(BUBBLE_MOTTLE_AMP).add(1.0);
-}
-
 /** The lumps within 2 m ahead of the crest line stand half again as tall: the front steeper than the back. */
 const frontLean = (frame: N): N => smoothstep(0.0, 2.0, frame.x.negate()).mul(0.5).add(1.0);
 const churnAt = (boil: N, frame: N, time: N, u: { churnSize: N; churnSpeed: N }): N => churnNoise(frame, time, u.churnSpeed).mul(boil).mul(u.churnSize).mul(frontLean(frame));

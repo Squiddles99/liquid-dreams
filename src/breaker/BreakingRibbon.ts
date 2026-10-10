@@ -1,4 +1,5 @@
-import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, bubbleMottleNode, freshFoamWeightNode, solidBoilNode } from '../whitewater/pileChurn';
+import { billowNode } from '../whitewater/billow';
+import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, freshFoamWeightNode, solidBoilNode } from '../whitewater/pileChurn';
 import { curlFoamNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
 import * as THREE from 'three/webgpu';
 import {
@@ -631,12 +632,18 @@ export class BreakingRibbon {
     // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
     // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
     const foamCover = mix(foamLook.x, float(SET_FOAM_MAX_COVER), solid);
+    // The solid boil's billows (7b S3 ruling): an isotropic 3-D field over (detail x, height above the tide, detail z) — on
+    // the near-vertical face the detail coordinate barely moves, the height does — whose gradient along the surface tilts
+    // the foam volume's normal, blended in where the boil is solid.
+    const billow = billowNode(vec3(vDetail.x, positionWorld.y.sub(model.seabed.tide), vDetail.y), model.sim.time);
+    const bumped = normalize(normal.sub(billow.grad.sub(normal.mul(dot(normal, billow.grad)))));
+    const billowNormal = normalize(mix(normal, bumped, solid));
     const sunVis = shading.sunlight ? shading.sunlight.visibilityNode(positionWorld.xz) : undefined;
     const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
       { normal, viewDir, distance, foam: max(max(fft.foam, foamCover), fringe), foamShade: mix(foamLook.y, float(1.0), saturate(vFringe)), breakFoam: max(foamCover, fringe), lip, lipThickness: thickness, underside,
-        foamMottle: bubbleMottleNode(vDetail, model.sim.time),
+        foamBillow: { normal: billowNormal, height: mix(float(1.0), billow.h, solid) },
         tube: { sunLip: vLight.x, sunBody: vLight.w, skyOpen: vLight.y, lipThickness: vLight.z },
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld,
