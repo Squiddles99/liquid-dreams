@@ -102,7 +102,7 @@ import { KelpField } from '../seabed/KelpField';
 import { SprayParticles } from '../whitewater/SprayParticles';
 import {
   DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
-  impactBirths, normalizeImpactParams, type SpitEmitter, spitBirths, SPRAY_BIRTH_CAP, normalizeSprayParams, sprayBirths, sprayCanEmit, windToVector,
+  impactBirths, normalizeImpactParams, type SpitEmitter, spitBirths, SPRAY_BIRTH_CAP, normalizeSprayParams, sprayAndPlumeBirths, sprayCanEmit, windToVector,
 } from '../whitewater/sprayEmitters';
 import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { Land } from '../land/Land';
@@ -1006,14 +1006,16 @@ export class App {
    * the tick's slots. */
   private impactBirthsAt(k: number) {
     const e = this.emittersAt(k);
-    return [...impactBirths(e.impact, k), ...spitBirths(e.spit, k)].slice(0, SPRAY_BIRTH_CAP);
+    // The spit is held back or blown on by the wind (whitewater §4.3).
+    const [wx, wz] = windToVector(this.conditions.wind.directionDeg), w = this.conditions.wind.speedMs;
+    return [...impactBirths(e.impact, k), ...spitBirths(e.spit, k, [wx * w, wz * w])].slice(0, SPRAY_BIRTH_CAP);
   }
 
   private sprayBirthsAt(k: number) {
     // When the spray can't emit, don't compute the tick's emitters for it: on a calm day its replay would run the
     // shared trace for all its ticks just for the explosion's sake (final review).
     if (!sprayCanEmit(this.sprayParams.amount, this.conditions.wind.speedMs)) return [];
-    return sprayBirths(this.emittersAt(k).spray, k, this.sprayParams);
+    return sprayAndPlumeBirths(this.emittersAt(k).spray, k, this.sprayParams);
   }
 
   /** Dev (3c plan Task 4): a forced impact replay, timed to the GPU's completion; cpuMs is the emitter work alone. */

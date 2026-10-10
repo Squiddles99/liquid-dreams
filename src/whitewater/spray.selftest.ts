@@ -1,15 +1,16 @@
 import type * as THREE from 'three/webgpu';
-import { type ComputeNode, StorageBufferAttribute } from 'three/webgpu';
-import { Fn, float, storage, vec4 } from 'three/tsl';
+import { type ComputeNode, StorageBufferAttribute, Vector3 } from 'three/webgpu';
+import { Fn, float, storage, vec3, vec4 } from 'three/tsl';
+import { mistLightCpu, mistLightNode } from './mistLight';
 import { registerSelfTest } from '../dev/selfTest';
 import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { Sky } from '../sky/Sky';
 import { FoamSchedule } from './foamStep';
 import { SprayParticles, sprayPhaseNode } from './SprayParticles';
 import { sprayPhase } from './sprayLook';
-import { SPRAY_POOL, type SprayBirth, sprayReplayTicks } from './sprayEmitters';
+import { PLUME_LIFE_S, SPRAY_POOL, type SprayBirth, replayTicksForMaxLife, sprayReplayTicks } from './sprayEmitters';
 import { SprayPool, birthInto, liveSlots, stepPool } from './sprayStep';
-import { IMPACT_KIND, type ParticleKind, SPRAY_KIND } from './particleKinds';
+import { IMPACT_KIND, PARTICLE_KINDS, type ParticleKind, SPRAY_KIND, kindIndexOf } from './particleKinds';
 
 /** A synthetic source: a line of puffs every tick, varying with the tick (no reef needed). */
 const birthsAt = (k: number): SprayBirth[] =>
@@ -23,22 +24,26 @@ async function read(renderer: THREE.WebGPURenderer, spray: SprayParticles): Prom
   };
 }
 
-const KINDS: [string, ParticleKind][] = [['spray', SPRAY_KIND], ['impact', IMPACT_KIND]];
+const KINDS: [string, ParticleKind, boolean][] = [['spray', SPRAY_KIND, false], ['impact', IMPACT_KIND, false], ['mixed (all four kinds in the spray pool)', SPRAY_KIND, true]];
+/** The mixed case's births: every kind in turn (whitewater §4.1: one pool draws every kind). */
+const mixedAt = (k: number): SprayBirth[] => birthsAt(k).map((b, i) => ({ ...b, kind: i % PARTICLE_KINDS.length, yWater: 0.2 * i }));
 
 registerSelfTest({
-  name: 'spray: the GPU birth and step match the CPU reference over a replay (spray and impact kinds)',
+  name: 'spray: the GPU birth and step match the CPU reference over a replay (spray, impact, and all four kinds mixed in one pool)',
   async run(renderer) {
     const notes: string[] = [];
     let ok = true;
-    for (const [label, kind] of KINDS) {
+    for (const [label, kind, mixed] of KINDS) {
+      const at = mixed ? mixedAt : birthsAt;
       const spray = new SprayParticles(new Sky(DEFAULT_ATMOSPHERE), kind);
       spray.setWind(...WIND);
       const t = 12;
-      spray.advance(renderer, t, birthsAt);
+      spray.advance(renderer, t, at);
       const g = await read(renderer, spray);
-      const cpu = new SprayPool();
-      const plan = new FoamSchedule().planTicks(t, sprayReplayTicks(2));
-      for (const k of plan.ticks) { birthInto(cpu, k, birthsAt(k)); stepPool(cpu, ...WIND, kind); }
+      const cpu = new SprayPool(SPRAY_POOL, kindIndexOf(kind));
+      // The spray's pool replays the plume's longest life (it shares the pool); the impact's its own default.
+      const plan = new FoamSchedule().planTicks(t, kind === SPRAY_KIND ? replayTicksForMaxLife(Math.max(1.2 * 2, PLUME_LIFE_S[1])) : sprayReplayTicks(2));
+      for (const k of plan.ticks) { birthInto(cpu, k, at(k)); stepPool(cpu, ...WIND); }
       const live = liveSlots(cpu);
       let worst = 0, liveGpu = 0;
       for (let s = 0; s < SPRAY_POOL; s++) if (g.pos[s * 4 + 3] < g.vel[s * 4 + 3]) liveGpu++;
@@ -86,5 +91,35 @@ registerSelfTest({
     const g = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
     const worst = cs.reduce((m, c, i) => Math.max(m, Math.abs(g[i * 4] - sprayPhase(c)) / sprayPhase(c)), 0);
     return { pass: worst < 1e-4, detail: `worst relative error ${worst.toExponential(2)}` };
+  },
+});
+
+registerSelfTest({
+  name: 'spray: the TSL mist light matches mistLight.mistLightCpu (the sky\'s sun and irradiance read back)',
+  async run(renderer) {
+    const sky = new Sky(DEFAULT_ATMOSPHERE);
+    sky.update(renderer, new Vector3(0.4, 0.7, 0.3).normalize(), 2); // a mid-morning sun: the LUTs' sun and sky are lit
+    const cases = [
+      { cosView: 0.99, nDotL: 0.5, sunVisibility: 1, isotropic: 0.3, ground: [0.05, 0.2, 0.18] },
+      { cosView: 0, nDotL: -0.2, sunVisibility: 1, isotropic: 0.6, ground: [0, 0, 0] },
+      { cosView: -0.7, nDotL: 1, sunVisibility: 0.3, isotropic: 0.5, ground: [0.1, 0.1, 0.1] },
+    ];
+    const outAttr = new StorageBufferAttribute(new Float32Array((cases.length + 2) * 4), 4);
+    const out = storage(outAttr, 'vec4', cases.length + 2);
+    const pass = Fn(() => {
+      out.element(0).assign(vec4(sky.sunIlluminance, 0.0));
+      out.element(1).assign(vec4(sky.skyIrradiance, 0.0));
+      cases.forEach((c, i) => out.element(i + 2).assign(vec4(mistLightNode({ cosView: float(c.cosView), nDotL: float(c.nDotL), sunVisibility: float(c.sunVisibility), isotropic: float(c.isotropic), groundColour: vec3(...c.ground) }, sky), 0.0)));
+    })().compute(1) as ComputeNode;
+    renderer.compute(pass);
+    const g = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+    let worst = 0;
+    cases.forEach((c, i) => {
+      for (let ch = 0; ch < 3; ch++) {
+        const cpu = mistLightCpu({ sunIlluminance: g[ch], skyIrradiance: g[4 + ch], cosView: c.cosView, nDotL: c.nDotL, sunVisibility: c.sunVisibility, isotropic: c.isotropic, groundTint: c.ground as [number, number, number] })[ch];
+        worst = Math.max(worst, Math.abs(g[(i + 2) * 4 + ch] - cpu) / Math.max(Math.abs(cpu), 1e-6));
+      }
+    });
+    return { pass: worst < 1e-4 && g[0] > 0 && g[4] > 0, detail: `worst relative error ${worst.toExponential(2)} (sun ${g[0].toFixed(3)}, sky ${g[4].toFixed(3)}: both lit)` };
   },
 });

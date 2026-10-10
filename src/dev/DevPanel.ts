@@ -212,6 +212,7 @@ export const FOAM_BINDINGS = {
 export const SPRAY_BINDINGS = {
   amount: { label: 'spray amount', ...SPRAY_PARAM_RANGES.amount, step: 0.05 },
   lifeS: { label: 'spray life (s)', ...SPRAY_PARAM_RANGES.lifeS, step: 0.1 },
+  plume: { label: 'plume (× rate)', ...SPRAY_PARAM_RANGES.plume, step: 0.05 },
 } as const;
 
 /** Impact folder slider (spec 2026-09-28-impact-explosion-design.md §3.4), range exactly normalizeImpactParams's. */
