@@ -1,19 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { surferFeetToHs } from '../conditions/units';
-import { BOMBIE_X, BOMBIE_Z, BURST_LIFE_S, MOUND_BASE_Y, MOUND_CREST_Y, MOUND_HALF_X_M, MOUND_HALF_Z_M, type BombieWaves, breaks, burstAt, burstWidthM, burstsAt, moundY, setIndicesFrom, setWindow, waveFactor } from './bombieModel';
+import { BOMBIE_CENTRE } from '../seabed/coastFeatures';
+import { BOMBIE_X, BOMBIE_Z, BURST_LIFE_S, type BombieWaves, breaks, burstAt, burstWidthM, burstsAt, setIndicesFrom, setWindow, waveFactor } from './bombieModel';
 
 const waves = (ft: number, thresholdFt = 6, setIndices: number[] = []): BombieWaves => ({
   tauS: 7.5, periodS: 15, hs: surferFeetToHs(ft), thresholdHs: surferFeetToHs(thresholdFt), seed: 2002, setIndices: new Set(setIndices),
 });
 const fraction = (w: BombieWaves) => { let k = 0; for (let n = 0; n < 20000; n++) if (breaks(n, w)) k++; return k / 20000; };
 
-describe('the mound', () => {
-  it('crests 5 m below mean sea level at the centre and meets the bed at its oval edge', () => {
-    expect(moundY(BOMBIE_X, BOMBIE_Z)).toBeCloseTo(MOUND_CREST_Y, 6);
-    expect(moundY(BOMBIE_X + MOUND_HALF_X_M * 0.999, BOMBIE_Z)).toBeCloseTo(MOUND_BASE_Y, 1);
-    expect(moundY(BOMBIE_X + MOUND_HALF_X_M + 1, BOMBIE_Z)).toBe(-Infinity);
-    expect(moundY(BOMBIE_X, BOMBIE_Z + MOUND_HALF_Z_M + 1)).toBe(-Infinity);
-    expect(moundY(BOMBIE_X, BOMBIE_Z + 30)).toBeGreaterThan(moundY(BOMBIE_X + 20, BOMBIE_Z)); // long along z
+// The old mound's tests went with it (shelf-polish §7: one Bombie, the coast's; its bed is the coast map's).
+describe('one Bombie', () => {
+  it('the bursts sit on the coast map’s Bombie', () => {
+    expect([BOMBIE_X, BOMBIE_Z]).toEqual([...BOMBIE_CENTRE]);
   });
 });
 
