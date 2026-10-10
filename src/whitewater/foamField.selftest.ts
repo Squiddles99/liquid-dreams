@@ -10,12 +10,12 @@ import { SET_FOAM_MAX_COVER, setFoamPattern, sheetFoamWeight, waterFoamFrame, wa
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { FoamField } from './FoamField';
-import { type FoamGrid, type FoamParams, type FoamSourceCpu, FoamSchedule, stepFoam, tickTime } from './foamStep';
+import { COARSE_TICKS, FOAM_TICK_S, type FoamGrid, type FoamParams, type FoamPlan, type FoamSourceCpu, FoamSchedule, stepFoam, tickTime } from './foamStep';
 
 type N = any;
 
-/** Reads a FoamField's published map (.r) back to the CPU, row-major. */
-async function readMap(renderer: THREE.WebGPURenderer, field: FoamField): Promise<Float32Array> {
+/** Reads a FoamField's published map back to the CPU, row-major: channel 0 density, 1 age. */
+async function readMap(renderer: THREE.WebGPURenderer, field: FoamField, channel = 0): Promise<Float32Array> {
   const { nx, nz } = field.grid;
   const outAttr = new THREE.StorageBufferAttribute(new Float32Array(nx * nz * 4), 4);
   const out = storage(outAttr, 'vec4', nx * nz);
@@ -25,100 +25,179 @@ async function readMap(renderer: THREE.WebGPURenderer, field: FoamField): Promis
   })().compute(nx * nz) as THREE.ComputeNode;
   renderer.compute(pass);
   const raw = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
-  return Float32Array.from({ length: nx * nz }, (_, i) => raw[i * 4]);
+  return Float32Array.from({ length: nx * nz }, (_, i) => raw[i * 4 + channel]);
 }
 
 const maxDiff = (a: Float32Array, b: Float32Array): number => a.reduce((m, v, i) => Math.max(m, Math.abs(v - b[i])), 0);
+/** The CPU reference's (density, age) pairs, one channel of them. */
+const channelOf = (m: Float32Array, c: number): Float32Array => Float32Array.from({ length: m.length / 2 }, (_, i) => m[2 * i + c]);
+/** A plan run on the CPU reference: the coarse ticks with dt COARSE_TICKS × FOAM_TICK_S, then the fine. */
+const runCpu = (plan: FoamPlan, g: FoamGrid, p: FoamParams, src: FoamSourceCpu): Float32Array => {
+  let m = new Float32Array(2 * g.nx * g.nz);
+  for (const k of plan.coarse) m = stepFoam(m, g, tickTime(k), COARSE_TICKS * FOAM_TICK_S, p, src);
+  for (const k of plan.ticks) m = stepFoam(m, g, tickTime(k), FOAM_TICK_S, p, src);
+  return m;
+};
 
-/** A synthetic bore: a 4 m band moving +x at 6 m/s (from x = 0 at t = 0), direction +x (the CPU test's bore). */
+/** A synthetic bore: a 4 m band moving +x at 6 m/s (from x = 0 at t = 0), direction +x, pushing its foam at 6 m/s. */
 function syntheticSource() {
   const t = uniform(0);
+  const band = (xz: N, shift: N | null = null): N => select(abs(xz.x.sub((shift === null ? t : t.sub(shift)).mul(6.0))).lessThan(2.0), float(1.0), float(0.0));
   const nodes = {
-    foamNode: (xz: N): N => select(abs(xz.x.sub(t.mul(6.0))).lessThan(2.0), float(1.0), float(0.0)),
+    foamNode: (xz: N) => band(xz),
     dirNode: (): N => vec2(1.0, 0.0),
+    foamPushNode: (xz: N, shift?: N | null) => { const f = band(xz, shift ?? null); return { foam: f, push: f.mul(6.0) }; },
   };
-  const cpu: FoamSourceCpu = { foam: (x, _z, tt) => (Math.abs(x - 6 * tt) < 2 ? 1 : 0), dir: () => [1, 0] };
+  const foamAt = (x: number, tt: number): number => (Math.abs(x - 6 * tt) < 2 ? 1 : 0);
+  const cpu: FoamSourceCpu = { foam: (x, _z, tt) => foamAt(x, tt), dir: () => [1, 0], push: (x, _z, tt) => 6 * foamAt(x, tt), wind: [2, 3] };
   return { t, nodes, cpu };
 }
 
 const SMALL: FoamGrid = { x0: 0, z0: 0, cellM: 1, nx: 48, nz: 8 };
 
 registerSelfTest({
-  name: 'foam: the GPU step matches the CPU reference (drift, clear, inject) over a replay',
+  name: 'foam: the GPU step matches the CPU reference (density and age; drift, push, wind, the two lives) over a coarse + fine replay',
   async run(renderer) {
     const { t, nodes, cpu } = syntheticSource();
     const field = new FoamField(nodes, SMALL);
-    const p: FoamParams = { clearTimeS: 3, driftMps: 0.4 };
+    const p: FoamParams = { clearTimeS: 3, driftMps: 0.4, laceLifeS: 30 };
     field.setParams(p);
-    const tEnd = 5;
+    field.setWind(2, 3);
+    const tEnd = 8;
     field.advance(renderer, tEnd, (tt) => { t.value = tt; });
-    const gpu = await readMap(renderer, field);
-    const plan = new FoamSchedule().plan(tEnd, p.clearTimeS);
-    const ref = plan.ticks.reduce((m, k) => stepFoam(m, SMALL, tickTime(k), p, cpu), new Float32Array(SMALL.nx * SMALL.nz));
-    const d = maxDiff(gpu, ref);
-    const peak = Math.max(...ref);
-    // rgba16float rounds every step (half an ulp is 2.4e-4 in [0.5, 1)); over a clear of 60 ticks that can add up to ~0.012.
-    return { pass: d < 0.02 && peak > 0.9, detail: `max |GPU − CPU| ${d.toFixed(5)} over ${plan.ticks.length} ticks; CPU peak ${peak.toFixed(3)}` };
+    const gpuD = await readMap(renderer, field, 0), gpuA = await readMap(renderer, field, 1);
+    const plan = new FoamSchedule().plan(tEnd, p.clearTimeS + p.laceLifeS);
+    const ref = runCpu(plan, SMALL, p, cpu);
+    const refD = channelOf(ref, 0), refA = channelOf(ref, 1);
+    const d = maxDiff(gpuD, refD), peak = Math.max(...refD);
+    // Ages where there is foam (half floats: 0.03 s at 60 s).
+    let da = 0;
+    refD.forEach((v, i) => { if (v > 0.01) da = Math.max(da, Math.abs(gpuA[i] - refA[i])); });
+    return {
+      pass: d < 0.02 && da < 0.1 && peak > 0.9 && plan.coarse.length > 0,
+      detail: `max |GPU − CPU| density ${d.toFixed(5)}, age ${da.toFixed(4)} s (where foam) over ${plan.coarse.length} coarse + ${plan.ticks.length} ticks; CPU peak ${peak.toFixed(3)}`,
+    };
   },
 });
 
 registerSelfTest({
-  name: 'foam: a GPU replay matches GPU live stepping to the same tick (drift 0 exact, drift 0.4 within 0.02)',
+  name: 'foam: a GPU replay matches GPU live stepping to the same tick (short history: drift 0 exact, drift 0.4 within 0.02)',
   async run(renderer) {
     const notes: string[] = [];
     let ok = true;
     for (const drift of [0, 0.4]) {
       const { t, nodes } = syntheticSource();
       const prepare = (tt: number): void => { t.value = tt; };
+      const p: FoamParams = { clearTimeS: 3, driftMps: drift, laceLifeS: 30 };
       const live = new FoamField(nodes, SMALL);
-      live.setParams({ clearTimeS: 3, driftMps: drift });
+      live.setParams(p);
       for (let f = 0; f <= 360; f++) live.advance(renderer, 3 + f / 60, prepare); // exactly 9 s at the end
       const a = await readMap(renderer, live);
       const replay = new FoamField(nodes, SMALL);
-      replay.setParams({ clearTimeS: 3, driftMps: drift });
+      replay.setParams(p);
       replay.advance(renderer, 9, prepare);
       const b = await readMap(renderer, replay);
       const d = maxDiff(a, b);
       notes.push(`drift ${drift}: max |live − replay| ${d.toFixed(5)}`);
-      ok &&= drift === 0 ? d === 0 : d <= 0.02;
+      // Both replays start with the same coarse steps (the live one's at 3 s): only the fine ticks after differ in order.
+      ok &&= drift === 0 ? d < 1e-3 : d <= 0.02;
     }
     return { pass: ok, detail: notes.join('; ') };
   },
 });
 
+/** The breaking set's GPU sources and the CPU reference's, on a reef field (the default set 1's biggest wave). */
+function breakingRig() {
+  const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
+  const time = uniform(0);
+  const sets = new SetWaves(time);
+  sets.setField(field);
+  sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+  const nodes = { foamNode: (xz: N) => sets.breakingFoamNode(xz), dirNode: (xz: N) => sets.sample(xz, true).dir, foamPushNode: (xz: N, shift?: N | null) => sets.breakingFoamPushNode(xz, shift ?? null) };
+  const prepare = (tt: number): void => {
+    time.value = tt;
+    sets.setEvents(wavesNear(tt, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS));
+  };
+  const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+  const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
+  const foamAt = (x: number, z: number, tt: number): number => sumWaves(x, z, tt, sampleField(field, x, z), wavesNear(tt, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave), ctx, o).foam;
+  const cpu: FoamSourceCpu = {
+    foam: foamAt,
+    dir: (x, z) => { const s = sampleField(field, x, z); const l = Math.hypot(s.dirX, s.dirZ) || 1; return [s.dirX / l, s.dirZ / l]; },
+    push: (x, z, tt) => (field.omega / sampleField(field, x, z).k) * foamAt(x, z, tt),
+  };
+  const biggest = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
+  return { nodes, prepare, cpu, biggest };
+}
+
+// 40 × 40 texels at 2 m from the peak shoreward over the shelf, where the default set 1's biggest wave barrels,
+// collapses and runs on as a bore (a 24 × 24 window at the peak held only 5 texels of dense foam at this time).
+const SHELF: FoamGrid = { x0: -10, z0: -40, cellM: 2, nx: 40, nz: 40 };
+
 registerSelfTest({
-  name: "foam: a replay over a breaking set matches the CPU reference driven by Phase 2's CPU foam (per-tick events)",
+  name: "foam: a replay over a breaking set matches the CPU reference driven by Phase 2's CPU foam and push (per-tick events)",
   async run(renderer) {
-    const field = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0 });
-    const time = uniform(0);
-    const sets = new SetWaves(time);
-    sets.setField(field);
-    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
-    // 40 × 40 texels at 2 m from the peak shoreward over the shelf, where the default set 1's biggest wave barrels,
-    // collapses and runs on as a bore (a 24 × 24 window at the peak held only 5 texels of dense foam at this time).
-    const grid: FoamGrid = { x0: -10, z0: -40, cellM: 2, nx: 40, nz: 40 };
-    const foam = new FoamField({ foamNode: (xz) => sets.breakingFoamNode(xz), dirNode: (xz) => sets.sample(xz, true).dir }, grid);
-    const p: FoamParams = { clearTimeS: 2, driftMps: 0.4 };
+    const { nodes, prepare, cpu, biggest } = breakingRig();
+    const foam = new FoamField(nodes, SHELF);
+    const p: FoamParams = { clearTimeS: 4, driftMps: 0.4, laceLifeS: 30 };
     foam.setParams(p);
-    const biggest = wavesOfSet(1, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).reduce((a, b) => (b.heightM > a.heightM ? b : a));
     const tEnd = biggest.arrivalS + 4;
-    foam.advance(renderer, tEnd, (tt) => {
-      time.value = tt;
-      sets.setEvents(wavesNear(tt, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS));
-    });
+    foam.advance(renderer, tEnd, prepare);
     const gpu = await readMap(renderer, foam);
-    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    const o = breakOptions(field, DEFAULT_BREAK_PARAMS);
-    const cpuSource: FoamSourceCpu = {
-      foam: (x, z, tt) => sumWaves(x, z, tt, sampleField(field, x, z), wavesNear(tt, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave), ctx, o).foam,
-      dir: (x, z) => { const s = sampleField(field, x, z); const l = Math.hypot(s.dirX, s.dirZ) || 1; return [s.dirX / l, s.dirZ / l]; },
-    };
-    const ticks = new FoamSchedule().plan(tEnd, p.clearTimeS).ticks;
-    const ref = ticks.reduce((m, k) => stepFoam(m, grid, tickTime(k), p, cpuSource), new Float32Array(grid.nx * grid.nz));
+    const ref = channelOf(runCpu(new FoamSchedule().plan(tEnd, p.clearTimeS + p.laceLifeS), SHELF, p, cpu), 0);
     const d = maxDiff(gpu, ref);
     const covered = ref.filter((v) => v > 0.5).length;
-    // Phase 2's GPU/CPU foam agree to 0.05 (breaker self-test), plus rgba16float's rounding (≤ 0.02, the step test).
-    return { pass: d < 0.07 && covered > 10, detail: `max |GPU − CPU| ${d.toFixed(4)} over ${ticks.length} ticks; ${covered} texels over 0.5` };
+    // Phase 2's GPU/CPU foam agree to 0.05 (breaker self-test), plus the published map's half floats.
+    return { pass: d < 0.07 && covered > 10, detail: `max |GPU − CPU| ${d.toFixed(4)}; ${covered} texels over 0.5` };
+  },
+});
+
+registerSelfTest({
+  name: 'foam: a replay into the middle of the lace (10 s and 60 s after a breaking set) matches live play within 0.02, and a 75 s jump replays fast',
+  async run(renderer) {
+    const { nodes, prepare, biggest } = breakingRig();
+    const p: FoamParams = { clearTimeS: 10, driftMps: 0.4, laceLifeS: 75 };
+    const notes: string[] = [];
+    let ok = true;
+    // Live: from 5 s before the set's biggest wave reaches the peak, stepping 60 fps frames; at +10 s and +60 s a fresh
+    // field replays to the same moment.
+    const live = new FoamField(nodes, SHELF);
+    live.setParams(p);
+    const t0 = biggest.arrivalS - 5;
+    let f = 0;
+    for (const dt of [10, 60]) {
+      const tEnd = biggest.arrivalS + dt;
+      for (; t0 + f / 60 <= tEnd + 1e-9; f++) live.advance(renderer, t0 + f / 60, prepare);
+      const a = await readMap(renderer, live);
+      const replay = new FoamField(nodes, SHELF);
+      replay.setParams(p);
+      replay.advance(renderer, t0 + (f - 1) / 60, prepare);
+      const b = await readMap(renderer, replay);
+      const d = maxDiff(a, b), lace = a.filter((v) => v > 0.01).length;
+      notes.push(`+${dt} s: max |live − replay| ${d.toFixed(4)} (${lace} texels of foam)`);
+      ok &&= d <= 0.02 && lace > 10;
+    }
+    // The replay's wall time at the game's box size: a 75 s jump (clear + lace + 2 s of history), to the GPU's finish.
+    const full = new FoamField(nodes);
+    full.setParams(p);
+    full.advance(renderer, biggest.arrivalS + 30, prepare); // builds its pipelines: the game prewarms them
+    await (renderer as unknown as { backend: { device: GPUDevice } }).backend.device.queue.onSubmittedWorkDone();
+    full.invalidate();
+    const w0 = performance.now();
+    const steps = full.advance(renderer, biggest.arrivalS + 60, prepare);
+    await (renderer as unknown as { backend: { device: GPUDevice } }).backend.device.queue.onSubmittedWorkDone();
+    const ms = performance.now() - w0;
+    notes.push(`a full-box replay: ${steps} steps in ${ms.toFixed(0)} ms (bar 100 ms)`);
+    // The split: shorter histories (fewer coarse steps, the same 200 fine ones).
+    for (const lace of [0.1, 30]) {
+      full.setParams({ ...p, laceLifeS: lace });
+      full.invalidate();
+      const v0 = performance.now();
+      const n = full.advance(renderer, biggest.arrivalS + 60, prepare);
+      await (renderer as unknown as { backend: { device: GPUDevice } }).backend.device.queue.onSubmittedWorkDone();
+      notes.push(`laceLife ${lace} s: ${n} steps in ${(performance.now() - v0).toFixed(0)} ms`);
+    }
+    return { pass: ok, detail: notes.join('; ') };
   },
 });
 

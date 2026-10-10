@@ -364,6 +364,7 @@ export class App {
   readonly foamField = new FoamField({
     foamNode: (xz) => this.setWaves.breakingFoamNode(xz),
     dirNode: (xz) => this.setWaves.sample(xz, true).dir,
+    foamPushNode: (xz, shift) => this.setWaves.breakingFoamPushNode(xz, shift ?? null),
   });
   /** The water's flow under the waves (reef build B §4.1): the set waves' surface plus the FFT long swell where it runs. */
   readonly reefFlow = new ReefFlow(this.setWaves, (xz) => this.surfaceModel.fftCascadeDisplacement(xz, 0, float(1.0)).y);
@@ -842,6 +843,9 @@ export class App {
     this.offshoreMs = this.field ? offshoreSpeed(this.conditions.wind.speedMs, this.conditions.wind.directionDeg, this.field.far.dirX, this.field.far.dirZ) : 0;
     this.ribbon.setOffshore(this.offshoreMs);
     this.ribbonKey = null;
+    // The foam map's wind drift (whitewater §5.2): the wind vector, the way it blows.
+    const [wx, wz] = windToVector(this.conditions.wind.directionDeg);
+    this.foamField.setWind(wx * this.conditions.wind.speedMs, wz * this.conditions.wind.speedMs);
   }
 
   /**

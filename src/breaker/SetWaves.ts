@@ -403,11 +403,13 @@ export class SetWaves {
    * largest envelope there, vec2(metres behind its crest, ξ·c; metres along its crest). It moves with the crest, so
    * noise read in it is advected with the wave; the foam's noise uses it (render only, not part of the CPU model).
    */
-  private sumBreaking(xz: N, frame: boolean, pileWanted = true): { eta: N; dh: N; slope: N; foam: N; stage: N; foamFrame: N; pile: N } {
+  private sumBreaking(xz: N, frame: boolean, pileWanted = true, timeShift: N | null = null): { eta: N; dh: N; slope: N; foam: N; stage: N; foamFrame: N; pile: N; push: N } {
     const withPile = pileWanted && this.pile;
+    // The sum at time − timeShift (the foam map's coarse replay steps sample their source across the step).
+    const now = timeShift === null ? this.time : this.time.sub(timeShift);
     const eta = float(0.0).toVar(), dh = vec2(0.0).toVar(), slope = vec2(0.0).toVar();
     const foam = float(0.0).toVar(), stage = float(0.0).toVar(), pile = float(0.0).toVar();
-    const foamFrame = vec2(0.0).toVar(), frameEnv = float(0.0).toVar();
+    const foamFrame = vec2(0.0).toVar(), frameEnv = float(0.0).toVar(), push = float(0.0).toVar();
     If(this.activeCount.greaterThan(0.5), () => {
       // Everything that does not depend on the wave is made a var here, before the loop: the field sample, wFar, the
       // Stokes ratio per metre of amplitude, the local wave speed and dξ/ds. Left as expressions, TSL emits them where
@@ -432,7 +434,7 @@ export class SetWaves {
         /** Time since this wave's crest passed a point (negative: still to come), for field speed `cLoc` and arrival time `tau`. */
         const phaseXi = (p: N, tau: N, cLoc: N): N => {
           const dTau = b.x.sub(this.meanTravel.x).mul(p.x.sub(TIP[0])).add(b.y.sub(this.meanTravel.y).mul(p.y.sub(TIP[1]))).div(cLoc);
-          return this.time.sub(a.x).sub(tau).sub(dTau);
+          return now.sub(a.x).sub(tau).sub(dTau);
         };
         // The Phase 1 wave here: waveAtCrest's first half.
         const xi = phaseXi(xz, f.tau, cLocal).toVar();
@@ -634,8 +636,10 @@ export class SetWaves {
         eta.assign(floorY);
         slope.assign(vec2(0.0));
       });
+      // The bore's push on the foam (whitewater §5.2): the local wave speed where the breaking foam is.
+      push.assign(foam.mul(cLocal));
     });
-    return { eta, dh, slope, foam, stage, foamFrame, pile };
+    return { eta, dh, slope, foam, stage, foamFrame, pile, push };
   }
 
   /**
@@ -685,6 +689,13 @@ export class SetWaves {
    */
   breakingFoamNode(xz: N): N {
     return this.sumBreaking(xz, false).foam;
+  }
+
+  /** breakingFoamNode and the bore's push on the foam (the local wave speed × that foam, m/s; whitewater §5.2) from one
+   * sum: the foam field's source, `timeShift` s before the clock (absent: now). Compute-safe; inside an Fn. */
+  breakingFoamPushNode(xz: N, timeShift: N | null = null): { foam: N; push: N } {
+    const s = this.sumBreaking(xz, false, true, timeShift);
+    return { foam: s.foam, push: s.push };
   }
 
   /** vec2(∂η/∂x, ∂η/∂z) of the set waves (Eulerian, Jacobian-corrected), breaking included. Self-test only. */

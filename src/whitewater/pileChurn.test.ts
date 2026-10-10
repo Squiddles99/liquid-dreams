@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { boreWeight, flightTime, sectionEnd } from '../breaker/wombSection';
-import { CHURN_FADE_S, FRESH_BOIL_WEIGHT, FRESH_FADE_S, boilFreshness, boilWeight, freshFoamWeight } from './pileChurn';
+import { CHURN_FADE_S, FRESH_BOIL_WEIGHT, FRESH_FADE_S, FRESH_RISE_S, boilFreshness, boilWeight, freshFoamWeight } from './pileChurn';
 
 describe('pileChurn: the boil on the ribbon\'s broken section (whitewater §3.2)', () => {
   const H = 2, T = 15, land = flightTime(H);
@@ -43,12 +43,20 @@ describe('pileChurn: fresh boil is solid white, lace as it ages (whitewater F3)'
 
 describe('pileChurn: boilFreshness, the mound solid through its broken life (whitewater F3)', () => {
   const H = 3, T = 15, land = flightTime(H), end = sectionEnd(H, T);
-  it('is 0 before the landing, 1 from the landing to the white-water wall, 0 FRESH_FADE_S after it', () => {
+  it('is 0 before the landing, 1 from FRESH_RISE_S after it to the white-water wall, 0 FRESH_FADE_S after that', () => {
     expect(boilFreshness(null, H, T)).toBe(0);
     expect(boilFreshness(land - 0.05, H, T)).toBe(0);
-    for (let tb = land; tb <= end; tb += 0.25) expect(boilFreshness(tb, H, T), `tb ${tb}`).toBe(1);
+    for (let tb = land + FRESH_RISE_S; tb <= end; tb += 0.25) expect(boilFreshness(tb, H, T), `tb ${tb}`).toBe(1);
     expect(boilFreshness(end + FRESH_FADE_S, H, T)).toBe(0);
     expect(boilFreshness(Infinity, H, T)).toBe(0);
+  });
+  it('rises over FRESH_RISE_S (0.5 s) after the landing: a short gradient along the crest, not a cliff at the held tube (F6)', () => {
+    expect(FRESH_RISE_S).toBe(0.5);
+    expect(boilFreshness(land, H, T)).toBe(0);
+    const mid = boilFreshness(land + FRESH_RISE_S / 2, H, T);
+    expect(mid).toBeGreaterThan(0.3);
+    expect(mid).toBeLessThan(0.7);
+    for (let a = 0; a < FRESH_RISE_S; a += 0.05) expect(boilFreshness(land + a + 0.05, H, T)).toBeGreaterThanOrEqual(boilFreshness(land + a, H, T));
   });
   it('makes the mound solid (weight ≥ 0.9 where the lace holes were) and lets the lace back as it ages', () => {
     for (const f of [0.3, 0.5, 0.7]) expect(freshFoamWeight(f, boilFreshness(end - 0.5, H, T))).toBeGreaterThanOrEqual(FRESH_BOIL_WEIGHT);

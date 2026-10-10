@@ -38,7 +38,7 @@ export const SET_FOAM_MAX_COVER = 0.95;
 /** The lace's cells, along travel and across it (m). */
 export const FOAM_CELL_M: readonly [number, number] = [2.8, 2.0];
 
-export function setFoamPattern(foam: N, frame: N, time: N): N {
+export function setFoamPattern(foam: N, frame: N, time: N, thin: N = float(0.0)): N {
   return Fn(() => {
     const out = vec2(0.0, 1.07).toVar();
     If(foam.greaterThan(1e-3), () => {
@@ -52,7 +52,8 @@ export function setFoamPattern(foam: N, frame: N, time: N): N {
       const f = sqrt(mx_worley_noise_vec2(q, 0.9));
       const edge = f.y.sub(f.x);
       // Solid from a weight of ~0.75 (the rims' band covers the widest cells), lace below, threads at the thinnest.
-      const width = w.pow(1.3).mul(1.2).add(0.18);
+      // Aged lace (`thin` 1) is threads, fresh is clumps: the rims narrow to AGED_LACE_WIDTH.
+      const width = w.pow(1.3).mul(1.2).add(0.18).mul(float(1.0).sub(float(thin).mul(1 - AGED_LACE_WIDTH)));
       const lace = float(1.0).sub(smoothstep(width.mul(0.5), width, edge));
       const cover = lace.mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0)));
       // The clumps: bright over each cell's middle, and a finer mottle of bubble clusters (~0.5 m) over them.
@@ -80,8 +81,15 @@ export function waterFoamFrameCpu(x: number, z: number, travelX: number, travelZ
 
 /** The breaking foam map (FoamField), sampled at the undisplaced base xz. */
 export interface SheetFoamMap {
-  sampleNode(xz: N): { density: N; inside: N };
+  sampleNode(xz: N): { density: N; inside: N; age?: N };
+  /** The lace pattern's long axis from the swell's travel (FoamField: the drift direction, whitewater §5.3). */
+  patternAxisNode?(travel: N): N;
+  /** How long dense foam takes to become lace (s): older map foam is drawn as threads (setFoamPattern's thin). */
+  readonly clearTimeS?: number;
 }
+
+/** Aged lace (whitewater §5.3): the lace's rims narrow to this share where the map's foam is older than its clear time. */
+export const AGED_LACE_WIDTH = 0.7;
 
 /**
  * The foam weight a surface point uses: the map inside its box, the Phase 2 placeholder outside, blended over the edge
@@ -241,7 +249,13 @@ export class OceanSurface {
           : float(0.0);
     const breakFoam = sheetFoamWeight(setFoam, foamOverlay);
     const foamWeight = max(breakFoam, max(surfFoam, swashLace));
-    const setFoamLook = setFoamPattern(foamWeight, waterFoamFrame(vBaseXZ, model.sets.meanTravel), model.sim.time);
+    // The pattern's axis follows the foam's drift (whitewater §5.3); the map's own foam older than its clear time is thin
+    // lace, weighted by the map's share of the foam here (0 with no map foam: the shore's foam keeps its look).
+    const axis = options.foamMap?.patternAxisNode ? options.foamMap.patternAxisNode(model.sets.meanTravel) : model.sets.meanTravel;
+    const aged = foamOverlay?.age && options.foamMap?.clearTimeS
+      ? smoothstep(options.foamMap.clearTimeS, options.foamMap.clearTimeS + 5, foamOverlay.age).mul(foamOverlay.inside).mul(saturate(foamOverlay.density.div(max(foamWeight, 1e-3))))
+      : float(0.0);
+    const setFoamLook = setFoamPattern(foamWeight, waterFoamFrame(vBaseXZ, axis), model.sim.time, aged);
 
     material.colorNode = shadeWater(
       { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y, breakFoam: min(setFoamLook.x, breakFoam),

@@ -84,6 +84,6 @@ describe('the spray pool (CPU reference)', () => {
     expect(p.clear).toBe(true);
     expect(p.ticks.length).toBe(58);
     expect(p.ticks[57]).toBe(200);
-    expect(s.planTicks(10.05, 58)).toEqual({ clear: false, ticks: [201] });
+    expect(s.planTicks(10.05, 58)).toEqual({ clear: false, coarse: [], ticks: [201] });
   });
 });
