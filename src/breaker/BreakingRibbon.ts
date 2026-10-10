@@ -625,7 +625,7 @@ export class BreakingRibbon {
     // The tip's fringe (F2): a solid thin band with its own fine (~0.25 m) breakup, not the sheet's 2–3 m lace.
     const fringe = saturate(vFringe).mul(mix(0.75, 1.0, smoothstep(-0.3, 0.3, mx_noise_float(vec3(vDetail.mul(4.0), model.sim.time.mul(0.5)))))).mul(SET_FOAM_MAX_COVER);
     // Fresh boil is solid white (F3): the weight lifted to FRESH_BOIL_WEIGHT × the boil, the lace back as it ages.
-    const foamLook = setFoamPattern(freshFoamWeightNode(max(vSetFoam.mul(float(1.0).sub(clean)), curlOwn), vBoil), waterFoamFrame(vDetail, model.sets.meanTravel), model.sim.time);
+    const foamLook = setFoamPattern(freshFoamWeightNode(max(vSetFoam.mul(float(1.0).sub(clean)), curlOwn), vBoil), waterFoamFrame(vDetail, foamMap?.patternAxisNode ? foamMap.patternAxisNode(model.sets.meanTravel) : model.sets.meanTravel), model.sim.time);
     // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
     // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
     const sunVis = shading.sunlight ? shading.sunlight.visibilityNode(positionWorld.xz) : undefined;

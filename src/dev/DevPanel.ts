@@ -205,6 +205,7 @@ export const OVERLAY_BINDINGS: Record<keyof DebugOverlays, { label: string }> = 
 export const FOAM_BINDINGS = {
   clearTimeS: { label: 'clear time (s)', ...FOAM_PARAM_RANGES.clearTimeS, step: 0.5 },
   driftMps: { label: 'foam drift (m/s)', ...FOAM_PARAM_RANGES.driftMps, step: 0.05 },
+  laceLifeS: { label: 'lace life (s)', ...FOAM_PARAM_RANGES.laceLifeS, step: 1 },
 } as const;
 
 /** Spray folder sliders (spec 2026-09-27-offshore-spray-design.md §3.2), ranges exactly normalizeSprayParams's (DevPanel.test.ts). */
