@@ -100,21 +100,27 @@ export function leftLedgeFrom(tip: Pt, lengthM = LEFT_LEDGE_M, bearingDeg = LEFT
   const r = (bearingDeg * Math.PI) / 180, end: Pt = [tip[0] + lengthM * Math.sin(r), tip[1] - lengthM * Math.cos(r)];
   return [tip, end, [end[0], -450]];
 }
-/** The right's shape from its corner: his satellite line runs a little seaward of due south. The swell reaches it before
- * the corner: the left stands up first 40 m south of the corner; the right closes out. */
-const RIGHT_SHAPE: readonly Pt[] = [[0, 0], [-7, 50], [-20, 150], [-30, 242]];
+/** The right's shape from its corner, and with it the shelf's south side: the satellite's trace (spec
+ * 2026-10-11-south-side-design.md, Andrew's ruling "literal trace"; reference/place/womb-correct-topdown-peak-189m-offshore.webp,
+ * x scaled 1.185 from the peak to the game's 224 m to the waterline, z as traced). South of the peak the water is dark
+ * within 10–20 m: the right is a 14 m stub due south, then the edge runs east, drifting a little south, through the dark
+ * water's tongue toward the shore platform, and ends at SHELF_INNER_X (the last x is SHELF_INNER_X − TIP[0], so
+ * shelfPolygon adds no leg). Before: a ledge 242 m a little seaward of due south, closed by a straight leg at z 242 (the
+ * square). */
+const RIGHT_SHAPE: readonly Pt[] = [[0, 0], [-1, 14], [47, 17], [95, 22], [118, 30], [139, 40], [194, 46]];
 /** The right from `tip`: its shape moved to it. */
 export const rightLedgeFrom = (tip: Pt): Pt[] => RIGHT_SHAPE.map(([x, z]) => [x + tip[0], z + tip[1]] as Pt);
 
 /** The left's edge: from the corner one 46° ledge for 180 m to (−1, −125), then due north (R1–Task 2's three legs from a
  * corner 94 m off the beach, [[0,0],[28,−64],[40,−110],[40,−450]], ran out of water: see TIP). */
 export const NORTH_LEDGE: readonly Pt[] = leftLedgeFrom(TIP);
-/** The right's edge, from the corner. */
+/** The right's edge, from the corner: the 14 m stub, then the shelf's south side east to SHELF_INNER_X. */
 export const SOUTH_LEDGE: readonly Pt[] = rightLedgeFrom(TIP);
 /** The shelf's inshore edge (x): 10 m inside the shore's platform (shoreReef.SHORE_REEF_AT_MAP_M), so no sand strip shows
  * between them. */
 export const SHELF_INNER_X = SHORE_X - SHORE_REEF_AT_MAP_M + 10;
-/** Shelf polygon (clockwise in plan view): tip → south ledge → inner-platform edge → north map edge → north ledge. */
+/** Shelf polygon (clockwise in plan view): tip → south ledge (which ends on the inner-platform edge) → north map edge →
+ * north ledge. */
 export const SHELF_POLYGON: readonly Pt[] = shelfPolygon(NORTH_LEDGE);
 /** The shelf polygon for the ledges: tip → south ledge → across to the inner-platform edge (SHELF_INNER_X) → north map
  * edge → back down the left. */
