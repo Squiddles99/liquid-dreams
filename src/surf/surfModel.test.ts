@@ -7,6 +7,7 @@ import {
   BORE_RAMP_S, BORE_SPEED_MS, SURF_DZ, SURF_NZ, SURF_TABLE, SURF_Z0, SWASH_FRACTION, type SurfState, buildHeights, buildTauTable, heightOf, heightRange,
   lullHeight, runupOf, surfFoam, surfFoamFar, swashLevel, swashLift, swashShape, tableAt, waterEdgeOffset, wetLevel,
 } from './surfModel';
+import { SHORE_FOAM_BAND_M, shoreFoamShare } from './surfModel';
 
 const T = 15;
 /** A coast whose τ grows 0.02 s per m of z (an oblique swell), with a set wave at n = 10. */
@@ -160,5 +161,16 @@ describe('the swash and the wet line', () => {
     expect(swashLift(e + 40, e)).toBe(0);
     expect(swashLevel(z, tArrive + 1, state(1, 1.6, false))).toBe(0);
     expect(wetLevel(z, tArrive + 1, state(0))).toBe(0);
+  });
+});
+
+describe('the shore band inside the foam map (whitewater L2)', () => {
+  it('keeps CoastalSurf foam within SHORE_FOAM_BAND_M of the water edge, none past twice that; outside the box unchanged', () => {
+    expect(SHORE_FOAM_BAND_M).toBe(25);
+    for (const d of [-5, 0, 10, 25]) expect(shoreFoamShare(d, 1)).toBe(1);
+    expect(shoreFoamShare(37.5, 1)).toBeCloseTo(0.5, 9);
+    for (const d of [50, 80, 300]) expect(shoreFoamShare(d, 1)).toBe(0);
+    for (const d of [0, 40, 300]) expect(shoreFoamShare(d, 0)).toBe(1);
+    expect(shoreFoamShare(300, 0.5)).toBeCloseTo(0.5, 12);
   });
 });
