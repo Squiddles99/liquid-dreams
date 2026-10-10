@@ -254,3 +254,23 @@ spread 6.5 % at a reef-head ray crossing -> 8 %; (c) terrace, pile growth, peak,
 4. The highest water standing 3 m behind the crest at the tip for 1 s (the water's shape at the two ledges' meeting line).
 5. Looks: the Bombie barely reads from the crew's lookout at 1 km; the far closeout's stepped edges at Huge.
 6. Merge `shelf-polish` (pushed, not merged). Captures: `evidence/shelf-polish/captures.md`.
+
+## Fable's closing review (2026-10-10): merge recommended; Andrew decides
+
+Looked at: task8 stand + down-the-line frames at Pumping, Huge and Big (contact sheet; the sky's banding in my sheet is my
+resize, the frames' sky matches the retune's pixel for pixel in colour count). Nothing broken; the inside closeout reads
+as a line from the stand; the Bombie's white water at Big is real but ~2 px from the lookout (carried, not a defect).
+
+Gates: §1 met off-GPU (spray frames 41.5 → 14 ms/tick, identical output; in-game bar unmeasurable: Blender in another
+session); §2 met (bars unchanged on the ridden run); §3 met (quads gone; the far closeout's stepped edges carried, not the
+spacing: the sheet's far grid); §4 met as classed (three re-pins with reasons: closure 0.55 → 0.5, left peel 8 → 7.5, pile
+spread 5 → 8 %; seven rewrites; one carried: the highest water 3 m behind the crest at the tip for 1 s); §5 met at 4/6 ft,
+the 8 ft locus named (146 cells, 69–189 m off the beach 1 km north, the coast field focusing ×1.8 on the hand-set 9 m
+shelf); §6 met; §7 met (bursts moved to the coast's Bombie, gated by its breaking map; the old mound gone); suite 2048 / 48
+red vs the merge's 53, 17 greened, 11 timeouts that pass alone, 1 the renamed 8 ft coast case.
+
+For Andrew, in order of weight: (1) merge `shelf-polish`; (2) the plateau-aware level read (its own segment, changes the
+water's timing CPU + GPU); (3) the 8 ft focus zone 1 km north: deepen the hand-set shelf there or accept a beach break;
+(4) B, the 2 cm board-water approximation (~20 ms/step, feel); (5) looks: the Huge far closeout's steps, the Bombie's size
+from the lookout; (6) the tip's highest-water lag. Worktrees to clean after the merge: `../ld-shelf-polish` (junctioned
+node_modules: rmdir first), `../ld-datum-before`, `../ld-lineup-truth` (junction too).
