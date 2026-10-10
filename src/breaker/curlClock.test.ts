@@ -70,3 +70,20 @@ describe("breakingLines: a level's onset nodes linked within CURL_LINK_CELLS", (
     expect(l[2]).toBe(-1);
   });
 });
+
+describe('curlTimes seeds a line where the level below broke first (level-read Task 4)', () => {
+  // A line that breaks from its far end (node 39 first, T falling 0.1 s per node toward it) while the level below broke
+  // first at node 0: the curl runs from node 0 down the line, and the far end waits for it (within the hold cap).
+  const T = Array.from({ length: N }, (_, i) => 10 - 0.1 * i);
+  const below = Float32Array.from({ length: N }, (_, i) => 2 + 0.05 * i);
+  it('the curl starts at the seed and runs away from it', () => {
+    const out = curlTimes(Float32Array.from(T), oneLine(), N, 1, CELL, Infinity, 6, below);
+    expect(out[0]).toBe(Math.fround(T[0]));
+    for (let i = 1; i < N; i++) expect(out[i], `node ${i}`).toBeGreaterThanOrEqual(out[i - 1]);
+  });
+  it('without a seed rank the line keeps its own first break', () => {
+    const out = curlTimes(Float32Array.from(T), oneLine(), N, 1, CELL, Infinity, 6);
+    expect(out[N - 1]).toBe(Math.fround(T[N - 1]));
+    for (let i = N - 2; i >= 0; i--) expect(out[i], `node ${i}`).toBeGreaterThanOrEqual(out[i + 1]);
+  });
+});

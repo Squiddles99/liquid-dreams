@@ -1,0 +1,12 @@
+  UNTIL t + 3 arc 197->198 tip 242 m: until 2.01 -> 1.66
+  TB t + 6 arc 182->183 tip 233 m: tb 0.58 -> 1.36
+  TB t + 6 arc 183->184 tip 234 m: tb 1.36 -> 1.73
+# 6 ft: 3 violations over the whole trace (dt 1,3,6); worst 0.77 s at t + 6 arcs 182/183 (1, 192) tip 233 m TB
+  TB t + 1 arc 196->197 tip 238 m: tb 0.11 -> 0.73
+  TB t + 1 arc 197->198 tip 239 m: tb 0.73 -> 0.87
+  TB t + 1 arc 198->199 tip 240 m: tb 0.87 -> 0.94
+  TB t + 3 arc 189->190 tip 233 m: tb 2.50 -> 2.56
+  TB t + 3 arc 190->191 tip 234 m: tb 2.56 -> 2.70
+  TB t + 3 arc 191->192 tip 235 m: tb 2.70 -> 2.81
+# 8 ft: 6 violations over the whole trace (dt 1,3,6); worst 0.62 s at t + 1 arcs 196/197 (-43, 222) tip 238 m TB
+# 12 ft: 0 violations over the whole trace (dt 1,3,6); worst 0.00 s at -

@@ -113,3 +113,44 @@ the attempt, what the attempt changed, and what a non-local fix would take), and
 
 Proceed: Task 2 (C as plain code, probes out, record layout restored, the new unit test), Task 3 run, Task 4 measure +
 one attempt, then STOP or Task 5.
+
+## STOP at Task 4 (Opus, 2026-10-10): the one attempt does not reach 0
+
+**Done before it.** Task 2 e4de42a: C as plain code (`reefField.ONSET_EDGE_LEVELS = 1` in `smoothOnsetTimes`), probes out,
+record layout back to 1 + 6 levels, new unit test (`reefField.test.ts` "smoothOnsetTimes keeps a band edge on its own
+clock", RED→GREEN), crestTrace comment corrected, 220 m limit kept. Whole trace (`evidence/level-read/seams-C.txt`,
+classed): 6 ft 11 (worst 1.02 s), 8 ft 6 (0.62 s), 12 ft 0. All 9 of the 6 ft TB steps are on the level-6 hook (line 17685);
+the 2 UNTIL steps at 6 ft and all 6 at 8 ft are not (level-5 line 35179, level-4 line 409, the level-5 band's edge).
+Task 3: GPU self-test 14/14 at e4de42a (no mirror needed). Breaker suite after Task 2 (busy machine): 50 red / 421, vs
+shelf-polish's `breaker-baseline-names.txt` 2 new: **`smallSwell` "Solid at tide 0.5 m"** (first-leg peel off the
+womb-retune matrix by 0.080 m/s against its 0.06 pin: the accepted C move, left red for you to rule on re-pinning that
+row) and `peelStretch` "two sections meet" (a 5 s timeout under load).
+
+**The attempt (one commit, this one).** `curlTimes` takes an optional `seedRank`. For level k ≥ 1, `curlPass` seeds each
+line's curl at the node whose ray broke level k − 1 first (the first march's record, physical), instead of at the
+line's own earliest break. So a level's curl runs the way the level below peeled. Unit test `curlClock.test.ts` "curlTimes
+seeds a line where the level below broke first" RED→GREEN, 9/9.
+
+**Measured (`seams-T4.txt`, `ride-T4.txt`, `curl-T4.txt`).**
+- Seams: **6 ft 3** (worst 0.77 s; was 11 / 1.02), **8 ft 6** (unchanged, 0.62 s: not the hook), 12 ft 0.
+  The 6 ft remainder is the hook's corner where it meets the level-5 curl: arcs 182→183→184 tb 0.58 → 1.36 → 1.73 (rays
+  meet the reseeded line at T′ 5.05 beside the east band's 5.31), and UNTIL at arcs 197/198 (2.01 → 1.66: the north leg is
+  now held to T′ 5.45, so the wait ahead of it shortens).
+- Ridden line vs C: identical except the live-station count (+1/+2 at three samples). It is still within the accepted
+  bound of Task 0.
+- Curl report vs C: Solid/20 first peel 12.6 → 12.7 m/s (back to Task 0's); **Pumping/20 first peel 13.3 → 13.4, first
+  break 1.9 → 2.1 s, held 31.6 → 33.3 %; Solid/20 held 26.9 → 27.8 %**. The reseed reaches the ridden left's lines too
+  (within 0.1 m/s, but its first break moves 0.2 s).
+
+**What a non-local fix would take.** The 8 ft steps are a level-4/5 band edge read across a level-4 line that is itself
+ordered against the crest. Nothing on one line fixes them. Zero over the whole trace needs the one-curl rule enforced
+**along the crest rather than along lines**: in the bake, per level, sweep each crest (a τ contour) out from its earliest
+break and hold every ray behind its crest neighbour nearer that break. That is a new pass over every line, the ridden
+left included, with its own ride/curl measurement. Alternatively, the one-curl test's premise is wrong on the inner
+shelf: two sections meeting there is a closeout, which the Womb's inside does, so the check stays at 220 m and the
+inner shelf is excluded by name.
+
+**Rulings wanted (one line each):**
+1. Keep the Task 4 attempt (6 ft 11 → 3; it moves the ridden left's first break 0.2 s) or revert it to C alone?
+2. Carry or continue: the crest-ordered pass (new segment), or accept the inner shelf as a closeout and close at 220 m?
+3. `smallSwell` "Solid at tide 0.5 m": re-pin the matrix row to the new first-leg peel, or widen?
