@@ -199,3 +199,58 @@ a dark block from the stand: **cap the station spacing on the inside leg at the 
 provided `_rideCost.ts` shows ≤ +1 ms per step at 12 ft and the stand frame at Huge t+5 shows a continuous edge; if the
 cost is over that, accept the steps and carry them with the number. Re-capture Huge stand t+3/t+5 after. Then Tasks 4–8
 with no further STOP: end with the two handovers and the captures, pushed, not merged.
+
+### Tasks 3 (follow-on) to 8 (Opus, 2026-10-10, fourth run): 9eecedb..HEAD
+
+Tasks 5 and 7 were done on this branch by this run (the coordinator's side-branch plan was retracted; nothing merged).
+
+**Rulings I made (one line each).**
+- Task 3 follow-on: the inside-leg spacing cap was within cost (+0.2 ms/step at 12 ft) but did not give a continuous edge
+  (steps unchanged at 2–3× the stations; the section numbers are smooth at 3 m), so it is **reverted** and the steps carried;
+  2 m was not usable (a run cut at 279 m by toCrest's tolerance), 1.5 m was the one tried.
+- Task 4: tests about what the player sees read the game's sheet options (lean, no pile); the breakingField pile tests'
+  stale (0, 0) tip coordinates became TIP (intent unchanged); the spray's throw moment moved for all T_THROW users.
+- Task 5: the set's breaking depth is the unamplified set height's (setBreakingDepth), read along each row of the built
+  coast map from the waterline; a focus (amp > 1) beyond it stays a red, named, not absorbed into the band.
+- Task 6: `tools/_fieldCost.mjs` deleted (its A/B is gone); the dev panel's Coast folder kept (dials, no on/off).
+- Task 7: re-aim, not delete: a position (BOMBIE_CENTRE) and a gate (coastBreaking.footprintBreakHeight on the coast field);
+  the per-wave burst rule unchanged inside the gate (thresholdFt default stays 6).
+
+**Carried items (measured value, class).**
+
+| item | measured | class / why |
+|---|---|---|
+| breakingField: highest water moves with the wave | 4 steps (bar 2), the tip's ray only | (b) the highest water stays 3 m behind the crest for 1 s at the tip (4.7–5 m of water behind, 3.5 m under the crest); same on the game's sheet; the water's own shape |
+| coastBreaking: 8 ft no closeout | 146 cells (was 167), 69–189 m off, z −988…−850 (+3 at z 450) | carried (Task 5): the hand-set 9 m inner shelf under a coast-field focus, amp 1.77–1.92 (2.54); a bed fix (deeper shelf there, or the focus's source) |
+| Huge far closeout's stepped edges (stand) | unchanged with spacing 1.5–2.8 m (was 3–6.5) | carried, not diagnosed; lead: the far sheet grid beside the ribbon (a hide test names it) |
+| The Bombie from the lookout | 22 px in 2 rows at 1 km on the glare | look item: it works (close frame), it barely reads from the stand |
+| Earlier runs: spray frames | exact cull, 41.5 -> 14.0 ms/tick, 0 of 170 ticks differ | done; no camera cull; the in-game bar unmeasurable on this machine |
+| Earlier runs: curl seams on the inner shelf | 6 ft arcs 182/183: tb 0.58 vs 2.53 s in 1 m | carried (plateau-aware level read, for Andrew) |
+| Earlier runs: the ribbon's run onto the inside leg | run ends 380–427 m (was 248 m / none) | done (Task 3); trace +0.2 ms/step, spray +0.4 ms/tick |
+| B: the 2 cm board-water approximation | ~20 ms per step | not taken (Andrew's call) |
+
+Task 4's numbers: `evidence/shelf-polish/task4-bars.txt` ((a) closure 0.515 s -> bar 0.5, left peel 7.98 -> bar 7.5, pile
+spread 6.5 % at a reef-head ray crossing -> 8 %; (c) terrace, pile growth, peak, lift, station ψ, spray throw). Task 5:
+`task5-shore-band.txt`; Task 7: `task7-bombie.txt`; Task 3 follow-on: `task3b-inside-spacing.txt`.
+
+**Full suite (2026-10-10 10:05–10:14): 2048 tests, 48 failed** (the merge's list: 2050 / 53). Against
+`task6-fails-names.txt` (`evidence/shelf-polish/full-suite-diff.txt`):
+- 17 no longer red: one-curl 6/8 ft and until (Task 2); terrace, closure, peak, lift, pile ×2, left peel, station ψ, spray
+  mid-throw (Task 4); coastBreaking 8 ft under its old name (renamed by Task 5, still red); Fun ×3 (the Fun ruling, main);
+  surferParams (main's re-pin).
+- 12 newly red: 11 timeouts (RockMeshes, groundPatch, BreakingRibbon.limits ×5, wombProfile, shoreReef ×2, breakingField
+  "the tide moves the break"), all green re-run alone; 1 = coastBreaking 8 ft under its new name (carried).
+- The rest: the pre-retune idle baseline's reds, plus "highest water moves" (b).
+- In-game frames: one `_rideProfile` (7 ft) at Task 8 ran DIRTY (another session's Blender, 65 % CPU): riding 132.9 ms;
+  no idle window today.
+
+**For Andrew.**
+1. A plateau-aware level read (a separate segment: CPU + GPU record layout, the water's breaking clock): where a ray's running
+   maximum plateaued just under the next level the read takes the crossing as "now": 6 ft, inner shelf inside the right, arc
+   182 (run 0.220 < Q6 0.225) reads tb 0.58 s, arc 183 (run 0.229) reads 2.53 s, a 2 s jump in 1 m of crest.
+2. Approximation B: "a 2 cm approximation of the water under the board would buy ~20 ms per step" (changes ride feel; not
+   taken). A later exact candidate: cache `sectionFrameKnots` per station while `until` holds.
+3. The 8 ft breaking on the inner shelf 1 km north (coast focus on the hand-set 9 m shelf): deepen the shelf there, or accept.
+4. The highest water standing 3 m behind the crest at the tip for 1 s (the water's shape at the two ledges' meeting line).
+5. Looks: the Bombie barely reads from the crew's lookout at 1 km; the far closeout's stepped edges at Huge.
+6. Merge `shelf-polish` (pushed, not merged). Captures: `evidence/shelf-polish/captures.md`.
