@@ -45,6 +45,13 @@ evidence `docs/superpowers/evidence/whitewater/` (acceptance moments in `accept/
 | GPU ≡ CPU self-tests (branch) | foam 11/12 (surf: main's own, identical 0.4512), spray 5/5, ribbon 6/7 (footprint: main's own), breaker 14/14 | met |
 | unit suite vs main (full `vitest run`, both trees, same session) | main 34 failed / 2123; branch 34 failed / 2203 after one stale expectation fixed (breaking.test's churnSize default 0.2 → 0.25, Andrew's dial); the failing names are identical | met |
 
+**Merged origin/main d8b40fe (level-read + inner-shelf) into whitewater (2961b13, clean, no conflicts):** tsc clean; units
+src/whitewater + breaker + ocean + dev 34 failed / 770, every name main's own (the one not on the old main reference, reefField
+"back along its ray until grows… (no jump at the turn)", arrived with level-read and is on main's red list:
+`evidence/level-read/breaker-names-after.txt`); GPU self-tests foam 11/12, spray 5/5, ribbon 6/7, breaker 14/14 (as before
+the merge; the failures main's own); accept-1 re-captured hidden on the merged code: the plume over the merged shelf unchanged
+(`evidence/whitewater/accept-1-merged.png`).
+
 ## Andrew's dials (dev panel)
 
 - Breaking › surge **0.5** (0–1): the pocket's heave where a pitching lip lands.
