@@ -5,7 +5,7 @@ import {
 } from 'three/tsl';
 import { REEF_GRID, TIP } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, TUBE_THROWN_PSI, breakingDepth, normalizeBreakParams } from './breaking';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, TUBE_THROWN_PSI, UNTIL_NEVER, breakingDepth, normalizeBreakParams } from './breaking';
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
@@ -469,8 +469,8 @@ export class SetWaves {
           // The front's lean (setWaveModel.leanWeight): 0 without a crest.
           const lean = float(0.0).toVar();
           // setWaveModel.frontStanding: 0 off the record; unbroken, the wall standing up over the last WALL_LEAD_S before
-          // its break (wombSection.wallWeight on the record's time until onset) or with the ratio from the ribbon's onset,
-          // whichever is further; held, over the last WALL_LEAD_S before its turn; 1 once broken.
+          // its break (wombSection.wallWeight on the record's time until onset: the clock alone), or, where the ray never
+          // breaks, with the ratio from the ribbon's onset; held, over the last WALL_LEAD_S before its turn; 1 once broken.
           const standing = float(0.0).toVar();
           // How far it has settled into the white water's bore (setWaveModel.waveAtCrest, wombSection.boreWeight): 'lean' only.
           const bore = float(0.0).toVar();
@@ -523,9 +523,11 @@ export class SetWaves {
               // wombSection.wallWeight: (1 − until/WALL_LEAD_S)², 0 where it never breaks (UNTIL_NEVER and beyond the lead alike).
               const wall = (untilS: N): N => { const left = float(1.0).sub(clamp(untilS.div(WALL_LEAD_S), 0.0, 1.0)); return left.mul(left); };
               const byRatio = smoothstep(brk.ribbonOnset, 1.0, rC);
+              // Unbroken on the record's clock (until finite): the clock alone, as the drawn section's phase; the ratio only
+              // where the ray never breaks (UNTIL_NEVER). The further of the two stood a cliff ahead of the wall (frontStanding).
               standing.assign(select(rec.inside, select(onset.broken,
                 select(onset.tb.greaterThanEqual(0.0), float(1.0), max(byRatio.mul(wall(onset.tb.negate())), wall(onset.tb.negate()))),
-                max(byRatio, wall(onset.until))), float(0.0)));
+                select(onset.until.lessThan(UNTIL_NEVER), wall(onset.until), byRatio)), float(0.0)));
               bore.assign(select(rec.inside.and(onset.broken).and(onset.tb.greaterThanEqual(0.0)),
                 boreWeightNode(onset.tb, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), float(2 * Math.PI).div(a.z)), float(0.0)));
             }
