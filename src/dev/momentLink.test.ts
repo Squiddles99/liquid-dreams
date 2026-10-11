@@ -27,6 +27,18 @@ describe('encode/decode', () => {
     const b64 = btoa(JSON.stringify({ v: 1, ...sample, conditions: old })).replace(/=+$/, '');
     expect(decodeMoment(`#m=${b64}`)?.conditions.weather).toEqual(WEATHER_PRESETS.clear);
   });
+  it('round-trips the select screen sets (duneSets) when on, and leaves the field out when off or absent', () => {
+    expect(decodeMoment(encodeMoment({ ...sample, duneSets: true }))?.duneSets).toBe(true);
+    expect(decodeMoment(encodeMoment({ ...sample, duneSets: false }))?.duneSets).toBeUndefined();
+    expect(encodeMoment({ ...sample, duneSets: false })).toBe(encodeMoment(sample));
+    expect(decodeMoment(encodeMoment(sample))?.duneSets).toBeUndefined();
+  });
+  it('opens an old link (no duneSets field) with duneSets undefined', () => {
+    const b64 = btoa(JSON.stringify({ v: 1, ...sample })).replace(/=+$/, '');
+    const m = decodeMoment(`#m=${b64}`);
+    expect(m).not.toBeNull();
+    expect(m?.duneSets).toBeUndefined();
+  });
   it('uses URL-safe characters only', () => {
     expect(encodeMoment(sample).slice(3)).toMatch(/^[A-Za-z0-9_-]+$/);
   });

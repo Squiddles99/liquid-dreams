@@ -220,6 +220,9 @@ function toCrest(field: ReefField, w: ActiveWave, t: number, ctx: WaveContext, q
   return q;
 }
 
+/** Diagnostics (the crest-line probe): why each side of the last trace ended. Cleared by traceLines. */
+export const traceEnds: { wave: number; sign: number; x: number; z: number; arc: number; why: string }[] = [];
+
 /** One wave's crest, both ways from its seed, at `factor` × the spacing rule. Empty if the crest isn't on the reef. */
 function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx: WaveContext, input: TraceInput, factor: number): Station[][] {
   const p = input.params;
@@ -237,11 +240,12 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = toCrest(field, w, t, ctx, project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS));
-      if (!(Math.abs(next.xi) < CREST_TOLERANCE_S) || !inGrid(field, next.x, next.z) || (Math.hypot(next.x - TIP[0], next.z - TIP[1]) > (input.reachM ?? TRACE_REACH_M) && !insideLeg(next.z))) break;
+      const lost = !(Math.abs(next.xi) < CREST_TOLERANCE_S), off = !inGrid(field, next.x, next.z), far = Math.hypot(next.x - TIP[0], next.z - TIP[1]) > (input.reachM ?? TRACE_REACH_M) && !insideLeg(next.z);
+      if (lost || off || far) { traceEnds.push({ wave, sign, x, z, arc, why: lost ? `crest lost (xi ${next.xi.toFixed(3)} s at ${next.x.toFixed(1)}, ${next.z.toFixed(1)})` : off ? 'off the grid' : 'past the reach' }); break; }
       arc += sign * Math.hypot(next.x - x, next.z - z);
       ({ x, z, f } = next);
       below = breakingRatio(w.heightM * f.amp, f.hminBreak, p) < p.ribbonOnset && !(timeUntilOnset(field, w, x, z, p) < WALL_LEAD_S) ? below + ds : 0;
-      if (below > BELOW_ONSET_RUN_M) break;
+      if (below > BELOW_ONSET_RUN_M) { traceEnds.push({ wave, sign, x, z, arc, why: 'below the onset run' }); break; }
     }
     sides.push(side);
   }
@@ -305,6 +309,23 @@ export function fillSections(line: Station[], periodS: number, p: Pick<BreakPara
   });
 }
 
+/** Each wave's whole traced line (end to end by arc), its times and sections filled, the stations that draw nothing kept
+ * (traceStations' input; the crest-line probe reads the sheet's crest on past the drawn stretch). */
+export function traceLines(field: ReefField, waves: readonly ActiveWave[], t: number, ctx: WaveContext, input: TraceInput, factor = 1): Station[][] {
+  const lines: Station[][] = [];
+  traceEnds.length = 0;
+  waves.forEach((w, i) => {
+    if (!(w.heightM > input.minHeightM)) return;
+    const sides = traceWave(field, w, i, t, ctx, input, factor);
+    if (sides.length === 0) return;
+    const line = [...sides[1].reverse(), ...sides[0]];
+    fillTimes(field, w, line, ctx, input);
+    fillSections(line, field.periodS, input.drawSurge ? input.params : { ribbonOnset: input.params.ribbonOnset });
+    lines.push(line);
+  });
+  return lines;
+}
+
 /**
  * Every wave's stations, in drawing order: each wave's crest from one end to the other, runs of live stations
  * separated by a single gap entry (between waves, and where a stretch of crest isn't drawn). At most MAX_STATIONS
@@ -314,13 +335,7 @@ export function traceStations(field: ReefField, waves: readonly ActiveWave[], t:
   let out: StationEntry[] = [];
   for (let attempt = 0, factor = 1; attempt < 5; attempt++, factor *= 1.5) {
     out = [];
-    waves.forEach((w, i) => {
-      if (!(w.heightM > input.minHeightM)) return;
-      const sides = traceWave(field, w, i, t, ctx, input, factor);
-      if (sides.length === 0) return;
-      const line = [...sides[1].reverse(), ...sides[0]];
-      fillTimes(field, w, line, ctx, input);
-      fillSections(line, field.periodS, input.drawSurge ? input.params : { ribbonOnset: input.params.ribbonOnset });
+    traceLines(field, waves, t, ctx, input, factor).forEach((line) => {
       for (const s of line) {
         if (alive(s)) out.push(s);
         else if (out.length > 0 && !out[out.length - 1].gap) out.push({ gap: true });

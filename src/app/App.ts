@@ -49,7 +49,7 @@ import {
   CustomProfile, type DevLookParams, type DevSettings, type SettingsMode, type SettingsStorage, assignParams, clearDevSettings,
   cloneDevSettings, cloneLook, loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
 } from '../dev/devSettings';
-import { HOTKEYS, captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
+import { HOTKEYS, captureScreenshot, downloadBlob, handleHotkeys, reportMomentFilenames, screenshotFilename } from '../dev/hotkeys';
 import { PADDLE_OUT_MS } from '../frontend/entry';
 import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
@@ -60,6 +60,7 @@ import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
 import { PauseMenu } from '../frontend/ui/pauseMenu';
 import { frontEndCheck } from '../dev/frontEndCheck';
 import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
+import { type CrestLineRow, crestLineRows, leanFrontEffect, traceEnds } from '../dev/crestLineProbe';
 import { FrameLog } from '../dev/frameLog';
 import { PerfOverlay } from '../dev/perf';
 import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
@@ -558,6 +559,7 @@ export class App {
         onLookout: () => {}, // read every frame by LookoutBackdrop.update
         onReferenceMoment: (name) => this.goToReferenceMoment(name),
         onCopyLink: () => void this.copyLink(),
+        onReportMoment: () => void this.reportMoment(),
         onScreenshot: () => { this.screenshotRequested = true; },
         onTogglePause: () => this.setPaused(!this.clock.paused),
         onSets: () => {
@@ -801,6 +803,8 @@ export class App {
     this.surf.invalidate();
     assignConditions(this.conditions, m.conditions);
     this.seabed.setTide(this.conditions.tideM);
+    // The select screen's sets swap the set schedule: a link copied with them on replays its wave only with them on.
+    this.setDuneSets(m.duneSets ?? false);
     this.clock.setTime(m.simTime);
     this.setPaused(m.paused);
     // The probe still holds the old spot's water: seed the lineup at the still-water level, forget the old readings, and
@@ -832,6 +836,7 @@ export class App {
     return {
       conditions: cloneConditions(this.conditions), camera: this.rig.getPose(), simTime: this.clock.simTime, paused: this.clock.paused,
       ...(this.surferParams.enabled ? { surfer: { ...this.surferParams } } : {}),
+      ...(this.duneSets ? { duneSets: true } : {}),
     };
   }
 
@@ -1973,6 +1978,35 @@ export class App {
     }
   }
 
+  /** Dev readout (tools/_crestLine.ts, womb-realism): every traced station's crest-line numbers now (src/dev/crestLineProbe). */
+  crestLineProbe(spacingM = 2): { t: number; offshoreMs: number; appOffshoreMs: number; rows: CrestLineRow[]; ends?: unknown } {
+    const t = this.clock.simTime;
+    if (!this.field || !this.waveCtx || !this.breakParams.enabled) return { t, offshoreMs: 0, appOffshoreMs: this.offshoreMs, rows: [] };
+    // Fresh from the conditions (the app's own offshoreMs is reported beside it: a moment's wind must reach the lip).
+    const offshoreMs = offshoreSpeed(this.conditions.wind.speedMs, this.conditions.wind.directionDeg, this.field.far.dirX, this.field.far.dirZ);
+    const waves = wavesNear(t, this.conditions, this.sets).map(toActiveWave);
+    const rows = crestLineRows({ field: this.field, ctx: this.waveCtx, waves, t, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs, spacingM });
+    return { t, offshoreMs, appOffshoreMs: this.offshoreMs, rows, ends: traceEnds.map((e) => ({ ...e, arrivalS: waves[e.wave].arrivalS })) };
+  }
+
+  /** Dev readout (womb-realism Task 0 Step 5): the sheet's crest at one station with the front's standing as is, 0 and 1. */
+  crestLineLean(arrivalS: number, arc: number): ReturnType<typeof leanFrontEffect> {
+    if (!this.field || !this.waveCtx) return null;
+    const t = this.clock.simTime, offshoreMs = offshoreSpeed(this.conditions.wind.speedMs, this.conditions.wind.directionDeg, this.field.far.dirX, this.field.far.dirZ);
+    return leanFrontEffect({ field: this.field, ctx: this.waveCtx, waves: wavesNear(t, this.conditions, this.sets).map(toActiveWave), t, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs }, arrivalS, arc);
+  }
+
+  /** Ctrl+Shift+M: the frame and its moment link saved as a pair (ld-moment-<unix>.png + .txt), so a report replays. */
+  private async reportMoment(): Promise<void> {
+    const link = `${location.origin}${location.pathname}${location.search}${encodeMoment(this.currentMoment())}`;
+    const names = reportMomentFilenames(Date.now());
+    const png = await this.captureFrame();
+    if (png) downloadBlob(png, names.png);
+    downloadBlob(new Blob([`${link}
+`], { type: 'text/plain' }), names.txt);
+    this.perf.flash(`Moment reported: ${names.png} + ${names.txt}`);
+  }
+
   /** Every pause change goes through here so the paused badge always matches the clock. */
   private setPaused(paused: boolean): void {
     this.clock.paused = paused;
@@ -2111,6 +2145,7 @@ export class App {
     if (this.frontEnd?.isOpen && this.input.consumePressed(HOTKEYS.toggleDevUi)) this.toggleDevUi();
     if (!this.frontEnd?.isOpen) handleHotkeys(this.input, {
       copyLink: () => void this.copyLink(),
+      reportMoment: () => void this.reportMoment(),
       togglePause: () => this.setPaused(!this.clock.paused),
       screenshot: () => { this.screenshotRequested = true; },
       toggleDevUi: () => this.toggleDevUi(),

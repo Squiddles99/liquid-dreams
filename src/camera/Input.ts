@@ -91,7 +91,8 @@ export class Input {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if ((this.#suspended && !PASS_WHILE_SUSPENDED.has(e.code)) || shouldIgnoreKeyTarget(e.target)) return;
-    if (!e.repeat) this.pressed.add(e.code);
+    // A Ctrl+Shift chord registers as itself (e.g. 'Ctrl+Shift+KeyM'), so the bare key's hotkey does not also fire.
+    if (!e.repeat) this.pressed.add(e.ctrlKey && e.shiftKey ? `Ctrl+Shift+${e.code}` : e.code);
     this.down.add(e.code);
     if (e.code === 'Space') e.preventDefault();
   };

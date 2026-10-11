@@ -76,6 +76,7 @@ export interface DevPanelHandlers {
   onLookout(): void;
   onReferenceMoment(name: string): void;
   onCopyLink(): void;
+  onReportMoment(): void;
   onScreenshot(): void;
   onTogglePause(): void;
   onSets(): void;
@@ -338,6 +339,7 @@ export class DevPanel {
     moment.addBinding(m.conditions, 'tideM', CONDITION_BINDINGS.tideM).on('change', onConditions);
     moment.addBinding(m.conditions, 'seed', { min: 0, step: 1 }).on('change', onConditions);
     moment.addButton({ title: 'Copy moment link (L)' }).on('click', h.onCopyLink);
+    moment.addButton({ title: 'Report moment: frame + link (Ctrl+Shift+M)' }).on('click', h.onReportMoment);
     moment.addButton({ title: 'Pause / resume (P)' }).on('click', h.onTogglePause);
     moment.addButton({ title: 'Screenshot (K)' }).on('click', h.onScreenshot);
     moment.addButton({ title: 'Reset settings' }).on('click', h.onResetSettings);
