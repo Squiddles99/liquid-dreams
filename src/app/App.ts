@@ -50,7 +50,7 @@ import {
   cloneDevSettings, cloneLook, loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
 } from '../dev/devSettings';
 import { HOTKEYS, captureScreenshot, downloadBlob, handleHotkeys, reportMomentFilenames, screenshotFilename } from '../dev/hotkeys';
-import { PADDLE_OUT_MS } from '../frontend/entry';
+import { CREW_COVER_MS, PADDLE_OUT_MS } from '../frontend/entry';
 import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
 import { FrontEnd } from '../frontend/frontEndPage';
@@ -1236,11 +1236,34 @@ export class App {
     this.title = t;
   }
 
-  /** The title's Surf (or a press while the App was still starting): sound now, the title away, the map under it. */
+  private crewShown = false;
+
+  /**
+   * The title's Surf (or a press while the App was still starting): sound now, the title away, the map under it. The
+   * first Surf goes through the crew surfing (Andrew 2026-10-11: its last showing; every later cover is a library slide):
+   * the start-up cover if it is still up (the title fades off it, and it stays a while), else a crew cover over the title.
+   */
   titleSurf(): void {
     this.sound.gestureNow();
-    this.title?.hide();
-    this.frontEnd?.resume();
+    const cover = this.loadingScreen, title = this.title;
+    if (this.crewShown || !cover || !title) {
+      this.title?.hide();
+      this.frontEnd?.resume();
+      return;
+    }
+    this.crewShown = true;
+    const calm = this.calmMenus(), holdMs = calm ? CREW_COVER_MS.minHoldCalm : CREW_COVER_MS.minHold;
+    if (cover.booting) {
+      cover.showBootFor(holdMs);
+      title.hide(true);
+      this.frontEnd?.resume();
+      return;
+    }
+    void cover.cover({ line: 'Checking the surf…', calm, minHoldMs: holdMs, picture: cover.bootPicture, overTitle: true }).then((ok) => {
+      title.hide();
+      this.frontEnd?.resume();
+      if (ok) cover.release();
+    });
   }
 
   soundOut(): { ctx: BaseAudioContext; out: AudioNode } | null {

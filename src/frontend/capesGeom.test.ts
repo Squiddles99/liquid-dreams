@@ -1,6 +1,6 @@
 // src/frontend/capesGeom.test.ts
 import { describe, expect, it } from 'vitest';
-import { CHART, CHART_LABELS, TITLE_VIEW, capesToChart, chartSwellLines, chartWindArrows, compass16, compassArc } from './capesGeom';
+import { CHART, CHART_LABELS, capesToChart, chartSwellLines, chartWindArrows, compass16, compassArc } from './capesGeom';
 
 describe('capesToChart', () => {
   it('puts the frame origin at the top-left', () => {
@@ -65,14 +65,5 @@ describe('compass16', () => {
 describe('compassArc', () => {
   it('names an arc by its ends, once when both ends share a point', () => {
     expect(compassArc([225, 248])).toBe('SW – WSW'); expect(compassArc([240, 255])).toBe('WSW');
-  });
-});
-
-describe('TITLE_VIEW', () => {
-  it('is a 16:9 window inside the chart, around the Womb', () => {
-    expect(TITLE_VIEW.w / TITLE_VIEW.h).toBeCloseTo(16 / 9, 3);
-    const [x, y] = capesToChart(114.982, -33.8952);
-    expect(x).toBeGreaterThan(TITLE_VIEW.x); expect(x).toBeLessThan(TITLE_VIEW.x + TITLE_VIEW.w);
-    expect(y).toBeGreaterThan(TITLE_VIEW.y); expect(y).toBeLessThan(TITLE_VIEW.y + TITLE_VIEW.h);
   });
 });

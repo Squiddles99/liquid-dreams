@@ -1,5 +1,5 @@
 // The loading cover's pictures: index.html names the start-up one on #ld-cover's data-boot (the crew surfing, shown only
-// while the game first loads) and lists the slides on data-slides (copies tools/loadingArt.py makes from
+// while the game first loads and on the first Surf from the title: App.titleSurf) and lists the slides on data-slides (copies tools/loadingArt.py makes from
 // art/loading/slides/). Each later cover (paddling out, back to the dune) picks a slide here, never the one just shown
 // when there is another.
 
