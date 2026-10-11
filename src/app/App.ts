@@ -62,6 +62,9 @@ import { frontEndCheck } from '../dev/frontEndCheck';
 import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
 import { type CrestLineRow, crestLineRows, leanFrontEffect, traceEnds } from '../dev/crestLineProbe';
 import { FrameLog } from '../dev/frameLog';
+import { MOMENT_PNG_KEY, insertPngText } from '../dev/pngText';
+/** The report-moment PNG follows its .txt by this long: Chrome blocks a second automatic download without a gesture. */
+const REPORT_PNG_DELAY_MS = 1500;
 import { PerfOverlay } from '../dev/perf';
 import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
 import { HeightProbe } from '../ocean/HeightProbe';
@@ -2023,15 +2026,23 @@ export class App {
     return leanFrontEffect({ field: this.field, ctx: this.waveCtx, waves: wavesNear(t, this.conditions, this.sets).map(toActiveWave), t, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs }, arrivalS, arc);
   }
 
-  /** Ctrl+Shift+M: the frame and its moment link saved as a pair (ld-moment-<unix>.png + .txt), so a report replays. */
+  /**
+   * Ctrl+Shift+M: the frame and its moment link saved as a pair (ld-moment-<unix>.png + .txt), so a report replays. The .txt
+   * goes first and the PNG REPORT_PNG_DELAY_MS later, and the PNG carries the link itself in a tEXt chunk (pngText,
+   * tools/_momentFromPng.mjs): Chrome dropped the second download of Andrew's 2026-10-11 report (womb-realism Task 3b).
+   */
   private async reportMoment(): Promise<void> {
     const link = `${location.origin}${location.pathname}${location.search}${encodeMoment(this.currentMoment())}`;
     const names = reportMomentFilenames(Date.now());
     const png = await this.captureFrame();
-    if (png) downloadBlob(png, names.png);
     downloadBlob(new Blob([`${link}
 `], { type: 'text/plain' }), names.txt);
-    this.perf.flash(`Moment reported: ${names.png} + ${names.txt}`);
+    if (png) {
+      const tagged = new Blob([insertPngText(new Uint8Array(await png.arrayBuffer()), MOMENT_PNG_KEY, link)], { type: 'image/png' });
+      await new Promise((r) => setTimeout(r, REPORT_PNG_DELAY_MS));
+      downloadBlob(tagged, names.png);
+    }
+    this.perf.flash(`Moment reported: ${names.txt} + ${names.png} (the link is in the PNG too)`);
   }
 
   /** Every pause change goes through here so the paused badge always matches the clock. */
