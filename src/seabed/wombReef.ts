@@ -114,13 +114,42 @@ export const SOUTH_LEDGE: readonly Pt[] = rightLedgeFrom(TIP);
 /** The shelf's inshore edge (x): 10 m inside the shore's platform (shoreReef.SHORE_REEF_AT_MAP_M), so no sand strip shows
  * between them. */
 export const SHELF_INNER_X = SHORE_X - SHORE_REEF_AT_MAP_M + 10;
+/** The shelf's south-west corner (spec 2026-10-11-south-corner, Andrew: option 1): the radius (m) of the arc that replaces
+ * the right angle where the south ledge's last leg meets the closing leg to SHELF_INNER_X. */
+export const SOUTH_CORNER_RADIUS_M = 60;
 /** Shelf polygon (clockwise in plan view): tip → south ledge → inner-platform edge → north map edge → north ledge. */
 export const SHELF_POLYGON: readonly Pt[] = shelfPolygon(NORTH_LEDGE);
+/** The arc rounding the corner `b` between the legs a → b and b → c: `n` points from the tangent point on a → b to the
+ * one on b → c, all `radiusM` from the centre on the corner's bisector (each tangent point radiusM / tan(half the
+ * corner's angle) from b). Null when the legs are too short for it or (anti)parallel. */
+export function roundCorner(a: Pt, b: Pt, c: Pt, radiusM = SOUTH_CORNER_RADIUS_M, n = 7): Pt[] | null {
+  const la = Math.hypot(a[0] - b[0], a[1] - b[1]), lc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+  if (la === 0 || lc === 0) return null;
+  const u = [(a[0] - b[0]) / la, (a[1] - b[1]) / la], v = [(c[0] - b[0]) / lc, (c[1] - b[1]) / lc];
+  const half = Math.acos(Math.max(-1, Math.min(1, u[0] * v[0] + u[1] * v[1]))) / 2;
+  if (half < 1e-3 || half > Math.PI / 2 - 1e-3) return null;
+  const t = radiusM / Math.tan(half);
+  if (t >= la || t >= lc) return null;
+  const bl = Math.hypot(u[0] + v[0], u[1] + v[1]), cd = radiusM / Math.sin(half);
+  const centre = [b[0] + ((u[0] + v[0]) / bl) * cd, b[1] + ((u[1] + v[1]) / bl) * cd];
+  const a0 = Math.atan2(b[1] + u[1] * t - centre[1], b[0] + u[0] * t - centre[0]);
+  let sweep = Math.atan2(b[1] + v[1] * t - centre[1], b[0] + v[0] * t - centre[0]) - a0;
+  if (sweep > Math.PI) sweep -= 2 * Math.PI;
+  if (sweep < -Math.PI) sweep += 2 * Math.PI;
+  return Array.from({ length: n }, (_, i) => {
+    const ang = a0 + (sweep * i) / (n - 1);
+    return [centre[0] + radiusM * Math.cos(ang), centre[1] + radiusM * Math.sin(ang)] as Pt;
+  });
+}
 /** The shelf polygon for the ledges: tip → south ledge → across to the inner-platform edge (SHELF_INNER_X) → north map
- * edge → back down the left. */
+ * edge → back down the left. The south-west corner (the south ledge's end, then east) is rounded (roundCorner); the
+ * ledges themselves are untouched. */
 export function shelfPolygon(north: readonly Pt[], south: readonly Pt[] = SOUTH_LEDGE): Pt[] {
-  const end = south[south.length - 1];
-  return [...south, ...(end[0] < SHELF_INNER_X ? [[SHELF_INNER_X, end[1]] as Pt] : []), [SHELF_INNER_X, -450], ...[...north].reverse().slice(0, -1)];
+  const end = south[south.length - 1], back = [...north].reverse().slice(0, -1);
+  if (end[0] >= SHELF_INNER_X) return [...south, [SHELF_INNER_X, -450], ...back];
+  const close: Pt = [SHELF_INNER_X, end[1]];
+  const arc = south.length >= 2 ? roundCorner(south[south.length - 2], end, close) : null;
+  return [...(arc ? [...south.slice(0, -1), ...arc] : south), close, [SHELF_INNER_X, -450], ...back];
 }
 
 /** Sand pockets traced from Andrew's top-down satellite view (reference/place/womb-correct-topdown-peak-189m-offshore.webp:
