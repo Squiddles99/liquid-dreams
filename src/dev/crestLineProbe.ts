@@ -3,7 +3,7 @@ import { closeoutWeight, traceEnds, traceLines } from '../breaker/crestTrace';
 export { traceEnds };
 import { sampleField, type ReefField } from '../breaker/reefField';
 import { type ActiveWave, type WaveContext, breakOptions, crestAt, phaseXi, sumWaves, waveAtCrest, waveHeightAt } from '../breaker/setWaveModel';
-import { EDGE_OUTER_UNITS, sectionFrame, sectionOf } from '../breaker/wombSection';
+import { CURL_KNOTS, EDGE_OUTER_UNITS, SHEET_KNOTS, sectionFrame, sectionKnots, sectionOf } from '../breaker/wombSection';
 import { LEFT_BEARING_DEG, TIP } from '../seabed/wombReef';
 
 /**
@@ -25,6 +25,9 @@ export interface CrestLineRow {
   ribbonCrestY: number; crestY: number; tipDx: number; tipDy: number;
   /** The curtain's foot (the floor knot) minus the sheet's height under it (m). */
   footGap: number;
+  /** The curtain's foot minus the sheet's lowest point in front of the section (m; womb-realism Task 3's gap bar, STOP 2 early
+   * ruling: the section's front sheet knots, as wombSection.footY reads them). */
+  footGapFront: number;
   closeout: number;
 }
 
@@ -66,18 +69,20 @@ export function crestLineRows(i: CrestLineInput): CrestLineRow[] {
       };
       const f = sampleField(field, s.x, s.z);
       const hSheet = waveHeightAt(own[0], f, crestAt(s.x, s.z, t, f, own[0], ctx, opts), phaseXi(s.x, s.z, t, f, own[0], ctx));
-      let ribbonCrestY = -Infinity, crestY = NaN, tipDx = NaN, tipDy = NaN, footGap = NaN;
+      let ribbonCrestY = -Infinity, crestY = NaN, tipDx = NaN, tipDy = NaN, footGap = NaN, footGapFront = NaN;
       if (A > 0) {
         const sec = sectionOf(s.section, base);
         for (const p of sec.points) ribbonCrestY = Math.max(ribbonCrestY, p[1]);
         crestY = sec.crest[1]; tipDx = sec.tip[0] - sec.crest[0]; tipDy = sec.tip[1] - sec.crest[1];
         const fr = sectionFrame(s.section, s.H, s.c, base);
         footGap = fr.floor[1] - sheetYAt(fr.floor[0]);
+        const front = sectionKnots(s.section, base).slice(SHEET_KNOTS + CURL_KNOTS);
+        footGapFront = fr.floor[1] - A * Math.min(...front.map((q) => q[1]));
       }
       rows.push({
         wave: s.wave, arrivalS: i.waves[s.wave].arrivalS, arc: s.arc, x: s.x, z: s.z, nx: s.nx, nz: s.nz, along: (s.x - TIP[0]) * along[0] + (s.z - TIP[1]) * along[1],
         until: s.until, tb: s.tb, phase: s.section.phase, rho: s.section.rho, hollow: s.section.hollow, surge: s.section.surge ?? 0,
-        A, H: s.H, Hb: s.Hb, hSheet, sheetCrestY, troughSheetY, ribbonCrestY, crestY, tipDx, tipDy, footGap, closeout: closeoutWeight(s.z),
+        A, H: s.H, Hb: s.Hb, hSheet, sheetCrestY, troughSheetY, ribbonCrestY, crestY, tipDx, tipDy, footGap, footGapFront, closeout: closeoutWeight(s.z),
       });
     }
   }
