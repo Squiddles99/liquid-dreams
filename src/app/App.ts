@@ -1979,22 +1979,23 @@ export class App {
   }
 
   /** Dev readout (tools/_crestLine.ts, womb-realism): every traced station's crest-line numbers now (src/dev/crestLineProbe). */
-  crestLineProbe(spacingM = 2): { t: number; offshoreMs: number; appOffshoreMs: number; rows: CrestLineRow[]; ends?: unknown } {
+  crestLineProbe(spacingM = 2): { t: number; offshoreMs: number; appOffshoreMs: number; rows: CrestLineRow[]; ends?: unknown; field?: { periodS: number; fromDeg: number; tideM: number } } {
     const t = this.clock.simTime;
     if (!this.field || !this.waveCtx || !this.breakParams.enabled) return { t, offshoreMs: 0, appOffshoreMs: this.offshoreMs, rows: [] };
     // Fresh from the conditions (the app's own offshoreMs is reported beside it: a moment's wind must reach the lip).
     const offshoreMs = offshoreSpeed(this.conditions.wind.speedMs, this.conditions.wind.directionDeg, this.field.far.dirX, this.field.far.dirZ);
     const waves = wavesNear(t, this.conditions, this.sets).map(toActiveWave);
     const rows = crestLineRows({ field: this.field, ctx: this.waveCtx, waves, t, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs, spacingM });
-    return { t, offshoreMs, appOffshoreMs: this.offshoreMs, rows, ends: traceEnds.map((e) => ({ ...e, arrivalS: waves[e.wave].arrivalS })) };
+    const field = { periodS: this.field.far.periodS, fromDeg: this.field.far.fromDeg, tideM: this.field.far.tideM };
+    return { t, offshoreMs, appOffshoreMs: this.offshoreMs, rows, ends: traceEnds.map((e) => ({ ...e, arrivalS: waves[e.wave].arrivalS })), field };
   }
 
   /** Dev readout (womb-realism Task 1b): ξ (s) and the field's τ, k on a grid round (x, z) for the wave arriving at arrivalS. */
-  crestLineXi(arrivalS: number, x: number, z: number, half = 6, step = 1): { xi: number[][]; tau: number[][]; k: number[][] } | null {
+  crestLineXi(arrivalS: number, x: number, z: number, half = 6, step = 1): { xi: number[][]; tau: number[][]; k: number[][]; w: unknown; ctx: unknown; t: number } | null {
     if (!this.field || !this.waveCtx) return null;
     const t = this.clock.simTime, w = wavesNear(t, this.conditions, this.sets).map(toActiveWave).find((v) => Math.abs(v.arrivalS - arrivalS) < 0.01);
     if (!w) return null;
-    const out = { xi: [] as number[][], tau: [] as number[][], k: [] as number[][] };
+    const out = { xi: [] as number[][], tau: [] as number[][], k: [] as number[][], w: { ...w } as unknown, ctx: { ...this.waveCtx } as unknown, t };
     for (let dz = -half; dz <= half; dz += step) {
       const xi: number[] = [], tau: number[] = [], k: number[] = [];
       for (let dx = -half; dx <= half; dx += step) {
