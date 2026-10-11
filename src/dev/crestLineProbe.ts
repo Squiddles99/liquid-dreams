@@ -5,6 +5,8 @@ import { sampleField, type ReefField } from '../breaker/reefField';
 import { type ActiveWave, type WaveContext, breakOptions, crestAt, phaseXi, sumWaves, waveAtCrest, waveHeightAt } from '../breaker/setWaveModel';
 import { CURL_KNOTS, EDGE_OUTER_UNITS, SHEET_KNOTS, sectionFrame, sectionKnots, sectionOf } from '../breaker/wombSection';
 import { LEFT_BEARING_DEG, TIP } from '../seabed/wombReef';
+import { curlFoamAt } from '../whitewater/curlFoam';
+import { boilFreshness, boilWeight } from '../whitewater/pileChurn';
 
 /**
  * The crest-line probe (womb-realism Task 0, spec §4): every traced station of every wave at one moment, with the numbers
@@ -29,6 +31,10 @@ export interface CrestLineRow {
    * ruling: the section's front sheet knots, as wombSection.footY reads them). */
   footGapFront: number;
   closeout: number;
+  /** womb-realism Task 6: the station's boil as the ribbon packs it (pileChurn.boilWeight at foam 1) and its freshness, the
+   * sheet's own foam at the station (the game's break options, all waves), and the curl's face foam at mid-reach
+   * (curlFoam.curlFoamAt(phase, 0.5, outside, 1): the ribbon's extras.z there). */
+  boil: number; fresh: number; setFoam: number; curlFace: number;
 }
 
 export interface CrestLineInput {
@@ -79,10 +85,13 @@ export function crestLineRows(i: CrestLineInput): CrestLineRow[] {
         const front = sectionKnots(s.section, base).slice(SHEET_KNOTS + CURL_KNOTS);
         footGapFront = fr.floor[1] - A * Math.min(...front.map((q) => q[1]));
       }
+      const game = sumWaves(s.x, s.z, t, sampleField(field, s.x, s.z), i.waves, ctx, breakOptions(field, params, i.offshoreMs));
       rows.push({
         wave: s.wave, arrivalS: i.waves[s.wave].arrivalS, arc: s.arc, x: s.x, z: s.z, nx: s.nx, nz: s.nz, along: (s.x - TIP[0]) * along[0] + (s.z - TIP[1]) * along[1],
         until: s.until, tb: s.tb, phase: s.section.phase, rho: s.section.rho, hollow: s.section.hollow, surge: s.section.surge ?? 0,
         A, H: s.H, Hb: s.Hb, hSheet, sheetCrestY, troughSheetY, ribbonCrestY, crestY, tipDx, tipDy, footGap, footGapFront, closeout: closeoutWeight(s.z),
+        boil: boilWeight(s.tb, s.Hb ?? s.H, field.periodS, 1), fresh: boilFreshness(s.tb, s.Hb ?? s.H, field.periodS), setFoam: game.foam,
+        curlFace: curlFoamAt(s.section.phase, 0.5, 0, 1),
       });
     }
   }
