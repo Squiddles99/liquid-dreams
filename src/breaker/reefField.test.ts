@@ -334,7 +334,9 @@ describe('until carries the hold (one-curl Task 1)', () => {
   // shelf-polish Task 2 (Fable's ruling): the premise is the game's field on the real shelf: peel 1 (DEFAULT_BREAK_PARAMS, the
   // App's request), the refraction floor, smoothed. Its holds are the curl's, on the Womb's ridden run (within 220 m of the
   // tip). The old premise (peel 1.7, held nodes on the left's first leg stretched from the peak) is the old peak's: on the
-  // real shelf the level's one line first breaks at the right's far south end (T ≈ −10 s), so 1.7 holds the left's first
+  // real shelf the level's one line first breaks at the right's far south end (T ≈ −10 s; since south-corner 2026-10-11 the
+  // rounded corner's start, (−153..−156, 186..188) at 8–12 ft and (−136, 217) at 6 ft, onset T −0.28..−0.34 s at peel 1;
+  // before it the old corner (−158, 237), T −0.05..−0.13 s), so 1.7 holds the left's first
   // 6–21 m at the PEEL_MAX_HOLD_S cap (the third case pins that the cap binds there; it is not in play). Bars unchanged.
   // until = −tb is the bake's identity (the record before smoothFieldAmplitude, which smooths tb and until on their own
   // masks); the carry back along the ray is checked on the field as the game reads it (smoothed).
