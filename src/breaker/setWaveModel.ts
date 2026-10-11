@@ -74,16 +74,21 @@ export const wombFrontMin = (H: number, k: number): number =>
   Math.min(LEAN_FRONT_MIN, Math.max(LEAN_FRONT_FLOOR, (WOMB_FRONT_UNITS * (H / 1.3) * k) / Math.PI));
 
 /**
- * How far a crest's front has shortened to the Womb profile's face [0, 1]: 0 off the reef's record; until its section breaks
- * (or while the peel stretch holds it), rising with its breaking ratio `r` from the ribbon's onset to 1, as the drawn
- * section's phase does (wombSection.sectionPhase); 1 once broken. Down the line, and at the take-off before the wave stands
- * up, the front stays the swell's: squeezed to the face's length there, the face swept under a paddling surfer in 0.4 s at a
- * slope of 1.35 and the ride never caught it (plan 2026-10-06 step 3; it rose over 1.5 s at 0.1–0.4). No clock: the hold's
- * STAND_LEAD_S ramp along the crest is gone with the plateau it moved.
+ * How far a crest's front has shortened to the Womb profile's face [0, 1]: 0 off the reef's record; unbroken on the record
+ * (its time until it breaks, or its turn, finite) the clock alone, the wall standing up over the last WALL_LEAD_S
+ * (wombSection.wallWeight), exactly as the drawn section's phase does (wombSection.sectionPhase, one-curl spec §3b); off the
+ * record's clock (no record, or a ray that never breaks) rising with its breaking ratio `r` from the ribbon's onset to 1;
+ * 1 once broken. Down the line, and at the take-off before the wave stands up, the front stays the swell's: squeezed to the
+ * face's length there, the face swept under a paddling surfer in 0.4 s at a slope of 1.35 and the ride never caught it
+ * (plan 2026-10-06 step 3; it rose over 1.5 s at 0.1–0.4). The ratio beside the clock (the further of the two) stood the
+ * sheet up to a near-vertical face over the few metres of crest where r passes the onset ratio before the record's
+ * negative onset time takes over (there the clock alone already ruled): each point of a cross-section reads the record on
+ * its own ray, so the face was a cliff to 4 m and the swell's beyond, a dark wedge with a torn foot ahead of the stood wall
+ * (Andrew, 2026-10-11: "a tear in the wave face runs before the wave is broken"). The GPU mirrors this (SetWaves' standing).
  */
 export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset, until: number | null = null): number {
   if (tb === undefined) return 0;
-  if (tb === null) return Math.max(smoothstep(ribbonOnset, 1, r), wallWeight(until));
+  if (tb === null) return until !== null && Number.isFinite(until) ? wallWeight(until) : smoothstep(ribbonOnset, 1, r);
   // Held for its turn (the peel stretch): as the wall stands up over the last WALL_LEAD_S before it.
   return tb < 0 ? Math.max(smoothstep(ribbonOnset, 1, r) * wallWeight(-tb), wallWeight(-tb)) : 1;
 }
