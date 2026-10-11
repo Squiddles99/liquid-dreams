@@ -10,6 +10,10 @@ export interface CoverOptions {
   calm: boolean;
   /** Called once when the dissolve starts. */
   onDissolve?: () => void;
+  /** This picture instead of a fresh slide (the crew, after the first Surf: Andrew 2026-10-11). */
+  picture?: string;
+  /** Comes in over the title menu (which stays up under it) rather than under it. */
+  overTitle?: boolean;
 }
 
 const COVER_IN_MS = 400;
@@ -88,6 +92,21 @@ export class LoadingScreen {
     this.tick(0);
   }
 
+  /**
+   * Boot: the start-up cover stays at least `ms` from now (the crew seen once Surf uncovers it, not a flash). The
+   * transitions' covers hold by their own minHoldMs.
+   */
+  showBootFor(ms: number): void {
+    if (this.phase !== 'boot') return;
+    this.coverInAt = this.now();
+    this.minHoldMs = ms;
+  }
+
+  /** The start-up picture (index.html's data-boot: the crew surfing). */
+  get bootPicture(): string | undefined {
+    return this.el.dataset.boot;
+  }
+
   /** Whether the cover is still in its start-up phase. */
   get booting(): boolean {
     return this.phase === 'boot';
@@ -103,7 +122,8 @@ export class LoadingScreen {
     const fromOut = this.phase === 'out';
     this.setCalm(opts.calm);
     this.el.dataset.mode = 'cover';
-    this.nextSlide();
+    this.el.classList.toggle('is-over-title', !!opts.overTitle);
+    this.nextSlide(opts.picture);
     this.showLine(opts.line);
     this.el.classList.remove('is-out');
     if (!fromOut) this.el.classList.remove('is-in');
@@ -174,7 +194,7 @@ export class LoadingScreen {
       this.comingIn = null;
     }
     const ready = this.phase === 'boot' || this.phase === 'in';
-    if (ready && this.gate?.open && holdMet(this.coverInAt, now, this.phase === 'boot' ? 0 : this.minHoldMs)) this.dissolve(now);
+    if (ready && this.gate?.open && holdMet(this.coverInAt, now, this.minHoldMs)) this.dissolve(now);
     this.el.classList.toggle('is-blocking', this.blocking);
     if (this.phase === 'out' && now - this.outAt >= this.dissolveMs() + 50) {
       this.el.hidden = true;
@@ -209,12 +229,12 @@ export class LoadingScreen {
   }
 
   /**
-   * A fresh picture for this cover, never the one just shown when there is another. It is swapped in only once decoded,
-   * so the cover never shows a half-drawn picture; until then the last one stays.
+   * A fresh picture for this cover (or `picture`), never the one just shown when there is another. It is swapped in only
+   * once decoded, so the cover never shows a half-drawn picture; until then the last one stays.
    */
-  private nextSlide(): void {
+  private nextSlide(picture?: string): void {
     const shown = this.el.dataset.slide ?? null;
-    const name = pickSlide(parseSlides(this.el.dataset.slides), Math.random(), shown);
+    const name = picture ?? pickSlide(parseSlides(this.el.dataset.slides), Math.random(), shown);
     const img = this.el.querySelector<HTMLImageElement>('.ld-cover-bg img');
     if (!name || name === shown || !img) return;
     const next = new Image();

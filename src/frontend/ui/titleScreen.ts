@@ -28,6 +28,7 @@ export class TitleScreen {
   private focus = 0;
   private device: Device = 'keyboard';
   private open = true;
+  private leaveTimer = 0;
 
   constructor(parent: HTMLElement, private readonly opts: { storage: SettingsStorage | null; soundOut: SoundOut; electron: boolean; onSurf: () => void }) {
     this.root = mountFrontEndRoot(parent);
@@ -63,8 +64,23 @@ export class TitleScreen {
   };
 
   /** Shown again (B on the map): presses made while hidden, the B among them, are dropped. */
-  show(): void { this.input.poll(performance.now()); this.settingsCtl.reload(); this.open = true; this.root.style.display = ''; this.render(); }
-  hide(): void { this.open = false; this.root.style.display = 'none'; }
+  show(): void {
+    window.clearTimeout(this.leaveTimer);
+    this.root.classList.remove('is-leaving');
+    this.input.poll(performance.now()); this.settingsCtl.reload(); this.open = true; this.root.style.display = ''; this.render();
+  }
+
+  /** Away at once, or (`fade`) fading off the crew cover already up under it. */
+  hide(fade = false): void {
+    this.open = false;
+    window.clearTimeout(this.leaveTimer);
+    if (!fade) { this.root.classList.remove('is-leaving'); this.root.style.display = 'none'; return; }
+    this.root.classList.add('is-leaving');
+    this.leaveTimer = window.setTimeout(() => { this.root.style.display = 'none'; this.root.classList.remove('is-leaving'); }, 450);
+  }
+
+  /** While the intro films play: pad presses are dropped (keys and the mouse never reach here: index.html stops them). */
+  drain(nowMs: number): void { this.input.poll(nowMs); }
 
   act(a: Parameters<typeof stepTitle>[1]): void {
     if (!this.open) return;
@@ -73,7 +89,8 @@ export class TitleScreen {
     this.focus = r.state.focus;
     if (r.moved) this.play('focus');
     if (r.toast) { this.play('deny'); this.toast(r.toast); }
-    if (r.pick === 'surf') { this.play('confirm'); this.hide(); this.opts.onSurf(); return; }
+    // Surf: no more presses here; onSurf takes the title away (under the crew cover the first time: App.titleSurf).
+    if (r.pick === 'surf') { this.play('confirm'); this.open = false; this.opts.onSurf(); return; }
     if (r.pick === 'settings') { this.play('confirm'); this.settingsCtl.open(); }
     if (r.pick === 'quit') window.close();
     this.render();

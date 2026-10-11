@@ -20,10 +20,21 @@ async function main(): Promise<void> {
   const title = wantFrontEnd ? new TitleScreen(document.body, {
     storage: browserStorage, electron: navigator.userAgent.includes('Electron'),
     soundOut: () => appRef?.soundOut() ?? null,
-    onSurf: () => { if (appRef) appRef.titleSurf(); else surfPressed = true; },
+    // Before the App exists the title fades off the start-up cover (the crew) at once; the App's Surf follows it.
+    onSurf: () => { if (appRef) appRef.titleSurf(); else { surfPressed = true; title?.hide(true); } },
   }) : null;
-  if (title) { const tick = (t: number): void => { title.update(t); requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
+  // The intro films (index.html) play over the title first; it takes no press until they end.
+  const intro = (window as { ldIntro?: { playing: boolean; stop: () => void } }).ldIntro;
+  if (title) {
+    const tick = (t: number): void => {
+      if (intro?.playing) title.drain(t);
+      else title.update(t);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
   const fail = (heading: string, message: string, help = WEBGPU_HELP): void => {
+    intro?.stop();
     loading?.remove();
     title?.hide();
     showOverlay(heading, help ? `${message}
@@ -44,6 +55,7 @@ ${help}` : message);
 
   const query = new URLSearchParams(location.search);
   if (query.has('selftest')) {
+    intro?.stop();
     loading?.remove();
     const { runSelfTests, renderSelfTestReport } = await import('./dev/selfTests');
     renderSelfTestReport(await runSelfTests(renderer, query.get('selftest') ?? ''));

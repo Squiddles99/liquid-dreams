@@ -166,6 +166,7 @@
 
 /* The title (surf-map hub spec §2). */
 .fe-title-screen { z-index: 2147483600; pointer-events: auto; background: #0a2c34; }
+.fe-title-screen.is-leaving { opacity: 0; pointer-events: none; transition: opacity 400ms ease-out; }
 /* A left-hand shade under the logo and menu, the legend on the panel backing (over the land). */
 .fe-title-screen::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 900px; background: linear-gradient(90deg, rgba(6, 22, 27, .78), rgba(6, 22, 27, .55) 55%, rgba(6, 22, 27, 0)); pointer-events: none; z-index: 1; }
 .fe-title-screen > .fe-chart { z-index: 0; }
