@@ -1,7 +1,7 @@
 import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
-import { type SectionNumbers, WALL_LEAD_S, curlWeight, sectionNumbers } from './wombSection';
+import { type SectionNumbers, curlWeight, sectionNumbers, wallLeadS } from './wombSection';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
@@ -19,7 +19,7 @@ export const SPACING_PER_M = 0.012;
 export const MIN_SPACING_M = 0.08;
 export const MAX_SPACING_M = 4;
 export const MAX_STATIONS = 2048;
-/** A side of the trace ends after this much crest (m) below the ribbon's onset ratio and more than WALL_LEAD_S from
+/** A side of the trace ends after this much crest (m) below the ribbon's onset ratio and more than the wall lead (wombSection.wallLeadS) from
  * breaking (the wall down the line is traced to its end). */
 export const BELOW_ONSET_RUN_M = 20;
 /** The crest is walked this far from the tip (m), both ways, and further on the inside leg (insideLeg). */
@@ -73,7 +73,7 @@ export interface Station {
   tb: number | null;
   /** Unbroken: how long until the section breaks, or held, until its turn (s; the record's, breaking.onsetUntil, and −tb
    * while held: one-curl spec §3b, one channel), Infinity if it never will: the wall down the line stands up over the last
-   * WALL_LEAD_S of it (wombSection.wallWeight). 0 once broken; null off the record. */
+   * the wall lead of it (wombSection.wallWeight). 0 once broken; null off the record. */
   until: number | null;
   /** The crest's ψ, as the sheet's crest there (setWaveModel.crestAt): the lip's shape. */
   psi: number;
@@ -246,7 +246,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
       if (lost || off || far) { traceEnds.push({ wave, sign, x, z, arc, why: lost ? `crest lost (xi ${next.xi.toFixed(3)} s at ${next.x.toFixed(1)}, ${next.z.toFixed(1)})` : off ? 'off the grid' : 'past the reach' }); break; }
       arc += sign * Math.hypot(next.x - x, next.z - z);
       ({ x, z, f } = next);
-      below = breakingRatio(w.heightM * f.amp, f.hminBreak, p) < p.ribbonOnset && !(timeUntilOnset(field, w, x, z, p) < WALL_LEAD_S) ? below + ds : 0;
+      below = breakingRatio(w.heightM * f.amp, f.hminBreak, p) < p.ribbonOnset && !(timeUntilOnset(field, w, x, z, p) < wallLeadS(field.periodS)) ? below + ds : 0;
       if (below > BELOW_ONSET_RUN_M) { traceEnds.push({ wave, sign, x, z, arc, why: 'below the onset run' }); break; }
     }
     sides.push(side);

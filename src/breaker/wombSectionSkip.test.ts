@@ -3,13 +3,14 @@ import { leanPhase } from './setWaveModel';
 import { CREST_KNOT, FRONT_KNOT, type P2, TIP_KNOT, TROUGH_KNOT, profileKnots, roundedTip, tipLife } from './wombProfile';
 import {
   type SectionKnot, type SectionNumbers, type SheetAlong, CURL_KNOTS, CURL_PHASE, EDGE_OUTER_UNITS, JOIN_SLOPE_UNITS, SHEET_KNOTS,
-  SWELL_CURL_U, curlWeight, sectionFrameKnots, seatShift,
+  SWELL_CURL_U, curlWeight, sectionFrameKnots, seatOf,
 } from './wombSection';
 
 /**
  * ride-framerate Task 15 (R10a): at curlWeight g = 1 the curl's knots skip the sheet reads at the swell drawing's homes
  * (they are multiplied by 1 − g = 0). The old build is kept here as a local copy of sectionFrameKnots before the change
- * (2026-10-08, cb257d4), so the new one is compared against it on every run, not against a snapshot.
+ * (2026-10-08, cb257d4), so the new one is compared against it on every run, not against a snapshot. Its seat is the
+ * womb-realism Task 2 seat (seatOf, over the sheet's crest at the swell homes), as the build it is compared with.
  */
 function oldFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): { knots: SectionKnot[]; beyond: SectionKnot[] } {
   const roundedCurl = (k: readonly P2[], life: number): P2[] => roundedTip(k, life, TIP_KNOT).slice(CREST_KNOT, TROUGH_KNOT + 3);
@@ -23,12 +24,13 @@ function oldFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): { knots: Sec
   }
   const db = (b1 - b0) / (SHEET_KNOTS - 1), df = (f1 - f0) / (SHEET_KNOTS - 1);
   const beyond = [at(b0 - db), at(b1 - JOIN_SLOPE_UNITS), at(f0 + JOIN_SLOPE_UNITS), at(f1 + df)];
-  const g = curlWeight(numbers), shift = seatShift(k[TROUGH_KNOT][1], front[0][1]);
+  const g = curlWeight(numbers), sheetCrest = Math.max(...SWELL_CURL_U.map((u) => at(u)[1]));
+  const [scale, shift] = seatOf(phase, hollow, k, sheetCrest);
   const oBack = back[SHEET_KNOTS - 1][0] - back[SHEET_KNOTS - 1][2], oFront = front[0][0] - front[0][2];
   const drawn = roundedCurl(k, tipLife(Math.min(2, Math.max(0, phase))));
   const curl = drawn.map((d, i): SectionKnot => {
     const s = at(SWELL_CURL_U[i]), f = (i + 1) / (CURL_KNOTS + 1);
-    const dy = d[1] + shift, dh = d[0] - (oBack + (oFront - oBack) * f), h = s[2] + (dh - s[2]) * g;
+    const dy = d[1] * scale + shift, dh = d[0] - (oBack + (oFront - oBack) * f), h = s[2] + (dh - s[2]) * g;
     const under = g > 0 ? at(h) : s;
     return [s[0] + (d[0] - s[0]) * g, s[1] + (dy - s[1]) * g, h, under[0], under[1]];
   });

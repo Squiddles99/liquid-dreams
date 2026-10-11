@@ -59,7 +59,8 @@ export function breakingLines(T: ArrayLike<number>, nx: number, nz: number): Int
  * an unbounded speed, comes out unchanged.
  *
  * With `ridden` (womb-realism Task 2b), curlMaxMs binds only down the ridden line: on a step j → i where i is on it and
- * not behind j (along(i) > along(j), or j off it), and there the hold cap is `ridden.holdS`. Every other step runs at
+ * not behind j (along(i) > along(j), or j off it), and there the hold cap grows with the distance down it: the curl's time
+ * to get there at curlMaxMs plus `ridden.holdMarginS`, never under the flat `maxHoldS` (so the line's start keeps it). Every other step runs at
  * `ridden.sweepMs` under the flat `maxHoldS`: at 270° the Womb's line breaks first 140 m up the reef north of the peak,
  * nearly at once, and at 12 m/s the sweep down it reached the take-off 7.4 s late.
  */
@@ -68,8 +69,8 @@ export interface RiddenLine {
   along: Float32Array;
   /** The curl's top speed (m/s) off the ridden line. */
   sweepMs: number;
-  /** The hold cap (s) on the ridden line. */
-  holdS: number;
+  /** The hold cap's headroom (s) past the curl's time down the ridden line (see curlTimes). */
+  holdMarginS: number;
 }
 
 export function curlTimes(T: ArrayLike<number>, lineOf: Int32Array, nx: number, nz: number, cellM: number, curlMaxMs: number, maxHoldS: number, ridden?: RiddenLine): Float32Array {
@@ -114,7 +115,7 @@ export function curlTimes(T: ArrayLike<number>, lineOf: Int32Array, nx: number, 
         }
       }
       const t = T[i];
-      const cap = ridden && ridden.along[i] === ridden.along[i] ? ridden.holdS : maxHoldS;
+      const cap = ridden && ridden.along[i] === ridden.along[i] ? Math.max(maxHoldS, ridden.along[i] * slow + ridden.holdMarginS) : maxHoldS;
       out[i] = any ? Math.min(Math.max(t, latest, soonest), t + cap) : t;
     }
   }

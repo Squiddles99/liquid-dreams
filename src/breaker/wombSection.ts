@@ -30,31 +30,40 @@ export const COLLAPSE_PER_M = 0.25;
  */
 export const STOOD_PHASE = 0.45;
 /**
- * The wall down the line: a section stands up over this long before it breaks (s), from the swell's own shape to a steep
- * wall (STOOD_PHASE) as the curl reaches it (plan 2026-10-06-wave-root-cause, Andrew's "extended wall of the yet to break
- * wave, to plan how I ride"; and 2026-10-05, in the game: "it should be vertical closest to where the lip is throwing …
- * further down the line … a less vertical gradient, similar to how the swell approaches before it breaks"). On the time
- * until it breaks (the reef record's, breaking.onsetUntil), not its breaking ratio: on the Womb's deep basin the ratio
- * only rises in the last 10 m before a point breaks, so the wall stood for 9 m beyond the curl and then turned square
- * across the line into the deep-water swell (Andrew's "right-angle bowl", 2026-10-06). Along the crest the time until a
- * point breaks grows at about 0.1 s per metre from the curl on the 6 ft set, so this lead is about 80 m of wall, the first
- * 30 m of it steeper than 30°; it scales itself as the peel slows. A section held for its turn (the peel stretch) stands up
- * over the same lead before its turn.
+ * The wall down the line: a section stands up over this many swell periods before it breaks (or its turn), from the swell's
+ * own shape to a steep wall (STOOD_PHASE) as the curl reaches it (plan 2026-10-06-wave-root-cause, Andrew's "extended wall
+ * of the yet to break wave, to plan how I ride"). On the time until it breaks (the reef record's, breaking.onsetUntil), not
+ * its breaking ratio: on the Womb's deep basin the ratio only rises in the last 10 m before a point breaks. One period,
+ * smoothstepped (womb-realism Task 2, spec 3.1): the 8 s squared ramp stood the wall up late and steeply, image 3's "no
+ * gradient into the building wall". The dial wallLeadT (setWallLeadT); the GPU mirrors it (SetWaves' standing).
  */
-export const WALL_LEAD_S = 8;
-/** @deprecated The hold's lead is the wall's (WALL_LEAD_S). */
-export const STAND_LEAD_S = WALL_LEAD_S;
+export const WALL_LEAD_T = 1;
+const WALL = { leadT: WALL_LEAD_T };
+/** The dial wallLeadT (BreakParams.wallLeadT): the wall's lead in swell periods. */
+export const setWallLeadT = (t: number): void => { WALL.leadT = t; };
+export const wallLeadT = (): number => WALL.leadT;
+/** The wall's lead (s) for a swell of `periodS`. */
+export const wallLeadS = (periodS: number): number => WALL.leadT * periodS;
 /**
- * How far a section has stood up [0, 1] with `until` s to go before it breaks (or its turn): 0 WALL_LEAD_S or more away, 1
- * at it, 0 where it never breaks (Infinity). (1 − until/WALL_LEAD_S)²: the wall stands up ever faster as its break nears,
- * and is about 0.7 a second before it. A smoothstep (0.93 a second before) had the sea's front already as short as the
- * drawn face when the wave reached the take-off, and it passed under a paddling surfer in 0.3 s, before the catch could
- * bring him to speed (the ride test). The GPU mirrors it (SetWaves' standing).
+ * How far a section has stood up [0, 1] with `until` s to go before it breaks (or its turn): 0 a lead (wallLeadS) or more
+ * away, 1 at it, 0 where it never breaks (Infinity), a smoothstep between.
  */
-export const wallWeight = (until: number | null | undefined): number => {
+/**
+ * How far a section has stood up, and the sea's front squeezed to the drawn face [0, 1], with `until` s to go
+ * (sectionPhase, setWaveModel.frontStanding; the GPU's standing): (1 − until/FRONT_LEAD_S)², the old wall ramp, kept apart
+ * from the wall's height lead (wallWeight; womb-realism Task 2 ruling): on the one-period smoothstep the wave stood a steep
+ * wall and its front was as short as the face a second before the break, and it passed under a paddling surfer before the
+ * catch could bring him to speed (rideOnSections: Solid and Huge not caught).
+ */
+export const FRONT_LEAD_S = 8;
+export const frontWeight = (until: number | null | undefined): number => {
   if (until === null || until === undefined || !Number.isFinite(until)) return 0;
-  const left = 1 - Math.min(1, Math.max(0, until) / WALL_LEAD_S);
+  const left = 1 - Math.min(1, Math.max(0, until) / FRONT_LEAD_S);
   return left * left;
+};
+export const wallWeight = (until: number | null | undefined, periodS: number): number => {
+  if (until === null || until === undefined || !Number.isFinite(until)) return 0;
+  return 1 - smoothstep(0, wallLeadS(periodS), Math.max(0, until));
 };
 /** The lip's flight (onset to the round barrel) is the free fall from this many A, the crest to the landing below sea level. */
 export const FLIGHT_DROP_A = 1.3;
@@ -101,15 +110,15 @@ export const collapseSpan = (H: number, periodS: number): number => COLLAPSE_BAS
 /**
  * The phase through the break (wombProfile: 0 swell … 0.5 the lip pitching … 1 the round barrel … 2 the white-water wall).
  * Before onset it rises with the onset ratio to STOOD_PHASE, and a section held for its turn only over the last
- * STAND_LEAD_S before it; after, it runs on in time: the lip's flight to the
+ * wall lead before it; after, it runs on in time: the lip's flight to the
  * barrel, the tube's hold, the collapse.
  */
 export function sectionPhase(s: SectionInput, p: SectionParams): number {
-  // Unbroken: on the record (until finite) the clock alone, the wall standing up over the last WALL_LEAD_S before its break
+  // Unbroken: on the record (until finite) the clock alone, the wall standing up over the last wall lead (wombSection.wallLeadS) before its break
   // (or its turn, held); off it (off the grid, or a ray that never breaks) with its ratio from the ribbon's onset. (The ratio
   // beside the clock stood a section up at full height ahead of the curl: the pocket one curl holds. One-curl spec §3b.)
   if (s.tb === null) {
-    return s.until !== undefined && s.until !== null && Number.isFinite(s.until) ? STOOD_PHASE * wallWeight(s.until) : STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r);
+    return s.until !== undefined && s.until !== null && Number.isFinite(s.until) ? STOOD_PHASE * frontWeight(s.until) : STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r);
   }
 
   if (!Number.isFinite(s.tb)) return 2;
@@ -222,6 +231,40 @@ export const CURL_PHASE = STAGES.pitching;
 export const SEAT_DIP_UNITS = 0;
 export const SEAT_SHIFT_MAX = 0.4;
 
+/**
+ * The seat (womb-realism Task 2, STOP 1c ruling ask 1), in units of A from still water: from the lip pitching (STOOD_PHASE)
+ * the drawing is scaled and moved vertically (y → s·y + b) so its crest knot stands CREST_SHARE above still water and its
+ * floor knot TROUGH_SHARE below (a breaking wave of height A carries its crest ~0.75–0.85 A up and its trough ~0.25 A down;
+ * Andrew's drawing has the barrel's floor under sea level). The trough on the sheet's front (seatShift) had the floor at or
+ * above still water and the crest 1.1–1.3 A up. Past SEAT_HELD_PHASE the map is the one at it (the collapse keeps its scale).
+ * Before STOOD_PHASE the seat comes in with the phase from the drawn crest on the sheet's own crest, never under it.
+ * Dials crestShare / troughShare (setSeatShares); the GPU mirrors it (wombSectionNodes.seatNode).
+ */
+export const CREST_SHARE = 0.85;
+export const TROUGH_SHARE = 0.25;
+export const SEAT_HELD_PHASE = STAGES.tubeFilling;
+/** The seat never stretches a drawing whose crest stands less than this (units of A) over its floor by more than its span. */
+const SEAT_SPAN_MIN = 0.2;
+const SEAT = { crest: CREST_SHARE, trough: TROUGH_SHARE };
+export const setSeatShares = (crest: number, trough: number): void => { SEAT.crest = crest; SEAT.trough = trough; };
+export const seatShares = (): { crest: number; trough: number } => ({ ...SEAT });
+/** The family's crest and floor y at SEAT_HELD_PHASE for the open (0) and hollow (1) drawings (profileKnots is linear in
+ * hollow): [open crest, hollow crest, open floor, hollow floor]. */
+export const SEAT_HELD_KNOTS: readonly [number, number, number, number] = (() => {
+  const o = profileKnots(SEAT_HELD_PHASE, 0), h = profileKnots(SEAT_HELD_PHASE, 1);
+  return [o[CREST_KNOT][1], h[CREST_KNOT][1], o[FLOOR_KNOT][1], h[FLOOR_KNOT][1]];
+})();
+/** The seat [s, b] (y → s·y + b) at `phase`, `hollow` for the family's knots `k` (unlifted) over a sheet whose crest stands
+ * `sheetCrest` (units of A) over still water. */
+export function seatOf(phase: number, hollow: number, k: readonly P2[], sheetCrest: number): [number, number] {
+  const hv = Math.min(1, Math.max(0, hollow)), held = phase > SEAT_HELD_PHASE, H = SEAT_HELD_KNOTS;
+  const c = held ? H[0] + (H[1] - H[0]) * hv : k[CREST_KNOT][1], f = held ? H[2] + (H[3] - H[2]) * hv : k[FLOOR_KNOT][1];
+  const s1 = (SEAT.crest + SEAT.trough) / Math.max(c - f, SEAT_SPAN_MIN), b1 = SEAT.crest - s1 * c;
+  if (phase >= STOOD_PHASE) return [s1, b1];
+  const w = smoothstep(0, STOOD_PHASE, phase), b0 = sheetCrest - c, sc = 1 + (s1 - 1) * w;
+  return [sc, Math.max(b0 + (b1 - b0) * w, sheetCrest - sc * c)];
+}
+
 /** How much of the drawn curl a section draws over the sheet [0, 1]: by its phase (in over 0 … CURL_PHASE) × its ρ. */
 export const curlWeight = (numbers: Pick<SectionNumbers, 'phase' | 'rho'>): number => smoothstep(0, CURL_PHASE, numbers.phase) * numbers.rho;
 
@@ -261,18 +304,22 @@ export function sectionFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): {
   }
   const db = (b1 - b0) / (SHEET_KNOTS - 1), df = (f1 - f0) / (SHEET_KNOTS - 1);
   const beyond = [at(b0 - db), at(b1 - JOIN_SLOPE_UNITS), at(f0 + JOIN_SLOPE_UNITS), at(f1 + df)];
-  const g = curlWeight(numbers), shift = seatShift(k[TROUGH_KNOT][1], front[0][1]);
+  const g = curlWeight(numbers), swell = g === 1 ? null : SWELL_CURL_U.map((u) => at(u));
+  const sheetCrest = swell ? Math.max(...swell.map((q) => q[1])) : 0;
+  const [scale, shift] = seatOf(phase, hollow, k, sheetCrest);
   const oBack = back[SHEET_KNOTS - 1][0] - back[SHEET_KNOTS - 1][2], oFront = front[0][0] - front[0][2];
   // The surge lifts the drawn pocket after the seat is set from the family's own trough (a lifted trough would seat the
   // whole curl lower and drop the crest with it).
-  const lifted = surge > 0 ? k.map((p, m): P2 => [p[0], p[1] + surgeLift(m, surge, 1)]) : k;
-  const drawn = roundedCurl(lifted, tipLife(Math.min(2, Math.max(0, phase))));
+  // The seat scales the family's own curl; the surge's lift (units of A) goes on after it.
+  const life = tipLife(Math.min(2, Math.max(0, phase))), plain = roundedCurl(k, life);
+  const lifted = surge > 0 ? roundedCurl(k.map((p, m): P2 => [p[0], p[1] + surgeLift(m, surge, 1)]), life) : plain;
+  const drawn = plain.map((p, i): P2 => [lifted[i][0], lifted === plain ? p[1] * scale + shift : p[1] * scale + shift + (lifted[i][1] - p[1])]);
   const curl = drawn.map((d, i): SectionKnot => {
-    const f = (i + 1) / (CURL_KNOTS + 1), dy = d[1] + shift, dh = d[0] - (oBack + (oFront - oBack) * f);
+    const f = (i + 1) / (CURL_KNOTS + 1), dy = d[1], dh = d[0] - (oBack + (oFront - oBack) * f);
     // At g = 1 the sheet at the swell drawing's home is weighted 1 − g = 0: not read (ride-framerate R10a; equal to 1 ulp,
     // s + (d − s) × 1 is not always d bit for bit).
     if (g === 1) { const under = at(dh); return [d[0], dy, dh, under[0], under[1]]; }
-    const s = at(SWELL_CURL_U[i]), h = s[2] + (dh - s[2]) * g;
+    const s = swell![i], h = s[2] + (dh - s[2]) * g;
     // Its offset is from the sheet at its own home (at phase 0, s itself: no offset).
     const under = g > 0 ? at(h) : s;
     return [s[0] + (d[0] - s[0]) * g, s[1] + (dy - s[1]) * g, h, under[0], under[1]];

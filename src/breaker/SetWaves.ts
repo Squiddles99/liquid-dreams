@@ -9,7 +9,8 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LE
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { BORE_SHARE, FLIGHT_DROP_A, GRAVITY_MS2, ONSET_HEIGHT_UNITS, WALL_LEAD_S } from './wombSection';
+import { BORE_SHARE, FLIGHT_DROP_A, FRONT_LEAD_S, GRAVITY_MS2, ONSET_HEIGHT_UNITS, setWallLeadT } from './wombSection';
+import { applySeatShares } from './wombSectionNodes';
 import { HOLLOW_PSI } from './reefReport';
 import { MIST_LAND_WINDOW_S, landingMistNode } from '../whitewater/mistSlab';
 import { boreWeightNode } from './wombSectionNodes';
@@ -94,7 +95,7 @@ export class SetWaves {
    * stretch's delay pair (from ONSET_DELAY_OFFSET) in each texel's z and w. */
   private readonly onsetPsiTex = floatTexture(FIELD_NX * PSI_TEXELS, FIELD_NZ);
   /** The record's time until onset per level (ReefField.onset from ONSET_UNTIL_OFFSET; breaking.onsetUntil): texel k holds
-   * (until_k, until_{k+1}), PSI_TEXELS per node as the ψ₀ texture. The wall down the line stands up on it (wombSection.WALL_LEAD_S). */
+   * (until_k, until_{k+1}), PSI_TEXELS per node as the ψ₀ texture. The wall down the line stands up on it (wombSection.wallLeadS). */
   private readonly onsetUntilTex = floatTexture(FIELD_NX * PSI_TEXELS, FIELD_NZ);
   /** The far field, row 0 (τ, amp, hmin, k) and row 1 (∂τ/∂x, depth, breaking depth, 0): one texture (the sheet's
    * sampled-texture budget, with the coast's). */
@@ -155,6 +156,9 @@ export class SetWaves {
     updateBreakUniforms(this.brk, p);
     this.breakParams = { ...p };
     normalizeBreakParams(this.breakParams);
+    // The section's seat and the wall's lead are module state shared by the CPU twins and the ribbon (womb-realism Task 2).
+    applySeatShares(this.breakParams.crestShare, this.breakParams.troughShare);
+    setWallLeadT(this.breakParams.wallLeadT);
     this.updateBreakingHeight();
   }
 
@@ -468,9 +472,9 @@ export class SetWaves {
           const confidence = float(0.0).toVar(), rC = float(0.0).toVar();
           // The front's lean (setWaveModel.leanWeight): 0 without a crest.
           const lean = float(0.0).toVar();
-          // setWaveModel.frontStanding: 0 off the record; unbroken, the wall standing up over the last WALL_LEAD_S before
+          // setWaveModel.frontStanding: 0 off the record; unbroken, the wall standing up over the last wall lead (wombSection.wallLeadS) before
           // its break (wombSection.wallWeight on the record's time until onset: the clock alone), or, where the ray never
-          // breaks, with the ratio from the ribbon's onset; held, over the last WALL_LEAD_S before its turn; 1 once broken.
+          // breaks, with the ratio from the ribbon's onset; held, over the last wall lead (wombSection.wallLeadS) before its turn; 1 once broken.
           const standing = float(0.0).toVar();
           // How far it has settled into the white water's bore (setWaveModel.waveAtCrest, wombSection.boreWeight): 'lean' only.
           const bore = float(0.0).toVar();
@@ -520,8 +524,11 @@ export class SetWaves {
               { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi), thrown: smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi) }, onset.delay);
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
             if (this.shape === 'lean') {
-              // wombSection.wallWeight: (1 − until/WALL_LEAD_S)², 0 where it never breaks (UNTIL_NEVER and beyond the lead alike).
-              const wall = (untilS: N): N => { const left = float(1.0).sub(clamp(untilS.div(WALL_LEAD_S), 0.0, 1.0)); return left.mul(left); };
+              // wombSection.wallWeight: 1 − smoothstep(0, wallLeadT × T, until), 0 where it never breaks (UNTIL_NEVER and beyond the
+              // lead alike); T = 2π / ω, the wave's own period.
+              // wombSection.frontWeight: the front's squeeze keeps the old (1 − until/FRONT_LEAD_S)² ramp (the wall's lead is the
+              // section's and the height's, not the front's: womb-realism Task 2).
+              const wall = (untilS: N): N => { const left = float(1.0).sub(clamp(untilS.div(FRONT_LEAD_S), 0.0, 1.0)); return left.mul(left); };
               const byRatio = smoothstep(brk.ribbonOnset, 1.0, rC);
               // Unbroken on the record's clock (until finite): the clock alone, as the drawn section's phase; the ratio only
               // where the ray never breaks (UNTIL_NEVER). The further of the two stood a cliff ahead of the wall (frontStanding).

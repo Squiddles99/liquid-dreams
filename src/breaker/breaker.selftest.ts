@@ -11,7 +11,7 @@ import { DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
 import { buildCoastMap } from '../seabed/coastMap';
 import { SetWaves } from './SetWaves';
 import { type BreakOptions, breakOptions, crestAt, frontStanding, sumWaves, toActiveWave } from './setWaveModel';
-import { wallWeight } from './wombSection';
+import { frontWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 
@@ -661,7 +661,7 @@ registerSelfTest({
         disp.see(e, dt, i);
         const cr = big ? crestAt(x, z, t, f, big, ctx, o) : null;
         if (!cr || cr.tb !== null || cr.confidence < 0.5) return;
-        const wall = wallWeight(cr.until), ramp = smoothstep(cr.params.ribbonOnset, 1, cr.r);
+        const wall = frontWeight(cr.until), ramp = smoothstep(cr.params.ribbonOnset, 1, cr.r);
         if (!(wall > ramp + 0.05 && wall > 0.05 && wall < 0.95)) return;
         if (Math.abs(frontStanding(cr.tb, cr.r, cr.params.ribbonOnset, cr.until) - wall) > 1e-9) return;
         wallSamples++;

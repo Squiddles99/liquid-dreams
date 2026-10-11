@@ -61,8 +61,8 @@ describe('curlTimes on a ridden line (womb-realism Task 2b)', () => {
   // A closeout (all at once, the peak a hair first): the ridden line is nodes PEAK..29, measured from the peak.
   const T = Array.from({ length: N }, (_, i) => (i === PEAK ? T0 : T0 + 1e-3));
   const along = Float32Array.from({ length: N }, (_, i) => (i >= PEAK && i < 30 ? (i - PEAK) * CELL : Number.NaN));
-  const out = curlTimes(Float32Array.from(T), oneLine(), N, 1, CELL, 4, 6, { along, sweepMs: 40, holdS: 30 });
-  it('curlMaxMs binds down the ridden line, its hold under holdS', () => {
+  const out = curlTimes(Float32Array.from(T), oneLine(), N, 1, CELL, 4, 6, { along, sweepMs: 40, holdMarginS: 2 });
+  it('curlMaxMs binds down the ridden line, its hold cap growing down it', () => {
     for (let i = PEAK; i < 30; i++) expect(out[i], `node ${i}`).toBeCloseTo(T0 + ((i - PEAK) * CELL) / 4, 4);
     expect(out[29] - T[29]).toBeGreaterThan(6); // past the flat cap: the ridden line's own
   });

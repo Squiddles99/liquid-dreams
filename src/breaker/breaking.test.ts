@@ -594,9 +594,9 @@ describe('the whitewater pile (spec 2026-09-29 §3.2)', () => {
 });
 
 describe('the curl dial (one-curl spec §3d)', () => {
-  it('defaults to 12 m/s (womb-realism Task 2b) and clamps to [8, 20]', () => {
-    expect(DEFAULT_BREAK_PARAMS.curlMaxMs).toBe(12);
-    for (const [raw, want] of [[2, 8], [15, 15], [99, 20], [Number.NaN, 12]] as const) {
+  it('defaults to 13 m/s (womb-realism Task 2b) and clamps to [8, 20]', () => {
+    expect(DEFAULT_BREAK_PARAMS.curlMaxMs).toBe(13);
+    for (const [raw, want] of [[2, 8], [15, 15], [99, 20], [Number.NaN, 13]] as const) {
       const p = { ...DEFAULT_BREAK_PARAMS, curlMaxMs: raw };
       normalizeBreakParams(p);
       expect(p.curlMaxMs, String(raw)).toBe(want);

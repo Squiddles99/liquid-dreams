@@ -50,7 +50,7 @@ export interface BreakParams {
    * own first-leg peel is 8–14 m/s, but each level's line starts at the south ledge's far end and sweeps up the right at
    * ~20 m/s: at 20 the floor's holds piled up and reached the peak 1.4 s late at 6 ft (one-curl Task 3). So it binds only
    * down the ridden left from the tip (reefField.riddenLine; womb-realism Task 2b): there the reef peels ~17 m/s at 7 ft and
-   * 12 keeps one front ahead of the rider; the sweep into the peak and the inside run at reefField.CURL_SWEEP_MS. */
+   * 13 keeps one front ahead of the rider (12 bit the 225° select bands, whose own peel is 11.6–12.2); the sweep into the peak and the inside run at reefField.CURL_SWEEP_MS. */
   curlMaxMs: number;
   /** The broken section's churn (render only; the CPU model ignores it): lumps up to this fraction of A × the boil… */
   churnSize: number;
@@ -59,6 +59,13 @@ export interface BreakParams {
   /** The surge where a pitching lip lands (whitewater §3.1; wombSection.surgeWeight): the pocket's heave at hollow 1,
    * units of A, [0, 1]. Look only: the ride's copy of the trace carries surge 0 (crestTrace.rideEntries, review F4); drawn past phase 1.25. */
   surge: number;
+  /** The section's seat (womb-realism Task 2; wombSection.CREST_SHARE / TROUGH_SHARE): its crest this many A above still
+   * water from the lip pitching on… */
+  crestShare: number;
+  /** …and its floor this many A below. */
+  troughShare: number;
+  /** The wall down the line stands up over this many swell periods before its break (wombSection.WALL_LEAD_T). */
+  wallLeadT: number;
 }
 
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
@@ -81,10 +88,13 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   psiNudge: 0,
   randomDial: 0,
   peel: 1,
-  curlMaxMs: 12,
+  curlMaxMs: 13,
   churnSize: 0.25,
   churnSpeed: 1,
   surge: 0.5,
+  crestShare: 0.85,
+  troughShare: 0.25,
+  wallLeadT: 1,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
@@ -140,6 +150,9 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.curlMaxMs = clampTo(p.curlMaxMs, 8, 20, d.curlMaxMs);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
   p.surge = clampTo(p.surge, 0, 1, d.surge);
+  p.crestShare = clampTo(p.crestShare, 0.7, 1, d.crestShare);
+  p.troughShare = clampTo(p.troughShare, 0.1, 0.35, d.troughShare);
+  p.wallLeadT = clampTo(p.wallLeadT, 0.5, 2, d.wallLeadT);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
 
@@ -298,7 +311,7 @@ export const ONSET_SIZE_OFFSET = 1 + 4 * ONSET_LEVELS;
 /** Offset of level 0's time until onset (onsetUntil) in a record sample. */
 export const ONSET_UNTIL_OFFSET = 1 + 5 * ONSET_LEVELS;
 /** The record's time until onset where the section on the ray never reaches the level (s): finite, so the record stays
- * bilinear, and far past any wall's lead (wombSection.WALL_LEAD_S). */
+ * bilinear, and far past any wall's lead (wombSection.wallLeadS). */
 export const UNTIL_NEVER = 1e4;
 
 /**

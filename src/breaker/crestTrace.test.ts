@@ -20,7 +20,7 @@ import { PSI_NORMAL } from './overturn';
 import { REFRACT_FLOOR_M as FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import { type ActiveWave, type WaveContext, breakOptions, crestAt, fieldBreakingHeight, phaseXi, rayCrestPoint, sumWaves } from './setWaveModel';
 import { setWaveHeight } from './reefReport';
-import { SECTION_CREST, SECTION_TROUGH, STOOD_PHASE, sectionKnots, sectionOf, sectionPhase, sectionPoint, sectionSamples, sectionScale, wallWeight } from './wombSection';
+import { SECTION_CREST, SECTION_TROUGH, STOOD_PHASE, sectionKnots, sectionOf, sectionPhase, sectionPoint, sectionSamples, sectionScale, frontWeight } from './wombSection';
 
 const P = DEFAULT_BREAK_PARAMS;
 const field = computeReefField({ bed: reefBeds(2).bed, coast: reefBeds(2).coast, periodS: 15, fromDeg: 225, tideM: 0 });
@@ -247,7 +247,7 @@ describe('one hold channel: until carries the hold to the stations (one-curl Tas
       expect(s.tb, tag).toBeNull();
       expect(Math.abs(s.until! + recTb(s)!), `${tag}: until ${s.until} vs hold ${-recTb(s)!}`).toBeLessThan(0.05);
       expect(s.r, tag).toBeLessThanOrEqual(1);
-      expect(sectionPhase(input(s), { ribbonOnset: P.ribbonOnset }), tag).toBeCloseTo(STOOD_PHASE * wallWeight(s.until), 3);
+      expect(sectionPhase(input(s), { ribbonOnset: P.ribbonOnset }), tag).toBeCloseTo(STOOD_PHASE * frontWeight(s.until), 3);
     }
   });
   it('an unbroken station ahead of the curl stands on the clock alone, whatever its ratio', () => {
@@ -257,7 +257,7 @@ describe('one hold channel: until carries the hold to the stations (one-curl Tas
     expect(ahead.length, 'unbroken stations 0.5–7 s ahead of the curl (peak + 1 s and + 3 s)').toBeGreaterThan(3);
     for (const s of ahead) {
       const phase = sectionPhase({ ...input(s), r: 1.2 }, { ribbonOnset: P.ribbonOnset });
-      expect(phase, `station at arc ${s.arc.toFixed(1)}, until ${s.until!.toFixed(2)}`).toBeCloseTo(STOOD_PHASE * wallWeight(s.until), 3);
+      expect(phase, `station at arc ${s.arc.toFixed(1)}, until ${s.until!.toFixed(2)}`).toBeCloseTo(STOOD_PHASE * frontWeight(s.until), 3);
     }
   });
 });

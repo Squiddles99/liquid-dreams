@@ -1,4 +1,4 @@
-import { BORE_SHARE, boreWeight, wallWeight } from './wombSection';
+import { BORE_SHARE, boreWeight, frontWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -75,8 +75,8 @@ export const wombFrontMin = (H: number, k: number): number =>
 
 /**
  * How far a crest's front has shortened to the Womb profile's face [0, 1]: 0 off the reef's record; unbroken on the record
- * (its time until it breaks, or its turn, finite) the clock alone, the wall standing up over the last WALL_LEAD_S
- * (wombSection.wallWeight), exactly as the drawn section's phase does (wombSection.sectionPhase, one-curl spec §3b); off the
+ * (its time until it breaks, or its turn, finite) the clock alone, the front squeezing over the last FRONT_LEAD_S
+ * (wombSection.frontWeight), exactly as the drawn section's phase does (wombSection.sectionPhase, one-curl spec §3b); off the
  * record's clock (no record, or a ray that never breaks) rising with its breaking ratio `r` from the ribbon's onset to 1;
  * 1 once broken. Down the line, and at the take-off before the wave stands up, the front stays the swell's: squeezed to the
  * face's length there, the face swept under a paddling surfer in 0.4 s at a slope of 1.35 and the ride never caught it
@@ -88,9 +88,9 @@ export const wombFrontMin = (H: number, k: number): number =>
  */
 export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset, until: number | null = null): number {
   if (tb === undefined) return 0;
-  if (tb === null) return until !== null && Number.isFinite(until) ? wallWeight(until) : smoothstep(ribbonOnset, 1, r);
-  // Held for its turn (the peel stretch): as the wall stands up over the last WALL_LEAD_S before it.
-  return tb < 0 ? Math.max(smoothstep(ribbonOnset, 1, r) * wallWeight(-tb), wallWeight(-tb)) : 1;
+  if (tb === null) return until !== null && Number.isFinite(until) ? frontWeight(until) : smoothstep(ribbonOnset, 1, r);
+  // Held for its turn (the peel stretch): as the wall stands up over the last lead before it.
+  return tb < 0 ? Math.max(smoothstep(ribbonOnset, 1, r) * frontWeight(-tb), frontWeight(-tb)) : 1;
 }
 
 export function leanWeight(crest: Crest | null): number {

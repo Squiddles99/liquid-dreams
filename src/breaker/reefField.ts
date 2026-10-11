@@ -1,6 +1,6 @@
 import type { Bathymetry } from '../seabed/bathymetry';
 import { smoothstep } from '../math/smoothstep';
-import { type GridSpec, LEFT_LEDGE_M, NORTH_LEDGE, TIP } from '../seabed/wombReef';
+import { type GridSpec, NORTH_LEDGE, TIP } from '../seabed/wombReef';
 import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_SIZE_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, UNTIL_NEVER, breakingDepth, onsetLevelHeight } from './breaking';
 import { type FarField, computeFarField, farSample } from './coastFarField';
 import { solveWaveField } from './waveField';
@@ -510,14 +510,14 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
 /** The peel stretch links a level's onset nodes this many cells apart into one breaking section (curlClock's, shared). */
 export { PEEL_NEIGHBOUR_CELLS };
 /** The curl's top speed down the ridden left (m/s) when the request names none (BreakParams.curlMaxMs's default; womb-realism
- * Task 2b: the reef's own peel there is ~17 m/s at 7 ft, 270°). */
-export const CURL_MAX_MS_DEFAULT = 12;
+ * Task 2b: the reef's own peel there is ~17 m/s at 7 ft, 270°; at 225° it is 11.6–12.2 and 12 bit there). */
+export const CURL_MAX_MS_DEFAULT = 13;
 /** The curl's top speed everywhere else (m/s): the sweep into the peak and the inside's closeout (one-curl Task 3's 40). */
 export const CURL_SWEEP_MS = 40;
 /** The ridden left (curlClock.RiddenLine): the onset nodes within this far (m) across NORTH_LEDGE's first leg, from the tip
  * to its end. */
 export const RIDDEN_BAND_M = 40;
-/** Hold headroom (s) on the ridden left past the curl's time down the whole ledge (riddenLine's holdS). */
+/** Hold headroom (s) on the ridden left past the curl's time down the ledge to the node (curlClock.RiddenLine). */
 export const RIDDEN_HOLD_MARGIN_S = 2;
 /** Where a breaking section meets one that broke less than this (s) earlier, they are one line (peelLines). */
 export const PEEL_MERGE_S = 1.5;
@@ -708,8 +708,8 @@ function curlPass(onsetT: Float32Array, grid: GridSpec, stretch: number, curlMax
 }
 
 /** The ridden left on the grid (curlClock.RiddenLine): the distance down NORTH_LEDGE's first leg from the tip, within
- * RIDDEN_BAND_M across it; the curl's top speed off it CURL_SWEEP_MS; its hold cap long enough for the curl to run the whole
- * ledge at curlMaxMs (at least PEEL_MAX_HOLD_S). */
+ * RIDDEN_BAND_M across it; the curl's top speed off it CURL_SWEEP_MS; its hold cap the curl's time down the ledge to the
+ * node at curlMaxMs plus RIDDEN_HOLD_MARGIN_S (at least PEEL_MAX_HOLD_S: the tip keeps the flat cap). */
 function riddenLine(grid: GridSpec, curlMaxMs: number): RiddenLine {
   const [a, b] = NORTH_LEDGE, len = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
   const along = new Float32Array(grid.nx * grid.nz).fill(Number.NaN);
@@ -717,8 +717,7 @@ function riddenLine(grid: GridSpec, curlMaxMs: number): RiddenLine {
     const dx = grid.x0 + col * grid.cellM - a[0], dz = grid.z0 + row * grid.cellM - a[1], s = dx * ux + dz * uz;
     if (s >= 0 && s <= len && Math.abs(dz * ux - dx * uz) <= RIDDEN_BAND_M) along[row * grid.nx + col] = s;
   }
-  const holdS = Number.isFinite(curlMaxMs) && curlMaxMs > 0 ? Math.max(PEEL_MAX_HOLD_S, LEFT_LEDGE_M / curlMaxMs + RIDDEN_HOLD_MARGIN_S) : PEEL_MAX_HOLD_S;
-  return { along, sweepMs: Number.isFinite(curlMaxMs) ? CURL_SWEEP_MS : Infinity, holdS };
+  return { along, sweepMs: Number.isFinite(curlMaxMs) ? CURL_SWEEP_MS : Infinity, holdMarginS: RIDDEN_HOLD_MARGIN_S };
 }
 
 /** The time until onset is read this many cells ahead along the ray (fillUntil): one, so along a straight ray it falls cell

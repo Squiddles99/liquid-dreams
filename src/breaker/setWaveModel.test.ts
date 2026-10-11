@@ -198,7 +198,7 @@ describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
     expect(frontStanding(null, 0.85, 0.7)).toBeCloseTo(0.5, 12);
     expect(frontStanding(null, 1, 0.7)).toBe(1);
     // Held for its turn: as the wall stands up over the last WALL_LEAD_S before it (wombSection.wallWeight).
-    const { wallWeight, WALL_LEAD_S } = await import('./wombSection');
+    const { frontWeight: wallWeight, FRONT_LEAD_S: WALL_LEAD_S } = await import('./wombSection');
     expect(frontStanding(-1, 0.85, 0.7)).toBeCloseTo(wallWeight(1), 12);
     expect(frontStanding(-WALL_LEAD_S / 2, 0.85, 0.7)).toBeCloseTo(0.25, 12);
     // Unbroken, on the record (the time until it breaks finite): the clock alone, as the drawn section's phase

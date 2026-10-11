@@ -189,6 +189,9 @@ export const BREAK_BINDINGS = {
   churnSize: { label: 'churn size (× A)', min: 0, max: 0.4, step: 0.01 },
   churnSpeed: { label: 'churn speed', min: 0, max: 3, step: 0.05 },
   surge: { label: 'surge at the landing (× A)', min: 0, max: 1, step: 0.05 },
+  crestShare: { label: 'section crest (× A over still water)', min: 0.7, max: 1, step: 0.01 },
+  troughShare: { label: 'section floor (× A under still water)', min: 0.1, max: 0.35, step: 0.01 },
+  wallLeadT: { label: 'wall lead (× period)', min: 0.5, max: 2, step: 0.05 },
 } as const;
 
 /** Debug overlay toggles (Reef folder), one per DebugOverlays field, checked by DevPanel.test.ts. */

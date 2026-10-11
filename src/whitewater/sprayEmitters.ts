@@ -4,7 +4,7 @@ import { offshoreSpeed } from '../breaker/overturn';
 import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
 import { type Station, type StationEntry, traceStations } from '../breaker/crestTrace';
 import { GRAVITY_MS2 } from '../breaker/lipProfile';
-import { type SectionFrame, type SectionNumbers, type SectionTiming, curlWeight, sectionFrame, sectionTiming, wallWeight } from '../breaker/wombSection';
+import { type SectionFrame, type SectionNumbers, type SectionTiming, curlWeight, seatOf, sectionFrame, sectionTiming, wallWeight } from '../breaker/wombSection';
 import { CREST_KNOT, type P2 as Vec2, profileKnots } from '../breaker/wombProfile';
 import { type ReefField, sampleField } from '../breaker/reefField';
 import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWave } from '../breaker/setWaveModel';
@@ -144,18 +144,18 @@ export interface FeatherEmitter {
   wOff: number;
 }
 
-/** A standing crest's seat (units of A): sectionFrameKnots seats the drawn curl on the sea at its front knot, measured
- * ~0.2 A under the drawing's own (tools/_featherProbe.ts: −0.20 to −0.23 A over the default set's standing wall)… */
-export const STANDING_SEAT_UNITS = -0.2;
-/** …and the sheet's crest the curl blends in from stands at this × H (0.674–0.676 there). */
+/** The sheet's crest the curl blends in from stands at this × H (0.674–0.676 over the default set's standing wall,
+ * tools/_featherProbe.ts). */
 export const SHEET_CREST_PER_H = 0.675;
 
 /** The standing crest's height (world m) from the station's numbers alone (no sheet read), as sectionFrameKnots draws it:
- * the drawing's crest, seated (STANDING_SEAT_UNITS), blended in from the sheet's crest (SHEET_CREST_PER_H × H) by the
- * curl's weight; plus the tide. */
+ * the drawing's crest under the seat (wombSection.seatOf, over a sheet whose crest is SHEET_CREST_PER_H × H), blended in
+ * from the sheet's crest by the curl's weight; plus the tide. */
 export function standingCrestY(numbers: Pick<SectionNumbers, 'A' | 'phase' | 'hollow' | 'rho'>, H: number, tideM: number): number {
-  const drawn = numbers.A * (profileKnots(numbers.phase, numbers.hollow)[CREST_KNOT][1] + STANDING_SEAT_UNITS);
   const sheet = SHEET_CREST_PER_H * H;
+  if (!(numbers.A > 0)) return sheet + tideM;
+  const k = profileKnots(numbers.phase, numbers.hollow), [s, b] = seatOf(numbers.phase, numbers.hollow, k, sheet / numbers.A);
+  const drawn = numbers.A * (k[CREST_KNOT][1] * s + b);
   return sheet + (drawn - sheet) * curlWeight(numbers) + tideM;
 }
 
@@ -325,7 +325,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
     if (s.gap) continue;
     // The standing wall ahead of the curl feathers in a strong offshore (§4.2): no frame read.
     if (s.tb === null && wantSpray && s.until !== null && s.until !== undefined && Number.isFinite(s.until)) {
-      const wall = wallWeight(s.until), wOff = offshoreSpeedOn(i.wind, s.nx, s.nz);
+      const wall = wallWeight(s.until, field.periodS), wOff = offshoreSpeedOn(i.wind, s.nx, s.nz);
       const strength = (FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wall) * smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], wOff) * i.amount;
       if (strength > 0) {
         feather.push({ x: s.x, y: standingCrestY(s.section, s.H, i.tideM), z: s.z, nx: s.nx, nz: s.nz, strength, waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M), wOff });
