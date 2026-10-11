@@ -30,7 +30,7 @@ import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { type CoastParams, DEFAULT_COAST_PARAMS, normalizeCoastParams } from '../seabed/coastFeatures';
 import { SetWaves } from '../breaker/SetWaves';
 import { ReefFlow } from '../breaker/flowNodes';
-import { type SetWaveResult, type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import { type SetWaveResult, type WaveContext, breakOptions, fieldBreakingHeight, phaseXi, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import type { FieldSample } from '../breaker/fieldSample';
 import { currentBindings, keyLabel } from '../ride/bindings';
 import { RideSession, rideMessage } from '../ride/RideSession';
@@ -1987,6 +1987,23 @@ export class App {
     const waves = wavesNear(t, this.conditions, this.sets).map(toActiveWave);
     const rows = crestLineRows({ field: this.field, ctx: this.waveCtx, waves, t, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs, spacingM });
     return { t, offshoreMs, appOffshoreMs: this.offshoreMs, rows, ends: traceEnds.map((e) => ({ ...e, arrivalS: waves[e.wave].arrivalS })) };
+  }
+
+  /** Dev readout (womb-realism Task 1b): ξ (s) and the field's τ, k on a grid round (x, z) for the wave arriving at arrivalS. */
+  crestLineXi(arrivalS: number, x: number, z: number, half = 6, step = 1): { xi: number[][]; tau: number[][]; k: number[][] } | null {
+    if (!this.field || !this.waveCtx) return null;
+    const t = this.clock.simTime, w = wavesNear(t, this.conditions, this.sets).map(toActiveWave).find((v) => Math.abs(v.arrivalS - arrivalS) < 0.01);
+    if (!w) return null;
+    const out = { xi: [] as number[][], tau: [] as number[][], k: [] as number[][] };
+    for (let dz = -half; dz <= half; dz += step) {
+      const xi: number[] = [], tau: number[] = [], k: number[] = [];
+      for (let dx = -half; dx <= half; dx += step) {
+        const f = sampleField(this.field, x + dx, z + dz);
+        xi.push(phaseXi(x + dx, z + dz, t, f, w, this.waveCtx)); tau.push(f.tau); k.push(f.k);
+      }
+      out.xi.push(xi); out.tau.push(tau); out.k.push(k);
+    }
+    return out;
   }
 
   /** Dev readout (womb-realism Task 0 Step 5): the sheet's crest at one station with the front's standing as is, 0 and 1. */

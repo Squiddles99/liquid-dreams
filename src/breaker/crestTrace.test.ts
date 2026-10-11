@@ -8,9 +8,11 @@ import { reefBeds } from './testField';
 const [PX, PZ] = TIP;
 const fromTip = (x: number, z: number): [number, number] => [PX + x, PZ + z];
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
+import { SWELL_BANDS } from '../frontend/sessionSetup';
+import { coastReefField } from './testField';
 import { DEFAULT_BREAK_PARAMS, ONSET_DELAY_OFFSET, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH, landingEstimate, onsetGain, onsetTime } from './breaking';
 import { HAND_BACK_S } from './lipProfile';
-import { rideEntries } from './crestTrace';
+import { closeoutWeight, rideEntries, smoothInsideLine } from './crestTrace';
 import {
   CREST_TOLERANCE_S, MAX_SPACING_M, MAX_STATIONS, MIN_SPACING_M, SPACING_PER_M, type Station, type StationEntry, minRibbonHeight, stationOnset, stationPsi, timeSinceOnset, traceStations,
 } from './crestTrace';
@@ -501,5 +503,97 @@ describe('crestTrace: the surge is the ribbon\'s look only (whitewater F4)', () 
   it('rideEntries returns the same array when nothing surges', () => {
     const plain = trace([w], times[0]);
     expect(rideEntries(plain)).toBe(plain);
+  });
+});
+
+describe('the inside leg draws one line (closeout-edges, Fable ruling 2026-10-10: B, σ 12 m)', () => {
+  // Huge (12 ft) at mid tide from 225°, the set's biggest wave, the stand's camera: the closeout-edges Task 0 moment.
+  const b = SWELL_BANDS.find((x) => x.label === 'Huge')!;
+  const c = cloneConditions(DEFAULT_CONDITIONS);
+  c.swell.sizeFt = b.ft; c.swell.periodS = b.periodS; c.swell.directionDeg = 225; c.tideM = 0;
+  const sets = wavesBetween(300, 900, c, DEFAULT_SET_PARAMS), first = sets.filter((w) => w.slot === sets[0].slot);
+  const biggest = first.reduce((a, w) => (w.heightM > a.heightM ? w : a));
+  const hf = coastReefField({ periodS: b.periodS, fromDeg: 225, tideM: 0, peel: true });
+  const hctx: WaveContext = { omega: hf.omega, travelX: hf.far.dirX, travelZ: hf.far.dirZ };
+  const all = wavesBetween(biggest.arrivalS - 60, biggest.arrivalS + 60, c, DEFAULT_SET_PARAMS).map(toActiveWave);
+  const minH = minRibbonHeight(fieldBreakingHeight(hf, P), P);
+  const at = (dt: number, sigma?: number) => traceStations(hf, all, biggest.arrivalS + dt, hctx,
+    { cameraX: 208.3, cameraZ: 60.8, params: P, minHeightM: minH, insideLineSmoothingM: sigma });
+  /** Runs of contiguous stations (gaps split them). */
+  const runs = (e: StationEntry[]): Station[][] => {
+    const out: Station[][] = [[]];
+    for (const s of e) if (s.gap) out.push([]); else out[out.length - 1].push(s);
+    return out.filter((r) => r.length > 1);
+  };
+  /** The largest across-crest step between neighbouring inside-leg stations (m, along the later station's normal). */
+  const worstStep = (e: StationEntry[]): number => {
+    let worst = 0;
+    for (const r of runs(e)) for (let i = 1; i < r.length; i++) {
+      if (closeoutWeight(r[i].z) <= 0 && closeoutWeight(r[i - 1].z) <= 0) continue;
+      const across = (r[i].x - r[i - 1].x) * r[i].nx + (r[i].z - r[i - 1].z) * r[i].nz;
+      worst = Math.max(worst, Math.abs(across));
+    }
+    return worst;
+  };
+
+  for (const dt of [3, 5]) {
+    it(`t+${dt}: no inside-leg station steps more than 2 m across the crest (the unsmoothed line did)`, { timeout: 120_000 }, () => {
+      expect(worstStep(at(dt, 0))).toBeGreaterThan(2);
+      expect(worstStep(at(dt))).toBeLessThanOrEqual(2);
+    });
+
+    it(`t+${dt}: every station with closeoutWeight 0 is bit-identical to the unsmoothed trace (the ridden line, the turn)`, { timeout: 120_000 }, () => {
+      const plain = at(dt, 0), smooth = at(dt);
+      expect(smooth.length).toBe(plain.length);
+      let n = 0;
+      smooth.forEach((s, i) => {
+        const p = plain[i];
+        expect(s.gap).toBe(p.gap);
+        if (s.gap || p.gap || closeoutWeight(p.z) > 0) return;
+        expect(s).toEqual(p);
+        n++;
+      });
+      expect(n).toBeGreaterThan(20);
+    });
+
+    it(`t+${dt}: the smoothed inside leg moves at most 3 m off the sheet's crest (|ξ| under 0.3 s)`, { timeout: 120_000 }, () => {
+      // Fable's cap was 0.2 s ("0.15 s ≈ 1.8 m"); at t+3 one zigzag station (z −256) reads 0.27 s for a move under 2 m,
+      // where the crest's arrival time changes steeply across the crest (slow front). The cap is held in metres: 2.5 m, since
+      // t+5's 5.2 m jog is met about halfway (2.3 m; a 2 m clamp leaves a 2.02 m step). 3 m since womb-realism Task 1: the
+      // offset is taken across the line's own direction and moved along the oblique normal (2.71 m at t+5).
+      const plain = at(dt, 0), smooth = at(dt), t = biggest.arrivalS + dt;
+      let move = 0, xi = 0, n = 0;
+      smooth.forEach((s, i) => {
+        const p = plain[i];
+        if (s.gap || p.gap || closeoutWeight(p.z) <= 0) return;
+        move = Math.max(move, Math.hypot(s.x - p.x, s.z - p.z));
+        xi = Math.max(xi, Math.abs(phaseXi(s.x, s.z, t, sampleField(hf, s.x, s.z), all[s.wave], hctx)));
+        n++;
+      });
+      expect(n).toBeGreaterThan(10);
+      expect(move).toBeLessThanOrEqual(3);
+      expect(xi).toBeLessThan(0.3);
+    });
+  }
+});
+
+describe('the inside line smoothing keeps a smooth line where it is (womb-realism Task 1: the line end)', () => {
+  // The station normals are the wave's, not the line's: on the inside leg they sit ~50° off the line's perpendicular (the
+  // close+1.5 probe: n (0.96, 0.29), line (-0.83, 0.56)). A one-sided average at the line's end shifts along the line,
+  // and the oblique normal turned that into a 5.8 m move across the crest (the ribbon 0.26 m under the sheet).
+  it('a curved line with no jogs and oblique normals moves at most 0.5 m anywhere, its ends included (R 300 m, 2 m stations, σ 12 m)', () => {
+    const R = 300, cx = 200 + R, cz = NORTH_LEDGE[1][1] - 300;
+    const line: Station[] = [];
+    for (let i = 0; i <= 60; i++) {
+      const a = Math.PI + (i - 30) * (2 / R);
+      const x = cx + R * Math.cos(a), z = cz + R * Math.sin(a);
+      const b = a + (50 * Math.PI) / 180;
+      line.push({ gap: false, wave: 0, x, z, arc: i * 2, nx: -Math.cos(b), nz: -Math.sin(b), H: 1, c: 10, r: 1, tb: 30, until: null, psi: PSI_NORMAL, lipH: null, Hb: null, section: { A: 1, phase: 2, hollow: 0, rho: 1 } });
+    }
+    expect(line.every((s) => closeoutWeight(s.z) === 1)).toBe(true);
+    const before = line.map((s) => [s.x, s.z]);
+    smoothInsideLine(line, 12);
+    const moves = line.map((s, i) => Math.hypot(s.x - before[i][0], s.z - before[i][1]));
+    expect(Math.max(...moves)).toBeLessThanOrEqual(0.5);
   });
 });
