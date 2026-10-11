@@ -4,6 +4,8 @@ import { WATER_IOR, extinction } from '../seabed/waterColumn';
 import type { Sky } from '../sky/Sky';
 import { alongPathNode, cameraDepthNode, fresnelFromInsideNode, sunThroughWindowNode, waterColourAtDepthNode } from './underwaterNodes';
 import { LIP_REFERENCE_THICKNESS_M, type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
+import { billowSharesNode } from '../whitewater/billow';
+import { mistLightNode } from '../whitewater/mistLight';
 
 type N = any;
 
@@ -14,6 +16,9 @@ export interface WaterSurfaceInputs {
   distance: N;
   foam: N;
   /** Brightness of the foam colour (1 when absent): the set foam's pattern darkens its hollows a little. */
+  /** The break's own foam weight [0, 1] (the set waves and the foam map, not the shore's): its dense part (0.6 → 0.9) is
+   * lit as a foam volume (whitewater §3.3). Absent: none (the shore's swash and surf foam keep today's look). */
+  breakFoam?: N;
   foamShade?: N;
   /** The lip mask (0..1): the thin, curling lip. Keys the turquoise transmission. Absent means 0 (the ocean sheet). */
   lip?: N;
@@ -40,6 +45,13 @@ export interface WaterSurfaceInputs {
   seabed?: { radiance: N; transmittance: N };
   /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
   overlay?: { depth: N; tau: N; depthOn: N; crestOn: N; foamMap?: N; foamOn?: N; sunOn?: N };
+  /** The solid boil's billows (billow.ts; 7b S3): the foam volume lit by their bump normal (wrap 0.5) and its sky and sun
+   * occluded in their troughs by their height (billowSharesNode); absent, the shading normal and no occlusion. */
+  foamBillow?: { normal: N; height: N };
+  /** The dense foam volume's exposure (FoamField.volumeExposure, a dev dial; 7b S3 ruling 3); absent 1. */
+  foamExposure?: N;
+  /** The shaded point (world m): with it the colour is fogged through the whitewater's mist slab (sky.mist; §6.1). */
+  worldPos?: N;
 }
 
 export function createWaterOpticsUniforms(p: WaterOpticsParams) {
@@ -92,6 +104,7 @@ export function deepWaterUpwelling(sky: Sky, u: WaterOpticsUniforms, sunVisibili
  * glitter + light from the water column (deep upwelling + lip transmission of sun and skylight), mixed with lit foam,
  * then aerial perspective.
  */
+
 export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUniforms): N {
   const n = i.normal;
   const v = i.viewDir;
@@ -172,7 +185,21 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // a heap of bubble clumps that shadow each other, so the creases lose the sun far more than the sky. The clumps' tops
   // catch the sun and the creases go sky-lit blue-grey; shaded as one smooth surface it read as flat peach plasticine.
   const shade = i.foamShade ? saturate(i.foamShade.sub(0.62).div(0.45)) : null;
-  const foamSeen = shade ? foamSky.mul(mix(0.75, 1.0, shade)).add(foamSun.mul(mix(0.3, 1.0, shade.mul(shade)))) : foamLight;
+  const foamLace = shade ? foamSky.mul(mix(0.75, 1.0, shade)).add(foamSun.mul(mix(0.3, 1.0, shade.mul(shade)))) : foamLight;
+  // Fresh, dense foam is a foam volume, not paint on water (whitewater §3.3): mistLight's wrapped diffuse + the spray's
+  // phase (it glows backlit), the sky's blue in its shadows and the water's colour bounced into it; thinning foam blends
+  // back to the lace above. The churn's lumps shade it through the normal (their slope is in the ribbon's setSlope).
+  const foamVolume = i.breakFoam ? smoothstep(0.6, 0.9, i.breakFoam) : null;
+  // The solid boil's billows (7b S3 ruling): their bump normal lights the volume, their troughs hide some sky and sun.
+  const billow = i.foamBillow;
+  const shares = billow ? billowSharesNode(billow.height) : null;
+  const volumeLight = mistLightNode({
+    cosView: dot(v.negate(), l), nDotL: billow ? dot(billow.normal, l) : nDotL, sunVisibility: sv, isotropic: 0.6, groundColour: column,
+    skyShare: shares?.sky, sunShare: shares?.sun,
+  }, sky);
+  // Exposed for itself (7b S3 ruling 3: a camera exposes for the whitewater): at 1 the volume's radiance sat on the tone
+  // curve's flat shoulder and its billows' shading could not show.
+  const foamSeen = foamVolume ? mix(foamLace, volumeLight.mul(i.foamExposure ?? float(1.0)), foamVolume) : foamLace;
   const colour = mix(water, foamSeen, saturate(i.foam));
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
@@ -207,7 +234,8 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
       return c;
     })()
     : colour;
-  return sky.applyAerialPerspective(withOverlay, i.distance, v.negate());
+  const misted = sky.mist && i.worldPos ? sky.mist(withOverlay, i.worldPos, sv) : withOverlay;
+  return sky.applyAerialPerspective(misted, i.distance, v.negate());
 }
 
 /**

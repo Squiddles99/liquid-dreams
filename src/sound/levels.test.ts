@@ -7,7 +7,7 @@ import {
   valueNoise1, washLevel, windSound,
 } from './levels';
 
-const imp = (waveId: number, x: number, z: number, H = 2, lip = 1): ImpactEmitter => ({ x, y: 0, z, vx: 0, vz: 0, nx: 1, nz: 0, H, strength: 1, lip, waveId, arc: 0 });
+const imp = (waveId: number, x: number, z: number, H = 2, lip = 1): ImpactEmitter => ({ x, y: 0, z, vx: 0, vz: 0, nx: 1, nz: 0, H, hollow: 0, strength: 1, lip, waveId, arc: 0 });
 function surf(periodS = 10): SurfState {
   return { tau: new Float32Array(SURF_NZ), table: buildHeights({ lo: 0, hi: 200 }, periodS, 1.5, [], 1), periodS, enabled: true, edgeM: waterEdgeOffset(0) };
 }

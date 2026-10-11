@@ -6,7 +6,7 @@ import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/B
 import { withSections } from '../ride/sectionWater';
 import { TAKEOFF_ANCHOR, TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from '../ride/takeoff';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
-import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
+import { type StationEntry, minRibbonHeight, rideEntries, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from '../breaker/peakFace';
 import { offshoreSpeed } from '../breaker/overturn';
 import { footprintBreakHeight } from '../breaker/coastBreaking';
@@ -98,11 +98,13 @@ import { CoastalSurf } from '../surf/CoastalSurf';
 import { DEFAULT_SURF_PARAMS, type SurfParams, normalizeSurfParams } from '../surf/surfModel';
 import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FoamField } from '../whitewater/FoamField';
+import { MistSlab } from '../whitewater/mistSlab';
+import { sectionScale } from '../breaker/wombSection';
 import { KelpField } from '../seabed/KelpField';
 import { SprayParticles } from '../whitewater/SprayParticles';
 import {
-  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
-  impactBirths, normalizeImpactParams, type SpitEmitter, spitBirths, SPRAY_BIRTH_CAP, normalizeSprayParams, sprayBirths, sprayCanEmit, windToVector,
+  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, type FeatherEmitter, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
+  impactBirths, normalizeImpactParams, type SpitEmitter, spitBirths, SPRAY_BIRTH_CAP, normalizeSprayParams, sprayAndPlumeBirths, sprayCanEmit, windToVector,
 } from '../whitewater/sprayEmitters';
 import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { Land } from '../land/Land';
@@ -209,6 +211,9 @@ export class App {
   /** The breaking ribbon's crest stations last traced, how far the rider is under a curl (tubeCover), and the spray on the
    * lens from it (Andrew 2026-10-04: over her shoulder in the tube, and the surfacing drops on the lens). */
   private ribbonStations: readonly StationEntry[] = [];
+  /** The same stations with the surge taken out (crestTrace.rideEntries): what the ride, its cover and the eye read
+   * (whitewater F4: the surge is the ribbon's look only). */
+  private rideStations: readonly StationEntry[] = [];
   private rideCover = 0;
   /** This frame's ride water (App.rideWater at the clock's time), built once while riding and read by the ride step, the
    * camera and the underwater check (plan 2026-10-07 ride-framerate Task 2), at its sim time (a reset jumps the clock); null
@@ -361,7 +366,14 @@ export class App {
   readonly foamField = new FoamField({
     foamNode: (xz) => this.setWaves.breakingFoamNode(xz),
     dirNode: (xz) => this.setWaves.sample(xz, true).dir,
+    foamPushNode: (xz, shift) => this.setWaves.breakingFoamPushNode(xz, shift ?? null),
   });
+  /** The whitewater's mist slab (whitewater §6.1): the foam map's mist, fogging every near-water material built after it. */
+  readonly mist = ((): MistSlab => {
+    const slab = new MistSlab(this.foamField, this.seabed.tide, this.sky);
+    this.sky.mist = (colour, worldPos, sunVisibility) => slab.apply(colour, worldPos, sunVisibility);
+    return slab;
+  })();
   /** The water's flow under the waves (reef build B §4.1): the set waves' surface plus the FFT long swell where it runs. */
   readonly reefFlow = new ReefFlow(this.setWaves, (xz) => this.surfaceModel.fftCascadeDisplacement(xz, 0, float(1.0)).y);
   /** The kelp's lean grid around the camera (reef build B §4.2–4.3), stepped with the foam's ticks. */
@@ -369,13 +381,15 @@ export class App {
   private foamTimer: number | undefined;
   private sprayTimer: number | undefined;
   private foamOnlyTimer: number | undefined;
+  /** Tools only (captureMoments): every foam replay exact, as behind a cover (a capture's applyMoment has no cover). */
+  exactFoamReplays = false;
   /** Offshore spray off the throwing lips (spec 2026-09-27-offshore-spray-design.md). */
   readonly spray = new SprayParticles(this.sky, undefined, this.sunlight);
   /** The impact explosion where each lip lands (spec 2026-09-28-impact-explosion-design.md), on the same particle system. */
   readonly impact = new SprayParticles(this.sky, IMPACT_KIND, this.sunlight);
   private impactTimer: number | undefined;
   /** This frame's emitters per tick, shared by the spray and the explosion (their replays cover different tick counts). */
-  private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] }>();
+  private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[] }>();
   private readonly fieldClient = new ReefFieldClient();
   private fieldKey = '';
   /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
@@ -839,6 +853,9 @@ export class App {
     this.offshoreMs = this.field ? offshoreSpeed(this.conditions.wind.speedMs, this.conditions.wind.directionDeg, this.field.far.dirX, this.field.far.dirZ) : 0;
     this.ribbon.setOffshore(this.offshoreMs);
     this.ribbonKey = null;
+    // The foam map's wind drift (whitewater §5.2): the wind vector, the way it blows.
+    const [wx, wz] = windToVector(this.conditions.wind.directionDeg);
+    this.foamField.setWind(wx * this.conditions.wind.speedMs, wz * this.conditions.wind.speedMs);
   }
 
   /**
@@ -882,7 +899,9 @@ export class App {
    * time uniform and the waves buffer at its own time; both are restored for the frame's render and probe.
    */
   private stepFoam(events: readonly WaveEvent[]): void {
-    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t));
+    // A replay behind the loading cover is exact; one mid-play takes the cheap path (FoamField.advance, Fable's ruling).
+    const covered = this.exactFoamReplays || !!this.loadingScreen?.blocking;
+    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t), covered);
     this.frameTicks.foam = steps;
     if (steps === 0) return;
     this.ocean.time.value = this.clock.simTime;
@@ -937,7 +956,7 @@ export class App {
     await device.queue.onSubmittedWorkDone();
     this.foamField.invalidate();
     const start = performance.now();
-    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t));
+    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t), true);
     await device.queue.onSubmittedWorkDone();
     const ms = performance.now() - start;
     this.pointFoamSourceAt(this.clock.simTime);
@@ -967,6 +986,9 @@ export class App {
    */
   private stepSpray(): void {
     this.tickEmitters.clear();
+    // The mist slab's depth: the waves about now, their mean scale A (the slab's height is a look, not a measurement).
+    const near = wavesNear(this.clock.simTime, this.conditions, this.sets);
+    if (near.length > 0) this.mist.A.value = sectionScale(near.reduce((s, e) => s + e.heightM, 0) / near.length);
     const w = windToVector(this.conditions.wind.directionDeg), s = this.conditions.wind.speedMs;
     this.spray.setWind(w[0] * s, w[1] * s);
     this.impact.setWind(w[0] * s, w[1] * s);
@@ -975,7 +997,7 @@ export class App {
   }
 
   /** Tick k's emitters, computed once per frame (both systems ask for the same ticks). */
-  private emittersAt(k: number): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] } {
+  private emittersAt(k: number): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[] } {
     let e = this.tickEmitters.get(k);
     if (!e) {
       const t = tickTime(k);
@@ -995,14 +1017,17 @@ export class App {
    * the tick's slots. */
   private impactBirthsAt(k: number) {
     const e = this.emittersAt(k);
-    return [...impactBirths(e.impact, k), ...spitBirths(e.spit, k)].slice(0, SPRAY_BIRTH_CAP);
+    // The spit is held back or blown on by the wind (whitewater §4.3).
+    const [wx, wz] = windToVector(this.conditions.wind.directionDeg), w = this.conditions.wind.speedMs;
+    return [...impactBirths(e.impact, k), ...spitBirths(e.spit, k, [wx * w, wz * w])].slice(0, SPRAY_BIRTH_CAP);
   }
 
   private sprayBirthsAt(k: number) {
     // When the spray can't emit, don't compute the tick's emitters for it: on a calm day its replay would run the
     // shared trace for all its ticks just for the explosion's sake (final review).
     if (!sprayCanEmit(this.sprayParams.amount, this.conditions.wind.speedMs)) return [];
-    return sprayBirths(this.emittersAt(k).spray, k, this.sprayParams);
+    const e = this.emittersAt(k);
+    return sprayAndPlumeBirths(e.spray, k, this.sprayParams, e.feather);
   }
 
   /** Dev (3c plan Task 4): a forced impact replay, timed to the GPU's completion; cpuMs is the emitter work alone. */
@@ -1053,13 +1078,14 @@ export class App {
     let entries: StationEntry[] = [];
     if (tracing) {
       const waves = events.map(toActiveWave);
-      const input = { cameraX: cam.x, cameraZ: cam.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs: this.offshoreMs };
+      const input = { cameraX: cam.x, cameraZ: cam.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs: this.offshoreMs, drawSurge: true };
       const start = performance.now();
       entries = traceStations(field, waves, this.clock.simTime, ctx, input);
       this.traceMs += TRACE_MS_ALPHA * (performance.now() - start - this.traceMs);
     }
     this.ribbonStations = entries;
-    this.ribbon.setStations(entries, cam);
+    this.rideStations = rideEntries(entries);
+    this.ribbon.setStations(entries, cam, field?.periodS ?? 15);
     this.ribbon.setSun(sun);
     this.ribbon.compute(this.renderer);
     this.ribbon.renderFootprint(this.renderer);
@@ -1665,7 +1691,7 @@ export class App {
     };
     // Where the breaking ribbon draws, the board stands on its sections (the wave that is drawn), from this frame's
     // stations (traced at the clock's time), read lazily and cold (sectionWater R9; R8's warm read is the probe's only).
-    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide) : sheet;
+    return sections && t === this.clock.simTime ? withSections(sheet, this.rideStations, tide) : sheet;
   }
 
   /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */
@@ -2116,7 +2142,7 @@ export class App {
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
       else if (event) this.perf.flash(rideMessage(event));
       const rb = this.ride.body;
-      this.rideCover = rb ? tubeCover(this.ribbonStations, rb.x, rb.z) : 0;
+      this.rideCover = rb ? tubeCover(this.rideStations, rb.x, rb.z) : 0;
       const pose = this.ride.cameraPose(realDt, water, mouse, this.rideCover);
       if (pose) this.rig.setPose(pose);
     } else {

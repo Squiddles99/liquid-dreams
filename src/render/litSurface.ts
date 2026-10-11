@@ -52,5 +52,7 @@ export function litColor(sky: Sky, look: SurfaceLook, sunVisibility?: (xz: N) =>
   const skySheen = sky.skyIrradiance.div(PI).mul(fresnel).mul(0.5).mul(look.sheen ?? float(1.0));
   let color = look.albedo.mul(sunE.add(skyE).add(bounce)).div(PI).add(sunSpec).add(skySheen);
   if (look.sunExtra) color = color.add(sky.sunIlluminance.mul(vis).mul(up).mul(look.sunExtra));
+  // The whitewater's mist slab (whitewater §6.1), where the App has one.
+  if (sky.mist) color = sky.mist(color, positionWorld, vis);
   return sky.applyAerialPerspective(color, dist, v.negate());
 }

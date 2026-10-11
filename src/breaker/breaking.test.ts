@@ -323,7 +323,7 @@ describe('normalizeBreakParams', () => {
     const old = { ...P } as Partial<BreakParams>;
     delete old.pileHalfM; delete old.pileSurge; delete old.churnSize; delete old.churnSpeed;
     normalizeBreakParams(old as BreakParams);
-    expect([old.pileHalfM, old.pileSurge, old.churnSize, old.churnSpeed]).toEqual([50, 0.3, 0.2, 1]);
+    expect([old.pileHalfM, old.pileSurge, old.churnSize, old.churnSpeed]).toEqual([50, 0.3, 0.25, 1]); // churnSize: Andrew's dial (whitewater)
     const wild = { ...P, pileHalfM: 1, pileSurge: 9, churnSize: -1, churnSpeed: 99 };
     normalizeBreakParams(wild);
     expect([wild.pileHalfM, wild.pileSurge, wild.churnSize, wild.churnSpeed]).toEqual([10, 0.6, 0, 3]);
