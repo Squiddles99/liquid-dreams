@@ -7,8 +7,9 @@ import { NORTH_LEDGE, SOUTH_LEDGE, TIP } from '../seabed/wombReef';
 import { reefBeds } from './testField';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { firstBreak, setWaveHeight as setWaveHeightAt } from './reefReport';
-import { DEFAULT_BREAK_PARAMS, PILE_LAND_H, PILE_RISE_S, breakingHeightThreshold, landingEstimate, onsetTime, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
+import { DEFAULT_BREAK_PARAMS, PILE_LAND_H, PILE_RISE_S, breakingHeightThreshold, landingEstimate, onsetDelay, onsetTime, onsetUntil, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
 import { type Station, traceStations } from './crestTrace';
+import { flightTime } from './wombSection';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { offshoreSpeed } from './overturn';
@@ -255,9 +256,19 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
   it('a section does not un-break in the barrel zone (40 m seaward to 20 m inside the ledges)', () => {
     const starts = [...along(NORTH_LEDGE, 100, 5), ...along(SOUTH_LEDGE, 40, 5)];
     for (const w of [testWave(REF_BIGGEST.heightM), testWave(1.8 * HS)]) for (const [px, pz] of starts) {
-      let prev = 0, total = 0;
+      let prev = 0, total = 0, prevDelay = 0, seenBroken = false;
       for (const p of ray(px, pz, 40, 20)) {
-        const s = stageWhenCrestAt(p.x, p.z, w);
+        // A section held for its turn (the 13 m/s curl, womb-realism Task 2b) is broken-pending (STOP 2 early ruling, ask 3):
+        // shoreward of a broken point and not yet broken itself (on the record, until finite) it is held, not un-broken; and
+        // released later than its neighbour seaward (the peel stretch's delay grew), its stage restarting from its own onset
+        // is no un-break (the 0.105 drop at (-76.8, -39.2): released 0.07 s before the crest). Every other drop counts.
+        const r = sampleOnset(field, p.x, p.z), tb = r ? onsetTime(r, 0, w.heightM, DEFAULT_BREAK_PARAMS) : null;
+        const s = stageWhenCrestAt(p.x, p.z, w), broke = tb !== null && tb >= 0;
+        const delay = r && broke ? onsetDelay(r, 0, w.heightM, DEFAULT_BREAK_PARAMS) : 0;
+        const held = !broke && seenBroken && !!r && Number.isFinite(onsetUntil(r, 0, w.heightM, DEFAULT_BREAK_PARAMS));
+        const released = broke && delay > prevDelay + 0.01;
+        prevDelay = delay; seenBroken ||= broke;
+        if (held || (released && prev - s > 0.03)) { prev = s; continue; }
         expect(prev - s).toBeLessThanOrEqual(0.03);
         total += Math.max(0, prev - s);
         prev = s;
@@ -757,7 +768,9 @@ describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
       const [px, pz] = breakPoint(lx, lz, w);
       const line = ray(px, pz, 40, 80);
       const { tOn, H } = onsetAt(px, pz, w);
-      const lip = topNear(line, tOn, w).height;
+      // The lip the pile is held to is the broken crest's (the crest's law after the lip's flight: 0.78 x hmin), not the
+      // onset's, which stands at the record's breaking size since womb-realism Task 2c (STOP 2 early ruling, ask 3).
+      const lip = topNear(line, tOn + flightTime(H), w).height;
       // Once the crest's own pile has risen (its landing clock, from its height there, can run later than the break
       // point's: on the softened ramp the section runs tens of metres from its break).
       let tRisen = tOn + landingEstimate(H, P) + PILE_RISE_S;
