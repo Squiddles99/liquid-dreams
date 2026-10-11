@@ -138,14 +138,14 @@ describe('the births', () => {
   });
   it('emitters are 3 m apart (the cost lever) and births scatter half a spacing either side, so the veil stays continuous', () => {
     expect(SPRAY_SPACING_M).toBe(3);
-    const one = [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 1, lip: 1, waveId: 1, arc: 0, wOff: 6, yWater: 0 }];
+    const one = [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 1, lip: 1, waveId: 1, arc: 0, wOff: 6, yWater: 0, A: 10 }];
     let widest = 0;
     for (let k = 0; k < 200; k++) for (const b of sprayBirths(one, k, DEFAULT_SPRAY_PARAMS)) widest = Math.max(widest, Math.abs(b.z));
     expect(widest).toBeGreaterThan(0.8 * SPRAY_SPACING_M / 2);
     expect(widest).toBeLessThanOrEqual(SPRAY_SPACING_M / 2 + 1e-9);
   });
   it('the wind and the amount set how many puffs are born, not how opaque each is (strength applied once; final review I1)', () => {
-    const at = (strength: number, lip: number) => [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength, lip, waveId: 1, arc: 0, wOff: 6, yWater: 0 }];
+    const at = (strength: number, lip: number) => [{ x: 0, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength, lip, waveId: 1, arc: 0, wOff: 6, yWater: 0, A: 10 }];
     let weak = 0, strong = 0;
     for (let k = 0; k < 400; k++) {
       const w = sprayBirths(at(0.3, 1), k, DEFAULT_SPRAY_PARAMS), s = sprayBirths(at(1, 1), k, DEFAULT_SPRAY_PARAMS);
@@ -157,7 +157,7 @@ describe('the births', () => {
     for (let k = 0; k < 50; k++) for (const b of sprayBirths(at(2, 0.4), k, DEFAULT_SPRAY_PARAMS)) expect(b.strength).toBeCloseTo(0.4, 12);
   });
   it('births never exceed the per-tick cap (amount 3 on a long section)', () => {
-    const many = Array.from({ length: 400 }, (_, i) => ({ x: i, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 3, lip: 1, waveId: 1, arc: i, wOff: 6, yWater: 0 }));
+    const many = Array.from({ length: 400 }, (_, i) => ({ x: i, y: 1, z: 0, vx: 5, vz: 0, nx: 1, nz: 0, strength: 3, lip: 1, waveId: 1, arc: i, wOff: 6, yWater: 0, A: 10 }));
     const b = sprayBirths(many, 7, DEFAULT_SPRAY_PARAMS);
     expect(b.length).toBe(SPRAY_BIRTH_CAP);
     expect(sprayBirths(many, 7, DEFAULT_SPRAY_PARAMS)).toEqual(b);
@@ -220,7 +220,7 @@ describe('the impact explosion', () => {
     const a = impactBirths(many, 9);
     expect(a.length).toBe(SPRAY_BIRTH_CAP);
     expect(impactBirths(many, 9)).toEqual(a);
-    const s = sprayBirths(many.map((e) => ({ ...e, wOff: 6, yWater: 0 })), 9, DEFAULT_SPRAY_PARAMS);
+    const s = sprayBirths(many.map((e) => ({ ...e, wOff: 6, yWater: 0, A: 10 })), 9, DEFAULT_SPRAY_PARAMS);
     expect(a[0].z).not.toBeCloseTo(s[0].z, 9); // the scatter runs along (−nz, nx) = z here
     for (const b of a) { expect(b.life).toBeGreaterThanOrEqual(1.3); expect(b.life).toBeLessThanOrEqual(IMPACT_MAX_LIFE_S); }
   });
@@ -307,7 +307,7 @@ describe("the barrel's spit (Andrew: foam, spit and spray)", () => {
     expect(seen).toBeGreaterThan(0);
   });
   it('spit births jet out along their direction, capped and deterministic', () => {
-    const one = { x: 0, y: 1, z: 0, dx: 0, dz: 1, speed: 15, nx: 1, nz: 0, radius: 1.5, strength: 1, lip: 1, waveId: 1, arc: 0 };
+    const one = { x: 0, y: 1, z: 0, dx: 0, dz: 1, speed: 15, nx: 1, nz: 0, radius: 1.5, strength: 1, lip: 1, waveId: 1, arc: 0, A: 10 };
     let along = 0, up = 0, n = 0;
     for (let k = 0; k < 100; k++) for (const b of spitBirths([one], k)) { along += b.vz; up += Math.abs(b.vy); n++; }
     expect(n).toBeGreaterThan(50);
@@ -319,7 +319,7 @@ describe("the barrel's spit (Andrew: foam, spit and spray)", () => {
 });
 
 describe('the plume, the veil and the spit under wind (whitewater §4.1, §4.3)', () => {
-  const tip = (wOff: number, strength = 1) => ({ x: 0, y: 2, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, strength, lip: 1, waveId: 7, arc: 3, wOff, yWater: 0.4 });
+  const tip = (wOff: number, strength = 1) => ({ x: 0, y: 2, z: 0, vx: 6, vz: 0, nx: 1, nz: 0, strength, lip: 1, waveId: 7, arc: 3, wOff, yWater: 0.4, A: 10 });
   const plumeStrength = (wOff: number): number => {
     let n = 0;
     for (let k = 0; k < 400; k++) n += plumeBirths([tip(wOff)], k, DEFAULT_SPRAY_PARAMS).length;
@@ -346,10 +346,9 @@ describe('the plume, the veil and the spit under wind (whitewater §4.1, §4.3)'
       expect(p.life).toBeLessThanOrEqual(PLUME_LIFE_S[1]);
     }
   });
-  it('the plume kind: big (2 → 6 m), long-lived, slow to settle, glowing backlit; spit denser', () => {
-    expect(PLUME_KIND).toEqual({ dragTauS: 2.0, gravityMs2: 0.3, sizeM: [3, 10], opacity: 0.3, isotropic: 0.7 }); // 7b S1
-    // Spec §4.3 "opacity 0.3 → 0.5" on the old per-puff scale (0.3 × the impact kind's 0.32): 0.5 × 0.32 (ledger ruling).
-    expect(SPIT_KIND.opacity).toBeCloseTo(0.5 * IMPACT_KIND.opacity, 12);
+  it('the plume kind: dense, long-lived, slow to settle, glowing backlit; spit denser (KIND_LOOK since womb-realism Task 5)', () => {
+    expect(PLUME_KIND).toMatchObject({ dragTauS: 1 / 0.8, gravityMs2: 0.3, sizeM: [1, 2.5], opacity: 0.8, isotropic: 0.7, backDriftShare: 0.7 });
+    expect(SPIT_KIND).toMatchObject({ gravityMs2: 0, sizeM: [0.4, 1], opacity: 0.7, backDriftShare: 0 });
     expect(KIND_INDEX).toEqual({ spray: 0, plume: 1, impact: 2, spit: 3, feather: 4 });
     expect(PARTICLE_KINDS[KIND_INDEX.feather]).toBe(FEATHER_KIND);
     expect(PARTICLE_KINDS[KIND_INDEX.plume]).toBe(PLUME_KIND);
@@ -389,7 +388,7 @@ describe('the plume, the veil and the spit under wind (whitewater §4.1, §4.3)'
     expect(all.slice(0, sprayBirths(many, 4, DEFAULT_SPRAY_PARAMS).length).every((b) => (b.kind ?? 0) === KIND_INDEX.spray)).toBe(true);
   });
   it('spit is the spit kind, held back or blown on by the wind (+ wind × SPIT_WIND_SHARE)', () => {
-    const e = { x: 0, y: 1, z: 0, dx: 1, dz: 0, nx: 0, nz: 1, speed: 8, radius: 1, strength: 1, lip: 1, waveId: 2, arc: 1 };
+    const e = { x: 0, y: 1, z: 0, dx: 1, dz: 0, nx: 0, nz: 1, speed: 8, radius: 1, strength: 1, lip: 1, waveId: 2, arc: 1, A: 10 };
     const calm = spitBirths([e], 4), blown = spitBirths([e], 4, [-6, 0]);
     expect(calm.length).toBeGreaterThan(0);
     for (const b of calm) expect(b.kind).toBe(KIND_INDEX.spit);
@@ -499,8 +498,8 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
       expect(worst, `A ${A}`).toBeLessThanOrEqual(FEATHER_LIFT_A * A + 1e-4);
     }
   });
-  it('the feather kind (7b S2): big enough to read from the lookout, faint, slow to settle; twice the old rate', () => {
-    expect(FEATHER_KIND).toEqual({ dragTauS: 0.8, gravityMs2: 0.5, sizeM: [1, 4], opacity: 0.2, isotropic: 0.6 });
+  it('the feather kind (KIND_LOOK since womb-realism Task 5): thin, small, short-lived, blown straight back; the 7b rate', () => {
+    expect(FEATHER_KIND).toMatchObject({ dragTauS: 0.5, gravityMs2: 0.5, sizeM: [0.3, 0.8], opacity: 0.35, isotropic: 0.6, backDriftShare: 1 });
     expect(FEATHER_RATE).toBe(12);
     expect(ERODING_KINDS).not.toContain(KIND_INDEX.feather);
   });

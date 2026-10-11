@@ -30,6 +30,18 @@ export function sprayPhase(cosT: number, isotropic = SPRAY_PHASE_ISOTROPIC): num
   return (1 - isotropic) * hg + isotropic / (4 * Math.PI);
 }
 
+/**
+ * Each kind's sprite (womb-realism Task 5, by KIND_INDEX: spray, plume, impact, spit, feather): `soft` is where the round
+ * puff starts to fade (× its radius: 0 a wisp all edge, 0.5 a dense core) and `bright` scales its light (the spit's jet and
+ * the plume's dense water read whiter than the feather's thin mist).
+ */
+export const SPRITE_LOOK: readonly { soft: number; bright: number }[] = [
+  { soft: 0.3, bright: 1 }, { soft: 0.45, bright: 1.1 }, { soft: 0.3, bright: 1 }, { soft: 0.5, bright: 1.15 }, { soft: 0, bright: 0.9 },
+];
+/** The kind overlay's colours (DebugOverlays.kindTint), by KIND_INDEX: spray grey, plume blue, impact yellow, spit red,
+ * feather green. */
+export const KIND_TINT: readonly (readonly [number, number, number])[] = [[0.6, 0.6, 0.6], [0.1, 0.3, 1], [1, 0.85, 0.1], [1, 0.1, 0.1], [0.1, 1, 0.2]];
+
 export function nearCameraFade(distanceM: number): number {
   return smoothstep(NEAR_FADE_M[0], NEAR_FADE_M[1], distanceM);
 }

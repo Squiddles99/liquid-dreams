@@ -202,6 +202,7 @@ export const OVERLAY_BINDINGS: Record<keyof DebugOverlays, { label: string }> = 
   ribbonTint: { label: 'ribbon tint' },
   foamMap: { label: 'foam map' },
   sprayTint: { label: 'spray tint' },
+  kindTint: { label: 'spray kind tint' },
   coverMap: { label: 'cover map' },
   sunlightMap: { label: 'sunlight map' },
 };

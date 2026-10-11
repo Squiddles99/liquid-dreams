@@ -11,7 +11,7 @@ import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWa
 import { smoothstep } from '../math/smoothstep';
 import type { WaveEvent } from '../swell/sets';
 import { FOAM_TICK_S } from './foamStep';
-import { FEATHER_KIND, KIND_INDEX, SPRAY_KIND } from './particleKinds';
+import { FEATHER_KIND, KIND_INDEX, KIND_LOOK, SPRAY_KIND, liftSpeed } from './particleKinds';
 
 /**
  * Offshore spray's emitters and births (spec 2026-09-27-offshore-spray-design.md §3.1), on the CPU: each 20 Hz tick, the
@@ -112,7 +112,7 @@ export const PLUME_WIND_MS: readonly [number, number] = [3, 9];
 /** …thrown with 0.6 × the lip's throw plus w_off × (PLUME_UPDRAFT up − PLUME_BACK along the crest normal)… */
 export const PLUME_UPDRAFT = 0.8, PLUME_BACK = 0.4;
 /** …and living U(3, 5) s. */
-export const PLUME_LIFE_S: readonly [number, number] = [3, 5];
+export const PLUME_LIFE_S: readonly [number, number] = KIND_LOOK.plume.lifeS;
 /** The spit is blown on (or held back) by this share of the wind vector (§4.3). */
 export const SPIT_WIND_SHARE = 0.5;
 
@@ -134,7 +134,7 @@ export const FEATHER_FRAME_REACH_M = 60;
 export const FEATHER_LIFT_A = 0.5;
 /** …this many puffs per m of crest per s at strength 1, each living U(0.6, 1.2) s. */
 export const FEATHER_RATE = 12;
-export const FEATHER_LIFE_S: readonly [number, number] = [0.6, 1.2];
+export const FEATHER_LIFE_S: readonly [number, number] = KIND_LOOK.feather.lifeS;
 /** A feather puff's soft fade (§6.2) counts from this far under the crest it smokes off: the crest is a thin edge with the
  * water falling away behind it, so the puffs show from birth. */
 export const FEATHER_SOFT_DROP_M = 0.5;
@@ -196,6 +196,8 @@ export interface SprayEmitter {
   wOff: number;
   /** The water under the curl (world m; the tube's floor, y includes the tide): the soft particles' floor (§6.2). */
   yWater: number;
+  /** The station's section size (m): the plume's lift cap (KIND_LOOK.plume.liftA). */
+  A: number;
 }
 
 export interface EmitterInput {
@@ -292,6 +294,8 @@ export interface SpitEmitter {
   /** The crest normal (the wave's travel). */
   nx: number;
   nz: number;
+  /** The station's section size (m): the spit's lift cap (KIND_LOOK.spit.liftA). */
+  A: number;
   /** The tube's radius (m): births scatter over its mouth. */
   radius: number;
   /** pulse · weight · ρ · min(1, H / 2 m) · impact amount: how many puffs are born. */
@@ -305,8 +309,9 @@ export interface SpitEmitter {
 export const SPIT_REACH_STATIONS = 3;
 /** …fully up to SPIT_PULSE_S[0] after that section landed, gone by [1] (s). */
 export const SPIT_PULSE_S: readonly [number, number] = [0.3, 1.0];
-/** The jet's speed: this × √(g·H), at most SPIT_MAX_SPEED_MS (a heavy 3 m barrel spits at ~14 m/s). */
-export const SPIT_SPEED = 2.5;
+/** The jet's speed out of the mouth: this × the lip's throw (the frame's tip speed, vj), at most SPIT_MAX_SPEED_MS
+ * (womb-realism Task 5; was 2.5 × √(g·H), ~14 m/s for a heavy 3 m barrel: 1.5 × vj is ~15-18 m/s at 7 ft). */
+export const SPIT_THROW_SHARE = 1.5;
 export const SPIT_MAX_SPEED_MS = 25;
 /** Spit puffs per second per mouth at strength 1… */
 export const SPIT_RATE = 120;
@@ -384,7 +389,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       spray.push({
         x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz,
         strength: f.weight * f.rho * wind * i.amount, lip: Math.min(1, f.weight * f.rho), waveId, arc,
-        wOff: offshoreSpeedOn(i.wind, s.nx, s.nz), yWater: f.floor[1] + i.tideM,
+        wOff: offshoreSpeedOn(i.wind, s.nx, s.nz), yWater: f.floor[1] + i.tideM, A: s.section.A,
       });
     }
     if (emitsImpact) {
@@ -462,7 +467,7 @@ function spitEmitters(stations: readonly StationEntry[], timing: readonly (Secti
     const u = f.crest[0] + 0.4 * f.reach, y = f.floor[1] + 0.45 * tubeH;
     out.push({
       x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, dx: ddx / dl, dz: ddz / dl,
-      speed: Math.min(SPIT_MAX_SPEED_MS, SPIT_SPEED * Math.sqrt(GRAVITY_MS2 * s.H)), nx: s.nx, nz: s.nz, radius: 0.3 * tubeH,
+      speed: Math.min(SPIT_MAX_SPEED_MS, SPIT_THROW_SHARE * f.vj), nx: s.nx, nz: s.nz, radius: 0.3 * tubeH, A: s.section.A,
       strength: pulse * f.weight * f.rho * Math.min(1, s.H / 2) * amount, lip: Math.min(1, f.weight * f.rho),
       waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M),
     });
@@ -544,10 +549,10 @@ export function plumeBirths(emitters: readonly SprayEmitter[], tick: number, p: 
       if (out.length >= SPRAY_BIRTH_CAP) return out;
       const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x60000000 + j * 8 + q);
       const along = (r(0) * 2 - 1) * (SPRAY_SPACING_M / 2);
-      const back = e.wOff * PLUME_BACK, up = e.wOff * PLUME_UPDRAFT;
+      const back = e.wOff * PLUME_BACK, up = e.wOff * PLUME_UPDRAFT, cap = liftSpeed(KIND_LOOK.plume, e.A);
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.5, z: e.z + e.nx * along,
-        vx: 0.6 * e.vx - e.nx * back + (r(2) * 2 - 1) * 0.8, vy: up + (r(3) * 2 - 1) * 0.8, vz: 0.6 * e.vz - e.nz * back + (r(4) * 2 - 1) * 0.8,
+        vx: 0.6 * e.vx - e.nx * back + (r(2) * 2 - 1) * 0.8, vy: Math.min(up + (r(3) * 2 - 1) * 0.8, cap), vz: 0.6 * e.vz - e.nz * back + (r(4) * 2 - 1) * 0.8,
         life: PLUME_LIFE_S[0] + (PLUME_LIFE_S[1] - PLUME_LIFE_S[0]) * r(5), strength: Math.min(1, e.lip), kind: KIND_INDEX.plume, yWater: e.yWater,
       });
     }
@@ -626,11 +631,12 @@ export function spitBirths(emitters: readonly SpitEmitter[], tick: number, wind:
       if (out.length >= SPRAY_BIRTH_CAP) return out;
       const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x20000000 + j * 8 + q);
       const across = (r(0) * 2 - 1) * 0.6 * e.radius, up = (r(1) * 2 - 1) * 0.6 * e.radius;
-      const v = (0.7 + 0.4 * r(2)) * e.speed, side = (r(3) * 2 - 1) * 0.12 * e.speed;
+      const v = (0.7 + 0.4 * r(2)) * e.speed, side = (r(3) * 2 - 1) * 0.12 * e.speed, cap = liftSpeed(KIND_LOOK.spit, e.A);
+      const [l0, l1] = KIND_LOOK.spit.lifeS;
       out.push({
         x: e.x + e.nx * across, y: e.y + up, z: e.z + e.nz * across,
-        vx: e.dx * v + e.nx * side + wx, vy: r(4) * 2 - 1, vz: e.dz * v + e.nz * side + wz,
-        life: 0.8 + 0.8 * r(5), strength: Math.min(1, e.lip), kind: KIND_INDEX.spit,
+        vx: e.dx * v + e.nx * side + wx, vy: Math.max(-cap, Math.min(cap, r(4) * 2 - 1)), vz: e.dz * v + e.nz * side + wz,
+        life: l0 + (l1 - l0) * r(5), strength: Math.min(1, e.lip), kind: KIND_INDEX.spit,
       });
     }
   }

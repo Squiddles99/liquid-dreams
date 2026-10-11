@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { IMPACT_KIND, KIND_INDEX, PLUME_KIND, SPRAY_KIND } from './particleKinds';
+import { IMPACT_KIND, KIND_INDEX, KIND_LOOK, PARTICLE_KINDS, PLUME_KIND, SPRAY_KIND } from './particleKinds';
 import { SPRAY_BIRTH_CAP, SPRAY_OPACITY, replayTicksForMaxLife, sprayReplayTicks } from './sprayEmitters';
 import { SPRAY_PHASE_ISOTROPIC, sprayPhase } from './sprayLook';
 import { SPRAY_DRAG_TAU_S, SPRAY_SETTLE_MS2, SprayPool, birthInto, stepPool } from './sprayStep';
 
 describe('particle kinds', () => {
   it('the spray kind is exactly 3b (the refactor changes nothing)', () => {
-    expect(SPRAY_KIND).toEqual({ dragTauS: SPRAY_DRAG_TAU_S, gravityMs2: SPRAY_SETTLE_MS2, sizeM: [0.3, 2], opacity: SPRAY_OPACITY, isotropic: SPRAY_PHASE_ISOTROPIC });
-    expect(SPRAY_KIND).toEqual({ dragTauS: 0.45, gravityMs2: 1.2, sizeM: [0.3, 2], opacity: 0.08, isotropic: 0.3 });
+    expect(SPRAY_KIND).toMatchObject({ dragTauS: SPRAY_DRAG_TAU_S, gravityMs2: SPRAY_SETTLE_MS2, sizeM: [0.3, 2], opacity: SPRAY_OPACITY, isotropic: SPRAY_PHASE_ISOTROPIC, backDriftShare: 1 });
+    expect(SPRAY_KIND).toMatchObject({ dragTauS: 0.45, gravityMs2: 1.2, sizeM: [0.3, 2], opacity: 0.08, isotropic: 0.3 });
   });
   it('an impact puff rises and falls back under gravity well within its life', () => {
     const pool = new SprayPool(SPRAY_BIRTH_CAP);
@@ -59,5 +59,25 @@ describe('one pool, every kind (whitewater §4.1)', () => {
     expect(Array.from(mixed.posAge.slice(0, 4))).toEqual(Array.from(a.posAge.slice(0, 4)));
     expect(Array.from(mixed.posAge.slice(4, 8))).toEqual(Array.from(b.posAge.slice(0, 4)));
     expect(mixed.posAge[5]).toBeGreaterThan(mixed.posAge[1]); // the plume barely settles: higher after 1 s
+  });
+});
+
+describe('four airborne looks (womb-realism Task 5, spec 3.3)', () => {
+  it('every kind has a KIND_LOOK entry, and the kinds the GPU reads are made from it (τ = 1 / drag)', () => {
+    for (const name of Object.keys(KIND_INDEX) as (keyof typeof KIND_INDEX)[]) {
+      const look = KIND_LOOK[name], kind = PARTICLE_KINDS[KIND_INDEX[name]];
+      expect(look, name).toBeDefined();
+      expect(kind.sizeM, name).toEqual(look.sizeM);
+      expect(kind.opacity, name).toBe(look.alpha);
+      expect(kind.dragTauS, name).toBeCloseTo(1 / look.drag, 12);
+      expect(kind.backDriftShare, name).toBe(look.backDriftShare);
+    }
+  });
+  it('the plan’s numbers: feather thin and short, plume dense and long, spit low and fast, impact unchanged', () => {
+    expect(KIND_LOOK.feather).toEqual({ sizeM: [0.3, 0.8], alpha: 0.35, lifeS: [0.6, 1.2], drag: 2.0, liftA: 1.0, backDriftShare: 1.0 });
+    expect(KIND_LOOK.plume).toEqual({ sizeM: [1.0, 2.5], alpha: 0.8, lifeS: [3, 5], drag: 0.8, liftA: 2.0, backDriftShare: 0.7 });
+    expect(KIND_LOOK.spit).toEqual({ sizeM: [0.4, 1.0], alpha: 0.7, lifeS: [0.5, 0.9], drag: 1.5, liftA: 0.2, backDriftShare: 0.0 });
+    expect(KIND_LOOK.impact.liftA).toBe(1.5);
+    expect(IMPACT_KIND.sizeM).toEqual([0.8, 3.5]);
   });
 });
