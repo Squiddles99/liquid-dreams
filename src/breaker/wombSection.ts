@@ -363,6 +363,20 @@ export function sectionFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): {
   return { knots: [...back, ...curl, ...front], beyond };
 }
 
+/**
+ * The section's crest knot's height (m; sectionFrame(…).crest[1] bit for bit) from the sheet at the swell drawing's homes
+ * alone (SWELL_CURL_U: none at curlWeight 1), not the frame's back, front and second-round reads: the feathering's crest
+ * near the curl (womb-realism Task 4; the whole frame there cost ~6 ms a spray tick).
+ */
+export function sectionCrestY(numbers: SectionNumbers, sheet: SheetAlong): number {
+  const { A, phase, hollow } = numbers, k = profileKnots(phase, hollow), surge = numbers.surge ?? 0, g = curlWeight(numbers);
+  const swell = g === 1 ? null : SWELL_CURL_U.map((u) => sheet(A * u)[1] / A);
+  const [scale, shift] = seatOf(phase, hollow, k, swell ? Math.max(...swell) : 0);
+  const p = k[CREST_KNOT][1], seated = p * scale + shift;
+  const dy = surge > 0 ? seated + ((p + surgeLift(CREST_KNOT, surge, 1)) - p) : seated;
+  return A * (swell ? swell[0] + (dy - swell[0]) * g : dy);
+}
+
 /** The sheet's ends among the section's knots: the back edge, the shoulder, the front knot, the front edge. */
 export const SHEET_ENDS: readonly number[] = [0, SHEET_KNOTS - 1, SHEET_KNOTS + CURL_KNOTS, 2 * SHEET_KNOTS + CURL_KNOTS - 1];
 

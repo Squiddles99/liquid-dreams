@@ -4,14 +4,14 @@ import { offshoreSpeed } from '../breaker/overturn';
 import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
 import { type Station, type StationEntry, traceStations } from '../breaker/crestTrace';
 import { GRAVITY_MS2 } from '../breaker/lipProfile';
-import { type SectionFrame, type SectionNumbers, type SectionTiming, curlWeight, seatOf, sectionFrame, sectionTiming, wallWeight } from '../breaker/wombSection';
+import { STOOD_PHASE, type SectionFrame, type SectionNumbers, type SectionTiming, curlWeight, seatOf, sectionCrestY, sectionFrame, sectionTiming, wallWeight } from '../breaker/wombSection';
 import { CREST_KNOT, type P2 as Vec2, profileKnots } from '../breaker/wombProfile';
 import { type ReefField, sampleField } from '../breaker/reefField';
 import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { smoothstep } from '../math/smoothstep';
 import type { WaveEvent } from '../swell/sets';
 import { FOAM_TICK_S } from './foamStep';
-import { KIND_INDEX, SPRAY_KIND } from './particleKinds';
+import { FEATHER_KIND, KIND_INDEX, SPRAY_KIND } from './particleKinds';
 
 /**
  * Offshore spray's emitters and births (spec 2026-09-27-offshore-spray-design.md §3.1), on the CPU: each 20 Hz tick, the
@@ -119,8 +119,19 @@ export const SPIT_WIND_SHARE = 0.5;
 /** Crest feathering (whitewater §4.2; 7b S2 ruling): in a strong offshore every stood crest smokes, this share of full on
  * the stood swell, rising with the wall (wallWeight) to full at the curl… */
 export const FEATHER_FLOOR = 0.25;
-/** …its strength rising with the offshore wind over these speeds (m/s)… */
-export const FEATHER_WIND_MS: readonly [number, number] = [5, 10];
+/** …its strength rising with the offshore wind over these speeds (m/s; womb-realism Task 4, spec 3.3: Andrew's glassy
+ * 7 km/h morning feathers, [5, 10] showed none under 18 km/h)… */
+export const FEATHER_WIND_MS: readonly [number, number] = [2, 7];
+/** (FEATHER_FLOOR + (1 − FEATHER_FLOOR) × wall) × smoothstep(FEATHER_WIND_MS, wOff) × amount: a stood crest's feathering. */
+export const featherStrength = (wall: number, wOff: number, amount: number): number =>
+  (FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wall) * smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], wOff) * amount;
+/** Within this arc (m) of the curl front (its wave's nearest broken station) a stood crest feathers from the drawn section
+ * (the frame's crest, or its tip once pitching): the cheap standingCrestY sat the puffs well over the lip there (image 8). */
+export const FEATHER_FRAME_REACH_M = 60;
+/** A feather puff rises at most this × its section's A above its birth: its launch speed up is capped at
+ * FEATHER_LIFT_A × A / the feather kind's drag time (the drag takes vy to 0 and the wind has no vertical part, so the rise
+ * is at most vy₀ × τ). */
+export const FEATHER_LIFT_A = 0.5;
 /** …this many puffs per m of crest per s at strength 1, each living U(0.6, 1.2) s. */
 export const FEATHER_RATE = 12;
 export const FEATHER_LIFE_S: readonly [number, number] = [0.6, 1.2];
@@ -128,8 +139,8 @@ export const FEATHER_LIFE_S: readonly [number, number] = [0.6, 1.2];
  * water falling away behind it, so the puffs show from birth. */
 export const FEATHER_SOFT_DROP_M = 0.5;
 
-/** A standing crest that feathers: no section frame read (the frame is the expensive part), its crest from the station's
- * own smoothed numbers (standingCrestY). */
+/** A standing crest that feathers: within FEATHER_FRAME_REACH_M of the curl its crest from the section frame (fromFrame),
+ * beyond it from the station's own smoothed numbers (standingCrestY: the frame is the expensive part). */
 export interface FeatherEmitter {
   x: number;
   y: number;
@@ -142,6 +153,10 @@ export interface FeatherEmitter {
   arc: number;
   /** The wind's offshore speed on its normal (m/s). */
   wOff: number;
+  /** The station's section size (m): the puffs' lift cap (FEATHER_LIFT_A). */
+  A: number;
+  /** y is the frame's drawn crest (or tip), not standingCrestY. */
+  fromFrame: boolean;
 }
 
 /** The sheet's crest the curl blends in from stands at this × H (0.674–0.676 over the default set's standing wall,
@@ -321,14 +336,35 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
   // ~59 breaking stations a tick, ~20 of them emit).
   const timing: (SectionTiming | null)[] = stations.map(() => null);
   const frames: (SectionFrame | null)[] = stations.map(() => null);
+  // Each wave's broken stations' arcs: a stood station's distance to its curl (FEATHER_FRAME_REACH_M).
+  const brokenArcs = new Map<number, number[]>();
+  for (const s of stations) if (!s.gap && s.tb !== null && Number.isFinite(s.tb)) (brokenArcs.get(s.wave) ?? brokenArcs.set(s.wave, []).get(s.wave)!).push(s.arc);
+  // The section as the ribbon draws it (wombSection: the station's smoothed numbers), on the station's own wave only: a set
+  // wave's envelope is tight (exp(−(ξ/0.7T)⁶)), so the others add nothing at its crest, and summing all of them was most of
+  // the lip maths' cost (measured, final cost pass).
+  const sheetOf = (s: Station) => {
+    const own = [waves[s.wave]];
+    return (u: number): Vec2 => {
+      const x = s.x + s.nx * u, z = s.z + s.nz * u;
+      const r = sumWaves(x, z, i.t, sampleField(field, x, z), own, ctx, opts);
+      return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
+    };
+  };
+  const frameOf = (s: Station): SectionFrame => sectionFrame(s.section, s.H, s.c, sheetOf(s));
+  const nearCurl = new Map<number, { k: number; s: Station; cheap: number; d?: number }>();
   for (const [si, s] of stations.entries()) {
     if (s.gap) continue;
-    // The standing wall ahead of the curl feathers in a strong offshore (§4.2): no frame read.
+    // The standing wall ahead of the curl feathers in an offshore (§4.2; womb-realism Task 4): from the drawn crest near
+    // the curl, from standingCrestY (no frame read) beyond.
     if (s.tb === null && wantSpray && s.until !== null && s.until !== undefined && Number.isFinite(s.until)) {
-      const wall = wallWeight(s.until, field.periodS), wOff = offshoreSpeedOn(i.wind, s.nx, s.nz);
-      const strength = (FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wall) * smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], wOff) * i.amount;
+      const wOff = offshoreSpeedOn(i.wind, s.nx, s.nz), strength = featherStrength(wallWeight(s.until, field.periodS), wOff, i.amount);
       if (strength > 0) {
-        feather.push({ x: s.x, y: standingCrestY(s.section, s.H, i.tideM), z: s.z, nx: s.nx, nz: s.nz, strength, waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M), wOff });
+        const arcs = brokenArcs.get(s.wave), fromFrame = !!arcs && arcs.some((a) => Math.abs(a - s.arc) <= FEATHER_FRAME_REACH_M);
+        // A pitching lip feathers from the frame's tip; a stood crest near the curl is set after the loop (drawnCrests).
+        const pitching = fromFrame && s.section.phase > STOOD_PHASE, arc = Math.round(s.arc / SPRAY_SPACING_M);
+        const y = pitching ? frameOf(s).tip[1] + i.tideM : standingCrestY(s.section, s.H, i.tideM);
+        if (fromFrame && !pitching) nearCurl.set(s.wave * 1e6 + arc, { k: feather.length, s, cheap: y });
+        feather.push({ x: s.x, y, z: s.z, nx: s.nx, nz: s.nz, strength, waveId: i.events[s.wave].id, arc, wOff, A: s.section.A, fromFrame });
       }
     }
     if (s.tb === null || !Number.isFinite(s.tb)) continue;
@@ -339,16 +375,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
     const emitsSpray = wind > 0 && ft.prog > 0 && ft.prog < 1 && ft.weight * ft.rho > MIN_EMIT_WEIGHT;
     const emitsImpact = wantImpact && inImpactWindow(s.tb, ft.tauLand) && ft.rho > MIN_EMIT_WEIGHT;
     if (!emitsSpray && !emitsImpact && !(wantImpact && spitCandidate(s, ft))) continue;
-    // The station's own wave only: a set wave's envelope is tight (exp(−(ξ/0.7T)⁶)), so the others add nothing at its
-    // crest, and summing all of them was most of the lip maths' cost (measured, final cost pass).
-    const own = [waves[s.wave]];
-    const base = (u: number): Vec2 => {
-      const x = s.x + s.nx * u, z = s.z + s.nz * u;
-      const r = sumWaves(x, z, i.t, sampleField(field, x, z), own, ctx, opts);
-      return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
-    };
-    // The section as the ribbon draws it (wombSection: the station's smoothed numbers).
-    const f = sectionFrame(s.section, s.H, s.c, base);
+    const f = frameOf(s);
     if (wantImpact) frames[si] = f;
     const waveId = i.events[s.wave].id, arc = Math.round(s.arc / SPRAY_SPACING_M);
     if (emitsSpray) {
@@ -370,7 +397,24 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
     }
   }
   if (wantImpact) spitEmitters(stations, timing, frames, i, impactAmount, spit);
+  drawnCrests(nearCurl, feather, (s) => sectionCrestY(s.section, sheetOf(s)) + i.tideM);
   return { spray, impact, spit, feather };
+}
+
+/**
+ * The stood crests near the curl (key wave × 1e6 + arc index): their feathers' y onto the drawn crest (`drawn`, the crest
+ * reads: womb-realism Task 4's cost cap). Every other station (even arc index) reads it; one between two read neighbours
+ * takes its cheap standingCrestY plus their mean correction (drawn − cheap varies over tens of metres, not 3 m); one without
+ * both reads its own.
+ */
+function drawnCrests(near: Map<number, { k: number; s: Station; cheap: number; d?: number }>, feather: FeatherEmitter[], drawn: (s: Station) => number): void {
+  const set = (e: { k: number; s: Station; cheap: number; d?: number }, d: number): void => { e.d = d; feather[e.k].y = e.cheap + d; };
+  for (const [key, e] of near) if (key % 2 === 0) set(e, drawn(e.s) - e.cheap);
+  for (const [key, e] of near) {
+    if (e.d !== undefined) continue;
+    const a = near.get(key - 1)?.d, b = near.get(key + 1)?.d;
+    set(e, a !== undefined && b !== undefined ? (a + b) / 2 : drawn(e.s) - e.cheap);
+  }
 }
 
 /** A station whose own lip may spit (spitEmitters' first test): still in the air, well through its throw, drawn. */
@@ -519,6 +563,7 @@ export function plumeBirths(emitters: readonly SprayEmitter[], tick: number, p: 
 export function featherBirths(emitters: readonly FeatherEmitter[], tick: number): SprayBirth[] {
   const out: SprayBirth[] = [];
   for (const e of emitters) {
+    const liftV = (FEATHER_LIFT_A * e.A) / FEATHER_KIND.dragTauS;
     const n = Math.floor(e.strength * FEATHER_RATE * SPRAY_SPACING_M * FOAM_TICK_S + rand01(tick, e.waveId, e.arc, 0x1b873593));
     for (let j = 0; j < n; j++) {
       if (out.length >= SPRAY_BIRTH_CAP) return out;
@@ -526,7 +571,7 @@ export function featherBirths(emitters: readonly FeatherEmitter[], tick: number)
       const along = (r(0) * 2 - 1) * (SPRAY_SPACING_M / 2);
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.2, z: e.z + e.nx * along,
-        vx: -e.nx * e.wOff * 0.5 + (r(2) * 2 - 1) * 0.5, vy: e.wOff * 0.3 + (r(3) * 2 - 1) * 0.5, vz: -e.nz * e.wOff * 0.5 + (r(4) * 2 - 1) * 0.5,
+        vx: -e.nx * e.wOff * 0.5 + (r(2) * 2 - 1) * 0.5, vy: Math.min(e.wOff * 0.3 + (r(3) * 2 - 1) * 0.5, liftV), vz: -e.nz * e.wOff * 0.5 + (r(4) * 2 - 1) * 0.5,
         life: FEATHER_LIFE_S[0] + (FEATHER_LIFE_S[1] - FEATHER_LIFE_S[0]) * r(5), strength: Math.min(1, e.strength), kind: KIND_INDEX.feather, yWater: e.y - FEATHER_SOFT_DROP_M,
       });
     }

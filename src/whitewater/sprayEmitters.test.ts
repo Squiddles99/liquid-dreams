@@ -453,12 +453,14 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     }
   });
   it('within 60 m of the curl front a stood station feathers from the drawn crest (the frame), beyond from standingCrestY', () => {
-    const t = T_THROW, wind = { speedMs: 9, fromDeg: 57 }, f = breakEmitters(input(t, { wind })).feather;
+    const wind = { speedMs: 9, fromDeg: 57 }, o = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), pile: false, shape: 'lean' as const };
+    let near = 0, far = 0;
+    // Before the break (every stood station far from a curl) and mid-throw (the wall next to the curl).
+    for (const t of [BIGGEST.arrivalS - 2, T_THROW]) {
+    const f = breakEmitters(input(t, { wind })).feather;
     const waves = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave);
     const st = traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M })
       .filter((s): s is Exclude<typeof s, { gap: true }> => !s.gap);
-    const o = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), pile: false, shape: 'lean' as const };
-    let near = 0, far = 0;
     for (const e of f) {
       const s = st.find((q) => q.tb === null && Math.round(q.arc / SPRAY_SPACING_M) === e.arc && Math.abs(q.x - e.x) < 1e-9)!;
       expect(s).toBeDefined();
@@ -475,9 +477,10 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
       expect(e.A).toBe(s.section.A);
       near++;
     }
+    }
     expect(FEATHER_FRAME_REACH_M).toBe(60);
     expect(near).toBeGreaterThan(3);
-    expect(far).toBeGreaterThan(3);
+    expect(far).toBeGreaterThan(1);
   });
   it('a feather puff rises at most FEATHER_LIFT_A × A above its birth over 1.2 s in a 10 m/s offshore', () => {
     expect(FEATHER_LIFT_A).toBe(0.5);

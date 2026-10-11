@@ -7,7 +7,7 @@ import {
   type SectionInput, type SectionNumbers, CURL_PHASE, SEAT_DIP_UNITS, SECTION_CREST, SECTION_FLOOR, SECTION_HAND_BACK_S, SECTION_TIP, SECTION_TROUGH,
   STOOD_PHASE, collapseSpan, flightTime, sectionEnd, sectionKnots, sectionKnot, sectionOf, sectionPhase, sectionScale, sectionWeight, seatShift, tubeHold,
   wombSection, type SheetAlong, sectionSamples, sectionPoint, curlWeight, sampleWeight, SHEET_KNOTS, CURL_KNOTS, SURGE_FALL_BASE_S, SURGE_FALL_PER_M,
-  surgeWeight, surgeLift, sectionNumbers, seatOf, FRONT_LEAD_S, CREST_SHARE, TROUGH_SHARE, setSeatShares, wallWeight, footY, footWeight, footFloorWeight,
+  surgeWeight, surgeLift, sectionNumbers, seatOf, sectionCrestY, sectionFrame, WALL_LEAD_T, FRONT_LEAD_S, CREST_SHARE, TROUGH_SHARE, setSeatShares, wallWeight, footY, footWeight, footFloorWeight,
 } from './wombSection';
 import { UNTIL_NEVER } from './breaking';
 
@@ -177,10 +177,9 @@ describe('the drawn curl is interpolated as drawn, the sheet as the sheet (Secti
     const between = pts.filter((p) => p[0] > floor[0] + 1e-6 && p[0] < trough[0] - 1e-6 && p[1] < 0.5);
     expect(between.length).toBeGreaterThan(8);
     for (const p of between) expect(p[1], `u ${p[0].toFixed(2)}`).toBeGreaterThan(trough[1] - 0.03);
-    // And from the trough knot out to the front knot the surface climbs to the sheet without a second dip (5e-3 A a step:
-    // this sheet's flat is −0.45 A and the foot stops at −FOOT_DEEPEST (STOP 2 ruling 1), so it eases 0.05 A down to it).
+    // And from the trough knot out to the front knot the surface climbs to the sheet without a second dip.
     const out = pts.filter((p) => p[0] >= trough[0] - 1e-6 && p[0] <= knots[SECTION_TROUGH + 1][0] + 1e-6);
-    for (let i = 1; i < out.length; i++) expect(out[i][1], `u ${out[i][0].toFixed(2)}`).toBeGreaterThanOrEqual(out[i - 1][1] - 5e-3);
+    for (let i = 1; i < out.length; i++) expect(out[i][1], `u ${out[i][0].toFixed(2)}`).toBeGreaterThanOrEqual(out[i - 1][1] - 2e-3);
   });
 
   it('the sheet weight is 1 on the sheet, 1 − the curl weight on the curl, eased over the two join spans; and 1 everywhere at phase 0', () => {
@@ -313,12 +312,23 @@ describe('the seat (womb-realism Task 2, STOP 1c ask 1): in units of A, the cres
 });
 
 describe('the wall’s lead is one period, smoothstepped (womb-realism Task 2)', () => {
-  it('at T 14: until 0, 3, 6, 14, 30, never → 1, ~0.9, ~0.6, 0, 0, 0, and never rising with until', () => {
-    const want: [number, number, number][] = [[0, 1, 1e-9], [3, 0.88, 0.05], [6, 0.61, 0.1], [14, 0, 1e-9], [30, 0, 1e-9], [UNTIL_NEVER, 0, 1e-9]];
+  it('at T 14 (lead 0.75 T = 10.5 s, STOP 2 ruling): until 0, 3, 6, 10.5, 14, 30, never → 1, 0.80, 0.39, 0, 0, 0, 0, and never rising with until', () => {
+    expect(WALL_LEAD_T).toBe(0.75);
+    const want: [number, number, number][] = [[0, 1, 1e-9], [3, 0.80, 0.01], [6, 0.39, 0.01], [10.5, 0, 1e-9], [14, 0, 1e-9], [30, 0, 1e-9], [UNTIL_NEVER, 0, 1e-9]];
     for (const [u, w, tol] of want) expect(Math.abs(wallWeight(u, 14) - w), `until ${u}`).toBeLessThanOrEqual(tol);
     expect(wallWeight(Infinity, 14)).toBe(0);
     expect(wallWeight(null, 14)).toBe(0);
     for (let u = 0; u < 20; u += 0.25) expect(wallWeight(u + 0.25, 14)).toBeLessThanOrEqual(wallWeight(u, 14));
+  });
+});
+
+describe('the crest knot alone (sectionCrestY, womb-realism Task 4: the feathering near the curl)', () => {
+  it('is sectionFrame(…).crest[1] bit for bit over phases, hollows, ρ and surges, on a faced sheet', () => {
+    const faced: SheetAlong = (u) => [u + 0.1 * Math.sin(u), u < 0 ? 0.9 * Math.cos(u / 5) : 0.9 - 1.3 * Math.min(1, u / 4)];
+    for (const A of [1.2, 3.7]) for (const phase of [0, 0.1, 0.3, 0.45, 0.6, 1, 1.6]) for (const hollow of [0, 0.5, 1]) for (const rho of [0.3, 1]) for (const surge of [0, 0.4]) {
+      const n = { A, phase, hollow, rho, surge };
+      expect(sectionCrestY(n, faced), JSON.stringify(n)).toBe(sectionFrame(n, 2 * A, 5, faced).crest[1]);
+    }
   });
 });
 
