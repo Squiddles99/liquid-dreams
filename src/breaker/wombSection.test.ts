@@ -115,12 +115,13 @@ describe('one surface (plan 2026-10-06-wave-root-cause step 3, Andrew’s ruling
       const drawn = (m: number): readonly number[] => d[m > TIP_KNOT ? m + 2 : m === TIP_KNOT ? m + 1 : m];
       const [sc, b] = seatOf(phase, 1, fam, 0);
       // The floor and trough knots go onto the front sheet's lowest point (Task 3: footY, footWeight).
-      const low = Math.min(...k.slice(SECTION_TROUGH + 1).map((q) => q[1])), fw = footWeight(phase);
+      const front = k.slice(SECTION_TROUGH + 1).map((q) => q[1]), low = Math.min(...front), fw = footWeight(phase);
+      const high = Math.max(...front, ...k.slice(0, SHEET_KNOTS).map((q) => q[1]));
       const footW = (m: number): number => (m === FLOOR_KNOT ? fw * footFloorWeight(phase) : m === TROUGH_KNOT ? fw : 0);
       for (let m = CREST_KNOT; m <= TROUGH_KNOT; m++) {
         const seated = drawn(m)[1] * sc + b;
         expect(k[sectionKnot(m)][0], `phase ${phase} knot ${m}`).toBeCloseTo(drawn(m)[0], 12);
-        expect(k[sectionKnot(m)][1], `phase ${phase} knot ${m}`).toBeCloseTo(seated + (footY(low) - seated) * footW(m), 12);
+        expect(k[sectionKnot(m)][1], `phase ${phase} knot ${m}`).toBeCloseTo(seated + (footY(low, high) - seated) * footW(m), 12);
       }
     }
   });
@@ -176,9 +177,10 @@ describe('the drawn curl is interpolated as drawn, the sheet as the sheet (Secti
     const between = pts.filter((p) => p[0] > floor[0] + 1e-6 && p[0] < trough[0] - 1e-6 && p[1] < 0.5);
     expect(between.length).toBeGreaterThan(8);
     for (const p of between) expect(p[1], `u ${p[0].toFixed(2)}`).toBeGreaterThan(trough[1] - 0.03);
-    // And from the trough knot out to the front knot the surface climbs to the sheet without a second dip.
+    // And from the trough knot out to the front knot the surface climbs to the sheet without a second dip (5e-3 A a step:
+    // this sheet's flat is −0.45 A and the foot stops at −FOOT_DEEPEST (STOP 2 ruling 1), so it eases 0.05 A down to it).
     const out = pts.filter((p) => p[0] >= trough[0] - 1e-6 && p[0] <= knots[SECTION_TROUGH + 1][0] + 1e-6);
-    for (let i = 1; i < out.length; i++) expect(out[i][1], `u ${out[i][0].toFixed(2)}`).toBeGreaterThanOrEqual(out[i - 1][1] - 2e-3);
+    for (let i = 1; i < out.length; i++) expect(out[i][1], `u ${out[i][0].toFixed(2)}`).toBeGreaterThanOrEqual(out[i - 1][1] - 5e-3);
   });
 
   it('the sheet weight is 1 on the sheet, 1 − the curl weight on the curl, eased over the two join spans; and 1 everywhere at phase 0', () => {
@@ -331,10 +333,19 @@ describe('the curtain’s foot on the front sheet (womb-realism Task 3, STOP 2 e
       }
     }
   });
-  it('never deeper than −0.4 A, never higher than −troughShare A', () => {
+  it('never deeper than −0.4 A; a flat front sheet (no low in front) falls back to −troughShare A', () => {
     const A = 3, deep: SheetAlong = (u) => [u, u > 0 ? -0.7 * A : 0], high: SheetAlong = (u) => [u, u > 0 ? 0.1 * A : 0];
     expect(sectionKnots({ A, phase: 1, hollow: 1, rho: 1 }, deep)[SECTION_FLOOR][1]).toBeCloseTo(-0.4, 2);
     expect(sectionKnots({ A, phase: 1, hollow: 1, rho: 1 }, high)[SECTION_FLOOR][1]).toBeCloseTo(-TROUGH_SHARE, 2);
+  });
+  it('a shallow low in front (−0.12 A, the live sheet at t0+3): the foot sits on it, not at −troughShare (STOP 2 ruling 1, option a)', () => {
+    const A = 3.5, sheet: SheetAlong = (u) => [u, u > 0 ? -0.12 * A : 0];
+    for (const phase of [0.8, 1]) {
+      const k = sectionKnots({ A, phase, hollow: 1, rho: 1 }, sheet);
+      expect(Math.abs(k[SECTION_TROUGH][1] + 0.12), `phase ${phase}`).toBeLessThanOrEqual(0.01);
+    }
+    expect(footY(-0.12, -0.07)).toBeCloseTo(-0.12, 12);
+    expect(footY(-0.12, -0.12)).toBeCloseTo(-TROUGH_SHARE, 12);
   });
   it('the airborne lip spans at most 2.5 x 2.5 m along the line: Hb 2.5 m peeling 10 m/s (the plan’s case)', () => {
     expect(flightTime(2.5) * 10).toBeLessThanOrEqual(2.5 * 2.5);

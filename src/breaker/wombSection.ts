@@ -35,9 +35,11 @@ export const STOOD_PHASE = 0.45;
  * of the yet to break wave, to plan how I ride"). On the time until it breaks (the reef record's, breaking.onsetUntil), not
  * its breaking ratio: on the Womb's deep basin the ratio only rises in the last 10 m before a point breaks. One period,
  * smoothstepped (womb-realism Task 2, spec 3.1): the 8 s squared ramp stood the wall up late and steeply, image 3's "no
- * gradient into the building wall". The dial wallLeadT (setWallLeadT); the GPU mirrors it (SetWaves' standing).
+ * gradient into the building wall". The dial wallLeadT (setWallLeadT); the GPU mirrors it (SetWaves' standing). 0.75 (STOP 2
+ * ruling, until Andrew picks from task3/wallLead-ab.jpg): 1.0 stood the wall at curl height a period ahead (the closeout look),
+ * 0.5 stood it up late.
  */
-export const WALL_LEAD_T = 1;
+export const WALL_LEAD_T = 0.75;
 const WALL = { leadT: WALL_LEAD_T };
 /** The dial wallLeadT (BreakParams.wallLeadT): the wall's lead in swell periods. */
 export const setWallLeadT = (t: number): void => { WALL.leadT = t; };
@@ -253,15 +255,21 @@ export const CREST_SHARE = 0.85;
 export const TROUGH_SHARE = 0.25;
 export const SEAT_HELD_PHASE = STAGES.tubeFilling;
 /**
- * The curtain's foot (womb-realism Task 3, STOP 2 early ruling ask 2): once the lip throws, the floor and trough knots sit
- * at min(−troughShare, the sheet's lowest point in front of the section), never deeper than FOOT_DEEPEST (units of A from
- * still water), read from the front sheet knots (no extra sheet reads). In over FOOT_PHASES[0…1] (no pop as the lip
+ * The curtain's foot (womb-realism Task 3; STOP 2 ruling 1, option a): once the lip throws, the floor and trough knots sit
+ * on the sheet's lowest point in front of the section (the barrel's floor IS the water in front), never deeper than
+ * FOOT_DEEPEST (units of A from still water), read from the sheet knots (no extra sheet reads). Where the sheet is flat (no
+ * low in front: its highest back or front knot less than FOOT_FLAT_RELIEF over the front's lowest, a flat sea, the unit
+ * tests) the floor falls back to −troughShare, blended by the relief so the foot stays continuous. In over FOOT_PHASES[0…1] (no pop as the lip
  * pitches); the floor knot hands back to the seat over FOOT_PHASES[2…3], as the collapse shrinks the cavity it belongs to.
  */
 export const FOOT_DEEPEST = 0.4;
 export const FOOT_PHASES: readonly [number, number, number, number] = [STOOD_PHASE, 0.6, STAGES.tubeFilling, STAGES.cavingIn];
-/** The foot's y (units of A) over a front sheet whose lowest point is `sheetLow`. */
-export const footY = (sheetLow: number): number => Math.max(-FOOT_DEEPEST, Math.min(-SEAT.trough, sheetLow));
+export const FOOT_FLAT_RELIEF = 0.02;
+/** The foot's y (units of A) over a front sheet whose lowest point is `sheetLow`, under a sheet whose highest knot is `sheetHigh`. */
+export const footY = (sheetLow: number, sheetHigh: number): number => {
+  const w = smoothstep(0, FOOT_FLAT_RELIEF, sheetHigh - sheetLow), onLow = Math.max(-FOOT_DEEPEST, sheetLow);
+  return -SEAT.trough + (onLow + SEAT.trough) * w;
+};
 /** How far the trough knot (and the floor knot: × footFloorWeight) is on the foot [0, 1] at `phase`. */
 export const footWeight = (phase: number): number => smoothstep(FOOT_PHASES[0], FOOT_PHASES[1], phase);
 export const footFloorWeight = (phase: number): number => 1 - smoothstep(FOOT_PHASES[2], FOOT_PHASES[3], phase);
@@ -336,7 +344,7 @@ export function sectionFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): {
   const life = tipLife(Math.min(2, Math.max(0, phase))), plain = roundedCurl(k, life);
   const lifted = surge > 0 ? roundedCurl(k.map((p, m): P2 => [p[0], p[1] + surgeLift(m, surge, 1)]), life) : plain;
   // The curtain's foot: the floor and trough knots onto the front sheet (footY), before the surge's lift.
-  const fw = footWeight(phase), foot = fw > 0 ? footY(Math.min(...front.map((q) => q[1]))) : 0;
+  const fw = footWeight(phase), fy = front.map((q) => q[1]), foot = fw > 0 ? footY(Math.min(...fy), Math.max(...fy, ...back.map((q) => q[1]))) : 0;
   const footW = (i: number): number => (i === FLOOR_DRAWN ? fw * footFloorWeight(phase) : i === TROUGH_DRAWN ? fw : 0);
   const drawn = plain.map((p, i): P2 => {
     const seated = p[1] * scale + shift, y = seated + (foot - seated) * footW(i);

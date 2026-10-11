@@ -4,15 +4,17 @@ import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
 import { minRibbonHeight, timeSinceOnset, traceStations } from '../breaker/crestTrace';
 import { computeReefField, sampleField } from '../breaker/reefField';
 import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
-import { sectionFrame, wallWeight } from '../breaker/wombSection';
+import { STOOD_PHASE, sectionFrame, wallWeight } from '../breaker/wombSection';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { IMPACT_KIND } from './particleKinds';
+import { FOAM_TICK_S } from './foamStep';
 import { SprayPool, birthInto, stepPool } from './sprayStep';
 import {
   DEFAULT_SPRAY_PARAMS, type EmitterInput, IMPACT_MAX_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, impactKick, inImpactWindow, IMPACT_DELAY_S, IMPACT_WINDOW_S, sprayCanEmit, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
   spitBirths, sprayEmitters, sprayReplayTicks, windToVector, plumeBirths, PLUME_WIND_MS, PLUME_LIFE_S, offshoreSpeedOn, sprayAndPlumeBirths, SPIT_WIND_SHARE, FEATHER_FLOOR, FEATHER_WIND_MS, FEATHER_LIFE_S, FEATHER_RATE, featherBirths, standingCrestY,
+  featherStrength, FEATHER_FRAME_REACH_M, FEATHER_LIFT_A,
 } from './sprayEmitters';
 import { ERODING_KINDS, FEATHER_KIND, KIND_INDEX, PARTICLE_KINDS, PLUME_KIND, SPIT_KIND } from './particleKinds';
 
@@ -402,11 +404,11 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     return traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M })
       .filter((s): s is Exclude<typeof s, { gap: true }> => !s.gap && s.tb === null && s.until !== null && s.until !== undefined && Number.isFinite(s.until));
   };
-  it('feathers along the standing wall at 10 m/s offshore; none under 5 m/s, none on a glassy day, none onshore', () => {
+  it('feathers along the standing wall at 10 m/s offshore; none under 2 m/s, none on a glassy day, none onshore', () => {
     const t = BIGGEST.arrivalS - 2;
     expect(standing(t).length).toBeGreaterThan(0);
     expect(breakEmitters(input(t, { wind: strong })).feather.length).toBeGreaterThan(0);
-    expect(breakEmitters(input(t, { wind: { speedMs: 4.9, fromDeg: 57 } })).feather).toEqual([]);
+    expect(breakEmitters(input(t, { wind: { speedMs: 1.9, fromDeg: 57 } })).feather).toEqual([]);
     expect(breakEmitters(input(t, { wind: { speedMs: 1 * 0.5144, fromDeg: 57 } })).feather).toEqual([]);
     expect(breakEmitters(input(t, { wind: { speedMs: 18 * 0.5144, fromDeg: 237 } })).feather).toEqual([]);
   });
@@ -442,13 +444,65 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     expect(n).toBeGreaterThan(5);
     expect(worst).toBeLessThan(0.1);
   });
+  it('the wind window is 2-7 m/s (womb-realism Task 4, spec 3.3): none at 1.9, some at 2.1, the wall factor at 7', () => {
+    expect(FEATHER_WIND_MS).toEqual([2, 7]);
+    for (const wall of [0, 0.4, 1]) {
+      expect(featherStrength(wall, 1.9, 1)).toBe(0);
+      expect(featherStrength(wall, 2.1, 1)).toBeGreaterThan(0);
+      expect(featherStrength(wall, 7, 1)).toBeCloseTo(FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wall, 12);
+    }
+  });
+  it('within 60 m of the curl front a stood station feathers from the drawn crest (the frame), beyond from standingCrestY', () => {
+    const t = T_THROW, wind = { speedMs: 9, fromDeg: 57 }, f = breakEmitters(input(t, { wind })).feather;
+    const waves = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave);
+    const st = traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M })
+      .filter((s): s is Exclude<typeof s, { gap: true }> => !s.gap);
+    const o = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), pile: false, shape: 'lean' as const };
+    let near = 0, far = 0;
+    for (const e of f) {
+      const s = st.find((q) => q.tb === null && Math.round(q.arc / SPRAY_SPACING_M) === e.arc && Math.abs(q.x - e.x) < 1e-9)!;
+      expect(s).toBeDefined();
+      const fronts = st.filter((q) => q.wave === s.wave && q.tb !== null), d = Math.min(...fronts.map((q) => Math.abs(q.arc - s.arc)));
+      expect(e.fromFrame, `arc ${s.arc.toFixed(0)} ${d.toFixed(1)} m from the curl`).toBe(d <= FEATHER_FRAME_REACH_M);
+      if (!e.fromFrame) { far++; continue; }
+      const own = [waves[s.wave]];
+      const base = (u: number): [number, number] => {
+        const x = s.x + s.nx * u, z = s.z + s.nz * u, r = sumWaves(x, z, t, sampleField(field, x, z), own, ctx, o);
+        return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
+      };
+      const fr = sectionFrame(s.section, s.H, s.c, base), want = s.section.phase > STOOD_PHASE ? fr.tip[1] : fr.crest[1];
+      expect(Math.abs(e.y - want), `arc ${s.arc.toFixed(0)}`).toBeLessThanOrEqual(0.1 * s.section.A);
+      expect(e.A).toBe(s.section.A);
+      near++;
+    }
+    expect(FEATHER_FRAME_REACH_M).toBe(60);
+    expect(near).toBeGreaterThan(3);
+    expect(far).toBeGreaterThan(3);
+  });
+  it('a feather puff rises at most FEATHER_LIFT_A × A above its birth over 1.2 s in a 10 m/s offshore', () => {
+    expect(FEATHER_LIFT_A).toBe(0.5);
+    for (const A of [1.5, 3, 5]) {
+      const e = { x: 0, y: 3, z: 0, nx: 1, nz: 0, strength: 1, waveId: 4, arc: 2, wOff: 10, A, fromFrame: true };
+      const b = Array.from({ length: 30 }, (_, k) => featherBirths([e], k)).flat();
+      expect(b.length).toBeGreaterThan(10);
+      const pool = new SprayPool(b.length);
+      // Each puff in its own slot, living past the 1.2 s (the pool steps every live slot by its own kind: the feather's).
+      b.forEach((q, i) => { pool.posAge.set([q.x, q.y, q.z, 0], i * 4); pool.velLife.set([q.vx, q.vy, q.vz, 2], i * 4); pool.meta.set([1, KIND_INDEX.feather, 0, 0], i * 4); });
+      let worst = 0;
+      for (let k = 0; k < Math.round(1.2 / FOAM_TICK_S); k++) {
+        stepPool(pool, -10, 0);
+        b.forEach((q, i) => { worst = Math.max(worst, pool.posAge[i * 4 + 1] - q.y); });
+      }
+      expect(worst, `A ${A}`).toBeLessThanOrEqual(FEATHER_LIFT_A * A + 1e-4);
+    }
+  });
   it('the feather kind (7b S2): big enough to read from the lookout, faint, slow to settle; twice the old rate', () => {
     expect(FEATHER_KIND).toEqual({ dragTauS: 0.8, gravityMs2: 0.5, sizeM: [1, 4], opacity: 0.2, isotropic: 0.6 });
     expect(FEATHER_RATE).toBe(12);
     expect(ERODING_KINDS).not.toContain(KIND_INDEX.feather);
   });
   it('a feather puff is the feather kind, blown back off the crest, short-lived', () => {
-    const e = { x: 0, y: 3, z: 0, nx: 1, nz: 0, strength: 1, waveId: 4, arc: 2, wOff: 9 };
+    const e = { x: 0, y: 3, z: 0, nx: 1, nz: 0, strength: 1, waveId: 4, arc: 2, wOff: 9, A: 3, fromFrame: false };
     const b = Array.from({ length: 40 }, (_, k) => featherBirths([e], k)).flat();
     expect(b.length).toBeGreaterThan(0);
     for (const p of b) {

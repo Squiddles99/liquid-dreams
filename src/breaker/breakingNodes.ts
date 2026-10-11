@@ -24,7 +24,7 @@ export function createBreakUniforms(p: BreakParams) {
     faceWidth: uniform(0), drainTo: uniform(1), collapseFrom: uniform(1), collapseTo: uniform(2), steepFrom: uniform(0),
     collapseTime: uniform(1), drainGrowth: uniform(1), onsetGain: uniform(1),
     pileHalfM: uniform(50), pileSurge: uniform(0), churnSize: uniform(0), churnSpeed: uniform(1), psiNudge: uniform(0), randomDial: uniform(0),
-    ribbonOnset: uniform(0.7), surge: uniform(0), wallLeadT: uniform(1),
+    ribbonOnset: uniform(0.7), surge: uniform(0), wallLeadT: uniform(0.75),
   };
   updateBreakUniforms(u, p);
   return u;

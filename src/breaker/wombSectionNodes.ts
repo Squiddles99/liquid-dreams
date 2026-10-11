@@ -7,7 +7,7 @@ import {
   COLLAPSE_BASE_S, COLLAPSE_PER_M, CURL_KNOTS, CURL_PHASE, EDGE_OUTER_UNITS, FLIGHT_DROP_A, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, SECTION_HAND_BACK_S,
   JOIN_SLOPE_UNITS, SECTION_KNOTS, SECTION_MARKED, SEAT_DIP_UNITS, SEAT_SHIFT_MAX, SHEET_ENDS, SHEET_KNOTS, STOOD_PHASE, SWELL_CURL_U,
   SURGE_FALL_BASE_S, SURGE_FALL_PER_M, surgeLift, CREST_SHARE, TROUGH_SHARE, SEAT_HELD_PHASE, SEAT_HELD_KNOTS, setSeatShares,
-  FOOT_DEEPEST, FOOT_PHASES, SECTION_FLOOR, SECTION_TROUGH, setFlightDropA,
+  FOOT_DEEPEST, FOOT_FLAT_RELIEF, FOOT_PHASES, SECTION_FLOOR, SECTION_TROUGH, setFlightDropA,
 } from './wombSection';
 
 type N = any;
@@ -204,9 +204,10 @@ function curlKnotsNode(numbers: { phase: N; hollow: N; rho: N }, drawn: N[], dra
   const oBack = shoulder.x.sub(shoulder.z).toVar(), oFront = front0.x.sub(front0.z).toVar();
   // The curtain's foot (wombSection.footY / footWeight / footFloorWeight): the floor and trough knots onto the front sheet's
   // lowest point, from the front knots already read.
-  let low: N = front0.y;
-  for (let k = 1; k < SHEET_KNOTS; k++) low = min(low, read(SHEET_READ.front + k).y);
-  const foot = max(min(seatUniforms.trough.negate(), low), -FOOT_DEEPEST).toVar();
+  let low: N = front0.y, high: N = front0.y;
+  for (let k = 1; k < SHEET_KNOTS; k++) { const y = read(SHEET_READ.front + k).y; low = min(low, y); high = max(high, y); }
+  for (let k = 0; k < SHEET_KNOTS; k++) high = max(high, read(SHEET_READ.back + k).y);
+  const foot = mix(seatUniforms.trough.negate(), max(low, -FOOT_DEEPEST), smoothstep(0.0, FOOT_FLAT_RELIEF, high.sub(low))).toVar();
   const fw = smoothstep(FOOT_PHASES[0], FOOT_PHASES[1], numbers.phase).toVar();
   const fwFloor = fw.mul(float(1.0).sub(smoothstep(FOOT_PHASES[2], FOOT_PHASES[3], numbers.phase))).toVar();
   const FLOOR_DRAWN = SECTION_FLOOR - SHEET_KNOTS, TROUGH_DRAWN = SECTION_TROUGH - SHEET_KNOTS;

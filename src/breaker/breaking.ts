@@ -96,7 +96,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   surge: 0.5,
   crestShare: 0.85,
   troughShare: 0.25,
-  wallLeadT: 1,
+  wallLeadT: 0.75,
   flightDropA: 0.8,
 };
 

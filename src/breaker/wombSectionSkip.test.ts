@@ -29,7 +29,7 @@ function oldFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): { knots: Sec
   const [scale, shift] = seatOf(phase, hollow, k, sheetCrest);
   const oBack = back[SHEET_KNOTS - 1][0] - back[SHEET_KNOTS - 1][2], oFront = front[0][0] - front[0][2];
   const drawn = roundedCurl(k, tipLife(Math.min(2, Math.max(0, phase))));
-  const fw = footWeight(phase), foot = footY(Math.min(...front.map((q) => q[1])));
+  const fw = footWeight(phase), fy = front.map((q) => q[1]), foot = footY(Math.min(...fy), Math.max(...fy, ...back.map((q) => q[1])));
   const footW = (i: number): number => (i === SECTION_FLOOR - SHEET_KNOTS ? fw * footFloorWeight(phase) : i === SECTION_TROUGH - SHEET_KNOTS ? fw : 0);
   const curl = drawn.map((d, i): SectionKnot => {
     const s = at(SWELL_CURL_U[i]), f = (i + 1) / (CURL_KNOTS + 1), seated = d[1] * scale + shift;
