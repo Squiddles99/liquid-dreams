@@ -147,9 +147,16 @@ export function roundCorner(a: Pt, b: Pt, c: Pt, radiusM = SOUTH_CORNER_RADIUS_M
 export function shelfPolygon(north: readonly Pt[], south: readonly Pt[] = SOUTH_LEDGE): Pt[] {
   const end = south[south.length - 1], back = [...north].reverse().slice(0, -1);
   if (end[0] >= SHELF_INNER_X) return [...south, [SHELF_INNER_X, -450], ...back];
-  const close: Pt = [SHELF_INNER_X, end[1]];
-  const arc = south.length >= 2 ? roundCorner(south[south.length - 2], end, close) : null;
-  return [...(arc ? [...south.slice(0, -1), ...arc] : south), close, [SHELF_INNER_X, -450], ...back];
+  return [...southEdge(south), [SHELF_INNER_X, end[1]], [SHELF_INNER_X, -450], ...back];
+}
+/** The shelf's south edge as the bed reads it (bathymetry.ledgeSignedDistance): the south ledge with its end corner
+ * replaced by the rounded corner's arc, so the arc gets the ledges' own face (with the ledge alone as the edge the bed
+ * kept a rim along the old square's last 60 m and a 4 → 14 m step at the arc). The ledge itself (SOUTH_LEDGE) is
+ * unchanged; without a closing leg (the ledge ends inside SHELF_INNER_X) it is the ledge. */
+export function southEdge(south: readonly Pt[] = SOUTH_LEDGE): Pt[] {
+  const end = south[south.length - 1];
+  const arc = end[0] < SHELF_INNER_X && south.length >= 2 ? roundCorner(south[south.length - 2], end, [SHELF_INNER_X, end[1]]) : null;
+  return arc ? [...south.slice(0, -1), ...arc] : [...south];
 }
 
 /** Sand pockets traced from Andrew's top-down satellite view (reference/place/womb-correct-topdown-peak-189m-offshore.webp:
