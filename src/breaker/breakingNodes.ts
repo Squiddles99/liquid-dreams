@@ -1,5 +1,6 @@
 import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, smoothstep, sqrt, uniform } from 'three/tsl';
-import { FLIGHT_DROP_A, ONSET_HEIGHT_UNITS } from './wombSection';
+import { ONSET_HEIGHT_UNITS } from './wombSection';
+import { flightTimeNodeA } from './wombSectionNodes';
 import {
   type BreakParams, BREAKING_RATIO, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, UNTIL_NEVER, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
   HOLLOW_REACH_Q, MIN_BREAKING_HEIGHT_M, MIN_STAGE_SPAN, PILE_BACK_H, PILE_BLEND_H, PILE_FOAM_EDGE, PILE_FOAM_THIN, PILE_FRONT_H,
@@ -147,7 +148,7 @@ export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { b
   const before = select(u.lessThan(UNTIL_NEVER), grow, cap);
   // From the break: down from the size to the broken law over the lip's flight (wombSection.flightTime of the size).
   const broken = hmin.mul(BREAKING_RATIO).toVar();
-  const fly = sqrt(max(onset.size, 0.0).div(ONSET_HEIGHT_UNITS).mul((2 * FLIGHT_DROP_A) / GRAVITY_MS2));
+  const fly = flightTimeNodeA(max(onset.size, 0.0).div(ONSET_HEIGHT_UNITS));
   const handDown = broken.add(onset.size.sub(broken).mul(float(1.0).sub(smoothstep(0.0, max(fly, 1e-4), onset.tb))));
   const onRecord = select(onset.broken.and(onset.tb.greaterThanEqual(0.0)), handDown, before);
   return min(hAmp, select(inside, onRecord, cap));

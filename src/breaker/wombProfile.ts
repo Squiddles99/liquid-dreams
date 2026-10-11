@@ -58,6 +58,29 @@ function closed(before: readonly P2[], from: readonly P2[], at: P2, after: reado
   return [...before, ...cavity.map((p): P2 => [at[0] + (p[0] - cu) * c - (p[1] - cy) * s, at[1] + (p[0] - cu) * s + (p[1] - cy) * c]), ...after];
 }
 
+/** The lip on a leash (womb-realism spec 3.2, Task 3): the tip reaches at most TIP_REACH_MAX ahead of the crest and stands
+ * at most TIP_RISE_MAX above it (units of H). */
+export const TIP_REACH_MAX = 1.0;
+/** The keys are leashed this much inside TIP_REACH_MAX: the Hermite between them overshoots a key by up to ~0.025 (in the collapse). */
+const TIP_REACH_KEY = 0.97;
+export const TIP_RISE_MAX = 0.1;
+/**
+ * A drawing on the leash: where its tip reaches further than TIP_REACH_MAX, the lip and the cavity (knots crest + 1 …
+ * floor) are pulled in along u toward the crest by one factor (an affine map of a run of knots, so the curl keeps its
+ * order and a closed pocket its shape); a tip above TIP_RISE_MAX is lowered to it. Applied to the keys themselves, so the
+ * GPU's key table is the same data and the Hermite between keys carries it.
+ */
+function leashShape(shape: readonly P2[]): P2[] {
+  const [cu, cy] = shape[CREST_KNOT], reach = shape[TIP_KNOT][0] - cu, f = reach > TIP_REACH_KEY ? TIP_REACH_KEY / reach : 1;
+  return shape.map((p, k): P2 => {
+    const u = k > CREST_KNOT && k <= FLOOR_KNOT ? cu + (p[0] - cu) * f : p[0];
+    return [u, k === TIP_KNOT ? Math.min(p[1], cy + TIP_RISE_MAX) : p[1]];
+  });
+}
+function leashKeys(keys: readonly ProfileKey[]): ProfileKey[] {
+  return keys.map((k) => ({ phase: k.phase, hollow: leashShape(k.hollow), open: leashShape(k.open) }));
+}
+
 /**
  * The keyframes. Phases 0–1 at hollow 1 are Andrew's approved drawings (2026-10-05); at phase 1, hollow 0 and 0.5 are
  * the approved "less hollow" and "middle" (the mockup's rule: the lip thrown ×0.55 about the crest, lifted 0.125·(1 − y),
@@ -65,7 +88,7 @@ function closed(before: readonly P2[], from: readonly P2[], at: P2, after: reado
  * reef's step has not shaped the wave yet (open = hollow). The collapse (phase > 1), approved the same day:
  * a weaker wave's tube is smaller and caves into a lower hump.
  */
-export const PROFILE_KEYS: readonly ProfileKey[] = [
+export const PROFILE_KEYS: readonly ProfileKey[] = leashKeys([
   {
     phase: 0,
     hollow: [[-7, 0], [-3.5, 0.1], [-1.5, 0.38], [0, 0.55], [0.35, 0.53], [0.6, 0.49], [0.85, 0.43], [1.05, 0.37], [1.25, 0.3], [1.5, 0.21], [1.8, 0.09], [2.7, -0.1], [4.2, -0.04], [7, 0]],
@@ -105,7 +128,7 @@ export const PROFILE_KEYS: readonly ProfileKey[] = [
     hollow: closed([[-7, 0], [-3.5, 0.08], [-1.4, 0.25], [0.8, 0.45], [1.4, 0.47], [1.75, 0.4]], FILLING_HOLLOW, [1.85, 0.2], [[2.1, -0.1], [3.6, -0.03], [7, 0]]),
     open: closed([[-7, 0], [-3.5, 0.06], [-1.4, 0.18], [0.8, 0.32], [1.3, 0.34], [1.6, 0.28]], FILLING_OPEN, [1.68, 0.12], [[1.85, -0.06], [3.4, -0.02], [7, 0]]),
   },
-];
+]);
 
 const clamp = (x: number, a: number, b: number): number => Math.min(b, Math.max(a, x));
 const smooth = (t: number): number => t * t * (3 - 2 * t);

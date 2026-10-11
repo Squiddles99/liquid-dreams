@@ -7,7 +7,7 @@ import {
   type SectionInput, type SectionNumbers, CURL_PHASE, SEAT_DIP_UNITS, SECTION_CREST, SECTION_FLOOR, SECTION_HAND_BACK_S, SECTION_TIP, SECTION_TROUGH,
   STOOD_PHASE, collapseSpan, flightTime, sectionEnd, sectionKnots, sectionKnot, sectionOf, sectionPhase, sectionScale, sectionWeight, seatShift, tubeHold,
   wombSection, type SheetAlong, sectionSamples, sectionPoint, curlWeight, sampleWeight, SHEET_KNOTS, CURL_KNOTS, SURGE_FALL_BASE_S, SURGE_FALL_PER_M,
-  surgeWeight, surgeLift, sectionNumbers, seatOf, FRONT_LEAD_S, CREST_SHARE, TROUGH_SHARE, setSeatShares, wallWeight,
+  surgeWeight, surgeLift, sectionNumbers, seatOf, FRONT_LEAD_S, CREST_SHARE, TROUGH_SHARE, setSeatShares, wallWeight, footY, footWeight, footFloorWeight,
 } from './wombSection';
 import { UNTIL_NEVER } from './breaking';
 
@@ -114,9 +114,13 @@ describe('one surface (plan 2026-10-06-wave-root-cause step 3, Andrew’s ruling
       const n = numbers(A, phase), k = sectionKnots(n, swell), fam = profileKnots(phase, 1), d = roundedTip(fam, tipLife(phase));
       const drawn = (m: number): readonly number[] => d[m > TIP_KNOT ? m + 2 : m === TIP_KNOT ? m + 1 : m];
       const [sc, b] = seatOf(phase, 1, fam, 0);
+      // The floor and trough knots go onto the front sheet's lowest point (Task 3: footY, footWeight).
+      const low = Math.min(...k.slice(SECTION_TROUGH + 1).map((q) => q[1])), fw = footWeight(phase);
+      const footW = (m: number): number => (m === FLOOR_KNOT ? fw * footFloorWeight(phase) : m === TROUGH_KNOT ? fw : 0);
       for (let m = CREST_KNOT; m <= TROUGH_KNOT; m++) {
+        const seated = drawn(m)[1] * sc + b;
         expect(k[sectionKnot(m)][0], `phase ${phase} knot ${m}`).toBeCloseTo(drawn(m)[0], 12);
-        expect(k[sectionKnot(m)][1], `phase ${phase} knot ${m}`).toBeCloseTo(drawn(m)[1] * sc + b, 12);
+        expect(k[sectionKnot(m)][1], `phase ${phase} knot ${m}`).toBeCloseTo(seated + (footY(low) - seated) * footW(m), 12);
       }
     }
   });
@@ -147,7 +151,9 @@ describe('one surface (plan 2026-10-06-wave-root-cause step 3, Andrew’s ruling
         // The drawing's own turns (the crest, the lip, the tube, the foot and its trough) are its business; the joins to the
         // sheet (the shoulder, the front knot) and the sheet's are not.
         const k = sectionKnots(numbers(A, phase), swell);
-        const onCurl = s.homes[j] > A * k[SECTION_CREST][2] && s.homes[j] < A * (k[SECTION_TROUGH + 1][2] - 0.3);
+        // (The curl's homes from its lowest: the leashed cavity's wall and floor sit at homes behind the crest's; Task 3.)
+        const curlHome = Math.min(...k.slice(SECTION_CREST, SECTION_TROUGH + 1).map((q) => q[2]));
+        const onCurl = s.homes[j] > A * (curlHome - 0.1) && s.homes[j] < A * (k[SECTION_TROUGH + 1][2] - 0.3);
         if (!onCurl) expect(turn, `phase ${phase} sample ${j} home ${s.homes[j].toFixed(2)}`).toBeLessThan((10 * Math.PI) / 180);
       }
     }
@@ -311,5 +317,26 @@ describe('the wall’s lead is one period, smoothstepped (womb-realism Task 2)',
     expect(wallWeight(Infinity, 14)).toBe(0);
     expect(wallWeight(null, 14)).toBe(0);
     for (let u = 0; u < 20; u += 0.25) expect(wallWeight(u + 0.25, 14)).toBeLessThanOrEqual(wallWeight(u, 14));
+  });
+});
+
+describe('the curtain’s foot on the front sheet (womb-realism Task 3, STOP 2 early ruling ask 2)', () => {
+  it('a front sheet 0.4 A under still water: the floor and trough knots sit on it (± 0.01 A) once the lip throws', () => {
+    for (const A of [1.5, 3.7]) {
+      const sheet: SheetAlong = (u) => [u, u > 0 ? -0.4 * A : 0];
+      for (const phase of [0.6, 0.8, 1, 1.25]) for (const hollow of [0, 1]) {
+        const k = sectionKnots({ A, phase, hollow, rho: 1 }, sheet), tag = `A ${A} phase ${phase} hollow ${hollow}`;
+        expect(Math.abs(k[SECTION_FLOOR][1] + 0.4), tag).toBeLessThanOrEqual(0.01);
+        expect(Math.abs(k[SECTION_TROUGH][1] + 0.4), tag).toBeLessThanOrEqual(0.01);
+      }
+    }
+  });
+  it('never deeper than −0.4 A, never higher than −troughShare A', () => {
+    const A = 3, deep: SheetAlong = (u) => [u, u > 0 ? -0.7 * A : 0], high: SheetAlong = (u) => [u, u > 0 ? 0.1 * A : 0];
+    expect(sectionKnots({ A, phase: 1, hollow: 1, rho: 1 }, deep)[SECTION_FLOOR][1]).toBeCloseTo(-0.4, 2);
+    expect(sectionKnots({ A, phase: 1, hollow: 1, rho: 1 }, high)[SECTION_FLOOR][1]).toBeCloseTo(-TROUGH_SHARE, 2);
+  });
+  it('the airborne lip spans at most 2.5 x 2.5 m along the line: Hb 2.5 m peeling 10 m/s (the plan’s case)', () => {
+    expect(flightTime(2.5) * 10).toBeLessThanOrEqual(2.5 * 2.5);
   });
 });

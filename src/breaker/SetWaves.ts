@@ -9,8 +9,8 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LE
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { BORE_SHARE, FLIGHT_DROP_A, FRONT_LEAD_S, GRAVITY_MS2, ONSET_HEIGHT_UNITS, setWallLeadT } from './wombSection';
-import { applySeatShares } from './wombSectionNodes';
+import { BORE_SHARE, FRONT_LEAD_S, GRAVITY_MS2, ONSET_HEIGHT_UNITS, setWallLeadT } from './wombSection';
+import { applyFlightDropA, applySeatShares, flightTimeNodeA } from './wombSectionNodes';
 import { HOLLOW_PSI } from './reefReport';
 import { MIST_LAND_WINDOW_S, landingMistNode } from '../whitewater/mistSlab';
 import { boreWeightNode } from './wombSectionNodes';
@@ -160,6 +160,7 @@ export class SetWaves {
     // The section's seat and the wall's lead are module state shared by the CPU twins and the ribbon (womb-realism Task 2).
     applySeatShares(this.breakParams.crestShare, this.breakParams.troughShare);
     setWallLeadT(this.breakParams.wallLeadT);
+    applyFlightDropA(this.breakParams.flightDropA);
     this.updateBreakingHeight();
   }
 
@@ -552,7 +553,7 @@ export class SetWaves {
             else if (this.shape === 'none') lean.assign(0.0);
             if (mistWanted) {
               const Hm = min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO));
-              const fly = sqrt(Hm.div(ONSET_HEIGHT_UNITS).mul((2 * FLIGHT_DROP_A) / GRAVITY_MS2));
+              const fly = flightTimeNodeA(Hm.div(ONSET_HEIGHT_UNITS));
               const hollow = clamp(psi.sub(HOLLOW_PSI[0]).div(HOLLOW_PSI[1]), 0.0, 1.0);
               const on = rec.inside.and(onset.broken).and(onset.tb.greaterThanEqual(0.0));
               landW.assign(select(on, landingMistNode(onset.tb, fly, hollow), float(0.0)));

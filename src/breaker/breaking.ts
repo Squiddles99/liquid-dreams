@@ -66,6 +66,8 @@ export interface BreakParams {
   troughShare: number;
   /** The wall down the line stands up over this many swell periods before its break (wombSection.WALL_LEAD_T). */
   wallLeadT: number;
+  /** The lip's flight is the free fall from this many A (wombSection.FLIGHT_DROP_A; womb-realism Task 3). */
+  flightDropA: number;
 }
 
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
@@ -95,6 +97,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   crestShare: 0.85,
   troughShare: 0.25,
   wallLeadT: 1,
+  flightDropA: 0.8,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
@@ -153,6 +156,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.crestShare = clampTo(p.crestShare, 0.7, 1, d.crestShare);
   p.troughShare = clampTo(p.troughShare, 0.1, 0.35, d.troughShare);
   p.wallLeadT = clampTo(p.wallLeadT, 0.5, 2, d.wallLeadT);
+  p.flightDropA = clampTo(p.flightDropA, 0.4, 1.5, d.flightDropA);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
 

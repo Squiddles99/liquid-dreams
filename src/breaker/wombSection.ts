@@ -65,8 +65,15 @@ export const wallWeight = (until: number | null | undefined, periodS: number): n
   if (until === null || until === undefined || !Number.isFinite(until)) return 0;
   return 1 - smoothstep(0, wallLeadS(periodS), Math.max(0, until));
 };
-/** The lip's flight (onset to the round barrel) is the free fall from this many A, the crest to the landing below sea level. */
-export const FLIGHT_DROP_A = 1.3;
+/**
+ * The lip's flight (onset to the round barrel) is the free fall from this many A. 0.8, not 1.3 (womb-realism spec 3.2,
+ * Task 3): the airborne lip spans flight x peel along the line, at most 2.5 A. The dial flightDropA (setFlightDropA); the
+ * GPU mirrors it (wombSectionNodes.flightUniforms).
+ */
+export const FLIGHT_DROP_A = 0.8;
+const FLIGHT = { dropA: FLIGHT_DROP_A };
+export const setFlightDropA = (a: number): void => { FLIGHT.dropA = a; };
+export const flightDropA = (): number => FLIGHT.dropA;
 /** After the white-water wall the section hands back to the sheet over this long (s); the foam carries on over it. */
 export const SECTION_HAND_BACK_S = 0.5;
 /** The section's ends (units of A from the crest line): the ribbon's mesh spans them; the curve is the sheet's there. */
@@ -102,7 +109,7 @@ const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 /** The scale A (m): the crest's height above still water when the lip pitches. */
 export const sectionScale = (H: number): number => Math.max(0, H) / ONSET_HEIGHT_UNITS;
 /** How long (s) the lip flies from onset to the round barrel. */
-export const flightTime = (H: number): number => Math.sqrt((2 * FLIGHT_DROP_A * sectionScale(H)) / GRAVITY_MS2);
+export const flightTime = (H: number): number => Math.sqrt((2 * FLIGHT.dropA * sectionScale(H)) / GRAVITY_MS2);
 const power = (H: number, periodS: number): number => Math.max(0, H) * (periodS / 15);
 export const tubeHold = (H: number, periodS: number): number => HOLD_BASE_S + HOLD_PER_M * power(H, periodS);
 export const collapseSpan = (H: number, periodS: number): number => COLLAPSE_BASE_S + COLLAPSE_PER_M * power(H, periodS);
@@ -218,6 +225,8 @@ export const SECTION_CREST = sectionKnot(CREST_KNOT);
 export const SECTION_TIP = sectionKnot(TIP_KNOT);
 export const SECTION_FLOOR = sectionKnot(FLOOR_KNOT);
 export const SECTION_TROUGH = sectionKnot(TROUGH_KNOT);
+/** The floor and trough among the drawn curl's knots (roundedCurl's order). */
+const FLOOR_DRAWN = SECTION_FLOOR - SHEET_KNOTS, TROUGH_DRAWN = SECTION_TROUGH - SHEET_KNOTS;
 /** The knots whose samples are marked. */
 export const SECTION_MARKED = { crest: SECTION_CREST, tip: SECTION_TIP, floor: SECTION_FLOOR } as const;
 
@@ -243,6 +252,19 @@ export const SEAT_SHIFT_MAX = 0.4;
 export const CREST_SHARE = 0.85;
 export const TROUGH_SHARE = 0.25;
 export const SEAT_HELD_PHASE = STAGES.tubeFilling;
+/**
+ * The curtain's foot (womb-realism Task 3, STOP 2 early ruling ask 2): once the lip throws, the floor and trough knots sit
+ * at min(−troughShare, the sheet's lowest point in front of the section), never deeper than FOOT_DEEPEST (units of A from
+ * still water), read from the front sheet knots (no extra sheet reads). In over FOOT_PHASES[0…1] (no pop as the lip
+ * pitches); the floor knot hands back to the seat over FOOT_PHASES[2…3], as the collapse shrinks the cavity it belongs to.
+ */
+export const FOOT_DEEPEST = 0.4;
+export const FOOT_PHASES: readonly [number, number, number, number] = [STOOD_PHASE, 0.6, STAGES.tubeFilling, STAGES.cavingIn];
+/** The foot's y (units of A) over a front sheet whose lowest point is `sheetLow`. */
+export const footY = (sheetLow: number): number => Math.max(-FOOT_DEEPEST, Math.min(-SEAT.trough, sheetLow));
+/** How far the trough knot (and the floor knot: × footFloorWeight) is on the foot [0, 1] at `phase`. */
+export const footWeight = (phase: number): number => smoothstep(FOOT_PHASES[0], FOOT_PHASES[1], phase);
+export const footFloorWeight = (phase: number): number => 1 - smoothstep(FOOT_PHASES[2], FOOT_PHASES[3], phase);
 /** The seat never stretches a drawing whose crest stands less than this (units of A) over its floor by more than its span. */
 const SEAT_SPAN_MIN = 0.2;
 const SEAT = { crest: CREST_SHARE, trough: TROUGH_SHARE };
@@ -313,7 +335,13 @@ export function sectionFrameKnots(numbers: SectionNumbers, sheet: SheetAlong): {
   // The seat scales the family's own curl; the surge's lift (units of A) goes on after it.
   const life = tipLife(Math.min(2, Math.max(0, phase))), plain = roundedCurl(k, life);
   const lifted = surge > 0 ? roundedCurl(k.map((p, m): P2 => [p[0], p[1] + surgeLift(m, surge, 1)]), life) : plain;
-  const drawn = plain.map((p, i): P2 => [lifted[i][0], lifted === plain ? p[1] * scale + shift : p[1] * scale + shift + (lifted[i][1] - p[1])]);
+  // The curtain's foot: the floor and trough knots onto the front sheet (footY), before the surge's lift.
+  const fw = footWeight(phase), foot = fw > 0 ? footY(Math.min(...front.map((q) => q[1]))) : 0;
+  const footW = (i: number): number => (i === FLOOR_DRAWN ? fw * footFloorWeight(phase) : i === TROUGH_DRAWN ? fw : 0);
+  const drawn = plain.map((p, i): P2 => {
+    const seated = p[1] * scale + shift, y = seated + (foot - seated) * footW(i);
+    return [lifted[i][0], lifted === plain ? y : y + (lifted[i][1] - p[1])];
+  });
   const curl = drawn.map((d, i): SectionKnot => {
     const f = (i + 1) / (CURL_KNOTS + 1), dy = d[1], dh = d[0] - (oBack + (oFront - oBack) * f);
     // At g = 1 the sheet at the swell drawing's home is weighted 1 − g = 0: not read (ride-framerate R10a; equal to 1 ulp,

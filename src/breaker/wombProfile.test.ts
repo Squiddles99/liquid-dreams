@@ -135,10 +135,22 @@ describe('wombProfile', () => {
       return best;
     };
     expect(approved.n).toBe(CURVE_SAMPLES);
-    for (const shape of approved.shapes) {
+    // womb-realism Task 3: the lip's leash (TIP_REACH_MAX) pulls in every drawing from the lip pitching on (0.75–2, whose
+    // signed tips reach 1.3–1.45 H); those are re-judged by Andrew from the captures at STOP 2. Phases 0–0.5 are untouched.
+    for (const shape of approved.shapes.filter((q) => q.phase <= 0.5)) {
       const c = profileCurve(shape.phase, shape.hollow);
       for (const p of c) expect(offCurve(p, shape.curve), `phase ${shape.phase} hollow ${shape.hollow}`).toBeLessThan(2e-3);
       for (const p of shape.curve) expect(offCurve(p, c), `phase ${shape.phase} hollow ${shape.hollow}`).toBeLessThan(2e-3);
+    }
+  });
+});
+
+describe('the lip on a leash (womb-realism Task 3, spec 3.2)', () => {
+  it('over phases 0–2 and every hollowness the tip stands at most 0.1 above the crest and reaches at most 1.0 ahead of it', () => {
+    for (let i = 0; i <= 40; i++) for (const hollow of [0, 0.5, 1]) {
+      const phase = i * 0.05, k = profileKnots(phase, hollow), tag = `phase ${phase.toFixed(2)} hollow ${hollow}`;
+      expect(k[TIP_KNOT][1] - k[CREST_KNOT][1], tag).toBeLessThanOrEqual(0.1 + 1e-9);
+      expect(k[TIP_KNOT][0] - k[CREST_KNOT][0], tag).toBeLessThanOrEqual(1.0 + 1e-9);
     }
   });
 });
