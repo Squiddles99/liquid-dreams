@@ -1,8 +1,7 @@
-// src/frontend/ui/titleScreen.ts: the title (surf-map hub spec §2): the surf chart close-up drifting with today's swell,
+// src/frontend/ui/titleScreen.ts: the title (surf-map hub spec §2): the whole Cape-to-Cape chart, still (no breaks, swell or wind),
 // the emblem and wordmark upper left, the main menu down the left (Surf · Online, locked · Settings · Quit on desktop).
 // It sits above the loading cover; the game boots behind it. The first press starts the sound (App.titleSurf).
 import type { SettingsStorage } from '../../dev/devSettings';
-import { nowOf, todaysSetup } from '../conditionsSource';
 import { safeAreaFraction } from '../frontSettings';
 import { TITLE_LABELS, type TitleItem, stepTitle, titleItems } from '../titleMenu';
 import { type Device, UiInput } from '../uiInput';
@@ -50,8 +49,7 @@ export class TitleScreen {
     this.settingsCtl = new SettingsController(this.root, opts.storage, () => this.resize(), this.legend);
     this.root.append(this.chart.el, logo, col, this.toastEl, this.legend.el);
     this.resize();
-    const today = nowOf(todaysSetup(new Date()));
-    void this.chart.load().then(() => this.chart.setConditions(today));
+    void this.chart.load();
     window.addEventListener('resize', this.resize);
     this.render();
   }
@@ -119,6 +117,5 @@ export class TitleScreen {
     const { actions, device } = this.input.poll(nowMs);
     if (device) this.device = device;
     for (const a of actions) this.act(a);
-    this.chart.update(nowMs);
   }
 }

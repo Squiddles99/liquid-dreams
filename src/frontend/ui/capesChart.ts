@@ -1,8 +1,8 @@
 // src/frontend/ui/capesChart.ts: the surf chart (surf-map hub spec §3–4, mockup A): our own Admiralty-style chart of the
 // Capes. Paper land with a fine hatch over a deep-teal sea with depth bands and a compass rose; today's swell lines roll
 // in under the land, wind arrows drift over it; one pin per built break. 'full' fills the window (the map beat); 'title'
-// is the same Cape-to-Cape chart without the breaks (Andrew 2026-10-11) and without the Indian Ocean label, which would sit
-// under the menu.
+// is the same chart drawn a little smaller, sea above Cape Naturaliste and below Cape Leeuwin, with no breaks, swell or wind
+// (Andrew 2026-10-11; TitleScreen never sets conditions) and no Indian Ocean label, which would sit under the menu.
 import { CHART, CHART_LABELS, type CapesChartData, capesToChart, chartSwellLines, chartWindArrows } from '../capesGeom';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -11,6 +11,9 @@ const el = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, 
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
   return e;
 };
+// The title's window: 16:9, 1180 tall (the capes at chart y 107 and 990 get ~120 px of sea either side at 1080p), the
+// coast still clear of the menu (chart x 618 lands at ~660 px). The land data runs well past it on every side.
+const TITLE_VIEWBOX = '-100 -50 2098 1180';
 const SOUNDINGS: readonly [number, number, string][] = [[560, 300, '38'], [430, 520, '61'], [300, 760, '84'], [620, 860, '45'], [240, 380, '96'], [520, 960, '70']];
 
 export class CapesChart {
@@ -26,7 +29,7 @@ export class CapesChart {
   constructor(private readonly opts: { view: 'full' | 'title' }) {
     this.el.className = 'fe-chart';
     // 'slice' covers any window shape: a 21:9 or 4:3 window crops the chart instead of showing bare edges (Review Focus 2).
-    this.svg.setAttribute('viewBox', `0 0 ${CHART.w} ${CHART.h}`);
+    this.svg.setAttribute('viewBox', opts.view === 'title' ? TITLE_VIEWBOX : `0 0 ${CHART.w} ${CHART.h}`);
     this.svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
     this.el.appendChild(this.svg);
   }
