@@ -105,6 +105,8 @@ export interface TraceInput {
   /** The ribbon's trace only: carry the surge (BreakParams.surge) in the sections. Absent: none, so the ride, the spray
    * and every probe read the family's own sections (whitewater F4: the surge is look only). */
   drawSurge?: boolean;
+  /** Tests and probes only: the inside leg's line smoothing σ (m; absent INSIDE_LINE_SMOOTHING_M, 0 off). */
+  insideLineSmoothingM?: number;
 }
 
 /** The ride's view of the ribbon's stations: the same entries with the surge taken out of their sections (whitewater F4),
@@ -279,7 +281,7 @@ export const LINE_END_FADE_M = 6;
  * its normal too: over reef heads the crest's own normal swings ±17° between stations 2 m apart, and the sections, reaching
  * 7 A behind the crest, crossed each other there (the ribbon folded behind the wave: Andrew's GPU run, 2026-10-05).
  */
-export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'> & Partial<Pick<BreakParams, 'surge'>>): void {
+export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'> & Partial<Pick<BreakParams, 'surge'>>, insideSigmaM = INSIDE_LINE_SMOOTHING_M): void {
   const normals = line.map((s) => [s.nx, s.nz]);
   const raw = line.map((s) => {
     const q = sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset, surge: p.surge });
@@ -303,7 +305,7 @@ export function fillSections(line: Station[], periodS: number, p: Pick<BreakPara
     const l = Math.hypot(nx, nz);
     if (l > 1e-9) { s.nx = nx / l; s.nz = nz / l; }
   });
-  smoothInsideLine(line);
+  smoothInsideLine(line, insideSigmaM);
 }
 
 /**
@@ -315,11 +317,11 @@ export function fillSections(line: Station[], periodS: number, p: Pick<BreakPara
  */
 export const INSIDE_LINE_SMOOTHING_M = 12;
 
-function smoothInsideLine(line: Station[]): void {
+function smoothInsideLine(line: Station[], sigmaM: number): void {
   const weights = line.map((s) => closeoutWeight(s.z));
-  if (INSIDE_LINE_SMOOTHING_M <= 0 || !weights.some((w) => w > 0)) return;
+  if (sigmaM <= 0 || !weights.some((w) => w > 0)) return;
   const xs = line.map((s) => s.x), zs = line.map((s) => s.z);
-  const reach = 3 * INSIDE_LINE_SMOOTHING_M, inv = 1 / (2 * INSIDE_LINE_SMOOTHING_M * INSIDE_LINE_SMOOTHING_M);
+  const reach = 3 * sigmaM, inv = 1 / (2 * sigmaM * sigmaM);
   let lo = 0;
   line.forEach((s, i) => {
     while (line[lo].arc < s.arc - reach) lo++;
@@ -350,7 +352,7 @@ export function traceStations(field: ReefField, waves: readonly ActiveWave[], t:
       if (sides.length === 0) return;
       const line = [...sides[1].reverse(), ...sides[0]];
       fillTimes(field, w, line, ctx, input);
-      fillSections(line, field.periodS, input.drawSurge ? input.params : { ribbonOnset: input.params.ribbonOnset });
+      fillSections(line, field.periodS, input.drawSurge ? input.params : { ribbonOnset: input.params.ribbonOnset }, input.insideLineSmoothingM);
       for (const s of line) {
         if (alive(s)) out.push(s);
         else if (out.length > 0 && !out[out.length - 1].gap) out.push({ gap: true });
