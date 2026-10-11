@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Fn, If, float, length, max, mix, smoothstep, texture, vec2, vec3 } from 'three/tsl';
-import { KELP_GAP_SHADE, REEF_ALBEDO, WEED_ALBEDO } from './bedLook';
+import { KELP_GAP_LIFT, WEED_ALBEDO } from './bedLook';
 import { KELP_FLATTEN, KELP_HEIGHT_M, KELP_NOISE_CELLS } from './kelp';
 import type { KelpMap } from './KelpMap';
 
@@ -22,11 +22,13 @@ export function kelpParallaxNode(rayDir: N, height: N | number): N {
 export function kelpWeedAlbedoNode(hitPos: N, rayDir: N, kelp: KelpMap, weed: N | number = 1): N {
   // Drawn only on weed inside the lean window, the 128 m around the camera (final review I3: over every bed pixel to
   // the horizon it cost ~3 ms a frame, and through 60+ m of water it can't be read); elsewhere build A's weed, the same
-  // mean tone.
+  // mean tone per channel. The look fades to that weed over the window's last KELP_FADE_M, as the lean does: a hard
+  // switch drew the window as a pale square on the shelf from a camera above the lineup (Andrew, 2026-10-11).
   return Fn(() => {
     const out = vec3(...WEED_ALBEDO).toVar();
     If(kelp.show.greaterThan(0.5).and(float(weed).greaterThan(0.01)).and(kelp.insideNode(hitPos.xz)), () => {
-      out.assign(kelpCanopyAlbedoNode(hitPos, rayDir, kelp.leanNode(hitPos.xz), kelp.time, kelp.show, kelp.noise));
+      const canopy = kelpCanopyAlbedoNode(hitPos, rayDir, kelp.leanNode(hitPos.xz), kelp.time, kelp.show, kelp.noise);
+      out.assign(mix(vec3(...WEED_ALBEDO), canopy, kelp.edgeFadeNode(hitPos.xz)));
     });
     return out;
   })();
@@ -56,8 +58,12 @@ export function kelpCanopyAlbedoNode(hitPos: N, rayDir: N, lean: N, time: N, sho
   const moving = nz(p.add(drift), 1.6).w.add(nz(smear.add(drift), 1.6).w).mul(0.5);
   const n = mix(still, moving, l.mul(l).mul(0.5));
   const cover = smoothstep(0.25, 0.45, n.add(density.sub(0.6).mul(0.9)));
-  // Upright the crowns are dark; lying flat in the draw their fronds' glossy faces turn up to the light.
+  // Upright the crowns are dark; lying flat in the draw their fronds' glossy faces turn up to the light. The gaps between
+  // the plants are lit weedy rock in the weed's own colour, lifted so the upright canopy's mean matches WEED_ALBEDO in
+  // every channel (bedLook.KELP_GAP_LIFT). Shaded limestone (REEF_ALBEDO × 0.55) matched the weed's luminance but
+  // carried 3.5× its blue, and through 10–15 m of water only blue and green are left: the canopy read pale turquoise
+  // against the plain weed outside its window.
   const fronds = vec3(...WEED_ALBEDO).mul(l.mul(0.9).add(0.6));
-  const gaps = vec3(...REEF_ALBEDO).mul(KELP_GAP_SHADE);
+  const gaps = vec3(...WEED_ALBEDO).mul(KELP_GAP_LIFT);
   return mix(vec3(...WEED_ALBEDO), mix(gaps, fronds, cover), show);
 }

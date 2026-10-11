@@ -3,7 +3,7 @@ import { SURF_NZ, buildHeights, waterEdgeOffset } from '../surf/surfModel';
 import type { ImpactEmitter } from '../whitewater/sprayEmitters';
 import { type SoundInput, SoundModel } from './soundModel';
 
-const imp = (waveId: number, arc: number, x: number, z: number, H = 2.5): ImpactEmitter => ({ x, y: 0, z, vx: 0, vz: 0, nx: 1, nz: 0, H, strength: 1, lip: 1, waveId, arc });
+const imp = (waveId: number, arc: number, x: number, z: number, H = 2.5): ImpactEmitter => ({ x, y: 0, z, vx: 0, vz: 0, nx: 1, nz: 0, H, hollow: 0, strength: 1, lip: 1, waveId, arc });
 const base = (over: Partial<SoundInput> = {}): SoundInput => ({
   simTime: 0, realTime: 0, paused: false, hidden: false, camera: { x: 0, y: 1, z: 0, mode: 'lineup' }, underwater: false,
   windSpeedMs: 3, tideM: 0, ticks: [], bursts: [], bombieSize: 1, surf: null, waterlineX: 190, waterY: 0, plantDensity: 0, nearRocks: false, ...over,

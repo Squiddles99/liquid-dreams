@@ -185,8 +185,9 @@ export const BREAK_BINDINGS = {
   randomDial: { label: 'random dial', min: 0, max: 0.15, step: 0.01 },
   peel: { label: 'peel stretch (× slower along the line)', min: 1, max: 3, step: 0.05 },
   curlMaxMs: { label: 'curl top speed (m/s)', min: 4, max: 40, step: 1 },
-  churnSize: { label: 'churn size (× pile)', min: 0, max: 0.4, step: 0.01 },
+  churnSize: { label: 'churn size (× A)', min: 0, max: 0.4, step: 0.01 },
   churnSpeed: { label: 'churn speed', min: 0, max: 3, step: 0.05 },
+  surge: { label: 'surge at the landing (× A)', min: 0, max: 1, step: 0.05 },
 } as const;
 
 /** Debug overlay toggles (Reef folder), one per DebugOverlays field, checked by DevPanel.test.ts. */
@@ -204,12 +205,15 @@ export const OVERLAY_BINDINGS: Record<keyof DebugOverlays, { label: string }> = 
 export const FOAM_BINDINGS = {
   clearTimeS: { label: 'clear time (s)', ...FOAM_PARAM_RANGES.clearTimeS, step: 0.5 },
   driftMps: { label: 'foam drift (m/s)', ...FOAM_PARAM_RANGES.driftMps, step: 0.05 },
+  laceLifeS: { label: 'lace life (s)', ...FOAM_PARAM_RANGES.laceLifeS, step: 1 },
+  volumeExposure: { label: 'whitewater exposure', ...FOAM_PARAM_RANGES.volumeExposure, step: 0.01 },
 } as const;
 
 /** Spray folder sliders (spec 2026-09-27-offshore-spray-design.md §3.2), ranges exactly normalizeSprayParams's (DevPanel.test.ts). */
 export const SPRAY_BINDINGS = {
   amount: { label: 'spray amount', ...SPRAY_PARAM_RANGES.amount, step: 0.05 },
   lifeS: { label: 'spray life (s)', ...SPRAY_PARAM_RANGES.lifeS, step: 0.1 },
+  plume: { label: 'plume (× rate)', ...SPRAY_PARAM_RANGES.plume, step: 0.05 },
 } as const;
 
 /** Impact folder slider (spec 2026-09-28-impact-explosion-design.md §3.4), range exactly normalizeImpactParams's. */

@@ -190,7 +190,7 @@ describe('ψ at the crest (barrel from the maths)', () => {
 
 
 describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
-  it('shortens a crest’s front as its section stands up: the swell’s before, the profile’s face once broken; no clock', async () => {
+  it('shortens a crest’s front as its section stands up: the swell’s before, the profile’s face once broken; on the record the clock alone', async () => {
     const { frontStanding, wombFrontMin, LEAN_FRONT_MIN, LEAN_FRONT_FLOOR } = await import('./setWaveModel');
     expect(frontStanding(undefined)).toBe(0);
     expect(frontStanding(null)).toBe(0);
@@ -201,11 +201,18 @@ describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
     const { wallWeight, WALL_LEAD_S } = await import('./wombSection');
     expect(frontStanding(-1, 0.85, 0.7)).toBeCloseTo(wallWeight(1), 12);
     expect(frontStanding(-WALL_LEAD_S / 2, 0.85, 0.7)).toBeCloseTo(0.25, 12);
-    // Unbroken, with the record's time until it breaks: the wall, or the ratio, whichever is further.
-    expect(frontStanding(null, 0.7, 0.7, Infinity)).toBe(0);
+    // Unbroken, on the record (the time until it breaks finite): the clock alone, as the drawn section's phase
+    // (wombSection.sectionPhase, one-curl spec §3b). The ratio beside the clock stood the sheet up to a near-vertical face
+    // over the few metres of crest where r passes the onset ratio before the record's negative onset time takes over: a
+    // dark wedge with a torn foot ahead of the stood wall (Andrew, 2026-10-11, "a tear in the wave face").
     expect(frontStanding(null, 0.7, 0.7, WALL_LEAD_S / 2)).toBeCloseTo(0.25, 12);
     expect(frontStanding(null, 0.7, 0.7, 0)).toBe(1);
-    expect(frontStanding(null, 0.85, 0.7, WALL_LEAD_S)).toBeCloseTo(0.5, 12);
+    expect(frontStanding(null, 0.85, 0.7, WALL_LEAD_S)).toBe(0);
+    expect(frontStanding(null, 0.95, 0.7, 3.4)).toBeCloseTo(wallWeight(3.4), 12);
+    expect(frontStanding(null, 1, 0.7, 3.4)).toBeCloseTo(wallWeight(3.4), 12);
+    // A ray that never breaks (until Infinity): the ratio alone, as off the record.
+    expect(frontStanding(null, 0.7, 0.7, Infinity)).toBe(0);
+    expect(frontStanding(null, 0.85, 0.7, Infinity)).toBeCloseTo(0.5, 12);
     expect(frontStanding(0)).toBe(1);
     expect(frontStanding(3)).toBe(1);
     // The front as long as the profile's face (1.8 A, A = H / 1.3) on the 6 ft set at the take-off (H 3.5 m, k 0.068):
