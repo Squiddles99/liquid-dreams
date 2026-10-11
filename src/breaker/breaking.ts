@@ -48,8 +48,9 @@ export interface BreakParams {
   /** The curl's top speed along the crest (m/s; one-curl spec §3d): each breaking line's curl reaches a section no sooner
    * than this from the section up the line (and never before it). Baked into the reef field's onset record. The reef's
    * own first-leg peel is 8–14 m/s, but each level's line starts at the south ledge's far end and sweeps up the right at
-   * ~20 m/s: at 20 the floor's holds piled up and reached the peak 1.4 s late at 6 ft (one-curl Task 3). At 40 the peak
-   * and the first leg are the bake's own; the curl's running max still holds the pockets. */
+   * ~20 m/s: at 20 the floor's holds piled up and reached the peak 1.4 s late at 6 ft (one-curl Task 3). So it binds only
+   * down the ridden left from the tip (reefField.riddenLine; womb-realism Task 2b): there the reef peels ~17 m/s at 7 ft and
+   * 12 keeps one front ahead of the rider; the sweep into the peak and the inside run at reefField.CURL_SWEEP_MS. */
   curlMaxMs: number;
   /** The broken section's churn (render only; the CPU model ignores it): lumps up to this fraction of A × the boil… */
   churnSize: number;
@@ -80,7 +81,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   psiNudge: 0,
   randomDial: 0,
   peel: 1,
-  curlMaxMs: 40,
+  curlMaxMs: 12,
   churnSize: 0.25,
   churnSpeed: 1,
   surge: 0.5,
@@ -136,7 +137,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.psiNudge = clampTo(p.psiNudge, -0.5, 0.5, d.psiNudge);
   p.randomDial = clampTo(p.randomDial, 0, 0.15, d.randomDial);
   p.peel = clampTo(p.peel, 1, 3, d.peel);
-  p.curlMaxMs = clampTo(p.curlMaxMs, 4, 40, d.curlMaxMs);
+  p.curlMaxMs = clampTo(p.curlMaxMs, 8, 20, d.curlMaxMs);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
   p.surge = clampTo(p.surge, 0, 1, d.surge);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);

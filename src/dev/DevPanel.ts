@@ -185,7 +185,7 @@ export const BREAK_BINDINGS = {
   psiNudge: { label: 'ψ nudge (×)', min: -0.5, max: 0.5, step: 0.01 },
   randomDial: { label: 'random dial', min: 0, max: 0.15, step: 0.01 },
   peel: { label: 'peel stretch (× slower along the line)', min: 1, max: 3, step: 0.05 },
-  curlMaxMs: { label: 'curl top speed (m/s)', min: 4, max: 40, step: 1 },
+  curlMaxMs: { label: 'curl top speed (m/s)', min: 8, max: 20, step: 1 },
   churnSize: { label: 'churn size (× A)', min: 0, max: 0.4, step: 0.01 },
   churnSpeed: { label: 'churn speed', min: 0, max: 3, step: 0.05 },
   surge: { label: 'surge at the landing (× A)', min: 0, max: 1, step: 0.05 },
