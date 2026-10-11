@@ -70,9 +70,3 @@ export function compassArc(arc: readonly [number, number]): string {
   const a = compass16(arc[0]), b = compass16(arc[1]);
   return a === b ? a : `${a} – ${b}`;
 }
-
-/** The title's close-up: a 640×360 window (3× zoom) centred between Gracetown and the river mouth. */
-export const TITLE_VIEW = (() => {
-  const [x, y] = capesToChart(114.99, -33.92);
-  return { x: x - 320, y: y - 180, w: 640, h: 360 };
-})();
