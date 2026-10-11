@@ -1,4 +1,4 @@
-import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
+import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetSizeAhead, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
 import { type SectionNumbers, curlWeight, sectionNumbers, wallLeadS } from './wombSection';
@@ -6,7 +6,7 @@ import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
 import { NORTH_LEDGE, TIP } from '../seabed/wombReef';
-import { type ActiveWave, TAPER_NEAR_M, type WaveContext, localHeight, phaseXi } from './setWaveModel';
+import { type ActiveWave, TAPER_NEAR_M, type WaveContext, localHeight, phaseXi, wallHeight } from './setWaveModel';
 
 /**
  * Crest stations for the breaking ribbon (breaking-ribbon spec §5): each set wave's crest line (ξ = 0) traced across
@@ -260,6 +260,10 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
 function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveContext, input: TraceInput): void {
   for (const s of line) {
     stationOnset(field, w, s, input.params);
+    // The crest's height by the record (setWaveModel.wallHeight, womb-realism Task 2c): before its break it grows into the
+    // height it breaks at, so the section's A (sectionScale of H, then of Hb) runs on across the onset.
+    const f = sampleField(field, s.x, s.z), rec = sampleOnset(field, s.x, s.z, onsetScratch);
+    s.H = wallHeight({ hAmp: w.heightM * f.amp, depthM: f.depth, hminM: f.hmin, tb: s.tb, until: s.until, sizeM: rec ? onsetSizeAhead(rec, 0, w.heightM, input.params) : null, periodS: field.periodS });
     s.psi = stationPsi(field, w, s.x, s.z, input);
     s.lipH = stationLipH(field, w, s.x, s.z, input.params);
     s.Hb = stationSize(field, w, s, input.params);

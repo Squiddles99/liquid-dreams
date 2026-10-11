@@ -385,6 +385,23 @@ export function onsetSize(rec: ArrayLike<number>, offset: number, heightM: numbe
 }
 
 /**
+ * The height (m) the section at a record breaks at, read before it breaks too (womb-realism Task 2c): onsetSize once
+ * broken; before, the size its level carries (the amplification where the running maximum was last raised, which meets the
+ * crossing's own when the level breaks: computeOnsetRecord), levels k and k + 1 as onsetUntil reads them. Null without a
+ * level to read.
+ */
+export function onsetSizeAhead(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
+  const broken = onsetSize(rec, offset, heightM, p);
+  if (broken !== null) return broken;
+  const g = heightM * onsetGain(p);
+  if (!(g > 0)) return null;
+  const lq = Math.log(1 / (g * ONSET_LEVEL_Q0)) / Math.log(ONSET_LEVEL_RATIO);
+  const k = Math.min(ONSET_LEVELS - 2, Math.max(0, Math.floor(lq))), w = Math.min(1, Math.max(0, lq - k));
+  const s = offset + ONSET_SIZE_OFFSET, lo = rec[s + k], hi = rec[s + k + 1];
+  return heightM * (lo + w * (hi - lo));
+}
+
+/**
  * How long (s) until the section at a record breaks, for a wave of deep-water height `heightM` (plan 2026-10-06-wave-root-cause,
  * the wall down the line): 0 once it has broken (or is held for its turn: onsetTime is negative then); else the record's
  * time until the ray reaches the wave's breaking level, levels k and k + 1 around it log-linearly (as onsetPsi reads);

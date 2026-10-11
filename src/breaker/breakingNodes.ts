@@ -1,6 +1,7 @@
-import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, smoothstep, uniform } from 'three/tsl';
+import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, smoothstep, sqrt, uniform } from 'three/tsl';
+import { FLIGHT_DROP_A, ONSET_HEIGHT_UNITS } from './wombSection';
 import {
-  type BreakParams, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, UNTIL_NEVER, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
+  type BreakParams, BREAKING_RATIO, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, UNTIL_NEVER, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
   HOLLOW_REACH_Q, MIN_BREAKING_HEIGHT_M, MIN_STAGE_SPAN, PILE_BACK_H, PILE_BLEND_H, PILE_FOAM_EDGE, PILE_FOAM_THIN, PILE_FRONT_H,
   PEEL_RAMP_DELAY_S, PILE_LAND_H, PILE_MIN_LIFT, PILE_REACH, PILE_RISE_S, PILE_SPEED_MS, PLUNGE_FULL_RATIO, SLURP_FULL_RATIO, SURGE_FALL_S, SURGE_FULL_RATIO, SURGE_RISE_S, TUBE_HOLD_S,
   normalizeBreakParams, onsetGain, steepeningStart,
@@ -110,7 +111,7 @@ export function onsetLevelNode(heightM: N, u: BreakUniforms): { lq: N; k: N } {
  * maximum where level k + 1 is above it (time −D there: the peel stretch's turn, spec 2026-10-04 §2). tb is the stretched
  * time since onset, negative while held. tb, lipH and delay are meaningless when not broken.
  */
-export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; delayLo: N; delayHi: N; untilLo?: N; untilHi?: N }, level: { lq: N; k: N }, heightM: N, u: BreakUniforms): { broken: N; tb: N; rMax: N; lipH: N; delay: N; until: N } {
+export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; delayLo: N; delayHi: N; untilLo?: N; untilHi?: N; sizeLo?: N; sizeHi?: N }, level: { lq: N; k: N }, heightM: N, u: BreakUniforms): { broken: N; tb: N; rMax: N; lipH: N; delay: N; until: N; size: N } {
   const g: N = float(heightM).mul(u.onsetGain);
   const logR = Math.log(ONSET_LEVEL_RATIO);
   const qHi = exp(level.k.add(1.0).mul(logR)).mul(ONSET_LEVEL_Q0);
@@ -129,7 +130,27 @@ export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: 
     rMax: g.mul(rec.run),
     lipH: float(heightM).mul(mix(rec.ampLo, rec.ampHi, w)),
     until,
+    // breaking.onsetSizeAhead: onsetSize's weight once broken, onsetUntil's before.
+    size: float(heightM).mul(mix(rec.sizeLo ?? float(0.0), rec.sizeHi ?? float(0.0), select(broken, w, clamp(level.lq.sub(level.k), 0.0, 1.0)))),
   };
+}
+
+/**
+ * setWaveModel.wallHeight: broken (tb ≥ 0) the depth the ray ran over caps it; before onset on the record (or held, its
+ * turn −tb away) it grows from the cap of the depth now into the record's size over the wall's lead (wombSection.wallWeight:
+ * 1 − smoothstep(0, leadT × T, u)); off the record or never breaking, the depth now caps it. Never past hAmp.
+ */
+export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { broken: N; tb: N; until: N; size: N }, periodS: N, leadT: N): N {
+  const cap = depth.mul(BREAKING_RATIO).toVar();
+  const u = select(onset.broken, onset.tb.negate(), onset.until).toVar();
+  const grow = cap.add(onset.size.sub(cap).mul(float(1.0).sub(smoothstep(0.0, leadT.mul(periodS), max(u, 0.0)))));
+  const before = select(u.lessThan(UNTIL_NEVER), grow, cap);
+  // From the break: down from the size to the broken law over the lip's flight (wombSection.flightTime of the size).
+  const broken = hmin.mul(BREAKING_RATIO).toVar();
+  const fly = sqrt(max(onset.size, 0.0).div(ONSET_HEIGHT_UNITS).mul((2 * FLIGHT_DROP_A) / GRAVITY_MS2));
+  const handDown = broken.add(onset.size.sub(broken).mul(float(1.0).sub(smoothstep(0.0, max(fly, 1e-4), onset.tb))));
+  const onRecord = select(onset.broken.and(onset.tb.greaterThanEqual(0.0)), handDown, before);
+  return min(hAmp, select(inside, onRecord, cap));
 }
 
 /** breaking.slurp: the slurp's pull on a shoulder, from its slurp ratio (its sharpening's start to SLURP_FULL_RATIO). */
