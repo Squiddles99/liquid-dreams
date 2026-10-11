@@ -128,7 +128,7 @@ import { buildGroundShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
 import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime, FOAM_TICKS_PER_S } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
-import { bootReady } from './loadingProgress';
+import { bootReady, fieldMatches } from './loadingProgress';
 import type { LoadingScreen } from './loadingScreen';
 import { showOverlay } from './overlay';
 
@@ -1212,6 +1212,7 @@ export class App {
       const ready = bootReady({
         ...h, frontEnd: this.frontEndAtBoot, landUsable: !!this.land.height?.trackNetwork,
         crewIn: !!this.frontEndHost().standSpot() && this.gang.settled,
+        fieldIn: fieldMatches(this.field?.far, this.conditions),
       });
       if (ready.heath) l.stageDone('heath');
       if (ready.crew) {
@@ -1302,8 +1303,16 @@ export class App {
     work();
     resume = this.clock.paused;
     this.setPaused(true);
+    await this.fieldLanded();
     cover.release();
     await started;
+  }
+
+  /** Resolves once the field in use is the one for the conditions (womb-realism Task 1c), or after `capMs` (the worker
+   * failed: the old field stays, as ReefFieldClient keeps it). */
+  private async fieldLanded(capMs = 60_000): Promise<void> {
+    const t0 = performance.now();
+    while (!fieldMatches(this.field?.far, this.conditions) && performance.now() - t0 < capMs) await new Promise((r) => window.setTimeout(r, 100));
   }
 
   /** Back to the dune (Andrew, Gate B): under the cover, the ride stops and the front end opens on the crew again. */
