@@ -64,9 +64,10 @@ export interface ReefParams {
   /** The width (m) of each transition: the hollow share falls from 1 over [ledgeBarrelM, + this]; the drop comes in over
    * ledgeWallM ± half of it. */
   ledgeBlendM: number;
-  /** C's bed depth (m below mean sea level, as ledgeDepthM): 6.5 is 7 m of still water at tide 0.5, where 7 ft (Hb ≤ 5 m)
-   * no longer breaks and 12 ft (Hb 8+ m) still does (STOP 0 §2.2). The ledge past ledgeWallM and the shelf inshore of it,
-   * north to the inside leg's first INSIDE_DROP_M. */
+  /** C's bed depth (m below mean sea level, as ledgeDepthM): the ledge past ledgeWallM and the shelf inshore of it, north to
+   * the inside leg's first INSIDE_DROP_M. 8.5 (9 m of still water at tide 0.5): 7 ft fizzles by 132-136 m at tides -0.8 to
+   * +0.8 and 12 ft closes out across C at all three (womb-story Task 1 sweep, 270/14). STOP 0 proposed 7 m still from a
+   * breaking ratio of 0.78; the field breaks at about 0.68 (breaking.onsetGain), and 7 ft broke on to 164 m at 7 and 7.5 m. */
   dropDepthM: number;
   /** The hollow share on B and C (0–1): ψ₀ above the flat step's (psiFromStep(1)) times this (reefField's psiHere). */
   shelfHollowShare: number;
@@ -99,7 +100,7 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
   ledgeBarrelM: 50,
   ledgeWallM: 130,
   ledgeBlendM: 15,
-  dropDepthM: 6.5,
+  dropDepthM: 8.5,
   shelfHollowShare: 0,
 };
 

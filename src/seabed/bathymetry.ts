@@ -21,8 +21,10 @@ export interface Bathymetry {
   /** womb-story (STOP 0 ruling): the hollow share the reef feeds the record (reefField's psiHere): wombReef.hollowShareAt on
    * the ridden band, 1 off it. Absent on beds built elsewhere (tests' flat beds, the coast map): 1 everywhere. */
   share?: Float32Array;
-  /** The ridden band's weight [0, 1] (the record's size is smoothed along the crest on it: reefField.smoothOnsetSizes). */
+  /** The ridden band's weight [0, 1] (the record's size is smoothed along the line on it: reefField.smoothOnsetSizes). */
   band?: Float32Array;
+  /** The ridden line's direction (unit x, z: the left's first leg, from the tip down the line). */
+  bandDir?: readonly [number, number];
 }
 
 type Pt = readonly [number, number];
@@ -243,7 +245,8 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       weed[i] = Math.min(w, 1 - s);
     }
   }
-  return { grid, bed, sand, weed, share, band };
+  const br = (bearing * Math.PI) / 180;
+  return { grid, bed, sand, weed, share, band, bandDir: [Math.sin(br), -Math.cos(br)] };
 }
 
 /**
@@ -299,6 +302,7 @@ export function downsample(b: Bathymetry, factor: number): Bathymetry {
   const out: Bathymetry = { grid, bed: new Float32Array(nx * nz), sand: new Float32Array(nx * nz), weed: new Float32Array(nx * nz) };
   if (b.share) out.share = new Float32Array(nx * nz);
   if (b.band) out.band = new Float32Array(nx * nz);
+  if (b.bandDir) out.bandDir = b.bandDir;
   const inv = 1 / (factor * factor);
   for (let r = 0; r < nz; r++) for (let c = 0; c < nx; c++) {
     let bed = 0, sand = 0, weed = 0, share = 0, band = 0;

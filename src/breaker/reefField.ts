@@ -390,10 +390,13 @@ export function smoothOnsetTimes(field: ReefField, sigmaM = ONSET_SMOOTHING_M): 
  * (womb-story, STOP 0 ruling: the line's size; Hb stepped 0.9 m over the first 20 m of the left at 7 ft). */
 export const SIZE_SMOOTHING_M = 20;
 
-/** Each level's size (ONSET_SIZE_OFFSET) smoothed along the crest over sigmaM among the nodes where that level broke (as
- * smoothOnsetTimes), blended in by `band` (Bathymetry.band: 1 smoothed, 0 the node's own). The ride's size, the hold and
- * the wall all read it through breaking.onsetSize/onsetSizeAhead. */
-export function smoothOnsetSizes(field: Pick<ReefField, 'grid' | 'onset' | 'dirX' | 'dirZ'>, band: ArrayLike<number>, sigmaM = SIZE_SMOOTHING_M): void {
+/** Each level's size (ONSET_SIZE_OFFSET) smoothed over sigmaM among the nodes where that level broke (as smoothOnsetTimes),
+ * blended in by `band` (Bathymetry.band: 1 smoothed, 0 the node's own), along `line` (Bathymetry.bandDir: the ridden
+ * line; the crest's tangent without it). Along the line, not the crest: the broken region's edge is the ledge, and a crest
+ * crossing a 46° ledge leaves the broken band within metres on one side, so the crest's window was one-sided (Task 1 Step 3:
+ * Hb 5.72 / 5.00 / 4.97 at 0 / 10 / 20 m against main's 4.95 / 4.81). The ride's size, the hold and the wall all read it
+ * through breaking.onsetSize/onsetSizeAhead. */
+export function smoothOnsetSizes(field: Pick<ReefField, 'grid' | 'onset' | 'dirX' | 'dirZ'>, band: ArrayLike<number>, sigmaM = SIZE_SMOOTHING_M, line?: readonly [number, number]): void {
   const { grid, onset, dirX, dirZ } = field;
   const { nx, nz, cellM } = grid, n = nx * nz, R = ONSET_RECORD_LENGTH;
   const sigma = sigmaM / cellM, step = Math.max(1, sigma / 3), J = Math.ceil((3 * sigma) / step);
@@ -412,7 +415,7 @@ export function smoothOnsetSizes(field: Pick<ReefField, 'grid' | 'onset' | 'dirX
     for (let row = 0; row < nz; row++) for (let col = 0; col < nx; col++) {
       const i = row * nx + col, own = onset[i * R + slot];
       if (!mask[i] || !(band[i] > 0)) { out[i] = own; continue; }
-      const tx = -dirZ[i], tz = dirX[i];
+      const tx = line ? line[0] : -dirZ[i], tz = line ? line[1] : dirX[i];
       let sum = 0, ws = 0;
       for (let j = -J; j <= J; j++) { const fx = col + j * step * tx, fz = row + j * step * tz; sum += w[j + J] * atS(fx, fz); ws += w[j + J] * atM(fx, fz); }
       out[i] = ws > 1e-6 ? own + band[i] * (sum / ws - own) : own;
@@ -535,7 +538,7 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   const field: ReefField = { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM, ...(coast ? { coast } : {}) };
   if (req.smooth) {
     smoothFieldAmplitude(field);
-    if (req.bed.band) smoothOnsetSizes(field, req.bed.band);
+    if (req.bed.band) smoothOnsetSizes(field, req.bed.band, SIZE_SMOOTHING_M, req.bed.bandDir);
   }
   return field;
 }
