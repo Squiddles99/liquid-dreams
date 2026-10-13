@@ -403,11 +403,11 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     return traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M })
       .filter((s): s is Exclude<typeof s, { gap: true }> => !s.gap && s.tb === null && s.until !== null && s.until !== undefined && Number.isFinite(s.until));
   };
-  it('feathers along the standing wall at 10 m/s offshore; none under 2 m/s, none on a glassy day, none onshore', () => {
+  it('feathers along the standing wall at 10 m/s offshore; none under 1 m/s, none on a glassy day, none onshore', () => {
     const t = BIGGEST.arrivalS - 2;
     expect(standing(t).length).toBeGreaterThan(0);
     expect(breakEmitters(input(t, { wind: strong })).feather.length).toBeGreaterThan(0);
-    expect(breakEmitters(input(t, { wind: { speedMs: 1.9, fromDeg: 57 } })).feather).toEqual([]);
+    expect(breakEmitters(input(t, { wind: { speedMs: 0.9, fromDeg: 57 } })).feather).toEqual([]);
     expect(breakEmitters(input(t, { wind: { speedMs: 1 * 0.5144, fromDeg: 57 } })).feather).toEqual([]);
     expect(breakEmitters(input(t, { wind: { speedMs: 18 * 0.5144, fromDeg: 237 } })).feather).toEqual([]);
   });
@@ -443,13 +443,16 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     expect(n).toBeGreaterThan(5);
     expect(worst).toBeLessThan(0.1);
   });
-  it('the wind window is 2-7 m/s (womb-realism Task 4, spec 3.3): none at 1.9, some at 2.1, the wall factor at 7', () => {
-    expect(FEATHER_WIND_MS).toEqual([2, 7]);
+  it('the wind window is 1-5 m/s (STOP 3 ruling 1: a glassy 7 km/h morning shows a light fringe): none at 0.9, some at 1.1, the wall factor at 5', () => {
+    expect(FEATHER_WIND_MS).toEqual([1, 5]);
     for (const wall of [0, 0.4, 1]) {
-      expect(featherStrength(wall, 1.9, 1)).toBe(0);
-      expect(featherStrength(wall, 2.1, 1)).toBeGreaterThan(0);
-      expect(featherStrength(wall, 7, 1)).toBeCloseTo(FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wall, 12);
+      expect(featherStrength(wall, 0.9, 1)).toBe(0);
+      expect(featherStrength(wall, 1.1, 1)).toBeGreaterThan(0);
+      expect(featherStrength(wall, 5, 1)).toBeCloseTo(FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wall, 12);
     }
+    // Andrew's 7 km/h (1.94 m/s): a thin fringe, ~0.15 of full.
+    expect(featherStrength(1, 7 / 3.6, 1)).toBeGreaterThan(0.1);
+    expect(featherStrength(1, 7 / 3.6, 1)).toBeLessThan(0.25);
   });
   it('within 60 m of the curl front a stood station feathers from the drawn crest (the frame), beyond from standingCrestY', () => {
     const wind = { speedMs: 9, fromDeg: 57 }, o = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), pile: false, shape: 'lean' as const };

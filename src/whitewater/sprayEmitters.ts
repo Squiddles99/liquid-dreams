@@ -119,9 +119,9 @@ export const SPIT_WIND_SHARE = 0.5;
 /** Crest feathering (whitewater §4.2; 7b S2 ruling): in a strong offshore every stood crest smokes, this share of full on
  * the stood swell, rising with the wall (wallWeight) to full at the curl… */
 export const FEATHER_FLOOR = 0.25;
-/** …its strength rising with the offshore wind over these speeds (m/s; womb-realism Task 4, spec 3.3: Andrew's glassy
- * 7 km/h morning feathers, [5, 10] showed none under 18 km/h)… */
-export const FEATHER_WIND_MS: readonly [number, number] = [2, 7];
+/** …its strength rising with the offshore wind over these speeds (m/s; STOP 3 ruling 1: a glassy 7 km/h (1.94 m/s) morning
+ * shows a light fringe (~0.15 of full), 10 kn (5 m/s) is full, the plume carries the cloud above; [2, 7] gave 7 km/h none)… */
+export const FEATHER_WIND_MS: readonly [number, number] = [1, 5];
 /** (FEATHER_FLOOR + (1 − FEATHER_FLOOR) × wall) × smoothstep(FEATHER_WIND_MS, wOff) × amount: a stood crest's feathering. */
 export const featherStrength = (wall: number, wOff: number, amount: number): number =>
   (FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wall) * smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], wOff) * amount;
