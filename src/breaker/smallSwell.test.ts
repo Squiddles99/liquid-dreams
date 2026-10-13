@@ -18,13 +18,21 @@ function row(label: string, tideM: number): number[] {
   return [broken, of, ...line.split('|')[3].split(',').slice(1, 4).map(Number)];
 }
 
+/** Re-pinned 2026-10-14 (womb-story Task 1, Fable's STOP 0 ruling: the drop past ledgeWallM, the hollow share on B): the
+ * first leg now breaks to its wall's end and fizzles, so "all broken" (72/72) is gone by design and the median hollow reads
+ * B's peel. Measured by tools/_smallSwellPin.ts: [label, tide, broken, of, peel m/s, hollow]. The start (the tip's break)
+ * still reads the matrix; the select's offers (sessionSetup.BREAKS, hand-written) are unchanged. */
+const STORY: readonly (readonly [string, number, number, number, number, number])[] = [
+  ['Fun', -0.5, 44, 72, 8.98, 0.466], ['Solid', -0.5, 52, 72, 11.15, 0.456], ['Solid', 0.5, 48, 72, 10.01, 0.451], ['Huge', 0.5, 55, 72, 11.91, 0.529],
+];
+
 describe('the select matrix holds on the game field (womb-retune Task 4)', () => {
   it.each([
     ['Fun', -0.5], ['Solid', -0.5], ['Solid', 0.5], ['Huge', 0.5],
   ] as const)('%s at tide %f m: the first leg as the matrix says', (label, tideM) => {
     const b = SWELL_BANDS.find((x) => x.label === label)!;
     const first = leftStretches(coastReefField({ periodS: b.periodS, tideM }), setWaveHeight(b.ft), NORTH_LEDGE, { first: [0] }, P).first!;
-    const [broken, of, start, peel, hollow] = row(label, tideM);
+    const start = row(label, tideM)[2], [, , broken, of, peel, hollow] = STORY.find(([l, t]) => l === label && t === tideM)!;
     expect(first.broken).toBe(broken);
     expect(first.of).toBe(of);
     expect(Math.abs(first.start - start)).toBeLessThanOrEqual(0.05 + 0.01);
