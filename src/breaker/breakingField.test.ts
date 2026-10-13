@@ -15,7 +15,7 @@ import type { FieldSample } from './fieldSample';
 import { offshoreSpeed } from './overturn';
 import { REFRACT_FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import {
-  type ActiveWave, type BreakOptions, breakOptions, LEAN_RATIO, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestPileTop, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
+  type ActiveWave, type BreakOptions, breakOptions, LEAN_RATIO, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestHeight, crestPileTop, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
   phaseXi, seabedFloor, sumWaves, toActiveWave, waveAt, waveAtCrest,
 } from './setWaveModel';
 
@@ -996,28 +996,34 @@ describe('the water in front of the break is drawn steadily down (Andrew, 2026-1
   };
   // On the reef build's face this wave alone lifted the water 0.5 m 20 m in front of where it breaks, 1–3 s before its
   // draw: its front leaned only in its last second (the lean now reads the reef under its front: reefField.gainAhead).
-  it('a surfer sitting 20–40 m in front of where it breaks is never lifted more than 0.9 m before the face reaches them (was 2.9 m), 0.25 m by this wave', { timeout: 120_000 }, () => {
+  it('a surfer sitting 20–40 m in front of where it breaks is never lifted more than 0.9 m before the face reaches them (was 2.9 m); by this wave, no more than the wall law’s own rise + 0.25 m', { timeout: 120_000 }, () => {
     // What is left: the wave before's back trough filling in as it passes (0.4 m at 40 m, over 3 s, 2.4–2.9 m below still
     // water), and this wave's own trough level drifting by ~0.15 m as its flat trough slides past (the shoaling swell's
     // trough level varies along the ray as the reef focuses it); then this wave's draw takes over.
     for (const [u, alone] of [20, 30, 40].flatMap((v) => [[v, false], [v, true]] as [number, boolean][])) {
       // Up to the face (the water past +1.5 m: the shelf never stood above +0.5 m), then up to the lowest water before it.
-      const series: number[] = [];
+      const series: number[] = [], walls: number[] = [];
       let faceAt = NaN;
       // From 9 s before his moment: the wave before (broken 15 s earlier) has passed all three spots by then.
       for (let dt = -9; dt <= 8; dt += 0.1) {
         const y = alone ? (() => { const { x, z } = point(u); return sumWaves(x, z, t0 + dt, at(x, z), [breaker], ctx, o).eta; })() : height(u, t0 + dt).eta;
         if (y > 1.5) { faceAt = dt; break; }
         series.push(y);
+        if (alone) { const { x, z } = point(u), f = at(x, z), cr = crestAt(x, z, t0 + dt, f, breaker, ctx, o); walls.push(cr ? crestHeight(breaker, cr) : NaN); }
       }
       const bottom = series.indexOf(Math.min(...series));
+      // The wall law's own rise here (womb-realism Task 2c): the coming crest's height (setWaveModel.wallHeight) growing into
+      // the record's Hb over the lead, over the same window (Fable, STOP 3b 2026-10-13: Andrew's "gradient into the building wall").
+      const ws = walls.slice(0, bottom + 1).filter(Number.isFinite);
+      let wLow = Infinity, wallRise = 0;
+      for (const h of ws) { wallRise = Math.max(wallRise, h - wLow); wLow = Math.min(wLow, h); }
       let low = Infinity, rise = 0;
       for (const y of series.slice(0, bottom + 1)) { rise = Math.max(rise, y - low); low = Math.min(low, y); }
       expect(faceAt, `the face reaches the surfer at ${u} m`).toBeGreaterThan(-2);
       // With the set: on the reef build's face the wave before also breaks at the peak, and its back passing lifts the water
       // 0.8 m 20 m ahead of this one's break 1–5 s before this one's draw (plan 2026-10-02 Task 4; 0.4 m at 40 m on the
       // softened ramp). This wave alone, the "first swell" Andrew saw, stays the strict guard.
-      expect(rise, `lifted before the face, ${u} m along the line${alone ? ', this wave alone' : ''}`).toBeLessThan(alone ? 0.25 : 0.9);
+      expect(rise, `lifted before the face, ${u} m along the line${alone ? `, this wave alone (wall law ${wallRise.toFixed(2)} m)` : ''}`).toBeLessThan(alone ? wallRise + 0.25 : 0.9);
     }
   });
   it('smaller sets too: 20–40 m in front of where 4, 6 or 8 ft first breaks, it lifts the water under 0.25 m before its face (6 ft lifted it 1 m: Andrew, 2026-10-02)', { timeout: 120_000 }, () => {

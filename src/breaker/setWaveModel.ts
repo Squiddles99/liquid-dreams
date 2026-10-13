@@ -200,6 +200,10 @@ export interface BreakOptions {
   shape?: boolean | 'lean';
   /** Tests and the drawings: every crest takes this ψ. */
   force?: { psi: number };
+  /** false: a broken crest stands at the broken law from the break on, without wallHeight's hand-down from the record's
+   * size (the legacy lip model's fixture, peakStation: it throws from the sheet as it stood before womb-realism Task 2c).
+   * Absent: with it, as the game. */
+  handDown?: boolean;
 }
 
 /** Breaking on `field` with `params` and the wind's offshore speed: the field and its onset record, as the render reads them. */
@@ -352,7 +356,8 @@ export function crestAt(x: number, z: number, t: number, f: FieldSample, w: Acti
   const rec = o.onset?.(on.x, on.z);
   const tb = rec ? onsetTime(rec, 0, w.heightM, o.params) : undefined;
   const until = rec ? onsetUntil(rec, 0, w.heightM, o.params) : null;
-  const size = rec ? onsetSizeAhead(rec, 0, w.heightM, o.params) : null;
+  // handDown false: broken, the crest is the broken law at once (wallHeight without its size).
+  const size = rec && !(o.handDown === false && tb !== undefined && tb !== null && tb >= 0) ? onsetSizeAhead(rec, 0, w.heightM, o.params) : null;
   const delay = rec ? onsetDelay(rec, 0, w.heightM, o.params) : 0;
   const rMax = rec ? onsetRatio(rec, 0, w.heightM, o.params) : r;
   // The lip too, on the point's own ray: carried along the rays, it is the same all along one (under 1% at most ledge

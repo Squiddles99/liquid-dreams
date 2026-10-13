@@ -68,7 +68,10 @@ describe('lipProfile', () => {
       }
     }
   });
-  it('the lip peels out of the water over the throw: barely off it as it starts, the whole curl by LIP_EMERGE_PROGRESS', () => {
+  // Retired 2026-10-13 (Fable, STOP 3b): buildProfile, the barrel-from-maths lip, is drawn by nothing since the ribbon draws
+  // wombSection; its throw reads womb-realism Task 2c's wall law. The same claims are carried by wombSection.test (no step, no
+  // hole in front of the face) and wombProfile.test (the approved shapes). buildProfile is listed as dead-code cleanup.
+  it.skip('the lip peels out of the water over the throw: barely off it as it starts, the whole curl by LIP_EMERGE_PROGRESS', () => {
     const probe = stationAt(PX, PZ, big, 0);
     const tau = profileFrame(probe.frameBase, probe.input, LIP).tauLand;
     const off = (tb: number) => {
@@ -211,7 +214,10 @@ describe('lipProfile', () => {
     }
   });
 
-  it('solves H_I with a warm-started sheet read: the first read cold (5 reads), the rest from the last u (3 reads each)', () => {
+  // Retired 2026-10-13 (Fable, STOP 3b): buildProfile, the barrel-from-maths lip, is drawn by nothing since the ribbon draws
+  // wombSection; its throw reads womb-realism Task 2c's wall law. The same claims are carried by wombSection.test (no step, no
+  // hole in front of the face) and wombProfile.test (the approved shapes). buildProfile is listed as dead-code cleanup.
+  it.skip('solves H_I with a warm-started sheet read: the first read cold (5 reads), the rest from the last u (3 reads each)', () => {
     let bisected = 0;
     for (const psi of [0.03, 0.045, 0.06, 0.08, 0.1]) {
       const st = peakStation(psi, peakLanding(psi));
@@ -241,7 +247,10 @@ describe('lipProfile', () => {
   });
 
 
-  it("the foam zones (Andrew's photo): the lip whitens as it throws, most at its tip, the tube is clean, and foam fills it once the lip lands", () => {
+  // Retired 2026-10-13 (Fable, STOP 3b): buildProfile, the barrel-from-maths lip, is drawn by nothing since the ribbon draws
+  // wombSection; its throw reads womb-realism Task 2c's wall law. The same claims are carried by wombSection.test (no step, no
+  // hole in front of the face) and wombProfile.test (the approved shapes). buildProfile is listed as dead-code cleanup.
+  it.skip("the foam zones (Andrew's photo): the lip whitens as it throws, most at its tip, the tube is clean, and foam fills it once the lip lands", () => {
     // Where the peak's section breaks (on the softened ramp ~45 m seaward of (0, 0), where the wave has long since
     // collapsed into a bore by the time it arrives).
     let bx = 0, bz = 0;
