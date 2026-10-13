@@ -35,6 +35,8 @@ export interface CrestLineRow {
    * sheet's own foam at the station (the game's break options, all waves), and the curl's face foam at mid-reach
    * (curlFoam.curlFoamAt(phase, 0.5, outside, 1): the ribbon's extras.z there). */
   boil: number; fresh: number; setFoam: number; curlFace: number;
+  /** womb-story Task 0: the still water under the station (m, tide in) and the ray's running shallowest (FieldSample.hmin). */
+  depth: number; hmin: number;
 }
 
 export interface CrestLineInput {
@@ -91,7 +93,7 @@ export function crestLineRows(i: CrestLineInput): CrestLineRow[] {
         until: s.until, tb: s.tb, phase: s.section.phase, rho: s.section.rho, hollow: s.section.hollow, surge: s.section.surge ?? 0,
         A, H: s.H, Hb: s.Hb, hSheet, sheetCrestY, troughSheetY, ribbonCrestY, crestY, tipDx, tipDy, footGap, footGapFront, closeout: closeoutWeight(s.z),
         boil: boilWeight(s.tb, s.Hb ?? s.H, field.periodS, 1), fresh: boilFreshness(s.tb, s.Hb ?? s.H, field.periodS), setFoam: game.foam,
-        curlFace: curlFoamAt(s.section.phase, 0.5, 0, 1),
+        curlFace: curlFoamAt(s.section.phase, 0.5, 0, 1), depth: f.depth, hmin: f.hmin,
       });
     }
   }
