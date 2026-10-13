@@ -192,6 +192,7 @@ export const BREAK_BINDINGS = {
   crestShare: { label: 'section crest (× A over still water)', min: 0.7, max: 1, step: 0.01 },
   troughShare: { label: 'section floor (× A under still water)', min: 0.1, max: 0.35, step: 0.01 },
   wallLeadT: { label: 'wall lead (× period)', min: 0.5, max: 2, step: 0.05 },
+  handDownT: { label: 'hand-down (× period)', min: 0.05, max: 0.3, step: 0.01 },
   flightDropA: { label: 'lip flight drop (× A)', min: 0.4, max: 1.5, step: 0.05 },
 } as const;
 

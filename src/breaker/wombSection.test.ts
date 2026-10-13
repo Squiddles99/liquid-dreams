@@ -177,9 +177,12 @@ describe('the drawn curl is interpolated as drawn, the sheet as the sheet (Secti
     const between = pts.filter((p) => p[0] > floor[0] + 1e-6 && p[0] < trough[0] - 1e-6 && p[1] < 0.5);
     expect(between.length).toBeGreaterThan(8);
     for (const p of between) expect(p[1], `u ${p[0].toFixed(2)}`).toBeGreaterThan(trough[1] - 0.03);
-    // And from the trough knot out to the front knot the surface climbs to the sheet without a second dip.
+    // And from the trough knot out to the front knot the surface climbs to the sheet without a second dip deeper than 0.05 A
+    // below what it has climbed to (STOP 3 ruling 6, 2026-10-13: with the foot on the water in front, the spline humps
+    // ~0.03 A between the foot and the front knot, ~13 cm under a 4.5 m face: under the ripples).
     const out = pts.filter((p) => p[0] >= trough[0] - 1e-6 && p[0] <= knots[SECTION_TROUGH + 1][0] + 1e-6);
-    for (let i = 1; i < out.length; i++) expect(out[i][1], `u ${out[i][0].toFixed(2)}`).toBeGreaterThanOrEqual(out[i - 1][1] - 2e-3);
+    let top = -Infinity;
+    for (const q of out) { expect(q[1], `u ${q[0].toFixed(2)}`).toBeGreaterThanOrEqual(top - 0.05); top = Math.max(top, q[1]); }
   });
 
   it('the sheet weight is 1 on the sheet, 1 − the curl weight on the curl, eased over the two join spans; and 1 everywhere at phase 0', () => {

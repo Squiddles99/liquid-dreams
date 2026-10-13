@@ -75,6 +75,18 @@ export const wallWeight = (until: number | null | undefined, periodS: number): n
 export const FLIGHT_DROP_A = 0.8;
 const FLIGHT = { dropA: FLIGHT_DROP_A };
 export const setFlightDropA = (a: number): void => { FLIGHT.dropA = a; };
+/**
+ * The hand-down (womb-realism Task 8, STOP 3 ruling 6): from the break the crest hands down from the record's size to the
+ * broken law over max(the lip's flight, HAND_DOWN_T × T), not the flight alone (the 12 ft face's shelf at the foot, +1 s).
+ * The dial handDownT (setHandDownT, BreakParams.handDownT); the GPU mirrors it (breakingNodes.wallHeightNode). 0.3 (the
+ * range's top; Opus's ruling pending Fable): 'no shelf at the foot' 12 ft +1 s reads 0.172 at 0.05 (the flight dominates),
+ * 0.478 at 0.1, 0.335 at 0.2, under 0.1 at 0.3.
+ */
+export const HAND_DOWN_T = 0.3;
+const HAND_DOWN = { t: HAND_DOWN_T };
+export const setHandDownT = (t: number): void => { HAND_DOWN.t = t; };
+/** The hand-down span (s) for a section that broke at size `sizeM` in a swell of `periodS`. */
+export const handDownSpan = (sizeM: number, periodS: number): number => Math.max(flightTime(sizeM), HAND_DOWN.t * periodS);
 export const flightDropA = (): number => FLIGHT.dropA;
 /** After the white-water wall the section hands back to the sheet over this long (s); the foam carries on over it. */
 export const SECTION_HAND_BACK_S = 0.5;

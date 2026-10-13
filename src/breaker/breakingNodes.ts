@@ -24,7 +24,7 @@ export function createBreakUniforms(p: BreakParams) {
     faceWidth: uniform(0), drainTo: uniform(1), collapseFrom: uniform(1), collapseTo: uniform(2), steepFrom: uniform(0),
     collapseTime: uniform(1), drainGrowth: uniform(1), onsetGain: uniform(1),
     pileHalfM: uniform(50), pileSurge: uniform(0), churnSize: uniform(0), churnSpeed: uniform(1), psiNudge: uniform(0), randomDial: uniform(0),
-    ribbonOnset: uniform(0.7), surge: uniform(0), wallLeadT: uniform(0.75),
+    ribbonOnset: uniform(0.7), surge: uniform(0), wallLeadT: uniform(0.75), handDownT: uniform(0.3),
   };
   updateBreakUniforms(u, p);
   return u;
@@ -53,6 +53,7 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.ribbonOnset.value = p.ribbonOnset;
   u.surge.value = p.surge;
   u.wallLeadT.value = p.wallLeadT;
+  u.handDownT.value = p.handDownT;
 }
 
 /** smoothstep with its edges reversed (e0 > e1): WGSL's smoothstep wants low < high. */
@@ -141,15 +142,15 @@ export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: 
  * turn −tb away) it grows from the cap of the depth now into the record's size over the wall's lead (wombSection.wallWeight:
  * 1 − smoothstep(0, leadT × T, u)); off the record or never breaking, the depth now caps it. Never past hAmp.
  */
-export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { broken: N; tb: N; until: N; size: N }, periodS: N, leadT: N): N {
+export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { broken: N; tb: N; until: N; size: N }, periodS: N, leadT: N, handDownT: N): N {
   const cap = depth.mul(BREAKING_RATIO).toVar();
   const u = select(onset.broken, onset.tb.negate(), onset.until).toVar();
   const grow = cap.add(onset.size.sub(cap).mul(float(1.0).sub(smoothstep(0.0, leadT.mul(periodS), max(u, 0.0)))));
   const before = select(u.lessThan(UNTIL_NEVER), grow, cap);
-  // From the break: down from the size to the broken law over the lip's flight (wombSection.flightTime of the size).
+  // From the break: down from the size to the broken law over max(the lip's flight, handDownT × T) (wombSection.handDownSpan).
   const broken = hmin.mul(BREAKING_RATIO).toVar();
-  const fly = flightTimeNodeA(max(onset.size, 0.0).div(ONSET_HEIGHT_UNITS));
-  const handDown = broken.add(onset.size.sub(broken).mul(float(1.0).sub(smoothstep(0.0, max(fly, 1e-4), onset.tb))));
+  const span = max(flightTimeNodeA(max(onset.size, 0.0).div(ONSET_HEIGHT_UNITS)), handDownT.mul(periodS));
+  const handDown = broken.add(onset.size.sub(broken).mul(float(1.0).sub(smoothstep(0.0, max(span, 1e-4), onset.tb))));
   const onRecord = select(onset.broken.and(onset.tb.greaterThanEqual(0.0)), handDown, before);
   return min(hAmp, select(inside, onRecord, cap));
 }

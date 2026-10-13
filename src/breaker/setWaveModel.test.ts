@@ -1,3 +1,4 @@
+import { HAND_DOWN_T, handDownSpan, setHandDownT } from './wombSection';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BREAK_PARAMS, UNTIL_NEVER, breakingRatio, onsetPsi, onsetTime } from './breaking';
 import { waveNumber } from './dispersion';
@@ -288,8 +289,20 @@ describe('the wall ahead grows into the record’s breaking size (womb-realism T
     expect(h(null, 0)).toBeCloseTo(4.8, 9);
     expect(h(1e-6, 0)).toBeCloseTo(4.8, 4);
     expect(h(-1e-6, 0)).toBeCloseTo(4.8, 4);
-    const fly = flightTime(4.8);
-    expect(h(fly, 0)).toBeCloseTo(0.78 * 3, 12);
-    for (let tb = 0; tb < fly; tb += fly / 20) expect(h(tb + fly / 20, 0)).toBeLessThanOrEqual(h(tb, 0) + 1e-12);
+    // Over the hand-down span: max(the lip's flight, handDownT x T) (womb-realism Task 8, STOP 3 ruling 6).
+    const span = handDownSpan(4.8, 14);
+    expect(span).toBeCloseTo(Math.max(flightTime(4.8), HAND_DOWN_T * 14), 12);
+    expect(h(span, 0)).toBeCloseTo(0.78 * 3, 12);
+    for (let tb = 0; tb < span; tb += span / 20) expect(h(tb + span / 20, 0)).toBeLessThanOrEqual(h(tb, 0) + 1e-12);
+  });
+  it('the hand-down span is the dial handDownT x T where that is longer than the flight (default 0.3: 4.2 s at T 14)', async () => {
+    const { flightTime } = await import('./wombSection');
+    expect(HAND_DOWN_T).toBe(0.3);
+    expect(handDownSpan(4.8, 14)).toBeCloseTo(4.2, 12);
+    setHandDownT(0.05);
+    try {
+      expect(flightTime(4.8)).toBeGreaterThan(0.05 * 14);
+      expect(handDownSpan(4.8, 14)).toBeCloseTo(flightTime(4.8), 12);
+    } finally { setHandDownT(HAND_DOWN_T); }
   });
 });

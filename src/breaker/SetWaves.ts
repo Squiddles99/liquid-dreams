@@ -9,7 +9,7 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LE
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { BORE_SHARE, FRONT_LEAD_S, GRAVITY_MS2, ONSET_HEIGHT_UNITS, setWallLeadT } from './wombSection';
+import { BORE_SHARE, FRONT_LEAD_S, GRAVITY_MS2, ONSET_HEIGHT_UNITS, setHandDownT, setWallLeadT } from './wombSection';
 import { applyFlightDropA, applySeatShares, flightTimeNodeA } from './wombSectionNodes';
 import { HOLLOW_PSI } from './reefReport';
 import { MIST_LAND_WINDOW_S, landingMistNode } from '../whitewater/mistSlab';
@@ -160,6 +160,7 @@ export class SetWaves {
     // The section's seat and the wall's lead are module state shared by the CPU twins and the ribbon (womb-realism Task 2).
     applySeatShares(this.breakParams.crestShare, this.breakParams.troughShare);
     setWallLeadT(this.breakParams.wallLeadT);
+    setHandDownT(this.breakParams.handDownT);
     applyFlightDropA(this.breakParams.flightDropA);
     this.updateBreakingHeight();
   }
@@ -278,7 +279,7 @@ export class SetWaves {
   wallHeightAt(xz: N, heightM: N, omega: N): N {
     const level = onsetLevelNode(heightM, this.brk), rec = this.sampleOnset(xz, level.k);
     const o = onsetTimeNode(rec, level, heightM, this.brk), f = this.sample(xz, true);
-    return wallHeightNode(float(heightM).mul(f.amp), f.depth, f.hmin, rec.inside, o, float(2 * Math.PI).div(omega), this.brk.wallLeadT);
+    return wallHeightNode(float(heightM).mul(f.amp), f.depth, f.hmin, rec.inside, o, float(2 * Math.PI).div(omega), this.brk.wallLeadT, this.brk.handDownT);
   }
 
   /**
@@ -529,7 +530,7 @@ export class SetWaves {
             const shape = sheetShapeNode(psi);
             shTrough.assign(shape.troughDrain); shSurge.assign(shape.pileSurge);
             const onset = onsetTimeNode(rec, level, a.y, brk);
-            Hcrest.assign(wallHeightNode(a.y.mul(fc.amp), fc.depth, fc.hmin, rec.inside, onset, float(2 * Math.PI).div(a.z), brk.wallLeadT));
+            Hcrest.assign(wallHeightNode(a.y.mul(fc.amp), fc.depth, fc.hmin, rec.inside, onset, float(2 * Math.PI).div(a.z), brk.wallLeadT, brk.handDownT));
             const rSlurp = breakingRatioNode(a.y.mul(fc.amp), fc.hminSlurp, brk);
             // × (1 − release: the collapse without the tube's hold), assigned with the lifecycle below.
             lean.assign(smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], breakingRatioNode(a.y.mul(fc.amp), fc.hminLean, brk)).mul(confidence));

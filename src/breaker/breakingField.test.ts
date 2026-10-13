@@ -9,7 +9,7 @@ import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { firstBreak, setWaveHeight as setWaveHeightAt } from './reefReport';
 import { DEFAULT_BREAK_PARAMS, PILE_LAND_H, PILE_RISE_S, breakingHeightThreshold, landingEstimate, onsetDelay, onsetTime, onsetUntil, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
 import { type Station, traceStations } from './crestTrace';
-import { flightTime } from './wombSection';
+import { flightTime, handDownSpan } from './wombSection';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { offshoreSpeed } from './overturn';
@@ -768,9 +768,10 @@ describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
       const [px, pz] = breakPoint(lx, lz, w);
       const line = ray(px, pz, 40, 80);
       const { tOn, H } = onsetAt(px, pz, w);
-      // The lip the pile is held to is the broken crest's (the crest's law after the lip's flight: 0.78 x hmin), not the
-      // onset's, which stands at the record's breaking size since womb-realism Task 2c (STOP 2 early ruling, ask 3).
-      const lip = topNear(line, tOn + flightTime(H), w).height;
+      // The lip the pile is held to is the broken crest's (the crest's law after the hand-down: 0.78 x hmin), not the
+      // onset's, which stands at the record's breaking size since womb-realism Task 2c (STOP 2 early ruling, ask 3). The
+      // hand-down runs max(the flight, handDownT x T) since Task 8 (STOP 3 ruling 6; 2026-10-13).
+      const lip = topNear(line, tOn + handDownSpan(H, field.periodS), w).height;
       // Once the crest's own pile has risen (its landing clock, from its height there, can run later than the break
       // point's: on the softened ramp the section runs tens of metres from its break).
       let tRisen = tOn + landingEstimate(H, P) + PILE_RISE_S;

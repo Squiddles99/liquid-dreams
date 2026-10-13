@@ -1,4 +1,4 @@
-import { BORE_SHARE, boreWeight, flightTime, frontWeight, wallWeight } from './wombSection';
+import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, wallWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -255,7 +255,7 @@ export function wallHeight(i: { hAmp: number; depthM: number; hminM: number; tb:
   if (i.tb !== null && i.tb !== undefined && i.tb >= 0) {
     const broken = BREAKING_RATIO * i.hminM, size = i.sizeM;
     if (size === null || size === undefined || !Number.isFinite(size)) return Math.min(i.hAmp, broken);
-    return Math.min(i.hAmp, broken + (size - broken) * (1 - smoothstep(0, flightTime(size), i.tb)));
+    return Math.min(i.hAmp, broken + (size - broken) * (1 - smoothstep(0, handDownSpan(size, i.periodS), i.tb)));
   }
   const cap = BREAKING_RATIO * i.depthM, u = i.tb !== null && i.tb !== undefined ? -i.tb : i.until;
   if (u === null || u === undefined || !(u < UNTIL_NEVER) || i.sizeM === null || i.sizeM === undefined || !Number.isFinite(i.sizeM)) return Math.min(i.hAmp, cap);
