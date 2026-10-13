@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BarFollower, BootProgress, STAGES, bootReady, creep } from './loadingProgress';
+import { BarFollower, BootProgress, STAGES, bootReady, creep, fieldMatches } from './loadingProgress';
 
 describe('STAGES', () => {
   it('runs gpu, world, reef, heath, crew, with weights summing to 1', () => {
@@ -81,7 +81,7 @@ describe('BarFollower', () => {
 });
 
 describe('bootReady', () => {
-  const base = { land: true, kit: true, layers: true, frontEnd: true, landUsable: true, crewIn: false };
+  const base = { land: true, kit: true, layers: true, frontEnd: true, landUsable: true, crewIn: false, fieldIn: true };
   it('the heath waits for the land, the kit and the ground layers', () => {
     expect(bootReady({ ...base, kit: false }).heath).toBe(false);
     expect(bootReady(base).heath).toBe(true);
@@ -96,5 +96,22 @@ describe('bootReady', () => {
   });
   it('nothing waits for a crew that cannot appear: the land failed, so there is no stand spot (the bar never hangs)', () => {
     expect(bootReady({ ...base, landUsable: false }).crew).toBe(true);
+  });
+});
+
+describe('the cover waits for the field (womb-realism Task 1c)', () => {
+  const c = { swell: { periodS: 14, directionDeg: 270 }, tideM: 0.5 };
+  it('fieldMatches: the field built for these conditions, and nothing else', () => {
+    expect(fieldMatches({ periodS: 14, fromDeg: 270, tideM: 0.5 }, c)).toBe(true);
+    expect(fieldMatches({ periodS: 15, fromDeg: 225, tideM: 0 }, c)).toBe(false);
+    expect(fieldMatches({ periodS: 14, fromDeg: 270, tideM: 0 }, c)).toBe(false);
+    expect(fieldMatches(null, c)).toBe(false);
+    expect(fieldMatches(undefined, c)).toBe(false);
+  });
+  it('the boot is not ready while the field is the old one, crew or no crew', () => {
+    const base = { land: true, kit: true, layers: true, frontEnd: true, landUsable: true, crewIn: true };
+    expect(bootReady({ ...base, fieldIn: false }).crew).toBe(false);
+    expect(bootReady({ ...base, frontEnd: false, fieldIn: false }).crew).toBe(false);
+    expect(bootReady({ ...base, fieldIn: true }).crew).toBe(true);
   });
 });

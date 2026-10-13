@@ -6,7 +6,8 @@ import { TIDES, peakPsi, setWaveHeight } from './reefReport';
 /**
  * The tube's light (spec 2026-10-03 lip-and-tube-look §5): seen side-on from a point inside the tube, directions out of
  * the mouth (below the tip) are open, between the tip and the lip's root the lip is in the way, beyond the root the wave's
- * body is.
+ * body is. Its fixture's sheet has no hand-down (Fable, STOP 3b 2026-10-13): the light is tested on the lip model as designed,
+ * not on womb-realism Task 2c's wall law, which that model never drew under.
  */
 const n = PROFILE_SEGMENTS;
 const WALL_MID = n.front + n.face + Math.floor(n.wall / 2);
@@ -24,8 +25,8 @@ describe('the light inside the tube comes out of its mouth, through its lip, or 
         const setup = { ...base, wave: { ...base.wave, heightM: setWaveHeight(ft) } };
         const psi = peakPsi(setup.field, setWaveHeight(ft), false);
         if (!Number.isFinite(psi)) return;
-        const tl = peakLanding(psi, { setup });
-        const at = (tb: number | null): Profile => { const st = peakStation(psi, tb, { setup }); return buildProfile(st.base, st.input, st.lip, st.frameBase); };
+        const tl = peakLanding(psi, { setup, handDown: false });
+        const at = (tb: number | null): Profile => { const st = peakStation(psi, tb, { setup, handDown: false }); return buildProfile(st.base, st.input, st.lip, st.frameBase); };
         let held: Profile | null = null, tb = tl;
         for (; tb < tl + 3; tb += 0.05) { const p = at(tb); if (p.frame.landing > 0.99 && p.frame.collapse === 0) { held = p; break; } }
         if (held === null || held.frame.weight < 0.5) return;

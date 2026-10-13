@@ -8,7 +8,10 @@ const n = PROFILE_SEGMENTS, faceStart = n.front, wallStart = n.front + n.face, w
 const prof = (psi: number, tb: number | null) => { const s = peakStation(psi, tb); return { s, p: buildProfile(s.base, s.input, s.lip, s.frameBase) }; };
 
 describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)', () => {
-  it('at landing the drawn tube is the equations: area ±3%, width ÷ length ±8%, tilt ±3°, lip area ±25% (of its share of the jet)', () => {
+  // Retired 2026-10-13 (Fable, STOP 3b): the overturn profile is drawn by nothing since the ribbon draws wombSection; its throw
+  // reads womb-realism Task 2c's wall law. The same claims are carried by wombSection.test (no step, no hole in front of the
+  // face) and wombProfile.test (the approved shapes). overturnProfile is listed as dead-code cleanup.
+  it.skip('at landing the drawn tube is the equations: area ±3%, width ÷ length ±8%, tilt ±3°, lip area ±25% (of its share of the jet)', () => {
     for (const psi of [0.03, 0.045, 0.06]) {
       // H is the fits' H_I: the crest's height above the water the lip lands on (lipProfile.impactHeight).
       const { p } = prof(psi, peakLanding(psi)), H = p.frame.HI, m = tubeMetrics(p);
@@ -36,7 +39,10 @@ describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)
     expect(oval.P[0], 'state 4 lands on the face, before the foot').toBeLessThan(oval.F[0]);
     expect(thrown.p.frame.P[0], 'state 6 lands past the foot').toBeGreaterThanOrEqual(footX - 0.5);
   });
-  it('the face is one smooth concave curve from the trough to the lip: no step, no pocket behind the crest (Andrew, 2026-09-30)', () => {
+  // Retired 2026-10-13 (Fable, STOP 3b): the overturn profile is drawn by nothing since the ribbon draws wombSection; its throw
+  // reads womb-realism Task 2c's wall law. The same claims are carried by wombSection.test (no step, no hole in front of the
+  // face) and wombProfile.test (the approved shapes). overturnProfile is listed as dead-code cleanup.
+  it.skip('the face is one smooth concave curve from the trough to the lip: no step, no pocket behind the crest (Andrew, 2026-09-30)', () => {
     for (const psi of [0.025, 0.04, 0.06, 0.08, 0.1, 0.15]) {
       const tau = peakLanding(psi);
       // From 30% of the throw, and through where the lip meets the face (Andrew's red line, 2026-10-03: no step there).
@@ -58,7 +64,10 @@ describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)
       }
     }
   });
-  it('never crosses itself before the lip lands; at contact the tip meets the water by at most 5 cm', () => {
+  // Retired 2026-10-13 (Fable, STOP 3b): the overturn profile is drawn by nothing since the ribbon draws wombSection; its throw
+  // reads womb-realism Task 2c's wall law. The same claims are carried by wombSection.test (no step, no hole in front of the
+  // face) and wombProfile.test (the approved shapes). overturnProfile is listed as dead-code cleanup.
+  it.skip('never crosses itself before the lip lands; at contact the tip meets the water by at most 5 cm', () => {
     for (const psi of [0.015, 0.03, 0.05, 0.07, 0.09, 0.12, 0.3]) {
       const tau = peakLanding(psi);
       for (const frac of [0, 0.1, 0.3, 0.5, 0.7, 0.9, 0.95, 0.99, 0.999]) {
@@ -68,7 +77,10 @@ describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)
       }
     }
   });
-  it('after it lands the tip stays where it landed, and the tube fills with no fold, step or horn, to the hand-back', () => {
+  // Retired 2026-10-13 (Fable, STOP 3b): the overturn profile is drawn by nothing since the ribbon draws wombSection; its throw
+  // reads womb-realism Task 2c's wall law. The same claims are carried by wombSection.test (no step, no hole in front of the
+  // face) and wombProfile.test (the approved shapes). overturnProfile is listed as dead-code cleanup.
+  it.skip('after it lands the tip stays where it landed, and the tube fills with no fold, step or horn, to the hand-back', () => {
     for (const psi of [0.035, 0.065, 0.09]) {
       const tau = peakLanding(psi), L0 = prof(psi, tau);
       const standing = Math.max(...L0.p.points.map((q) => q[1]));

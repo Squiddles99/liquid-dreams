@@ -50,8 +50,8 @@ export function birthInto(pool: SprayPool, tick: number, births: readonly SprayB
 /** A birth's seed [0, 1): the erosion's noise offset (the GPU's meta.w), a hash of its tick and index. */
 export const birthSeed = (tick: number, i: number): number => Math.fround(rand01(tick, i, 0x2545f491, 0x9e3779b9));
 
-/** One tick (Δ = FOAM_TICK_S) for every live slot: drag toward the wind, settle (or fall), move, age; each with its own
- * kind (meta.y), or `kind` for all of them when given. */
+/** One tick (Δ = FOAM_TICK_S) for every live slot: drag toward its kind's share of the wind (backDriftShare), settle (or
+ * fall), move, age; each with its own kind (meta.y), or `kind` for all of them when given. */
 export function stepPool(pool: SprayPool, windX: number, windZ: number, kind?: ParticleKind): void {
   const f = Math.fround;
   const dt = f(FOAM_TICK_S);
@@ -59,10 +59,11 @@ export function stepPool(pool: SprayPool, windX: number, windZ: number, kind?: P
     const age = pool.posAge[j + 3], life = pool.velLife[j + 3];
     if (!(age < life)) continue;
     const kd = kind ?? PARTICLE_KINDS[pool.meta[j + 1]] ?? PARTICLE_KINDS[0];
-    const k = f(Math.min(1, FOAM_TICK_S / kd.dragTauS)), settle = f(kd.gravityMs2 * FOAM_TICK_S);
-    const vx = f(pool.velLife[j] + f(f(windX - pool.velLife[j]) * k));
+    const k = f(Math.min(1, FOAM_TICK_S / kd.dragTauS)), settle = f(kd.gravityMs2 * FOAM_TICK_S), share = f(kd.backDriftShare);
+    const wx = f(windX * share), wz = f(windZ * share);
+    const vx = f(pool.velLife[j] + f(f(wx - pool.velLife[j]) * k));
     const vy = f(f(pool.velLife[j + 1] + f(f(0 - pool.velLife[j + 1]) * k)) - settle);
-    const vz = f(pool.velLife[j + 2] + f(f(windZ - pool.velLife[j + 2]) * k));
+    const vz = f(pool.velLife[j + 2] + f(f(wz - pool.velLife[j + 2]) * k));
     pool.velLife[j] = vx; pool.velLife[j + 1] = vy; pool.velLife[j + 2] = vz;
     pool.posAge[j] = f(pool.posAge[j] + f(vx * dt));
     pool.posAge[j + 1] = f(pool.posAge[j + 1] + f(vy * dt));

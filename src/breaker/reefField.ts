@@ -1,12 +1,12 @@
 import type { Bathymetry } from '../seabed/bathymetry';
 import { smoothstep } from '../math/smoothstep';
-import { type GridSpec, TIP } from '../seabed/wombReef';
+import { type GridSpec, NORTH_LEDGE, TIP } from '../seabed/wombReef';
 import { BREAKING_RATIO, LIP_THROW_S, ONSET_DELAY_OFFSET, ONSET_SIZE_OFFSET, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_LEVEL_RATIO, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, UNTIL_NEVER, breakingDepth, onsetLevelHeight } from './breaking';
 import { type FarField, computeFarField, farSample } from './coastFarField';
 import { solveWaveField } from './waveField';
 import { type CoastField, coastDrawn, coastSeed, computeCoastField, mixSamples } from './coastField';
 import type { FieldSample } from './fieldSample';
-import { PEEL_NEIGHBOUR_CELLS, breakingLines, curlTimes } from './curlClock';
+import { PEEL_NEIGHBOUR_CELLS, type RiddenLine, breakingLines, curlTimes } from './curlClock';
 
 export interface ReefFieldRequest {
   /** The seabed on the field grid (1 m in the app: downsample(bathymetry, 2)). */
@@ -509,8 +509,16 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
  */
 /** The peel stretch links a level's onset nodes this many cells apart into one breaking section (curlClock's, shared). */
 export { PEEL_NEIGHBOUR_CELLS };
-/** The curl's top speed along the crest (m/s) when the request names none (BreakParams.curlMaxMs's default). */
-export const CURL_MAX_MS_DEFAULT = 40;
+/** The curl's top speed down the ridden left (m/s) when the request names none (BreakParams.curlMaxMs's default; womb-realism
+ * Task 2b: the reef's own peel there is ~17 m/s at 7 ft, 270°; at 225° it is 11.6–12.2 and 12 bit there). */
+export const CURL_MAX_MS_DEFAULT = 13;
+/** The curl's top speed everywhere else (m/s): the sweep into the peak and the inside's closeout (one-curl Task 3's 40). */
+export const CURL_SWEEP_MS = 40;
+/** The ridden left (curlClock.RiddenLine): the onset nodes within this far (m) across NORTH_LEDGE's first leg, from the tip
+ * to its end. */
+export const RIDDEN_BAND_M = 40;
+/** Hold headroom (s) on the ridden left past the curl's time down the ledge to the node (curlClock.RiddenLine). */
+export const RIDDEN_HOLD_MARGIN_S = 2;
 /** Where a breaking section meets one that broke less than this (s) earlier, they are one line (peelLines). */
 export const PEEL_MERGE_S = 1.5;
 /** A held section's turn comes at most this long (s) after the reef broke it, so a held wall never runs on into the
@@ -547,9 +555,12 @@ export function computeOnsetRecord(f: {
   const onsetT = new Float32Array(n * ONSET_LEVELS).fill(Number.NaN);
   let curlT: Float32Array | null = null;
   const tc = new Float32Array(n * ONSET_LEVELS).fill(Number.NaN);
-  /** The delay of a ray that broke at T whose curl time is Tc (the hold, capped at PEEL_MAX_HOLD_S; under HOLD_EPS_S it is
+  /** The longest hold the curl pass gave any onset node (s; at least PEEL_MAX_HOLD_S): a ray carrying a curl time holds no
+   * longer than that (curlClock.holdCapS grows the cap down a long line). */
+  let maxHold = PEEL_MAX_HOLD_S;
+  /** The delay of a ray that broke at T whose curl time is Tc (the hold, capped at maxHold; under HOLD_EPS_S it is
    * the float32 record's rounding along the ray, not a hold). */
-  const delayFrom = (T: number, Tc: number): number => (Number.isFinite(Tc) && Tc - T > HOLD_EPS_S ? Math.min(Tc - T, PEEL_MAX_HOLD_S) : 0);
+  const delayFrom = (T: number, Tc: number): number => (Number.isFinite(Tc) && Tc - T > HOLD_EPS_S ? Math.min(Tc - T, maxHold) : 0);
   // One bilinear cell for everything read back there.
   const xMax = (nx - 1) * grid.cellM, zMax = (nz - 1) * grid.cellM;
   let ci = 0, wx = 0, wz = 0;
@@ -661,8 +672,9 @@ export function computeOnsetRecord(f: {
   march();
   if (stretch > 0 || curl) {
     if (f.debug) { f.debug.onsetT = onsetT.slice(); f.debug.line = new Int32Array(n * ONSET_LEVELS).fill(-1); }
-    curlT = curlPass(onsetT, nx, nz, grid.cellM, stretch, curl ? curlMaxMs : Infinity, curl, f.debug?.line);
+    curlT = curlPass(onsetT, grid, stretch, curl ? curlMaxMs : Infinity, curl, f.debug?.line);
     if (f.debug) f.debug.curlT = curlT.slice();
+    for (let j = 0; j < curlT.length; j++) if (curlT[j] - onsetT[j] > maxHold) maxHold = curlT[j] - onsetT[j];
     out = new Float32Array(n * R);
     onsetT.fill(Number.NaN);
     march();
@@ -676,8 +688,9 @@ export function computeOnsetRecord(f: {
  * section's first break (peelLines), then, with `curl`, one curl along each breaking line (curlClock.curlTimes, the hold
  * capped at PEEL_MAX_HOLD_S). NaN off the onset nodes.
  */
-function curlPass(onsetT: Float32Array, nx: number, nz: number, cellM: number, stretch: number, curlMaxMs: number, curl: boolean, lineOut?: Int32Array): Float32Array {
-  const L = ONSET_LEVELS, n = nx * nz, out = new Float32Array(n * L).fill(Number.NaN);
+function curlPass(onsetT: Float32Array, grid: GridSpec, stretch: number, curlMaxMs: number, curl: boolean, lineOut?: Int32Array): Float32Array {
+  const { nx, nz, cellM } = grid, L = ONSET_LEVELS, n = nx * nz, out = new Float32Array(n * L).fill(Number.NaN);
+  const ridden = riddenLine(grid, curlMaxMs);
   const first = stretch > 0 ? peelLines(onsetT, nx, nz) : null;
   const T = new Float32Array(n), Ts = new Float32Array(n);
   for (let k = 0; k < L; k++) {
@@ -688,10 +701,23 @@ function curlPass(onsetT: Float32Array, nx: number, nz: number, cellM: number, s
     }
     const lines = curl ? breakingLines(T, nx, nz) : null;
     if (lines && lineOut) for (let i = 0; i < n; i++) lineOut[i * L + k] = lines[i];
-    const tk = lines ? curlTimes(Ts, lines, nx, nz, cellM, curlMaxMs, PEEL_MAX_HOLD_S) : Ts;
+    const tk = lines ? curlTimes(Ts, lines, nx, nz, cellM, curlMaxMs, PEEL_MAX_HOLD_S, ridden) : Ts;
     for (let i = 0; i < n; i++) out[i * L + k] = tk[i];
   }
   return out;
+}
+
+/** The ridden left on the grid (curlClock.RiddenLine): the distance down NORTH_LEDGE's first leg from the tip, within
+ * RIDDEN_BAND_M across it; the curl's top speed off it CURL_SWEEP_MS; its hold cap the curl's time down the ledge to the
+ * node at curlMaxMs plus RIDDEN_HOLD_MARGIN_S (at least PEEL_MAX_HOLD_S: the tip keeps the flat cap). */
+function riddenLine(grid: GridSpec, curlMaxMs: number): RiddenLine {
+  const [a, b] = NORTH_LEDGE, len = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
+  const along = new Float32Array(grid.nx * grid.nz).fill(Number.NaN);
+  for (let row = 0; row < grid.nz; row++) for (let col = 0; col < grid.nx; col++) {
+    const dx = grid.x0 + col * grid.cellM - a[0], dz = grid.z0 + row * grid.cellM - a[1], s = dx * ux + dz * uz;
+    if (s >= 0 && s <= len && Math.abs(dz * ux - dx * uz) <= RIDDEN_BAND_M) along[row * grid.nx + col] = s;
+  }
+  return { along, sweepMs: Number.isFinite(curlMaxMs) ? CURL_SWEEP_MS : Infinity, holdMarginS: RIDDEN_HOLD_MARGIN_S };
 }
 
 /** The time until onset is read this many cells ahead along the ray (fillUntil): one, so along a straight ray it falls cell

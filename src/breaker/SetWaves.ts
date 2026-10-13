@@ -5,15 +5,16 @@ import {
 } from 'three/tsl';
 import { REEF_GRID, TIP } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
-import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_UNTIL_OFFSET, TUBE_THROWN_PSI, UNTIL_NEVER, breakingDepth, normalizeBreakParams } from './breaking';
+import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_SIZE_OFFSET, ONSET_UNTIL_OFFSET, TUBE_THROWN_PSI, UNTIL_NEVER, breakingDepth, normalizeBreakParams } from './breaking';
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { BORE_SHARE, FLIGHT_DROP_A, GRAVITY_MS2, ONSET_HEIGHT_UNITS, WALL_LEAD_S } from './wombSection';
+import { BORE_SHARE, FRONT_LEAD_S, GRAVITY_MS2, ONSET_HEIGHT_UNITS, setHandDownT, setWallLeadT } from './wombSection';
+import { applyFlightDropA, applySeatShares, flightTimeNodeA } from './wombSectionNodes';
 import { HOLLOW_PSI } from './reefReport';
 import { MIST_LAND_WINDOW_S, landingMistNode } from '../whitewater/mistSlab';
 import { boreWeightNode } from './wombSectionNodes';
-import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, updateBreakUniforms } from './breakingNodes';
+import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, updateBreakUniforms, wallHeightNode } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import { PSI_EDGE_FADE_M, REEF_BLEND_M, type ReefField } from './reefField';
@@ -94,7 +95,8 @@ export class SetWaves {
    * stretch's delay pair (from ONSET_DELAY_OFFSET) in each texel's z and w. */
   private readonly onsetPsiTex = floatTexture(FIELD_NX * PSI_TEXELS, FIELD_NZ);
   /** The record's time until onset per level (ReefField.onset from ONSET_UNTIL_OFFSET; breaking.onsetUntil): texel k holds
-   * (until_k, until_{k+1}), PSI_TEXELS per node as the ψ₀ texture. The wall down the line stands up on it (wombSection.WALL_LEAD_S). */
+   * (until_k, until_{k+1}, size_k, size_{k+1}: the size pair from ONSET_SIZE_OFFSET, womb-realism Task 2c), PSI_TEXELS per node
+   * as the ψ₀ texture. The wall down the line stands up on it (wombSection.wallLeadS). */
   private readonly onsetUntilTex = floatTexture(FIELD_NX * PSI_TEXELS, FIELD_NZ);
   /** The far field, row 0 (τ, amp, hmin, k) and row 1 (∂τ/∂x, depth, breaking depth, 0): one texture (the sheet's
    * sampled-texture budget, with the coast's). */
@@ -155,6 +157,11 @@ export class SetWaves {
     updateBreakUniforms(this.brk, p);
     this.breakParams = { ...p };
     normalizeBreakParams(this.breakParams);
+    // The section's seat and the wall's lead are module state shared by the CPU twins and the ribbon (womb-realism Task 2).
+    applySeatShares(this.breakParams.crestShare, this.breakParams.troughShare);
+    setWallLeadT(this.breakParams.wallLeadT);
+    setHandDownT(this.breakParams.handDownT);
+    applyFlightDropA(this.breakParams.flightDropA);
     this.updateBreakingHeight();
   }
 
@@ -195,10 +202,10 @@ export class SetWaves {
     }
     const ud = this.onsetUntilTex.image.data as Float32Array;
     for (let i = 0; i < f.tau.length; i++) {
-      const col = i % FIELD_NX, row = (i - col) / FIELD_NX, u = i * ONSET_RECORD_LENGTH + ONSET_UNTIL_OFFSET;
+      const col = i % FIELD_NX, row = (i - col) / FIELD_NX, u = i * ONSET_RECORD_LENGTH + ONSET_UNTIL_OFFSET, z = i * ONSET_RECORD_LENGTH + ONSET_SIZE_OFFSET;
       for (let k = 0; k < PSI_TEXELS; k++) {
         const o = ((row * FIELD_NX + col) * PSI_TEXELS + k) * 4;
-        ud[o] = f.onset[u + k]; ud[o + 1] = f.onset[u + k + 1];
+        ud[o] = f.onset[u + k]; ud[o + 1] = f.onset[u + k + 1]; ud[o + 2] = f.onset[z + k]; ud[o + 3] = f.onset[z + k + 1];
       }
     }
     const c = f.coast;
@@ -265,6 +272,14 @@ export class SetWaves {
     const level = onsetLevelNode(heightM, this.brk);
     const o = onsetTimeNode(this.sampleOnset(xz, level.k), level, heightM, this.brk);
     return vec4(o.tb, o.delay, select(o.broken, float(1.0), float(0.0)), o.until);
+  }
+
+  /** setWaveModel.wallHeight at xz for a wave of deep-water height heightM and angular frequency omega, its height there by
+   * the field alone (H amp = heightM × amp): the crest's height by the record (self-tests). Inside an Fn. */
+  wallHeightAt(xz: N, heightM: N, omega: N): N {
+    const level = onsetLevelNode(heightM, this.brk), rec = this.sampleOnset(xz, level.k);
+    const o = onsetTimeNode(rec, level, heightM, this.brk), f = this.sample(xz, true);
+    return wallHeightNode(float(heightM).mul(f.amp), f.depth, f.hmin, rec.inside, o, float(2 * Math.PI).div(omega), this.brk.wallLeadT, this.brk.handDownT);
   }
 
   /**
@@ -367,7 +382,7 @@ export class SetWaves {
    * k a float) at world xz (bilinear between nodes), and whether xz is on the grid. Three texel columns per node: the
    * running maximum's, and the one or two holding the two levels. Inside an Fn.
    */
-  private sampleOnset(xz: N, k: N): { inside: N; run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; psiLo: N; psiHi: N; delayLo: N; delayHi: N; untilLo: N; untilHi: N; edgeFade: N } {
+  private sampleOnset(xz: N, k: N): { inside: N; run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: N; psiLo: N; psiHi: N; delayLo: N; delayHi: N; untilLo: N; untilHi: N; sizeLo: N; sizeHi: N; edgeFade: N } {
     const g = xz.sub(this.origin).div(this.cell).toVar();
     const inside = g.x.greaterThanEqual(0.0).and(g.y.greaterThanEqual(0.0)).and(g.x.lessThanEqual(this.fieldMax.x)).and(g.y.lessThanEqual(this.fieldMax.y));
     const gc = clamp(g, vec2(0.0), this.fieldMax.sub(0.001));
@@ -393,7 +408,7 @@ export class SetWaves {
     // The record ψ's weight (reefField.psiEdgeFade): 0 at the grid's edge, 1 from PSI_EDGE_FADE_M inside.
     const edgeM = min(min(g.x, g.y), min(this.fieldMax.x.sub(g.x), this.fieldMax.y.sub(g.y))).mul(this.cell);
     const edgeFade = smoothstep(0.0, PSI_EDGE_FADE_M, edgeM);
-    return { inside, run, tbLo: select(even, lo.x, lo.z), ampLo: select(even, lo.y, lo.w), tbHi: select(even, lo.z, hi.x), ampHi: select(even, lo.w, hi.y), psiLo: psi.x, psiHi: psi.y, delayLo: psi.z, delayHi: psi.w, untilLo: until.x, untilHi: until.y, edgeFade };
+    return { inside, run, tbLo: select(even, lo.x, lo.z), ampLo: select(even, lo.y, lo.w), tbHi: select(even, lo.z, hi.x), ampHi: select(even, lo.w, hi.y), psiLo: psi.x, psiHi: psi.y, delayLo: psi.z, delayHi: psi.w, untilLo: until.x, untilHi: until.y, sizeLo: until.z, sizeHi: until.w, edgeFade };
   }
 
   /**
@@ -466,11 +481,13 @@ export class SetWaves {
           const cPos = xz.toVar();
           const fc = { tau: f.tau.toVar(), amp: f.amp.toVar(), hmin: f.hmin.toVar(), hminBreak: f.hminBreak.toVar(), hminSlurp: f.hminBreak.toVar(), hminLean: f.hminBreak.toVar(), k: f.k.toVar(), dir: f.dir.toVar(), depth: f.depth.toVar() };
           const confidence = float(0.0).toVar(), rC = float(0.0).toVar();
+          // The crest's height (setWaveModel.crestHeight: wallHeight by the record, womb-realism Task 2c), set with the lookup.
+          const Hcrest = min(a.y.mul(f.amp), f.hmin.mul(BREAKING_RATIO)).toVar();
           // The front's lean (setWaveModel.leanWeight): 0 without a crest.
           const lean = float(0.0).toVar();
-          // setWaveModel.frontStanding: 0 off the record; unbroken, the wall standing up over the last WALL_LEAD_S before
+          // setWaveModel.frontStanding: 0 off the record; unbroken, the wall standing up over the last wall lead (wombSection.wallLeadS) before
           // its break (wombSection.wallWeight on the record's time until onset: the clock alone), or, where the ray never
-          // breaks, with the ratio from the ribbon's onset; held, over the last WALL_LEAD_S before its turn; 1 once broken.
+          // breaks, with the ratio from the ribbon's onset; held, over the last wall lead (wombSection.wallLeadS) before its turn; 1 once broken.
           const standing = float(0.0).toVar();
           // How far it has settled into the white water's bore (setWaveModel.waveAtCrest, wombSection.boreWeight): 'lean' only.
           const bore = float(0.0).toVar();
@@ -513,6 +530,7 @@ export class SetWaves {
             const shape = sheetShapeNode(psi);
             shTrough.assign(shape.troughDrain); shSurge.assign(shape.pileSurge);
             const onset = onsetTimeNode(rec, level, a.y, brk);
+            Hcrest.assign(wallHeightNode(a.y.mul(fc.amp), fc.depth, fc.hmin, rec.inside, onset, float(2 * Math.PI).div(a.z), brk.wallLeadT, brk.handDownT));
             const rSlurp = breakingRatioNode(a.y.mul(fc.amp), fc.hminSlurp, brk);
             // × (1 − release: the collapse without the tube's hold), assigned with the lifecycle below.
             lean.assign(smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], breakingRatioNode(a.y.mul(fc.amp), fc.hminLean, brk)).mul(confidence));
@@ -520,8 +538,9 @@ export class SetWaves {
               { drainGrowth: shTrough.mul(brk.delta).add(1.0), pileSurge: shSurge, plunge: plungeNode(psi), thrown: smoothstep(TUBE_THROWN_PSI[0], TUBE_THROWN_PSI[1], psi) }, onset.delay);
             lc.steep.assign(l.steep); lc.stage.assign(l.stage); lc.drain.assign(l.drain); lc.collapse.assign(l.collapse);
             if (this.shape === 'lean') {
-              // wombSection.wallWeight: (1 − until/WALL_LEAD_S)², 0 where it never breaks (UNTIL_NEVER and beyond the lead alike).
-              const wall = (untilS: N): N => { const left = float(1.0).sub(clamp(untilS.div(WALL_LEAD_S), 0.0, 1.0)); return left.mul(left); };
+              // wombSection.frontWeight: the front's squeeze keeps the old (1 − until/FRONT_LEAD_S)² ramp (the wall's lead is the
+              // section's and the height's, not the front's: womb-realism Task 2).
+              const wall = (untilS: N): N => { const left = float(1.0).sub(clamp(untilS.div(FRONT_LEAD_S), 0.0, 1.0)); return left.mul(left); };
               const byRatio = smoothstep(brk.ribbonOnset, 1.0, rC);
               // Unbroken on the record's clock (until finite): the clock alone, as the drawn section's phase; the ratio only
               // where the ray never breaks (UNTIL_NEVER). The further of the two stood a cliff ahead of the wall (frontStanding).
@@ -535,7 +554,7 @@ export class SetWaves {
             else if (this.shape === 'none') lean.assign(0.0);
             if (mistWanted) {
               const Hm = min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO));
-              const fly = sqrt(Hm.div(ONSET_HEIGHT_UNITS).mul((2 * FLIGHT_DROP_A) / GRAVITY_MS2));
+              const fly = flightTimeNodeA(Hm.div(ONSET_HEIGHT_UNITS));
               const hollow = clamp(psi.sub(HOLLOW_PSI[0]).div(HOLLOW_PSI[1]), 0.0, 1.0);
               const on = rec.inside.and(onset.broken).and(onset.tb.greaterThanEqual(0.0));
               landW.assign(select(on, landingMistNode(onset.tb, fly, hollow), float(0.0)));
@@ -550,7 +569,7 @@ export class SetWaves {
           // nearness to the crest in phase (CREST_HEIGHT_REACH periods, T = 2π/ω). mix(a, b, 0) is a exactly, so without
           // breaking this is the Phase 1 height.
           const near = float(1.0).sub(smoothstep(float(CREST_HEIGHT_REACH[0] * 2 * Math.PI).div(a.z), float(CREST_HEIGHT_REACH[1] * 2 * Math.PI).div(a.z), abs(xi)));
-          const H0: N = mix(Hown, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), lc.steep.mul(confidence).mul(near)).toVar();
+          const H0: N = mix(Hown, Hcrest, lc.steep.mul(confidence).mul(near)).toVar();
           const H: N = H0.mul(float(1.0).sub(bore.mul(1 - BORE_SHARE))).toVar();
           const A = H.mul(0.5);
           const B = min(float(STOKES_CAP), stokesPerA.mul(A));
@@ -606,7 +625,7 @@ export class SetWaves {
             stage.assign(max(stage, select(here, lc.stage.mul(confidence), float(0.0))));
             If(lc.stage.greaterThan(0.0).or(lc.steep.greaterThan(0.0)).or(lc.drain.greaterThan(0.0)).and(here), () => {
               // The crest's frame (height, Stokes ratio, lean, wavenumber, bore depth).
-              const Hc = min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO));
+              const Hc = Hcrest;
               const Hl = Hc.mul(lateral).toVar();
               // breakPoint's gate, before any H-scaled smoothstep is evaluated.
               If(Hl.greaterThan(MIN_BREAKING_HEIGHT_M), () => {

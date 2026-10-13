@@ -9,7 +9,7 @@ import { FOAM_TICK_S, FoamSchedule, tickIndex, tickTime } from './foamStep';
 import {
   DEFAULT_SPRAY_PARAMS, PLUME_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_POOL, type SprayBirth, type SprayParams, normalizeSprayParams, replayTicksForMaxLife,
 } from './sprayEmitters';
-import { NEAR_FADE_M, SPRAY_PHASE_G, SPRAY_PHASE_ISOTROPIC, SPRAY_SKY_SCALE } from './sprayLook';
+import { KIND_TINT, NEAR_FADE_M, SPRAY_PHASE_G, SPRAY_PHASE_ISOTROPIC, SPRAY_SKY_SCALE, SPRITE_LOOK } from './sprayLook';
 import { ERODING_KINDS, PARTICLE_KINDS, type ParticleKind, SPRAY_KIND, kindIndexOf } from './particleKinds';
 import { NO_WATER, SOFT_FADE_M, birthSeed, slotBase } from './sprayStep';
 
@@ -30,8 +30,12 @@ export function sprayPhaseNode(cosT: N, isotropic: N | number = SPRAY_PHASE_ISOT
 
 /** A kind's number for a particle: PARTICLE_KINDS[kind] picked by its index (meta.y) through a select chain. */
 export function kindValueNode(kind: N, pick: (k: ParticleKind) => number): N {
-  let out: N = float(pick(PARTICLE_KINDS[0]));
-  for (let i = 1; i < PARTICLE_KINDS.length; i++) out = select(kind.greaterThan(i - 0.5), float(pick(PARTICLE_KINDS[i])), out);
+  return kindIndexedNode(kind, PARTICLE_KINDS.map(pick));
+}
+/** One number per kind (by KIND_INDEX) for a particle, picked by its index through a select chain. */
+export function kindIndexedNode(kind: N, values: readonly number[]): N {
+  let out: N = float(values[0]);
+  for (let i = 1; i < values.length; i++) out = select(kind.greaterThan(i - 0.5), float(values[i]), out);
   return out;
 }
 
@@ -55,6 +59,8 @@ export class SprayParticles {
   private readonly wind = uniform(new THREE.Vector2());
   private readonly sinceTick = uniform(0);
   private readonly tint = uniform(0);
+  /** The kind overlay (DebugOverlays.kindTint, womb-realism Task 5). */
+  private readonly kindTint = uniform(0);
   private readonly inverseExposure = uniform(1);
   private readonly schedule = new FoamSchedule();
   private readonly params: SprayParams = { ...DEFAULT_SPRAY_PARAMS };
@@ -87,7 +93,8 @@ export class SprayParticles {
       If(pa.w.lessThan(vl.w), () => {
         const kd = meta.element(i).y;
         const k = kindValueNode(kd, (q) => Math.min(1, FOAM_TICK_S / q.dragTauS)), settle = kindValueNode(kd, (q) => q.gravityMs2 * FOAM_TICK_S);
-        const v = vl.xyz.add(vec3(this.wind.x, 0.0, this.wind.y).sub(vl.xyz).mul(k)).sub(vec3(0.0, settle, 0.0)).toVar();
+        const w = this.wind.mul(kindValueNode(kd, (q) => q.backDriftShare)).toVar();
+        const v = vl.xyz.add(vec3(w.x, 0.0, w.y).sub(vl.xyz).mul(k)).sub(vec3(0.0, settle, 0.0)).toVar();
         posAge.element(i).assign(vec4(pa.xyz.add(v.mul(FOAM_TICK_S)), pa.w.add(FOAM_TICK_S)));
         velLife.element(i).assign(vec4(v, vl.w));
       });
@@ -133,7 +140,8 @@ export class SprayParticles {
     const vBirthSeed: N = varying(mt.w);
     // Shape: a soft round puff broken by one octave of noise seeded per slot.
     const q = uv().sub(0.5);
-    const shape0 = float(1.0).sub(smoothstep(0.3, 1.0, length(q).mul(2.0))).mul(mx_noise_float(vec3(uv().mul(3.0), vSeed.mul(0.137))).mul(0.5).add(0.75));
+    const vSoft0: N = varying(kindIndexedNode(kd, SPRITE_LOOK.map((l) => l.soft)));
+    const shape0 = float(1.0).sub(smoothstep(vSoft0, 1.0, length(q).mul(2.0))).mul(mx_noise_float(vec3(uv().mul(3.0), vSeed.mul(0.137))).mul(0.5).add(0.75));
     // Plume and spit dissolve by a noise threshold rising with age (whitewater §4.1): ragged, not a uniform fade.
     const th = vAgeFrac.mul(0.8);
     const erosion = smoothstep(th, th.add(0.2), mx_noise_float(vec3(uv().mul(2.0), vBirthSeed.mul(17.0))).mul(0.5).add(0.5));
@@ -147,7 +155,7 @@ export class SprayParticles {
     const viewDir = toP.div(max(dist, 1e-3));
     // × the land's shadow at the puff's centre (Phase 4a §4.8).
         const vis = sunlight ? sunlight.visibilityNode(centre.xz) : float(1.0);
-        const radiance = sky.sunIlluminance.mul(vis).mul(sprayPhaseNode(dot(viewDir, sky.sunDirection), kindValueNode(kd, (q) => q.isotropic))).add(sky.skyIrradiance.mul(SPRAY_SKY_SCALE));
+        const radiance = sky.sunIlluminance.mul(vis).mul(kindIndexedNode(kd, SPRITE_LOOK.map((l) => l.bright))).mul(sprayPhaseNode(dot(viewDir, sky.sunDirection), kindValueNode(kd, (q) => q.isotropic))).add(sky.skyIrradiance.mul(SPRAY_SKY_SCALE));
     // sprayLook.nearCameraFade: puffs within a few metres of the eye fade out.
     const vNear: N = varying(smoothstep(NEAR_FADE_M[0], NEAR_FADE_M[1], dist));
     // The puffs are in the mist too (whitewater §6.1), at their centres.
@@ -156,7 +164,8 @@ export class SprayParticles {
     // over (meta.z; NO_WATER: no fade).
     const vSoft: N = varying(smoothstep(0.0, SOFT_FADE_M, centre.y.sub(mt.z)));
     const ageColour = mix(vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vAgeFrac).mul(this.inverseExposure.mul(0.5));
-    m.colorNode = mix(colour, ageColour, this.tint.mul(0.8));
+    const kindColour = vec3(kindIndexedNode(kd, KIND_TINT.map((c) => c[0])), kindIndexedNode(kd, KIND_TINT.map((c) => c[1])), kindIndexedNode(kd, KIND_TINT.map((c) => c[2]))).mul(this.inverseExposure.mul(0.5));
+    m.colorNode = mix(mix(colour, ageColour, this.tint.mul(0.8)), varying(kindColour), this.kindTint.mul(0.9));
     m.opacityNode = clamp(shape.mul(fades).mul(vStrength).mul(vNear).mul(vOpacity).mul(vSoft), 0.0, 1.0);
     return m;
   }
@@ -210,8 +219,9 @@ export class SprayParticles {
     return plan.ticks.length;
   }
 
-  setOverlays(o: { sprayTint: boolean }): void {
+  setOverlays(o: { sprayTint: boolean; kindTint?: boolean }): void {
     this.tint.value = o.sprayTint ? 1 : 0;
+    this.kindTint.value = o.kindTint ? 1 : 0;
   }
 
   /** The picture's exposure, so the tint overlay reads the same at any exposure. */

@@ -76,6 +76,7 @@ export interface DevPanelHandlers {
   onLookout(): void;
   onReferenceMoment(name: string): void;
   onCopyLink(): void;
+  onReportMoment(): void;
   onScreenshot(): void;
   onTogglePause(): void;
   onSets(): void;
@@ -184,10 +185,15 @@ export const BREAK_BINDINGS = {
   psiNudge: { label: 'ψ nudge (×)', min: -0.5, max: 0.5, step: 0.01 },
   randomDial: { label: 'random dial', min: 0, max: 0.15, step: 0.01 },
   peel: { label: 'peel stretch (× slower along the line)', min: 1, max: 3, step: 0.05 },
-  curlMaxMs: { label: 'curl top speed (m/s)', min: 4, max: 40, step: 1 },
+  curlMaxMs: { label: 'curl top speed (m/s)', min: 8, max: 20, step: 1 },
   churnSize: { label: 'churn size (× A)', min: 0, max: 0.4, step: 0.01 },
   churnSpeed: { label: 'churn speed', min: 0, max: 3, step: 0.05 },
   surge: { label: 'surge at the landing (× A)', min: 0, max: 1, step: 0.05 },
+  crestShare: { label: 'section crest (× A over still water)', min: 0.7, max: 1, step: 0.01 },
+  troughShare: { label: 'section floor (× A under still water)', min: 0.1, max: 0.35, step: 0.01 },
+  wallLeadT: { label: 'wall lead (× period)', min: 0.5, max: 2, step: 0.05 },
+  handDownT: { label: 'hand-down (× period)', min: 0.05, max: 0.3, step: 0.01 },
+  flightDropA: { label: 'lip flight drop (× A)', min: 0.4, max: 1.5, step: 0.05 },
 } as const;
 
 /** Debug overlay toggles (Reef folder), one per DebugOverlays field, checked by DevPanel.test.ts. */
@@ -197,6 +203,7 @@ export const OVERLAY_BINDINGS: Record<keyof DebugOverlays, { label: string }> = 
   ribbonTint: { label: 'ribbon tint' },
   foamMap: { label: 'foam map' },
   sprayTint: { label: 'spray tint' },
+  kindTint: { label: 'spray kind tint' },
   coverMap: { label: 'cover map' },
   sunlightMap: { label: 'sunlight map' },
 };
@@ -338,6 +345,7 @@ export class DevPanel {
     moment.addBinding(m.conditions, 'tideM', CONDITION_BINDINGS.tideM).on('change', onConditions);
     moment.addBinding(m.conditions, 'seed', { min: 0, step: 1 }).on('change', onConditions);
     moment.addButton({ title: 'Copy moment link (L)' }).on('click', h.onCopyLink);
+    moment.addButton({ title: 'Report moment: frame + link (Ctrl+Shift+M)' }).on('click', h.onReportMoment);
     moment.addButton({ title: 'Pause / resume (P)' }).on('click', h.onTogglePause);
     moment.addButton({ title: 'Screenshot (K)' }).on('click', h.onScreenshot);
     moment.addButton({ title: 'Reset settings' }).on('click', h.onResetSettings);

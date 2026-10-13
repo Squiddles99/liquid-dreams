@@ -7,14 +7,15 @@ import { NORTH_LEDGE, SOUTH_LEDGE, TIP } from '../seabed/wombReef';
 import { reefBeds } from './testField';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { firstBreak, setWaveHeight as setWaveHeightAt } from './reefReport';
-import { DEFAULT_BREAK_PARAMS, PILE_LAND_H, PILE_RISE_S, breakingHeightThreshold, landingEstimate, onsetTime, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
+import { DEFAULT_BREAK_PARAMS, PILE_LAND_H, PILE_RISE_S, breakingHeightThreshold, landingEstimate, onsetDelay, onsetTime, onsetUntil, settleSpan, stageCurves, steepening, steepeningStart } from './breaking';
 import { type Station, traceStations } from './crestTrace';
+import { flightTime, handDownSpan } from './wombSection';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import { offshoreSpeed } from './overturn';
 import { REFRACT_FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
 import {
-  type ActiveWave, type BreakOptions, breakOptions, LEAN_RATIO, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestPileTop, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
+  type ActiveWave, type BreakOptions, breakOptions, LEAN_RATIO, SEABED_CLEARANCE_M, type WaveContext, crestAt, crestHeight, crestPileTop, crestStage, fieldBreakingHeight, fieldSteepeningHeight, localHeight,
   phaseXi, seabedFloor, sumWaves, toActiveWave, waveAt, waveAtCrest,
 } from './setWaveModel';
 
@@ -255,9 +256,19 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
   it('a section does not un-break in the barrel zone (40 m seaward to 20 m inside the ledges)', () => {
     const starts = [...along(NORTH_LEDGE, 100, 5), ...along(SOUTH_LEDGE, 40, 5)];
     for (const w of [testWave(REF_BIGGEST.heightM), testWave(1.8 * HS)]) for (const [px, pz] of starts) {
-      let prev = 0, total = 0;
+      let prev = 0, total = 0, prevDelay = 0, seenBroken = false;
       for (const p of ray(px, pz, 40, 20)) {
-        const s = stageWhenCrestAt(p.x, p.z, w);
+        // A section held for its turn (the 13 m/s curl, womb-realism Task 2b) is broken-pending (STOP 2 early ruling, ask 3):
+        // shoreward of a broken point and not yet broken itself (on the record, until finite) it is held, not un-broken; and
+        // released later than its neighbour seaward (the peel stretch's delay grew), its stage restarting from its own onset
+        // is no un-break (the 0.105 drop at (-76.8, -39.2): released 0.07 s before the crest). Every other drop counts.
+        const r = sampleOnset(field, p.x, p.z), tb = r ? onsetTime(r, 0, w.heightM, DEFAULT_BREAK_PARAMS) : null;
+        const s = stageWhenCrestAt(p.x, p.z, w), broke = tb !== null && tb >= 0;
+        const delay = r && broke ? onsetDelay(r, 0, w.heightM, DEFAULT_BREAK_PARAMS) : 0;
+        const held = !broke && seenBroken && !!r && Number.isFinite(onsetUntil(r, 0, w.heightM, DEFAULT_BREAK_PARAMS));
+        const released = broke && delay > prevDelay + 0.01;
+        prevDelay = delay; seenBroken ||= broke;
+        if (held || (released && prev - s > 0.03)) { prev = s; continue; }
         expect(prev - s).toBeLessThanOrEqual(0.03);
         total += Math.max(0, prev - s);
         prev = s;
@@ -757,7 +768,10 @@ describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
       const [px, pz] = breakPoint(lx, lz, w);
       const line = ray(px, pz, 40, 80);
       const { tOn, H } = onsetAt(px, pz, w);
-      const lip = topNear(line, tOn, w).height;
+      // The lip the pile is held to is the broken crest's (the crest's law after the hand-down: 0.78 x hmin), not the
+      // onset's, which stands at the record's breaking size since womb-realism Task 2c (STOP 2 early ruling, ask 3). The
+      // hand-down runs max(the flight, handDownT x T) since Task 8 (STOP 3 ruling 6; 2026-10-13).
+      const lip = topNear(line, tOn + handDownSpan(H, field.periodS), w).height;
       // Once the crest's own pile has risen (its landing clock, from its height there, can run later than the break
       // point's: on the softened ramp the section runs tens of metres from its break).
       let tRisen = tOn + landingEstimate(H, P) + PILE_RISE_S;
@@ -982,28 +996,34 @@ describe('the water in front of the break is drawn steadily down (Andrew, 2026-1
   };
   // On the reef build's face this wave alone lifted the water 0.5 m 20 m in front of where it breaks, 1–3 s before its
   // draw: its front leaned only in its last second (the lean now reads the reef under its front: reefField.gainAhead).
-  it('a surfer sitting 20–40 m in front of where it breaks is never lifted more than 0.9 m before the face reaches them (was 2.9 m), 0.25 m by this wave', { timeout: 120_000 }, () => {
+  it('a surfer sitting 20–40 m in front of where it breaks is never lifted more than 0.9 m before the face reaches them (was 2.9 m); by this wave, no more than the wall law’s own rise + 0.25 m', { timeout: 120_000 }, () => {
     // What is left: the wave before's back trough filling in as it passes (0.4 m at 40 m, over 3 s, 2.4–2.9 m below still
     // water), and this wave's own trough level drifting by ~0.15 m as its flat trough slides past (the shoaling swell's
     // trough level varies along the ray as the reef focuses it); then this wave's draw takes over.
     for (const [u, alone] of [20, 30, 40].flatMap((v) => [[v, false], [v, true]] as [number, boolean][])) {
       // Up to the face (the water past +1.5 m: the shelf never stood above +0.5 m), then up to the lowest water before it.
-      const series: number[] = [];
+      const series: number[] = [], walls: number[] = [];
       let faceAt = NaN;
       // From 9 s before his moment: the wave before (broken 15 s earlier) has passed all three spots by then.
       for (let dt = -9; dt <= 8; dt += 0.1) {
         const y = alone ? (() => { const { x, z } = point(u); return sumWaves(x, z, t0 + dt, at(x, z), [breaker], ctx, o).eta; })() : height(u, t0 + dt).eta;
         if (y > 1.5) { faceAt = dt; break; }
         series.push(y);
+        if (alone) { const { x, z } = point(u), f = at(x, z), cr = crestAt(x, z, t0 + dt, f, breaker, ctx, o); walls.push(cr ? crestHeight(breaker, cr) : NaN); }
       }
       const bottom = series.indexOf(Math.min(...series));
+      // The wall law's own rise here (womb-realism Task 2c): the coming crest's height (setWaveModel.wallHeight) growing into
+      // the record's Hb over the lead, over the same window (Fable, STOP 3b 2026-10-13: Andrew's "gradient into the building wall").
+      const ws = walls.slice(0, bottom + 1).filter(Number.isFinite);
+      let wLow = Infinity, wallRise = 0;
+      for (const h of ws) { wallRise = Math.max(wallRise, h - wLow); wLow = Math.min(wLow, h); }
       let low = Infinity, rise = 0;
       for (const y of series.slice(0, bottom + 1)) { rise = Math.max(rise, y - low); low = Math.min(low, y); }
       expect(faceAt, `the face reaches the surfer at ${u} m`).toBeGreaterThan(-2);
       // With the set: on the reef build's face the wave before also breaks at the peak, and its back passing lifts the water
       // 0.8 m 20 m ahead of this one's break 1–5 s before this one's draw (plan 2026-10-02 Task 4; 0.4 m at 40 m on the
       // softened ramp). This wave alone, the "first swell" Andrew saw, stays the strict guard.
-      expect(rise, `lifted before the face, ${u} m along the line${alone ? ', this wave alone' : ''}`).toBeLessThan(alone ? 0.25 : 0.9);
+      expect(rise, `lifted before the face, ${u} m along the line${alone ? `, this wave alone (wall law ${wallRise.toFixed(2)} m)` : ''}`).toBeLessThan(alone ? wallRise + 0.25 : 0.9);
     }
   });
   it('smaller sets too: 20–40 m in front of where 4, 6 or 8 ft first breaks, it lifts the water under 0.25 m before its face (6 ft lifted it 1 m: Andrew, 2026-10-02)', { timeout: 120_000 }, () => {

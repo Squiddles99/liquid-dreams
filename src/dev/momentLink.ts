@@ -23,6 +23,11 @@ export interface Moment {
    * asked for a version bump, but the parser rejects any other version, which would break every saved link: ruling).
    */
   surfer?: SurferParams;
+  /**
+   * The select screen's sets (a set every 120 s) were on (womb-realism Task 0): they swap the set schedule, so a link
+   * copied with them on replays a different wave without them. Written only when true; absent reads as off.
+   */
+  duneSets?: boolean;
 }
 
 export const MOMENT_VERSION = 1;
@@ -62,7 +67,8 @@ export function parseCameraPose(v: unknown): CameraPose | null {
 }
 
 export function encodeMoment(m: Moment): string {
-  return `#m=${toBase64Url(JSON.stringify({ v: MOMENT_VERSION, ...m }))}`;
+  const { duneSets, ...rest } = m;
+  return `#m=${toBase64Url(JSON.stringify({ v: MOMENT_VERSION, ...rest, ...(duneSets ? { duneSets: true } : {}) }))}`;
 }
 
 /** A `#m=` link's moment, or why it was rejected. */
@@ -86,6 +92,7 @@ function parseMomentLink(hash: string): Moment | string {
     simTime: finite(o.simTime) ? Math.min(Math.max(o.simTime, 0), MAX_LINK_SIM_TIME_S) : 0,
     paused: o.paused === true,
     ...(o.surfer !== undefined ? { surfer: sanitizeSurferParams(o.surfer) } : {}),
+    ...(o.duneSets === true ? { duneSets: true } : {}),
   };
 }
 

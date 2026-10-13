@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { handleHotkeys, screenshotFilename } from './hotkeys';
+import { handleHotkeys, reportMomentFilenames, screenshotFilename } from './hotkeys';
 
 describe('handleHotkeys', () => {
   it('fires each action once per press', () => {
     const pressed = new Set(['KeyP', 'KeyL']);
     const input = { consumePressed: (code: string) => pressed.delete(code) };
-    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn(), toggleMute: vi.fn() };
+    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn(), toggleMute: vi.fn(), reportMoment: vi.fn() };
     handleHotkeys(input, h);
     handleHotkeys(input, h);
     expect(h.togglePause).toHaveBeenCalledTimes(1);
@@ -17,7 +17,7 @@ describe('handleHotkeys', () => {
   it('N calls a set', () => {
     const pressed = new Set(['KeyN']);
     const input = { consumePressed: (code: string) => pressed.delete(code) };
-    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn(), toggleMute: vi.fn() };
+    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn(), toggleMute: vi.fn(), reportMoment: vi.fn() };
     handleHotkeys(input, h);
     expect(h.callSet).toHaveBeenCalledTimes(1);
     expect(h.togglePause).not.toHaveBeenCalled();
@@ -25,10 +25,24 @@ describe('handleHotkeys', () => {
   it('M toggles the mute', () => {
     const pressed = new Set(['KeyM']);
     const input = { consumePressed: (code: string) => pressed.delete(code) };
-    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn(), toggleMute: vi.fn() };
+    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn(), toggleMute: vi.fn(), reportMoment: vi.fn() };
     handleHotkeys(input, h);
     expect(h.toggleMute).toHaveBeenCalledTimes(1);
     expect(h.togglePause).not.toHaveBeenCalled();
+  });
+});
+
+describe('report moment (Ctrl+Shift+M)', () => {
+  it('fires reportMoment on the chord and does not toggle the mute', () => {
+    const pressed = new Set(['Ctrl+Shift+KeyM']);
+    const input = { consumePressed: (code: string) => pressed.delete(code) };
+    const h = { copyLink: vi.fn(), togglePause: vi.fn(), screenshot: vi.fn(), toggleDevUi: vi.fn(), callSet: vi.fn(), toggleMute: vi.fn(), reportMoment: vi.fn() };
+    handleHotkeys(input, h);
+    expect(h.reportMoment).toHaveBeenCalledTimes(1);
+    expect(h.toggleMute).not.toHaveBeenCalled();
+  });
+  it('names the pair by unix seconds', () => {
+    expect(reportMomentFilenames(1760000000123)).toEqual({ png: 'ld-moment-1760000000.png', txt: 'ld-moment-1760000000.txt' });
   });
 });
 
