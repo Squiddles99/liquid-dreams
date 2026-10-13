@@ -3,7 +3,7 @@ import { SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { beachHeight } from '../land/landHeight';
 import { fbm2, valueNoise2 } from './noise';
-import { BAND_FADE_M, BAND_INSHORE_M, BAND_SEAWARD_M, DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, INSIDE_DROP_M, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_INNER_X, SHELF_POLYGON, SOUTH_LEDGE, TIP, hollowShareAt, ledgeAlongM, rockReachM, shelfPolygon, southEdge } from './wombReef';
+import { BAND_FADE_M, BAND_INSHORE_M, BAND_SEAWARD_M, DEEP_REEF_WEED, RIGHT_STRIP_M, RIGHT_TIP_KEEP_M, DEFAULT_REEF_PARAMS, type GridSpec, INSIDE_DROP_M, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_INNER_X, SHELF_POLYGON, SOUTH_LEDGE, TIP, hollowShareAt, rockReachM, shelfPolygon, southEdge } from './wombReef';
 
 /** Weed dominates rock across most of the shelf; baseline coverage before the patchy noise carves gaps. */
 const SHELF_WEED_BASE = 0.78;
@@ -42,6 +42,12 @@ function insidePolygon(px: number, pz: number, poly: readonly Pt[]): boolean {
     if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi) inside = !inside;
   }
   return inside;
+}
+
+function polylineDistance(x: number, z: number, line: readonly Pt[]): number {
+  let d = Infinity;
+  for (let i = 0; i + 1 < line.length; i++) d = Math.min(d, segmentDistance(x, z, line[i], line[i + 1]));
+  return d;
 }
 
 /** The default south edge (wombReef.southEdge): SOUTH_LEDGE with the shelf's rounded south-west corner. */
@@ -102,13 +108,13 @@ export function reefWarp(x: number, z: number, tip: Pt = TIP): [number, number] 
  * deepening to slopeDepthM at slopeEndM, held beyond. Widths are floored at a millimetre and each depth at the one inshore
  * of it (the dev panel can zero or invert them).
  */
-export function reefProfileDepth(v: number, p: ReefParams): number {
+export function reefProfileDepth(v: number, p: ReefParams, ledgeDepthM = p.ledgeDepthM): number {
   const x = Math.max(0, v), fw = Math.max(1e-3, p.faceWidthM), se = Math.max(fw + 1e-3, p.slopeEndM);
   // Each depth no shallower than the one inshore of it (the panel lets a ledge sit below the face's base).
-  const base = Math.max(p.faceBaseDepthM, p.ledgeDepthM);
-  const face = (base - p.ledgeDepthM) * smoothstep(0, fw, x);
+  const base = Math.max(p.faceBaseDepthM, ledgeDepthM);
+  const face = (base - ledgeDepthM) * smoothstep(0, fw, x);
   const slope = Math.max(0, p.slopeDepthM - base) * Math.min(1, Math.max(0, (x - fw) / (se - fw)));
-  return p.ledgeDepthM + face + slope;
+  return ledgeDepthM + face + slope;
 }
 
 /** Past the reef's slope the bed eases into the coast's own depth, where that is deeper, over this far (m). */
@@ -122,12 +128,12 @@ const REEF_OFFSHORE_BAND: readonly [number, number] = [SHORE_X - 140, SHORE_X - 
  * the slope easing into the coast's own depth where that is deeper (the open sea's 30 m at the map's west edge). Only
  * ever deepens seaward along a line from the peak.
  */
-export function seawardDepth(v: number, x: number, p: ReefParams): number {
+export function seawardDepth(v: number, x: number, p: ReefParams, ledgeDepthM = p.ledgeDepthM): number {
   const bg = depthBg(x);
   const band = p.offshoreBand ?? REEF_OFFSHORE_BAND;
   // Toward the slope's depth from the coast's own here (inshore the coast is shallower than its offshore depth).
   const cap = bg + Math.max(0, p.slopeDepthM - bg) * smoothstep(band[0], band[1], x);
-  const reef = Math.min(reefProfileDepth(v, p), cap);
+  const reef = Math.min(reefProfileDepth(v, p, ledgeDepthM), cap);
   return reef + Math.max(0, bg - reef) * smoothstep(p.slopeEndM, p.slopeEndM + REEF_FAR_EASE_M, v);
 }
 
@@ -145,16 +151,31 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   // The deep slope's weed patches (its 5 m noise at every 0.5 m cell more than doubled the build): on the same lattice,
   // 10–20 m down where the water hides the difference.
   const patchOutField = new Float32Array(sx * sz);
-  // womb-story: the signed distance to the left's edge alone (positive on the shelf), for the ridden band.
-  const sdNorthField = new Float32Array(sx * sz);
+  // womb-story (STOP 0 ruling, Task 2): the ridden band, the hollow share, the drop and the right's weight, all smooth, on
+  // the lattice (read per cell they cost the build half again: 0.8 -> 1.2 s).
+  const bandField = new Float32Array(sx * sz), shareField = new Float32Array(sx * sz), dropField = new Float32Array(sx * sz), rightField = new Float32Array(sx * sz);
   const north = p.northLedge ?? NORTH_LEDGE, south = p.southLedge ?? SOUTH_LEDGE;
   const shelf = p.northLedge || p.southLedge ? shelfPolygon(north, south) : SHELF_POLYGON;
   const southLine = p.southLedge ? southEdge(south) : SOUTH_EDGE;
   const tip = p.tip ?? TIP;
+  // The left's bearing, from its first leg (along is measured on it from the tip: wombReef.ledgeAlongM).
+  const bearing = (Math.atan2(north[1][0] - north[0][0], -(north[1][1] - north[0][1])) * 180) / Math.PI;
+  const alongX = Math.sin((bearing * Math.PI) / 180), alongZ = -Math.cos((bearing * Math.PI) / 180);
+  // The drop region's north end: the inside leg's first INSIDE_DROP_M (z falls going north).
+  const dropNorthZ = north[1][1] - INSIDE_DROP_M, halfBlend = Math.max(1e-3, p.ledgeBlendM) / 2;
   for (let r = 0; r < sz; r++) for (let c = 0; c < sx; c++) {
-    const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M;
-    sdf[r * sx + c] = ledgeSignedDistance(x, z, north, shelf, southLine);
-    sdNorthField[r * sx + c] = ledgeSignedDistance(x, z, north, shelf, []);
+    const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M, j = r * sx + c;
+    // As ledgeSignedDistance, the two edges apart (the band reads the left's, the right its own), one polygon test.
+    const sign = insidePolygon(x, z, shelf) ? 1 : -1, dN = polylineDistance(x, z, north), dS = polylineDistance(x, z, southLine);
+    sdf[j] = sign * Math.min(dN, dS);
+    const along = (x - tip[0]) * alongX + (z - tip[1]) * alongZ, northFade = smoothstep(dropNorthZ - BAND_FADE_M, dropNorthZ, z);
+    const bandW = smoothstep(-BAND_SEAWARD_M - BAND_FADE_M, -BAND_SEAWARD_M, sign * dN) * (1 - smoothstep(BAND_INSHORE_M, BAND_INSHORE_M + BAND_FADE_M, sign * dN))
+      * smoothstep(-BAND_FADE_M, 0, along) * northFade;
+    bandField[j] = bandW;
+    shareField[j] = 1 + bandW * (hollowShareAt(along, p) - 1);
+    dropField[j] = smoothstep(p.ledgeWallM - halfBlend, p.ledgeWallM + halfBlend, along) * northFade;
+    // The right: nearer the south edge than the north, away from the tip's corner (review focus 4).
+    rightField[j] = smoothstep(-10, 10, dN - dS) * smoothstep(RIGHT_TIP_KEEP_M, RIGHT_TIP_KEEP_M + BAND_FADE_M, Math.hypot(x - tip[0], z - tip[1]));
     pockets[r * sx + c] = pocketWeight(x, z, tip);
     const [dx, dz] = reefWarp(x, z, tip);
     warpDxField[r * sx + c] = dx;
@@ -170,14 +191,9 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
     return (a + (b - a) * tx) * (1 - tz) + (d + (e - d) * tx) * tz;
   };
 
-  const share = new Float32Array(n), band = new Float32Array(n);
-  // The left's bearing, from its first leg (womb-story: along is measured on it from the tip).
-  const bearing = (Math.atan2(north[1][0] - north[0][0], -(north[1][1] - north[0][1])) * 180) / Math.PI;
-  // The drop region's north end: the inside leg's first INSIDE_DROP_M (z falls going north).
-  const dropNorthZ = north[1][1] - INSIDE_DROP_M, halfBlend = Math.max(1e-3, p.ledgeBlendM) / 2;
+  const share = new Float32Array(n), band = new Float32Array(n), rightDepth = Math.max(p.ledgeDepthM, p.rightLedgeDepthM);
   for (let row = 0; row < grid.nz; row++) {
     const z = grid.z0 + row * grid.cellM;
-    const northFade = smoothstep(dropNorthZ - BAND_FADE_M, dropNorthZ, z);
     // The reef fades back to the plain coast before the map's north and south edges, so the map joins the far field seamlessly.
     const edgeFade = smoothstep(-450, -380, z) * (1 - smoothstep(230, 299, z));
     for (let col = 0; col < grid.nx; col++) {
@@ -196,19 +212,16 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       // follows the drawn ledges (one-curl spec §3c: read at the warped point it wandered ±5–7 m every 35 m, and the onset
       // with it); the rock's look (its reach, the heads, pockets and weed) keeps the warped point.
       const sd = lattice(sdf, xw, zw), sdDepth = lattice(sdf, x, z);
-      // womb-story (STOP 0 ruling): metres down the left, the ridden band, the hollow share and the drop (all unwarped).
-      const along = ledgeAlongM(x, z, tip, bearing), sdN = lattice(sdNorthField, x, z);
-      const bandW = smoothstep(-BAND_SEAWARD_M - BAND_FADE_M, -BAND_SEAWARD_M, sdN) * (1 - smoothstep(BAND_INSHORE_M, BAND_INSHORE_M + BAND_FADE_M, sdN))
-        * smoothstep(-BAND_FADE_M, 0, along) * northFade;
-      band[i] = bandW;
-      share[i] = 1 + bandW * (hollowShareAt(along, p) - 1);
-      const dropW = smoothstep(p.ledgeWallM - halfBlend, p.ledgeWallM + halfBlend, along) * northFade;
+      // womb-story (STOP 0 ruling, Task 2): the ridden band, the hollow share, the drop, the right (unwarped, the lattice's).
+      band[i] = lattice(bandField, x, z);
+      share[i] = lattice(shareField, x, z);
+      const dropW = lattice(dropField, x, z), rightW = lattice(rightField, x, z);
       let d: number, s: number, w = 0;
       if (sdDepth < 0) {
         // Outside the shelf: the reef face, then the steady slope out to the open sea (seawardDepth, spec 2026-10-02 §3).
         // Past ledgeWallM the ledge itself drops to dropDepthM (the face rises from its base to it).
-        const pd = dropW > 0 ? { ...p, ledgeDepthM: p.ledgeDepthM + (Math.max(p.ledgeDepthM, p.dropDepthM) - p.ledgeDepthM) * dropW } : p;
-        d = background + (seawardDepth(-sdDepth, x, pd) - background) * edgeFade;
+        const ledgeHere = p.ledgeDepthM + (Math.max(p.ledgeDepthM, p.dropDepthM) - p.ledgeDepthM) * dropW + (rightDepth - p.ledgeDepthM) * rightW;
+        d = background + (seawardDepth(-sdDepth, x, p, ledgeHere) - background) * edgeFade;
         // Seaward the reef's rock runs on down the slope (spec 2026-10-02 §4): weedy rock with scattered sand pockets out to
         // rockReachM(z) seaward of the ledge line, then the open coast's bed; the map's edges fade to the open coast too.
         const rock = 1 - smoothstep(rockReachM(zw) - ROCK_EDGE_M, rockReachM(zw) + ROCK_EDGE_M, -sd);
@@ -230,7 +243,10 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
         interior = interior + (p.pocketDepthM - interior) * pocket;
         const dLedge = p.ledgeDepthM + (interior - p.ledgeDepthM) * smoothstep(0, 20, sdDepth);
         // Past ledgeWallM the shelf inshore of the ledge drops too: never shallower than dropDepthM (C: the fizzle).
-        const dShelf = dLedge + Math.max(0, p.dropDepthM - dLedge) * dropW;
+        const dDrop = dLedge + Math.max(0, p.dropDepthM - dLedge) * dropW;
+        // The right's strip inshore of its ledge: never shallower than rightLedgeDepthM (Task 2).
+        const stripW = rightW * (1 - smoothstep(RIGHT_STRIP_M, RIGHT_STRIP_M + BAND_FADE_M, sdDepth));
+        const dShelf = dDrop + Math.max(0, rightDepth - dDrop) * stripW;
         const sShelf = pocket * smoothstep(0, 3, sd);
         // Weed dominates rock over most of the shelf; the noise only carves occasional bare-rock gaps,
         // and reef heads carry extra weed of their own.

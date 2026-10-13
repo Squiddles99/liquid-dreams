@@ -516,6 +516,7 @@ export class DevPanel {
     reef.addBinding(m.reef, 'ledgeBlendM', { label: 'story blend (m)', min: 5, max: 40, step: 1 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'dropDepthM', { label: 'drop depth (m)', min: 3.5, max: 15, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'shelfHollowShare', { label: 'wall hollow share', min: 0, max: 1, step: 0.05 }).on('change', h.onReef);
+    reef.addBinding(m.reef, 'rightLedgeDepthM', { label: 'right ledge depth (m)', min: 2, max: 12, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.shallow, 'fadeFromM', { label: 'swell fade from (m)', min: 0, max: 20, step: 0.5 }).on('change', h.onShallow);
     reef.addBinding(m.shallow, 'fadeToM', { label: 'swell fade to (m)', min: 1, max: 30, step: 0.5 }).on('change', h.onShallow);
     for (const [key, opts] of Object.entries(OVERLAY_BINDINGS) as [keyof DebugOverlays, { label: string }][]) {

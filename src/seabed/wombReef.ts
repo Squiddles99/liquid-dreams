@@ -71,6 +71,11 @@ export interface ReefParams {
   dropDepthM: number;
   /** The hollow share on B and C (0–1): ψ₀ above the flat step's (psiFromStep(1)) times this (reefField's psiHere). */
   shelfHollowShare: number;
+  /** womb-story Task 2 (spec 3.1, STOP 0 ruling 3): the right's ledge depth (m below mean sea level), and the shelf's along a
+   * RIGHT_STRIP_M strip inshore of it: deeper than the tip's, so the right breaks after the take-off and all at once. Its
+   * satellite line (RIGHT_SHAPE) is untouched; the corner (RIGHT_TIP_KEEP_M) keeps ledgeDepthM. 3.5 (main's: the dial is a
+   * no-op) until Fable rules: no depth from 3.5 to 12 passes spec 3.1 at 270/14 (Task 2 sweep, task3-stop.md). */
+  rightLedgeDepthM: number;
 }
 
 /**
@@ -102,6 +107,7 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
   ledgeBlendM: 15,
   dropDepthM: 8.5,
   shelfHollowShare: 0,
+  rightLedgeDepthM: 3.5,
 };
 
 /** The take-off corner (x, z), where the left's and the right's ledges meet: 224 m off the beach (womb-retune Task 2b,
@@ -137,6 +143,12 @@ const smooth01 = (a: number, b: number, v: number): number => { const t = Math.m
 export function hollowShareAt(along: number, p: Pick<ReefParams, 'ledgeBarrelM' | 'ledgeBlendM' | 'shelfHollowShare'>): number {
   return 1 - (1 - p.shelfHollowShare) * smooth01(p.ledgeBarrelM, p.ledgeBarrelM + Math.max(1e-3, p.ledgeBlendM), along);
 }
+/** The strip inshore of the right's ledge held at rightLedgeDepthM (m; STOP 0 ruling 3), faded back to the shelf over
+ * BAND_FADE_M. */
+export const RIGHT_STRIP_M = 30;
+/** Within this far of the tip the right keeps the tip's depth, faded in to rightLedgeDepthM over the next BAND_FADE_M (m):
+ * the take-off corner is the left's (review focus 4: the tip's depth and face are unchanged). */
+export const RIGHT_TIP_KEEP_M = 15;
 /** How far the drop reaches north up the inside leg from its turn (m; STOP 0 ruling: its first 200 m). */
 export const INSIDE_DROP_M = 200;
 /** The ridden band (womb-story): from this far seaward of the left's edge to this far inshore of it (m), each faded over
