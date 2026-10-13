@@ -510,6 +510,12 @@ export class DevPanel {
     reef.addBinding(m.reef, 'headReliefM', { label: 'reef head relief (m)', min: 0, max: 4, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'minDepthM', { label: 'shallowest (m)', min: 0.3, max: 4, step: 0.1 }).on('change', h.onReef);
     reef.addBinding(m.reef, 'pocketDepthM', { label: 'sand pockets (m)', min: 2, max: 10, step: 0.1 }).on('change', h.onReef);
+    // womb-story (spec 2026-10-13 §5, STOP 0 ruling): the story along the ridden left.
+    reef.addBinding(m.reef, 'ledgeBarrelM', { label: 'barrel to (m along)', min: 20, max: 100, step: 1 }).on('change', h.onReef);
+    reef.addBinding(m.reef, 'ledgeWallM', { label: 'wall to (m along)', min: 80, max: 180, step: 1 }).on('change', h.onReef);
+    reef.addBinding(m.reef, 'ledgeBlendM', { label: 'story blend (m)', min: 5, max: 40, step: 1 }).on('change', h.onReef);
+    reef.addBinding(m.reef, 'dropDepthM', { label: 'drop depth (m)', min: 3.5, max: 15, step: 0.1 }).on('change', h.onReef);
+    reef.addBinding(m.reef, 'shelfHollowShare', { label: 'wall hollow share', min: 0, max: 1, step: 0.05 }).on('change', h.onReef);
     reef.addBinding(m.shallow, 'fadeFromM', { label: 'swell fade from (m)', min: 0, max: 20, step: 0.5 }).on('change', h.onShallow);
     reef.addBinding(m.shallow, 'fadeToM', { label: 'swell fade to (m)', min: 1, max: 30, step: 0.5 }).on('change', h.onShallow);
     for (const [key, opts] of Object.entries(OVERLAY_BINDINGS) as [keyof DebugOverlays, { label: string }][]) {

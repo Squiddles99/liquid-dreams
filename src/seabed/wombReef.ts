@@ -56,6 +56,20 @@ export interface ReefParams {
   southLedge?: readonly Pt[];
   /** The take-off corner, where the two ledges meet: the warp's taper and the sand pockets follow it. Absent: TIP. */
   tip?: Pt;
+  /** womb-story (spec 2026-10-13 §2, STOP 0 ruling): the story along the ridden left. Segment A, the barrel, to this many
+   * metres down the left from the tip (Andrew: it barrels hard ~4 s; the curl's 13 m/s gives ~50 m). */
+  ledgeBarrelM: number;
+  /** Segment B, the wall (the face ahead stands, the lip peels), to here; past it C, the drop (fizzle, or close out big). */
+  ledgeWallM: number;
+  /** The width (m) of each transition: the hollow share falls from 1 over [ledgeBarrelM, + this]; the drop comes in over
+   * ledgeWallM ± half of it. */
+  ledgeBlendM: number;
+  /** C's bed depth (m below mean sea level, as ledgeDepthM): 6.5 is 7 m of still water at tide 0.5, where 7 ft (Hb ≤ 5 m)
+   * no longer breaks and 12 ft (Hb 8+ m) still does (STOP 0 §2.2). The ledge past ledgeWallM and the shelf inshore of it,
+   * north to the inside leg's first INSIDE_DROP_M. */
+  dropDepthM: number;
+  /** The hollow share on B and C (0–1): ψ₀ above the flat step's (psiFromStep(1)) times this (reefField's psiHere). */
+  shelfHollowShare: number;
 }
 
 /**
@@ -82,6 +96,11 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
   minDepthM: 1.5,
   pocketDepthM: 5.5,
   offshoreBand: [SHORE_X - 40, SHORE_X - 100],
+  ledgeBarrelM: 50,
+  ledgeWallM: 130,
+  ledgeBlendM: 15,
+  dropDepthM: 6.5,
+  shelfHollowShare: 0,
 };
 
 /** The take-off corner (x, z), where the left's and the right's ledges meet: 224 m off the beach (womb-retune Task 2b,
@@ -106,6 +125,25 @@ const RIGHT_SHAPE: readonly Pt[] = [[0, 0], [-7, 50], [-20, 150], [-30, 242]];
 /** The right from `tip`: its shape moved to it. */
 export const rightLedgeFrom = (tip: Pt): Pt[] => RIGHT_SHAPE.map(([x, z]) => [x + tip[0], z + tip[1]] as Pt);
 
+/** Metres down the left's first leg from `tip` (the projection of (x, z) on its bearing; negative behind the tip). */
+export function ledgeAlongM(x: number, z: number, tip: Pt = TIP, bearingDeg = LEFT_BEARING_DEG): number {
+  const r = (bearingDeg * Math.PI) / 180;
+  return (x - tip[0]) * Math.sin(r) - (z - tip[1]) * Math.cos(r);
+}
+const smooth01 = (a: number, b: number, v: number): number => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+/** The hollow share `along` m down the left (womb-story §2, STOP 0 ruling (b)): 1 on A, falling over
+ * [ledgeBarrelM, ledgeBarrelM + ledgeBlendM] to shelfHollowShare on B and C. */
+export function hollowShareAt(along: number, p: Pick<ReefParams, 'ledgeBarrelM' | 'ledgeBlendM' | 'shelfHollowShare'>): number {
+  return 1 - (1 - p.shelfHollowShare) * smooth01(p.ledgeBarrelM, p.ledgeBarrelM + Math.max(1e-3, p.ledgeBlendM), along);
+}
+/** How far the drop reaches north up the inside leg from its turn (m; STOP 0 ruling: its first 200 m). */
+export const INSIDE_DROP_M = 200;
+/** The ridden band (womb-story): from this far seaward of the left's edge to this far inshore of it (m), each faded over
+ * BAND_FADE_M, and from BAND_FADE_M behind the tip on. The record's breaks on the left lie 60 m inshore (4 ft, on the shelf)
+ * to 10 m seaward (12 ft) of the edge (STOP 0 table). */
+export const BAND_SEAWARD_M = 30;
+export const BAND_INSHORE_M = 100;
+export const BAND_FADE_M = 15;
 /** The left's edge: from the corner one 46° ledge for 180 m to (−1, −125), then due north (R1–Task 2's three legs from a
  * corner 94 m off the beach, [[0,0],[28,−64],[40,−110],[40,−450]], ran out of water: see TIP). */
 export const NORTH_LEDGE: readonly Pt[] = leftLedgeFrom(TIP);

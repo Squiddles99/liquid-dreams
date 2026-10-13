@@ -386,6 +386,41 @@ export function smoothOnsetTimes(field: ReefField, sigmaM = ONSET_SMOOTHING_M): 
   }
 }
 
+/** The record's size (the amplification each level broke at) smoothed along the crest over this σ (m) on the ridden band
+ * (womb-story, STOP 0 ruling: the line's size; Hb stepped 0.9 m over the first 20 m of the left at 7 ft). */
+export const SIZE_SMOOTHING_M = 20;
+
+/** Each level's size (ONSET_SIZE_OFFSET) smoothed along the crest over sigmaM among the nodes where that level broke (as
+ * smoothOnsetTimes), blended in by `band` (Bathymetry.band: 1 smoothed, 0 the node's own). The ride's size, the hold and
+ * the wall all read it through breaking.onsetSize/onsetSizeAhead. */
+export function smoothOnsetSizes(field: Pick<ReefField, 'grid' | 'onset' | 'dirX' | 'dirZ'>, band: ArrayLike<number>, sigmaM = SIZE_SMOOTHING_M): void {
+  const { grid, onset, dirX, dirZ } = field;
+  const { nx, nz, cellM } = grid, n = nx * nz, R = ONSET_RECORD_LENGTH;
+  const sigma = sigmaM / cellM, step = Math.max(1, sigma / 3), J = Math.ceil((3 * sigma) / step);
+  const w = Array.from({ length: 2 * J + 1 }, (_, j) => Math.exp(-(((j - J) * step) ** 2) / (2 * sigma * sigma)));
+  const masked = new Float32Array(n), mask = new Float32Array(n), out = new Float32Array(n);
+  let any = false;
+  for (let i = 0; i < n; i++) if (band[i] > 0) { any = true; break; }
+  if (!any) return;
+  for (let k = 0; k < ONSET_LEVELS; k++) {
+    const q = ONSET_LEVEL_Q[k], slot = ONSET_SIZE_OFFSET + k;
+    for (let i = 0; i < n; i++) {
+      const m = onset[i * R] >= q ? 1 : 0;
+      mask[i] = m; masked[i] = m ? onset[i * R + slot] : 0;
+    }
+    const atS = bilinearCells(masked, grid), atM = bilinearCells(mask, grid);
+    for (let row = 0; row < nz; row++) for (let col = 0; col < nx; col++) {
+      const i = row * nx + col, own = onset[i * R + slot];
+      if (!mask[i] || !(band[i] > 0)) { out[i] = own; continue; }
+      const tx = -dirZ[i], tz = dirX[i];
+      let sum = 0, ws = 0;
+      for (let j = -J; j <= J; j++) { const fx = col + j * step * tx, fz = row + j * step * tz; sum += w[j + J] * atS(fx, fz); ws += w[j + J] * atM(fx, fz); }
+      out[i] = ws > 1e-6 ? own + band[i] * (sum / ws - own) : own;
+    }
+    for (let i = 0; i < n; i++) onset[i * R + slot] = out[i];
+  }
+}
+
 /**
  * Smooths `field`'s amplitude, direction and shallowest depth so far (hmin, the cap on a wave's height there:
  * setWaveModel.localHeight) in place by a Gaussian of σ = sigmaM (separable, over the grid), and its arrival time τ by
@@ -489,10 +524,19 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   }
   const step = smoothAlongCrest(rawStep, dirX, dirZ, grid, STEP_SMOOTHING_M);
   const psiHere = new Float32Array(n * ONSET_LEVELS);
-  for (let i = 0; i < n; i++) psiHere.fill(psiFromStep(step[i]), i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
+  // womb-story (STOP 0 ruling (b)): the reef's hollow share (Bathymetry.share) scales ψ₀ above the flat step's, so the
+  // wall's segment peels instead of throwing; 1 off the ridden band (the tip, the right, every other bed).
+  const share = req.bed.share, psiFlat = psiFromStep(1);
+  for (let i = 0; i < n; i++) {
+    const psi = psiFromStep(step[i]), sh = share ? share[i] : 1;
+    psiHere.fill(psiFlat + sh * (psi - psiFlat), i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
+  }
   const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel: req.peel ?? 1, curlMaxMs: req.curlMaxMs ?? CURL_MAX_MS_DEFAULT, debug: req.onsetDebug });
   const field: ReefField = { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM, ...(coast ? { coast } : {}) };
-  if (req.smooth) smoothFieldAmplitude(field);
+  if (req.smooth) {
+    smoothFieldAmplitude(field);
+    if (req.bed.band) smoothOnsetSizes(field, req.bed.band);
+  }
   return field;
 }
 

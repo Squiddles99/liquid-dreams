@@ -3,7 +3,7 @@ import { SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { beachHeight } from '../land/landHeight';
 import { fbm2, valueNoise2 } from './noise';
-import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_INNER_X, SHELF_POLYGON, SOUTH_LEDGE, TIP, rockReachM, shelfPolygon, southEdge } from './wombReef';
+import { BAND_FADE_M, BAND_INSHORE_M, BAND_SEAWARD_M, DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, INSIDE_DROP_M, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_INNER_X, SHELF_POLYGON, SOUTH_LEDGE, TIP, hollowShareAt, ledgeAlongM, rockReachM, shelfPolygon, southEdge } from './wombReef';
 
 /** Weed dominates rock across most of the shelf; baseline coverage before the patchy noise carves gaps. */
 const SHELF_WEED_BASE = 0.78;
@@ -18,6 +18,11 @@ export interface Bathymetry {
   sand: Float32Array;
   /** Weed/kelp weight [0, 1] (reef = 1 − sand − weed). */
   weed: Float32Array;
+  /** womb-story (STOP 0 ruling): the hollow share the reef feeds the record (reefField's psiHere): wombReef.hollowShareAt on
+   * the ridden band, 1 off it. Absent on beds built elsewhere (tests' flat beds, the coast map): 1 everywhere. */
+  share?: Float32Array;
+  /** The ridden band's weight [0, 1] (the record's size is smoothed along the crest on it: reefField.smoothOnsetSizes). */
+  band?: Float32Array;
 }
 
 type Pt = readonly [number, number];
@@ -138,6 +143,8 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   // The deep slope's weed patches (its 5 m noise at every 0.5 m cell more than doubled the build): on the same lattice,
   // 10–20 m down where the water hides the difference.
   const patchOutField = new Float32Array(sx * sz);
+  // womb-story: the signed distance to the left's edge alone (positive on the shelf), for the ridden band.
+  const sdNorthField = new Float32Array(sx * sz);
   const north = p.northLedge ?? NORTH_LEDGE, south = p.southLedge ?? SOUTH_LEDGE;
   const shelf = p.northLedge || p.southLedge ? shelfPolygon(north, south) : SHELF_POLYGON;
   const southLine = p.southLedge ? southEdge(south) : SOUTH_EDGE;
@@ -145,6 +152,7 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   for (let r = 0; r < sz; r++) for (let c = 0; c < sx; c++) {
     const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M;
     sdf[r * sx + c] = ledgeSignedDistance(x, z, north, shelf, southLine);
+    sdNorthField[r * sx + c] = ledgeSignedDistance(x, z, north, shelf, []);
     pockets[r * sx + c] = pocketWeight(x, z, tip);
     const [dx, dz] = reefWarp(x, z, tip);
     warpDxField[r * sx + c] = dx;
@@ -160,8 +168,14 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
     return (a + (b - a) * tx) * (1 - tz) + (d + (e - d) * tx) * tz;
   };
 
+  const share = new Float32Array(n), band = new Float32Array(n);
+  // The left's bearing, from its first leg (womb-story: along is measured on it from the tip).
+  const bearing = (Math.atan2(north[1][0] - north[0][0], -(north[1][1] - north[0][1])) * 180) / Math.PI;
+  // The drop region's north end: the inside leg's first INSIDE_DROP_M (z falls going north).
+  const dropNorthZ = north[1][1] - INSIDE_DROP_M, halfBlend = Math.max(1e-3, p.ledgeBlendM) / 2;
   for (let row = 0; row < grid.nz; row++) {
     const z = grid.z0 + row * grid.cellM;
+    const northFade = smoothstep(dropNorthZ - BAND_FADE_M, dropNorthZ, z);
     // The reef fades back to the plain coast before the map's north and south edges, so the map joins the far field seamlessly.
     const edgeFade = smoothstep(-450, -380, z) * (1 - smoothstep(230, 299, z));
     for (let col = 0; col < grid.nx; col++) {
@@ -180,10 +194,19 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       // follows the drawn ledges (one-curl spec §3c: read at the warped point it wandered ±5–7 m every 35 m, and the onset
       // with it); the rock's look (its reach, the heads, pockets and weed) keeps the warped point.
       const sd = lattice(sdf, xw, zw), sdDepth = lattice(sdf, x, z);
+      // womb-story (STOP 0 ruling): metres down the left, the ridden band, the hollow share and the drop (all unwarped).
+      const along = ledgeAlongM(x, z, tip, bearing), sdN = lattice(sdNorthField, x, z);
+      const bandW = smoothstep(-BAND_SEAWARD_M - BAND_FADE_M, -BAND_SEAWARD_M, sdN) * (1 - smoothstep(BAND_INSHORE_M, BAND_INSHORE_M + BAND_FADE_M, sdN))
+        * smoothstep(-BAND_FADE_M, 0, along) * northFade;
+      band[i] = bandW;
+      share[i] = 1 + bandW * (hollowShareAt(along, p) - 1);
+      const dropW = smoothstep(p.ledgeWallM - halfBlend, p.ledgeWallM + halfBlend, along) * northFade;
       let d: number, s: number, w = 0;
       if (sdDepth < 0) {
         // Outside the shelf: the reef face, then the steady slope out to the open sea (seawardDepth, spec 2026-10-02 §3).
-        d = background + (seawardDepth(-sdDepth, x, p) - background) * edgeFade;
+        // Past ledgeWallM the ledge itself drops to dropDepthM (the face rises from its base to it).
+        const pd = dropW > 0 ? { ...p, ledgeDepthM: p.ledgeDepthM + (Math.max(p.ledgeDepthM, p.dropDepthM) - p.ledgeDepthM) * dropW } : p;
+        d = background + (seawardDepth(-sdDepth, x, pd) - background) * edgeFade;
         // Seaward the reef's rock runs on down the slope (spec 2026-10-02 §4): weedy rock with scattered sand pockets out to
         // rockReachM(z) seaward of the ledge line, then the open coast's bed; the map's edges fade to the open coast too.
         const rock = 1 - smoothstep(rockReachM(zw) - ROCK_EDGE_M, rockReachM(zw) + ROCK_EDGE_M, -sd);
@@ -203,7 +226,9 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
         let interior = Math.max(p.minDepthM, p.shelfDepthM - p.headReliefM * heads);
         const pocket = Math.max(lattice(pockets, xw, zw), smoothstep(-0.4, -0.7, relief));
         interior = interior + (p.pocketDepthM - interior) * pocket;
-        const dShelf = p.ledgeDepthM + (interior - p.ledgeDepthM) * smoothstep(0, 20, sdDepth);
+        const dLedge = p.ledgeDepthM + (interior - p.ledgeDepthM) * smoothstep(0, 20, sdDepth);
+        // Past ledgeWallM the shelf inshore of the ledge drops too: never shallower than dropDepthM (C: the fizzle).
+        const dShelf = dLedge + Math.max(0, p.dropDepthM - dLedge) * dropW;
         const sShelf = pocket * smoothstep(0, 3, sd);
         // Weed dominates rock over most of the shelf; the noise only carves occasional bare-rock gaps,
         // and reef heads carry extra weed of their own.
@@ -218,7 +243,7 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
       weed[i] = Math.min(w, 1 - s);
     }
   }
-  return { grid, bed, sand, weed };
+  return { grid, bed, sand, weed, share, band };
 }
 
 /**
@@ -271,16 +296,22 @@ export function downsample(b: Bathymetry, factor: number): Bathymetry {
   const g = b.grid;
   const nx = g.nx / factor, nz = g.nz / factor;
   const grid: GridSpec = { x0: g.x0 + ((factor - 1) * g.cellM) / 2, z0: g.z0 + ((factor - 1) * g.cellM) / 2, cellM: g.cellM * factor, nx, nz };
-  const out = { grid, bed: new Float32Array(nx * nz), sand: new Float32Array(nx * nz), weed: new Float32Array(nx * nz) };
+  const out: Bathymetry = { grid, bed: new Float32Array(nx * nz), sand: new Float32Array(nx * nz), weed: new Float32Array(nx * nz) };
+  if (b.share) out.share = new Float32Array(nx * nz);
+  if (b.band) out.band = new Float32Array(nx * nz);
   const inv = 1 / (factor * factor);
   for (let r = 0; r < nz; r++) for (let c = 0; c < nx; c++) {
-    let bed = 0, sand = 0, weed = 0;
+    let bed = 0, sand = 0, weed = 0, share = 0, band = 0;
     for (let dr = 0; dr < factor; dr++) for (let dc = 0; dc < factor; dc++) {
       const i = (r * factor + dr) * g.nx + c * factor + dc;
       bed += b.bed[i]; sand += b.sand[i]; weed += b.weed[i];
+      if (b.share) share += b.share[i];
+      if (b.band) band += b.band[i];
     }
     const o = r * nx + c;
     out.bed[o] = bed * inv; out.sand[o] = sand * inv; out.weed[o] = weed * inv;
+    if (out.share) out.share[o] = share * inv;
+    if (out.band) out.band[o] = band * inv;
   }
   return out;
 }
