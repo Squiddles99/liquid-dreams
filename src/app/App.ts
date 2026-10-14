@@ -38,6 +38,7 @@ import { type Experience, TUNING } from '../ride/ridePhysics';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
 import { SurfaceOffset } from '../ride/surfaceOffset';
 import { fieldKey } from '../breaker/fieldKey';
+import { EnergyPanel } from '../ride/EnergyPanel';
 import { rideContext } from '../ride/rideContext';
 import { tubeCover } from '../ride/tubeCover';
 import { PRESETS } from '../surfer/presets';
@@ -208,6 +209,8 @@ export class App {
   readonly surferStand: SurferStand;
   /** The playable ride (first-ride spec): G starts and stops it. */
   readonly ride = new RideSession(document.body);
+  /** Where the face pays around the rider, with the dev UI (ride-speed spec §6). */
+  private readonly energyPanel = new EnergyPanel(document.body);
   /** The called set's arrivals at the peak (sim s), and the wave being ridden. */
   private rideSet: number[] = [];
   /** Each ride wave's deep-water height (m), for its take-off spot. */
@@ -2237,11 +2240,14 @@ export class App {
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
       else if (event) this.perf.flash(rideMessage(event));
       const rb = this.ride.body;
+      this.energyPanel.setVisible(this.devUiVisible && rb !== null);
+      if (this.devUiVisible && rb) this.energyPanel.update(realDt, water, rb, this.ride.lastContext);
       this.rideCover = rb ? tubeCover(this.rideStations, rb.x, rb.z) : 0;
       const pose = this.ride.cameraPose(realDt, water, mouse, this.rideCover);
       if (pose) this.rig.setPose(pose);
     } else {
       this.rideCover = 0;
+      this.energyPanel.setVisible(false);
       this.rig.update(realDt, this.input, this.waterHeightAtCamera());
     }
 

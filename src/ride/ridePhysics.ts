@@ -76,7 +76,7 @@ const DEG = Math.PI / 180;
 export const PADDLE_THRUST = 1.6;
 const PRONE_DRAG = { lin: 0.6, quad: 0.3, side: 3 };
 /** Planing on its feet: terminal ~17 m/s down a 0.5 slope. */
-const PLANE_DRAG = { lin: 0.03, quad: 0.012, side: 5 };
+export const PLANE_DRAG = { lin: 0.03, quad: 0.012, side: 5 };
 /** In the water after a wipeout: carried with the water. */
 const BAIL_DRAG = { lin: 1.5, quad: 0, side: 1.5 };
 export const PADDLE_TURN_DEG_S = 70;
