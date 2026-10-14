@@ -1,4 +1,4 @@
-import { COM_REST, OPEN_FACE, type RideContext, type RiderState, comTarget, compressionOf, newRiderState, stepCom } from './riderBody';
+import { COM_REST, LOAD_TAU_S, OPEN_FACE, type RideContext, type RiderState, compressionOf, newRiderState, restLoad, stepCom, stepRiderBody } from './riderBody';
 import type { WaterAt, WaterFn } from './water';
 
 export { OPEN_FACE, type RideContext, type StallWeights } from './riderBody';
@@ -224,9 +224,6 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   b.headingDeg = (((b.headingDeg + steer * turn * dt) % 360) + 360) % 360;
   const ease = 1 - Math.exp(-dt / 0.15);
   b.carve += ((b.phase === 'ride' || b.phase === 'popup' ? steer : 0) - b.carve) * ease;
-  // The rider's centre of mass (ride-speed spec §2): chased at the legs' rate; compression is read from it.
-  b.comH = stepCom(b.comH, b.phase === 'ride' ? comTarget(c.crouch) : COM_REST, dt);
-  b.compression = compressionOf(b.comH);
 
   // Forces: gravity along the surface, paddling, the assist.
   const [fx, fz] = forwardOf(b.headingDeg), [rx, rz] = rightOf(b.headingDeg);
@@ -245,6 +242,17 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   b.vx += ax * dt;
   b.vz += az * dt;
 
+  // The rider's body (ride-speed spec §4): the pump's work this step, from the load they felt last step.
+  let bodyE = 0;
+  if (b.phase === 'ride') {
+    const vAlong = b.vx * -w.dirZ + b.vz * w.dirX;
+    bodyE = stepRiderBody(b, {
+      crouch: c.crouch, stall: !!c.stall, assist: false, headingDeg: b.headingDeg, dirX: w.dirX, dirZ: w.dirZ,
+      slope: Math.hypot(w.slopeX, w.slopeZ), alongSpeed: Math.abs(vAlong), ctx,
+    }, dt);
+  } else b.comH = stepCom(b.comH, COM_REST, dt);
+  b.compression = compressionOf(b.comH);
+
   // Drag relative to the water.
   const d = b.phase === 'bail' ? BAIL_DRAG : b.phase === 'paddle' ? PRONE_DRAG : PLANE_DRAG;
   const standing = b.phase === 'ride' || b.phase === 'popup';
@@ -262,6 +270,7 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   const gripped = side * Math.exp(-d.side * (b.phase === 'ride' ? 1 + 0.3 * b.compression : 1) * dt);
   // On its feet, the rail turns the slide it grips into run (a bottom turn keeps its speed); prone, the water just takes it.
   if (standing && along > 0) along = Math.sqrt(along * along + RAIL_KEEP * (side * side - gripped * gripped));
+  if (bodyE !== 0 && along > 0) along = Math.sqrt(Math.max(0, along * along + 2 * bodyE));
   side = gripped;
   b.vx = ux + fx * along + rx * side;
   b.vz = uz + fz * along + rz * side;
@@ -324,6 +333,19 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
     b.y = Number.isFinite(b.water.y) ? b.water.y : y0;
     b.vy = 0;
   } else if (onFeet) b.vy = (b.y - y0) / dt;
+  // The load the rider feels (ride-speed spec §4.1): the board's acceleration less gravity, in g, smoothed.
+  if (onFeet) {
+    const lx = (b.vx - b.pvx) / dt, ly = (b.vy - b.pvy) / dt, lz = (b.vz - b.pvz) / dt;
+    const n = Math.hypot(lx, ly + G, lz) / G;
+    if (Number.isFinite(n)) b.load += (n - b.load) * (1 - Math.exp(-dt / LOAD_TAU_S));
+    b.n0 = restLoad(b.water.slopeX, b.water.slopeZ);
+  } else {
+    b.load = 1;
+    b.n0 = 1;
+  }
+  b.pvx = b.vx;
+  b.pvy = b.vy;
+  b.pvz = b.vz;
   if (Number.isFinite(surf.y)) b.surfY = surf.y;
   const tilt = 1 - Math.exp(-dt / (onFeet ? PLANE_TILT_TAU_S : FLOAT_TILT_TAU_S));
   if (Number.isFinite(surf.slopeX) && Number.isFinite(surf.slopeZ)) {
