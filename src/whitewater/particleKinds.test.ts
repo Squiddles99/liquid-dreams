@@ -74,7 +74,8 @@ describe('four airborne looks (womb-realism Task 5, spec 3.3)', () => {
     }
   });
   it('the plan’s numbers: feather thin and short, plume dense and long, spit low and fast, impact unchanged', () => {
-    expect(KIND_LOOK.feather).toEqual({ sizeM: [0.3, 0.8], alpha: 0.35, lifeS: [0.6, 1.2], drag: 2.0, liftA: 1.0, backDriftShare: 1.0 });
+    // 2026-10-14 (womb-story Task 5, spec 3.5): the feather a mist on the lip (was [0.3, 0.8] m, 0.35, [0.6, 1.2] s).
+    expect(KIND_LOOK.feather).toEqual({ sizeM: [0.15, 0.4], alpha: 0.25, lifeS: [0.4, 0.9], drag: 2.0, liftA: 1.0, backDriftShare: 1.0 });
     expect(KIND_LOOK.plume).toEqual({ sizeM: [1.0, 2.5], alpha: 0.8, lifeS: [3, 5], drag: 0.8, liftA: 2.0, backDriftShare: 0.7 });
     expect(KIND_LOOK.spit).toEqual({ sizeM: [0.4, 1.0], alpha: 0.7, lifeS: [0.5, 0.9], drag: 1.5, liftA: 0.2, backDriftShare: 0.0 });
     expect(KIND_LOOK.impact.liftA).toBe(1.5);

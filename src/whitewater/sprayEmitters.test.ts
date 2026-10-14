@@ -413,13 +413,14 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
   });
   // 2026-10-14 (womb-story Task 3d): wallWeight at the station's shoulderRegion, as the emitter reads it.
   it('every stood station feathers (7b S2 ruling), strength (FEATHER_FLOOR + (1 − FEATHER_FLOOR) × wallWeight) × wind × amount; never a broken one', () => {
-    const t = BIGGEST.arrivalS - 2, f = breakEmitters(input(t, { wind: strong })).feather;
+    // 2026-10-14 (womb-story Task 5, spec 3.5): the stood crests' feathers (a throwing lip's carry `lip`).
+    const t = BIGGEST.arrivalS - 2, f = breakEmitters(input(t, { wind: strong })).feather.filter((e) => !e.lip);
     expect(FEATHER_FLOOR).toBe(0.25);
     const st = standing(t), byArc = new Map(st.map((s) => [Math.round(s.arc / SPRAY_SPACING_M) * 1000 + s.wave, s]));
     expect(f.length).toBe(st.length);
     const wind = smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], offshoreSpeedOn(strong, st[0].nx, st[0].nz));
     for (const e of f) {
-      const s = [...byArc.values()].find((q) => Math.round(q.arc / SPRAY_SPACING_M) === e.arc && Math.abs(q.x - e.x) < 1e-9)!;
+      const s = [...byArc.values()].find((q) => Math.round(q.arc / SPRAY_SPACING_M) === e.arc && Math.abs(q.x + q.nx * (e.u ?? 0) - e.x) < 1e-9)!;
       expect(s).toBeDefined();
       expect(e.strength).toBeCloseTo((FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wallWeight(s.until, field.periodS, shoulderRegion(s.x, s.z))) * smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], offshoreSpeedOn(strong, s.nx, s.nz)), 9);
     }
@@ -460,12 +461,13 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     let near = 0, far = 0;
     // Before the break (every stood station far from a curl) and mid-throw (the wall next to the curl).
     for (const t of [BIGGEST.arrivalS - 2, T_THROW]) {
-    const f = breakEmitters(input(t, { wind })).feather;
+    // 2026-10-14 (womb-story Task 5, spec 3.5): the stood crests' (a throwing lip's carry `lip`); a pitching one's from its crest knot, u along its normal.
+    const f = breakEmitters(input(t, { wind })).feather.filter((e) => !e.lip);
     const waves = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave);
     const st = traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M })
       .filter((s): s is Exclude<typeof s, { gap: true }> => !s.gap);
     for (const e of f) {
-      const s = st.find((q) => q.tb === null && Math.round(q.arc / SPRAY_SPACING_M) === e.arc && Math.abs(q.x - e.x) < 1e-9)!;
+      const s = st.find((q) => q.tb === null && Math.round(q.arc / SPRAY_SPACING_M) === e.arc && Math.abs(q.x + q.nx * (e.u ?? 0) - e.x) < 1e-9)!;
       expect(s).toBeDefined();
       const fronts = st.filter((q) => q.wave === s.wave && q.tb !== null), d = Math.min(...fronts.map((q) => Math.abs(q.arc - s.arc)));
       expect(e.fromFrame, `arc ${s.arc.toFixed(0)} ${d.toFixed(1)} m from the curl`).toBe(d <= FEATHER_FRAME_REACH_M);
@@ -475,7 +477,7 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
         const x = s.x + s.nx * u, z = s.z + s.nz * u, r = sumWaves(x, z, t, sampleField(field, x, z), own, ctx, o);
         return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
       };
-      const fr = sectionFrame(s.section, s.H, s.c, base), want = s.section.phase > STOOD_PHASE ? fr.tip[1] : fr.crest[1];
+      const fr = sectionFrame(s.section, s.H, s.c, base), want = fr.crest[1];
       expect(Math.abs(e.y - want), `arc ${s.arc.toFixed(0)}`).toBeLessThanOrEqual(0.1 * s.section.A);
       expect(e.A).toBe(s.section.A);
       near++;
@@ -486,7 +488,7 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     expect(far).toBeGreaterThan(1);
   });
   it('a feather puff rises at most FEATHER_LIFT_A × A above its birth over 1.2 s in a 10 m/s offshore', () => {
-    expect(FEATHER_LIFT_A).toBe(0.5);
+    expect(FEATHER_LIFT_A).toBe(0.2); // 2026-10-14 (womb-story Task 5, spec 3.5) (was 0.5)
     for (const A of [1.5, 3, 5]) {
       const e = { x: 0, y: 3, z: 0, nx: 1, nz: 0, strength: 1, waveId: 4, arc: 2, wOff: 10, A, fromFrame: true };
       const b = Array.from({ length: 30 }, (_, k) => featherBirths([e], k)).flat();
@@ -503,7 +505,8 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     }
   });
   it('the feather kind (KIND_LOOK since womb-realism Task 5): thin, small, short-lived, blown straight back; the 7b rate', () => {
-    expect(FEATHER_KIND).toMatchObject({ dragTauS: 0.5, gravityMs2: 0.5, sizeM: [0.3, 0.8], opacity: 0.35, isotropic: 0.6, backDriftShare: 1 });
+    // 2026-10-14 (womb-story Task 5, spec 3.5): size [0.15, 0.4], opacity 0.25 (was [0.3, 0.8], 0.35).
+    expect(FEATHER_KIND).toMatchObject({ dragTauS: 0.5, gravityMs2: 0.5, sizeM: [0.15, 0.4], opacity: 0.25, isotropic: 0.6, backDriftShare: 1 });
     expect(FEATHER_RATE).toBe(12);
     expect(ERODING_KINDS).not.toContain(KIND_INDEX.feather);
   });
@@ -517,6 +520,33 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
       expect(p.vy).toBeGreaterThan(0);
       expect(p.life).toBeGreaterThanOrEqual(FEATHER_LIFE_S[0]);
       expect(p.life).toBeLessThanOrEqual(FEATHER_LIFE_S[1]);
+    }
+  });
+});
+
+// womb-story Task 5 (spec 3.5): feathering is a mist on the lip. Born at the section's crest knot (the lip's top; the chord
+// crest -> tip's end), for a stood crest and for a throwing lip alike (STOP 2 ruling: the chord's middle lies inside the
+// convex lip or the tube until the throwing key is redrawn, Task 4), never below it; the kind's look.
+describe('the feather is a mist on the lip (womb-story Task 5)', () => {
+  it('the look: size 0.15-0.4 m, alpha 0.25, life 0.4-0.9 s, lift at most 0.2 A', async () => {
+    const { KIND_LOOK } = await import('./particleKinds');
+    expect(KIND_LOOK.feather.sizeM).toEqual([0.15, 0.4]);
+    expect(KIND_LOOK.feather.alpha).toBe(0.25);
+    expect(KIND_LOOK.feather.lifeS).toEqual([0.4, 0.9]);
+    expect(FEATHER_LIFT_A).toBeLessThanOrEqual(0.2);
+  });
+  it('a throwing lip feathers from its crest knot: on the lip, never below it, at most 0.02 A over it', () => {
+    const strongOff = { speedMs: 20 * 0.514, fromDeg: OFFSHORE.fromDeg };
+    const f = breakEmitters(input(T_THROW, { wind: strongOff })).feather;
+    const lips = f.filter((e) => e.lip);
+    expect(lips.length, 'feathers on throwing lips').toBeGreaterThan(3);
+    for (const e of lips) {
+      expect(e.u).toBeCloseTo(e.lip!.crest[0], 9);
+      expect(e.y).toBeCloseTo(e.lip!.crest[1], 9);
+      for (const b of featherBirths([e], 7)) {
+        expect(b.y, 'never below the lip').toBeGreaterThanOrEqual(e.y - 1e-9);
+        expect(b.y - e.y, 'at most 0.02 A over it').toBeLessThanOrEqual(0.02 * e.A + 1e-9);
+      }
     }
   });
 });

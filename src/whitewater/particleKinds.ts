@@ -38,7 +38,8 @@ export const KIND_LOOK: Readonly<Record<'spray' | 'plume' | 'impact' | 'spit' | 
   plume: { sizeM: [1.0, 2.5], alpha: 0.8, lifeS: [3, 5], drag: 0.8, liftA: 2.0, backDriftShare: 0.7 },
   impact: { sizeM: [0.8, 3.5], alpha: 0.32, lifeS: [1.3, 2.4], drag: 1 / 1.1, liftA: 1.5, backDriftShare: 1 },
   spit: { sizeM: [0.4, 1.0], alpha: 0.7, lifeS: [0.5, 0.9], drag: 1.5, liftA: 0.2, backDriftShare: 0.0 },
-  feather: { sizeM: [0.3, 0.8], alpha: 0.35, lifeS: [0.6, 1.2], drag: 2.0, liftA: 1.0, backDriftShare: 1.0 },
+  // womb-story Task 5 (spec 3.5): a mist on the lip: small, faint, short-lived (was [0.3, 0.8] m, 0.35, [0.6, 1.2] s).
+  feather: { sizeM: [0.15, 0.4], alpha: 0.25, lifeS: [0.4, 0.9], drag: 2.0, liftA: 1.0, backDriftShare: 1.0 },
 };
 /** The most a puff of `look` may climb at launch (m/s) for a section of size A (m). */
 export const liftSpeed = (look: Readonly<KindLook>, A: number): number => look.liftA * A * look.drag;

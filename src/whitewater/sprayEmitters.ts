@@ -131,7 +131,9 @@ export const FEATHER_FRAME_REACH_M = 60;
 /** A feather puff rises at most this × its section's A above its birth: its launch speed up is capped at
  * FEATHER_LIFT_A × A / the feather kind's drag time (the drag takes vy to 0 and the wind has no vertical part, so the rise
  * is at most vy₀ × τ). */
-export const FEATHER_LIFT_A = 0.5;
+export const FEATHER_LIFT_A = 0.2;
+/** A feather puff is born at most this × A over the crest it smokes off (womb-story Task 5: on the lip, never above it). */
+export const FEATHER_BIRTH_OVER_A = 0.02;
 /** …this many puffs per m of crest per s at strength 1, each living U(0.6, 1.2) s. */
 export const FEATHER_RATE = 12;
 export const FEATHER_LIFE_S: readonly [number, number] = KIND_LOOK.feather.lifeS;
@@ -155,8 +157,12 @@ export interface FeatherEmitter {
   wOff: number;
   /** The station's section size (m): the puffs' lift cap (FEATHER_LIFT_A). */
   A: number;
-  /** y is the frame's drawn crest (or tip), not standingCrestY. */
+  /** y is the frame's drawn crest, not standingCrestY. */
   fromFrame: boolean;
+  /** Where it stands along the crest normal from its station (m): the lip's crest knot for a section framed; absent 0. */
+  u?: number;
+  /** A throwing lip's (broken, in flight) crest knot and tip (u along the normal, world y), drawn; absent for a stood crest. */
+  lip?: { crest: [number, number]; tip: [number, number] };
 }
 
 /** The sheet's crest the curl blends in from stands at this × H (0.674–0.676 over the default set's standing wall,
@@ -365,14 +371,26 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       const wOff = offshoreSpeedOn(i.wind, s.nx, s.nz), strength = featherStrength(wallWeight(s.until, field.periodS, shoulderRegion(s.x, s.z)), wOff, i.amount);
       if (strength > 0) {
         const arcs = brokenArcs.get(s.wave), fromFrame = !!arcs && arcs.some((a) => Math.abs(a - s.arc) <= FEATHER_FRAME_REACH_M);
-        // A pitching lip feathers from the frame's tip; a stood crest near the curl is set after the loop (drawnCrests).
+        // A pitching lip feathers from its crest knot (womb-story Task 5: on the lip; it was the tip's height at the
+        // station's crest, in front of the lip); a stood crest near the curl is set after the loop (drawnCrests).
         const pitching = fromFrame && s.section.phase > STOOD_PHASE, arc = Math.round(s.arc / SPRAY_SPACING_M);
-        const y = pitching ? frameOf(s).tip[1] + i.tideM : standingCrestY(s.section, s.H, i.tideM);
+        const c = pitching ? frameOf(s).crest : null, u = c ? c[0] : 0;
+        const y = c ? c[1] + i.tideM : standingCrestY(s.section, s.H, i.tideM);
         if (fromFrame && !pitching) nearCurl.set(s.wave * 1e6 + arc, { k: feather.length, s, cheap: y });
-        feather.push({ x: s.x, y, z: s.z, nx: s.nx, nz: s.nz, strength, waveId: i.events[s.wave].id, arc, wOff, A: s.section.A, fromFrame });
+        feather.push({ x: s.x + s.nx * u, y, z: s.z + s.nz * u, nx: s.nx, nz: s.nz, strength, waveId: i.events[s.wave].id, arc, wOff, A: s.section.A, fromFrame, u });
       }
     }
     if (s.tb === null || !Number.isFinite(s.tb)) continue;
+    // A throwing lip (broken, in flight) feathers too, from its crest knot (womb-story Task 5, spec 3.5): full strength, as
+    // the stood wall at the curl.
+    if (wantSpray && s.section.phase > STOOD_PHASE && s.section.phase < 1) {
+      const wOff = offshoreSpeedOn(i.wind, s.nx, s.nz), strength = featherStrength(1, wOff, i.amount);
+      if (strength > 0) {
+        const f = frameOf(s), u = f.crest[0], y = f.crest[1] + i.tideM;
+        feather.push({ x: s.x + s.nx * u, y, z: s.z + s.nz * u, nx: s.nx, nz: s.nz, strength: strength * f.weight * f.rho, waveId: i.events[s.wave].id,
+          arc: Math.round(s.arc / SPRAY_SPACING_M), wOff, A: s.section.A, fromFrame: true, u, lip: { crest: [u, y], tip: [f.tip[0], f.tip[1] + i.tideM] } });
+      }
+    }
     const wind = wantSpray ? veilFactor(i.wind, s.nx, s.nz) : 0;
     if (!(wind > 0) && !wantImpact) continue;
     const ft = sectionTiming(s.section, s.H);
@@ -575,7 +593,7 @@ export function featherBirths(emitters: readonly FeatherEmitter[], tick: number)
       const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x70000000 + j * 8 + q);
       const along = (r(0) * 2 - 1) * (SPRAY_SPACING_M / 2);
       out.push({
-        x: e.x - e.nz * along, y: e.y + r(1) * 0.2, z: e.z + e.nx * along,
+        x: e.x - e.nz * along, y: e.y + r(1) * FEATHER_BIRTH_OVER_A * e.A, z: e.z + e.nx * along,
         vx: -e.nx * e.wOff * 0.5 + (r(2) * 2 - 1) * 0.5, vy: Math.min(e.wOff * 0.3 + (r(3) * 2 - 1) * 0.5, liftV), vz: -e.nz * e.wOff * 0.5 + (r(4) * 2 - 1) * 0.5,
         life: FEATHER_LIFE_S[0] + (FEATHER_LIFE_S[1] - FEATHER_LIFE_S[0]) * r(5), strength: Math.min(1, e.strength), kind: KIND_INDEX.feather, yWater: e.y - FEATHER_SOFT_DROP_M,
       });
