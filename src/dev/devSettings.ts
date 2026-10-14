@@ -41,9 +41,11 @@ export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
  * off the beach, so it resets again; model 10: the peel stretch is off by default, so the curl breaks on the reef's face
  * at full size, and the basin in front of the reef is 20 m, not 30, so the reef resets again; model 11: the coast offshore is
  * 20 m, the basin's own depth, so the swell lines run straight in: the reef resets again; model 12 (R1, 2026-10-06): δ 0.2
- * and the 15 m basin to the far field with a 15 m face, so the breaking and the reef reset again).
+ * and the 15 m basin to the far field with a 15 m face, so the breaking and the reef reset again; model 13 (womb-story,
+ * 2026-10-14): Andrew's pick, the face ahead of the lip stands up over 20 m and is drawn on the sea (standAheadM,
+ * faceOnSheet), so the breaking resets to it).
  */
-export const BREAKING_MODEL = 12;
+export const BREAKING_MODEL = 13;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;
