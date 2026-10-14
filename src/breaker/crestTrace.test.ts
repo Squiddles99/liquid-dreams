@@ -486,10 +486,12 @@ describe('crestTrace: the surge is the ribbon\'s look only (whitewater F4)', () 
   // A 6 ft set wave well into its collapse along the line: some sections past phase 1.25.
   const w = toActiveWave(REF_BIGGEST);
   const times = [1, 2, 3, 4, 5].map((d) => REF_BIGGEST.arrivalS + d);
-  it('a trace without drawSurge carries no surge: the ride\'s sections are the family\'s own', () => {
+  // 2026-10-14 (womb-story STOP 1b ruling 5, the timeouts): the bake at 270/14 7 ft is 4-13 % slower than main's (bed lattice
+  // fields; under the 25 % bar), so the budgets are raised: these two take 6.6 s and 12.8 s alone, timed out at 5 s under load.
+  it('a trace without drawSurge carries no surge: the ride\'s sections are the family\'s own', { timeout: 60_000 }, () => {
     for (const t of times) for (const s of live(traceStations(field, [w], t, ctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H }))) expect(s.section.surge ?? 0).toBe(0);
   });
-  it('the ribbon\'s trace (drawSurge) carries it somewhere, and rideEntries strips it back to the plain trace bit for bit', () => {
+  it('the ribbon\'s trace (drawSurge) carries it somewhere, and rideEntries strips it back to the plain trace bit for bit', { timeout: 60_000 }, () => {
     let any = 0;
     for (const t of times) {
       const input = { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H };

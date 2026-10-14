@@ -94,7 +94,9 @@ describe('reef wave field', () => {
       expect(Math.hypot(f.dirX[i], f.dirZ[i])).toBeCloseTo(1, 4);
     }
   });
-  it('unusual swell directions stay finite', { timeout: 30_000 }, () => {
+  // 2026-10-14 (womb-story STOP 1b ruling 5, the timeouts): the bake at 270/14 7 ft is 4-13 % slower than main's (bed lattice
+  // fields; under the 25 % bar), so the budget is raised: 11.5 s alone, timed out under the full suite's load.
+  it('unusual swell directions stay finite', { timeout: 90_000 }, () => {
     for (const fromDeg of [0, 45, 90, 135, 180, 315]) {
       const f = computeReefField({ bed: reef2, periodS: 15, fromDeg, tideM: 0 });
       for (const a of [f.tau, f.amp, f.hmin, f.k, f.dirX, f.dirZ]) expect(allFinite(a)).toBe(true);
@@ -106,7 +108,9 @@ describe('reef wave field', () => {
       for (const a of [f.tau, f.amp, f.hmin, f.k]) expect(allFinite(a)).toBe(true);
     }
   });
-  it('the field joins the outside smoothly at every edge (real reef)', () => {
+  // 2026-10-14 (womb-story STOP 1b ruling 5, the timeouts): the bake at 270/14 7 ft is 4-13 % slower than main's (bed lattice
+  // fields; under the 25 % bar), so the budget is raised: 2.0 s alone, timed out under the full suite's load.
+  it('the field joins the outside smoothly at every edge (real reef)', { timeout: 30_000 }, () => {
     for (const f of [f225, computeReefField({ bed: reef2, periodS: 15, fromDeg: 205, tideM: 0 })]) {
       const g = f.grid;
       const x0 = g.x0, z0 = g.z0, x1 = g.x0 + (g.nx - 1) * g.cellM, z1 = g.z0 + (g.nz - 1) * g.cellM;
