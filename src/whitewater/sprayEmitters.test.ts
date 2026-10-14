@@ -257,7 +257,7 @@ describe('the spray can emit (final review: calm-day replays)', () => {
 });
 
 import { BOMBIE_X, BOMBIE_Z } from '../bombie/bombieModel';
-import { bombieImpactEmitters } from './sprayEmitters';
+import { SPIT_THROW_SHARE, bombieImpactEmitters } from './sprayEmitters';
 describe('the Bombie’s spray (4c-3)', () => {
   it('fires along the burst line for its first 1.5 s, sized by the wave and the size slider, and never after', () => {
     const b = { n: 40, ageS: 0.5, heightM: 3 };
@@ -301,7 +301,17 @@ describe("the barrel's spit (Andrew: foam, spit and spray)", () => {
         expect(Math.abs(e.dx * e.nx + e.dz * e.nz), 'along the crest, not across it').toBeLessThan(0.35);
         const ahead = tbNear(e.x + e.dx * 6, e.z + e.dz * 6), behind = tbNear(e.x - e.dx * 6, e.z - e.dz * 6);
         if (ahead >= 0 && behind >= 0) expect(ahead, 'the open end is less far through its break').toBeLessThan(behind);
-        expect(e.speed).toBeGreaterThan(5);
+        // Re-pinned 2026-10-15 (womb-story Task 10 step 4, Fable's STOP 2 ruling: 1.5 x the local curl speed, not a fixed 5 m/s;
+        // on this bare field the curl runs ~2.9 m/s here, so the jet is ~4.35 m/s): at least SPIT_THROW_SHARE x the curl's
+        // speed read from the two stations nearest the mouth (arc over the difference of their times since onset).
+        // The mouth's station and its neighbour along the line toward the front (the less broken one), as the emitter reads them.
+        let mi = -1;
+        stations.forEach((q, k) => { if (!q.gap && (mi < 0 || Math.hypot(q.x - e.x, q.z - e.z) < Math.hypot((stations[mi] as typeof q).x - e.x, (stations[mi] as typeof q).z - e.z))) mi = k; });
+        const m0 = stations[mi], nb = [stations[mi - 1], stations[mi + 1]].filter((q): q is Exclude<typeof q, { gap: true }> => !!q && !q.gap && q.tb !== null && Number.isFinite(q.tb));
+        const fr = m0 && !m0.gap && m0.tb !== null && nb.length ? nb.reduce((a, b) => (b.tb! < a.tb! ? b : a)) : null;
+        const curl = fr && !m0.gap && m0.tb! > fr.tb! ? Math.abs(m0.arc - fr.arc) / (m0.tb! - fr.tb!) : 0;
+        expect(e.speed).toBeGreaterThan(0);
+        if (curl > 0) expect(e.speed).toBeGreaterThanOrEqual(0.8 * Math.min(SPIT_MAX_SPEED_MS, SPIT_THROW_SHARE * curl));
       }
     }
     expect(seen).toBeGreaterThan(0);

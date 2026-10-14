@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { surferFeetToHs } from '../conditions/units';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
-import { NORTH_LEDGE, SOUTH_LEDGE, TIP } from '../seabed/wombReef';
+import { NORTH_LEDGE, SOUTH_LEDGE, TIP, ledgeAlongM } from '../seabed/wombReef';
 import { reefBeds } from './testField';
 /** The take-off corner and points from it (womb-retune: the pins moved with the tip; the field is coast-seeded as the game's). */
 const [PX, PZ] = TIP;
@@ -309,7 +309,12 @@ for (const sw of ONE_CURL_SWELLS) describe(`one curl per wave on one clock (one-
         // 8 ft 6 (0.62 s), 12 ft 0. Ordering the curl along the crest (per level, each τ contour from its earliest break)
         // is a named candidate for a later segment; reseeding the lines moved the ridden left's first break 0.2 s.
         const runs: Station[][] = [[]];
-        for (const e of entries) { if (e.gap || Math.hypot(e.x - PX, e.z - PZ) > RIDDEN_M) { if (runs[runs.length - 1].length) runs.push([]); } else runs[runs.length - 1].push(e); }
+        // 270/14 8 ft (2026-10-15, womb-story Task 10 step 4, Fable's ruling on the handover §7): the closeout excluded, as the
+        // story has it (spec 3.1: the left fizzles or closes out on C past ledgeWallM; the right closes out). Measured: the arcs
+        // 151-210 named "C's closeout" at STOP 2b stand on the right, 60 m and more down it (along -76 to -79, z 129-134 at t + 3),
+        // not on C: both are excluded here, the left's C (along > ledgeWallM, or the inside leg) and the right past 60 m.
+        const closeoutC = (e: Station): boolean => sw.fromDeg === 270 && ft === 8 && (ledgeAlongM(e.x, e.z) > DEFAULT_REEF_PARAMS.ledgeWallM || ledgeAlongM(e.x, e.z) < -60 || closeoutWeight(e.z) > 0);
+        for (const e of entries) { if (e.gap || Math.hypot(e.x - PX, e.z - PZ) > RIDDEN_M || closeoutC(e)) { if (runs[runs.length - 1].length) runs.push([]); } else runs[runs.length - 1].push(e); }
         for (const run of runs) {
           let top = -1;
           run.forEach((s, i) => { if (s.tb !== null && Number.isFinite(s.tb) && (top < 0 || s.tb > run[top].tb!)) top = i; });
@@ -317,7 +322,7 @@ for (const sw of ONE_CURL_SWELLS) describe(`one curl per wave on one clock (one-
           for (const dir of [1, -1]) {
             let prev = run[top], broken = true;
             for (let i = top + dir; i >= 0 && i < run.length; i += dir) {
-              const s = run[i], tag = `t + ${dt}, arc ${s.arc.toFixed(1)}`;
+              const s = run[i], tag = `t + ${dt}, arc ${s.arc.toFixed(1)} (along ${ledgeAlongM(s.x, s.z).toFixed(0)}, cross z ${s.z.toFixed(0)})`;
               if (broken && s.tb !== null && Number.isFinite(s.tb) && prev.tb !== null) {
                 brokenChecked++;
                 if (s.tb > prev.tb + 0.05) bad.push(`${tag}: tb ${s.tb.toFixed(2)} after ${prev.tb.toFixed(2)}`);
