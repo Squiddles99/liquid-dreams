@@ -64,8 +64,8 @@ export interface ReefParams {
   /** The width (m) of each transition: the target hollow falls from A's to B's over [ledgeBarrelM, + this]; the drop comes in over
    * ledgeWallM ± half of it. */
   ledgeBlendM: number;
-  /** C's bed depth (m below mean sea level, as ledgeDepthM): the ledge past ledgeWallM and the shelf inshore of it, north to
-   * the inside leg's first INSIDE_DROP_M. 8.5 (9 m of still water at tide 0.5): 7 ft fizzles by 132-136 m at tides -0.8 to
+  /** C's bed depth (m below mean sea level, as ledgeDepthM): the ledge past ledgeWallM and the shelf inshore of it, up the
+   * whole inside leg (Task 3c, STOP 1 ruling 7; was its first INSIDE_DROP_M). 8.5 (9 m of still water at tide 0.5): 7 ft fizzles by 132-136 m at tides -0.8 to
    * +0.8 and 12 ft closes out across C at all three (womb-story Task 1 sweep, 270/14). STOP 0 proposed 7 m still from a
    * breaking ratio of 0.78; the field breaks at about 0.68 (breaking.onsetGain), and 7 ft broke on to 164 m at 7 and 7.5 m. */
   dropDepthM: number;
@@ -160,7 +160,8 @@ export const RIGHT_STRIP_M = 30;
 /** Within this far of the tip the right keeps the tip's depth, faded in to rightLedgeDepthM over the next BAND_FADE_M (m):
  * the take-off corner is the left's (review focus 4: the tip's depth and face are unchanged). */
 export const RIGHT_TIP_KEEP_M = 15;
-/** How far the drop reaches north up the inside leg from its turn (m; STOP 0 ruling: its first 200 m). */
+/** How far the ridden band reaches north up the inside leg from its turn (m; STOP 0 ruling: its first 200 m; the drop ran
+ * this far too until Task 3c, STOP 1 ruling 7: now the whole leg). */
 export const INSIDE_DROP_M = 200;
 /** The ridden band (womb-story): from this far seaward of the left's edge to this far inshore of it (m), each faded over
  * BAND_FADE_M, and from BAND_FADE_M behind the tip on. The record's breaks on the left lie 60 m inshore (4 ft, on the shelf)

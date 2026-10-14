@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Bathymetry, bedHeightAt, buildBathymetry, downsample } from './bathymetry';
-import { DEFAULT_REEF_PARAMS as P, LEFT_BEARING_DEG, SOUTH_LEDGE, TIP, ledgeAlongM, segmentBarrelW, segmentHollow } from './wombReef';
+import { DEFAULT_REEF_PARAMS as P, LEFT_BEARING_DEG, NORTH_LEDGE, SOUTH_LEDGE, TIP, ledgeAlongM, segmentBarrelW, segmentHollow } from './wombReef';
 
 // womb-story Task 1 (STOP 0 ruling, task0-stop.md): the reef tells the story. The target hollow along the ridden band (Task
 // 3b, STOP 1 ruling 2: barrelHollow on A, blended to wallHollow on B and C), the drop region past ledgeWallM (the ledge and the shelf inshore of it, to the
@@ -26,6 +26,10 @@ describe('the Womb story reef', () => {
   });
   it('drops to dropDepthM past ledgeWallM, on the ledge and 30 m inshore of it', () => {
     for (const a of [140, 160]) for (const i of [0, 30]) expect(still(story, ...at(a, i)), `along ${a}, ${i} m inshore`).toBeCloseTo(P.dropDepthM + 0.5, 1);
+  });
+  it('drops up the whole inside leg (Task 3c, STOP 1 ruling 7): on its ledge and 30 m inshore, to the north fade of the reef', () => {
+    const legX = NORTH_LEDGE[1][0];
+    for (const z of [-300, -380]) for (const i of [0, 30]) expect(still(story, legX + i, z), `inside leg z ${z}, ${i} m inshore`).toBeCloseTo(P.dropDepthM + 0.5, 1);
   });
   it('leaves A, B, the tip and the right unchanged to 1 cm', () => {
     const pts: (readonly [number, number])[] = [TIP, ...SOUTH_LEDGE];

@@ -164,7 +164,8 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   // The left's bearing, from its first leg (along is measured on it from the tip: wombReef.ledgeAlongM).
   const bearing = (Math.atan2(north[1][0] - north[0][0], -(north[1][1] - north[0][1])) * 180) / Math.PI;
   const alongX = Math.sin((bearing * Math.PI) / 180), alongZ = -Math.cos((bearing * Math.PI) / 180);
-  // The drop region's north end: the inside leg's first INSIDE_DROP_M (z falls going north).
+  // The ridden band's north end: the inside leg's first INSIDE_DROP_M (z falls going north). The drop runs up the whole leg
+  // (Task 3c, STOP 1 ruling 7: the wave has left the reef), to the reef's own fade at the map's north edge (edgeFade).
   const dropNorthZ = north[1][1] - INSIDE_DROP_M, halfBlend = Math.max(1e-3, p.ledgeBlendM) / 2;
   for (let r = 0; r < sz; r++) for (let c = 0; c < sx; c++) {
     const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M, j = r * sx + c;
@@ -178,7 +179,7 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
     targetField[j] = segmentHollow(along, p);
     aField[j] = segmentBarrelW(along, p);
     wField[j] = bandW * smoothstep(0, TIP_EXEMPT_M, along);
-    dropField[j] = smoothstep(p.ledgeWallM - halfBlend, p.ledgeWallM + halfBlend, along) * northFade;
+    dropField[j] = smoothstep(p.ledgeWallM - halfBlend, p.ledgeWallM + halfBlend, along);
     // The right: nearer the south edge than the north, away from the tip's corner (review focus 4).
     rightField[j] = smoothstep(-10, 10, dN - dS) * smoothstep(RIGHT_TIP_KEEP_M, RIGHT_TIP_KEEP_M + BAND_FADE_M, Math.hypot(x - tip[0], z - tip[1]));
     pockets[r * sx + c] = pocketWeight(x, z, tip);
