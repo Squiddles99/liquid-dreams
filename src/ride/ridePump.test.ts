@@ -60,8 +60,8 @@ describe('pumping (ride-speed spec §4.1)', () => {
 
 describe('the pump assist (RB held)', () => {
   const held = (): RideControls => ({ ...NO_CONTROLS, pump: true });
-  /** The expert's pump on the assist's own weave, for a like-for-like ratio. */
-  const expertOnWeave = (t: number, b: RideBody): RideControls => ({ ...NO_CONTROLS, steer: weaveSteer(t, 1.8), crouch: b.load - b.n0 > 0.15 ? -0.5 : 0.5 });
+  /** The expert's pump on the assist's own weave (the best fixed trigger for it, 0.15 g), for a like-for-like ratio. */
+  const expertOnWeave = (t: number, b: RideBody): RideControls => ({ ...NO_CONTROLS, steer: weaveSteer(t, 1.8), crouch: b.load - b.n0 > 0.15 ? -1 : 1 });
   const plain = (t: number): RideControls => ({ ...NO_CONTROLS, steer: weaveSteer(t, 1.8) });
   it('beginner: about 70 % of the expert’s gain on the same face', () => {
     const a = riding(face(0.35)), e = riding(face(0.35)), n = riding(face(0.35));

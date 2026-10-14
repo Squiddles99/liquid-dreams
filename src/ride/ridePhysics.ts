@@ -1,4 +1,4 @@
-import { COM_REST, LOAD_TAU_S, OPEN_FACE, type RideContext, type RiderState, compressionOf, newRiderState, restLoad, stepCom, stepRiderBody } from './riderBody';
+import { COM_REST, LOAD_MAX, LOAD_TAU_S, OPEN_FACE, type RideContext, type RiderState, compressionOf, newRiderState, restLoad, stepCom, stepRiderBody, weaveSteer } from './riderBody';
 import type { WaterAt, WaterFn } from './water';
 
 export { OPEN_FACE, type RideContext, type StallWeights } from './riderBody';
@@ -217,7 +217,10 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   b.phaseT += dt;
 
   // Steering and the carve.
-  const steer = Math.max(-1, Math.min(1, c.steer));
+  // The pump assist (ride-speed §4.1): beginner and intermediate, RB held, riding: it weaves the rider and times the pump.
+  const assist = b.phase === 'ride' && !!c.pump && tune.pump !== 'manual';
+  b.weaveT = assist ? b.weaveT + dt : 0;
+  const steer = Math.max(-1, Math.min(1, c.steer + (assist ? weaveSteer(b.weaveT, ctx.faceHM) : 0)));
   const speed0 = speedOf(b);
   const carveRate = CARVE_TURN_DEG_S * Math.max(0.5, Math.min(1, speed0 / 5));
   const turn = b.phase === 'paddle' ? PADDLE_TURN_DEG_S : b.phase === 'ride' ? carveRate : b.phase === 'popup' ? POPUP_TURN * carveRate : 0;
@@ -247,7 +250,7 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   if (b.phase === 'ride') {
     const vAlong = b.vx * -w.dirZ + b.vz * w.dirX;
     bodyE = stepRiderBody(b, {
-      crouch: c.crouch, stall: !!c.stall, assist: false, headingDeg: b.headingDeg, dirX: w.dirX, dirZ: w.dirZ,
+      crouch: c.crouch, stall: !!c.stall, assist, headingDeg: b.headingDeg, dirX: w.dirX, dirZ: w.dirZ,
       slope: Math.hypot(w.slopeX, w.slopeZ), alongSpeed: Math.abs(vAlong), ctx,
     }, dt);
   } else b.comH = stepCom(b.comH, COM_REST, dt);
@@ -336,7 +339,7 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   // The load the rider feels (ride-speed spec §4.1): the board's acceleration less gravity, in g, smoothed.
   if (onFeet) {
     const lx = (b.vx - b.pvx) / dt, ly = (b.vy - b.pvy) / dt, lz = (b.vz - b.pvz) / dt;
-    const n = Math.hypot(lx, ly + G, lz) / G;
+    const n = Math.min(LOAD_MAX, Math.hypot(lx, ly + G, lz) / G);
     if (Number.isFinite(n)) b.load += (n - b.load) * (1 - Math.exp(-dt / LOAD_TAU_S));
     b.n0 = restLoad(b.water.slopeX, b.water.slopeZ);
   } else {

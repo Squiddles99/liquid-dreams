@@ -50,6 +50,8 @@ export interface RiderState {
   extending: boolean;
   driveT: number;
   stallPeak: boolean;
+  /** The extra load's recent peak (g), fading: the assist's timing. */
+  loadPeak: number;
 }
 
 export const COM_REST = 0.6;
@@ -79,7 +81,7 @@ export function stepCom(comH: number, target: number, dt: number): number {
 export function newRiderState(standH: number, massKg: number): RiderState {
   return {
     comH: COM_REST, foreAft: 0, hand: 0, tuck: 0, stall: 0, stallW: { tall: 1, hand: 0, lowBarrel: 0, standBarrel: 0 },
-    load: 1, n0: 1, pumpGain: 0, pumpPhase: 0, driveOut: 0, standH, massKg, pumpAcc: 0, extending: false, driveT: 0, stallPeak: false,
+    load: 1, n0: 1, pumpGain: 0, pumpPhase: 0, driveOut: 0, standH, massKg, pumpAcc: 0, extending: false, driveT: 0, stallPeak: false, loadPeak: 0,
   };
 }
 
@@ -104,6 +106,27 @@ export function pumpEnergy(load: number, n0: number, dComH: number, dt: number, 
   return e > 0 ? Math.min(e * eff, PUMP_POWER_WKG * dt) : e;
 }
 
+export const PUMP_ASSIST_EFF = 0.7 * PUMP_EFF;
+export const PUMP_WEAVE = 0.45;
+export const PUMP_PERIOD_K = 0.75;
+/**
+ * The assist extends once the turn's extra load passes this share of its recent peak (and at least PUMP_EXTEND_MIN g):
+ * into the peak, whatever the carve's size, as a rider times it by feel (Task 3/4 rulings: a fixed trigger never fires
+ * on a gentle weave, and extending early wastes the travel on the light part of the turn).
+ */
+export const PUMP_EXTEND_SHARE = 0.4;
+export const PUMP_EXTEND_MIN = 0.08;
+/** The recent peak of the extra load fades over this (s). */
+export const LOAD_PEAK_TAU_S = 1;
+/** The load the rider can feel is clamped to this (g): a reset or a teleport reads as a huge acceleration. */
+export const LOAD_MAX = 5;
+
+/** The assist's weave: a steering swing across the face, its period fitted to the face (≈ 1 s at 1.8 m). */
+export function weaveSteer(t: number, faceHM: number): number {
+  const period = clamp(PUMP_PERIOD_K * Math.sqrt(Math.max(0.5, faceHM)), 0.6, 1.4);
+  return PUMP_WEAVE * Math.sin((2 * Math.PI * t) / period);
+}
+
 export interface BodyInput {
   crouch: number;
   stall: boolean;
@@ -121,11 +144,15 @@ export interface BodyInput {
 
 /** One riding step of the rider's body (ride-speed spec §4). Returns the energy (J/kg) their legs put into the run. */
 export function stepRiderBody(r: RiderState, i: BodyInput, dt: number): number {
-  const target = comTarget(i.crouch);
+  let target = comTarget(i.crouch);
+  // The assist (RB): full travel, extending into the load's peak.
+  const excess = r.load - r.n0;
+  r.loadPeak = Math.max(excess, r.loadPeak * Math.exp(-dt / LOAD_PEAK_TAU_S));
+  if (i.assist) target = excess > Math.max(PUMP_EXTEND_MIN, PUMP_EXTEND_SHARE * r.loadPeak) ? 1 : 0;
   const prev = r.comH;
   r.comH = stepCom(r.comH, target, dt);
   const dH = r.comH - prev;
-  const e = pumpEnergy(r.load, r.n0, dH, dt, PUMP_EFF);
+  const e = pumpEnergy(r.load, r.n0, dH, dt, i.assist ? PUMP_ASSIST_EFF : PUMP_EFF);
   // The cycle's books: a cycle closes as the rider starts to compress after an extension.
   if (dH > 1e-6) r.extending = true;
   else if (dH < -1e-6 && r.extending) {
