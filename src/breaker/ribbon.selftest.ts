@@ -16,7 +16,7 @@ import {
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
 import { PROFILE_SAMPLES } from './BreakingRibbon';
-import { curlWeight, sectionOf, sectionSamples } from './wombSection';
+import { curlWeight, sectionOf, sectionSamples, setFaceOnSheet } from './wombSection';
 import { WOMB_FRAME_VEC4S } from './wombSectionNodes';
 import { hollowFromPsi } from './reefReport';
 import { smoothstep } from '../math/smoothstep';
@@ -123,9 +123,10 @@ const MIRROR_DTS = [-5, -3.5, -2, -1, 0, 0.6, 2];
 /** Every MIRROR_STRIDE-th live station is compared (the CPU reference is ~160 sheet evaluations a station). */
 const MIRROR_STRIDE = 3;
 
-registerSelfTest({
-  name: 'ribbon: GPU section matches wombSection',
-  async run(renderer) {
+async function sectionParity(renderer: THREE.WebGPURenderer, faceOn: number): Promise<{ pass: boolean; detail: string }> {
+    setFaceOnSheet(faceOn);
+    let lifted = 0;
+    try {
     const { time, sets, ribbon } = setsRig();
     const pos = new Worst(), skirt = new Worst(), numbers = new Worst(), marks = new Worst(), rhoX = new Worst(), slide = new Worst();
     let stations = 0, deadLive = 0, nonFinite = 0, thrown = 0, collapsing = 0, standing = 0, surged = 0, worstDetail = '';
@@ -145,6 +146,7 @@ registerSelfTest({
         stations++;
         const where = `ψ ${psi} dt ${dt} #${i}`;
         const { sec, world, marks: cm } = cpuRow(e, t, traced.waves);
+        if (faceOn) { setFaceOnSheet(0); const off = cpuRow(e, t, traced.waves); setFaceOnSheet(faceOn); if (off.sec.points.some((p, j) => Math.abs(p[1] - sec.points[j][1]) > 0.01)) lifted++; }
         const { A, phase, hollow } = sec.numbers, rho = curlWeight(sec.numbers);
         if (phase > 0.6 && phase < 1.2 && rho > 0.9) thrown++;
         if (phase > 1.2 && rho > 0.5) collapsing++;
@@ -177,15 +179,22 @@ registerSelfTest({
     }
     // Bounds: the samples are the mirror plus the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest), 5 mm; the
     // numbers 1e-4 relative; the marks within one sample (a walk's threshold in f32 against f64).
-    const ok = stations > 0 && thrown > 0 && collapsing > 0 && standing > 0 && surged > 0 && deadLive === 0 && nonFinite === 0 && pos.value < 5e-3 && skirt.value < 5e-3 &&
+    const ok = (faceOn ? lifted > 0 : true) && stations > 0 && thrown > 0 && collapsing > 0 && standing > 0 && surged > 0 && deadLive === 0 && nonFinite === 0 && pos.value < 5e-3 && skirt.value < 5e-3 &&
       numbers.value < 1e-4 && marks.value <= 1 && rhoX.value < 1e-4;
     return {
       pass: ok,
       detail: `${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${standing} standing up, ${thrown} thrown, ${collapsing} collapsing, ${surged} surged); ` +
         `worst distance from the CPU's curve ${pos} (< 5e-3), sample-to-sample ${slide} (diagnostic), skirts ${skirt} (< 5e-3); numbers (A, phase, hollow, ρ; relative) ${numbers} (< 1e-4); marks ${marks} samples (≤ 1); ` +
-        `extras' ρ ${rhoX} (< 1e-4); live rows flagged dead ${deadLive}, non-finite values ${nonFinite} (0). Worst sample: ${worstDetail}`,
+        `extras' ρ ${rhoX} (< 1e-4); live rows flagged dead ${deadLive}, non-finite values ${nonFinite} (0). Worst sample: ${worstDetail}` +
+        (faceOn ? `; stations the face-on-sheet lifted (> 1 cm) ${lifted} (> 0)` : ''),
     };
-  },
+    } finally { setFaceOnSheet(0); }
+}
+
+registerSelfTest({ name: 'ribbon: GPU section matches wombSection', run: (renderer) => sectionParity(renderer, 0) });
+registerSelfTest({
+  name: "ribbon: GPU section matches wombSection with the drawn face on the sheet (faceOnSheet, Andrew 2026-10-14)",
+  run: async (renderer) => { const r = await sectionParity(renderer, 1); return r; },
 });
 
 registerSelfTest({

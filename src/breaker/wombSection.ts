@@ -566,6 +566,21 @@ export function sectionSamples(numbers: SectionNumbers, sheet: SheetAlong): { kn
   return { knots, curve, marks };
 }
 
+/**
+ * The drawn face of a section waiting its turn never stands below the sheet in front of its crest (Andrew 2026-10-14, moment
+ * 1791986608: "there is seemingly still 2 waves going on! there should not be this crest between the lip and the drain"):
+ * the stood face is drawn near vertical (2.2 m to -1.0 m in 1 m) and the sheet under it can lean its front over ~4 m, so
+ * the sheet stood up to 3.3 m above the drawn face in front of the crest and showed through as a second crest (and, at the
+ * curl's end, as the cube-like lump). On (1): each sample in front of the crest is lifted to the sheet at its home where it
+ * is under it, by 1 at phase <= STOOD_PHASE fading to 0 by FACE_ON_SHEET_PHASE (the broken lip pitching keeps its own).
+ * The dial faceOnSheet (BreakParams.faceOnSheet); the ribbon mirrors it (BreakingRibbon's vertex pass).
+ */
+export const FACE_ON_SHEET_PHASE = STOOD_PHASE + 0.15;
+const FACE_ON_SHEET = { on: 0 };
+export const setFaceOnSheet = (on: number): void => { FACE_ON_SHEET.on = on; };
+export const faceOnSheetOn = (): number => FACE_ON_SHEET.on;
+export const faceOnSheetWeight = (phase: number): number => FACE_ON_SHEET.on * (1 - smoothstep(STOOD_PHASE, FACE_ON_SHEET_PHASE, phase));
+
 /** A sample's point (m): its sheet weight × the sheet at its home, plus A × its a (SectionSample). */
 export const sectionPoint = (q: SectionSample, A: number, sheet: SheetAlong): P2 => {
   const S = sheet(A * q[2]), w = q[5];
@@ -578,6 +593,16 @@ export function sectionOf(numbers: SectionNumbers, sheet: SheetAlong): Section {
   const { A } = numbers, { knots, curve } = sectionSamples(numbers, sheet);
   const points: P2[] = [], homes: number[] = [];
   for (let j = curve.length - 1; j >= 0; j--) { points.push(sectionPoint(curve[j], A, sheet)); homes.push(A * curve[j][2]); }
+  // faceOnSheet: in front of a waiting section's crest the drawn surface stands at least at the sheet at its home.
+  const k = faceOnSheetWeight(numbers.phase);
+  if (k > 0) {
+    const crestU = A * knots[SECTION_CREST][0];
+    for (let j = 0; j < points.length; j++) {
+      if (!(points[j][0] > crestU)) continue;
+      const under = sheet(homes[j])[1] - points[j][1];
+      if (under > 0) points[j] = [points[j][0], points[j][1] + k * under];
+    }
+  }
   const place = (q: SectionKnot): P2 => [A * q[0], A * q[1]];
   return { numbers, points, homes, crest: place(knots[SECTION_CREST]), tip: place(knots[SECTION_TIP]) };
 }
