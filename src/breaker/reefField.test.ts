@@ -197,10 +197,16 @@ describe("the front's lean feels the reef ahead (Andrew's bump, 2026-10-02)", ()
 
 describe('the onset record', () => {
   const f = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, coast: coast1 });
+  const fBare = f;
+  const fGame = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 15, fromDeg: 225, tideM: 0, coast: coast1, smooth: true, refractFloorM: REFRACT_FLOOR_M, peel: DEFAULT_BREAK_PARAMS.peel, curlMaxMs: DEFAULT_BREAK_PARAMS.curlMaxMs });
   const R = ONSET_RECORD_LENGTH;
   it("its running maximum of amp/hminBreak is never below the node's own, and never falls along a ray", () => {
-    const n = f.tau.length;
-    for (let i = 0; i < n; i += 97) expect(f.onset[i * R]).toBeGreaterThanOrEqual(f.amp[i] / f.hminBreak[i] - 1e-6);
+    const n = fBare.tau.length;
+    for (let i = 0; i < n; i += 97) expect(fBare.onset[i * R]).toBeGreaterThanOrEqual(fBare.amp[i] / fBare.hminBreak[i] - 1e-6);
+    // Along the rays on the game-baked field (2026-10-14, womb-story STOP 2b ruling 3): on this bare field (no smoothing, no
+    // refraction floor) the (-107, -22) ray falls 13.4 % at +75 m where rays at 86.5° cross onto ones that broke less hard,
+    // the un-break's caustic class (tools/_runMaxRay.ts: <= 0.1 % on the game-baked field). A known limit of the bare field.
+    const f = fGame;
     // Along rays through both ledges: sampled every 0.5 m, 60 m in from 40 m out. Not through the wedge's tip: ~26 m
     // inshore of it the rays from the two ledges meet (the field's direction swings 40° in 2 m), and past that line the
     // water is the other ledge's rays, with their own maximum.

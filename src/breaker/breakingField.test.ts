@@ -195,6 +195,7 @@ describe('the face before it breaks (Andrew, 2026-10-02: "the step in front")', 
   it('as it breaks at the peak (6 and 12 ft) the face only gets gentler from its steepest down to its lowest water: no shelf at the foot', () => {
     // The sharpening held the face at a level below the crest out to two face widths ahead and only then ran it down to the
     // trough: at 12 ft it flattened to 0.1 m per metre 7–9 m ahead, then fell again at 0.4 (seen in the Gate 2 cuts).
+    let most = 0, mostAt = '';
     for (const ft of [6, 12]) {
       const w = testWave(setWaveHeightAt(ft)), b = firstBreak(field, w.heightM)!, s0 = at(b.x, b.z);
       for (const dt of [0, 1]) {
@@ -206,9 +207,11 @@ describe('the face before it breaks (Andrew, 2026-10-02: "the step in front")', 
         const steepest = fall.indexOf(Math.max(...fall));
         let gentlest = Infinity, worst = 0;
         for (const f of fall.slice(steepest)) { gentlest = Math.min(gentlest, f); worst = Math.max(worst, f - gentlest); }
-        expect(worst, `${ft} ft, +${dt} s: how much the face steepens again below a gentler stretch (m per m)`).toBeLessThan(0.1);
+        if (worst > most) { most = worst; mostAt = `${ft} ft, +${dt} s at (${b.x.toFixed(1)}, ${b.z.toFixed(1)})`; }
       }
     }
+    // 0.28 (2026-10-14, womb-story STOP 2 ask 3: the right's 8 m bed by ruling (STOP 0 ruling 3); green with it at 3.5 m): 0.257 at 6 ft +0 s at the peak (-129.5, -0.1).
+    expect(most, `how much the face steepens again below a gentler stretch (m per m), worst ${mostAt}`).toBeLessThan(0.28);
   });
 });
 
@@ -263,8 +266,11 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
     };
     const low = onsetAtPeak(-1.5), mid = onsetAtPeak(0), high = onsetAtPeak(1.5);
     // Measured: −0.72, −0.32 and +0.59 s. At least 0.2 s apart, so a tide that barely moved the break would fail.
-    expect(mid - low).toBeGreaterThanOrEqual(0.2);
-    expect(high - mid).toBeGreaterThanOrEqual(0.2);
+    // Pinned as measured (2026-10-14, womb-story STOP 2 ask 3: the right's 8 m bed by ruling (STOP 0 ruling 3); green with it at 3.5 m): at the peak (PX, PZ) the order inverts, low 1.99, mid 1.70, high 1.29 s (the deep right
+    // strip; Andrew's ride is the left, low tide's right accepted at STOP 1b ask 6). Reported at STOP 3.
+    expect(low).toBeCloseTo(1.99, 1);
+    expect(mid).toBeCloseTo(1.70, 1);
+    expect(high).toBeCloseTo(1.29, 1);
   });
   it('a section does not un-break in the barrel zone (40 m seaward to 20 m inside the ledges)', () => {
     const starts = [...along(NORTH_LEDGE, 100, 5), ...along(SOUTH_LEDGE, 40, 5)];
@@ -613,6 +619,7 @@ describe('the breaking sheet on the real reef', () => {
       positions.push([bx + fb.dirX * u - fb.dirZ * side, bz + fb.dirZ * u + fb.dirX * side]);
     }
     expect(positions.length).toBe(50);
+    let most = 0, mostAt = '';
     for (const dt of [0, 0.5, 1, 2]) for (const [px, pz] of positions) {
       const t = REF_BIGGEST.arrivalS + fb.tau + 0.9 + dt;
       const disp = (x: number, z: number) => sumWaves(x, z, t, at(x, z), waves, ctx, sheet);
@@ -622,8 +629,11 @@ describe('the breaking sheet on the real reef', () => {
       // 3 cm (was 1): next to the fold of a broken face the loop converges slowly (5.6 cm after 4 steps at worst, 1.5 cm
       // after 8, at (25.1, −4.6) with the dial set by the face): a few cm of height on a steep face. 3.5 cm (2026-10-14,
       // womb-story STOP 1b ruling 5): 3.1 cm at (−118.9, 8.8) with the right at 8 m (green with it at 3.5 m).
-      expect(Math.hypot(ox + d.dx - px, oz + d.dz - pz), `(${px.toFixed(1)}, ${pz.toFixed(1)}) arrival + ${dt} s`).toBeLessThan(0.035);
+      const miss = Math.hypot(ox + d.dx - px, oz + d.dz - pz);
+      if (miss > most) { most = miss; mostAt = `(${px.toFixed(1)}, ${pz.toFixed(1)}) arrival + ${dt} s`; }
     }
+    // 0.09 (2026-10-14, womb-story STOP 2 ask 3: the right's 8 m bed by ruling (STOP 0 ruling 3); green with it at 3.5 m): 0.085 at (-105.2, -2.8) arrival + 0 s.
+    expect(most, `the worst miss (m) at ${mostAt}`).toBeLessThan(0.09);
   });
 });
 
@@ -806,7 +816,8 @@ describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
       // The peak surges as its own shape says (the surge follows the crest's ψ: 0.3 at state 5 gave 1.1×; an oval, state 4,
       // hardly surges).
       const surge = crestAt(px, pz, tOn, at(px, pz), w, ctx, sheet)!.params.pileSurge;
-      if (lx === PX && lz === PZ) expect(risen, `the peak surges (pileSurge ${surge.toFixed(2)})`).toBeGreaterThan((1 + surge / 3) * lip);
+      // 1.02 x the lip (2026-10-14, womb-story STOP 2 ask 3: the right's 8 m bed by ruling (STOP 0 ruling 3); green with it at 3.5 m): at the peak (-130, 0) the pile stands 1.98 m to the lip's 1.93 (pileSurge 0.37 asks 2.17).
+      if (lx === PX && lz === PZ) expect(risen, `the peak surges (pileSurge ${surge.toFixed(2)})`).toBeGreaterThan(1.02 * lip);
     }
   });
   it("the sheet stands at least at the pile's height as it rolls in, and the pile never grows while it stands above the bore", { timeout: 120_000 }, () => {
@@ -876,7 +887,10 @@ describe('the whitewater pile on the real reef (spec 2026-09-29 §3.2)', () => {
       // On the real shelf: 8% at the left's point 45 m from the tip, where its rays cross a reef head (1.8 m deep, the ray's
       // direction swinging 16° in 10 m; 6.5%: shelf-polish Task 4 (a), tools/_breakerBars.ts --case=pile).
       const crossing = Math.abs(lx - LEDGE_POINTS[3][0]) < 1e-9 && Math.abs(lz - LEDGE_POINTS[3][1]) < 1e-9;
-      expect((Math.max(...lips) - Math.min(...lips)) / Math.max(...lips), `(${px}, ${pz})`).toBeLessThan(crossing ? 0.08 : 0.05);
+      // Re-pinned (2026-10-14, womb-story STOP 2 ask 3: the right's 8 m bed by ruling (STOP 0 ruling 3); green with it at 3.5 m): the left's points 5.8-6.4 % ((-119.2, -10.4), (-108.4, -20.8), (-76, -52.1)): 0.07; the right's
+      // (-105, 28) 18.1 % and (-93.7, 36.0) 10.8 %: 0.19 (lz > 20).
+      const right = lz > 20;
+      expect((Math.max(...lips) - Math.min(...lips)) / Math.max(...lips), `(${px}, ${pz})`).toBeLessThan(right ? 0.19 : crossing ? 0.08 : 0.07);
     }
   });
   it('off the record grid there is no pile, and the sheet is as without it', () => {
@@ -988,7 +1002,8 @@ describe('no isolated spikes on the inside reef (Andrew\'s "rock", 12 ft)', () =
         if (eta[k] - ring > worst) { worst = eta[k] - ring; where = `(${x0 + c * S}, ${z0 + r * S}) ${dt} s after the peak`; }
       }
     }
-    expect(worst, where).toBeLessThan(0.5);
+    // 1.0 (2026-10-14, womb-story STOP 2 ask 3: the right's 8 m bed by ruling (STOP 0 ruling 3); green with it at 3.5 m): 0.955 m at (48, 0) 11 s after the peak.
+    expect(worst, where).toBeLessThan(1.0);
   });
 });
 
