@@ -3,6 +3,7 @@ import { type Bindings, currentBindings, keyLabel } from './bindings';
 import { PadEdges, type RideKeys, lookFrom, readPad, rideControls } from './rideInput';
 import { OPEN_FACE, type RideBody, type RideContext, type RideEvent, type RideTuning, POPUP_S, TUNING, speedOf, startBody, stepRide } from './ridePhysics';
 import { type LookInput, RideCamera, rideBoardFrame, rideSurferParams } from './ridePose';
+import { type RiderDrive, riderDrive } from './riderBody';
 import type { WaterFn } from './water';
 
 /** Longest physics step (s): a slow frame is split into steps no longer than this. */
@@ -103,6 +104,11 @@ export class RideSession {
 
   surfer(bodyboard = false): ReturnType<typeof rideSurferParams> | null {
     return this.body ? rideSurferParams(this.body, POPUP_S, bodyboard) : null;
+  }
+
+  /** The rider's body dials this frame (ride-speed spec §5). */
+  drive(): RiderDrive | null {
+    return this.body ? riderDrive(this.body) : null;
   }
 
   boardFrame(): ReturnType<typeof rideBoardFrame> | null {

@@ -155,7 +155,7 @@ export class SurferStand {
       lookAt.copy(head).add(v);
     }
     const state: RideState = {
-      board: frame, speedMs: 0, railAngleRad: p.lean * 35 * DEG, compression: dials.compression,
+      board: frame, speedMs: p.speedMs, railAngleRad: p.lean * 35 * DEG, compression: dials.compression,
       zone: POSE_ZONE[p.pose], phase: POSE_PHASE[p.pose], phaseT,
       lookAt,
     };

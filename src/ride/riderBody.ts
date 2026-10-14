@@ -212,6 +212,28 @@ export function easeWeights(w: StallWeights, kind: StallKind, dt: number): Stall
 const stallComH = (w: StallWeights): number =>
   w.tall * STALL_COM.tall + w.hand * STALL_COM.hand + w.lowBarrel * STALL_COM.lowBarrel + w.standBarrel * STALL_COM.standBarrel;
 
+/** What leaves the physics for the body (spec §5): the stand-ins read it now, part C's pose blend later. */
+export interface RiderDrive {
+  comH: number;
+  foreAft: number;
+  carve: number;
+  hand: number;
+  load: number;
+  pumpPhase: number;
+  pumpGain: number;
+  tuck: number;
+  stall: number;
+  stallW: StallWeights;
+  driveOut: number;
+}
+
+export function riderDrive(b: RiderState & { carve: number }): RiderDrive {
+  return {
+    comH: b.comH, foreAft: b.foreAft, carve: b.carve, hand: b.hand, load: b.load, pumpPhase: b.pumpPhase, pumpGain: b.pumpGain,
+    tuck: b.tuck, stall: b.stall, stallW: { ...b.stallW }, driveOut: b.driveOut,
+  };
+}
+
 export interface BodyInput {
   crouch: number;
   stall: boolean;
