@@ -1,4 +1,4 @@
-import { COM_REST, LOAD_MAX, LOAD_TAU_S, OPEN_FACE, type RideContext, type RiderState, compressionOf, newRiderState, restLoad, stepCom, stepRiderBody, weaveSteer } from './riderBody';
+import { COM_REST, LOAD_MAX, LOAD_TAU_S, OPEN_FACE, type RideContext, type RiderState, compressionOf, newRiderState, restLoad, rideDrag, stepCom, stepRiderBody, weaveSteer } from './riderBody';
 import type { WaterAt, WaterFn } from './water';
 
 export { OPEN_FACE, type RideContext, type StallWeights } from './riderBody';
@@ -223,7 +223,7 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   const steer = Math.max(-1, Math.min(1, c.steer + (assist ? weaveSteer(b.weaveT, ctx.faceHM) : 0)));
   const speed0 = speedOf(b);
   const carveRate = CARVE_TURN_DEG_S * Math.max(0.5, Math.min(1, speed0 / 5));
-  const turn = b.phase === 'paddle' ? PADDLE_TURN_DEG_S : b.phase === 'ride' ? carveRate : b.phase === 'popup' ? POPUP_TURN * carveRate : 0;
+  const turn = b.phase === 'paddle' ? PADDLE_TURN_DEG_S : b.phase === 'ride' ? carveRate * (1 - 0.2 * b.tuck) : b.phase === 'popup' ? POPUP_TURN * carveRate : 0;
   b.headingDeg = (((b.headingDeg + steer * turn * dt) % 360) + 360) % 360;
   const ease = 1 - Math.exp(-dt / 0.15);
   b.carve += ((b.phase === 'ride' || b.phase === 'popup' ? steer : 0) - b.carve) * ease;
@@ -257,7 +257,8 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   b.compression = compressionOf(b.comH);
 
   // Drag relative to the water.
-  const d = b.phase === 'bail' ? BAIL_DRAG : b.phase === 'paddle' ? PRONE_DRAG : PLANE_DRAG;
+  const d0 = b.phase === 'bail' ? BAIL_DRAG : b.phase === 'paddle' ? PRONE_DRAG : PLANE_DRAG;
+  const d = b.phase === 'ride' ? rideDrag(d0, b) : d0;
   const standing = b.phase === 'ride' || b.phase === 'popup';
   // Against the water itself, not the wave: the wave runs on through the water, and that water running up the face past
   // the rail is what drives the board along the line. (Dragging against water carried with the wave, as first tuned,

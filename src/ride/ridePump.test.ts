@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type RideBody, type RideControls, NO_CONTROLS, TUNING, speedOf, startBody, stepRide } from './ridePhysics';
-import { PUMP_POWER_WKG, PUMP_WEAVE, weaveSteer } from './riderBody';
+import { PUMP_EXTEND_MIN, PUMP_EXTEND_SHARE, PUMP_POWER_WKG, PUMP_WEAVE, weaveSteer } from './riderBody';
 import { type WaterFn, flatWater } from './water';
 
 const DT = 1 / 60;
@@ -60,8 +60,10 @@ describe('pumping (ride-speed spec §4.1)', () => {
 
 describe('the pump assist (RB held)', () => {
   const held = (): RideControls => ({ ...NO_CONTROLS, pump: true });
-  /** The expert's pump on the assist's own weave (the best fixed trigger for it, 0.15 g), for a like-for-like ratio. */
-  const expertOnWeave = (t: number, b: RideBody): RideControls => ({ ...NO_CONTROLS, steer: weaveSteer(t, 1.8), crouch: b.load - b.n0 > 0.15 ? -1 : 1 });
+  /** A perfect manual pump: the assist's own weave and timing, by hand (so the ratio is the assist's efficiency). */
+  const expertOnWeave = (t: number, b: RideBody): RideControls => ({
+    ...NO_CONTROLS, steer: weaveSteer(t, 1.8), crouch: b.load - b.n0 > Math.max(PUMP_EXTEND_MIN, PUMP_EXTEND_SHARE * b.loadPeak) ? -1 : 1,
+  });
   const plain = (t: number): RideControls => ({ ...NO_CONTROLS, steer: weaveSteer(t, 1.8) });
   it('beginner: about 70 % of the expert’s gain on the same face', () => {
     const a = riding(face(0.35)), e = riding(face(0.35)), n = riding(face(0.35));

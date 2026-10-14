@@ -1,3 +1,5 @@
+import { smoothstep } from '../math/smoothstep';
+
 /**
  * The rider's body on the board (ride-speed spec §2): the centre of mass height, the weight fore and aft, the hand in the
  * water, the tuck and the stall: what the pump, the tuck, the stall and (later) the balance system all write, and the
@@ -52,6 +54,8 @@ export interface RiderState {
   stallPeak: boolean;
   /** The extra load's recent peak (g), fading: the assist's timing. */
   loadPeak: number;
+  /** Seconds held low (comH under TUCK_LOW): a tuck is held, a pump's dip is not. */
+  lowT: number;
 }
 
 export const COM_REST = 0.6;
@@ -81,7 +85,7 @@ export function stepCom(comH: number, target: number, dt: number): number {
 export function newRiderState(standH: number, massKg: number): RiderState {
   return {
     comH: COM_REST, foreAft: 0, hand: 0, tuck: 0, stall: 0, stallW: { tall: 1, hand: 0, lowBarrel: 0, standBarrel: 0 },
-    load: 1, n0: 1, pumpGain: 0, pumpPhase: 0, driveOut: 0, standH, massKg, pumpAcc: 0, extending: false, driveT: 0, stallPeak: false, loadPeak: 0,
+    load: 1, n0: 1, pumpGain: 0, pumpPhase: 0, driveOut: 0, standH, massKg, pumpAcc: 0, extending: false, driveT: 0, stallPeak: false, loadPeak: 0, lowT: 0,
   };
 }
 
@@ -106,7 +110,12 @@ export function pumpEnergy(load: number, n0: number, dComH: number, dt: number, 
   return e > 0 ? Math.min(e * eff, PUMP_POWER_WKG * dt) : e;
 }
 
-export const PUMP_ASSIST_EFF = 0.7 * PUMP_EFF;
+/**
+ * The assist's share of the legs' work, set so it nets about 70 % of a perfect manual pump (spec §4.1) on the same weave
+ * and timing: measured 0.71 (Task 5). Low, because most of a pump's speed comes through the rail's harder grip while
+ * compressed (the rail keeps that slide as run), which the assist gets in full: only the legs' share is scaled.
+ */
+export const PUMP_ASSIST_EFF = 0.3 * PUMP_EFF;
 export const PUMP_WEAVE = 0.45;
 export const PUMP_PERIOD_K = 0.75;
 /**
@@ -125,6 +134,29 @@ export const LOAD_MAX = 5;
 export function weaveSteer(t: number, faceHM: number): number {
   const period = clamp(PUMP_PERIOD_K * Math.sqrt(Math.max(0.5, faceHM)), 0.6, 1.4);
   return PUMP_WEAVE * Math.sin((2 * Math.PI * t) / period);
+}
+
+const DEG = Math.PI / 180;
+/** Held under this comH, the rider is tucking; the tuck builds over TUCK_HOLD_S of holding it (spec §4.2: LT held deep). */
+export const TUCK_LOW = 0.25;
+export const TUCK_HOLD_S: readonly [number, number] = [0.2, 0.4];
+/** The tuck counts heading along the line within these angles (full inside the second, none past the first). */
+export const TUCK_LINE_DEG: readonly [number, number] = [50, 25];
+
+/** How much the heading runs along the line (across the wave's travel), 0 … 1. */
+export function lineFactor(headingDeg: number, dirX: number, dirZ: number): number {
+  const fx = Math.sin(headingDeg * DEG), fz = -Math.cos(headingDeg * DEG);
+  return smoothstep(Math.cos(TUCK_LINE_DEG[0] * DEG), Math.cos(TUCK_LINE_DEG[1] * DEG), Math.abs(fx * -dirZ + fz * dirX));
+}
+
+/** The planing drag with the rider's body in it (spec §4.2, §4.3). */
+export function rideDrag(d: { lin: number; quad: number; side: number }, r: RiderState): { lin: number; quad: number; side: number } {
+  const tallW = r.stallW.tall + r.stallW.standBarrel;
+  return {
+    lin: d.lin * (1 - 0.15 * r.tuck) * (1 + 4 * r.stall),
+    quad: d.quad * (1 - 0.3 * r.tuck) * (1 + 0.5 * r.stall * tallW),
+    side: d.side * (1 + 0.2 * r.tuck),
+  };
 }
 
 export interface BodyInput {
@@ -163,5 +195,11 @@ export function stepRiderBody(r: RiderState, i: BodyInput, dt: number): number {
   r.pumpAcc += e;
   if (dH < -1e-6) r.pumpPhase = 0.5 * clamp01((0.85 - r.comH) / 0.5);
   else if (dH > 1e-6) r.pumpPhase = 0.5 + 0.5 * clamp01((r.comH - 0.35) / 0.5);
+  // Tuck and drive (spec §4.2): held low, running the line.
+  r.lowT = r.comH < TUCK_LOW ? r.lowT + dt : 0;
+  const tuckT = smoothstep(TUCK_LOW, 0.05, r.comH) * smoothstep(TUCK_HOLD_S[0], TUCK_HOLD_S[1], r.lowT) * lineFactor(i.headingDeg, i.dirX, i.dirZ) * (1 - r.stall);
+  r.tuck += (tuckT - r.tuck) * (1 - Math.exp(-dt / 0.2));
+  const faT = clamp(0.4 * r.tuck, -1, 1);
+  r.foreAft += (faT - r.foreAft) * (1 - Math.exp(-dt / 0.1));
   return e;
 }
