@@ -146,21 +146,30 @@ describe('crestTrace', () => {
     expect(Math.max(...times) - Math.min(...times)).toBeLessThan(1.5);
   });
 
+  // Re-pinned 2026-10-14 (womb-story Task 3c, Fable's STOP 1 ruling 6, the un-break chase: tools/_unbreakChase.ts,
+  // _rayMonotone.ts): read along the peak's real ray on the game's field (coast-seeded, smoothed, the refraction floor, the
+  // peel). The straight line from the peak crosses rays: its 80-200 m nodes are fed by rays that came over the right's
+  // corner (rightLedgeDepthM 8) or across the ledge on the drop, unbroken all the way (no ray read broken then unbroken). On
+  // this file's bare field (no refraction floor) the peak's own ray runs into a caustic near (8, -27) where neighbouring ray
+  // families cross and the bilinear back-read mixes in unbroken ones (main has one too, near (12, 121)); the game's fields
+  // carry no such un-break (_rayMonotone: 270/14 x 3 tides, 225/15 x 2, 4/7/12 ft).
   it('timeSinceOnset: null before breaking, grows with the crest, however long ago it broke', () => {
-    const f0 = sampleField(field, PX, PZ);
-    // The crest at the peak at t = τ(0,0) = 0, then points shoreward along the ray.
-    expect(timeSinceOnset(field, testWave(0.5), PX, PZ, ctx, P)).toBeNull();
-    const along = (d: number): [number, number] => [PX + f0.dirX * d, PZ + f0.dirZ * d];
-    const seq = [0, 5, 10, 20].map((d) => timeSinceOnset(field, peeler, ...along(d), ctx, P));
+    const gf = coastReefField({ periodS: 15, fromDeg: 225, tideM: 0, peel: true }), gc: WaveContext = { omega: gf.omega, travelX: gf.far.dirX, travelZ: gf.far.dirZ };
+    expect(timeSinceOnset(gf, testWave(0.5), PX, PZ, gc, P)).toBeNull();
+    // The crest at the peak at t = τ(0,0) = 0, then points shoreward along its real ray (the field's direction, 1 m steps).
+    const ray: [number, number][] = [[PX, PZ]];
+    for (let d = 1; d <= 160; d++) { const [x, z] = ray[d - 1], s = sampleField(gf, x, z); ray.push([x + s.dirX, z + s.dirZ]); }
+    const seq = [0, 5, 10, 20].map((d) => timeSinceOnset(gf, peeler, ...ray[d], gc, P));
     console.log(`tb along the ray from the peak: ${seq.map((v) => (v === null ? 'null' : v.toFixed(2))).join(', ')}`);
     for (let i = 1; i < seq.length; i++) if (seq[i - 1] !== null && seq[i] !== null && Number.isFinite(seq[i] as number)) expect(seq[i] as number).toBeGreaterThanOrEqual(seq[i - 1] as number);
     // 80 m and 160 m in: long past the hand-back (the ribbon has dropped the section), and still counting (the record is
-    // carried along the rays, with no reach limit: the whitewater pile decays on it).
-    const far = timeSinceOnset(field, peeler, ...along(80), ctx, P) as number, further = timeSinceOnset(field, peeler, ...along(160), ctx, P) as number;
-    expect(far).toBeGreaterThan(8);
+    // carried along the rays, with no reach limit: the whitewater pile decays on it). 80 m along the real ray is ~6 s on the
+    // crest's clock (6.08; the straight line's 80 m node read over 8 s on another ray).
+    const far = timeSinceOnset(gf, peeler, ...ray[80], gc, P) as number, further = timeSinceOnset(gf, peeler, ...ray[160], gc, P) as number;
+    expect(far).toBeGreaterThan(5);
     expect(Number.isFinite(further)).toBe(true);
     expect(further).toBeGreaterThan(far);
-  });
+  }, 300_000);
 });
 
 describe('station ψ (barrel from the maths)', () => {

@@ -94,7 +94,10 @@ export const MAX_STORAGE_BUFFERS_PER_STAGE = 8;
 
 /** A vertex whose interpolated dead flag exceeds this is discarded: gap rows and the triangles touching them (Q10). */
 export const DEAD_EPSILON = 1e-4;
-/** The footprint marks only stations at least this far into the ribbon (ρ): where ρ → 0 the ribbon is the sheet. */
+/** The footprint marks only stations at least this far into the ribbon (the station's ρ, its section's: womb-story Task 3c,
+ * was the curl's weight, which is ~0 on a standing wall before its curl comes in, phase < CURL_PHASE: there the ribbon draws
+ * the wall as the sheet, finely, while the sheet's own polar cells, ~5 m at 300 m, drew a tall steep face as teeth through
+ * it). Where ρ → 0 the ribbon is the sheet. */
 export const FOOTPRINT_MIN_RHO = 0.01;
 /**
  * The footprint mask's grid (spec §7.2): 0.5 m texels over the reef grid (the reef field's extent), texel centres on
@@ -680,10 +683,10 @@ export class BreakingRibbon {
     const u = pos.x.sub(origin.x).div(size.x * cellM);
     const v = pos.z.sub(origin.y).div(size.y * cellM);
     material.vertexNode = vec4(u.mul(2.0).sub(1.0), float(1.0).sub(v.mul(2.0)), 0.5, 1.0);
+    // inner carries the station's ρ (FOOTPRINT_MIN_RHO, the vertex pass), not the curl's weight (ribbonExtra.w).
     const inner: N = varying(attribute('ribbonNormal', 'vec4').w);
-    const rho: N = varying(attribute('ribbonExtra', 'vec4').w);
     const dead: N = varying(pos.w);
-    material.maskNode = dead.lessThanEqual(DEAD_EPSILON).and(rho.greaterThanEqual(FOOTPRINT_MIN_RHO)).and(inner.greaterThan(0.5));
+    material.maskNode = dead.lessThanEqual(DEAD_EPSILON).and(inner.greaterThan(0.5));
     material.colorNode = vec4(1.0);
     return material;
   }
@@ -795,9 +798,10 @@ export class BreakingRibbon {
       positions.element(idx).assign(vec4(xz.x, pos.y.sub(skirt), xz.y, gap));
       // Inner: more than INNER_MARGIN_M inside the profile's ends, and the station not within FOOTPRINT_END_MARGIN_M of
       // its run's end.
-      const runEnd = stations.element(i.mul(STATION_VEC4S).add(2)).y;
+      const runEnd = stations.element(i.mul(STATION_VEC4S).add(2)).y, stationRho = stations.element(i.mul(STATION_VEC4S).add(3)).w;
       const inside = A.mul(EDGE_OUTER_UNITS).sub(abs(home)).greaterThan(INNER_MARGIN_M);
-      const inner = select(inside.and(runEnd.lessThan(0.5)), float(1.0), float(0.0));
+      // …and the station in the ribbon (its ρ: FOOTPRINT_MIN_RHO), so the footprint marks wherever the ribbon draws the wave.
+      const inner = select(inside.and(runEnd.lessThan(0.5)).and(stationRho.greaterThanEqual(FOOTPRINT_MIN_RHO)), float(1.0), float(0.0));
       // The lip: the samples either side of the tip out to the crest's distance from it, while the lip is thrown; its
       // thickness the distance to the sample mirrored about the tip (the lip's other face).
       const reach = max(crest.sub(tip), 1.0);
