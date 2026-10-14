@@ -43,9 +43,9 @@ describe('the pump is a variable-length pendulum (Kogelbauer 2023)', () => {
   it('never more than the legs’ power', () => {
     expect(pumpEnergy(10, 1, 1, 1 / 60, 1)).toBeCloseTo(PUMP_POWER_WKG / 60, 9);
   });
-  it('rest load is gravity’s share normal to the face', () => {
-    expect(restLoad(0, 0)).toBe(1);
-    expect(restLoad(0.75, 0)).toBeCloseTo(0.8, 6);
+  it('rest load is gravity less its part along the path: 1 level or traversing, cos θ down the fall line', () => {
+    expect(restLoad(0)).toBe(1);
+    expect(restLoad(-0.6)).toBeCloseTo(0.8, 6);
   });
 });
 

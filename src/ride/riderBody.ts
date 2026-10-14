@@ -94,9 +94,13 @@ export const PUMP_POWER_WKG = 15;
 export const PUMP_EFF = 0.8;
 export const LOAD_TAU_S = 0.05;
 
-/** Gravity's share of the rider's weight normal to a face of this slope (g): the load of a straight run. */
-export function restLoad(slopeX: number, slopeZ: number): number {
-  return 1 / Math.sqrt(1 + slopeX * slopeX + slopeZ * slopeZ);
+/**
+ * The load of a straight run (g): gravity less its part along the path, `ty` the path's vertical slope (the unit velocity's
+ * y). 1 on flat water and traversing a face (the rail holds the rider against the slope: the legs carry it), cos θ
+ * running straight down the fall line (final review: the face's normal alone read 0.22 g of phantom load traversing).
+ */
+export function restLoad(ty: number): number {
+  return Math.sqrt(Math.max(0, 1 - ty * ty));
 }
 
 /**

@@ -71,7 +71,7 @@ export class RideSession {
     return this.body !== null;
   }
 
-  begin(x: number, z: number, headingDeg: number, water: WaterFn, tune: RideTuning = TUNING.intermediate, rider?: { standH: number; massKg: number }): void {
+  begin(x: number, z: number, headingDeg: number, water: WaterFn, tune: RideTuning = TUNING.intermediate, rider?: { standH: number; massKg: number; prone?: boolean }): void {
     this.body = startBody(x, z, headingDeg, water, rider);
     this.tune = tune;
     const fs = readFrontSettings();

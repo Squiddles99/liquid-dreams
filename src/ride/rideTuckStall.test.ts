@@ -100,3 +100,30 @@ describe('the lip (ride-speed spec §4.4)', () => {
     expect(b.stallW.lowBarrel).toBeGreaterThan(0.8);
   });
 });
+
+describe('final review fixes (ride-speed)', () => {
+  const steep: WaterFn = (x) => ({ y: -0.8 * x, slopeX: -0.8, slopeZ: 0, foam: 0, ux: 0, uz: 0, c: 7, dirX: 1, dirZ: 0 });
+  it('a straight run on a steep face reads no extra load (drag and gravity along the path are not the legs\' load)', () => {
+    const b = riding(steep, 0, 8);
+    runCtx(b, NO_CONTROLS, steep, 2, () => OPEN_FACE);
+    expect(Math.abs(b.load - b.n0)).toBeLessThan(0.03);
+  });
+  it('the carve still loads the rider (its centripetal pull is the pump\'s)', () => {
+    const b = riding(level, 0, 8);
+    runCtx(b, { ...NO_CONTROLS, steer: 1 }, level, 0.4, () => OPEN_FACE);
+    expect(b.load - b.n0).toBeGreaterThan(0.5);
+  });
+  it('a prone rider (bodyboard) is never hit by the lip, and LB / RB do nothing to their body', () => {
+    const b = riding(level, 0, 9);
+    b.prone = true;
+    const ev = runCtx(b, { ...NO_CONTROLS, crouch: -1, stall: true, pump: true }, level, 1, () => ({ ...OPEN_FACE, cover: 0.9, roomM: 1.2, curlSpeed: 8 }));
+    expect(ev).not.toContain('lip');
+    expect(b.stall).toBe(0);
+  });
+  it('W still held from paddling through the pop-up: no strike in the drop\'s first 0.5 s', () => {
+    const b = riding(level, 0, 9);
+    b.phaseT = 0;
+    const ev = runCtx(b, { ...NO_CONTROLS, crouch: -1 }, level, 0.45, () => ({ ...OPEN_FACE, cover: 0.9, roomM: 1.6, curlSpeed: 8 }));
+    expect(ev).not.toContain('lip');
+  });
+});
