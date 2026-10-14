@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { TIP, LEFT_BEARING_DEG } from '../seabed/wombReef';
-import { STOOD_PHASE, frontWeight, sectionPhase, setStandAhead, standAhead } from './wombSection';
+import { STAND_AHEAD_M, STOOD_PHASE, frontWeight, sectionPhase, setStandAhead, standAhead } from './wombSection';
 import { frontStanding } from './setWaveModel';
 
 // Andrew 2026-10-14 (moment 1791986608, 7 ft 225/15 tide -0.25): "the almost cube-like lump of wave face in front of the
@@ -11,7 +11,7 @@ const at = (along: number, cross = 0): [number, number] => {
   const r = (LEFT_BEARING_DEG * Math.PI) / 180;
   return [TIP[0] + along * Math.sin(r) + cross * Math.cos(r), TIP[1] - along * Math.cos(r) + cross * Math.sin(r)];
 };
-afterEach(() => setStandAhead(0));
+afterEach(() => setStandAhead(STAND_AHEAD_M));
 
 describe('the stand-up eases off by distance from the curl front (standAheadM)', () => {
   it('dial 0 is today, bit-equal', () => {

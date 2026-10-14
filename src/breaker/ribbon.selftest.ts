@@ -16,7 +16,7 @@ import {
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
 import { PROFILE_SAMPLES } from './BreakingRibbon';
-import { curlWeight, sectionOf, sectionSamples, setFaceOnSheet } from './wombSection';
+import { FACE_ON_SHEET, curlWeight, sectionOf, sectionSamples, setFaceOnSheet } from './wombSection';
 import { WOMB_FRAME_VEC4S } from './wombSectionNodes';
 import { hollowFromPsi } from './reefReport';
 import { smoothstep } from '../math/smoothstep';
@@ -188,7 +188,7 @@ async function sectionParity(renderer: THREE.WebGPURenderer, faceOn: number): Pr
         `extras' ρ ${rhoX} (< 1e-4); live rows flagged dead ${deadLive}, non-finite values ${nonFinite} (0). Worst sample: ${worstDetail}` +
         (faceOn ? `; stations the face-on-sheet lifted (> 1 cm) ${lifted} (> 0)` : ''),
     };
-    } finally { setFaceOnSheet(0); }
+    } finally { setFaceOnSheet(FACE_ON_SHEET); }
 }
 
 registerSelfTest({ name: 'ribbon: GPU section matches wombSection', run: (renderer) => sectionParity(renderer, 0) });

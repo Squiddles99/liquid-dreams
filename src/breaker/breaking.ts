@@ -113,8 +113,8 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   handDownT: 0.3,
   shoulderTaperM: 0,
   shoulderFloor: 1,
-  standAheadM: 0,
-  faceOnSheet: 0,
+  standAheadM: 20,
+  faceOnSheet: 1,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */

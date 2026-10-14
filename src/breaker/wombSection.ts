@@ -92,18 +92,19 @@ export const SHOULDER_TAPER_M = 0;
  * 1 = the swell's own height (the ruling's law as written). The dial shoulderFloor (BreakParams.shoulderFloor).
  */
 export const SHOULDER_FLOOR = 1;
-const SHOULDER = { taperM: SHOULDER_TAPER_M, floor: SHOULDER_FLOOR, curlMs: 13, aheadM: 0 };
+const SHOULDER = { taperM: SHOULDER_TAPER_M, floor: SHOULDER_FLOOR, curlMs: 13, aheadM: 20 };
 /**
  * The stand-up eases off by distance from the curl's front (Andrew 2026-10-14, moment 1791986608: "the almost cube-like
  * lump of wave face in front of the breaking lip"): where the curl stalls (the left's end at 7 ft: the station 1.3 m ahead
  * waits 3.45 s) the stand-up read by the time alone fell from the curl's to the swell's in 5 m along the crest, the lump's
  * side. Down the left (shoulderRegion), a station waiting its turn stands at least 1 − smoothstep(0, standAheadM, d), d m
- * ahead of the front (curlFront.curlFrontAlong). 0 = off (today). The dial standAheadM (BreakParams.standAheadM). The drawn
+ * ahead of the front (curlFront.curlFrontAlong). 0 = off. The dial standAheadM (BreakParams.standAheadM). The drawn
  * section only (sectionPhase; the ribbon is built from the CPU trace): on the sheet's front lean too, the distance is not
  * carried along the rays as the time is, so points of one face read different stand-ups and the sheet folded at the face's
  * foot (a stepped fin ahead of the lip, andrew-moment/stand-ahead-ab.jpg); the sheet keeps the time's stand-up.
  */
-export const STAND_AHEAD_M = 0;
+// 20 m by Andrew's pick (2026-10-14, andrew-moment/one-surface-ab.jpg row 3, with faceOnSheet on).
+export const STAND_AHEAD_M = 20;
 export const setStandAhead = (m: number): void => { SHOULDER.aheadM = m; };
 export function standAhead(x: number, z: number, frontAlong: number | undefined): number {
   if (!(SHOULDER.aheadM > 0) || frontAlong === undefined || !Number.isFinite(frontAlong)) return 0;
@@ -576,10 +577,12 @@ export function sectionSamples(numbers: SectionNumbers, sheet: SheetAlong): { kn
  * The dial faceOnSheet (BreakParams.faceOnSheet); the ribbon mirrors it (BreakingRibbon's vertex pass).
  */
 export const FACE_ON_SHEET_PHASE = STOOD_PHASE + 0.15;
-const FACE_ON_SHEET = { on: 0 };
-export const setFaceOnSheet = (on: number): void => { FACE_ON_SHEET.on = on; };
-export const faceOnSheetOn = (): number => FACE_ON_SHEET.on;
-export const faceOnSheetWeight = (phase: number): number => FACE_ON_SHEET.on * (1 - smoothstep(STOOD_PHASE, FACE_ON_SHEET_PHASE, phase));
+/** On by Andrew's pick (2026-10-14, one-surface-ab.jpg row 3, with standAheadM 20). */
+export const FACE_ON_SHEET = 1;
+const FACE = { on: FACE_ON_SHEET };
+export const setFaceOnSheet = (on: number): void => { FACE.on = on; };
+export const faceOnSheetOn = (): number => FACE.on;
+export const faceOnSheetWeight = (phase: number): number => FACE.on * (1 - smoothstep(STOOD_PHASE, FACE_ON_SHEET_PHASE, phase));
 
 /** A sample's point (m): its sheet weight × the sheet at its home, plus A × its a (SectionSample). */
 export const sectionPoint = (q: SectionSample, A: number, sheet: SheetAlong): P2 => {
