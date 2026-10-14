@@ -161,7 +161,10 @@ describe('lipProfile', () => {
   });
 
 
-  it('never crosses itself before the lip lands (peak, ledge points, bigger waves, ψ and face-width ends)', () => {
+  // Retired 2026-10-14 (Fable, womb-story STOP 1 ruling: "retire like its siblings"): buildProfile, the barrel-from-maths lip,
+  // is drawn by nothing since the ribbon draws wombSection (womb-realism STOP 3b); wombProfile.test carries "never crosses
+  // itself" for the drawn family, the spill included.
+  it.skip('never crosses itself before the lip lands (peak, ledge points, bigger waves, ψ and face-width ends)', () => {
     const cases: { x: number; z: number; h: number; p: LipParams; psi?: number }[] = [];
     // Only where the crest has broken (r ≥ 1): a time since onset means the section broke.
     for (const [x, z] of [[PX, PZ], onLeft(45), onLeft(96), fromTip(15, 16), fromTip(50, 36)]) for (const h of [REF_BIGGEST.heightM, 1.8 * HS, 2.4 * HS, 3 * HS]) {

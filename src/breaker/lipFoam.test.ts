@@ -14,7 +14,11 @@ const OUTER0 = n.front + n.face + n.wall + n.under + n.cap;
 const sigmaOf = (j: number, p: Profile): number => (p.frame.xiTip > 0 ? Math.max(0, Math.min(1, 1 - sampleSegment(j).s / OUTER_LIP_SHARE)) : 0);
 const onBand = (j: number): boolean => sampleSegment(j).s <= OUTER_LIP_SHARE;
 
-describe("the lip's outside is a clear curtain while the tube is held open, and foams from where it hit as it collapses", () => {
+// Retired 2026-10-14 (womb-story Task 3b, re-measured per Fable's STOP 1 ruling): buildProfile, the barrel-from-maths lip whose
+// curlFoam this checks, is drawn by nothing since the ribbon draws wombSection (womb-realism STOP 3b retired its siblings);
+// with A's target hollow (0.8) the peak's ψ rose and 5 of its 9 cases (4 ft low/mid, 8 ft mid/high, 12 ft high) read a
+// different held tube. The live curtain foam is the ribbon's (wombSection/BreakingRibbon); buildProfile is dead-code cleanup.
+describe.skip("the lip's outside is a clear curtain while the tube is held open, and foams from where it hit as it collapses", () => {
   const fields = Object.fromEntries((Object.keys(TIDES) as (keyof typeof TIDES)[]).map((t) => [t, peakSetup(12, TIDES[t])]));
   for (const tide of Object.keys(TIDES) as (keyof typeof TIDES)[]) {
     for (const ft of [4, 8, 12]) {
