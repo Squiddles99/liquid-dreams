@@ -4,7 +4,7 @@ import { DEFAULT_BREAK_PARAMS } from '../breaker/breaking';
 import { minRibbonHeight, timeSinceOnset, traceStations } from '../breaker/crestTrace';
 import { computeReefField, sampleField } from '../breaker/reefField';
 import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
-import { STOOD_PHASE, sectionFrame, wallWeight } from '../breaker/wombSection';
+import { STOOD_PHASE, sectionFrame, shoulderRegion, wallWeight } from '../breaker/wombSection';
 import { DEFAULT_CONDITIONS } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
@@ -411,6 +411,7 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     expect(breakEmitters(input(t, { wind: { speedMs: 1 * 0.5144, fromDeg: 57 } })).feather).toEqual([]);
     expect(breakEmitters(input(t, { wind: { speedMs: 18 * 0.5144, fromDeg: 237 } })).feather).toEqual([]);
   });
+  // 2026-10-14 (womb-story Task 3d): wallWeight at the station's shoulderRegion, as the emitter reads it.
   it('every stood station feathers (7b S2 ruling), strength (FEATHER_FLOOR + (1 − FEATHER_FLOOR) × wallWeight) × wind × amount; never a broken one', () => {
     const t = BIGGEST.arrivalS - 2, f = breakEmitters(input(t, { wind: strong })).feather;
     expect(FEATHER_FLOOR).toBe(0.25);
@@ -420,7 +421,7 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     for (const e of f) {
       const s = [...byArc.values()].find((q) => Math.round(q.arc / SPRAY_SPACING_M) === e.arc && Math.abs(q.x - e.x) < 1e-9)!;
       expect(s).toBeDefined();
-      expect(e.strength).toBeCloseTo((FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wallWeight(s.until, field.periodS)) * smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], offshoreSpeedOn(strong, s.nx, s.nz)), 9);
+      expect(e.strength).toBeCloseTo((FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wallWeight(s.until, field.periodS, shoulderRegion(s.x, s.z))) * smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], offshoreSpeedOn(strong, s.nx, s.nz)), 9);
     }
     expect(wind).toBeGreaterThan(0);
   });
@@ -430,7 +431,7 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     let worst = 0, n = 0;
     // The fitted range (the wall near its break, where the strong puffs are); the stood swell's floor puffs are faint. (0.85
     // on the one-period lead ≈ 3.4 s out; 0.6 on the old 8 s squared ramp was 1.8 s.)
-    for (const s of standing(t).filter((q) => wallWeight(q.until, field.periodS) > 0.85)) {
+    for (const s of standing(t).filter((q) => wallWeight(q.until, field.periodS, shoulderRegion(q.x, q.z)) > 0.85)) {
       const own = [waves[s.wave]];
       const base = (u: number): [number, number] => {
         const x = s.x + s.nx * u, z = s.z + s.nz * u, r = sumWaves(x, z, t, sampleField(field, x, z), own, ctx, o);

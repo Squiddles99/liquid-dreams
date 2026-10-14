@@ -1,5 +1,5 @@
 import { curlFrontAlong } from './curlFront';
-import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, shoulderFactor, shoulderU, wallWeight } from './wombSection';
+import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, shoulderFactor, shoulderRegion, shoulderU, wallWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -87,11 +87,11 @@ export const wombFrontMin = (H: number, k: number): number =>
  * its own ray, so the face was a cliff to 4 m and the swell's beyond, a dark wedge with a torn foot ahead of the stood wall
  * (Andrew, 2026-10-11: "a tear in the wave face runs before the wave is broken"). The GPU mirrors this (SetWaves' standing).
  */
-export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset, until: number | null = null): number {
+export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset, until: number | null = null, region = 1): number {
   if (tb === undefined) return 0;
-  if (tb === null) return until !== null && Number.isFinite(until) ? frontWeight(until) : smoothstep(ribbonOnset, 1, r);
+  if (tb === null) return until !== null && Number.isFinite(until) ? frontWeight(until, region) : smoothstep(ribbonOnset, 1, r);
   // Held for its turn (the peel stretch): as the wall stands up over the last lead before it.
-  return tb < 0 ? Math.max(smoothstep(ribbonOnset, 1, r) * frontWeight(-tb), frontWeight(-tb)) : 1;
+  return tb < 0 ? Math.max(smoothstep(ribbonOnset, 1, r) * frontWeight(-tb, region), frontWeight(-tb, region)) : 1;
 }
 
 export function leanWeight(crest: Crest | null): number {
@@ -259,7 +259,7 @@ export function localHeight(w: ActiveWave, f: FieldSample): number {
  * lip's flight (wombSection.flightTime), so the crest is continuous at the break (the face at the peak kinked 0.8 m per m
  * where neighbouring points read either side of the onset).
  */
-export function wallHeight(i: { hAmp: number; depthM: number; hminM: number; tb: number | null | undefined; until: number | null | undefined; sizeM: number | null | undefined; periodS: number }): number {
+export function wallHeight(i: { hAmp: number; depthM: number; hminM: number; tb: number | null | undefined; until: number | null | undefined; sizeM: number | null | undefined; periodS: number; region?: number }): number {
   if (i.tb !== null && i.tb !== undefined && i.tb >= 0) {
     const broken = BREAKING_RATIO * i.hminM, size = i.sizeM;
     if (size === null || size === undefined || !Number.isFinite(size)) return Math.min(i.hAmp, broken);
@@ -267,12 +267,12 @@ export function wallHeight(i: { hAmp: number; depthM: number; hminM: number; tb:
   }
   const cap = BREAKING_RATIO * i.depthM, u = i.tb !== null && i.tb !== undefined ? -i.tb : i.until;
   if (u === null || u === undefined || !(u < UNTIL_NEVER) || i.sizeM === null || i.sizeM === undefined || !Number.isFinite(i.sizeM)) return Math.min(i.hAmp, cap);
-  return Math.min(i.hAmp, cap + (i.sizeM - cap) * wallWeight(u, i.periodS));
+  return Math.min(i.hAmp, cap + (i.sizeM - cap) * wallWeight(u, i.periodS, i.region ?? 1));
 }
 
 /** wallHeight at a crest: its record read at the lookup (Crest.size). */
 export const crestHeight = (w: ActiveWave, crest: Crest): number =>
-  wallHeight({ hAmp: w.heightM * crest.f.amp, depthM: crest.f.depth, hminM: crest.f.hmin, tb: crest.tb, until: crest.until, sizeM: crest.size, periodS: (2 * Math.PI) / w.omega });
+  wallHeight({ hAmp: w.heightM * crest.f.amp, depthM: crest.f.depth, hminM: crest.f.hmin, tb: crest.tb, until: crest.until, sizeM: crest.size, periodS: (2 * Math.PI) / w.omega, region: shoulderRegion(crest.x, crest.z) });
 
 /** ξ: time since w's crest passed (x, z) (negative: still to come). */
 export function phaseXi(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext): number {
@@ -450,7 +450,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   // The front's lean (LEAN_RATIO): the trough moves in to the face's foot as the wave shoals.
   const { th, dth } = o?.shape === 'lean' && crest
     ? leanPhase(theta, smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence,
-      LEAN_FRONT_MIN + (wombFrontMin(localHeight(w, crest.f), crest.f.k) - LEAN_FRONT_MIN) * frontStanding(crest.tb, crest.r, crest.params.ribbonOnset, crest.until))
+      LEAN_FRONT_MIN + (wombFrontMin(localHeight(w, crest.f), crest.f.k) - LEAN_FRONT_MIN) * frontStanding(crest.tb, crest.r, crest.params.ribbonOnset, crest.until, shoulderRegion(crest.x, crest.z)))
     : leanPhase(theta, o?.shape === false ? 0 : leanWeight(crest));
   const leaning = th !== theta || dth !== 1;
   const shape = Math.cos(th) + B * Math.cos(2 * th);

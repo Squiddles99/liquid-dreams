@@ -34,8 +34,12 @@ describe('the shoulder tapers ahead of the curl (Task 3d)', () => {
       expect(shoulderFactor(x, z, u)).toBe(1);
     }
   });
-  it('the stand-up weights carry the fraction', () => {
+  it('the stand-up weights carry the fraction where the shoulder is, not at the take-off or on the right', () => {
     setShoulder(30, 1, CURL);
+    for (const u of [0.5, 2.5, 4]) {
+      expect(wallWeight(u, 14, 0)).toBe(1 - smoothstep(0, 0.75 * 14, u));
+      expect(frontWeight(u, 0)).toBe((1 - Math.min(1, u / 8)) ** 2);
+    }
     for (const u of [0.5, 1.5, 2.5, 4]) {
       expect(frontWeight(u)).toBeCloseTo((1 - Math.min(1, u / 8)) ** 2 * shoulderStand(u), 12);
       expect(wallWeight(u, 14)).toBeCloseTo((1 - smoothstep(0, 0.75 * 14, u)) * shoulderStand(u), 12);

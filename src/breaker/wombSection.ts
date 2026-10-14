@@ -60,15 +60,18 @@ export const wallLeadS = (periodS: number): number => WALL.leadT * periodS;
  * catch could bring him to speed (rideOnSections: Solid and Huge not caught).
  */
 export const FRONT_LEAD_S = 8;
-export const frontWeight = (until: number | null | undefined): number => {
+/** `region` (shoulderRegion at the crest; absent 1): where the shoulder's taper holds. The take-off and the right keep the
+ * wall's whole lead (the taper there cut the wave standing up into the peak to its last 2.3 s: its crest stood below the
+ * water behind it). */
+export const frontWeight = (until: number | null | undefined, region = 1): number => {
   if (until === null || until === undefined || !Number.isFinite(until)) return 0;
   const left = 1 - Math.min(1, Math.max(0, until) / FRONT_LEAD_S);
-  return SHOULDER.taperM > 0 ? left * left * shoulderStand(until) : left * left;
+  return SHOULDER.taperM > 0 ? left * left * (1 - region * (1 - shoulderStand(until))) : left * left;
 };
-export const wallWeight = (until: number | null | undefined, periodS: number): number => {
+export const wallWeight = (until: number | null | undefined, periodS: number, region = 1): number => {
   if (until === null || until === undefined || !Number.isFinite(until)) return 0;
   const w = 1 - smoothstep(0, wallLeadS(periodS), Math.max(0, until));
-  return SHOULDER.taperM > 0 ? w * shoulderStand(until) : w;
+  return SHOULDER.taperM > 0 ? w * (1 - region * (1 - shoulderStand(until))) : w;
 };
 /**
  * The shoulder tapers (womb-story Task 3d, STOP 1b ruling 1; Andrew 2026-10-14: "there should not be the wall in front of
@@ -172,6 +175,10 @@ export interface SectionInput {
   psi: number;
   /** The swell's period (s). */
   periodS: number;
+  /** Where the station stands (world xz): the shoulder's taper holds down the left past the take-off (shoulderRegion).
+   * Absent: everywhere. */
+  x?: number;
+  z?: number;
 }
 
 export interface SectionParams {
@@ -202,7 +209,7 @@ export function sectionPhase(s: SectionInput, p: SectionParams): number {
   // (or its turn, held); off it (off the grid, or a ray that never breaks) with its ratio from the ribbon's onset. (The ratio
   // beside the clock stood a section up at full height ahead of the curl: the pocket one curl holds. One-curl spec §3b.)
   if (s.tb === null) {
-    return s.until !== undefined && s.until !== null && Number.isFinite(s.until) ? STOOD_PHASE * frontWeight(s.until) : STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r);
+    return s.until !== undefined && s.until !== null && Number.isFinite(s.until) ? STOOD_PHASE * frontWeight(s.until, s.x !== undefined && s.z !== undefined ? shoulderRegion(s.x, s.z) : 1) : STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r);
   }
 
   if (!Number.isFinite(s.tb)) return 2;

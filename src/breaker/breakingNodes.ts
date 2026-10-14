@@ -145,11 +145,11 @@ export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: 
  * turn −tb away) it grows from the cap of the depth now into the record's size over the wall's lead (wombSection.wallWeight:
  * 1 − smoothstep(0, leadT × T, u)); off the record or never breaking, the depth now caps it. Never past hAmp.
  */
-export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { broken: N; tb: N; until: N; size: N }, periodS: N, leadT: N, handDownT: N, sh: ShoulderUniforms): N {
+export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { broken: N; tb: N; until: N; size: N }, periodS: N, leadT: N, handDownT: N, sh: ShoulderUniforms, region: N): N {
   const cap = depth.mul(BREAKING_RATIO).toVar();
   const u = select(onset.broken, onset.tb.negate(), onset.until).toVar();
-  // × the shoulder's stand-up fraction (wombSection.wallWeight, Task 3d).
-  const grow = cap.add(onset.size.sub(cap).mul(float(1.0).sub(smoothstep(0.0, leadT.mul(periodS), max(u, 0.0)))).mul(shoulderStandNode(u, sh)));
+  // × the shoulder's stand-up fraction where it holds (wombSection.wallWeight, Task 3d).
+  const grow = cap.add(onset.size.sub(cap).mul(float(1.0).sub(smoothstep(0.0, leadT.mul(periodS), max(u, 0.0)))).mul(shoulderTakeNode(u, sh, region)));
   const before = select(u.lessThan(UNTIL_NEVER), grow, cap);
   // From the break: down from the size to the broken law over max(the lip's flight, handDownT × T) (wombSection.handDownSpan).
   const broken = hmin.mul(BREAKING_RATIO).toVar();
@@ -165,6 +165,10 @@ export type ShoulderUniforms = { shoulderTaperM: N; shoulderFloor: N; curlMaxMs:
 export function shoulderStandNode(u: N, sh: ShoulderUniforms): N {
   const on = sh.shoulderTaperM.greaterThan(0.0);
   return select(on, float(1.0).sub(smoothstep(0.0, max(sh.shoulderTaperM, 1e-3), max(u, 0.0).mul(sh.curlMaxMs))), float(1.0));
+}
+/** 1 − region × (1 − shoulderStand): the stand-up fraction where the shoulder's taper holds (wombSection.wallWeight). */
+export function shoulderTakeNode(u: N, sh: ShoulderUniforms, region: N): N {
+  return float(1.0).sub(region.mul(float(1.0).sub(shoulderStandNode(u, sh))));
 }
 /** wombSection.shoulderRegion at world xz (the left past the take-off, the band across the ledge). */
 export function shoulderRegionNode(p: N): N {
