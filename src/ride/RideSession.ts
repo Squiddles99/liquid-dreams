@@ -4,6 +4,7 @@ import { PadEdges, type RideKeys, lookFrom, playRumble, readPad, rideControls } 
 import { OPEN_FACE, type RideBody, type RideContext, type RideEvent, type RideTuning, POPUP_S, TUNING, speedOf, startBody, stepRide } from './ridePhysics';
 import { type LookInput, RideCamera, rideBoardFrame, rideSurferParams } from './ridePose';
 import { readFrontSettings } from '../frontend/frontSettings';
+import { LoadMeter, meterShown } from './LoadMeter';
 import { RUMBLE_CHUNK_MS, newRumble, rumbleFor } from './rideFeedback';
 import { type RiderDrive, riderDrive } from './riderBody';
 import type { WaterFn } from './water';
@@ -49,6 +50,10 @@ export class RideSession {
   /** The feedback settings, read when the ride begins (a pause-menu change applies from the next wave). */
   private feel: { rumble: boolean; loadMeter: 'auto' | 'on' | 'off' } = { rumble: true, loadMeter: 'auto' };
   private readonly hud: HTMLDivElement;
+  /** The HUD's words (their own node: the meter is the HUD's child too, and setting the HUD's text would drop it). */
+  private readonly hudText = document.createElement('span');
+  /** The keyboard load meter beside the HUD (ride-speed spec §5; Andrew's minimalist mock). */
+  private readonly meter: LoadMeter;
 
   constructor(parent: HTMLElement) {
     this.hud = document.createElement('div');
@@ -57,7 +62,9 @@ export class RideSession {
       font: '600 14px system-ui, sans-serif', color: '#fff', background: 'rgba(0,0,0,0.35)', borderRadius: '6px',
       pointerEvents: 'none', display: 'none', whiteSpace: 'nowrap', textShadow: '0 1px 2px #000',
     });
+    this.hud.appendChild(this.hudText);
     parent.appendChild(this.hud);
+    this.meter = new LoadMeter(this.hud);
   }
 
   get active(): boolean {
@@ -76,6 +83,7 @@ export class RideSession {
   end(): void {
     this.body = null;
     this.hud.style.display = 'none';
+    this.meter.setVisible(false);
   }
 
   /** One frame: the controls, the physics (split into short steps), the HUD. Returns the last thing that happened. */
@@ -101,8 +109,11 @@ export class RideSession {
       const r = rumbleFor(b.load, this.rumble, this.clockS);
       if (r) playRumble(r.strong, r.weak, RUMBLE_CHUNK_MS);
     }
+    // The keyboard load meter (spec §5): without a pad (auto), a pad unplugged mid-ride switches it on the next frame.
+    this.meter.setVisible(b.phase === 'ride' && meterShown(this.feel.loadMeter, pad !== null));
+    this.meter.update(b.load, b.pumpGain, speedOf(b), dt);
     const kmh = Math.round(speedOf(b) * 3.6);
-    this.hud.textContent = `${kmh} km/h   ${hint(b.phase, bindings)}`;
+    this.hudText.textContent = `${kmh} km/h   ${hint(b.phase, bindings)}`;
     return event;
   }
 
