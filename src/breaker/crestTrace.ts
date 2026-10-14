@@ -59,6 +59,9 @@ export interface Station {
   /** Crest position (undisplaced world xz). */
   x: number;
   z: number;
+  /** The wave's curl front at the trace's time, m down the left (curlFront.curlFrontAlong; fillTimes): the stand-up eases off by
+   * distance from it (wombSection.standAhead). */
+  frontAlong?: number;
   /** Arc length along this wave's crest from its seed (m; negative on the second side). */
   arc: number;
   /** Unit normal to the crest line, in the wave's travel direction: the profile's u axis. */
@@ -261,6 +264,7 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
 function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveContext, input: TraceInput, t: number): void {
   const front = curlFrontAlong(field, w, t, input.params);
   for (const s of line) {
+    s.frontAlong = front;
     stationOnset(field, w, s, input.params);
     // The crest's height by the record (setWaveModel.wallHeight, womb-realism Task 2c): before its break it grows into the
     // height it breaks at, so the section's A (sectionScale of H, then of Hb) runs on across the onset.
@@ -295,7 +299,7 @@ export const LINE_END_FADE_M = 6;
 export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'> & Partial<Pick<BreakParams, 'surge'>>, insideSigmaM = INSIDE_LINE_SMOOTHING_M): void {
   const normals = line.map((s) => [s.nx, s.nz]);
   const raw = line.map((s) => {
-    const q = sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS, x: s.x, z: s.z }, { ribbonOnset: p.ribbonOnset, surge: p.surge });
+    const q = sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS, x: s.x, z: s.z, frontAlong: s.frontAlong }, { ribbonOnset: p.ribbonOnset, surge: p.surge });
     // The surge is × hollow (surgeWeight): it closes out with it.
     const open = 1 - closeoutWeight(s.z);
     q.hollow *= open; q.surge = (q.surge ?? 0) * open;

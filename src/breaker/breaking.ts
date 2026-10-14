@@ -74,6 +74,9 @@ export interface BreakParams {
   shoulderTaperM: number;
   /** …and the shoulder's height to this share of its own (wombSection.SHOULDER_FLOOR; 1 = its own). */
   shoulderFloor: number;
+  /** Down the left a waiting station stands up at least by its distance from the curl's front, easing off over this many m
+   * (wombSection.standAhead; Andrew 2026-10-14, the lump in front of the lip; 0 = off). */
+  standAheadM: number;
 }
 
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
@@ -107,6 +110,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   handDownT: 0.3,
   shoulderTaperM: 0,
   shoulderFloor: 1,
+  standAheadM: 0,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
@@ -169,6 +173,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.handDownT = clampTo(p.handDownT, 0.05, 0.3, d.handDownT);
   p.shoulderTaperM = clampTo(p.shoulderTaperM, 0, 80, d.shoulderTaperM);
   p.shoulderFloor = clampTo(p.shoulderFloor, 0.3, 1, d.shoulderFloor);
+  p.standAheadM = clampTo(p.standAheadM, 0, 60, d.standAheadM);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
 

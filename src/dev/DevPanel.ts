@@ -195,6 +195,7 @@ export const BREAK_BINDINGS = {
   handDownT: { label: 'hand-down (× period)', min: 0.05, max: 0.3, step: 0.01 },
   shoulderTaperM: { label: 'shoulder taper (m ahead of the curl)', min: 0, max: 80, step: 1 },
   shoulderFloor: { label: 'shoulder floor (× its own height)', min: 0.3, max: 1, step: 0.05 },
+  standAheadM: { label: 'stand-up ahead of the curl (m)', min: 0, max: 60, step: 1 },
   flightDropA: { label: 'lip flight drop (× A)', min: 0.4, max: 1.5, step: 0.05 },
 } as const;
 

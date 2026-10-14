@@ -63,10 +63,12 @@ export const FRONT_LEAD_S = 8;
 /** `region` (shoulderRegion at the crest; absent 1): where the shoulder's taper holds. The take-off and the right keep the
  * wall's whole lead (the taper there cut the wave standing up into the peak to its last 2.3 s: its crest stood below the
  * water behind it). */
-export const frontWeight = (until: number | null | undefined, region = 1): number => {
+export const frontWeight = (until: number | null | undefined, region = 1, ahead = 0): number => {
   if (until === null || until === undefined || !Number.isFinite(until)) return 0;
   const left = 1 - Math.min(1, Math.max(0, until) / FRONT_LEAD_S);
-  return SHOULDER.taperM > 0 ? left * left * (1 - region * (1 - shoulderStand(until))) : left * left;
+  const byTime = SHOULDER.taperM > 0 ? left * left * (1 - region * (1 - shoulderStand(until))) : left * left;
+  // `ahead` (standAhead): at least by the distance from the curl's front (0 with the dial off: today, bit-equal).
+  return ahead > byTime ? ahead : byTime;
 };
 export const wallWeight = (until: number | null | undefined, periodS: number, region = 1): number => {
   if (until === null || until === undefined || !Number.isFinite(until)) return 0;
@@ -90,7 +92,23 @@ export const SHOULDER_TAPER_M = 0;
  * 1 = the swell's own height (the ruling's law as written). The dial shoulderFloor (BreakParams.shoulderFloor).
  */
 export const SHOULDER_FLOOR = 1;
-const SHOULDER = { taperM: SHOULDER_TAPER_M, floor: SHOULDER_FLOOR, curlMs: 13 };
+const SHOULDER = { taperM: SHOULDER_TAPER_M, floor: SHOULDER_FLOOR, curlMs: 13, aheadM: 0 };
+/**
+ * The stand-up eases off by distance from the curl's front (Andrew 2026-10-14, moment 1791986608: "the almost cube-like
+ * lump of wave face in front of the breaking lip"): where the curl stalls (the left's end at 7 ft: the station 1.3 m ahead
+ * waits 3.45 s) the stand-up read by the time alone fell from the curl's to the swell's in 5 m along the crest, the lump's
+ * side. Down the left (shoulderRegion), a station waiting its turn stands at least 1 − smoothstep(0, standAheadM, d), d m
+ * ahead of the front (curlFront.curlFrontAlong). 0 = off (today). The dial standAheadM (BreakParams.standAheadM); the GPU
+ * mirrors it (breakingNodes.standAheadNode).
+ */
+export const STAND_AHEAD_M = 0;
+export const setStandAhead = (m: number): void => { SHOULDER.aheadM = m; };
+export function standAhead(x: number, z: number, frontAlong: number | undefined): number {
+  if (!(SHOULDER.aheadM > 0) || frontAlong === undefined || !Number.isFinite(frontAlong)) return 0;
+  const d = shoulderAlong(x, z) - frontAlong;
+  if (d < 0) return 0;
+  return shoulderRegion(x, z) * (1 - smoothstep(0, SHOULDER.aheadM, d));
+}
 /** Sets the shoulder's taper (m), floor (share) and the curl's top speed (m/s) the distance is read with. */
 export const setShoulder = (taperM: number, floor: number, curlMs: number): void => { SHOULDER.taperM = taperM; SHOULDER.floor = floor; SHOULDER.curlMs = curlMs; };
 export const shoulderTaperM = (): number => SHOULDER.taperM;
@@ -182,6 +200,8 @@ export interface SectionInput {
    * Absent: everywhere. */
   x?: number;
   z?: number;
+  /** The curl's front, m down the left (curlFront.curlFrontAlong): the stand-up eases off by distance from it (standAhead). */
+  frontAlong?: number;
 }
 
 export interface SectionParams {
@@ -212,7 +232,8 @@ export function sectionPhase(s: SectionInput, p: SectionParams): number {
   // (or its turn, held); off it (off the grid, or a ray that never breaks) with its ratio from the ribbon's onset. (The ratio
   // beside the clock stood a section up at full height ahead of the curl: the pocket one curl holds. One-curl spec §3b.)
   if (s.tb === null) {
-    return s.until !== undefined && s.until !== null && Number.isFinite(s.until) ? STOOD_PHASE * frontWeight(s.until, s.x !== undefined && s.z !== undefined ? shoulderRegion(s.x, s.z) : 1) : STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r);
+    const placed = s.x !== undefined && s.z !== undefined;
+    return s.until !== undefined && s.until !== null && Number.isFinite(s.until) ? STOOD_PHASE * frontWeight(s.until, placed ? shoulderRegion(s.x!, s.z!) : 1, placed ? standAhead(s.x!, s.z!, s.frontAlong) : 0) : STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r);
   }
 
   if (!Number.isFinite(s.tb)) return 2;

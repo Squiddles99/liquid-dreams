@@ -1,5 +1,5 @@
 import { curlFrontAlong } from './curlFront';
-import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, shoulderFactor, shoulderRegion, shoulderU, wallWeight } from './wombSection';
+import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, shoulderFactor, shoulderRegion, shoulderU, standAhead, wallWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -87,11 +87,11 @@ export const wombFrontMin = (H: number, k: number): number =>
  * its own ray, so the face was a cliff to 4 m and the swell's beyond, a dark wedge with a torn foot ahead of the stood wall
  * (Andrew, 2026-10-11: "a tear in the wave face runs before the wave is broken"). The GPU mirrors this (SetWaves' standing).
  */
-export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset, until: number | null = null, region = 1): number {
+export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset, until: number | null = null, region = 1, ahead = 0): number {
   if (tb === undefined) return 0;
-  if (tb === null) return until !== null && Number.isFinite(until) ? frontWeight(until, region) : smoothstep(ribbonOnset, 1, r);
+  if (tb === null) return until !== null && Number.isFinite(until) ? frontWeight(until, region, ahead) : smoothstep(ribbonOnset, 1, r);
   // Held for its turn (the peel stretch): as the wall stands up over the last lead before it.
-  return tb < 0 ? Math.max(smoothstep(ribbonOnset, 1, r) * frontWeight(-tb, region), frontWeight(-tb, region)) : 1;
+  return tb < 0 ? Math.max(smoothstep(ribbonOnset, 1, r) * frontWeight(-tb, region, ahead), frontWeight(-tb, region, ahead)) : 1;
 }
 
 export function leanWeight(crest: Crest | null): number {
@@ -433,7 +433,8 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   // Under the ribbon (shape 'lean') the broken wave settles into the white water's bore behind the curl (wombSection.boreWeight).
   const bore = o?.shape === 'lean' && crest ? boreWeight(crest.tb, localHeight(w, crest.f), (2 * Math.PI) / w.omega) : 0;
   // The shoulder tapers ahead of the curl (wombSection.shoulderFactor, Task 3d): read at the crest, so a cross-section shares it.
-  const taper = crest ? shoulderFactor(crest.x, crest.z, shoulderU(crest.tb, crest.until), o?.front?.(w, t)) : 1;
+  const front = crest ? o?.front?.(w, t) : undefined;
+  const taper = crest ? shoulderFactor(crest.x, crest.z, shoulderU(crest.tb, crest.until), front) : 1;
   const H0 = waveHeightAt(w, f, crest, xi) * taper, H = H0 * (1 - (1 - BORE_SHARE) * bore);
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;
@@ -450,7 +451,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   // The front's lean (LEAN_RATIO): the trough moves in to the face's foot as the wave shoals.
   const { th, dth } = o?.shape === 'lean' && crest
     ? leanPhase(theta, smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence,
-      LEAN_FRONT_MIN + (wombFrontMin(localHeight(w, crest.f), crest.f.k) - LEAN_FRONT_MIN) * frontStanding(crest.tb, crest.r, crest.params.ribbonOnset, crest.until, shoulderRegion(crest.x, crest.z)))
+      LEAN_FRONT_MIN + (wombFrontMin(localHeight(w, crest.f), crest.f.k) - LEAN_FRONT_MIN) * frontStanding(crest.tb, crest.r, crest.params.ribbonOnset, crest.until, shoulderRegion(crest.x, crest.z), standAhead(crest.x, crest.z, front)))
     : leanPhase(theta, o?.shape === false ? 0 : leanWeight(crest));
   const leaning = th !== theta || dth !== 1;
   const shape = Math.cos(th) + B * Math.cos(2 * th);

@@ -11,7 +11,7 @@ import { DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
 import { buildCoastMap } from '../seabed/coastMap';
 import { SetWaves } from './SetWaves';
 import { type BreakOptions, breakOptions, crestAt, frontStanding, sumWaves, toActiveWave } from './setWaveModel';
-import { frontWeight, setShoulder } from './wombSection';
+import { frontWeight, setShoulder, setStandAhead } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 
@@ -727,6 +727,51 @@ registerSelfTest({
     return {
       pass: disp.value < 0.05 && moved > 0.3,
       detail: `${points.length} points × dt 0…12 s, worst |Δdisp| ${disp} m (< 0.05); largest change the taper makes to the CPU's sheet ${moved.toFixed(2)} m (${movedAt || 'none'}) (> 0.3)`,
+    };
+  },
+});
+
+registerSelfTest({
+  name: 'breaker: the stand-up ahead of the curl by distance (standAheadM 20, Andrew 2026-10-14) matches the CPU (the lean sheet)',
+  async run(renderer) {
+    const field = getGameField();
+    const time = uniform(0);
+    const sets = new SetWaves(time, { pile: false, shape: 'lean' });
+    sets.setField(field);
+    const params: BreakParams = { ...DEFAULT_BREAK_PARAMS, standAheadM: 20 };
+    sets.setBreakParams(params);
+    const r = (LEFT_BEARING_DEG * Math.PI) / 180, points: [number, number][] = [];
+    for (let a = 20; a <= 200; a += 10) for (let v = -30; v <= 60; v += 10) points.push([Math.round(TIP[0] + a * Math.sin(r) + v * Math.cos(r)), Math.round(TIP[1] - a * Math.cos(r) + v * Math.sin(r))]);
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    const o: BreakOptions = { ...breakOptions(field, params), pile: false, shape: 'lean' };
+    const { pass, outAttr } = computeAt(points, 1, (xz) => [vec4(sets.breakSampleNode(xz).disp, 0.0)]);
+    const disp = new Worst(true, 0);
+    let moved = 0, movedAt = '';
+    for (const dt of [0, 2, 4, 6, 8, 10, 12]) {
+      const t = REF_BIGGEST.arrivalS + dt;
+      time.value = t;
+      const events = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+      sets.setEvents(events, t);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      const waves = events.map(toActiveWave);
+      points.forEach(([x, z], i) => {
+        const f = sampleField(field, x, z);
+        const c = sumWaves(x, z, t, f, waves, ctx, o);
+        const g = out.slice(i * 4, i * 4 + 3);
+        disp.see(Math.max(Math.abs(g[0] - c.dx), Math.abs(g[1] - c.eta), Math.abs(g[2] - c.dz)), dt, i);
+        // How much the dial moves the CPU's sheet (else a match proves nothing): the same with it off.
+        setStandAhead(0);
+        const n = sumWaves(x, z, t, f, waves, ctx, o);
+        setStandAhead(params.standAheadM);
+        const m = Math.abs(n.eta - c.eta);
+        if (m > moved) { moved = m; movedAt = `dt ${dt} (${x}, ${z})`; }
+      });
+    }
+    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+    return {
+      pass: disp.value < 0.05 && moved > 0.1,
+      detail: `${points.length} points × dt 0…12 s, worst |Δdisp| ${disp} m (< 0.05); largest change the dial makes to the CPU's sheet ${moved.toFixed(2)} m (${movedAt || 'none'}) (> 0.1)`,
     };
   },
 });

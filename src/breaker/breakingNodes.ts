@@ -26,7 +26,7 @@ export function createBreakUniforms(p: BreakParams) {
     collapseTime: uniform(1), drainGrowth: uniform(1), onsetGain: uniform(1),
     pileHalfM: uniform(50), pileSurge: uniform(0), churnSize: uniform(0), churnSpeed: uniform(1), psiNudge: uniform(0), randomDial: uniform(0),
     ribbonOnset: uniform(0.7), surge: uniform(0), wallLeadT: uniform(0.75), handDownT: uniform(0.3),
-    shoulderTaperM: uniform(30), shoulderFloor: uniform(1), curlMaxMs: uniform(13),
+    shoulderTaperM: uniform(30), shoulderFloor: uniform(1), curlMaxMs: uniform(13), standAheadM: uniform(0),
   };
   updateBreakUniforms(u, p);
   return u;
@@ -57,6 +57,7 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.wallLeadT.value = p.wallLeadT;
   u.handDownT.value = p.handDownT;
   u.shoulderTaperM.value = p.shoulderTaperM; u.shoulderFloor.value = p.shoulderFloor; u.curlMaxMs.value = p.curlMaxMs;
+  u.standAheadM.value = p.standAheadM;
 }
 
 /** smoothstep with its edges reversed (e0 > e1): WGSL's smoothstep wants low < high. */
@@ -186,6 +187,14 @@ export function shoulderFactorNode(p: N, u: N, has: N, sh: ShoulderUniforms, fro
   const byDistance = float(1.0).sub(smoothstep(0.0, max(sh.shoulderTaperM, 1e-3), max(ahead, 0.0)));
   const stand = select(frontOn, max(shoulderStandNode(u, sh), byDistance), shoulderStandNode(u, sh));
   return select(on, float(1.0).sub(shoulderRegionNode(p).mul(float(1.0).sub(sh.shoulderFloor)).mul(float(1.0).sub(stand))), float(1.0));
+}
+/** wombSection.standAhead at the crest p: down the left, region x (1 − smoothstep(0, standAheadM, d)) d m ahead of the curl's
+ * front `front` (`frontOn` false, behind the front, or the dial at 0: 0). */
+export function standAheadNode(p: N, front: N, frontOn: N, aheadM: N): N {
+  const d = p.sub(vec2(TIP[0], TIP[1]));
+  const ahead = d.x.mul(SHOULDER_SIN).sub(d.y.mul(SHOULDER_COS)).sub(front);
+  const on = frontOn.and(aheadM.greaterThan(0.0)).and(ahead.greaterThanEqual(0.0));
+  return select(on, shoulderRegionNode(p).mul(float(1.0).sub(smoothstep(0.0, max(aheadM, 1e-3), ahead))), float(0.0));
 }
 const SHOULDER_SIN = Math.sin((LEFT_BEARING_DEG * Math.PI) / 180), SHOULDER_COS = Math.cos((LEFT_BEARING_DEG * Math.PI) / 180);
 
