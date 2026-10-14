@@ -30,9 +30,10 @@ describe('the Womb reef', () => {
     // The left's ledge ends, a point up its inside (the third vertex is the map's north edge, where the reef fades out), the right's first leg.
     // Re-pinned 2026-10-14 (womb-story Task 1, Fable's STOP 0 ruling): the left's end and the inside leg's first 200 m lie
     // in the drop (dropDepthM past ledgeWallM, wombStory.test); the left's corner and the right hold the ledge's depth.
-    for (const [x, z] of [NORTH_LEDGE[0], ...SOUTH_LEDGE.slice(0, 2)]) {
-      expect(depth(x, z)).toBeGreaterThan(DEFAULT_REEF_PARAMS.ledgeDepthM - 1.5);
-      expect(depth(x, z)).toBeLessThan(DEFAULT_REEF_PARAMS.ledgeDepthM + 1.5);
+    // Re-pinned 2026-10-14 (womb-story Task 2, STOP 1 ruling 1): the right's ledge past the tip's corner holds rightLedgeDepthM.
+    for (const [x, z, d] of [[...NORTH_LEDGE[0], DEFAULT_REEF_PARAMS.ledgeDepthM], [...SOUTH_LEDGE[0], DEFAULT_REEF_PARAMS.ledgeDepthM], [...SOUTH_LEDGE[1], DEFAULT_REEF_PARAMS.rightLedgeDepthM]] as const) {
+      expect(depth(x, z)).toBeGreaterThan(d - 1.5);
+      expect(depth(x, z)).toBeLessThan(d + 1.5);
     }
     for (const [x, z] of [NORTH_LEDGE[1], [NORTH_LEDGE[1][0], -300] as const]) {
       expect(depth(x, z)).toBeGreaterThan(DEFAULT_REEF_PARAMS.dropDepthM - 1.5);

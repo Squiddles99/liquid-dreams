@@ -73,8 +73,8 @@ export interface ReefParams {
   shelfHollowShare: number;
   /** womb-story Task 2 (spec 3.1, STOP 0 ruling 3): the right's ledge depth (m below mean sea level), and the shelf's along a
    * RIGHT_STRIP_M strip inshore of it: deeper than the tip's, so the right breaks after the take-off and all at once. Its
-   * satellite line (RIGHT_SHAPE) is untouched; the corner (RIGHT_TIP_KEEP_M) keeps ledgeDepthM. 3.5 (main's: the dial is a
-   * no-op) until Fable rules: no depth from 3.5 to 12 passes spec 3.1 at 270/14 (Task 2 sweep, task3-stop.md). */
+   * satellite line (RIGHT_SHAPE) is untouched; the corner (RIGHT_TIP_KEEP_M) keeps ledgeDepthM. 8: the shallowest of
+   * {8, 10, 12} that puts the first onset at the tip at 270/14, 4 and 7 ft (STOP 1 ruling 1, by onset: firstBreakTip.test). */
   rightLedgeDepthM: number;
 }
 
@@ -107,7 +107,7 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
   ledgeBlendM: 15,
   dropDepthM: 8.5,
   shelfHollowShare: 0,
-  rightLedgeDepthM: 3.5,
+  rightLedgeDepthM: 8,
 };
 
 /** The take-off corner (x, z), where the left's and the right's ledges meet: 224 m off the beach (womb-retune Task 2b,

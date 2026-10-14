@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_REEF_PARAMS, LEFT_BEARING_DEG, NORTH_LEDGE, SOUTH_LEDGE, TIP } from '../seabed/wombReef';
+import { BAND_FADE_M, DEFAULT_REEF_PARAMS, LEFT_BEARING_DEG, NORTH_LEDGE, RIGHT_TIP_KEEP_M, SOUTH_LEDGE, TIP } from '../seabed/wombReef';
 import { SWELL_BANDS } from '../frontend/sessionSetup';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { CLOSEOUT_PEEL, leftStretches, rideOf, setWaveHeight } from './reefReport';
@@ -14,11 +14,19 @@ import { coastReefField } from './testField';
 const LEGS = { first: [0], inside: [1] } as const;
 /** womb-story (Task 3 re-pin, 2026-10-14): segment A, the barrel, from the tip to ledgeBarrelM down the left. */
 const A_END: [number, number] = [TIP[0] + DEFAULT_REEF_PARAMS.ledgeBarrelM * Math.sin((LEFT_BEARING_DEG * Math.PI) / 180), TIP[1] - DEFAULT_REEF_PARAMS.ledgeBarrelM * Math.cos((LEFT_BEARING_DEG * Math.PI) / 180)];
+/** womb-story (Task 2 re-pin, 2026-10-14, STOP 1 ruling 1): the right read from where its bed is its own, RIGHT_TIP_KEEP_M +
+ * BAND_FADE_M down its edge: the corner keeps the tip's depth by design and breaks with the take-off, so read from the tip
+ * the deeper right (rightLedgeDepthM 8) "peels" away from it at 8-18 m/s at 225 deg; and as one stretch (spec 3.1: all at
+ * once), its first 20 m alone being too short a fit (Big 0 m read 5 m/s over 9 samples; the whole right -18.3 to -50). */
+const RIGHT_FROM: [number, number] = (() => {
+  const [a, b] = SOUTH_LEDGE, L = Math.hypot(b[0] - a[0], b[1] - a[1]), s = RIGHT_TIP_KEEP_M + BAND_FADE_M;
+  return [a[0] + ((b[0] - a[0]) * s) / L, a[1] + ((b[1] - a[1]) * s) / L];
+})();
 const TIDES_M = [-0.5, -0.25, 0, 0.5] as const;
 const band = (label: string) => SWELL_BANDS.find((b) => b.label === label)!;
 const legs = (label: string, tideM: number) => {
   const b = band(label), f = coastReefField({ periodS: b.periodS, tideM }), H = setWaveHeight(b.ft);
-  return { ...leftStretches(f, H, NORTH_LEDGE, LEGS, DEFAULT_BREAK_PARAMS), ...leftStretches(f, H, SOUTH_LEDGE, { r0: [0], r1: [1] }, DEFAULT_BREAK_PARAMS),
+  return { ...leftStretches(f, H, NORTH_LEDGE, LEGS, DEFAULT_BREAK_PARAMS), ...leftStretches(f, H, [RIGHT_FROM, ...SOUTH_LEDGE.slice(1)], { right: [0, 1] }, DEFAULT_BREAK_PARAMS),
     ...leftStretches(f, H, [TIP, A_END], { a: [0] }, DEFAULT_BREAK_PARAMS) };
 };
 
@@ -54,7 +62,7 @@ describe("the Womb's left on the real shelf (womb-retune)", () => {
     for (const tideM of TIDES_M) {
       const l = legs(label, tideM);
       if (label === 'Huge') expect(l.inside!.peel, `${label} ${tideM} m inside`).toBeGreaterThan(CLOSEOUT_PEEL);
-      for (const r of [l.r0!, l.r1!]) expect(rideOf(r), `${label} ${tideM} m right`).toBe('closes out');
+      expect(rideOf(l.right!), `${label} ${tideM} m right`).toBe('closes out');
     }
   });
 });
