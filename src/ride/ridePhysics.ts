@@ -392,8 +392,11 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
         event = 'wipeout';
         break;
       }
-      // The lip strike (spec §4.4): the rider's head into the lip's underside.
-      if (b.phase === 'ride' && ctx.cover >= UNDER_LIP_COVER && ctx.roomM > 0 && headHeight(b.comH, b.standH) > ctx.roomM) {
+      // The lip strike (spec §4.4): the rider's head into the lip's underside, forced up by the player (RT). What the game
+      // drives ducks under the lip at the legs' rate; on the real wave the room can drop faster than that between steps
+      // (Task 12: the assist was struck), and that is not the player's doing.
+      const forcing = c.crouch < -0.1;
+      if (b.phase === 'ride' && forcing && ctx.cover >= UNDER_LIP_COVER && ctx.roomM > 0 && headHeight(b.comH, b.standH) > ctx.roomM) {
         setPhase(b, 'bail');
         event = 'lip';
         break;

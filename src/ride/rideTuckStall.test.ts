@@ -84,6 +84,13 @@ describe('the lip (ride-speed spec §4.4)', () => {
       expect(runCtx(b, c, level, 2, () => lowLip)).not.toContain('lip');
     }
   });
+  it('the room dropping in a jump (the real wave’s stations): the game-driven body is never struck (Task 12)', () => {
+    for (const c of [{ ...NO_CONTROLS, pump: true }, { ...NO_CONTROLS, stall: true }, NO_CONTROLS]) {
+      const b = riding(level, 0, 9);
+      const ev = runCtx(b, c, level, 1.5, (t) => ({ ...OPEN_FACE, cover: 0.9, roomM: t < 0.7 ? 3 : 1.35, curlSpeed: 8 }));
+      expect(ev).not.toContain('lip');
+    }
+  });
   it('the room shrinking: the stand-up blends down to low before the head reaches the lip', () => {
     const b = riding(level, 0, 9);
     const room = (t: number): number => Math.max(1.4, 3 - 0.5 * t);
