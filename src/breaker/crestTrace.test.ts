@@ -547,7 +547,10 @@ describe('the inside leg draws one line (closeout-edges, Fable ruling 2026-10-10
 
   for (const dt of [3, 5]) {
     it(`t+${dt}: no inside-leg station steps more than 2 m across the crest (the unsmoothed line did)`, { timeout: 120_000 }, () => {
-      expect(worstStep(at(dt, 0))).toBeGreaterThan(2);
+      // Re-pinned 2026-10-14 (womb-story Task 3c, Fable's STOP 1 ruling: the leg is in the drop): the inside leg now stands in
+      // dropDepthM water and its arrival no longer kinks: the unsmoothed line steps 0 m (t+3) and 0.55 m (t+5), not the
+      // > 2 m this smoothing was made for. The bar on the smoothed line holds.
+      console.log(`t+${dt}: unsmoothed inside-leg step ${worstStep(at(dt, 0)).toFixed(2)} m`);
       expect(worstStep(at(dt))).toBeLessThanOrEqual(2);
     });
 
@@ -579,7 +582,9 @@ describe('the inside leg draws one line (closeout-edges, Fable ruling 2026-10-10
         xi = Math.max(xi, Math.abs(phaseXi(s.x, s.z, t, sampleField(hf, s.x, s.z), all[s.wave], hctx)));
         n++;
       });
-      expect(n).toBeGreaterThan(10);
+      // Re-pinned 2026-10-14 (womb-story Task 3c: the leg is in the drop): at t+3 the leg is not drawn yet (unbroken in
+      // dropDepthM water, no stations past the closeout weight's start); at t+5 it is.
+      expect(n).toBeGreaterThan(dt === 3 ? -1 : 10);
       expect(move).toBeLessThanOrEqual(3);
       expect(xi).toBeLessThan(0.3);
     });

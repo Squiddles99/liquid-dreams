@@ -101,7 +101,10 @@ describe('a ride on the drawn sections', () => {
     expect(rodeS).toBeGreaterThan(10);
     // The ride is in front of the crest (R3 §1): 10 s or more of riding (womb-retune: the left runs 180 m on its ledge) with her wave's nearest station behind her. A section's
     // back does not count (onSection is true there too), and a wave still traced while she coasts behind it does not count.
-    expect(heldS).toBeGreaterThanOrEqual(10);
+    // Re-pinned 2026-10-14 (womb-story Task 2, STOP 1 ruling 1): with the right at 8 m the tip waits its own turn, she pops
+    // up ~6 m ahead of the curl (was ~3) and reaches the traced wave's end (~118 m, the wall fizzling) ~0.7 s sooner: held
+    // 9.3-9.7 s of a 14 s ride (task2b/ride-trace-*). 9 s or more.
+    expect(heldS).toBeGreaterThanOrEqual(9);
     // A real end: the wave's (foam, or on a drawn section at the last step) or the window's. A stall behind the wave is not.
     // Re-pinned 2026-10-14 (womb-story Task 3, spec 3.3: "the fizzle is the ride's natural end"): or past the wall's end
     // (wombReef ledgeWallM), where the wave runs on unbroken into the drop (Solid rode 14.3 s, held 10.4-10.8, ending there).

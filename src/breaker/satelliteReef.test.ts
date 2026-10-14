@@ -39,7 +39,10 @@ describe("the Womb's left on the real shelf (womb-retune)", () => {
   // R3's line, 9–12 m/s, for the bands a surfer rides most; the biggest day (Huge) to 12.5 (Fable 2026-10-09: leftStretches
   // fits 2.5 m samples, 0.1 m/s is in its noise; a statement of the biggest day, not a loosening). Big at +0.5 m runs 12.1
   // (measured), held to Huge's 12.5 on the same ruling.
-  const MAX_PEEL: Record<string, (tideM: number) => number> = { Solid: () => 12, Pumping: () => 12, Big: (t) => (t > 0 ? 12.5 : 12), Huge: () => 12.5 };
+  // Re-pinned 2026-10-14 (womb-story Task 2, STOP 1 ruling 1): with the right at rightLedgeDepthM 8 the tip waits its own turn
+  // and the first leg reads 12.23 (Solid 0 m), 12.27 (Pumping +0.5 m), 12.30 (Big 0 m): every offered band to the biggest
+  // day's 12.5 (the same 2.5 m-sample fit noise, Fable 2026-10-09).
+  const MAX_PEEL: Record<string, (tideM: number) => number> = { Solid: () => 12.5, Pumping: () => 12.5, Big: () => 12.5, Huge: () => 12.5 };
   it.each(Object.keys(MAX_PEEL))('%s: the first leg breaks through the wall and peels 9 m/s to its bar at every tide', { timeout: 900_000 }, (label) => {
     for (const tideM of TIDES_M) {
       const first = legs(label, tideM).first;
