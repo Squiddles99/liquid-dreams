@@ -23,7 +23,7 @@ function row(label: string, tideM: number): number[] {
  * B's peel. Measured by tools/_smallSwellPin.ts: [label, tide, broken, of, peel m/s, hollow]. The start (the tip's break)
  * still reads the matrix; the select's offers (sessionSetup.BREAKS, hand-written) are unchanged. */
 const STORY: readonly (readonly [string, number, number, number, number, number])[] = [
-  ['Fun', -0.5, 44, 72, 8.98, 0.466], ['Solid', -0.5, 52, 72, 11.15, 0.456], ['Solid', 0.5, 48, 72, 10.01, 0.451], ['Huge', 0.5, 55, 72, 11.91, 0.529],
+  ['Fun', -0.5, 44, 72, 8.98, 0.467], ['Solid', -0.5, 52, 72, 11.15, 0.457], ['Solid', 0.5, 48, 72, 10.01, 0.451], ['Huge', 0.5, 55, 72, 11.90, 0.537],
 ];
 
 describe('the select matrix holds on the game field (womb-retune Task 4)', () => {

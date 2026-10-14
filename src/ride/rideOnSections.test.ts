@@ -14,7 +14,7 @@ import { TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from './takeoff';
 import { LINE_OFF_DEG, aheadOf } from './rideLine';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { NORTH_LEDGE } from '../seabed/wombReef';
+import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, ledgeAlongM } from '../seabed/wombReef';
 
 /**
  * A rider on the drawn wave (Andrew, 2026-10-05: "the surfer wipes out instantly"): each size's set's biggest wave from the
@@ -103,6 +103,9 @@ describe('a ride on the drawn sections', () => {
     // back does not count (onSection is true there too), and a wave still traced while she coasts behind it does not count.
     expect(heldS).toBeGreaterThanOrEqual(10);
     // A real end: the wave's (foam, or on a drawn section at the last step) or the window's. A stall behind the wave is not.
-    expect({ foam: last.foam, onSection: !!last.onSection, rodeS, real: last.foam > 0 || last.onSection === true || rodeS >= 15 }).toMatchObject({ real: true });
+    // Re-pinned 2026-10-14 (womb-story Task 3, spec 3.3: "the fizzle is the ride's natural end"): or past the wall's end
+    // (wombReef ledgeWallM), where the wave runs on unbroken into the drop (Solid rode 14.3 s, held 10.4-10.8, ending there).
+    const along = ledgeAlongM(b.x, b.z);
+    expect({ foam: last.foam, onSection: !!last.onSection, rodeS, along, real: last.foam > 0 || last.onSection === true || rodeS >= 15 || along >= DEFAULT_REEF_PARAMS.ledgeWallM }).toMatchObject({ real: true });
   });
 });
