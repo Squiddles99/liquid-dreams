@@ -14,7 +14,7 @@ import { SprayPool, birthInto, stepPool } from './sprayStep';
 import {
   DEFAULT_SPRAY_PARAMS, type EmitterInput, IMPACT_MAX_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, impactKick, inImpactWindow, IMPACT_DELAY_S, IMPACT_WINDOW_S, sprayCanEmit, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
   spitBirths, sprayEmitters, sprayReplayTicks, windToVector, plumeBirths, PLUME_WIND_MS, PLUME_LIFE_S, offshoreSpeedOn, sprayAndPlumeBirths, SPIT_WIND_SHARE, FEATHER_FLOOR, FEATHER_WIND_MS, FEATHER_LIFE_S, FEATHER_RATE, featherBirths, standingCrestY,
-  featherStrength, FEATHER_FRAME_REACH_M, FEATHER_LIFT_A,
+  featherStrength, FEATHER_FRAME_REACH_M, FEATHER_LIFT_A, spitMouths, SPIT_PULSE_S, SPIT_MAX_SPEED_MS,
 } from './sprayEmitters';
 import { ERODING_KINDS, FEATHER_KIND, KIND_INDEX, PARTICLE_KINDS, PLUME_KIND, SPIT_KIND } from './particleKinds';
 
@@ -548,5 +548,23 @@ describe('the feather is a mist on the lip (womb-story Task 5)', () => {
         expect(b.y - e.y, 'at most 0.02 A over it').toBeLessThanOrEqual(0.02 * e.A + 1e-9);
       }
     }
+  });
+});
+
+// womb-story Task 6 (spec 3.6): spit from the tube's end: the station caving in (phase 1.25-1.5) whose neighbour toward the
+// front still has its tube (< 1.25) spits, along the line toward the front; none at the front, none before a tube closes.
+describe('spit from the tube’s end (womb-story Task 6)', () => {
+  it('on a line 0.9, 1.1, 1.3, 1.6 (front first): one mouth, at the 1.3 station, blowing toward the front', () => {
+    expect(spitMouths([0.9, 1.1, 1.3, 1.6])).toEqual([{ at: 2, toward: 1 }]);
+    expect(spitMouths([1.6, 1.3, 1.1, 0.9])).toEqual([{ at: 1, toward: 2 }]);
+  });
+  it('none while every section still holds its tube, none past the cave-in, none at the curl front', () => {
+    expect(spitMouths([0.6, 0.9, 1.1, 1.2])).toEqual([]);
+    expect(spitMouths([1.6, 1.8, 2])).toEqual([]);
+    expect(spitMouths([1.3])).toEqual([]);
+  });
+  it('the pulse: full to 0.4 s after the section starts caving in, gone by 1.2 s; the jet at most 25 m/s', () => {
+    expect(SPIT_PULSE_S).toEqual([0.4, 1.2]);
+    expect(SPIT_MAX_SPEED_MS).toBe(25);
   });
 });

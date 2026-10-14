@@ -4,7 +4,7 @@ import { offshoreSpeed } from '../breaker/overturn';
 import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
 import { type Station, type StationEntry, traceStations } from '../breaker/crestTrace';
 import { GRAVITY_MS2 } from '../breaker/lipProfile';
-import { STOOD_PHASE, type SectionFrame, type SectionNumbers, type SectionTiming, curlWeight, seatOf, sectionCrestY, sectionFrame, sectionTiming, shoulderRegion, wallWeight } from '../breaker/wombSection';
+import { STOOD_PHASE, collapseSpan, flightTime, tubeHold, type SectionFrame, type SectionNumbers, type SectionTiming, curlWeight, seatOf, sectionCrestY, sectionFrame, sectionTiming, shoulderRegion, wallWeight } from '../breaker/wombSection';
 import { CREST_KNOT, type P2 as Vec2, profileKnots } from '../breaker/wombProfile';
 import { type ReefField, sampleField } from '../breaker/reefField';
 import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWave } from '../breaker/setWaveModel';
@@ -283,9 +283,12 @@ export interface ImpactEmitter {
 
 /**
  * The barrel's spit (Andrew: "foam, spit and spray"): as the tube collapses behind its mouth, the air in it is squeezed out
- * of the open end in a horizontal jet of spray along the line. A station spits while its own lip is still in the air and a
- * section within SPIT_REACH_STATIONS behind it along the crest (the one further through its break) has landed, most in
- * the SPIT_PULSE_S after that landing. With the explosion (its amount), with or without wind.
+ * of the open end in a horizontal jet of spray along the line. womb-story Task 6 (spec 3.6): born inside the tube behind the
+ * front, at the station caving in (phase 1.25-1.5, tubeFilling -> cavingIn) whose neighbour toward the front still has its
+ * tube (< 1.25), and blown along the line toward the front at SPIT_THROW_SHARE x the local curl speed, most in the
+ * SPIT_PULSE_S after it starts caving in; none at the curl front (the lip's own throw is the plume and the impact). With the
+ * explosion (its amount), with or without wind. (It was the mouth's own station, its lip still in the air, once a section
+ * within 3 stations behind had landed.)
  */
 export interface SpitEmitter {
   /** The tube's middle at the mouth (world m; y includes the tide). */
@@ -311,12 +314,12 @@ export interface SpitEmitter {
   waveId: number;
   arc: number;
 }
-/** A collapse this many stations (× SPRAY_SPACING_M) behind a lip still in the air blows out of its mouth… */
-export const SPIT_REACH_STATIONS = 3;
-/** …fully up to SPIT_PULSE_S[0] after that section landed, gone by [1] (s). */
-export const SPIT_PULSE_S: readonly [number, number] = [0.3, 1.0];
-/** The jet's speed out of the mouth: this × the lip's throw (the frame's tip speed, vj), at most SPIT_MAX_SPEED_MS
- * (womb-realism Task 5; was 2.5 × √(g·H), ~14 m/s for a heavy 3 m barrel: 1.5 × vj is ~15-18 m/s at 7 ft). */
+/** A section spits as it caves in: fully up to SPIT_PULSE_S[0] after it reaches phase SPIT_PHASES[0], gone by [1] (s)… */
+export const SPIT_PULSE_S: readonly [number, number] = [0.4, 1.2];
+/** …from tubeFilling to cavingIn (wombProfile.STAGES), its neighbour toward the front still below SPIT_PHASES[0]. */
+export const SPIT_PHASES: readonly [number, number] = [1.25, 1.5];
+/** The jet's speed: this × the local curl speed (the arc between the mouth and its neighbour toward the front over the
+ * difference of their times since onset), at most SPIT_MAX_SPEED_MS (womb-story Task 6; was 1.5 × the lip's throw vj). */
 export const SPIT_THROW_SHARE = 1.5;
 export const SPIT_MAX_SPEED_MS = 25;
 /** Spit puffs per second per mouth at strength 1… */
@@ -345,8 +348,6 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
   // Each station's timing (no sheet read) decides whether it emits; only the stations that do pay for the frame (the lip's
   // drawn points), so the result is the same as framing every station (shelf-polish Task 1, ruling C: on the real shelf
   // ~59 breaking stations a tick, ~20 of them emit).
-  const timing: (SectionTiming | null)[] = stations.map(() => null);
-  const frames: (SectionFrame | null)[] = stations.map(() => null);
   // Each wave's broken stations' arcs: a stood station's distance to its curl (FEATHER_FRAME_REACH_M).
   const brokenArcs = new Map<number, number[]>();
   for (const s of stations) if (!s.gap && s.tb !== null && Number.isFinite(s.tb)) (brokenArcs.get(s.wave) ?? brokenArcs.set(s.wave, []).get(s.wave)!).push(s.arc);
@@ -394,12 +395,10 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
     const wind = wantSpray ? veilFactor(i.wind, s.nx, s.nz) : 0;
     if (!(wind > 0) && !wantImpact) continue;
     const ft = sectionTiming(s.section, s.H);
-    if (wantImpact) timing[si] = ft;
     const emitsSpray = wind > 0 && ft.prog > 0 && ft.prog < 1 && ft.weight * ft.rho > MIN_EMIT_WEIGHT;
     const emitsImpact = wantImpact && inImpactWindow(s.tb, ft.tauLand) && ft.rho > MIN_EMIT_WEIGHT;
-    if (!emitsSpray && !emitsImpact && !(wantImpact && spitCandidate(s, ft))) continue;
+    if (!emitsSpray && !emitsImpact) continue;
     const f = frameOf(s);
-    if (wantImpact) frames[si] = f;
     const waveId = i.events[s.wave].id, arc = Math.round(s.arc / SPRAY_SPACING_M);
     if (emitsSpray) {
       // The lip's tip now.
@@ -419,7 +418,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       });
     }
   }
-  if (wantImpact) spitEmitters(stations, timing, frames, i, impactAmount, spit);
+  if (wantImpact) spitEmitters(stations, frameOf, i, impactAmount, spit);
   drawnCrests(nearCurl, feather, (s) => sectionCrestY(s.section, sheetOf(s)) + i.tideM);
   return { spray, impact, spit, feather };
 }
@@ -440,56 +439,55 @@ function drawnCrests(near: Map<number, { k: number; s: Station; cheap: number; d
   }
 }
 
-/** A station whose own lip may spit (spitEmitters' first test): still in the air, well through its throw, drawn. */
-function spitCandidate(s: Station, t: SectionTiming): boolean {
-  return s.tb !== null && s.tb < t.tauLand && t.prog > 0.4 && t.weight * t.rho > MIN_EMIT_WEIGHT;
+/**
+ * The spitting mouths of one run of stations, by their phases in order along the crest: each station caving in
+ * (SPIT_PHASES) whose neighbour on one side is still below SPIT_PHASES[0] (the open tube toward the front) spits toward
+ * that neighbour (`toward`, its index); none at a run's end with no such neighbour (the curl front).
+ */
+export function spitMouths(phases: readonly number[]): { at: number; toward: number }[] {
+  const out: { at: number; toward: number }[] = [];
+  phases.forEach((p, j) => {
+    if (!(p >= SPIT_PHASES[0] && p <= SPIT_PHASES[1])) return;
+    for (const q of [j - 1, j + 1]) if (q >= 0 && q < phases.length && phases[q] < SPIT_PHASES[0]) { out.push({ at: j, toward: q }); return; }
+  });
+  return out;
 }
 
-/** The stations' spit (SpitEmitter), from their timings (null: not breaking) and, for the mouths, their frames, into `out`. */
-function spitEmitters(stations: readonly StationEntry[], timing: readonly (SectionTiming | null)[], frames: readonly (SectionFrame | null)[], i: EmitterInput, amount: number, out: SpitEmitter[]): void {
-  // The station k steps from j along its run (same wave, no gap between), or -1.
-  const at = (j: number): Station | null => {
-    const e = j >= 0 && j < stations.length ? stations[j] : null;
-    return e && !e.gap ? e : null;
-  };
-  const step = (j: number, k: number): number => {
-    let q = j;
-    for (let m = 0; m < Math.abs(k); m++) {
-      q += Math.sign(k);
-      if (at(q)?.wave !== at(j)?.wave) return -1;
+/** The stations' spit (SpitEmitter): per run of drawn stations (one wave, no gap), its mouths (spitMouths), framed by
+ * `frameOf`, into `out`. */
+function spitEmitters(stations: readonly StationEntry[], frameOf: (s: Station) => SectionFrame, i: EmitterInput, amount: number, out: SpitEmitter[]): void {
+  const periodS = i.field!.periodS;
+  let run: Station[] = [];
+  const flush = (): void => {
+    for (const { at, toward } of spitMouths(run.map((s) => s.section.phase))) {
+      const s = run[at], q = run[toward];
+      if (s.tb === null || !Number.isFinite(s.tb)) continue;
+      // How long since it started caving in (wombSection.sectionPhase: phase 1.25 at flight + hold + a quarter of the collapse).
+      const Hb = s.Hb ?? s.H, age = s.tb - (flightTime(Hb) + tubeHold(Hb, periodS) + (SPIT_PHASES[0] - 1) * collapseSpan(Hb, periodS));
+      const pulse = 1 - smoothstep(SPIT_PULSE_S[0], SPIT_PULSE_S[1], age);
+      if (!(pulse > 0)) continue;
+      const ddx = q.x - s.x, ddz = q.z - s.z, dl = Math.hypot(ddx, ddz);
+      if (!(dl > 1e-6)) continue;
+      // The local curl speed: the arc to the neighbour over the difference in their times since onset (the neighbour
+      // unbroken: the curl's top speed).
+      const curl = q.tb !== null && Number.isFinite(q.tb) && s.tb - q.tb > 0.05 ? Math.abs(s.arc - q.arc) / (s.tb - q.tb) : i.params.curlMaxMs;
+      const f = frameOf(s), tubeH = Math.max(f.crest[1] - f.floor[1], 0.1);
+      // Inside the tube: 0.4 of the reach in from the crest, 0.3 of its height over the floor.
+      const u = f.crest[0] + 0.4 * f.reach, y = f.floor[1] + 0.3 * tubeH;
+      out.push({
+        x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, dx: ddx / dl, dz: ddz / dl,
+        speed: Math.min(SPIT_MAX_SPEED_MS, SPIT_THROW_SHARE * curl), nx: s.nx, nz: s.nz, radius: 0.3 * tubeH, A: s.section.A,
+        strength: pulse * f.rho * Math.min(1, s.H / 2) * amount, lip: Math.min(1, f.rho),
+        waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M),
+      });
     }
-    return q;
+    run = [];
   };
-  const tbOf = (j: number): number => (timing[j] ? (at(j)?.tb ?? -Infinity) : -Infinity);
-  for (let j = 0; j < stations.length; j++) {
-    const s = at(j), ft = timing[j];
-    if (!s || !ft || s.tb === null || !spitCandidate(s, ft)) continue;
-    const f = frames[j] as SectionFrame;
-    // Behind the mouth: the side further through its break.
-    const back = tbOf(step(j, -1)) > tbOf(step(j, 1)) ? -1 : 1;
-    if (!(tbOf(step(j, back)) > s.tb)) continue;
-    let age = -1, from = -1;
-    for (let k = 1; k <= SPIT_REACH_STATIONS; k++) {
-      const q = step(j, back * k), fq = q >= 0 ? timing[q] : null, tq = q >= 0 ? at(q)?.tb : null;
-      // The spit's pulse runs from the same delayed landing as the burst (IMPACT_DELAY_S).
-      if (fq && tq !== null && tq !== undefined && tq >= fq.tauLand + IMPACT_DELAY_S) { age = tq - fq.tauLand - IMPACT_DELAY_S; from = q; break; }
-    }
-    if (from < 0) continue;
-    const pulse = 1 - smoothstep(SPIT_PULSE_S[0], SPIT_PULSE_S[1], age);
-    if (!(pulse > 0)) continue;
-    const b = at(from) as Station;
-    const ddx = s.x - b.x, ddz = s.z - b.z, dl = Math.hypot(ddx, ddz);
-    if (!(dl > 1e-6)) continue;
-    // The tube's middle: under the lip, between the tube's floor and the crest.
-    const tubeH = Math.max(f.crest[1] - f.floor[1], 0.1);
-    const u = f.crest[0] + 0.4 * f.reach, y = f.floor[1] + 0.45 * tubeH;
-    out.push({
-      x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, dx: ddx / dl, dz: ddz / dl,
-      speed: Math.min(SPIT_MAX_SPEED_MS, SPIT_THROW_SHARE * f.vj), nx: s.nx, nz: s.nz, radius: 0.3 * tubeH, A: s.section.A,
-      strength: pulse * f.weight * f.rho * Math.min(1, s.H / 2) * amount, lip: Math.min(1, f.weight * f.rho),
-      waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M),
-    });
+  for (const e of stations) {
+    if (e.gap || (run.length && run[run.length - 1].wave !== e.wave)) flush();
+    if (!e.gap) run.push(e);
   }
+  flush();
 }
 
 /** The spray's emitters at sim time t (breakEmitters' spray). */
