@@ -1,3 +1,4 @@
+import { TIP } from '../seabed/wombReef';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
@@ -64,13 +65,17 @@ describe('ψ₀ in the reef bake (spec 2026-09-30-barrel-from-maths §5, plan ru
     expect(Math.abs(psiAt(mid, x, z, h) - p0)).toBeLessThanOrEqual(0.1 * p0 + 1e-9);
   });
   it('on the reef face: low ≥ mid ≥ high at 6 and 8 ft', () => {
+    // 2026-10-14 (womb-story STOP 1b ruling 5): read at the peak, the tip (TIP, exempt from the ridden band's target), not at
+    // (0, 0): since lineup-truth moved the take-off that is 94 m down the left and 90 m inshore, on the band, where ψ₀ is
+    // now its segment's target (and off the band, the shelf's own, unordered by the tide there).
+    const [px, pz] = TIP;
     const rows: string[] = [];
     for (const ft of [4, 6, 8, 10, 12, 15]) {
-      const h = biggest(ft), v = [low, mid, high].map((f) => psiAt(f, 0, 0, h));
+      const h = biggest(ft), v = [low, mid, high].map((f) => psiAt(f, px, pz, h));
       rows.push(`${ft} ft: low ${v[0].toFixed(3)} mid ${v[1].toFixed(3)} high ${v[2].toFixed(3)}`);
     }
     console.log(rows.join(String.fromCharCode(10)));
-    for (const ft of [6, 8]) { const h = biggest(ft); expect(psiAt(low, 0, 0, h)).toBeGreaterThanOrEqual(psiAt(mid, 0, 0, h) - 0.005); expect(psiAt(mid, 0, 0, h)).toBeGreaterThanOrEqual(psiAt(high, 0, 0, h) - 0.005); }
+    for (const ft of [6, 8]) { const h = biggest(ft); expect(psiAt(low, px, pz, h)).toBeGreaterThanOrEqual(psiAt(mid, px, pz, h) - 0.005); expect(psiAt(mid, px, pz, h)).toBeGreaterThanOrEqual(psiAt(high, px, pz, h) - 0.005); }
     // (15 ft at low tide no longer breaks out on the slope: since R1 §2 the break starts on the face, 12 ft within 9 m of water.)
   });
 });

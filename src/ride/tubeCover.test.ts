@@ -37,8 +37,12 @@ describe('tube cover (Andrew 2026-10-04: the camera goes over the shoulder when 
   });
 
   it('a middling-hollow section that throws a drawn tube covers her in it (Andrew, 2026-10-05: the camera "isn\u2019t engaging despite me riding close to or being actually in the barrel")', () => {
-    expect(tubeCover(crest(() => BARREL, 3, 0.3), 1.6, 0)).toBeGreaterThan(0.9);
-    expect(tubeCover(crest(() => 0.8, 4, 0.3), 2, 0)).toBeGreaterThan(0.9);
+    // 2026-10-14 (womb-story Task 3b, STOP 1b ruling 5): 'middling' is 0.5 now, the least hollow the approved tube is drawn
+    // whole at; under it the profile eases into the spilling lip (wombProfile SPILL_TO 0.5, SPILL_FULL 0.2: no cavity at
+    // 0.2), and a hollow 0.3 section draws no tube to cover her (0, by design: the wall's crumbling lip).
+    expect(tubeCover(crest(() => BARREL, 3, 0.5), 1.6, 0)).toBeGreaterThan(0.9);
+    expect(tubeCover(crest(() => 0.8, 4, 0.5), 2, 0)).toBeGreaterThan(0.9);
+    expect(tubeCover(crest(() => BARREL, 3, 0.2), 1.6, 0)).toBe(0);
   });
 
   it('skips gaps', () => {

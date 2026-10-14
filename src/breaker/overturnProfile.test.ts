@@ -126,7 +126,9 @@ describe('the lip from the maths (spec 2026-09-30-barrel-from-maths §3.2–3.4)
   });
 });
 
-describe('the lip finish (Andrew, 2026-10-01): the curl grows as it throws', () => {
+// 2026-10-14 (womb-story STOP 1b ruling 5: overturnProfile retires with its siblings, buildProfile is drawn by nothing
+// since womb-realism STOP 3b): retired with lipFoam and lipProfile's 'never crosses' (buildProfile's lip finish).
+describe.skip('the lip finish (Andrew, 2026-10-01): the curl grows as it throws', () => {
   it('is a point at the crest at the start (no plane from the crest to the trough), grows steadily, and is the tube at impact on landing', () => {
     for (const psi of [0.035, 0.065, 0.09]) {
       const tau = peakLanding(psi);

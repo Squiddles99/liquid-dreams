@@ -74,7 +74,10 @@ describe('the barrel sized from the crest it was thrown from (option A)', () => 
     expect(ideal.area).toBeGreaterThanOrEqual(o.area);
     expect(small.area).toBeLessThan(0.6 * o.area);
   });
-  it('the tube grows smoothly with the wave: no jump between waves a quarter-foot apart (10–13 ft, mid tide)', { timeout: 600_000 }, () => {
+  // 2026-10-14 (womb-story STOP 1b ruling 5: overturnProfile retires with its siblings, buildProfile is drawn by nothing
+  // since womb-realism STOP 3b): retired: buildProfile's tube (the 11 -> 11.25 ft jump 0.88; half way 0.36 of the
+  // landing's air) went red between STOP 1 and Task 3c (not bisected; the peak's ψ moved ~1 % with the right at 8 m); the ribbon draws wombProfile's family.
+  it.skip('the tube grows smoothly with the wave: no jump between waves a quarter-foot apart (10–13 ft, mid tide)', { timeout: 600_000 }, () => {
     // The face's join used to step out toward the trough (FACE_CONCAVE_STEPS) once a bigger tube landed past the foot,
     // and stop at four steps: between 12.5 and 12.75 ft the foot moved 4 m and the tube lost 17% of its air.
     let prev = -1, worst = 0, at = '';
@@ -85,7 +88,10 @@ describe('the barrel sized from the crest it was thrown from (option A)', () => 
     }
     expect(worst, `the largest change in the tube's air between neighbours (${at})`).toBeLessThan(0.1);
   });
-  it("down the line (Andrew, 2026-10-03: not nearly hollow enough): it opens early and stays open after the lip lands", { timeout: 600_000 }, () => {
+  // 2026-10-14 (womb-story STOP 1b ruling 5: overturnProfile retires with its siblings, buildProfile is drawn by nothing
+  // since womb-realism STOP 3b): retired: buildProfile's tube (the 11 -> 11.25 ft jump 0.88; half way 0.36 of the
+  // landing's air) went red between STOP 1 and Task 3c (not bisected; the peak's ψ moved ~1 % with the right at 8 m); the ribbon draws wombProfile's family.
+  it.skip("down the line (Andrew, 2026-10-03: not nearly hollow enough): it opens early and stays open after the lip lands", { timeout: 600_000 }, () => {
     // Full size for 0.7 s (≈ 8 m of crest at the peel's 12 m/s), a quarter of it half way through the throw, closed 1.5 s
     // after the landing: down the line, a slit. A thrown lip is out before it falls, and the tube behind it stays open
     // until the whitewater fills it.

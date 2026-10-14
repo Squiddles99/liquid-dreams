@@ -10,9 +10,11 @@ type V3 = [number, number, number];
  * In front of the south ledge, 31 m south of the corner (wombReef.TIP), 6 m deep over the face's 14 m: east of the eye the face climbs to
  * the ledge (3.5 m), which the level ray meets about 5 m out and the rising ray about 6 m out. (It stood on the old reef's
  * shelf 62 m north of the peak until the reef moved in to Andrew's satellite line, 2026-10-05: the eye was inside the
- * reef there.)
+ * reef there.) 2026-10-14 (womb-story Task 2, STOP 1b ruling 5): 17 m south of the corner, not 31: the right's strip went
+ * to 8 m (rightLedgeDepthM) and from 31 m the rising ray met no reef before the surface; here, 3.8 m over the bed (9.8 m),
+ * the level ray meets the corner's face 3.6 m out and the rising ray 4.3 m out (tools/_reefWallEye.ts).
  */
-export const REEF_WALL_EYE: V3 = [TIP[0] - 10, -6, TIP[1] + 31];
+export const REEF_WALL_EYE: V3 = [TIP[0] - 10, -6, TIP[1] + 17];
 export const REEF_WALL_LEVEL: V3 = [1, 0, 0];
 /** About 8° up, east. */
 export const REEF_WALL_RISING: V3 = [0.99, 0.14, 0];

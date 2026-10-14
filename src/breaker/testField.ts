@@ -33,6 +33,15 @@ export function reefBeds(factor = 2) {
   return b;
 }
 
+/**
+ * The bed with the ridden band's target hollow off (womb-story STOP 1b ruling 5): every point reads the reef's own ψ₀ law,
+ * as a station off the band does (the tip, the right, the shelf). For the tests whose point is that law (the tide's order,
+ * the tube's smooth growth, its light), not the band's barrel.
+ */
+export function offBand<T extends { hollowW?: Float32Array }>(bed: T): T {
+  return { ...bed, hollowW: undefined };
+}
+
 export function coastReefField(o: TestFieldOpts): ReefField {
   const fromDeg = o.fromDeg ?? 225, tideM = o.tideM ?? 0, factor = o.factor ?? 2;
   const key = `${o.periodS}:${fromDeg}:${tideM}:${factor}:${o.peel ? 1 : 0}`;
