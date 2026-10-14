@@ -342,7 +342,9 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
   if (!wantSpray && !wantImpact) return { spray, impact, spit, feather };
   const waves = i.events.map(toActiveWave);
   const offshoreMs = offshoreSpeed(i.wind.speedMs, i.wind.fromDeg, ctx.travelX, ctx.travelZ);
-  const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M, offshoreMs });
+  // With the stood stations waiting their turn (crestTrace.TraceInput.stood): under the one-surface law they draw nothing but
+  // the stood crest still feathers.
+  const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M, offshoreMs, stood: true });
   // The lip is thrown from the wave as it stood: the frame reads the sheet without the whitewater pile (as the ribbon's).
   const opts: BreakOptions = { ...breakOptions(field, params, offshoreMs), pile: false, shape: 'lean' };
   // Each station's timing (no sheet read) decides whether it emits; only the stations that do pay for the frame (the lip's

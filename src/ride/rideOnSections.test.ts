@@ -4,7 +4,7 @@ import { SWELL_BANDS } from '../frontend/sessionSetup';
 import { coastReefField } from '../breaker/testField';
 import { DEFAULT_SET_PARAMS, wavesBetween, wavesNear } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS as P } from '../breaker/breaking';
-import { type Station, minRibbonHeight, traceStations } from '../breaker/crestTrace';
+import { type Station, minRibbonHeight, traceLines, traceStations } from '../breaker/crestTrace';
 import { sampleField } from '../breaker/reefField';
 import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { withSections } from './sectionWater';
@@ -43,7 +43,10 @@ describe('a ride on the drawn sections', () => {
       const mine = events.findIndex((e) => Math.abs(e.arrivalS - big.arrivalS) < 1e-6);
       const sheet: WaterFn = (x, z) => waterAt(x, z, c.tideM, ctx.omega, (a, b) => sampleField(field, a, b), (a, b, f) => sumWaves(a, b, t, f, waves, ctx, o));
       const entries = traceStations(field, waves, t, ctx, { cameraX: cx, cameraZ: cz, params: P, minHeightM });
-      herStations = entries.filter((e): e is Station => !e.gap && e.wave === mine);
+      // Her wave's crest line: every traced station, drawn or not (re-pinned 2026-10-15, womb-story Task 10: under the one-
+      // surface law a section waiting its turn draws nothing, so the drawn stations end at the curl and a rider ahead of it,
+      // on the open face, had no station near her: held 0 s of 14.5 s on a clean ride). The ride stands on the drawn ones.
+      herStations = traceLines(field, waves, t, ctx, { cameraX: cx, cameraZ: cz, params: P, minHeightM }).flat().filter((e) => e.wave === mine);
       return withSections(sheet, entries, c.tideM);
     };
     const { x: sx, z: sz } = takeoffSpot(field, big.heightM, P);

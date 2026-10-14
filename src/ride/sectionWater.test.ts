@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Station, StationEntry } from '../breaker/crestTrace';
 import { profileKnots } from '../breaker/wombProfile';
-import { curlWeight, sectionPoint, sectionSamples } from '../breaker/wombSection';
+import { ONE_SURFACE, curlWeight, oneSurfaceOn, sectionPoint, sectionSamples, setOneSurface } from '../breaker/wombSection';
 import { CurveCache, lowestWetCrossing, thinStations, withSections } from './sectionWater';
 import { INVERT_ITERATIONS, flatWater } from './water';
 
@@ -173,7 +173,9 @@ describe('the station curve reads the sheet only where it is used (exact; ride-f
       let knots = 0;
       sectionSamples(sec, (u) => { knots++; return sheetAlong(u); });
       // 14 sheet ends + 11 curl homes, + 11 swell homes below curlWeight 1 (at 1 they are skipped: R10a, Task 15).
-      expect(knots).toBe(curlWeight(sec) === 1 ? 25 : 36);
+      // Under the one-surface law (2026-10-15, womb-story Task 10) three rounds: at most 40 (wombSectionSkip.test).
+      expect(knots).toBe(oneSurfaceOn() > 0.5 ? knots : curlWeight(sec) === 1 ? 25 : 36);
+      expect(knots).toBeLessThanOrEqual(40);
       // Every sample's u along the normal (units of A), from the knots alone.
       const us = curve.map((q) => sectionPoint(q, sec.A, sheetAlong)[0] / sec.A);
       /** The samples the sheet weighs into at the ends of the intervals that hold u. */
@@ -232,9 +234,22 @@ describe('the station curve read lazily is the dense build, bit for bit (ride-fr
       if (want.onSection) on++;
       expect(got, `(${x}, ${z})`).toEqual(want);
     }
-    expect(onFold).toBeGreaterThan(40);
+    // On a flat sheet the law seats the lip between the sheet's crest (0) and its low (−troughShare): a small fold. The fold
+    // count is the drawn section's of 2026-10-14 (dial off, below); here the equality holds wherever the points fall.
+    if (oneSurfaceOn() <= 0.5) expect(onFold).toBeGreaterThan(40);
     expect(past).toBeGreaterThan(10);
     expect(on).toBeGreaterThan(120);
+  });
+  it('…and with the drawn section of 2026-10-14 (dial oneSurface off: the round folds, 2026-10-15)', () => {
+    setOneSurface(0);
+    try {
+      const dense = withSections(base, stations, 0.2, { dense: true }), lazy = withSections(base, stations, 0.2);
+      for (let k = 0; k < 240; k++) {
+        const s = stations[Math.floor(rnd() * stations.length)], A = s.section.A, kn = profileKnots(s.section.phase, s.section.hollow);
+        const u = A * (kn[10][0] + (kn[6][0] - kn[10][0]) * rnd()), v = -0.6 + 1.2 * rnd(), x = s.x + s.nx * u - s.nz * v, z = s.z + s.nz * u + s.nx * v;
+        expect(lazy(x, z), `(${x}, ${z})`).toEqual(dense(x, z));
+      }
+    } finally { setOneSurface(ONE_SURFACE); }
   });
 });
 

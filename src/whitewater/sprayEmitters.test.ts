@@ -398,9 +398,11 @@ describe('the plume, the veil and the spit under wind (whitewater §4.1, §4.3)'
 
 describe('the crest line feathers in a strong offshore (whitewater §4.2)', () => {
   const strong = { speedMs: 18 * 0.5144, fromDeg: 57 };
+  // The stood stations as the spray traces them (stood: true; 2026-10-15, womb-story Task 10: under the one-surface law a
+  // section waiting its turn draws nothing, so the drawn stations alone end at the curl).
   const standing = (t: number) => {
     const waves = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave);
-    return traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M })
+    return traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M, stood: true })
       .filter((s): s is Exclude<typeof s, { gap: true }> => !s.gap && s.tb === null && s.until !== null && s.until !== undefined && Number.isFinite(s.until));
   };
   it('feathers along the standing wall at 10 m/s offshore; none under 1 m/s, none on a glassy day, none onshore', () => {
@@ -464,7 +466,7 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
     // 2026-10-14 (womb-story Task 5, spec 3.5): the stood crests' (a throwing lip's carry `lip`); a pitching one's from its crest knot, u along its normal.
     const f = breakEmitters(input(t, { wind })).feather.filter((e) => !e.lip);
     const waves = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave);
-    const st = traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M })
+    const st = traceStations(field, waves, t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M, stood: true })
       .filter((s): s is Exclude<typeof s, { gap: true }> => !s.gap);
     for (const e of f) {
       const s = st.find((q) => q.tb === null && Math.round(q.arc / SPRAY_SPACING_M) === e.arc && Math.abs(q.x + q.nx * (e.u ?? 0) - e.x) < 1e-9)!;

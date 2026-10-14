@@ -7,7 +7,7 @@ import { REFRACT_FLOOR_M, computeReefField, sampleField } from './reefField';
 import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from './setWaveModel';
 import { reefBeds } from './testField';
 import { offshoreSpeed } from './overturn';
-import { TIP_REACH_MAX, TIP_RISE_MAX } from './wombProfile';
+import { SPILL_TO, TIP_REACH_MAX, TIP_RISE_MAX } from './wombProfile';
 import { sectionFrameKnots, sectionOf, sectionTangents, shoulderAlong } from './wombSection';
 import * as WS from './wombSection';
 
@@ -17,9 +17,12 @@ import * as WS from './wombSection';
  * curtain); everywhere else (the back behind the crest, the face below the roof's root on it, the water in front, the
  * shoulder ahead of the curl) the drawn section is the sheet it is built on. Read on the CPU twins (the ribbon's section on
  * the station's own wave, the game's break options, no pile, the lean shape: crestLineProbe's base), every traced station of
- * the moment's wave on the left. The overhang is read geometrically (tools/_twoSurfaces.ts): back to front, from the crest
- * knot to the lip's furthest reach, then back along the roof to where u turns forward again (the root).
+ * the moment's wave on the left. The overhang is the section's samples from its crest knot to its tube's floor knot
+ * (tools/_twoSurfaces.ts); outside it everything must be the sheet. Gaps are distances
+ * from the sheet's curve (2026-10-15: the sheet's own face stands vertical, even leans over, so its height at one u is several).
  */
+// LD_ONE_SURFACE=0 runs the same bars on the section of 2026-10-14 (the dial off: today's numbers, task10-stop.md).
+if (process.env.LD_ONE_SURFACE !== undefined) WS.setOneSurface(Number(process.env.LD_ONE_SURFACE));
 type Pt = [number, number];
 interface Moment { name: string; ft: number; T: number; dir: number; tide: number; windMs: number; t: number; pick: { cam: Pt } | { arrivalNear: number } }
 const MOMENTS: Moment[] = [
@@ -35,6 +38,8 @@ interface Read {
   s: Station; along: number; d: number; A: number; phase: number; rho: number;
   pts: Pt[]; c: number; tip: number; r: number;
   sheetY: (u: number) => number; base: (u: number) => Pt;
+  /** The signed distance (m) from the sheet's curve (+ above it): on its own near-vertical face the height at one u is several. */
+  dist: (p: Pt) => number;
 }
 const fields = new Map<string, ReturnType<typeof computeReefField>>();
 const cache = new Map<string, { reads: Read[]; frontAlong: number }>();
@@ -71,13 +76,24 @@ function readMoment(m: Moment): { reads: Read[]; frontAlong: number } {
     const sheet: Pt[] = [];
     for (let u = -140; u <= 70; u += 0.25) sheet.push(base(u));
     const sheetY = (u: number): number => { for (let k = 0; k + 1 < sheet.length; k++) { const [ua, ya] = sheet[k], [ub, yb] = sheet[k + 1]; if ((u - ua) * (u - ub) <= 0 && ub !== ua) return ya + ((yb - ya) * (u - ua)) / (ub - ua); } return NaN; };
+    const dist = (q: Pt): number => {
+      let best = Infinity, sign = 1;
+      for (let k = 0; k + 1 < sheet.length; k++) {
+        const [ax, ay] = sheet[k], [bx, by] = sheet[k + 1], ex = bx - ax, ey = by - ay, L2 = ex * ex + ey * ey;
+        const f = L2 > 0 ? Math.min(1, Math.max(0, ((q[0] - ax) * ex + (q[1] - ay) * ey) / L2)) : 0;
+        const dx = q[0] - (ax + ex * f), dy = q[1] - (ay + ey * f), dd = Math.hypot(dx, dy);
+        if (dd < best) { best = dd; sign = ex * dy - ey * dx >= 0 ? 1 : -1; }
+      }
+      return sign * best;
+    };
     const so = sectionOf(sec, base), pts = [...so.points].reverse() as Pt[];
-    let c = 0; for (let j = 1; j < pts.length; j++) if (Math.hypot(pts[j][0] - so.crest[0], pts[j][1] - so.crest[1]) < Math.hypot(pts[c][0] - so.crest[0], pts[c][1] - so.crest[1])) c = j;
+    // The overhang: from the crest knot's sample to the tube's floor knot's (wombSection.SECTION_MARKED: the lip, the roof,
+    // the curtain and the tube's back wall down to its floor); outside it everything must be the sheet. (tip: the lip's
+    // furthest reach, for the roof test.)
+    const { marks } = WS.sectionSamples(sec, base), c = marks.crest, r = marks.floor;
     let tip = -1; for (let j = c; j + 1 < pts.length; j++) if (pts[j + 1][0] < pts[j][0] - 1e-3) { tip = j; break; }
-    let r = c;
-    if (tip >= 0) { r = pts.length - 1; for (let j = tip; j + 1 < pts.length; j++) if (pts[j + 1][0] > pts[j][0] + 1e-3) { r = j; break; } }
     const along = shoulderAlong(s.x, s.z);
-    reads.push({ s, along, d: along - frontAlong, A: sec.A, phase: sec.phase, rho: sec.rho, pts, c, tip, r, sheetY, base });
+    reads.push({ s, along, d: along - frontAlong, A: sec.A, phase: sec.phase, rho: sec.rho, pts, c, tip, r, sheetY, base, dist });
   }
   const out = { reads, frontAlong };
   cache.set(m.name, out);
@@ -92,11 +108,11 @@ const topAt = (q: Read, u: number): number => {
 };
 
 describe('one surface by construction: the ribbon draws only the overhang (womb-story Task 10)', () => {
-  it.each(MOMENTS.map((m) => [m.name, m] as const))('%s: outside the overhang the section is the sheet (|gap| <= 0.05 A at every station)', { timeout: 300_000 }, (_n, m) => {
+  it.each(MOMENTS.map((m) => [m.name, m] as const))('%s: outside the overhang the section is the sheet (its distance from the sheet <= 0.05 A at every station)', { timeout: 300_000 }, (_n, m) => {
     const worst: string[] = [];
     for (const q of readMoment(m).reads) {
       let g = 0, at = NaN;
-      q.pts.forEach((p, j) => { if (j >= q.c && j <= q.r) return; const v = p[1] - q.sheetY(p[0]); if (Math.abs(v) > Math.abs(g)) { g = v; at = p[0] - q.pts[q.c][0]; } });
+      q.pts.forEach((p, j) => { if (j >= q.c && j <= q.r) return; const v = q.dist(p); if (Math.abs(v) > Math.abs(g)) { g = v; at = p[0] - q.pts[q.c][0]; } });
       if (Math.abs(g) > 0.05 * q.A) worst.push(`along ${q.along.toFixed(1)} ph ${q.phase.toFixed(2)}: ${g.toFixed(2)} m (${(g / q.A).toFixed(2)} A) at u ${at.toFixed(1)}`);
     }
     expect(worst).toEqual([]);
@@ -129,7 +145,9 @@ describe('one surface by construction: the ribbon draws only the overhang (womb-
     const bad: string[] = [];
     for (const q of readMoment(m).reads) {
       if (q.along >= 130) continue; // A and B (8c item 3)
-      const cu = q.pts[q.c][0];
+      // From the ray's crest: the section's highest point within 10 m of its crest knot (the knot sits on the sheet's crest edge,
+      // its top can stand a little behind it).
+      const near = q.pts.filter((p) => Math.abs(p[0] - q.pts[q.c][0]) <= 10), cu = near.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
       let rise = 0, low = Infinity, sheetRise = 0, sheetLow = Infinity;
       for (let du = 0; du <= 20; du += 0.25) {
         const y = topAt(q, cu - du), sy = q.sheetY(cu - du);
@@ -146,7 +164,9 @@ describe('one surface by construction: the ribbon draws only the overhang (womb-
     const bad: string[] = [];
     for (const q of readMoment(m).reads) {
       if (q.along >= 130) continue; // A and B (8c item 3)
-      const cu = q.pts[q.c][0];
+      // From the ray's crest: the section's highest point within 10 m of its crest knot (the knot sits on the sheet's crest edge,
+      // its top can stand a little behind it).
+      const near = q.pts.filter((p) => Math.abs(p[0] - q.pts[q.c][0]) <= 10), cu = near.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
       let rise = 0, low = Infinity, sheetRise = 0, sheetLow = Infinity;
       for (let du = 0; du <= 20; du += 0.25) {
         const y = topAt(q, cu - du), sy = q.sheetY(cu - du);
@@ -158,7 +178,7 @@ describe('one surface by construction: the ribbon draws only the overhang (womb-
     expect(bad).toEqual([]);
   });
 
-  it.each(MOMENTS.map((m) => [m.name, m] as const))('%s: one crest per ray (law d: crest-level maxima within +-60 m, y >= half the top, prominence 0.05 A)', { timeout: 300_000 }, (_n, m) => {
+  it.each(MOMENTS.map((m) => [m.name, m] as const))('%s: one crest per ray (law d: crest-level maxima within +-60 m, y >= half the top, topographic prominence 0.05 A)', { timeout: 300_000 }, (_n, m) => {
     const bad: string[] = [];
     for (const q of readMoment(m).reads) {
       if (q.phase >= 1.5) continue; // the curl and the tube (the caved-in bore behind is the white water's)
@@ -166,7 +186,10 @@ describe('one surface by construction: the ribbon draws only the overhang (womb-
       for (let u = -60; u <= 60; u += 0.5) ys.push(topAt(q, cu + u));
       const top = Math.max(...ys), at: string[] = [];
       for (let i = 1; i + 1 < ys.length; i++) if (ys[i] >= ys[i - 1] && ys[i] > ys[i + 1] && ys[i] >= 0.5 * top) {
-        const lo = Math.max(Math.min(...ys.slice(Math.max(0, i - 40), i)), Math.min(...ys.slice(i + 1, i + 41)));
+        // Its prominence: the drop to the lowest point between it and the nearest higher water on each side (or the ray's end).
+        let l = i - 1, lowL = ys[i]; while (l >= 0 && ys[l] <= ys[i]) { lowL = Math.min(lowL, ys[l]); l--; }
+        let rr = i + 1, lowR = ys[i]; while (rr < ys.length && ys[rr] <= ys[i]) { lowR = Math.min(lowR, ys[rr]); rr++; }
+        const lo = Math.max(lowL, lowR);
         if (ys[i] - lo > 0.05 * q.A) at.push(`${(-60 + i * 0.5).toFixed(1)}:${ys[i].toFixed(2)}`);
       }
       if (at.length > 1) bad.push(`along ${q.along.toFixed(1)} ph ${q.phase.toFixed(2)}: ${at.join(' ')}`);
@@ -196,14 +219,15 @@ describe('one surface by construction: the ribbon draws only the overhang (womb-
       const rise = so.tip[1] - so.crest[1], reach = so.tip[0] - so.crest[0];
       if (rise > TIP_RISE_MAX * sec.A + 1e-6) bad.push(`along ${q.along.toFixed(1)} tip rise ${(rise / sec.A).toFixed(3)} A`);
       if (reach > TIP_REACH_MAX * sec.A * 1.03) bad.push(`along ${q.along.toFixed(1)} reach ${(reach / sec.A).toFixed(3)} A`);
-      if (sec.phase >= 1 && sec.phase <= 1.25 && sec.rho > 0.5) {
-        const g = so.tip[1] - q.sheetY(so.tip[0]);
+      // A thrown lip's curtain (hollow >= SPILL_TO: below it the lip spills, it never lands).
+      if (sec.phase >= 1 && sec.phase <= 1.25 && sec.rho > 0.5 && sec.hollow >= SPILL_TO) {
+        const g = q.dist([so.tip[0], so.tip[1]]);
         if (Math.abs(g) > 0.1 * sec.A) bad.push(`along ${q.along.toFixed(1)} ph ${sec.phase.toFixed(2)} curtain foot ${(g / sec.A).toFixed(2)} A`);
       }
       // The tube is open: somewhere along the roof (the tip back to its root) it stands 0.1 A or more over the surface under it.
-      if (sec.phase >= 0.75 && sec.phase <= 1.25 && sec.rho > 0.5 && q.tip >= 0 && q.r > q.tip) {
+      if (sec.phase >= 0.75 && sec.phase <= 1.25 && sec.rho > 0.5 && sec.hollow >= SPILL_TO && q.tip >= 0 && q.r > q.tip) {
         let open = -Infinity;
-        for (let j = q.tip; j <= q.r; j++) open = Math.max(open, q.pts[j][1] - q.sheetY(q.pts[j][0]));
+        for (let j = q.tip; j <= q.r; j++) open = Math.max(open, q.dist(q.pts[j]));
         if (!(open >= 0.1 * sec.A)) bad.push(`along ${q.along.toFixed(1)} ph ${sec.phase.toFixed(2)} roof at most ${(open / sec.A).toFixed(2)} A over the sheet`);
       }
     }

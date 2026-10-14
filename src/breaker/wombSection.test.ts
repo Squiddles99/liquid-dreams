@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import { setWaveHeight } from './reefReport';
 import { leanPhase } from './setWaveModel';
@@ -8,10 +8,15 @@ import {
   STOOD_PHASE, collapseSpan, flightTime, sectionEnd, sectionKnots, sectionKnot, sectionOf, sectionPhase, sectionScale, sectionWeight, seatShift, tubeHold,
   wombSection, type SheetAlong, sectionSamples, sectionPoint, curlWeight, sampleWeight, SHEET_KNOTS, CURL_KNOTS, SURGE_FALL_BASE_S, SURGE_FALL_PER_M,
   surgeWeight, surgeLift, sectionNumbers, seatOf, sectionCrestY, sectionFrame, WALL_LEAD_T, FRONT_LEAD_S, CREST_SHARE, TROUGH_SHARE, setSeatShares, wallWeight, footY, footWeight, footFloorWeight,
-  SHOULDER_FLOOR, SHOULDER_TAPER_M, setShoulder,
+  SHOULDER_FLOOR, SHOULDER_TAPER_M, setShoulder, ONE_SURFACE, setOneSurface,
 } from './wombSection';
 import { UNTIL_NEVER } from './breaking';
 
+// 2026-10-15 (womb-story Task 10): these pin the drawn section of 2026-10-14 (the seat at CREST_SHARE / TROUGH_SHARE, the
+// drawn face and floor, ρ 1 while waiting): the dial oneSurface off. The one-surface law's bars are oneSurface.test.ts (and
+// sectionCrestY's bit-equality under it, below).
+beforeAll(() => setOneSurface(0));
+afterAll(() => setOneSurface(ONE_SURFACE));
 const P = { ribbonOnset: 0.6 };
 const at = (H: number, tb: number | null, r = 1.2, periodS = 15, psi = 0.09): SectionInput => ({ H, r, tb, psi, periodS });
 const flat = (u: number): P2 => [u, 0];
@@ -342,6 +347,9 @@ describe('the crest knot alone (sectionCrestY, womb-realism Task 4: the featheri
     for (const A of [1.2, 3.7]) for (const phase of [0, 0.1, 0.3, 0.45, 0.6, 1, 1.6]) for (const hollow of [0, 0.5, 1]) for (const rho of [0.3, 1]) for (const surge of [0, 0.4]) {
       const n = { A, phase, hollow, rho, surge };
       expect(sectionCrestY(n, faced), JSON.stringify(n)).toBe(sectionFrame(n, 2 * A, 5, faced).crest[1]);
+      // …and under the law (2026-10-15, Task 10).
+      setOneSurface(1);
+      try { expect(sectionCrestY(n, faced), `one surface ${JSON.stringify(n)}`).toBe(sectionFrame(n, 2 * A, 5, faced).crest[1]); } finally { setOneSurface(0); }
     }
   });
 });

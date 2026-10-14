@@ -1,5 +1,5 @@
 import { curlFrontAlong } from './curlFront';
-import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, shoulderFactor, shoulderRegion, shoulderU, wallWeight } from './wombSection';
+import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, oneSurfaceOn, shoulderFactor, shoulderRegion, shoulderU, wallWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -267,7 +267,11 @@ export function wallHeight(i: { hAmp: number; depthM: number; hminM: number; tb:
   }
   const cap = BREAKING_RATIO * i.depthM, u = i.tb !== null && i.tb !== undefined ? -i.tb : i.until;
   if (u === null || u === undefined || !(u < UNTIL_NEVER) || i.sizeM === null || i.sizeM === undefined || !Number.isFinite(i.sizeM)) return Math.min(i.hAmp, cap);
-  return Math.min(i.hAmp, cap + (i.sizeM - cap) * wallWeight(u, i.periodS, i.region ?? 1));
+  // Fable's 8b(i), kept in Task 10 (one surface): a waiting station grows from the swell's own height into the size it will
+  // break at, never from the depth-now cap (on the ledge top 20-50 m ahead the cap stood the wave 2-6 m below the size it
+  // breaks at: the dip, the double-up; task8-stop.md). Off the law (oneSurface 0) the cap, as before.
+  const from = oneSurfaceOn() > 0.5 ? i.hAmp : cap;
+  return Math.min(i.hAmp, from + (i.sizeM - from) * wallWeight(u, i.periodS, i.region ?? 1));
 }
 
 /** wallHeight at a crest: its record read at the lookup (Crest.size). */

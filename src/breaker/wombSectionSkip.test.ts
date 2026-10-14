@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { leanPhase } from './setWaveModel';
 import { CREST_KNOT, FRONT_KNOT, type P2, TIP_KNOT, TROUGH_KNOT, profileKnots, roundedTip, tipLife } from './wombProfile';
 import {
   type SectionKnot, type SectionNumbers, type SheetAlong, CURL_KNOTS, CURL_PHASE, EDGE_OUTER_UNITS, JOIN_SLOPE_UNITS, SHEET_KNOTS,
-  SWELL_CURL_U, curlWeight, sectionFrameKnots, seatOf, footY, footWeight, footFloorWeight, SECTION_FLOOR, SECTION_TROUGH,
+  SWELL_CURL_U, curlWeight, sectionFrameKnots, seatOf, footY, footWeight, footFloorWeight, SECTION_FLOOR, SECTION_TROUGH, ONE_SURFACE, setOneSurface,
 } from './wombSection';
 
 /**
@@ -53,6 +53,10 @@ const counting = (sheet: SheetAlong): { sheet: SheetAlong; reads: () => number }
 const sheets: [string, SheetAlong][] = [['flat', flat], ['swell', swell]];
 
 describe('sectionFrameKnots skips the swell reads at curlWeight 1 (R10a)', () => {
+  // 2026-10-15 (womb-story Task 10): the drawn section of 2026-10-14 (the dial oneSurface off), which this compares with its
+  // own old build; the law's reads are counted below.
+  beforeAll(() => setOneSurface(0));
+  afterAll(() => setOneSurface(ONE_SURFACE));
   it('at g = 1: 25 reads (14 sheet ends + 11 own homes), every knot equal to the old build to 1e-12 relative', () => {
     let cases = 0;
     for (const [, base] of sheets) for (const phase of [CURL_PHASE, 0.9, 1, 1.3, 1.7, 2, 2.4]) for (const hollow of [0, 0.4, 1]) for (const A of [1.4, 2.5, 4.1]) {
@@ -91,6 +95,20 @@ describe('sectionFrameKnots skips the swell reads at curlWeight 1 (R10a)', () =>
       const c = counting(base), got = sectionFrameKnots(n, c.sheet), want = oldFrameKnots(n, base);
       expect(c.reads()).toBe(4 + 2 * SHEET_KNOTS + CURL_KNOTS);
       expect(got).toEqual(want);
+    }
+  });
+});
+
+describe('under the one-surface law (womb-story Task 10) the section reads the sheet in three rounds', () => {
+  // The first round always (the ends, the old joins, the swell homes: the crest's edge and the seat are found from them),
+  // then the crest knot, the lip's six knots, the root and the face's three below it, the two joins, and up to two probes
+  // (the crest's edge and the root, refined once): at most 4 + 2 × SHEET_KNOTS + CURL_KNOTS + 15 reads, at any weight.
+  it('at most 40 reads per section at g = 0, 0 < g < 1 and g = 1', () => {
+    for (const [, base] of sheets) for (const [phase, rho] of [[0, 1], [CURL_PHASE * 0.5, 1], [CURL_PHASE, 1], [1, 1], [1.5, 0.5], [2, 1]]) for (const hollow of [0, 0.4, 1]) {
+      const c = counting(base);
+      sectionFrameKnots({ A: 2.5, phase, hollow, rho }, c.sheet);
+      expect(c.reads()).toBeLessThanOrEqual(4 + 2 * SHEET_KNOTS + CURL_KNOTS + 15);
+      expect(4 + 2 * SHEET_KNOTS + CURL_KNOTS + 15).toBe(40);
     }
   });
 });

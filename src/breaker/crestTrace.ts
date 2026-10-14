@@ -2,7 +2,7 @@ import { curlFrontAlong } from './curlFront';
 import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetSizeAhead, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
-import { type SectionNumbers, curlWeight, sectionNumbers, shoulderFactor, shoulderRegion, shoulderU, wallLeadS } from './wombSection';
+import { CURL_PHASE, type SectionNumbers, curlWeight, oneSurfaceOn, sectionNumbers, shoulderFactor, shoulderRegion, shoulderU, wallLeadS } from './wombSection';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
@@ -111,6 +111,10 @@ export interface TraceInput {
   drawSurge?: boolean;
   /** Tests and probes only: the inside leg's line smoothing σ (m; absent INSIDE_LINE_SMOOTHING_M, 0 off). */
   insideLineSmoothingM?: number;
+  /** The spray's trace (womb-story Task 10): keep the stood stations waiting their turn too (their phase standing up,
+   * smoothstep(0, CURL_PHASE, phase) > ALIVE_RHO), which under the one-surface law draw nothing (ρ 0) but still feather
+   * along the stood crest (the sheet's). Absent: the drawn stations only. */
+  stood?: boolean;
 }
 
 /** The ride's view of the ribbon's stations: the same entries with the surge taken out of their sections (whitewater F4),
@@ -212,6 +216,8 @@ export const ALIVE_RHO = 1e-3;
 function alive(s: Station): boolean {
   return curlWeight(s.section) > ALIVE_RHO;
 }
+/** A station waiting its turn that has started to stand up (its phase's own curl weight, ρ aside). */
+const stood = (s: Station): boolean => s.tb === null && smoothstep(0, CURL_PHASE, s.section.phase) > ALIVE_RHO;
 
 /**
  * A projection not yet within CREST_TOLERANCE_S of the crest carries on from where it stopped, SEED_ITERATIONS at a time, up
@@ -290,6 +296,12 @@ export const SECTION_SMOOTHING_M = 4;
  * its cut cross-section as a wall beside the sheet. Faded, it ends on the sheet.
  */
 export const LINE_END_FADE_M = 6;
+/**
+ * Under the law (womb-story Task 10, wombSection.ONE_SURFACE) a waiting section draws nothing (ρ 0) and the lip tapers to it
+ * over this much crest (m of arc) behind the curl's front: the smoothing (SECTION_SMOOTHING_M) alone carried the lip 5-8 m
+ * ahead of the front at 0.04-0.1 of its weight.
+ */
+export const LIP_FRONT_TAPER_M = 4;
 
 /**
  * Each station's section numbers (wombSection.sectionNumbers), then smoothed along the line by arc (SECTION_SMOOTHING_M);
@@ -306,6 +318,9 @@ export function fillSections(line: Station[], periodS: number, p: Pick<BreakPara
     return q;
   });
   const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
+  // The arcs of the waiting stations (one surface: the lip tapers to 0 at them).
+  const waiting = oneSurfaceOn() > 0.5 ? line.filter((s) => s.tb === null).map((s) => s.arc) : [];
+  const toWaiting = (arc: number): number => waiting.reduce((m, a) => Math.min(m, Math.abs(a - arc)), Infinity);
   let lo = 0;
   line.forEach((s, i) => {
     while (line[lo].arc < s.arc - reach) lo++;
@@ -316,7 +331,7 @@ export function fillSections(line: Station[], periodS: number, p: Pick<BreakPara
       nx += g * normals[k][0]; nz += g * normals[k][1];
     }
     const end = Math.min(s.arc - line[0].arc, line[line.length - 1].arc - s.arc);
-    s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: (rho / w) * smoothstep(0, LINE_END_FADE_M, end), surge: surge / w };
+    s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: (rho / w) * smoothstep(0, LINE_END_FADE_M, end) * (waiting.length ? smoothstep(0, LIP_FRONT_TAPER_M, toWaiting(s.arc)) : 1), surge: surge / w };
     const l = Math.hypot(nx, nz);
     if (l > 1e-9) { s.nx = nx / l; s.nz = nz / l; }
   });
@@ -394,7 +409,7 @@ export function traceStations(field: ReefField, waves: readonly ActiveWave[], t:
     out = [];
     traceLines(field, waves, t, ctx, input, factor).forEach((line) => {
       for (const s of line) {
-        if (alive(s)) out.push(s);
+        if (alive(s) || (input.stood && stood(s))) out.push(s);
         else if (out.length > 0 && !out[out.length - 1].gap) out.push({ gap: true });
       }
       if (out.length > 0 && !out[out.length - 1].gap) out.push({ gap: true });

@@ -245,7 +245,9 @@ describe('one hold channel: until carries the hold to the stations (one-curl Tas
   const w = testWave(REF_BIGGEST.heightM);
   const f0 = sampleField(held, PX, PZ), tb0 = timeSinceOnset(held, w, PX, PZ, hctx, P);
   const t = w.arrivalS + f0.tau - (tb0 ?? 0) + 3;
-  const stations = live(traceStations(held, [w], t, hctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H }));
+  // stood: the stations waiting their turn too (2026-10-15, womb-story Task 10: under the one-surface law they draw nothing;
+  // this is the clock's channel, not the drawing).
+  const stations = live(traceStations(held, [w], t, hctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H, stood: true }));
   const recTb = (s: Station): number | null => { const r = sampleOnset(held, s.x, s.z); return r ? onsetTime(r, 0, w.heightM, P) : null; };
   const input = (s: Station) => ({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS: held.periodS });
   it('a held station: tb null, until the hold, r ≤ 1, and its phase the wall on the clock', () => {
@@ -260,7 +262,7 @@ describe('one hold channel: until carries the hold to the stations (one-curl Tas
     }
   });
   it('an unbroken station ahead of the curl stands on the clock alone, whatever its ratio', () => {
-    const early = live(traceStations(held, [w], t - 2, hctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H }));
+    const early = live(traceStations(held, [w], t - 2, hctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H, stood: true }));
     const ahead = [...stations, ...early].filter((s) => s.tb === null && recTb(s) === null && s.until !== null && s.until >= 0.5 && s.until <= 7);
     if (process.env.PROBE_UNTIL) console.log('ahead', ahead.map((s) => s.until!.toFixed(2)).join(' '));
     expect(ahead.length, 'unbroken stations 0.5–7 s ahead of the curl (peak + 1 s and + 3 s)').toBeGreaterThan(3);
@@ -293,7 +295,9 @@ for (const sw of ONE_CURL_SWELLS) describe(`one curl per wave on one clock (one-
       const bad: string[] = [];
       let brokenChecked = 0, waitChecked = 0;
       for (const dt of [1, 3, 6]) {
-        const entries = traceStations(game, [w], peak + dt, gctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: gMinH, spacingM: 1 });
+        // stood: the waiting stations too (2026-10-15, womb-story Task 10: under the one-surface law they draw nothing; the wait
+        // beyond the curl is the clock's, read on the traced line).
+        const entries = traceStations(game, [w], peak + dt, gctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: gMinH, spacingM: 1, stood: true });
         // Runs of drawn stations (gaps split them); the curl is the run's station with the largest tb.
         // shelf-polish Task 2 (Fable's ruling): the Womb's ridden run only, stations within RIDDEN_M of the tip; bar unchanged.
         // Excluded: the inner shelf inside the right, 226–250 m out at the trace's cap (TAPER_NEAR_M), is a closeout, which

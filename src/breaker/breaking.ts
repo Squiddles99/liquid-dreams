@@ -80,6 +80,9 @@ export interface BreakParams {
   /** In front of a waiting section's crest the drawn face never stands below the sheet (wombSection.faceOnSheet; Andrew
    * 2026-10-14, the second crest between the lip and the drain; 0 = off, 1 = on). */
   faceOnSheet: number;
+  /** One surface by construction (wombSection.ONE_SURFACE; Task 10): the ribbon draws only the overhang, waiting sections
+   * draw nothing, the sheet's waiting crest grows into its breaking size (1 = the law, 0 = the section of 2026-10-14). */
+  oneSurface: number;
 }
 
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
@@ -115,6 +118,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   shoulderFloor: 1,
   standAheadM: 20,
   faceOnSheet: 1,
+  oneSurface: 1,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
@@ -179,6 +183,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.shoulderFloor = clampTo(p.shoulderFloor, 0.3, 1, d.shoulderFloor);
   p.standAheadM = clampTo(p.standAheadM, 0, 60, d.standAheadM);
   p.faceOnSheet = clampTo(p.faceOnSheet, 0, 1, d.faceOnSheet);
+  p.oneSurface = clampTo(p.oneSurface, 0, 1, d.oneSurface);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
 

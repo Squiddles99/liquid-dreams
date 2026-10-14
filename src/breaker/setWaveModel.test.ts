@@ -265,9 +265,24 @@ describe('leanPhase (plan 2026-10-06-wave-root-cause step 3: no plateau in front
 
 
 describe('the wall ahead grows into the record’s breaking size (womb-realism Task 2c, STOP 1c ask 2)', () => {
-  it('on the record before onset: from the depth’s cap into the size it breaks at over the wall’s lead', async () => {
+  // 2026-10-15 (womb-story Task 10, Fable's 8b(i) kept): under the one-surface law a waiting station grows from the swell's
+  // own height, never the depth now; the depth-cap start is the dial-off construction (oneSurface 0), pinned here as it was.
+  it('under the law (oneSurface 1): a waiting station grows from the swell’s own height into the size it breaks at, never from the depth now', async () => {
     const { wallWeight } = await import('./wombSection');
     const { wallHeight } = await import('./setWaveModel');
+    const depth = 3.0 / 0.78, at = (until: number, hAmp = 5.5): number => wallHeight({ hAmp, depthM: depth, hminM: 2, tb: null, until, sizeM: 4.8, periodS: 14 });
+    expect(at(14)).toBeCloseTo(5.5, 9);
+    expect(at(7)).toBeCloseTo(5.5 + (4.8 - 5.5) * wallWeight(7, 14), 9);
+    expect(at(0)).toBeCloseTo(4.8, 9);
+    // The swell under the size it breaks at grows into it; never past its own height; no dip to the depth now (3.0).
+    for (let u = 0; u < 14; u += 0.5) { expect(at(u + 0.5, 4)).toBeLessThanOrEqual(4 + 1e-12); expect(at(u, 4)).toBeGreaterThanOrEqual(4 - 1e-12); expect(at(u)).toBeGreaterThan(3.0 + 1.7); }
+    expect(wallHeight({ hAmp: 10, depthM: depth, hminM: 2, tb: -7, until: 0, sizeM: 4.8, periodS: 14 })).toBeCloseTo(10 + (4.8 - 10) * wallWeight(7, 14), 9);
+  });
+  it('on the record before onset: from the depth’s cap into the size it breaks at over the wall’s lead', async () => {
+    const { wallWeight, setOneSurface, ONE_SURFACE } = await import('./wombSection');
+    const { wallHeight } = await import('./setWaveModel');
+    setOneSurface(0);
+    try {
     // A_rec 4.8, cap 3.0 (0.78 × 3.846 m of water now), T 14, the swell itself far taller (H amp 10).
     const depth = 3.0 / 0.78, at = (until: number): number => wallHeight({ hAmp: 10, depthM: depth, hminM: 2, tb: null, until, sizeM: 4.8, periodS: 14 });
     expect(at(14)).toBeCloseTo(3.0, 9);
@@ -278,6 +293,7 @@ describe('the wall ahead grows into the record’s breaking size (womb-realism T
     expect(wallHeight({ hAmp: 4, depthM: depth, hminM: 2, tb: null, until: 0, sizeM: 4.8, periodS: 14 })).toBe(4);
     // Held for its turn (tb < 0): the same, its turn −tb away.
     expect(wallHeight({ hAmp: 10, depthM: depth, hminM: 2, tb: -7, until: 0, sizeM: 4.8, periodS: 14 })).toBeCloseTo(at(7), 9);
+    } finally { setOneSurface(ONE_SURFACE); }
   });
   it('off the record, or never breaking: the depth now caps it; once broken, the old law (the depth the ray ran over)', async () => {
     const { wallHeight } = await import('./setWaveModel');

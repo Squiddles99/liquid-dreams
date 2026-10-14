@@ -26,7 +26,7 @@ export function createBreakUniforms(p: BreakParams) {
     collapseTime: uniform(1), drainGrowth: uniform(1), onsetGain: uniform(1),
     pileHalfM: uniform(50), pileSurge: uniform(0), churnSize: uniform(0), churnSpeed: uniform(1), psiNudge: uniform(0), randomDial: uniform(0),
     ribbonOnset: uniform(0.7), surge: uniform(0), wallLeadT: uniform(0.75), handDownT: uniform(0.3),
-    shoulderTaperM: uniform(30), shoulderFloor: uniform(1), curlMaxMs: uniform(13),
+    shoulderTaperM: uniform(30), shoulderFloor: uniform(1), curlMaxMs: uniform(13), oneSurface: uniform(1),
   };
   updateBreakUniforms(u, p);
   return u;
@@ -57,6 +57,7 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.wallLeadT.value = p.wallLeadT;
   u.handDownT.value = p.handDownT;
   u.shoulderTaperM.value = p.shoulderTaperM; u.shoulderFloor.value = p.shoulderFloor; u.curlMaxMs.value = p.curlMaxMs;
+  u.oneSurface.value = p.oneSurface;
 }
 
 /** smoothstep with its edges reversed (e0 > e1): WGSL's smoothstep wants low < high. */
@@ -145,11 +146,13 @@ export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: 
  * turn −tb away) it grows from the cap of the depth now into the record's size over the wall's lead (wombSection.wallWeight:
  * 1 − smoothstep(0, leadT × T, u)); off the record or never breaking, the depth now caps it. Never past hAmp.
  */
-export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { broken: N; tb: N; until: N; size: N }, periodS: N, leadT: N, handDownT: N, sh: ShoulderUniforms, region: N): N {
+export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { broken: N; tb: N; until: N; size: N }, periodS: N, leadT: N, handDownT: N, sh: ShoulderUniforms & { oneSurface?: N }, region: N): N {
   const cap = depth.mul(BREAKING_RATIO).toVar();
+  // Task 10 (Fable's 8b(i)): under the law a waiting station grows from the swell's own height, not the depth-now cap.
+  const from = sh.oneSurface ? select(sh.oneSurface.greaterThan(0.5), hAmp, cap) : cap;
   const u = select(onset.broken, onset.tb.negate(), onset.until).toVar();
   // × the shoulder's stand-up fraction where it holds (wombSection.wallWeight, Task 3d).
-  const grow = cap.add(onset.size.sub(cap).mul(float(1.0).sub(smoothstep(0.0, leadT.mul(periodS), max(u, 0.0)))).mul(shoulderTakeNode(u, sh, region)));
+  const grow = from.add(onset.size.sub(from).mul(float(1.0).sub(smoothstep(0.0, leadT.mul(periodS), max(u, 0.0)))).mul(shoulderTakeNode(u, sh, region)));
   const before = select(u.lessThan(UNTIL_NEVER), grow, cap);
   // From the break: down from the size to the broken law over max(the lip's flight, handDownT × T) (wombSection.handDownSpan).
   const broken = hmin.mul(BREAKING_RATIO).toVar();
