@@ -43,9 +43,10 @@ export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
  * 20 m, the basin's own depth, so the swell lines run straight in: the reef resets again; model 12 (R1, 2026-10-06): δ 0.2
  * and the 15 m basin to the far field with a 15 m face, so the breaking and the reef reset again; model 13 (womb-story,
  * 2026-10-14): Andrew's pick, the face ahead of the lip stands up over 20 m and is drawn on the sea (standAheadM,
- * faceOnSheet), so the breaking resets to it).
+ * faceOnSheet), so the breaking resets to it; model 14 (womb-story Task 10, 2026-10-15): one surface by construction
+ * (oneSurface 1, standAheadM and faceOnSheet retired to 0), so the breaking resets to it).
  */
-export const BREAKING_MODEL = 13;
+export const BREAKING_MODEL = 14;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;

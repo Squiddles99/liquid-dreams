@@ -8,6 +8,7 @@ import {
   JOIN_SLOPE_UNITS, SECTION_KNOTS, SECTION_MARKED, SEAT_DIP_UNITS, SEAT_SHIFT_MAX, SHEET_ENDS, SHEET_KNOTS, STOOD_PHASE, SWELL_CURL_U,
   SURGE_FALL_BASE_S, SURGE_FALL_PER_M, surgeLift, CREST_SHARE, TROUGH_SHARE, SEAT_HELD_PHASE, SEAT_HELD_KNOTS, setSeatShares,
   FOOT_DEEPEST, FOOT_FLAT_RELIEF, FOOT_PHASES, SECTION_FLOOR, SECTION_TROUGH, setFlightDropA,
+  CREST_EDGE_SHARE, CREST_JOIN_SPEED, ONE_JOIN_UNITS, ONE_SURFACE, ROOT_BY_U_PHASES, ROOT_MIN_AHEAD, SECTION_CREST, SECTION_ROOT, setOneSurface,
 } from './wombSection';
 
 type N = any;
@@ -25,6 +26,13 @@ export const flightUniforms = { dropA: uniform(FLIGHT_DROP_A) };
 export function applyFlightDropA(a: number): void {
   setFlightDropA(a);
   flightUniforms.dropA.value = a;
+}
+/** wombSection.ONE_SURFACE's dial on the GPU (the one-surface law, womb-story Task 10). */
+export const oneSurfaceUniform = uniform(ONE_SURFACE);
+/** The dial oneSurface, for the CPU twins and the ribbon alike. */
+export function applyOneSurface(v: number): void {
+  setOneSurface(v);
+  oneSurfaceUniform.value = v;
 }
 /** wombSection.flightTime from A (m): the lip's free fall from flightDropA × A. */
 export const flightTimeNodeA = (A: N): N => sqrt(A.mul(flightUniforms.dropA).mul(2 / GRAVITY_MS2));
@@ -57,7 +65,8 @@ export const boreWeightNode = (tb: N, H: N, periodS: N): N => {
 
 const GRAVITY_MS2 = 9.81;
 /** The most samples one dense segment can hold (wombSectionNodes.test checks the CPU never needs more). */
-export const SAMPLES_PER_SEGMENT_MAX = 4;
+// 6 since 2026-10-15 (womb-story Task 10: the one-surface law's sharper turns at the crest and the root put 5 in one).
+export const SAMPLES_PER_SEGMENT_MAX = 6;
 /** vec4s per station in the frame buffer: [A, phase, hollow, curl weight (wombSection.curlWeight)], [tip, crest, floor
  * samples (front → back), tip life], [tip u, tip y, crest u, floor u] (units of A, the section's knots). */
 export const WOMB_FRAME_VEC4S = 3;
@@ -108,7 +117,8 @@ export function sectionNumbersNode(st: { H: N; r: N; tb: N; psi: N }, u: { perio
   const hollow = clamp(st.psi.sub(0.035).div(0.055), 0.0, 1.0).toVar();
   const end = fly.add(hold).add(span);
   const rhoAfter = float(1.0).sub(smoothstep(0.0, SECTION_HAND_BACK_S, t.sub(end)));
-  const rho = select(unbroken, float(1.0), select(past, float(0.0), rhoAfter)).toVar();
+  // Under the law (oneSurface) a section waiting its turn draws nothing (wombSection.sectionWeight).
+  const rho = select(unbroken, select(oneSurfaceUniform.greaterThan(0.5), float(0.0), float(1.0)), select(past, float(0.0), rhoAfter)).toVar();
   // wombSection.surgeWeight × the dial: in over phases 1.25–1.5, out over SURGE_FALL_* after phase 1.5, × hollow.
   const t15 = fly.add(hold).add(span.mul(0.5));
   const fall = power.mul(SURGE_FALL_PER_M).add(SURGE_FALL_BASE_S);
@@ -174,9 +184,16 @@ export function drawnNode(numbers: { phase: N; hollow: N; surge?: N }, keys: N):
 
 /** The sheet's reads per station (wombSection.sectionFrameKnots), at index: the back's SHEET_KNOTS, the front's, the four
  * beyond, the curl's from the swell drawing's homes, then the curl's at their own homes (they depend on the rest). */
-export const SHEET_READ = { back: 0, front: SHEET_KNOTS, beyond: 2 * SHEET_KNOTS, swell: 2 * SHEET_KNOTS + 4, own: 2 * SHEET_KNOTS + 4 + CURL_KNOTS } as const;
+export const SHEET_READ = { back: 0, front: SHEET_KNOTS, beyond: 2 * SHEET_KNOTS, swell: 2 * SHEET_KNOTS + 4, own: 2 * SHEET_KNOTS + 4 + CURL_KNOTS, third: 2 * SHEET_KNOTS + 4 + 2 * CURL_KNOTS } as const;
 export const SHEET_READS_FIRST = SHEET_READ.own;
-export const SHEET_READS = SHEET_READ.own + CURL_KNOTS;
+/** Under the law (oneSurface) the second round is the crest edge's probe (slot 0), the lip's knots at their homes (1-6) and
+ * the root's probe (ROOT_DRAWN); the third (THIRD) the crest knot, the root, the face's three knots below it and the joins. */
+export const SHEET_READS_SECOND = SHEET_READ.third;
+export const THIRD = { crest: 0, root: 1, face: 2, crestJoin: 5, rootJoin: 6 } as const;
+export const THIRD_READS = 7;
+export const SHEET_READS = SHEET_READ.third + THIRD_READS;
+/** The root among the drawn curl's knots (wombSection.ROOT_DRAWN). */
+const ROOT_DRAWN = SECTION_ROOT - SHEET_KNOTS;
 
 /** Pick element `i` (a node) of a list of nodes. */
 const pick = (list: N[], i: N): N => {
@@ -226,10 +243,113 @@ function curlKnotsNode(numbers: { phase: N; hollow: N; rho: N }, drawn: N[], dra
   });
 }
 
-/** The home of second-round sheet read k (the curl's knot k at its own home). */
+
+const lerp3 = (a: N, b: N, f: N): N => a.add(b.sub(a).mul(f));
+/** The lerp factor of the criterion's 0 between two values (1 where they are equal: wombSection's rootBracket / rootRefine). */
+const zeroAt = (va: N, vb: N): N => select(vb.equal(va), float(1.0), clamp(va.negate().div(select(vb.equal(va), float(1.0), vb.sub(va))), 0.0, 1.0));
+
+/**
+ * The law's numbers from the first round of reads (wombSection.oneSurfaceKnots, topHome, rootBracket): the face's reads (the
+ * shoulder, then the swell homes), the crest's edge (its estimate and bracket), the seat, the drawing moved onto the crest
+ * (the lip's knots with their homes), the root's criterion and its first estimate.
+ */
+function oneRound1(numbers: { phase: N; hollow: N; rho: N }, knot: N[], drawn: N[], drawn0: N[], read: (r: number) => N) {
+  const phase = numbers.phase;
+  const g = smoothstep(0.0, CURL_PHASE, phase).mul(numbers.rho).toVar();
+  const R: N[] = [vec3(read(SHEET_READ.back + SHEET_KNOTS - 1)).toVar()];
+  for (let k = 0; k < CURL_KNOTS; k++) R.push(vec3(read(SHEET_READ.swell + k)).toVar());
+  const n = R.length;
+  // The low in front (frontLow: the swell homes' and the front's reads) and the high (the front's and the back's).
+  let low: N = R[1].y, high: N = read(SHEET_READ.front).y;
+  for (let k = 2; k < n; k++) low = min(low, R[k].y);
+  for (let k = 0; k < SHEET_KNOTS; k++) { const y = read(SHEET_READ.front + k).y; low = min(low, y); high = max(high, y); }
+  for (let k = 0; k < SHEET_KNOTS; k++) high = max(high, read(SHEET_READ.back + k).y);
+  const lowV = float(low).toVar(), highV = float(high).toVar();
+  // topHome: the highest read at or ahead of the station's own home (the swell homes, index 1 on), then the edge forward of it.
+  const bestY = float(R[1].y).toVar(), bestI = int(1).toVar(), bestR = vec3(R[1]).toVar();
+  for (let k = 2; k < n; k++) {
+    const better = R[k].y.greaterThan(bestY);
+    bestY.assign(select(better, R[k].y, bestY)); bestI.assign(select(better, int(k), bestI)); bestR.assign(select(better, R[k], bestR));
+  }
+  const share = float(CREST_EDGE_SHARE).mul(float(1.0).sub(smoothstep(ROOT_BY_U_PHASES[0], ROOT_BY_U_PHASES[1], phase)));
+  const edge = bestY.sub(share.mul(max(bestY.sub(lowV), 0.0))).toVar();
+  const found = int(0).toVar(), ta = vec3(bestR).toVar(), tb = vec3(bestR).toVar(), tIdx = int(bestI).toVar();
+  for (let k = 2; k < n; k++) {
+    const hit = found.equal(int(0)).and(int(k).greaterThan(bestI)).and(R[k].y.lessThan(edge));
+    ta.assign(select(hit, R[k - 1], ta)); tb.assign(select(hit, R[k], tb)); tIdx.assign(select(hit, int(k - 1), tIdx));
+    found.assign(select(hit, int(1), found));
+  }
+  const hasTop = found.equal(int(1)).toVar();
+  const tf = clamp(edge.sub(ta.y).div(select(tb.y.equal(ta.y), float(1.0), tb.y.sub(ta.y))), 0.0, 1.0);
+  const topP = vec3(select(hasTop, lerp3(ta, tb, tf), bestR)).toVar();
+  // The seat: the family's crest on the edge, its floor on the sheet's low in front (footY), scaled between.
+  const hv = clamp(numbers.hollow, 0.0, 1.0), H = SEAT_HELD_KNOTS, held = phase.greaterThan(SEAT_HELD_PHASE);
+  const c = select(held, hv.mul(H[1] - H[0]).add(H[0]), knot[CREST_KNOT].y);
+  const f = select(held, hv.mul(H[3] - H[2]).add(H[2]), knot[FLOOR_KNOT].y);
+  const foot = mix(seatUniforms.trough.negate(), max(lowV, -FOOT_DEEPEST), smoothstep(0.0, FOOT_FLAT_RELIEF, highV.sub(lowV)));
+  const scale = max(topP.y.sub(foot), 0.0).div(max(c.sub(f), 0.2)).toVar();
+  const shift = topP.y.sub(scale.mul(drawn0[0].y)).toVar(), du = topP.x.sub(drawn0[0].x).toVar();
+  const one: N[] = drawn.map((d: N) => vec2(d.x.add(du), d.y.mul(scale).add(shift)).toVar());
+  // The lip's knots (1 … ROOT_DRAWN − 1) from the swell homes toward the drawing by g, homes as sectionFrameKnots'.
+  const front0 = read(SHEET_READ.front), shoulder = read(SHEET_READ.back + SHEET_KNOTS - 1);
+  const oBack = shoulder.x.sub(shoulder.z).toVar(), oFront = front0.x.sub(front0.z).toVar();
+  const lip: N[] = one.map((d: N, k: number) => {
+    if (k === 0 || k >= ROOT_DRAWN) return null;
+    const sh = read(SHEET_READ.swell + k), fk = (k + 1) / (CURL_KNOTS + 1);
+    const dh = d.x.sub(oBack.add(oFront.sub(oBack).mul(fk)));
+    return mix(sh, vec3(d.x, d.y, dh), g).toVar();
+  });
+  // The root's criterion and its first estimate, forward of the edge's read (rootCriterion, rootBracket).
+  const byU = smoothstep(ROOT_BY_U_PHASES[0], ROOT_BY_U_PHASES[1], phase).toVar();
+  const ry = one[ROOT_DRAWN].y, ru = one[ROOT_DRAWN].x;
+  const phi = (q: N): N => float(1.0).sub(byU).mul(ry.sub(q.y)).add(byU.mul(q.x.sub(ru)));
+  const rFound = int(0).toVar(), ra = vec3(R[n - 1]).toVar(), rb = vec3(R[n - 1]).toVar();
+  for (let k = 1; k < n; k++) {
+    const hit = rFound.equal(int(0)).and(int(k).greaterThan(tIdx)).and(phi(R[k]).greaterThanEqual(0.0));
+    ra.assign(select(hit, R[k - 1], ra)); rb.assign(select(hit, R[k], rb)); rFound.assign(select(hit, int(1), rFound));
+  }
+  const hasRoot = rFound.equal(int(1)).toVar();
+  const h0 = max(select(hasRoot, ra.z.add(rb.z.sub(ra.z).mul(zeroAt(phi(ra), phi(rb)))), R[n - 1].z), topP.z.add(ROOT_MIN_AHEAD)).toVar();
+  return { g, R, edge, ta, tb, hasTop, topP, one, lip, phi, ra, rb, hasRoot, h0 };
+}
+
+/** rootRefine on the GPU: the lerp in the half bracket (a, probe) or (probe, b) that holds the criterion's 0, at least `min0`. */
+function refineNode(has: N, h0: N, a: N, b: N, probe: N, phi: (q: N) => N, min0: N): N {
+  const left = phi(probe).greaterThanEqual(0.0);
+  const qa: N = vec3(select(left, a, probe)), qb: N = vec3(select(left, probe, b));
+  return select(has, max(qa.z.add(qb.z.sub(qa.z).mul(zeroAt(phi(qa), phi(qb)))), min0), h0);
+}
+
+/** The law's third-round homes (THIRD order), from the first two rounds: the crest's (its edge refined by the second round's
+ * probe, from the first swell home by g), the root's (refined, the same), the face's three below it, the two joins. */
+function oneThirdHomes(r1: ReturnType<typeof oneRound1>, read: (r: number) => N): N[] {
+  const edgeProbe = vec3(read(SHEET_READ.own)).toVar(), rootProbe = vec3(read(SHEET_READ.own + ROOT_DRAWN)).toVar();
+  const edgeHome = refineNode(r1.hasTop, r1.topP.z, r1.ta, r1.tb, edgeProbe, (q: N) => r1.edge.sub(q.y), float(-1e30)).toVar();
+  const s0 = r1.R[1].z, hC = s0.add(edgeHome.sub(s0).mul(r1.g)).toVar();
+  const hR = refineNode(r1.hasRoot, r1.h0, r1.ra, r1.rb, rootProbe, r1.phi, edgeHome.add(ROOT_MIN_AHEAD)).toVar();
+  const f0 = read(SHEET_READ.front).z;
+  const blended = (i: number, to: N): N => { const sh = read(SHEET_READ.swell + i).z; return sh.add(to.sub(sh).mul(r1.g)); };
+  const hRb = blended(ROOT_DRAWN, hR).toVar();
+  const face = [1, 2, 3].map((j) => blended(ROOT_DRAWN + j, hR.add(f0.sub(hR).mul(j / (CURL_KNOTS - ROOT_DRAWN)))));
+  return [hC, hRb, ...face, hC.sub(ONE_JOIN_UNITS), hRb.add(ONE_JOIN_UNITS)];
+}
+
+/** The second round's homes under the law: the crest edge's probe, the lip's knots, the root's probe (the rest unread: 0). */
+function oneSecondHomes(r1: ReturnType<typeof oneRound1>): N[] {
+  return Array.from({ length: CURL_KNOTS }, (_, k) => (k === 0 ? r1.topP.z : k === ROOT_DRAWN ? r1.h0 : k < ROOT_DRAWN ? r1.lip[k].z : float(0.0)));
+}
+
+/** The home of second-round sheet read k (the curl's knot k at its own home; under the law oneSecondHomes). */
 export function curlReadHomeNode(k: N, numbers: { phase: N; hollow: N; rho: N; surge?: N }, keys: N, read: (r: number) => N): N {
   const { knot, drawn, drawn0 } = drawnNode(numbers, keys);
-  return pick(curlKnotsNode(numbers, drawn, drawn0, knot, read).map((p) => p.z), k);
+  const old = pick(curlKnotsNode(numbers, drawn, drawn0, knot, read).map((p) => p.z), k);
+  return select(oneSurfaceUniform.greaterThan(0.5), pick(oneSecondHomes(oneRound1(numbers, knot, drawn, drawn0, read)), k), old);
+}
+
+/** The home of third-round sheet read k (THIRD; under the law only, 0 off it). */
+export function thirdReadHomeNode(k: N, numbers: { phase: N; hollow: N; rho: N; surge?: N }, keys: N, read: (r: number) => N): N {
+  const { knot, drawn, drawn0 } = drawnNode(numbers, keys);
+  return select(oneSurfaceUniform.greaterThan(0.5), pick(oneThirdHomes(oneRound1(numbers, knot, drawn, drawn0, read), read), k), float(0.0));
 }
 
 export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N; surge?: N }, keys: N, knots: (k: N) => N, write: (j: N, v: N) => void, read: (r: number) => N): WombFrameNodes {
@@ -244,7 +364,18 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N; surg
   for (let k = 0; k < SHEET_KNOTS; k++) { back.push(sheetKnot(SHEET_READ.back + k)); front.push(sheetKnot(SHEET_READ.front + k)); }
   const beyond = [0, 1, 2, 3].map((k) => sheetKnot(SHEET_READ.beyond + k));
   const curl = smoothstep(0.0, CURL_PHASE, numbers.phase).mul(numbers.rho).toVar();
-  const curlKnots = curlKnotsNode(numbers, drawn, drawn0, knot, read).map((p: N, k: number) => ({ p, s: vec3(read(SHEET_READ.own + k)).xy.toVar() }));
+  const oneOn = oneSurfaceUniform.greaterThan(0.5).toVar();
+  // Under the law (wombSection.oneSurfaceKnots): the crest, the root and the face below it the third round's sheet points,
+  // the lip the drawing on the crest with the second round's reads under it.
+  const r1 = oneRound1(numbers, knot, drawn, drawn0, read);
+  const third = (j: number): N => vec3(read(SHEET_READ.third + j)).toVar();
+  const curlKnots = curlKnotsNode(numbers, drawn, drawn0, knot, read).map((p: N, k: number) => {
+    const sOld = vec3(read(SHEET_READ.own + k)).xy.toVar();
+    const pOne: N = k === 0 ? third(THIRD.crest) : k === ROOT_DRAWN ? third(THIRD.root) : k > ROOT_DRAWN ? third(THIRD.face + k - ROOT_DRAWN - 1) : r1.lip[k];
+    const sOne: N = k === 0 || k >= ROOT_DRAWN ? pOne.xy : sOld;
+    return { p: vec3(select(oneOn, pOne, p)).toVar(), s: vec2(select(oneOn, sOne, sOld)).toVar() };
+  });
+  const joinsOne = [third(THIRD.crestJoin), third(THIRD.rootJoin)].map((v) => ({ p: v, s: v.xy }));
   const all = [...back, ...curlKnots, ...front];
 
   // wombSection.sectionTangents: the parameters, and each knot's tangent (at the joins, the sheet's own slope).
@@ -254,17 +385,28 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N; surg
   const lastKnot = all.length - 1;
   all.forEach((q, k: number) => {
     let mp: N, ms: N;
-    if (k === SHEET_ENDS[1] || k === SHEET_ENDS[2]) {
-      const shoulder = k === SHEET_ENDS[1], near = beyond[shoulder ? 1 : 2], o = all[shoulder ? k + 1 : k - 1];
-      const dp = shoulder ? q.p.sub(near.p) : near.p.sub(q.p), ds = shoulder ? q.s.sub(near.s) : near.s.sub(q.s);
-      const speed = length(o.p.xy.sub(q.p.xy)).div(abs(tk[shoulder ? k + 1 : k - 1].sub(tk[k])));
+    /** A join's tangent: along the sheet from `near` (behind: q − near; ahead: near − q), at the curl span's speed × `share`. */
+    const join = (behind: boolean, near: { p: N; s: N }, share: number): [N, N] => {
+      const o = all[behind ? k + 1 : k - 1];
+      const dp = behind ? q.p.sub(near.p) : near.p.sub(q.p), ds = behind ? q.s.sub(near.s) : near.s.sub(q.s);
+      const speed = length(o.p.xy.sub(q.p.xy)).div(abs(tk[behind ? k + 1 : k - 1].sub(tk[k]))).mul(share);
       const scale = speed.div(max(length(dp.xy), 1e-9));
-      mp = dp.mul(scale); ms = ds.mul(scale);
-    } else {
+      return [dp.mul(scale), ds.mul(scale)];
+    };
+    const crTan = (): [N, N] => {
       const a = k === 0 ? beyond[0] : all[k - 1], b = k === lastKnot ? beyond[3] : all[k + 1];
       const ta = k === 0 ? tk[k].sub(step(a.p, q.p)) : tk[k - 1], tb = k === lastKnot ? tk[k].add(step(q.p, b.p)) : tk[k + 1];
       const cr = (pa: N, pp: N, pb: N): N => pp.sub(pa).div(tk[k].sub(ta)).sub(pb.sub(pa).div(tb.sub(ta))).add(pb.sub(pp).div(tb.sub(tk[k])));
-      mp = cr(a.p, q.p, b.p); ms = cr(a.s, q.s, b.s);
+      return [cr(a.p, q.p, b.p), cr(a.s, q.s, b.s)];
+    };
+    // Off the law the joins are the shoulder and the front knot; under it the crest (the sheet behind it, at CREST_JOIN_SPEED)
+    // and the root (the sheet ahead of it), and the shoulder and the front knot are plain sheet knots.
+    const old: [N, N] = k === SHEET_ENDS[1] || k === SHEET_ENDS[2] ? join(k === SHEET_ENDS[1], beyond[k === SHEET_ENDS[1] ? 1 : 2], 1) : crTan();
+    const one: [N, N] = k === SECTION_CREST ? join(true, joinsOne[0], CREST_JOIN_SPEED) : k === SECTION_ROOT ? join(false, joinsOne[1], 1) : crTan();
+    if (k === SHEET_ENDS[1] || k === SHEET_ENDS[2] || k === SECTION_CREST || k === SECTION_ROOT) {
+      mp = select(oneOn, one[0], old[0]); ms = select(oneOn, one[1], old[1]);
+    } else {
+      [mp, ms] = old;
     }
     knots(int(KNOT_VEC4S * k)).assign(vec4(q.p, tk[k]));
     knots(int(KNOT_VEC4S * k + 1)).assign(vec4(q.s, mp.xy));
@@ -274,7 +416,10 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N; surg
   /** wombProfile.hermitePoint over the section's knots: (u, y, home), the sheet weight w (wombSection.sampleWeight: 1 at the
    * sheet knots, 1 − the curl's weight at the curl knots, eased between over the join spans) and a = (u − w·su, y − w·sy)
    * (wombSection.SectionSample: the vertex pass places the sample at w × the sheet at its home + A × a). */
-  const isSheetKnot = (k: N): N => k.lessThan(int(SHEET_KNOTS)).or(k.greaterThanEqual(int(SHEET_KNOTS + CURL_KNOTS)));
+  // Under the law the crest and from the root on are the sheet's own too (wombSection.isSheetKnot), and the spans from the crest
+  // into the lip and from the roof into its root take the curl's weight whole (sampleWeight).
+  const isSheetKnot = (k: N): N => k.lessThan(int(SHEET_KNOTS)).or(k.greaterThanEqual(int(SHEET_KNOTS + CURL_KNOTS)))
+    .or(oneOn.and(k.equal(int(SECTION_CREST)).or(k.greaterThanEqual(int(SECTION_ROOT)))));
   const curlW = float(1.0).sub(curl).toVar();
   const dense = (d: N): { p: N; off: N; w: N } => {
     const lastE = int(KNOT_VEC4S * (SECTION_KNOTS - 1));
@@ -291,7 +436,8 @@ export function wombFrameNode(numbers: { A: N; phase: N; hollow: N; rho: N; surg
       // Typed N: tsc's overload pick for select() here depends on the program's file order (it read never once the old Bombie
       // mound left the bathymetry's imports, shelf-polish Task 7).
       const wa: N = select(isSheetKnot(sp), float(1.0), curlW), wb: N = select(isSheetKnot(sp.add(1)), float(1.0), curlW);
-      w.assign(wa.add(wb.sub(wa).mul(smoothNode(s))));
+      const whole = oneOn.and(sp.equal(int(SECTION_CREST)).or(sp.add(1).equal(int(SECTION_ROOT))));
+      w.assign(select(whole, curlW, wa.add(wb.sub(wa).mul(smoothNode(s)))));
       off.assign(p.xy.sub(sv.mul(w)));
     });
     return { p, off, w };

@@ -116,8 +116,9 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   handDownT: 0.3,
   shoulderTaperM: 0,
   shoulderFloor: 1,
-  standAheadM: 20,
-  faceOnSheet: 1,
+  // 0 (retired by the one-surface law, womb-story Task 10: Fable's ruling on the handover §7; deleted after the A/B sheet).
+  standAheadM: 0,
+  faceOnSheet: 0,
   oneSurface: 1,
 };
 

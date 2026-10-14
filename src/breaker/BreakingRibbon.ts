@@ -22,7 +22,7 @@ import { TUBE_TIP_CLEAR_M } from './lipProfile';
 import { encodeTb, tubeLightAtNode } from './lipProfileNodes';
 import { CURVE_SAMPLES } from './wombProfile';
 import { EDGE_OUTER_UNITS, FACE_ON_SHEET_PHASE, STOOD_PHASE, faceOnSheetOn } from './wombSection';
-import { SHEET_READS, SHEET_READS_FIRST, WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, curlReadHomeNode, sheetReadHomeNode, wombFrameNode } from './wombSectionNodes';
+import { SHEET_READS, SHEET_READS_FIRST, SHEET_READS_SECOND, WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, curlReadHomeNode, sheetReadHomeNode, thirdReadHomeNode, wombFrameNode } from './wombSectionNodes';
 
 type N = any;
 
@@ -352,6 +352,8 @@ export class BreakingRibbon {
   private readonly sheetReads = new THREE.StorageBufferAttribute(new Float32Array(MAX_STATIONS * SHEET_READS * 4), 4);
   private readonly readPass: THREE.ComputeNode;
   private readonly curlReadPass: THREE.ComputeNode;
+  /** The third round of sheet reads (womb-story Task 10, the one-surface law: the crest, the root, the face below it). */
+  private readonly thirdReadPass: THREE.ComputeNode;
   /** The profile family's keyframes (wombProfile.keyTable), read-only. */
   private readonly keys = createKeyTable();
   /** How many station rows are live this frame (the draw range covers these). */
@@ -409,8 +411,9 @@ export class BreakingRibbon {
     this.frames = new THREE.StorageBufferAttribute(new Float32Array(MAX_STATIONS * WOMB_FRAME_VEC4S * 4), 4);
     this.sections = new THREE.StorageBufferAttribute(new Float32Array(MAX_STATIONS * PROFILE_SAMPLES * 4), 4);
     this.knots = new THREE.StorageBufferAttribute(new Float32Array(MAX_STATIONS * WOMB_KNOT_VEC4S * 4), 4);
-    this.readPass = this.buildReadPass(false);
-    this.curlReadPass = this.buildReadPass(true);
+    this.readPass = this.buildReadPass(1);
+    this.curlReadPass = this.buildReadPass(2);
+    this.thirdReadPass = this.buildReadPass(3);
     this.framePass = this.buildFramePass();
     this.vertexPass = this.buildVertexPass();
     this.developPass = this.buildDevelopPass();
@@ -489,7 +492,7 @@ export class BreakingRibbon {
    * first breaking wave instead, they froze that frame (the frame pass alone took 0.4–1.7 s).
    */
   get computePasses(): THREE.ComputeNode[] {
-    return [this.readPass, this.curlReadPass, this.framePass, this.vertexPass, this.developPass, this.lightPass, this.chopPass, this.normalPass];
+    return [this.readPass, this.curlReadPass, this.thirdReadPass, this.framePass, this.vertexPass, this.developPass, this.lightPass, this.chopPass, this.normalPass];
   }
 
   /**
@@ -512,14 +515,15 @@ export class BreakingRibbon {
   compute(renderer: THREE.WebGPURenderer): void {
     if (this.stationCount === 0) return;
     this.readPass.count = this.stationCount * SHEET_READS_FIRST;
-    this.curlReadPass.count = this.stationCount * (SHEET_READS - SHEET_READS_FIRST);
+    this.curlReadPass.count = this.stationCount * (SHEET_READS_SECOND - SHEET_READS_FIRST);
+    this.thirdReadPass.count = this.stationCount * (SHEET_READS - SHEET_READS_SECOND);
     this.framePass.count = this.stationCount;
     this.vertexPass.count = this.stationCount * V;
     this.developPass.count = this.stationCount;
     this.lightPass.count = this.stationCount * V;
     this.chopPass.count = this.stationCount * V;
     this.normalPass.count = this.stationCount * V;
-    renderer.compute([this.readPass, this.curlReadPass, this.framePass, this.vertexPass, this.developPass, this.lightPass, this.chopPass, this.normalPass]);
+    renderer.compute([this.readPass, this.curlReadPass, this.thirdReadPass, this.framePass, this.vertexPass, this.developPass, this.lightPass, this.chopPass, this.normalPass]);
   }
 
   /**
@@ -712,13 +716,15 @@ export class BreakingRibbon {
    * homes along n, the curl drawn over it); the vertex pass places them. */
   /**
    * The sheet's reads at the section's knots' homes (wombSectionNodes.SHEET_READ), one invocation each: the first round
-   * (the ends, the joins' slopes, the curl's swell homes), or (`curl`) the second, the curl's knots at their own homes.
+   * (the ends, the joins' slopes, the curl's swell homes), the second (the curl's knots at their own homes; under the law the
+   * crest's and the root's probes and the lip's knots) or the third (under the law: the crest, the root, the face, the joins).
    */
-  private buildReadPass(curl: boolean): THREE.ComputeNode {
+  private buildReadPass(stage: 1 | 2 | 3): THREE.ComputeNode {
     const stations = this.stationsNode();
     const keys = storage(this.keys, 'vec4', this.keys.count).toReadOnly();
     const reads = storage(this.sheetReads, 'vec4', MAX_STATIONS * SHEET_READS);
-    const per = curl ? SHEET_READS - SHEET_READS_FIRST : SHEET_READS_FIRST;
+    const per = stage === 1 ? SHEET_READS_FIRST : stage === 2 ? SHEET_READS_SECOND - SHEET_READS_FIRST : SHEET_READS - SHEET_READS_SECOND;
+    const offset = stage === 1 ? 0 : stage === 2 ? SHEET_READS_FIRST : SHEET_READS_SECOND;
     return Fn(() => {
       const idx: N = int(instanceIndex).toVar();
       const i: N = idx.div(per).toVar(), r: N = idx.sub(i.mul(per)).toVar();
@@ -726,14 +732,13 @@ export class BreakingRibbon {
       const nums = { phase: q.y, hollow: q.z, rho: q.w, surge: stations.element(i.mul(STATION_VEC4S).add(4)).x };
       const a = stations.element(i.mul(STATION_VEC4S)).toVar();
       const A = max(q.x, 1e-6).toVar();
-      const h = curl
-        ? curlReadHomeNode(r, nums, keys, (k: number) => reads.element(i.mul(SHEET_READS).add(k)).xyz)
-        : sheetReadHomeNode(r, nums, keys);
+      const prior = (k: number) => reads.element(i.mul(SHEET_READS).add(k)).xyz;
+      const h = stage === 3 ? thirdReadHomeNode(r, nums, keys, prior) : stage === 2 ? curlReadHomeNode(r, nums, keys, prior) : sheetReadHomeNode(r, nums, keys);
       const home = float(h).toVar();
       // wombSection.SheetAlong in units of A: the sheet at home h along n, displaced.
-      const smooth = this.surfaceFn(this.surface.smooth, curl ? 'ribbonSmoothCurl' : 'ribbonSmoothKnot');
+      const smooth = this.surfaceFn(this.surface.smooth, stage === 3 ? 'ribbonSmoothThird' : stage === 2 ? 'ribbonSmoothCurl' : 'ribbonSmoothKnot');
       const d = vec3(smooth(a.xy.add(a.zw.mul(home.mul(A))))).toVar();
-      reads.element(i.mul(SHEET_READS).add(r).add(curl ? SHEET_READS_FIRST : 0)).assign(vec4(home.mul(A).add(dot(d.xz, a.zw)).div(A), d.y.div(A), home, 0.0));
+      reads.element(i.mul(SHEET_READS).add(r).add(offset)).assign(vec4(home.mul(A).add(dot(d.xz, a.zw)).div(A), d.y.div(A), home, 0.0));
     })().compute(MAX_STATIONS * per) as THREE.ComputeNode;
   }
 

@@ -170,7 +170,7 @@ describe('BreakingRibbon tint overlay', () => {
 });
 
 describe('BreakingRibbon ahead of the first break', () => {
-  it("hands over its eight compute passes (the sheet's two read passes first) and draws the footprint into its own target, then restores the render target", () => {
+  it("hands over its nine compute passes (the sheet's three read passes first) and draws the footprint into its own target, then restores the render target", () => {
     const sim = new OceanSimulation();
     const grid = { x0: 0, z0: 0, cellM: 1, nx: 4, nz: 4 };
     const bed = { grid, bed: new Float32Array(16).fill(-10), sand: new Float32Array(16), weed: new Float32Array(16) };
@@ -184,7 +184,8 @@ describe('BreakingRibbon ahead of the first break', () => {
       setRenderTarget: (t: THREE.RenderTarget | null) => { target = t; },
     } as unknown as THREE.WebGPURenderer;
     const passes = ribbon.computePasses;
-    expect(passes.length).toBe(8);
+    // Nine since 2026-10-15 (womb-story Task 10: the one-surface law reads the sheet in three rounds).
+    expect(passes.length).toBe(9);
     expect(passes.every((n) => n.isComputeNode)).toBe(true);
     ribbon.prewarmFootprint(renderer);
     expect(scenes.length).toBe(1);

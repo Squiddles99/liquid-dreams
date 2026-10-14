@@ -10,8 +10,8 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LE
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { BORE_SHARE, FRONT_LEAD_S, GRAVITY_MS2, ONSET_HEIGHT_UNITS, setFaceOnSheet, setHandDownT, setOneSurface, setShoulder, setStandAhead, setWallLeadT } from './wombSection';
-import { applyFlightDropA, applySeatShares, flightTimeNodeA } from './wombSectionNodes';
+import { BORE_SHARE, FRONT_LEAD_S, GRAVITY_MS2, ONSET_HEIGHT_UNITS, setFaceOnSheet, setHandDownT, setShoulder, setStandAhead, setWallLeadT } from './wombSection';
+import { applyFlightDropA, applyOneSurface, applySeatShares, flightTimeNodeA } from './wombSectionNodes';
 import { HOLLOW_PSI } from './reefReport';
 import { MIST_LAND_WINDOW_S, landingMistNode } from '../whitewater/mistSlab';
 import { boreWeightNode } from './wombSectionNodes';
@@ -167,7 +167,7 @@ export class SetWaves {
     setShoulder(this.breakParams.shoulderTaperM, this.breakParams.shoulderFloor, this.breakParams.curlMaxMs);
     setStandAhead(this.breakParams.standAheadM);
     setFaceOnSheet(this.breakParams.faceOnSheet);
-    setOneSurface(this.breakParams.oneSurface);
+    applyOneSurface(this.breakParams.oneSurface);
     applyFlightDropA(this.breakParams.flightDropA);
     this.updateBreakingHeight();
   }

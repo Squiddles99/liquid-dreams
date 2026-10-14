@@ -92,7 +92,7 @@ export const SHOULDER_TAPER_M = 0;
  * 1 = the swell's own height (the ruling's law as written). The dial shoulderFloor (BreakParams.shoulderFloor).
  */
 export const SHOULDER_FLOOR = 1;
-const SHOULDER = { taperM: SHOULDER_TAPER_M, floor: SHOULDER_FLOOR, curlMs: 13, aheadM: 20 };
+const SHOULDER = { taperM: SHOULDER_TAPER_M, floor: SHOULDER_FLOOR, curlMs: 13, aheadM: 0 }; // aheadM: STAND_AHEAD_M (retired to 0, Task 10)
 /**
  * The stand-up eases off by distance from the curl's front (Andrew 2026-10-14, moment 1791986608: "the almost cube-like
  * lump of wave face in front of the breaking lip"): where the curl stalls (the left's end at 7 ft: the station 1.3 m ahead
@@ -104,7 +104,8 @@ const SHOULDER = { taperM: SHOULDER_TAPER_M, floor: SHOULDER_FLOOR, curlMs: 13, 
  * foot (a stepped fin ahead of the lip, andrew-moment/stand-ahead-ab.jpg); the sheet keeps the time's stand-up.
  */
 // 20 m by Andrew's pick (2026-10-14, andrew-moment/one-surface-ab.jpg row 3, with faceOnSheet on).
-export const STAND_AHEAD_M = 20;
+// 0: retired by the one-surface law (Task 10; the A/B sheet's 'before' sets 20).
+export const STAND_AHEAD_M = 0;
 export const setStandAhead = (m: number): void => { SHOULDER.aheadM = m; };
 export function standAhead(x: number, z: number, frontAlong: number | undefined): number {
   if (!(SHOULDER.aheadM > 0) || frontAlong === undefined || !Number.isFinite(frontAlong)) return 0;
@@ -603,7 +604,7 @@ function oneSurfaceKnots(numbers: SectionNumbers, k: readonly P2[], back: Sectio
   // The root: on the sheet's face where it falls to the drawn root's height (once the tube has closed, past its u), found
   // from the first round's reads and refined once by a read at that estimate.
   const byU = smoothstep(ROOT_BY_U_PHASES[0], ROOT_BY_U_PHASES[1], phase);
-  const phi = rootCriterion(drawn[ROOT_DRAWN][1], drawn[ROOT_DRAWN][0], byU), br = rootBracket(reads, top.index, phi, edgeHome);
+  const phi = rootCriterion(drawn[ROOT_DRAWN][1], drawn[ROOT_DRAWN][0], byU), br = rootBracket(reads, top.index, phi, top.home);
   const hR = rootRefine(br, at(br.h0), phi, edgeHome), f0 = front[0][2];
   const curl = drawn.map((d, i): SectionKnot => {
     const s = swell[i];
@@ -746,7 +747,8 @@ export function sectionSamples(numbers: SectionNumbers, sheet: SheetAlong): { kn
  */
 export const FACE_ON_SHEET_PHASE = STOOD_PHASE + 0.15;
 /** On by Andrew's pick (2026-10-14, one-surface-ab.jpg row 3, with standAheadM 20). */
-export const FACE_ON_SHEET = 1;
+// 0: retired by the one-surface law (Task 10; the A/B sheet's 'before' sets 1).
+export const FACE_ON_SHEET = 0;
 const FACE = { on: FACE_ON_SHEET };
 export const setFaceOnSheet = (on: number): void => { FACE.on = on; };
 export const faceOnSheetOn = (): number => FACE.on;
