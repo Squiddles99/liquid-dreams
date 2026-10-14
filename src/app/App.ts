@@ -913,7 +913,7 @@ export class App {
     this.frameTicks.foam = steps;
     if (steps === 0) return;
     this.ocean.time.value = this.clock.simTime;
-    this.setWaves.setEvents(events);
+    this.setWaves.setEvents(events, this.clock.simTime);
   }
 
   /** The kelp's ticks this frame (none while paused; a replay after a jump), like the foam's: each tick points the set waves at its time. */
@@ -922,7 +922,7 @@ export class App {
     this.frameTicks.kelp = steps;
     if (steps === 0) return;
     this.ocean.time.value = this.clock.simTime;
-    this.setWaves.setEvents(events);
+    this.setWaves.setEvents(events, this.clock.simTime);
   }
 
   /** Dev: the kelp on or off (off: build A's bed, no lean steps). For captures and the cost check. */
@@ -955,7 +955,7 @@ export class App {
   /** The foam field's source at sim time t: the ocean's time uniform and the set waves in flight then. */
   private pointFoamSourceAt(t: number): void {
     this.ocean.time.value = t;
-    this.setWaves.setEvents(wavesNear(t, this.conditions, this.sets));
+    this.setWaves.setEvents(wavesNear(t, this.conditions, this.sets), t);
   }
 
   /** Dev (plan Task 5, spec §3.4): times a forced replay to the GPU's completion. ms / steps is one step's cost. */
@@ -2271,7 +2271,7 @@ export class App {
     this.ocean.update(this.renderer, this.clock.simTime, simDt);
     const events = wavesNear(this.clock.simTime, this.conditions, this.sets);
         this.surf.update(this.clock.simTime, this.conditions, (t0, t1) => wavesBetween(t0, t1, this.conditions, this.sets), this.field, this.surfParams);
-    this.setWaves.setEvents(events);
+    this.setWaves.setEvents(events, this.clock.simTime);
     this.stepFoam(events);
     this.stepKelp(events);
     this.stepSpray();

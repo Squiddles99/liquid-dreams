@@ -106,19 +106,29 @@ export function shoulderRegion(x: number, z: number): number {
   return smoothstep(SHOULDER_ALONG_M[0], SHOULDER_ALONG_M[1], along) * smoothstep(SHOULDER_SEAWARD_M[0], SHOULDER_SEAWARD_M[1], cross)
     * (1 - smoothstep(SHOULDER_INSHORE_M[0], SHOULDER_INSHORE_M[1], cross));
 }
-/**
- * The shoulder's height share at a crest at (x, z) `u` s before its break or turn (null: broken, its own height):
- * 1 − region × (1 − floor) × (1 − stand). 1 with either dial off.
- */
 /** The time (s) a crest has before its break or its turn, for the shoulder (shoulderFactor): null once broken or without
  * a record (tb ≥ 0, or undefined), −tb while held for its turn, else until. */
 export const shoulderU = (tb: number | null | undefined, until: number | null | undefined): number | null =>
   tb === undefined ? null : tb !== null ? (tb >= 0 ? null : -tb) : (until ?? null);
-export function shoulderFactor(x: number, z: number, u: number | null | undefined): number {
+/** The stand-up fraction `d` m ahead of the curl's front along the line (curlFront.curlFrontAlong): 1 − smoothstep(0,
+ * shoulderTaperM, d); 1 at or behind the front, and with the dial at 0. */
+export const shoulderStandAt = (d: number): number => (SHOULDER.taperM > 0 ? 1 - smoothstep(0, SHOULDER.taperM, Math.max(0, d)) : 1);
+/** wombReef.ledgeAlongM (m down the left from the tip), here so the GPU mirror reads the same frame. */
+export const shoulderAlong = (x: number, z: number): number => (x - TIP[0]) * SIN_B - (z - TIP[1]) * COS_B;
+/**
+ * The shoulder's height share at a crest at (x, z) `u` s before its break or turn (null: broken, its own height), with the
+ * curl's front `frontAlong` m down the left (curlFront; absent: the time alone): 1 − region × (1 − floor) × (1 − stand),
+ * stand the larger of the time's (shoulderStand: a closeout stands up as it comes) and the distance's (shoulderStandAt: past
+ * the fizzle the time jumps to the shore's break, 5-11 s, and the taper fell to the floor between two stations). 1 with
+ * either dial off.
+ */
+export function shoulderFactor(x: number, z: number, u: number | null | undefined, frontAlong?: number): number {
   // A crest that never breaks keeps its own (a wave too small to break anywhere skips the GPU's breaking: Phase 1 both sides).
   if (u === null || u === undefined || !(u < UNTIL_NEVER) || !(SHOULDER.floor < 1) || !(SHOULDER.taperM > 0)) return 1;
   const g = shoulderRegion(x, z);
-  return g > 0 ? 1 - g * (1 - SHOULDER.floor) * (1 - shoulderStand(u)) : 1;
+  if (!(g > 0)) return 1;
+  const stand = frontAlong === undefined ? shoulderStand(u) : Math.max(shoulderStand(u), shoulderStandAt(shoulderAlong(x, z) - frontAlong));
+  return 1 - g * (1 - SHOULDER.floor) * (1 - stand);
 }
 /**
  * The lip's flight (onset to the round barrel) is the free fall from this many A. 0.8, not 1.3 (womb-realism spec 3.2,

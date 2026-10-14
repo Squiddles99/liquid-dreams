@@ -1,3 +1,4 @@
+import { curlFrontAlong } from './curlFront';
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, Loop, abs, clamp, cos, dot, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, sqrt, storage, tanh,
@@ -132,6 +133,8 @@ export class SetWaves {
   /** setWaveModel.fieldSteepeningHeight for the current field and params (Infinity with no field: nothing breaks). */
   private steepeningHeight = Infinity;
   private events: readonly WaveEvent[] = [];
+  /** The time the wave slots' curl fronts were last read at (setEvents). */
+  private frontT = NaN;
 
   /**
    * false: the sheet without the whitewater pile anywhere (setWaveModel.BreakOptions.pile), as the game draws it: the
@@ -238,8 +241,11 @@ export class SetWaves {
    * so it may steepen or break somewhere. The GPU skips the crest search and breaking for a flagged-0 wave; the model
    * gives such a wave no sharpening and stage 0 everywhere, so the result is Phase 1 either way.
    */
-  setEvents(events: readonly WaveEvent[]): void {
+  setEvents(events: readonly WaveEvent[], t?: number): void {
     this.events = events;
+    // The curl's front down the left at t, per wave (curlFront.curlFrontAlong; the shoulder's taper by distance): absent t,
+    // the last frame's time; no field or time yet, the taper reads the time until its break alone.
+    if (t !== undefined) this.frontT = t;
     const d = this.wavesAttr.array as Float32Array;
     for (let i = 0; i < MAX_ACTIVE_WAVES; i++) {
       const e = events[i];
@@ -248,7 +254,8 @@ export class SetWaves {
       d.set(w ? [w.arrivalS, w.heightM, w.omega, w.crestLengthM] : [0, 0, 1, 1], i * 12);
       d.set(w ? [w.travelX, w.travelZ, w.crestOffsetM, canBreak] : [1, 0, 0, 0], i * 12 + 4);
       // The game rules on its ψ (overturn.effectivePsi): its drain factor and its draw for the dial.
-      d.set(w ? [w.drainFactor ?? 1, w.throwDraw ?? 0, 0, 0] : [1, 0, 0, 0], i * 12 + 8);
+      const front = w && this.field && Number.isFinite(this.frontT) ? curlFrontAlong(this.field, w, this.frontT, this.breakParams) : NaN;
+      d.set(w ? [w.drainFactor ?? 1, w.throwDraw ?? 0, Number.isFinite(front) ? front : 0, Number.isFinite(front) ? 1 : 0] : [1, 0, 0, 0], i * 12 + 8);
     }
     this.activeCount.value = Math.min(events.length, MAX_ACTIVE_WAVES);
     this.wavesAttr.needsUpdate = true;
@@ -535,7 +542,7 @@ export class SetWaves {
             const onset = onsetTimeNode(rec, level, a.y, brk);
             Hcrest.assign(wallHeightNode(a.y.mul(fc.amp), fc.depth, fc.hmin, rec.inside, onset, float(2 * Math.PI).div(a.z), brk.wallLeadT, brk.handDownT, brk));
             // The shoulder tapers ahead of the curl (setWaveModel.waveAtCrest: wombSection.shoulderFactor at the crest, Task 3d).
-            taper.assign(shoulderFactorNode(cPos, select(onset.broken, onset.tb.negate(), onset.until), rec.inside.and(onset.broken.and(onset.tb.greaterThanEqual(0.0)).not()), brk));
+            taper.assign(shoulderFactorNode(cPos, select(onset.broken, onset.tb.negate(), onset.until), rec.inside.and(onset.broken.and(onset.tb.greaterThanEqual(0.0)).not()), brk, cW.z, cW.w.greaterThan(0.5)));
             const rSlurp = breakingRatioNode(a.y.mul(fc.amp), fc.hminSlurp, brk);
             // × (1 − release: the collapse without the tube's hold), assigned with the lifecycle below.
             lean.assign(smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], breakingRatioNode(a.y.mul(fc.amp), fc.hminLean, brk)).mul(confidence));

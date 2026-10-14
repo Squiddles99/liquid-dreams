@@ -173,10 +173,15 @@ export function shoulderRegionNode(p: N): N {
   return smoothstep(SHOULDER_ALONG_M[0], SHOULDER_ALONG_M[1], along).mul(smoothstep(SHOULDER_SEAWARD_M[0], SHOULDER_SEAWARD_M[1], cross))
     .mul(float(1.0).sub(smoothstep(SHOULDER_INSHORE_M[0], SHOULDER_INSHORE_M[1], cross)));
 }
-/** wombSection.shoulderFactor at the crest p, `u` s before its break or turn; `has` false (broken, no record): 1. */
-export function shoulderFactorNode(p: N, u: N, has: N, sh: ShoulderUniforms): N {
+/** wombSection.shoulderFactor at the crest p, `u` s before its break or turn, the curl's front `front` m down the left
+ * (`frontOn` false: the time alone); `has` false (broken, no record): 1. */
+export function shoulderFactorNode(p: N, u: N, has: N, sh: ShoulderUniforms, front: N, frontOn: N): N {
   const on = has.and(u.lessThan(UNTIL_NEVER)).and(sh.shoulderFloor.lessThan(1.0)).and(sh.shoulderTaperM.greaterThan(0.0));
-  return select(on, float(1.0).sub(shoulderRegionNode(p).mul(float(1.0).sub(sh.shoulderFloor)).mul(float(1.0).sub(shoulderStandNode(u, sh)))), float(1.0));
+  const d = p.sub(vec2(TIP[0], TIP[1]));
+  const ahead = d.x.mul(SHOULDER_SIN).sub(d.y.mul(SHOULDER_COS)).sub(front);
+  const byDistance = float(1.0).sub(smoothstep(0.0, max(sh.shoulderTaperM, 1e-3), max(ahead, 0.0)));
+  const stand = select(frontOn, max(shoulderStandNode(u, sh), byDistance), shoulderStandNode(u, sh));
+  return select(on, float(1.0).sub(shoulderRegionNode(p).mul(float(1.0).sub(sh.shoulderFloor)).mul(float(1.0).sub(stand))), float(1.0));
 }
 const SHOULDER_SIN = Math.sin((LEFT_BEARING_DEG * Math.PI) / 180), SHOULDER_COS = Math.cos((LEFT_BEARING_DEG * Math.PI) / 180);
 

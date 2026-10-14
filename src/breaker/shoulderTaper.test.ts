@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { smoothstep } from '../math/smoothstep';
 import { TIP, LEFT_BEARING_DEG } from '../seabed/wombReef';
 import { UNTIL_NEVER } from './breaking';
-import { SHOULDER_TAPER_M, frontWeight, setShoulder, shoulderFactor, shoulderStand, wallWeight } from './wombSection';
+import { SHOULDER_TAPER_M, frontWeight, setShoulder, shoulderAlong, shoulderFactor, shoulderStand, wallWeight } from './wombSection';
 
 // womb-story Task 3d (STOP 1b ruling 1, Andrew's rule: no wall ahead of the face): ahead of the curl the stand-up
 // fraction falls from 1 to 0 over shoulderTaperM along the line (distance = the time until its break or its turn x the
@@ -54,5 +54,23 @@ describe('the shoulder tapers ahead of the curl (Task 3d)', () => {
     expect(shoulderFactor(...at(5, 0), 100)).toBe(1);
     expect(shoulderFactor(...at(-40, 20), 100)).toBe(1);
     expect(shoulderFactor(...at(120, -200), 100)).toBe(1);
+  });
+  it("by the curl front's distance: no cliff where the time until onset jumps (past the fizzle, to the shore's break)", () => {
+    setShoulder(30, 0.6, CURL);
+    // The front at 141 m; the stations ahead at 145-151 m are held 0.25-0.76 s, from 155 m the shore's break is 5-11 s away.
+    const front = 141, fac = (a: number, u: number) => shoulderFactor(...at(a, 39), u, front);
+    expect(shoulderAlong(...at(150, 39))).toBeCloseTo(150, 9);
+    const ahead = [[145, 0.25], [148, 0.5], [151, 0.76], [155, 5.2], [158, 7.1], [162, 8.8], [171, 10.9], [180, 10.9]] as const;
+    let prev = fac(ahead[0][0], ahead[0][1]);
+    for (const [a, u] of ahead.slice(1)) {
+      const f = fac(a, u);
+      expect(f, `at ${a} m`).toBeLessThanOrEqual(prev + 1e-12);
+      // At most the ramp's own steepest fall over the stations' spacing (smoothstep's 1.5 / 30 m x 0.4 per m).
+      expect(prev - f, `step into ${a} m`).toBeLessThanOrEqual(0.02 * (a - 141 > 0 ? 4.5 : 0) + 1e-9);
+      prev = f;
+    }
+    expect(fac(180, 10.9)).toBeCloseTo(0.6, 6);
+    // Without the front (the time alone) the same line fell to the floor between 151 and 155 m.
+    expect(shoulderFactor(...at(151, 39), 0.76) - shoulderFactor(...at(155, 39), 5.2)).toBeGreaterThan(0.1);
   });
 });

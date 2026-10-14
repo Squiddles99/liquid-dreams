@@ -1,3 +1,4 @@
+import { curlFrontAlong } from './curlFront';
 import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, shoulderFactor, shoulderU, wallWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
@@ -198,6 +199,9 @@ export interface BreakOptions {
    * everywhere", Andrew, 2026-10-05). Absent: with it (the old breaking's own tests, until it is removed).
    */
   shape?: boolean | 'lean';
+  /** How far down the left w's crest is broken at t (curlFront.curlFrontAlong), for the shoulder's taper. Absent: by the
+   * time until its break alone. */
+  front?: (w: ActiveWave, t: number) => number;
   /** Tests and the drawings: every crest takes this ψ. */
   force?: { psi: number };
   /** false: a broken crest stands at the broken law from the break on, without wallHeight's hand-down from the record's
@@ -209,7 +213,7 @@ export interface BreakOptions {
 /** Breaking on `field` with `params` and the wind's offshore speed: the field and its onset record, as the render reads them. */
 export function breakOptions(field: ReefField, params: BreakParams, offshoreMs = 0): BreakOptions {
   const rec = new Float32Array(ONSET_RECORD_LENGTH);
-  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec), edgeFade: (x, z) => psiEdgeFade(field.grid, x, z), offshoreMs };
+  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec), edgeFade: (x, z) => psiEdgeFade(field.grid, x, z), offshoreMs, front: (w, t) => curlFrontAlong(field, w, t, params) };
 }
 
 const ZERO: SetWaveResult = { eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0, pile: 0 };
@@ -429,7 +433,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   // Under the ribbon (shape 'lean') the broken wave settles into the white water's bore behind the curl (wombSection.boreWeight).
   const bore = o?.shape === 'lean' && crest ? boreWeight(crest.tb, localHeight(w, crest.f), (2 * Math.PI) / w.omega) : 0;
   // The shoulder tapers ahead of the curl (wombSection.shoulderFactor, Task 3d): read at the crest, so a cross-section shares it.
-  const taper = crest ? shoulderFactor(crest.x, crest.z, shoulderU(crest.tb, crest.until)) : 1;
+  const taper = crest ? shoulderFactor(crest.x, crest.z, shoulderU(crest.tb, crest.until), o?.front?.(w, t)) : 1;
   const H0 = waveHeightAt(w, f, crest, xi) * taper, H = H0 * (1 - (1 - BORE_SHARE) * bore);
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;

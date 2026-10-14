@@ -1,3 +1,4 @@
+import { curlFrontAlong } from './curlFront';
 import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetSizeAhead, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
@@ -257,14 +258,15 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
 /** Fills each station's time since onset and ψ, each exactly from the onset record (a lookup). Interpolating between key
  * stations 3 m apart (from when this was a march up the ray per station) put the lip up to 0.31 s off the sheet where the
  * onset creeps unevenly along the crest (the softened ramp, plan 2026-09-30-barrel-from-maths Task 5). */
-function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveContext, input: TraceInput): void {
+function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveContext, input: TraceInput, t: number): void {
+  const front = curlFrontAlong(field, w, t, input.params);
   for (const s of line) {
     stationOnset(field, w, s, input.params);
     // The crest's height by the record (setWaveModel.wallHeight, womb-realism Task 2c): before its break it grows into the
     // height it breaks at, so the section's A (sectionScale of H, then of Hb) runs on across the onset.
     const f = sampleField(field, s.x, s.z), rec = sampleOnset(field, s.x, s.z, onsetScratch);
     s.H = wallHeight({ hAmp: w.heightM * f.amp, depthM: f.depth, hminM: f.hmin, tb: s.tb, until: s.until, sizeM: rec ? onsetSizeAhead(rec, 0, w.heightM, input.params) : null, periodS: field.periodS })
-      * shoulderFactor(s.x, s.z, shoulderU(rec ? s.tb : undefined, s.until)); // the shoulder tapers (Task 3d)
+      * shoulderFactor(s.x, s.z, shoulderU(rec ? s.tb : undefined, s.until), front); // the shoulder tapers (Task 3d)
     s.psi = stationPsi(field, w, s.x, s.z, input);
     s.lipH = stationLipH(field, w, s.x, s.z, input.params);
     s.Hb = stationSize(field, w, s, input.params);
@@ -370,7 +372,7 @@ export function traceLines(field: ReefField, waves: readonly ActiveWave[], t: nu
     const sides = traceWave(field, w, i, t, ctx, input, factor);
     if (sides.length === 0) return;
     const line = [...sides[1].reverse(), ...sides[0]];
-    fillTimes(field, w, line, ctx, input);
+    fillTimes(field, w, line, ctx, input, t);
     fillSections(line, field.periodS, input.drawSurge ? input.params : { ribbonOnset: input.params.ribbonOnset }, input.insideLineSmoothingM);
     lines.push(line);
   });

@@ -706,7 +706,7 @@ registerSelfTest({
       const t = REF_BIGGEST.arrivalS + dt;
       time.value = t;
       const events = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
-      sets.setEvents(events);
+      sets.setEvents(events, t);
       renderer.compute(pass);
       const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
       const waves = events.map(toActiveWave);
