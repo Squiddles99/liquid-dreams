@@ -54,7 +54,9 @@ export function rideControls(keys: RideKeys, pad: PadState | null, edges: PadEdg
   const paddle = k('paddle') || held(b.pad.paddle) > 0.3;
   const crouch = (k('crouch') ? 1 : 0) + held(b.pad.crouch) - (paddle ? 1 : 0);
   const popup = keys.consumePressed(b.keys.popup) || edges.pressed(pad, b.pad.popup);
-  return { paddle, steer: Math.max(-1, Math.min(1, steer)), crouch: Math.max(-1, Math.min(1, crouch)), popup };
+  const stall = k('stall') || held(b.pad.stall) > 0.3;
+  const pump = k('pump') || held(b.pad.pump) > 0.3;
+  return { paddle, steer: Math.max(-1, Math.min(1, steer)), crouch: Math.max(-1, Math.min(1, crouch)), popup, stall, pump };
 }
 
 /** The look this frame: the right stick (axes 2, 3: right turns right, up looks up) plus a mouse drag (px). */

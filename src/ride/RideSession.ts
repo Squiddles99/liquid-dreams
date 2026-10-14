@@ -20,6 +20,7 @@ export function rideMessage(e: RideEvent, b: Bindings = currentBindings()): stri
     kickout: 'Ride over',
     reset: 'Next wave',
     aground: `Washed up on the shallows: ${k('next')} for the next wave`,
+    lip: 'Hit by the lip!',
   };
   return messages[e];
 }
@@ -27,7 +28,7 @@ export function rideMessage(e: RideEvent, b: Bindings = currentBindings()): stri
 function hint(phase: RideBody['phase'], b: Bindings): string {
   const k = (a: keyof Bindings['keys']): string => keyLabel(b.keys[a]);
   if (phase === 'paddle') return `${k('paddle')} paddle · ${k('left')}/${k('right')} turn · ${k('popup')} pop up · ${k('next')} next wave · Esc menu`;
-  if (phase === 'ride') return `${k('left')}/${k('right')} carve · ${k('crouch')} crouch · ${k('paddle')} stand tall`;
+  if (phase === 'ride') return `${k('left')}/${k('right')} carve · ${k('crouch')} crouch · ${k('paddle')} stand tall · ${k('stall')} stall · ${k('pump')} pump`;
   return '';
 }
 
@@ -54,8 +55,8 @@ export class RideSession {
     return this.body !== null;
   }
 
-  begin(x: number, z: number, headingDeg: number, water: WaterFn, tune: RideTuning = TUNING.intermediate): void {
-    this.body = startBody(x, z, headingDeg, water);
+  begin(x: number, z: number, headingDeg: number, water: WaterFn, tune: RideTuning = TUNING.intermediate, rider?: { standH: number; massKg: number }): void {
+    this.body = startBody(x, z, headingDeg, water, rider);
     this.tune = tune;
     this.camera.reset();
     this.hud.style.display = '';

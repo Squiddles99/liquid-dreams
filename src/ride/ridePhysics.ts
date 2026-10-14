@@ -1,4 +1,7 @@
+import { COM_REST, OPEN_FACE, type RideContext, type RiderState, comTarget, compressionOf, newRiderState, stepCom } from './riderBody';
 import type { WaterAt, WaterFn } from './water';
+
+export { OPEN_FACE, type RideContext, type StallWeights } from './riderBody';
 
 /**
  * The board on the water (first-ride spec §2): a point on the set waves' surface with a heading. Gravity pulls it down
@@ -7,7 +10,7 @@ import type { WaterAt, WaterFn } from './water';
  */
 
 export type RidePhase = 'paddle' | 'popup' | 'ride' | 'bail';
-export type RideEvent = 'caught' | 'popup' | 'tooSoon' | 'wipeout' | 'kickout' | 'reset' | 'aground';
+export type RideEvent = 'caught' | 'popup' | 'tooSoon' | 'wipeout' | 'kickout' | 'reset' | 'aground' | 'lip';
 
 export interface RideControls {
   /** Paddling (prone), or standing tall (riding). */
@@ -18,11 +21,15 @@ export interface RideControls {
   crouch: number;
   /** Pop up: pressed this step. */
   popup: boolean;
+  /** LB / Shift: stall (ride-speed spec §4.3). */
+  stall?: boolean;
+  /** RB / E: the pump assist, held (ride-speed spec §4.1). */
+  pump?: boolean;
 }
 
 export const NO_CONTROLS: RideControls = { paddle: false, steer: 0, crouch: 0, popup: false };
 
-export interface RideBody {
+export interface RideBody extends RiderState {
   phase: RidePhase;
   /** Seconds in this phase. */
   phaseT: number;
@@ -54,6 +61,12 @@ export interface RideBody {
   tiltZ: number;
   /** The water's height under the whole board last step (boardSurface). */
   surfY: number;
+  /** Last step's velocity (m/s): the load the rider feels is read from its change. */
+  pvx: number;
+  pvy: number;
+  pvz: number;
+  /** Seconds the pump assist has been weaving. */
+  weaveT: number;
 }
 
 const G = 9.81;
@@ -82,11 +95,13 @@ export const ASSIST_TO = 0.8;
 export type Experience = 'beginner' | 'intermediate' | 'expert';
 /** What the Experience setting tunes: the assisted takeoff's push (m/s² at full lift) and the face slope (|∇y|) that
  * catches a paddler on its own. The assist is a forgiveness, not the engine: once caught, gravity down the face is. */
-export interface RideTuning { assistAccel: number; catchSlope: number }
+export interface RideTuning { assistAccel: number; catchSlope: number; pump: PumpMode }
+/** Who times the pump (ride-speed spec §1): the player (manual), the game on RB (assist), or either (both). */
+export type PumpMode = 'manual' | 'assist' | 'both';
 export const TUNING: Readonly<Record<Experience, RideTuning>> = {
-  beginner: { assistAccel: 8, catchSlope: 0.28 },
-  intermediate: { assistAccel: 4, catchSlope: 0.35 },
-  expert: { assistAccel: 1.5, catchSlope: 0.42 },
+  beginner: { assistAccel: 8, catchSlope: 0.28, pump: 'assist' },
+  intermediate: { assistAccel: 4, catchSlope: 0.35, pump: 'both' },
+  expert: { assistAccel: 1.5, catchSlope: 0.42, pump: 'manual' },
 };
 /** The slope catch holds this long (s) before the wave has you. */
 export const CATCH_HOLD_S = 0.2;
@@ -148,9 +163,9 @@ export function rightOf(headingDeg: number): [number, number] {
   return [Math.cos(h), Math.sin(h)];
 }
 
-export function startBody(x: number, z: number, headingDeg: number, water: WaterFn): RideBody {
+export function startBody(x: number, z: number, headingDeg: number, water: WaterFn, rider: { standH: number; massKg: number } = { standH: 1.65, massKg: 55 }): RideBody {
   const w = water(x, z);
-  return { phase: 'paddle', phaseT: 0, x, z, y: w.y, vy: 0, vx: 0, vz: 0, headingDeg, carve: 0, compression: 0, caught: false, catchT: 0, stallT: 0, idleT: 10, water: w, tiltX: w.slopeX, tiltZ: w.slopeZ, surfY: w.y };
+  return { ...newRiderState(rider.standH, rider.massKg), pvx: 0, pvy: 0, pvz: 0, weaveT: 0, phase: 'paddle', phaseT: 0, x, z, y: w.y, vy: 0, vx: 0, vz: 0, headingDeg, carve: 0, compression: 0, caught: false, catchT: 0, stallT: 0, idleT: 10, water: w, tiltX: w.slopeX, tiltZ: w.slopeZ, surfY: w.y };
 }
 
 /** The water under the whole board: its height (nose, middle and tail) and slope (nose to tail along it, across from the middle). */
@@ -195,7 +210,7 @@ function setPhase(b: RideBody, phase: RidePhase): void {
 }
 
 /** One physics step of dt seconds. Mutates and returns the body, with what happened (for the hints). */
-export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: number, tune: RideTuning = TUNING.intermediate): RideEvent | null {
+export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: number, tune: RideTuning = TUNING.intermediate, ctx: RideContext = OPEN_FACE): RideEvent | null {
   if (!(dt > 0)) return null;
   const w = b.water;
   let event: RideEvent | null = null;
@@ -209,7 +224,9 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   b.headingDeg = (((b.headingDeg + steer * turn * dt) % 360) + 360) % 360;
   const ease = 1 - Math.exp(-dt / 0.15);
   b.carve += ((b.phase === 'ride' || b.phase === 'popup' ? steer : 0) - b.carve) * ease;
-  b.compression += ((b.phase === 'ride' ? Math.max(-1, Math.min(1, c.crouch)) : 0) - b.compression) * ease;
+  // The rider's centre of mass (ride-speed spec §2): chased at the legs' rate; compression is read from it.
+  b.comH = stepCom(b.comH, b.phase === 'ride' ? comTarget(c.crouch) : COM_REST, dt);
+  b.compression = compressionOf(b.comH);
 
   // Forces: gravity along the surface, paddling, the assist.
   const [fx, fz] = forwardOf(b.headingDeg), [rx, rz] = rightOf(b.headingDeg);
