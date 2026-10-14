@@ -80,7 +80,10 @@ export const wallWeight = (until: number | null | undefined, periodS: number, re
  * so it rides with the curl and a closeout still stands up as it comes. 0 = today (STOP 0 ruling 4's wall, retired).
  * The dial shoulderTaperM (BreakParams.shoulderTaperM); the GPU mirrors it (breakingNodes.shoulderStandNode).
  */
-export const SHOULDER_TAPER_M = 30;
+// 0 by default (womb-story Task 7 ruling, STOP 2): Fable's 30 (STOP 1b ruling 1) cut the ride bot's held line on the
+// Womb from 9.3-9.7 s to 5.4-6.9 s (rideOnSections, 4 of 4; green at 0); until Andrew picks from task3d/shoulder-ab.jpg and
+// Fable rules the ride, the dial is live and the default is today.
+export const SHOULDER_TAPER_M = 0;
 /**
  * …and the shoulder's height falls to this share of its own there (shoulderFactor): the unstood swell on the drop stood
  * 5.0-5.1 m at 7 ft, taller than the curl's own 4.8 m crest (the wall Andrew marked; the stand-up never held it up).

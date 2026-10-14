@@ -692,7 +692,7 @@ registerSelfTest({
     const time = uniform(0);
     const sets = new SetWaves(time, { pile: false, shape: 'lean' });
     sets.setField(field);
-    const params: BreakParams = { ...DEFAULT_BREAK_PARAMS, shoulderFloor: 0.6 };
+    const params: BreakParams = { ...DEFAULT_BREAK_PARAMS, shoulderTaperM: 30, shoulderFloor: 0.6 };
     sets.setBreakParams(params);
     // Down the left from 20 to 200 m along, 30 m seaward to 60 m inshore of the ledge (wombReef.ledgeAlongM's frame).
     const r = (LEFT_BEARING_DEG * Math.PI) / 180, points: [number, number][] = [];

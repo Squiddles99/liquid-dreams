@@ -105,7 +105,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   wallLeadT: 0.75,
   flightDropA: 0.8,
   handDownT: 0.3,
-  shoulderTaperM: 30,
+  shoulderTaperM: 0,
   shoulderFloor: 1,
 };
 
