@@ -6,12 +6,12 @@ import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, ONSET_LEVELS, ONSET_UNTIL_OFFSET, UNTIL_NEVER, normalizeBreakParams, onsetDelay, onsetPsi, onsetTime, onsetUntil } from './breaking';
 import { REFRACT_FLOOR_M, type ReefField, computeReefField, sampleField, sampleOnset } from './reefField';
-import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, TIP } from '../seabed/wombReef';
+import { DEFAULT_REEF_PARAMS, LEFT_BEARING_DEG, NORTH_LEDGE, TIP } from '../seabed/wombReef';
 import { DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
 import { buildCoastMap } from '../seabed/coastMap';
 import { SetWaves } from './SetWaves';
 import { type BreakOptions, breakOptions, crestAt, frontStanding, sumWaves, toActiveWave } from './setWaveModel';
-import { frontWeight } from './wombSection';
+import { frontWeight, setShoulder } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 
@@ -605,7 +605,10 @@ registerSelfTest({
     const time = uniform(0);
     const sets = new SetWaves(time, { pile: false, shape: 'lean' });
     sets.setField(field);
-    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+    // 2026-10-14 (womb-story Task 3d): the wall's own law with the shoulder's taper off (0 = today): the taper cuts the stand-up
+    // to its last ~2.3 s, under this test's 'the wall moves the sheet' bar; its own parity is the next test's.
+    const params: BreakParams = { ...DEFAULT_BREAK_PARAMS, shoulderTaperM: 0 };
+    sets.setBreakParams(params);
     // Down the left from the peak along its ledge (wombReef.NORTH_LEDGE's first leg), 5 m apart, from 20 m seaward to 30 m
     // inshore of it: where the wall stands up ahead of the curl.
     const points: [number, number][] = [];
@@ -632,7 +635,7 @@ registerSelfTest({
     // 2. The sheet through the biggest wave, where the front stands on the wall (wallWeight above the ratio's ramp,
     // partway up): the GPU's against the CPU's, and how much the wall moves the CPU's sheet there (else 1 proves nothing).
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
-    const o: BreakOptions = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), pile: false, shape: 'lean' };
+    const o: BreakOptions = { ...breakOptions(field, params), pile: false, shape: 'lean' };
     // The same record with every time until onset 'never': the sheet without the wall (the ratio's ramp alone).
     const noWall: BreakOptions = { ...o, onset: (x, z) => {
       const rec = o.onset?.(x, z);
@@ -673,10 +676,57 @@ registerSelfTest({
     }
     const pass1 = worstUntil < 1e-3 && neverMismatch === 0 && within > 0;
     const pass2 = disp.value < 0.05 && onWall.value < 0.05 && wallSamples >= 10 && moved > 0.05;
+    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
     return {
       pass: pass1 && pass2,
       detail: `time until onset: ${points.length} points × 2 heights, worst |Δ| ${worstUntil.toExponential(2)} s (÷ max(1, value / 1 000 s)) ${atUntil} (< 1e-3); never-flag mismatches ${neverMismatch} (0); samples 0–8 s before onset ${within} (> 0). `
         + `The sheet: ${points.length} points × dt −1…9 s, worst |Δdisp| ${disp} m (< 0.05); on the wall (standing = wallWeight, above the ratio's ramp, 0.05–0.95) ${wallSamples} samples (≥ 10), worst |Δdisp| there ${onWall} m (< 0.05); largest change the wall makes to the CPU's sheet there ${moved.toFixed(3)} m (${movedAt || 'none'}) (> 0.05)`,
+    };
+  },
+});
+
+registerSelfTest({
+  name: "breaker: the shoulder tapers: the GPU sheet down the left matches the CPU's at shoulderFloor 0.6 (womb-story Task 3d)",
+  async run(renderer) {
+    const field = getGameField();
+    const time = uniform(0);
+    const sets = new SetWaves(time, { pile: false, shape: 'lean' });
+    sets.setField(field);
+    const params: BreakParams = { ...DEFAULT_BREAK_PARAMS, shoulderFloor: 0.6 };
+    sets.setBreakParams(params);
+    // Down the left from 20 to 200 m along, 30 m seaward to 60 m inshore of the ledge (wombReef.ledgeAlongM's frame).
+    const r = (LEFT_BEARING_DEG * Math.PI) / 180, points: [number, number][] = [];
+    for (let a = 20; a <= 200; a += 10) for (let v = -30; v <= 60; v += 10) points.push([Math.round(TIP[0] + a * Math.sin(r) + v * Math.cos(r)), Math.round(TIP[1] - a * Math.cos(r) + v * Math.sin(r))]);
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    const o: BreakOptions = { ...breakOptions(field, params), pile: false, shape: 'lean' };
+    const { pass, outAttr } = computeAt(points, 1, (xz) => [vec4(sets.breakSampleNode(xz).disp, 0.0)]);
+    const disp = new Worst(true, 0);
+    let moved = 0, movedAt = '';
+    for (const dt of [0, 2, 4, 6, 8, 10, 12]) {
+      const t = REF_BIGGEST.arrivalS + dt;
+      time.value = t;
+      const events = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS);
+      sets.setEvents(events);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      const waves = events.map(toActiveWave);
+      points.forEach(([x, z], i) => {
+        const f = sampleField(field, x, z);
+        const c = sumWaves(x, z, t, f, waves, ctx, o);
+        const g = out.slice(i * 4, i * 4 + 3);
+        disp.see(Math.max(Math.abs(g[0] - c.dx), Math.abs(g[1] - c.eta), Math.abs(g[2] - c.dz)), dt, i);
+        // How much the taper moves the CPU's sheet (else a match proves nothing): the same at floor 1.
+        setShoulder(params.shoulderTaperM, 1, params.curlMaxMs);
+        const n = sumWaves(x, z, t, f, waves, ctx, o);
+        setShoulder(params.shoulderTaperM, params.shoulderFloor, params.curlMaxMs);
+        const m = Math.abs(n.eta - c.eta);
+        if (m > moved) { moved = m; movedAt = `dt ${dt} (${x}, ${z})`; }
+      });
+    }
+    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+    return {
+      pass: disp.value < 0.05 && moved > 0.3,
+      detail: `${points.length} points × dt 0…12 s, worst |Δdisp| ${disp} m (< 0.05); largest change the taper makes to the CPU's sheet ${moved.toFixed(2)} m (${movedAt || 'none'}) (> 0.3)`,
     };
   },
 });
