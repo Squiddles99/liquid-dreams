@@ -1,4 +1,4 @@
-import { COM_REST, LOAD_MAX, LOAD_TAU_S, OPEN_FACE, type RideContext, type RiderState, compressionOf, newRiderState, restLoad, rideDrag, stepCom, stepRiderBody, weaveSteer } from './riderBody';
+import { COM_REST, LOAD_MAX, LOAD_TAU_S, OPEN_FACE, type RideContext, type RiderState, UNDER_LIP_COVER, compressionOf, handDragAccel, headHeight, newRiderState, restLoad, rideDrag, stepCom, stepRiderBody, weaveSteer } from './riderBody';
 import type { WaterAt, WaterFn } from './water';
 
 export { OPEN_FACE, type RideContext, type StallWeights } from './riderBody';
@@ -275,6 +275,7 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   // On its feet, the rail turns the slide it grips into run (a bottom turn keeps its speed); prone, the water just takes it.
   if (standing && along > 0) along = Math.sqrt(along * along + RAIL_KEEP * (side * side - gripped * gripped));
   if (bodyE !== 0 && along > 0) along = Math.sqrt(Math.max(0, along * along + 2 * bodyE));
+  if (b.phase === 'ride' && b.hand > 0 && along > 0) along = Math.max(0, along - handDragAccel(along, b.hand, b.massKg) * dt);
   side = gripped;
   b.vx = ux + fx * along + rx * side;
   b.vz = uz + fz * along + rz * side;
@@ -389,6 +390,12 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
       if (nw.foam > WIPEOUT_FOAM || steep > WIPEOUT_SLOPE) {
         setPhase(b, 'bail');
         event = 'wipeout';
+        break;
+      }
+      // The lip strike (spec §4.4): the rider's head into the lip's underside.
+      if (b.phase === 'ride' && ctx.cover >= UNDER_LIP_COVER && ctx.roomM > 0 && headHeight(b.comH, b.standH) > ctx.roomM) {
+        setPhase(b, 'bail');
+        event = 'lip';
         break;
       }
       b.stallT = speed < STALL_SPEED ? b.stallT + dt : 0;

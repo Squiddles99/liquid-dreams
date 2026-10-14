@@ -159,6 +159,59 @@ export function rideDrag(d: { lin: number; quad: number; side: number }, r: Ride
   };
 }
 
+export const STALL_IN_S = 0.2;
+export const STALL_OUT_S = 0.3;
+export const HAND_CDA = 0.004;
+export const RHO_WATER = 1025;
+export const LIP_MARGIN_M = 0.3;
+/** The head in a full tuck, as a share of the rider's standing height. */
+export const HEAD_LOW = 0.6;
+export const UNDER_LIP_COVER = 0.2;
+export const HIGH_FACE = 0.6;
+export const STEEP_SLOPE = 0.8;
+export const CREST_CLOSE_M = 2;
+export const WEIGHT_TAU_S = 0.15;
+export const DRIVE_OUT_S = 0.6;
+/** Each stall's centre of mass height (spec §4.3). */
+export const STALL_COM: Readonly<StallWeights> = { tall: 0.85, hand: 0.35, lowBarrel: 0.3, standBarrel: 0.95 };
+
+export function headHeight(comH: number, standH: number): number {
+  return standH * (HEAD_LOW + (1 - HEAD_LOW) * comH);
+}
+
+/** The highest comH that keeps the head LIP_MARGIN_M under the lip (1 with nothing overhead). */
+export function comCap(roomM: number, standH: number): number {
+  if (!(roomM > 0)) return 1;
+  return clamp01(((roomM - LIP_MARGIN_M) / standH - HEAD_LOW) / (1 - HEAD_LOW));
+}
+
+/** The trailing hand and forearm dragging in the face: ½ρ·CdA·v², on the rider's mass (m/s²). */
+export function handDragAccel(speed: number, hand: number, massKg: number): number {
+  return (0.5 * RHO_WATER * HAND_CDA * speed * speed * hand) / massKg;
+}
+
+/** Which stall the wave asks for (spec §4.3; Andrew 2026-10-14: never stand up into a lip that would knock the rider off). */
+export function stallKind(ctx: RideContext, alongSpeed: number, standH: number, slope: number): StallKind {
+  if (ctx.cover >= UNDER_LIP_COVER) {
+    const room = ctx.roomM >= standH + LIP_MARGIN_M;
+    const makes = ctx.closeout || alongSpeed >= ctx.curlSpeed;
+    return room && makes ? 'standBarrel' : 'lowBarrel';
+  }
+  if ((ctx.faceHigh > HIGH_FACE && slope > STEEP_SLOPE) || ctx.crestBehindM < CREST_CLOSE_M) return 'hand';
+  return 'tall';
+}
+
+/** The weights ease toward the chosen kind over WEIGHT_TAU_S: blended, never switched (part C blends the poses). */
+export function easeWeights(w: StallWeights, kind: StallKind, dt: number): StallWeights {
+  const k = 1 - Math.exp(-dt / WEIGHT_TAU_S);
+  const out = { ...w };
+  for (const key of Object.keys(out) as StallKind[]) out[key] += ((key === kind ? 1 : 0) - out[key]) * k;
+  return out;
+}
+
+const stallComH = (w: StallWeights): number =>
+  w.tall * STALL_COM.tall + w.hand * STALL_COM.hand + w.lowBarrel * STALL_COM.lowBarrel + w.standBarrel * STALL_COM.standBarrel;
+
 export interface BodyInput {
   crouch: number;
   stall: boolean;
@@ -176,11 +229,20 @@ export interface BodyInput {
 
 /** One riding step of the rider's body (ride-speed spec §4). Returns the energy (J/kg) their legs put into the run. */
 export function stepRiderBody(r: RiderState, i: BodyInput, dt: number): number {
+  // The stall (LB): ramped in and out; its kind read from the wave, its weights eased.
+  r.stall = i.stall ? Math.min(1, r.stall + dt / STALL_IN_S) : Math.max(0, r.stall - dt / STALL_OUT_S);
+  r.stallW = easeWeights(r.stallW, stallKind(i.ctx, i.alongSpeed, r.standH, i.slope), dt);
+  const handT = r.stall * (r.stallW.hand + r.stallW.lowBarrel + r.stallW.standBarrel);
+  r.hand += (handT - r.hand) * (1 - Math.exp(-dt / WEIGHT_TAU_S));
   let target = comTarget(i.crouch);
   // The assist (RB): full travel, extending into the load's peak.
   const excess = r.load - r.n0;
   r.loadPeak = Math.max(excess, r.loadPeak * Math.exp(-dt / LOAD_PEAK_TAU_S));
   if (i.assist) target = excess > Math.max(PUMP_EXTEND_MIN, PUMP_EXTEND_SHARE * r.loadPeak) ? 1 : 0;
+  if (r.stall > 0) target += (stallComH(r.stallW) - target) * r.stall;
+  // Under a lip, what the game drives stays clear of it; RT forcing the rider up is the player's (spec §4.4).
+  const forcing = i.crouch < -0.1;
+  if (!forcing && i.ctx.cover >= UNDER_LIP_COVER) target = Math.min(target, comCap(i.ctx.roomM, r.standH));
   const prev = r.comH;
   r.comH = stepCom(r.comH, target, dt);
   const dH = r.comH - prev;
@@ -195,11 +257,19 @@ export function stepRiderBody(r: RiderState, i: BodyInput, dt: number): number {
   r.pumpAcc += e;
   if (dH < -1e-6) r.pumpPhase = 0.5 * clamp01((0.85 - r.comH) / 0.5);
   else if (dH > 1e-6) r.pumpPhase = 0.5 + 0.5 * clamp01((r.comH - 0.35) / 0.5);
+  // Drive out (spec §4.5): a stall let go while under the curl projects the rider forward for DRIVE_OUT_S.
+  if (r.stall > 0.5) r.stallPeak = true;
+  if (r.stallPeak && r.stall < 0.1) {
+    r.stallPeak = false;
+    if (i.ctx.cover > 0) r.driveT = DRIVE_OUT_S;
+  }
+  r.driveT = Math.max(0, r.driveT - dt);
+  r.driveOut += ((r.driveT > 0 ? 1 : 0) - r.driveOut) * (1 - Math.exp(-dt / 0.15));
   // Tuck and drive (spec §4.2): held low, running the line.
   r.lowT = r.comH < TUCK_LOW ? r.lowT + dt : 0;
   const tuckT = smoothstep(TUCK_LOW, 0.05, r.comH) * smoothstep(TUCK_HOLD_S[0], TUCK_HOLD_S[1], r.lowT) * lineFactor(i.headingDeg, i.dirX, i.dirZ) * (1 - r.stall);
   r.tuck += (tuckT - r.tuck) * (1 - Math.exp(-dt / 0.2));
-  const faT = clamp(0.4 * r.tuck, -1, 1);
+  const faT = clamp(0.4 * r.tuck - 0.7 * r.stall + 0.4 * r.driveOut + (dH > 1e-6 ? 0.3 : 0), -1, 1);
   r.foreAft += (faT - r.foreAft) * (1 - Math.exp(-dt / 0.1));
   return e;
 }
