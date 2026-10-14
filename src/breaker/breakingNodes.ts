@@ -1,5 +1,6 @@
-import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, smoothstep, sqrt, uniform } from 'three/tsl';
-import { ONSET_HEIGHT_UNITS } from './wombSection';
+import { abs, clamp, exp, exp2, float, floor, log, max, min, mix, select, sign, smoothstep, sqrt, uniform, vec2 } from 'three/tsl';
+import { LEFT_BEARING_DEG, TIP } from '../seabed/wombReef';
+import { ONSET_HEIGHT_UNITS, SHOULDER_ALONG_M, SHOULDER_INSHORE_M, SHOULDER_SEAWARD_M } from './wombSection';
 import { flightTimeNodeA } from './wombSectionNodes';
 import {
   type BreakParams, BREAKING_RATIO, LEAN_BLEND_H, COLLAPSE_END, GRAVITY_MS2, ONSET_LEVELS, ONSET_LEVEL_Q0, ONSET_LEVEL_RATIO, UNTIL_NEVER, SHARPEN_DEPTH, SHARPEN_FLOOR_REACH, SHARPEN_FLOOR_START, FOAM_DENSE_BEHIND_H, drainFullRatio, FOAM_ONSET_COLLAPSE, FOAM_SETTLE_COLLAPSE, FOAM_TRAIL_H,
@@ -25,6 +26,7 @@ export function createBreakUniforms(p: BreakParams) {
     collapseTime: uniform(1), drainGrowth: uniform(1), onsetGain: uniform(1),
     pileHalfM: uniform(50), pileSurge: uniform(0), churnSize: uniform(0), churnSpeed: uniform(1), psiNudge: uniform(0), randomDial: uniform(0),
     ribbonOnset: uniform(0.7), surge: uniform(0), wallLeadT: uniform(0.75), handDownT: uniform(0.3),
+    shoulderTaperM: uniform(30), shoulderFloor: uniform(1), curlMaxMs: uniform(13),
   };
   updateBreakUniforms(u, p);
   return u;
@@ -54,6 +56,7 @@ export function updateBreakUniforms(u: BreakUniforms, params: BreakParams): void
   u.surge.value = p.surge;
   u.wallLeadT.value = p.wallLeadT;
   u.handDownT.value = p.handDownT;
+  u.shoulderTaperM.value = p.shoulderTaperM; u.shoulderFloor.value = p.shoulderFloor; u.curlMaxMs.value = p.curlMaxMs;
 }
 
 /** smoothstep with its edges reversed (e0 > e1): WGSL's smoothstep wants low < high. */
@@ -142,10 +145,11 @@ export function onsetTimeNode(rec: { run: N; tbLo: N; ampLo: N; tbHi: N; ampHi: 
  * turn −tb away) it grows from the cap of the depth now into the record's size over the wall's lead (wombSection.wallWeight:
  * 1 − smoothstep(0, leadT × T, u)); off the record or never breaking, the depth now caps it. Never past hAmp.
  */
-export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { broken: N; tb: N; until: N; size: N }, periodS: N, leadT: N, handDownT: N): N {
+export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { broken: N; tb: N; until: N; size: N }, periodS: N, leadT: N, handDownT: N, sh: ShoulderUniforms): N {
   const cap = depth.mul(BREAKING_RATIO).toVar();
   const u = select(onset.broken, onset.tb.negate(), onset.until).toVar();
-  const grow = cap.add(onset.size.sub(cap).mul(float(1.0).sub(smoothstep(0.0, leadT.mul(periodS), max(u, 0.0)))));
+  // × the shoulder's stand-up fraction (wombSection.wallWeight, Task 3d).
+  const grow = cap.add(onset.size.sub(cap).mul(float(1.0).sub(smoothstep(0.0, leadT.mul(periodS), max(u, 0.0)))).mul(shoulderStandNode(u, sh)));
   const before = select(u.lessThan(UNTIL_NEVER), grow, cap);
   // From the break: down from the size to the broken law over max(the lip's flight, handDownT × T) (wombSection.handDownSpan).
   const broken = hmin.mul(BREAKING_RATIO).toVar();
@@ -154,6 +158,27 @@ export function wallHeightNode(hAmp: N, depth: N, hmin: N, inside: N, onset: { b
   const onRecord = select(onset.broken.and(onset.tb.greaterThanEqual(0.0)), handDown, before);
   return min(hAmp, select(inside, onRecord, cap));
 }
+
+/** The shoulder's dials (BreakUniforms' shoulderTaperM, shoulderFloor, curlMaxMs). */
+export type ShoulderUniforms = { shoulderTaperM: N; shoulderFloor: N; curlMaxMs: N };
+/** wombSection.shoulderStand: 1 − smoothstep(0, shoulderTaperM, u × curl speed); 1 with the dial at 0. */
+export function shoulderStandNode(u: N, sh: ShoulderUniforms): N {
+  const on = sh.shoulderTaperM.greaterThan(0.0);
+  return select(on, float(1.0).sub(smoothstep(0.0, max(sh.shoulderTaperM, 1e-3), max(u, 0.0).mul(sh.curlMaxMs))), float(1.0));
+}
+/** wombSection.shoulderRegion at world xz (the left past the take-off, the band across the ledge). */
+export function shoulderRegionNode(p: N): N {
+  const d = p.sub(vec2(TIP[0], TIP[1]));
+  const along = d.x.mul(SHOULDER_SIN).sub(d.y.mul(SHOULDER_COS)), cross = d.x.mul(SHOULDER_COS).add(d.y.mul(SHOULDER_SIN));
+  return smoothstep(SHOULDER_ALONG_M[0], SHOULDER_ALONG_M[1], along).mul(smoothstep(SHOULDER_SEAWARD_M[0], SHOULDER_SEAWARD_M[1], cross))
+    .mul(float(1.0).sub(smoothstep(SHOULDER_INSHORE_M[0], SHOULDER_INSHORE_M[1], cross)));
+}
+/** wombSection.shoulderFactor at the crest p, `u` s before its break or turn; `has` false (broken, no record): 1. */
+export function shoulderFactorNode(p: N, u: N, has: N, sh: ShoulderUniforms): N {
+  const on = has.and(u.lessThan(UNTIL_NEVER)).and(sh.shoulderFloor.lessThan(1.0)).and(sh.shoulderTaperM.greaterThan(0.0));
+  return select(on, float(1.0).sub(shoulderRegionNode(p).mul(float(1.0).sub(sh.shoulderFloor)).mul(float(1.0).sub(shoulderStandNode(u, sh)))), float(1.0));
+}
+const SHOULDER_SIN = Math.sin((LEFT_BEARING_DEG * Math.PI) / 180), SHOULDER_COS = Math.cos((LEFT_BEARING_DEG * Math.PI) / 180);
 
 /** breaking.slurp: the slurp's pull on a shoulder, from its slurp ratio (its sharpening's start to SLURP_FULL_RATIO). */
 export function slurpNode(rSlurp: N, u: BreakUniforms): N {

@@ -1,4 +1,4 @@
-import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, wallWeight } from './wombSection';
+import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, shoulderFactor, shoulderU, wallWeight } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -428,7 +428,9 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   if (beyondEnvelope(xi, w)) return { ...ZERO };
   // Under the ribbon (shape 'lean') the broken wave settles into the white water's bore behind the curl (wombSection.boreWeight).
   const bore = o?.shape === 'lean' && crest ? boreWeight(crest.tb, localHeight(w, crest.f), (2 * Math.PI) / w.omega) : 0;
-  const H0 = waveHeightAt(w, f, crest, xi), H = H0 * (1 - (1 - BORE_SHARE) * bore);
+  // The shoulder tapers ahead of the curl (wombSection.shoulderFactor, Task 3d): read at the crest, so a cross-section shares it.
+  const taper = crest ? shoulderFactor(crest.x, crest.z, shoulderU(crest.tb, crest.until)) : 1;
+  const H0 = waveHeightAt(w, f, crest, xi) * taper, H = H0 * (1 - (1 - BORE_SHARE) * bore);
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;
   const { env, dEnv } = waveEnvelope(xi, w);

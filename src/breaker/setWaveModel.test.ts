@@ -192,36 +192,42 @@ describe('ψ at the crest (barrel from the maths)', () => {
 
 describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
   it('shortens a crest’s front as its section stands up: the swell’s before, the profile’s face once broken; on the record the clock alone', async () => {
-    const { frontStanding, wombFrontMin, LEAN_FRONT_MIN, LEAN_FRONT_FLOOR } = await import('./setWaveModel');
-    expect(frontStanding(undefined)).toBe(0);
-    expect(frontStanding(null)).toBe(0);
-    expect(frontStanding(null, 0.7, 0.7)).toBe(0);
-    expect(frontStanding(null, 0.85, 0.7)).toBeCloseTo(0.5, 12);
-    expect(frontStanding(null, 1, 0.7)).toBe(1);
-    // Held for its turn: as the wall stands up over the last WALL_LEAD_S before it (wombSection.wallWeight).
-    const { frontWeight: wallWeight, FRONT_LEAD_S: WALL_LEAD_S } = await import('./wombSection');
-    expect(frontStanding(-1, 0.85, 0.7)).toBeCloseTo(wallWeight(1), 12);
-    expect(frontStanding(-WALL_LEAD_S / 2, 0.85, 0.7)).toBeCloseTo(0.25, 12);
-    // Unbroken, on the record (the time until it breaks finite): the clock alone, as the drawn section's phase
-    // (wombSection.sectionPhase, one-curl spec §3b). The ratio beside the clock stood the sheet up to a near-vertical face
-    // over the few metres of crest where r passes the onset ratio before the record's negative onset time takes over: a
-    // dark wedge with a torn foot ahead of the stood wall (Andrew, 2026-10-11, "a tear in the wave face").
-    expect(frontStanding(null, 0.7, 0.7, WALL_LEAD_S / 2)).toBeCloseTo(0.25, 12);
-    expect(frontStanding(null, 0.7, 0.7, 0)).toBe(1);
-    expect(frontStanding(null, 0.85, 0.7, WALL_LEAD_S)).toBe(0);
-    expect(frontStanding(null, 0.95, 0.7, 3.4)).toBeCloseTo(wallWeight(3.4), 12);
-    expect(frontStanding(null, 1, 0.7, 3.4)).toBeCloseTo(wallWeight(3.4), 12);
-    // A ray that never breaks (until Infinity): the ratio alone, as off the record.
-    expect(frontStanding(null, 0.7, 0.7, Infinity)).toBe(0);
-    expect(frontStanding(null, 0.85, 0.7, Infinity)).toBeCloseTo(0.5, 12);
-    expect(frontStanding(0)).toBe(1);
-    expect(frontStanding(3)).toBe(1);
-    // The front as long as the profile's face (1.8 A, A = H / 1.3) on the 6 ft set at the take-off (H 3.5 m, k 0.068):
-    // ~4.8 m, a share 0.11 of the half wavelength; never longer than the plain lean, never shorter than the floor.
-    const share = wombFrontMin(3.5, 0.068);
-    expect((share * Math.PI) / 0.068).toBeCloseTo(1.8 * (3.5 / 1.3), 6);
-    expect(wombFrontMin(0.3, 0.05)).toBe(LEAN_FRONT_FLOOR);
-    expect(wombFrontMin(20, 0.1)).toBe(LEAN_FRONT_MIN);
+    // 2026-10-14 (womb-story Task 3d, STOP 1b ruling 1): the ramp's own law, read with the shoulder's taper off (0 = today);
+    // the taper's product with it is barred in shoulderTaper.test.
+    const sh = await import('./wombSection');
+    sh.setShoulder(0, 1, 13);
+    try {
+      const { frontStanding, wombFrontMin, LEAN_FRONT_MIN, LEAN_FRONT_FLOOR } = await import('./setWaveModel');
+      expect(frontStanding(undefined)).toBe(0);
+      expect(frontStanding(null)).toBe(0);
+      expect(frontStanding(null, 0.7, 0.7)).toBe(0);
+      expect(frontStanding(null, 0.85, 0.7)).toBeCloseTo(0.5, 12);
+      expect(frontStanding(null, 1, 0.7)).toBe(1);
+      // Held for its turn: as the wall stands up over the last WALL_LEAD_S before it (wombSection.wallWeight).
+      const { frontWeight: wallWeight, FRONT_LEAD_S: WALL_LEAD_S } = await import('./wombSection');
+      expect(frontStanding(-1, 0.85, 0.7)).toBeCloseTo(wallWeight(1), 12);
+      expect(frontStanding(-WALL_LEAD_S / 2, 0.85, 0.7)).toBeCloseTo(0.25, 12);
+      // Unbroken, on the record (the time until it breaks finite): the clock alone, as the drawn section's phase
+      // (wombSection.sectionPhase, one-curl spec §3b). The ratio beside the clock stood the sheet up to a near-vertical face
+      // over the few metres of crest where r passes the onset ratio before the record's negative onset time takes over: a
+      // dark wedge with a torn foot ahead of the stood wall (Andrew, 2026-10-11, "a tear in the wave face").
+      expect(frontStanding(null, 0.7, 0.7, WALL_LEAD_S / 2)).toBeCloseTo(0.25, 12);
+      expect(frontStanding(null, 0.7, 0.7, 0)).toBe(1);
+      expect(frontStanding(null, 0.85, 0.7, WALL_LEAD_S)).toBe(0);
+      expect(frontStanding(null, 0.95, 0.7, 3.4)).toBeCloseTo(wallWeight(3.4), 12);
+      expect(frontStanding(null, 1, 0.7, 3.4)).toBeCloseTo(wallWeight(3.4), 12);
+      // A ray that never breaks (until Infinity): the ratio alone, as off the record.
+      expect(frontStanding(null, 0.7, 0.7, Infinity)).toBe(0);
+      expect(frontStanding(null, 0.85, 0.7, Infinity)).toBeCloseTo(0.5, 12);
+      expect(frontStanding(0)).toBe(1);
+      expect(frontStanding(3)).toBe(1);
+      // The front as long as the profile's face (1.8 A, A = H / 1.3) on the 6 ft set at the take-off (H 3.5 m, k 0.068):
+      // ~4.8 m, a share 0.11 of the half wavelength; never longer than the plain lean, never shorter than the floor.
+      const share = wombFrontMin(3.5, 0.068);
+      expect((share * Math.PI) / 0.068).toBeCloseTo(1.8 * (3.5 / 1.3), 6);
+      expect(wombFrontMin(0.3, 0.05)).toBe(LEAN_FRONT_FLOOR);
+      expect(wombFrontMin(20, 0.1)).toBe(LEAN_FRONT_MIN);
+    } finally { sh.setShoulder(sh.SHOULDER_TAPER_M, sh.SHOULDER_FLOOR, 13); }
   });
 });
 

@@ -70,6 +70,10 @@ export interface BreakParams {
   flightDropA: number;
   /** From the break the crest hands down over max(the flight, this many periods) (wombSection.HAND_DOWN_T; Task 8). */
   handDownT: number;
+  /** Ahead of the curl the stand-up fraction falls 1 -> 0 over this many m (wombSection.SHOULDER_TAPER_M; Task 3d; 0 = off). */
+  shoulderTaperM: number;
+  /** …and the shoulder's height to this share of its own (wombSection.SHOULDER_FLOOR; 1 = its own). */
+  shoulderFloor: number;
 }
 
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
@@ -101,6 +105,8 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   wallLeadT: 0.75,
   flightDropA: 0.8,
   handDownT: 0.3,
+  shoulderTaperM: 30,
+  shoulderFloor: 1,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
@@ -161,6 +167,8 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.wallLeadT = clampTo(p.wallLeadT, 0.5, 2, d.wallLeadT);
   p.flightDropA = clampTo(p.flightDropA, 0.4, 1.5, d.flightDropA);
   p.handDownT = clampTo(p.handDownT, 0.05, 0.3, d.handDownT);
+  p.shoulderTaperM = clampTo(p.shoulderTaperM, 0, 80, d.shoulderTaperM);
+  p.shoulderFloor = clampTo(p.shoulderFloor, 0.3, 1, d.shoulderFloor);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
 

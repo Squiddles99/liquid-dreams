@@ -1,7 +1,7 @@
 import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetSizeAhead, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
-import { type SectionNumbers, curlWeight, sectionNumbers, wallLeadS } from './wombSection';
+import { type SectionNumbers, curlWeight, sectionNumbers, shoulderFactor, shoulderU, wallLeadS } from './wombSection';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
@@ -263,7 +263,8 @@ function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveC
     // The crest's height by the record (setWaveModel.wallHeight, womb-realism Task 2c): before its break it grows into the
     // height it breaks at, so the section's A (sectionScale of H, then of Hb) runs on across the onset.
     const f = sampleField(field, s.x, s.z), rec = sampleOnset(field, s.x, s.z, onsetScratch);
-    s.H = wallHeight({ hAmp: w.heightM * f.amp, depthM: f.depth, hminM: f.hmin, tb: s.tb, until: s.until, sizeM: rec ? onsetSizeAhead(rec, 0, w.heightM, input.params) : null, periodS: field.periodS });
+    s.H = wallHeight({ hAmp: w.heightM * f.amp, depthM: f.depth, hminM: f.hmin, tb: s.tb, until: s.until, sizeM: rec ? onsetSizeAhead(rec, 0, w.heightM, input.params) : null, periodS: field.periodS })
+      * shoulderFactor(s.x, s.z, shoulderU(rec ? s.tb : undefined, s.until)); // the shoulder tapers (Task 3d)
     s.psi = stationPsi(field, w, s.x, s.z, input);
     s.lipH = stationLipH(field, w, s.x, s.z, input.params);
     s.Hb = stationSize(field, w, s, input.params);

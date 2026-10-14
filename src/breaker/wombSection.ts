@@ -1,4 +1,6 @@
 import { smoothstep } from '../math/smoothstep';
+import { LEFT_BEARING_DEG, TIP } from '../seabed/wombReef';
+import { UNTIL_NEVER } from './breaking';
 import { hollowFromPsi } from './reefReport';
 import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, type P2, PROFILE_KEYS, SPAN_SAMPLES, STAGES, TIP_KNOT, TROUGH_KNOT, crStep, crTangent, curveSamples, hermitePoint, profileKnots, roundedTip, tipLife } from './wombProfile';
 
@@ -61,12 +63,63 @@ export const FRONT_LEAD_S = 8;
 export const frontWeight = (until: number | null | undefined): number => {
   if (until === null || until === undefined || !Number.isFinite(until)) return 0;
   const left = 1 - Math.min(1, Math.max(0, until) / FRONT_LEAD_S);
-  return left * left;
+  return SHOULDER.taperM > 0 ? left * left * shoulderStand(until) : left * left;
 };
 export const wallWeight = (until: number | null | undefined, periodS: number): number => {
   if (until === null || until === undefined || !Number.isFinite(until)) return 0;
-  return 1 - smoothstep(0, wallLeadS(periodS), Math.max(0, until));
+  const w = 1 - smoothstep(0, wallLeadS(periodS), Math.max(0, until));
+  return SHOULDER.taperM > 0 ? w * shoulderStand(until) : w;
 };
+/**
+ * The shoulder tapers (womb-story Task 3d, STOP 1b ruling 1; Andrew 2026-10-14: "there should not be the wall in front of
+ * the wave face"): ahead of the curl the stand-up fraction falls from 1 to 0 over shoulderTaperM along the line, the
+ * distance ahead read as the time until the section breaks (or its turn) x the curl's top speed (BreakParams.curlMaxMs),
+ * so it rides with the curl and a closeout still stands up as it comes. 0 = today (STOP 0 ruling 4's wall, retired).
+ * The dial shoulderTaperM (BreakParams.shoulderTaperM); the GPU mirrors it (breakingNodes.shoulderStandNode).
+ */
+export const SHOULDER_TAPER_M = 30;
+/**
+ * …and the shoulder's height falls to this share of its own there (shoulderFactor): the unstood swell on the drop stood
+ * 5.0-5.1 m at 7 ft, taller than the curl's own 4.8 m crest (the wall Andrew marked; the stand-up never held it up).
+ * 1 = the swell's own height (the ruling's law as written). The dial shoulderFloor (BreakParams.shoulderFloor).
+ */
+export const SHOULDER_FLOOR = 1;
+const SHOULDER = { taperM: SHOULDER_TAPER_M, floor: SHOULDER_FLOOR, curlMs: 13 };
+/** Sets the shoulder's taper (m), floor (share) and the curl's top speed (m/s) the distance is read with. */
+export const setShoulder = (taperM: number, floor: number, curlMs: number): void => { SHOULDER.taperM = taperM; SHOULDER.floor = floor; SHOULDER.curlMs = curlMs; };
+export const shoulderTaperM = (): number => SHOULDER.taperM;
+/** The stand-up fraction `u` s before the section's break (or turn): 1 − smoothstep(0, shoulderTaperM, u × curl speed);
+ * 1 with the dial at 0, 0 where it never breaks. */
+export const shoulderStand = (u: number): number => {
+  if (!(SHOULDER.taperM > 0)) return 1;
+  if (!Number.isFinite(u)) return 0;
+  return 1 - smoothstep(0, SHOULDER.taperM, Math.max(0, u) * SHOULDER.curlMs);
+};
+/** Where the floor holds: down the left past the take-off (along 10 -> 30 m from the tip), from 80 -> 40 m seaward of the
+ * ledge to 150 -> 200 m inshore of it (the right, the take-off and the open sea keep their own height). */
+export const SHOULDER_ALONG_M: readonly [number, number] = [10, 30];
+export const SHOULDER_SEAWARD_M: readonly [number, number] = [-80, -40];
+export const SHOULDER_INSHORE_M: readonly [number, number] = [150, 200];
+const BEAR = (LEFT_BEARING_DEG * Math.PI) / 180, SIN_B = Math.sin(BEAR), COS_B = Math.cos(BEAR);
+export function shoulderRegion(x: number, z: number): number {
+  const dx = x - TIP[0], dz = z - TIP[1], along = dx * SIN_B - dz * COS_B, cross = dx * COS_B + dz * SIN_B;
+  return smoothstep(SHOULDER_ALONG_M[0], SHOULDER_ALONG_M[1], along) * smoothstep(SHOULDER_SEAWARD_M[0], SHOULDER_SEAWARD_M[1], cross)
+    * (1 - smoothstep(SHOULDER_INSHORE_M[0], SHOULDER_INSHORE_M[1], cross));
+}
+/**
+ * The shoulder's height share at a crest at (x, z) `u` s before its break or turn (null: broken, its own height):
+ * 1 − region × (1 − floor) × (1 − stand). 1 with either dial off.
+ */
+/** The time (s) a crest has before its break or its turn, for the shoulder (shoulderFactor): null once broken or without
+ * a record (tb ≥ 0, or undefined), −tb while held for its turn, else until. */
+export const shoulderU = (tb: number | null | undefined, until: number | null | undefined): number | null =>
+  tb === undefined ? null : tb !== null ? (tb >= 0 ? null : -tb) : (until ?? null);
+export function shoulderFactor(x: number, z: number, u: number | null | undefined): number {
+  // A crest that never breaks keeps its own (a wave too small to break anywhere skips the GPU's breaking: Phase 1 both sides).
+  if (u === null || u === undefined || !(u < UNTIL_NEVER) || !(SHOULDER.floor < 1) || !(SHOULDER.taperM > 0)) return 1;
+  const g = shoulderRegion(x, z);
+  return g > 0 ? 1 - g * (1 - SHOULDER.floor) * (1 - shoulderStand(u)) : 1;
+}
 /**
  * The lip's flight (onset to the round barrel) is the free fall from this many A. 0.8, not 1.3 (womb-realism spec 3.2,
  * Task 3): the airborne lip spans flight x peel along the line, at most 2.5 A. The dial flightDropA (setFlightDropA); the
