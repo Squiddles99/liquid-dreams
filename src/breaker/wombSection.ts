@@ -98,8 +98,10 @@ const SHOULDER = { taperM: SHOULDER_TAPER_M, floor: SHOULDER_FLOOR, curlMs: 13, 
  * lump of wave face in front of the breaking lip"): where the curl stalls (the left's end at 7 ft: the station 1.3 m ahead
  * waits 3.45 s) the stand-up read by the time alone fell from the curl's to the swell's in 5 m along the crest, the lump's
  * side. Down the left (shoulderRegion), a station waiting its turn stands at least 1 − smoothstep(0, standAheadM, d), d m
- * ahead of the front (curlFront.curlFrontAlong). 0 = off (today). The dial standAheadM (BreakParams.standAheadM); the GPU
- * mirrors it (breakingNodes.standAheadNode).
+ * ahead of the front (curlFront.curlFrontAlong). 0 = off (today). The dial standAheadM (BreakParams.standAheadM). The drawn
+ * section only (sectionPhase; the ribbon is built from the CPU trace): on the sheet's front lean too, the distance is not
+ * carried along the rays as the time is, so points of one face read different stand-ups and the sheet folded at the face's
+ * foot (a stepped fin ahead of the lip, andrew-moment/stand-ahead-ab.jpg); the sheet keeps the time's stand-up.
  */
 export const STAND_AHEAD_M = 0;
 export const setStandAhead = (m: number): void => { SHOULDER.aheadM = m; };

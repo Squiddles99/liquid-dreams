@@ -39,13 +39,14 @@ describe('the stand-up eases off by distance from the curl front (standAheadM)',
     const [x0, z0] = at(0);
     expect(standAhead(x0, z0, -2)).toBe(0);
   });
-  it("Andrew's stalled curl: the station 1.3 m ahead, waiting 3.45 s, stands up with the curl (phase and the sheet's front)", () => {
+  it("Andrew's stalled curl: the station 1.3 m ahead, waiting 3.45 s, stands up with the curl (the drawn section; the sheet as today)", () => {
     setStandAhead(20);
     const [x, z] = at(135), ahead = standAhead(x, z, 133.7);
     expect(frontWeight(3.45, 1, ahead)).toBeGreaterThanOrEqual(0.95);
     expect(sectionPhase({ r: 0.5, tb: null, until: 3.45, psi: 0.3, periodS: 15, x, z, frontAlong: 133.7 } as never, { ribbonOnset: 0.4 })).toBeGreaterThanOrEqual(0.95 * STOOD_PHASE);
-    expect(frontStanding(null, 0.5, 0.4, 3.45, 1, ahead)).toBeGreaterThanOrEqual(0.95);
-    // Held for its turn (tb < 0) the same.
-    expect(frontStanding(-3.45, 0.5, 0.4, null, 1, ahead)).toBeGreaterThanOrEqual(0.95);
+    // The sheet's front lean keeps the time's stand-up (the distance on it folded the sheet at the face's foot).
+    const before = frontStanding(null, 0.5, 0.4, 3.45, 1);
+    setStandAhead(0);
+    expect(frontStanding(null, 0.5, 0.4, 3.45, 1)).toBe(before);
   });
 });

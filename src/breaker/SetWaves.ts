@@ -15,7 +15,7 @@ import { applyFlightDropA, applySeatShares, flightTimeNodeA } from './wombSectio
 import { HOLLOW_PSI } from './reefReport';
 import { MIST_LAND_WINDOW_S, landingMistNode } from '../whitewater/mistSlab';
 import { boreWeightNode } from './wombSectionNodes';
-import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, shoulderFactorNode, shoulderRegionNode, shoulderTakeNode, standAheadNode, updateBreakUniforms, wallHeightNode } from './breakingNodes';
+import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, shoulderFactorNode, shoulderRegionNode, shoulderTakeNode, updateBreakUniforms, wallHeightNode } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import { PSI_EDGE_FADE_M, REEF_BLEND_M, type ReefField } from './reefField';
@@ -553,9 +553,7 @@ export class SetWaves {
             if (this.shape === 'lean') {
               // wombSection.frontWeight: the front's squeeze keeps the old (1 − until/FRONT_LEAD_S)² ramp (the wall's lead is the
               // section's and the height's, not the front's: womb-realism Task 2).
-              // …at least by the distance from the curl's front (wombSection.standAhead: the lump in front of the lip).
-              const aheadW = standAheadNode(cPos, cW.z, cW.w.greaterThan(0.5), brk.standAheadM);
-              const wall = (untilS: N): N => { const left = float(1.0).sub(clamp(untilS.div(FRONT_LEAD_S), 0.0, 1.0)); return max(left.mul(left).mul(shoulderTakeNode(untilS, brk, shoulderRegionNode(cPos))), aheadW); };
+              const wall = (untilS: N): N => { const left = float(1.0).sub(clamp(untilS.div(FRONT_LEAD_S), 0.0, 1.0)); return left.mul(left).mul(shoulderTakeNode(untilS, brk, shoulderRegionNode(cPos))); };
               const byRatio = smoothstep(brk.ribbonOnset, 1.0, rC);
               // Unbroken on the record's clock (until finite): the clock alone, as the drawn section's phase; the ratio only
               // where the ray never breaks (UNTIL_NEVER). The further of the two stood a cliff ahead of the wall (frontStanding).
