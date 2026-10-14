@@ -40,6 +40,13 @@ describe('the Settings overlay (spec §11)', () => {
     expect(stepSetting(DEFAULT_FRONT_SETTINGS, 'calmMenus', 1).settings.calmMenus).toBe(!DEFAULT_FRONT_SETTINGS.calmMenus);
     expect(stepSetting(DEFAULT_FRONT_SETTINGS, 'glyphs', 1).settings.glyphs).toBe('xbox');
   });
+  it('each experience says how the pump works there (ride-speed: held for beginners, timed for experts)', () => {
+    const small = (e: 'beginner' | 'intermediate' | 'expert') => settingsView({ ...DEFAULT_FRONT_SETTINGS, experience: e }, 'experience')[0].small;
+    expect(small('beginner')).toMatch(/pump/);
+    expect(small('intermediate')).toMatch(/pump/);
+    expect(small('expert')).toMatch(/pump/);
+  });
+
   it('cycles experience intermediate → expert → beginner → intermediate (R1 §3)', () => {
     let s = DEFAULT_FRONT_SETTINGS;
     const seen = [s.experience];

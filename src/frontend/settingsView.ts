@@ -9,7 +9,8 @@ const EXPERIENCES: FrontSettings['experience'][] = ['beginner', 'intermediate', 
 const METERS: FrontSettings['loadMeter'][] = ['auto', 'on', 'off'];
 const METER_WORDS: Record<FrontSettings['loadMeter'], [string, string]> = { auto: ['Auto', 'shown without a controller'], on: ['On', ''], off: ['Off', ''] };
 const EXPERIENCE_WORDS: Record<FrontSettings['experience'], [string, string]> = {
-  beginner: ['Beginner', 'more help catching waves'], intermediate: ['Intermediate', ''], expert: ['Expert', 'honest paddling'],
+  beginner: ['Beginner', 'more help catching waves · hold pump'], intermediate: ['Intermediate', 'hold pump or time it yourself'],
+  expert: ['Expert', 'honest paddling · pump by timing'],
 };
 const GLYPH_WORDS: Record<FrontSettings['glyphs'], string> = { auto: 'Auto', xbox: 'Xbox', playstation: 'PlayStation', keyboard: 'Keyboard' };
 const round = (v: number): number => Math.round(v * 100) / 100;
