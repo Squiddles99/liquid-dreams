@@ -38,7 +38,9 @@ import { type Experience, TUNING } from '../ride/ridePhysics';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
 import { SurfaceOffset } from '../ride/surfaceOffset';
 import { fieldKey } from '../breaker/fieldKey';
+import { rideContext } from '../ride/rideContext';
 import { tubeCover } from '../ride/tubeCover';
+import { PRESETS } from '../surfer/presets';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -1789,7 +1791,8 @@ export class App {
     this.invalidateParticles();
     const water = this.rideWater(this.clock.simTime), w = water(at.x, at.z);
     const experience = this.experience();
-    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water, TUNING[experience]);
+    const rider = PRESETS[this.surferParams.preset];
+    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water, TUNING[experience], { standH: rider.heightM, massKg: rider.weightKg });
     const keys = currentBindings().keys;
     const level = experience === 'intermediate' ? '' : ` (${experience})`;
     this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}${level}: paddle (${keyLabel(keys.paddle)}) as it lifts you, ${keyLabel(keys.popup)} to pop up`);
@@ -2234,7 +2237,7 @@ export class App {
       this.rideOffset.read(this.probe.latestSeq, this.probe.heightAt(RIDE_PROBE), realDt);
       const water = this.rideWater(this.clock.simTime);
       this.frameRideWater = { t: this.clock.simTime, water };
-      const event = this.ride.step(simDt, this.input, water);
+      const event = this.ride.step(simDt, this.input, water, (x, z) => rideContext(this.rideStations, x, z));
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
       else if (event) this.perf.flash(rideMessage(event));
       const rb = this.ride.body;
