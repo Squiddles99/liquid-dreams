@@ -61,7 +61,7 @@ export interface ReefParams {
   ledgeBarrelM: number;
   /** Segment B, the wall (the face ahead stands, the lip peels), to here; past it C, the drop (fizzle, or close out big). */
   ledgeWallM: number;
-  /** The width (m) of each transition: the hollow share falls from 1 over [ledgeBarrelM, + this]; the drop comes in over
+  /** The width (m) of each transition: the target hollow falls from A's to B's over [ledgeBarrelM, + this]; the drop comes in over
    * ledgeWallM ± half of it. */
   ledgeBlendM: number;
   /** C's bed depth (m below mean sea level, as ledgeDepthM): the ledge past ledgeWallM and the shelf inshore of it, north to
@@ -69,8 +69,11 @@ export interface ReefParams {
    * +0.8 and 12 ft closes out across C at all three (womb-story Task 1 sweep, 270/14). STOP 0 proposed 7 m still from a
    * breaking ratio of 0.78; the field breaks at about 0.68 (breaking.onsetGain), and 7 ft broke on to 164 m at 7 and 7.5 m. */
   dropDepthM: number;
-  /** The hollow share on B and C (0–1): ψ₀ above the flat step's (psiFromStep(1)) times this (reefField's psiHere). */
-  shelfHollowShare: number;
+  /** womb-story Task 3b (STOP 1 ruling 2, replacing the hollow share): A's target hollow (0–1): on A the reef raises ψ₀ to
+   * at least its (reefField's psiHere). */
+  barrelHollow: number;
+  /** B's and C's target hollow (0–1): there the reef pulls ψ₀ down to its, a wall (the spilling lip, wombProfile). */
+  wallHollow: number;
   /** womb-story Task 2 (spec 3.1, STOP 0 ruling 3): the right's ledge depth (m below mean sea level), and the shelf's along a
    * RIGHT_STRIP_M strip inshore of it: deeper than the tip's, so the right breaks after the take-off and all at once. Its
    * satellite line (RIGHT_SHAPE) is untouched; the corner (RIGHT_TIP_KEEP_M) keeps ledgeDepthM. 8: the shallowest of
@@ -106,7 +109,8 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
   ledgeWallM: 130,
   ledgeBlendM: 15,
   dropDepthM: 8.5,
-  shelfHollowShare: 0,
+  barrelHollow: 0.8,
+  wallHollow: 0.1,
   rightLedgeDepthM: 8,
 };
 
@@ -138,11 +142,18 @@ export function ledgeAlongM(x: number, z: number, tip: Pt = TIP, bearingDeg = LE
   return (x - tip[0]) * Math.sin(r) - (z - tip[1]) * Math.cos(r);
 }
 const smooth01 = (a: number, b: number, v: number): number => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
-/** The hollow share `along` m down the left (womb-story §2, STOP 0 ruling (b)): 1 on A, falling over
- * [ledgeBarrelM, ledgeBarrelM + ledgeBlendM] to shelfHollowShare on B and C. */
-export function hollowShareAt(along: number, p: Pick<ReefParams, 'ledgeBarrelM' | 'ledgeBlendM' | 'shelfHollowShare'>): number {
-  return 1 - (1 - p.shelfHollowShare) * smooth01(p.ledgeBarrelM, p.ledgeBarrelM + Math.max(1e-3, p.ledgeBlendM), along);
+/** How much of segment A's law holds `along` m down the left (womb-story Task 3b): 1 on A, falling over [ledgeBarrelM,
+ * ledgeBarrelM + ledgeBlendM] to 0 on B and C (A raises ψ₀ to its target, B and C pull it down to theirs). */
+export function segmentBarrelW(along: number, p: Pick<ReefParams, 'ledgeBarrelM' | 'ledgeBlendM'>): number {
+  return 1 - smooth01(p.ledgeBarrelM, p.ledgeBarrelM + Math.max(1e-3, p.ledgeBlendM), along);
 }
+/** The target hollow `along` m down the left (womb-story Task 3b, STOP 1 ruling 2): barrelHollow on A, blended over
+ * ledgeBlendM to wallHollow on B and C. */
+export function segmentHollow(along: number, p: Pick<ReefParams, 'ledgeBarrelM' | 'ledgeBlendM' | 'barrelHollow' | 'wallHollow'>): number {
+  return p.wallHollow + (p.barrelHollow - p.wallHollow) * segmentBarrelW(along, p);
+}
+/** The tip keeps its own ψ₀ (Task 3b): the target's weight comes in over the left's first this many metres. */
+export const TIP_EXEMPT_M = 10;
 /** The strip inshore of the right's ledge held at rightLedgeDepthM (m; STOP 0 ruling 3), faded back to the shelf over
  * BAND_FADE_M. */
 export const RIGHT_STRIP_M = 30;

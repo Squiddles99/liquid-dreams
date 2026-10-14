@@ -4,7 +4,7 @@ import { NORTH_LEDGE, TIP } from '../seabed/wombReef';
 import { DEFAULT_SET_PARAMS, wavesOfSet } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, onsetPsi, onsetTime } from './breaking';
 import { type PsiState, drainFactor, effectivePsi, psiState } from './overturn';
-import { type ReefField, sampleField, sampleOnset } from './reefField';
+import { HOLLOW_PSI, type ReefField, sampleField, sampleOnset } from './reefField';
 
 /**
  * The reef's criteria measured from a reef field (spec 2026-10-02-womb-reef-design §2): where a set wave first breaks,
@@ -238,7 +238,8 @@ export const BACKS_OFF_PEEL = 4;
 
 /** ψ₀ as the profile family's hollowness: oval 0, thrown 1 (STEP_PSI_POINTS' ends), clamped. */
 /** hollowFromPsi's ramp: ψ [0] is a crumbling lip (0), [0] + [1] a pitching one (1). */
-export const HOLLOW_PSI: readonly [number, number] = [0.035, 0.055];
+/** reefField's (womb-story Task 3b: the reef's target hollow inverts it there). */
+export { HOLLOW_PSI };
 export const hollowFromPsi = (psi: number): number => Math.min(1, Math.max(0, (psi - HOLLOW_PSI[0]) / HOLLOW_PSI[1]));
 
 /**

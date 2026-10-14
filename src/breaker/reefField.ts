@@ -160,6 +160,12 @@ export function reefStep(depthAlong: (s: number) => number, d0: number): number 
 }
 
 /** ψ₀ for a step (STEP_PSI_POINTS); a non-finite step reads as none (1). */
+/** ψ₀ → the hollow the reports and the drawing read (0 at HOLLOW_PSI[0], 1 at HOLLOW_PSI[0] + HOLLOW_PSI[1]): reefReport's
+ * hollowFromPsi and wombSectionNodes' sectionNumbersNode. */
+export const HOLLOW_PSI: readonly [number, number] = [0.035, 0.055];
+/** The ψ₀ that reads `hollow` (the inverse of reefReport.hollowFromPsi on [0, 1]). */
+export const psiOfHollow = (hollow: number): number => HOLLOW_PSI[0] + HOLLOW_PSI[1] * hollow;
+
 export function psiFromStep(step: number): number {
   const s = Number.isFinite(step) ? step : 1, P = STEP_PSI_POINTS, last = P.length - 1;
   if (s <= P[0][0]) return (P[0][1] * Math.max(0, s)) / P[0][0];
@@ -527,12 +533,17 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
   }
   const step = smoothAlongCrest(rawStep, dirX, dirZ, grid, STEP_SMOOTHING_M);
   const psiHere = new Float32Array(n * ONSET_LEVELS);
-  // womb-story (STOP 0 ruling (b)): the reef's hollow share (Bathymetry.share) scales ψ₀ above the flat step's, so the
-  // wall's segment peels instead of throwing; 1 off the ridden band (the tip, the right, every other bed).
-  const share = req.bed.share, psiFlat = psiFromStep(1);
+  // womb-story Task 3b (STOP 1 ruling 2): a target hollow per segment. On A the reef raises ψ₀ to at least its target's
+  // (the barrel), on B and C it pulls it down to theirs (the wall); weighted by Bathymetry.hollowW (the ridden band, the tip
+  // exempt), ψ₀ as the step gives it elsewhere (the tip, the right, every other bed).
+  const { hollowTarget: hT, hollowA: hA, hollowW: hW } = req.bed;
   for (let i = 0; i < n; i++) {
-    const psi = psiFromStep(step[i]), sh = share ? share[i] : 1;
-    psiHere.fill(psiFlat + sh * (psi - psiFlat), i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
+    let psi = psiFromStep(step[i]);
+    if (hT && hA && hW && hW[i] > 0) {
+      const t = psiOfHollow(hT[i]), want = hA[i] * Math.max(psi, t) + (1 - hA[i]) * Math.min(psi, t);
+      psi += hW[i] * (want - psi);
+    }
+    psiHere.fill(psi, i * ONSET_LEVELS, (i + 1) * ONSET_LEVELS);
   }
   const onset = computeOnsetRecord({ grid, tau: tau32, amp, hmin, hminBreak, k, dirX, dirZ, fixed, order, omega, psiHere, peel: req.peel ?? 1, curlMaxMs: req.curlMaxMs ?? CURL_MAX_MS_DEFAULT, debug: req.onsetDebug });
   const field: ReefField = { grid, tau: tau32, amp, hmin, hminBreak, hminSlurp, hminLean, k, dirX, dirZ, depth, onset, far, omega, periodS: req.periodS, fromDeg: req.fromDeg, tideM: req.tideM, ...(coast ? { coast } : {}) };
