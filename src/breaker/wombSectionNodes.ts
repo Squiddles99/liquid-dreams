@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Break, If, Loop, abs, atan, clamp, dot, float, int, length, max, min, mix, select, smoothstep, sqrt, uniform, vec2, vec3, vec4 } from 'three/tsl';
 import {
-  CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, KNOTS, PROFILE_KEYS, SPAN_SAMPLES, STAGES, TIP_KNOT, TIP_PULL, TIP_ROUND, TROUGH_KNOT, TURN_COST_H, keyTable,
+  CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, KNOTS, PROFILE_KEYS, SPAN_SAMPLES, STAGES, TIP_KNOT, TIP_PULL, TIP_ROUND, TROUGH_KNOT, TURN_COST_H, KEY_VEC4S, SPILL_FULL, SPILL_TO, keyTable,
 } from './wombProfile';
 import {
   COLLAPSE_BASE_S, COLLAPSE_PER_M, CURL_KNOTS, CURL_PHASE, EDGE_OUTER_UNITS, FLIGHT_DROP_A, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, SECTION_HAND_BACK_S,
@@ -142,12 +142,17 @@ export function drawnNode(numbers: { phase: N; hollow: N; surge?: N }, keys: N):
   const h00 = t3.mul(2.0).sub(t2.mul(3.0)).add(1.0).toVar(), h10 = t3.sub(t2.mul(2.0)).add(t).toVar();
   const h01 = t3.mul(-2.0).add(t2.mul(3.0)).toVar(), h11 = t3.sub(t2).toVar();
   const knot: N[] = [];
+  // Below SPILL_TO the approved blend at SPILL_TO eases into the spill (wombProfile.profileKnots, womb-story Task 3b).
+  const low = hv.lessThan(SPILL_TO), hb = select(low, float(SPILL_TO), hv).toVar();
+  const ws = smoothNode(clamp(hv.sub(SPILL_FULL).div(SPILL_TO - SPILL_FULL), 0.0, 1.0)).toVar();
   for (let m = 0; m < KNOTS; m++) {
-    const pA = keys.element(i.mul(KNOTS).add(m).mul(2)), vA = keys.element(i.mul(KNOTS).add(m).mul(2).add(1));
-    const pB = keys.element(i.add(1).mul(KNOTS).add(m).mul(2)), vB = keys.element(i.add(1).mul(KNOTS).add(m).mul(2).add(1));
-    // (hollow x, y, open x, y) by the Hermite in phase, then blended by hollowness.
+    const at = (j: N, e: number): N => keys.element(j.mul(KNOTS).add(m).mul(KEY_VEC4S).add(e));
+    const pA = at(i, 0), vA = at(i, 1), sA = at(i, 2), pB = at(i.add(1), 0), vB = at(i.add(1), 1), sB = at(i.add(1), 2);
+    // (hollow x, y, open x, y) by the Hermite in phase, then blended by hollowness; the spill (x, y, its velocities) the same.
     const q = pA.mul(h00).add(vA.mul(h10.mul(spanP))).add(pB.mul(h01)).add(vB.mul(h11.mul(spanP))).toVar();
-    knot.push(vec2(q.z.add(q.x.sub(q.z).mul(hv)), q.w.add(q.y.sub(q.w).mul(hv))).toVar());
+    const sp = sA.xy.mul(h00).add(sA.zw.mul(h10.mul(spanP))).add(sB.xy.mul(h01)).add(sB.zw.mul(h11.mul(spanP))).toVar();
+    const base = vec2(q.z.add(q.x.sub(q.z).mul(hb)), q.w.add(q.y.sub(q.w).mul(hb))).toVar();
+    knot.push(select(low, sp.add(base.sub(sp).mul(ws)), base).toVar());
   }
   // The rounded tip (wombProfile.roundedTip with tipLife).
   const life = smoothNode(clamp(ph.sub(STAGES.standing).div(0.25), 0.0, 1.0)).mul(float(1.0).sub(smoothNode(clamp(ph.sub(STAGES.tubeFilling).div(0.25), 0.0, 1.0)))).toVar();

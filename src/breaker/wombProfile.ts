@@ -33,8 +33,12 @@ export interface ProfileKey {
   phase: number;
   /** The shape at full hollowness (hollow 1): the Womb's barrel. */
   hollow: readonly P2[];
-  /** The shape at hollow 0: a shorter throw, a shallower trough, a thick, open curl. */
+  /** The shape at hollow 0 of the approved family: a shorter throw, a shallower trough, a thick, open curl (drawn only at
+   * hollow >= SPILL_TO since womb-story Task 3b: below it the spill takes over). */
   open: readonly P2[];
+  /** womb-story Task 3b (STOP 1 ruling 4): the spilling lip at hollow <= SPILL_FULL, a crumbling lip with no room inside
+   * (spillShape of `open` from the lip pitching to the tube filling; the same as `open` before and after). */
+  spill: readonly P2[];
 }
 
 /** The tube-filling keyframes (phase 1.25), whose cavity the collapse shrinks away. */
@@ -77,8 +81,45 @@ function leashShape(shape: readonly P2[]): P2[] {
     return [u, k === TIP_KNOT ? Math.min(p[1], cy + TIP_RISE_MAX) : p[1]];
   });
 }
-function leashKeys(keys: readonly ProfileKey[]): ProfileKey[] {
-  return keys.map((k) => ({ phase: k.phase, hollow: leashShape(k.hollow), open: leashShape(k.open) }));
+function leashKeys(keys: readonly Omit<ProfileKey, 'spill'>[]): ProfileKey[] {
+  return keys.map((k) => {
+    const open = leashShape(k.open);
+    // Before the lip pitches nothing curls; once the tube has closed (caving in, the white water) the approved open
+    // drawing is already a hump with no room inside: the spill is that drawing at both ends.
+    return { phase: k.phase, hollow: leashShape(k.hollow), open, spill: k.phase < STAGES.pitching || k.phase > STAGES.tubeFilling ? open : spillShape(open) };
+  });
+}
+
+/** The spill's reach: its tip stands this far (units of A) ahead of the crest at most (STOP 1 ruling 4: within 0.3). */
+export const SPILL_REACH = 0.25;
+/** The spill's tip sits this far below its crest (the lip crumbles over, it does not throw up). */
+const SPILL_TIP_DROP = 0.07;
+/** The face under the spilling lip bulges out by this share of its length (convex: the lip rolls down it, no cavity). */
+const SPILL_BULGE = 0.08;
+/** Hollowness at or below which the drawing is the spill; above it the spill blends into the approved family's drawing at
+ * SPILL_TO (smoothstep), which is drawn unchanged from there up (STOP 1 ruling 4). */
+export const SPILL_FULL = 0.2;
+export const SPILL_TO = 0.5;
+/**
+ * The spilling lip from a drawing (womb-story Task 3b): the back, the crest, the floor and everything in front of it are the
+ * drawing's (so the seat, set from the crest and floor, is the same map); the lip (knots crest + 1 … tip) is a short,
+ * rounded crumble, its tip SPILL_REACH ahead of the crest (or the drawing's own reach if shorter) and SPILL_TIP_DROP below
+ * it; the knots between the tip and the floor lie on the face from the tip down to the floor, bulged out by SPILL_BULGE of
+ * its length, so nothing curls back under the lip.
+ */
+function spillShape(open: readonly P2[]): P2[] {
+  const out = open.map((p): P2 => [p[0], p[1]]);
+  const [cx, cy] = open[CREST_KNOT], r = Math.min(SPILL_REACH, Math.max(0.05, open[TIP_KNOT][0] - cx));
+  const T: P2 = [cx + r, cy - SPILL_TIP_DROP];
+  out[CREST_KNOT + 1] = [cx + 0.45 * r, cy - 0.012];
+  out[CREST_KNOT + 2] = [cx + 0.8 * r, cy - 0.035];
+  out[TIP_KNOT] = T;
+  const F = open[FLOOR_KNOT], dx = F[0] - T[0], dy = F[1] - T[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+  for (let k = TIP_KNOT + 1; k < FLOOR_KNOT; k++) {
+    const t = (k - TIP_KNOT) / (FLOOR_KNOT - TIP_KNOT), b = SPILL_BULGE * L * 4 * t * (1 - t);
+    out[k] = [T[0] + dx * t + nx * b, T[1] + dy * t + ny * b];
+  }
+  return out;
 }
 
 /**
@@ -139,30 +180,39 @@ const smooth = (t: number): number => t * t * (3 - 2 * t);
  * knots rest at the keys after the tube has closed: shrunk to CLOSED_POCKET, a velocity through them would turn the pocket
  * inside out.
  */
-function keyVelocity(i: number, k: number, j: 0 | 1, family: 'hollow' | 'open'): number {
+export type ProfileFamily = 'hollow' | 'open' | 'spill';
+function keyVelocity(i: number, k: number, j: 0 | 1, family: ProfileFamily): number {
   const K = PROFILE_KEYS;
   if (i === 0 || i === K.length - 1) return 0;
   if (k >= TIP_KNOT && k <= FLOOR_KNOT && K[i].phase > 1.25) return 0;
   return (K[i + 1][family][k][j] - K[i - 1][family][k][j]) / (K[i + 1].phase - K[i - 1].phase);
 }
 
-/** The knots at (phase, hollow): each family through its keyframes by a cubic Hermite in phase, then blended by
- * hollowness. At a keyframe's phase the knots are that keyframe's exactly. */
-export function profileKnots(phase: number, hollow: number): P2[] {
-  const ph = clamp(phase, 0, 2), hv = clamp(hollow, 0, 1);
+/** A family's knots at `phase`: through its keyframes by a cubic Hermite in phase. At a keyframe's phase the knots are
+ * that keyframe's exactly. */
+export function familyKnots(phase: number, family: ProfileFamily): P2[] {
+  const ph = clamp(phase, 0, 2);
   let i = 0;
   while (i < PROFILE_KEYS.length - 2 && ph > PROFILE_KEYS[i + 1].phase) i++;
   const a = PROFILE_KEYS[i], b = PROFILE_KEYS[i + 1], span = b.phase - a.phase;
   const t = (ph - a.phase) / span, t2 = t * t, t3 = t2 * t;
   const h00 = 2 * t3 - 3 * t2 + 1, h10 = t3 - 2 * t2 + t, h01 = -2 * t3 + 3 * t2, h11 = t3 - t2;
-  const at = (family: 'hollow' | 'open', k: number, j: 0 | 1): number =>
+  const at = (k: number, j: 0 | 1): number =>
     h00 * a[family][k][j] + h10 * span * keyVelocity(i, k, j, family) + h01 * b[family][k][j] + h11 * span * keyVelocity(i + 1, k, j, family);
-  const out: P2[] = [];
-  for (let k = 0; k < KNOTS; k++) {
-    const ho0 = at('hollow', k, 0), ho1 = at('hollow', k, 1), op0 = at('open', k, 0), op1 = at('open', k, 1);
-    out.push([op0 + (ho0 - op0) * hv, op1 + (ho1 - op1) * hv]);
-  }
-  return out;
+  return Array.from({ length: KNOTS }, (_, k): P2 => [at(k, 0), at(k, 1)]);
+}
+
+/** The knots at (phase, hollow): from SPILL_TO up the approved families blended linearly by hollowness (as signed); below it
+ * the approved blend at SPILL_TO eased (smoothstep) into the spill, which is the drawing from SPILL_FULL down (womb-story
+ * Task 3b). At a keyframe's phase the knots are that keyframe's exactly. */
+export function profileKnots(phase: number, hollow: number): P2[] {
+  const hv = clamp(hollow, 0, 1), o = familyKnots(phase, 'open'), h = familyKnots(phase, 'hollow');
+  if (hv >= SPILL_TO) return o.map((p, k): P2 => [p[0] + (h[k][0] - p[0]) * hv, p[1] + (h[k][1] - p[1]) * hv]);
+  const sp = familyKnots(phase, 'spill'), w = smooth(clamp((hv - SPILL_FULL) / (SPILL_TO - SPILL_FULL), 0, 1));
+  return o.map((p, k): P2 => {
+    const mx = p[0] + (h[k][0] - p[0]) * SPILL_TO, my = p[1] + (h[k][1] - p[1]) * SPILL_TO;
+    return [sp[k][0] + (mx - sp[k][0]) * w, sp[k][1] + (my - sp[k][1]) * w];
+  });
 }
 
 /** How far (share of the way to its nearer neighbour) the lip's end is rounded, and how far its point is pulled in: the tip
@@ -308,15 +358,18 @@ export function curveSamples<K extends readonly number[]>(point: (d: number) => 
 }
 
 /**
- * The keyframes as the GPU reads them: per key and knot, two vec4s, (hollow x, y, open x, y) and their velocities in phase
- * (keyVelocity), key-major. The key phases are compile-time constants (PROFILE_KEYS[i].phase).
+ * The keyframes as the GPU reads them: per key and knot, KEY_VEC4S vec4s, (hollow x, y, open x, y), their velocities in
+ * phase (keyVelocity), and (spill x, y, its velocities), key-major. The key phases are compile-time constants
+ * (PROFILE_KEYS[i].phase).
  */
+export const KEY_VEC4S = 3;
 export function keyTable(): Float32Array {
-  const out = new Float32Array(PROFILE_KEYS.length * KNOTS * 8);
+  const out = new Float32Array(PROFILE_KEYS.length * KNOTS * KEY_VEC4S * 4);
   PROFILE_KEYS.forEach((key, i) => {
     for (let m = 0; m < KNOTS; m++) {
       out.set([key.hollow[m][0], key.hollow[m][1], key.open[m][0], key.open[m][1],
-        keyVelocity(i, m, 0, 'hollow'), keyVelocity(i, m, 1, 'hollow'), keyVelocity(i, m, 0, 'open'), keyVelocity(i, m, 1, 'open')], (i * KNOTS + m) * 8);
+        keyVelocity(i, m, 0, 'hollow'), keyVelocity(i, m, 1, 'hollow'), keyVelocity(i, m, 0, 'open'), keyVelocity(i, m, 1, 'open'),
+        key.spill[m][0], key.spill[m][1], keyVelocity(i, m, 0, 'spill'), keyVelocity(i, m, 1, 'spill')], (i * KNOTS + m) * KEY_VEC4S * 4);
     }
   });
   return out;

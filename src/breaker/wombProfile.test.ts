@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import approved from './wombProfile.approved.json';
-import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, KNOTS, type P2, PROFILE_KEYS, SPAN_SAMPLES, TIP_KNOT, TROUGH_KNOT, densePoint, profileCurve, profileKnots, roundedTip, tipLife } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, KNOTS, type P2, PROFILE_KEYS, SPAN_SAMPLES, SPILL_FULL, SPILL_TO, TIP_KNOT, TROUGH_KNOT, densePoint, familyKnots, profileCurve, profileKnots, profileSamples, roundedTip, tipLife } from './wombProfile';
 import { surgeLift } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 
@@ -36,7 +36,7 @@ describe('wombProfile', () => {
   });
 
   it('is the keyframes at their phases, at both ends of hollowness', () => {
-    for (const key of PROFILE_KEYS) for (const [hv, pts] of [[1, key.hollow], [0, key.open]] as const) {
+    for (const key of PROFILE_KEYS) for (const [hv, pts] of [[1, key.hollow], [0, key.spill]] as const) {
       const k = profileKnots(key.phase, hv);
       pts.forEach((p, i) => {
         expect(k[i][0]).toBeCloseTo(p[0], 12);
@@ -152,5 +152,52 @@ describe('the lip on a leash (womb-realism Task 3, spec 3.2)', () => {
       expect(k[TIP_KNOT][1] - k[CREST_KNOT][1], tag).toBeLessThanOrEqual(0.1 + 1e-9);
       expect(k[TIP_KNOT][0] - k[CREST_KNOT][0], tag).toBeLessThanOrEqual(1.0 + 1e-9);
     }
+  });
+});
+
+/** The spilling lip's measures on the drawn curve (womb-story Task 3b, STOP 1 ruling 4; units of A): the tip's reach ahead
+ * of the crest and its rise above it; the cavity, how far the curve from the tip down to the floor runs in behind the chord
+ * between them (the room inside, under the lip); and the face's convexity, the same depth on the face alone, from the tip to
+ * its last knot above the floor (the foot, where it turns forward into the trough, is concave by nature: <= 0.032). */
+function spillMeasures(phase: number, hollow: number) {
+  const k = profileKnots(phase, hollow), { curve, marks } = profileSamples(phase, hollow);
+  const behind = (from: number, to: number) => {
+    const T = curve[from], F = curve[to], dx = F[0] - T[0], dy = F[1] - T[1], L = Math.hypot(dx, dy) || 1;
+    let d = 0;
+    for (const p of curve.slice(from, to + 1)) d = Math.max(d, -(dx * (p[1] - T[1]) - dy * (p[0] - T[0])) / L);
+    return d;
+  };
+  const face = Math.max(marks.tip, nearest(curve.slice(0, marks.floor + 1), k[FLOOR_KNOT - 1]));
+  return { reach: k[TIP_KNOT][0] - k[CREST_KNOT][0], rise: k[TIP_KNOT][1] - k[CREST_KNOT][1], cavity: behind(marks.tip, marks.floor), convex: behind(marks.tip, face) };
+}
+
+describe('the spilling lip (womb-story Task 3b, STOP 1 ruling 4)', () => {
+  // The tip's bars over the lip's life (pitching to the tube filling); past it the tube has closed (a pocket too small to
+  // see, CLOSED_POCKET) and the drawing is the approved hump: no lip to measure, still no room inside.
+  it('at hollow <= SPILL_FULL (0.2), from the lip pitching on: the tip within 0.3 A of the crest and no higher, the cavity <= 0.2 A, the face convex', () => {
+    for (const hv of [0, 0.1, SPILL_FULL]) for (const ph of range(0.5, 2, 0.05)) {
+      const m = spillMeasures(ph, hv), tag = `phase ${ph.toFixed(2)} hollow ${hv}`;
+      if (ph <= 1.25 + 1e-9) {
+        expect(m.reach, tag).toBeLessThanOrEqual(0.3);
+        expect(m.rise, tag).toBeLessThanOrEqual(0);
+      }
+      expect(m.cavity, `${tag}: cavity`).toBeLessThanOrEqual(0.2);
+      expect(m.convex, `${tag}: convex`).toBeLessThanOrEqual(0.01);
+    }
+  });
+  it('the barrel is still a barrel: at hollow 1 the cavity runs in behind the chord (phase 1)', () => {
+    expect(spillMeasures(1, 1).cavity).toBeGreaterThan(0.3);
+  });
+  it('the approved shapes are untouched for hollow >= SPILL_TO (0.5): the two families blended linearly, as before', () => {
+    for (const ph of range(0, 2, 0.05)) for (const hv of range(SPILL_TO, 1, 0.1)) {
+      const o = familyKnots(ph, 'open'), h = familyKnots(ph, 'hollow'), k = profileKnots(ph, hv);
+      k.forEach((p, m) => {
+        expect(p[0], `phase ${ph} hollow ${hv} knot ${m}`).toBeCloseTo(o[m][0] + (h[m][0] - o[m][0]) * hv, 12);
+        expect(p[1], `phase ${ph} hollow ${hv} knot ${m}`).toBeCloseTo(o[m][1] + (h[m][1] - o[m][1]) * hv, 12);
+      });
+    }
+  });
+  it('before the lip pitches (phases 0-0.25) and once the tube has closed (1.5-2) the spill is the open drawing', () => {
+    for (const key of PROFILE_KEYS.filter((q) => q.phase < 0.5 || q.phase > 1.25)) key.spill.forEach((p, m) => expect(p).toEqual(key.open[m]));
   });
 });
