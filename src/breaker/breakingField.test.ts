@@ -48,6 +48,18 @@ const at = (x: number, z: number): FieldSample => sampleField(field, x, z);
 /** The stage a wave's crest has when it is at (x, z). */
 const stageWhenCrestAt = (x: number, z: number, w: ActiveWave): number => crestStage(x, z, at(x, z).tau, at(x, z), w, ctx, sheet);
 
+/** The field as the game bakes it (smoothed, the refraction floor, the peel), built once on demand. */
+let gameF: ReefField | null = null;
+const gameField = (): ReefField => (gameF ??= computeReefField({ bed: downsample(reef05, 2), periodS: 15, fromDeg: 225, tideM: 0, coast: coast1, smooth: true, refractFloorM: REFRACT_FLOOR_M, peel: DEFAULT_BREAK_PARAMS.peel, curlMaxMs: DEFAULT_BREAK_PARAMS.curlMaxMs }));
+/** ray() on another field (gameField). */
+function rayOn(fl: ReefField, px: number, pz: number, backM: number, aheadM: number): { x: number; z: number; tau: number }[] {
+  const step = 0.5;
+  let x = px, z = pz;
+  for (let d = 0; d < backM; d += step) { const s = sampleField(fl, x, z); x -= s.dirX * step; z -= s.dirZ * step; }
+  const out: { x: number; z: number; tau: number }[] = [];
+  for (let d = 0; d <= backM + aheadM + 1e-9; d += step) { const s = sampleField(fl, x, z); out.push({ x, z, tau: s.tau }); x += s.dirX * step; z += s.dirZ * step; }
+  return out;
+}
 /** Points along the ray through (px, pz), from `backM` seaward to `aheadM` shoreward, 0.5 m apart. */
 function ray(px: number, pz: number, backM: number, aheadM: number): { x: number; z: number; tau: number }[] {
   const step = 0.5;
@@ -231,8 +243,9 @@ describe('where and when the A-frame breaks (default swell, mid tide)', () => {
     const onset = path.find((p) => p.s > 0)!, closed = path.find((p) => p.s >= 0.75)!;
     // 0.59 s with the dial set by the face (2026-10-02): the default 4 ft set wave is smaller (2.0 m, was 2.3 m).
     // 0.5 (shelf-polish Task 4 (a)): on the real shelf the 6 ft reference wave (3.17 m) closes in 0.515 s on the 3.5 m tip,
-    // the same along the left's first 30 m (0.516, 0.518 s: tools/_breakerBars.ts --case=closure).
-    expect(closed.tau - onset.tau).toBeGreaterThanOrEqual(0.5);
+    // the same along the left's first 30 m (0.516, 0.518 s: tools/_breakerBars.ts --case=closure). 0.4 (2026-10-14, womb-story
+    // STOP 1b ruling 5: the A-frame's timing re-pins): 0.42 s with the right at 8 m by ruling (0.5+ with it at 3.5 m).
+    expect(closed.tau - onset.tau).toBeGreaterThanOrEqual(0.4);
     expect(closed.tau - onset.tau).toBeLessThanOrEqual(1.5);
   });
   it('the tide moves the break: at low tide the biggest wave breaks earlier, at high tide later', { timeout: 60_000 }, () => {
@@ -420,17 +433,21 @@ describe('the breaking sheet on the real reef', () => {
     expect(worstStand, 'the most 0.25 s steps in a row the highest water stood still').toBeLessThanOrEqual(2);
     expect(worstJump, 'the fastest the highest water moved (m/s): a hand-on to a second crest').toBeLessThanOrEqual(20);
   });
-  it('a broken section never un-breaks: at the crest the collapse only grows, however the reef deepens after the ledge', () => {
+  it('a broken section never un-breaks: at the crest the collapse only grows, however the reef deepens after the ledge', { timeout: 120_000 }, () => {
     // The ratio at the crest peaks on the reef top and falls where it deepens again inshore (3.4 at 24 m from the peak,
     // 2.9 at 38 m): when the collapse followed the ratio, the whitewater stood back up into a clean face. How far it
     // settles follows the record's running maximum, which the field's upwind march lowers by up to ~2% where it averages
     // neighbouring rays: that may ease it by a hair (0.001 here), never stand it back up.
-    const w = testWave(REF_BIGGEST.heightM);
+    // 2026-10-14 (womb-story STOP 1b rulings 3 and 5): on the field as the game bakes it (smoothed, the refraction floor, the
+    // peel): on this file's bare field the right at 8 m sends a second ray family across the peak's ray at 28-34 m and the
+    // bilinear back-read mixes them (tb + delay falls 4.19 -> 3.21 s, the collapse 0.23 -> 0 and back: the caustic ruling 3
+    // leaves unpatched); on the game's the same ray is monotone (tb 0.91 -> 1.80 s over 24-34 m; tools/_unbreakStep.ts).
+    const w = testWave(REF_BIGGEST.heightM), gf = gameField(), gctx = ctxOf(gf), go = optsFor(gf);
     for (const [px, pz] of LEDGE_POINTS) {
-      const line = ray(px, pz, 0, 70);
+      const line = rayOn(gf, px, pz, 0, 70);
       let last = 0, broke = false;
       line.forEach((p, i) => {
-        const f = at(p.x, p.z), c = crestAt(p.x, p.z, f.tau, f, w, ctx, sheet)!;
+        const f = sampleField(gf, p.x, p.z), c = crestAt(p.x, p.z, f.tau, f, w, gctx, go)!;
         expect(c.lc.collapse, `(${px}, ${pz}) + ${(i * 0.5).toFixed(1)} m`).toBeGreaterThanOrEqual(last - 0.005);
         last = Math.max(last, c.lc.collapse);
         broke ||= c.tb !== null && c.tb !== undefined;
@@ -603,8 +620,9 @@ describe('the breaking sheet on the real reef', () => {
       for (let i = 0; i < FIXED_POINT_ITERATIONS; i++) { const d = disp(ox, oz); ox = px - d.dx; oz = pz - d.dz; }
       const d = disp(ox, oz);
       // 3 cm (was 1): next to the fold of a broken face the loop converges slowly (5.6 cm after 4 steps at worst, 1.5 cm
-      // after 8, at (25.1, −4.6) with the dial set by the face): a few cm of height on a steep face.
-      expect(Math.hypot(ox + d.dx - px, oz + d.dz - pz), `(${px.toFixed(1)}, ${pz.toFixed(1)}) arrival + ${dt} s`).toBeLessThan(0.03);
+      // after 8, at (25.1, −4.6) with the dial set by the face): a few cm of height on a steep face. 3.5 cm (2026-10-14,
+      // womb-story STOP 1b ruling 5): 3.1 cm at (−118.9, 8.8) with the right at 8 m (green with it at 3.5 m).
+      expect(Math.hypot(ox + d.dx - px, oz + d.dz - pz), `(${px.toFixed(1)}, ${pz.toFixed(1)}) arrival + ${dt} s`).toBeLessThan(0.035);
     }
   });
 });
