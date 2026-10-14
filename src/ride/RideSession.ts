@@ -1,8 +1,10 @@
 import type { CameraPose } from '../dev/momentLink';
 import { type Bindings, currentBindings, keyLabel } from './bindings';
-import { PadEdges, type RideKeys, lookFrom, readPad, rideControls } from './rideInput';
+import { PadEdges, type RideKeys, lookFrom, playRumble, readPad, rideControls } from './rideInput';
 import { OPEN_FACE, type RideBody, type RideContext, type RideEvent, type RideTuning, POPUP_S, TUNING, speedOf, startBody, stepRide } from './ridePhysics';
 import { type LookInput, RideCamera, rideBoardFrame, rideSurferParams } from './ridePose';
+import { readFrontSettings } from '../frontend/frontSettings';
+import { RUMBLE_CHUNK_MS, newRumble, rumbleFor } from './rideFeedback';
 import { type RiderDrive, riderDrive } from './riderBody';
 import type { WaterFn } from './water';
 
@@ -42,6 +44,10 @@ export class RideSession {
   tune: RideTuning = TUNING.intermediate;
   private readonly camera = new RideCamera();
   private readonly edges = new PadEdges();
+  private readonly rumble = newRumble();
+  private clockS = 0;
+  /** The feedback settings, read when the ride begins (a pause-menu change applies from the next wave). */
+  private feel: { rumble: boolean; loadMeter: 'auto' | 'on' | 'off' } = { rumble: true, loadMeter: 'auto' };
   private readonly hud: HTMLDivElement;
 
   constructor(parent: HTMLElement) {
@@ -61,6 +67,8 @@ export class RideSession {
   begin(x: number, z: number, headingDeg: number, water: WaterFn, tune: RideTuning = TUNING.intermediate, rider?: { standH: number; massKg: number }): void {
     this.body = startBody(x, z, headingDeg, water, rider);
     this.tune = tune;
+    const fs = readFrontSettings();
+    this.feel = { rumble: fs.rumble, loadMeter: fs.loadMeter };
     this.camera.reset();
     this.hud.style.display = '';
   }
@@ -86,6 +94,12 @@ export class RideSession {
     for (let i = 0; i < n && dt > 0; i++) {
       const e = stepRide(b, i === 0 ? c : { ...c, popup: false }, water, dt / n, this.tune, ctx);
       if (e) event = e;
+    }
+    // Rumble on the load (ride-speed spec §5): the weight in the rider's feet.
+    this.clockS += dt;
+    if (b.phase === 'ride' && this.feel.rumble && pad) {
+      const r = rumbleFor(b.load, this.rumble, this.clockS);
+      if (r) playRumble(r.strong, r.weak, RUMBLE_CHUNK_MS);
     }
     const kmh = Math.round(speedOf(b) * 3.6);
     this.hud.textContent = `${kmh} km/h   ${hint(b.phase, bindings)}`;

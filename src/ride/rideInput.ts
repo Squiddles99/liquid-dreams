@@ -25,6 +25,22 @@ export function readPad(): PadState | null {
   return null;
 }
 
+type Rumbler = Gamepad & { vibrationActuator?: { playEffect?: (t: string, o: object) => Promise<unknown> } };
+
+/** A dual-rumble chunk on the first pad, if any (ride-speed spec §5); never throws (a pad unplugged mid-ride). */
+export function playRumble(strong: number, weak: number, ms: number): void {
+  try {
+    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const p of pads) {
+      if (!p?.connected) continue;
+      void (p as Rumbler).vibrationActuator?.playEffect?.('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: weak })?.catch(() => {});
+      return;
+    }
+  } catch {
+    // no pads
+  }
+}
+
 /** Rising edges of the pad's buttons, so a held button pops up once. */
 export class PadEdges {
   private last: boolean[] = [];

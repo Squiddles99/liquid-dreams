@@ -57,7 +57,7 @@ import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
 import { FrontEnd } from '../frontend/frontEndPage';
 import type { TitleScreen } from '../frontend/ui/titleScreen';
-import { FRONT_SETTINGS_KEY, sanitizeFrontSettings } from '../frontend/frontSettings';
+import { FRONT_SETTINGS_KEY, readFrontSettings, sanitizeFrontSettings } from '../frontend/frontSettings';
 import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
 import { PauseMenu } from '../frontend/ui/pauseMenu';
 import { frontEndCheck } from '../dev/frontEndCheck';
@@ -1193,11 +1193,7 @@ export class App {
 
   /** The player's Experience setting (R1 §3), read when a ride starts. */
   private experience(): Experience {
-    try {
-      return sanitizeFrontSettings(JSON.parse(localStorage.getItem(FRONT_SETTINGS_KEY) ?? 'null')).experience;
-    } catch {
-      return 'intermediate';
-    }
+    return readFrontSettings().experience;
   }
 
   private calmMenus(): boolean {

@@ -21,9 +21,13 @@ export interface FrontSettings {
   glyphs: 'auto' | 'xbox' | 'playstation' | 'keyboard';
   /** How much help catching waves (R1 §3): the paddle assist and the face slope that catches you. */
   experience: Experience;
+  /** Pad rumble on the load (ride-speed spec §5). */
+  rumble: boolean;
+  /** The keyboard load meter: shown without a pad (auto), always, or never. */
+  loadMeter: 'auto' | 'on' | 'off';
 }
 
-export const DEFAULT_FRONT_SETTINGS: Readonly<FrontSettings> = { textScale: 1, calmMenus: false, opaqueBackplates: false, safeArea: null, displayMode: 'pc', glyphs: 'auto', experience: 'intermediate', conditionsSource: 'forecast' };
+export const DEFAULT_FRONT_SETTINGS: Readonly<FrontSettings> = { textScale: 1, calmMenus: false, opaqueBackplates: false, safeArea: null, displayMode: 'pc', glyphs: 'auto', experience: 'intermediate', conditionsSource: 'forecast', rumble: true, loadMeter: 'auto' };
 export const FRONT_SETTINGS_KEY = 'liquid-dreams.front-settings.v1';
 export const FRONT_CHOICES_KEY = 'liquid-dreams.front-choices.v1';
 
@@ -47,7 +51,18 @@ export function sanitizeFrontSettings(raw: unknown): FrontSettings {
     glyphs: oneOf(raw.glyphs, ['auto', 'xbox', 'playstation', 'keyboard'] as const, d.glyphs),
     experience: oneOf(raw.experience, ['beginner', 'intermediate', 'expert'] as const, d.experience),
     conditionsSource: oneOf(raw.conditionsSource, ['forecast', 'custom'] as const, d.conditionsSource),
+    rumble: bool(raw.rumble, d.rumble),
+    loadMeter: oneOf(raw.loadMeter, ['auto', 'on', 'off'] as const, d.loadMeter),
   };
+}
+
+/** The saved settings, made whole; the defaults when storage is unreadable. */
+export function readFrontSettings(): FrontSettings {
+  try {
+    return sanitizeFrontSettings(JSON.parse(localStorage.getItem(FRONT_SETTINGS_KEY) ?? 'null'));
+  } catch {
+    return { ...DEFAULT_FRONT_SETTINGS };
+  }
 }
 
 /** What the front end remembers across sessions (spec §3). */
