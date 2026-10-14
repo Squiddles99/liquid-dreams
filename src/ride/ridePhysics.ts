@@ -1,4 +1,7 @@
+import { COM_REST, LOAD_MAX, LOAD_TAU_S, OPEN_FACE, type RideContext, type RiderState, UNDER_LIP_COVER, compressionOf, handDragAccel, headHeight, newRiderState, restLoad, rideDrag, stepCom, stepRiderBody, weaveSteer } from './riderBody';
 import type { WaterAt, WaterFn } from './water';
+
+export { OPEN_FACE, type RideContext, type StallWeights } from './riderBody';
 
 /**
  * The board on the water (first-ride spec §2): a point on the set waves' surface with a heading. Gravity pulls it down
@@ -7,7 +10,7 @@ import type { WaterAt, WaterFn } from './water';
  */
 
 export type RidePhase = 'paddle' | 'popup' | 'ride' | 'bail';
-export type RideEvent = 'caught' | 'popup' | 'tooSoon' | 'wipeout' | 'kickout' | 'reset' | 'aground';
+export type RideEvent = 'caught' | 'popup' | 'tooSoon' | 'wipeout' | 'kickout' | 'reset' | 'aground' | 'lip';
 
 export interface RideControls {
   /** Paddling (prone), or standing tall (riding). */
@@ -18,11 +21,15 @@ export interface RideControls {
   crouch: number;
   /** Pop up: pressed this step. */
   popup: boolean;
+  /** LB / Shift: stall (ride-speed spec §4.3). */
+  stall?: boolean;
+  /** RB / E: the pump assist, held (ride-speed spec §4.1). */
+  pump?: boolean;
 }
 
 export const NO_CONTROLS: RideControls = { paddle: false, steer: 0, crouch: 0, popup: false };
 
-export interface RideBody {
+export interface RideBody extends RiderState {
   phase: RidePhase;
   /** Seconds in this phase. */
   phaseT: number;
@@ -54,6 +61,14 @@ export interface RideBody {
   tiltZ: number;
   /** The water's height under the whole board last step (boardSurface). */
   surfY: number;
+  /** Last step's velocity (m/s): the load the rider feels is read from its change. */
+  pvx: number;
+  pvy: number;
+  pvz: number;
+  /** Seconds the pump assist has been weaving. */
+  weaveT: number;
+  /** Rides lying down (a bodyboard): no pump, tuck or stall, never struck by the lip (ride-speed spec §8). */
+  prone: boolean;
 }
 
 const G = 9.81;
@@ -63,7 +78,7 @@ const DEG = Math.PI / 180;
 export const PADDLE_THRUST = 1.6;
 const PRONE_DRAG = { lin: 0.6, quad: 0.3, side: 3 };
 /** Planing on its feet: terminal ~17 m/s down a 0.5 slope. */
-const PLANE_DRAG = { lin: 0.03, quad: 0.012, side: 5 };
+export const PLANE_DRAG = { lin: 0.03, quad: 0.012, side: 5 };
 /** In the water after a wipeout: carried with the water. */
 const BAIL_DRAG = { lin: 1.5, quad: 0, side: 1.5 };
 export const PADDLE_TURN_DEG_S = 70;
@@ -82,11 +97,13 @@ export const ASSIST_TO = 0.8;
 export type Experience = 'beginner' | 'intermediate' | 'expert';
 /** What the Experience setting tunes: the assisted takeoff's push (m/s² at full lift) and the face slope (|∇y|) that
  * catches a paddler on its own. The assist is a forgiveness, not the engine: once caught, gravity down the face is. */
-export interface RideTuning { assistAccel: number; catchSlope: number }
+export interface RideTuning { assistAccel: number; catchSlope: number; pump: PumpMode }
+/** Who times the pump (ride-speed spec §1): the player (manual), the game on RB (assist), or either (both). */
+export type PumpMode = 'manual' | 'assist' | 'both';
 export const TUNING: Readonly<Record<Experience, RideTuning>> = {
-  beginner: { assistAccel: 8, catchSlope: 0.28 },
-  intermediate: { assistAccel: 4, catchSlope: 0.35 },
-  expert: { assistAccel: 1.5, catchSlope: 0.42 },
+  beginner: { assistAccel: 8, catchSlope: 0.28, pump: 'assist' },
+  intermediate: { assistAccel: 4, catchSlope: 0.35, pump: 'both' },
+  expert: { assistAccel: 1.5, catchSlope: 0.42, pump: 'manual' },
 };
 /** The slope catch holds this long (s) before the wave has you. */
 export const CATCH_HOLD_S = 0.2;
@@ -119,6 +136,10 @@ export const WIPEOUT_SLOPE = 2.5;
 /** Riding slower than this (m/s) for STALL_S and the board sinks: the ride is over. */
 export const STALL_SPEED = 3;
 export const STALL_S = 0.6;
+/** The lip strike needs RT past this (the crouch input, −1 … +1) ... */
+export const STRIKE_FORCE = 0.3;
+/** ... and not in the drop's first STRIKE_GRACE_S: W held from paddling through the pop-up is not standing up into it. */
+export const STRIKE_GRACE_S = 0.5;
 export const MAX_SPEED = 18;
 /** Half the board's length (m): its height and tilt come from the water under its nose and tail as well as its middle. */
 export const BOARD_HALF_M = 0.9;
@@ -148,9 +169,9 @@ export function rightOf(headingDeg: number): [number, number] {
   return [Math.cos(h), Math.sin(h)];
 }
 
-export function startBody(x: number, z: number, headingDeg: number, water: WaterFn): RideBody {
+export function startBody(x: number, z: number, headingDeg: number, water: WaterFn, rider: { standH: number; massKg: number; prone?: boolean } = { standH: 1.65, massKg: 55 }): RideBody {
   const w = water(x, z);
-  return { phase: 'paddle', phaseT: 0, x, z, y: w.y, vy: 0, vx: 0, vz: 0, headingDeg, carve: 0, compression: 0, caught: false, catchT: 0, stallT: 0, idleT: 10, water: w, tiltX: w.slopeX, tiltZ: w.slopeZ, surfY: w.y };
+  return { ...newRiderState(rider.standH, rider.massKg), pvx: 0, pvy: 0, pvz: 0, weaveT: 0, prone: rider.prone ?? false, phase: 'paddle', phaseT: 0, x, z, y: w.y, vy: 0, vx: 0, vz: 0, headingDeg, carve: 0, compression: 0, caught: false, catchT: 0, stallT: 0, idleT: 10, water: w, tiltX: w.slopeX, tiltZ: w.slopeZ, surfY: w.y };
 }
 
 /** The water under the whole board: its height (nose, middle and tail) and slope (nose to tail along it, across from the middle). */
@@ -195,21 +216,23 @@ function setPhase(b: RideBody, phase: RidePhase): void {
 }
 
 /** One physics step of dt seconds. Mutates and returns the body, with what happened (for the hints). */
-export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: number, tune: RideTuning = TUNING.intermediate): RideEvent | null {
+export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: number, tune: RideTuning = TUNING.intermediate, ctx: RideContext = OPEN_FACE): RideEvent | null {
   if (!(dt > 0)) return null;
   const w = b.water;
   let event: RideEvent | null = null;
   b.phaseT += dt;
 
   // Steering and the carve.
-  const steer = Math.max(-1, Math.min(1, c.steer));
+  // The pump assist (ride-speed §4.1): beginner and intermediate, RB held, riding: it weaves the rider and times the pump.
+  const assist = b.phase === 'ride' && !b.prone && !!c.pump && tune.pump !== 'manual';
+  b.weaveT = assist ? b.weaveT + dt : 0;
+  const steer = Math.max(-1, Math.min(1, c.steer + (assist ? weaveSteer(b.weaveT, ctx.faceHM) : 0)));
   const speed0 = speedOf(b);
   const carveRate = CARVE_TURN_DEG_S * Math.max(0.5, Math.min(1, speed0 / 5));
-  const turn = b.phase === 'paddle' ? PADDLE_TURN_DEG_S : b.phase === 'ride' ? carveRate : b.phase === 'popup' ? POPUP_TURN * carveRate : 0;
+  const turn = b.phase === 'paddle' ? PADDLE_TURN_DEG_S : b.phase === 'ride' ? carveRate * (1 - 0.2 * b.tuck) : b.phase === 'popup' ? POPUP_TURN * carveRate : 0;
   b.headingDeg = (((b.headingDeg + steer * turn * dt) % 360) + 360) % 360;
   const ease = 1 - Math.exp(-dt / 0.15);
   b.carve += ((b.phase === 'ride' || b.phase === 'popup' ? steer : 0) - b.carve) * ease;
-  b.compression += ((b.phase === 'ride' ? Math.max(-1, Math.min(1, c.crouch)) : 0) - b.compression) * ease;
 
   // Forces: gravity along the surface, paddling, the assist.
   const [fx, fz] = forwardOf(b.headingDeg), [rx, rz] = rightOf(b.headingDeg);
@@ -228,8 +251,20 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   b.vx += ax * dt;
   b.vz += az * dt;
 
+  // The rider's body (ride-speed spec §4): the pump's work this step, from the load they felt last step.
+  let bodyE = 0;
+  if (b.phase === 'ride' && !b.prone) {
+    const vAlong = b.vx * -w.dirZ + b.vz * w.dirX;
+    bodyE = stepRiderBody(b, {
+      crouch: c.crouch, stall: !!c.stall, assist, headingDeg: b.headingDeg, dirX: w.dirX, dirZ: w.dirZ,
+      slope: Math.hypot(w.slopeX, w.slopeZ), alongSpeed: Math.abs(vAlong), ctx,
+    }, dt);
+  } else b.comH = stepCom(b.comH, COM_REST, dt);
+  b.compression = compressionOf(b.comH);
+
   // Drag relative to the water.
-  const d = b.phase === 'bail' ? BAIL_DRAG : b.phase === 'paddle' ? PRONE_DRAG : PLANE_DRAG;
+  const d0 = b.phase === 'bail' ? BAIL_DRAG : b.phase === 'paddle' ? PRONE_DRAG : PLANE_DRAG;
+  const d = b.phase === 'ride' ? rideDrag(d0, b) : d0;
   const standing = b.phase === 'ride' || b.phase === 'popup';
   // Against the water itself, not the wave: the wave runs on through the water, and that water running up the face past
   // the rail is what drives the board along the line. (Dragging against water carried with the wave, as first tuned,
@@ -245,6 +280,8 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   const gripped = side * Math.exp(-d.side * (b.phase === 'ride' ? 1 + 0.3 * b.compression : 1) * dt);
   // On its feet, the rail turns the slide it grips into run (a bottom turn keeps its speed); prone, the water just takes it.
   if (standing && along > 0) along = Math.sqrt(along * along + RAIL_KEEP * (side * side - gripped * gripped));
+  if (bodyE !== 0 && along > 0) along = Math.sqrt(Math.max(0, along * along + 2 * bodyE));
+  if (b.phase === 'ride' && b.hand > 0 && along > 0) along = Math.max(0, along - handDragAccel(along, b.hand, b.massKg) * dt);
   side = gripped;
   b.vx = ux + fx * along + rx * side;
   b.vz = uz + fz * along + rz * side;
@@ -307,6 +344,23 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
     b.y = Number.isFinite(b.water.y) ? b.water.y : y0;
     b.vy = 0;
   } else if (onFeet) b.vy = (b.y - y0) / dt;
+  // The load the rider feels (ride-speed spec §4.1): the board's acceleration less gravity, in g, smoothed; without its
+  // part along the path (the drag and gravity along it: fore and aft, not what the legs push against). A straight run on a
+  // face reads gravity's normal share (n0); a carve adds its centripetal pull, up the face or across it (final review).
+  if (onFeet) {
+    const lx = (b.vx - b.pvx) / dt, ly = (b.vy - b.pvy) / dt + G, lz = (b.vz - b.pvz) / dt;
+    const vm = Math.hypot(b.vx, b.vy, b.vz), tx = vm > 1e-6 ? b.vx / vm : 0, ty = vm > 1e-6 ? b.vy / vm : 0, tz = vm > 1e-6 ? b.vz / vm : 0;
+    const along = lx * tx + ly * ty + lz * tz;
+    const n = Math.min(LOAD_MAX, Math.hypot(lx - along * tx, ly - along * ty, lz - along * tz) / G);
+    if (Number.isFinite(n)) b.load += (n - b.load) * (1 - Math.exp(-dt / LOAD_TAU_S));
+    b.n0 = restLoad(ty);
+  } else {
+    b.load = 1;
+    b.n0 = 1;
+  }
+  b.pvx = b.vx;
+  b.pvy = b.vy;
+  b.pvz = b.vz;
   if (Number.isFinite(surf.y)) b.surfY = surf.y;
   const tilt = 1 - Math.exp(-dt / (onFeet ? PLANE_TILT_TAU_S : FLOAT_TILT_TAU_S));
   if (Number.isFinite(surf.slopeX) && Number.isFinite(surf.slopeZ)) {
@@ -346,6 +400,15 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
       if (nw.foam > WIPEOUT_FOAM || steep > WIPEOUT_SLOPE) {
         setPhase(b, 'bail');
         event = 'wipeout';
+        break;
+      }
+      // The lip strike (spec §4.4): the rider's head into the lip's underside, forced up by the player (RT). What the game
+      // drives ducks under the lip at the legs' rate; on the real wave the room can drop faster than that between steps
+      // (Task 12: the assist was struck), and that is not the player's doing.
+      const forcing = c.crouch < -STRIKE_FORCE && b.phaseT > STRIKE_GRACE_S;
+      if (b.phase === 'ride' && !b.prone && forcing && ctx.cover >= UNDER_LIP_COVER && ctx.roomM > 0 && headHeight(b.comH, b.standH) > ctx.roomM) {
+        setPhase(b, 'bail');
+        event = 'lip';
         break;
       }
       b.stallT = speed < STALL_SPEED ? b.stallT + dt : 0;

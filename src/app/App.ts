@@ -38,7 +38,10 @@ import { type Experience, TUNING } from '../ride/ridePhysics';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
 import { SurfaceOffset } from '../ride/surfaceOffset';
 import { fieldKey } from '../breaker/fieldKey';
+import { EnergyPanel } from '../ride/EnergyPanel';
+import { rideContext } from '../ride/rideContext';
 import { tubeCover } from '../ride/tubeCover';
+import { PRESETS } from '../surfer/presets';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -55,7 +58,7 @@ import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
 import { FrontEnd } from '../frontend/frontEndPage';
 import type { TitleScreen } from '../frontend/ui/titleScreen';
-import { FRONT_SETTINGS_KEY, sanitizeFrontSettings } from '../frontend/frontSettings';
+import { FRONT_SETTINGS_KEY, readFrontSettings, sanitizeFrontSettings } from '../frontend/frontSettings';
 import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
 import { PauseMenu } from '../frontend/ui/pauseMenu';
 import { frontEndCheck } from '../dev/frontEndCheck';
@@ -206,6 +209,8 @@ export class App {
   readonly surferStand: SurferStand;
   /** The playable ride (first-ride spec): G starts and stops it. */
   readonly ride = new RideSession(document.body);
+  /** Where the face pays around the rider, with the dev UI (ride-speed spec §6). */
+  private readonly energyPanel = new EnergyPanel(document.body);
   /** The called set's arrivals at the peak (sim s), and the wave being ridden. */
   private rideSet: number[] = [];
   /** Each ride wave's deep-water height (m), for its take-off spot. */
@@ -1191,11 +1196,7 @@ export class App {
 
   /** The player's Experience setting (R1 §3), read when a ride starts. */
   private experience(): Experience {
-    try {
-      return sanitizeFrontSettings(JSON.parse(localStorage.getItem(FRONT_SETTINGS_KEY) ?? 'null')).experience;
-    } catch {
-      return 'intermediate';
-    }
+    return readFrontSettings().experience;
   }
 
   private calmMenus(): boolean {
@@ -1789,7 +1790,8 @@ export class App {
     this.invalidateParticles();
     const water = this.rideWater(this.clock.simTime), w = water(at.x, at.z);
     const experience = this.experience();
-    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water, TUNING[experience]);
+    const rider = PRESETS[this.surferParams.preset];
+    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water, TUNING[experience], { standH: rider.heightM, massKg: rider.weightKg, prone: this.surferParams.board === 'bodyboard' });
     const keys = currentBindings().keys;
     const level = experience === 'intermediate' ? '' : ` (${experience})`;
     this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}${level}: paddle (${keyLabel(keys.paddle)}) as it lifts you, ${keyLabel(keys.popup)} to pop up`);
@@ -2234,15 +2236,18 @@ export class App {
       this.rideOffset.read(this.probe.latestSeq, this.probe.heightAt(RIDE_PROBE), realDt);
       const water = this.rideWater(this.clock.simTime);
       this.frameRideWater = { t: this.clock.simTime, water };
-      const event = this.ride.step(simDt, this.input, water);
+      const event = this.ride.step(simDt, this.input, water, (x, z) => rideContext(this.rideStations, x, z));
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
       else if (event) this.perf.flash(rideMessage(event));
       const rb = this.ride.body;
+      this.energyPanel.setVisible(this.devUiVisible && rb !== null);
+      if (this.devUiVisible && rb) this.energyPanel.update(realDt, water, rb, this.ride.lastContext);
       this.rideCover = rb ? tubeCover(this.rideStations, rb.x, rb.z) : 0;
       const pose = this.ride.cameraPose(realDt, water, mouse, this.rideCover);
       if (pose) this.rig.setPose(pose);
     } else {
       this.rideCover = 0;
+      this.energyPanel.setVisible(false);
       this.rig.update(realDt, this.input, this.waterHeightAtCamera());
     }
 

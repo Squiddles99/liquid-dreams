@@ -4,14 +4,14 @@
 import { HOTKEYS } from '../dev/hotkeys';
 import type { SettingsStorage } from '../dev/devSettings';
 
-export type KeyAction = 'paddle' | 'crouch' | 'left' | 'right' | 'popup' | 'next';
-export type PadAction = 'paddle' | 'crouch' | 'popup' | 'next';
+export type KeyAction = 'paddle' | 'crouch' | 'left' | 'right' | 'stall' | 'pump' | 'popup' | 'next';
+export type PadAction = 'paddle' | 'crouch' | 'stall' | 'pump' | 'popup' | 'next';
 
-export const KEY_ACTIONS: readonly KeyAction[] = ['paddle', 'left', 'right', 'crouch', 'popup', 'next'];
-export const PAD_ACTIONS: readonly PadAction[] = ['paddle', 'crouch', 'popup', 'next'];
+export const KEY_ACTIONS: readonly KeyAction[] = ['paddle', 'left', 'right', 'crouch', 'stall', 'pump', 'popup', 'next'];
+export const PAD_ACTIONS: readonly PadAction[] = ['paddle', 'crouch', 'stall', 'pump', 'popup', 'next'];
 
 export const ACTION_LABELS: Record<KeyAction, string> = {
-  paddle: 'Paddle · stand tall', crouch: 'Crouch', left: 'Turn left', right: 'Turn right', popup: 'Pop up', next: 'Next wave',
+  paddle: 'Paddle · stand tall', crouch: 'Crouch', left: 'Turn left', right: 'Turn right', stall: 'Stall', pump: 'Pump (hold)', popup: 'Pop up', next: 'Next wave',
 };
 
 export interface Bindings {
@@ -22,8 +22,8 @@ export interface Bindings {
 }
 
 export const DEFAULT_BINDINGS: Bindings = {
-  keys: { paddle: 'KeyW', crouch: 'KeyS', left: 'KeyA', right: 'KeyD', popup: 'Space', next: 'KeyR' },
-  pad: { paddle: 7, crouch: 6, popup: 0, next: 1 },
+  keys: { paddle: 'KeyW', crouch: 'KeyS', left: 'KeyA', right: 'KeyD', stall: 'ShiftLeft', pump: 'KeyE', popup: 'Space', next: 'KeyR' },
+  pad: { paddle: 7, crouch: 6, stall: 4, pump: 5, popup: 0, next: 1 },
 };
 
 /** The arrow keys' fixed parts: the same as W A S D, whatever those are bound to. */

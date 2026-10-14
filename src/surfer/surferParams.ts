@@ -39,6 +39,8 @@ export interface SurferParams {
   reach: number;
   balance: boolean;
   balanceAmount: number;
+  /** The rider's speed on the water (m/s): RideState's (the ride sets it). */
+  speedMs: number;
   /** Where the board sits (world metres) and which way its nose points (compass degrees). */
   x: number;
   z: number;
@@ -64,7 +66,7 @@ export interface SurferParams {
 export const DEFAULT_SURFER_PARAMS: Readonly<SurferParams> = {
   enabled: false, preset: 'female', stance: 'regular', board: 'thruster', outfit: 'season', pose: 'sit', phaseT: 0, play: true, motion: 'clip', onLand: false, carrySide: 'auto',
   pile: false, gang: false, pileX: 123, pileZ: 47, pileHeadingDeg: 0,
-  compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1,
+  compression: 0, lean: 0, twist: 0, reach: 0, balance: true, balanceAmount: 1, speedMs: 0,
   x: TIP[0] - 25, z: TIP[1] + 45, headingDeg: 225, heightNudgeM: 0, pitchNudgeDeg: 0,
   idle: true, faceManual: false, expression: 'none', faceBlink: 0, faceSmile: 0, faceJaw: 0, faceBrows: 0, faceSquint: 0, gazeYawDeg: 0, gazePitchDeg: 0,
 };

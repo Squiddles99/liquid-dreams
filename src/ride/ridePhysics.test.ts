@@ -299,3 +299,27 @@ describe('the crest carries her (R1.5 §1)', () => {
     expect(b.vx).toBeGreaterThanOrEqual(CREST_CARRY * 9 - 0.1);
   });
 });
+
+describe('the rider\'s body state in the ride (ride-speed Task 2)', () => {
+  it('LT and RT move comH at the capped rate; compression follows it', () => {
+    const b = startBody(0, 0, 0, slope(0.3, 0, 0));
+    b.phase = 'ride';
+    b.vz = -8;
+    run(b, { ...NO_CONTROLS, crouch: 1 }, () => slope(0.3, 0, 0), 0.1);
+    expect(b.comH).toBeCloseTo(0.6 - 0.3, 2); // 3 /s for 0.1 s
+    run(b, { ...NO_CONTROLS, crouch: 1 }, () => slope(0.3, 0, 0), 1);
+    expect(b.comH).toBeCloseTo(0, 6);
+    expect(b.compression).toBeCloseTo(1, 6);
+  });
+  it('nothing new acts outside the ride: LB and RB through the paddle and pop-up do nothing', () => {
+    const b = startBody(0, 0, 90, flatWater());
+    run(b, { ...NO_CONTROLS, paddle: true, stall: true, pump: true }, () => flatWater(), 1);
+    expect(b.stall).toBe(0);
+    expect(b.comH).toBeCloseTo(0.6);
+    b.phase = 'popup';
+    b.phaseT = 0;
+    b.vx = 5;
+    run(b, { ...NO_CONTROLS, stall: true, pump: true }, () => flatWater(), 0.3);
+    expect(b.stall).toBe(0);
+  });
+});

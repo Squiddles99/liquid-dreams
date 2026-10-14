@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  BINDINGS_KEY, DEFAULT_BINDINGS, bindKey, bindPad, buttonLabel, currentBindings, keyLabel, resetBindingsCache, sanitizeBindings, setBindings,
+  BINDINGS_KEY, DEFAULT_BINDINGS, KEY_ACTIONS, bindKey, bindPad, buttonLabel, currentBindings, keyLabel, resetBindingsCache, sanitizeBindings, setBindings,
 } from './bindings';
 
 const memory = () => {
@@ -44,7 +44,7 @@ describe('the player remaps the ride (Andrew 2026-10-04)', () => {
     expect(sanitizeBindings(null)).toEqual(DEFAULT_BINDINGS);
     expect(sanitizeBindings({ keys: { popup: 'Escape', paddle: 42 }, pad: { popup: 9 } })).toEqual(DEFAULT_BINDINGS);
     const dup = sanitizeBindings({ keys: { popup: 'KeyJ', next: 'KeyJ' } });
-    expect(new Set(Object.values(dup.keys)).size).toBe(6);
+    expect(new Set(Object.values(dup.keys)).size).toBe(KEY_ACTIONS.length);
     expect(dup.keys.next).toBe('KeyJ');
   });
 
@@ -56,5 +56,15 @@ describe('the player remaps the ride (Andrew 2026-10-04)', () => {
     resetBindingsCache();
     expect(currentBindings(s).keys.next).toBe('KeyT');
     expect(JSON.parse(s.m.get(BINDINGS_KEY)!).keys.next).toBe('KeyT');
+  });
+});
+
+describe('stall and pump bindings (ride-speed spec §3)', () => {
+  it('a saved set from before stall and pump existed gets them from the defaults', () => {
+    const b = sanitizeBindings({ keys: { paddle: 'KeyW' }, pad: {} });
+    expect(b.keys.stall).toBe('ShiftLeft');
+    expect(b.keys.pump).toBe('KeyE');
+    expect(b.pad.stall).toBe(4);
+    expect(b.pad.pump).toBe(5);
   });
 });
