@@ -551,8 +551,34 @@ export function computeReefField(req: ReefFieldRequest): ReefField {
     smoothFieldAmplitude(field);
     if (req.bed.band) smoothOnsetSizes(field, req.bed.band, SIZE_SMOOTHING_M, req.bed.bandDir);
   }
+  carryHeldUp(field);
   return field;
 }
+
+/**
+ * A level a node has not reached (its running maximum below the level: time 0) takes the level below's time where that
+ * level is held (negative): a higher level is held no shorter than the one below (womb-story STOP 2 ask 4, 2026-10-14).
+ * Read between nodes the record is bilinear, and at a level's band edge a held node (-3.4 s) beside a 0 made a wait of
+ * 1-2.5 s that no node has: a second curl near the tip at 12 ft (270/14). With every node's level k at or under its level
+ * k - 1 the blend keeps the order. A wave reads a level only where the running maximum has reached it, so the unbroken
+ * node's value is only ever read in that blend. A reached level whose time exceeds the level below's (the curl and the
+ * along-crest smoothing run per level) is clamped to it: the same law at the node.
+ */
+function carryHeldUp(f: ReefField): void {
+  const R = ONSET_RECORD_LENGTH, n = f.tau.length, rec = f.onset;
+  let worst = 0;
+  for (let i = 0; i < n; i++) {
+    const b = i * R, run = rec[b];
+    for (let k = 1; k < ONSET_LEVELS; k++) {
+      const below = rec[b + 1 + 2 * (k - 1)], j = b + 1 + 2 * k;
+      // Not reached and unbroken below too (0 over 0 or over a time since onset): the sentinel stays.
+      if (run < ONSET_LEVEL_Q[k] && rec[j] === 0 && below >= 0) continue;
+      if (rec[j] > below) { if (run >= ONSET_LEVEL_Q[k]) worst = Math.max(worst, rec[j] - below); rec[j] = below; }
+    }
+  }
+  if (CARRY_LOG) console.log(`carryHeldUp: the most a reached level's time exceeded the level below (s): ${worst.toFixed(3)}`);
+}
+const CARRY_LOG = typeof process !== 'undefined' && !!process.env?.CARRY_LOG;
 
 /**
  * The onset record (breaking.ONSET_RECORD_LENGTH per node), in one march in arrival order, semi-Lagrangian: each node

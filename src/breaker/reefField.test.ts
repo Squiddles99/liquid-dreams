@@ -235,12 +235,32 @@ describe('the onset record', () => {
       // Task 2) reads negative beside it.
       for (let k = 1; k < ONSET_LEVELS; k++) if (f.onset[i * R] >= ONSET_LEVEL_Q[k]) worst = Math.max(worst, f.onset[i * R + 1 + 2 * k] - f.onset[i * R + 1 + 2 * (k - 1)]);
       // Unbroken: the running maximum below the level by more than the dips the carry bridges (3%).
-      for (let k = 0; k < ONSET_LEVELS; k++) if (0.97 * ONSET_LEVEL_Q[k] > f.onset[i * R] && f.onset[i * R + 1 + 2 * k] !== 0) unbrokenRunning++;
+      // An unreached level may carry the level below's hold (reefField.carryHeldUp, womb-story 2026-10-14): no other clock.
+      for (let k = 0; k < ONSET_LEVELS; k++) if (0.97 * ONSET_LEVEL_Q[k] > f.onset[i * R] && f.onset[i * R + 1 + 2 * k] !== 0) {
+        const below = k > 0 ? f.onset[i * R + 1 + 2 * (k - 1)] : 0;
+        if (!(below < 0 && f.onset[i * R + 1 + 2 * k] === below)) unbrokenRunning++;
+      }
     }
     // 1 ms (was 0.1 ms): after the 2 m breaking floor (small-swell) the record's Float32 rounding reads 0.175 ms here; a
     // real inversion would be frames, and 1 ms is still far under one.
     expect(worst, "the most a level's time exceeds the level below it (s)").toBeLessThanOrEqual(1e-3);
     expect(unbrokenRunning, 'unbroken levels with a clock running (a broken neighbour blended in)').toBe(0);
+  });
+  it('read anywhere (between nodes), a higher level is held no shorter than the level below (270/14 tide 0.5, the game field)', { timeout: 60_000 }, () => {
+    // womb-story STOP 2 ask 4 (2026-10-14): 12 ft at t+1 waited 2.71 s at (-117.1, -18.7) between 4.07 and 3.40 (two curls
+    // near the tip): level 4's band edge, where a node not yet at the level stored 0 beside held nodes (-3.4 s) and the
+    // bilinear read made a wait of 1-2.5 s that no node has (tools/_notchLevels.ts).
+    const g = computeReefField({ bed: reefBeds(2).bed, coast: coast1, periodS: 14, fromDeg: 270, tideM: 0.5, smooth: true, refractFloorM: REFRACT_FLOOR_M });
+    let worst = 0, at = '';
+    for (let x = TIP[0] - 40; x <= TIP[0] + 60; x += 0.7) for (let z = TIP[1] - 80; z <= TIP[1] + 40; z += 0.7) {
+      const r = sampleOnset(g, x, z);
+      if (!r) continue;
+      for (let k = 1; k < ONSET_LEVELS; k++) if (r[0] >= ONSET_LEVEL_Q[k]) {
+        const d = r[1 + 2 * k] - r[1 + 2 * (k - 1)];
+        if (d > worst) { worst = d; at = `(${x.toFixed(1)}, ${z.toFixed(1)}) level ${k}: ${r[1 + 2 * k].toFixed(2)} vs ${r[1 + 2 * (k - 1)].toFixed(2)}`; }
+      }
+    }
+    expect(worst, `the most a level's time exceeds the level below it read between nodes (s), at ${at}`).toBeLessThanOrEqual(1e-3);
   });
   it('the time since onset and the height of the throw match a march up the ray, for the waves that break at the Womb', () => {
     // The record is read between levels (×1.44 apart) and blends four nodes, so it is judged against a march up the ray
