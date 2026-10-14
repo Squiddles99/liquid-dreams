@@ -1,4 +1,4 @@
-import { COM_REST, LOAD_MAX, LOAD_TAU_S, OPEN_FACE, type RideContext, type RiderState, UNDER_LIP_COVER, compressionOf, handDragAccel, headHeight, newRiderState, restLoad, rideDrag, stepCom, stepRiderBody, weaveSteer } from './riderBody';
+import { COM_REST, DEFAULT_POWER, LOAD_MAX, LOAD_TAU_S, OPEN_FACE, type RideContext, type RiderState, UNDER_LIP_COVER, compressionOf, handDragAccel, headHeight, newRiderState, restLoad, rideDrag, stepCom, stepRiderBody, weaveSteer } from './riderBody';
 import type { WaterAt, WaterFn } from './water';
 
 export { OPEN_FACE, type RideContext, type StallWeights } from './riderBody';
@@ -169,9 +169,19 @@ export function rightOf(headingDeg: number): [number, number] {
   return [Math.cos(h), Math.sin(h)];
 }
 
-export function startBody(x: number, z: number, headingDeg: number, water: WaterFn, rider: { standH: number; massKg: number; prone?: boolean } = { standH: 1.65, massKg: 55 }): RideBody {
+/** The rider a ride starts with (from the preset): size, power (rider power profiles; the default is Shazza's), prone. */
+export interface RideRider {
+  standH: number;
+  massKg: number;
+  prone?: boolean;
+  legPowerWkg?: number;
+  paddleStrength?: number;
+}
+
+export function startBody(x: number, z: number, headingDeg: number, water: WaterFn, rider: RideRider = { standH: 1.65, massKg: 55 }): RideBody {
   const w = water(x, z);
-  return { ...newRiderState(rider.standH, rider.massKg), pvx: 0, pvy: 0, pvz: 0, weaveT: 0, prone: rider.prone ?? false, phase: 'paddle', phaseT: 0, x, z, y: w.y, vy: 0, vx: 0, vz: 0, headingDeg, carve: 0, compression: 0, caught: false, catchT: 0, stallT: 0, idleT: 10, water: w, tiltX: w.slopeX, tiltZ: w.slopeZ, surfY: w.y };
+  const power = { legPowerWkg: rider.legPowerWkg ?? DEFAULT_POWER.legPowerWkg, paddleStrength: rider.paddleStrength ?? DEFAULT_POWER.paddleStrength };
+  return { ...newRiderState(rider.standH, rider.massKg, power), pvx: 0, pvy: 0, pvz: 0, weaveT: 0, prone: rider.prone ?? false, phase: 'paddle', phaseT: 0, x, z, y: w.y, vy: 0, vx: 0, vz: 0, headingDeg, carve: 0, compression: 0, caught: false, catchT: 0, stallT: 0, idleT: 10, water: w, tiltX: w.slopeX, tiltZ: w.slopeZ, surfY: w.y };
 }
 
 /** The water under the whole board: its height (nose, middle and tail) and slope (nose to tail along it, across from the middle). */
@@ -241,7 +251,7 @@ export function stepRide(b: RideBody, c: RideControls, water: WaterFn, dt: numbe
   const paddling = b.phase === 'paddle' && c.paddle;
   b.idleT = paddling ? 0 : b.idleT + dt;
   if (paddling) {
-    let push = PADDLE_THRUST;
+    let push = PADDLE_THRUST * b.paddleStrength; // the rider's paddling strength (rider power profiles)
     const along = (b.vx - w.ux) * fx + (b.vz - w.uz) * fz;
     const lift = liftAt(w, b.headingDeg);
     if (lift > 0 && along < ASSIST_TO * w.c) push += tune.assistAccel * lift;

@@ -1,7 +1,7 @@
 import type { CameraPose } from '../dev/momentLink';
 import { type Bindings, currentBindings, keyLabel } from './bindings';
 import { PadEdges, type RideKeys, lookFrom, playRumble, readPad, rideControls } from './rideInput';
-import { OPEN_FACE, type RideBody, type RideContext, type RideEvent, type RideTuning, POPUP_S, TUNING, speedOf, startBody, stepRide } from './ridePhysics';
+import { OPEN_FACE, type RideBody, type RideContext, type RideEvent, type RideRider, type RideTuning, POPUP_S, TUNING, speedOf, startBody, stepRide } from './ridePhysics';
 import { type LookInput, RideCamera, rideBoardFrame, rideSurferParams } from './ridePose';
 import { readFrontSettings } from '../frontend/frontSettings';
 import { LoadMeter, meterShown } from './LoadMeter';
@@ -71,7 +71,7 @@ export class RideSession {
     return this.body !== null;
   }
 
-  begin(x: number, z: number, headingDeg: number, water: WaterFn, tune: RideTuning = TUNING.intermediate, rider?: { standH: number; massKg: number; prone?: boolean }): void {
+  begin(x: number, z: number, headingDeg: number, water: WaterFn, tune: RideTuning = TUNING.intermediate, rider?: RideRider): void {
     this.body = startBody(x, z, headingDeg, water, rider);
     this.tune = tune;
     const fs = readFrontSettings();

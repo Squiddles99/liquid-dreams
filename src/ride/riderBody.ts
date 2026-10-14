@@ -48,6 +48,10 @@ export interface RiderState {
   /** The rider's standing height (m) and mass (kg), from the preset. */
   standH: number;
   massKg: number;
+  /** The rider's power (rider power profiles): leg power (W/kg), paddling strength (× thrust), the legs' CoM travel (m). */
+  legPowerWkg: number;
+  paddleStrength: number;
+  comTravelM: number;
   pumpAcc: number;
   extending: boolean;
   driveT: number;
@@ -76,21 +80,41 @@ export function compressionOf(comH: number): number {
   return comH <= COM_REST ? (COM_REST - comH) / COM_REST : (COM_REST - comH) / (1 - COM_REST);
 }
 
-/** comH toward the target at the legs' rate (COM_RATE). */
-export function stepCom(comH: number, target: number, dt: number): number {
-  const m = COM_RATE * dt;
-  return comH + clamp(target - comH, -m, m);
-}
-
-export function newRiderState(standH: number, massKg: number): RiderState {
-  return {
-    comH: COM_REST, foreAft: 0, hand: 0, tuck: 0, stall: 0, stallW: { tall: 1, hand: 0, lowBarrel: 0, standBarrel: 0 },
-    load: 1, n0: 1, pumpGain: 0, pumpPhase: 0, driveOut: 0, standH, massKg, pumpAcc: 0, extending: false, driveT: 0, stallPeak: false, loadPeak: 0, lowT: 0,
-  };
+/** comH toward the target at the legs' rate (COM_RATE); rising at most `upRate` (the legs' power against the load). */
+export function stepCom(comH: number, target: number, dt: number, upRate = COM_RATE): number {
+  return comH + clamp(target - comH, -COM_RATE * dt, Math.min(COM_RATE, upRate) * dt);
 }
 
 const G = 9.81;
 export const PUMP_POWER_WKG = 15;
+/** The height the tuning was built on (Shazza, the default rider): the legs' CoM travel scales from it. */
+export const BASE_STAND_H = 1.65;
+
+/** A rider's power, from their preset (rider power profiles). */
+export interface RiderPower {
+  legPowerWkg: number;
+  paddleStrength: number;
+}
+export const DEFAULT_POWER: Readonly<RiderPower> = { legPowerWkg: PUMP_POWER_WKG, paddleStrength: 1 };
+export const riderBodyOf = (p: RiderPower): RiderPower => ({ legPowerWkg: p.legPowerWkg, paddleStrength: p.paddleStrength });
+
+/**
+ * How fast the legs can straighten (comH per s) against a load (g): their power over the force times the travel
+ * (P = load·G·travel·rate). Free at a light load (COM_RATE); under a carve's load the weaker legs rise slower, so each
+ * pump gives less: the honest place a power gap shows (rider power profiles).
+ */
+export function legRiseRate(r: Pick<RiderState, 'legPowerWkg' | 'comTravelM'>, load: number): number {
+  return Math.min(COM_RATE, r.legPowerWkg / (Math.max(load, 1e-3) * G * r.comTravelM));
+}
+
+export function newRiderState(standH: number, massKg: number, power: RiderPower = DEFAULT_POWER): RiderState {
+  return {
+    comH: COM_REST, foreAft: 0, hand: 0, tuck: 0, stall: 0, stallW: { tall: 1, hand: 0, lowBarrel: 0, standBarrel: 0 },
+    load: 1, n0: 1, pumpGain: 0, pumpPhase: 0, driveOut: 0, standH, massKg, pumpAcc: 0, extending: false, driveT: 0, stallPeak: false, loadPeak: 0, lowT: 0,
+    legPowerWkg: power.legPowerWkg, paddleStrength: power.paddleStrength, comTravelM: COM_TRAVEL_M * standH / BASE_STAND_H,
+  };
+}
+
 export const PUMP_EFF = 0.8;
 export const LOAD_TAU_S = 0.05;
 
@@ -108,10 +132,10 @@ export function restLoad(ty: number): number {
  * (load − n0) as the centre of mass rises, and give it back as it falls. Over a cycle that nets a gain only if they rose
  * under the load and fell without it. A gain loses (1 − eff) and is capped at the legs' power.
  */
-export function pumpEnergy(load: number, n0: number, dComH: number, dt: number, eff: number): number {
-  const e = (load - n0) * G * COM_TRAVEL_M * dComH;
+export function pumpEnergy(load: number, n0: number, dComH: number, dt: number, eff: number, travelM = COM_TRAVEL_M, powerWkg = PUMP_POWER_WKG): number {
+  const e = (load - n0) * G * travelM * dComH;
   if (e === 0) return 0; // not −0: nothing moved
-  return e > 0 ? Math.min(e * eff, PUMP_POWER_WKG * dt) : e;
+  return e > 0 ? Math.min(e * eff, powerWkg * dt) : e;
 }
 
 /**
@@ -270,9 +294,9 @@ export function stepRiderBody(r: RiderState, i: BodyInput, dt: number): number {
   const forcing = i.crouch < -0.1;
   if (!forcing && i.ctx.cover >= UNDER_LIP_COVER) target = Math.min(target, comCap(i.ctx.roomM, r.standH));
   const prev = r.comH;
-  r.comH = stepCom(r.comH, target, dt);
+  r.comH = stepCom(r.comH, target, dt, legRiseRate(r, r.load));
   const dH = r.comH - prev;
-  const e = pumpEnergy(r.load, r.n0, dH, dt, i.assist ? PUMP_ASSIST_EFF : PUMP_EFF);
+  const e = pumpEnergy(r.load, r.n0, dH, dt, i.assist ? PUMP_ASSIST_EFF : PUMP_EFF, r.comTravelM, r.legPowerWkg);
   // The cycle's books: a cycle closes as the rider starts to compress after an extension.
   if (dH > 1e-6) r.extending = true;
   else if (dH < -1e-6 && r.extending) {
