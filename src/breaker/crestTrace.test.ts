@@ -274,19 +274,26 @@ describe('one hold channel: until carries the hold to the stations (one-curl Tas
 /** The Womb's ridden run: stations within this distance of the tip (shelf-polish Task 2). */
 const RIDDEN_M = 220;
 
-describe('one curl per wave on one clock (one-curl Task 4)', () => {
+// 2026-10-14 (womb-story STOP 1b ruling 5): at 225/15 the right (8 m by ruling) breaks before the tip, an onset earlier along
+// its side: pinned at its count there (6 ft 15, 8 ft 10, 12 ft 0); at 270/14 tide 0.5, the story's swell, it is the bar.
+const ONE_CURL_SWELLS = [
+  { periodS: 15, fromDeg: 225, tideM: 0, pin: { 6: 15, 8: 10, 12: 0 } as Record<number, number> },
+  { periodS: 14, fromDeg: 270, tideM: 0.5, pin: null },
+];
+for (const sw of ONE_CURL_SWELLS) describe(`one curl per wave on one clock (one-curl Task 4), ${sw.fromDeg}/${sw.periodS}`, () => {
   // The game's field (smoothed, the refraction floor, the default curl), the biggest set wave of each size.
-  const game = computeReefField({ bed: reefBeds(2).bed, coast: reefBeds(2).coast, periodS: 15, fromDeg: 225, tideM: 0, smooth: true, refractFloorM: FLOOR_M });
-  const gctx: WaveContext = { omega: game.omega, travelX: game.far.dirX, travelZ: game.far.dirZ };
+  const game = computeReefField({ bed: reefBeds(2).bed, coast: reefBeds(2).coast, periodS: sw.periodS, fromDeg: sw.fromDeg, tideM: sw.tideM, smooth: true, refractFloorM: FLOOR_M });
+  const gctx: WaveContext = { omega: game.omega, travelX: game.far.dirX, travelZ: game.far.dirZ }, gMinH = minRibbonHeight(fieldBreakingHeight(game, P), P);
   for (const ft of [6, 8, 12]) {
     it(`${ft} ft: along each side from the curl the onset never comes earlier, and the wait beyond it never shortens`, { timeout: 120_000 }, () => {
-      const w = testWave(setWaveHeight(ft));
+      // On this swell's own period and direction.
+      const w = { ...testWave(setWaveHeight(ft)), omega: gctx.omega, travelX: gctx.travelX, travelZ: gctx.travelZ };
       const tb0 = timeSinceOnset(game, w, PX, PZ, gctx, P), peak = w.arrivalS + sampleField(game, PX, PZ).tau - (tb0 ?? 0);
       console.log(`${ft} ft: the peak's section broke at ${peak.toFixed(3)} s (tb at the crest's arrival ${tb0?.toFixed(3) ?? 'null'})`);
       const bad: string[] = [];
       let brokenChecked = 0, waitChecked = 0;
       for (const dt of [1, 3, 6]) {
-        const entries = traceStations(game, [w], peak + dt, gctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: MIN_H, spacingM: 1 });
+        const entries = traceStations(game, [w], peak + dt, gctx, { cameraX: LINEUP[0], cameraZ: LINEUP[1], params: P, minHeightM: gMinH, spacingM: 1 });
         // Runs of drawn stations (gaps split them); the curl is the run's station with the largest tb.
         // shelf-polish Task 2 (Fable's ruling): the Womb's ridden run only, stations within RIDDEN_M of the tip; bar unchanged.
         // Excluded: the inner shelf inside the right, 226–250 m out at the trace's cap (TAPER_NEAR_M), is a closeout, which
@@ -325,7 +332,8 @@ describe('one curl per wave on one clock (one-curl Task 4)', () => {
       console.log(`${ft} ft: ${brokenChecked} broken and ${waitChecked} waiting station steps checked`);
       expect(brokenChecked, 'broken station steps checked').toBeGreaterThan(30);
       expect(waitChecked, 'waiting station steps checked').toBeGreaterThan(30);
-      expect(bad).toEqual([]);
+      if (sw.pin) { if (bad.length) console.log(bad.join(String.fromCharCode(10))); expect(bad.length).toBeLessThanOrEqual(sw.pin[ft]); }
+      else expect(bad).toEqual([]);
     });
   }
 });
