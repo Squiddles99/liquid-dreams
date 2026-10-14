@@ -1791,7 +1791,7 @@ export class App {
     const water = this.rideWater(this.clock.simTime), w = water(at.x, at.z);
     const experience = this.experience();
     const rider = PRESETS[this.surferParams.preset];
-    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water, TUNING[experience], { standH: rider.heightM, massKg: rider.weightKg, prone: this.surferParams.board === 'bodyboard' });
+    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water, TUNING[experience], { standH: rider.heightM, massKg: rider.weightKg, prone: this.surferParams.board === 'bodyboard', legPowerWkg: rider.legPowerWkg, paddleStrength: rider.paddleStrength });
     const keys = currentBindings().keys;
     const level = experience === 'intermediate' ? '' : ` (${experience})`;
     this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}${level}: paddle (${keyLabel(keys.paddle)}) as it lifts you, ${keyLabel(keys.popup)} to pop up`);
