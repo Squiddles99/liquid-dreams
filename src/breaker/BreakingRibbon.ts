@@ -1,9 +1,10 @@
 import { billowNode } from '../whitewater/billow';
+import { boreFromStations, boreLook } from '../whitewater/whitewaterLook';
 import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, freshFoamWeightNode, solidBoilNode } from '../whitewater/pileChurn';
 import { curlFoamNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
 import * as THREE from 'three/webgpu';
 import {
-  Break, Fn, If, Loop, abs, atan, attribute, floor, cameraPosition, clamp, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
+  Break, Fn, If, Loop, abs, atan, attribute, floor, fwidth, cameraPosition, clamp, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
   mx_noise_float, storage, uniform, varying, varyingProperty, vec2, vec3, vec4, vertexIndex,
 } from 'three/tsl';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
@@ -476,6 +477,11 @@ export class BreakingRibbon {
     this.surface.setCamera?.(camera);
     this.shading?.model.sim.slopeVariance.forEach((v, c) => { this.slopeVariance[c].value = v; });
     const n = packStations(entries, this.stationsAttr.array as Float32Array, periodS);
+    // The bore this frame (breaking-look item 1): both surfaces' white water reads its height and flow.
+    const bore = boreFromStations(entries.slice(0, n).filter((e): e is Station => !e.gap)
+      .map((s) => ({ nx: s.nx, nz: s.nz, c: s.c, A: s.section.A, boil: boilWeight(s.tb, s.Hb ?? s.H, periodS, 1) })));
+    boreLook.height.value = bore.height;
+    boreLook.flow.value.set(...bore.flow);
     this.stationCount = n;
     this.rows.value = n;
     this.geometry.setDrawRange(0, ribbonDrawCount(n));
@@ -645,7 +651,8 @@ export class BreakingRibbon {
     // The solid boil's billows (7b S3 ruling): an isotropic 3-D field over (detail x, height above the tide, detail z) — on
     // the near-vertical face the detail coordinate barely moves, the height does — whose gradient along the surface tilts
     // the foam volume's normal, blended in where the boil is solid.
-    const billow = billowNode(vec3(vDetail.x, positionWorld.y.sub(model.seabed.tide), vDetail.y), model.sim.time);
+    // L1 (breaking-look): the baked tile at three octaves, flowing with the bore (boreLook), octaves faded by the pixel's size.
+    const billow = billowNode(vec3(vDetail.x, positionWorld.y.sub(model.seabed.tide), vDetail.y), model.sim.time, boreLook.flow, length(fwidth(positionWorld)));
     const bumped = normalize(normal.sub(billow.grad.sub(normal.mul(dot(normal, billow.grad)))));
     const billowNormal = normalize(mix(normal, bumped, solid));
     const sunVis = shading.sunlight ? shading.sunlight.visibilityNode(positionWorld.xz) : undefined;
