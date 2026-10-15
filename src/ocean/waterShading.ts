@@ -46,8 +46,10 @@ export interface WaterSurfaceInputs {
   /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
   overlay?: { depth: N; tau: N; depthOn: N; crestOn: N; foamMap?: N; foamOn?: N; sunOn?: N };
   /** The solid boil's billows (billow.ts; 7b S3): the foam volume lit by their bump normal (wrap 0.5) and its sky and sun
-   * occluded in their troughs by their height (billowSharesNode); absent, the shading normal and no occlusion. */
-  foamBillow?: { normal: N; height: N };
+   * occluded in their troughs by their height (billowSharesNode); absent, the shading normal and no occlusion. `wall`
+   * (breaking-look item 1, whitewaterLook.wallShadeNode): the wall's top vs base and its clumps (the sky's and the sun's
+   * shares, the cover, the isotropic share and the brightness), applied to the volume only. */
+  foamBillow?: { normal: N; height: N; wall?: { skyMul: N; sunMul: N; coverMul: N; isotropic: N; bright: N } };
   /** The dense foam volume's exposure (FoamField.volumeExposure, a dev dial; 7b S3 ruling 3); absent 1. */
   foamExposure?: N;
   /** The shaded point (world m): with it the colour is fogged through the whitewater's mist slab (sky.mist; §6.1). */
@@ -193,14 +195,18 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // The solid boil's billows (7b S3 ruling): their bump normal lights the volume, their troughs hide some sky and sun.
   const billow = i.foamBillow;
   const shares = billow ? billowSharesNode(billow.height) : null;
+  const wall = billow?.wall;
   const volumeLight = mistLightNode({
-    cosView: dot(v.negate(), l), nDotL: billow ? dot(billow.normal, l) : nDotL, sunVisibility: sv, isotropic: 0.6, groundColour: column,
-    skyShare: shares?.sky, sunShare: shares?.sun,
+    cosView: dot(v.negate(), l), nDotL: billow ? dot(billow.normal, l) : nDotL, sunVisibility: sv, isotropic: wall ? wall.isotropic : 0.6, groundColour: column,
+    skyShare: shares ? (wall ? shares.sky.mul(wall.skyMul) : shares.sky) : undefined, sunShare: shares ? (wall ? shares.sun.mul(wall.sunMul) : shares.sun) : undefined,
   }, sky);
   // Exposed for itself (7b S3 ruling 3: a camera exposes for the whitewater): at 1 the volume's radiance sat on the tone
   // curve's flat shoulder and its billows' shading could not show.
-  const foamSeen = foamVolume ? mix(foamLace, volumeLight.mul(i.foamExposure ?? float(1.0)), foamVolume) : foamLace;
-  const colour = mix(water, foamSeen, saturate(i.foam));
+  const volumeSeen = volumeLight.mul(i.foamExposure ?? float(1.0));
+  const foamSeen = foamVolume ? mix(foamLace, wall ? volumeSeen.mul(wall.bright) : volumeSeen, foamVolume) : foamLace;
+  // The wall's cover (item 1): its base thins (the column's turquoise shows) and its clumps vary it; the volume only.
+  const cover = foamVolume && wall ? saturate(i.foam).mul(mix(float(1.0), wall.coverMul, foamVolume)) : saturate(i.foam);
+  const colour = mix(water, foamSeen, cover);
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
   // would paint the whole flat field NaN, so the edge is floored and a flat field draws no line.

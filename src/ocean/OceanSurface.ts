@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { rainRipplesNode } from '../weather/rainRipples';
 import {
-  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, min, mix, mx_noise_float, mx_worley_noise_vec2, normalize, positionLocal, positionWorld, saturate, select, smoothstep, sqrt,
+  Fn, If, cameraPosition, clamp, dot, float, floor, fwidth, int, ivec2, length, max, min, mix, mx_noise_float, mx_worley_noise_vec2, normalize, positionLocal, positionWorld, saturate, select, smoothstep, sqrt,
   textureLoad, uniform, varying, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { seabedTerms } from '../seabed/seabedShading';
@@ -11,6 +11,8 @@ import type { OceanSimulation } from './OceanSimulation';
 import { buildPolarGrid } from './polarGrid';
 import { reefInFrontNode, waterVolumeColourNode } from './WaterVolume';
 import { churnSlopeNode } from '../whitewater/pileChurn';
+import { billowNode } from '../whitewater/billow';
+import { boreLook, heightFracNode, wallShadeNode } from '../whitewater/whitewaterLook';
 import { type WaterOpticsUniforms, shadeWater, shadeWaterFromBelow } from './waterShading';
 import type { WaterSurfaceModel } from './waterSurface';
 import type { SunlightSource } from '../land/SunlightMap';
@@ -285,15 +287,32 @@ export class OceanSurface {
     const tear = saturate(breakFoam.div(max(foamWeight, 1e-3)));
     const setFoamLook = setFoamPattern(foamWeight, waterFoamFrame(vBaseXZ, axis), model.sim.time, aged, tear);
 
-    material.colorNode = shadeWater(
-      { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y, breakFoam: min(setFoamLook.x, breakFoam),
-        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld, foamExposure: options.foamMap?.volumeExposure,
-        landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
-        overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
-          foamMap: (foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0)).add(surfFoam.mul(0.5)), foamOn: this.overlayFoam, sunOn: this.overlaySun } },
-      sky,
-      optics,
-    );
+    // The white-water wall where the sheet draws it (breaking-look item 1, shared with the ribbon): the baked billows (L1)
+    // flowing with the bore and the wall's top/base/clumps, read only where the foam volume can show (its weight > 0.5).
+    const volumeWeight = min(setFoamLook.x, breakFoam);
+    const lod = length(fwidth(positionWorld));
+    // In a Fn: the If needs a stack.
+    material.colorNode = Fn(() => {
+      const billowGrad = vec3(0.0).toVar(), billowHC = vec2(1.0, 1.0).toVar();
+      If(volumeWeight.greaterThan(0.5), () => {
+        const b = billowNode(vec3(vBaseXZ.x, positionWorld.y.sub(model.seabed.tide), vBaseXZ.y), model.sim.time, boreLook.flow, lod);
+        billowGrad.assign(b.grad);
+        billowHC.assign(vec2(b.h, b.clump));
+      });
+      const billowNormal = normalize(normal.sub(billowGrad.sub(normal.mul(dot(normal, billowGrad)))));
+      const wall = wallShadeNode(heightFracNode(positionWorld.y, model.seabed.tide, boreLook.height), normal.y, billowHC.y);
+
+      return shadeWater(
+        { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y, breakFoam: volumeWeight,
+          foamBillow: { normal: billowNormal, height: billowHC.x, wall },
+          unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld, foamExposure: options.foamMap?.volumeExposure,
+          landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
+          overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
+            foamMap: (foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0)).add(surfFoam.mul(0.5)), foamOn: this.overlayFoam, sunOn: this.overlaySun } },
+        sky,
+        optics,
+      );
+    })();
 
     // The ribbon's footprint (spec §7.2): the sheet steps aside where the breaking ribbon draws the wave, sampled at the
     // displaced position as the footprint pass rasterises the ribbon's. Outside the mask's grid it never discards.

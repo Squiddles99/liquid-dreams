@@ -1,5 +1,5 @@
-import { billowNode } from '../whitewater/billow';
-import { boreFromStations, boreLook } from '../whitewater/whitewaterLook';
+import { billowLiftNode, billowNode } from '../whitewater/billow';
+import { boreFromStations, boreLook, heightFracNode, wallShadeNode } from '../whitewater/whitewaterLook';
 import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, freshFoamWeightNode, solidBoilNode } from '../whitewater/pileChurn';
 import { curlFoamNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
 import * as THREE from 'three/webgpu';
@@ -617,7 +617,13 @@ export class BreakingRibbon {
       vFrame.assign(b.foamFrame);
       return churnHeightNode(boil, b.foamFrame, model.sets.time, model.sets.churn);
     })();
-    material.positionNode = vec3(pos.x, model.seabed.tide.add(pos.y).add(churn).sub(radial.mul(radial).div(2 * EARTH_RADIUS_M)), pos.z);
+    // The wall's silhouette (breaking-look item 1): lifted along the normal by the billows' 2.5 m octave × 0.15 A × the solid
+    // boil (pileChurn.solidBoil from the vertex's own boil freshness and foam), so its outline is ragged, not the mesh's line.
+    const vertNormal: N = attribute('ribbonNormal', 'vec4').xyz;
+    const vertSolid = solidBoilNode(vBoil, vSetFoam);
+    const lift = billowLiftNode(vec3(attribute('ribbonDetail', 'vec4').x, pos.y, attribute('ribbonDetail', 'vec4').y), model.sim.time, boreLook.flow,
+      stationsRO.element(row.mul(STATION_VEC4S).add(3)).x, vertSolid);
+    material.positionNode = vec3(pos.x, model.seabed.tide.add(pos.y).add(churn).sub(radial.mul(radial).div(2 * EARTH_RADIUS_M)), pos.z).add(vertNormal.mul(lift));
 
     const toCamera = cameraPosition.sub(positionWorld);
     const distance = length(toCamera);
@@ -655,12 +661,14 @@ export class BreakingRibbon {
     const billow = billowNode(vec3(vDetail.x, positionWorld.y.sub(model.seabed.tide), vDetail.y), model.sim.time, boreLook.flow, length(fwidth(positionWorld)));
     const bumped = normalize(normal.sub(billow.grad.sub(normal.mul(dot(normal, billow.grad)))));
     const billowNormal = normalize(mix(normal, bumped, solid));
+    // The wall's top vs base and its clumps (item 1, whitewaterLook): the clumps only where the boil is solid.
+    const wall = wallShadeNode(heightFracNode(positionWorld.y, model.seabed.tide, boreLook.height), normal.y, mix(float(1.0), billow.clump, solid));
     const sunVis = shading.sunlight ? shading.sunlight.visibilityNode(positionWorld.xz) : undefined;
     const bed = seabedTerms({ surfacePos: positionWorld, normal, viewDir }, model.seabed, sky, optics, sunVis);
     const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
       { normal, viewDir, distance, foam: max(max(fft.foam, foamCover), fringe), foamShade: mix(foamLook.y, float(1.0), saturate(vFringe)), breakFoam: max(foamCover, fringe), lip, lipThickness: thickness, underside,
-        foamBillow: { normal: billowNormal, height: mix(float(1.0), billow.h, solid) },
+        foamBillow: { normal: billowNormal, height: mix(float(1.0), billow.h, solid), wall },
         tube: { sunLip: vLight.x, sunBody: vLight.w, skyOpen: vLight.y, lipThickness: vLight.z },
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld, foamExposure: foamMap?.volumeExposure,
