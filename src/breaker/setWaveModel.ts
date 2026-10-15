@@ -461,6 +461,17 @@ const FACE_IN = { standing: FACE_IN_STANDING };
 export const setFaceInStanding = (v: number): void => { FACE_IN.standing = v; };
 /** The drawn face's squeeze stays between these shares of the half wavelength (guards, not dials): at LEAN_FRONT_MIN (0.3, the
  * swell's) as its ceiling the 12 ft broken face came out shorter than the drawing's and the drawing was squeezed into it. */
+/**
+ * The stood face's steepest slope (overnight fix 2026-10-16 T2; Andrew 2026-10-14 "no wall ahead of the face", and his seven
+ * moments of 2026-10-15: a mirror-flat slab with a zig-zag top). Ahead of the curl front (the section unbroken, waiting its
+ * turn or never breaking) the sheet's stood face is no steeper than MAX_AHEAD_SLOPE; on the broken section no steeper than
+ * MAX_SECTION_FACE_SLOPE (the drawing's tube back wall dropped 1.9 m in 0.31 m there: a cliff the render grid draws as a
+ * sawtooth, and the ride's own cap, sectionWater.MAX_SECTION_SLOPE, is 2). Between them by the time until the section breaks,
+ * over AHEAD_EASE_S (about one face length at the peel's ~11 m/s).
+ */
+export const MAX_AHEAD_SLOPE = 1.0;
+export const MAX_SECTION_FACE_SLOPE = 2.0;
+export const AHEAD_EASE_S = 0.4;
 export const DRAWN_FRONT_FLOOR = 0.02;
 export const DRAWN_FRONT_CEIL = 0.9;
 /**
