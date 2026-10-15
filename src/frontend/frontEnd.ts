@@ -1,13 +1,16 @@
 // src/frontend/frontEnd.ts
 import type { BoardKind } from '../board/boardSpec';
+import { SURF_BREAKS } from '../breaks';
 import { PRESETS, type PresetName, type Stance, boardsFor } from '../surfer/presets';
 import { type OutfitChoice, presetOutfits } from '../surfer/wardrobe';
 import { pickBoard } from './boardPick';
+import { todaysSetup } from './conditionsSource';
+import { LIBRARY, LIBRARY_COLS } from './library';
 import type { SavedChoices } from './frontSettings';
 import { RIDER_ORDER } from './riderCopy';
 import { type Dir, type RowId, type SessionSetup, fineRow, presetById, presetOfSetup, rollSetup, stepPreset, stepRow } from './sessionSetup';
 
-export type Beat = 'conditions' | 'rider' | 'gear' | 'out';
+export type Beat = 'map' | 'conditions' | 'rider' | 'gear' | 'out';
 export type GearTab = 'board' | 'outfit' | 'stance';
 /** Grab your gear's tabs, in order (LB / RB step through them, round). */
 export const GEAR_TABS: readonly GearTab[] = ['board', 'outfit', 'stance'];
@@ -35,7 +38,24 @@ export interface FrontState {
   move: { from: Beat; to: Beat; t: number; durS: number } | null;
   /** Input during a move, applied when it lands (spec §5.6). */
   buffer: FrontAction[];
+  /** The focused break on the surf map (surf-map hub spec §3). */
+  breakId: string;
+  /** Where the map's conditions come from (saved with the settings; real-time is locked). */
+  source: 'forecast' | 'custom';
+  /** The focused break's details page is open over the map. */
+  breakDetails: boolean;
+  /** The details page's scroll step (up/down), and its last step (the page reports it once laid out). */
+  detailsScroll: number;
+  detailsMax: number;
+  /** The player's own setup (Custom): kept apart from `setup`, which Surf here may fill with today's forecast. */
+  customSetup: SessionSetup;
+  /** The hub's tab on the map beat: the chart or the Library over it (not saved: the hub opens on the map). */
+  hubTab: 'map' | 'library';
+  library: LibraryFocus;
 }
+
+/** The Library's focus (library spec §2): the zone, the category, the tile in it, and whether its picture is open. */
+export interface LibraryFocus { zone: 'cats' | 'grid'; cat: number; entry: number; open: boolean }
 
 export type FrontEvent =
   | { kind: 'focus' }
@@ -52,7 +72,15 @@ export type FrontEvent =
   | { kind: 'paddleOut'; choice: SessionChoice }
   | { kind: 'back' }
   | { kind: 'settings' }
-  | { kind: 'controls' };
+  | { kind: 'controls' }
+  | { kind: 'surfHere'; breakId: string }
+  | { kind: 'title' }
+  | { kind: 'locked'; what: 'realtime' }
+  | { kind: 'source'; source: 'forecast' | 'custom' }
+  | { kind: 'breakDetails'; open: boolean }
+  | { kind: 'pinFocus'; breakId: string }
+  | { kind: 'hubTab'; tab: 'map' | 'library' }
+  | { kind: 'libraryOpen'; open: boolean };
 
 export interface SessionChoice {
   setup: SessionSetup;
@@ -78,11 +106,11 @@ export function gearRows(s: FrontState): (BoardKind | OutfitChoice | Stance)[] {
   return s.gearTab === 'outfit' ? outfitRows(s.rider) : [...STANCES];
 }
 
-export function initialFront(saved: SavedChoices): FrontState {
+export function initialFront(saved: SavedChoices, source: 'forecast' | 'custom' = 'forecast'): FrontState {
   return {
-    beat: 'conditions', setup: saved.setup, presetId: presetOfSetup(saved.setup), rowFocus: 'preset', detailsOpen: false,
+    beat: 'map', breakId: SURF_BREAKS[0].id, source, breakDetails: false, detailsScroll: 0, detailsMax: Infinity, customSetup: saved.setup, setup: saved.setup, presetId: presetOfSetup(saved.setup), rowFocus: 'preset', detailsOpen: false,
     rider: saved.rider, gearTab: 'board', gearFocus: 0, boards: { ...saved.boards }, outfits: { ...saved.outfits }, stances: { ...saved.stances },
-    showSpecs: false, move: null, buffer: [],
+    showSpecs: false, move: null, buffer: [], hubTab: 'map', library: { zone: 'grid', cat: 0, entry: 0, open: false },
   };
 }
 
@@ -92,7 +120,7 @@ export const stanceOf = (s: FrontState, rider: PresetName): Stance => s.stances[
 
 export const choiceOf = (s: FrontState): SessionChoice => ({ setup: s.setup, rider: s.rider, board: boardOf(s, s.rider), outfit: s.outfits[s.rider] ?? 'season', stance: stanceOf(s, s.rider) });
 
-export const savedOf = (s: FrontState): SavedChoices => ({ setup: s.setup, rider: s.rider, boards: { ...s.boards }, outfits: { ...s.outfits }, stances: { ...s.stances } });
+export const savedOf = (s: FrontState): SavedChoices => ({ setup: s.customSetup, rider: s.rider, boards: { ...s.boards }, outfits: { ...s.outfits }, stances: { ...s.stances } });
 
 type Ctx = { seed: number; today: Date; calm: boolean };
 type Out = { state: FrontState; events: FrontEvent[] };
@@ -109,6 +137,79 @@ function gearFocusFor(s: FrontState): number {
   if (s.gearTab === 'stance') return STANCES.indexOf(stanceOf(s, s.rider));
   const want = s.outfits[s.rider] ?? 'season', rows = outfitRows(s.rider);
   return Math.max(0, rows.indexOf(want));
+}
+
+/** The surf map (surf-map hub spec §3): pins, Surf here, the details page over it, the source switch, Back to the title. */
+function stepMap(s: FrontState, a: FrontAction, ctx: Ctx): Out {
+  if (s.breakDetails) {
+    switch (a) {
+      case 'down': return { state: { ...s, detailsScroll: Math.min(s.detailsMax, s.detailsScroll + 1) }, events: [] };
+      case 'up': return { state: { ...s, detailsScroll: Math.max(0, s.detailsScroll - 1) }, events: [] };
+      case 'back': case 'details': return { state: { ...s, breakDetails: false, detailsScroll: 0 }, events: [{ kind: 'breakDetails', open: false }] };
+      case 'confirm': return surfHere(s, ctx);
+      default: return { state: s, events: [] };
+    }
+  }
+  if (s.hubTab === 'library') return stepLibrary(s, a);
+  const i = SURF_BREAKS.findIndex((b) => b.id === s.breakId), n = SURF_BREAKS.length;
+  switch (a) {
+    case 'up': case 'left': case 'down': case 'right': {
+      if (n < 2) return { state: s, events: [] };
+      const next = SURF_BREAKS[(i + (a === 'down' || a === 'right' ? 1 : -1) + n) % n].id;
+      return { state: { ...s, breakId: next }, events: [{ kind: 'pinFocus', breakId: next }] };
+    }
+    case 'confirm': return surfHere(s, ctx);
+    case 'details': return { state: { ...s, breakDetails: true, detailsScroll: 0 }, events: [{ kind: 'breakDetails', open: true }] };
+    case 'toggle': { const source = s.source === 'forecast' ? 'custom' : 'forecast'; return { state: { ...s, source }, events: [{ kind: 'source', source }] }; }
+    case 'tabMinus': case 'tabPlus': return { state: { ...s, hubTab: 'library' }, events: [{ kind: 'hubTab', tab: 'library' }] };
+    case 'back': return { state: s, events: [{ kind: 'title' }] };
+    default: return { state: s, events: [] };
+  }
+}
+
+/** The Library (library spec §2): the categories, the grid in LIBRARY_COLS columns, the open picture; B is the map's Back. */
+function stepLibrary(s: FrontState, a: FrontAction): Out {
+  const L = s.library, n = LIBRARY[L.cat].entries.length;
+  const none: Out = { state: s, events: [] };
+  const set = (l: Partial<LibraryFocus>, events: FrontEvent[] = [{ kind: 'focus' }]): Out => ({ state: { ...s, library: { ...L, ...l } }, events });
+  if (a === 'tabMinus' || a === 'tabPlus') return { state: { ...s, hubTab: 'map', library: { ...L, open: false } }, events: [{ kind: 'hubTab', tab: 'map' }] };
+  if (L.open) {
+    switch (a) {
+      case 'confirm': case 'back': return set({ open: false }, [{ kind: 'libraryOpen', open: false }]);
+      case 'left': return L.entry > 0 ? set({ entry: L.entry - 1 }) : none;
+      case 'right': return L.entry < n - 1 ? set({ entry: L.entry + 1 }) : none;
+      default: return none;
+    }
+  }
+  // Back is the map's Back (the title); the hub opens on the map next time.
+  if (a === 'back') return { state: { ...s, hubTab: 'map' }, events: [{ kind: 'title' }] };
+  if (L.zone === 'cats') {
+    switch (a) {
+      case 'up': return L.cat > 0 ? set({ cat: L.cat - 1, entry: 0 }) : none;
+      case 'down': return L.cat < LIBRARY.length - 1 ? set({ cat: L.cat + 1, entry: 0 }) : none;
+      case 'right': case 'confirm': return set({ zone: 'grid' });
+      default: return none;
+    }
+  }
+  const col = L.entry % LIBRARY_COLS;
+  switch (a) {
+    case 'left': return col === 0 ? set({ zone: 'cats' }) : set({ entry: L.entry - 1 });
+    case 'right': return col < LIBRARY_COLS - 1 && L.entry + 1 < n ? set({ entry: L.entry + 1 }) : none;
+    case 'up': return L.entry >= LIBRARY_COLS ? set({ entry: L.entry - LIBRARY_COLS }) : none;
+    case 'down': {
+      if (L.entry + LIBRARY_COLS < n) return set({ entry: L.entry + LIBRARY_COLS });
+      // Off the last full row onto a short last row: its last tile.
+      return Math.floor(L.entry / LIBRARY_COLS) < Math.floor((n - 1) / LIBRARY_COLS) ? set({ entry: n - 1 }) : none;
+    }
+    case 'confirm': return set({ open: true }, [{ kind: 'libraryOpen', open: true }]);
+    default: return none;
+  }
+}
+
+/** Surf here: today's forecast or the player's own setup, then Conditions. */
+function surfHere(s: FrontState, ctx: Ctx): Out {
+  const setup = s.source === 'forecast' ? todaysSetup(ctx.today) : s.customSetup;
+  return moveTo({ ...s, setup, presetId: presetOfSetup(setup), breakDetails: false, detailsScroll: 0 }, 'conditions', ctx, [{ kind: 'surfHere', breakId: s.breakId }]);
 }
 
 function stepConditions(s: FrontState, a: FrontAction, ctx: Ctx): Out {
@@ -137,6 +238,8 @@ function stepConditions(s: FrontState, a: FrontAction, ctx: Ctx): Out {
     }
     case 'confirm':
       return moveTo(s, 'rider', ctx);
+    case 'back':
+      return moveTo(s, 'map', ctx, [{ kind: 'back' }]);
     default:
       return { state: s, events: [] };
   }
@@ -187,8 +290,20 @@ function stepGear(s: FrontState, a: FrontAction, ctx: Ctx): Out {
   }
 }
 
+/** The details page's last scroll step, from its layout: the scroll never runs past it. */
+export function withDetailsMax(s: FrontState, max: number): FrontState {
+  return { ...s, detailsMax: max, detailsScroll: Math.min(s.detailsScroll, max) };
+}
+
 /** One action (spec §3, §4): A on, B back, START out from anywhere; a move skips on A or B and buffers the rest. */
 export function step(s: FrontState, a: FrontAction, ctx: Ctx): Out {
+  const out = stepAny(s, a, ctx), t = out.state;
+  // Edits on Custom are the player's own setup; on the forecast they stay this session's.
+  if (t.source === 'custom' && t.beat !== 'map' && t.setup !== t.customSetup) return { state: { ...t, customSetup: t.setup }, events: out.events };
+  return out;
+}
+
+function stepAny(s: FrontState, a: FrontAction, ctx: Ctx): Out {
   if (s.beat === 'out') return { state: s, events: [] };
   if (a === 'settings') return { state: s, events: [{ kind: 'settings' }] };
   if (a === 'controls') return { state: s, events: [{ kind: 'controls' }] };
@@ -200,6 +315,7 @@ export function step(s: FrontState, a: FrontAction, ctx: Ctx): Out {
     if (a === 'confirm' || a === 'back') return land(s, ctx);
     return { state: { ...s, buffer: [...s.buffer, a] }, events: [] };
   }
+  if (s.beat === 'map') return stepMap(s, a, ctx);
   if (s.beat === 'conditions') return stepConditions(s, a, ctx);
   if (s.beat === 'rider') return stepRider(s, a, ctx);
   return stepGear(s, a, ctx);
@@ -226,11 +342,22 @@ export function tick(s: FrontState, dtS: number, ctx: Ctx): Out {
 }
 
 /** Focus straight onto a row, rider, gear row (the mouse's hover) or gear tab (a click). A focus tick only when it moves. */
-export function focusTo(s: FrontState, target: { row: RowId } | { rider: PresetName } | { gear: number } | { tab: FrontState['gearTab'] }): { state: FrontState; events: FrontEvent[] } {
+export function focusTo(s: FrontState, target: { pin: string } | { row: RowId } | { rider: PresetName } | { gear: number } | { tab: FrontState['gearTab'] } | { libCat: number } | { libEntry: number }): { state: FrontState; events: FrontEvent[] } {
   // Only on the beat the target belongs to, settled: a card of a beat that's gone (still under the mouse as it fades) mustn't
   // pick a rider on Grab your gear (Andrew: "I go to the outfit tab and I become Grommet").
-  const beat = 'row' in target ? 'conditions' : 'rider' in target ? 'rider' : 'gear';
+  const beat = 'pin' in target || 'libCat' in target || 'libEntry' in target ? 'map' : 'row' in target ? 'conditions' : 'rider' in target ? 'rider' : 'gear';
   if (s.beat !== beat || s.move) return { state: s, events: [] };
+  if ('libCat' in target || 'libEntry' in target) {
+    const L = s.library;
+    if (s.hubTab !== 'library' || L.open) return { state: s, events: [] };
+    if ('libCat' in target) {
+      if (target.libCat === L.cat && L.zone === 'cats') return { state: s, events: [] };
+      return { state: { ...s, library: { ...L, zone: 'cats', cat: target.libCat, entry: target.libCat === L.cat ? L.entry : 0 } }, events: [{ kind: 'focus' }] };
+    }
+    if (target.libEntry === L.entry && L.zone === 'grid') return { state: s, events: [] };
+    return { state: { ...s, library: { ...L, zone: 'grid', entry: target.libEntry } }, events: [{ kind: 'focus' }] };
+  }
+  if ('pin' in target) return target.pin === s.breakId || s.breakDetails || s.hubTab === 'library' ? { state: s, events: [] } : { state: { ...s, breakId: target.pin }, events: [{ kind: 'focus' }, { kind: 'pinFocus', breakId: target.pin }] };
   if ('tab' in target) {
     if (target.tab === s.gearTab) return { state: s, events: [] };
     const t = { ...s, gearTab: target.tab }, gearFocus = gearFocusFor(t);

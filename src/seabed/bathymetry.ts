@@ -1,10 +1,9 @@
 import { smoothstep } from '../math/smoothstep';
-import { moundY } from '../bombie/bombieModel';
 import { SHORE_X, depthBg } from './coastProfile';
 import { OPEN_COAST_MATERIAL, SHORE_REEF_MATERIAL, shoreReefWeight } from './shoreReef';
 import { beachHeight } from '../land/landHeight';
 import { fbm2, valueNoise2 } from './noise';
-import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_INNER_X, SHELF_POLYGON, SOUTH_LEDGE, TIP, rockReachM, shelfPolygon } from './wombReef';
+import { DEEP_REEF_WEED, DEFAULT_REEF_PARAMS, type GridSpec, NORTH_LEDGE, REEF_GRID, REEF_SEED, REEF_WARP, ROCK_EDGE_M, type ReefParams, SAND_POCKETS, SHELF_INNER_X, SHELF_POLYGON, SOUTH_LEDGE, TIP, rockReachM, shelfPolygon, southEdge } from './wombReef';
 
 /** Weed dominates rock across most of the shelf; baseline coverage before the patchy noise carves gaps. */
 const SHELF_WEED_BASE = 0.78;
@@ -38,9 +37,12 @@ function insidePolygon(px: number, pz: number, poly: readonly Pt[]): boolean {
   return inside;
 }
 
+/** The default south edge (wombReef.southEdge): SOUTH_LEDGE with the shelf's rounded south-west corner. */
+const SOUTH_EDGE: readonly Pt[] = southEdge(SOUTH_LEDGE);
 /** Distance to the ledge lines (positive inside the shelf, negative outside). Only the ledges count as edges. `north`:
- * the left's edge (ReefParams.northLedge), its shelf polygon built to match. */
-export function ledgeSignedDistance(x: number, z: number, north: readonly Pt[] = NORTH_LEDGE, shelf: readonly Pt[] = north === NORTH_LEDGE ? SHELF_POLYGON : shelfPolygon(north), south: readonly Pt[] = SOUTH_LEDGE): number {
+ * the left's edge (ReefParams.northLedge), its shelf polygon built to match. `south`: the right's edge as the bed reads
+ * it, the ledge with the rounded corner (wombReef.southEdge; spec 2026-10-11-south-corner). */
+export function ledgeSignedDistance(x: number, z: number, north: readonly Pt[] = NORTH_LEDGE, shelf: readonly Pt[] = north === NORTH_LEDGE ? SHELF_POLYGON : shelfPolygon(north), south: readonly Pt[] = SOUTH_EDGE): number {
   let d = Infinity;
   for (const line of [north, south]) {
     for (let i = 0; i + 1 < line.length; i++) d = Math.min(d, segmentDistance(x, z, line[i], line[i + 1]));
@@ -138,10 +140,11 @@ export function buildBathymetry(p: ReefParams = DEFAULT_REEF_PARAMS, grid: GridS
   const patchOutField = new Float32Array(sx * sz);
   const north = p.northLedge ?? NORTH_LEDGE, south = p.southLedge ?? SOUTH_LEDGE;
   const shelf = p.northLedge || p.southLedge ? shelfPolygon(north, south) : SHELF_POLYGON;
+  const southLine = p.southLedge ? southEdge(south) : SOUTH_EDGE;
   const tip = p.tip ?? TIP;
   for (let r = 0; r < sz; r++) for (let c = 0; c < sx; c++) {
     const x = grid.x0 + c * SDF_CELL_M, z = grid.z0 + r * SDF_CELL_M;
-    sdf[r * sx + c] = ledgeSignedDistance(x, z, north, shelf, south);
+    sdf[r * sx + c] = ledgeSignedDistance(x, z, north, shelf, southLine);
     pockets[r * sx + c] = pocketWeight(x, z, tip);
     const [dx, dz] = reefWarp(x, z, tip);
     warpDxField[r * sx + c] = dx;
@@ -228,8 +231,8 @@ export function bedHeightAt(b: Bathymetry, x: number, z: number, shiftAt?: (z: n
   const g = b.grid;
   const fx = (x - g.x0) / g.cellM, fz = (z - g.z0) / g.cellM;
   let bed: number;
-  // Outside the map: the coast profile, and Ellensbrook Bombie's mound (Phase 4c-3 §3.1) where it rises above it.
-  if (fx < 0 || fz < 0 || fx > g.nx - 1 || fz > g.nz - 1) bed = Math.max(-depthBg(x - shift), moundY(x, z));
+  // Outside the map: the coast profile (the old Bombie mound went with shelf-polish §7: the coast map's Bombie is the one).
+  if (fx < 0 || fz < 0 || fx > g.nx - 1 || fz > g.nz - 1) bed = -depthBg(x - shift);
   else {
     const c = Math.min(g.nx - 2, Math.floor(fx)), r = Math.min(g.nz - 2, Math.floor(fz));
     const tx = fx - c, tz = fz - r;

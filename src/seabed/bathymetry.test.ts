@@ -121,18 +121,7 @@ describe('the beach under the swash (Phase 4b spec §3.3, Ruling W7)', () => {
   });
 });
 
-import { BOMBIE_X, BOMBIE_Z, MOUND_CREST_Y, MOUND_HALF_X_M } from '../bombie/bombieModel';
-describe('the Bombie’s mound (4c-3)', () => {
-  const b = buildBathymetry();
-  it('rises to 5 m below mean sea level outside the reef map, and leaves the bed alone beyond its oval', () => {
-    expect(bedHeightAt(b, BOMBIE_X, BOMBIE_Z)).toBeCloseTo(MOUND_CREST_Y, 3);
-    expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z)).toBeCloseTo(-depthBg(BOMBIE_X + MOUND_HALF_X_M + 5), 3);
-    // 0.3 of its half width, not 0.5: the sea around it is 15 m since R1 §1 and the mound's outer half (its base is −26 m)
-    // lies under that floor.
-    expect(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M * 0.3, BOMBIE_Z)).toBeGreaterThan(bedHeightAt(b, BOMBIE_X + MOUND_HALF_X_M + 5, BOMBIE_Z));
-  });
-});
-
+// The Bombie's mound test went with the mound (shelf-polish §7: one Bombie, the coast map's).
 describe('the reef seaward of the ledges (spec 2026-10-02 §3)', () => {
   const p = DEFAULT_REEF_PARAMS;
   it('the profile: the ledge depth at the ledge, the face base at its width, the slope depth at its end and beyond, never shallowing', () => {

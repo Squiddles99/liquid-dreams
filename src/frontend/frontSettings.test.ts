@@ -17,7 +17,12 @@ describe('settings and remembered choices (dune select spec §3, §11; Review Fo
     expect(DEFAULT_CHOICES.rider).toBe('female');
   });
   it('defaults the settings', () => {
-    expect(DEFAULT_FRONT_SETTINGS).toEqual({ textScale: 1, calmMenus: false, opaqueBackplates: false, safeArea: null, displayMode: 'pc', glyphs: 'auto', experience: 'intermediate' });
+    expect(DEFAULT_FRONT_SETTINGS).toEqual({ textScale: 1, calmMenus: false, opaqueBackplates: false, safeArea: null, displayMode: 'pc', glyphs: 'auto', experience: 'intermediate', conditionsSource: 'forecast', rumble: true, loadMeter: 'auto' });
+  });
+  it('keeps the conditions source, forecast by default, never real-time', () => {
+    expect(sanitizeFrontSettings({}).conditionsSource).toBe('forecast');
+    expect(sanitizeFrontSettings({ conditionsSource: 'custom' }).conditionsSource).toBe('custom');
+    expect(sanitizeFrontSettings({ conditionsSource: 'realtime' }).conditionsSource).toBe('forecast');
   });
   it('takes the safe area from the display mode unless overridden', () => {
     expect(safeAreaFraction(DEFAULT_FRONT_SETTINGS)).toBe(0.03);
@@ -55,5 +60,14 @@ describe('settings and remembered choices (dune select spec §3, §11; Review Fo
     expect(loadJson(s, FRONT_CHOICES_KEY)).toBeNull();
     expect(() => saveJson(throwing, FRONT_CHOICES_KEY, {})).not.toThrow();
     expect(loadJson(throwing, FRONT_CHOICES_KEY)).toBeNull();
+  });
+});
+
+describe('rumble and the load meter settings (ride-speed spec §5)', () => {
+  it('default on and auto; junk falls back, good values kept', () => {
+    expect(DEFAULT_FRONT_SETTINGS.rumble).toBe(true);
+    expect(DEFAULT_FRONT_SETTINGS.loadMeter).toBe('auto');
+    expect(sanitizeFrontSettings({ rumble: 'yes', loadMeter: 'loud' })).toMatchObject({ rumble: true, loadMeter: 'auto' });
+    expect(sanitizeFrontSettings({ rumble: false, loadMeter: 'off' })).toMatchObject({ rumble: false, loadMeter: 'off' });
   });
 });

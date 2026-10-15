@@ -57,6 +57,22 @@ describe('curlTimes: one curl per breaking line (one-curl spec §3a)', () => {
   });
 });
 
+describe('curlTimes on a ridden line (womb-realism Task 2b)', () => {
+  // A closeout (all at once, the peak a hair first): the ridden line is nodes PEAK..29, measured from the peak.
+  const T = Array.from({ length: N }, (_, i) => (i === PEAK ? T0 : T0 + 1e-3));
+  const along = Float32Array.from({ length: N }, (_, i) => (i >= PEAK && i < 30 ? (i - PEAK) * CELL : Number.NaN));
+  const out = curlTimes(Float32Array.from(T), oneLine(), N, 1, CELL, 4, 6, { along, sweepMs: 40, holdMarginS: 2 });
+  it('curlMaxMs binds down the ridden line, its hold cap growing down it', () => {
+    for (let i = PEAK; i < 30; i++) expect(out[i], `node ${i}`).toBeCloseTo(T0 + ((i - PEAK) * CELL) / 4, 4);
+    expect(out[29] - T[29]).toBeGreaterThan(6); // past the flat cap: the ridden line's own
+  });
+  it('the sweep speed off it: up the line from the peak and past its end', () => {
+    // (Within CURL_LINK_CELLS of the peak the curl never retreats behind the ridden side's own times: compare the pace.)
+    for (let i = 0; i < PEAK; i++) expect(out[i], `node ${i}`).toBeLessThan(T0 + ((PEAK - i) * CELL) / 4);
+    for (let i = 30; i < N; i++) expect(out[i], `node ${i}`).toBeCloseTo(Math.min(out[29] + ((i - 29) * CELL) / 40, T[i] + 6), 4);
+  });
+});
+
 describe("breakingLines: a level's onset nodes linked within CURL_LINK_CELLS", () => {
   it('nodes within reach share a line; a gap wider than the reach splits them', () => {
     const L = CURL_LINK_CELLS, nx = 4 * L, T = new Float32Array(nx).fill(Number.NaN);

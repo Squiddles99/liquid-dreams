@@ -6,9 +6,11 @@ import { BreakingRibbon, FOOTPRINT_GRID, modelRibbonSurface } from '../breaker/B
 import { withSections } from '../ride/sectionWater';
 import { TAKEOFF_ANCHOR, TAKEOFF_ARRIVE_S, takeoffLeadS, takeoffSpot } from '../ride/takeoff';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, normalizeBreakParams } from '../breaker/breaking';
-import { type StationEntry, minRibbonHeight, traceStations } from '../breaker/crestTrace';
+import { type StationEntry, minRibbonHeight, rideEntries, traceStations } from '../breaker/crestTrace';
 import { formatPeakFace, formatPeakPsi, peakFace, peakPsi } from '../breaker/peakFace';
 import { offshoreSpeed } from '../breaker/overturn';
+import { footprintBreakHeight } from '../breaker/coastBreaking';
+import { setWaveHeight } from '../breaker/reefReport';
 import { REFRACT_FLOOR_M, type ReefField, sampleField } from '../breaker/reefField';
 import { BOMBIE_X, BOMBIE_Z, type BombieWaves, type Burst, burstAt, burstWidthM, burstsAt, setIndicesFrom, setWindow } from '../bombie/bombieModel';
 import { BombieMesh } from '../bombie/BombieMesh';
@@ -28,7 +30,7 @@ import { ReefFieldClient } from '../breaker/ReefFieldClient';
 import { type CoastParams, DEFAULT_COAST_PARAMS, normalizeCoastParams } from '../seabed/coastFeatures';
 import { SetWaves } from '../breaker/SetWaves';
 import { ReefFlow } from '../breaker/flowNodes';
-import { type SetWaveResult, type WaveContext, breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import { type SetWaveResult, type WaveContext, breakOptions, fieldBreakingHeight, phaseXi, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import type { FieldSample } from '../breaker/fieldSample';
 import { currentBindings, keyLabel } from '../ride/bindings';
 import { RideSession, rideMessage } from '../ride/RideSession';
@@ -36,7 +38,10 @@ import { type Experience, TUNING } from '../ride/ridePhysics';
 import { type WaterFn, flatWater, waterAt } from '../ride/water';
 import { SurfaceOffset } from '../ride/surfaceOffset';
 import { fieldKey } from '../breaker/fieldKey';
+import { EnergyPanel } from '../ride/EnergyPanel';
+import { rideContext } from '../ride/rideContext';
 import { tubeCover } from '../ride/tubeCover';
+import { PRESETS } from '../surfer/presets';
 import { CameraRig } from '../camera/CameraRig';
 import { Input } from '../camera/Input';
 import { DEFAULT_CONDITIONS, assignConditions, cloneConditions } from '../conditions/defaults';
@@ -47,17 +52,22 @@ import {
   CustomProfile, type DevLookParams, type DevSettings, type SettingsMode, type SettingsStorage, assignParams, clearDevSettings,
   cloneDevSettings, cloneLook, loadDevSettings, pickMoment, referenceNameFromHash, saveDevSettings,
 } from '../dev/devSettings';
-import { HOTKEYS, captureScreenshot, handleHotkeys, screenshotFilename } from '../dev/hotkeys';
-import { PADDLE_OUT_MS } from '../frontend/entry';
+import { HOTKEYS, captureScreenshot, downloadBlob, handleHotkeys, reportMomentFilenames, screenshotFilename } from '../dev/hotkeys';
+import { CREW_COVER_MS, PADDLE_OUT_MS } from '../frontend/entry';
 import type { SessionChoice } from '../frontend/frontEnd';
 import type { FrontEndHost } from '../frontend/frontEndCore';
 import { FrontEnd } from '../frontend/frontEndPage';
-import { FRONT_SETTINGS_KEY, sanitizeFrontSettings } from '../frontend/frontSettings';
+import type { TitleScreen } from '../frontend/ui/titleScreen';
+import { FRONT_SETTINGS_KEY, readFrontSettings, sanitizeFrontSettings } from '../frontend/frontSettings';
 import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
 import { PauseMenu } from '../frontend/ui/pauseMenu';
 import { frontEndCheck } from '../dev/frontEndCheck';
 import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
+import { type CrestLineRow, crestLineRows, leanFrontEffect, traceEnds } from '../dev/crestLineProbe';
 import { FrameLog } from '../dev/frameLog';
+import { MOMENT_PNG_KEY, insertPngText } from '../dev/pngText';
+/** The report-moment PNG follows its .txt by this long: Chrome blocks a second automatic download without a gesture. */
+const REPORT_PNG_DELAY_MS = 1500;
 import { PerfOverlay } from '../dev/perf';
 import { DEFAULT_MOMENT_NAME, defaultMoment, findReferenceMoment, referenceKind } from '../dev/referenceMoments';
 import { HeightProbe } from '../ocean/HeightProbe';
@@ -95,11 +105,13 @@ import { CoastalSurf } from '../surf/CoastalSurf';
 import { DEFAULT_SURF_PARAMS, type SurfParams, normalizeSurfParams } from '../surf/surfModel';
 import { formatNextSet, waveStatus } from '../swell/setStatus';
 import { FoamField } from '../whitewater/FoamField';
+import { MistSlab } from '../whitewater/mistSlab';
+import { sectionScale } from '../breaker/wombSection';
 import { KelpField } from '../seabed/KelpField';
 import { SprayParticles } from '../whitewater/SprayParticles';
 import {
-  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
-  impactBirths, normalizeImpactParams, type SpitEmitter, spitBirths, SPRAY_BIRTH_CAP, normalizeSprayParams, sprayBirths, sprayCanEmit, windToVector,
+  DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, type FeatherEmitter, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
+  impactBirths, normalizeImpactParams, type SpitEmitter, spitBirths, SPRAY_BIRTH_CAP, normalizeSprayParams, sprayAndPlumeBirths, sprayCanEmit, windToVector,
 } from '../whitewater/sprayEmitters';
 import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { Land } from '../land/Land';
@@ -122,7 +134,7 @@ import { buildGroundShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
 import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime, FOAM_TICKS_PER_S } from '../whitewater/foamStep';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
-import { bootReady } from './loadingProgress';
+import { bootReady, fieldMatches } from './loadingProgress';
 import type { LoadingScreen } from './loadingScreen';
 import { showOverlay } from './overlay';
 
@@ -141,7 +153,7 @@ const RING_MOVE_M = 2;
 const TRACE_MS_ALPHA = 0.1;
 
 /** localStorage, reached lazily: the getter itself can throw (blocked site data), and the devSettings functions catch that. */
-const browserStorage: SettingsStorage = {
+export const browserStorage: SettingsStorage = {
   getItem: (k) => window.localStorage.getItem(k),
   setItem: (k, v) => window.localStorage.setItem(k, v),
   removeItem: (k) => window.localStorage.removeItem(k),
@@ -185,8 +197,6 @@ export class App {
   readonly breakParams: BreakParams = { ...DEFAULT_BREAK_PARAMS };
   /** The coast's breaks (lineup truth spec §3g): the worker builds the coast map from them. */
   readonly coastParams: CoastParams = { ...DEFAULT_COAST_PARAMS };
-  /** ?coast=off: the field seeded by the 1-D far field as before the coast map (lineup truth's A/B and "unchanged" shots). */
-  private readonly coastOn = new URLSearchParams(location.search).get('coast') !== 'off';
   readonly foamParams: FoamParams = { ...DEFAULT_FOAM_PARAMS };
   readonly sprayParams: SprayParams = { ...DEFAULT_SPRAY_PARAMS };
   readonly impactParams: ImpactParams = { ...DEFAULT_IMPACT_PARAMS };
@@ -199,6 +209,8 @@ export class App {
   readonly surferStand: SurferStand;
   /** The playable ride (first-ride spec): G starts and stops it. */
   readonly ride = new RideSession(document.body);
+  /** Where the face pays around the rider, with the dev UI (ride-speed spec §6). */
+  private readonly energyPanel = new EnergyPanel(document.body);
   /** The called set's arrivals at the peak (sim s), and the wave being ridden. */
   private rideSet: number[] = [];
   /** Each ride wave's deep-water height (m), for its take-off spot. */
@@ -208,6 +220,9 @@ export class App {
   /** The breaking ribbon's crest stations last traced, how far the rider is under a curl (tubeCover), and the spray on the
    * lens from it (Andrew 2026-10-04: over her shoulder in the tube, and the surfacing drops on the lens). */
   private ribbonStations: readonly StationEntry[] = [];
+  /** The same stations with the surge taken out (crestTrace.rideEntries): what the ride, its cover and the eye read
+   * (whitewater F4: the surge is the ribbon's look only). */
+  private rideStations: readonly StationEntry[] = [];
   private rideCover = 0;
   /** This frame's ride water (App.rideWater at the clock's time), built once while riding and read by the ride step, the
    * camera and the underwater check (plan 2026-10-07 ride-framerate Task 2), at its sim time (a reset jumps the clock); null
@@ -220,6 +235,8 @@ export class App {
   readonly bombie: BombieMesh;
   private bombieTauS: number | null = null;
   private bombieTauField: ReefField | null = null;
+  /** The set height (m) from which the coast's breaking map breaks the Bombie (coastBreaking.footprintBreakHeight). */
+  private bombieBreaksFromM = Infinity;
   /** Dev readout (window.liquidDreams.bombieBurst): the Bombie's current burst, or null. */
   bombieBurst: { n: number; ageS: number; heightM: number } | null = null;
   /** The Sound folder (Phase 5): the volumes and mute, persisted with the look. */
@@ -358,7 +375,14 @@ export class App {
   readonly foamField = new FoamField({
     foamNode: (xz) => this.setWaves.breakingFoamNode(xz),
     dirNode: (xz) => this.setWaves.sample(xz, true).dir,
+    foamPushNode: (xz, shift) => this.setWaves.breakingFoamPushNode(xz, shift ?? null),
   });
+  /** The whitewater's mist slab (whitewater §6.1): the foam map's mist, fogging every near-water material built after it. */
+  readonly mist = ((): MistSlab => {
+    const slab = new MistSlab(this.foamField, this.seabed.tide, this.sky);
+    this.sky.mist = (colour, worldPos, sunVisibility) => slab.apply(colour, worldPos, sunVisibility);
+    return slab;
+  })();
   /** The water's flow under the waves (reef build B §4.1): the set waves' surface plus the FFT long swell where it runs. */
   readonly reefFlow = new ReefFlow(this.setWaves, (xz) => this.surfaceModel.fftCascadeDisplacement(xz, 0, float(1.0)).y);
   /** The kelp's lean grid around the camera (reef build B §4.2–4.3), stepped with the foam's ticks. */
@@ -366,13 +390,15 @@ export class App {
   private foamTimer: number | undefined;
   private sprayTimer: number | undefined;
   private foamOnlyTimer: number | undefined;
+  /** Tools only (captureMoments): every foam replay exact, as behind a cover (a capture's applyMoment has no cover). */
+  exactFoamReplays = false;
   /** Offshore spray off the throwing lips (spec 2026-09-27-offshore-spray-design.md). */
   readonly spray = new SprayParticles(this.sky, undefined, this.sunlight);
   /** The impact explosion where each lip lands (spec 2026-09-28-impact-explosion-design.md), on the same particle system. */
   readonly impact = new SprayParticles(this.sky, IMPACT_KIND, this.sunlight);
   private impactTimer: number | undefined;
   /** This frame's emitters per tick, shared by the spray and the explosion (their replays cover different tick counts). */
-  private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] }>();
+  private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[] }>();
   private readonly fieldClient = new ReefFieldClient();
   private fieldKey = '';
   /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
@@ -541,6 +567,7 @@ export class App {
         onLookout: () => {}, // read every frame by LookoutBackdrop.update
         onReferenceMoment: (name) => this.goToReferenceMoment(name),
         onCopyLink: () => void this.copyLink(),
+        onReportMoment: () => void this.reportMoment(),
         onScreenshot: () => { this.screenshotRequested = true; },
         onTogglePause: () => this.setPaused(!this.clock.paused),
         onSets: () => {
@@ -784,6 +811,8 @@ export class App {
     this.surf.invalidate();
     assignConditions(this.conditions, m.conditions);
     this.seabed.setTide(this.conditions.tideM);
+    // The select screen's sets swap the set schedule: a link copied with them on replays its wave only with them on.
+    this.setDuneSets(m.duneSets ?? false);
     this.clock.setTime(m.simTime);
     this.setPaused(m.paused);
     // The probe still holds the old spot's water: seed the lineup at the still-water level, forget the old readings, and
@@ -815,6 +844,7 @@ export class App {
     return {
       conditions: cloneConditions(this.conditions), camera: this.rig.getPose(), simTime: this.clock.simTime, paused: this.clock.paused,
       ...(this.surferParams.enabled ? { surfer: { ...this.surferParams } } : {}),
+      ...(this.duneSets ? { duneSets: true } : {}),
     };
   }
 
@@ -836,6 +866,9 @@ export class App {
     this.offshoreMs = this.field ? offshoreSpeed(this.conditions.wind.speedMs, this.conditions.wind.directionDeg, this.field.far.dirX, this.field.far.dirZ) : 0;
     this.ribbon.setOffshore(this.offshoreMs);
     this.ribbonKey = null;
+    // The foam map's wind drift (whitewater §5.2): the wind vector, the way it blows.
+    const [wx, wz] = windToVector(this.conditions.wind.directionDeg);
+    this.foamField.setWind(wx * this.conditions.wind.speedMs, wz * this.conditions.wind.speedMs);
   }
 
   /**
@@ -879,7 +912,9 @@ export class App {
    * time uniform and the waves buffer at its own time; both are restored for the frame's render and probe.
    */
   private stepFoam(events: readonly WaveEvent[]): void {
-    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t));
+    // A replay behind the loading cover is exact; one mid-play takes the cheap path (FoamField.advance, Fable's ruling).
+    const covered = this.exactFoamReplays || !!this.loadingScreen?.blocking;
+    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t), covered);
     this.frameTicks.foam = steps;
     if (steps === 0) return;
     this.ocean.time.value = this.clock.simTime;
@@ -934,7 +969,7 @@ export class App {
     await device.queue.onSubmittedWorkDone();
     this.foamField.invalidate();
     const start = performance.now();
-    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t));
+    const steps = this.foamField.advance(this.renderer, this.clock.simTime, (t) => this.pointFoamSourceAt(t), true);
     await device.queue.onSubmittedWorkDone();
     const ms = performance.now() - start;
     this.pointFoamSourceAt(this.clock.simTime);
@@ -944,7 +979,13 @@ export class App {
   /** The Bombie's waves now (4c-3 §3.2), or null while the reef field is missing (Review Focus 1). */
   private bombieWaves(t: number): BombieWaves | null {
     if (!this.bombieParams.enabled || !this.field) return null;
-    if (this.bombieTauField !== this.field) { this.bombieTauS = sampleField(this.field, BOMBIE_X, BOMBIE_Z).tau; this.bombieTauField = this.field; } // Review Focus 3
+    if (this.bombieTauField !== this.field) {
+      this.bombieTauS = sampleField(this.field, BOMBIE_X, BOMBIE_Z).tau; // Review Focus 3
+      // One Bombie, the coast's (shelf-polish §7): it bursts only on a swell whose set the coast's breaking map breaks there.
+      this.bombieBreaksFromM = this.field.coast ? footprintBreakHeight(this.field.coast, 'bombie', this.breakParams) : Infinity;
+      this.bombieTauField = this.field;
+    }
+    if (!(setWaveHeight(this.conditions.swell.sizeFt) >= this.bombieBreaksFromM)) return null;
     const T = this.conditions.swell.periodS;
     // The Womb's set waves around the bursting waves' peak arrivals (final review I1: the window was centred on t).
     const win = setWindow(t, this.bombieTauS!, T);
@@ -958,6 +999,9 @@ export class App {
    */
   private stepSpray(): void {
     this.tickEmitters.clear();
+    // The mist slab's depth: the waves about now, their mean scale A (the slab's height is a look, not a measurement).
+    const near = wavesNear(this.clock.simTime, this.conditions, this.sets);
+    if (near.length > 0) this.mist.A.value = sectionScale(near.reduce((s, e) => s + e.heightM, 0) / near.length);
     const w = windToVector(this.conditions.wind.directionDeg), s = this.conditions.wind.speedMs;
     this.spray.setWind(w[0] * s, w[1] * s);
     this.impact.setWind(w[0] * s, w[1] * s);
@@ -966,7 +1010,7 @@ export class App {
   }
 
   /** Tick k's emitters, computed once per frame (both systems ask for the same ticks). */
-  private emittersAt(k: number): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] } {
+  private emittersAt(k: number): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[] } {
     let e = this.tickEmitters.get(k);
     if (!e) {
       const t = tickTime(k);
@@ -986,14 +1030,17 @@ export class App {
    * the tick's slots. */
   private impactBirthsAt(k: number) {
     const e = this.emittersAt(k);
-    return [...impactBirths(e.impact, k), ...spitBirths(e.spit, k)].slice(0, SPRAY_BIRTH_CAP);
+    // The spit is held back or blown on by the wind (whitewater §4.3).
+    const [wx, wz] = windToVector(this.conditions.wind.directionDeg), w = this.conditions.wind.speedMs;
+    return [...impactBirths(e.impact, k), ...spitBirths(e.spit, k, [wx * w, wz * w])].slice(0, SPRAY_BIRTH_CAP);
   }
 
   private sprayBirthsAt(k: number) {
     // When the spray can't emit, don't compute the tick's emitters for it: on a calm day its replay would run the
     // shared trace for all its ticks just for the explosion's sake (final review).
     if (!sprayCanEmit(this.sprayParams.amount, this.conditions.wind.speedMs)) return [];
-    return sprayBirths(this.emittersAt(k).spray, k, this.sprayParams);
+    const e = this.emittersAt(k);
+    return sprayAndPlumeBirths(e.spray, k, this.sprayParams, e.feather);
   }
 
   /** Dev (3c plan Task 4): a forced impact replay, timed to the GPU's completion; cpuMs is the emitter work alone. */
@@ -1044,13 +1091,14 @@ export class App {
     let entries: StationEntry[] = [];
     if (tracing) {
       const waves = events.map(toActiveWave);
-      const input = { cameraX: cam.x, cameraZ: cam.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs: this.offshoreMs };
+      const input = { cameraX: cam.x, cameraZ: cam.z, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs: this.offshoreMs, drawSurge: true };
       const start = performance.now();
       entries = traceStations(field, waves, this.clock.simTime, ctx, input);
       this.traceMs += TRACE_MS_ALPHA * (performance.now() - start - this.traceMs);
     }
     this.ribbonStations = entries;
-    this.ribbon.setStations(entries, cam);
+    this.rideStations = rideEntries(entries);
+    this.ribbon.setStations(entries, cam, field?.periodS ?? 15);
     this.ribbon.setSun(sun);
     this.ribbon.compute(this.renderer);
     this.ribbon.renderFootprint(this.renderer);
@@ -1085,14 +1133,17 @@ export class App {
       },
       stage: (staging, pose) => this.stageFrontEnd(staging, pose),
       paddleOut: (choice) => void this.paddleOut(choice),
+      backToTitle: () => this.title?.show(),
       crewReady: () => this.gang.settled,
     };
   }
 
   /** Dev checks: drives the front end to a beat (opening it if needed) and waits for the move to land. */
-  async frontEndGoTo(beat: 'conditions' | 'rider' | 'gear'): Promise<void> {
+  async frontEndGoTo(beat: 'map' | 'conditions' | 'rider' | 'gear'): Promise<void> {
+    // A dev check drives the menu: the title steps aside, as Surf would.
+    this.title?.hide();
     this.openFrontEnd();
-    const order = ['conditions', 'rider', 'gear'] as const;
+    const order = ['map', 'conditions', 'rider', 'gear'] as const;
     for (let k = 0; k < 900; k++) {
       const s = this.frontEnd?.state;
       if (!s) return;
@@ -1145,11 +1196,7 @@ export class App {
 
   /** The player's Experience setting (R1 §3), read when a ride starts. */
   private experience(): Experience {
-    try {
-      return sanitizeFrontSettings(JSON.parse(localStorage.getItem(FRONT_SETTINGS_KEY) ?? 'null')).experience;
-    } catch {
-      return 'intermediate';
-    }
+    return readFrontSettings().experience;
   }
 
   private calmMenus(): boolean {
@@ -1169,6 +1216,7 @@ export class App {
       const ready = bootReady({
         ...h, frontEnd: this.frontEndAtBoot, landUsable: !!this.land.height?.trackNetwork,
         crewIn: !!this.frontEndHost().standSpot() && this.gang.settled,
+        fieldIn: fieldMatches(this.field?.far, this.conditions),
       });
       if (ready.heath) l.stageDone('heath');
       if (ready.crew) {
@@ -1181,7 +1229,46 @@ export class App {
     const pending = this.asyncPipelines.pending > 0;
     if (l.booting) l.frameDrawn(dtMs, pending);
     else l.frameDrawn(pending ? Infinity : dtMs);
-    if (this.frontEnd) this.frontEnd.inputHeld = l.blocking;
+    if (this.frontEnd) this.frontEnd.inputHeld = l.blocking || !!this.title?.isOpen;
+  }
+
+  private title: TitleScreen | null = null;
+  attachTitle(t: TitleScreen): void {
+    this.title = t;
+  }
+
+  private crewShown = false;
+
+  /**
+   * The title's Surf (or a press while the App was still starting): sound now, the title away, the map under it. The
+   * first Surf goes through the crew surfing (Andrew 2026-10-11: its last showing; every later cover is a library slide):
+   * the start-up cover if it is still up (the title fades off it, and it stays a while), else a crew cover over the title.
+   */
+  titleSurf(): void {
+    this.sound.gestureNow();
+    const cover = this.loadingScreen, title = this.title;
+    if (this.crewShown || !cover || !title) {
+      this.title?.hide();
+      this.frontEnd?.resume();
+      return;
+    }
+    this.crewShown = true;
+    const calm = this.calmMenus(), holdMs = calm ? CREW_COVER_MS.minHoldCalm : CREW_COVER_MS.minHold;
+    if (cover.booting) {
+      cover.showBootFor(holdMs);
+      title.hide(true);
+      this.frontEnd?.resume();
+      return;
+    }
+    void cover.cover({ line: 'Checking the surf…', calm, minHoldMs: holdMs, picture: cover.bootPicture, overTitle: true }).then((ok) => {
+      title.hide();
+      this.frontEnd?.resume();
+      if (ok) cover.release();
+    });
+  }
+
+  soundOut(): { ctx: BaseAudioContext; out: AudioNode } | null {
+    return this.sound.uiOut();
   }
 
   /** The Electron probe's Paddle out (?probe): START on the select screen, as a player would. */
@@ -1243,8 +1330,16 @@ export class App {
     work();
     resume = this.clock.paused;
     this.setPaused(true);
+    await this.fieldLanded();
     cover.release();
     await started;
+  }
+
+  /** Resolves once the field in use is the one for the conditions (womb-realism Task 1c), or after `capMs` (the worker
+   * failed: the old field stays, as ReefFieldClient keeps it). */
+  private async fieldLanded(capMs = 60_000): Promise<void> {
+    const t0 = performance.now();
+    while (!fieldMatches(this.field?.far, this.conditions) && performance.now() - t0 < capMs) await new Promise((r) => window.setTimeout(r, 100));
   }
 
   /** Back to the dune (Andrew, Gate B): under the cover, the ride stops and the front end opens on the crew again. */
@@ -1587,7 +1682,7 @@ export class App {
     const key = `${fieldKey(c, this.reefParams, this.breakParams.peel, this.breakParams.curlMaxMs)}|${JSON.stringify(this.coastParams)}`;
     if (!force && key === this.fieldKey) return;
     this.fieldKey = key;
-    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M, ...(this.coastOn ? { coastParams: { ...this.coastParams } } : {}) });
+    this.fieldClient.request({ bed: downsample(this.seabed.bathymetry, 2), periodS: c.swell.periodS, fromDeg: c.swell.directionDeg, tideM: c.tideM, peel: this.breakParams.peel, curlMaxMs: this.breakParams.curlMaxMs, smooth: true, refractFloorM: REFRACT_FLOOR_M, coastParams: { ...this.coastParams } });
   }
 
   /** Coast sliders: once you stop dragging, the worker rebuilds the coast map and re-solves (its key carries the dials). */
@@ -1637,7 +1732,7 @@ export class App {
     };
     // Where the breaking ribbon draws, the board stands on its sections (the wave that is drawn), from this frame's
     // stations (traced at the clock's time), read lazily and cold (sectionWater R9; R8's warm read is the probe's only).
-    return sections && t === this.clock.simTime ? withSections(sheet, this.ribbonStations, tide) : sheet;
+    return sections && t === this.clock.simTime ? withSections(sheet, this.rideStations, tide) : sheet;
   }
 
   /** G: paddle out at the Womb with a set on its way, or stop surfing (first-ride spec). */
@@ -1695,7 +1790,8 @@ export class App {
     this.invalidateParticles();
     const water = this.rideWater(this.clock.simTime), w = water(at.x, at.z);
     const experience = this.experience();
-    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water, TUNING[experience]);
+    const rider = PRESETS[this.surferParams.preset];
+    this.ride.begin(at.x, at.z, Math.atan2(w.dirX, -w.dirZ) / (Math.PI / 180), water, TUNING[experience], { standH: rider.heightM, massKg: rider.weightKg, prone: this.surferParams.board === 'bodyboard', legPowerWkg: rider.legPowerWkg, paddleStrength: rider.paddleStrength });
     const keys = currentBindings().keys;
     const level = experience === 'intermediate' ? '' : ` (${experience})`;
     this.perf.flash(`Wave ${this.rideWave + 1} of ${this.rideSet.length}${level}: paddle (${keyLabel(keys.paddle)}) as it lifts you, ${keyLabel(keys.popup)} to pop up`);
@@ -1919,6 +2015,61 @@ export class App {
     }
   }
 
+  /** Dev readout (tools/_crestLine.ts, womb-realism): every traced station's crest-line numbers now (src/dev/crestLineProbe). */
+  crestLineProbe(spacingM = 2): { t: number; offshoreMs: number; appOffshoreMs: number; rows: CrestLineRow[]; ends?: unknown; field?: { periodS: number; fromDeg: number; tideM: number } } {
+    const t = this.clock.simTime;
+    if (!this.field || !this.waveCtx || !this.breakParams.enabled) return { t, offshoreMs: 0, appOffshoreMs: this.offshoreMs, rows: [] };
+    // Fresh from the conditions (the app's own offshoreMs is reported beside it: a moment's wind must reach the lip).
+    const offshoreMs = offshoreSpeed(this.conditions.wind.speedMs, this.conditions.wind.directionDeg, this.field.far.dirX, this.field.far.dirZ);
+    const waves = wavesNear(t, this.conditions, this.sets).map(toActiveWave);
+    const rows = crestLineRows({ field: this.field, ctx: this.waveCtx, waves, t, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs, spacingM });
+    const field = { periodS: this.field.far.periodS, fromDeg: this.field.far.fromDeg, tideM: this.field.far.tideM };
+    return { t, offshoreMs, appOffshoreMs: this.offshoreMs, rows, ends: traceEnds.map((e) => ({ ...e, arrivalS: waves[e.wave].arrivalS })), field };
+  }
+
+  /** Dev readout (womb-realism Task 1b): ξ (s) and the field's τ, k on a grid round (x, z) for the wave arriving at arrivalS. */
+  crestLineXi(arrivalS: number, x: number, z: number, half = 6, step = 1): { xi: number[][]; tau: number[][]; k: number[][]; w: unknown; ctx: unknown; t: number } | null {
+    if (!this.field || !this.waveCtx) return null;
+    const t = this.clock.simTime, w = wavesNear(t, this.conditions, this.sets).map(toActiveWave).find((v) => Math.abs(v.arrivalS - arrivalS) < 0.01);
+    if (!w) return null;
+    const out = { xi: [] as number[][], tau: [] as number[][], k: [] as number[][], w: { ...w } as unknown, ctx: { ...this.waveCtx } as unknown, t };
+    for (let dz = -half; dz <= half; dz += step) {
+      const xi: number[] = [], tau: number[] = [], k: number[] = [];
+      for (let dx = -half; dx <= half; dx += step) {
+        const f = sampleField(this.field, x + dx, z + dz);
+        xi.push(phaseXi(x + dx, z + dz, t, f, w, this.waveCtx)); tau.push(f.tau); k.push(f.k);
+      }
+      out.xi.push(xi); out.tau.push(tau); out.k.push(k);
+    }
+    return out;
+  }
+
+  /** Dev readout (womb-realism Task 0 Step 5): the sheet's crest at one station with the front's standing as is, 0 and 1. */
+  crestLineLean(arrivalS: number, arc: number): ReturnType<typeof leanFrontEffect> {
+    if (!this.field || !this.waveCtx) return null;
+    const t = this.clock.simTime, offshoreMs = offshoreSpeed(this.conditions.wind.speedMs, this.conditions.wind.directionDeg, this.field.far.dirX, this.field.far.dirZ);
+    return leanFrontEffect({ field: this.field, ctx: this.waveCtx, waves: wavesNear(t, this.conditions, this.sets).map(toActiveWave), t, params: this.breakParams, minHeightM: this.ribbonMinHeightM, offshoreMs }, arrivalS, arc);
+  }
+
+  /**
+   * Ctrl+Shift+M: the frame and its moment link saved as a pair (ld-moment-<unix>.png + .txt), so a report replays. The .txt
+   * goes first and the PNG REPORT_PNG_DELAY_MS later, and the PNG carries the link itself in a tEXt chunk (pngText,
+   * tools/_momentFromPng.mjs): Chrome dropped the second download of Andrew's 2026-10-11 report (womb-realism Task 3b).
+   */
+  private async reportMoment(): Promise<void> {
+    const link = `${location.origin}${location.pathname}${location.search}${encodeMoment(this.currentMoment())}`;
+    const names = reportMomentFilenames(Date.now());
+    const png = await this.captureFrame();
+    downloadBlob(new Blob([`${link}
+`], { type: 'text/plain' }), names.txt);
+    if (png) {
+      const tagged = new Blob([insertPngText(new Uint8Array(await png.arrayBuffer()), MOMENT_PNG_KEY, link)], { type: 'image/png' });
+      await new Promise((r) => setTimeout(r, REPORT_PNG_DELAY_MS));
+      downloadBlob(tagged, names.png);
+    }
+    this.perf.flash(`Moment reported: ${names.txt} + ${names.png} (the link is in the PNG too)`);
+  }
+
   /** Every pause change goes through here so the paused badge always matches the clock. */
   private setPaused(paused: boolean): void {
     this.clock.paused = paused;
@@ -2032,6 +2183,7 @@ export class App {
     this.lastMs = now;
     this.reportLoading(realDt * 1000);
     const simDt = this.clock.tick(realDt);
+    if (this.frontEnd && !this.loadingScreen) this.frontEnd.inputHeld = !!this.title?.isOpen;
     this.frontEnd?.update(realDt);
     const fwd = this.camera.getWorldDirection(this.lookoutFwd);
     this.lookout.update(realDt, {
@@ -2056,6 +2208,7 @@ export class App {
     if (this.frontEnd?.isOpen && this.input.consumePressed(HOTKEYS.toggleDevUi)) this.toggleDevUi();
     if (!this.frontEnd?.isOpen) handleHotkeys(this.input, {
       copyLink: () => void this.copyLink(),
+      reportMoment: () => void this.reportMoment(),
       togglePause: () => this.setPaused(!this.clock.paused),
       screenshot: () => { this.screenshotRequested = true; },
       toggleDevUi: () => this.toggleDevUi(),
@@ -2083,15 +2236,18 @@ export class App {
       this.rideOffset.read(this.probe.latestSeq, this.probe.heightAt(RIDE_PROBE), realDt);
       const water = this.rideWater(this.clock.simTime);
       this.frameRideWater = { t: this.clock.simTime, water };
-      const event = this.ride.step(simDt, this.input, water);
+      const event = this.ride.step(simDt, this.input, water, (x, z) => rideContext(this.rideStations, x, z));
       if (event === 'reset') this.catchSetWave(this.rideWave + 1);
       else if (event) this.perf.flash(rideMessage(event));
       const rb = this.ride.body;
-      this.rideCover = rb ? tubeCover(this.ribbonStations, rb.x, rb.z) : 0;
+      this.energyPanel.setVisible(this.devUiVisible && rb !== null);
+      if (this.devUiVisible && rb) this.energyPanel.update(realDt, water, rb, this.ride.lastContext);
+      this.rideCover = rb ? tubeCover(this.rideStations, rb.x, rb.z) : 0;
       const pose = this.ride.cameraPose(realDt, water, mouse, this.rideCover);
       if (pose) this.rig.setPose(pose);
     } else {
       this.rideCover = 0;
+      this.energyPanel.setVisible(false);
       this.rig.update(realDt, this.input, this.waterHeightAtCamera());
     }
 

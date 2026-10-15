@@ -14,17 +14,17 @@ describe('the Controls page: view, remap, listen (Andrew 2026-10-04)', () => {
   });
 
   it('lists the tab’s actions and Reset; A listens, B goes back to the drawing', () => {
-    expect(remapRows('keys')).toEqual(['paddle', 'left', 'right', 'crouch', 'popup', 'next', 'reset']);
-    expect(remapRows('pad')).toEqual(['paddle', 'crouch', 'popup', 'next', 'reset']);
+    expect(remapRows('keys')).toEqual(['paddle', 'left', 'right', 'crouch', 'stall', 'pump', 'popup', 'next', 'reset']);
+    expect(remapRows('pad')).toEqual(['paddle', 'crouch', 'stall', 'pump', 'popup', 'next', 'reset']);
     const r = { ...openControls('keys'), mode: 'remap' as const };
-    expect(stepControls(r, 'up', B).state.focus).toBe(6);
+    expect(stepControls(r, 'up', B).state.focus).toBe(8);
     expect(stepControls(r, 'confirm', B).state.mode).toBe('listen');
     expect(stepControls(r, 'back', B).state.mode).toBe('view');
     expect(stepControls(r, 'left', B).state).toEqual(r);
   });
 
   it('binds the key heard, says what it swapped, and refuses the game’s own keys', () => {
-    const l = { ...openControls('keys'), mode: 'listen' as const, focus: 4 }; // Pop up
+    const l = { ...openControls('keys'), mode: 'listen' as const, focus: 6 }; // Pop up
     const got = heard(l, { key: 'KeyJ' }, B);
     expect(got.bindings.keys.popup).toBe('KeyJ');
     expect(got.state.mode).toBe('remap');
@@ -40,7 +40,7 @@ describe('the Controls page: view, remap, listen (Andrew 2026-10-04)', () => {
   });
 
   it('binds pad buttons on the controller tab, and ignores keys there', () => {
-    const l = { ...openControls('pad'), mode: 'listen' as const, focus: 2 }; // Pop up
+    const l = { ...openControls('pad'), mode: 'listen' as const, focus: 4 }; // Pop up
     expect(heard(l, { button: 3 }, B).bindings.pad.popup).toBe(3);
     expect(heard(l, { button: 1 }, B, 'playstation').state.note).toBe('Next wave moved to Cross');
     expect(heard(l, { button: 9 }, B).state.note).toMatch(/kept by the game/);
@@ -49,7 +49,7 @@ describe('the Controls page: view, remap, listen (Andrew 2026-10-04)', () => {
 
   it('Reset to defaults puts the tab back', () => {
     const changed = { ...B, keys: { ...B.keys, popup: 'KeyJ' }, pad: { ...B.pad, popup: 3 } };
-    const r = { ...openControls('keys'), mode: 'remap' as const, focus: 6 };
+    const r = { ...openControls('keys'), mode: 'remap' as const, focus: 8 };
     const out = stepControls(r, 'confirm', changed);
     expect(out.bindings.keys).toEqual(B.keys);
     expect(out.bindings.pad.popup).toBe(3);

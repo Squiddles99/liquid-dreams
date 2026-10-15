@@ -1,5 +1,5 @@
 // The loading cover's pictures: index.html names the start-up one on #ld-cover's data-boot (the crew surfing, shown only
-// while the game first loads) and lists the slides on data-slides (copies tools/loadingArt.py makes from
+// while the game first loads and on the first Surf from the title: App.titleSurf) and lists the slides on data-slides (copies tools/loadingArt.py makes from
 // art/loading/slides/). Each later cover (paddling out, back to the dune) picks a slide here, never the one just shown
 // when there is another.
 
@@ -19,6 +19,11 @@ export function pickSlide(list: readonly string[], r: number, avoid?: string | n
 export function slideImage(name: string): { src: string; srcset: string } {
   const small = `/loading/${name}-1920.webp`;
   return { src: small, srcset: `${small} 1920w, /loading/${name}-full.webp 3840w` };
+}
+
+/** The Library's pictures (library spec §3): its 4:3 tile (tools/loadingArt.py), or the full picture as the cover uses. */
+export function libraryImage(name: string, size: 'tile' | 'full'): { src: string; srcset: string } {
+  return size === 'tile' ? { src: `/loading/${name}-tile.webp`, srcset: '' } : slideImage(name);
 }
 
 /** A picture's fact card (art/loading/cards.json, written into index.html's #ld-cards by tools/loadingArt.py). */

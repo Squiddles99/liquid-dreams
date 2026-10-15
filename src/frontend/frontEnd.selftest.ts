@@ -4,6 +4,7 @@ import { currentBindings, setBindings } from '../ride/bindings';
 import { registerSelfTest } from '../dev/selfTest';
 import { type FrontState, initialFront, step } from './frontEnd';
 import { DEFAULT_CHOICES, DEFAULT_FRONT_SETTINGS, FRONT_SETTINGS_KEY } from './frontSettings';
+import { LIBRARY, LIBRARY_COLS } from './library';
 import type { FrontEndHost } from './frontEndCore';
 import { FrontEnd } from './frontEndPage';
 import { gearView } from './gearView';
@@ -227,17 +228,17 @@ registerSelfTest({
 });
 
 const SIZES: [number, number][] = [[1920, 1080], [1280, 800], [2560, 1080], [1024, 768]];
-const fakeHost = (): FrontEndHost => ({
+export const fakeHost = (onTitle: () => void = () => {}): FrontEndHost => ({
   standSpot: () => ({ x: 305, z: 49.8, headingDeg: 90 }), groundAt: () => 20, baseConditions: () => DEFAULT_CONDITIONS,
-  applyConditions: () => {}, stage: () => {}, paddleOut: () => {},
+  applyConditions: () => {}, stage: () => {}, paddleOut: () => {}, backToTitle: onTitle,
 });
-const memory = (): { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } => {
+export const memory = (): { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } => {
   const m = new Map<string, string>();
   return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => { m.set(k, v); }, removeItem: (k) => { m.delete(k); } };
 };
-const noSound = { uiOut: () => null, setFrontEndMusic: () => {} };
-const press = (code: string): void => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); window.dispatchEvent(new KeyboardEvent('keyup', { code })); };
-const frames = async (fe: FrontEnd, n: number): Promise<void> => { for (let i = 0; i < n; i++) { fe.update(1 / 60); await new Promise((r) => setTimeout(r, 0)); } };
+export const noSound = { uiOut: () => null, setFrontEndMusic: () => {} };
+export const press = (code: string): void => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); window.dispatchEvent(new KeyboardEvent('keyup', { code })); };
+export const frames = async (fe: FrontEnd, n: number): Promise<void> => { for (let i = 0; i < n; i++) { fe.update(1 / 60); await new Promise((r) => setTimeout(r, 0)); } };
 
 /**
  * Whether an element is in the shown beat: its beat wrapper's (or the rider's line's) target opacity, not the computed
@@ -248,12 +249,27 @@ const shown = (e: Element): boolean => {
   return !wrap || wrap.style.opacity !== '0';
 };
 
-/** Every visible text box in the root: its design box and font size. */
+/** Every visible text box in the root: its design box and font size. The surf chart's own lettering is map art, not UI. */
 function texts(root: HTMLElement, scale: number) {
-  return [...root.querySelectorAll('*')].filter((e) => e.childElementCount === 0 && e.textContent?.trim() && getComputedStyle(e).visibility !== 'hidden' && shown(e))
+  return [...root.querySelectorAll('*')].filter((e) => e.childElementCount === 0 && e.textContent?.trim() && getComputedStyle(e).visibility !== 'hidden' && shown(e) && !e.closest('.fe-chart'))
     .map((e) => ({ e, b: designBox(e, root, scale), px: parseFloat(getComputedStyle(e).fontSize) }));
 }
 const overlaps = (a: { x: number; y: number; w: number; h: number }, b: typeof a): boolean => a.x < b.x + b.w - 1 && b.x < a.x + a.w - 1 && a.y < b.y + b.h - 1 && b.y < a.y + a.h - 1;
+
+/** The entry with the most card text (fact + Noongar): the Library's worst case for fitting (Review Focus 1). */
+const LONGEST = LIBRARY.flatMap((c, cat) => c.entries.map((e, entry) => ({ cat, entry, key: e.key, n: e.card.fact.length + (e.card.noongar ?? '').length })))
+  .sort((a, b) => b.n - a.n)[0];
+/** Drives the Library's focus to (cat, entry) with arrows alone. */
+async function goToEntry(fe: FrontEnd, cat: number, entry: number): Promise<void> {
+  for (let k = 0; k < 3 && fe.state?.library.zone !== 'cats'; k++) fe.act('left');
+  for (let k = 0; k < LIBRARY.length; k++) fe.act('up');
+  fe.act('down'); fe.act('up');                       // a category change resets the tile to 0, even when cat is unchanged
+  for (let k = 0; k < cat; k++) fe.act('down');
+  fe.act('right');
+  for (let k = 0; k < Math.floor(entry / LIBRARY_COLS); k++) fe.act('down');
+  for (let k = 0; k < entry % LIBRARY_COLS; k++) fe.act('right');
+  await frames(fe, 2);
+}
 
 for (const [w, h] of SIZES) for (const text of [1, 2]) {
   registerSelfTest({
@@ -270,18 +286,41 @@ for (const [w, h] of SIZES) for (const text of [1, 2]) {
         fe.open();
         fe.resize(w, h);
         await document.fonts.ready;
-        for (const beat of ['conditions', 'rider', 'gear']) {
-          await frames(fe, 120);
-          // The settled layout: a hidden browser pane never advances the fades and slide-ins, so finish them.
-          for (const a of document.getAnimations()) a.finish();
+        const check = (label: string): void => {
+          // The settled layout: a hidden browser pane never advances the fades and slide-ins, so finish them (not the
+          // looping ones, like the map pin's pulse).
+          for (const a of document.getAnimations()) if (Number.isFinite(Number(a.effect?.getComputedTiming().endTime))) a.finish();
           const root = host.querySelector('.fe-root') as HTMLElement, scale = Math.min(w / 1920, h / 1080), l = { designW: w / scale, designH: h / scale, safe: 0.03 };
-          const t = texts(root, scale);
+          // The Noongar line holds a <b> and its text, so texts() (leaves only) misses it: add it whole.
+          const t = [...texts(root, scale), ...[...root.querySelectorAll('.fe-lib-noongar')].filter((e) => getComputedStyle(e).visibility !== 'hidden' && shown(e)).map((e) => ({ e, b: designBox(e, root, scale), px: parseFloat(getComputedStyle(e).fontSize) }))];
           for (const { e, b, px } of t) {
-            if (px < 18) problems.push(`${beat}: "${e.textContent!.slice(0, 20)}" ${px.toFixed(0)} px`);
-            if (b.x < l.designW * l.safe - 0.5 || b.y < l.designH * l.safe - 0.5 || b.x + b.w > l.designW * (1 - l.safe) + 0.5 || b.y + b.h > l.designH * (1 - l.safe) + 0.5) problems.push(`${beat}: "${e.textContent!.slice(0, 20)}" outside`);
+            if (px < 18) problems.push(`${label}: "${e.textContent!.slice(0, 20)}" ${px.toFixed(0)} px`);
+            if (b.x < l.designW * l.safe - 0.5 || b.y < l.designH * l.safe - 0.5 || b.x + b.w > l.designW * (1 - l.safe) + 0.5 || b.y + b.h > l.designH * (1 - l.safe) + 0.5) problems.push(`${label}: "${e.textContent!.slice(0, 20)}" outside`);
           }
-          const blocks = ['.fe-legend', '.fe-title', '.fe-tabs'].flatMap((q) => [...root.querySelectorAll(q)]).filter(shown).map((e) => designBox(e, root, scale));
-          for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) if (overlaps(blocks[i], blocks[j])) problems.push(`${beat}: blocks ${i} and ${j} overlap`);
+          const blocks = ['.fe-legend', '.fe-title', '.fe-tabs', '.fe-map-tabs', '.fe-map-strip', '.fe-map-source', '.fe-map-local', '.fe-map-panel', '.fe-map-credit', '.fe-lib-cats', '.fe-lib-grid', '.fe-lib-entry', '.fe-lib-card', '.fe-lib-credit'].flatMap((q) => [...root.querySelectorAll(q)]).filter((e) => shown(e) && getComputedStyle(e).visibility !== 'hidden').map((e) => designBox(e, root, scale));
+          for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) if (overlaps(blocks[i], blocks[j])) problems.push(`${label}: blocks ${i} and ${j} overlap`);
+          // Text spilling sideways out of its own box (a leaf's box grows with it, so the checks above can't see this).
+          for (const e of root.querySelectorAll('.fe-lib-cat, .fe-lib-tile-name, .fe-lib-name, .fe-lib-sub, .fe-lib-fact')) {
+            const el = e as HTMLElement;
+            if (shown(el) && getComputedStyle(el).visibility !== 'hidden' && el.scrollWidth > el.clientWidth + 1) problems.push(`${label}: "${el.textContent!.slice(0, 20)}" spills sideways ${el.scrollWidth - el.clientWidth} px`);
+          }
+        };
+        for (const beat of ['map', 'conditions', 'rider', 'gear']) {
+          await frames(fe, 120);
+          check(beat);
+          if (beat === 'map') {
+            // The Library (library spec §6): its first tile, the card with the most text (Review Focus 1), and that card open.
+            fe.act('tabPlus'); await frames(fe, 30); check('library');
+            // At 200% every card, in the pane and opened (the tallest isn't always the longest: a name or common name can
+            // wrap); at 100% the longest one.
+            const cards = text === 1 ? [LONGEST] : LIBRARY.flatMap((c, cat) => c.entries.map((e, entry) => ({ cat, entry, key: e.key })));
+            for (const c of cards) {
+              await goToEntry(fe, c.cat, c.entry); await frames(fe, 4); check(`library ${c.key}`);
+              fe.act('confirm'); await frames(fe, 4); check(`library open ${c.key}`);
+              fe.act('back'); await frames(fe, 2);
+            }
+            fe.act('tabMinus'); await frames(fe, 30);
+          }
           press('Enter');
         }
       } finally {
@@ -298,11 +337,14 @@ registerSelfTest({
   async run() {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const fe = new FrontEnd(fakeHost(), host, noSound, memory());
+    let titled = 0;
+    const fe = new FrontEnd(fakeHost(() => titled++), host, noSound, memory());
     const seen = new Set<string>(), problems: string[] = [];
     try {
       fe.open();
       await frames(fe, 30);
+      press('Enter'); // the map's Surf here
+      await frames(fe, 120);
       // The shown beat's focused row (Conditions, gear), else its focused tab (the roster).
       const focusedEl = (): HTMLElement | null => ([...host.querySelectorAll('.fe-row.is-focus'), ...host.querySelectorAll('.fe-tab.is-focus')].find(shown) as HTMLElement | undefined) ?? null;
       const focused = (): string => { const f = focusedEl(); return f?.dataset.rider ?? f?.dataset.index ?? f?.dataset.hit ?? f?.textContent ?? '?'; };
@@ -318,12 +360,142 @@ registerSelfTest({
       press('KeyE');
       await frames(fe, 10);
       for (let k = 0; k < 4; k++) { seen.add(`o:${focused()}`); press('ArrowDown'); await frames(fe, 3); }
-      for (const beat of ['gear', 'rider']) { press('Escape'); await frames(fe, 120); if (!host.querySelector('.fe-root')) problems.push(`B from ${beat} closed the front end`); }
+      for (const beat of ['gear', 'rider', 'conditions']) { press('Escape'); await frames(fe, 120); if (!host.querySelector('.fe-root')) problems.push(`B from ${beat} closed the front end`); }
+      if (fe.state?.beat !== 'map') problems.push(`B from Conditions went to ${fe.state?.beat}`);
+      press('Escape'); await frames(fe, 3);
+      if (titled !== 1) problems.push(`B on the map asked for the title ${titled} times`);
     } finally {
       fe.close();
       host.remove();
     }
     return { pass: problems.length === 0, detail: problems.join('; ') || `reached ${seen.size} focus states` };
+  },
+});
+
+registerSelfTest({
+  name: 'frontend: the Library: E opens it, arrows reach every category and tile, A opens, B closes, B again asks for the title',
+  async run() {
+    // At 1080p: the grid's row heights round there, which once left the last row 1 px short of the end (under the fade).
+    const host = document.createElement('div');
+    Object.assign(host.style, { position: 'fixed', left: '0', top: '0', width: '1920px', height: '1080px', overflow: 'hidden' });
+    document.body.appendChild(host);
+    let titled = 0;
+    const fe = new FrontEnd(fakeHost(() => titled++), host, noSound, memory());
+    const problems: string[] = [];
+    try {
+      fe.open();
+      fe.resize(1920, 1080);
+      await frames(fe, 30);
+      press('KeyE'); await frames(fe, 30);
+      if (fe.state?.hubTab !== 'library' || !host.querySelector('.fe-lib.is-on')) problems.push('E did not open the Library');
+      for (let cat = 0; cat < LIBRARY.length; cat++) {
+        await goToEntry(fe, cat, 0);
+        const n = LIBRARY[cat].entries.length, seen = new Set<string>();
+        for (let row = 0; row * LIBRARY_COLS < n; row++) {
+          for (let col = 0; col < LIBRARY_COLS; col++) { const f = host.querySelector('.fe-lib-tile.is-focus') as HTMLElement | null; if (f) seen.add(f.dataset.hit!); press('ArrowRight'); await frames(fe, 2); }
+          for (let col = 0; col < LIBRARY_COLS; col++) { press('ArrowLeft'); await frames(fe, 2); }
+          press('ArrowRight'); await frames(fe, 2);
+          press('ArrowDown'); await frames(fe, 2);
+          if (fe.state?.library.zone !== 'grid') { press('ArrowRight'); await frames(fe, 2); }
+        }
+        if (seen.size !== n) problems.push(`${LIBRARY[cat].label}: reached ${seen.size} of ${n} tiles`);
+        // The focused tile is in sight: inside the grid's box, once the grid's slide has settled (frames here are not real time).
+        for (const a of document.getAnimations()) if (Number.isFinite(Number(a.effect?.getComputedTiming().endTime))) a.finish();
+        const g = host.querySelector('.fe-lib-grid')!.getBoundingClientRect(), t = host.querySelector('.fe-lib-tile.is-focus')?.getBoundingClientRect();
+        if (!t || t.top < g.top - 1 || t.bottom > g.bottom + 1) problems.push(`${LIBRARY[cat].label}: the focused tile is out of sight`);
+        // The walk ends on the last row: the grid is at its end, so no bottom fade dims it.
+        if (host.querySelector('.fe-lib-grid.is-more')) problems.push(`${LIBRARY[cat].label}: the bottom fade is on at the last row`);
+        // A tile whose name is in full view shows it (only names the grid's edge cuts are hidden).
+        for (const tile of host.querySelectorAll('.fe-lib-tile.is-clipped')) {
+          const nb = tile.querySelector('.fe-lib-tile-name')!.getBoundingClientRect();
+          if (nb.top >= g.top && nb.bottom <= g.bottom) problems.push(`${LIBRARY[cat].label}: ${(tile as HTMLElement).dataset.hit}'s name hidden in full view`);
+        }
+      }
+      // A grid sliding under a resting cursor sends hover events with no movement: they must not take the focus
+      // (the keyboard's or the wheel's scroll would jump to whatever tile lands under the mouse). A real move does.
+      {
+        const before = fe.state!.library.entry, other = host.querySelectorAll('.fe-lib-tile')[before === 0 ? 1 : 0] as HTMLElement;
+        other.dispatchEvent(new MouseEvent('mouseenter'));
+        other.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+        await frames(fe, 2);
+        if (fe.state!.library.entry !== before) problems.push('a hover with no movement took the focus');
+        other.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, movementX: 4, movementY: 2 }));
+        await frames(fe, 2);
+        if (fe.state!.library.entry === before) problems.push('a real pointer move over a tile did not take the focus');
+      }
+      // The same for the categories: a row that reappears under a parked cursor (LB/RB back, picture closed) must not take the focus.
+      {
+        const before = fe.state!.library.cat, row = host.querySelectorAll('.fe-lib-cat')[before === 0 ? 1 : 0] as HTMLElement;
+        row.dispatchEvent(new MouseEvent('mouseenter'));
+        row.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+        await frames(fe, 2);
+        if (fe.state!.library.cat !== before) problems.push('a hover with no movement took the category focus');
+        row.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, movementX: 4, movementY: 2 }));
+        await frames(fe, 2);
+        if (fe.state!.library.cat === before || fe.state!.library.zone !== 'cats') problems.push('a real pointer move over a category did not take the focus');
+        press('ArrowRight'); await frames(fe, 2);
+      }
+      // A double click on the open picture: the first click closes it; the second must not land on the fading picture (its
+      // Back would then leave for the title). A click's second half (detail 2) on a just-opened picture must not close it.
+      {
+        press('Enter'); await frames(fe, 10);
+        const pic = host.querySelector('.fe-lib-open') as HTMLElement;
+        pic.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+        await frames(fe, 2);
+        if (!fe.state!.library.open) problems.push('the second click of a double click closed the picture it opened');
+        pic.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+        await frames(fe, 2);
+        if (fe.state!.library.open) problems.push('a click on the open picture did not close it');
+        const under = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+        if (under?.closest('.fe-lib-open')) problems.push('the closing picture still takes clicks (a double click would leave for the title)');
+        await frames(fe, 2);
+      }
+      // The wheel scrolls the grid even when the keyboard left the focus on the categories: it never changes category.
+      {
+        await goToEntry(fe, 2, 0); fe.act('left'); await frames(fe, 2);
+        host.querySelector('.fe-lib-grid')!.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, cancelable: true }));
+        await frames(fe, 2);
+        const L = fe.state!.library;
+        if (L.cat !== 2 || L.zone !== 'grid' || L.entry !== LIBRARY_COLS) problems.push(`the wheel on the grid from the categories gave ${JSON.stringify(L)}, want Sea life, grid, tile ${LIBRARY_COLS}`);
+      }
+      // Idle, the Library reads no computed style (no forced layout every frame): no more calls than the map alone.
+      {
+        const real = window.getComputedStyle; let calls = 0;
+        window.getComputedStyle = ((...a: Parameters<typeof getComputedStyle>) => { calls++; return real.apply(window, a); }) as typeof getComputedStyle;
+        try {
+          await frames(fe, 3); calls = 0; await frames(fe, 10); const lib = calls;
+          fe.act('tabMinus'); await frames(fe, 3); calls = 0; await frames(fe, 10); const map = calls;
+          fe.act('tabPlus'); await frames(fe, 3);
+          if (lib > map) problems.push(`idle, the Library read computed style ${lib} times in 10 frames (the map alone ${map})`);
+        } finally { window.getComputedStyle = real; }
+      }
+      // The open picture's ‹ › arrows page through the category by mouse; a click on them never closes the picture.
+      {
+        press('Enter'); await frames(fe, 10);
+        const at = fe.state!.library.entry, n = LIBRARY[fe.state!.library.cat].entries.length;
+        const next = host.querySelector('.fe-lib-step.is-next') as HTMLElement | null, prev = () => host.querySelector('.fe-lib-step.is-prev') as HTMLElement | null;
+        if (!next || !prev()) problems.push('the open picture has no ‹ › arrows');
+        else {
+          next.click(); await frames(fe, 2);
+          if (fe.state!.library.entry !== Math.min(n - 1, at + 1) || !fe.state!.library.open) problems.push(`› went to ${fe.state!.library.entry} (open ${fe.state!.library.open}), want ${at + 1}`);
+          prev()!.click(); await frames(fe, 2);
+          if (fe.state!.library.entry !== at || !fe.state!.library.open) problems.push(`‹ went to ${fe.state!.library.entry}, want ${at}`);
+          for (let k = 0; k < n; k++) { prev()!.click(); await frames(fe, 1); }
+          if (!prev()!.classList.contains('is-off')) problems.push('‹ is not off on the first painting');
+        }
+        press('Escape'); await frames(fe, 10);
+      }
+      press('Enter'); await frames(fe, 10);
+      if (!host.querySelector('.fe-lib.is-open')) problems.push('A did not open the picture');
+      press('Escape'); await frames(fe, 10);
+      if (host.querySelector('.fe-lib.is-open') || fe.state?.hubTab !== 'library') problems.push('B did not close the picture back to the Library');
+      press('Escape'); await frames(fe, 3);
+      if (titled !== 1) problems.push(`B on the Library asked for the title ${titled} times`);
+    } finally {
+      fe.close();
+      host.remove();
+    }
+    return { pass: problems.length === 0, detail: problems.join('; ') || 'clean' };
   },
 });
 
@@ -345,7 +517,8 @@ registerSelfTest({
       pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, connected: true, mapping: 'standard', timestamp: performance.now(), axes: [0, 0, 0, 0], buttons } as unknown as Gamepad;
       await frames(fe, 5);
       const pads = [...host.querySelectorAll('.fe-legend [data-glyph]')].map((g) => (g as HTMLElement).dataset.glyph).join(',');
-      return { pass: keys === 'C,R,F,Enter,Esc' && pads === 'View,Y,X,A,B', detail: `keys ${keys} → pad ${pads}` };
+      // The map's legend: Controls, Break details, the source switch, Surf here, Title.
+      return { pass: keys === 'C,F,Tab,Enter,Esc' && pads === 'View,X,RS,A,B', detail: `keys ${keys} → pad ${pads}` };
     } finally {
       Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: real });
       fe.close();
@@ -367,7 +540,7 @@ registerSelfTest({
       try {
         fe.open();
         fe.resize(1920, 1080);
-        for (const a of ['confirm', 'confirm', 'confirm', 'confirm'] as const) { fe.act(a); await frames(fe, 2); }
+        for (const a of ['confirm', 'confirm', 'confirm', 'confirm', 'confirm'] as const) { fe.act(a); await frames(fe, 2); }
         const line = host.querySelector('.fe-root > .fe-line') as HTMLElement;
         // The longest a board line runs, give or take.
         line.lastElementChild!.textContent = 'Five and a half foot and hollow, I’m taking the thruster, no worries at all.';
@@ -488,7 +661,7 @@ registerSelfTest({
       if (!legend().includes('Remap')) bad.push(`Controls legend ${legend()}`);
       press('Escape');
       await frames(fe, 3);
-      if (fe.controls || root.classList.contains('is-controls-open') || fe.state?.beat !== 'conditions') bad.push(`Esc left ${fe.controls ? 'Controls open' : fe.state?.beat}`);
+      if (fe.controls || root.classList.contains('is-controls-open') || fe.state?.beat !== 'map') bad.push(`Esc left ${fe.controls ? 'Controls open' : fe.state?.beat}`);
     } finally {
       fe.close();
       host.remove();

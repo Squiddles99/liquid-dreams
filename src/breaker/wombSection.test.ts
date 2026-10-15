@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { smoothstep } from '../math/smoothstep';
 import { setWaveHeight } from './reefReport';
 import { leanPhase } from './setWaveModel';
 import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, type P2, TIP_KNOT, TROUGH_KNOT, profileKnots, roundedTip, tipLife } from './wombProfile';
 import {
-  type SectionInput, type SectionNumbers, CURL_PHASE, SEAT_DIP_UNITS, SECTION_CREST, SECTION_FLOOR, SECTION_HAND_BACK_S, SECTION_TIP, SECTION_TROUGH, STAND_LEAD_S,
+  type SectionInput, type SectionNumbers, CURL_PHASE, SEAT_DIP_UNITS, SECTION_CREST, SECTION_FLOOR, SECTION_HAND_BACK_S, SECTION_TIP, SECTION_TROUGH,
   STOOD_PHASE, collapseSpan, flightTime, sectionEnd, sectionKnots, sectionKnot, sectionOf, sectionPhase, sectionScale, sectionWeight, seatShift, tubeHold,
-  wombSection, type SheetAlong, sectionSamples, sectionPoint, curlWeight, sampleWeight, SHEET_KNOTS, CURL_KNOTS,
+  wombSection, type SheetAlong, sectionSamples, sectionPoint, curlWeight, sampleWeight, SHEET_KNOTS, CURL_KNOTS, SURGE_FALL_BASE_S, SURGE_FALL_PER_M,
+  surgeWeight, surgeLift, sectionNumbers, seatOf, sectionCrestY, sectionFrame, WALL_LEAD_T, FRONT_LEAD_S, CREST_SHARE, TROUGH_SHARE, setSeatShares, wallWeight, footY, footWeight, footFloorWeight,
 } from './wombSection';
+import { UNTIL_NEVER } from './breaking';
 
 const P = { ribbonOnset: 0.6 };
 const at = (H: number, tb: number | null, r = 1.2, periodS = 15, psi = 0.09): SectionInput => ({ H, r, tb, psi, periodS });
@@ -46,13 +49,13 @@ describe('wombSection: a station as the Womb profile family', () => {
     expect(sectionPhase(at(4, Infinity), P)).toBe(2);
   });
 
-  it('a section held for its turn keeps the swell’s shape down the line and stands up only over its last STAND_LEAD_S (Andrew, 2026-10-05)', () => {
+  it('a section held for its turn keeps the swell’s shape down the line and stands up only over its last FRONT_LEAD_S (Andrew, 2026-10-05)', () => {
     const held = (until: number): number => sectionPhase({ ...at(4, null, 1.2), until }, P); // one-curl: the hold is until
     expect(held(10)).toBe(0);
-    expect(held(STAND_LEAD_S)).toBe(0);
-    expect(held(0.5 * STAND_LEAD_S)).toBeCloseTo(0.25 * STOOD_PHASE, 12);
+    expect(held(FRONT_LEAD_S)).toBe(0);
+    expect(held(0.5 * FRONT_LEAD_S)).toBeCloseTo(0.25 * STOOD_PHASE, 12);
     expect(held(0)).toBeCloseTo(STOOD_PHASE, 12);
-    for (let w = 0; w < STAND_LEAD_S; w += 0.1) expect(held(w)).toBeGreaterThanOrEqual(held(w + 0.1));
+    for (let w = 0; w < FRONT_LEAD_S; w += 0.1) expect(held(w)).toBeGreaterThanOrEqual(held(w + 0.1));
   });
 
   it('holds the tube longer and collapses slower for a bigger, longer-period wave (Andrew, 2026-10-05)', () => {
@@ -106,30 +109,26 @@ describe('one surface (plan 2026-10-06-wave-root-cause step 3, Andrew’s ruling
     }
   });
 
-  it('from the lip pitching on the curl is the drawing, moved (not stretched) onto the sea in front', () => {
+  it('from the lip pitching on the curl is the drawing, seated (womb-realism Task 2: y → s·y + b, x as drawn)', () => {
     for (const phase of [CURL_PHASE, 1, 1.5]) {
-      const n = numbers(A, phase), k = sectionKnots(n, swell), d = roundedTip(profileKnots(phase, 1), tipLife(phase));
+      const n = numbers(A, phase), k = sectionKnots(n, swell), fam = profileKnots(phase, 1), d = roundedTip(fam, tipLife(phase));
       const drawn = (m: number): readonly number[] => d[m > TIP_KNOT ? m + 2 : m === TIP_KNOT ? m + 1 : m];
-      const shift = seatShift(profileKnots(phase, 1)[TROUGH_KNOT][1], k[sectionKnot(TROUGH_KNOT) + 1][1]);
+      const [sc, b] = seatOf(phase, 1, fam, 0);
+      // The floor and trough knots go onto the front sheet's lowest point (Task 3: footY, footWeight).
+      const front = k.slice(SECTION_TROUGH + 1).map((q) => q[1]), low = Math.min(...front), fw = footWeight(phase);
+      const high = Math.max(...front, ...k.slice(0, SHEET_KNOTS).map((q) => q[1]));
+      const footW = (m: number): number => (m === FLOOR_KNOT ? fw * footFloorWeight(phase) : m === TROUGH_KNOT ? fw : 0);
       for (let m = CREST_KNOT; m <= TROUGH_KNOT; m++) {
+        const seated = drawn(m)[1] * sc + b;
         expect(k[sectionKnot(m)][0], `phase ${phase} knot ${m}`).toBeCloseTo(drawn(m)[0], 12);
-        expect(k[sectionKnot(m)][1], `phase ${phase} knot ${m}`).toBeCloseTo(drawn(m)[1] + shift, 12);
+        expect(k[sectionKnot(m)][1], `phase ${phase} knot ${m}`).toBeCloseTo(seated + (footY(low, high) - seated) * footW(m), 12);
       }
-      // Moved, not stretched: the tube is the drawing's size.
-      const tube = (p: readonly number[], q: readonly number[]): number => Math.hypot(p[0] - q[0], p[1] - q[1]);
-      expect(tube(k[SECTION_TIP], k[SECTION_FLOOR])).toBeCloseTo(tube(drawn(TIP_KNOT), drawn(FLOOR_KNOT)), 12);
-      expect(tube(k[SECTION_CREST], k[SECTION_FLOOR])).toBeCloseTo(tube(drawn(CREST_KNOT), drawn(FLOOR_KNOT)), 12);
-      // The trough knot SEAT_DIP_UNITS under the sea at the front knot (unless the shift is at its limit).
-      const dT = drawn(TROUGH_KNOT)[1];
-      expect(k[SECTION_TROUGH][1]).toBeCloseTo(Math.max(dT - 0.4, Math.min(dT + 0.4, k[SECTION_TROUGH + 1][1] - SEAT_DIP_UNITS)), 12);
     }
   });
 
-  it('on a flat sea the round barrel stands as drawn, its trough just under the flats', () => {
+  it('on a flat sea the round barrel stands seated: crest CREST_SHARE, floor −TROUGH_SHARE, its tip where drawn', () => {
     const n = numbers(4, 1), s = sectionOf(n, flat), d = profileKnots(1, 1);
-    const shift = seatShift(d[TROUGH_KNOT][1], 0);
-    expect(shift).toBeCloseTo(-SEAT_DIP_UNITS - d[TROUGH_KNOT][1], 12);
-    expect(s.crest[1]).toBeCloseTo(4 * (d[CREST_KNOT][1] + shift), 9);
+    expect(s.crest[1]).toBeCloseTo(4 * CREST_SHARE, 9);
     expect(s.tip[0]).toBeCloseTo(4 * roundedTip(d, tipLife(1))[TIP_KNOT + 1][0], 9);
     expect(sectionScale(5.2)).toBeCloseTo(4, 12);
   });
@@ -153,7 +152,9 @@ describe('one surface (plan 2026-10-06-wave-root-cause step 3, Andrew’s ruling
         // The drawing's own turns (the crest, the lip, the tube, the foot and its trough) are its business; the joins to the
         // sheet (the shoulder, the front knot) and the sheet's are not.
         const k = sectionKnots(numbers(A, phase), swell);
-        const onCurl = s.homes[j] > A * k[SECTION_CREST][2] && s.homes[j] < A * (k[SECTION_TROUGH + 1][2] - 0.3);
+        // (The curl's homes from its lowest: the leashed cavity's wall and floor sit at homes behind the crest's; Task 3.)
+        const curlHome = Math.min(...k.slice(SECTION_CREST, SECTION_TROUGH + 1).map((q) => q[2]));
+        const onCurl = s.homes[j] > A * (curlHome - 0.1) && s.homes[j] < A * (k[SECTION_TROUGH + 1][2] - 0.3);
         if (!onCurl) expect(turn, `phase ${phase} sample ${j} home ${s.homes[j].toFixed(2)}`).toBeLessThan((10 * Math.PI) / 180);
       }
     }
@@ -176,9 +177,12 @@ describe('the drawn curl is interpolated as drawn, the sheet as the sheet (Secti
     const between = pts.filter((p) => p[0] > floor[0] + 1e-6 && p[0] < trough[0] - 1e-6 && p[1] < 0.5);
     expect(between.length).toBeGreaterThan(8);
     for (const p of between) expect(p[1], `u ${p[0].toFixed(2)}`).toBeGreaterThan(trough[1] - 0.03);
-    // And from the trough knot out to the front knot the surface climbs to the sheet without a second dip.
+    // And from the trough knot out to the front knot the surface climbs to the sheet without a second dip deeper than 0.05 A
+    // below what it has climbed to (STOP 3 ruling 6, 2026-10-13: with the foot on the water in front, the spline humps
+    // ~0.03 A between the foot and the front knot, ~13 cm under a 4.5 m face: under the ripples).
     const out = pts.filter((p) => p[0] >= trough[0] - 1e-6 && p[0] <= knots[SECTION_TROUGH + 1][0] + 1e-6);
-    for (let i = 1; i < out.length; i++) expect(out[i][1], `u ${out[i][0].toFixed(2)}`).toBeGreaterThanOrEqual(out[i - 1][1] - 2e-3);
+    let top = -Infinity;
+    for (const q of out) { expect(q[1], `u ${q[0].toFixed(2)}`).toBeGreaterThanOrEqual(top - 0.05); top = Math.max(top, q[1]); }
   });
 
   it('the sheet weight is 1 on the sheet, 1 − the curl weight on the curl, eased over the two join spans; and 1 everywhere at phase 0', () => {
@@ -226,5 +230,137 @@ describe('no rim at the foot (R1 §5)', () => {
     }
     expect(worst, 'drawn − sheet beyond the trough (m)').toBeLessThanOrEqual(0.02);
     expect(maxRise, 'rise within 10 m of the trough (m)').toBeLessThanOrEqual(0.05);
+  });
+});
+
+describe('wombSection: the surge where a pitching lip lands (whitewater §3.1)', () => {
+  // When (s after onset) a 6 ft / 15 s section's phase passes 1.25 (the tube starts to fill) and 1.5.
+  const H6 = 6 * 0.3048, power6 = H6;
+  const tAt = (H: number, phase: number): number => flightTime(H) + tubeHold(H, 15) + (phase - 1) * collapseSpan(H, 15);
+  const w = (H: number, tb: number | null, hollow: number): number => {
+    const s = at(H, tb);
+    return surgeWeight(s, sectionPhase(s, P), hollow);
+  };
+
+  it('is 0 before the break, through the hold, at hollow 0 and long after', () => {
+    expect(w(H6, null, 1)).toBe(0);
+    expect(surgeWeight(at(H6, 0.5), 1.0, 1)).toBe(0);
+    expect(surgeWeight(at(H6, 0.5), 0.8, 1)).toBe(0);
+    for (let tb = 0; tb < 15; tb += 0.05) expect(w(H6, tb, 0), `tb ${tb}`).toBe(0);
+    expect(w(H6, Infinity, 1)).toBe(0);
+  });
+
+  it('is full as the tube caves in (phase 1.5) on a pitching lip, gone after its fall', () => {
+    expect(w(H6, tAt(H6, 1.5), 1)).toBeGreaterThan(0.9);
+    const gone = tAt(H6, 1.25) + SURGE_FALL_BASE_S + SURGE_FALL_PER_M * power6 + 0.5;
+    expect(w(H6, gone, 1)).toBeLessThan(0.1);
+    for (let tb = 0; tb < 15; tb += 0.05) {
+      const v = w(H6, tb, 1), ph = sectionPhase(at(H6, tb), P);
+      expect(v).toBeGreaterThanOrEqual(0);
+      // No more than its rise in phase: the envelope wombProfile.test's "never crosses itself with the surge on" sweeps.
+      expect(v).toBeLessThanOrEqual(smoothstep(1.25, 1.5, ph) + 1e-12);
+    }
+  });
+
+  it('lifts the cavity knots 5–10 by k·w, the trough half that, nothing else', () => {
+    for (let m = 0; m < 14; m++) {
+      const want = m >= 5 && m <= 10 ? 0.6 * 0.7 : m === 11 ? 0.5 * 0.6 * 0.7 : 0;
+      expect(surgeLift(m, 0.7, 0.6), `knot ${m}`).toBeCloseTo(want, 12);
+    }
+  });
+
+  it('carries the dial into the numbers: surge = surgeWeight × the dial', () => {
+    const s = at(H6, tAt(H6, 1.5));
+    const n = sectionNumbers(s, { ...P, surge: 0.5 });
+    expect(n.surge).toBeCloseTo(0.5 * surgeWeight(s, n.phase, n.hollow), 12);
+    expect(sectionNumbers(s, P).surge).toBe(0);
+  });
+
+  it('raises the drawn curl by the surge in units of A, the sheet ends untouched', () => {
+    const base = sectionKnots(numbers(2, 1.5, 1, 1), flat), up = sectionKnots({ ...numbers(2, 1.5, 1, 1), surge: 0.8 }, flat);
+    for (let k = 0; k < SHEET_KNOTS; k++) expect(up[k]).toEqual(base[k]);
+    expect(up[SECTION_FLOOR][1] - base[SECTION_FLOOR][1]).toBeCloseTo(0.8, 9);
+    expect(up[SECTION_TROUGH][1] - base[SECTION_TROUGH][1]).toBeCloseTo(0.4, 9);
+    expect(up[SECTION_CREST][1]).toBeCloseTo(base[SECTION_CREST][1], 12);
+  });
+});
+
+describe('the seat (womb-realism Task 2, STOP 1c ask 1): in units of A, the crest CREST_SHARE above still water, the floor TROUGH_SHARE below', () => {
+  const flat: SheetAlong = (u) => [u, 0];
+  it('over a flat sea, phases 0.45–1.25: crest 0.85 A and floor −0.25 A (± 0.03 A), at A 1, 3 and 5, every hollowness', () => {
+    for (const A of [1, 3, 5]) for (const phase of [0.45, 0.75, 1, 1.25]) for (const hollow of [0, 0.5, 1]) {
+      const k = sectionKnots({ A, phase, hollow, rho: 1 }, flat), tag = `A ${A} phase ${phase} hollow ${hollow}`;
+      expect(Math.abs(k[SECTION_CREST][1] - CREST_SHARE), tag).toBeLessThanOrEqual(0.03);
+      expect(Math.abs(k[SECTION_FLOOR][1] + TROUGH_SHARE), tag).toBeLessThanOrEqual(0.03);
+    }
+  });
+  it('before the lip pitches the crest knot never sits under the sheet’s crest (the amendment)', () => {
+    for (const lift of [0.5, 0.9, 1.2]) {
+      // A swell whose crest stands `lift` A over still water at u = 0 (the crest's home), A 3.
+      const A = 3, sheet: SheetAlong = (u) => [u, A * lift * Math.cos(Math.min(Math.PI, Math.abs(u) / (2 * A)))];
+      for (let phase = 0; phase <= STOOD_PHASE + 1e-9; phase += 0.05) for (const hollow of [0, 1]) {
+        const k = sectionKnots({ A, phase, hollow, rho: 1 }, sheet);
+        expect(k[SECTION_CREST][1], `lift ${lift} phase ${phase.toFixed(2)} hollow ${hollow}`).toBeGreaterThanOrEqual(lift - 1e-3);
+      }
+    }
+  });
+  it('the dials move the seat: crestShare 0.75, troughShare 0.15', () => {
+    setSeatShares(0.75, 0.15);
+    try {
+      const k = sectionKnots({ A: 3, phase: 1, hollow: 0.5, rho: 1 }, flat);
+      expect(k[SECTION_CREST][1]).toBeCloseTo(0.75, 2);
+      expect(k[SECTION_FLOOR][1]).toBeCloseTo(-0.15, 2);
+    } finally { setSeatShares(CREST_SHARE, TROUGH_SHARE); }
+  });
+});
+
+describe('the wall’s lead is one period, smoothstepped (womb-realism Task 2)', () => {
+  it('at T 14 (lead 0.75 T = 10.5 s, STOP 2 ruling): until 0, 3, 6, 10.5, 14, 30, never → 1, 0.80, 0.39, 0, 0, 0, 0, and never rising with until', () => {
+    expect(WALL_LEAD_T).toBe(0.75);
+    const want: [number, number, number][] = [[0, 1, 1e-9], [3, 0.80, 0.01], [6, 0.39, 0.01], [10.5, 0, 1e-9], [14, 0, 1e-9], [30, 0, 1e-9], [UNTIL_NEVER, 0, 1e-9]];
+    for (const [u, w, tol] of want) expect(Math.abs(wallWeight(u, 14) - w), `until ${u}`).toBeLessThanOrEqual(tol);
+    expect(wallWeight(Infinity, 14)).toBe(0);
+    expect(wallWeight(null, 14)).toBe(0);
+    for (let u = 0; u < 20; u += 0.25) expect(wallWeight(u + 0.25, 14)).toBeLessThanOrEqual(wallWeight(u, 14));
+  });
+});
+
+describe('the crest knot alone (sectionCrestY, womb-realism Task 4: the feathering near the curl)', () => {
+  it('is sectionFrame(…).crest[1] bit for bit over phases, hollows, ρ and surges, on a faced sheet', () => {
+    const faced: SheetAlong = (u) => [u + 0.1 * Math.sin(u), u < 0 ? 0.9 * Math.cos(u / 5) : 0.9 - 1.3 * Math.min(1, u / 4)];
+    for (const A of [1.2, 3.7]) for (const phase of [0, 0.1, 0.3, 0.45, 0.6, 1, 1.6]) for (const hollow of [0, 0.5, 1]) for (const rho of [0.3, 1]) for (const surge of [0, 0.4]) {
+      const n = { A, phase, hollow, rho, surge };
+      expect(sectionCrestY(n, faced), JSON.stringify(n)).toBe(sectionFrame(n, 2 * A, 5, faced).crest[1]);
+    }
+  });
+});
+
+describe('the curtain’s foot on the front sheet (womb-realism Task 3, STOP 2 early ruling ask 2)', () => {
+  it('a front sheet 0.4 A under still water: the floor and trough knots sit on it (± 0.01 A) once the lip throws', () => {
+    for (const A of [1.5, 3.7]) {
+      const sheet: SheetAlong = (u) => [u, u > 0 ? -0.4 * A : 0];
+      for (const phase of [0.6, 0.8, 1, 1.25]) for (const hollow of [0, 1]) {
+        const k = sectionKnots({ A, phase, hollow, rho: 1 }, sheet), tag = `A ${A} phase ${phase} hollow ${hollow}`;
+        expect(Math.abs(k[SECTION_FLOOR][1] + 0.4), tag).toBeLessThanOrEqual(0.01);
+        expect(Math.abs(k[SECTION_TROUGH][1] + 0.4), tag).toBeLessThanOrEqual(0.01);
+      }
+    }
+  });
+  it('never deeper than −0.4 A; a flat front sheet (no low in front) falls back to −troughShare A', () => {
+    const A = 3, deep: SheetAlong = (u) => [u, u > 0 ? -0.7 * A : 0], high: SheetAlong = (u) => [u, u > 0 ? 0.1 * A : 0];
+    expect(sectionKnots({ A, phase: 1, hollow: 1, rho: 1 }, deep)[SECTION_FLOOR][1]).toBeCloseTo(-0.4, 2);
+    expect(sectionKnots({ A, phase: 1, hollow: 1, rho: 1 }, high)[SECTION_FLOOR][1]).toBeCloseTo(-TROUGH_SHARE, 2);
+  });
+  it('a shallow low in front (−0.12 A, the live sheet at t0+3): the foot sits on it, not at −troughShare (STOP 2 ruling 1, option a)', () => {
+    const A = 3.5, sheet: SheetAlong = (u) => [u, u > 0 ? -0.12 * A : 0];
+    for (const phase of [0.8, 1]) {
+      const k = sectionKnots({ A, phase, hollow: 1, rho: 1 }, sheet);
+      expect(Math.abs(k[SECTION_TROUGH][1] + 0.12), `phase ${phase}`).toBeLessThanOrEqual(0.01);
+    }
+    expect(footY(-0.12, -0.07)).toBeCloseTo(-0.12, 12);
+    expect(footY(-0.12, -0.12)).toBeCloseTo(-TROUGH_SHARE, 12);
+  });
+  it('the airborne lip spans at most 2.5 x 2.5 m along the line: Hb 2.5 m peeling 10 m/s (the plan’s case)', () => {
+    expect(flightTime(2.5) * 10).toBeLessThanOrEqual(2.5 * 2.5);
   });
 });

@@ -25,6 +25,22 @@ export function readPad(): PadState | null {
   return null;
 }
 
+type Rumbler = Gamepad & { vibrationActuator?: { playEffect?: (t: string, o: object) => Promise<unknown> } };
+
+/** A dual-rumble chunk on the first pad, if any (ride-speed spec §5); never throws (a pad unplugged mid-ride). */
+export function playRumble(strong: number, weak: number, ms: number): void {
+  try {
+    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const p of pads) {
+      if (!p?.connected) continue;
+      void (p as Rumbler).vibrationActuator?.playEffect?.('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: weak })?.catch(() => {});
+      return;
+    }
+  } catch {
+    // no pads
+  }
+}
+
 /** Rising edges of the pad's buttons, so a held button pops up once. */
 export class PadEdges {
   private last: boolean[] = [];
@@ -54,7 +70,9 @@ export function rideControls(keys: RideKeys, pad: PadState | null, edges: PadEdg
   const paddle = k('paddle') || held(b.pad.paddle) > 0.3;
   const crouch = (k('crouch') ? 1 : 0) + held(b.pad.crouch) - (paddle ? 1 : 0);
   const popup = keys.consumePressed(b.keys.popup) || edges.pressed(pad, b.pad.popup);
-  return { paddle, steer: Math.max(-1, Math.min(1, steer)), crouch: Math.max(-1, Math.min(1, crouch)), popup };
+  const stall = k('stall') || held(b.pad.stall) > 0.3;
+  const pump = k('pump') || held(b.pad.pump) > 0.3;
+  return { paddle, steer: Math.max(-1, Math.min(1, steer)), crouch: Math.max(-1, Math.min(1, crouch)), popup, stall, pump };
 }
 
 /** The look this frame: the right stick (axes 2, 3: right turns right, up looks up) plus a mouse drag (px). */

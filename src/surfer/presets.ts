@@ -27,6 +27,14 @@ export interface SurferPreset {
   realName: string;
   heightM: number;
   weightKg: number;
+  /**
+   * The rider's power (Andrew, 2026-10-14: true to life, the counterweights kept): leg power per kg (W/kg, the pump's
+   * limit) and paddling strength (× the tuned thrust). Shazza carries the values the game was tuned on; T-Bone ~26 %
+   * more leg power per kg (CMJ: men ~57, women ~45 W/kg) and ~11 % more paddle speed (ECU 2017, competitive surfers):
+   * 1.17 × thrust measures 1.11 × top speed on the game's prone drag (riderPower.test).
+   */
+  legPowerWkg: number;
+  paddleStrength: number;
   defaultStance: Stance;
   /** Relative to the site's base URL (public/). */
   glbUrl: string;
@@ -73,7 +81,7 @@ export interface SurferPreset {
 
 export const PRESETS: Record<PresetName, SurferPreset> = {
   female: {
-    name: 'female', label: 'Female', nickname: 'Shazza', realName: 'Sharon', heightM: 1.65, weightKg: 55, defaultStance: 'regular',
+    name: 'female', label: 'Female', nickname: 'Shazza', realName: 'Sharon', heightM: 1.65, weightKg: 55, legPowerWkg: 15, paddleStrength: 1, defaultStance: 'regular',
     glbUrl: 'surfer/female.glb', manifestUrl: 'surfer/female.manifest.json',
     outfits: { summer: 'bikini', shoulder: 'rashieAndBottoms', winter: 'shortArmSteamer' },
     wardrobe: ['bikini', 'onePiece', 'rashieAndBottoms', 'springsuit', 'shortArmSteamer', 'steamer'],
@@ -90,7 +98,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     boardLooks: {},
   },
   male: {
-    name: 'male', label: 'Male', nickname: 'T-Bone', realName: 'Tom', heightM: 1.78, weightKg: 68, defaultStance: 'goofy',
+    name: 'male', label: 'Male', nickname: 'T-Bone', realName: 'Tom', heightM: 1.78, weightKg: 68, legPowerWkg: 19, paddleStrength: 1.17, defaultStance: 'goofy',
     glbUrl: 'surfer/male.glb', manifestUrl: 'surfer/male.manifest.json',
     outfits: { summer: 'boardies', shoulder: 'springsuit', winter: 'shortArmSteamer' },
     wardrobe: ['boardies', 'rashieAndBoardies', 'springsuit', 'shortArmSteamer', 'steamer'],
@@ -107,7 +115,7 @@ export const PRESETS: Record<PresetName, SurferPreset> = {
     boardLooks: {},
   },
   grommet: {
-    name: 'grommet', label: 'Grommet', nickname: 'Grommet', realName: 'Bradley', heightM: 1.52, weightKg: 40, defaultStance: 'regular',
+    name: 'grommet', label: 'Grommet', nickname: 'Grommet', realName: 'Bradley', heightM: 1.52, weightKg: 40, legPowerWkg: 15, paddleStrength: 1, defaultStance: 'regular',
     glbUrl: 'surfer/grommet.glb', manifestUrl: 'surfer/grommet.manifest.json',
     outfits: { summer: 'rashieAndBoardies', shoulder: 'springsuit', winter: 'shortArmSteamer' },
     wardrobe: ['rashieAndBoardies', 'boardies', 'springsuit', 'shortArmSteamer', 'steamer'],

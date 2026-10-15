@@ -27,3 +27,17 @@ describe('the ride reads the player’s bindings', () => {
     expect(rideControls(keysDown(), pad([0, 7]), new PadEdges(), b)).toMatchObject({ popup: false, paddle: false });
   });
 });
+
+describe('stall and pump (ride-speed spec §3)', () => {
+  it('Shift and E, LB and RB, read as stall and pump', () => {
+    const c = rideControls(keysDown('ShiftLeft', 'KeyE'), null, new PadEdges(), DEFAULT_BINDINGS);
+    expect(c.stall).toBe(true);
+    expect(c.pump).toBe(true);
+    const p = rideControls(keysDown(), pad([4, 5]), new PadEdges(), DEFAULT_BINDINGS);
+    expect(p.stall).toBe(true);
+    expect(p.pump).toBe(true);
+    const none = rideControls(keysDown(), pad([]), new PadEdges(), DEFAULT_BINDINGS);
+    expect(none.stall).toBe(false);
+    expect(none.pump).toBe(false);
+  });
+});

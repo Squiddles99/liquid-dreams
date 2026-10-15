@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { FOAM_TICK_S, FoamSchedule } from './foamStep';
-import { SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, SPRAY_POOL, type SprayBirth, sprayReplayTicks } from './sprayEmitters';
-import { SPRAY_DRAG_TAU_S, SPRAY_SETTLE_MS2, SprayPool, birthInto, liveSlots, slotBase, stepPool } from './sprayStep';
+import { DEFAULT_SPRAY_PARAMS, SPIT_WIND_SHARE, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, SPRAY_POOL, type SprayBirth, featherBirths, plumeBirths, spitBirths, sprayReplayTicks } from './sprayEmitters';
+import { KIND_LOOK } from './particleKinds';
+import { SPRAY_DRAG_TAU_S, SPRAY_SETTLE_MS2, NO_WATER, SprayPool, birthInto, liveSlots, slotBase, stepPool } from './sprayStep';
 
 const puff = (over: Partial<SprayBirth> = {}): SprayBirth => ({ x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: 0, life: 2, strength: 1, ...over });
 
@@ -49,6 +50,14 @@ describe('the spray pool (CPU reference)', () => {
     expect(pool.posAge[base + 4]).toBe(2);
     expect(pool.meta[base]).toBe(1);
   });
+  it('a birth with no water under it is NO_WATER (no soft fade); with one, its yWater (whitewater §6.2)', () => {
+    const pool = new SprayPool();
+    birthInto(pool, 6, [puff({ x: 1 }), puff({ x: 2, yWater: -0.6 })]);
+    const base = slotBase(6) * 4;
+    expect(pool.meta[base + 2]).toBe(NO_WATER);
+    expect(pool.meta[base + 6]).toBeCloseTo(-0.6, 6);
+    expect(NO_WATER).toBeLessThan(-1000);
+  });
   it('a replay equals live stepping exactly (fixed slots per tick)', () => {
     const births = (k: number): SprayBirth[] => Array.from({ length: (k * 7) % 5 }, (_, i) => puff({ x: k + i, vy: 1 + i, life: 1 + ((k + i) % 3) * 0.5 }));
     const run = (from: number, to: number): SprayPool => {
@@ -84,6 +93,47 @@ describe('the spray pool (CPU reference)', () => {
     expect(p.clear).toBe(true);
     expect(p.ticks.length).toBe(58);
     expect(p.ticks[57]).toBe(200);
-    expect(s.planTicks(10.05, 58)).toEqual({ clear: false, ticks: [201] });
+    expect(s.planTicks(10.05, 58)).toEqual({ clear: false, coarse: [], ticks: [201] });
+  });
+});
+
+describe('four airborne looks in flight (womb-realism Task 5, spec 3.3)', () => {
+  /** Each birth stepped alone in its own kind over its whole life (the wind (wx, wz)); its track of positions. */
+  const fly = (b: SprayBirth, wx: number, wz: number): [number, number, number][] => {
+    const pool = new SprayPool(1);
+    pool.posAge.set([b.x, b.y, b.z, 0], 0); pool.velLife.set([b.vx, b.vy, b.vz, b.life], 0); pool.meta.set([1, b.kind ?? 0, 0, 0], 0);
+    const out: [number, number, number][] = [];
+    while (pool.posAge[3] < pool.velLife[3]) { stepPool(pool, wx, wz); out.push([pool.posAge[0], pool.posAge[1], pool.posAge[2]]); }
+    return out;
+  };
+  // A lip throwing toward +x (its normal), an offshore of 10 m/s blowing toward −x.
+  const A = 3, lip = { x: 0, y: 3, z: 0, vx: 9, vz: 0, nx: 1, nz: 0, strength: 1, lip: 1, waveId: 1, arc: 0, wOff: 10, yWater: 0, A };
+  it('a plume puff rises at most 2 A over its life and drifts toward the back of the wave', () => {
+    const b = Array.from({ length: 60 }, (_, k) => plumeBirths([lip], k, DEFAULT_SPRAY_PARAMS)).flat();
+    expect(b.length).toBeGreaterThan(10);
+    for (const p of b) {
+      const tr = fly(p, -10, 0), top = Math.max(...tr.map((q) => q[1]));
+      expect(top - p.y).toBeLessThanOrEqual(KIND_LOOK.plume.liftA * A + 1e-4);
+      expect(tr[tr.length - 1][0] - p.x, 'net drift along the normal').toBeLessThan(0);
+    }
+  });
+  it('a spit puff stays within 0.2 A of its birth height and travels along the line', () => {
+    const mouth = { x: 0, y: 1.5, z: 0, dx: 0, dz: 1, speed: 15, nx: 1, nz: 0, radius: 0.6, strength: 1, lip: 1, waveId: 1, arc: 0, A };
+    const b = Array.from({ length: 30 }, (_, k) => spitBirths([mouth], k, [-10, 0])).flat();
+    expect(b.length).toBeGreaterThan(10);
+    for (const p of b) {
+      const tr = fly(p, -10 * SPIT_WIND_SHARE, 0);
+      for (const q of tr) expect(Math.abs(q[1] - p.y)).toBeLessThanOrEqual(KIND_LOOK.spit.liftA * A + 1e-4);
+      expect(tr[tr.length - 1][2] - p.z, 'along the line').toBeGreaterThan(0);
+      expect(p.life).toBeGreaterThanOrEqual(KIND_LOOK.spit.lifeS[0]);
+      expect(p.life).toBeLessThanOrEqual(KIND_LOOK.spit.lifeS[1]);
+    }
+  });
+  it('a feather puff stays within 1 A of the crest (Task 4’s 0.5 A above its birth is tighter)', () => {
+    const e = { x: 0, y: 3, z: 0, nx: 1, nz: 0, strength: 1, waveId: 4, arc: 2, wOff: 10, A, fromFrame: true };
+    for (const p of Array.from({ length: 30 }, (_, k) => featherBirths([e], k)).flat()) {
+      const top = Math.max(...fly(p, -10, 0).map((q) => q[1]));
+      expect(top - e.y).toBeLessThanOrEqual(KIND_LOOK.feather.liftA * A);
+    }
   });
 });

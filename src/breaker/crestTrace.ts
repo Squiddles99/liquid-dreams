@@ -1,12 +1,12 @@
-import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
+import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetSizeAhead, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
-import { type SectionNumbers, WALL_LEAD_S, curlWeight, sectionNumbers } from './wombSection';
+import { type SectionNumbers, curlWeight, sectionNumbers, wallLeadS } from './wombSection';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
-import { TIP } from '../seabed/wombReef';
-import { type ActiveWave, TAPER_NEAR_M, type WaveContext, localHeight, phaseXi } from './setWaveModel';
+import { NORTH_LEDGE, TIP } from '../seabed/wombReef';
+import { type ActiveWave, TAPER_NEAR_M, type WaveContext, localHeight, phaseXi, wallHeight } from './setWaveModel';
 
 /**
  * Crest stations for the breaking ribbon (breaking-ribbon spec §5): each set wave's crest line (ξ = 0) traced across
@@ -19,9 +19,26 @@ export const SPACING_PER_M = 0.012;
 export const MIN_SPACING_M = 0.08;
 export const MAX_SPACING_M = 4;
 export const MAX_STATIONS = 2048;
-/** A side of the trace ends after this much crest (m) below the ribbon's onset ratio and more than WALL_LEAD_S from
+/** A side of the trace ends after this much crest (m) below the ribbon's onset ratio and more than the wall lead (wombSection.wallLeadS) from
  * breaking (the wall down the line is traced to its end). */
 export const BELOW_ONSET_RUN_M = 20;
+/** The crest is walked this far from the tip (m), both ways, and further on the inside leg (insideLeg). */
+export const TRACE_REACH_M = TAPER_NEAR_M;
+/** Where the left's ledge turns due north onto the inside leg (wombReef.NORTH_LEDGE's corner). */
+const TURN = NORTH_LEDGE[1];
+/**
+ * The inside leg: the crest north of the left's turn. The set waves close out along it (the curl runs north at ~30 m/s, 2–4×
+ * the left's peel), 260–400 m from the tip, past TRACE_REACH_M: the ribbon stopped at the reach and the sheet stood that
+ * front alone (its coarse far grid folding: the beige quads in the stand frames; shelf-polish spec §3, "the ribbon draws
+ * every breaking front"). So the walk carries on there to the map's edge (or the line's own end), and the section draws it
+ * as the closeout it is: its hollow fades to 0 from CLOSEOUT_FROM_TURN_M past the turn over CLOSEOUT_FADE_M (the ride ends
+ * before the turn).
+ */
+export const insideLeg = (z: number): boolean => z < TURN[1];
+export const CLOSEOUT_FROM_TURN_M = 10;
+export const CLOSEOUT_FADE_M = 20;
+/** The inside's closeout weight at z: 0 up to CLOSEOUT_FROM_TURN_M north of the turn, 1 from CLOSEOUT_FADE_M beyond. */
+export const closeoutWeight = (z: number): number => smoothstep(CLOSEOUT_FROM_TURN_M, CLOSEOUT_FROM_TURN_M + CLOSEOUT_FADE_M, TURN[1] - z);
 /** The CPU's culling margin over its landing-time estimate (s). */
 export const LOOK_BACK_MARGIN_S = 0.5;
 /** Newton projections onto ξ = 0 per step (the seed takes SEED_ITERATIONS). */
@@ -56,7 +73,7 @@ export interface Station {
   tb: number | null;
   /** Unbroken: how long until the section breaks, or held, until its turn (s; the record's, breaking.onsetUntil, and −tb
    * while held: one-curl spec §3b, one channel), Infinity if it never will: the wall down the line stands up over the last
-   * WALL_LEAD_S of it (wombSection.wallWeight). 0 once broken; null off the record. */
+   * the wall lead of it (wombSection.wallWeight). 0 once broken; null off the record. */
   until: number | null;
   /** The crest's ψ, as the sheet's crest there (setWaveModel.crestAt): the lip's shape. */
   psi: number;
@@ -83,6 +100,20 @@ export interface TraceInput {
   spacingM?: number;
   /** The wind's offshore speed (m/s; absent 0). */
   offshoreMs?: number;
+  /** Probes only: how far from the tip the crest is walked (m; absent TRACE_REACH_M). */
+  reachM?: number;
+  /** The ribbon's trace only: carry the surge (BreakParams.surge) in the sections. Absent: none, so the ride, the spray
+   * and every probe read the family's own sections (whitewater F4: the surge is look only). */
+  drawSurge?: boolean;
+  /** Tests and probes only: the inside leg's line smoothing σ (m; absent INSIDE_LINE_SMOOTHING_M, 0 off). */
+  insideLineSmoothingM?: number;
+}
+
+/** The ride's view of the ribbon's stations: the same entries with the surge taken out of their sections (whitewater F4),
+ * so the board's water is the plain trace's bit for bit. The same array when nothing surges. */
+export function rideEntries(entries: readonly StationEntry[]): readonly StationEntry[] {
+  if (!entries.some((e) => !e.gap && (e.section.surge ?? 0) !== 0)) return entries;
+  return entries.map((e) => (e.gap || (e.section.surge ?? 0) === 0 ? e : { ...e, section: { ...e.section, surge: 0 } }));
 }
 
 const inGrid = (f: ReefField, x: number, z: number): boolean => {
@@ -191,6 +222,9 @@ function toCrest(field: ReefField, w: ActiveWave, t: number, ctx: WaveContext, q
   return q;
 }
 
+/** Diagnostics (the crest-line probe): why each side of the last trace ended. Cleared by traceLines. */
+export const traceEnds: { wave: number; sign: number; x: number; z: number; arc: number; why: string }[] = [];
+
 /** One wave's crest, both ways from its seed, at `factor` × the spacing rule. Empty if the crest isn't on the reef. */
 function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx: WaveContext, input: TraceInput, factor: number): Station[][] {
   const p = input.params;
@@ -208,11 +242,12 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
       }
       const ds = factor * (input.spacingM ?? Math.min(MAX_SPACING_M, Math.max(MIN_SPACING_M, SPACING_PER_M * Math.hypot(x - input.cameraX, z - input.cameraZ))));
       const next = toCrest(field, w, t, ctx, project(field, w, t, ctx, x - nrm.nz * sign * ds, z + nrm.nx * sign * ds, PROJECT_ITERATIONS));
-      if (!(Math.abs(next.xi) < CREST_TOLERANCE_S) || !inGrid(field, next.x, next.z) || Math.hypot(next.x - TIP[0], next.z - TIP[1]) > TAPER_NEAR_M) break;
+      const lost = !(Math.abs(next.xi) < CREST_TOLERANCE_S), off = !inGrid(field, next.x, next.z), far = Math.hypot(next.x - TIP[0], next.z - TIP[1]) > (input.reachM ?? TRACE_REACH_M) && !insideLeg(next.z);
+      if (lost || off || far) { traceEnds.push({ wave, sign, x, z, arc, why: lost ? `crest lost (xi ${next.xi.toFixed(3)} s at ${next.x.toFixed(1)}, ${next.z.toFixed(1)})` : off ? 'off the grid' : 'past the reach' }); break; }
       arc += sign * Math.hypot(next.x - x, next.z - z);
       ({ x, z, f } = next);
-      below = breakingRatio(w.heightM * f.amp, f.hminBreak, p) < p.ribbonOnset && !(timeUntilOnset(field, w, x, z, p) < WALL_LEAD_S) ? below + ds : 0;
-      if (below > BELOW_ONSET_RUN_M) break;
+      below = breakingRatio(w.heightM * f.amp, f.hminBreak, p) < p.ribbonOnset && !(timeUntilOnset(field, w, x, z, p) < wallLeadS(field.periodS)) ? below + ds : 0;
+      if (below > BELOW_ONSET_RUN_M) { traceEnds.push({ wave, sign, x, z, arc, why: 'below the onset run' }); break; }
     }
     sides.push(side);
   }
@@ -225,6 +260,10 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
 function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveContext, input: TraceInput): void {
   for (const s of line) {
     stationOnset(field, w, s, input.params);
+    // The crest's height by the record (setWaveModel.wallHeight, womb-realism Task 2c): before its break it grows into the
+    // height it breaks at, so the section's A (sectionScale of H, then of Hb) runs on across the onset.
+    const f = sampleField(field, s.x, s.z), rec = sampleOnset(field, s.x, s.z, onsetScratch);
+    s.H = wallHeight({ hAmp: w.heightM * f.amp, depthM: f.depth, hminM: f.hmin, tb: s.tb, until: s.until, sizeM: rec ? onsetSizeAhead(rec, 0, w.heightM, input.params) : null, periodS: field.periodS });
     s.psi = stationPsi(field, w, s.x, s.z, input);
     s.lipH = stationLipH(field, w, s.x, s.z, input.params);
     s.Hb = stationSize(field, w, s, input.params);
@@ -250,24 +289,91 @@ export const LINE_END_FADE_M = 6;
  * its normal too: over reef heads the crest's own normal swings ±17° between stations 2 m apart, and the sections, reaching
  * 7 A behind the crest, crossed each other there (the ribbon folded behind the wave: Andrew's GPU run, 2026-10-05).
  */
-export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'>): void {
+export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'> & Partial<Pick<BreakParams, 'surge'>>, insideSigmaM = INSIDE_LINE_SMOOTHING_M): void {
   const normals = line.map((s) => [s.nx, s.nz]);
-  const raw = line.map((s) => sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset }));
+  const raw = line.map((s) => {
+    const q = sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS }, { ribbonOnset: p.ribbonOnset, surge: p.surge });
+    // The surge is × hollow (surgeWeight): it closes out with it.
+    const open = 1 - closeoutWeight(s.z);
+    q.hollow *= open; q.surge = (q.surge ?? 0) * open;
+    return q;
+  });
   const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
   let lo = 0;
   line.forEach((s, i) => {
     while (line[lo].arc < s.arc - reach) lo++;
-    let w = 0, A = 0, phase = 0, hollow = 0, rho = 0, nx = 0, nz = 0;
+    let w = 0, A = 0, phase = 0, hollow = 0, rho = 0, surge = 0, nx = 0, nz = 0;
     for (let k = lo; k < line.length && line[k].arc <= s.arc + reach; k++) {
       const g = Math.exp(-((line[k].arc - s.arc) ** 2) * inv);
-      w += g; A += g * raw[k].A; phase += g * raw[k].phase; hollow += g * raw[k].hollow; rho += g * raw[k].rho;
+      w += g; A += g * raw[k].A; phase += g * raw[k].phase; hollow += g * raw[k].hollow; rho += g * raw[k].rho; surge += g * (raw[k].surge ?? 0);
       nx += g * normals[k][0]; nz += g * normals[k][1];
     }
     const end = Math.min(s.arc - line[0].arc, line[line.length - 1].arc - s.arc);
-    s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: (rho / w) * smoothstep(0, LINE_END_FADE_M, end) };
+    s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: (rho / w) * smoothstep(0, LINE_END_FADE_M, end), surge: surge / w };
     const l = Math.hypot(nx, nz);
     if (l > 1e-9) { s.nx = nx / l; s.nz = nz / l; }
   });
+  smoothInsideLine(line, insideSigmaM);
+}
+
+/**
+ * The drawn line's smoothing across the crest on the inside leg (m of arc, Gaussian σ). There the field's arrival time
+ * kinks: the crest steps 2–5 m sideways over one 4 m station step (Huge, closeout-edges Task 0), and a tube following
+ * each kink drew one stretch ending beside the next (the stand's stepped closeout). The sections and normals are smoothed
+ * already (SECTION_SMOOTHING_M); this moves each station along its normal onto the Gaussian average of its neighbours' offsets
+ * across the line's own direction (womb-realism Task 1: the centroid leaked the line's end 5.8 m off the crest), weighted by
+ * closeoutWeight, so the left's ridden line (weight 0 up to CLOSEOUT_FROM_TURN_M past the turn) is untouched.
+ */
+export const INSIDE_LINE_SMOOTHING_M = 12;
+
+export function smoothInsideLine(line: Station[], sigmaM: number): void {
+  const weights = line.map((s) => closeoutWeight(s.z));
+  if (sigmaM <= 0 || !weights.some((w) => w > 0)) return;
+  const xs = line.map((s) => s.x), zs = line.map((s) => s.z);
+  const reach = 3 * sigmaM, inv = 1 / (2 * sigmaM * sigmaM);
+  let lo = 0;
+  line.forEach((s, i) => {
+    while (line[lo].arc < s.arc - reach) lo++;
+    if (weights[i] <= 0) return;
+    // The line's own direction here (the Gaussian-weighted chord, so a jog does not turn it) and its perpendicular m.
+    let tx = 0, tz = 0;
+    for (let k = lo; k < line.length && line[k].arc <= s.arc + reach; k++) {
+      const g = Math.exp(-((line[k].arc - s.arc) ** 2) * inv) * Math.sign(line[k].arc - s.arc);
+      tx += g * (xs[k] - xs[i]); tz += g * (zs[k] - zs[i]);
+    }
+    const tl = Math.hypot(tx, tz);
+    if (!(tl > 1e-9)) return;
+    const mx = -tz / tl, mz = tx / tl;
+    // The neighbours' mean offset across the line (not their centroid: a one-sided or uneven window shifts the centroid
+    // along the line, and the station's normal, the wave's, sits up to ~50° off the line's perpendicular on the inside leg).
+    let w = 0, d = 0;
+    for (let k = lo; k < line.length && line[k].arc <= s.arc + reach; k++) {
+      const g = Math.exp(-((line[k].arc - s.arc) ** 2) * inv);
+      w += g; d += g * ((xs[k] - xs[i]) * mx + (zs[k] - zs[i]) * mz);
+    }
+    // Moved along its normal by what puts it that far across the line.
+    const nm = s.nx * mx + s.nz * mz, nmSafe = Math.sign(nm || 1) * Math.max(Math.abs(nm), 0.3);
+    const along = (d / w / nmSafe) * weights[i];
+    s.x = xs[i] + along * s.nx;
+    s.z = zs[i] + along * s.nz;
+  });
+}
+
+/** Each wave's whole traced line (end to end by arc), its times and sections filled, the stations that draw nothing kept
+ * (traceStations' input; the crest-line probe reads the sheet's crest on past the drawn stretch). */
+export function traceLines(field: ReefField, waves: readonly ActiveWave[], t: number, ctx: WaveContext, input: TraceInput, factor = 1): Station[][] {
+  const lines: Station[][] = [];
+  traceEnds.length = 0;
+  waves.forEach((w, i) => {
+    if (!(w.heightM > input.minHeightM)) return;
+    const sides = traceWave(field, w, i, t, ctx, input, factor);
+    if (sides.length === 0) return;
+    const line = [...sides[1].reverse(), ...sides[0]];
+    fillTimes(field, w, line, ctx, input);
+    fillSections(line, field.periodS, input.drawSurge ? input.params : { ribbonOnset: input.params.ribbonOnset }, input.insideLineSmoothingM);
+    lines.push(line);
+  });
+  return lines;
 }
 
 /**
@@ -279,13 +385,7 @@ export function traceStations(field: ReefField, waves: readonly ActiveWave[], t:
   let out: StationEntry[] = [];
   for (let attempt = 0, factor = 1; attempt < 5; attempt++, factor *= 1.5) {
     out = [];
-    waves.forEach((w, i) => {
-      if (!(w.heightM > input.minHeightM)) return;
-      const sides = traceWave(field, w, i, t, ctx, input, factor);
-      if (sides.length === 0) return;
-      const line = [...sides[1].reverse(), ...sides[0]];
-      fillTimes(field, w, line, ctx, input);
-      fillSections(line, field.periodS, input.params);
+    traceLines(field, waves, t, ctx, input, factor).forEach((line) => {
       for (const s of line) {
         if (alive(s)) out.push(s);
         else if (out.length > 0 && !out[out.length - 1].gap) out.push({ gap: true });

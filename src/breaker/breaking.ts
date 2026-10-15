@@ -48,13 +48,28 @@ export interface BreakParams {
   /** The curl's top speed along the crest (m/s; one-curl spec §3d): each breaking line's curl reaches a section no sooner
    * than this from the section up the line (and never before it). Baked into the reef field's onset record. The reef's
    * own first-leg peel is 8–14 m/s, but each level's line starts at the south ledge's far end and sweeps up the right at
-   * ~20 m/s: at 20 the floor's holds piled up and reached the peak 1.4 s late at 6 ft (one-curl Task 3). At 40 the peak
-   * and the first leg are the bake's own; the curl's running max still holds the pockets. */
+   * ~20 m/s: at 20 the floor's holds piled up and reached the peak 1.4 s late at 6 ft (one-curl Task 3). So it binds only
+   * down the ridden left from the tip (reefField.riddenLine; womb-realism Task 2b): there the reef peels ~17 m/s at 7 ft and
+   * 13 keeps one front ahead of the rider (12 bit the 225° select bands, whose own peel is 11.6–12.2); the sweep into the peak and the inside run at reefField.CURL_SWEEP_MS. */
   curlMaxMs: number;
-  /** The pile's churn (render only; the CPU model ignores it): lumps up to this fraction of the pile's height… */
+  /** The broken section's churn (render only; the CPU model ignores it): lumps up to this fraction of A × the boil… */
   churnSize: number;
   /** …churning at this rate (× CHURN_RATE_PER_S, pileChurn.ts). */
   churnSpeed: number;
+  /** The surge where a pitching lip lands (whitewater §3.1; wombSection.surgeWeight): the pocket's heave at hollow 1,
+   * units of A, [0, 1]. Look only: the ride's copy of the trace carries surge 0 (crestTrace.rideEntries, review F4); drawn past phase 1.25. */
+  surge: number;
+  /** The section's seat (womb-realism Task 2; wombSection.CREST_SHARE / TROUGH_SHARE): its crest this many A above still
+   * water from the lip pitching on… */
+  crestShare: number;
+  /** …and its floor this many A below. */
+  troughShare: number;
+  /** The wall down the line stands up over this many swell periods before its break (wombSection.WALL_LEAD_T). */
+  wallLeadT: number;
+  /** The lip's flight is the free fall from this many A (wombSection.FLIGHT_DROP_A; womb-realism Task 3). */
+  flightDropA: number;
+  /** From the break the crest hands down over max(the flight, this many periods) (wombSection.HAND_DOWN_T; Task 8). */
+  handDownT: number;
 }
 
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
@@ -77,9 +92,15 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   psiNudge: 0,
   randomDial: 0,
   peel: 1,
-  curlMaxMs: 40,
-  churnSize: 0.2,
+  curlMaxMs: 13,
+  churnSize: 0.25,
   churnSpeed: 1,
+  surge: 0.5,
+  crestShare: 0.85,
+  troughShare: 0.25,
+  wallLeadT: 0.75,
+  flightDropA: 0.8,
+  handDownT: 0.3,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
@@ -132,8 +153,14 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.psiNudge = clampTo(p.psiNudge, -0.5, 0.5, d.psiNudge);
   p.randomDial = clampTo(p.randomDial, 0, 0.15, d.randomDial);
   p.peel = clampTo(p.peel, 1, 3, d.peel);
-  p.curlMaxMs = clampTo(p.curlMaxMs, 4, 40, d.curlMaxMs);
+  p.curlMaxMs = clampTo(p.curlMaxMs, 8, 20, d.curlMaxMs);
   p.churnSize = clampTo(p.churnSize, 0, 0.4, d.churnSize);
+  p.surge = clampTo(p.surge, 0, 1, d.surge);
+  p.crestShare = clampTo(p.crestShare, 0.7, 1, d.crestShare);
+  p.troughShare = clampTo(p.troughShare, 0.1, 0.35, d.troughShare);
+  p.wallLeadT = clampTo(p.wallLeadT, 0.5, 2, d.wallLeadT);
+  p.flightDropA = clampTo(p.flightDropA, 0.4, 1.5, d.flightDropA);
+  p.handDownT = clampTo(p.handDownT, 0.05, 0.3, d.handDownT);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
 
@@ -292,7 +319,7 @@ export const ONSET_SIZE_OFFSET = 1 + 4 * ONSET_LEVELS;
 /** Offset of level 0's time until onset (onsetUntil) in a record sample. */
 export const ONSET_UNTIL_OFFSET = 1 + 5 * ONSET_LEVELS;
 /** The record's time until onset where the section on the ray never reaches the level (s): finite, so the record stays
- * bilinear, and far past any wall's lead (wombSection.WALL_LEAD_S). */
+ * bilinear, and far past any wall's lead (wombSection.wallLeadS). */
 export const UNTIL_NEVER = 1e4;
 
 /**
@@ -363,6 +390,23 @@ export function onsetSize(rec: ArrayLike<number>, offset: number, heightM: numbe
   if (!l) return null;
   const lo = rec[offset + ONSET_SIZE_OFFSET + l.k], hi = rec[offset + ONSET_SIZE_OFFSET + l.k + 1];
   return heightM * (lo + l.w * (hi - lo));
+}
+
+/**
+ * The height (m) the section at a record breaks at, read before it breaks too (womb-realism Task 2c): onsetSize once
+ * broken; before, the size its level carries (the amplification where the running maximum was last raised, which meets the
+ * crossing's own when the level breaks: computeOnsetRecord), levels k and k + 1 as onsetUntil reads them. Null without a
+ * level to read.
+ */
+export function onsetSizeAhead(rec: ArrayLike<number>, offset: number, heightM: number, p: Pick<BreakParams, 'gamma' | 'delta'>): number | null {
+  const broken = onsetSize(rec, offset, heightM, p);
+  if (broken !== null) return broken;
+  const g = heightM * onsetGain(p);
+  if (!(g > 0)) return null;
+  const lq = Math.log(1 / (g * ONSET_LEVEL_Q0)) / Math.log(ONSET_LEVEL_RATIO);
+  const k = Math.min(ONSET_LEVELS - 2, Math.max(0, Math.floor(lq))), w = Math.min(1, Math.max(0, lq - k));
+  const s = offset + ONSET_SIZE_OFFSET, lo = rec[s + k], hi = rec[s + k + 1];
+  return heightM * (lo + w * (hi - lo));
 }
 
 /**

@@ -3,11 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_CHOICES } from './frontSettings';
 import { BEAT_MOVE_S, type FrontAction, type FrontState, choiceOf, conditionRows, focusTo, initialFront, savedOf, step, tick } from './frontEnd';
 import { presetById } from './sessionSetup';
+import { todaysSetup } from './conditionsSource';
+import { LIBRARY } from './library';
 
 const CTX = { seed: 99, today: new Date('2026-10-03T10:00:00+08:00'), calm: false };
 const run = (s: FrontState, ...actions: FrontAction[]): FrontState => actions.reduce((acc, a) => step(acc, a, CTX).state, s);
 const settle = (s: FrontState): FrontState => tick(s, 10, CTX).state;
-const fresh = (): FrontState => initialFront(DEFAULT_CHOICES);
+/** The older beats' tests start on Conditions with the saved setup (the map's Surf here would swap in today's forecast). */
+const fresh = (): FrontState => ({ ...initialFront(DEFAULT_CHOICES), beat: 'conditions' });
+const onMap = (): FrontState => initialFront(DEFAULT_CHOICES);
 
 describe('the front end\'s state machine (dune select spec §3, §4)', () => {
   it('opens on Conditions, Winter offshore, Shazza in focus', () => {
@@ -63,7 +67,7 @@ describe('the front end\'s state machine (dune select spec §3, §4)', () => {
     expect(s.beat).toBe('rider');
     s = settle(run(s, 'back'));
     expect(s.beat).toBe('conditions');
-    expect(step(s, 'back', CTX).events).toEqual([]);
+    expect(step(s, 'back', CTX).state.beat).toBe('map');
   });
   it('moves the rider focus with LB/RB or left/right, wrapping through T-Bone, Shazza, Grommet', () => {
     let s = settle(run(fresh(), 'confirm'));
@@ -145,7 +149,153 @@ describe('the front end\'s state machine (dune select spec §3, §4)', () => {
     expect(step(fresh(), 'settings', CTX).events).toEqual([{ kind: 'settings' }]);
   });
   it('saves what it should remember', () => {
-    const s = run(fresh(), 'down', 'right');
+    const s = run({ ...fresh(), source: 'custom' }, 'down', 'right'); // on Custom: the forecast's own tweaks are the session's
     expect(savedOf(s)).toEqual({ setup: s.setup, rider: 'female', boards: {}, outfits: {}, stances: {} });
+  });
+});
+
+describe('the map beat (surf-map hub)', () => {
+  it('opens on the map with the first break focused', () => {
+    const s = onMap();
+    expect(s.beat).toBe('map'); expect(s.breakId).toBe('womb'); expect(s.breakDetails).toBe(false);
+  });
+  it("Surf here on the forecast loads today's forecast and moves to Conditions", () => {
+    const r = step(onMap(), 'confirm', CTX);
+    expect(r.state.beat).toBe('conditions');
+    expect(r.state.setup).toEqual(todaysSetup(CTX.today));
+    expect(r.events).toContainEqual({ kind: 'surfHere', breakId: 'womb' });
+  });
+  it("Surf here on custom keeps the player's setup", () => {
+    const s = { ...onMap(), source: 'custom' as const, customSetup: { ...onMap().setup, swellFt: 9 } };
+    expect(step(s, 'confirm', CTX).state.setup.swellFt).toBe(9);
+  });
+  it('Back on the map asks for the title; Back on Conditions returns to the map', () => {
+    expect(step(onMap(), 'back', CTX).events).toEqual([{ kind: 'title' }]);
+    const onCond = settle(step(onMap(), 'confirm', CTX).state);
+    const r = step(onCond, 'back', CTX);
+    expect(r.state.beat).toBe('map'); expect(r.events).toContainEqual({ kind: 'back' });
+  });
+  it('Tab flips forecast and custom', () => {
+    const s = step(onMap(), 'toggle', CTX);
+    expect(s.state.source).toBe('custom'); expect(s.events).toEqual([{ kind: 'source', source: 'custom' }]);
+  });
+  it('Details opens the break page; up/down scroll it; Back closes it, not the map', () => {
+    let s = step(onMap(), 'details', CTX).state;
+    expect(s.breakDetails).toBe(true);
+    s = step(s, 'down', CTX).state; s = step(s, 'down', CTX).state; s = step(s, 'up', CTX).state;
+    expect(s.detailsScroll).toBe(1);
+    const r = step(s, 'back', CTX);
+    expect(r.state.breakDetails).toBe(false); expect(r.state.beat).toBe('map'); expect(r.events).toEqual([{ kind: 'breakDetails', open: false }]);
+  });
+  it('never scrolls above the top', () => {
+    expect(step(step(onMap(), 'details', CTX).state, 'up', CTX).state.detailsScroll).toBe(0);
+  });
+  it('pointer focus on a pin selects that break', () => {
+    expect(focusTo(onMap(), { pin: 'womb' }).state.breakId).toBe('womb');
+  });
+});
+
+describe('review fixes (surf-map hub final review)', () => {
+  it("keeps the player's custom setup when they Surf here on the forecast, and saves it, not the forecast", () => {
+    const saved = onMap().setup;
+    let s = settle(step(onMap(), 'confirm', CTX).state); // forecast → Conditions
+    expect(s.setup).toEqual(todaysSetup(CTX.today));
+    s = settle(step(s, 'back', CTX).state);              // back to the map
+    s = step(s, 'toggle', CTX).state;                    // Custom
+    expect(s.customSetup).toEqual(saved);
+    expect(savedOf(s).setup).toEqual(saved);
+    expect(step(s, 'confirm', CTX).state.setup).toEqual(saved);
+  });
+  it('remembers Conditions edits made on Custom as the custom setup', () => {
+    let s = step(onMap(), 'toggle', CTX).state;
+    s = settle(step(s, 'confirm', CTX).state);
+    s = run(s, 'down', 'right');                         // the month row, one month on
+    expect(s.customSetup).toEqual(s.setup);
+    expect(s.customSetup.month).not.toBe(onMap().setup.month);
+  });
+  it('never scrolls the details page past its end', () => {
+    let s = { ...step(onMap(), 'details', CTX).state, detailsMax: 2 };
+    for (let k = 0; k < 9; k++) s = step(s, 'down', CTX).state;
+    expect(s.detailsScroll).toBe(2);
+    expect(step(s, 'up', CTX).state.detailsScroll).toBe(1);
+  });
+});
+
+describe('the Library tab (library spec §2)', () => {
+  const lib = (): FrontState => run(onMap(), 'tabPlus');
+  it('LB and RB both flip the hub between the map and the Library, and the camera never moves', () => {
+    const r = step(onMap(), 'tabPlus', CTX);
+    expect(r.state.hubTab).toBe('library'); expect(r.state.beat).toBe('map'); expect(r.state.move).toBeNull();
+    expect(r.events).toEqual([{ kind: 'hubTab', tab: 'library' }]);
+    expect(run(onMap(), 'tabMinus').hubTab).toBe('library');
+    expect(run(onMap(), 'tabPlus', 'tabMinus').hubTab).toBe('map');
+  });
+  it('opens on the grid, first category, first tile', () => {
+    expect(lib().library).toEqual({ zone: 'grid', cat: 0, entry: 0, open: false });
+    expect(onMap().hubTab).toBe('map');
+  });
+  it('moves over the grid in three columns, clamped, and Left from the first column goes to the categories', () => {
+    let s = run(lib(), 'right', 'right');
+    expect(s.library.entry).toBe(2);
+    expect(run(s, 'right').library.entry).toBe(2);           // the end of the row: clamped
+    s = run(s, 'down');
+    expect(s.library.entry).toBe(5);
+    expect(run(s, 'up', 'up').library.entry).toBe(2);         // the top row: clamped
+    s = run(lib(), 'left');
+    expect(s.library.zone).toBe('cats');
+  });
+  it('Down from the last full row lands on the last tile; Down on the last row stays', () => {
+    // Reptiles: 8 entries, rows 0-2 / 3-5 / 6-7.
+    let s = run(lib(), 'left', 'down', 'down', 'down', 'down', 'right');
+    expect(LIBRARY[s.library.cat].label).toBe('REPTILES');
+    s = run(s, 'right', 'right', 'down');                    // entry 2 -> 5
+    expect(s.library.entry).toBe(5);
+    s = run(s, 'down');                                      // 5 + 3 = 8 is past the end: the last tile
+    expect(s.library.entry).toBe(7);
+    expect(run(s, 'down').library.entry).toBe(7);
+  });
+  it('up/down on the categories change the category, clamped, and reset the tile', () => {
+    let s = run(lib(), 'right', 'right', 'left', 'left', 'left', 'down');   // entry 2 -> 1 -> 0 -> the categories, then down
+    expect(s.library).toMatchObject({ zone: 'cats', cat: 1, entry: 0 });
+    expect(run(s, 'up', 'up').library.cat).toBe(0);
+    s = run(s, 'down', 'down', 'down', 'down', 'down', 'down');
+    expect(s.library.cat).toBe(5);
+    expect(run(s, 'confirm').library.zone).toBe('grid');
+  });
+  it('A opens the picture, left/right page through the category (clamped), A or B closes it', () => {
+    let s = step(lib(), 'confirm', CTX);
+    expect(s.state.library.open).toBe(true); expect(s.events).toEqual([{ kind: 'libraryOpen', open: true }]);
+    let t = run(s.state, 'left');
+    expect(t.library.entry).toBe(0);
+    t = run(t, 'right', 'right');
+    expect(t.library.entry).toBe(2); expect(t.library.open).toBe(true);
+    expect(run(t, 'back').library.open).toBe(false);
+    expect(run(t, 'confirm').library.open).toBe(false);
+    s = step(t, 'up', CTX);
+    expect(s.state).toBe(t);
+  });
+  it('B (closed) asks for the title and leaves the hub on the map for next time', () => {
+    const r = step(run(lib(), 'right'), 'back', CTX);
+    expect(r.events).toEqual([{ kind: 'title' }]);
+    expect(r.state.hubTab).toBe('map');
+  });
+  it('remembers its category and tile across LB/RB, and LB/RB while open closes the picture', () => {
+    const s = run(lib(), 'left', 'down', 'right', 'right', 'confirm', 'tabPlus');
+    expect(s.hubTab).toBe('map'); expect(s.library).toMatchObject({ cat: 1, entry: 1, open: false });
+    expect(run(s, 'tabPlus').library).toMatchObject({ cat: 1, entry: 1 });
+  });
+  it('the map\'s own actions do nothing on the Library', () => {
+    const s = run(lib(), 'right');
+    for (const a of ['details', 'toggle', 'random'] as const) expect(step(s, a, CTX).state).toBe(s);
+  });
+  it('the mouse: a category or tile under the pointer takes the focus; pins, and tiles under the open picture, do not', () => {
+    const s = lib();
+    expect(focusTo(s, { libEntry: 4 }).state.library).toMatchObject({ zone: 'grid', entry: 4 });
+    expect(focusTo(s, { libCat: 3 }).state.library).toMatchObject({ zone: 'cats', cat: 3, entry: 0 });
+    expect(focusTo(s, { libEntry: 0 }).events).toEqual([]);                       // already there
+    const open = run(s, 'confirm');
+    expect(focusTo(open, { libEntry: 4 }).state).toBe(open);
+    expect(focusTo(s, { pin: 'somewhere-else' }).state).toBe(s);                  // the chart under the Library
+    expect(focusTo(onMap(), { libEntry: 4 }).state.library.entry).toBe(0);         // the Library isn't up
   });
 });

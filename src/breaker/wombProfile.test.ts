@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import approved from './wombProfile.approved.json';
-import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, KNOTS, type P2, PROFILE_KEYS, TIP_KNOT, TROUGH_KNOT, profileCurve, profileKnots } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, KNOTS, type P2, PROFILE_KEYS, SPAN_SAMPLES, TIP_KNOT, TROUGH_KNOT, densePoint, profileCurve, profileKnots, roundedTip, tipLife } from './wombProfile';
+import { surgeLift } from './wombSection';
+import { smoothstep } from '../math/smoothstep';
 
 const range = (a: number, b: number, step: number): number[] => Array.from({ length: Math.round((b - a) / step) + 1 }, (_, i) => a + i * step);
 const PHASES = range(0, 2, 0.02);
@@ -45,6 +47,18 @@ describe('wombProfile', () => {
 
   it('never crosses itself', () => {
     for (const ph of PHASES) for (const hv of HOLLOWS) expect(selfCrossings(profileCurve(ph, hv)), `phase ${ph} hollow ${hv}`).toBe(0);
+  });
+
+  // The surge's weight can be no more than its rise in phase (surgeWeight: smoothstep(1.25, 1.5, phase) × fall × hollow)
+  // × the dial (≤ 1); here without the hollow factor (stricter). A full lift at phase 1.25 lifts the cavity through the lip's
+  // outside (knot 4, unlifted): a state surgeWeight never makes.
+  it('never crosses itself with the surge on (whitewater §3.1: phases 1.25–2, the dial at half and its max)', () => {
+    for (const ph of range(1.25, 2, 0.05)) for (const hv of HOLLOWS) for (const dial of [0.5, 1]) {
+      const w = dial * smoothstep(1.25, 1.5, ph);
+      const lifted = profileKnots(ph, hv).map((p, m): P2 => [p[0], p[1] + surgeLift(m, w, 1)]);
+      const k = roundedTip(lifted, tipLife(ph)), dense = Array.from({ length: (k.length - 1) * SPAN_SAMPLES + 1 }, (_, d) => densePoint(k, d));
+      expect(selfCrossings(dense), `phase ${ph} hollow ${hv} w ${w}`).toBe(0);
+    }
   });
 
   it('changes smoothly with phase', () => {
@@ -121,10 +135,22 @@ describe('wombProfile', () => {
       return best;
     };
     expect(approved.n).toBe(CURVE_SAMPLES);
-    for (const shape of approved.shapes) {
+    // womb-realism Task 3: the lip's leash (TIP_REACH_MAX) pulls in every drawing from the lip pitching on (0.75–2, whose
+    // signed tips reach 1.3–1.45 H); those are re-judged by Andrew from the captures at STOP 2. Phases 0–0.5 are untouched.
+    for (const shape of approved.shapes.filter((q) => q.phase <= 0.5)) {
       const c = profileCurve(shape.phase, shape.hollow);
       for (const p of c) expect(offCurve(p, shape.curve), `phase ${shape.phase} hollow ${shape.hollow}`).toBeLessThan(2e-3);
       for (const p of shape.curve) expect(offCurve(p, c), `phase ${shape.phase} hollow ${shape.hollow}`).toBeLessThan(2e-3);
+    }
+  });
+});
+
+describe('the lip on a leash (womb-realism Task 3, spec 3.2)', () => {
+  it('over phases 0–2 and every hollowness the tip stands at most 0.1 above the crest and reaches at most 1.0 ahead of it', () => {
+    for (let i = 0; i <= 40; i++) for (const hollow of [0, 0.5, 1]) {
+      const phase = i * 0.05, k = profileKnots(phase, hollow), tag = `phase ${phase.toFixed(2)} hollow ${hollow}`;
+      expect(k[TIP_KNOT][1] - k[CREST_KNOT][1], tag).toBeLessThanOrEqual(0.1 + 1e-9);
+      expect(k[TIP_KNOT][0] - k[CREST_KNOT][0], tag).toBeLessThanOrEqual(1.0 + 1e-9);
     }
   });
 });

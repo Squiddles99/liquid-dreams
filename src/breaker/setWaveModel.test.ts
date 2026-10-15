@@ -1,5 +1,6 @@
+import { HAND_DOWN_T, handDownSpan, setHandDownT } from './wombSection';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BREAK_PARAMS, breakingRatio, onsetPsi, onsetTime } from './breaking';
+import { DEFAULT_BREAK_PARAMS, UNTIL_NEVER, breakingRatio, onsetPsi, onsetTime } from './breaking';
 import { waveNumber } from './dispersion';
 import type { FieldSample } from './fieldSample';
 import {
@@ -190,7 +191,7 @@ describe('ψ at the crest (barrel from the maths)', () => {
 
 
 describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
-  it('shortens a crest’s front as its section stands up: the swell’s before, the profile’s face once broken; no clock', async () => {
+  it('shortens a crest’s front as its section stands up: the swell’s before, the profile’s face once broken; on the record the clock alone', async () => {
     const { frontStanding, wombFrontMin, LEAN_FRONT_MIN, LEAN_FRONT_FLOOR } = await import('./setWaveModel');
     expect(frontStanding(undefined)).toBe(0);
     expect(frontStanding(null)).toBe(0);
@@ -198,14 +199,21 @@ describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
     expect(frontStanding(null, 0.85, 0.7)).toBeCloseTo(0.5, 12);
     expect(frontStanding(null, 1, 0.7)).toBe(1);
     // Held for its turn: as the wall stands up over the last WALL_LEAD_S before it (wombSection.wallWeight).
-    const { wallWeight, WALL_LEAD_S } = await import('./wombSection');
+    const { frontWeight: wallWeight, FRONT_LEAD_S: WALL_LEAD_S } = await import('./wombSection');
     expect(frontStanding(-1, 0.85, 0.7)).toBeCloseTo(wallWeight(1), 12);
     expect(frontStanding(-WALL_LEAD_S / 2, 0.85, 0.7)).toBeCloseTo(0.25, 12);
-    // Unbroken, with the record's time until it breaks: the wall, or the ratio, whichever is further.
-    expect(frontStanding(null, 0.7, 0.7, Infinity)).toBe(0);
+    // Unbroken, on the record (the time until it breaks finite): the clock alone, as the drawn section's phase
+    // (wombSection.sectionPhase, one-curl spec §3b). The ratio beside the clock stood the sheet up to a near-vertical face
+    // over the few metres of crest where r passes the onset ratio before the record's negative onset time takes over: a
+    // dark wedge with a torn foot ahead of the stood wall (Andrew, 2026-10-11, "a tear in the wave face").
     expect(frontStanding(null, 0.7, 0.7, WALL_LEAD_S / 2)).toBeCloseTo(0.25, 12);
     expect(frontStanding(null, 0.7, 0.7, 0)).toBe(1);
-    expect(frontStanding(null, 0.85, 0.7, WALL_LEAD_S)).toBeCloseTo(0.5, 12);
+    expect(frontStanding(null, 0.85, 0.7, WALL_LEAD_S)).toBe(0);
+    expect(frontStanding(null, 0.95, 0.7, 3.4)).toBeCloseTo(wallWeight(3.4), 12);
+    expect(frontStanding(null, 1, 0.7, 3.4)).toBeCloseTo(wallWeight(3.4), 12);
+    // A ray that never breaks (until Infinity): the ratio alone, as off the record.
+    expect(frontStanding(null, 0.7, 0.7, Infinity)).toBe(0);
+    expect(frontStanding(null, 0.85, 0.7, Infinity)).toBeCloseTo(0.5, 12);
     expect(frontStanding(0)).toBe(1);
     expect(frontStanding(3)).toBe(1);
     // The front as long as the profile's face (1.8 A, A = H / 1.3) on the 6 ft set at the take-off (H 3.5 m, k 0.068):
@@ -249,3 +257,52 @@ describe('leanPhase (plan 2026-10-06-wave-root-cause step 3: no plateau in front
   });
 });
 
+
+describe('the wall ahead grows into the record’s breaking size (womb-realism Task 2c, STOP 1c ask 2)', () => {
+  it('on the record before onset: from the depth’s cap into the size it breaks at over the wall’s lead', async () => {
+    const { wallWeight } = await import('./wombSection');
+    const { wallHeight } = await import('./setWaveModel');
+    // A_rec 4.8, cap 3.0 (0.78 × 3.846 m of water now), T 14, the swell itself far taller (H amp 10).
+    const depth = 3.0 / 0.78, at = (until: number): number => wallHeight({ hAmp: 10, depthM: depth, hminM: 2, tb: null, until, sizeM: 4.8, periodS: 14 });
+    expect(at(14)).toBeCloseTo(3.0, 9);
+    expect(at(7)).toBeCloseTo(3.0 + 1.8 * wallWeight(7, 14), 9);
+    expect(at(0)).toBeCloseTo(4.8, 9);
+    for (let u = 0; u < 14; u += 0.5) expect(at(u + 0.5)).toBeLessThanOrEqual(at(u) + 1e-12);
+    // Never past the swell's own height.
+    expect(wallHeight({ hAmp: 4, depthM: depth, hminM: 2, tb: null, until: 0, sizeM: 4.8, periodS: 14 })).toBe(4);
+    // Held for its turn (tb < 0): the same, its turn −tb away.
+    expect(wallHeight({ hAmp: 10, depthM: depth, hminM: 2, tb: -7, until: 0, sizeM: 4.8, periodS: 14 })).toBeCloseTo(at(7), 9);
+  });
+  it('off the record, or never breaking: the depth now caps it; once broken, the old law (the depth the ray ran over)', async () => {
+    const { wallHeight } = await import('./setWaveModel');
+    for (const until of [null, Infinity, UNTIL_NEVER]) {
+      expect(wallHeight({ hAmp: 10, depthM: 5, hminM: 3, tb: null, until, sizeM: null, periodS: 14 }), String(until)).toBeCloseTo(0.78 * 5, 12);
+    }
+    expect(wallHeight({ hAmp: 10, depthM: 5, hminM: 3, tb: 5, until: 0, sizeM: 4.8, periodS: 14 })).toBeCloseTo(0.78 * 3, 12);
+    expect(wallHeight({ hAmp: 2, depthM: 5, hminM: 3, tb: 0.5, until: 0, sizeM: 4.8, periodS: 14 })).toBe(2);
+    expect(wallHeight({ hAmp: 10, depthM: 5, hminM: 3, tb: 0.5, until: 0, sizeM: null, periodS: 14 })).toBeCloseTo(0.78 * 3, 12);
+  });
+  it('continuous at the break: from the record’s size down to the broken law over the lip’s flight', async () => {
+    const { wallHeight } = await import('./setWaveModel');
+    const { flightTime } = await import('./wombSection');
+    const h = (tb: number | null, until: number) => wallHeight({ hAmp: 10, depthM: 5, hminM: 3, tb, until, sizeM: 4.8, periodS: 14 });
+    expect(h(null, 0)).toBeCloseTo(4.8, 9);
+    expect(h(1e-6, 0)).toBeCloseTo(4.8, 4);
+    expect(h(-1e-6, 0)).toBeCloseTo(4.8, 4);
+    // Over the hand-down span: max(the lip's flight, handDownT x T) (womb-realism Task 8, STOP 3 ruling 6).
+    const span = handDownSpan(4.8, 14);
+    expect(span).toBeCloseTo(Math.max(flightTime(4.8), HAND_DOWN_T * 14), 12);
+    expect(h(span, 0)).toBeCloseTo(0.78 * 3, 12);
+    for (let tb = 0; tb < span; tb += span / 20) expect(h(tb + span / 20, 0)).toBeLessThanOrEqual(h(tb, 0) + 1e-12);
+  });
+  it('the hand-down span is the dial handDownT x T where that is longer than the flight (default 0.3: 4.2 s at T 14)', async () => {
+    const { flightTime } = await import('./wombSection');
+    expect(HAND_DOWN_T).toBe(0.3);
+    expect(handDownSpan(4.8, 14)).toBeCloseTo(4.2, 12);
+    setHandDownT(0.05);
+    try {
+      expect(flightTime(4.8)).toBeGreaterThan(0.05 * 14);
+      expect(handDownSpan(4.8, 14)).toBeCloseTo(flightTime(4.8), 12);
+    } finally { setHandDownT(HAND_DOWN_T); }
+  });
+});

@@ -19,6 +19,9 @@ import { type BoardFrame, type SolvedPose, boardQuaternion, solvePose } from './
 import { clipDuration, loadRiderClips, type RiderClips } from './clips';
 import { sampleClip } from './clipPlayer';
 import { clipPose } from './clipPose';
+import { blendOnBoard } from './poseBlend';
+import { EXIT_FADE_S, type Follow, fadeSolved, newFollow, sampleFromSolved, smootherStep, stepFollow } from './poseFollow';
+import { loadPoseLib, type PoseLib } from './poseLib';
 import { chooseMotion, clipTime } from './motion';
 import type { FingerBone } from './rig';
 import { Surfer } from './Surfer';
@@ -39,6 +42,19 @@ export class SurferStand {
     (name) => loadRiderClips(`${import.meta.env.BASE_URL}surfer/clips/${name}.clips.json`).then((clips) => ({ clips })),
     (name, e) => console.warn(`The ${name} motion clips failed to load; the stand uses the code poses.`, e),
   );
+  /** The approved ride poses (ride pose blend, part C), one file for every standing rider; null when not there. */
+  private readonly poseLoader = new KeyedLoader<'all', PoseLib | null>(
+    () => loadPoseLib(`${import.meta.env.BASE_URL}surfer/poses/poses.json`),
+    (_k, e) => console.warn('The ride poses file failed to load; riding uses the trim clip or the code poses.', e),
+  );
+  /** The body following the ride's dials at a body's pace (poseFollow) while the blend runs; null otherwise. */
+  private follow: Follow | null = null;
+  /** The last pose shown, the board it stood on, the rider and the update it was shown in: the blend fades in from it
+   * (the drop's cut, the first ride's pop) only when it was the update just before, on the same rider. */
+  private lastShown: { pose: SolvedPose; frame: BoardFrame; preset: PresetName; tick: number } | null = null;
+  /** Leaving the blend (a wipeout, the ride's end): the blend's last pose, faded out of over EXIT_FADE_S. */
+  private exitFade: { pose: SolvedPose; t: number } | null = null;
+  private tick = 0;
   private askedPreset: PresetName | null = null;
   private readonly board: BoardMesh;
   private readonly leash: THREE.Mesh;
@@ -85,6 +101,7 @@ export class SurferStand {
    */
   update(asked: SurferParams, simTime: number, dateISO: string, seed: number, probe: HeightProbe, tideM: number, ground?: (x: number, z: number) => number | null, rideFrame?: BoardFrame): void {
     this.group.visible = asked.enabled;
+    this.tick++;
     if (!asked.enabled) return;
     const groundY = asked.onLand ? ground?.(asked.x, asked.z) ?? null : null;
     const p = landedAt(asked, groundY, tideM);
@@ -155,7 +172,7 @@ export class SurferStand {
       lookAt.copy(head).add(v);
     }
     const state: RideState = {
-      board: frame, speedMs: 0, railAngleRad: p.lean * 35 * DEG, compression: dials.compression,
+      board: frame, speedMs: p.speedMs, railAngleRad: p.lean * 35 * DEG, compression: dials.compression,
       zone: POSE_ZONE[p.pose], phase: POSE_PHASE[p.pose], phaseT,
       lookAt,
     };
@@ -167,7 +184,31 @@ export class SurferStand {
     const choice = chooseMotion(p.motion, p.pose, this.clipLoader.get(p.preset), p.stance);
     this.status.motion = choice.status;
     let solved: SolvedPose, fingers: Partial<Record<FingerBone, THREE.Quaternion>> | undefined;
-    if (choice.use === 'clip' && choice.clip && choice.rc) {
+    // Riding a standing board (part C): the approved poses, blended by the ride's dials, placed by the clip path with
+    // the contact hand pulled to its spot. No poses file: the trim clip or the code poses, as before.
+    // Fetched from the first moment on the water on a standing board, so it's there before the first ride.
+    if (!p.onLand && p.board !== 'bodyboard') this.poseLoader.get('all');
+    const lib = p.drive && p.pose === 'trim' && p.board !== 'bodyboard' ? this.poseLoader.get('all') : null;
+    if (p.drive && p.pose === 'trim' && p.board !== 'bodyboard' && !lib && this.poseLoader.settled('all')) this.status.motion = 'blend: no poses file';
+    const shownJustNow = this.lastShown && this.lastShown.tick === this.tick - 1 && this.lastShown.preset === p.preset ? this.lastShown : null;
+    const blending = !!(lib && p.drive);
+    // Leaving the blend: fade out of its last pose (Andrew 2026-10-15: no snap, final review).
+    if (!blending && this.follow) this.exitFade = shownJustNow ? { pose: shownJustNow.pose, t: 0 } : null;
+    if (!blending) this.follow = null;
+    else this.exitFade = null;
+    if (lib && p.drive) {
+      // The body follows the dials at a body's pace, fading in from whatever showed just before (Andrew 2026-10-15: no
+      // snap); with nothing to fade from, it starts where the ride is.
+      if (!this.follow) {
+        this.follow = shownJustNow ? newFollow() : newFollow({ d: p.drive, dials, stance: p.stance });
+        if (shownJustNow) this.follow.from = sampleFromSolved(shownJustNow.pose, shownJustNow.frame, p.stance, s.rest.restQ);
+      }
+      const out = stepFollow(this.follow, p.drive, dials, p.stance, dt);
+      const cp = blendOnBoard(lib, s.rest, { spec, layout, stance: p.stance, dials: out.dials, balance: bal }, p.drive, simTime, state.board, state.lookAt, out);
+      solved = cp;
+      fingers = cp.fingers;
+      this.status.motion = 'blend';
+    } else if (choice.use === 'clip' && choice.clip && choice.rc) {
       const sample = sampleClip(choice.clip, choice.rc.fps, clipTime(p.play, simTime, p.phaseT, clipDuration(choice.rc, choice.clip)));
       // The clip moves the body; the arms take the surfer pose's hands, balance drift included (Andrew, Gate C).
       const c = clipPose(s.rest, sample, { spec, layout, stance: p.stance, dials, balance: bal, hands: t.hands }, state.board, state.lookAt);
@@ -176,7 +217,13 @@ export class SurferStand {
     } else {
       solved = solvePose(s.rest, t, state.board, state.lookAt);
     }
+    if (this.exitFade) {
+      solved = fadeSolved(this.exitFade.pose, solved, 1 - smootherStep(this.exitFade.t / EXIT_FADE_S));
+      this.exitFade.t += dt;
+      if (this.exitFade.t >= EXIT_FADE_S) this.exitFade = null;
+    }
     s.applyPose(solved, fingers);
+    this.lastShown = { pose: solved, frame, preset: p.preset, tick: this.tick };
     if (carrying && t.carry) {
       // The board under the arm (walking spec §4): placed from the solved hand, not the feet; no deck contacts, no leash.
       const held = carriedBoard(t.carry, frame, solved);

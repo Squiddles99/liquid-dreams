@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { rainRipplesNode } from '../weather/rainRipples';
 import {
-  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, mix, mx_noise_float, mx_worley_noise_vec2, normalize, positionLocal, positionWorld, saturate, select, smoothstep, sqrt,
+  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, min, mix, mx_noise_float, mx_worley_noise_vec2, normalize, positionLocal, positionWorld, saturate, select, smoothstep, sqrt,
   textureLoad, uniform, varying, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { seabedTerms } from '../seabed/seabedShading';
@@ -16,6 +16,7 @@ import type { WaterSurfaceModel } from './waterSurface';
 import type { SunlightSource } from '../land/SunlightMap';
 import type { SkylineTable } from '../land/SkylineTable';
 import type { CoastalSurf } from '../surf/CoastalSurf';
+import { SHORE_FOAM_BAND_M } from '../surf/surfModel';
 
 type N = any;
 
@@ -37,8 +38,11 @@ export const EARTH_RADIUS_M = 6_371_000;
 export const SET_FOAM_MAX_COVER = 0.95;
 /** The lace's cells, along travel and across it (m). */
 export const FOAM_CELL_M: readonly [number, number] = [2.8, 2.0];
+/** The lace stage (L3): cells LACE_STRETCH : 1 along the drift axis, LACE_JITTER cells more warp, and a ~LACE_MASK_M noise
+ * that tears out about half the rims, so old foam reads as streaks and torn patches, not a honeycomb. */
+export const LACE_STRETCH = 2.5, LACE_JITTER = 0.4, LACE_MASK_M = 6;
 
-export function setFoamPattern(foam: N, frame: N, time: N): N {
+export function setFoamPattern(foam: N, frame: N, time: N, thin: N = float(0.0), tear: N = float(0.0)): N {
   return Fn(() => {
     const out = vec2(0.0, 1.07).toVar();
     If(foam.greaterThan(1e-3), () => {
@@ -47,14 +51,26 @@ export function setFoamPattern(foam: N, frame: N, time: N): N {
       const n3 = mx_noise_float(vec3(frame.x.mul(0.9), frame.y.mul(0.9).add(41.3), time.mul(0.3)));
       // The variation fades out toward full weight: fresh whitewater is solid, only thinning foam gathers in patches.
       const w = saturate(saturate(foam).mul(n1.mul(0.4).mul(float(1.0).sub(saturate(foam))).add(1.0)));
-      const q = vec2(frame.x.div(FOAM_CELL_M[0]), frame.y.div(FOAM_CELL_M[1])).add(vec2(n2, n3).mul(0.35));
+      // The lace stage (L3, from a drone the rims read as a CG honeycomb; photo 4's leftovers are streaks and torn patches):
+      // below the solid weight the cells stretch to LACE_STRETCH : 1 along the drift axis, take another LACE_JITTER of a
+      // cell of warp, and a slow ~LACE_MASK_M noise tears out about half the rims, × `tear`. The solid stage is untouched.
+      // × `tear`: the breaking foam's share of the weight (the sheet passes it), so the shore's swash and surf foam keep
+      // their lace (calm identity).
+      const laceness = float(1.0).sub(smoothstep(0.5, 0.75, w)).mul(float(tear)).toVar();
+      const n5 = mx_noise_float(vec3(frame.x.mul(0.5).add(7.1), frame.y.mul(0.5), time.mul(0.1)));
+      const n6 = mx_noise_float(vec3(frame.x.mul(0.5), frame.y.mul(0.5).add(13.9), time.mul(0.1)));
+      const cellX = mix(float(FOAM_CELL_M[0]), float(FOAM_CELL_M[1] * LACE_STRETCH), laceness);
+      const q = vec2(frame.x.div(cellX), frame.y.div(FOAM_CELL_M[1])).add(vec2(n2, n3).mul(0.35)).add(vec2(n5, n6).mul(laceness.mul(LACE_JITTER)));
       // F1, F2 (squared, in cells): the rims are where the two nearest cell centres are equally far.
       const f = sqrt(mx_worley_noise_vec2(q, 0.9));
       const edge = f.y.sub(f.x);
       // Solid from a weight of ~0.75 (the rims' band covers the widest cells), lace below, threads at the thinnest.
-      const width = w.pow(1.3).mul(1.2).add(0.18);
-      const lace = float(1.0).sub(smoothstep(width.mul(0.5), width, edge));
-      const cover = lace.mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0)));
+      // Aged lace (`thin` 1) is threads, fresh is clumps: the rims narrow to AGED_LACE_WIDTH.
+      const width = w.pow(1.3).mul(1.2).add(0.18).mul(float(1.0).sub(float(thin).mul(1 - AGED_LACE_WIDTH)));
+      const n4 = mx_noise_float(vec3(frame.x.div(LACE_MASK_M), frame.y.div(LACE_MASK_M), time.mul(0.05)));
+      const torn = mix(float(1.0), smoothstep(-0.1, 0.3, n4), laceness);
+      const lace = float(1.0).sub(smoothstep(width.mul(0.5), width, edge)).mul(torn);
+      const cover = min(lace.mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0))), mix(float(SET_FOAM_MAX_COVER), float(AGED_LACE_COVER), float(thin)));
       // The clumps: bright over each cell's middle, and a finer mottle of bubble clusters (~0.5 m) over them.
       const fine = mx_noise_float(vec3(frame.x.mul(2.2).add(5.3), frame.y.mul(2.2), time.mul(0.6)));
       // Three scales mixed, so no one cell size repeats as spots: the cells, the bubble clusters, and the ~1 m mottle.
@@ -80,8 +96,19 @@ export function waterFoamFrameCpu(x: number, z: number, travelX: number, travelZ
 
 /** The breaking foam map (FoamField), sampled at the undisplaced base xz. */
 export interface SheetFoamMap {
-  sampleNode(xz: N): { density: N; inside: N };
+  sampleNode(xz: N): { density: N; inside: N; age?: N };
+  /** The lace pattern's long axis from the swell's travel (FoamField: the drift direction, whitewater §5.3). */
+  patternAxisNode?(travel: N): N;
+  /** How long dense foam takes to become lace (s): older map foam is drawn as threads (setFoamPattern's thin). */
+  readonly clearTimeS?: number;
+  /** The dense foam volume's exposure (FoamField: FoamParams.volumeExposure, a dev dial). */
+  readonly volumeExposure?: N;
 }
+
+/** Aged lace (whitewater §5.3, Fable's L1): where the map's foam is older than its clear time the lace's rims narrow to
+ * this share and its cover is capped at AGED_LACE_COVER, so by a minute the inside is water with streaks between. */
+export const AGED_LACE_WIDTH = 0.5;
+export const AGED_LACE_COVER = 0.35;
 
 /**
  * The foam weight a surface point uses: the map inside its box, the Phase 2 placeholder outside, blended over the edge
@@ -116,13 +143,15 @@ export interface DebugOverlays {
   foamMap: boolean;
   /** The spray puffs coloured by age (green at birth, red at death). */
   sprayTint: boolean;
+  /** The airborne puffs coloured by kind (womb-realism Task 5: sprayLook.KIND_TINT). */
+  kindTint: boolean;
   /** The land's cover in false colours (wet sand blue, sand yellow, rock red, heath green). */
   coverMap: boolean;
   /** The land's shadow in blue, on the land and the water. */
   sunlightMap: boolean;
 }
 
-export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false, foamMap: false, sprayTint: false, coverMap: false, sunlightMap: false };
+export const DEFAULT_DEBUG_OVERLAYS: Readonly<DebugOverlays> = { depthContours: false, crestLines: false, ribbonTint: false, foamMap: false, sprayTint: false, kindTint: false, coverMap: false, sunlightMap: false };
 
 /**
  * The breaking ribbon's footprint mask (BreakingRibbon.footprint): an R8 texture of `size` texels, `cellM` m each,
@@ -232,19 +261,33 @@ export class OceanSurface {
     // pattern rides the water. setFoamFrame (the crest frame) is the churn's.
     // One sample, shared by the weight and the overlay (one texture binding).
     const foamOverlay = options.foamMap ? options.foamMap.sampleNode(vBaseXZ) : null;
-        const surfFoam = options.surf ? options.surf.foamNode(vBaseXZ, model.seabed, viewDir.y) : float(0.0);
+        // Inside the foam map's box CoastalSurf keeps to a shore band (surfModel.shoreFoamShare, whitewater L2): the map's lace
+        // owns the rest of the inside. Outside the box (inside 0) it is unchanged.
+        const shoreShare = options.surf && foamOverlay
+          ? float(1.0).sub(foamOverlay.inside.mul(smoothstep(SHORE_FOAM_BAND_M, 2 * SHORE_FOAM_BAND_M, options.surf.dEdgeNode(vBaseXZ, model.seabed))))
+          : float(1.0);
+        const surfFoam = options.surf ? options.surf.foamNode(vBaseXZ, model.seabed, viewDir.y).mul(shoreShare) : float(0.0);
         // The swash's edge (Phase 4b §3.3): lifted water under 0.1 m deep over the beach near the shore shows a foam lace.
         const swashLace = options.surf
           ? float(1.0).sub(smoothstep(0.02, 0.1, positionWorld.y.sub(model.seabed.bedHeightNode(vBaseXZ))))
             .mul(float(1.0).sub(smoothstep(0.0, 10.0, options.surf.dEdgeNode(vBaseXZ, model.seabed))))
             .mul(smoothstep(0.01, 0.05, options.surf.swashLevelNode(vBaseXZ.y))).mul(0.8)
           : float(0.0);
-    const foamWeight = max(sheetFoamWeight(setFoam, foamOverlay), max(surfFoam, swashLace));
-    const setFoamLook = setFoamPattern(foamWeight, waterFoamFrame(vBaseXZ, model.sets.meanTravel), model.sim.time);
+    const breakFoam = sheetFoamWeight(setFoam, foamOverlay);
+    const foamWeight = max(breakFoam, max(surfFoam, swashLace));
+    // The pattern's axis follows the foam's drift (whitewater §5.3); the map's own foam older than its clear time is thin
+    // lace, weighted by the map's share of the foam here (0 with no map foam: the shore's foam keeps its look).
+    const axis = options.foamMap?.patternAxisNode ? options.foamMap.patternAxisNode(model.sets.meanTravel) : model.sets.meanTravel;
+    const aged = foamOverlay?.age && options.foamMap?.clearTimeS
+      ? smoothstep(options.foamMap.clearTimeS, options.foamMap.clearTimeS + 5, foamOverlay.age).mul(foamOverlay.inside).mul(saturate(foamOverlay.density.div(max(foamWeight, 1e-3))))
+      : float(0.0);
+    // The lace tears into streaks only where it is the breaking foam's (L3): the shore's foam keeps its look.
+    const tear = saturate(breakFoam.div(max(foamWeight, 1e-3)));
+    const setFoamLook = setFoamPattern(foamWeight, waterFoamFrame(vBaseXZ, axis), model.sim.time, aged, tear);
 
     material.colorNode = shadeWater(
-      { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y,
-        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis,
+      { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y, breakFoam: min(setFoamLook.x, breakFoam),
+        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld, foamExposure: options.foamMap?.volumeExposure,
         landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
         overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
           foamMap: (foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0)).add(surfFoam.mul(0.5)), foamOn: this.overlayFoam, sunOn: this.overlaySun } },

@@ -1,13 +1,16 @@
 // src/frontend/settingsView.ts
 import { type FrontSettings, safeAreaFraction } from './frontSettings';
 
-export type SettingRow = 'experience' | 'textScale' | 'calmMenus' | 'opaqueBackplates' | 'safeArea' | 'displayMode' | 'glyphs';
-export const SETTING_ROWS: SettingRow[] = ['experience', 'textScale', 'calmMenus', 'opaqueBackplates', 'safeArea', 'displayMode', 'glyphs'];
-const LABELS: Record<SettingRow, string> = { experience: 'Experience', textScale: 'Text size', calmMenus: 'Calm menus', opaqueBackplates: 'Opaque backplates', safeArea: 'Safe area', displayMode: 'Display mode', glyphs: 'Glyphs' };
+export type SettingRow = 'experience' | 'rumble' | 'loadMeter' | 'textScale' | 'calmMenus' | 'opaqueBackplates' | 'safeArea' | 'displayMode' | 'glyphs';
+export const SETTING_ROWS: SettingRow[] = ['experience', 'rumble', 'loadMeter', 'textScale', 'calmMenus', 'opaqueBackplates', 'safeArea', 'displayMode', 'glyphs'];
+const LABELS: Record<SettingRow, string> = { experience: 'Experience', rumble: 'Rumble', loadMeter: 'Load meter', textScale: 'Text size', calmMenus: 'Calm menus', opaqueBackplates: 'Opaque backplates', safeArea: 'Safe area', displayMode: 'Display mode', glyphs: 'Glyphs' };
 const GLYPHS: FrontSettings['glyphs'][] = ['auto', 'xbox', 'playstation', 'keyboard'];
 const EXPERIENCES: FrontSettings['experience'][] = ['beginner', 'intermediate', 'expert'];
+const METERS: FrontSettings['loadMeter'][] = ['auto', 'on', 'off'];
+const METER_WORDS: Record<FrontSettings['loadMeter'], [string, string]> = { auto: ['Auto', 'shown without a controller'], on: ['On', ''], off: ['Off', ''] };
 const EXPERIENCE_WORDS: Record<FrontSettings['experience'], [string, string]> = {
-  beginner: ['Beginner', 'more help catching waves'], intermediate: ['Intermediate', ''], expert: ['Expert', 'honest paddling'],
+  beginner: ['Beginner', 'more help catching waves · hold pump'], intermediate: ['Intermediate', 'hold pump or time it yourself'],
+  expert: ['Expert', 'honest paddling · pump by timing'],
 };
 const GLYPH_WORDS: Record<FrontSettings['glyphs'], string> = { auto: 'Auto', xbox: 'Xbox', playstation: 'PlayStation', keyboard: 'Keyboard' };
 const round = (v: number): number => Math.round(v * 100) / 100;
@@ -15,6 +18,8 @@ const round = (v: number): number => Math.round(v * 100) / 100;
 export function settingsView(s: FrontSettings, focus: SettingRow): { row: SettingRow; label: string; value: string; small: string; focused: boolean }[] {
   const value: Record<SettingRow, [string, string]> = {
     experience: EXPERIENCE_WORDS[s.experience],
+    rumble: [s.rumble ? 'On' : 'Off', s.rumble ? 'feel the wave’s push' : ''],
+    loadMeter: METER_WORDS[s.loadMeter],
     textScale: [`${Math.round(s.textScale * 100)}%`, ''],
     calmMenus: [s.calmMenus ? 'On' : 'Off', s.calmMenus ? 'no slides or swings' : ''],
     opaqueBackplates: [s.opaqueBackplates ? 'On' : 'Off', ''],
@@ -35,6 +40,8 @@ export function stepSetting(s: FrontSettings, row: SettingRow, dir: -1 | 1): { s
       const v = round(safeAreaFraction(s) + 0.01 * dir);
       return v < 0.02 || v > 0.1 ? { settings: s, atEnd: true } : { settings: { ...s, safeArea: v }, atEnd: false };
     }
+    case 'rumble': return { settings: { ...s, rumble: !s.rumble }, atEnd: false };
+    case 'loadMeter': return { settings: { ...s, loadMeter: METERS[(METERS.indexOf(s.loadMeter) + dir + METERS.length) % METERS.length] }, atEnd: false };
     case 'calmMenus': return { settings: { ...s, calmMenus: !s.calmMenus }, atEnd: false };
     case 'opaqueBackplates': return { settings: { ...s, opaqueBackplates: !s.opaqueBackplates }, atEnd: false };
     case 'displayMode': return { settings: { ...s, displayMode: s.displayMode === 'pc' ? 'tv' : 'pc' }, atEnd: false };

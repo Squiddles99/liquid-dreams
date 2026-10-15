@@ -1,16 +1,17 @@
 import type { BreakParams } from '../breaker/breaking';
+import { hollowFromPsi } from '../breaker/reefReport';
 import { offshoreSpeed } from '../breaker/overturn';
 import { BOMBIE_X, BOMBIE_Z, ROLL_DIR } from '../bombie/bombieModel';
 import { type Station, type StationEntry, traceStations } from '../breaker/crestTrace';
 import { GRAVITY_MS2 } from '../breaker/lipProfile';
-import { type SectionFrame, sectionFrame } from '../breaker/wombSection';
-import type { P2 as Vec2 } from '../breaker/wombProfile';
+import { STOOD_PHASE, type SectionFrame, type SectionNumbers, type SectionTiming, curlWeight, seatOf, sectionCrestY, sectionFrame, sectionTiming, wallWeight } from '../breaker/wombSection';
+import { CREST_KNOT, type P2 as Vec2, profileKnots } from '../breaker/wombProfile';
 import { type ReefField, sampleField } from '../breaker/reefField';
 import { type BreakOptions, type WaveContext, breakOptions, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { smoothstep } from '../math/smoothstep';
 import type { WaveEvent } from '../swell/sets';
 import { FOAM_TICK_S } from './foamStep';
-import { SPRAY_KIND } from './particleKinds';
+import { FEATHER_KIND, KIND_INDEX, KIND_LOOK, SPRAY_KIND, liftSpeed } from './particleKinds';
 
 /**
  * Offshore spray's emitters and births (spec 2026-09-27-offshore-spray-design.md §3.1), on the CPU: each 20 Hz tick, the
@@ -45,10 +46,12 @@ export interface SprayParams {
   amount: number;
   /** A puff's mean life (s); each lives this × U(0.6, 1.2). */
   lifeS: number;
+  /** Scales the plume over the back (whitewater §4.1; × its rate). */
+  plume: number;
 }
 
-export const DEFAULT_SPRAY_PARAMS: Readonly<SprayParams> = { amount: 1, lifeS: 2 };
-export const SPRAY_PARAM_RANGES = { amount: { min: 0, max: 3 }, lifeS: { min: 0.8, max: 4 } } as const;
+export const DEFAULT_SPRAY_PARAMS: Readonly<SprayParams> = { amount: 1, lifeS: 2, plume: 1 };
+export const SPRAY_PARAM_RANGES = { amount: { min: 0, max: 3 }, lifeS: { min: 0.8, max: 4 }, plume: { min: 0, max: 3 } } as const;
 
 export function normalizeSprayParams(p: SprayParams): void {
   for (const k of Object.keys(SPRAY_PARAM_RANGES) as (keyof SprayParams)[]) {
@@ -84,8 +87,91 @@ export function windToVector(fromDeg: number): [number, number] {
 
 /** How strongly a lip travelling along (nx, nz) throws spray in this wind: its offshore component, 0 → 1 over 1–6 m/s. */
 export function offshoreFactor(wind: Wind, nx: number, nz: number): number {
+  return smoothstep(WIND_CALM_MS, WIND_FULL_MS, Math.max(0, offshoreSpeedOn(wind, nx, nz)));
+}
+
+/** The wind's offshore speed on a crest travelling along (nx, nz) (m/s): + blowing against the wave (offshore), −
+ * onshore; 0 in a calm. */
+export function offshoreSpeedOn(wind: Wind, nx: number, nz: number): number {
   const [wx, wz] = windToVector(wind.fromDeg);
-  return smoothstep(WIND_CALM_MS, WIND_FULL_MS, wind.speedMs * Math.max(0, -(wx * nx + wz * nz)));
+  return wind.speedMs * -(wx * nx + wz * nz);
+}
+
+/** Onshore (whitewater §4): the veil is a ragged mist blown forward over the face, its strength 0 → 1 over the same
+ * WIND_CALM_MS–WIND_FULL_MS of onshore speed; its puffs get this × |w_off| forward along the crest normal. */
+export const ONSHORE_VEIL_PUSH = 0.5;
+/** The veil's strength in this wind: offshore as today (offshoreFactor), onshore blown forward. */
+export function veilFactor(wind: Wind, nx: number, nz: number): number {
+  return smoothstep(WIND_CALM_MS, WIND_FULL_MS, Math.abs(offshoreSpeedOn(wind, nx, nz)));
+}
+
+/** The plume (whitewater §4.1): births per m of throwing lip per s at strength 1… */
+export const PLUME_RATE = 12;
+/** …its strength rising with the offshore wind over these speeds (m/s; none onshore)… */
+export const PLUME_WIND_MS: readonly [number, number] = [3, 9];
+/** …thrown with 0.6 × the lip's throw plus w_off × (PLUME_UPDRAFT up − PLUME_BACK along the crest normal)… */
+export const PLUME_UPDRAFT = 0.8, PLUME_BACK = 0.4;
+/** …and living U(3, 5) s. */
+export const PLUME_LIFE_S: readonly [number, number] = KIND_LOOK.plume.lifeS;
+/** The spit is blown on (or held back) by this share of the wind vector (§4.3). */
+export const SPIT_WIND_SHARE = 0.5;
+
+/** Crest feathering (whitewater §4.2; 7b S2 ruling): in a strong offshore every stood crest smokes, this share of full on
+ * the stood swell, rising with the wall (wallWeight) to full at the curl… */
+export const FEATHER_FLOOR = 0.25;
+/** …its strength rising with the offshore wind over these speeds (m/s; STOP 3 ruling 1: a glassy 7 km/h (1.94 m/s) morning
+ * shows a light fringe (~0.15 of full), 10 kn (5 m/s) is full, the plume carries the cloud above; [2, 7] gave 7 km/h none)… */
+export const FEATHER_WIND_MS: readonly [number, number] = [1, 5];
+/** (FEATHER_FLOOR + (1 − FEATHER_FLOOR) × wall) × smoothstep(FEATHER_WIND_MS, wOff) × amount: a stood crest's feathering. */
+export const featherStrength = (wall: number, wOff: number, amount: number): number =>
+  (FEATHER_FLOOR + (1 - FEATHER_FLOOR) * wall) * smoothstep(FEATHER_WIND_MS[0], FEATHER_WIND_MS[1], wOff) * amount;
+/** Within this arc (m) of the curl front (its wave's nearest broken station) a stood crest feathers from the drawn section
+ * (the frame's crest, or its tip once pitching): the cheap standingCrestY sat the puffs well over the lip there (image 8). */
+export const FEATHER_FRAME_REACH_M = 60;
+/** A feather puff rises at most this × its section's A above its birth: its launch speed up is capped at
+ * FEATHER_LIFT_A × A / the feather kind's drag time (the drag takes vy to 0 and the wind has no vertical part, so the rise
+ * is at most vy₀ × τ). */
+export const FEATHER_LIFT_A = 0.5;
+/** …this many puffs per m of crest per s at strength 1, each living U(0.6, 1.2) s. */
+export const FEATHER_RATE = 12;
+export const FEATHER_LIFE_S: readonly [number, number] = KIND_LOOK.feather.lifeS;
+/** A feather puff's soft fade (§6.2) counts from this far under the crest it smokes off: the crest is a thin edge with the
+ * water falling away behind it, so the puffs show from birth. */
+export const FEATHER_SOFT_DROP_M = 0.5;
+
+/** A standing crest that feathers: within FEATHER_FRAME_REACH_M of the curl its crest from the section frame (fromFrame),
+ * beyond it from the station's own smoothed numbers (standingCrestY: the frame is the expensive part). */
+export interface FeatherEmitter {
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  nz: number;
+  /** (FEATHER_FLOOR + (1 − FEATHER_FLOOR) × wallWeight) × smoothstep(FEATHER_WIND_MS, w_off) × amount. */
+  strength: number;
+  waveId: number;
+  arc: number;
+  /** The wind's offshore speed on its normal (m/s). */
+  wOff: number;
+  /** The station's section size (m): the puffs' lift cap (FEATHER_LIFT_A). */
+  A: number;
+  /** y is the frame's drawn crest (or tip), not standingCrestY. */
+  fromFrame: boolean;
+}
+
+/** The sheet's crest the curl blends in from stands at this × H (0.674–0.676 over the default set's standing wall,
+ * tools/_featherProbe.ts). */
+export const SHEET_CREST_PER_H = 0.675;
+
+/** The standing crest's height (world m) from the station's numbers alone (no sheet read), as sectionFrameKnots draws it:
+ * the drawing's crest under the seat (wombSection.seatOf, over a sheet whose crest is SHEET_CREST_PER_H × H), blended in
+ * from the sheet's crest by the curl's weight; plus the tide. */
+export function standingCrestY(numbers: Pick<SectionNumbers, 'A' | 'phase' | 'hollow' | 'rho'>, H: number, tideM: number): number {
+  const sheet = SHEET_CREST_PER_H * H;
+  if (!(numbers.A > 0)) return sheet + tideM;
+  const k = profileKnots(numbers.phase, numbers.hollow), [s, b] = seatOf(numbers.phase, numbers.hollow, k, sheet / numbers.A);
+  const drawn = numbers.A * (k[CREST_KNOT][1] * s + b);
+  return sheet + (drawn - sheet) * curlWeight(numbers) + tideM;
 }
 
 export interface SprayEmitter {
@@ -106,6 +192,12 @@ export interface SprayEmitter {
   /** The wave's event id and the station's arc index (arc / spacing): the hash keys of its births. */
   waveId: number;
   arc: number;
+  /** The wind's offshore speed on its normal (m/s; offshoreSpeedOn: + offshore, − onshore). */
+  wOff: number;
+  /** The water under the curl (world m; the tube's floor, y includes the tide): the soft particles' floor (§6.2). */
+  yWater: number;
+  /** The station's section size (m): the plume's lift cap (KIND_LOOK.plume.liftA). */
+  A: number;
 }
 
 export interface EmitterInput {
@@ -125,12 +217,21 @@ export interface EmitterInput {
 
 /** A lip landing emits the impact explosion for this long after τ_land (s) (spec 2026-09-28-impact-explosion §3.2). */
 export const IMPACT_WINDOW_S = 0.35;
+/** The burst waits this long after the lip lands (whitewater §3.4, photo 5: the curtain lands clean, then explodes). */
+export const IMPACT_DELAY_S = 0.2;
+/** Whether a station tb s after onset is in its impact window: [τ_land + IMPACT_DELAY_S, + IMPACT_WINDOW_S). */
+export const inImpactWindow = (tb: number, tauLand: number): boolean => tauLand + IMPACT_DELAY_S <= tb && tb < tauLand + IMPACT_DELAY_S + IMPACT_WINDOW_S;
 /** Impact particles per metre of landing lip per second at strength 1 (Ruling I3: denser than the mist). */
 export const IMPACT_RATE = 40;
 /** The explosion's kick is sized against this gravity (m/s², IMPACT_KIND's): it rises about 0.25–1 H. */
 export const IMPACT_G = 7;
 /** The full kick throws a puff this many wave heights above the landing (before drag). */
 export const IMPACT_RISE_H = 1.5;
+/** A pitching lip (hollow 1) throws its burst (1 + SURGE_RISE) × as high as a crumbling one (whitewater §3.1: the burst and
+ * the surge agree; the surge dial scales the mound, not the burst). */
+export const SURGE_RISE = 1.0;
+/** The full upward kick (m/s) of a station's burst: √(2·IMPACT_G·IMPACT_RISE_H·(1 + SURGE_RISE·hollow)·max(H, 0.5)). */
+export const impactKick = (H: number, hollow: number): number => Math.sqrt(2 * IMPACT_G * IMPACT_RISE_H * (1 + SURGE_RISE * hollow) * Math.max(H, 0.5));
 /** An impact puff lives U(1.3, 2.4) s: long enough to fall back below its launch after the tuned throw (final review I1). */
 export const IMPACT_MAX_LIFE_S = 2.4;
 
@@ -164,6 +265,8 @@ export interface ImpactEmitter {
   nz: number;
   /** The station's wave height (m): bigger waves explode higher. */
   H: number;
+  /** The reef's hollowness where it broke (hollowFromPsi(ψ)): a pitching lip explodes higher (impactKick). */
+  hollow: number;
   /** min(1, H / 2 m) · ρ · impact amount: how many puffs are born. */
   strength: number;
   /** min(1, ρ): each puff's opacity. */
@@ -191,6 +294,8 @@ export interface SpitEmitter {
   /** The crest normal (the wave's travel). */
   nx: number;
   nz: number;
+  /** The station's section size (m): the spit's lift cap (KIND_LOOK.spit.liftA). */
+  A: number;
   /** The tube's radius (m): births scatter over its mouth. */
   radius: number;
   /** pulse · weight · ρ · min(1, H / 2 m) · impact amount: how many puffs are born. */
@@ -204,74 +309,126 @@ export interface SpitEmitter {
 export const SPIT_REACH_STATIONS = 3;
 /** …fully up to SPIT_PULSE_S[0] after that section landed, gone by [1] (s). */
 export const SPIT_PULSE_S: readonly [number, number] = [0.3, 1.0];
-/** The jet's speed: this × √(g·H), at most SPIT_MAX_SPEED_MS (a heavy 3 m barrel spits at ~14 m/s). */
-export const SPIT_SPEED = 2.5;
+/** The jet's speed out of the mouth: this × the lip's throw (the frame's tip speed, vj), at most SPIT_MAX_SPEED_MS
+ * (womb-realism Task 5; was 2.5 × √(g·H), ~14 m/s for a heavy 3 m barrel: 1.5 × vj is ~15-18 m/s at 7 ft). */
+export const SPIT_THROW_SHARE = 1.5;
 export const SPIT_MAX_SPEED_MS = 25;
 /** Spit puffs per second per mouth at strength 1… */
 export const SPIT_RATE = 120;
-/** …each this faint (× the explosion's opacity): a mist blown out of the tube. At the explosion's own opacity the
- * overlapping puffs at the mouth read as a round cotton ball. */
-export const SPIT_OPACITY = 0.3;
+/** (Each puff's opacity is particleKinds.SPIT_KIND's: whitewater §4.3 replaced SPIT_OPACITY 0.3 × the explosion's.) */
 
 /**
  * The emitters at sim time t (spec §3.1; 3c §3.2): one camera-independent crest trace and one profile frame per breaking
  * station feed the spray (the lip tip mid-throw, off an offshore wind), the impact explosion (the landing point, for
- * IMPACT_WINDOW_S after the lip lands, with or without wind) and the barrel's spit (SpitEmitter).
+ * IMPACT_WINDOW_S from IMPACT_DELAY_S after the lip lands, with or without wind) and the barrel's spit (SpitEmitter).
  */
-export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[] } {
+export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[] } {
   const { field, ctx, params } = i;
-  const spray: SprayEmitter[] = [], impact: ImpactEmitter[] = [], spit: SpitEmitter[] = [];
-  if (!field || !ctx || !params.enabled || i.events.length === 0) return { spray, impact, spit };
+  const spray: SprayEmitter[] = [], impact: ImpactEmitter[] = [], spit: SpitEmitter[] = [], feather: FeatherEmitter[] = [];
+  if (!field || !ctx || !params.enabled || i.events.length === 0) return { spray, impact, spit, feather };
   // A calm wind makes no spray anywhere (final review I2); the explosion doesn't care about the wind.
   const wantSpray = sprayCanEmit(i.amount, i.wind.speedMs);
   const impactAmount = i.impactAmount ?? 0;
   const wantImpact = impactAmount > 0;
-  if (!wantSpray && !wantImpact) return { spray, impact, spit };
+  if (!wantSpray && !wantImpact) return { spray, impact, spit, feather };
   const waves = i.events.map(toActiveWave);
   const offshoreMs = offshoreSpeed(i.wind.speedMs, i.wind.fromDeg, ctx.travelX, ctx.travelZ);
   const stations = traceStations(field, waves, i.t, ctx, { cameraX: 0, cameraZ: 0, params, minHeightM: i.minHeightM, spacingM: SPRAY_SPACING_M, offshoreMs });
   // The lip is thrown from the wave as it stood: the frame reads the sheet without the whitewater pile (as the ribbon's).
   const opts: BreakOptions = { ...breakOptions(field, params, offshoreMs), pile: false, shape: 'lean' };
+  // Each station's timing (no sheet read) decides whether it emits; only the stations that do pay for the frame (the lip's
+  // drawn points), so the result is the same as framing every station (shelf-polish Task 1, ruling C: on the real shelf
+  // ~59 breaking stations a tick, ~20 of them emit).
+  const timing: (SectionTiming | null)[] = stations.map(() => null);
   const frames: (SectionFrame | null)[] = stations.map(() => null);
-  for (const [si, s] of stations.entries()) {
-    if (s.gap || s.tb === null || !Number.isFinite(s.tb)) continue;
-    const wind = wantSpray ? offshoreFactor(i.wind, s.nx, s.nz) : 0;
-    if (!(wind > 0) && !wantImpact) continue;
-    // The station's own wave only: a set wave's envelope is tight (exp(−(ξ/0.7T)⁶)), so the others add nothing at its
-    // crest, and summing all of them was most of the lip maths' cost (measured, final cost pass).
+  // Each wave's broken stations' arcs: a stood station's distance to its curl (FEATHER_FRAME_REACH_M).
+  const brokenArcs = new Map<number, number[]>();
+  for (const s of stations) if (!s.gap && s.tb !== null && Number.isFinite(s.tb)) (brokenArcs.get(s.wave) ?? brokenArcs.set(s.wave, []).get(s.wave)!).push(s.arc);
+  // The section as the ribbon draws it (wombSection: the station's smoothed numbers), on the station's own wave only: a set
+  // wave's envelope is tight (exp(−(ξ/0.7T)⁶)), so the others add nothing at its crest, and summing all of them was most of
+  // the lip maths' cost (measured, final cost pass).
+  const sheetOf = (s: Station) => {
     const own = [waves[s.wave]];
-    const base = (u: number): Vec2 => {
+    return (u: number): Vec2 => {
       const x = s.x + s.nx * u, z = s.z + s.nz * u;
       const r = sumWaves(x, z, i.t, sampleField(field, x, z), own, ctx, opts);
       return [u + r.dx * s.nx + r.dz * s.nz, r.eta];
     };
-    // The section as the ribbon draws it (wombSection: the station's smoothed numbers).
-    const f = sectionFrame(s.section, s.H, s.c, base);
+  };
+  const frameOf = (s: Station): SectionFrame => sectionFrame(s.section, s.H, s.c, sheetOf(s));
+  const nearCurl = new Map<number, { k: number; s: Station; cheap: number; d?: number }>();
+  for (const [si, s] of stations.entries()) {
+    if (s.gap) continue;
+    // The standing wall ahead of the curl feathers in an offshore (§4.2; womb-realism Task 4): from the drawn crest near
+    // the curl, from standingCrestY (no frame read) beyond.
+    if (s.tb === null && wantSpray && s.until !== null && s.until !== undefined && Number.isFinite(s.until)) {
+      const wOff = offshoreSpeedOn(i.wind, s.nx, s.nz), strength = featherStrength(wallWeight(s.until, field.periodS), wOff, i.amount);
+      if (strength > 0) {
+        const arcs = brokenArcs.get(s.wave), fromFrame = !!arcs && arcs.some((a) => Math.abs(a - s.arc) <= FEATHER_FRAME_REACH_M);
+        // A pitching lip feathers from the frame's tip; a stood crest near the curl is set after the loop (drawnCrests).
+        const pitching = fromFrame && s.section.phase > STOOD_PHASE, arc = Math.round(s.arc / SPRAY_SPACING_M);
+        const y = pitching ? frameOf(s).tip[1] + i.tideM : standingCrestY(s.section, s.H, i.tideM);
+        if (fromFrame && !pitching) nearCurl.set(s.wave * 1e6 + arc, { k: feather.length, s, cheap: y });
+        feather.push({ x: s.x, y, z: s.z, nx: s.nx, nz: s.nz, strength, waveId: i.events[s.wave].id, arc, wOff, A: s.section.A, fromFrame });
+      }
+    }
+    if (s.tb === null || !Number.isFinite(s.tb)) continue;
+    const wind = wantSpray ? veilFactor(i.wind, s.nx, s.nz) : 0;
+    if (!(wind > 0) && !wantImpact) continue;
+    const ft = sectionTiming(s.section, s.H);
+    if (wantImpact) timing[si] = ft;
+    const emitsSpray = wind > 0 && ft.prog > 0 && ft.prog < 1 && ft.weight * ft.rho > MIN_EMIT_WEIGHT;
+    const emitsImpact = wantImpact && inImpactWindow(s.tb, ft.tauLand) && ft.rho > MIN_EMIT_WEIGHT;
+    if (!emitsSpray && !emitsImpact && !(wantImpact && spitCandidate(s, ft))) continue;
+    const f = frameOf(s);
     if (wantImpact) frames[si] = f;
     const waveId = i.events[s.wave].id, arc = Math.round(s.arc / SPRAY_SPACING_M);
-    if (wind > 0 && f.prog > 0 && f.prog < 1 && f.weight * f.rho > MIN_EMIT_WEIGHT) {
+    if (emitsSpray) {
       // The lip's tip now.
       const u = f.tip[0], y = f.tip[1];
       spray.push({
         x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz,
         strength: f.weight * f.rho * wind * i.amount, lip: Math.min(1, f.weight * f.rho), waveId, arc,
+        wOff: offshoreSpeedOn(i.wind, s.nx, s.nz), yWater: f.floor[1] + i.tideM, A: s.section.A,
       });
     }
-    if (wantImpact && f.tauLand <= s.tb && s.tb < f.tauLand + IMPACT_WINDOW_S && f.rho > MIN_EMIT_WEIGHT) {
+    if (emitsImpact) {
       // Where the lip lands: its tip as it reaches the water (the round barrel, τ_land after onset).
       const u = f.tip[0], y = f.tip[1];
       impact.push({
-        x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz, H: s.H,
+        x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, vx: s.nx * f.vj, vz: s.nz * f.vj, nx: s.nx, nz: s.nz, H: s.H, hollow: hollowFromPsi(s.psi),
         strength: Math.min(1, s.H / 2) * f.rho * impactAmount, lip: Math.min(1, f.rho), waveId, arc,
       });
     }
   }
-  if (wantImpact) spitEmitters(stations, frames, i, impactAmount, spit);
-  return { spray, impact, spit };
+  if (wantImpact) spitEmitters(stations, timing, frames, i, impactAmount, spit);
+  drawnCrests(nearCurl, feather, (s) => sectionCrestY(s.section, sheetOf(s)) + i.tideM);
+  return { spray, impact, spit, feather };
 }
 
-/** The stations' spit (SpitEmitter), from their frames (null: no frame), into `out`. */
-function spitEmitters(stations: readonly StationEntry[], frames: readonly (SectionFrame | null)[], i: EmitterInput, amount: number, out: SpitEmitter[]): void {
+/**
+ * The stood crests near the curl (key wave × 1e6 + arc index): their feathers' y onto the drawn crest (`drawn`, the crest
+ * reads: womb-realism Task 4's cost cap). Every other station (even arc index) reads it; one between two read neighbours
+ * takes its cheap standingCrestY plus their mean correction (drawn − cheap varies over tens of metres, not 3 m); one without
+ * both reads its own.
+ */
+function drawnCrests(near: Map<number, { k: number; s: Station; cheap: number; d?: number }>, feather: FeatherEmitter[], drawn: (s: Station) => number): void {
+  const set = (e: { k: number; s: Station; cheap: number; d?: number }, d: number): void => { e.d = d; feather[e.k].y = e.cheap + d; };
+  for (const [key, e] of near) if (key % 2 === 0) set(e, drawn(e.s) - e.cheap);
+  for (const [key, e] of near) {
+    if (e.d !== undefined) continue;
+    const a = near.get(key - 1)?.d, b = near.get(key + 1)?.d;
+    set(e, a !== undefined && b !== undefined ? (a + b) / 2 : drawn(e.s) - e.cheap);
+  }
+}
+
+/** A station whose own lip may spit (spitEmitters' first test): still in the air, well through its throw, drawn. */
+function spitCandidate(s: Station, t: SectionTiming): boolean {
+  return s.tb !== null && s.tb < t.tauLand && t.prog > 0.4 && t.weight * t.rho > MIN_EMIT_WEIGHT;
+}
+
+/** The stations' spit (SpitEmitter), from their timings (null: not breaking) and, for the mouths, their frames, into `out`. */
+function spitEmitters(stations: readonly StationEntry[], timing: readonly (SectionTiming | null)[], frames: readonly (SectionFrame | null)[], i: EmitterInput, amount: number, out: SpitEmitter[]): void {
   // The station k steps from j along its run (same wave, no gap between), or -1.
   const at = (j: number): Station | null => {
     const e = j >= 0 && j < stations.length ? stations[j] : null;
@@ -285,17 +442,19 @@ function spitEmitters(stations: readonly StationEntry[], frames: readonly (Secti
     }
     return q;
   };
-  const tbOf = (j: number): number => (frames[j] ? (at(j)?.tb ?? -Infinity) : -Infinity);
+  const tbOf = (j: number): number => (timing[j] ? (at(j)?.tb ?? -Infinity) : -Infinity);
   for (let j = 0; j < stations.length; j++) {
-    const s = at(j), f = frames[j];
-    if (!s || !f || s.tb === null || !(s.tb < f.tauLand) || !(f.prog > 0.4) || !(f.weight * f.rho > MIN_EMIT_WEIGHT)) continue;
+    const s = at(j), ft = timing[j];
+    if (!s || !ft || s.tb === null || !spitCandidate(s, ft)) continue;
+    const f = frames[j] as SectionFrame;
     // Behind the mouth: the side further through its break.
     const back = tbOf(step(j, -1)) > tbOf(step(j, 1)) ? -1 : 1;
     if (!(tbOf(step(j, back)) > s.tb)) continue;
     let age = -1, from = -1;
     for (let k = 1; k <= SPIT_REACH_STATIONS; k++) {
-      const q = step(j, back * k), fq = q >= 0 ? frames[q] : null, tq = q >= 0 ? at(q)?.tb : null;
-      if (fq && tq !== null && tq !== undefined && tq >= fq.tauLand) { age = tq - fq.tauLand; from = q; break; }
+      const q = step(j, back * k), fq = q >= 0 ? timing[q] : null, tq = q >= 0 ? at(q)?.tb : null;
+      // The spit's pulse runs from the same delayed landing as the burst (IMPACT_DELAY_S).
+      if (fq && tq !== null && tq !== undefined && tq >= fq.tauLand + IMPACT_DELAY_S) { age = tq - fq.tauLand - IMPACT_DELAY_S; from = q; break; }
     }
     if (from < 0) continue;
     const pulse = 1 - smoothstep(SPIT_PULSE_S[0], SPIT_PULSE_S[1], age);
@@ -308,7 +467,7 @@ function spitEmitters(stations: readonly StationEntry[], frames: readonly (Secti
     const u = f.crest[0] + 0.4 * f.reach, y = f.floor[1] + 0.45 * tubeH;
     out.push({
       x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, dx: ddx / dl, dz: ddz / dl,
-      speed: Math.min(SPIT_MAX_SPEED_MS, SPIT_SPEED * Math.sqrt(GRAVITY_MS2 * s.H)), nx: s.nx, nz: s.nz, radius: 0.3 * tubeH,
+      speed: Math.min(SPIT_MAX_SPEED_MS, SPIT_THROW_SHARE * f.vj), nx: s.nx, nz: s.nz, radius: 0.3 * tubeH, A: s.section.A,
       strength: pulse * f.weight * f.rho * Math.min(1, s.H / 2) * amount, lip: Math.min(1, f.weight * f.rho),
       waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M),
     });
@@ -342,6 +501,10 @@ export interface SprayBirth {
   life: number;
   /** The emitter's lip weight (≤ 1): scales the puff's opacity. The wind and the amount set only how many are born. */
   strength: number;
+  /** Its kind (particleKinds.KIND_INDEX); absent: the pool's own. */
+  kind?: number;
+  /** The water it was born over (world m; §6.2's soft fade); absent 0. */
+  yWater?: number;
 }
 
 /**
@@ -357,10 +520,12 @@ export function sprayBirths(emitters: readonly SprayEmitter[], tick: number, p: 
       if (out.length >= SPRAY_BIRTH_CAP) return out;
       const r = (q: number): number => rand01(tick, e.waveId, e.arc, j * 8 + q + 1);
       const along = (r(0) * 2 - 1) * (SPRAY_SPACING_M / 2);
+      // Onshore (w_off < 0) the veil is blown forward over the face.
+      const fwd = e.wOff < 0 ? -e.wOff * ONSHORE_VEIL_PUSH : 0;
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.3, z: e.z + e.nx * along,
-        vx: 0.5 * e.vx + (r(2) * 2 - 1), vy: 2 + 2 * r(3) + (r(4) * 2 - 1), vz: 0.5 * e.vz + (r(5) * 2 - 1),
-        life: p.lifeS * (0.6 + 0.6 * r(6)), strength: Math.min(1, e.lip),
+        vx: 0.5 * e.vx + (r(2) * 2 - 1) + e.nx * fwd, vy: 2 + 2 * r(3) + (r(4) * 2 - 1), vz: 0.5 * e.vz + (r(5) * 2 - 1) + e.nz * fwd,
+        life: p.lifeS * (0.6 + 0.6 * r(6)), strength: Math.min(1, e.lip), kind: KIND_INDEX.spray, yWater: e.yWater,
       });
     }
   }
@@ -368,9 +533,67 @@ export function sprayBirths(emitters: readonly SprayEmitter[], tick: number, p: 
 }
 
 /**
+ * Tick k's plume births (whitewater §4.1): floor(lip × smoothstep(PLUME_WIND_MS, w_off) × plume × PLUME_RATE × spacing × Δ
+ * + a hashed fraction) per emitter (none onshore), hashed apart from the veil's draws. Each is scattered half a spacing
+ * along the crest and 0–0.5 m up, thrown with 0.6 × the lip's throw plus w_off × (PLUME_UPDRAFT up − PLUME_BACK along the
+ * crest normal) and ±0.8 m/s per axis, for U(PLUME_LIFE_S) s; the plume kind.
+ */
+export function plumeBirths(emitters: readonly SprayEmitter[], tick: number, p: SprayParams): SprayBirth[] {
+  const out: SprayBirth[] = [];
+  for (const e of emitters) {
+    if (!(e.wOff > 0)) continue;
+    const strength = Math.min(1, e.lip) * smoothstep(PLUME_WIND_MS[0], PLUME_WIND_MS[1], e.wOff) * p.plume;
+    if (!(strength > 0)) continue;
+    const n = Math.floor(strength * PLUME_RATE * SPRAY_SPACING_M * FOAM_TICK_S + rand01(tick, e.waveId, e.arc, 0x3c6ef372));
+    for (let j = 0; j < n; j++) {
+      if (out.length >= SPRAY_BIRTH_CAP) return out;
+      const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x60000000 + j * 8 + q);
+      const along = (r(0) * 2 - 1) * (SPRAY_SPACING_M / 2);
+      const back = e.wOff * PLUME_BACK, up = e.wOff * PLUME_UPDRAFT, cap = liftSpeed(KIND_LOOK.plume, e.A);
+      out.push({
+        x: e.x - e.nz * along, y: e.y + r(1) * 0.5, z: e.z + e.nx * along,
+        vx: 0.6 * e.vx - e.nx * back + (r(2) * 2 - 1) * 0.8, vy: Math.min(up + (r(3) * 2 - 1) * 0.8, cap), vz: 0.6 * e.vz - e.nz * back + (r(4) * 2 - 1) * 0.8,
+        life: PLUME_LIFE_S[0] + (PLUME_LIFE_S[1] - PLUME_LIFE_S[0]) * r(5), strength: Math.min(1, e.lip), kind: KIND_INDEX.plume, yWater: e.yWater,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Tick k's feather births (§4.2): floor(strength × FEATHER_RATE × spacing × Δ + a hashed fraction) per emitter, hashed apart
+ * from the other draws: mist off the crest top, blown w_off × (0.3 up − 0.5 back along the crest normal) ± 0.5 m/s, for
+ * U(FEATHER_LIFE_S) s; the feather kind (FEATHER_KIND).
+ */
+export function featherBirths(emitters: readonly FeatherEmitter[], tick: number): SprayBirth[] {
+  const out: SprayBirth[] = [];
+  for (const e of emitters) {
+    const liftV = (FEATHER_LIFT_A * e.A) / FEATHER_KIND.dragTauS;
+    const n = Math.floor(e.strength * FEATHER_RATE * SPRAY_SPACING_M * FOAM_TICK_S + rand01(tick, e.waveId, e.arc, 0x1b873593));
+    for (let j = 0; j < n; j++) {
+      if (out.length >= SPRAY_BIRTH_CAP) return out;
+      const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x70000000 + j * 8 + q);
+      const along = (r(0) * 2 - 1) * (SPRAY_SPACING_M / 2);
+      out.push({
+        x: e.x - e.nz * along, y: e.y + r(1) * 0.2, z: e.z + e.nx * along,
+        vx: -e.nx * e.wOff * 0.5 + (r(2) * 2 - 1) * 0.5, vy: Math.min(e.wOff * 0.3 + (r(3) * 2 - 1) * 0.5, liftV), vz: -e.nz * e.wOff * 0.5 + (r(4) * 2 - 1) * 0.5,
+        life: FEATHER_LIFE_S[0] + (FEATHER_LIFE_S[1] - FEATHER_LIFE_S[0]) * r(5), strength: Math.min(1, e.strength), kind: KIND_INDEX.feather, yWater: e.y - FEATHER_SOFT_DROP_M,
+      });
+    }
+  }
+  return out;
+}
+
+/** A tick's spray-pool births: the veil first, then the plume, then the crest's feathering, at most SPRAY_BIRTH_CAP (each
+ * takes slots from the ones before's leftovers, never on top: §4's guards). */
+export function sprayAndPlumeBirths(emitters: readonly SprayEmitter[], tick: number, p: SprayParams, feather: readonly FeatherEmitter[] = []): SprayBirth[] {
+  return [...sprayBirths(emitters, tick, p), ...plumeBirths(emitters, tick, p), ...featherBirths(feather, tick)].slice(0, SPRAY_BIRTH_CAP);
+}
+
+/**
  * Tick k's impact births (3c spec §3.2): floor(strength × IMPACT_RATE × spacing × Δ + a hashed fraction) per emitter, at
  * most SPRAY_BIRTH_CAP, hashed apart from the spray's draws. Each is scattered half a spacing along the crest and 0–0.4 m
- * up, thrown with 0.6 × the lip's throw, an upward kick of U(0.6, 1.2)·√(2·IMPACT_G·IMPACT_RISE_H·max(H, 0.5)) and ±1.5 m/s per axis, for
+ * up, thrown with 0.6 × the lip's throw, an upward kick of U(0.6, 1.2)·impactKick(H, hollow) and ±1.5 m/s per axis, for
  * U(1.3, IMPACT_MAX_LIFE_S) s (long enough to fall back, final review I1); its opacity follows the lip.
  */
 export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): SprayBirth[] {
@@ -379,7 +602,7 @@ export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): 
     const n = Math.floor(e.strength * IMPACT_RATE * SPRAY_SPACING_M * FOAM_TICK_S + rand01(tick, e.waveId, e.arc, 0x7f4a7c15));
     // Sized to rise 1.5 × H above the landing at full kick (tuned overnight: at 1 × H the burst stayed below the lip and
     // hid against the wave's white face).
-    const kick = Math.sqrt(2 * IMPACT_G * IMPACT_RISE_H * Math.max(e.H, 0.5));
+    const kick = impactKick(e.H, e.hollow);
     for (let j = 0; j < n; j++) {
       if (out.length >= SPRAY_BIRTH_CAP) return out;
       const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x40000000 + j * 8 + q);
@@ -387,7 +610,7 @@ export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): 
       out.push({
         x: e.x - e.nz * along, y: e.y + r(1) * 0.4, z: e.z + e.nx * along,
         vx: 0.6 * e.vx + (r(2) * 2 - 1) * 1.5, vy: (0.6 + 0.6 * r(3)) * kick + (r(4) * 2 - 1) * 1.5, vz: 0.6 * e.vz + (r(5) * 2 - 1) * 1.5,
-        life: 1.3 + (IMPACT_MAX_LIFE_S - 1.3) * r(6), strength: Math.min(1, e.lip),
+        life: 1.3 + (IMPACT_MAX_LIFE_S - 1.3) * r(6), strength: Math.min(1, e.lip), yWater: e.y,
       });
     }
   }
@@ -399,7 +622,8 @@ export function impactBirths(emitters: readonly ImpactEmitter[], tick: number): 
  * apart from the spray's and the explosion's draws. Each is scattered over the tube's mouth (± 0.6 radius across it and up)
  * and blown out along it at U(0.7, 1.1) × its speed, ± 12% of that sideways, ± 1 m/s up, for U(0.8, 1.6) s.
  */
-export function spitBirths(emitters: readonly SpitEmitter[], tick: number): SprayBirth[] {
+export function spitBirths(emitters: readonly SpitEmitter[], tick: number, wind: readonly [number, number] = [0, 0]): SprayBirth[] {
+  const wx = wind[0] * SPIT_WIND_SHARE, wz = wind[1] * SPIT_WIND_SHARE;
   const out: SprayBirth[] = [];
   for (const e of emitters) {
     const n = Math.floor(e.strength * SPIT_RATE * FOAM_TICK_S + rand01(tick, e.waveId, e.arc, 0x5bd1e995));
@@ -407,11 +631,12 @@ export function spitBirths(emitters: readonly SpitEmitter[], tick: number): Spra
       if (out.length >= SPRAY_BIRTH_CAP) return out;
       const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x20000000 + j * 8 + q);
       const across = (r(0) * 2 - 1) * 0.6 * e.radius, up = (r(1) * 2 - 1) * 0.6 * e.radius;
-      const v = (0.7 + 0.4 * r(2)) * e.speed, side = (r(3) * 2 - 1) * 0.12 * e.speed;
+      const v = (0.7 + 0.4 * r(2)) * e.speed, side = (r(3) * 2 - 1) * 0.12 * e.speed, cap = liftSpeed(KIND_LOOK.spit, e.A);
+      const [l0, l1] = KIND_LOOK.spit.lifeS;
       out.push({
         x: e.x + e.nx * across, y: e.y + up, z: e.z + e.nz * across,
-        vx: e.dx * v + e.nx * side, vy: r(4) * 2 - 1, vz: e.dz * v + e.nz * side,
-        life: 0.8 + 0.8 * r(5), strength: SPIT_OPACITY * Math.min(1, e.lip),
+        vx: e.dx * v + e.nx * side + wx, vy: Math.max(-cap, Math.min(cap, r(4) * 2 - 1)), vz: e.dz * v + e.nz * side + wz,
+        life: l0 + (l1 - l0) * r(5), strength: Math.min(1, e.lip), kind: KIND_INDEX.spit,
       });
     }
   }
@@ -433,7 +658,7 @@ export function bombieImpactEmitters(burst: { n: number; ageS: number; heightM: 
     out.push({
       x: BOMBIE_X - ROLL_DIR[1] * v, y: tideM + 0.5, z: BOMBIE_Z + ROLL_DIR[0] * v,
       vx: ROLL_DIR[0] * 4, vz: ROLL_DIR[1] * 4, nx: ROLL_DIR[0], nz: ROLL_DIR[1],
-      H, strength: Math.min(2, size), lip: 1, waveId: BOMBIE_WAVE_ID_BASE + burst.n, arc: i,
+      H, hollow: 0, strength: Math.min(2, size), lip: 1, waveId: BOMBIE_WAVE_ID_BASE + burst.n, arc: i,
     });
   }
   return out;

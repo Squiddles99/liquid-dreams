@@ -6,13 +6,13 @@ import { DEFAULT_BREAK_PARAMS, ONSET_LEVELS, ONSET_LEVEL_Q, ONSET_RECORD_LENGTH,
 import { type Station, traceStations } from './crestTrace';
 import { REFRACT_FLOOR_M, computeOnsetRecord, computeReefField, sampleField } from './reefField';
 import { type WaveContext, breakOptions, sumWaves, toActiveWave } from './setWaveModel';
-import { STOOD_PHASE, WALL_LEAD_S, wallWeight } from './wombSection';
+import { STOOD_PHASE, wallWeight, WALL_LEAD_T } from './wombSection';
 
 /**
  * The wall down the line (plan 2026-10-06-wave-root-cause; Andrew, 2026-10-06: "the breaking part of the wave bowling into
  * almost a right-angle, instead of seeing the extended wall of the yet to break wave, to plan how I ride the wave"). The
  * reef record carries how long until each point breaks (breaking.onsetUntil), and the drawn section, the stations and the
- * sheet's front all stand up on it over the last WALL_LEAD_S, not on the breaking ratio, which on the Womb's deep basin only
+ * sheet's front all stand up on it over the last period (wallWeight), not on the breaking ratio, which on the Womb's deep basin only
  * rises in the last 10 m before a point breaks.
  */
 
@@ -78,20 +78,21 @@ describe('the time until onset in the reef record (breaking.onsetUntil)', () => 
 });
 
 describe('wallWeight', () => {
-  it('is 0 WALL_LEAD_S or more away and where the section never breaks, 1 at the break, and stands up ever faster', () => {
-    expect(wallWeight(Infinity)).toBe(0);
-    expect(wallWeight(null)).toBe(0);
-    expect(wallWeight(WALL_LEAD_S)).toBe(0);
-    expect(wallWeight(2 * WALL_LEAD_S)).toBe(0);
-    expect(wallWeight(0)).toBe(1);
-    expect(wallWeight(1)).toBeGreaterThan(0.6);
-    expect(wallWeight(1)).toBeLessThan(0.8);
-    let prev = wallWeight(0), prevStep = Infinity;
-    for (let u = 0.5; u <= WALL_LEAD_S; u += 0.5) {
-      const w = wallWeight(u), step = prev - w;
+  it('is 0 a lead (WALL_LEAD_T periods: 0.75, STOP 2 ruling) or more away and where the section never breaks, 1 at the break, a smoothstep between (womb-realism Task 2)', () => {
+    const T = 14, L = WALL_LEAD_T * T;
+    expect(WALL_LEAD_T).toBe(0.75);
+    expect(wallWeight(Infinity, T)).toBe(0);
+    expect(wallWeight(null, T)).toBe(0);
+    expect(wallWeight(L, T)).toBe(0);
+    expect(wallWeight(T, T)).toBe(0);
+    expect(wallWeight(2 * T, T)).toBe(0);
+    expect(wallWeight(0, T)).toBe(1);
+    expect(wallWeight(L / 2, T)).toBeCloseTo(0.5, 12);
+    let prev = wallWeight(0, T);
+    for (let u = 0.5; u < L; u += 0.5) {
+      const w = wallWeight(u, T);
       expect(w).toBeLessThan(prev);
-      expect(step).toBeLessThanOrEqual(prevStep + 1e-12);
-      prev = w; prevStep = step;
+      prev = w;
     }
   });
 });

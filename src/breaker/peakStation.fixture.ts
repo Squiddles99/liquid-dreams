@@ -29,7 +29,7 @@ export const { field, wave, ctx } = MID12;
 const P = DEFAULT_BREAK_PARAMS;
 /** The station on the peak's ray whose section has been broken tb seconds (null: 40 m up the ray, unbroken), at ψ. The search
  * reaches 220 m seaward: on the softened ramp a 12 ft set breaks ~130 m out. */
-export function peakStation(psi: number, tb: number | null, o: { setup?: ReturnType<typeof peakSetup>; offshoreMs?: number } = {}) {
+export function peakStation(psi: number, tb: number | null, o: { setup?: ReturnType<typeof peakSetup>; offshoreMs?: number; handDown?: boolean } = {}) {
   const { field: f, wave: w, ctx: cx } = o.setup ?? MID12;
   const f00 = sampleField(f, TIP[0], TIP[1]);
   const onRay = (s: number) => ({ x: TIP[0] + f00.dirX * s, z: TIP[1] + f00.dirZ * s });
@@ -37,7 +37,7 @@ export function peakStation(psi: number, tb: number | null, o: { setup?: ReturnT
   let s0 = -40;
   if (tb !== null) { let lo = -220, hi = 60; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2, v = tbAlong(m); if (v === null || v < tb) lo = m; else hi = m; } s0 = (lo + hi) / 2; }
   const p0 = onRay(s0), f0 = sampleField(f, p0.x, p0.z), t = f0.tau;
-  const sheet: BreakOptions = { ...breakOptions(f, P, o.offshoreMs ?? 0), force: { psi } };
+  const sheet: BreakOptions = { ...breakOptions(f, P, o.offshoreMs ?? 0), force: { psi }, ...(o.handDown === false ? { handDown: false } : {}) };
   const along = (opt: BreakOptions) => (u: number): Vec2 => {
     const x = p0.x + f0.dirX * u, z = p0.z + f0.dirZ * u, r = sumWaves(x, z, t, sampleField(f, x, z), [w], cx, opt);
     return [u + r.dx * f0.dirX + r.dz * f0.dirZ, r.eta];
@@ -47,7 +47,7 @@ export function peakStation(psi: number, tb: number | null, o: { setup?: ReturnT
   return { base: along(sheet), frameBase: along({ ...sheet, pile: false }), input, lip: withSheetShape(P, psi), s0 };
 }
 /** The lip's landing time at ψ: the station where tb equals its own τ_land (three fixed-point steps from 1 s). */
-export function peakLanding(psi: number, o: { setup?: ReturnType<typeof peakSetup>; offshoreMs?: number } = {}): number {
+export function peakLanding(psi: number, o: { setup?: ReturnType<typeof peakSetup>; offshoreMs?: number; handDown?: boolean } = {}): number {
   let tb = 1;
   for (let i = 0; i < 3; i++) { const st = peakStation(psi, tb, o); tb = profileFrame(st.frameBase, st.input, st.lip).tauLand; }
   return tb;

@@ -74,9 +74,96 @@
       .ld-cover[data-mode="cover"] .ld-line { animation: ld-pulse 1.6s ease-in-out infinite alternate; }
       .ld-cover.is-calm .ld-line { animation: none; }
       @keyframes ld-pulse { from { opacity: 1; } to { opacity: 0.55; } }
+      /* The one cover that comes in over the title (the crew after the first Surf), so it fades in over the menu. */
+      .ld-cover.is-over-title { z-index: 2147483620; }
+      /* The intro films (Andrew 2026-10-11): the studio, then the title, over everything; then the title menu. */
+      .ld-intro { position: fixed; inset: 0; z-index: 2147483640; background: #000; cursor: none; transition: opacity 600ms ease-out; }
+      .ld-intro.is-out { opacity: 0; pointer-events: none; }
+      .ld-intro[hidden] { display: none; }
+      .ld-intro video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 250ms ease-out; }
+      .ld-intro video.is-on { opacity: 1; }
     </style>
   </head>
   <body>
+    <div id="ld-intro" class="ld-intro" aria-label="Leapfrog Game Studio presents Liquid Dreams">
+      <video src="/intro/leapfrog-studio.mp4" playsinline preload="auto"></video>
+      <video src="/intro/liquid-dreams-title.mp4" playsinline preload="auto"></video>
+    </div>
+    <script>
+      // The intro films (Andrew 2026-10-11), inline so they start before the game's code loads: the studio, then the
+      // title, then the title menu (the game boots behind them). A press skips the film playing. Only a normal start plays
+      // them: links, self-tests, sheets, ?frontend=off, ?intro=off and the Electron ?probe skip them (frontend/entry.ts).
+      // window.ldIntro: `playing`, `finished` (a promise) and `stop()` (errors).
+      (function () {
+        var el = document.getElementById('ld-intro');
+        var q = new URLSearchParams(location.search);
+        var off = q.has('selftest') || q.has('sheet') || q.has('probe') || q.get('frontend') === 'off' || q.get('intro') === 'off' ||
+          /^#(m|moment|ref)=/.test(location.hash);
+        var clips = [].slice.call(el.querySelectorAll('video'));
+        var at = -1, done = false, timer = 0, lastSkip = -1e9, resolve;
+        var finished = new Promise(function (r) { resolve = r; });
+        function finish(fade) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          clips.forEach(function (v) { v.pause(); v.removeAttribute('src'); v.load(); });
+          if (!fade) el.hidden = true;
+          else { el.classList.add('is-out'); setTimeout(function () { el.hidden = true; }, 650); }
+          resolve();
+        }
+        function next() {
+          if (done) return;
+          if (at >= 0) { clips[at].pause(); clips[at].classList.remove('is-on'); }
+          if (++at >= clips.length) return finish(true);
+          var v = clips[at], mine = at;
+          v.classList.add('is-on');
+          // A film that never plays or stalls is let go (each is 10 s).
+          clearTimeout(timer);
+          timer = setTimeout(function () { if (at === mine) next(); }, 15000);
+          // With sound if the browser allows it (Electron does), else muted, else skipped.
+          var p = v.play();
+          if (p) p.catch(function () { if (at !== mine) return; v.muted = true; v.play().catch(function () { if (at === mine) next(); }); });
+        }
+        window.ldIntro = { finished: finished, stop: function () { finish(false); }, get playing() { return !done; } };
+        if (off) return finish(false);
+        clips.forEach(function (v, i) {
+          v.addEventListener('ended', function () { if (at === i) next(); });
+          v.addEventListener('error', function () { if (at === i) next(); });
+        });
+        // A press skips the film playing; the press stops here (no dev hotkey, no menu under it hears it). The title's
+        // input drops pad presses while the intro plays (main.ts).
+        function skip() {
+          var now = performance.now();
+          if (now - lastSkip < 300) return;
+          lastSkip = now;
+          next();
+        }
+        ['keydown', 'keyup', 'pointerdown', 'pointerup', 'click', 'wheel'].forEach(function (type) {
+          addEventListener(type, function (e) {
+            if (done) return;
+            e.stopImmediatePropagation();
+            if (type === 'keydown' && !e.repeat && e.key !== 'F11' && e.key !== 'F12') skip();
+            if (type === 'pointerdown') skip();
+          }, { capture: true });
+        });
+        var held = {};
+        (function pad() {
+          if (done) return;
+          var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+          for (var p = 0; p < pads.length; p++) {
+            var g = pads[p];
+            if (!g) continue;
+            for (var b = 0; b < g.buttons.length; b++) {
+              var k = p + ':' + b, down = g.buttons[b].pressed;
+              if (down && !held[k]) skip();
+              held[k] = down;
+            }
+          }
+          requestAnimationFrame(pad);
+        })();
+        next();
+      })();
+    </script>
     <div id="ld-cover" class="ld-cover is-in is-blocking" data-mode="boot" data-boot="crew-wave" data-slides="birds-albatross birds-brown-honeyeater birds-carnabys birds-fairywren birds-hooded-plover birds-kestrel birds-kookaburra birds-osprey birds-oystercatcher birds-ringneck birds-sea-eagle birds-spinebill birds-tropicbird birds-wattlebird flora-balga flora-coast-daisy-bush flora-coast-sword-sedge flora-cockies-tongues flora-fan-flower flora-parrot-bush flora-peppermint flora-pigface flora-prickly-conostylis flora-rice-flower flora-sea-spurge flora-spyridium marsupials-chuditch marsupials-grey-kangaroo marsupials-honey-possum marsupials-pygmy-possum marsupials-quenda marsupials-ringtail-possum marsupials-tammar reptiles-bearded-dragon reptiles-bobtail reptiles-carpet-python reptiles-crowned-snake reptiles-dugite reptiles-heath-monitor reptiles-marbled-gecko reptiles-tiger-snake sea-fauna-abalone sea-fauna-bronze-whaler sea-fauna-cuttlefish sea-fauna-dolphins sea-fauna-fur-seal sea-fauna-herring sea-fauna-humpback sea-fauna-leafy-seadragon sea-fauna-port-jackson sea-fauna-rock-lobster sea-fauna-salmon sea-fauna-southern-right sea-fauna-stingray sea-fauna-tiger-shark sea-fauna-white-shark sea-flora-asparagopsis sea-flora-coralline sea-flora-kelp sea-flora-laurencia sea-flora-paddle-weed sea-flora-posidonia sea-flora-sargassum sea-flora-sea-lettuce sea-flora-sirophysalis sea-flora-strapweed" aria-label="Loading Liquid Dreams" role="status">
       <div class="ld-cover-bg"><img alt="" sizes="100vw" /></div>
       <div class="ld-shade"></div>

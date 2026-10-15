@@ -80,10 +80,21 @@ export class BarFollower {
 
 /**
  * Which of the last two stages are done (loading screens §1.2, §1.4). The heath: the land, the kit and the ground
- * layers have each loaded or failed. The crew: the heath, and the crew on the stand spot, unless no crew is coming (no
+ * layers have each loaded or failed. The crew: the heath, the wave field for these conditions, and the crew on the stand
+ * spot, unless no crew is coming (no
  * front end at this start, or no usable land, so no stand spot): the bar never hangs.
  */
-export function bootReady(p: { land: boolean; kit: boolean; layers: boolean; frontEnd: boolean; landUsable: boolean; crewIn: boolean }): { heath: boolean; crew: boolean } {
+export function bootReady(p: { land: boolean; kit: boolean; layers: boolean; frontEnd: boolean; landUsable: boolean; crewIn: boolean; fieldIn: boolean }): { heath: boolean; crew: boolean } {
   const heath = p.land && p.kit && p.layers;
-  return { heath, crew: heath && (!p.frontEnd || !p.landUsable || p.crewIn) };
+  // The wave field built for these conditions (womb-realism Task 1c): until it lands the waves run on the last one.
+  return { heath, crew: heath && p.fieldIn && (!p.frontEnd || !p.landUsable || p.crewIn) };
+}
+
+/**
+ * Whether the reef field in use was built for these conditions (womb-realism Task 1c). The worker takes ~15 s after a
+ * change (coast eikonal + reef); until then the new waves run on the old field, and where their direction differs the
+ * crest tears (the phase's direction term over the reef's noisy local celerity).
+ */
+export function fieldMatches(far: { periodS: number; fromDeg: number; tideM: number } | null | undefined, c: { swell: { periodS: number; directionDeg: number }; tideM: number }): boolean {
+  return !!far && far.periodS === c.swell.periodS && far.fromDeg === c.swell.directionDeg && far.tideM === c.tideM;
 }

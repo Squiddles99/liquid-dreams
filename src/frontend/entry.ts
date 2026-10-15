@@ -8,3 +8,6 @@ export function frontEndWanted(search: string, hash: string): boolean {
 
 /** Paddle out and Back to the dune (loading screens §4): the UI leaves, the cover comes in, holds at least this long, dissolves. */
 export const PADDLE_OUT_MS = { uiOut: 180, minHold: 1500, minHoldCalm: 600 } as const;
+
+/** The crew cover after the first Surf (Andrew 2026-10-11): its last showing, so it stays long enough to be seen. */
+export const CREW_COVER_MS = { minHold: 2500, minHoldCalm: 600 } as const;

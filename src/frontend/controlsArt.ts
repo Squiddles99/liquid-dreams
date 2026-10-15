@@ -83,8 +83,8 @@ const BUTTON_SLOTS: Record<number, { leader: Pt[]; at: Pt; align: 'left' | 'righ
 
 /**
  * The pad (Xbox layout: offset sticks, the face diamond), the ride's controls lit: the left stick turns and carves, the
- * right stick looks around and the menu button pauses (always); the four bound buttons (paddle, crouch, pop up, next wave) are wherever the player put
- * them. On a PlayStation pad the face buttons carry its shapes and the callouts its names.
+ * right stick looks around and the menu button pauses (always); the bound buttons (paddle, crouch, stall, pump, pop up, next wave) are wherever
+ * the player put them. On a PlayStation pad the face buttons carry its shapes and the callouts its names.
  */
 export function controllerArt(b: Bindings, family: PadFamily = 'xbox'): ControlsArt {
   const actionOf = new Map(PAD_ACTIONS.map((a) => [b.pad[a], a] as const));
@@ -165,7 +165,8 @@ const arrow = (deg: number): string => `<path d="M0,-15 L14,9 L-14,9 Z" fill="${
 
 /**
  * The keys, laid out as W A S D are on a keyboard whatever they're bound to: paddle above, turn left and right either
- * side of crouch, next wave up and to the right, pop up below (the space bar when it's Space), Esc top left; the arrow
+ * side of crouch, pump on E's spot and next wave up and to the right, pop up below (the space bar when it's Space) with
+ * stall left of it where left Shift sits, Esc top left; the arrow
  * keys, which always work like the first four; the mouse, which looks around.
  */
 export function keyboardArt(b: Bindings): ControlsArt {
@@ -174,21 +175,23 @@ export function keyboardArt(b: Bindings): ControlsArt {
   const q = 330, w = q + U, e = w + U, r = e + U, a = q, s = w, d = e;
   const ax = 1060, arrowsTop = row2 - 10;
   const popupW = b.keys.popup === 'Space' ? 4 * U - GAP : KEY;
-  // Q and E either side of W only when it's still W and R: then the cluster reads as the keyboard it is.
-  const realRow = b.keys.paddle === 'KeyW' && b.keys.next === 'KeyR';
+  // Q left of W only when it's still W, E and R: then the cluster reads as the keyboard it is.
+  const realRow = b.keys.paddle === 'KeyW' && b.keys.pump === 'KeyE' && b.keys.next === 'KeyR';
+  const shiftW = KEY + 60, shiftX = q - GAP - shiftW;
   const alt = (act: KeyAction): string => `${k(act)} or ${keyLabel(ARROW_FOR[act]!)}`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${ART_W}" height="${ART_H}" viewBox="0 0 ${ART_W} ${ART_H}" aria-hidden="true">`
     + keyCap(110, 20, KEY, capText('Esc'), true)
-    + (realRow ? keyCap(q, row1, KEY, capText('Q'), false) + keyCap(e, row1, KEY, capText('E'), false) : '')
-    + keyCap(w, row1, KEY, capText(k('paddle')), true) + keyCap(r, row1, KEY, capText(k('next')), true)
+    + (realRow ? keyCap(q, row1, KEY, capText('Q'), false) : '')
+    + keyCap(w, row1, KEY, capText(k('paddle')), true) + keyCap(e, row1, KEY, capText(k('pump')), true) + keyCap(r, row1, KEY, capText(k('next')), true)
     + keyCap(a, row2, KEY, capText(k('left')), true) + keyCap(s, row2, KEY, capText(k('crouch')), true) + keyCap(d, row2, KEY, capText(k('right')), true)
-    + keyCap(q, space, popupW, capText(k('popup')), true)
+    + keyCap(q, space, popupW, capText(k('popup')), true) + keyCap(shiftX, space, shiftW, capText(k('stall')), true)
     + keyCap(ax + U, arrowsTop, KEY, arrow(0), true)
     + keyCap(ax, arrowsTop + U, KEY, arrow(-90), true) + keyCap(ax + U, arrowsTop + U, KEY, arrow(180), true) + keyCap(ax + 2 * U, arrowsTop + U, KEY, arrow(90), true)
     + mouse(1196, 500)
     // Leaders: paddle up to its callout, next wave out to the right; the arrow keys' bracket.
     + leader([[w + KEY / 2, row1], [w + KEY / 2, 70], [w + KEY / 2 + 30, 70]])
     + leader([[r + KEY, row1 + KEY / 2], [r + KEY + 40, row1 + KEY / 2]])
+    + leader([[e + KEY - 22, row1], [e + KEY - 22, 112], [r + KEY + 40, 112]])
     + `<path d="M${ax},${arrowsTop - 34} v-14 h${3 * U - GAP} v14" fill="none" stroke="${CREAM}" stroke-opacity="0.75" stroke-width="2"/>`
     + `</svg>`;
   const callouts: Callout[] = [
@@ -199,6 +202,8 @@ export function keyboardArt(b: Bindings): ControlsArt {
     { text: ACTION_LABELS.right, sub: alt('right'), x: d + KEY + 24, y: row2 + KEY / 2, align: 'left' },
     { text: ACTION_LABELS.crouch, sub: alt('crouch'), x: s + KEY / 2, y: row2 + KEY + 42, align: 'center' },
     { text: ACTION_LABELS.popup, sub: '', x: q + popupW + 24, y: space + KEY / 2, align: 'left' },
+    { text: ACTION_LABELS.pump, sub: k('pump'), x: r + KEY + 54, y: 112, align: 'left' },
+    { text: ACTION_LABELS.stall, sub: k('stall'), x: shiftX - 24, y: space + KEY / 2, align: 'right' },
     { text: 'Look around', sub: 'Left-click drag', x: 1290, y: 552, align: 'left' },
     { text: 'Arrow keys work too', sub: `Same as ${k('paddle')} ${k('left')} ${k('crouch')} ${k('right')}`, x: ax + 1.5 * U - GAP / 2, y: arrowsTop - 92, align: 'center' },
   ];

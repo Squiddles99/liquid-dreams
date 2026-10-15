@@ -36,3 +36,15 @@ describe('Input while the front end is open (spec §10)', () => {
     key('keyup', 'KeyH');
   });
 });
+
+describe('Input chords', () => {
+  it('a Ctrl+Shift press registers as the chord, not the bare key', () => {
+    const listeners: Record<string, ((e: unknown) => void)[]> = {};
+    const fakeTarget = { addEventListener: (t: string, f: (e: unknown) => void) => { (listeners[t] ??= []).push(f); }, removeEventListener: () => {} };
+    Object.assign(globalThis, { window: fakeTarget, document: fakeTarget });
+    const input = new Input(fakeTarget as unknown as HTMLElement);
+    listeners.keydown.forEach((f) => f({ code: 'KeyM', ctrlKey: true, shiftKey: true, target: null, preventDefault() {} }));
+    expect(input.consumePressed('KeyM')).toBe(false);
+    expect(input.consumePressed('Ctrl+Shift+KeyM')).toBe(true);
+  });
+});

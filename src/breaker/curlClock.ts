@@ -57,8 +57,23 @@ export function breakingLines(T: ArrayLike<number>, nx: number, nz: number): Int
  * upwind neighbour at curlMaxMs); the first break keeps T₀. The cap is the peel stretch's (a held wall never runs on into the
  * shallows): where the reef would hold a section longer, the curl steps back there. A line already non-decreasing in s, at
  * an unbounded speed, comes out unchanged.
+ *
+ * With `ridden` (womb-realism Task 2b), curlMaxMs binds only down the ridden line: on a step j → i where i is on it and
+ * not behind j (along(i) > along(j), or j off it), and there the hold cap grows with the distance down it: the curl's time
+ * to get there at curlMaxMs plus `ridden.holdMarginS`, never under the flat `maxHoldS` (so the line's start keeps it). Every other step runs at
+ * `ridden.sweepMs` under the flat `maxHoldS`: at 270° the Womb's line breaks first 140 m up the reef north of the peak,
+ * nearly at once, and at 12 m/s the sweep down it reached the take-off 7.4 s late.
  */
-export function curlTimes(T: ArrayLike<number>, lineOf: Int32Array, nx: number, nz: number, cellM: number, curlMaxMs: number, maxHoldS: number): Float32Array {
+export interface RiddenLine {
+  /** Per node, the distance (m) down the ridden line from its start; NaN off it. */
+  along: Float32Array;
+  /** The curl's top speed (m/s) off the ridden line. */
+  sweepMs: number;
+  /** The hold cap's headroom (s) past the curl's time down the ridden line (see curlTimes). */
+  holdMarginS: number;
+}
+
+export function curlTimes(T: ArrayLike<number>, lineOf: Int32Array, nx: number, nz: number, cellM: number, curlMaxMs: number, maxHoldS: number, ridden?: RiddenLine): Float32Array {
   const n = nx * nz, out = new Float32Array(n).fill(Number.NaN);
   const s = new Float64Array(n).fill(Infinity), done = new Uint8Array(n);
   const first = new Map<number, number>();
@@ -68,7 +83,8 @@ export function curlTimes(T: ArrayLike<number>, lineOf: Int32Array, nx: number, 
     const f = first.get(l);
     if (f === undefined || T[i] < T[f]) first.set(l, i);
   }
-  const R = CURL_LINK_CELLS, slow = Number.isFinite(curlMaxMs) && curlMaxMs > 0 ? 1 / curlMaxMs : 0;
+  const inverse = (v: number): number => (Number.isFinite(v) && v > 0 ? 1 / v : 0);
+  const R = CURL_LINK_CELLS, slow = inverse(curlMaxMs), sweep = ridden ? inverse(ridden.sweepMs) : slow, along = ridden?.along;
   const heap = new MinHeap();
   for (const [line, src] of first) {
     s[src] = 0;
@@ -90,7 +106,8 @@ export function curlTimes(T: ArrayLike<number>, lineOf: Int32Array, nx: number, 
           if (j !== i && si - s[j] >= UPWIND_SHARE * d) {
             any = true;
             latest = Math.max(latest, out[j]);
-            soonest = Math.min(soonest, out[j] + d * slow);
+            const down = along !== undefined && along[i] === along[i] && !(along[j] >= along[i]);
+            soonest = Math.min(soonest, out[j] + d * (down || !along ? slow : sweep));
           }
         } else if (si + d < s[j]) {
           s[j] = si + d;
@@ -98,7 +115,8 @@ export function curlTimes(T: ArrayLike<number>, lineOf: Int32Array, nx: number, 
         }
       }
       const t = T[i];
-      out[i] = any ? Math.min(Math.max(t, latest, soonest), t + maxHoldS) : t;
+      const cap = ridden && ridden.along[i] === ridden.along[i] ? Math.max(maxHoldS, ridden.along[i] * slow + ridden.holdMarginS) : maxHoldS;
+      out[i] = any ? Math.min(Math.max(t, latest, soonest), t + cap) : t;
     }
   }
   return out;

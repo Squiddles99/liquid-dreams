@@ -323,7 +323,7 @@ describe('normalizeBreakParams', () => {
     const old = { ...P } as Partial<BreakParams>;
     delete old.pileHalfM; delete old.pileSurge; delete old.churnSize; delete old.churnSpeed;
     normalizeBreakParams(old as BreakParams);
-    expect([old.pileHalfM, old.pileSurge, old.churnSize, old.churnSpeed]).toEqual([50, 0.3, 0.2, 1]);
+    expect([old.pileHalfM, old.pileSurge, old.churnSize, old.churnSpeed]).toEqual([50, 0.3, 0.25, 1]); // churnSize: Andrew's dial (whitewater)
     const wild = { ...P, pileHalfM: 1, pileSurge: 9, churnSize: -1, churnSpeed: 99 };
     normalizeBreakParams(wild);
     expect([wild.pileHalfM, wild.pileSurge, wild.churnSize, wild.churnSpeed]).toEqual([10, 0.6, 0, 3]);
@@ -594,9 +594,9 @@ describe('the whitewater pile (spec 2026-09-29 §3.2)', () => {
 });
 
 describe('the curl dial (one-curl spec §3d)', () => {
-  it('defaults to 40 m/s (one-curl Task 3 ruling) and clamps to [4, 40]', () => {
-    expect(DEFAULT_BREAK_PARAMS.curlMaxMs).toBe(40);
-    for (const [raw, want] of [[2, 4], [12, 12], [99, 40], [Number.NaN, 40]] as const) {
+  it('defaults to 13 m/s (womb-realism Task 2b) and clamps to [8, 20]', () => {
+    expect(DEFAULT_BREAK_PARAMS.curlMaxMs).toBe(13);
+    for (const [raw, want] of [[2, 8], [15, 15], [99, 20], [Number.NaN, 13]] as const) {
       const p = { ...DEFAULT_BREAK_PARAMS, curlMaxMs: raw };
       normalizeBreakParams(p);
       expect(p.curlMaxMs, String(raw)).toBe(want);
