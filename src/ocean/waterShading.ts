@@ -90,6 +90,27 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
   u.foamAlbedo.value = p.foamAlbedo;
 }
 
+/** breaking-look item 2: the backlight lobe's wide (pow 2) share; the sun's share in the tube's reflected lip light. */
+export const BACKLIGHT_WIDE_SHARE = 0.3, TUBE_SUN_SHARE = 0.05;
+
+/**
+ * What a reflected ray heading down inside the tube sees (item 2): the mouth's sky (\`seen\`) where the tube is open
+ * (skyOpen 1), the light through the lip where it is roofed (skyOpen 0): (the sky × lipSkyTransmission + the sun through the
+ * lip × TUBE_SUN_SHARE) × the lip's colour tc / π. CPU mirror tubeSeenCpu (per channel).
+ */
+export function tubeSeenNode(seen: N, tc: N, skyIrradiance: N, sunIlluminance: N, lipSkyTransmission: N, sunLip: N, sunVisibility: N, skyOpen: N): N {
+  return mix(tc.mul(skyIrradiance.mul(lipSkyTransmission).add(sunIlluminance.mul(sunLip).mul(sunVisibility).mul(TUBE_SUN_SHARE))).div(PI), seen, skyOpen);
+}
+export function tubeSeenCpu(seen: number, tc: number, skyIrradiance: number, sunIlluminance: number, lipSkyTransmission: number, sunLip: number, sunVisibility: number, skyOpen: number): number {
+  const lip = (tc * (skyIrradiance * lipSkyTransmission + sunIlluminance * sunLip * sunVisibility * TUBE_SUN_SHARE)) / Math.PI;
+  return lip + (seen - lip) * skyOpen;
+}
+/** The backlight lobe (item 2): (1 − BACKLIGHT_WIDE_SHARE) × pow 4 + BACKLIGHT_WIDE_SHARE × pow 2 of the back-dot. */
+export function backlightCpu(backDot: number): number {
+  const d = Math.min(1, Math.max(0, backDot));
+  return (1 - BACKLIGHT_WIDE_SHARE) * d ** 4 + BACKLIGHT_WIDE_SHARE * d ** 2;
+}
+
 // saturate(): at the anti-solar point v·h rounds to a hair above 1, and pow() of a negative base is NaN on the GPU (it showed as a fake sun).
 export const schlickWater = (cosTheta: N): N => float(0.02).add(float(0.98).mul(pow(saturate(float(1.0).sub(cosTheta)), 5.0)));
 
@@ -154,12 +175,17 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // Where the set wave has turned over (the tube's ceiling), a reflection that heads down sees the water under the lip
   // (the face and the trough), not the horizon sky the clamp above would give: the tube stays water-dark, never white.
   const underside = i.underside ? saturate(i.underside) : float(0.0);
-  const reflection = mix(seen, upwelling, underside.mul(float(1.0).sub(smoothstep(-0.2, 0.05, r.y))));
+  // breaking-look item 2: inside the tube a reflected ray heading down sees the tube's own light, not the deep water's: the
+  // mouth's sky where the tube is open (skyOpen), the light through the lip (its colour) where it is roofed.
+  const tubeSeen = i.tube && tc ? tubeSeenNode(seen, tc, sky.skyIrradiance, sky.sunIlluminance, u.lipSkyTransmission, i.tube.sunLip, sv, i.tube.skyOpen) : upwelling;
+  const reflection = mix(seen, tubeSeen, underside.mul(float(1.0).sub(smoothstep(-0.2, 0.05, r.y))));
 
   // Lip transmission: light through the lip toward the viewer (spec 2026-09-29 §3.3), coloured by the water it crossed:
   // turquoise where the lip is thin, deeper blue-green toward its thick root (Beer–Lambert over a path that grows with the
   // thickness). The sun from behind it, and the skylight through it from beneath (the tube's ceiling) and from the side.
-  const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
+  // breaking-look item 2: a 0.3 share of a wider lobe, so a side sun shows through a thin lip (the reference's glow).
+  const backDot = saturate(dot(v.negate(), l));
+  const backlight = pow(backDot, 4.0).mul(1 - BACKLIGHT_WIDE_SHARE).add(pow(backDot, 2.0).mul(BACKLIGHT_WIDE_SHARE));
   const lipLight = sky.sunIlluminance.mul(backlight).mul(sv)
     .add(sky.skyIrradiance.mul(u.lipSkyTransmission).mul(max(underside, u.lipSideSkylight)));
   const lipColour = i.lipThickness

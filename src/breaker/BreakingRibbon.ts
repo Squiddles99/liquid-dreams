@@ -4,13 +4,14 @@ import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, freshFoamWe
 import { curlFoamNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
 import * as THREE from 'three/webgpu';
 import {
-  Break, Fn, If, Loop, abs, atan, attribute, floor, fwidth, cameraPosition, clamp, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
+  Break, Fn, If, Loop, abs, atan, attribute, cameraViewMatrix, exp, floor, fwidth, screenSize, screenUV, viewportMipTexture, exp2, ivec2, cameraPosition, clamp, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
   mx_noise_float, storage, uniform, varying, varyingProperty, vec2, vec3, vec4, vertexIndex,
 } from 'three/tsl';
 import { smoothstep as smoothstepCpu } from '../math/smoothstep';
 import { CASCADE_FADES, fadeWeightNode } from '../ocean/cascadeFades';
 import { type DebugOverlays, EARTH_RADIUS_M, SET_FOAM_MAX_COVER, type SheetFoamMap, type SheetFootprint, setFoamPattern, sheetFoamWeight, sheetNormal, waterFoamFrame } from '../ocean/OceanSurface';
-import { type WaterOpticsUniforms, shadeWater } from '../ocean/waterShading';
+import { type WaterOpticsUniforms, schlickWater, shadeWater } from '../ocean/waterShading';
+import { LIP_REFERENCE_THICKNESS_M } from '../ocean/waterOptics';
 import type { WaterSurfaceModel } from '../ocean/waterSurface';
 import { seabedTerms } from '../seabed/seabedShading';
 import { REEF_GRID } from '../seabed/wombReef';
@@ -22,6 +23,7 @@ import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
 import { TUBE_TIP_CLEAR_M } from './lipProfile';
 import { encodeTb, tubeLightAtNode } from './lipProfileNodes';
 import { CURVE_SAMPLES } from './wombProfile';
+import { CURTAIN_IN_SHADER, CURTAIN_MAX_THICK_M, CURTAIN_OWN_GLOW, RIBBON_RENDER_ORDER, curtainBlurMipNode, curtainRefractShiftNode, curtainSeeThroughNode } from './curtain';
 import { EDGE_OUTER_UNITS, FACE_ON_SHEET_PHASE, STOOD_PHASE, faceOnSheetOn } from './wombSection';
 import { SHEET_READS, SHEET_READS_FIRST, SHEET_READS_SECOND, WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, curlReadHomeNode, sheetReadHomeNode, thirdReadHomeNode, wombFrameNode } from './wombSectionNodes';
 
@@ -78,6 +80,9 @@ export const MIN_PROFILE_STEP_M = 1e-3;
 export const NORMAL_SEARCH = PROFILE_SAMPLES - 1;
 /** The FFT cascade that is the chop (35 m patch): it fades out over the lip (spec R6). */
 export const CHOP_CASCADE = 2;
+/** breaking-look item 2: the chop's share kept on the lip (0 before: a smooth lip), the cascade stretched into the tube's
+ * streaks and its stretch along the developed profile. */
+export const LIP_CHOP_SHARE = 0.6, STREAK_CASCADE = 1, STREAK_STRETCH = 2.5;
 
 /**
  * WebGPU's baseline maxStorageBuffersPerShaderStage (the game asks the device for no more: it runs on unknown hardware).
@@ -396,6 +401,8 @@ export class BreakingRibbon {
   private readonly cameraXZ = uniform(new THREE.Vector2());
   /** The `ribbon tint` overlay's switch (0/1; setOverlays), public for inspection. */
   readonly tint = uniform(0);
+  /** item 7's dial (1: the curtain transmits; 0: today's opaque curtain), for the A/B. */
+  readonly curtainOn = uniform(1);
   /** 1 / the picture's exposure (setDisplayExposure): the tint's magenta is TINT_EXPOSED after exposure. */
   private readonly inverseExposure = uniform(1);
   /** The FFT cascades' slope variances (the unresolved roughness), copied from the simulation each frame. */
@@ -436,6 +443,8 @@ export class BreakingRibbon {
     this.geometry.setIndex(new THREE.BufferAttribute(ribbonIndices(), 1));
     this.geometry.setDrawRange(0, 0);
     this.mesh = new THREE.Mesh(this.geometry, this.buildMaterial());
+    // item 7: drawn after the other opaques, so the viewport copy the curtain reads holds the rider and the sea behind it.
+    this.mesh.renderOrder = RIBBON_RENDER_ORDER;
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
 
@@ -582,6 +591,11 @@ export class BreakingRibbon {
       return material;
     }
     const { model, sky, optics, foamMap } = shading;
+    // item 7: drawn in the transparent pass (after every opaque, as three's transmission is), writing depth as before, so
+    // the opaque viewport copy the curtain reads holds the rider, the sea and the sky behind it.
+    material.transparent = true;
+    material.depthWrite = true;
+    material.opacity = 1;
     // Vertex: y is relative to the tide; the Earth's curvature drops it as it drops the sheet (measured at the home,
     // the undisplaced point, as the sheet measures its undisplaced grid).
     const home: N = attribute('ribbonHome', 'vec4');
@@ -629,7 +643,14 @@ export class BreakingRibbon {
     const distance = length(toCamera);
     const viewDir = toCamera.div(max(distance, 1e-4));
     const thickness = vExtra.x, lipness = saturate(vExtra.y), curlFoam = vExtra.z, rho = vExtra.w;
-    const fft = model.fftSlopes(vDetail, distance, this.slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness) : float(1.0)));
+    // breaking-look item 2: the lip keeps LIP_CHOP_SHARE of the chop (it was smooth), and on constructed fragments cascade
+    // STREAK_CASCADE is read at a coordinate stretched STREAK_STRETCH : 1 along the developed profile (water stretched up the
+    // face: the tube's streaks, from the same fetches); at the edges (constructed 0) it is the sheet's coordinate exactly.
+    const profileN = vec2(vHome.w.negate(), vHome.z);
+    const along = dot(vDetail.sub(vHome.xy), profileN);
+    const streakAt = vDetail.sub(profileN.mul(along.mul(1 - 1 / STREAK_STRETCH).mul(saturate(vConstructed))));
+    const fft = model.fftSlopes(vDetail, distance, this.slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness.mul(1 - LIP_CHOP_SHARE)) : float(1.0)),
+      (c) => (c === STREAK_CASCADE ? streakAt : vDetail), CURTAIN_IN_SHADER);
     const shadingNormal = ribbonShadingNormal({
       geometric: vNormal, tangent: vec3(vHome.z, 0.0, vHome.w), fft,
       setSlope: vSetSlope.add(churnSlopeNode(vPile, vFrame, model.sets.meanTravel, model.sets.time, model.sets.churn)), constructed: vConstructed, viewDir,
@@ -676,7 +697,28 @@ export class BreakingRibbon {
       sky,
       optics,
     ).toVar();
-    material.colorNode = this.tinted(colour);
+    // breaking-look item 7 (Andrew, 2026-10-15): the curtain is water. The scene behind the overhang shows through, read from
+    // the viewport copy at the refracted screen position (the view-space normal bends it by the water crossed), blurred by a
+    // mip level growing with the thickness, tinted by that water (Beer-Lambert, the lip's own colour), weighted by
+    // (1 - Fresnel) and by the clear share (1 - the foam: the torn edge, the solid boil and the landed curtain stay white).
+    // The ribbon draws first in the transparent pass (curtain.RIBBON_RENDER_ORDER), so the copy holds every opaque behind it.
+    // Under the one-surface law the ribbon draws only the overhang, so every ribbon fragment may transmit (a debug render at
+    // Andrew's moment 2 showed the lip band at constructed weight 0: neither lipness nor that weight can gate it).
+    // The viewport is read with textureLoad (no sampler; the blur is the mip level): the fragment stage is at WebGPU's
+    // 16-sampler limit. CURTAIN_IN_SHADER false leaves the node out of the graph (no copy, no cost).
+    let seen: N = colour;
+    if (CURTAIN_IN_SHADER) {
+      const nView = cameraViewMatrix.mul(vec4(normal, 0.0)).xyz;
+      const refracted = screenUV.add(vec2(nView.x, nView.y.negate()).mul(curtainRefractShiftNode(thickness)));
+      const blurLevel = floor(curtainBlurMipNode(thickness));
+      const texel = ivec2((clamp as N)(refracted, vec2(0.001), vec2(0.999)).mul(screenSize).div(exp2(blurLevel)));
+      const behind = ((viewportMipTexture as N)() as N).load(texel).level(int(blurLevel)).rgb;
+      const crossed = exp(optics.absorption.mul(optics.transmissionThicknessM.mul(clamp(thickness, 0.0, CURTAIN_MAX_THICK_M)).div(LIP_REFERENCE_THICKNESS_M)).negate());
+      const seeThrough = curtainSeeThroughNode(float(1.0), max(max(foamCover, fringe), solid), schlickWater(max(dot(normal, viewDir), 1e-3))).mul(this.curtainOn);
+      // (A new node, not colour.assign: an assign outside a Fn stack is dropped.)
+      seen = mix(colour, behind.mul(crossed).add(colour.mul(CURTAIN_OWN_GLOW)), seeThrough);
+    }
+    material.colorNode = this.tinted(seen);
     return material;
   }
 
