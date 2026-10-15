@@ -6,9 +6,9 @@
 //   npm run electron:dev        open the Vite dev server (run `npm run dev` first)
 //   ...  -- --no-force-gpu      don't ask Chromium for the high-performance GPU (the A/B for the spike)
 //   ...  -- --probe=<dir>       run ~20 s, write <dir>/probe.json (GPUs, adapter, frame rate) + probe.png, quit
-import { app, BrowserWindow, clipboard, nativeImage, protocol } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, nativeImage, protocol } from 'electron';
 import { existsSync, mkdirSync, readdirSync, statSync, createReadStream, writeFileSync } from 'node:fs';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -102,7 +102,7 @@ async function createWindow() {
     width: 1600, height: 900, backgroundColor: SAND, show: false, autoHideMenuBar: true, title: 'Liquid Dreams',
     // The logo on the window and the taskbar (electron/icon.png; see electron/launch.mjs for the shortcut's .ico).
     ...(existsSync(ICON) ? { icon: ICON } : {}),
-    webPreferences: { backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
+    webPreferences: { preload: join(ROOT, 'electron', 'preload.cjs'), contextIsolation: true, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
   });
   // Shown on the page's first paint (the loading cover), never as an empty black window.
   win.once('ready-to-show', () => {
@@ -215,6 +215,16 @@ async function probe(win, dir) {
 
 // Windows groups the taskbar button by this id, and shows the window's icon for it (not Electron's).
 app.setAppUserModelId('com.liquiddreams.game');
+
+// window.ldSave (electron/preload.cjs): the page's reports and screenshots written straight to Pictures\Liquid Dreams
+// (the probe's own folder while probing), no download involved. Replies with the full path.
+ipcMain.handle('ld-save', (_e, filename, bytes) => {
+  const dir = probeDir ?? join(app.getPath('pictures'), 'Liquid Dreams');
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, basename(String(filename)));
+  writeFileSync(file, Buffer.from(bytes));
+  return file;
+});
 
 app.whenReady().then(() => {
   protocol.handle('app', serveDist);

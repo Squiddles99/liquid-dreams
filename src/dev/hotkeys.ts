@@ -25,13 +25,27 @@ export function reportMomentFilenames(nowMs: number): { png: string; txt: string
   return { png: `ld-moment-${s}.png`, txt: `ld-moment-${s}.txt` };
 }
 
-/** Saves a blob as a download (the browser's downloads folder). */
-export function downloadBlob(blob: Blob, filename: string): void {
+type LdSave = (filename: string, bytes: Uint8Array) => Promise<string>;
+
+/**
+ * Saves a blob. In the Electron app (preload.cjs gives window.ldSave) it is written straight to Pictures\Liquid Dreams and
+ * the full path is returned; in the browser it is a download (the downloads folder) and the result is the filename.
+ */
+export async function downloadBlob(blob: Blob, filename: string): Promise<string> {
+  const ldSave = (window as unknown as { ldSave?: LdSave }).ldSave;
+  if (ldSave) {
+    try {
+      return await ldSave(filename, new Uint8Array(await blob.arrayBuffer()));
+    } catch (err) {
+      console.warn(`ldSave failed for ${filename}, falling back to a download`, err);
+    }
+  }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  return filename;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -42,13 +56,9 @@ export function screenshotFilename(c: Pick<Conditions, 'date' | 'timeOfDay'>): s
 }
 
 /** Call immediately after rendering, in the same task, so the WebGPU canvas still holds the frame. */
-export function captureScreenshot(canvas: HTMLCanvasElement, filename: string): void {
+export function captureScreenshot(canvas: HTMLCanvasElement, filename: string, onSaved?: (where: string) => void): void {
   canvas.toBlob((blob) => {
     if (!blob) return;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    void downloadBlob(blob, filename).then((where) => onSaved?.(where));
   }, 'image/png');
 }

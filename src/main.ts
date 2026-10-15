@@ -85,7 +85,7 @@ ${help}` : message);
   if (frontEnd) app.openFrontEnd();
   if (surfPressed) app.titleSurf();
   // The Electron probe (?probe): a Paddle out and a Back to the dune it can trigger (loading screens §7).
-  if (query.has('probe')) (window as unknown as { ldProbe: unknown }).ldProbe = { paddleOut: () => app.probePaddleOut(), backToDune: () => app.backToDune() };
+  if (query.has('probe')) (window as unknown as { ldProbe: unknown }).ldProbe = { paddleOut: () => app.probePaddleOut(), backToDune: () => app.backToDune(), screenshot: () => app.probeScreenshot(), reportMoment: () => app.probeReportMoment() };
   // Dev builds only: scripted gallery captures (window.liquidDreams.captureFrame()) and the crest trace's timing
   // readout (window.liquidDreams.traceMs, ms per frame, a moving average).
   if (import.meta.env.DEV) {

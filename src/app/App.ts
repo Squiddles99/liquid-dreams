@@ -1289,6 +1289,10 @@ export class App {
     return this.sound.uiOut();
   }
 
+  /** The Electron probe's hooks for the two save keys (?probe): K's screenshot and Ctrl+Shift+M's report. */
+  probeScreenshot(): void { this.screenshotRequested = true; }
+  probeReportMoment(): Promise<void> { return this.reportMoment(); }
+
   /** The Electron probe's Paddle out (?probe): START on the select screen, as a player would. */
   probePaddleOut(): void {
     this.frontEnd?.act('start');
@@ -2078,14 +2082,16 @@ export class App {
     const link = `${location.origin}${location.pathname}${location.search}${encodeMoment(this.currentMoment())}`;
     const names = reportMomentFilenames(Date.now());
     const png = await this.captureFrame();
-    downloadBlob(new Blob([`${link}
-`], { type: 'text/plain' }), names.txt);
+    const where = [await downloadBlob(new Blob([`${link}
+`], { type: 'text/plain' }), names.txt)];
     if (png) {
       const tagged = new Blob([insertPngText(new Uint8Array(await png.arrayBuffer()), MOMENT_PNG_KEY, link)], { type: 'image/png' });
       await new Promise((r) => setTimeout(r, REPORT_PNG_DELAY_MS));
-      downloadBlob(tagged, names.png);
+      where.push(await downloadBlob(tagged, names.png));
     }
-    this.perf.flash(`Moment reported: ${names.txt} + ${names.png} (the link is in the PNG too)`);
+    const saved = where.some((w) => w !== names.txt && w !== names.png) ? where.join(' + ') : `${names.txt} + ${names.png}`;
+    console.log(`Moment reported: ${saved}`);
+    this.perf.flash(`Moment reported: ${saved} (the link is in the PNG too)`);
   }
 
   /** Every pause change goes through here so the paused badge always matches the clock. */
@@ -2364,7 +2370,10 @@ export class App {
     else this.picture.render(this.captureTarget);
     if (this.screenshotRequested) {
       this.screenshotRequested = false;
-      captureScreenshot(this.renderer.domElement, screenshotFilename(this.conditions));
+      captureScreenshot(this.renderer.domElement, screenshotFilename(this.conditions), (where) => {
+        console.log(`Screenshot saved: ${where}`);
+        this.perf.flash(`Screenshot saved: ${where}`);
+      });
     }
     // GPU timestamp readback only matters while the stats are on screen (or the stall log wants the GPU ms).
     if (this.devUiVisible || this.gpuSampling || this.frameLog.on) this.perf.update();
