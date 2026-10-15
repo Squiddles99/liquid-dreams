@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { rainRipplesNode } from '../weather/rainRipples';
 import {
-  Fn, If, cameraPosition, clamp, float, floor, int, ivec2, length, max, min, mix, mx_noise_float, mx_worley_noise_vec2, normalize, positionLocal, positionWorld, saturate, select, smoothstep, sqrt,
+  Fn, If, abs, cameraPosition, clamp, dot, float, floor, fwidth, int, ivec2, length, max, min, mix, mx_noise_float, mx_worley_noise_vec2, normalize, positionLocal, positionWorld, saturate, select, smoothstep, sqrt,
   textureLoad, uniform, varying, varyingProperty, vec2, vec3,
 } from 'three/tsl';
 import { seabedTerms } from '../seabed/seabedShading';
@@ -11,6 +11,9 @@ import type { OceanSimulation } from './OceanSimulation';
 import { buildPolarGrid } from './polarGrid';
 import { reefInFrontNode, waterVolumeColourNode } from './WaterVolume';
 import { churnSlopeNode } from '../whitewater/pileChurn';
+import { billowNode } from '../whitewater/billow';
+import { boreLook, heightFracNode, wallShadeNode } from '../whitewater/whitewaterLook';
+import { WALL_LOOK } from '../whitewater/lookSwitches';
 import { type WaterOpticsUniforms, shadeWater, shadeWaterFromBelow } from './waterShading';
 import type { WaterSurfaceModel } from './waterSurface';
 import type { SunlightSource } from '../land/SunlightMap';
@@ -42,40 +45,87 @@ export const FOAM_CELL_M: readonly [number, number] = [2.8, 2.0];
  * that tears out about half the rims, so old foam reads as streaks and torn patches, not a honeycomb. */
 export const LACE_STRETCH = 2.5, LACE_JITTER = 0.4, LACE_MASK_M = 6;
 
-export function setFoamPattern(foam: N, frame: N, time: N, thin: N = float(0.0), tear: N = float(0.0)): N {
+/**
+ * breaking-look item 3: (a) the young foam's cover ceiling falls SET_FOAM_MAX_COVER → YOUNG_FOAM_COVER over its first lace
+ * life (`young` 0 → 1: the map's age over its clear time), so the water's column shows through thinning foam; (b) the tear
+ * mask's threshold sharpened to TEAR_EDGE and warped by the 0.9-frequency noises (ragged outlines, not round soft blots);
+ * (c) old foam (`thin`) stretches LACE_STRETCH → LACE_STRETCH_OLD along the drift (streaks); (d) L2: past FOAM_LOD_CELLS of
+ * a cell per pixel the Worley and six noises are skipped for their fitted spatial mean (foamPatternMean), cross-faded over
+ * one octave. Returns vec2(coverage, brightness) as before.
+ */
+export const YOUNG_FOAM_COVER = 0.6;
+export const TEAR_EDGE: readonly [number, number] = [0.05, 0.15];
+export const LACE_STRETCH_OLD = 8;
+/** L2's cross-fade: from a quarter to half a cell (FOAM_CELL_M[1]) per pixel. */
+export const FOAM_LOD_CELLS: readonly [number, number] = [0.25, 0.5];
+
+/**
+ * L2's fitted mean (breaking-look item 3d): the full pattern's spatial mean cover by the weight (FOAM_MEAN_W, uniform knots)
+ * and the age (FOAM_MEAN_THIN), for tear 0 and 1, measured on the GPU over 4096 points (foamPattern.selftest prints the
+ * grid; FOAM_MEAN_TABLE holds it), and the cover-weighted mean brightness. Read by hat-function interpolation; a young
+ * ceiling below the aged one scales it. Where the pattern is sub-pixel this is what the eye integrates.
+ */
+export const FOAM_MEAN_W: readonly number[] = Array.from({ length: 15 }, (_, i) => i / 14);
+export const FOAM_MEAN_THIN: readonly number[] = [0, 0.5, 1];
+/** [tear][thin][w] → [mean cover, cover-weighted mean brightness], measured on the GPU 2026-10-15 (foamPattern.selftest's grid,
+ * 4096 points over a 400 m patch, young 0; brightness floored at 0.8 where there is no cover). */
+export const FOAM_MEAN_TABLE: readonly (readonly (readonly (readonly [number, number])[])[])[] = [
+  [
+    [[0.0000, 0.800], [0.0961, 0.800], [0.2358, 0.800], [0.4256, 0.802], [0.5801, 0.805], [0.6583, 0.808], [0.7284, 0.811], [0.7893, 0.813], [0.8400, 0.815], [0.8791, 0.817], [0.9069, 0.819], [0.9255, 0.820], [0.9369, 0.821], [0.9434, 0.821], [0.9468, 0.822]],
+    [[0.0000, 0.800], [0.0745, 0.800], [0.1828, 0.800], [0.2779, 0.800], [0.3356, 0.802], [0.3878, 0.804], [0.4362, 0.807], [0.4799, 0.809], [0.5197, 0.812], [0.5542, 0.814], [0.5831, 0.816], [0.6063, 0.817], [0.6235, 0.819], [0.6350, 0.820], [0.6420, 0.821]],
+    [[0.0000, 0.800], [0.0518, 0.800], [0.0889, 0.800], [0.1122, 0.800], [0.1350, 0.800], [0.1581, 0.801], [0.1799, 0.802], [0.2035, 0.804], [0.2250, 0.806], [0.2444, 0.808], [0.2629, 0.809], [0.2800, 0.811], [0.2951, 0.813], [0.3080, 0.815], [0.3191, 0.816]],
+  ],
+  [
+    [[0.0000, 0.800], [0.0370, 0.805], [0.0885, 0.806], [0.1574, 0.808], [0.2130, 0.810], [0.2436, 0.814], [0.2718, 0.817], [0.3055, 0.821], [0.4273, 0.821], [0.6608, 0.819], [0.8680, 0.821], [0.9257, 0.820], [0.9369, 0.821], [0.9434, 0.821], [0.9468, 0.822]],
+    [[0.0000, 0.800], [0.0242, 0.808], [0.0619, 0.809], [0.0993, 0.810], [0.1220, 0.811], [0.1412, 0.811], [0.1609, 0.814], [0.1850, 0.817], [0.2995, 0.814], [0.4933, 0.815], [0.5810, 0.816], [0.6063, 0.818], [0.6235, 0.819], [0.6350, 0.820], [0.6420, 0.821]],
+    [[0.0000, 0.800], [0.0187, 0.800], [0.0331, 0.800], [0.0433, 0.802], [0.0527, 0.804], [0.0620, 0.805], [0.0713, 0.807], [0.0857, 0.808], [0.1591, 0.807], [0.2372, 0.805], [0.2643, 0.809], [0.2798, 0.811], [0.2951, 0.813], [0.3080, 0.815], [0.3191, 0.816]],
+  ],
+];
+export function foamPatternMeanNode(foam: N, thin: N, tear: N, ceiling: N): N {
+  const hat = (x: N, knot: number, step: number): N => max(float(1.0).sub(abs(float(x).sub(knot)).div(step)), 0.0);
+  let out: N = vec2(0.0);
+  for (const [ti, tw] of [[0, float(1.0).sub(saturate(tear))], [1, saturate(tear)]] as const)
+    FOAM_MEAN_THIN.forEach((th, hi) => FOAM_MEAN_W.forEach((w, wi) => {
+      const v = FOAM_MEAN_TABLE[ti][hi][wi];
+      out = out.add(vec2(v[0], v[1]).mul(hat(saturate(foam), w, 1 / (FOAM_MEAN_W.length - 1))).mul(hat(saturate(thin), th, 0.5)).mul(tw));
+    }));
+  const aged = mix(float(SET_FOAM_MAX_COVER), float(AGED_LACE_COVER), saturate(thin));
+  return vec2(out.x.mul(min(float(1.0), ceiling.div(aged))), out.y);
+}
+
+export function setFoamPattern(foam: N, frame: N, time: N, thin: N = float(0.0), tear: N = float(0.0), young: N = float(0.0), lodIn?: N): N {
   return Fn(() => {
     const out = vec2(0.0, 1.07).toVar();
+    // L2: the pixel's footprint in cells (the derivative before any branch; `lodIn` overrides it: a compute pass has none).
+    const lod = (lodIn !== undefined ? float(lodIn) : smoothstep(FOAM_LOD_CELLS[0], FOAM_LOD_CELLS[1], max(fwidth(frame.x), fwidth(frame.y)).div(FOAM_CELL_M[1]))).toVar();
+    const ceiling = min(mix(float(SET_FOAM_MAX_COVER), float(YOUNG_FOAM_COVER), saturate(young)), mix(float(SET_FOAM_MAX_COVER), float(AGED_LACE_COVER), float(thin)));
     If(foam.greaterThan(1e-3), () => {
-      const n1 = mx_noise_float(vec3(frame.x.mul(0.15), frame.y.mul(0.35), time.mul(0.12)));
-      const n2 = mx_noise_float(vec3(frame.x.mul(0.9).add(19.7), frame.y.mul(0.9), time.mul(0.3)));
-      const n3 = mx_noise_float(vec3(frame.x.mul(0.9), frame.y.mul(0.9).add(41.3), time.mul(0.3)));
-      // The variation fades out toward full weight: fresh whitewater is solid, only thinning foam gathers in patches.
-      const w = saturate(saturate(foam).mul(n1.mul(0.4).mul(float(1.0).sub(saturate(foam))).add(1.0)));
-      // The lace stage (L3, from a drone the rims read as a CG honeycomb; photo 4's leftovers are streaks and torn patches):
-      // below the solid weight the cells stretch to LACE_STRETCH : 1 along the drift axis, take another LACE_JITTER of a
-      // cell of warp, and a slow ~LACE_MASK_M noise tears out about half the rims, × `tear`. The solid stage is untouched.
-      // × `tear`: the breaking foam's share of the weight (the sheet passes it), so the shore's swash and surf foam keep
-      // their lace (calm identity).
-      const laceness = float(1.0).sub(smoothstep(0.5, 0.75, w)).mul(float(tear)).toVar();
-      const n5 = mx_noise_float(vec3(frame.x.mul(0.5).add(7.1), frame.y.mul(0.5), time.mul(0.1)));
-      const n6 = mx_noise_float(vec3(frame.x.mul(0.5), frame.y.mul(0.5).add(13.9), time.mul(0.1)));
-      const cellX = mix(float(FOAM_CELL_M[0]), float(FOAM_CELL_M[1] * LACE_STRETCH), laceness);
-      const q = vec2(frame.x.div(cellX), frame.y.div(FOAM_CELL_M[1])).add(vec2(n2, n3).mul(0.35)).add(vec2(n5, n6).mul(laceness.mul(LACE_JITTER)));
-      // F1, F2 (squared, in cells): the rims are where the two nearest cell centres are equally far.
-      const f = sqrt(mx_worley_noise_vec2(q, 0.9));
-      const edge = f.y.sub(f.x);
-      // Solid from a weight of ~0.75 (the rims' band covers the widest cells), lace below, threads at the thinnest.
-      // Aged lace (`thin` 1) is threads, fresh is clumps: the rims narrow to AGED_LACE_WIDTH.
-      const width = w.pow(1.3).mul(1.2).add(0.18).mul(float(1.0).sub(float(thin).mul(1 - AGED_LACE_WIDTH)));
-      const n4 = mx_noise_float(vec3(frame.x.div(LACE_MASK_M), frame.y.div(LACE_MASK_M), time.mul(0.05)));
-      const torn = mix(float(1.0), smoothstep(-0.1, 0.3, n4), laceness);
-      const lace = float(1.0).sub(smoothstep(width.mul(0.5), width, edge)).mul(torn);
-      const cover = min(lace.mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0))), mix(float(SET_FOAM_MAX_COVER), float(AGED_LACE_COVER), float(thin)));
-      // The clumps: bright over each cell's middle, and a finer mottle of bubble clusters (~0.5 m) over them.
-      const fine = mx_noise_float(vec3(frame.x.mul(2.2).add(5.3), frame.y.mul(2.2), time.mul(0.6)));
-      // Three scales mixed, so no one cell size repeats as spots: the cells, the bubble clusters, and the ~1 m mottle.
-      const clump = float(1.0).sub(smoothstep(0.05, 0.6, f.x)).mul(0.3).add(smoothstep(-0.35, 0.35, fine).mul(0.45)).add(smoothstep(-0.4, 0.4, n2).mul(0.25));
-      out.assign(vec2(cover, saturate(clump).mul(0.45).add(0.62)));
+      const mean = foamPatternMeanNode(foam, thin, tear, ceiling);
+      out.assign(mean);
+      If(lod.lessThan(1.0), () => {
+        const n1 = mx_noise_float(vec3(frame.x.mul(0.15), frame.y.mul(0.35), time.mul(0.12)));
+        const n2 = mx_noise_float(vec3(frame.x.mul(0.9).add(19.7), frame.y.mul(0.9), time.mul(0.3)));
+        const n3 = mx_noise_float(vec3(frame.x.mul(0.9), frame.y.mul(0.9).add(41.3), time.mul(0.3)));
+        const w = saturate(saturate(foam).mul(n1.mul(0.4).mul(float(1.0).sub(saturate(foam))).add(1.0)));
+        const laceness = float(1.0).sub(smoothstep(0.5, 0.75, w)).mul(float(tear)).toVar();
+        const n5 = mx_noise_float(vec3(frame.x.mul(0.5).add(7.1), frame.y.mul(0.5), time.mul(0.1)));
+        const n6 = mx_noise_float(vec3(frame.x.mul(0.5), frame.y.mul(0.5).add(13.9), time.mul(0.1)));
+        // (c) old foam streaks: the lace's stretch grows with its age.
+        const stretch = mix(float(LACE_STRETCH), float(LACE_STRETCH_OLD), float(thin));
+        const cellX = mix(float(FOAM_CELL_M[0]), stretch.mul(FOAM_CELL_M[1]), laceness);
+        const q = vec2(frame.x.div(cellX), frame.y.div(FOAM_CELL_M[1])).add(vec2(n2, n3).mul(0.35)).add(vec2(n5, n6).mul(laceness.mul(LACE_JITTER)));
+        const f = sqrt(mx_worley_noise_vec2(q, 0.9));
+        const edge = f.y.sub(f.x);
+        const width = w.pow(1.3).mul(1.2).add(0.18).mul(float(1.0).sub(float(thin).mul(1 - AGED_LACE_WIDTH)));
+        const n4 = mx_noise_float(vec3(frame.x.div(LACE_MASK_M), frame.y.div(LACE_MASK_M), time.mul(0.05)));
+        // (b) ragged tears: a sharp threshold on the mask, warped by the 0.9-frequency noises.
+        const torn = mix(float(1.0), smoothstep(TEAR_EDGE[0], TEAR_EDGE[1], n4.add(n2.sub(n3).mul(0.3))), laceness);
+        const lace = float(1.0).sub(smoothstep(width.mul(0.5), width, edge)).mul(torn);
+        const cover = min(lace.mul(SET_FOAM_MAX_COVER).mul(saturate(foam.mul(4.0))), ceiling);
+        const fine = mx_noise_float(vec3(frame.x.mul(2.2).add(5.3), frame.y.mul(2.2), time.mul(0.6)));
+        const clump = float(1.0).sub(smoothstep(0.05, 0.6, f.x)).mul(0.3).add(smoothstep(-0.35, 0.35, fine).mul(0.45)).add(smoothstep(-0.4, 0.4, n2).mul(0.25));
+        out.assign(mix(vec2(cover, saturate(clump).mul(0.45).add(0.62)), mean, lod));
+      });
     });
     return out;
   })();
@@ -283,17 +333,38 @@ export class OceanSurface {
       : float(0.0);
     // The lace tears into streaks only where it is the breaking foam's (L3): the shore's foam keeps its look.
     const tear = saturate(breakFoam.div(max(foamWeight, 1e-3)));
-    const setFoamLook = setFoamPattern(foamWeight, waterFoamFrame(vBaseXZ, axis), model.sim.time, aged, tear);
+    // item 3a: the young map foam's cover ceiling falls over its first lace life (its age over the clear time).
+    const young = foamOverlay?.age && options.foamMap?.clearTimeS
+      ? saturate(foamOverlay.age.div(options.foamMap.clearTimeS)).mul(foamOverlay.inside).mul(saturate(foamOverlay.density.div(max(foamWeight, 1e-3))))
+      : float(0.0);
+    const setFoamLook = setFoamPattern(foamWeight, waterFoamFrame(vBaseXZ, axis), model.sim.time, aged, tear, young);
 
-    material.colorNode = shadeWater(
-      { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y, breakFoam: min(setFoamLook.x, breakFoam),
-        unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld, foamExposure: options.foamMap?.volumeExposure,
-        landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
-        overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
-          foamMap: (foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0)).add(surfFoam.mul(0.5)), foamOn: this.overlayFoam, sunOn: this.overlaySun } },
-      sky,
-      optics,
-    );
+    // The white-water wall where the sheet draws it (breaking-look item 1, shared with the ribbon): the baked billows (L1)
+    // flowing with the bore and the wall's top/base/clumps, read only where the foam volume can show (its weight > 0.5).
+    const volumeWeight = min(setFoamLook.x, breakFoam);
+    const lod = length(fwidth(positionWorld));
+    // In a Fn: the If needs a stack.
+    material.colorNode = Fn(() => {
+      const billowGrad = vec3(0.0).toVar(), billowHC = vec2(1.0, 1.0).toVar();
+      if (WALL_LOOK) If(volumeWeight.greaterThan(0.5), () => {
+        const b = billowNode(vec3(vBaseXZ.x, positionWorld.y.sub(model.seabed.tide), vBaseXZ.y), model.sim.time, boreLook.flow, lod);
+        billowGrad.assign(b.grad);
+        billowHC.assign(vec2(b.h, b.clump));
+      });
+      const billowNormal = normalize(normal.sub(billowGrad.sub(normal.mul(dot(normal, billowGrad)))));
+      const wall = wallShadeNode(heightFracNode(positionWorld.y, model.seabed.tide, boreLook.height), normal.y, billowHC.y);
+
+      return shadeWater(
+        { normal, viewDir, distance, foam: max(fft.foam, setFoamLook.x), foamShade: setFoamLook.y, breakFoam: volumeWeight,
+          foamBillow: WALL_LOOK ? { normal: billowNormal, height: billowHC.x, wall } : undefined,
+          unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld, foamExposure: options.foamMap?.volumeExposure,
+          landReflection: options.skyline ? (r: N) => options.skyline!.reflectionNode(positionWorld, r, sky) : undefined,
+          overlay: { depth: model.seabed.waterDepthNode(vBaseXZ), tau: model.sets.tauNode(vBaseXZ), depthOn: this.overlayDepth, crestOn: this.overlayCrest,
+            foamMap: (foamOverlay ? foamOverlay.density.add(foamOverlay.inside.mul(0.15)) : float(0.0)).add(surfFoam.mul(0.5)), foamOn: this.overlayFoam, sunOn: this.overlaySun } },
+        sky,
+        optics,
+      );
+    })();
 
     // The ribbon's footprint (spec §7.2): the sheet steps aside where the breaking ribbon draws the wave, sampled at the
     // displaced position as the footprint pass rasterises the ribbon's. Outside the mask's grid it never discards.

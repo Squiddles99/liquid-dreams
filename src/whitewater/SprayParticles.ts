@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, abs, atan, cameraPosition, cameraViewMatrix, clamp, dot, float, instanceIndex, length, max, mix, mx_noise_float, pow, select, smoothstep,
-  storage, uint, uniform, uv, varying, vec2, vec3, vec4,
+  Fn, If, abs, atan, cameraPosition, cameraViewMatrix, clamp, dot, float, fract, instanceIndex, length, max, mix, pow, select, smoothstep,
+  storage, texture, uint, uniform, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import type { Sky } from '../sky/Sky';
 import type { SunlightSource } from '../land/SunlightMap';
@@ -10,7 +10,8 @@ import {
   DEFAULT_SPRAY_PARAMS, PLUME_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_POOL, type SprayBirth, type SprayParams, normalizeSprayParams, replayTicksForMaxLife,
 } from './sprayEmitters';
 import { KIND_TINT, NEAR_FADE_M, SPRAY_PHASE_G, SPRAY_PHASE_ISOTROPIC, SPRAY_SKY_SCALE, SPRITE_LOOK } from './sprayLook';
-import { ERODING_KINDS, PARTICLE_KINDS, type ParticleKind, SPRAY_KIND, kindIndexOf } from './particleKinds';
+import { ERODING_KINDS, KIND_INDEX, PARTICLE_KINDS, type ParticleKind, SPRAY_KIND, kindIndexOf } from './particleKinds';
+import { noiseAtlasTexture } from './noiseAtlas';
 import { NO_WATER, SOFT_FADE_M, birthSeed, slotBase } from './sprayStep';
 
 type N = any;
@@ -18,6 +19,10 @@ type N = any;
 /** Screen-space stretch along the velocity: 1 + this × |v_view| (m/s), at most MAX_STRETCH. */
 const STRETCH_PER_MS = 0.4;
 const MAX_STRETCH = 3;
+/** The plume's extra stretch (breaking-look item 5c: fibrous, not a cotton cloud). */
+export const PLUME_STRETCH = 1.5;
+/** The atlas patch a puff reads (tiles across its quad): its 8 cells a tile → ~3 cells across a puff, as the old uv × 3. */
+const NOISE_UV_SCALE = 0.375;
 
 /** sprayLook.sprayPhase in TSL: the forward-peaked HG mixed with an isotropic part (multiple scattering). `isotropic` may
  * be a node (a particle's kind's). */
@@ -126,26 +131,33 @@ export class SprayParticles {
     const centre = pa.xyz.add(vl.xyz.mul(this.sinceTick));
     m.positionNode = centre;
     const vView = cameraViewMatrix.mul(vec4(vl.xyz, 0.0)).xy;
-    const stretch = clamp(length(vView).mul(STRETCH_PER_MS).add(1.0), 1.0, MAX_STRETCH);
     const kd: N = mt.y;
+    // The plume reads fibrous (breaking-look item 5c): its puffs stretch PLUME_STRETCH × as far along their screen velocity.
+    const isPlume = select(abs(kd.sub(KIND_INDEX.plume)).lessThan(0.5), float(1.0), float(0.0));
+    const stretch = clamp(length(vView).mul(STRETCH_PER_MS).add(1.0), 1.0, MAX_STRETCH).mul(mix(float(1.0), float(PLUME_STRETCH), isPlume));
     const size = mix(kindValueNode(kd, (q) => q.sizeM[0]), kindValueNode(kd, (q) => q.sizeM[1]), ageFrac).mul(select(alive, float(1.0), float(0.0)));
     m.scaleNode = vec2(size.mul(stretch), size);
     m.rotationNode = atan(vView.y, vView.x);
     const vAgeFrac: N = varying(ageFrac), vAgeS: N = varying(pa.w), vStrength: N = varying(mt.x);
-    const vSeed: N = varying(float(instanceIndex));
     const vOpacity: N = varying(kindValueNode(kd, (q) => q.opacity));
     let eroding: N = float(0.0);
     for (const k of ERODING_KINDS) eroding = select(abs(kd.sub(k)).lessThan(0.5), float(1.0), eroding);
     const vEroding: N = varying(eroding);
-    const vBirthSeed: N = varying(mt.w);
     // Shape: a soft round puff broken by one octave of noise seeded per slot.
     const q = uv().sub(0.5);
     const vSoft0: N = varying(kindIndexedNode(kd, SPRITE_LOOK.map((l) => l.soft)));
-    const shape0 = float(1.0).sub(smoothstep(vSoft0, 1.0, length(q).mul(2.0))).mul(mx_noise_float(vec3(uv().mul(3.0), vSeed.mul(0.137))).mul(0.5).add(0.75));
+    // L3 (breaking-look): one 2-D noise-atlas read per pixel (noiseAtlas: R the breakup, G the erosion, B fibres) where two
+    // 3-D gradient noises were; each puff reads its own patch of the tile (an offset from its slot / birth seed).
+    const atlas = noiseAtlasTexture();
+    const vPatch: N = varying(vec2(fract(float(instanceIndex).mul(0.6180339)), fract(mt.w.mul(17.0).mul(0.4142135))));
+    const n = texture(atlas, uv().mul(NOISE_UV_SCALE).add(vPatch));
+    const shape0 = float(1.0).sub(smoothstep(vSoft0, 1.0, length(q).mul(2.0))).mul(n.x.add(0.25));
     // Plume and spit dissolve by a noise threshold rising with age (whitewater §4.1): ragged, not a uniform fade.
     const th = vAgeFrac.mul(0.8);
-    const erosion = smoothstep(th, th.add(0.2), mx_noise_float(vec3(uv().mul(2.0), vBirthSeed.mul(17.0))).mul(0.5).add(0.5));
-    const shape = shape0.mul(mix(float(1.0), erosion, vEroding));
+    const erosion = smoothstep(th, th.add(0.2), n.y);
+    // The plume's fibres (item 5c): its puff broken along its stretch by the atlas's streak channel.
+    const vPlume: N = varying(isPlume);
+    const shape = shape0.mul(mix(float(1.0), erosion, vEroding)).mul(mix(float(1.0), smoothstep(0.25, 0.7, n.z).mul(0.8).add(0.35), vPlume));
     const fades = smoothstep(0.0, 0.1, vAgeS).mul(float(1.0).sub(smoothstep(0.6, 1.0, vAgeFrac)));
     // Single scattering: the sun through a forward-peaked phase function, the sky isotropically; then the haze. All of it
     // depends only on the puff's centre, so it runs once per vertex (a varying), not per pixel: per pixel it cost ~5 ms

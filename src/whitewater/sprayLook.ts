@@ -36,11 +36,11 @@ export function sprayPhase(cosT: number, isotropic = SPRAY_PHASE_ISOTROPIC): num
  * the plume's dense water read whiter than the feather's thin mist).
  */
 export const SPRITE_LOOK: readonly { soft: number; bright: number }[] = [
-  { soft: 0.3, bright: 1 }, { soft: 0.45, bright: 1.1 }, { soft: 0.3, bright: 1 }, { soft: 0.5, bright: 1.15 }, { soft: 0, bright: 0.9 },
+  { soft: 0.3, bright: 1 }, { soft: 0.45, bright: 1.1 }, { soft: 0.3, bright: 1 }, { soft: 0.5, bright: 1.15 }, { soft: 0, bright: 0.9 }, { soft: 0.2, bright: 1.05 },
 ];
 /** The kind overlay's colours (DebugOverlays.kindTint), by KIND_INDEX: spray grey, plume blue, impact yellow, spit red,
- * feather green. */
-export const KIND_TINT: readonly (readonly [number, number, number])[] = [[0.6, 0.6, 0.6], [0.1, 0.3, 1], [1, 0.85, 0.1], [1, 0.1, 0.1], [0.1, 1, 0.2]];
+ * feather green, spit cloud pink. */
+export const KIND_TINT: readonly (readonly [number, number, number])[] = [[0.6, 0.6, 0.6], [0.1, 0.3, 1], [1, 0.85, 0.1], [1, 0.1, 0.1], [0.1, 1, 0.2], [1, 0.5, 0.8]];
 
 export function nearCameraFade(distanceM: number): number {
   return smoothstep(NEAR_FADE_M[0], NEAR_FADE_M[1], distanceM);

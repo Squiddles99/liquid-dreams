@@ -94,21 +94,25 @@ export class WaterSurfaceModel {
   /**
    * FFT slopes/Jacobian terms and foam at xz, with the render's normal fades by distance; set waves added separately.
    * `scale` (optional) weights a cascade further, like the long swell's fade: the breaking ribbon removes the chop over
-   * its lip, and a cascade scaled out is gone, not unresolved roughness.
+   * its lip, and a cascade scaled out is gone, not unresolved roughness. `coord` (optional) reads a cascade's textures at its
+   * own coordinate.
    */
-  fftSlopes(xz: N, distance: N, slopeVariance: readonly N[], scale?: (cascade: number) => N): { sx: N; sz: N; jxx: N; jzz: N; foam: N; lostSlopeVariance: N } {
+  fftSlopes(xz: N, distance: N, slopeVariance: readonly N[], scale?: (cascade: number) => N, coord?: (cascade: number) => N, noFoam = false): { sx: N; sz: N; jxx: N; jzz: N; foam: N; lostSlopeVariance: N } {
     let sx: N = float(0.0), sz: N = float(0.0), jxx: N = float(0.0), jzz: N = float(0.0);
     let foam: N = float(0.0), lostSlopeVariance: N = float(0.0);
     this.sim.sizes.forEach((size, c) => {
       const distanceFade = fadeWeightNode(distance, CASCADE_FADES[c].normals);
       const cascadeWeight = scale ? this.cascadeWeight(xz, c).mul(scale(c)) : this.cascadeWeight(xz, c);
       const w = distanceFade.mul(cascadeWeight);
-      const d = texture(this.sim.derivatives[c], xz.div(size));
+      // `coord` (breaking-look item 2): a cascade read at its own coordinate (the tube's stretched water); the weight stays at xz.
+      const at = coord ? coord(c) : xz;
+      const d = texture(this.sim.derivatives[c], at.div(size));
       sx = sx.add(d.x.mul(w));
       sz = sz.add(d.y.mul(w));
       jxx = jxx.add(d.z.mul(w));
       jzz = jzz.add(d.w.mul(w));
-      foam = max(foam, texture(this.sim.displacement[c], xz.div(size)).w.mul(w));
+      // `noFoam` (breaking-look item 7): the ribbon skips the whitecaps' reads; its fragment stage is at the 16-sampler limit.
+      if (!noFoam) foam = max(foam, texture(this.sim.displacement[c], at.div(size)).w.mul(w));
       // Only detail faded out by distance is unresolved roughness; swell removed over shallow water is gone, not rough.
       lostSlopeVariance = lostSlopeVariance.add(float(1.0).sub(distanceFade).mul(cascadeWeight).mul(slopeVariance[c]));
     });

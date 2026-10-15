@@ -108,7 +108,7 @@ import { KelpField } from '../seabed/KelpField';
 import { SprayParticles } from '../whitewater/SprayParticles';
 import {
   DEFAULT_IMPACT_PARAMS, DEFAULT_SPRAY_PARAMS, type FeatherEmitter, bombieImpactEmitters, IMPACT_MAX_LIFE_S, type ImpactEmitter, type ImpactParams, type SprayEmitter, type SprayParams, breakEmitters,
-  impactBirths, normalizeImpactParams, type SpitEmitter, spitBirths, SPRAY_BIRTH_CAP, normalizeSprayParams, sprayAndPlumeBirths, sprayCanEmit, windToVector,
+  impactBirths, normalizeImpactParams, type SpitEmitter, spitBirths, spitCloudBirths, spitEvents, type MouthSummary, IMPACT_POOL_MAX_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_SPACING_M, normalizeSprayParams, sprayAndPlumeBirths, sprayCanEmit, windToVector,
 } from '../whitewater/sprayEmitters';
 import { IMPACT_KIND } from '../whitewater/particleKinds';
 import { Land } from '../land/Land';
@@ -129,7 +129,9 @@ import { float, uniform } from 'three/tsl';
 import { type Rock, RockField } from '../beach/rocks';
 import { buildGroundShadows } from '../beach/rockShadows';
 import { DEFAULT_LAND_PARAMS, type LandParams, normalizeLandParams } from '../land/landParams';
-import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime, FOAM_TICKS_PER_S } from '../whitewater/foamStep';
+import { DEFAULT_FOAM_PARAMS, type FoamParams, normalizeFoamParams, tickTime, tickIndex, FOAM_TICK_S, FOAM_TICKS_PER_S } from '../whitewater/foamStep';
+import { CrestStrip } from '../whitewater/CrestStrip';
+import { CREST_STRIP } from '../whitewater/lookSwitches';
 import { FrameLimiter, SimClock, clampFrameDt, viewportSize } from './clock';
 import { bootReady, fieldMatches } from './loadingProgress';
 import type { LoadingScreen } from './loadingScreen';
@@ -391,9 +393,14 @@ export class App {
   readonly spray = new SprayParticles(this.sky, undefined, this.sunlight);
   /** The impact explosion where each lip lands (spec 2026-09-28-impact-explosion-design.md), on the same particle system. */
   readonly impact = new SprayParticles(this.sky, IMPACT_KIND, this.sunlight);
+  /** breaking-look item 5a: offshore feathering as one strip along the crests (the feather emitters' points). */
+  readonly crestStrip = new CrestStrip(this.sky);
   private impactTimer: number | undefined;
   /** This frame's emitters per tick, shared by the spray and the explosion (their replays cover different tick counts). */
-  private readonly tickEmitters = new Map<number, { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[] }>();
+  private readonly tickEmitters = new Map<number, ReturnType<typeof breakEmitters>>();
+  /** The ticks' barrel mouths (item 5's spit events read the ~1.7 s before a tick), kept across frames (the emitters are not);
+   * a tick never computed reads as no mouth (no spit), never as a trace. */
+  private readonly mouthCache = new Map<number, MouthSummary[]>();
   private readonly fieldClient = new ReefFieldClient();
   private fieldKey = '';
   /** The reef field once solved (null until then): the face readout has nothing to read before it arrives. */
@@ -482,7 +489,8 @@ export class App {
     this.scene.add(this.bombie.mesh);
     this.scene.add(this.ribbon.mesh);
     this.scene.add(this.spray.mesh);
-    this.impact.setMaxLifeS(IMPACT_MAX_LIFE_S);
+    if (CREST_STRIP) this.scene.add(this.crestStrip.mesh);
+    this.impact.setMaxLifeS(IMPACT_POOL_MAX_LIFE_S);
     this.scene.add(this.impact.mesh);
     this.scene.add(this.land.mesh);
     this.patch = new GroundPatch(this.sky, this.land.look, {
@@ -1001,11 +1009,17 @@ export class App {
     this.spray.setWind(w[0] * s, w[1] * s);
     this.impact.setWind(w[0] * s, w[1] * s);
     this.frameTicks.spray = this.spray.advance(this.renderer, this.clock.simTime, (k) => this.sprayBirthsAt(k));
+    // The crest strip (item 5a): this tick's feathering and the next's, eased between (the emitters are cached per tick).
+    if (!CREST_STRIP) { /* item 5a off (lookSwitches) */ } else if (sprayCanEmit(this.sprayParams.amount, this.conditions.wind.speedMs)) {
+      const k = tickIndex(this.clock.simTime), frac = (this.clock.simTime - tickTime(k)) / FOAM_TICK_S;
+      this.crestStrip.update(this.emittersAt(k).feather, this.emittersAt(k + 1).feather, frac, SPRAY_SPACING_M, this.clock.simTime, this.conditions.wind.speedMs);
+    } else this.crestStrip.update([], [], 0, SPRAY_SPACING_M, this.clock.simTime, 0);
+
     this.frameTicks.impact = this.impact.advance(this.renderer, this.clock.simTime, (k) => this.impactBirthsAt(k));
   }
 
   /** Tick k's emitters, computed once per frame (both systems ask for the same ticks). */
-  private emittersAt(k: number): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[] } {
+  private emittersAt(k: number): ReturnType<typeof breakEmitters> {
     let e = this.tickEmitters.get(k);
     if (!e) {
       const t = tickTime(k);
@@ -1017,6 +1031,8 @@ export class App {
           const bb = burstAt(t, this.bombieWaves(t));
           e.impact.push(...bombieImpactEmitters(bb, bb ? burstWidthM(bb.heightM, surferFeetToHs(this.bombieParams.thresholdFt), this.bombieParams.size) : 0, this.conditions.tideM, this.bombieParams.size));
       this.tickEmitters.set(k, e);
+      this.mouthCache.set(k, e.mouths);
+      for (const key of this.mouthCache.keys()) if (key < k - 80 || key > k + 80) this.mouthCache.delete(key);
     }
     return e;
   }
@@ -1027,7 +1043,9 @@ export class App {
     const e = this.emittersAt(k);
     // The spit is held back or blown on by the wind (whitewater §4.3).
     const [wx, wz] = windToVector(this.conditions.wind.directionDeg), w = this.conditions.wind.speedMs;
-    return [...impactBirths(e.impact, k), ...spitBirths(e.spit, k, [wx * w, wz * w])].slice(0, SPRAY_BIRTH_CAP);
+    // The spit is an event (Andrew's amendment, item 5): one burst per closure of a barrel's mouth, read over the ticks' mouths.
+    const spit = spitEvents(k, (j) => this.mouthCache.get(j) ?? [], this.impactParams.amount);
+    return [...impactBirths(e.impact, k), ...spitBirths(spit, k, [wx * w, wz * w]), ...spitCloudBirths(spit, k, [wx * w, wz * w])].slice(0, SPRAY_BIRTH_CAP);
   }
 
   private sprayBirthsAt(k: number) {
@@ -2287,6 +2305,7 @@ export class App {
     // The ribbon is single-sided and the sheet is cut away under it only above water: hidden underwater.
     if (this.underwater) this.ribbon.mesh.visible = false;
     this.spray.mesh.visible = !this.underwater;
+    this.crestStrip.mesh.visible = this.crestStrip.mesh.visible && !this.underwater;
     this.impact.mesh.visible = !this.underwater;
     this.land.mesh.visible = this.land.height !== null && !this.underwater;
     this.statusAge += realDt;

@@ -5,7 +5,7 @@ import { minRibbonHeight, timeSinceOnset, traceStations } from '../breaker/crest
 import { computeReefField, sampleField } from '../breaker/reefField';
 import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
 import { STOOD_PHASE, sectionFrame, shoulderRegion, wallWeight } from '../breaker/wombSection';
-import { DEFAULT_CONDITIONS } from '../conditions/defaults';
+import { DEFAULT_CONDITIONS, cloneConditions } from '../conditions/defaults';
 import { buildBathymetry, downsample } from '../seabed/bathymetry';
 import { DEFAULT_SET_PARAMS, wavesNear, wavesOfSet } from '../swell/sets';
 import { IMPACT_KIND } from './particleKinds';
@@ -14,7 +14,7 @@ import { SprayPool, birthInto, stepPool } from './sprayStep';
 import {
   DEFAULT_SPRAY_PARAMS, type EmitterInput, IMPACT_MAX_LIFE_S, SPRAY_BIRTH_CAP, SPRAY_HISTORY_TICKS, breakEmitters, impactBirths, impactKick, inImpactWindow, IMPACT_DELAY_S, IMPACT_WINDOW_S, sprayCanEmit, SPRAY_RATE, SPRAY_SPACING_M, normalizeSprayParams, offshoreFactor, rand01, sprayBirths,
   spitBirths, sprayEmitters, sprayReplayTicks, windToVector, plumeBirths, PLUME_WIND_MS, PLUME_LIFE_S, offshoreSpeedOn, sprayAndPlumeBirths, SPIT_WIND_SHARE, FEATHER_FLOOR, FEATHER_WIND_MS, FEATHER_LIFE_S, FEATHER_RATE, featherBirths, standingCrestY,
-  featherStrength, FEATHER_FRAME_REACH_M, FEATHER_LIFT_A, spitMouths, SPIT_PULSE_S, SPIT_MAX_SPEED_MS,
+  featherStrength, FEATHER_FRAME_REACH_M, FEATHER_LIFT_A, spitMouths, SPIT_PULSE_S, SPIT_MAX_SPEED_MS, spitEvents, type MouthSummary, SPIT_BURST_TICKS, SPIT_TRAPPED_CAP_M3,
 } from './sprayEmitters';
 import { ERODING_KINDS, FEATHER_KIND, KIND_INDEX, PARTICLE_KINDS, PLUME_KIND, SPIT_KIND } from './particleKinds';
 
@@ -275,47 +275,58 @@ describe('the Bombie’s spray (4c-3)', () => {
   });
 });
 
-describe("the barrel's spit (Andrew: foam, spit and spray)", () => {
-  const spitAt = (t: number, over: Partial<EmitterInput> = {}) => breakEmitters(input(t, { impactAmount: 1, ...over })).spit.filter((e) => e.waveId === BIGGEST.id);
-  const DTS = [-0.5, 0, 0.3, 0.6, 0.9, 1.2, 1.6, 2, 2.5, 3, 4, 5];
-  it('while a section barrels the tube spits, with or without wind; none before the break, none long after, none with the explosion off', () => {
-    const counts = DTS.map((dt) => spitAt(BREAK_CLOCK + dt, { wind: { speedMs: 0, fromDeg: 57 } }).length);
-    expect(Math.max(...counts)).toBeGreaterThan(0);
-    expect(spitAt(BREAK_CLOCK - 3).length).toBe(0);
-    expect(spitAt(LONG_AFTER).length).toBe(0);
-    for (const dt of DTS) expect(spitAt(BREAK_CLOCK + dt, { impactAmount: 0 }).length).toBe(0);
+describe("the barrel's spit is an event (Andrew's amendment 2026-10-15, breaking-look item 5)", () => {
+  const mouth = (waveId: number, openM: number): MouthSummary => ({ waveId, openM, x: 1, y: 2, z: 3, dx: 0, dz: 1, nx: 1, nz: 0, A: 3, radius: 0.72, speed: 12 });
+  const series = (opens: number[]) => (j: number): MouthSummary[] => (j >= 0 && j < opens.length && opens[j] >= 0 ? [mouth(7, opens[j])] : []);
+  it('a running barrel spits nothing: a steady (or growing) open tube gives no events', () => {
+    const at = series(Array.from({ length: 80 }, (_, j) => 12 + j * 0.3));
+    for (let k = 0; k < 80; k++) expect(spitEvents(k, at, 1)).toEqual([]);
   });
-  it('it blows along the crest, out of the open end (toward the sections that have not broken yet), from inside the tube', () => {
-    let seen = 0;
-    for (const dt of DTS) {
-      const t = BIGGEST.arrivalS + dt;
-      const stations = traceStations(field, wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS).map(toActiveWave), t, ctx, { cameraX: 0, cameraZ: 0, params: DEFAULT_BREAK_PARAMS, minHeightM: MIN_H, spacingM: SPRAY_SPACING_M });
-      const tbNear = (x: number, z: number): number => {
-        let best = Infinity, tb = -1;
-        for (const s of stations) { if (s.gap) continue; const d = Math.hypot(s.x - x, s.z - z); if (d < best) { best = d; tb = s.tb ?? -1; } }
-        return best < 3 ? tb : -1;
-      };
-      for (const e of spitAt(t)) {
-        seen++;
-        expect(Math.hypot(e.dx, e.dz)).toBeCloseTo(1, 6);
-        expect(Math.abs(e.dx * e.nx + e.dz * e.nz), 'along the crest, not across it').toBeLessThan(0.35);
-        const ahead = tbNear(e.x + e.dx * 6, e.z + e.dz * 6), behind = tbNear(e.x - e.dx * 6, e.z - e.dz * 6);
-        if (ahead >= 0 && behind >= 0) expect(ahead, 'the open end is less far through its break').toBeLessThan(behind);
-        // Re-pinned 2026-10-15 (womb-story Task 10 step 4, Fable's STOP 2 ruling: 1.5 x the local curl speed, not a fixed 5 m/s;
-        // on this bare field the curl runs ~2.9 m/s here, so the jet is ~4.35 m/s): at least SPIT_THROW_SHARE x the curl's
-        // speed read from the two stations nearest the mouth (arc over the difference of their times since onset).
-        // The mouth's station and its neighbour along the line toward the front (the less broken one), as the emitter reads them.
-        let mi = -1;
-        stations.forEach((q, k) => { if (!q.gap && (mi < 0 || Math.hypot(q.x - e.x, q.z - e.z) < Math.hypot((stations[mi] as typeof q).x - e.x, (stations[mi] as typeof q).z - e.z))) mi = k; });
-        const m0 = stations[mi], nb = [stations[mi - 1], stations[mi + 1]].filter((q): q is Exclude<typeof q, { gap: true }> => !!q && !q.gap && q.tb !== null && Number.isFinite(q.tb));
-        const fr = m0 && !m0.gap && m0.tb !== null && nb.length ? nb.reduce((a, b) => (b.tb! < a.tb! ? b : a)) : null;
-        const curl = fr && !m0.gap && m0.tb! > fr.tb! ? Math.abs(m0.arc - fr.arc) / (m0.tb! - fr.tb!) : 0;
-        expect(e.speed).toBeGreaterThan(0);
-        if (curl > 0) expect(e.speed).toBeGreaterThanOrEqual(0.8 * Math.min(SPIT_MAX_SPEED_MS, SPIT_THROW_SHARE * curl));
-      }
+  it('one closure, one burst: SPIT_BURST_TICKS (0.6 s) from the tick the open width fell >= 50 %, strength from the trapped volume', () => {
+    const opens = [...Array(30).fill(24), ...Array(30).fill(0)];
+    const at = series(opens), fired: number[] = [];
+    for (let k = 0; k < 60; k++) if (spitEvents(k, at, 1).length) fired.push(k);
+    expect(fired[0]).toBe(30);
+    expect(fired.length).toBe(SPIT_BURST_TICKS);
+    expect(SPIT_BURST_TICKS * FOAM_TICK_S).toBeLessThanOrEqual(0.6 + 1e-9);
+    const e = spitEvents(31, at, 1)[0];
+    expect(e.strength).toBeCloseTo(Math.min(1, (0.72 * 0.72 * 24) / SPIT_TRAPPED_CAP_M3), 9);
+    expect(spitEvents(31, at, 0)).toEqual([]);
+  });
+  it('a fast narrowing (>= 50 % within 0.5 s) is a closure too; a slow one is not', () => {
+    const fast = series([...Array(20).fill(30), 22, 14, 8, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6]);
+    expect(Array.from({ length: 40 }, (_, k) => spitEvents(k, fast, 1).length).some((n) => n > 0)).toBe(true);
+    const slow = series(Array.from({ length: 80 }, (_, j) => 30 - j * 0.2));
+    for (let k = 0; k < 80; k++) expect(spitEvents(k, slow, 1)).toEqual([]);
+  });
+  it('the bar: 7 ft 270/14 tide 0.5 (the test bathymetry), over the biggest wave run the spit fires in <= 2 bursts, none while the open width is steady', () => {
+    const c = cloneConditions(DEFAULT_CONDITIONS);
+    c.swell.sizeFt = 7; c.swell.periodS = 14; c.swell.directionDeg = 270; c.tideM = 0.5;
+    const f7 = computeReefField({ bed: downsample(buildBathymetry(), 2), periodS: 14, fromDeg: 270, tideM: 0.5 });
+    const ctx7 = { omega: f7.omega, travelX: f7.far.dirX, travelZ: f7.far.dirZ };
+    const big = wavesOfSet(1, c, DEFAULT_SET_PARAMS).reduce((p, q) => (q.heightM > p.heightM ? q : p)), w = toActiveWave(big);
+    let first = Infinity;
+    for (let x = f7.grid.x0; x <= f7.grid.x0 + (f7.grid.nx - 1) * f7.grid.cellM; x += 5) for (let z = f7.grid.z0; z <= f7.grid.z0 + (f7.grid.nz - 1) * f7.grid.cellM; z += 5) {
+      const tb = timeSinceOnset(f7, w, x, z, ctx7, DEFAULT_BREAK_PARAMS);
+      if (tb !== null) first = Math.min(first, w.arrivalS + sampleField(f7, x, z).tau - tb);
     }
-    expect(seen).toBeGreaterThan(0);
-  });
+    const minH = minRibbonHeight(fieldBreakingHeight(f7, DEFAULT_BREAK_PARAMS), DEFAULT_BREAK_PARAMS);
+    const k0 = Math.floor((first - 1) / FOAM_TICK_S), k1 = Math.ceil((first + 20) / FOAM_TICK_S);
+    const cache = new Map<number, MouthSummary[]>();
+    for (let k = k0; k <= k1; k++) {
+      const t = k * FOAM_TICK_S;
+      cache.set(k, breakEmitters({ field: f7, ctx: ctx7, events: wavesNear(t, c, DEFAULT_SET_PARAMS), t, params: DEFAULT_BREAK_PARAMS, minHeightM: minH, wind: { speedMs: 0, fromDeg: 57 }, tideM: 0.5, amount: 1, impactAmount: 1 }).mouths.filter((m) => m.waveId === big.id));
+    }
+    const at = (j: number) => cache.get(j) ?? [];
+    let bursts = 0, prev = false;
+    for (let k = k0; k <= k1; k++) {
+      const firing = spitEvents(k, at, 1).length > 0;
+      if (firing && !prev) bursts++;
+      prev = firing;
+    }
+    expect(bursts).toBeGreaterThan(0);
+    expect(bursts).toBeLessThanOrEqual(2);
+  }, 120_000);
   it('spit births jet out along their direction, capped and deterministic', () => {
     const one = { x: 0, y: 1, z: 0, dx: 0, dz: 1, speed: 15, nx: 1, nz: 0, radius: 1.5, strength: 1, lip: 1, waveId: 1, arc: 0, A: 10 };
     let along = 0, up = 0, n = 0;
@@ -359,7 +370,7 @@ describe('the plume, the veil and the spit under wind (whitewater §4.1, §4.3)'
   it('the plume kind: dense, long-lived, slow to settle, glowing backlit; spit denser (KIND_LOOK since womb-realism Task 5)', () => {
     expect(PLUME_KIND).toMatchObject({ dragTauS: 1 / 0.8, gravityMs2: 0.3, sizeM: [1, 2.5], opacity: 0.8, isotropic: 0.7, backDriftShare: 0.7 });
     expect(SPIT_KIND).toMatchObject({ gravityMs2: 0, sizeM: [0.4, 1], opacity: 0.7, backDriftShare: 0 });
-    expect(KIND_INDEX).toEqual({ spray: 0, plume: 1, impact: 2, spit: 3, feather: 4 });
+    expect(KIND_INDEX).toEqual({ spray: 0, plume: 1, impact: 2, spit: 3, feather: 4, spitCloud: 5 }); // + the spit's cloud (breaking-look item 5)
     expect(PARTICLE_KINDS[KIND_INDEX.feather]).toBe(FEATHER_KIND);
     expect(PARTICLE_KINDS[KIND_INDEX.plume]).toBe(PLUME_KIND);
     expect(PARTICLE_KINDS[KIND_INDEX.spit]).toBe(SPIT_KIND);
@@ -519,7 +530,7 @@ describe('the crest line feathers in a strong offshore (whitewater §4.2)', () =
   it('the feather kind (KIND_LOOK since womb-realism Task 5): thin, small, short-lived, blown straight back; the 7b rate', () => {
     // 2026-10-14 (womb-story Task 5, spec 3.5): size [0.15, 0.4], opacity 0.25 (was [0.3, 0.8], 0.35).
     expect(FEATHER_KIND).toMatchObject({ dragTauS: 0.5, gravityMs2: 0.5, sizeM: [0.15, 0.4], opacity: 0.25, isotropic: 0.6, backDriftShare: 1 });
-    expect(FEATHER_RATE).toBe(12);
+    expect(FEATHER_RATE).toBe(3.6); // breaking-look L4 (2026-10-15): cut to 30 %; the crest strip carries the look
     expect(ERODING_KINDS).not.toContain(KIND_INDEX.feather);
   });
   it('a feather puff is the feather kind, blown back off the crest, short-lived', () => {

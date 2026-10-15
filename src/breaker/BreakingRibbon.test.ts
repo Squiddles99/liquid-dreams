@@ -11,7 +11,7 @@ import { DEFAULT_ATMOSPHERE } from '../sky/atmosphereParams';
 import { PSI_NORMAL } from './overturn';
 import { Sky } from '../sky/Sky';
 import {
-  BreakingRibbon, FOOTPRINT_END_MARGIN_M, FOOTPRINT_GRID, STATION_VEC4S, VERTS_PER_STATION, developedU, modelRibbonSurface, packStations,
+  BreakingRibbon, FOOTPRINT_END_MARGIN_M, FOOTPRINT_GRID, STATION_VEC4S, VERTS_PER_STATION, developedU, modelRibbonSurface, packStations, sinceLand,
   ribbonDrawCount, ribbonIndices, runEndFlags,
 } from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
@@ -33,12 +33,12 @@ describe('BreakingRibbon stations', () => {
     expect(VERTS_PER_STATION).toBe(PROFILE_SAMPLES + 2);
   });
 
-  it('packs [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, psi, 0], [A, phase, hollow, ρ], [surge, boil, 0, 0] with tb encoded, and a gap as a dead copy of the previous live station', () => {
+  it('packs [x, z, nx, nz], [H, c, r, tb], [gap, runEnd, psi, 0], [A, phase, hollow, ρ], [surge, boil, fresh, since landing (breaking-look item 4, 2026-10-15)] with tb encoded, and a gap as a dead copy of the previous live station', () => {
     const d = new Float32Array(MAX_STATIONS * ROW);
     const n = packStations([station(1, 0.25), station(2, null), GAP, station(3, Infinity)], d);
     expect(n).toBe(4);
     // Every live station here is within FOOTPRINT_END_MARGIN_M of its run's end (runs 1–2 m and 3 m of arc): runEnd 1.
-    expect(row(d, 0)).toEqual([1, -1, 0.6, 0.8, 3, 9, 1.2, 0.25, 0, 1, PSI_NORMAL, 0, 2, 0.8, 1, 1, 0, boilWeight(0.25, 3, 15, 1), boilFreshness(0.25, 3, 15), 0].map(Math.fround));
+    expect(row(d, 0)).toEqual([1, -1, 0.6, 0.8, 3, 9, 1.2, 0.25, 0, 1, PSI_NORMAL, 0, 2, 0.8, 1, 1, 0, boilWeight(0.25, 3, 15, 1), boilFreshness(0.25, 3, 15), sinceLand(station(1, 0.25) as never)].map(Math.fround));
     expect(row(d, 1)[7]).toBe(TB_NULL);
     expect(row(d, 2)).toEqual([...row(d, 1).slice(0, 8), 1, 0, Math.fround(PSI_NORMAL), 0, ...row(d, 1).slice(12)]);
     expect(row(d, 3)[7]).toBe(TB_INFINITY);

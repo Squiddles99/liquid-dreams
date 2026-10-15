@@ -6,6 +6,7 @@ import { alongPathNode, cameraDepthNode, fresnelFromInsideNode, sunThroughWindow
 import { LIP_REFERENCE_THICKNESS_M, type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
 import { billowSharesNode } from '../whitewater/billow';
 import { mistLightNode } from '../whitewater/mistLight';
+import { BARREL_INSIDE } from '../whitewater/lookSwitches';
 
 type N = any;
 
@@ -46,8 +47,10 @@ export interface WaterSurfaceInputs {
   /** Dev overlays: still-water depth (m) and set-wave arrival time τ (s) at this point, and 0/1 switches for each. */
   overlay?: { depth: N; tau: N; depthOn: N; crestOn: N; foamMap?: N; foamOn?: N; sunOn?: N };
   /** The solid boil's billows (billow.ts; 7b S3): the foam volume lit by their bump normal (wrap 0.5) and its sky and sun
-   * occluded in their troughs by their height (billowSharesNode); absent, the shading normal and no occlusion. */
-  foamBillow?: { normal: N; height: N };
+   * occluded in their troughs by their height (billowSharesNode); absent, the shading normal and no occlusion. `wall`
+   * (breaking-look item 1, whitewaterLook.wallShadeNode): the wall's top vs base and its clumps (the sky's and the sun's
+   * shares, the cover, the isotropic share and the brightness), applied to the volume only. */
+  foamBillow?: { normal: N; height: N; wall?: { skyMul: N; sunMul: N; coverMul: N; isotropic: N; bright: N } };
   /** The dense foam volume's exposure (FoamField.volumeExposure, a dev dial; 7b S3 ruling 3); absent 1. */
   foamExposure?: N;
   /** The shaded point (world m): with it the colour is fogged through the whitewater's mist slab (sky.mist; §6.1). */
@@ -86,6 +89,29 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
   u.lipBubbleScatter.value = p.lipBubbleScatter;
   u.baseRoughness.value = p.baseRoughness;
   u.foamAlbedo.value = p.foamAlbedo;
+}
+
+/** breaking-look item 2: the backlight lobe's wide (pow 2) share; the sun's share in the tube's reflected lip light. */
+export const BACKLIGHT_WIDE_SHARE = 0.3, TUBE_SUN_SHARE = 0.05;
+/** breaking-look item 3a: the thinning foam's bubble scatter (the water column's turquoise under it), × the sky. */
+export const BUBBLE_SCATTER = 0.15;
+
+/**
+ * What a reflected ray heading down inside the tube sees (item 2): the mouth's sky (\`seen\`) where the tube is open
+ * (skyOpen 1), the light through the lip where it is roofed (skyOpen 0): (the sky × lipSkyTransmission + the sun through the
+ * lip × TUBE_SUN_SHARE) × the lip's colour tc / π. CPU mirror tubeSeenCpu (per channel).
+ */
+export function tubeSeenNode(seen: N, tc: N, skyIrradiance: N, sunIlluminance: N, lipSkyTransmission: N, sunLip: N, sunVisibility: N, skyOpen: N): N {
+  return mix(tc.mul(skyIrradiance.mul(lipSkyTransmission).add(sunIlluminance.mul(sunLip).mul(sunVisibility).mul(TUBE_SUN_SHARE))).div(PI), seen, skyOpen);
+}
+export function tubeSeenCpu(seen: number, tc: number, skyIrradiance: number, sunIlluminance: number, lipSkyTransmission: number, sunLip: number, sunVisibility: number, skyOpen: number): number {
+  const lip = (tc * (skyIrradiance * lipSkyTransmission + sunIlluminance * sunLip * sunVisibility * TUBE_SUN_SHARE)) / Math.PI;
+  return lip + (seen - lip) * skyOpen;
+}
+/** The backlight lobe (item 2): (1 − BACKLIGHT_WIDE_SHARE) × pow 4 + BACKLIGHT_WIDE_SHARE × pow 2 of the back-dot. */
+export function backlightCpu(backDot: number): number {
+  const d = Math.min(1, Math.max(0, backDot));
+  return (1 - BACKLIGHT_WIDE_SHARE) * d ** 4 + BACKLIGHT_WIDE_SHARE * d ** 2;
 }
 
 // saturate(): at the anti-solar point v·h rounds to a hair above 1, and pow() of a negative base is NaN on the GPU (it showed as a fake sun).
@@ -152,12 +178,17 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // Where the set wave has turned over (the tube's ceiling), a reflection that heads down sees the water under the lip
   // (the face and the trough), not the horizon sky the clamp above would give: the tube stays water-dark, never white.
   const underside = i.underside ? saturate(i.underside) : float(0.0);
-  const reflection = mix(seen, upwelling, underside.mul(float(1.0).sub(smoothstep(-0.2, 0.05, r.y))));
+  // breaking-look item 2: inside the tube a reflected ray heading down sees the tube's own light, not the deep water's: the
+  // mouth's sky where the tube is open (skyOpen), the light through the lip (its colour) where it is roofed.
+  const tubeSeen = BARREL_INSIDE && i.tube && tc ? tubeSeenNode(seen, tc, sky.skyIrradiance, sky.sunIlluminance, u.lipSkyTransmission, i.tube.sunLip, sv, i.tube.skyOpen) : upwelling;
+  const reflection = mix(seen, tubeSeen, underside.mul(float(1.0).sub(smoothstep(-0.2, 0.05, r.y))));
 
   // Lip transmission: light through the lip toward the viewer (spec 2026-09-29 §3.3), coloured by the water it crossed:
   // turquoise where the lip is thin, deeper blue-green toward its thick root (Beer–Lambert over a path that grows with the
   // thickness). The sun from behind it, and the skylight through it from beneath (the tube's ceiling) and from the side.
-  const backlight = pow(saturate(dot(v.negate(), l)), 4.0);
+  // breaking-look item 2: a 0.3 share of a wider lobe, so a side sun shows through a thin lip (the reference's glow).
+  const backDot = saturate(dot(v.negate(), l));
+  const backlight = BARREL_INSIDE ? pow(backDot, 4.0).mul(1 - BACKLIGHT_WIDE_SHARE).add(pow(backDot, 2.0).mul(BACKLIGHT_WIDE_SHARE)) : pow(backDot, 4.0);
   const lipLight = sky.sunIlluminance.mul(backlight).mul(sv)
     .add(sky.skyIrradiance.mul(u.lipSkyTransmission).mul(max(underside, u.lipSideSkylight)));
   const lipColour = i.lipThickness
@@ -193,14 +224,20 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // The solid boil's billows (7b S3 ruling): their bump normal lights the volume, their troughs hide some sky and sun.
   const billow = i.foamBillow;
   const shares = billow ? billowSharesNode(billow.height) : null;
+  const wall = billow?.wall;
   const volumeLight = mistLightNode({
-    cosView: dot(v.negate(), l), nDotL: billow ? dot(billow.normal, l) : nDotL, sunVisibility: sv, isotropic: 0.6, groundColour: column,
-    skyShare: shares?.sky, sunShare: shares?.sun,
+    cosView: dot(v.negate(), l), nDotL: billow ? dot(billow.normal, l) : nDotL, sunVisibility: sv, isotropic: wall ? wall.isotropic : 0.6, groundColour: column,
+    skyShare: shares ? (wall ? shares.sky.mul(wall.skyMul) : shares.sky) : undefined, sunShare: shares ? (wall ? shares.sun.mul(wall.sunMul) : shares.sun) : undefined,
   }, sky);
   // Exposed for itself (7b S3 ruling 3: a camera exposes for the whitewater): at 1 the volume's radiance sat on the tone
   // curve's flat shoulder and its billows' shading could not show.
-  const foamSeen = foamVolume ? mix(foamLace, volumeLight.mul(i.foamExposure ?? float(1.0)), foamVolume) : foamLace;
-  const colour = mix(water, foamSeen, saturate(i.foam));
+  const volumeSeen = volumeLight.mul(i.foamExposure ?? float(1.0));
+  const foamSeen = foamVolume ? mix(foamLace, wall ? volumeSeen.mul(wall.bright) : volumeSeen, foamVolume) : foamLace;
+  // The wall's cover (item 1): its base thins (the column's turquoise shows) and its clumps vary it; the volume only.
+  const cover = foamVolume && wall ? saturate(i.foam).mul(mix(float(1.0), wall.coverMul, foamVolume)) : saturate(i.foam);
+  // item 3a: where the break's foam thins (cover under its weight) the water under it glows turquoise with the bubbles in it.
+  const bubbles = i.breakFoam ? u.transmission.mul(sky.skyIrradiance).mul(BUBBLE_SCATTER / Math.PI).mul(saturate(i.breakFoam.mul(4.0))).mul(float(1.0).sub(cover)) : vec3(0.0);
+  const colour = mix(water.add(bubbles), foamSeen, cover);
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
   // would paint the whole flat field NaN, so the edge is floored and a flat field draws no line.
