@@ -111,6 +111,8 @@ describe('poseFollow: a body\'s pace', () => {
   });
   it('crouching in is quicker than standing back up (the legs rise against the load)', () => {
     expect(FOLLOW.tuck.in).toBeLessThan(FOLLOW.tuck.out);
+    // Overnight fix 2026-10-16 T4(b): the hand drag comes in within 0.6 s (it read as nothing at 0.75 s).
+    expect(FOLLOW.stallHand.in).toBeLessThanOrEqual(0.6);
     expect(FOLLOW.compression.in).toBeLessThan(FOLLOW.compression.out);
   });
   it('the followed weights still sum within 1 over the base', () => {

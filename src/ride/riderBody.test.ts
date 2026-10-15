@@ -58,6 +58,11 @@ describe('the stall picks itself (ride-speed spec §4.3)', () => {
   it('a tall barrel, fast enough to make it: stand-up', () => expect(stallKind(under, 9, H, 0.6)).toBe('standBarrel'));
   it('a tall barrel, too slow to make it: low', () => expect(stallKind(under, 7, H, 0.6)).toBe('lowBarrel'));
   it('a closeout with room: stand-up whatever the speed', () => expect(stallKind({ ...under, closeout: true }, 3, H, 0.6)).toBe('standBarrel'));
+  // Overnight fix 2026-10-16 T4(b) (Andrew: "Shift does nothing I can see"; the tall stall reads as standing straighter): near
+  // the curl the stall is the hand drag, the tall stall only far out on the shoulder.
+  it('the crest within 1.5 body heights behind: hand drag', () => expect(stallKind({ ...OPEN_FACE, crestBehindM: 1.4 * H }, 8, H, 0.4)).toBe('hand'));
+  it('under any cover short of the barrel: hand drag', () => expect(stallKind({ ...OPEN_FACE, cover: 0.1 }, 8, H, 0.4)).toBe('hand'));
+  it('far out on the shoulder: tall', () => expect(stallKind({ ...OPEN_FACE, crestBehindM: 1.6 * H }, 8, H, 0.4)).toBe('tall'));
 });
 
 describe('the lip and the rider\'s head (spec §4.4)', () => {
