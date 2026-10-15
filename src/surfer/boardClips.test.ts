@@ -44,3 +44,34 @@ describe('board clips: the approved lying and sitting clips ride the board', () 
     expect(sampleBoardClip(still([0, 0.3, 0]), 'paddleCycle', 0)).toBeNull();
   });
 });
+
+describe('the exported clips on the game riders (public/surfer/poses/board-clips.json)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const real = JSON.parse(readFileSync('public/surfer/poses/board-clips.json', 'utf8')) as BoardClips;
+  it('the file passes the validator and has the three clips the game plays', () => {
+    expect(boardClipsProblems(real)).toEqual([]);
+    for (const n of ['sitIdle', 'sitToProne', 'paddleCycle']) expect(real.clips[n], n).toBeTruthy();
+  });
+  for (const name of ['female', 'male'] as const) {
+    const r = referenceSkeleton(PRESETS[name].heightM), sp = boardFor(PRESETS[name], 'thruster');
+    it(`${name}: lying to paddle, the trunk and head stay on or above the deck, every frame`, () => {
+      const c = real.clips.paddleCycle;
+      for (let f = 0; f < c.frames; f++) {
+        const J = boardClipPose(r, sampleBoardClip(real, 'paddleCycle', f / real.fps)!, sp, FLAT).joint;
+        for (const b of ['pelvis', 'spine_02', 'spine_03', 'neck', 'head'] as const) {
+          const x = Math.max(-sp.lengthM / 2, Math.min(sp.lengthM / 2, J[b].x));
+          expect(J[b].y - deckYAt(sp, x, 0), `${b} frame ${f}`).toBeGreaterThan(0);
+        }
+      }
+    });
+    it(`${name}: sitting, the pelvis is on the deck (not floating, not sunk) every frame`, () => {
+      const c = real.clips.sitIdle;
+      for (let f = 0; f < c.frames; f += 4) {
+        const J = boardClipPose(r, sampleBoardClip(real, 'sitIdle', f / real.fps)!, sp, FLAT).joint;
+        const h = J.pelvis.y - deckYAt(sp, J.pelvis.x, 0);
+        expect(h, `frame ${f}`).toBeGreaterThan(0.03);
+        expect(h, `frame ${f}`).toBeLessThan(0.3);
+      }
+    });
+  }
+});

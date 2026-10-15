@@ -19,6 +19,8 @@ import { type BoardFrame, type SolvedPose, boardQuaternion, solvePose } from './
 import { clipDuration, loadRiderClips, type RiderClips } from './clips';
 import { sampleClip } from './clipPlayer';
 import { clipPose } from './clipPose';
+import { type BoardClips, boardClipPose, loadBoardClips } from './boardClips';
+import { type BoardClipState, boardClipFor, stepBoardClip } from './boardClipState';
 import { blendOnBoard } from './poseBlend';
 import { EXIT_FADE_S, type Follow, fadeSolved, newFollow, sampleFromSolved, smootherStep, stepFollow } from './poseFollow';
 import { loadPoseLib, type PoseLib } from './poseLib';
@@ -54,6 +56,14 @@ export class SurferStand {
   private lastShown: { pose: SolvedPose; frame: BoardFrame; preset: PresetName; tick: number } | null = null;
   /** Leaving the blend (a wipeout, the ride's end): the blend's last pose, faded out of over EXIT_FADE_S. */
   private exitFade: { pose: SolvedPose; t: number } | null = null;
+  /** Andrew's approved lying and sitting clips, riding the board (hero swap 2026-10-16); null when not there. */
+  private readonly boardClipLoader = new KeyedLoader<'all', BoardClips | null>(
+    () => loadBoardClips(`${import.meta.env.BASE_URL}surfer/poses/board-clips.json`),
+    (_k, e) => console.warn('The board clips file failed to load; sitting and paddling use the code poses.', e),
+  );
+  private boardClip: BoardClipState | null = null;
+  /** What drew the body last update ('blend', 'board', 'clip', 'code'): a change fades (EXIT_FADE_S). */
+  private lastSource: string | null = null;
   private tick = 0;
   private askedPreset: PresetName | null = null;
   private readonly board: BoardMesh;
@@ -187,13 +197,23 @@ export class SurferStand {
     // Riding a standing board (part C): the approved poses, blended by the ride's dials, placed by the clip path with
     // the contact hand pulled to its spot. No poses file: the trim clip or the code poses, as before.
     // Fetched from the first moment on the water on a standing board, so it's there before the first ride.
-    if (!p.onLand && p.board !== 'bodyboard') this.poseLoader.get('all');
+    if (!p.onLand && p.board !== 'bodyboard') {
+      this.poseLoader.get('all');
+      this.boardClipLoader.get('all');
+    }
     const lib = p.drive && p.pose === 'trim' && p.board !== 'bodyboard' ? this.poseLoader.get('all') : null;
     if (p.drive && p.pose === 'trim' && p.board !== 'bodyboard' && !lib && this.poseLoader.settled('all')) this.status.motion = 'blend: no poses file';
     const shownJustNow = this.lastShown && this.lastShown.tick === this.tick - 1 && this.lastShown.preset === p.preset ? this.lastShown : null;
     const blending = !!(lib && p.drive);
-    // Leaving the blend: fade out of its last pose (Andrew 2026-10-15: no snap, final review).
-    if (!blending && this.follow) this.exitFade = shownJustNow ? { pose: shownJustNow.pose, t: 0 } : null;
+    // Sitting and paddling on a standing board: Andrew's approved clips, riding the board (hero swap 2026-10-16).
+    const bc = boardClipFor(p.pose), blib = bc && !p.onLand && p.board !== 'bodyboard' && !blending ? this.boardClipLoader.get('all') : null;
+    const boardStep = blib && bc ? stepBoardClip(this.boardClip, bc, simTime, dt, blib) : null;
+    const source = blending ? 'blend' : boardStep ? 'board' : choice.use === 'clip' && choice.clip && choice.rc ? 'clip' : 'code';
+    // Any change of what draws the body fades out of the last pose shown (Andrew 2026-10-15: no snap); into the blend
+    // it fades its own way, the feet planted.
+    if (this.lastSource !== null && source !== this.lastSource && source !== 'blend') this.exitFade = shownJustNow ? { pose: shownJustNow.pose, t: 0 } : null;
+    this.lastSource = source;
+    this.boardClip = boardStep ? boardStep.state : null;
     if (!blending) this.follow = null;
     else this.exitFade = null;
     if (lib && p.drive) {
@@ -208,6 +228,11 @@ export class SurferStand {
       solved = cp;
       fingers = cp.fingers;
       this.status.motion = 'blend';
+    } else if (boardStep) {
+      const c = boardClipPose(s.rest, boardStep.sample, spec, state.board);
+      solved = c;
+      fingers = c.fingers;
+      this.status.motion = `board: ${boardStep.state.name}`;
     } else if (choice.use === 'clip' && choice.clip && choice.rc) {
       const sample = sampleClip(choice.clip, choice.rc.fps, clipTime(p.play, simTime, p.phaseT, clipDuration(choice.rc, choice.clip)));
       // The clip moves the body; the arms take the surfer pose's hands, balance drift included (Andrew, Gate C).

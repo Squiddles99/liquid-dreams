@@ -19,7 +19,7 @@ export interface BoardClipState {
 }
 
 /** The board clip for a pose, or null when this pose isn't one (the stand uses its other paths). */
-export const boardClipPose = (pose: PoseName): 'sit' | 'paddle' | null => (pose === 'sit' ? 'sit' : pose === 'paddle' ? 'paddle' : null);
+export const boardClipFor = (pose: PoseName): 'sit' | 'paddle' | null => (pose === 'sit' ? 'sit' : pose === 'paddle' ? 'paddle' : null);
 
 const smoother = (t: number): number => { const x = Math.min(1, Math.max(0, t)); return x * x * x * (x * (6 * x - 15) + 10); };
 
