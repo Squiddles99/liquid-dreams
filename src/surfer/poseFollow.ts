@@ -65,11 +65,16 @@ export interface Follow {
   from: ClipSample | null;
   fadeT: number;
 }
-export function newFollow(): Follow {
+/** A follower at rest (the blend fading in from another pose: every layer from 0), or, given where the ride is now,
+ * settled there (the blend starting with no pose to fade from: no standing up and crouching back down). */
+export function newFollow(at?: { d: RiderDrive & { pumpIdleT: number }; dials: PoseDials; stance: Stance }): Follow {
+  const w = at ? blendWeights(at.d) : null;
   return {
-    w: Object.fromEntries(LAYERS.map((k) => [k, smoothAt(0)])) as Record<Layer, Smooth>,
-    toe: smoothAt(1), phase: 0, phaseV: smoothAt(0), cycles: 0, lastRaw: 0,
-    compression: smoothAt(0), lean: smoothAt(0), twist: smoothAt(0), from: null, fadeT: 0,
+    w: Object.fromEntries(LAYERS.map((k) => [k, smoothAt(w ? w[k] : 0)])) as Record<Layer, Smooth>,
+    toe: smoothAt(at && !toeRailDown(at.d.carve, at.stance) ? 0 : 1),
+    phase: at?.d.pumpPhase ?? 0, phaseV: smoothAt(0), cycles: 0, lastRaw: at?.d.pumpPhase ?? 0,
+    compression: smoothAt(at?.dials.compression ?? 0), lean: smoothAt(at?.dials.lean ?? 0), twist: smoothAt(at?.dials.twist ?? 0),
+    from: null, fadeT: 0,
   };
 }
 
@@ -84,6 +89,8 @@ export function stepFollow(f: Follow, d: RiderDrive & { pumpIdleT: number }, dia
     const s = f.w[k];
     w[k] = Math.max(0, stepSmooth(s, target[k], target[k] > s.y ? FOLLOW[k].in : FOLLOW[k].out, dt));
   }
+  // A layer's tail (the springs never quite reach 0) is dropped: each layer is a pose sampled and slerped every frame.
+  for (const k of LAYERS) if (w[k] < 1e-3) w[k] = 0;
   const sum = LAYERS.reduce((a, k) => a + w[k], 0);
   if (sum > 1) for (const k of LAYERS) w[k] /= sum;
   const toe = stepSmooth(f.toe, toeRailDown(d.carve, stance) ? 1 : 0, TOE_S, dt);
@@ -93,9 +100,10 @@ export function stepFollow(f: Follow, d: RiderDrive & { pumpIdleT: number }, dia
   else if (d.pumpPhase > f.lastRaw + 0.5) f.cycles -= 1;
   f.lastRaw = d.pumpPhase;
   if (f.cycles + d.pumpPhase - f.phase > 1) f.cycles -= 1;
-  // The body's speed through the cycle: what closes the gap in PHASE_S, never past the approved pace, eased to.
-  const want = Math.max(-PUMP_MAX_HZ, Math.min(PUMP_MAX_HZ, (f.cycles + d.pumpPhase - f.phase) / PHASE_S));
-  f.phase += stepSmooth(f.phaseV, want, PUMP_SPEED_S, dt) * dt;
+  // The body's speed through the cycle: what closes the gap in PHASE_S, never past the approved pace, eased to; never
+  // backwards (legs reversing low step the raw phase back): the body holds until the ride catches up (final review).
+  const want = Math.min(PUMP_MAX_HZ, Math.max(0, f.cycles + d.pumpPhase - f.phase) / PHASE_S);
+  f.phase += Math.max(0, stepSmooth(f.phaseV, want, PUMP_SPEED_S, dt)) * dt;
   const cIn = dials.compression > f.compression.y;
   const out: PoseDials = {
     compression: stepSmooth(f.compression, dials.compression, cIn ? FOLLOW.compression.in : FOLLOW.compression.out, dt),
@@ -111,6 +119,24 @@ export function stepFollow(f: Follow, d: RiderDrive & { pumpIdleT: number }, dia
   }
   return { w, toe: Math.min(1, Math.max(0, toe)), phase: f.phase - Math.floor(f.phase), dials: out, from };
 }
+
+/** Fading out of the blend (a wipeout, the ride's end) into a code pose: each bone's rotation slerped and the joints
+ * moved from the old pose to the new by `k` (1 the old, 0 the new). The feet aren't planted: the rider is leaving the
+ * board, or sitting down on it. */
+export function fadeSolved(from: SolvedPose, to: SolvedPose, k: number): SolvedPose {
+  const q = (a: Quaternion, b: Quaternion): Quaternion => b.clone().slerp(a, k);
+  const joint = {} as SolvedPose['joint'], world = {} as SolvedPose['world'], local = {} as SolvedPose['local'];
+  for (const b of BONES) {
+    joint[b] = to.joint[b].clone().lerp(from.joint[b], k);
+    world[b] = q(from.world[b], to.world[b]);
+    local[b] = q(from.local[b], to.local[b]);
+  }
+  return { pelvisWorld: to.pelvisWorld.clone().lerp(from.pelvisWorld, k), joint, world, local };
+}
+/** How long leaving the blend fades over: quicker than a move (a fall is quick), never a cut. */
+export const EXIT_FADE_S = 0.35;
+/** 0 → 1 with no jump in speed or acceleration at either end (the fades). */
+export const smootherStep = (t: number): number => smoother(t);
 
 /** A solved pose (the code poses': the drop, the pop-up) as a clip sample, so the blend can fade from it with the feet
  * planted (clipPose's IK): each bone's rotation from rest in the stance's character frame, the pelvis likewise. */

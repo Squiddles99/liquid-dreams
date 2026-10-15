@@ -6,9 +6,9 @@ import { Vector3 } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { layoutFor } from '../board/boardSpec';
 import { COM_RATE, compressionOf, newRiderState, riderDrive, type RiderDrive } from '../ride/riderBody';
-import { blendOnBoard, blendWeights, smoothLoop } from './poseBlend';
-import { FOLLOW, newFollow, sampleFromSolved, smoothAt, stepFollow, stepSmooth } from './poseFollow';
-import type { PoseLib } from './poseLib';
+import { blendOnBoard, blendWeights, loopCloses, smoothLoop } from './poseBlend';
+import { FOLLOW, fadeSolved, newFollow, sampleFromSolved, smoothAt, stepFollow, stepSmooth } from './poseFollow';
+import { contactFor, type PoseLib } from './poseLib';
 import { PRESETS, type Stance, boardFor } from './presets';
 import { BONES, type BoneName, referenceSkeleton } from './rig';
 import { type BoardFrame, solvePose } from './solvePose';
@@ -197,5 +197,55 @@ describe('switching into the blend (the drop → riding cut, the first ride\'s p
     expect(pelvis.speed).toBeLessThanOrEqual(PELVIS_MAX_MS);
     expect(joint.speed).toBeLessThanOrEqual(JOINT_MAX_MS);
     expect(joint.acc).toBeLessThanOrEqual(JOINT_MAX_MS2);
+  });
+});
+
+describe('final review of the smoothness pass', () => {
+  const none = { compression: 0, lean: 0, twist: 0, reach: 0 };
+  it('1: the body never pumps backwards (legs reversing low: the raw phase steps back by under half a cycle)', () => {
+    const f = newFollow();
+    let last = -Infinity;
+    const raw = [...Array.from({ length: 20 }, (_, i) => 0.55 + 0.005 * i), ...Array.from({ length: 40 }, (_, i) => 0.35 + 0.004 * i)];
+    for (const p of raw) {
+      stepFollow(f, { ...base, pumpIdleT: 0, pumpOnT: 1, pumpPhase: p }, none, 'regular', DT);
+      expect(f.phase).toBeGreaterThanOrEqual(last - 1e-9);
+      last = f.phase;
+    }
+  });
+  it('3: a follower started mid-move (no pose to fade from) starts where the dials are, not standing', () => {
+    const d = { ...base, tuck: 1 }, dials = { compression: 0.8, lean: 0.3, twist: 0.2, reach: 0 };
+    const out = stepFollow(newFollow({ d, dials, stance: 'regular' }), d, dials, 'regular', DT);
+    expect(out.w.tuck).toBeCloseTo(blendWeights(d).tuck, 3);
+    expect(out.dials.compression).toBeCloseTo(0.8, 3);
+    expect(out.dials.lean).toBeCloseTo(0.3, 3);
+  });
+  it('5: held, the hand is in the wall by 0.9 s (within 2 cm of its spot), at a real reach speed', () => {
+    const { rest, ctx } = ctxFor('female', 'regular'), f = newFollow(), d = { ...base, stall: 1, stallW: { ...NONE, hand: 1 } };
+    let J = blendOnBoard(lib, rest, { ...ctx, dials: none }, d, 0, FLAT, null).joint;
+    for (let i = 0; i * DT < 0.9; i++) {
+      const out = stepFollow(f, d, none, 'regular', DT);
+      J = blendOnBoard(lib, rest, { ...ctx, dials: out.dials }, d, i * DT, FLAT, null, out).joint;
+    }
+    const c = contactFor(lib, 'stallHand', 'regular')!, w = new Vector3(...c.wrist);
+    expect(J[`hand_${c.side}`].distanceTo(J[`foot_${c.side}`])).toBeCloseTo(w.length(), 1.4);
+    expect(J[`hand_${c.side}`].y - J[`foot_${c.side}`].y).toBeCloseTo(w.y, 1.4);
+  });
+  it('6: leaving the blend (a wipeout, the ride\'s end) fades: k 1 is the old pose, 0 the new, between in between', () => {
+    const { rest, ctx } = ctxFor('female', 'regular');
+    const from = blendOnBoard(lib, rest, { ...ctx, dials: none }, { ...base, tuck: 1 }, 0, FLAT, null);
+    const to = solvePose(rest, poseTargets('bail', { spec: ctx.spec, layout: ctx.layout, rest, stance: 'regular', dials: none, phaseT: 0, who: 'female', glasses: false }), FLAT, null);
+    const at = (k: number) => fadeSolved(from, to, k);
+    for (const b of BONES) {
+      expect(at(1).joint[b].distanceTo(from.joint[b]), b).toBeLessThan(1e-6);
+      expect(at(0).joint[b].distanceTo(to.joint[b]), b).toBeLessThan(1e-6);
+      expect(Math.abs(at(1).local[b].dot(from.local[b])), b).toBeCloseTo(1, 6);
+    }
+    const mid = at(0.5).pelvisWorld, want = from.pelvisWorld.clone().lerp(to.pelvisWorld, 0.5);
+    expect(mid.distanceTo(want)).toBeLessThan(1e-6);
+  });
+  it('minor: every bone of the pump clip closes its loop on the sphere (none left on the raw, jolting curve)', () => {
+    const c = lib.clips.pumpCycle, open = Object.entries(c.rot).filter(([, q]) => !loopCloses(q, c.frames, 10)).map(([b]) => b);
+    expect(open).toEqual([]);
+    expect(() => smoothLoop({ ...c, frames: 81 })).toThrow();
   });
 });

@@ -57,6 +57,7 @@ export interface BlendOpts {
  * through each key, and a turn (the bottom, the top) slows into it as a body does. Rotations sign-aligned to their
  * neighbours and renormalised. */
 export function smoothLoop(c: BakedClip, every = 10): BakedClip {
+  if (c.frames % every !== 0) throw new Error(`smoothLoop: ${c.frames} frames aren't whole keys of ${every}`);
   const n = c.frames, K = Math.round(n / every), wrap = (k: number) => ((k % K) + K) % K;
   // The spline's second derivatives at the keys: M[k−1] + 4 M[k] + M[k+1] = 6 (p[k+1] − 2 p[k] + p[k−1]), cyclic.
   const A = Array.from({ length: K }, (_, i) => Array.from({ length: K }, (_, j) => (i === j ? 4 : wrap(i - j) === 1 || wrap(j - i) === 1 ? 1 : 0)));
@@ -107,6 +108,19 @@ export function smoothLoop(c: BakedClip, every = 10): BakedClip {
     rot[b] = out;
   }
   return { ...c, pelvis, rot };
+}
+/** Whether a bone's keys, each sign-aligned to the one before, come back round to the first on the same side of the
+ * sphere (smoothLoop splines it; otherwise that bone keeps the clip's own curve). */
+export function loopCloses(q: number[], frames: number, every: number): boolean {
+  const K = Math.round(frames / every), key = (k: number) => [0, 1, 2, 3].map((a) => q[4 * k * every + a]);
+  let prev = key(0);
+  const first = prev;
+  for (let k = 1; k < K; k++) {
+    let cur = key(k);
+    if (cur.reduce((s, v, a) => s + v * prev[a], 0) < 0) cur = cur.map((v) => -v);
+    prev = cur;
+  }
+  return prev.reduce((s, v, a) => s + v * first[a], 0) >= 0;
 }
 const smoothed = new WeakMap<BakedClip, BakedClip>();
 /** The pump clip as played (smoothLoop), worked out once per clip. */
@@ -179,6 +193,8 @@ export function blendOnBoard(lib: PoseLib, rest: SkeletonRest, ctx: Pick<ClipPos
     total += w[k];
     side = c.side;
   }
+  // On the body's pace the hand lands ~0.8–0.9 s into a held contact pose; a tap shows a reach that doesn't quite touch,
+  // as a real hand's wouldn't (landing it sooner took the hand past a real reach's speed).
   const pull = side && total > 0 && own > 0 ? { side, wrist: spot.multiplyScalar(1 / total), weight: Math.min(1, total) * own } : undefined;
   const dials = own < 1 ? { ...ctx.dials, compression: ctx.dials.compression * own, lean: ctx.dials.lean * own, twist: ctx.dials.twist * own } : ctx.dials;
   return { ...clipPose(rest, sample, { ...ctx, dials, authored: true, compressionScale: 1 - above, pull }, board, lookAt), w };
