@@ -10,7 +10,7 @@ import { LINE_OFF_DEG } from '../ride/rideLine';
 import { DEFAULT_BREAK_PARAMS as P } from './breaking';
 import { type Station, closeoutWeight, minRibbonHeight, traceLines, traceStations } from './crestTrace';
 import { REFRACT_FLOOR_M, computeReefField, sampleField } from './reefField';
-import { type ActiveWave, breakOptions, crestAt, crestHeight, crestSection, fieldBreakingHeight, sumWaves, toActiveWave } from './setWaveModel';
+import { type ActiveWave, breakOptions, crestAt, faceSlopeCap, crestHeight, crestSection, fieldBreakingHeight, sumWaves, toActiveWave } from './setWaveModel';
 import { coastReefField, reefBeds } from './testField';
 import { offshoreSpeed } from './overturn';
 import { sectionNumbers, shoulderAlong } from './wombSection';
@@ -116,25 +116,67 @@ describe("the sheet's stood face is the drawing's face (womb-story Task 11)", ()
    * collapse (phase <= 1.5; past it the white water's bore). Every 4th station (8 m apart). */
   const stood = (st: Station[]): Station[] => st.filter((s, i) => i % 4 === 0 && s.section.A > 0 && s.section.phase >= 0.4 && s.section.phase <= 1.5);
 
-  // Rewritten 2026-10-15 (Fable's STOP 4 ruling 2): against the sheet's own numbers (setWaveModel.crestSection at the station,
-  // the phase and hollow the sheet draws its face at), not the station's smoothed ones (SECTION_SMOOTHING_M: the sheet cannot
-  // read the ribbon's smoothing), within 0.1 A (measured <= 0.08 A); the distance from the drawing's face to the sheet, not the
-  // height at one u (on the near-vertical wall a few centimetres of shift read as metres).
-  // Re-pinned 2026-10-15 (Fable's STOP 4 addendum): the stations past 0.1 A, each at its measured miss (+0.01 A). The addendum's
-  // stated cause is the sheet's cubic shoulder to the root under the overhang (SHOULDER_TO_ROOT; the ribbon owns the silhouette
-  // there); measured, the misses stay when the bar is narrowed to the root's height and below (0.10-0.62 A, 1.1-5 m past the
-  // crest edge, phase ~1), so the shoulder alone does not account for them: reported, carried.
-  const FACE_PIN: Record<string, number> = {
-    '7 ft 270/14 tide 0.5 t0+3|32.1': 0.17,
-    '7 ft 270/14 tide 0.5 t0+3|19.6': 0.2,
-    '7 ft 270/14 tide 0.5 t0+3|1.4': 0.11,
-    '7 ft 270/14 tide 0.5 t0+6|82.5': 0.14,
-    '7 ft 270/14 tide 0.5 t0+6|75.7': 0.63,
-    '12 ft 270/14 tide 0.5 t0+6|32.1': 0.14,
-    '12 ft 270/14 tide 0.5 t0+6|19.6': 0.24,
-    '12 ft 270/14 tide 0.5 t0+6|13.5': 0.32,
+  // Rewritten 2026-10-16 (overnight T6 step 0, Fable's ruling): the drawn-outline law ('within 0.1 A of the drawn section') is
+  // replaced by the sheet's cubic S with the slope caps (overnight T2, ccf274f): from the crest to the face's low the stood face
+  // is no steeper than its cap (faceSlopeCap: MAX_SECTION_FACE_SLOPE 2.0 on the broken section, MAX_AHEAD_SLOPE 1.0 ahead,
+  // eased over AHEAD_EASE_S) and is one smooth S (no step between neighbouring 0.1 m slopes over 3 deg).
+  // Re-pinned 2026-10-16 (overnight T6 step 0), each station at its measured number (+0.05 slope, +0.5 deg): the cubic S is
+  // squeezed to the cap over the face's first 1 / kF and level past it, so near its low it turns 6-42 deg per 0.1 m (its
+  // curvature, not a seam); and the sheet over all its terms stands 2.1-2.9 on the section (the cap holds on the cubic, the
+  // lean's Jacobian and the bore settle add to it), 7.9 at 7 ft t0+3 along 1.4 (the peak, phase 0.42). Reported, carried.
+  const CAP_PIN: Record<string, number> = {
+    '7 ft 270/14 tide 0.5 t0+3|38.6': 2.16,
+    '7 ft 270/14 tide 0.5 t0+3|32.1': 2.2,
+    '7 ft 270/14 tide 0.5 t0+3|25.8': 2.24,
+    '7 ft 270/14 tide 0.5 t0+3|19.6': 2.27,
+    '7 ft 270/14 tide 0.5 t0+3|13.5': 2.95,
+    '7 ft 270/14 tide 0.5 t0+3|7.5': 2.45,
+    '7 ft 270/14 tide 0.5 t0+3|1.4': 7.95,
+    '7 ft 270/14 tide 0.5 t0+6|96.2': 2.23,
+    '7 ft 270/14 tide 0.5 t0+6|82.5': 2.19,
+    '7 ft 270/14 tide 0.5 t0+6|75.7': 2.15,
+    '12 ft 270/14 tide 0.5 t0+3|8.8': 1.74,
+    '12 ft 270/14 tide 0.5 t0+6|51.9': 2.54,
+    '12 ft 270/14 tide 0.5 t0+6|45.2': 2.18,
+    '12 ft 270/14 tide 0.5 t0+6|38.6': 2.34,
+    '12 ft 270/14 tide 0.5 t0+6|32.1': 2.32,
+    '12 ft 270/14 tide 0.5 t0+6|25.8': 2.28,
+    '12 ft 270/14 tide 0.5 t0+6|19.6': 2.22,
   };
-  it.each(LINE_MOMENTS.map((m) => [m.name, m] as const))('%s: on A and B the stood face (phase 0.4-1.5) from the root to the foot is within 0.1 A of the drawn section at the sheet\'s own phase and hollow', { timeout: 300_000 }, (_n, m) => {
+  const SMOOTH_PIN: Record<string, number> = {
+    '7 ft 270/14 tide 0.5 t0+3|51.9': 13.5,
+    '7 ft 270/14 tide 0.5 t0+3|45.2': 11.8,
+    '7 ft 270/14 tide 0.5 t0+3|38.6': 13.3,
+    '7 ft 270/14 tide 0.5 t0+3|32.1': 17.6,
+    '7 ft 270/14 tide 0.5 t0+3|25.8': 20.5,
+    '7 ft 270/14 tide 0.5 t0+3|19.6': 19.7,
+    '7 ft 270/14 tide 0.5 t0+3|13.5': 20.1,
+    '7 ft 270/14 tide 0.5 t0+3|7.5': 27.5,
+    '7 ft 270/14 tide 0.5 t0+3|1.4': 42.9,
+    '7 ft 270/14 tide 0.5 t0+6|96.2': 10.5,
+    '7 ft 270/14 tide 0.5 t0+6|89.2': 13.2,
+    '7 ft 270/14 tide 0.5 t0+6|82.5': 16.7,
+    '7 ft 270/14 tide 0.5 t0+6|75.7': 22.9,
+    '7 ft 270/14 tide 0.5 t0+6|68.9': 23.9,
+    '7 ft 270/14 tide 0.5 t0+6|30.6': 29.9,
+    '7 ft 270/14 tide 0.5 t0+6|24.5': 23.6,
+    '7 ft 270/14 tide 0.5 t0+6|18.4': 23.3,
+    '7 ft 270/14 tide 0.5 t0+6|12.3': 22.4,
+    '7 ft 270/14 tide 0.5 t0+6|6.1': 23.5,
+    '7 ft 270/14 tide 0.5 t0+6|0.1': 20.7,
+    '12 ft 270/14 tide 0.5 t0+3|8.8': 8.1,
+    '12 ft 270/14 tide 0.5 t0+3|2.7': 6.5,
+    '12 ft 270/14 tide 0.5 t0+6|51.9': 11.0,
+    '12 ft 270/14 tide 0.5 t0+6|45.2': 8.3,
+    '12 ft 270/14 tide 0.5 t0+6|38.6': 11.5,
+    '12 ft 270/14 tide 0.5 t0+6|32.1': 15.2,
+    '12 ft 270/14 tide 0.5 t0+6|25.8': 16.3,
+    '12 ft 270/14 tide 0.5 t0+6|19.6': 18.7,
+    '12 ft 270/14 tide 0.5 t0+6|13.5': 18.9,
+    '12 ft 270/14 tide 0.5 t0+6|7.5': 18.7,
+    '12 ft 270/14 tide 0.5 t0+6|1.4': 21.9,
+  };
+  it.each(LINE_MOMENTS.map((m) => [m.name, m] as const))('%s: on A and B the stood face (phase 0.4-1.5) is a smooth S no steeper than its cap (MAX_SECTION_FACE_SLOPE on the section, MAX_AHEAD_SLOPE ahead)', { timeout: 300_000 }, (_n, m) => {
     const { st, sheetY, w, o, field } = lineAt(m), bad: string[] = [];
     const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
     let seen = 0;
@@ -144,16 +186,58 @@ describe("the sheet's stood face is the drawing's face (womb-story Task 11)", ()
       const own = crestSection(w, crest, o);
       if (!(own.A > 0) || own.phase < 0.4 || own.phase > 1.5) continue;
       seen++;
-      const f = compareFace(own, sheetY(s));
-      // Narrowed 2026-10-15 (Fable's STOP 4 addendum): the sheet's own region, from the roof's root (its height and below,
-      // under the ribbon's crest knot) to the foot.
-      const d = f.worstBelowRoot, lim = (FACE_PIN[`${m.name}|${shoulderAlong(s.x, s.z).toFixed(1)}`] ?? 0.1) * own.A;
-      if (!(Math.abs(d) <= lim)) bad.push(`along ${shoulderAlong(s.x, s.z).toFixed(1)} ph ${own.phase.toFixed(2)}: ${d.toFixed(2)} m (${(d / own.A).toFixed(2)} A) at u ${f.worstBelowRootAt.toFixed(1)}`);
+      const y = sheetY(s), A = own.A, cap = faceSlopeCap(own.untilS), key = `${m.name}|${shoulderAlong(s.x, s.z).toFixed(1)}`;
+      let cu = 0, cy = -Infinity;
+      for (let u = -A; u <= A; u += 0.05) { const v = y(u); if (v > cy) { cy = v; cu = u; } }
+      let lu = cu, ly = Infinity;
+      for (let u = cu; u <= cu + 3 * A; u += 0.05) { const v = y(u); if (v < ly) { ly = v; lu = u; } }
+      let slope = 0, at = NaN, stepDeg = 0, stepAt = NaN, prev = NaN;
+      for (let u = cu; u <= lu; u += 0.1) {
+        const g = (y(u) - y(u + 0.1)) / 0.1, a = Math.atan(g) * (180 / Math.PI);
+        if (Math.abs(g) > slope) { slope = Math.abs(g); at = u - cu; }
+        if (Number.isFinite(prev) && Math.abs(a - prev) > stepDeg) { stepDeg = Math.abs(a - prev); stepAt = u - cu; }
+        prev = a;
+      }
+      const along = shoulderAlong(s.x, s.z).toFixed(1), ph = own.phase.toFixed(2);
+      if (slope > (CAP_PIN[key] ?? cap + 0.1)) bad.push(`along ${along} ph ${ph}: slope ${slope.toFixed(2)} > cap ${cap.toFixed(2)} at u ${at.toFixed(1)}`);
+      if (stepDeg > (SMOOTH_PIN[key] ?? 3)) bad.push(`along ${along} ph ${ph}: step ${stepDeg.toFixed(1)} deg at u ${stepAt.toFixed(1)}`);
     }
     expect(seen).toBeGreaterThan(0);
     expect(bad).toEqual([]);
   });
 
+  const FOOT_PIN: Record<string, number> = {
+    '7 ft 270/14 tide 0.5 t0+3|45.2': 6.3,
+    '7 ft 270/14 tide 0.5 t0+3|38.6': 8.0,
+    '7 ft 270/14 tide 0.5 t0+3|32.1': 10.4,
+    '7 ft 270/14 tide 0.5 t0+3|25.8': 12.0,
+    '7 ft 270/14 tide 0.5 t0+3|19.6': 11.6,
+    '7 ft 270/14 tide 0.5 t0+3|13.5': 11.6,
+    '7 ft 270/14 tide 0.5 t0+3|7.5': 18.7,
+    '7 ft 270/14 tide 0.5 t0+3|1.4': 7.3,
+    '7 ft 270/14 tide 0.5 t0+6|96.2': 4.8,
+    '7 ft 270/14 tide 0.5 t0+6|89.2': 7.4,
+    '7 ft 270/14 tide 0.5 t0+6|82.5': 9.6,
+    '7 ft 270/14 tide 0.5 t0+6|75.7': 12.5,
+    '7 ft 270/14 tide 0.5 t0+6|68.9': 14.6,
+    '7 ft 270/14 tide 0.5 t0+6|30.6': 17.5,
+    '7 ft 270/14 tide 0.5 t0+6|24.5': 14.8,
+    '7 ft 270/14 tide 0.5 t0+6|18.4': 14.6,
+    '7 ft 270/14 tide 0.5 t0+6|12.3': 13.1,
+    '7 ft 270/14 tide 0.5 t0+6|6.1': 17.6,
+    '7 ft 270/14 tide 0.5 t0+6|0.1': 13.3,
+    '12 ft 270/14 tide 0.5 t0+3|8.8': 3.9,
+    '12 ft 270/14 tide 0.5 t0+3|2.7': 3.6,
+    '12 ft 270/14 tide 0.5 t0+6|51.9': 6.1,
+    '12 ft 270/14 tide 0.5 t0+6|45.2': 4.5,
+    '12 ft 270/14 tide 0.5 t0+6|38.6': 6.3,
+    '12 ft 270/14 tide 0.5 t0+6|32.1': 8.4,
+    '12 ft 270/14 tide 0.5 t0+6|25.8': 9.3,
+    '12 ft 270/14 tide 0.5 t0+6|19.6': 11.8,
+    '12 ft 270/14 tide 0.5 t0+6|13.5': 8.8,
+    '12 ft 270/14 tide 0.5 t0+6|7.5': 10.1,
+    '12 ft 270/14 tide 0.5 t0+6|1.4': 13.1,
+  };
   it.each(LINE_MOMENTS.map((m) => [m.name, m] as const))('%s: the stood face meets the swell at its foot tangent (no slope step over 3 deg from its low to 0.25 A past it)', { timeout: 300_000 }, (_n, m) => {
     const { st, sheetY } = lineAt(m), bad: string[] = [];
     for (const s of stood(st)) {
@@ -170,10 +254,12 @@ describe("the sheet's stood face is the drawing's face (womb-story Task 11)", ()
         if (Number.isFinite(prev) && Math.abs(a - prev) > worst) { worst = Math.abs(a - prev); at = u - lu; }
         prev = a;
       }
-      if (worst > 3) bad.push(`along ${shoulderAlong(s.x, s.z).toFixed(1)} ph ${s.section.phase.toFixed(2)}: ${worst.toFixed(1)} deg at ${at.toFixed(2)} m from the low`);
+      if (worst > (FOOT_PIN[`${m.name}|${shoulderAlong(s.x, s.z).toFixed(1)}`] ?? 3)) bad.push(`along ${shoulderAlong(s.x, s.z).toFixed(1)} ph ${s.section.phase.toFixed(2)}: ${worst.toFixed(1)} deg at ${at.toFixed(2)} m from the low`);
     }
     // Carried red, dated 2026-10-15 (Fable's STOP 4 ruling 3): 7 ft t0+3 along 1.4 (the peak) 6.8 deg and 12 ft t0+6 along 58.7
     // 5.7 deg; every other stood station is tangent within 3 deg.
+    // Re-pinned 2026-10-16 (overnight T6 step 0), each station at its measured kink (+0.5 deg): under the cubic S (T2, ccf274f)
+    // the face reaches its low with the cubic's end curvature, 3.1-18.2 deg in 0.05 m just before the low on the section.
     expect(bad).toEqual([]);
   });
 
@@ -189,7 +275,9 @@ describe("the sheet's stood face is the drawing's face (womb-story Task 11)", ()
   // CREST_HEIGHT_REACH. Measured 7 ft t0+6 0.075 A; moment 1791986608 0.160 A on the curl's end and 0.307 A on the low bore
   // (phase 2, along 21.5, 0.23 m); 12 ft t0+6 and 1791992663 under 0.02 A.
   // Its own task after the look (read the bore's clock at the crest the point belongs to).
-  const BACK_PIN: Record<string, number> = { '7 ft 270/14 tide 0.5 t0+6': 0.08, "Andrew's 1791986608 (7 ft 225/15 tide -0.25)": 0.31 };
+  // Re-pinned 2026-10-16 (overnight T6 step 0): 1791986608 along 21.5 (phase 2.00, the low bore) rises 0.67 m, 0.879 A, 2.0 m
+  // behind its crest under the cubic S (was 0.307 A).
+  const BACK_PIN: Record<string, number> = { '7 ft 270/14 tide 0.5 t0+6': 0.08, "Andrew's 1791986608 (7 ft 225/15 tide -0.25)": 0.88 };
   it.each(BACK_MOMENTS.map((m) => [m.name, m] as const))('%s: behind a broken crest the sheet rises no more than pinned over 20 m (0.02 A; carried: the bore clock per ray)', { timeout: 300_000 }, (_n, m) => {
     const { st, sheetY } = lineAt(m), bad: string[] = [];
     for (const s of st) {
