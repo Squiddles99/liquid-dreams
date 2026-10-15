@@ -13,7 +13,10 @@ export function posesProblems(j: unknown): string[] {
   const o = j as Partial<PoseLib> | null;
   if (!o || typeof o !== 'object' || !o.clips) return out;
   for (const k of ['trim', 'pumpCycle', ...KEY_POSES]) if (!o.clips[k]) out.push(`missing ${k}`);
-  for (const [k, c] of Object.entries(o.contacts ?? {})) {
+  // The blend reads these every stall and tuck (final review: a file without them crashed the stand).
+  if (typeof o.contacts !== 'object' || o.contacts === null) return [...out, 'contacts'];
+  for (const k of ['tuck', 'stallHand', 'stallStandBarrel']) if (!(o.contacts as Record<string, unknown>)[k]) out.push(`missing contact ${k}`);
+  for (const [k, c] of Object.entries(o.contacts)) {
     if (c.side !== 'l' && c.side !== 'r') out.push(`${k}: contact side`);
     if (!Array.isArray(c.wrist) || c.wrist.length !== 3 || !c.wrist.every(Number.isFinite)) out.push(`${k}: contact wrist`);
   }

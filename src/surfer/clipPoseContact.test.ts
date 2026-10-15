@@ -59,4 +59,19 @@ describe('clipPose: authored samples and the contact pull (ride pose blend spec 
     const b = clipPose(rest, sample, base, FLAT, null).joint.pelvis.y;
     expect(a - b).toBeCloseTo(CLIP_COMPRESSION_DROP * measures(rest).legLen * CLIP_BASE_COMPRESSION, 2);
   });
+  it('final review 2: the contact hand never jumps when the strongest contact pose changes (tuck ↔ hand drag, hand ↔ stand-up)', async () => {
+    const { blendOnBoard } = await import('./poseBlend');
+    const { newRiderState, riderDrive } = await import('../ride/riderBody');
+    const preset = PRESETS.female, rest = referenceSkeleton(preset.heightM), spec = boardFor(preset, 'thruster'), layout = layoutFor(spec, rest.heightM);
+    const ctx = { spec, layout, stance: 'regular' as const, dials: { compression: 0, lean: 0, twist: 0, reach: 0 }, balance: null };
+    const base = { ...riderDrive({ ...newRiderState(1.65, 55), carve: 0 }), pumpIdleT: 9, pumpOnT: 0 };
+    const at = (d: object) => blendOnBoard(lib, rest, ctx, { ...base, ...d }, 0, FLAT, null).joint.hand_r;
+    // tuck 0.55 / hand stall 0.45 → 0.45 / 0.55: one frame either side of the crossover
+    const a = at({ tuck: 0.55, stall: 0.45, stallW: { tall: 0, hand: 1, lowBarrel: 0, standBarrel: 0 } });
+    const b = at({ tuck: 0.45, stall: 0.55, stallW: { tall: 0, hand: 1, lowBarrel: 0, standBarrel: 0 } });
+    expect(a.distanceTo(b)).toBeLessThan(0.08);
+    const c = at({ stall: 1, stallW: { tall: 0, hand: 0.55, lowBarrel: 0, standBarrel: 0.45 } });
+    const d = at({ stall: 1, stallW: { tall: 0, hand: 0.45, lowBarrel: 0, standBarrel: 0.55 } });
+    expect(c.distanceTo(d)).toBeLessThan(0.08);
+  });
 });

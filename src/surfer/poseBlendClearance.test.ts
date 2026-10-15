@@ -47,7 +47,7 @@ function* sweep(): Generator<Drive> {
     for (const k of ramp) yield { ...base, stall: k, stallW: { tall: 0, hand: 0, lowBarrel: 0, standBarrel: 0, [kind]: 1 } };
   }
   for (const k of ramp) yield { ...base, driveOut: k };
-  for (const carve of [0.6, -0.6]) for (let i = 0; i <= 12; i++) yield { ...base, carve, pumpIdleT: 0, pumpPhase: i / 12 };
+  for (const carve of [0.6, -0.6]) for (let i = 0; i <= 12; i++) yield { ...base, carve, pumpIdleT: 0, pumpOnT: 1, pumpPhase: i / 12 };
 }
 
 function solve(name: 'female' | 'male', stance: Stance, d: Drive) {

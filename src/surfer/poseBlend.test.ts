@@ -14,17 +14,17 @@ describe('pose blend weights (spec §3)', () => {
     expect(blendWeights(drive({ tuck: 1 })).tuck).toBeCloseTo(1, 6);
     expect(blendWeights(drive({ stall: 1, stallW: { tall: 0, hand: 1, lowBarrel: 0, standBarrel: 0 } })).stallHand).toBeCloseTo(1, 6);
     expect(blendWeights(drive({ driveOut: 1 })).driveOut).toBeCloseTo(1, 6);
-    expect(blendWeights(drive({ pumpIdleT: 0 })).pump).toBeCloseTo(1, 6);
+    expect(blendWeights(drive({ pumpIdleT: 0, pumpOnT: 1 })).pump).toBeCloseTo(1, 6);
   });
   it('never past 1 above the base (a tuck pressed mid-stall, pumping)', () => {
-    const w = blendWeights(drive({ tuck: 1, stall: 1, driveOut: 1, pumpIdleT: 0 }));
+    const w = blendWeights(drive({ tuck: 1, stall: 1, driveOut: 1, pumpIdleT: 0, pumpOnT: 1 }));
     expect(sum(w)).toBeLessThanOrEqual(1 + 1e-9);
   });
   it('carving without pumping keeps the pump out (no phantom pumping)', () => {
     expect(blendWeights(drive({ carve: 0.9, pumpIdleT: 9 })).pump).toBe(0);
   });
   it('the pump eases out within PUMP_EASE_S of the last pump', () => {
-    expect(blendWeights(drive({ pumpIdleT: PUMP_EASE_S * 0.5 })).pump).toBeGreaterThan(0);
+    expect(blendWeights(drive({ pumpIdleT: PUMP_EASE_S * 0.5, pumpOnT: 1 })).pump).toBeGreaterThan(0);
     expect(blendWeights(drive({ pumpIdleT: PUMP_EASE_S })).pump).toBe(0);
   });
   it('the pump clip follows the phase, toe and heel halves by the rail', () => {
@@ -47,5 +47,15 @@ describe('pose blend weights (spec §3)', () => {
     expect(toeRailDown(-0.5, 'regular')).toBe(false);
     expect(toeRailDown(0.5, 'goofy')).toBe(false);
     expect(toeRailDown(-0.5, 'goofy')).toBe(true);
+  });
+  it('final review 1: the pump eases IN over its first moments (no snap to full on the first extending frame)', () => {
+    expect(blendWeights(drive({ pumpIdleT: 0, pumpOnT: 0 })).pump).toBe(0);
+    let prev = 0;
+    for (let i = 1; i <= 30; i++) {
+      const w = blendWeights(drive({ pumpIdleT: 0, pumpOnT: i / 60 })).pump;
+      expect(w - prev).toBeLessThan(0.2);
+      prev = w;
+    }
+    expect(prev).toBeCloseTo(1, 6);
   });
 });

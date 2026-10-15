@@ -18,6 +18,10 @@ describe('the poses file (ride pose blend spec §2)', () => {
   });
   it('rejects a broken file', () => {
     expect(posesProblems({ ...lib, contacts: { tuck: { side: 'x', wrist: [0, 0] } } })).not.toEqual([]);
+    // final review 3: a file without its contacts must fail the load (the stand reads them every stall)
+    const { contacts: _c, ...noContacts } = lib;
+    expect(posesProblems(noContacts)).not.toEqual([]);
+    expect(posesProblems({ ...lib, contacts: { tuck: lib.contacts.tuck } })).not.toEqual([]);
     const { tuck: _t, ...rest } = lib.clips;
     expect(posesProblems({ ...lib, clips: rest })).not.toEqual([]);
   });

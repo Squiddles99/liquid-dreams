@@ -14,6 +14,8 @@ export const toeRailDown = (carve: number, stance: Stance): boolean => (stance =
 
 /** The pump layer fades out this long after the last pump (spec §3: ~0.5 s). */
 export const PUMP_EASE_S = 0.5;
+/** …and eases in over this long once the rider starts pumping (final review: no snap to the deepest crouch). */
+export const PUMP_IN_S = 0.15;
 export interface BlendWeights { pump: number; tuck: number; stallTall: number; stallHand: number; stallLowBarrel: number; stallStandBarrel: number; driveOut: number }
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 const smooth = (t: number): number => { const x = clamp01(t); return x * x * (3 - 2 * x); };
@@ -21,7 +23,7 @@ const smooth = (t: number): number => { const x = clamp01(t); return x * x * (3 
 /** The dials as layer weights over the base trim: each its own dial, then scaled so the sum stays within 1. */
 export function blendWeights(d: RiderDrive & { pumpIdleT: number }): BlendWeights {
   const w: BlendWeights = {
-    pump: smooth(1 - d.pumpIdleT / PUMP_EASE_S),
+    pump: smooth(d.pumpOnT / PUMP_IN_S) * smooth(1 - d.pumpIdleT / PUMP_EASE_S),
     tuck: clamp01(d.tuck),
     stallTall: clamp01(d.stall * d.stallW.tall), stallHand: clamp01(d.stall * d.stallW.hand),
     stallLowBarrel: clamp01(d.stall * d.stallW.lowBarrel), stallStandBarrel: clamp01(d.stall * d.stallW.standBarrel),
@@ -69,8 +71,17 @@ export function blendOnBoard(lib: PoseLib, rest: SkeletonRest, ctx: Pick<ClipPos
   d: RiderDrive & { pumpIdleT: number }, simTime: number, board: BoardFrame, lookAt: Vector3 | null): ClipSolved & { w: BlendWeights } {
   const { sample, w } = blendSample(lib, ctx.stance, simTime, d, toeRailDown(d.carve, ctx.stance));
   const above = w.pump + w.tuck + w.stallTall + w.stallHand + w.stallLowBarrel + w.stallStandBarrel + w.driveOut;
-  const hold = (['tuck', 'stallHand', 'stallStandBarrel'] as const).reduce((a, k) => (w[k] > w[a] ? k : a), 'tuck' as 'tuck' | 'stallHand' | 'stallStandBarrel');
-  const c = w[hold] > 0 ? contactFor(lib, hold, ctx.stance) : null;
-  const pull = c ? { side: c.side, wrist: new Vector3(...c.wrist), weight: w[hold] } : undefined;
+  // The pull toward the contact poses' spots averaged by their weights (final review: picking the strongest one made the
+  // hand jump ~0.35 m at a crossover, tuck to hand drag); all are the same (back) hand.
+  let total = 0, side: 'l' | 'r' | null = null;
+  const spot = new Vector3();
+  for (const k of ['tuck', 'stallHand', 'stallStandBarrel'] as const) {
+    const c = w[k] > 0 ? contactFor(lib, k, ctx.stance) : null;
+    if (!c) continue;
+    spot.addScaledVector(new Vector3(...c.wrist), w[k]);
+    total += w[k];
+    side = c.side;
+  }
+  const pull = side && total > 0 ? { side, wrist: spot.multiplyScalar(1 / total), weight: Math.min(1, total) } : undefined;
   return { ...clipPose(rest, sample, { ...ctx, authored: true, compressionScale: 1 - above, pull }, board, lookAt), w };
 }
