@@ -20,6 +20,7 @@ import { clipDuration, loadRiderClips, type RiderClips } from './clips';
 import { sampleClip } from './clipPlayer';
 import { clipPose } from './clipPose';
 import { blendOnBoard } from './poseBlend';
+import { type Follow, newFollow, sampleFromSolved, stepFollow } from './poseFollow';
 import { loadPoseLib, type PoseLib } from './poseLib';
 import { chooseMotion, clipTime } from './motion';
 import type { FingerBone } from './rig';
@@ -46,6 +47,10 @@ export class SurferStand {
     () => loadPoseLib(`${import.meta.env.BASE_URL}surfer/poses/poses.json`),
     (_k, e) => console.warn('The ride poses file failed to load; riding uses the trim clip or the code poses.', e),
   );
+  /** The body following the ride's dials at a body's pace (poseFollow) while the blend runs; null otherwise. */
+  private follow: Follow | null = null;
+  /** The last pose shown and the board it stood on: the blend fades in from it (the drop's cut, the first ride's pop). */
+  private lastShown: { pose: SolvedPose; frame: BoardFrame } | null = null;
   private askedPreset: PresetName | null = null;
   private readonly board: BoardMesh;
   private readonly leash: THREE.Mesh;
@@ -176,10 +181,19 @@ export class SurferStand {
     let solved: SolvedPose, fingers: Partial<Record<FingerBone, THREE.Quaternion>> | undefined;
     // Riding a standing board (part C): the approved poses, blended by the ride's dials, placed by the clip path with
     // the contact hand pulled to its spot. No poses file: the trim clip or the code poses, as before.
+    // Fetched from the first moment on the water on a standing board, so it's there before the first ride.
+    if (!p.onLand && p.board !== 'bodyboard') this.poseLoader.get('all');
     const lib = p.drive && p.pose === 'trim' && p.board !== 'bodyboard' ? this.poseLoader.get('all') : null;
     if (p.drive && p.pose === 'trim' && p.board !== 'bodyboard' && !lib && this.poseLoader.settled('all')) this.status.motion = 'blend: no poses file';
+    if (!(lib && p.drive)) this.follow = null;
     if (lib && p.drive) {
-      const cp = blendOnBoard(lib, s.rest, { spec, layout, stance: p.stance, dials, balance: bal }, p.drive, simTime, state.board, state.lookAt);
+      // The body follows the dials at a body's pace, fading in from whatever showed before (Andrew 2026-10-15: no snap).
+      if (!this.follow) {
+        this.follow = newFollow();
+        if (this.lastShown) this.follow.from = sampleFromSolved(this.lastShown.pose, this.lastShown.frame, p.stance, s.rest.restQ);
+      }
+      const out = stepFollow(this.follow, p.drive, dials, p.stance, dt);
+      const cp = blendOnBoard(lib, s.rest, { spec, layout, stance: p.stance, dials: out.dials, balance: bal }, p.drive, simTime, state.board, state.lookAt, out);
       solved = cp;
       fingers = cp.fingers;
       this.status.motion = 'blend';
@@ -193,6 +207,7 @@ export class SurferStand {
       solved = solvePose(s.rest, t, state.board, state.lookAt);
     }
     s.applyPose(solved, fingers);
+    this.lastShown = { pose: solved, frame };
     if (carrying && t.carry) {
       // The board under the arm (walking spec §4): placed from the solved hand, not the feet; no deck contacts, no leash.
       const held = carriedBoard(t.carry, frame, solved);
