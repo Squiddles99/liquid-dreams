@@ -5,6 +5,7 @@ import { SINK_M } from '../surfer/placement';
 import type { BoardFrame } from '../surfer/solvePose';
 import type { SurferParams } from '../surfer/surferParams';
 import { type RideBody, forwardOf, speedOf } from './ridePhysics';
+import { riderDrive } from './riderBody';
 
 const DEG = Math.PI / 180;
 /** The board rolls onto its rail this far at full carve and speed. */
@@ -15,7 +16,7 @@ export const SIT_AFTER_S = 1.5;
 export const DROP_HOLD_S = 0.5;
 
 /** The pose and dials for the ride's state (first-ride spec §5). On a bodyboard (Grommet) he rides prone: no pop-up. */
-export function rideSurferParams(b: RideBody, popupS: number, bodyboard = false): Pick<SurferParams, 'pose' | 'phaseT' | 'play' | 'lean' | 'compression' | 'twist' | 'x' | 'z' | 'headingDeg' | 'onLand' | 'enabled' | 'speedMs'> {
+export function rideSurferParams(b: RideBody, popupS: number, bodyboard = false): Pick<SurferParams, 'pose' | 'phaseT' | 'play' | 'lean' | 'compression' | 'twist' | 'x' | 'z' | 'headingDeg' | 'onLand' | 'enabled' | 'speedMs' | 'drive'> {
   let pose: PoseName, phaseT = 0, play = false;
   switch (b.phase) {
     case 'paddle':
@@ -29,12 +30,11 @@ export function rideSurferParams(b: RideBody, popupS: number, bodyboard = false)
       pose = bodyboard ? 'prone' : 'popup';
       phaseT = Math.min(1, b.phaseT / popupS);
       break;
-    case 'ride': {
-      // Stand-ins until part C (ride-speed plan clarification 4): a stall with the hand in the face shows the barrel pose.
-      const handStall = b.stall > 0.4 && b.stallW.hand + b.stallW.lowBarrel + b.stallW.standBarrel > 0.5;
-      pose = bodyboard ? 'prone' : b.phaseT < DROP_HOLD_S ? 'drop' : handStall ? 'barrel' : 'trim';
+    case 'ride':
+      // Part C: the stalls, the tuck, the pump and the drive out ride as trim, the dials (`drive`) blending in the
+      // approved poses (the barrel stand-in is gone).
+      pose = bodyboard ? 'prone' : b.phaseT < DROP_HOLD_S ? 'drop' : 'trim';
       break;
-    }
     case 'bail':
       pose = 'bail';
       phaseT = Math.min(1, b.phaseT / 0.8);
@@ -44,10 +44,10 @@ export function rideSurferParams(b: RideBody, popupS: number, bodyboard = false)
   return {
     enabled: true, onLand: false, pose, phaseT, play,
     lean: riding ? 0.8 * b.carve : 0,
-    // The barrel pose crouches 0.4 deeper than trim of its own: the same comH reads the same height in both.
-    compression: riding ? Math.max(-1, Math.min(1, b.compression + 0.4 * Math.abs(b.carve) - (pose === 'barrel' ? 0.4 : 0))) : 0,
+    compression: riding ? Math.max(-1, Math.min(1, b.compression + 0.4 * Math.abs(b.carve))) : 0,
     twist: riding ? 0.5 * b.carve : 0,
     x: b.x, z: b.z, headingDeg: b.headingDeg, speedMs: speedOf(b),
+    drive: riding && !bodyboard ? riderDrive(b) : null,
   };
 }
 

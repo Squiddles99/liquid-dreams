@@ -60,6 +60,11 @@ export interface RiderState {
   loadPeak: number;
   /** Seconds held low (comH under TUCK_LOW): a tuck is held, a pump's dip is not. */
   lowT: number;
+  /** Seconds since the legs last extended under extra load (a pump): the pose blend's pump layer (part C). */
+  pumpIdleT: number;
+  /** Seconds the rider has been pumping (since a pump came after PUMP_RECENT_S without one): the pump layer's ease-in
+   * (final review: it snapped to full on the first extending frame). */
+  pumpOnT: number;
 }
 
 export const COM_REST = 0.6;
@@ -110,7 +115,7 @@ export function legRiseRate(r: Pick<RiderState, 'legPowerWkg' | 'comTravelM'>, l
 export function newRiderState(standH: number, massKg: number, power: RiderPower = DEFAULT_POWER): RiderState {
   return {
     comH: COM_REST, foreAft: 0, hand: 0, tuck: 0, stall: 0, stallW: { tall: 1, hand: 0, lowBarrel: 0, standBarrel: 0 },
-    load: 1, n0: 1, pumpGain: 0, pumpPhase: 0, driveOut: 0, standH, massKg, pumpAcc: 0, extending: false, driveT: 0, stallPeak: false, loadPeak: 0, lowT: 0,
+    load: 1, n0: 1, pumpGain: 0, pumpPhase: 0, driveOut: 0, standH, massKg, pumpAcc: 0, extending: false, driveT: 0, stallPeak: false, loadPeak: 0, lowT: 0, pumpIdleT: 9, pumpOnT: 0,
     legPowerWkg: power.legPowerWkg, paddleStrength: power.paddleStrength, comTravelM: COM_TRAVEL_M * standH / BASE_STAND_H,
   };
 }
@@ -153,6 +158,8 @@ export const PUMP_PERIOD_K = 0.75;
  */
 export const PUMP_EXTEND_SHARE = 0.4;
 export const PUMP_EXTEND_MIN = 0.08;
+/** A pump this recent still counts as pumping (the pose blend's pump layer). */
+export const PUMP_RECENT_S = 0.5;
 /** The recent peak of the extra load fades over this (s). */
 export const LOAD_PEAK_TAU_S = 1;
 /** The load the rider can feel is clamped to this (g): a reset or a teleport reads as a huge acceleration. */
@@ -253,12 +260,14 @@ export interface RiderDrive {
   stall: number;
   stallW: StallWeights;
   driveOut: number;
+  pumpIdleT: number;
+  pumpOnT: number;
 }
 
 export function riderDrive(b: RiderState & { carve: number }): RiderDrive {
   return {
     comH: b.comH, foreAft: b.foreAft, carve: b.carve, hand: b.hand, load: b.load, pumpPhase: b.pumpPhase, pumpGain: b.pumpGain,
-    tuck: b.tuck, stall: b.stall, stallW: { ...b.stallW }, driveOut: b.driveOut,
+    tuck: b.tuck, stall: b.stall, stallW: { ...b.stallW }, driveOut: b.driveOut, pumpIdleT: b.pumpIdleT, pumpOnT: b.pumpOnT,
   };
 }
 
@@ -296,6 +305,9 @@ export function stepRiderBody(r: RiderState, i: BodyInput, dt: number): number {
   const prev = r.comH;
   r.comH = stepCom(r.comH, target, dt, legRiseRate(r, r.load));
   const dH = r.comH - prev;
+  // A pump is the legs rising under the turn's extra load (part C's pump layer keys off it; a plain carve isn't one).
+  r.pumpIdleT = dH > 1e-6 && r.load - r.n0 > PUMP_EXTEND_MIN ? 0 : r.pumpIdleT + dt;
+  r.pumpOnT = r.pumpIdleT < PUMP_RECENT_S ? r.pumpOnT + dt : 0;
   const e = pumpEnergy(r.load, r.n0, dH, dt, i.assist ? PUMP_ASSIST_EFF : PUMP_EFF, r.comTravelM, r.legPowerWkg);
   // The cycle's books: a cycle closes as the rider starts to compress after an extension.
   if (dH > 1e-6) r.extending = true;

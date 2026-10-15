@@ -4,6 +4,7 @@ import { type PoseName, posesOn } from './poseNames';
 import { SELECT_IDLE_S } from './poses';
 import { PRESETS, type PresetName, type Stance, boardsFor } from './presets';
 import { type OutfitChoice, presetOutfits } from './wardrobe';
+import type { RiderDrive } from '../ride/riderBody';
 import type { Motion } from './motion';
 import { TIP } from '../seabed/wombReef';
 
@@ -23,6 +24,9 @@ export interface SurferParams {
   motion: Motion;
   /** On land (the dune, the select screen): Grommet's glasses on, hair and skin dry (grommet spec §6). */
   onLand: boolean;
+  /** Riding a standing board: the ride's dials, blended into the approved poses (ride pose blend, part C); never
+   * persisted (the ride sets it each frame). */
+  drive?: RiderDrive | null;
   /** The crew's clothes and packs dropped on the sand where they changed (walking spec §5), and where. */
   pile: boolean;
   /** The gang mockup (walking spec §6): all three at the stand's spot, walking, carrying their boards. */
