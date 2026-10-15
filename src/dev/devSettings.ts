@@ -44,9 +44,10 @@ export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
  * and the 15 m basin to the far field with a 15 m face, so the breaking and the reef reset again; model 13 (womb-story,
  * 2026-10-14): Andrew's pick, the face ahead of the lip stands up over 20 m and is drawn on the sea (standAheadM,
  * faceOnSheet), so the breaking resets to it; model 14 (womb-story Task 10, 2026-10-15): one surface by construction
- * (oneSurface 1, standAheadM and faceOnSheet retired to 0), so the breaking resets to it).
+ * (oneSurface 1, standAheadM and faceOnSheet retired to 0), so the breaking resets to it; model 15 (womb-story Task 11,
+ * 2026-10-15): the sheet's stood face is the drawing's (faceDrawn 1), so the breaking resets to it).
  */
-export const BREAKING_MODEL = 14;
+export const BREAKING_MODEL = 15;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;

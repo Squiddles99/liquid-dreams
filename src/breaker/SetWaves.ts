@@ -4,13 +4,14 @@ import {
   Fn, If, Loop, abs, clamp, cos, dot, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, sqrt, storage, tanh,
   textureLoad, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
-import { REEF_GRID, TIP } from '../seabed/wombReef';
+import { NORTH_LEDGE, REEF_GRID, TIP } from '../seabed/wombReef';
 import { MAX_ACTIVE_WAVES, type WaveEvent } from '../swell/sets';
 import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LEVELS, ONSET_DELAY_OFFSET, ONSET_RECORD_LENGTH, ONSET_PSI_OFFSET, ONSET_SIZE_OFFSET, ONSET_UNTIL_OFFSET, TUBE_THROWN_PSI, UNTIL_NEVER, breakingDepth, normalizeBreakParams } from './breaking';
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { BORE_SHARE, FRONT_LEAD_S, GRAVITY_MS2, ONSET_HEIGHT_UNITS, setFaceOnSheet, setHandDownT, setShoulder, setStandAhead, setWallLeadT } from './wombSection';
+import { BORE_SHARE, CLOSEOUT_FADE_M, CLOSEOUT_FROM_TURN_M, COLLAPSE_BASE_S, COLLAPSE_PER_M, FRONT_LEAD_S, GRAVITY_MS2, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, STOOD_PHASE, setFaceOnSheet, setHandDownT, setShoulder, setStandAhead, setWallLeadT } from './wombSection';
+import { applyFaceDrawn, faceDrawnUniform, faceLengthsNode, faceShapeInNode } from './faceNodes';
 import { applyFlightDropA, applyOneSurface, applySeatShares, flightTimeNodeA } from './wombSectionNodes';
 import { HOLLOW_PSI } from './reefReport';
 import { MIST_LAND_WINDOW_S, landingMistNode } from '../whitewater/mistSlab';
@@ -23,7 +24,7 @@ import { COAST_EDGE_BLEND_M } from './coastField';
 import { COAST_GRID } from '../seabed/coastProfile';
 import {
   BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, FOLD_LIMIT, LEAN_FRONT_FLOOR, LEAN_FRONT_MIN, LEAN_RATIO, WOMB_FRONT_UNITS, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
-  TAPER_FAR_M, TAPER_NEAR_M, fieldSteepeningHeight, toActiveWave,
+  TAPER_FAR_M, TAPER_NEAR_M, fieldSteepeningHeight, toActiveWave, DRAWN_FRONT_CEIL, DRAWN_FRONT_FLOOR, FACE_IN_STANDING,
 } from './setWaveModel';
 
 type N = any;
@@ -168,6 +169,7 @@ export class SetWaves {
     setStandAhead(this.breakParams.standAheadM);
     setFaceOnSheet(this.breakParams.faceOnSheet);
     applyOneSurface(this.breakParams.oneSurface);
+    applyFaceDrawn(this.breakParams.faceDrawn);
     applyFlightDropA(this.breakParams.flightDropA);
     this.updateBreakingHeight();
   }
@@ -502,6 +504,10 @@ export class SetWaves {
           // its break (wombSection.wallWeight on the record's time until onset: the clock alone), or, where the ray never
           // breaks, with the ratio from the ribbon's onset; held, over the last wall lead (wombSection.wallLeadS) before its turn; 1 once broken.
           const standing = float(0.0).toVar();
+          // The drawn face (womb-story Task 11, setWaveModel.drawnFace / crestSection): on, its phase, hollow, the drawing's own
+          // length and the face's (units of A), the squeeze that makes it, and the arrival field's xi per metre along the ray.
+          const fDrawn = float(0.0).toVar(), fPhase = float(0.0).toVar(), fHollow = float(0.0).toVar(), fL = float(1.0).toVar(), fRef = float(1.0).toVar();
+          const fMin = float(LEAN_FRONT_MIN).toVar(), xiPerM = f.k.div(this.meanOmega).toVar();
           // How far it has settled into the white water's bore (setWaveModel.waveAtCrest, wombSection.boreWeight): 'lean' only.
           const bore = float(0.0).toVar();
           const lc = { steep: float(0.0).toVar(), stage: float(0.0).toVar(), drain: float(0.0).toVar(), collapse: float(0.0).toVar() };
@@ -564,6 +570,36 @@ export class SetWaves {
                 select(onset.until.lessThan(UNTIL_NEVER), wall(onset.until), byRatio)), float(0.0)));
               bore.assign(select(rec.inside.and(onset.broken).and(onset.tb.greaterThanEqual(0.0)),
                 boreWeightNode(onset.tb, min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)), float(2 * Math.PI).div(a.z)), float(0.0)));
+              If(faceDrawnUniform.greaterThan(0.5).and(standing.greaterThan(0.0)), () => {
+                // The arrival field's own rate along the ray (xi per metre, over 1 m ahead).
+                const xz2 = xz.add(f.dir), s2 = this.sample(xz2, true);
+                xiPerM.assign(max(xi.sub(phaseXi(xz2, s2.tau, this.meanOmega.div(s2.k))), f.k.mul(0.2).div(this.meanOmega)));
+                // The section's numbers from the record at the lookup's crest (the point's own off it): crestSection.
+                const rec2 = this.sampleOnset(cPos, level.k), on2 = onsetTimeNode(rec2, level, a.y, brk);
+                const broken2: N = select(rec2.inside, on2.broken, onset.broken), tb2: N = select(rec2.inside, on2.tb, onset.tb).toVar();
+                const until2: N = select(rec2.inside, on2.until, onset.until), size2: N = select(rec2.inside, on2.size, onset.size);
+                const brk2: N = broken2.and(tb2.greaterThanEqual(0.0)).toVar();
+                const Tp = float(2 * Math.PI).div(a.z), Hb: N = select(brk2, max(size2, 0.0), Hcrest).toVar();
+                const fly = flightTimeNodeA(Hb.div(ONSET_HEIGHT_UNITS)).toVar(), power = Hb.mul(Tp.div(15.0));
+                const hold = power.mul(HOLD_PER_M).add(HOLD_BASE_S).toVar(), span2 = power.mul(COLLAPSE_PER_M).add(COLLAPSE_BASE_S);
+                const tt: N = max(tb2, 0.0).toVar();
+                const phaseB = select(tt.lessThan(fly), tt.div(max(fly, 1e-6)).mul(1 - STOOD_PHASE).add(STOOD_PHASE),
+                  select(tt.lessThan(fly.add(hold)), float(1.0), min(tt.sub(fly).sub(hold).div(span2).add(1.0), 2.0)));
+                const uW: N = select(broken2, tb2.negate(), until2).toVar();
+                const phaseW = select(uW.lessThan(UNTIL_NEVER), wall(uW), byRatio).mul(STOOD_PHASE);
+                const ph: N = select(brk2, phaseB, phaseW).toVar();
+                const Afc = Hb.add(Hcrest.sub(Hb).mul(smoothstep(1.5, 2.0, ph))).div(ONSET_HEIGHT_UNITS);
+                const hv: N = clamp(psi.sub(HOLLOW_PSI[0]).div(HOLLOW_PSI[1]), 0.0, 1.0).mul(float(1.0).sub(smoothstep(CLOSEOUT_FROM_TURN_M, CLOSEOUT_FROM_TURN_M + CLOSEOUT_FADE_M, float(NORTH_LEDGE[1][1]).sub(cPos.y)))).toVar();
+                const lens = faceLengthsNode(ph, hv);
+                // drawnFace: the squeeze phi with phi pi / q - hAmp sin(phi pi) - pitch x drop = L x A in the crest's frame.
+                const kc = fc.k, ac = Hcrest.mul(0.5), hAmpC = min(ac, float(FOLD_LIMIT).div(kc)).toVar();
+                const pitchC = min(smoothstep(0.3, BREAKING_RATIO, Hcrest.div(max(fc.hmin, MIN_DEPTH_M))).mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(kc.mul(ac), 1e-4)));
+                const rhs = lens.ref.mul(Afc).add(pitchC.mul(Hcrest)).toVar(), q = a.z.mul(xiPerM).toVar();
+                const xN = min(float(Math.PI), q.mul(rhs).div(max(float(1.0).sub(hAmpC.mul(q)), 0.1))).toVar();
+                for (let it = 0; it < 3; it++) xN.assign(clamp(xN.sub(xN.div(q).sub(hAmpC.mul(sin(xN))).sub(rhs).div(float(1.0).div(q).sub(hAmpC.mul(cos(xN))))), 0.0, Math.PI));
+                fMin.assign(clamp(xN.div(Math.PI), DRAWN_FRONT_FLOOR, DRAWN_FRONT_CEIL));
+                fPhase.assign(ph); fHollow.assign(hv); fL.assign(lens.L); fRef.assign(lens.ref); fDrawn.assign(1.0);
+              });
             }
             if (this.shape === 'full') lean.assign(lean.mul(float(1.0).sub(l.release)));
             else if (this.shape === 'none') lean.assign(0.0);
@@ -597,9 +633,12 @@ export class SetWaves {
           // share φ, the water ahead stretched over the rest, each a cubic Hermite with slope 1 at its ends (no plateau).
           // With the ribbon drawing the breaking, as short as the Womb profile's face (setWaveModel.wombFrontMin).
           // Shortened as the section stands up (setWaveModel.frontStanding).
-          const frontMin = this.shape === 'lean'
-            ? mix(float(LEAN_FRONT_MIN), clamp(min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)).mul(WOMB_FRONT_UNITS / 1.3).mul(fc.k).div(Math.PI), LEAN_FRONT_FLOOR, LEAN_FRONT_MIN), standing)
-            : float(LEAN_FRONT_MIN);
+          // Task 11 (setWaveModel.waveAtCrest): with the drawn face, the drawing's length, in by the stand-up eased.
+          const drawnOn: N = fDrawn.greaterThan(0.5);
+          const stoodIn: N = select(drawnOn, smoothstep(0.0, FACE_IN_STANDING, standing), standing).toVar();
+          const wombMin: N = clamp(min(a.y.mul(fc.amp), fc.hmin.mul(BREAKING_RATIO)).mul(WOMB_FRONT_UNITS / 1.3).mul(fc.k).div(Math.PI), LEAN_FRONT_FLOOR, LEAN_FRONT_MIN);
+          const target: N = select(drawnOn, fMin, wombMin);
+          const frontMin: N = this.shape === 'lean' ? mix(float(LEAN_FRONT_MIN), target, stoodIn) : float(LEAN_FRONT_MIN);
           const phi = float(1.0).sub(lean.mul(float(1.0).sub(frontMin))).toVar();
           const thetaN: N = theta;
           const inFront: N = lean.greaterThan(0.0).and(thetaN.lessThan(0.0)).and(thetaN.greaterThan(-2 * Math.PI));
@@ -613,14 +652,34 @@ export class SetWaves {
           const th: N = select(inFront, leaned, thetaN).toVar();
           const dth: N = select(inFront, leanedD, float(1.0)).toVar();
           const shape = cos(th).add(B.mul(cos(th.mul(2.0))));
-          const e = aE.mul(stretch.mul(shape).add(crestShape)).toVar();
+          const eO = aE.mul(stretch.mul(shape).add(crestShape)).toVar();
           const hAmp = min(aE, float(FOLD_LIMIT).div(f.k));
           const nearBreaking = smoothstep(0.3, BREAKING_RATIO, H.div(max(f.hmin, MIN_DEPTH_M)));
           const pitch = min(nearBreaking.mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(f.k.mul(aE), 1e-4)));
-          const d = hAmp.mul(sin(theta)).add(pitch.mul(e)).toVar();
+          const dO = hAmp.mul(sin(theta)).add(pitch.mul(eO)).toVar();
           const dEtaDXi = A.mul(lateral).mul(dEnv.mul(stretch.mul(shape).add(crestShape)).sub(stretch.mul(env).mul(a.z).mul(dth).mul(sin(th).add(B.mul(2.0).mul(sin(th.mul(2.0)))))));
           const jacobian = max(float(1.0).add(hAmp.mul(a.z).mul(cos(theta)).add(pitch.mul(dEtaDXi)).mul(dXiDs)), 0.2);
+          const e = eO.toVar(), d = dO.toVar();
           const along = dEtaDXi.mul(dXiDs).div(jacobian).toVar();
+          // setWaveModel.waveAtCrest's drawn face (Task 11): crest to the leaned foot, points spread evenly at the drawing's height.
+          const wf = select(drawnOn, stoodIn.mul(lean), float(0.0));
+          If(wf.greaterThan(0.0).and(thetaN.lessThanEqual(0.0)).and(thetaN.greaterThanEqual(phi.mul(-Math.PI))), () => {
+            const etaC = aE.mul(stretch.mul(B.add(1.0)).add(crestShape)), etaF = aE.mul(stretch.mul(B.sub(1.0)).add(crestShape));
+            const uC = pitch.mul(etaC), uF = phi.mul(Math.PI).div(a.z).div(xiPerM).sub(hAmp.mul(sin(phi.mul(Math.PI)))).add(pitch.mul(etaF));
+            const L = uF.sub(uC).toVar();
+            If(L.greaterThan(1e-6), () => {
+              const sF = thetaN.div(phi.mul(-Math.PI)).toVar(), dsDXi = a.z.negate().div(phi.mul(Math.PI)).toVar();
+              const fs = faceShapeInNode(fPhase, fHollow, sF, fL, fRef);
+              const shD = fs.S.add(B);
+              const etaD = aE.mul(stretch.mul(shD).add(crestShape));
+              const dEtaDXiD = A.mul(lateral).mul(dEnv).mul(stretch.mul(shD).add(crestShape)).add(aE.mul(stretch).mul(fs.dS).mul(dsDXi));
+              const dhD = uC.add(sF.mul(L)).add(xi.div(xiPerM));
+              e.assign(eO.add(etaD.sub(eO).mul(wf)));
+              d.assign(dO.add(dhD.sub(dO).mul(wf)));
+              const dUO = jacobian.div(dXiDs), dUD = L.mul(dsDXi);
+              along.assign(dEtaDXi.add(dEtaDXiD.sub(dEtaDXi).mul(wf)).div(dUO.add(dUD.sub(dUO).mul(wf))));
+            });
+          });
           // Per metre of the displaced surface along travel (ahead): Phase 1's derivatives along s, over its Jacobian.
           const perAhead = dXiDs.div(jacobian).toVar();
           eta.addAssign(e);

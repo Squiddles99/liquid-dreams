@@ -16,8 +16,9 @@ import {
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
 import { PROFILE_SAMPLES } from './BreakingRibbon';
-import { FACE_ON_SHEET, ONE_SURFACE, curlWeight, sectionOf, sectionSamples, setFaceOnSheet } from './wombSection';
+import { FACE_DRAWN, FACE_ON_SHEET, ONE_SURFACE, curlWeight, sectionOf, sectionSamples, setFaceOnSheet } from './wombSection';
 import { WOMB_FRAME_VEC4S, applyOneSurface } from './wombSectionNodes';
+import { applyFaceDrawn } from './faceNodes';
 import { hollowFromPsi } from './reefReport';
 import { smoothstep } from '../math/smoothstep';
 import { type ReefField, computeReefField, sampleField } from './reefField';
@@ -127,6 +128,8 @@ async function sectionParity(renderer: THREE.WebGPURenderer, faceOn: number, one
     // The dial oneSurface (womb-story Task 10) on the CPU twins and the GPU alike; under the law a waiting section draws
     // nothing, so there is no standing-up station to compare (the drawn section of 2026-10-14 is compared at the dial off).
     applyOneSurface(one);
+    // Task 11: the drawn face is the law's (the section of 2026-10-14 stood on Task 10's sheet).
+    applyFaceDrawn(one > 0.5 ? FACE_DRAWN : 0);
     setFaceOnSheet(faceOn);
     let lifted = 0;
     try {
@@ -191,7 +194,7 @@ async function sectionParity(renderer: THREE.WebGPURenderer, faceOn: number, one
         `extras' ρ ${rhoX} (< 1e-4); live rows flagged dead ${deadLive}, non-finite values ${nonFinite} (0). Worst sample: ${worstDetail}` +
         (faceOn ? `; stations the face-on-sheet lifted (> 1 cm) ${lifted} (> 0)` : ''),
     };
-    } finally { setFaceOnSheet(FACE_ON_SHEET); applyOneSurface(ONE_SURFACE); }
+    } finally { setFaceOnSheet(FACE_ON_SHEET); applyOneSurface(ONE_SURFACE); applyFaceDrawn(FACE_DRAWN); }
 }
 
 registerSelfTest({ name: 'ribbon: GPU section matches wombSection (one surface by construction, womb-story Task 10)', run: (renderer) => sectionParity(renderer, 0, 1) });

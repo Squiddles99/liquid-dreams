@@ -10,8 +10,9 @@ import { DEFAULT_REEF_PARAMS, LEFT_BEARING_DEG, NORTH_LEDGE, TIP } from '../seab
 import { DEFAULT_COAST_PARAMS } from '../seabed/coastFeatures';
 import { buildCoastMap } from '../seabed/coastMap';
 import { SetWaves } from './SetWaves';
-import { type BreakOptions, breakOptions, crestAt, frontStanding, sumWaves, toActiveWave } from './setWaveModel';
-import { frontWeight, setShoulder } from './wombSection';
+import { type BreakOptions, breakOptions, crestAt, fieldBreakingHeight, frontStanding, sumWaves, toActiveWave } from './setWaveModel';
+import { type Station, minRibbonHeight, traceStations } from './crestTrace';
+import { frontWeight, setFaceDrawn, setShoulder } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 import { churnHeightNode, churnSlopeNode } from '../whitewater/pileChurn';
 
@@ -775,5 +776,52 @@ registerSelfTest({
     // on a broken crest (before, the CPU reported it: stage 1.000 against the GPU's 0.432 at (140, 297.3), dt +20 s).
     const ok = breaking > 0 && disp.value < 0.05 && stage.value < 0.02;
     return { pass: ok, detail: `${points.length} points within 22 m of the grid's north and south edges × dt −40…40 s (12 ft); ${breaking} breaking samples (> 0); worst |Δdisp| ${disp} m (< 0.05); worst |Δstage| ${stage} (< 0.02) [${stageAt}]` };
+  },
+});
+
+registerSelfTest({
+  name: "breaker: the drawn face (womb-story Task 11): the GPU's stood face matches the CPU's on the faces of the biggest wave's sections",
+  async run(renderer) {
+    // The game's field, its biggest wave from 1 s before it reaches the peak to 6 s after: along each traced station's normal,
+    // 4 m behind it to 12 m ahead, every metre (the stood face, its foot and the water in front). The dial's own effect is
+    // read on the CPU (faceDrawn 1 against 0), so the comparison is shown to cover the drawn face.
+    const field = getGameField();
+    const time = uniform(0);
+    const sets = new SetWaves(time, { pile: false, shape: 'lean' });
+    sets.setField(field);
+    sets.setBreakParams(DEFAULT_BREAK_PARAMS);
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    const o: BreakOptions = { ...breakOptions(field, DEFAULT_BREAK_PARAMS), pile: false, shape: 'lean' };
+    const minHeightM = minRibbonHeight(fieldBreakingHeight(field, DEFAULT_BREAK_PARAMS), DEFAULT_BREAK_PARAMS);
+    const disp = new Worst(true, 0), slope = new Worst(true, 0), change = new Worst(true, 0);
+    let drawnSamples = 0, total = 0;
+    for (const dt of [-1, 1, 2, 3, 4, 6]) {
+      const t = REF_BIGGEST.arrivalS + dt, events = wavesNear(t, DEFAULT_CONDITIONS, DEFAULT_SET_PARAMS), waves = events.map(toActiveWave);
+      const mine = events.findIndex((e) => Math.abs(e.arrivalS - REF_BIGGEST.arrivalS) < 1e-6);
+      const st = traceStations(field, waves, t, ctx, { cameraX: TIP[0], cameraZ: TIP[1], params: DEFAULT_BREAK_PARAMS, minHeightM })
+        .filter((e): e is Station => !e.gap && e.wave === mine).filter((_, i) => i % 3 === 0);
+      const points: [number, number][] = [];
+      for (const s of st) for (let u = -4; u <= 12; u += 1) points.push([s.x + s.nx * u, s.z + s.nz * u]);
+      if (!points.length) continue;
+      const { pass, outAttr } = computeAt(points, 2, (xz) => { const b = sets.breakSampleNode(xz); return [vec4(b.disp, b.foam), vec4(b.slope, 0.0, 0.0)]; });
+      time.value = t;
+      sets.setEvents(events);
+      renderer.compute(pass);
+      const out = new Float32Array(await renderer.getArrayBufferAsync(outAttr));
+      points.forEach(([x, z], i) => {
+        const f = sampleField(field, x, z), c = sumWaves(x, z, t, f, waves, ctx, o);
+        setFaceDrawn(0); const c0 = sumWaves(x, z, t, f, waves, ctx, o); setFaceDrawn(1);
+        const g = out.slice(i * 8, i * 8 + 8), ch = Math.abs(c.eta - c0.eta) + Math.abs(c.dx - c0.dx) + Math.abs(c.dz - c0.dz);
+        total++;
+        change.see(ch, dt, i);
+        if (ch > 0.05) drawnSamples++;
+        disp.see(Math.max(Math.abs(g[0] - c.dx), Math.abs(g[1] - c.eta), Math.abs(g[2] - c.dz)), dt, i);
+        slope.see(Math.max(Math.abs(g[4] - c.slopeX), Math.abs(g[5] - c.slopeZ)) / Math.max(1, Math.hypot(c.slopeX, c.slopeZ)), dt, i);
+      });
+    }
+    return {
+      pass: disp.value < 0.05 && slope.value < 0.05 && drawnSamples >= 20 && change.value > 0.3,
+      detail: `${total} points; worst |Δdisp| ${disp} m (< 0.05); worst |Δslope| / max(1, |slope|) ${slope} (< 0.05); samples the drawn face moves > 5 cm ${drawnSamples} (>= 20), largest ${change} m (> 0.3)`,
+    };
   },
 });

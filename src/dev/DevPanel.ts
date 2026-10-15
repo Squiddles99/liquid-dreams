@@ -198,6 +198,7 @@ export const BREAK_BINDINGS = {
   standAheadM: { label: 'stand-up ahead of the curl (m)', min: 0, max: 60, step: 1 },
   faceOnSheet: { label: 'drawn face on the sea (0/1)', min: 0, max: 1, step: 1 },
   oneSurface: { label: 'one surface: ribbon draws only the overhang (0/1)', min: 0, max: 1, step: 1 },
+  faceDrawn: { label: 'the stood face is the drawing (0/1)', min: 0, max: 1, step: 1 },
   flightDropA: { label: 'lip flight drop (× A)', min: 0.4, max: 1.5, step: 0.05 },
 } as const;
 

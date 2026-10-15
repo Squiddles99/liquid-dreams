@@ -83,6 +83,8 @@ export interface BreakParams {
   /** One surface by construction (wombSection.ONE_SURFACE; Task 10): the ribbon draws only the overhang, waiting sections
    * draw nothing, the sheet's waiting crest grows into its breaking size (1 = the law, 0 = the section of 2026-10-14). */
   oneSurface: number;
+  /** The sheet's stood face is the drawing's face (wombSection.FACE_DRAWN; Task 11): 1 the law, 0 Task 10's sheet. */
+  faceDrawn: number;
 }
 
 export const DEFAULT_BREAK_PARAMS: BreakParams = {
@@ -120,6 +122,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   standAheadM: 0,
   faceOnSheet: 0,
   oneSurface: 1,
+  faceDrawn: 1,
 };
 
 /** Foam starts once the collapse has run this far (s ≈ 0.64 at the defaults): the lip has landed. */
@@ -185,6 +188,7 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.standAheadM = clampTo(p.standAheadM, 0, 60, d.standAheadM);
   p.faceOnSheet = clampTo(p.faceOnSheet, 0, 1, d.faceOnSheet);
   p.oneSurface = clampTo(p.oneSurface, 0, 1, d.oneSurface);
+  p.faceDrawn = clampTo(p.faceDrawn, 0, 1, d.faceDrawn);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
 }
 
