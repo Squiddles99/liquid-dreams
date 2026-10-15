@@ -4,9 +4,19 @@ import { DEFAULT_FRONT_SETTINGS, sanitizeFrontSettings } from './frontSettings';
 import { SETTING_ROWS, settingsView, stepSetting } from './settingsView';
 
 describe('the Settings overlay (spec §11)', () => {
-  it('has Experience, Text size, Calm menus, Opaque backplates, Safe area, Display mode, Glyphs', () => {
-    expect(settingsView(DEFAULT_FRONT_SETTINGS, 'textScale').map((r) => r.label)).toEqual(['Experience', 'Text size', 'Calm menus', 'Opaque backplates', 'Safe area', 'Display mode', 'Glyphs']);
-    expect(SETTING_ROWS.length).toBe(7);
+  it('has Experience, Rumble, Load meter, Text size, Calm menus, Opaque backplates, Safe area, Display mode, Glyphs', () => {
+    expect(settingsView(DEFAULT_FRONT_SETTINGS, 'textScale').map((r) => r.label)).toEqual(['Experience', 'Rumble', 'Load meter', 'Text size', 'Calm menus', 'Opaque backplates', 'Safe area', 'Display mode', 'Glyphs']);
+    expect(SETTING_ROWS.length).toBe(9);
+  });
+  it('Rumble flips on and off; the load meter cycles auto → on → off (ride-speed spec §5)', () => {
+    expect(stepSetting(DEFAULT_FRONT_SETTINGS, 'rumble', 1).settings.rumble).toBe(false);
+    let s = DEFAULT_FRONT_SETTINGS;
+    const seen: string[] = [];
+    for (let k = 0; k < 3; k++) {
+      s = stepSetting(s, 'loadMeter', 1).settings;
+      seen.push(s.loadMeter);
+    }
+    expect(seen).toEqual(['on', 'off', 'auto']);
   });
   it('steps text size 100–200% in 10% steps and stops at the ends', () => {
     let s = DEFAULT_FRONT_SETTINGS;
@@ -30,6 +40,13 @@ describe('the Settings overlay (spec §11)', () => {
     expect(stepSetting(DEFAULT_FRONT_SETTINGS, 'calmMenus', 1).settings.calmMenus).toBe(!DEFAULT_FRONT_SETTINGS.calmMenus);
     expect(stepSetting(DEFAULT_FRONT_SETTINGS, 'glyphs', 1).settings.glyphs).toBe('xbox');
   });
+  it('each experience says how the pump works there (ride-speed: held for beginners, timed for experts)', () => {
+    const small = (e: 'beginner' | 'intermediate' | 'expert') => settingsView({ ...DEFAULT_FRONT_SETTINGS, experience: e }, 'experience')[0].small;
+    expect(small('beginner')).toMatch(/pump/);
+    expect(small('intermediate')).toMatch(/pump/);
+    expect(small('expert')).toMatch(/pump/);
+  });
+
   it('cycles experience intermediate → expert → beginner → intermediate (R1 §3)', () => {
     let s = DEFAULT_FRONT_SETTINGS;
     const seen = [s.experience];

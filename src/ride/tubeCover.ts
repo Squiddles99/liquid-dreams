@@ -86,3 +86,17 @@ function coverAt(s: Station, x: number, z: number): number {
   for (const k of [-1, 0, 1]) room += smoothstep(TUBE_ROOM_M[0], TUBE_ROOM_M[1], A * roomOver(curve, u + k * TUBE_SOFT_UNITS)) / 3;
   return room * rho * (1 - smoothstep(0.25 * reach, reach, along)) * smoothstep(TUBE_MIN_H_M, TUBE_MIN_H_M + 0.5, s.H);
 }
+
+/** The room under the lip where the rider is (m): the largest over the stations near them; 0 with nothing overhead. */
+export function roomAt(stations: readonly StationEntry[], x: number, z: number): number {
+  let best = 0;
+  for (const s of stations) {
+    if (s.gap || s.H < TUBE_MIN_H_M) continue;
+    const { A, phase, hollow, rho } = s.section;
+    if (!(rho > 0) || !(A > 0)) continue;
+    const dx = x - s.x, dz = z - s.z, ahead = dx * s.nx + dz * s.nz, along = Math.abs(-dx * s.nz + dz * s.nx);
+    if (along > Math.max(TUBE_REACH_M, TUBE_REACH_H * s.H) || ahead <= 0 || ahead > 3 * A) continue;
+    best = Math.max(best, A * roomOver(coverCurve(phase, hollow), ahead / A));
+  }
+  return best;
+}

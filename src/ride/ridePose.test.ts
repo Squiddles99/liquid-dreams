@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { type RideBody, startBody } from './ridePhysics';
 import type { CameraPose } from '../dev/momentLink';
-import { LOOK_HOLD_S, RIDE_BACK_M, RIDE_UP_M, RideCamera } from './ridePose';
+import { LOOK_HOLD_S, RIDE_BACK_M, RIDE_UP_M, RideCamera, rideSurferParams } from './ridePose';
+import { riderDrive } from './riderBody';
 import { flatWater } from './water';
 
 const DT = 1 / 60;
@@ -179,5 +180,50 @@ describe('the take-off camera (R1 §4)', () => {
     const back = -((pose.position[0] - b.x) * line[0] + (pose.position[2] - b.z) * line[1]) * Math.sign(b.vx * line[0] + b.vz * line[1]);
     expect(back).toBeCloseTo(RIDE_BACK_M, 0);
     expect(pose.position[1] - b.y).toBeCloseTo(RIDE_UP_M, 0);
+  });
+});
+
+describe('stand-in poses for the stall (ride-speed Task 8, until part C)', () => {
+  const riding = () => {
+    const b = startBody(0, 0, 0, flatWater());
+    b.phase = 'ride';
+    b.phaseT = 2;
+    b.vz = -8;
+    return b;
+  };
+  it('part C: a hand-drag stall rides as trim, the dials carrying the stall to the pose blend (the barrel stand-in gone)', () => {
+    const b = riding();
+    b.stall = 1;
+    b.stallW = { tall: 0, hand: 1, lowBarrel: 0, standBarrel: 0 };
+    const p = rideSurferParams(b, 0.4);
+    expect(p.pose).toBe('trim');
+    expect(p.drive?.stall).toBe(1);
+    expect(p.drive?.stallW.hand).toBe(1);
+  });
+  it('part C: the bodyboard (prone) gets no dials: no pose blend for him', () => {
+    expect(rideSurferParams(riding(), 0.4, true).drive).toBeNull();
+  });
+  it('the tall stall and plain riding stay in trim, crouched by comH', () => {
+    const b = riding();
+    b.stall = 1;
+    b.comH = 0.85;
+    b.compression = -0.625;
+    expect(rideSurferParams(b, 0.4).pose).toBe('trim');
+  });
+  it('the rider carries their speed to the pose', () => {
+    expect(rideSurferParams(riding(), 0.4).speedMs).toBeCloseTo(8);
+  });
+  it('the bodyboard keeps prone whatever the stall (spec §8)', () => {
+    const b = riding();
+    b.stall = 1;
+    b.stallW = { tall: 0, hand: 1, lowBarrel: 0, standBarrel: 0 };
+    expect(rideSurferParams(b, 0.4, true).pose).toBe('prone');
+  });
+  it('the dials leave the physics as RiderDrive', () => {
+    const b = riding();
+    b.tuck = 0.7;
+    const d = riderDrive(b);
+    expect(d.tuck).toBe(0.7);
+    expect(d.stallW).not.toBe(b.stallW);
   });
 });

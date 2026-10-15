@@ -25,6 +25,12 @@ const YAW_MAX = 60 * DEG;
 /** The chest opened toward the nose on top of a clip, as the code trim's is (Andrew, Gate C): a skater's shoulders face
  * the rail more squarely than a surfer trimming, and the neck then did all the turning. */
 export const CLIP_CHEST_OPEN = 20 * DEG;
+/** How far a contact pull turns the shoulder blade toward a spot out of the arm's reach (the hero rig's CLAVICLE_REACH). */
+export const PULL_CLAVICLE_REACH = 0.45;
+/** Past this share of a leg's full reach, the hips ease off instead of stopping at it (soft knees, never a clunk). */
+export const SOFT_REACH = 0.94;
+/** …and within this of its deepest bend, the hips ease up instead of stopping at it. */
+export const SOFT_FOLD = 1.12;
 
 export interface ClipPoseContext {
   spec: BoardSpec;
@@ -36,6 +42,14 @@ export interface ClipPoseContext {
   /** The surfer pose's hand targets (Andrew, Gate C: a skater's arms hang; a surfer holds them out): when given, the
    * arms are solved to them as solvePose does, the clip keeping everything below the shoulders. */
   hands?: Record<Limb, HandTarget>;
+  /** An authored pose (the ride pose blend, part C): the motion-capture corrections (the base crouch, the chest opened
+   * toward the nose) are skipped, the pose carries its own. */
+  authored?: boolean;
+  /** The compression dial's share (the blend's layers carry the crouch they show): 1 when unset. */
+  compressionScale?: number;
+  /** One hand to a contact (the rail grip, a hand in the wall): the wrist from the same side's ankle in the clip's
+   * character frame, pulled to by `weight` (0 the pose's own hand, 1 on the spot). */
+  pull?: { side: Limb; wrist: Vector3; weight: number };
 }
 export interface ClipSolved extends SolvedPose {
   /** The clip's finger bones' world rotations from rest; absent ones take the relaxed curl (Surfer.applyPose). */
@@ -84,10 +98,12 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
   };
 
   // Feet along the board: turn about the vertical so the trail→lead ankle line runs to the nose (±60° at most).
+  let yawQ = new Quaternion();
   fkAll();
   const line = J[`foot_${lead}`].clone().sub(J[`foot_${trail}`]).setY(0);
   if (line.lengthSq() > 1e-8) {
     const yaw = new Quaternion().setFromAxisAngle(Y, clamp(Math.atan2(line.z, line.x), -YAW_MAX, YAW_MAX));
+    yawQ = yaw;
     turn(yaw, whole);
     P.applyQuaternion(yaw);
   }
@@ -100,14 +116,14 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
   P.add(pivot.clone().sub(J.foot_l.clone().add(J.foot_r).multiplyScalar(0.5)));
 
   // The dials and the balance, as corrections on top of the clip.
-  P.y -= CLIP_COMPRESSION_DROP * m.legLen * clamp(CLIP_BASE_COMPRESSION + ctx.dials.compression, -1, 1.3);
+  P.y -= CLIP_COMPRESSION_DROP * m.legLen * clamp((ctx.authored ? 0 : CLIP_BASE_COMPRESSION) + ctx.dials.compression * (ctx.compressionScale ?? 1), -1, 1.3);
   const lean = clamp(ctx.dials.lean, -1, 1) * CLIP_LEAN_MAX;
   if (lean !== 0) {
     const q = new Quaternion().setFromAxisAngle(leanAxis, lean);
     turn(q, whole);
     P = P.sub(pivot).applyQuaternion(q).add(pivot);
   }
-  const twist = (regular ? 1 : -1) * (CLIP_CHEST_OPEN + clamp(ctx.dials.twist, -1, 1) * CLIP_TWIST_DIAL);
+  const twist = (regular ? 1 : -1) * ((ctx.authored ? 0 : CLIP_CHEST_OPEN) + clamp(ctx.dials.twist, -1, 1) * CLIP_TWIST_DIAL);
   if (twist !== 0) turn(new Quaternion().setFromAxisAngle(Y.clone().applyQuaternion(D.pelvis), twist), chestShare);
   if (ctx.balance) {
     const { lead: bl, trail: bt } = ctx.balance;
@@ -128,6 +144,15 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
     const l1 = len(`thigh_${s}`, `shin_${s}`), l2 = len(`shin_${s}`, `foot_${s}`);
     return { s, l1, l2, maxR: (l1 + l2) * 0.995, minR: minReach(l1, l2, LIMITS.kneeMaxDeg) * 1.01, hipOffset: rest.joint[`thigh_${s}`].clone().sub(rest.joint.pelvis).applyQuaternion(D.pelvis) };
   });
+  // A leg nearing straight eases the hips down rather than stopping them dead at full reach, and one nearing its
+  // deepest bend eases them up (smoothness: the hard stops were clunks): past SOFT_REACH of the leg's reach, or within
+  // SOFT_FOLD of its shortest, the reach is squeezed smoothly into what is left.
+  for (const g of legs) {
+    const v = ankleAt[g.s].clone().sub(P).sub(g.hipOffset), d = v.length(), soft = SOFT_REACH * g.maxR, room = g.maxR - soft;
+    const fold = SOFT_FOLD * g.minR, give = fold - g.minR;
+    if (d > soft) P.add(v.multiplyScalar((d - (soft + room * Math.tanh((d - soft) / room))) / d));
+    else if (d < fold && d > 1e-6) P.add(v.multiplyScalar((d - (fold - give * Math.tanh((fold - d) / give))) / d));
+  }
   // Move the hips (never the feet) until each ankle is in reach: planted feet stay planted (as solvePose).
   for (let it = 0; it < 16; it++) {
     let moved = false;
@@ -150,6 +175,44 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
     D[ft] = aimRotation(restDir(ft, to), Y, toe.sub(J[ft]), Y);
     J[to] = fk(to);
     D[to] = D[ft].clone();
+  }
+
+  // The contact hand (part C): its wrist pulled toward the spot by the weight, two-bone IK from the shoulder, the elbow
+  // keeping the pose's side; the hand's own rotation (the grip's angle, its curled fingers) stays the pose's.
+  if (ctx.pull && ctx.pull.weight > 0) {
+    fkAll();
+    const s = ctx.pull.side, cl: BoneName = `clavicle_${s}`, ua: BoneName = `upperarm_${s}`, fa: BoneName = `forearm_${s}`, h: BoneName = `hand_${s}`;
+    const spot = ankleAt[s].clone().add(ctx.pull.wrist.clone().applyQuaternion(S).applyQuaternion(yawQ));
+    const target = J[h].clone().lerp(spot, clamp(ctx.pull.weight, 0, 1));
+    // Out of the arm's reach (another body's proportions), the shoulder blade turns toward the spot first, as a person
+    // reaching low does (the hero rig's own reach: rigging CLAVICLE_REACH).
+    // It eases in as the spot nears the arm's reach, and with the pull (smoothness: a switch here made the arm jump
+    // between frames). The solve below comes in with the pull too: a near-straight arm's re-solve otherwise kicks the
+    // elbow the moment the weight leaves 0. At full weight it is the solve (the hand on its spot).
+    const r = clamp(ctx.pull.weight, 0, 1), ease = r * r * (3 - 2 * r);
+    const armLen = len(ua, fa) + len(fa, h), u = clamp((J[ua].distanceTo(target) / armLen - 0.84) / 0.14, 0, 1);
+    if (u > 0) {
+      const cur = J[ua].clone().sub(J[cl]).normalize(), want = target.clone().sub(J[cl]).normalize();
+      D[cl] = new Quaternion().slerp(new Quaternion().setFromUnitVectors(cur, want), PULL_CLAVICLE_REACH * u * u * (3 - 2 * u) * ease).multiply(D[cl]);
+      J[ua] = fk(ua);
+      J[fa] = fk(fa);
+      J[h] = fk(h);
+    }
+    // The elbow's way from the pose's own bend; a near-straight arm has none to speak of, so a steady default (back,
+    // off the chest) takes over smoothly rather than the bend's noise flipping the elbow between frames.
+    const p = J[fa].clone().sub(J[ua].clone().add(J[h]).multiplyScalar(0.5)).addScaledVector(NEG_Z.clone().applyQuaternion(D.spine_03), 0.03);
+    const pole = p.lengthSq() > 1e-8 ? p.normalize() : NEG_Z.clone();
+    const keep = D[h].clone().multiply(D[fa].clone().invert());
+    // An arm nearing straight eases toward full stretch rather than locking at it (as the legs: SOFT_REACH).
+    const reach = target.clone().sub(J[ua]), dr = reach.length(), soft = SOFT_REACH * armLen, room = 0.999 * armLen - soft;
+    if (dr > soft) target.copy(J[ua]).addScaledVector(reach, (soft + room * Math.tanh((dr - soft) / room)) / dr);
+    const ik = twoBoneIK(J[ua], target, len(ua, fa), len(fa, h), pole, LIMITS.elbowMaxDeg);
+    const ua0 = D[ua].clone(), fa0 = D[fa].clone();
+    D[ua] = ua0.clone().slerp(aimRotation(restDir(ua, fa), NEG_Z, ik.mid.clone().sub(J[ua]), pole), ease);
+    J[fa] = fk(fa);
+    D[fa] = fa0.clone().slerp(aimRotation(restDir(fa, h), NEG_Z, ik.end.clone().sub(J[fa]), pole), ease);
+    J[h] = fk(h);
+    D[h] = keep.multiply(D[fa]);
   }
 
   // The arms from the surfer pose's targets, when given: the clavicles ride the chest, two-bone IK to each hand (elbow
