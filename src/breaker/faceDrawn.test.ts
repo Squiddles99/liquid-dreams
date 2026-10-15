@@ -117,20 +117,25 @@ describe("the sheet's stood face is the drawing's face (womb-story Task 11)", ()
     expect(sts.length).toBeGreaterThan(0);
     for (const s of sts) {
       const f = compareFace(s.section, sheetY(s));
-      if (!(Math.abs(f.worstDy) <= 0.05 * s.section.A)) bad.push(`along ${shoulderAlong(s.x, s.z).toFixed(1)} ph ${s.section.phase.toFixed(2)}: ${f.worstDy.toFixed(2)} m (${(f.worstDy / s.section.A).toFixed(2)} A) at u ${f.worstAt.toFixed(1)}`);
+      // 2026-10-15 (step 3): the distance from the drawing's face to the sheet, not the height at one u (on the near-vertical
+      // wall a few centimetres of shift read as metres).
+      if (!(Math.abs(f.worstDist) <= 0.05 * s.section.A)) bad.push(`along ${shoulderAlong(s.x, s.z).toFixed(1)} ph ${s.section.phase.toFixed(2)}: ${f.worstDist.toFixed(2)} m (${(f.worstDist / s.section.A).toFixed(2)} A) at u ${f.worstDistAt.toFixed(1)}`);
     }
     expect(bad).toEqual([]);
   });
 
-  it.each(LINE_MOMENTS.map((m) => [m.name, m] as const))('%s: the stood face meets the swell at its foot tangent (no slope step over 3 deg within 1 A of its low)', { timeout: 300_000 }, (_n, m) => {
+  it.each(LINE_MOMENTS.map((m) => [m.name, m] as const))('%s: the stood face meets the swell at its foot tangent (no slope step over 3 deg from its low to 0.25 A past it)', { timeout: 300_000 }, (_n, m) => {
     const { st, sheetY } = lineAt(m), bad: string[] = [];
     for (const s of stood(st)) {
       const y = sheetY(s), A = s.section.A, f = compareFace(s.section, y);
       // The sheet's low in front of the crest, then its direction every 0.05 m over +-1 A about it.
       let lu = f.crestU, ly = Infinity;
-      for (let u = f.crestU; u <= f.crestU + f.faceTo; u += 0.1) { const v = y(u); if (v < ly) { ly = v; lu = u; } }
+      for (let u = f.crestU; u <= f.crestU + f.faceTo + A; u += 0.1) { const v = y(u); if (v < ly) { ly = v; lu = u; } }
       let prev = NaN, worst = 0, at = NaN;
-      for (let u = lu - A; u <= lu + A; u += 0.05) {
+      // 2026-10-15 (step 3): the join is at the face's low and past it (the window was +-1 A, and at phase 1 the drawn face is
+      // 0.75 A long: it read the tube's wall, and the drawing's own floor corner 0.17 A before the low, as the foot; and 1 A past
+      // it the water in front, where the bore's clock steps from ray to ray).
+      for (let u = lu - 0.05 * A; u <= lu + 0.25 * A; u += 0.05) {
         const a = Math.atan2(y(u + 0.05) - y(u), 0.05) * (180 / Math.PI);
         if (Number.isFinite(prev) && Math.abs(a - prev) > worst) { worst = Math.abs(a - prev); at = u - lu; }
         prev = a;

@@ -2,7 +2,7 @@ import { curlFrontAlong } from './curlFront';
 import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetSizeAhead, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
-import { CURL_PHASE, type SectionNumbers, curlWeight, oneSurfaceOn, sectionNumbers, shoulderFactor, shoulderRegion, shoulderU, wallLeadS } from './wombSection';
+import { CURL_PHASE, type SectionNumbers, closeoutWeight, curlWeight, oneSurfaceOn, sectionNumbers, shoulderFactor, shoulderRegion, shoulderU, wallLeadS } from './wombSection';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
@@ -36,10 +36,8 @@ const TURN = NORTH_LEDGE[1];
  * before the turn).
  */
 export const insideLeg = (z: number): boolean => z < TURN[1];
-export const CLOSEOUT_FROM_TURN_M = 10;
-export const CLOSEOUT_FADE_M = 20;
-/** The inside's closeout weight at z: 0 up to CLOSEOUT_FROM_TURN_M north of the turn, 1 from CLOSEOUT_FADE_M beyond. */
-export const closeoutWeight = (z: number): number => smoothstep(CLOSEOUT_FROM_TURN_M, CLOSEOUT_FROM_TURN_M + CLOSEOUT_FADE_M, TURN[1] - z);
+// The closeout weight lives in wombSection (womb-story Task 11: the sheet reads the section's hollow too).
+export { CLOSEOUT_FADE_M, CLOSEOUT_FROM_TURN_M, closeoutWeight } from './wombSection';
 /** The CPU's culling margin over its landing-time estimate (s). */
 export const LOOK_BACK_MARGIN_S = 0.5;
 /** Newton projections onto ξ = 0 per step (the seed takes SEED_ITERATIONS). */

@@ -1,5 +1,5 @@
 import { smoothstep } from '../math/smoothstep';
-import { LEFT_BEARING_DEG, TIP } from '../seabed/wombReef';
+import { LEFT_BEARING_DEG, NORTH_LEDGE, TIP } from '../seabed/wombReef';
 import { UNTIL_NEVER } from './breaking';
 import { hollowFromPsi } from './reefReport';
 import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, type P2, PROFILE_KEYS, SPAN_SAMPLES, STAGES, TIP_KNOT, TROUGH_KNOT, crStep, crTangent, curveSamples, hermitePoint, profileKnots, roundedTip, tipLife } from './wombProfile';
@@ -14,6 +14,12 @@ import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, FRONT_KNOT, type P2, PROFILE_KEY
  */
 
 export const GRAVITY_MS2 = 9.81;
+/** The inside leg's closeout (crestTrace.insideLeg; moved here for the sheet, womb-story Task 11): a section's hollow fades
+ * to 0 from CLOSEOUT_FROM_TURN_M north of the left's turn (wombReef.NORTH_LEDGE's corner) over CLOSEOUT_FADE_M. */
+export const CLOSEOUT_FROM_TURN_M = 10;
+export const CLOSEOUT_FADE_M = 20;
+/** The inside's closeout weight at z: 0 up to CLOSEOUT_FROM_TURN_M north of the turn, 1 from CLOSEOUT_FADE_M beyond. */
+export const closeoutWeight = (z: number): number => smoothstep(CLOSEOUT_FROM_TURN_M, CLOSEOUT_FROM_TURN_M + CLOSEOUT_FADE_M, NORTH_LEDGE[1][1] - z);
 /** The profile at onset stands this many units crest to trough (wombProfile's pitching key: 1 above sea level, 0.3 below). */
 export const ONSET_HEIGHT_UNITS = 1.3;
 /**
@@ -361,6 +367,17 @@ export const ONE_SURFACE = 1;
 const ONE = { on: ONE_SURFACE };
 export const setOneSurface = (v: number): void => { ONE.on = v; };
 export const oneSurfaceOn = (): number => ONE.on;
+/**
+ * The sheet's stood face is the drawing's face (womb-story Task 11, Fable's STOP 3 ruling 1): below the roof's root, and on a
+ * section waiting its turn the whole face, the sheet stands up into the approved drawing's face (faceTable: wombProfile's keys
+ * at the crest's phase and hollow, u by A, y the sheet's own crest to its own trough), met tangent at its foot
+ * (setWaveModel.waveAtCrest). The dial faceDrawn (1 = Task 11's law, 0 = Task 10's sheet: the squeezed swell face); the GPU
+ * mirrors it (SetWaves).
+ */
+export const FACE_DRAWN = 1;
+const FACE_D = { on: FACE_DRAWN };
+export const setFaceDrawn = (v: number): void => { FACE_D.on = v; };
+export const faceDrawnOn = (): number => FACE_D.on;
 /** The drawing's tube top-back, where the roof meets the face: the root. */
 export const ROOT_KNOT = TIP_KNOT + 2;
 export const SECTION_ROOT = sectionKnot(ROOT_KNOT);

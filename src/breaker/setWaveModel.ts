@@ -1,5 +1,7 @@
 import { curlFrontAlong } from './curlFront';
-import { BORE_SHARE, boreWeight, flightTime, frontWeight, handDownSpan, oneSurfaceOn, shoulderFactor, shoulderRegion, shoulderU, wallWeight } from './wombSection';
+import { BORE_SHARE, boreWeight, closeoutWeight, faceDrawnOn, flightTime, frontWeight, handDownSpan, oneSurfaceOn, sectionPhase, sectionSize, shoulderFactor, shoulderRegion, shoulderU, wallWeight } from './wombSection';
+import { hollowFromPsi } from './reefReport';
+import { faceLengthRef, faceShapeIn } from './faceTable';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -430,6 +432,56 @@ export function crestStage(x: number, z: number, t: number, f: FieldSample, w: A
   return crestAt(x, z, t, f, w, ctx, o)?.s ?? 0;
 }
 
+/**
+ * The section's numbers read at a crest (womb-story Task 11), as crestTrace reads a station there (unsmoothed along the
+ * crest): its phase (wombSection.sectionPhase: held or waiting, the stand-up by the clock; broken, the lip's flight, the hold,
+ * the collapse from the size it broke at), its hollowness (from its psi, faded on the inside's closeout) and its scale A.
+ */
+export function crestSection(w: ActiveWave, crest: Crest, o?: BreakOptions): { A: number; phase: number; hollow: number } {
+  // The record at the crest the lookup found (with `o`), not on the point's own ray: the lookup walks the wave's own travel
+  // direction, the same at every point, so across one face its points read crests a few metres apart along the crest; on
+  // their own rays they read crests twice as far apart (2.7 m over a 5 m face at 7 ft), through the lip's pitch a tenth of a
+  // phase or more, and the drawn face of one cross-section took several shapes (a notch 2 m deep).
+  const rec = o?.onset?.(crest.x, crest.z) ?? null, p = o?.params;
+  const tb0 = rec && p ? onsetTime(rec, 0, w.heightM, p) : crest.tb ?? null;
+  const tb = tb0 ?? null, broken = tb !== null && tb >= 0, held = tb !== null && tb < 0;
+  const until = rec && p ? onsetUntil(rec, 0, w.heightM, p) : crest.until;
+  const size = rec && p ? onsetSizeAhead(rec, 0, w.heightM, p) : crest.size;
+  const s = { H: crestHeight(w, crest), Hb: broken ? size : null, r: crest.r, tb: broken ? tb : null, until: held ? -tb! : until, psi: crest.psi, periodS: (2 * Math.PI) / w.omega, x: crest.x, z: crest.z };
+  const phase = sectionPhase(s, { ribbonOnset: crest.params.ribbonOnset });
+  return { A: sectionSize(s, phase), phase, hollow: hollowFromPsi(crest.psi) * (1 - closeoutWeight(crest.z)) };
+}
+
+/** The drawn face comes in with the stand-up, eased: smoothstep(0, FACE_IN_STANDING, frontStanding), then is the drawing's at
+ * the section's phase (Task 11). 1: the stand-up itself, eased (at 0.25, in by 4.0 s before the break, the take-off's face was
+ * the drawing's short face 3 s before it broke and the ride bot on Solid wiped or fell behind it within 0.6-1.4 s of its pop-up;
+ * at 0.6 the same; at 1, 4 of 4 held). */
+export const FACE_IN_STANDING = 1;
+const FACE_IN = { standing: FACE_IN_STANDING };
+/** The dial faceInStanding (probes and the A/B; default FACE_IN_STANDING). */
+export const setFaceInStanding = (v: number): void => { FACE_IN.standing = v; };
+/** The drawn face's squeeze stays between these shares of the half wavelength (guards, not dials): at LEAN_FRONT_MIN (0.3, the
+ * swell's) as its ceiling the 12 ft broken face came out shorter than the drawing's and the drawing was squeezed into it. */
+export const DRAWN_FRONT_FLOOR = 0.02;
+export const DRAWN_FRONT_CEIL = 0.9;
+/**
+ * The drawn face at a crest (womb-story Task 11): its section's phase and hollow, and the front's squeeze (leanPhase's
+ * frontMin) that makes the stood face, crest to foot on the displaced surface, as long as the drawing's face (faceTable's L x
+ * A): in the crest's frame (its height, wavenumber, fold and pitch, as crestFrame), phi pi / q - hAmp sin(phi pi) - pitch x
+ * drop = L x A, by Newton; q the swell's phase per metre along the ray at the point (`thetaPerM`: the arrival-time field's
+ * own, which on the ledge is about two thirds of the local wavenumber: the field refracts over a floored depth).
+ */
+export function drawnFace(w: ActiveWave, crest: Crest, o?: BreakOptions, thetaPerM = crest.f.k): { phase: number; hollow: number; frontMin: number; ref: number } {
+  const { A, phase, hollow } = crestSection(w, crest, o), ref = faceLengthRef(phase, hollow), Lt = ref * A;
+  const k = crest.f.k, Hc = crestHeight(w, crest), ac = Hc / 2, hAmp = Math.min(ac, FOLD_LIMIT / k);
+  const pitch = Math.min(PITCH_MAX * smoothstep(0.3, BREAKING_RATIO, Hc / Math.max(crest.f.hmin, MIN_DEPTH_M)), PITCH_KA_CAP / Math.max(k * ac, 1e-4));
+  const rhs = Lt + pitch * Hc;
+  const q = thetaPerM;
+  let x = Math.min(Math.PI, (q * rhs) / Math.max(1 - hAmp * q, 0.1));
+  for (let i = 0; i < 3; i++) x = Math.min(Math.PI, Math.max(0, x - (x / q - hAmp * Math.sin(x) - rhs) / (1 / q - hAmp * Math.cos(x))));
+  return { phase, hollow, frontMin: Math.min(DRAWN_FRONT_CEIL, Math.max(DRAWN_FRONT_FLOOR, x / Math.PI)), ref };
+}
+
 /** One wave at one point, given its crest (null, or neither steepening nor breaking: the Phase 1 wave exactly). */
 export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext, crest: Crest | null, o?: BreakOptions): SetWaveResult {
   const xi = phaseXi(x, z, t, f, w, ctx);
@@ -453,23 +505,58 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const theta = w.omega * xi;
   const aE = A * env * lateral;
   // The front's lean (LEAN_RATIO): the trough moves in to the face's foot as the wave shoals.
-  const { th, dth } = o?.shape === 'lean' && crest
-    ? leanPhase(theta, smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence,
-      LEAN_FRONT_MIN + (wombFrontMin(localHeight(w, crest.f), crest.f.k) - LEAN_FRONT_MIN) * frontStanding(crest.tb, crest.r, crest.params.ribbonOnset, crest.until, shoulderRegion(crest.x, crest.z)))
-    : leanPhase(theta, o?.shape === false ? 0 : leanWeight(crest));
+  const leanW = crest ? smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence : 0;
+  const standing = o?.shape === 'lean' && crest ? frontStanding(crest.tb, crest.r, crest.params.ribbonOnset, crest.until, shoulderRegion(crest.x, crest.z)) : 0;
+  // Task 11: the stood face is the drawing's (drawnFace): its length sets how far the front squeezes.
+  // Its points are placed by the arrival-time field's own rate along the ray (xi per metre, read over 1 m ahead), not k.
+  let xiPerM = f.k / ctx.omega;
+  if (o?.shape === 'lean' && crest && faceDrawnOn() > 0.5 && standing > 0) {
+    const x2 = x + f.dirX, z2 = z + f.dirZ;
+    xiPerM = Math.max(xi - phaseXi(x2, z2, t, o.sample(x2, z2), w, ctx), (0.2 * f.k) / ctx.omega);
+  }
+  const drawn = o?.shape === 'lean' && crest && faceDrawnOn() > 0.5 && standing > 0 ? drawnFace(w, crest, o, w.omega * xiPerM) : null;
+  const stoodIn = drawn ? smoothstep(0, FACE_IN.standing, standing) : standing;
+  const frontMin = o?.shape === 'lean' && crest ? LEAN_FRONT_MIN + ((drawn ? drawn.frontMin : wombFrontMin(localHeight(w, crest.f), crest.f.k)) - LEAN_FRONT_MIN) * stoodIn : LEAN_FRONT_MIN;
+  const { th, dth } = o?.shape === 'lean' && crest ? leanPhase(theta, leanW, frontMin) : leanPhase(theta, o?.shape === false ? 0 : leanWeight(crest));
   const leaning = th !== theta || dth !== 1;
   const shape = Math.cos(th) + B * Math.cos(2 * th);
   // Settled into the bore, the wave is stretched down from its crest so its troughs stay the swell's (boreSettle).
   const crestShape = settle.offset * (1 + B);
-  const eta = aE * (settle.stretch * shape + crestShape);
+  const etaO = aE * (settle.stretch * shape + crestShape);
   const hAmp = Math.min(aE, FOLD_LIMIT / f.k);
   const nearBreaking = smoothstep(0.3, BREAKING_RATIO, H / Math.max(f.hmin, MIN_DEPTH_M));
   const pitch = Math.min(PITCH_MAX * nearBreaking, PITCH_KA_CAP / Math.max(f.k * aE, 1e-4));
-  const dh = hAmp * Math.sin(theta) + pitch * eta;
-  const dEtaDXi = A * lateral * (dEnv * (settle.stretch * shape + crestShape) - settle.stretch * env * w.omega * dth * (Math.sin(th) + 2 * B * Math.sin(2 * th)));
+  const dhO = hAmp * Math.sin(theta) + pitch * etaO;
+  const dEtaDXiO = A * lateral * (dEnv * (settle.stretch * shape + crestShape) - settle.stretch * env * w.omega * dth * (Math.sin(th) + 2 * B * Math.sin(2 * th)));
   const dXiDs = -f.k / ctx.omega;
-  const jacobian = Math.max(0.2, 1 + (hAmp * w.omega * Math.cos(theta) + pitch * dEtaDXi) * dXiDs);
-  const slopeAlong = (dEtaDXi * dXiDs) / jacobian;
+  const jacU = 1 + (hAmp * w.omega * Math.cos(theta) + pitch * dEtaDXiO) * dXiDs;
+  const jacobian = Math.max(0.2, jacU);
+  let eta = etaO, dh = dhO, slopeAlong = (dEtaDXiO * dXiDs) / jacobian;
+  // Task 11 (wombSection.FACE_DRAWN): the face (crest to the leaned foot, theta 0 -> -phi pi) is the drawing's face. Its points
+  // are spread evenly from the crest's place to the foot's (s = theta / -phi pi; the places as the leaned wave puts them, in
+  // the point's own terms, so the face meets the back and the water in front where the leaned wave does: on its near-vertical
+  // stood face the leaned wave's own places fold back), at the drawing's height there: aE x (stretch x (S(s) + B) + crestShape),
+  // S the drawn face (faceTable; 1 at the crest, -1 at the foot, both level). Weighted by the stand-up (in by FACE_IN_STANDING)
+  // x the lean's weight.
+  const phi = 1 - leanW * (1 - frontMin), wf = drawn ? stoodIn * leanW : 0;
+  if (wf > 0 && theta <= 0 && theta >= -phi * Math.PI) {
+    const etaC = aE * (settle.stretch * (1 + B) + crestShape), etaF = aE * (settle.stretch * (B - 1) + crestShape);
+    const uC = pitch * etaC, uF = (phi * Math.PI) / w.omega / xiPerM - hAmp * Math.sin(phi * Math.PI) + pitch * etaF, L = uF - uC;
+    if (L > 1e-6) {
+      const sF = theta / (-phi * Math.PI), dsDXi = -w.omega / (phi * Math.PI);
+      const { S, dS } = faceShapeIn(drawn!.phase, drawn!.hollow, sF, drawn!.ref);
+      const etaD = aE * (settle.stretch * (S + B) + crestShape);
+      const dEtaDXiD = A * lateral * dEnv * (settle.stretch * (S + B) + crestShape) + aE * settle.stretch * dS * dsDXi;
+      // The place along the ray: the drawn point at uC + s L, less the point's own undisplaced place (-xi / xiPerM).
+      const dhD = uC + sF * L + xi / xiPerM;
+      eta = etaO + (etaD - etaO) * wf;
+      dh = dhO + (dhD - dhO) * wf;
+      // The slope along the travel: d eta / d u over the blend, u's rate in xi the leaned wave's (its Jacobian, floored as
+      // the leaned wave's slope is) and the drawn spread's.
+      const dUO = jacobian / dXiDs, dUD = L * dsDXi;
+      slopeAlong = (dEtaDXiO + (dEtaDXiD - dEtaDXiO) * wf) / (dUO + (dUD - dUO) * wf);
+    }
+  }
   const out: SetWaveResult = { eta, dx: f.dirX * dh, dz: f.dirZ * dh, slopeX: f.dirX * slopeAlong, slopeZ: f.dirZ * slopeAlong, foam: 0, stage: crest ? crest.s * crest.confidence : 0, pile: 0 };
   if (!o || !crest || !(crest.lc.stage > 0 || crest.lc.steep > 0 || crest.lc.drain > 0)) return out;
   // The crest's frame (height, Stokes ratio, wavenumber, lean, bore depth) sets the shape's scale for the whole

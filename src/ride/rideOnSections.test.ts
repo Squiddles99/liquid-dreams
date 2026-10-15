@@ -6,7 +6,8 @@ import { DEFAULT_SET_PARAMS, wavesBetween, wavesNear } from '../swell/sets';
 import { DEFAULT_BREAK_PARAMS as P } from '../breaker/breaking';
 import { type Station, minRibbonHeight, traceLines, traceStations } from '../breaker/crestTrace';
 import { sampleField } from '../breaker/reefField';
-import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import { breakOptions, fieldBreakingHeight, setFaceInStanding, sumWaves, toActiveWave } from '../breaker/setWaveModel';
+import { setFaceDrawn } from '../breaker/wombSection';
 import { withSections } from './sectionWater';
 import { type WaterFn, waterAt } from './water';
 import { type Experience, type RideEvent, TUNING, startBody, stepRide } from './ridePhysics';
@@ -23,6 +24,9 @@ import { DEFAULT_REEF_PARAMS, NORTH_LEDGE, ledgeAlongM } from '../seabed/wombRee
  * for the wave to stand up: popped as soon as it lifted, the rider was left on the gentle front and the wave ran on), then
  * steers to hold a surfer's line, LINE_OFF_DEG off the swell toward the left, and is gated on riding in front of the crest.
  */
+// LD_FACE_DRAWN / LD_FACE_IN (womb-story Task 11, 2026-10-15): the same rides on Task 10's sheet (0) or another face-in.
+if (process.env.LD_FACE_DRAWN !== undefined) setFaceDrawn(Number(process.env.LD_FACE_DRAWN));
+if (process.env.LD_FACE_IN !== undefined) setFaceInStanding(Number(process.env.LD_FACE_IN));
 describe('a ride on the drawn sections', () => {
   // The smallest offered band at every Experience level (plan Review Focus 5: the assist is forgiveness, not the engine), the
   // biggest at intermediate (womb-retune Task 5: the select screen offers Solid to Huge on the real shelf). The game's field:

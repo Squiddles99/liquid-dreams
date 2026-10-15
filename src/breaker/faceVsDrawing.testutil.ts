@@ -10,7 +10,8 @@
  * the lowest (the floor's branch: what a board stands on).
  */
 import { CREST_KNOT, FRONT_KNOT, SPAN_SAMPLES, TIP_KNOT, TROUGH_KNOT, densePoint, roundedKnots } from './wombProfile';
-import { ROOT_KNOT, STOOD_PHASE } from './wombSection';
+import { faceEnvelope } from './faceTable';
+import { CREST_EDGE_SHARE, ROOT_KNOT, STOOD_PHASE } from './wombSection';
 
 export type Pt = [number, number];
 
@@ -36,13 +37,13 @@ export function lowestAt(pts: readonly Pt[], a: number, b: number, u: number): n
 export interface FaceRow { du: number; sheet: number; draw: number; dy: number; sSheet: number; sDraw: number }
 export interface FaceCompare {
   A: number; seatScale: number; uLow: number; phase: number; hollow: number; crestU: number; crestY: number; faceFrom: number; faceTo: number;
-  troughDy: number; worstDy: number; worstAt: number; meanAbsDy: number; maxSlopeSheet: number; maxSlopeDraw: number;
+  troughDy: number; worstDy: number; worstAt: number; worstDist: number; worstDistAt: number; meanAbsDy: number; maxSlopeSheet: number; maxSlopeDraw: number;
   rider: { u: number; sheet: number; draw: number; dy: number } | null; rows: FaceRow[]; sheetProfile: Pt[]; drawn: Pt[];
 }
 
 /**
  * The sheet along a line (`sheetY(u)`: its height above still water at u m along the section's normal) against the seated
- * drawing at `numbers`: per 0.5 m of u from the face's start to the front knot, the sheet, the drawing, their difference and
+ * drawing at `numbers`: per 0.5 m of u from the face's start to its lowest point, the sheet, the drawing, their difference and
  * both slopes (down the face positive). The sheet's crest: its highest point from `behind` A behind u 0 to 1 A ahead.
  * `riderU`: a board's u, read there too.
  */
@@ -51,12 +52,26 @@ export function compareFace(numbers: { A: number; phase: number; hollow: number 
   let cu = 0, cy = -Infinity;
   for (let u = -behind * A; u <= A; u += 0.05) { const y = sheetY(u); if (y > cy) { cy = y; cu = u; } }
   const d = drawnCurve(phase, hollow);
-  let yLow = 0, uLow = 0;
-  for (let j = d.from; j <= d.to; j++) if (d.pts[j][1] < yLow) { yLow = d.pts[j][1]; uLow = d.pts[j][0]; }
+  // 2026-10-15 (Task 11 step 3): the face ends at the drawing's lowest point (there it joins the sheet's swell: past it the
+  // drawing's "flat sea" is still water, the sheet's the swell's trough); and the crest is the sheet's crest edge, where it has
+  // fallen 3 % of its face below its top (wombSection.CREST_EDGE_SHARE, as the ribbon's crest knot sits: a broken crest's top
+  // is a plateau metres long and its highest point lay behind the face).
+  // The drawing's face (faceTable.faceEnvelope: its front silhouette) gives its top, its crest edge (3 % of its drop below the
+  // top, as the sheet's) and its low, in the drawn curve's frame (its crest knot at 0).
+  const k0 = roundedKnots(phase, hollow)[CREST_KNOT], fe = faceEnvelope(phase, hollow);
+  const env = fe.pts.map((p): Pt => [p[0] - k0[0], p[1] - k0[1]]), yTop = env[fe.top][1], yLow = env[fe.low][1], uLow = env[fe.low][0];
+  let jLow = d.to;
+  for (let j = d.from; j <= d.to; j++) if (Math.abs(d.pts[j][0] - uLow) < 1e-9 && Math.abs(d.pts[j][1] - yLow) < 1e-9) { jLow = j; break; }
+  const dEdge = yTop - CREST_EDGE_SHARE * (yTop - yLow);
+  let e: Pt = env[fe.top];
+  for (let i = fe.top; i < fe.low; i++) if (env[i + 1][1] < dEdge) { const [ua, ya] = env[i], [ub, yb] = env[i + 1], f = (dEdge - ya) / (yb - ya); e = [ua + (ub - ua) * f, dEdge]; break; }
   let sLow = Infinity;
-  for (let u = cu; u <= cu + A * d.pts[d.to][0]; u += 0.1) sLow = Math.min(sLow, sheetY(u));
-  const sy = yLow < 0 ? (cy - sLow) / (-yLow * A) : 1;
-  const pts = d.pts.map((p): Pt => [cu + A * p[0], cy + A * sy * p[1]]);
+  for (let u = cu; u <= cu + A * (uLow - e[0] + 1.5); u += 0.1) sLow = Math.min(sLow, sheetY(u));
+  while (sheetY(cu + 0.05) >= cy - CREST_EDGE_SHARE * (cy - sLow) && cu < A * (uLow + 1)) cu += 0.05;
+  cy = sheetY(cu);
+  const sy = yLow < e[1] ? (cy - sLow) / ((e[1] - yLow) * A) : 1;
+  const pts = d.pts.map((p): Pt => [cu + A * (p[0] - e[0]), cy + A * sy * (p[1] - e[1])]);
+  d.to = jLow;
   const u0 = pts[d.from][0], u1 = pts[d.to][0];
   const rows: FaceRow[] = [];
   for (let u = Math.ceil(u0 / 0.5) * 0.5; u <= u1; u += 0.5) {
@@ -71,8 +86,27 @@ export function compareFace(numbers: { A: number; phase: number; hollow: number 
   const sheetProfile: Pt[] = [];
   for (let u = cu - 2 * A; u <= u1 + A; u += 0.25) sheetProfile.push([u - cu, sheetY(u)]);
   const finite = (xs: number[]): number[] => xs.filter(Number.isFinite);
+  // The distance (m, + the sheet above) from the drawing's face (its front silhouette, faceTable.faceEnvelope, from the face's
+  // start to its low) to the sheet's curve: on a near-vertical wall a height difference reads a few centimetres of shift as
+  // metres.
+  const sheetPts: Pt[] = [];
+  for (let u = u0 - A; u <= u1 + A; u += 0.05) sheetPts.push([u, sheetY(u)]);
+  let worstDist = 0, worstDistAt = NaN;
+  for (let i = fe.top; i <= fe.low; i++) {
+    const q: Pt = [cu + A * (env[i][0] - e[0]), cy + A * sy * (env[i][1] - e[1])];
+    if (q[0] < u0 - 1e-9) continue;
+    let best = Infinity, sign = 1;
+    for (let k = 0; k + 1 < sheetPts.length; k++) {
+      const [ax, ay] = sheetPts[k], [bx, by] = sheetPts[k + 1], ex = bx - ax, ey = by - ay, L2 = ex * ex + ey * ey;
+      const f = L2 > 0 ? Math.min(1, Math.max(0, ((q[0] - ax) * ex + (q[1] - ay) * ey) / L2)) : 0;
+      const dx = q[0] - (ax + ex * f), dy = q[1] - (ay + ey * f), dd = Math.hypot(dx, dy);
+      if (dd < best) { best = dd; sign = ex * dy - ey * dx >= 0 ? -1 : 1; }
+    }
+    if (best > Math.abs(worstDist)) { worstDist = sign * best; worstDistAt = q[0] - cu; }
+  }
   return {
-    A, seatScale: sy, uLow: uLow * A, phase, hollow, crestU: cu, crestY: cy, faceFrom: u0 - cu, faceTo: u1 - cu,
+    worstDist, worstDistAt,
+    A, seatScale: sy, uLow: (uLow - e[0]) * A, phase, hollow, crestU: cu, crestY: cy, faceFrom: u0 - cu, faceTo: u1 - cu,
     troughDy: sheetY(pts[d.trough][0]) - pts[d.trough][1], worstDy: worst.dy, worstAt: worst.du,
     meanAbsDy: ok.reduce((a, r) => a + Math.abs(r.dy), 0) / Math.max(1, ok.length),
     maxSlopeSheet: Math.max(...finite(rows.map((r) => r.sSheet))), maxSlopeDraw: Math.max(...finite(rows.map((r) => r.sDraw))),
