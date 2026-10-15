@@ -1,5 +1,5 @@
 // src/frontend/library.ts: the Library's data (library spec §1, §3): the loading slides' fact cards in six categories, A–Z.
-import cardsJson from '../../art/loading/cards.json';
+import cardsJson from './loadingCards.json';
 import type { SlideCard } from '../app/loadingSlides';
 
 /** The grid's columns, at every resolution and text size (spec §4). */

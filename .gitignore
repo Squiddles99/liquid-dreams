@@ -7,10 +7,6 @@ dist/
 reference/
 
 # Local tooling
-tools/surfer/previews/
-tools/surfer/__pycache__/
-tools/heath/previews/
-tools/heath/__pycache__/
 *.log
 .DS_Store
 Thumbs.db
@@ -22,15 +18,9 @@ Thumbs.db
 # Licensed animation clips: never publish (clip slice spec 2026-10-03 §3.2)
 anim-source/
 public/surfer/clips/
-tools/surfer/previews-before/
 
 # Brainstorming companion mockups (local only)
 .superpowers/
 
-# Part C capture videos (~28 MB each): sent to Andrew, not kept in git
-docs/art/anim/ride-blend-*.mp4
-docs/art/anim/ride-smooth-*.mp4
-
-# Blender hero build output and its Python cache (local only)
+# Build output (local only)
 /build/
-tools/hero/__pycache__/

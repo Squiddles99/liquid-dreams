@@ -88,7 +88,6 @@ Settings are remembered between visits.
   - The balance layer adds the knees' give to the swell's heave, and its amount.
   - x and z, the height nudge and the pitch nudge place the board.
   - Buttons: **Place ahead of camera** (on the water 6 m in front of you, facing the way you look) and **Chase view** (the camera behind and above the surfer).
-  - Rebuilding the bodies from MakeHuman (Blender with MPFB): see `tools/surfer/README.md`.
 - **Reef, Ocean, Water, Sky, Picture:** the reef's depths, the sea and its optics, the atmosphere, and exposure and grading. The Reef folder has overlays for depth contours, crest lines and the ribbon tint.
 - **Frame rate:** capped at 60 fps. Picture → "max fps" changes it; 0 means the display's rate.
 
@@ -155,7 +154,3 @@ npm run typecheck
   - `?selftest` runs the GPU and audio self-tests instead of the game.
   - `?fresh` starts from the defaults without loading or saving settings.
 - **WebGPU:** it needs a WebGPU browser (current Chrome or Edge). On hybrid-GPU laptops, set the browser to "High performance" in Windows Graphics settings and fully quit the browser (including background processes) before relaunching. The stats overlay names the GPU in use. Keep both GPU drivers current.
-- **Design docs:**
-  - specs: `docs/superpowers/specs/`;
-  - plans: `docs/superpowers/plans/`;
-  - each phase's captures, measured costs and tuning points: `docs/superpowers/gallery/`.
