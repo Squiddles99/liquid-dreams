@@ -21,7 +21,8 @@ export const FOLLOW = {
   pump: { in: 0.7, out: 0.8 },
   tuck: { in: 0.85, out: 0.95 },
   stallTall: { in: 0.85, out: 0.7 },
-  stallHand: { in: 0.75, out: 0.85 },
+  // The hand drag in 0.6 s (overnight fix 2026-10-16 T4(b): at 0.75 Andrew saw nothing happen on Shift).
+  stallHand: { in: 0.6, out: 0.85 },
   stallLowBarrel: { in: 0.75, out: 0.9 },
   stallStandBarrel: { in: 0.85, out: 0.75 },
   driveOut: { in: 0.6, out: 0.85 },

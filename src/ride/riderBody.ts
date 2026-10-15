@@ -205,6 +205,10 @@ export const UNDER_LIP_COVER = 0.2;
 export const HIGH_FACE = 0.6;
 export const STEEP_SLOPE = 0.8;
 export const CREST_CLOSE_M = 2;
+/** The hand drag near the curl (overnight fix 2026-10-16 T4(b), Andrew: "Shift does nothing I can see"): with the crest
+ * within this many body heights behind, or under any cover short of the barrel stalls, the stall is the hand drag; the tall
+ * stall (which reads as standing straighter) only far out on the shoulder. */
+export const HAND_STALL_BODY_HEIGHTS = 1.5;
 export const WEIGHT_TAU_S = 0.15;
 export const DRIVE_OUT_S = 0.6;
 /** Each stall's centre of mass height (spec §4.3). */
@@ -232,7 +236,7 @@ export function stallKind(ctx: RideContext, alongSpeed: number, standH: number, 
     const makes = ctx.closeout || alongSpeed >= ctx.curlSpeed;
     return room && makes ? 'standBarrel' : 'lowBarrel';
   }
-  if ((ctx.faceHigh > HIGH_FACE && slope > STEEP_SLOPE) || ctx.crestBehindM < CREST_CLOSE_M) return 'hand';
+  if ((ctx.faceHigh > HIGH_FACE && slope > STEEP_SLOPE) || ctx.cover > 0 || ctx.crestBehindM < Math.max(CREST_CLOSE_M, HAND_STALL_BODY_HEIGHTS * standH)) return 'hand';
   return 'tall';
 }
 
