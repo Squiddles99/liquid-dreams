@@ -175,6 +175,9 @@ export interface SetWaveResult {
   /** Largest crest stage among the waves here [0, 1], each weighted by its crest lookup's confidence (a readout only:
    * a wave far past its crest reads 0 instead of whatever stage its unconverged lookup landed on). */
   stage: number;
+  /** How far this point's surface is the drawing's stood face (womb-story Task 11: the face's blend weight, crest to the
+   * leaned foot; max over waves), 0 elsewhere or absent. The ride reads that face as the drawn wave (sectionWater). */
+  drawn?: number;
 }
 
 /** Breaking switched on: how to read the field at the crest, and the shape's parameters. */
@@ -532,6 +535,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   // S the drawn face (faceTable; 1 at the crest, -1 at the foot, both level). Weighted by the stand-up (in by FACE_IN_STANDING)
   // x the lean's weight.
   const phi = 1 - leanW * (1 - frontMin), wf = drawn ? stoodIn * leanW : 0;
+  let onFace = 0;
   if (wf > 0 && theta <= 0 && theta >= -phi * Math.PI) {
     const etaC = aE * (settle.stretch * (1 + B) + crestShape), etaF = aE * (settle.stretch * (B - 1) + crestShape);
     const uC = pitch * etaC, uF = (phi * Math.PI) / w.omega / xiPerM - hAmp * Math.sin(phi * Math.PI) + pitch * etaF, L = uF - uC;
@@ -548,9 +552,11 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
       // the leaned wave's slope is) and the drawn spread's.
       const dUO = jacobian / dXiDs, dUD = L * dsDXi;
       slopeAlong = (dEtaDXiO + (dEtaDXiD - dEtaDXiO) * wf) / (dUO + (dUD - dUO) * wf);
+      onFace = wf;
     }
   }
   const out: SetWaveResult = { eta, dx: f.dirX * dh, dz: f.dirZ * dh, slopeX: f.dirX * slopeAlong, slopeZ: f.dirZ * slopeAlong, foam: 0, stage: crest ? crest.s * crest.confidence : 0, pile: 0 };
+  if (onFace > 0) out.drawn = onFace;
   if (!o || !crest || !(crest.lc.stage > 0 || crest.lc.steep > 0 || crest.lc.drain > 0)) return out;
   // The crest's frame (height, Stokes ratio, wavenumber, lean, bore depth) sets the shape's scale for the whole
   // cross-section; this point's own unbroken position and height are what get steepened, drained and settled.
@@ -662,6 +668,7 @@ export function crestPileTop(x: number, z: number, t: number, f: FieldSample, w:
 function accumulate(out: SetWaveResult, r: SetWaveResult): void {
   out.eta += r.eta; out.dx += r.dx; out.dz += r.dz; out.slopeX += r.slopeX; out.slopeZ += r.slopeZ;
   out.foam = Math.max(out.foam, r.foam); out.stage = Math.max(out.stage, r.stage); out.pile = Math.max(out.pile, r.pile);
+  if (r.drawn !== undefined) out.drawn = Math.max(out.drawn ?? 0, r.drawn);
 }
 
 /** The lowest the summed set-wave η may go at a point with this field sample: SEABED_CLEARANCE_M above the bed. */

@@ -20,6 +20,22 @@ import { INVERT_ITERATIONS, type WaterAt, type WaterFn } from './water';
  * the foam, throws the rider.
  */
 export const MAX_SECTION_SLOPE = 2;
+
+/**
+ * The sheet where it is the drawing's stood face (womb-story Task 11: setWaveModel's drawn face, WaterAt.drawnFace) is the
+ * drawn wave too, ahead of the curl where no station draws a section (the one-surface law): its slope reads at most
+ * MAX_SECTION_SLOPE, as a section's does, wherever the sheet is that face at all (its weight, the leaned wave's blend into the
+ * drawing, peaks under 1 where the lean's confidence does: 0.91 at Solid's take-off, where the blend still stood at a slope of
+ * 11; the face is level at the crest and the foot, so the cap has no edge). Without it the bot of the frame profile
+ * (tools/_rideProfile) wiped out on the near-vertical waiting face 0.1-0.2 s after its pop-up (slope 2.3-2.8, foam 0, the
+ * nearest station 62 m along: the wipe regression of 2026-10-15). The sheet's own steepness elsewhere reads raw.
+ */
+export function asDrawnFace(w: WaterAt): WaterAt {
+  const d = w.drawnFace ?? 0, g = Math.hypot(w.slopeX, w.slopeZ);
+  if (!(d > 0) || !(g > MAX_SECTION_SLOPE)) return w;
+  const k = MAX_SECTION_SLOPE / g;
+  return { ...w, slopeX: w.slopeX * k, slopeZ: w.slopeZ * k };
+}
 /** A point further than this (m) along the crest from the nearest station is off the ribbon. */
 export const MAX_ALONG_M = 6;
 
@@ -158,7 +174,7 @@ interface LazyCurve {
 export function withSections(base: WaterFn, entries: readonly StationEntry[], tideM: number, opts: SectionOptions = {}): WaterFn {
   const { stats, kept, along } = opts;
   const live = entries.filter((e): e is Station => !e.gap && curlWeight(e.section) > 0);
-  if (live.length === 0) return base;
+  if (live.length === 0) return (x, z) => asDrawnFace(base(x, z));
   const cache = new Map<Station, P2[]>(), lazy = new Map<Station, LazyCurve>();
   /** The station's sheet along its normal (u in m from the station; y above `tideM`): its own argument as the sheet's u. */
   const sheetOf = (s: Station): ((u: number) => P2) => {
@@ -233,7 +249,7 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
       if (Math.abs(u) > EDGE_OUTER_UNITS * s.section.A || Math.abs(v) > MAX_ALONG_M) continue;
       if (Math.abs(v) < Math.abs(bestV)) { other = best; otherV = bestV; best = s; bestV = v; } else if (Math.abs(v) < Math.abs(otherV)) { other = s; otherV = v; }
     }
-    if (!best) return w;
+    if (!best) return asDrawnFace(w);
     const at = (s: Station): { y: number; slopeU: number } | null => {
       const u = (x - s.x) * s.nx + (z - s.z) * s.nz, A = s.section.A;
       if (!(A > 0)) return null;
@@ -241,7 +257,7 @@ export function withSections(base: WaterFn, entries: readonly StationEntry[], ti
       return hit ? { y: tideM + A * hit.y, slopeU: Math.max(-MAX_SECTION_SLOPE, Math.min(MAX_SECTION_SLOPE, hit.slope)) } : null;
     };
     const a = at(best);
-    if (!a) return w;
+    if (!a) return asDrawnFace(w);
     // Between the two stations either side (opposite signs of v) by their distance along the crest; else the nearest.
     let y = a.y, slopeU = a.slopeU, nx = best.nx, nz = best.nz;
     if (other && Math.sign(otherV) !== Math.sign(bestV)) {

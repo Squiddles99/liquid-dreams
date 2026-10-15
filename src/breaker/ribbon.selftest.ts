@@ -15,7 +15,8 @@ import {
 } from './BreakingRibbon';
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
-import { PROFILE_SAMPLES } from './BreakingRibbon';
+import { PROFILE_SAMPLES, sinceLand } from './BreakingRibbon';
+import { CURTAIN_EROSION_S } from '../whitewater/curlFoam';
 import { FACE_DRAWN, ONE_SURFACE, curlWeight, sectionOf, sectionSamples } from './wombSection';
 import { WOMB_FRAME_VEC4S, applyOneSurface } from './wombSectionNodes';
 import { applyFaceDrawn } from './faceNodes';
@@ -478,8 +479,8 @@ registerSelfTest({
       }
       return liveAt(i);
     };
-    let covered = 0, coveredChecks = 0, clear = 0, clearChecks = 0, coveredFlipped = 0, clearFlipped = 0;
-    const missed: string[] = [], stray: string[] = [];
+    let covered = 0, coveredChecks = 0, clear = 0, clearChecks = 0, coveredFlipped = 0, clearFlipped = 0, released = 0, releasedChecks = 0;
+    const missed: string[] = [], stray: string[] = [], held: string[] = [];
     entries.forEach((e, i) => {
       if (e.gap) return;
       // The u = 0 point as the ribbon places it: the crest S, carried along t̂ by the sheet's lateral displacement there.
@@ -488,10 +489,16 @@ registerSelfTest({
         const lat = d.dx * -e.nz + d.dz * e.nx;
         const x = e.x - e.nz * lat, z = e.z + e.nx * lat;
         const q = texelOf(x, z), qf = texelOf(x, z, true);
-        if (q && qf) {
+        // breaking-look item 4 (L5): from its erosion's start (CURTAIN_EROSION_S[0] after its lip landed) a station's
+        // footprint is released, so the sheet draws again under the eroding curtain: its u = 0 point is clear, not marked.
+        if (q && qf && sinceLand(e as Station) >= CURTAIN_EROSION_S[0]) {
+          releasedChecks++;
+          if (!mask.at(...q)) released++;
+          else if (held.length < 5) held.push(`#${i} (${x.toFixed(2)}, ${z.toFixed(2)}) since land ${sinceLand(e as Station).toFixed(2)} s`);
+        } else if (q && qf) {
           coveredChecks++;
           if (mask.at(...q)) covered++;
-          else if (missed.length < 5) missed.push(`#${i} (${x.toFixed(2)}, ${z.toFixed(2)}) ρ ${rhoAt(i).toFixed(3)}`);
+          else if (missed.length < 5) missed.push(`#${i} (${x.toFixed(2)}, ${z.toFixed(2)}) ρ ${rhoAt(i).toFixed(3)} since land ${sinceLand(e as Station).toFixed(2)} s`);
           coveredFlipped += mask.at(...qf);
         }
       }
@@ -507,11 +514,11 @@ registerSelfTest({
       }
     });
     const live = entries.filter((e) => !e.gap).length;
-    const ok = mask.lengthOk && coveredChecks >= 10 && covered === coveredChecks && clearChecks === live && clear === clearChecks;
+    const ok = mask.lengthOk && coveredChecks + releasedChecks >= 10 && coveredChecks >= 1 && covered === coveredChecks && released === releasedChecks && clearChecks === live && clear === clearChecks;
     return {
       pass: ok,
-      detail: `${live} live stations at dt 0.6 s, ${mask.marked} texels marked; under the u = 0 point of ${coveredChecks} interior stations (ρ ≥ 0.02 within ${INTERIOR_ARC_M} m of arc each side; ≥ 10): ` +
-        `${covered} marked (all) [missed: ${missed.join('; ') || 'none'}]; 3 m beyond the front edge of ${clearChecks} stations (all ${live} in the grid): ${clear} clear (all) ` +
+      detail: `${live} live stations at dt 0.6 s, ${mask.marked} texels marked; interior stations (ρ ≥ 0.02 within ${INTERIOR_ARC_M} m of arc each side): ${coveredChecks + releasedChecks} (≥ 10); under the u = 0 point of the ${coveredChecks} not yet eroding (≥ 1): ` +
+        `${covered} marked (all) [missed: ${missed.join('; ') || 'none'}]; of the ${releasedChecks} eroding (since land ≥ ${CURTAIN_EROSION_S[0]} s: L5 released): ${released} clear (all) [marked: ${held.join('; ') || 'none'}]; 3 m beyond the front edge of ${clearChecks} stations (all ${live} in the grid): ${clear} clear (all) ` +
         `[marked: ${stray.join('; ') || 'none'}]. Diagnostic, rows mirrored: ${coveredFlipped} marked under u = 0, ${clearFlipped} clear ahead (a row-order mistake would pass this way).` +
         `${mask.lengthOk ? '' : ' Readback shorter than the padded rows expect.'}`,
     };

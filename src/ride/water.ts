@@ -27,6 +27,8 @@ export interface WaterAt {
   residual?: number;
   /** true where a breaking ribbon section is the surface (sectionWater.withSections): the drawn wave, not the sheet under it. */
   onSection?: boolean;
+  /** How far the sheet here is the drawing's stood face (SetWaveResult.drawn), 0 elsewhere: the ride reads it as a section. */
+  drawnFace?: number;
 }
 
 export type WaterFn = (x: number, z: number) => WaterAt;
@@ -57,6 +59,7 @@ export function waterAt(
   return {
     y: tideM + r.eta, slopeX: r.slopeX, slopeZ: r.slopeZ, foam: r.foam, ux: u.ux, uz: u.uz,
     c: f.k > 1e-6 ? omega / f.k : 0, dirX: f.dirX, dirZ: f.dirZ, lx: x0, lz: z0, residual: Math.hypot(x - r.dx - x0, z - r.dz - z0),
+    drawnFace: r.drawn ?? 0,
   };
 }
 

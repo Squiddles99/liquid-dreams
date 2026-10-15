@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Station, StationEntry } from '../breaker/crestTrace';
 import { profileKnots } from '../breaker/wombProfile';
 import { ONE_SURFACE, curlWeight, oneSurfaceOn, sectionPoint, sectionSamples, setOneSurface } from '../breaker/wombSection';
-import { CurveCache, lowestWetCrossing, thinStations, withSections } from './sectionWater';
+import { CurveCache, MAX_SECTION_SLOPE, lowestWetCrossing, thinStations, withSections } from './sectionWater';
 import { INVERT_ITERATIONS, flatWater } from './water';
 
 /** A straight crest along z through x = 0, the wave travelling +x, stations 1 m apart, all at one section. */
@@ -293,3 +293,25 @@ describe('the station curve’s sheet read warm along the normal (ride-framerate
   });
 });
 
+
+describe('the drawn face on the sheet rides as the face (wipe regression 2026-10-15)', () => {
+  // womb-story Task 11 made the sheet's stood face the drawing's face, near vertical on a section waiting its turn, where no
+  // station draws (the one-surface law): the ride read that face's slope raw and the bot wiped out on it (slope 2.3-2.8,
+  // foam 0, the nearest station 62 m along). The drawn face is the drawn wave, so it reads as a section does (MAX_SECTION_SLOPE).
+  const steep = (drawnFace: number) => () => ({ y: 1, slopeX: 2.8, slopeZ: 0, foam: 0, ux: 0, uz: 0, c: 9, dirX: 1, dirZ: 0, drawnFace });
+  const far = crest({ A: 3, phase: 0.2, hollow: 1, rho: 1 });
+  it('off the ribbon (no station near, or none at all), the drawing\'s face reads at most MAX_SECTION_SLOPE', () => {
+    for (const entries of [far, []] as StationEntry[][]) {
+      const w = withSections(steep(1), entries, 0.5)(0, 200);
+      expect(w.onSection).toBeFalsy();
+      expect(Math.hypot(w.slopeX, w.slopeZ)).toBeCloseTo(MAX_SECTION_SLOPE, 9);
+      expect(w.slopeX / Math.hypot(w.slopeX, w.slopeZ)).toBeCloseTo(1, 9);
+    }
+  });
+  it('the sheet\'s own steepness (not the drawing\'s face) still reads raw: it throws the rider', () => {
+    for (const entries of [far, []] as StationEntry[][]) expect(withSections(steep(0), entries, 0.5)(0, 200).slopeX).toBe(2.8);
+  });
+  it('part-way into the drawing (its weight 0.5: the leaned wave blended into it), the face is the drawn wave all the same', () => {
+    expect(withSections(steep(0.5), far, 0.5)(0, 200).slopeX).toBeCloseTo(MAX_SECTION_SLOPE, 9);
+  });
+});
