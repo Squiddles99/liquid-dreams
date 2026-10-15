@@ -24,11 +24,11 @@ describe('curlFoam: the lip with photo 5\'s timing (whitewater §3.4)', () => {
 });
 
 describe('tipFringeAt: the tip\'s own thin white band (whitewater F2)', () => {
-  it('is half the old width (0.06 of the reach) and solid at the tip from the throw', () => {
-    expect(FRINGE_WIDTH).toBe(0.06);
-    expect(tipFringeAt(0.8, 0.01, 1)).toBeGreaterThanOrEqual(0.9);
+  it('is a torn edge (0.02 of the reach, breaking-look item 4; was 0.06) and solid at the tip from the throw', () => {
+    expect(FRINGE_WIDTH).toBe(0.02); // breaking-look item 4 (2026-10-15): a torn edge, not a hose (F2 had 0.06)
+    expect(tipFringeAt(0.8, 0.002, 1)).toBeGreaterThanOrEqual(0.9);
     expect(tipFringeAt(0.8, FRINGE_WIDTH, 1)).toBe(0);
-    expect(tipFringeAt(0.3, 0.01, 1)).toBe(0);
+    expect(tipFringeAt(0.3, 0.002, 1)).toBe(0);
   });
   it('is only on the lip\'s own samples (tip → crest), never past the tip into the tube', () => {
     expect(tipFringeAt(0.8, 0.01, 0)).toBe(0);
@@ -40,5 +40,31 @@ describe('tipFringeAt: the tip\'s own thin white band (whitewater F2)', () => {
       expect(unpackInner(w)).toBe(inner);
       expect(unpackFringe(w)).toBeCloseTo(inner === 1 ? f : 0, 12);
     }
+  });
+});
+
+describe('the landed curtain erodes (breaking-look item 4, L5)', () => {
+  it('erosion 0 before landing + 0.2 s, rising to 1 by landing + 0.85 s (0.65 s after it starts); the fringe <= 0.02 of the reach', async () => {
+    const { curtainErosion, CURTAIN_EROSION_S, FRINGE_WIDTH: W, NOT_LANDED } = await import('./curlFoam');
+    const { IMPACT_DELAY_S, IMPACT_WINDOW_S } = await import('./sprayEmitters');
+    expect(CURTAIN_EROSION_S[0]).toBeCloseTo(IMPACT_DELAY_S, 9);
+    expect(CURTAIN_EROSION_S[1]).toBeCloseTo(IMPACT_DELAY_S + IMPACT_WINDOW_S + 0.3, 9);
+    expect(curtainErosion(NOT_LANDED)).toBe(0);
+    for (const t of [0, 0.1, 0.2]) expect(curtainErosion(t)).toBe(0);
+    expect(curtainErosion(0.5)).toBeGreaterThan(0);
+    expect(curtainErosion(0.5)).toBeLessThan(1);
+    expect(curtainErosion(0.85)).toBeCloseTo(1, 9);
+    expect(curtainErosion(5)).toBe(1);
+    expect(W).toBeLessThanOrEqual(0.02);
+  });
+
+  it('the station lane: the time since its lip landed, NOT_LANDED before', async () => {
+    const { sinceLand } = await import('../breaker/BreakingRibbon');
+    const { flightTime } = await import('../breaker/wombSection');
+    const { NOT_LANDED } = await import('./curlFoam');
+    const st = (tb: number | null) => ({ H: 3, tb } as never);
+    expect(sinceLand(st(null))).toBe(NOT_LANDED);
+    expect(sinceLand(st(flightTime(3) - 0.1))).toBe(NOT_LANDED);
+    expect(sinceLand(st(flightTime(3) + 0.4))).toBeCloseTo(0.4, 9);
   });
 });

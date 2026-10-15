@@ -6,6 +6,7 @@ import { alongPathNode, cameraDepthNode, fresnelFromInsideNode, sunThroughWindow
 import { LIP_REFERENCE_THICKNESS_M, type WaterOpticsParams, transmissionColour, waterAlbedo } from './waterOptics';
 import { billowSharesNode } from '../whitewater/billow';
 import { mistLightNode } from '../whitewater/mistLight';
+import { BARREL_INSIDE } from '../whitewater/lookSwitches';
 
 type N = any;
 
@@ -92,6 +93,8 @@ export function updateWaterOpticsUniforms(u: WaterOpticsUniforms, p: WaterOptics
 
 /** breaking-look item 2: the backlight lobe's wide (pow 2) share; the sun's share in the tube's reflected lip light. */
 export const BACKLIGHT_WIDE_SHARE = 0.3, TUBE_SUN_SHARE = 0.05;
+/** breaking-look item 3a: the thinning foam's bubble scatter (the water column's turquoise under it), × the sky. */
+export const BUBBLE_SCATTER = 0.15;
 
 /**
  * What a reflected ray heading down inside the tube sees (item 2): the mouth's sky (\`seen\`) where the tube is open
@@ -177,7 +180,7 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const underside = i.underside ? saturate(i.underside) : float(0.0);
   // breaking-look item 2: inside the tube a reflected ray heading down sees the tube's own light, not the deep water's: the
   // mouth's sky where the tube is open (skyOpen), the light through the lip (its colour) where it is roofed.
-  const tubeSeen = i.tube && tc ? tubeSeenNode(seen, tc, sky.skyIrradiance, sky.sunIlluminance, u.lipSkyTransmission, i.tube.sunLip, sv, i.tube.skyOpen) : upwelling;
+  const tubeSeen = BARREL_INSIDE && i.tube && tc ? tubeSeenNode(seen, tc, sky.skyIrradiance, sky.sunIlluminance, u.lipSkyTransmission, i.tube.sunLip, sv, i.tube.skyOpen) : upwelling;
   const reflection = mix(seen, tubeSeen, underside.mul(float(1.0).sub(smoothstep(-0.2, 0.05, r.y))));
 
   // Lip transmission: light through the lip toward the viewer (spec 2026-09-29 §3.3), coloured by the water it crossed:
@@ -185,7 +188,7 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   // thickness). The sun from behind it, and the skylight through it from beneath (the tube's ceiling) and from the side.
   // breaking-look item 2: a 0.3 share of a wider lobe, so a side sun shows through a thin lip (the reference's glow).
   const backDot = saturate(dot(v.negate(), l));
-  const backlight = pow(backDot, 4.0).mul(1 - BACKLIGHT_WIDE_SHARE).add(pow(backDot, 2.0).mul(BACKLIGHT_WIDE_SHARE));
+  const backlight = BARREL_INSIDE ? pow(backDot, 4.0).mul(1 - BACKLIGHT_WIDE_SHARE).add(pow(backDot, 2.0).mul(BACKLIGHT_WIDE_SHARE)) : pow(backDot, 4.0);
   const lipLight = sky.sunIlluminance.mul(backlight).mul(sv)
     .add(sky.skyIrradiance.mul(u.lipSkyTransmission).mul(max(underside, u.lipSideSkylight)));
   const lipColour = i.lipThickness
@@ -232,7 +235,9 @@ export function shadeWater(i: WaterSurfaceInputs, sky: Sky, u: WaterOpticsUnifor
   const foamSeen = foamVolume ? mix(foamLace, wall ? volumeSeen.mul(wall.bright) : volumeSeen, foamVolume) : foamLace;
   // The wall's cover (item 1): its base thins (the column's turquoise shows) and its clumps vary it; the volume only.
   const cover = foamVolume && wall ? saturate(i.foam).mul(mix(float(1.0), wall.coverMul, foamVolume)) : saturate(i.foam);
-  const colour = mix(water, foamSeen, cover);
+  // item 3a: where the break's foam thins (cover under its weight) the water under it glows turquoise with the bubbles in it.
+  const bubbles = i.breakFoam ? u.transmission.mul(sky.skyIrradiance).mul(BUBBLE_SCATTER / Math.PI).mul(saturate(i.breakFoam.mul(4.0))).mul(float(1.0).sub(cover)) : vec3(0.0);
+  const colour = mix(water.add(bubbles), foamSeen, cover);
   // Debug overlays: 1 m depth contours (white) and crest lines every 2 s of arrival time (gold).
   // Where the field is flat (open ocean at exactly 30 m, no field yet) fwidth is 0: smoothstep(0, 0, x) is NaN and
   // would paint the whole flat field NaN, so the edge is floored and a flat field draws no line.

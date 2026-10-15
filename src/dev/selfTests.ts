@@ -4,6 +4,7 @@ import '../weather/clouds.selftest';
 import '../ocean/fft.selftest';
 import '../ocean/ocean.selftest';
 import '../ocean/tubeLook.selftest';
+import '../ocean/foamPattern.selftest';
 import '../ocean/probe.selftest';
 import '../ocean/underwater.selftest';
 import '../seabed/seabed.selftest';

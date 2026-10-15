@@ -10,7 +10,7 @@ type N = any;
  * sheet's lace, F2); the lip's face and the tube's inside clean until the tube caves in, then foam climbing from the tip
  * (curlFoamAt, through the lace). CPU references; the nodes mirror them (same constants).
  */
-export const FRINGE_WIDTH = 0.06;      // of the lip's reach (tip → crest), the white edge (F2: half the first draw's 0.12)
+export const FRINGE_WIDTH = 0.02;      // of the lip's reach (tip → crest), the white edge (breaking-look item 4: a torn edge, not a hose; F2 had 0.06)
 export const FACE_FOAM_PHASE: readonly [number, number] = [1.2, 1.5];  // foam climbs the lip's face as the tube caves in
 export const CLEAN_TUBE = 0.8;         // how much of the sheet's foam the open tube's inside hides (negative zone)
 
@@ -54,3 +54,22 @@ export const unpackInner = (w: number): number => (w > 0.5 ? 1 : 0);
 export const unpackFringe = (w: number): number => Math.max(w - 1, 0);
 export const packInnerFringeNode = (inner: N, fringe: N): N => inner.mul(float(fringe).add(1.0));
 export const unpackFringeNode = (w: N): N => max(float(w).sub(1.0), 0.0);
+
+/**
+ * The landed curtain's erosion (breaking-look item 4, lever L5): from the impact's start (IMPACT_DELAY_S after the lip lands)
+ * over the impact window + CURTAIN_EROSION_TAIL_S, the curtain's samples discard by a noise threshold rising linearly with the
+ * time since landing (the sprites' erosion rule), so the impact and the white water take over and no tube of foam lies on
+ * the sea. 0 before, 1 after. Constants mirror sprayEmitters.IMPACT_DELAY_S / IMPACT_WINDOW_S (curlFoam.test checks).
+ */
+export const CURTAIN_IMPACT_DELAY_S = 0.2, CURTAIN_IMPACT_WINDOW_S = 0.35, CURTAIN_EROSION_TAIL_S = 0.3;
+export const CURTAIN_EROSION_S: readonly [number, number] = [CURTAIN_IMPACT_DELAY_S, CURTAIN_IMPACT_DELAY_S + CURTAIN_IMPACT_WINDOW_S + CURTAIN_EROSION_TAIL_S];
+export function curtainErosion(sinceLandS: number): number {
+  return Math.min(1, Math.max(0, (sinceLandS - CURTAIN_EROSION_S[0]) / (CURTAIN_EROSION_S[1] - CURTAIN_EROSION_S[0])));
+}
+export function curtainErosionNode(sinceLandS: N): N {
+  return float(sinceLandS).sub(CURTAIN_EROSION_S[0]).div(CURTAIN_EROSION_S[1] - CURTAIN_EROSION_S[0]).clamp(0.0, 1.0);
+}
+/** The station's lane value before its lip lands (packStations): erosion 0. */
+export const NOT_LANDED = -1e3;
+/** The fringe's droplets: where the 0.25 m grain (∈ [0, 1]) is under FRINGE_DROPLET_SHARE the edge is torn open (~40 %). */
+export const FRINGE_DROPLET_SHARE = 0.4;

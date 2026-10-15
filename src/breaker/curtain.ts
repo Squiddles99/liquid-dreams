@@ -12,7 +12,8 @@ type N = any;
  * read at most.
  */
 /** Whether the ribbon's shader carries the curtain's transmission at all (false: today's opaque curtain, no viewport copy). */
-export const CURTAIN_IN_SHADER = true;
+/** Off at the close: gate A measured items 2 + 7 at +0.79 ms GPU (wall clock) vs base; Andrew's pick pending. */
+export const CURTAIN_IN_SHADER = false;
 export const CURTAIN_TRANSMIT = 0.85, CURTAIN_OWN_GLOW = 0.25;
 export const CURTAIN_REFRACT_PER_M = 0.03, CURTAIN_REFRACT_BASE = 0.01;
 export const CURTAIN_BLUR_PER_M = 6, CURTAIN_MAX_MIP = 6, CURTAIN_MAX_THICK_M = 2.5;

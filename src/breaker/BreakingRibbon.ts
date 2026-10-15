@@ -1,7 +1,8 @@
 import { billowLiftNode, billowNode } from '../whitewater/billow';
 import { boreFromStations, boreLook, heightFracNode, wallShadeNode } from '../whitewater/whitewaterLook';
+import { BARREL_INSIDE, WALL_LOOK } from '../whitewater/lookSwitches';
 import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, freshFoamWeightNode, solidBoilNode } from '../whitewater/pileChurn';
-import { curlFoamNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
+import { CURTAIN_EROSION_S, FRINGE_DROPLET_SHARE, NOT_LANDED, curlFoamNode, curtainErosionNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
 import * as THREE from 'three/webgpu';
 import {
   Break, Fn, If, Loop, abs, atan, attribute, cameraViewMatrix, exp, floor, fwidth, screenSize, screenUV, viewportMipTexture, exp2, ivec2, cameraPosition, clamp, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
@@ -24,7 +25,7 @@ import { TUBE_TIP_CLEAR_M } from './lipProfile';
 import { encodeTb, tubeLightAtNode } from './lipProfileNodes';
 import { CURVE_SAMPLES } from './wombProfile';
 import { CURTAIN_IN_SHADER, CURTAIN_MAX_THICK_M, CURTAIN_OWN_GLOW, RIBBON_RENDER_ORDER, curtainBlurMipNode, curtainRefractShiftNode, curtainSeeThroughNode } from './curtain';
-import { EDGE_OUTER_UNITS, FACE_ON_SHEET_PHASE, STOOD_PHASE, faceOnSheetOn } from './wombSection';
+import { EDGE_OUTER_UNITS, FACE_ON_SHEET_PHASE, STOOD_PHASE, faceOnSheetOn, flightTime } from './wombSection';
 import { SHEET_READS, SHEET_READS_FIRST, SHEET_READS_SECOND, WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, curlReadHomeNode, sheetReadHomeNode, thirdReadHomeNode, wombFrameNode } from './wombSectionNodes';
 
 type N = any;
@@ -232,6 +233,13 @@ export interface RibbonShading {
  * first live one. With no live station at all, nothing is in use (0). runEnd is 1 on a live station near its run's
  * end (runEndFlags), 0 otherwise (gap rows too: they are dead anyway).
  */
+/** breaking-look item 4 (the station lane audit: vec4 #4's w was the one spare): the time since the station's lip landed (s:
+ * tb − its flight time), NOT_LANDED before. The curtain erodes by it (curlFoam.curtainErosion). */
+export function sinceLand(s: Station): number {
+  const fly = flightTime(s.H);
+  return s.tb !== null && Number.isFinite(s.tb) && s.tb >= fly ? s.tb - fly : NOT_LANDED;
+}
+
 export function packStations(entries: readonly StationEntry[], out: Float32Array, periodS = 15): number {
   const n = Math.min(entries.length, MAX_STATIONS);
   let prev = entries.slice(0, n).find((e): e is Station => !e.gap);
@@ -242,7 +250,7 @@ export function packStations(entries: readonly StationEntry[], out: Float32Array
     if (!e.gap) prev = e;
     const s: Station = prev;
     const q = s.section;
-    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0, q.A, q.phase, q.hollow, q.rho, q.surge ?? 0, boilWeight(s.tb, s.Hb ?? s.H, periodS, 1), boilFreshness(s.tb, s.Hb ?? s.H, periodS), 0], i * STATION_VEC4S * 4);
+    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0, q.A, q.phase, q.hollow, q.rho, q.surge ?? 0, boilWeight(s.tb, s.Hb ?? s.H, periodS, 1), boilFreshness(s.tb, s.Hb ?? s.H, periodS), sinceLand(s)], i * STATION_VEC4S * 4);
   }
   return n;
 }
@@ -444,7 +452,7 @@ export class BreakingRibbon {
     this.geometry.setDrawRange(0, 0);
     this.mesh = new THREE.Mesh(this.geometry, this.buildMaterial());
     // item 7: drawn after the other opaques, so the viewport copy the curtain reads holds the rider and the sea behind it.
-    this.mesh.renderOrder = RIBBON_RENDER_ORDER;
+    if (CURTAIN_IN_SHADER) this.mesh.renderOrder = RIBBON_RENDER_ORDER;
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
 
@@ -593,9 +601,11 @@ export class BreakingRibbon {
     const { model, sky, optics, foamMap } = shading;
     // item 7: drawn in the transparent pass (after every opaque, as three's transmission is), writing depth as before, so
     // the opaque viewport copy the curtain reads holds the rider, the sea and the sky behind it.
-    material.transparent = true;
-    material.depthWrite = true;
-    material.opacity = 1;
+    if (CURTAIN_IN_SHADER) {
+      material.transparent = true;
+      material.depthWrite = true;
+      material.opacity = 1;
+    }
     // Vertex: y is relative to the tide; the Earth's curvature drops it as it drops the sheet (measured at the home,
     // the undisplaced point, as the sheet measures its undisplaced grid).
     const home: N = attribute('ribbonHome', 'vec4');
@@ -619,6 +629,8 @@ export class BreakingRibbon {
     const vBoil: N = varyingProperty('float', 'vRibbonBoil');
     const row = int(vertexIndex).div(V);
     const stationsRO = this.stationsNode();
+    // item 4 (L5): the landed curtain's erosion, per station (its lane: the time since its lip landed).
+    const vErosion: N = varying(curtainErosionNode(stationsRO.element(row.mul(STATION_VEC4S).add(4)).w));
     const vFrame: N = varyingProperty('vec2', 'vRibbonFrame');
     const churn = Fn(() => {
       const b = model.sets.breakSampleNode(home.xy);
@@ -637,7 +649,7 @@ export class BreakingRibbon {
     const vertSolid = solidBoilNode(vBoil, vSetFoam);
     const lift = billowLiftNode(vec3(attribute('ribbonDetail', 'vec4').x, pos.y, attribute('ribbonDetail', 'vec4').y), model.sim.time, boreLook.flow,
       stationsRO.element(row.mul(STATION_VEC4S).add(3)).x, vertSolid);
-    material.positionNode = vec3(pos.x, model.seabed.tide.add(pos.y).add(churn).sub(radial.mul(radial).div(2 * EARTH_RADIUS_M)), pos.z).add(vertNormal.mul(lift));
+    material.positionNode = vec3(pos.x, model.seabed.tide.add(pos.y).add(churn).sub(radial.mul(radial).div(2 * EARTH_RADIUS_M)), pos.z).add(WALL_LOOK ? vertNormal.mul(lift) : vec3(0.0));
 
     const toCamera = cameraPosition.sub(positionWorld);
     const distance = length(toCamera);
@@ -649,8 +661,8 @@ export class BreakingRibbon {
     const profileN = vec2(vHome.w.negate(), vHome.z);
     const along = dot(vDetail.sub(vHome.xy), profileN);
     const streakAt = vDetail.sub(profileN.mul(along.mul(1 - 1 / STREAK_STRETCH).mul(saturate(vConstructed))));
-    const fft = model.fftSlopes(vDetail, distance, this.slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness.mul(1 - LIP_CHOP_SHARE)) : float(1.0)),
-      (c) => (c === STREAK_CASCADE ? streakAt : vDetail), CURTAIN_IN_SHADER);
+    const fft = model.fftSlopes(vDetail, distance, this.slopeVariance, (c) => (c === CHOP_CASCADE ? float(1.0).sub(lipness.mul(BARREL_INSIDE ? 1 - LIP_CHOP_SHARE : 1)) : float(1.0)),
+      BARREL_INSIDE ? (c) => (c === STREAK_CASCADE ? streakAt : vDetail) : undefined, CURTAIN_IN_SHADER);
     const shadingNormal = ribbonShadingNormal({
       geometric: vNormal, tangent: vec3(vHome.z, 0.0, vHome.w), fft,
       setSlope: vSetSlope.add(churnSlopeNode(vPile, vFrame, model.sets.meanTravel, model.sets.time, model.sets.churn)), constructed: vConstructed, viewDir,
@@ -669,9 +681,14 @@ export class BreakingRibbon {
     // Read at the developed coordinate (as the chop is): at the home the whole thrown lip maps onto a strip of the sheet a
     // few metres wide, and the pattern smeared into bands down the lip. At the edges the two are the same point.
     // The tip's fringe (F2): a solid thin band with its own fine (~0.25 m) breakup, not the sheet's 2–3 m lace.
-    const fringe = saturate(vFringe).mul(mix(0.75, 1.0, smoothstep(-0.3, 0.3, mx_noise_float(vec3(vDetail.mul(4.0), model.sim.time.mul(0.5)))))).mul(SET_FOAM_MAX_COVER);
+    // item 4: the edge torn into droplets: where its fine (~0.25 m) noise is under FRINGE_DROPLET_SHARE it is open (the lip shows).
+    const fringeNoise = mx_noise_float(vec3(vDetail.mul(4.0), model.sim.time.mul(0.5)));
+    const droplets = smoothstep(FRINGE_DROPLET_SHARE - 0.03, FRINGE_DROPLET_SHARE + 0.03, fringeNoise.mul(0.5).add(0.5));
+    const fringe = saturate(vFringe).mul(mix(0.75, 1.0, smoothstep(-0.3, 0.3, fringeNoise))).mul(droplets).mul(SET_FOAM_MAX_COVER);
     // Fresh boil is solid white (F3): the weight lifted to FRESH_BOIL_WEIGHT × the boil, the lace back as it ages.
-    const foamLook = setFoamPattern(freshFoamWeightNode(max(vSetFoam.mul(float(1.0).sub(clean)), curlOwn), vBoil), waterFoamFrame(vDetail, foamMap?.patternAxisNode ? foamMap.patternAxisNode(model.sets.meanTravel) : model.sets.meanTravel), model.sim.time);
+    const foamLook = setFoamPattern(freshFoamWeightNode(max(vSetFoam.mul(float(1.0).sub(clean)), curlOwn), vBoil), waterFoamFrame(vDetail, foamMap?.patternAxisNode ? foamMap.patternAxisNode(model.sets.meanTravel) : model.sets.meanTravel), model.sim.time,
+      // item 3e: the ribbon's foam is the breaking foam's (tear 1); it is fresh (thin 0).
+      float(0.0), float(1.0));
     // The lip is a sheet of water thrown over air: a ray refracted into it leaves through its underside into the tube, so
     // no seabed shows through it (the sheet's look-through, applied to the lip, tinted it the reef's brown).
     const foamCover = mix(foamLook.x, float(SET_FOAM_MAX_COVER), solid);
@@ -689,7 +706,7 @@ export class BreakingRibbon {
     const seabed = { radiance: bed.radiance, transmittance: bed.transmittance.mul(float(1.0).sub(lipness)) };
     const colour = shadeWater(
       { normal, viewDir, distance, foam: max(max(fft.foam, foamCover), fringe), foamShade: mix(foamLook.y, float(1.0), saturate(vFringe)), breakFoam: max(foamCover, fringe), lip, lipThickness: thickness, underside,
-        foamBillow: { normal: billowNormal, height: mix(float(1.0), billow.h, solid), wall },
+        foamBillow: { normal: billowNormal, height: mix(float(1.0), billow.h, solid), wall: WALL_LOOK ? wall : undefined },
         tube: { sunLip: vLight.x, sunBody: vLight.w, skyOpen: vLight.y, lipThickness: vLight.z },
         bodyLightNormal: normalize(mix(vec3(0.0, 1.0, 0.0), normal, saturate(vConstructed))),
         unresolvedSlopeVariance: fft.lostSlopeVariance, seabed, sunVisibility: sunVis, worldPos: positionWorld, foamExposure: foamMap?.volumeExposure,
@@ -718,6 +735,9 @@ export class BreakingRibbon {
       // (A new node, not colour.assign: an assign outside a Fn stack is dropped.)
       seen = mix(colour, behind.mul(crossed).add(colour.mul(CURTAIN_OWN_GLOW)), seeThrough);
     }
+    // item 4 (L5): the landed curtain discards by a noise threshold rising with the time since landing (the sprites' erosion
+    // rule; the billows' clumps, which flow with the bore), so the impact and the white water take over.
+    material.maskNode = dead.lessThanEqual(DEAD_EPSILON).and(billow.clump.mul(0.98).add(0.01).greaterThanEqual(vErosion));
     material.colorNode = this.tinted(seen);
     return material;
   }
@@ -872,7 +892,10 @@ export class BreakingRibbon {
       const runEnd = stations.element(i.mul(STATION_VEC4S).add(2)).y, stationRho = stations.element(i.mul(STATION_VEC4S).add(3)).w;
       const inside = A.mul(EDGE_OUTER_UNITS).sub(abs(home)).greaterThan(INNER_MARGIN_M);
       // …and the station in the ribbon (its ρ: FOOTPRINT_MIN_RHO), so the footprint marks wherever the ribbon draws the wave.
-      const inner = select(inside.and(runEnd.lessThan(0.5)).and(stationRho.greaterThanEqual(FOOTPRINT_MIN_RHO)), float(1.0), float(0.0));
+      // …and not yet eroding (item 4): from the erosion's start the sheet draws again under the curtain, so where the curtain
+      // discards the sheet (the bore, the white water) shows, not a hole.
+      const eroding = stations.element(i.mul(STATION_VEC4S).add(4)).w.greaterThanEqual(CURTAIN_EROSION_S[0]);
+      const inner = select(inside.and(runEnd.lessThan(0.5)).and(stationRho.greaterThanEqual(FOOTPRINT_MIN_RHO)).and(eroding.not()), float(1.0), float(0.0));
       // The lip: the samples either side of the tip out to the crest's distance from it, while the lip is thrown; its
       // thickness the distance to the sample mirrored about the tip (the lip's other face).
       const reach = max(crest.sub(tip), 1.0);
