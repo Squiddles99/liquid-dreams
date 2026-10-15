@@ -10,7 +10,7 @@ import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
 import { BORE_SHARE, CLOSEOUT_FADE_M, CLOSEOUT_FROM_TURN_M, COLLAPSE_BASE_S, COLLAPSE_PER_M, FRONT_LEAD_S, GRAVITY_MS2, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, STOOD_PHASE, setHandDownT, setWallLeadT } from './wombSection';
-import { applyFaceDrawn, faceDrawnUniform, faceLengthsNode, faceShapeInNode } from './faceNodes';
+import { applyFaceDrawn, faceDrawnUniform, faceLengthsNode } from './faceNodes';
 import { applyFlightDropA, applyOneSurface, applySeatShares, flightTimeNodeA } from './wombSectionNodes';
 import { HOLLOW_PSI } from './reefReport';
 import { MIST_LAND_WINDOW_S, landingMistNode } from '../whitewater/mistSlab';
@@ -24,6 +24,7 @@ import { COAST_GRID } from '../seabed/coastProfile';
 import {
   BREAKING_RATIO, CREST_HEIGHT_REACH, CREST_MIN_CROSSING, CREST_STEPS, ENVELOPE_CUTOFF, ENVELOPE_WIDTH, FOLD_LIMIT, LEAN_FRONT_FLOOR, LEAN_FRONT_MIN, LEAN_RATIO, WOMB_FRONT_UNITS, PITCH_KA_CAP, PITCH_MAX, SEABED_CLEARANCE_M, STOKES_CAP,
   TAPER_FAR_M, TAPER_NEAR_M, fieldSteepeningHeight, toActiveWave, DRAWN_FRONT_CEIL, DRAWN_FRONT_FLOOR, FACE_IN_STANDING,
+  AHEAD_EASE_S, CUBIC_FACE_MAX_DS, MAX_AHEAD_SLOPE, MAX_SECTION_FACE_SLOPE,
 } from './setWaveModel';
 
 type N = any;
@@ -496,7 +497,7 @@ export class SetWaves {
           // The drawn face (womb-story Task 11, setWaveModel.drawnFace / crestSection): on, its phase, hollow, the drawing's own
           // length and the face's (units of A), the squeeze that makes it, and the arrival field's xi per metre along the ray.
           const fDrawn = float(0.0).toVar(), fPhase = float(0.0).toVar(), fHollow = float(0.0).toVar(), fL = float(1.0).toVar(), fRef = float(1.0).toVar();
-          const fMin = float(LEAN_FRONT_MIN).toVar(), xiPerM = f.k.div(this.meanOmega).toVar();
+          const fMin = float(LEAN_FRONT_MIN).toVar(), xiPerM = f.k.div(this.meanOmega).toVar(), fCap = float(MAX_SECTION_FACE_SLOPE).toVar();
           // How far it has settled into the white water's bore (setWaveModel.waveAtCrest, wombSection.boreWeight): 'lean' only.
           const bore = float(0.0).toVar();
           const lc = { steep: float(0.0).toVar(), stage: float(0.0).toVar(), drain: float(0.0).toVar(), collapse: float(0.0).toVar() };
@@ -581,7 +582,13 @@ export class SetWaves {
                 // drawnFace: the squeeze phi with phi pi / q - hAmp sin(phi pi) - pitch x drop = L x A in the crest's frame.
                 const kc = fc.k, ac = Hcrest.mul(0.5), hAmpC = min(ac, float(FOLD_LIMIT).div(kc)).toVar();
                 const pitchC = min(smoothstep(0.3, BREAKING_RATIO, Hcrest.div(max(fc.hmin, MIN_DEPTH_M))).mul(PITCH_MAX), float(PITCH_KA_CAP).div(max(kc.mul(ac), 1e-4)));
-                const rhs = lens.ref.mul(Afc).add(pitchC.mul(Hcrest)).toVar(), q = a.z.mul(xiPerM).toVar();
+                // setWaveModel.drawnFace (overnight fix T2): the drawing's length, or longer where the cubic face would stand
+                // steeper than the cap (faceSlopeCap: the section's time until it breaks, 0 once broken).
+                const untilS: N = select(brk2, float(0.0), uW);
+                const cap = mix(float(MAX_SECTION_FACE_SLOPE), float(MAX_AHEAD_SLOPE), smoothstep(0.0, AHEAD_EASE_S, untilS)).toVar();
+                fCap.assign(cap);
+                const Lt = max(lens.ref.mul(Afc), Hcrest.mul(CUBIC_FACE_MAX_DS / 2).div(cap));
+                const rhs = Lt.add(pitchC.mul(Hcrest)).toVar(), q = a.z.mul(xiPerM).toVar();
                 const xN = min(float(Math.PI), q.mul(rhs).div(max(float(1.0).sub(hAmpC.mul(q)), 0.1))).toVar();
                 for (let it = 0; it < 3; it++) xN.assign(clamp(xN.sub(xN.div(q).sub(hAmpC.mul(sin(xN))).sub(rhs).div(float(1.0).div(q).sub(hAmpC.mul(cos(xN))))), 0.0, Math.PI));
                 fMin.assign(clamp(xN.div(Math.PI), DRAWN_FRONT_FLOOR, DRAWN_FRONT_CEIL));
@@ -656,7 +663,14 @@ export class SetWaves {
             const L = uF.sub(uC).toVar();
             If(L.greaterThan(1e-6), () => {
               const sF = thetaN.div(phi.mul(-Math.PI)).toVar(), dsDXi = a.z.negate().div(phi.mul(Math.PI)).toVar();
-              const fs = faceShapeInNode(fPhase, fHollow, sF, fL, fRef);
+              // setWaveModel.cubicFace over the face's first 1 / kF (overnight fix T2): the cubic S, level at the crest and the
+              // foot, as steep as the cap allows (kF = max(1, cap L / (3 aE stretch))).
+              // Ahead of the curl front the whole face (kF 1), on the section squeezed to the cap (setWaveModel.waveAtCrest).
+              const kCap = max(float(1.0), fCap.mul(L).div(max(aE.mul(stretch), 1e-6).mul(CUBIC_FACE_MAX_DS)));
+              const onSec = float(MAX_AHEAD_SLOPE).sub(fCap).div(MAX_AHEAD_SLOPE - MAX_SECTION_FACE_SLOPE);
+              const kF = float(1.0).add(kCap.sub(1.0).mul(onSec)).toVar();
+              const sK = sF.mul(kF).toVar(), sC = clamp(sK, 0.0, 1.0), inside = sK.greaterThan(0.0).and(sK.lessThan(1.0));
+              const fs = { S: float(1.0).sub(sC.mul(sC).mul(6.0)).add(sC.mul(sC).mul(sC).mul(4.0)), dS: select(inside, sC.mul(sC).mul(12.0).sub(sC.mul(12.0)), float(0.0)).mul(kF) };
               const shD = fs.S.add(B);
               const etaD = aE.mul(stretch.mul(shD).add(crestShape));
               const dEtaDXiD = A.mul(lateral).mul(dEnv).mul(stretch.mul(shD).add(crestShape)).add(aE.mul(stretch).mul(fs.dS).mul(dsDXi));

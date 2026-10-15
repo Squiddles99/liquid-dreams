@@ -1,6 +1,6 @@
 import { BORE_SHARE, boreWeight, closeoutWeight, faceDrawnOn, flightTime, frontWeight, handDownSpan, oneSurfaceOn, sectionPhase, sectionSize, wallWeight } from './wombSection';
 import { hollowFromPsi } from './reefReport';
-import { faceLengthRef, faceShapeIn } from './faceTable';
+import { faceLengthRef } from './faceTable';
 import { smoothstep } from '../math/smoothstep';
 import { travelDirectionXZ } from '../conditions/directions';
 import type { WaveEvent } from '../swell/sets';
@@ -436,7 +436,7 @@ export function crestStage(x: number, z: number, t: number, f: FieldSample, w: A
  * crest): its phase (wombSection.sectionPhase: held or waiting, the stand-up by the clock; broken, the lip's flight, the hold,
  * the collapse from the size it broke at), its hollowness (from its psi, faded on the inside's closeout) and its scale A.
  */
-export function crestSection(w: ActiveWave, crest: Crest, o?: BreakOptions): { A: number; phase: number; hollow: number } {
+export function crestSection(w: ActiveWave, crest: Crest, o?: BreakOptions): { A: number; phase: number; hollow: number; untilS: number } {
   // The record at the crest the lookup found (with `o`), not on the point's own ray: the lookup walks the wave's own travel
   // direction, the same at every point, so across one face its points read crests a few metres apart along the crest; on
   // their own rays they read crests twice as far apart (2.7 m over a 5 m face at 7 ft), through the lip's pitch a tenth of a
@@ -448,8 +448,27 @@ export function crestSection(w: ActiveWave, crest: Crest, o?: BreakOptions): { A
   const size = rec && p ? onsetSizeAhead(rec, 0, w.heightM, p) : crest.size;
   const s = { H: crestHeight(w, crest), Hb: broken ? size : null, r: crest.r, tb: broken ? tb : null, until: held ? -tb! : until, psi: crest.psi, periodS: (2 * Math.PI) / w.omega, x: crest.x, z: crest.z };
   const phase = sectionPhase(s, { ribbonOnset: crest.params.ribbonOnset });
-  return { A: sectionSize(s, phase), phase, hollow: hollowFromPsi(crest.psi) * (1 - closeoutWeight(crest.z)) };
+  // The time until this section breaks (overnight fix T2): 0 once broken, its turn's wait when held, the record's until, or
+  // never (Infinity); the stood face's slope cap reads it (MAX_AHEAD_SLOPE ahead of the curl front).
+  const untilS = broken ? 0 : held ? -tb! : until !== null && until !== undefined && Number.isFinite(until) ? until : Infinity;
+  return { A: sectionSize(s, phase), phase, hollow: hollowFromPsi(crest.psi) * (1 - closeoutWeight(crest.z)), untilS };
 }
+
+/** The stood face's slope cap at a section `untilS` seconds before it breaks (overnight fix T2): MAX_SECTION_FACE_SLOPE once
+ * broken, MAX_AHEAD_SLOPE from AHEAD_EASE_S before it on (and where it never breaks). */
+export function faceSlopeCap(untilS: number): number {
+  return MAX_SECTION_FACE_SLOPE + (MAX_AHEAD_SLOPE - MAX_SECTION_FACE_SLOPE) * smoothstep(0, AHEAD_EASE_S, untilS);
+}
+/** The stood face's shape on the sheet (overnight fix T2): a cubic S from the crest (s 0, S 1) to the foot (s 1, S -1), level at
+ * both ends (tangent to the crest and to the water in front), steepest at its middle, |dS/ds| 3 there. The drawing's own
+ * silhouette (faceTable.faceShapeIn) put the tube's back wall on the sheet: 1.9 m of drop in 0.31 m of run at Andrew's
+ * 1792081641, a cliff the render grid draws as a sawtooth slab. */
+export function cubicFace(s: number): { S: number; dS: number } {
+  const x = Math.min(1, Math.max(0, s));
+  return { S: 1 - 6 * x * x + 4 * x * x * x, dS: s <= 0 || s >= 1 ? 0 : -12 * x + 12 * x * x };
+}
+/** The cubic face's steepest |dS/ds|: with a drop D over a run L its slope is CUBIC_FACE_MAX_DS x D / 2 / L at most. */
+export const CUBIC_FACE_MAX_DS = 3;
 
 /** The drawn face comes in with the stand-up, eased: smoothstep(0, FACE_IN_STANDING, frontStanding), then is the drawing's at
  * the section's phase (Task 11). 1: the stand-up itself, eased (at 0.25, in by 4.0 s before the break, the take-off's face was
@@ -481,15 +500,17 @@ export const DRAWN_FRONT_CEIL = 0.9;
  * drop = L x A, by Newton; q the swell's phase per metre along the ray at the point (`thetaPerM`: the arrival-time field's
  * own, which on the ledge is about two thirds of the local wavenumber: the field refracts over a floored depth).
  */
-export function drawnFace(w: ActiveWave, crest: Crest, o?: BreakOptions, thetaPerM = crest.f.k): { phase: number; hollow: number; frontMin: number; ref: number } {
-  const { A, phase, hollow } = crestSection(w, crest, o), ref = faceLengthRef(phase, hollow), Lt = ref * A;
+export function drawnFace(w: ActiveWave, crest: Crest, o?: BreakOptions, thetaPerM = crest.f.k): { phase: number; hollow: number; frontMin: number; ref: number; cap: number } {
+  const { A, phase, hollow, untilS } = crestSection(w, crest, o), ref = faceLengthRef(phase, hollow);
   const k = crest.f.k, Hc = crestHeight(w, crest), ac = Hc / 2, hAmp = Math.min(ac, FOLD_LIMIT / k);
+  // The drawing's length, or longer where the cubic face (its drop Hc) would stand steeper than the cap (overnight fix T2).
+  const Lt = Math.max(ref * A, (CUBIC_FACE_MAX_DS * Hc) / 2 / faceSlopeCap(untilS));
   const pitch = Math.min(PITCH_MAX * smoothstep(0.3, BREAKING_RATIO, Hc / Math.max(crest.f.hmin, MIN_DEPTH_M)), PITCH_KA_CAP / Math.max(k * ac, 1e-4));
   const rhs = Lt + pitch * Hc;
   const q = thetaPerM;
   let x = Math.min(Math.PI, (q * rhs) / Math.max(1 - hAmp * q, 0.1));
   for (let i = 0; i < 3; i++) x = Math.min(Math.PI, Math.max(0, x - (x / q - hAmp * Math.sin(x) - rhs) / (1 / q - hAmp * Math.cos(x))));
-  return { phase, hollow, frontMin: Math.min(DRAWN_FRONT_CEIL, Math.max(DRAWN_FRONT_FLOOR, x / Math.PI)), ref };
+  return { phase, hollow, frontMin: Math.min(DRAWN_FRONT_CEIL, Math.max(DRAWN_FRONT_FLOOR, x / Math.PI)), ref, cap: faceSlopeCap(untilS) };
 }
 
 /** One wave at one point, given its crest (null, or neither steepening nor breaking: the Phase 1 wave exactly). */
@@ -552,7 +573,16 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
     const uC = pitch * etaC, uF = (phi * Math.PI) / w.omega / xiPerM - hAmp * Math.sin(phi * Math.PI) + pitch * etaF, L = uF - uC;
     if (L > 1e-6) {
       const sF = theta / (-phi * Math.PI), dsDXi = -w.omega / (phi * Math.PI);
-      const { S, dS } = faceShapeIn(drawn!.phase, drawn!.hollow, sF, drawn!.ref);
+      // The cubic over the face's first 1 / kF, then level at the low (the tube keeps a back wall under the lip): as steep as the
+      // cap allows (steepest 3 kF aE stretch / L = cap), and over the whole face where even that is too steep (kF >= 1). Not by the drawing's own
+      // length: its phase steps between neighbouring points (0.64 -> 0.83 over 0.1 m at Andrew's 1792081641, the record's size
+      // per cell), and a face length read from it tore the sheet 1 m there.
+      // Ahead of the curl front (the cap eased to MAX_AHEAD_SLOPE) the cubic spans the whole face (kF 1, its gentlest): the
+      // ride bot lost Solid's wave 0.8 s sooner (held 8.2 s of 9) with the cubic squeezed to the cap there.
+      const kCap = Math.max(1, (drawn!.cap * L) / (CUBIC_FACE_MAX_DS * Math.max(aE * settle.stretch, 1e-6)));
+      const onSection = (MAX_AHEAD_SLOPE - drawn!.cap) / (MAX_AHEAD_SLOPE - MAX_SECTION_FACE_SLOPE);
+      const kF = 1 + (kCap - 1) * onSection;
+      const c = cubicFace(sF * kF), S = c.S, dS = c.dS * kF;
       const etaD = aE * (settle.stretch * (S + B) + crestShape);
       const dEtaDXiD = A * lateral * dEnv * (settle.stretch * (S + B) + crestShape) + aE * settle.stretch * dS * dsDXi;
       // The place along the ray: the drawn point at uC + s L, less the point's own undisplaced place (-xi / xiPerM).
