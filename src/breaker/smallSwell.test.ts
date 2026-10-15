@@ -14,9 +14,12 @@ import { coastReefField } from './testField';
  * rulings 1, 2, 7): the right at rightLedgeDepthM 8 no longer breaks first and pulls the tip's turn, so the first leg's
  * start moved off the matrix (Solid +0.5 m by 1.97 s); the median hollow reads the segment targets (A 0.8, B/C 0.1).
  * Measured by tools/_smallSwellPin.ts: [label, tide, broken, of, start s, peel m/s, hollow]. The select's offers
- * (sessionSetup.BREAKS, hand-written) are unchanged. */
+ * (sessionSetup.BREAKS, hand-written) are unchanged. Re-pinned 2026-10-15 (womb-story Task 11, Fable's STOP 3 ruling 5, named):
+ * Solid at tide 0.5's first leg peels 11.77 m/s, not 11.70 (start 2.59 s, not 2.57), since the reef record carries a held node up
+ * between levels (reefField.carryHeldUp, 93ae62e, STOP 2b ask 4: the 2.71 s wait at a band edge): bisected, 93ae62e~1 green.
+ * Not the sheet (this reads the reef's record only). */
 const STORY: readonly (readonly [string, number, number, number, number, number, number])[] = [
-  ['Fun', -0.5, 44, 72, 1.24, 8.96, 0.230], ['Solid', -0.5, 52, 72, 0.06, 11.16, 0.135], ['Solid', 0.5, 48, 72, 2.57, 11.70, 0.100], ['Huge', 0.5, 55, 72, -0.52, 11.90, 0.250],
+  ['Fun', -0.5, 44, 72, 1.24, 8.96, 0.230], ['Solid', -0.5, 52, 72, 0.06, 11.16, 0.135], ['Solid', 0.5, 48, 72, 2.59, 11.77, 0.100], ['Huge', 0.5, 55, 72, -0.52, 11.90, 0.250],
 ];
 
 describe('the select matrix holds on the game field (womb-retune Task 4)', () => {
