@@ -21,7 +21,7 @@ import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
 import { TUBE_TIP_CLEAR_M } from './lipProfile';
 import { encodeTb, tubeLightAtNode } from './lipProfileNodes';
 import { CURVE_SAMPLES } from './wombProfile';
-import { EDGE_OUTER_UNITS, FACE_ON_SHEET_PHASE, STOOD_PHASE, faceOnSheetOn } from './wombSection';
+import { EDGE_OUTER_UNITS } from './wombSection';
 import { SHEET_READS, SHEET_READS_FIRST, SHEET_READS_SECOND, WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, curlReadHomeNode, sheetReadHomeNode, thirdReadHomeNode, wombFrameNode } from './wombSectionNodes';
 
 type N = any;
@@ -365,8 +365,6 @@ export class BreakingRibbon {
   private readonly rows = uniform(0);
   /** The wind's offshore speed (m/s): setOffshore. */
   private readonly offshoreMs = uniform(0);
-  /** wombSection.faceOnSheet's dial (0/1), read from the module at each setStations. */
-  private readonly faceOnSheet = uniform(0);
   /** The sun's direction (world, unit, toward the sun): setSun. */
   private readonly sun = uniform(new THREE.Vector3(0, 1, 0));
   private readonly lightPass: THREE.ComputeNode;
@@ -470,7 +468,6 @@ export class BreakingRibbon {
 
   /** Uploads this frame's stations (≤ MAX_STATIONS; gaps included) and the camera position. */
   setStations(entries: readonly StationEntry[], camera: THREE.Vector3, periodS = 15): void {
-    this.faceOnSheet.value = faceOnSheetOn();
     this.camera.copy(camera);
     this.cameraXZ.value.set(camera.x, camera.z);
     this.surface.setCamera?.(camera);
@@ -800,12 +797,7 @@ export class BreakingRibbon {
       const base = vec2(home.add(dot(d.xz, n)), d.y).toVar();
       const edgeRow = j.equal(int(0)).or(j.equal(int(LAST)));
       const drawn = base.mul(q.w).add(q.xy.mul(A)).toVar();
-      // wombSection.sectionOf's faceOnSheet: in front of a waiting section's crest the drawn surface stands at least at the
-      // sheet at its home (the second crest between the lip and the drain, Andrew 2026-10-14).
-      const f2: N = frames.element(i.mul(WOMB_FRAME_VEC4S).add(2));
-      const kFace = this.faceOnSheet.mul(float(1.0).sub(smoothstep(STOOD_PHASE, FACE_ON_SHEET_PHASE, f0.y)));
-      const lift = select(drawn.x.greaterThan(f2.z.mul(A)), kFace.mul(max(base.y.sub(drawn.y), 0.0)), float(0.0));
-      const pos = select(edgeRow, base, vec2(drawn.x, drawn.y.add(lift))).toVar();
+      const pos = select(edgeRow, base, drawn).toVar();
       // The profile's u along n; the lateral displacement at home carried unchanged along t̂.
       const xz = S.add(n.mul(pos.x)).add(tHat.mul(dot(d.xz, tHat)));
       const skirt = select(local.equal(int(0)).or(local.equal(int(V - 1))), float(SKIRT_DEPTH_M), float(0.0));

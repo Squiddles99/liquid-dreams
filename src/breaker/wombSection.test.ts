@@ -8,7 +8,7 @@ import {
   STOOD_PHASE, collapseSpan, flightTime, sectionEnd, sectionKnots, sectionKnot, sectionOf, sectionPhase, sectionScale, sectionWeight, seatShift, tubeHold,
   wombSection, type SheetAlong, sectionSamples, sectionPoint, curlWeight, sampleWeight, SHEET_KNOTS, CURL_KNOTS, SURGE_FALL_BASE_S, SURGE_FALL_PER_M,
   surgeWeight, surgeLift, sectionNumbers, seatOf, sectionCrestY, sectionFrame, WALL_LEAD_T, FRONT_LEAD_S, CREST_SHARE, TROUGH_SHARE, setSeatShares, wallWeight, footY, footWeight, footFloorWeight,
-  SHOULDER_FLOOR, SHOULDER_TAPER_M, setShoulder, ONE_SURFACE, setOneSurface,
+  ONE_SURFACE, setOneSurface,
 } from './wombSection';
 import { UNTIL_NEVER } from './breaking';
 
@@ -56,9 +56,6 @@ describe('wombSection: a station as the Womb profile family', () => {
   });
 
   it('a section held for its turn keeps the swell’s shape down the line and stands up only over its last FRONT_LEAD_S (Andrew, 2026-10-05)', () => {
-    // 2026-10-14 (womb-story Task 3d, STOP 1b ruling 1): the ramp's own law, read with the shoulder's taper off (0 = today);
-    // the taper's product with it is barred in shoulderTaper.test.
-    setShoulder(0, 1, 13);
     try {
       const held = (until: number): number => sectionPhase({ ...at(4, null, 1.2), until }, P); // one-curl: the hold is until
       expect(held(10)).toBe(0);
@@ -66,7 +63,7 @@ describe('wombSection: a station as the Womb profile family', () => {
       expect(held(0.5 * FRONT_LEAD_S)).toBeCloseTo(0.25 * STOOD_PHASE, 12);
       expect(held(0)).toBeCloseTo(STOOD_PHASE, 12);
       for (let w = 0; w < FRONT_LEAD_S; w += 0.1) expect(held(w)).toBeGreaterThanOrEqual(held(w + 0.1));
-    } finally { setShoulder(SHOULDER_TAPER_M, SHOULDER_FLOOR, 13); }
+    } finally { /* (the shoulder's dials deleted, Task 11) */ }
   });
 
   it('holds the tube longer and collapses slower for a bigger, longer-period wave (Andrew, 2026-10-05)', () => {
@@ -327,9 +324,6 @@ describe('the seat (womb-realism Task 2, STOP 1c ask 1): in units of A, the cres
 
 describe('the wall’s lead is one period, smoothstepped (womb-realism Task 2)', () => {
   it('at T 14 (lead 0.75 T = 10.5 s, STOP 2 ruling): until 0, 3, 6, 10.5, 14, 30, never → 1, 0.80, 0.39, 0, 0, 0, 0, and never rising with until', () => {
-    // 2026-10-14 (womb-story Task 3d, STOP 1b ruling 1): the ramp's own law, read with the shoulder's taper off (0 = today);
-    // the taper's product with it is barred in shoulderTaper.test.
-    setShoulder(0, 1, 13);
     try {
       expect(WALL_LEAD_T).toBe(0.75);
       const want: [number, number, number][] = [[0, 1, 1e-9], [3, 0.80, 0.01], [6, 0.39, 0.01], [10.5, 0, 1e-9], [14, 0, 1e-9], [30, 0, 1e-9], [UNTIL_NEVER, 0, 1e-9]];
@@ -337,7 +331,7 @@ describe('the wall’s lead is one period, smoothstepped (womb-realism Task 2)',
       expect(wallWeight(Infinity, 14)).toBe(0);
       expect(wallWeight(null, 14)).toBe(0);
       for (let u = 0; u < 20; u += 0.25) expect(wallWeight(u + 0.25, 14)).toBeLessThanOrEqual(wallWeight(u, 14));
-    } finally { setShoulder(SHOULDER_TAPER_M, SHOULDER_FLOOR, 13); }
+    } finally { /* (the shoulder's dials deleted, Task 11) */ }
   });
 });
 

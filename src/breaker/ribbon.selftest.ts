@@ -16,7 +16,7 @@ import {
 import { DEFAULT_BREAK_PARAMS } from './breaking';
 import { type Station, type StationEntry, minRibbonHeight, traceStations } from './crestTrace';
 import { PROFILE_SAMPLES } from './BreakingRibbon';
-import { FACE_DRAWN, FACE_ON_SHEET, ONE_SURFACE, curlWeight, sectionOf, sectionSamples, setFaceOnSheet } from './wombSection';
+import { FACE_DRAWN, ONE_SURFACE, curlWeight, sectionOf, sectionSamples } from './wombSection';
 import { WOMB_FRAME_VEC4S, applyOneSurface } from './wombSectionNodes';
 import { applyFaceDrawn } from './faceNodes';
 import { hollowFromPsi } from './reefReport';
@@ -124,14 +124,12 @@ const MIRROR_DTS = [-5, -3.5, -2, -1, 0, 0.6, 2];
 /** Every MIRROR_STRIDE-th live station is compared (the CPU reference is ~160 sheet evaluations a station). */
 const MIRROR_STRIDE = 3;
 
-async function sectionParity(renderer: THREE.WebGPURenderer, faceOn: number, one = ONE_SURFACE): Promise<{ pass: boolean; detail: string }> {
+async function sectionParity(renderer: THREE.WebGPURenderer, one = ONE_SURFACE): Promise<{ pass: boolean; detail: string }> {
     // The dial oneSurface (womb-story Task 10) on the CPU twins and the GPU alike; under the law a waiting section draws
     // nothing, so there is no standing-up station to compare (the drawn section of 2026-10-14 is compared at the dial off).
     applyOneSurface(one);
     // Task 11: the drawn face is the law's (the section of 2026-10-14 stood on Task 10's sheet).
     applyFaceDrawn(one > 0.5 ? FACE_DRAWN : 0);
-    setFaceOnSheet(faceOn);
-    let lifted = 0;
     try {
     const { time, sets, ribbon } = setsRig();
     const pos = new Worst(), skirt = new Worst(), numbers = new Worst(), marks = new Worst(), rhoX = new Worst(), slide = new Worst();
@@ -152,7 +150,6 @@ async function sectionParity(renderer: THREE.WebGPURenderer, faceOn: number, one
         stations++;
         const where = `ψ ${psi} dt ${dt} #${i}`;
         const { sec, world, marks: cm } = cpuRow(e, t, traced.waves);
-        if (faceOn) { setFaceOnSheet(0); const off = cpuRow(e, t, traced.waves); setFaceOnSheet(faceOn); if (off.sec.points.some((p, j) => Math.abs(p[1] - sec.points[j][1]) > 0.01)) lifted++; }
         const { A, phase, hollow } = sec.numbers, rho = curlWeight(sec.numbers);
         if (phase > 0.6 && phase < 1.2 && rho > 0.9) thrown++;
         if (phase > 1.2 && rho > 0.5) collapsing++;
@@ -185,24 +182,19 @@ async function sectionParity(renderer: THREE.WebGPURenderer, faceOn: number, one
     }
     // Bounds: the samples are the mirror plus the sheet's own f32 GPU/CPU gap (pinned by breaker.selftest), 5 mm; the
     // numbers 1e-4 relative; the marks within one sample (a walk's threshold in f32 against f64).
-    const ok = (faceOn ? lifted > 0 : true) && stations > 0 && thrown > 0 && collapsing > 0 && (one > 0.5 || standing > 0) && surged > 0 && deadLive === 0 && nonFinite === 0 && pos.value < 5e-3 && skirt.value < 5e-3 &&
+    const ok = stations > 0 && thrown > 0 && collapsing > 0 && (one > 0.5 || standing > 0) && surged > 0 && deadLive === 0 && nonFinite === 0 && pos.value < 5e-3 && skirt.value < 5e-3 &&
       numbers.value < 1e-4 && marks.value <= 1 && rhoX.value < 1e-4;
     return {
       pass: ok,
       detail: `oneSurface ${one}: ${stations} stations (ψ ${MIRROR_PSI.join('/')} × dt ${MIRROR_DTS.join('/')} s; ${standing} standing up, ${thrown} thrown, ${collapsing} collapsing, ${surged} surged); ` +
         `worst distance from the CPU's curve ${pos} (< 5e-3), sample-to-sample ${slide} (diagnostic), skirts ${skirt} (< 5e-3); numbers (A, phase, hollow, ρ; relative) ${numbers} (< 1e-4); marks ${marks} samples (≤ 1); ` +
-        `extras' ρ ${rhoX} (< 1e-4); live rows flagged dead ${deadLive}, non-finite values ${nonFinite} (0). Worst sample: ${worstDetail}` +
-        (faceOn ? `; stations the face-on-sheet lifted (> 1 cm) ${lifted} (> 0)` : ''),
+        `extras' ρ ${rhoX} (< 1e-4); live rows flagged dead ${deadLive}, non-finite values ${nonFinite} (0). Worst sample: ${worstDetail}`,
     };
-    } finally { setFaceOnSheet(FACE_ON_SHEET); applyOneSurface(ONE_SURFACE); applyFaceDrawn(FACE_DRAWN); }
+    } finally { applyOneSurface(ONE_SURFACE); applyFaceDrawn(FACE_DRAWN); }
 }
 
-registerSelfTest({ name: 'ribbon: GPU section matches wombSection (one surface by construction, womb-story Task 10)', run: (renderer) => sectionParity(renderer, 0, 1) });
-registerSelfTest({ name: 'ribbon: GPU section matches wombSection (the drawn section of 2026-10-14: oneSurface 0)', run: (renderer) => sectionParity(renderer, 0, 0) });
-registerSelfTest({
-  name: "ribbon: GPU section matches wombSection with the drawn face on the sheet (faceOnSheet, Andrew 2026-10-14; oneSurface 0)",
-  run: async (renderer) => { const r = await sectionParity(renderer, 1, 0); return r; },
-});
+registerSelfTest({ name: 'ribbon: GPU section matches wombSection (one surface by construction, womb-story Task 10)', run: (renderer) => sectionParity(renderer, 1) });
+registerSelfTest({ name: 'ribbon: GPU section matches wombSection (the drawn section of 2026-10-14: oneSurface 0)', run: (renderer) => sectionParity(renderer, 0) });
 
 registerSelfTest({
   name: 'ribbon: edges are the sheet',

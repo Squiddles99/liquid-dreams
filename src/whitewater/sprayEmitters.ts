@@ -371,7 +371,7 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
     // The standing wall ahead of the curl feathers in an offshore (§4.2; womb-realism Task 4): from the drawn crest near
     // the curl, from standingCrestY (no frame read) beyond.
     if (s.tb === null && wantSpray && s.until !== null && s.until !== undefined && Number.isFinite(s.until)) {
-      const wOff = offshoreSpeedOn(i.wind, s.nx, s.nz), strength = featherStrength(wallWeight(s.until, field.periodS, shoulderRegion(s.x, s.z)), wOff, i.amount);
+      const wOff = offshoreSpeedOn(i.wind, s.nx, s.nz), strength = featherStrength(wallWeight(s.until, field.periodS), wOff, i.amount);
       if (strength > 0) {
         const arcs = brokenArcs.get(s.wave), fromFrame = !!arcs && arcs.some((a) => Math.abs(a - s.arc) <= FEATHER_FRAME_REACH_M);
         // A pitching lip feathers from its crest knot (womb-story Task 5: on the lip; it was the tip's height at the

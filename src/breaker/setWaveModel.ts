@@ -1,5 +1,4 @@
-import { curlFrontAlong } from './curlFront';
-import { BORE_SHARE, boreWeight, closeoutWeight, faceDrawnOn, flightTime, frontWeight, handDownSpan, oneSurfaceOn, sectionPhase, sectionSize, shoulderFactor, shoulderRegion, shoulderU, wallWeight } from './wombSection';
+import { BORE_SHARE, boreWeight, closeoutWeight, faceDrawnOn, flightTime, frontWeight, handDownSpan, oneSurfaceOn, sectionPhase, sectionSize, wallWeight } from './wombSection';
 import { hollowFromPsi } from './reefReport';
 import { faceLengthRef, faceShapeIn } from './faceTable';
 import { smoothstep } from '../math/smoothstep';
@@ -89,11 +88,11 @@ export const wombFrontMin = (H: number, k: number): number =>
  * its own ray, so the face was a cliff to 4 m and the swell's beyond, a dark wedge with a torn foot ahead of the stood wall
  * (Andrew, 2026-10-11: "a tear in the wave face runs before the wave is broken"). The GPU mirrors this (SetWaves' standing).
  */
-export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset, until: number | null = null, region = 1): number {
+export function frontStanding(tb: number | null | undefined, r = 0, ribbonOnset = DEFAULT_BREAK_PARAMS.ribbonOnset, until: number | null = null): number {
   if (tb === undefined) return 0;
-  if (tb === null) return until !== null && Number.isFinite(until) ? frontWeight(until, region) : smoothstep(ribbonOnset, 1, r);
+  if (tb === null) return until !== null && Number.isFinite(until) ? frontWeight(until) : smoothstep(ribbonOnset, 1, r);
   // Held for its turn (the peel stretch): as the wall stands up over the last lead before it.
-  return tb < 0 ? Math.max(smoothstep(ribbonOnset, 1, r) * frontWeight(-tb, region), frontWeight(-tb, region)) : 1;
+  return tb < 0 ? Math.max(smoothstep(ribbonOnset, 1, r) * frontWeight(-tb), frontWeight(-tb)) : 1;
 }
 
 export function leanWeight(crest: Crest | null): number {
@@ -201,9 +200,6 @@ export interface BreakOptions {
    * everywhere", Andrew, 2026-10-05). Absent: with it (the old breaking's own tests, until it is removed).
    */
   shape?: boolean | 'lean';
-  /** How far down the left w's crest is broken at t (curlFront.curlFrontAlong), for the shoulder's taper. Absent: by the
-   * time until its break alone. */
-  front?: (w: ActiveWave, t: number) => number;
   /** Tests and the drawings: every crest takes this ψ. */
   force?: { psi: number };
   /** false: a broken crest stands at the broken law from the break on, without wallHeight's hand-down from the record's
@@ -215,7 +211,7 @@ export interface BreakOptions {
 /** Breaking on `field` with `params` and the wind's offshore speed: the field and its onset record, as the render reads them. */
 export function breakOptions(field: ReefField, params: BreakParams, offshoreMs = 0): BreakOptions {
   const rec = new Float32Array(ONSET_RECORD_LENGTH);
-  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec), edgeFade: (x, z) => psiEdgeFade(field.grid, x, z), offshoreMs, front: (w, t) => curlFrontAlong(field, w, t, params) };
+  return { sample: (x, z) => sampleField(field, x, z), params, onset: (x, z) => sampleOnset(field, x, z, rec), edgeFade: (x, z) => psiEdgeFade(field.grid, x, z), offshoreMs };
 }
 
 const ZERO: SetWaveResult = { eta: 0, dx: 0, dz: 0, slopeX: 0, slopeZ: 0, foam: 0, stage: 0, pile: 0 };
@@ -261,7 +257,7 @@ export function localHeight(w: ActiveWave, f: FieldSample): number {
  * lip's flight (wombSection.flightTime), so the crest is continuous at the break (the face at the peak kinked 0.8 m per m
  * where neighbouring points read either side of the onset).
  */
-export function wallHeight(i: { hAmp: number; depthM: number; hminM: number; tb: number | null | undefined; until: number | null | undefined; sizeM: number | null | undefined; periodS: number; region?: number }): number {
+export function wallHeight(i: { hAmp: number; depthM: number; hminM: number; tb: number | null | undefined; until: number | null | undefined; sizeM: number | null | undefined; periodS: number }): number {
   if (i.tb !== null && i.tb !== undefined && i.tb >= 0) {
     const broken = BREAKING_RATIO * i.hminM, size = i.sizeM;
     if (size === null || size === undefined || !Number.isFinite(size)) return Math.min(i.hAmp, broken);
@@ -273,12 +269,12 @@ export function wallHeight(i: { hAmp: number; depthM: number; hminM: number; tb:
   // break at, never from the depth-now cap (on the ledge top 20-50 m ahead the cap stood the wave 2-6 m below the size it
   // breaks at: the dip, the double-up; task8-stop.md). Off the law (oneSurface 0) the cap, as before.
   const from = oneSurfaceOn() > 0.5 ? i.hAmp : cap;
-  return Math.min(i.hAmp, from + (i.sizeM - from) * wallWeight(u, i.periodS, i.region ?? 1));
+  return Math.min(i.hAmp, from + (i.sizeM - from) * wallWeight(u, i.periodS));
 }
 
 /** wallHeight at a crest: its record read at the lookup (Crest.size). */
 export const crestHeight = (w: ActiveWave, crest: Crest): number =>
-  wallHeight({ hAmp: w.heightM * crest.f.amp, depthM: crest.f.depth, hminM: crest.f.hmin, tb: crest.tb, until: crest.until, sizeM: crest.size, periodS: (2 * Math.PI) / w.omega, region: shoulderRegion(crest.x, crest.z) });
+  wallHeight({ hAmp: w.heightM * crest.f.amp, depthM: crest.f.depth, hminM: crest.f.hmin, tb: crest.tb, until: crest.until, sizeM: crest.size, periodS: (2 * Math.PI) / w.omega });
 
 /** ξ: time since w's crest passed (x, z) (negative: still to come). */
 export function phaseXi(x: number, z: number, t: number, f: FieldSample, w: ActiveWave, ctx: WaveContext): number {
@@ -488,10 +484,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   if (beyondEnvelope(xi, w)) return { ...ZERO };
   // Under the ribbon (shape 'lean') the broken wave settles into the white water's bore behind the curl (wombSection.boreWeight).
   const bore = o?.shape === 'lean' && crest ? boreWeight(crest.tb, localHeight(w, crest.f), (2 * Math.PI) / w.omega) : 0;
-  // The shoulder tapers ahead of the curl (wombSection.shoulderFactor, Task 3d): read at the crest, so a cross-section shares it.
-  const front = crest ? o?.front?.(w, t) : undefined;
-  const taper = crest ? shoulderFactor(crest.x, crest.z, shoulderU(crest.tb, crest.until), front) : 1;
-  const H0 = waveHeightAt(w, f, crest, xi) * taper, H = H0 * (1 - (1 - BORE_SHARE) * bore);
+  const H0 = waveHeightAt(w, f, crest, xi), H = H0 * (1 - (1 - BORE_SHARE) * bore);
   if (!(H > 0)) return { ...ZERO };
   const A = H / 2;
   const { env, dEnv } = waveEnvelope(xi, w);
@@ -506,7 +499,7 @@ export function waveAtCrest(x: number, z: number, t: number, f: FieldSample, w: 
   const aE = A * env * lateral;
   // The front's lean (LEAN_RATIO): the trough moves in to the face's foot as the wave shoals.
   const leanW = crest ? smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], crest.rLean) * crest.confidence : 0;
-  const standing = o?.shape === 'lean' && crest ? frontStanding(crest.tb, crest.r, crest.params.ribbonOnset, crest.until, shoulderRegion(crest.x, crest.z)) : 0;
+  const standing = o?.shape === 'lean' && crest ? frontStanding(crest.tb, crest.r, crest.params.ribbonOnset, crest.until) : 0;
   // Task 11: the stood face is the drawing's (drawnFace): its length sets how far the front squeezes.
   // Its points are placed by the arrival-time field's own rate along the ray (xi per metre, read over 1 m ahead), not k.
   let xiPerM = f.k / ctx.omega;

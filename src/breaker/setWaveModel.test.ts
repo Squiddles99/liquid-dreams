@@ -192,11 +192,7 @@ describe('ψ at the crest (barrel from the maths)', () => {
 
 describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
   it('shortens a crest’s front as its section stands up: the swell’s before, the profile’s face once broken; on the record the clock alone', async () => {
-    // 2026-10-14 (womb-story Task 3d, STOP 1b ruling 1): the ramp's own law, read with the shoulder's taper off (0 = today);
-    // the taper's product with it is barred in shoulderTaper.test.
-    const sh = await import('./wombSection');
-    sh.setShoulder(0, 1, 13);
-    try {
+    {
       const { frontStanding, wombFrontMin, LEAN_FRONT_MIN, LEAN_FRONT_FLOOR } = await import('./setWaveModel');
       expect(frontStanding(undefined)).toBe(0);
       expect(frontStanding(null)).toBe(0);
@@ -227,7 +223,7 @@ describe('the sheet under the Womb ribbon (BreakOptions.shape lean)', () => {
       expect((share * Math.PI) / 0.068).toBeCloseTo(1.8 * (3.5 / 1.3), 6);
       expect(wombFrontMin(0.3, 0.05)).toBe(LEAN_FRONT_FLOOR);
       expect(wombFrontMin(20, 0.1)).toBe(LEAN_FRONT_MIN);
-    } finally { sh.setShoulder(sh.SHOULDER_TAPER_M, sh.SHOULDER_FLOOR, 13); }
+    }
   });
 });
 

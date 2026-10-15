@@ -1,8 +1,7 @@
-import { curlFrontAlong } from './curlFront';
 import { type BreakParams, ONSET_RECORD_LENGTH, TUBE_HOLD_S, breakingRatio, landingEstimate, onsetHeight, onsetPsi, onsetSize, onsetSizeAhead, onsetDelay, onsetTime, onsetUntil, peelRatio } from './breaking';
 import type { FieldSample } from './fieldSample';
 import { smoothstep } from '../math/smoothstep';
-import { CURL_PHASE, type SectionNumbers, closeoutWeight, curlWeight, oneSurfaceOn, sectionNumbers, shoulderFactor, shoulderRegion, shoulderU, wallLeadS } from './wombSection';
+import { CURL_PHASE, type SectionNumbers, closeoutWeight, curlWeight, oneSurfaceOn, sectionNumbers, wallLeadS } from './wombSection';
 import { HAND_BACK_S } from './lipProfile';
 import { PSI_NORMAL, effectivePsi } from './overturn';
 import { type ReefField, psiEdgeFade, sampleField, sampleOnset } from './reefField';
@@ -57,9 +56,6 @@ export interface Station {
   /** Crest position (undisplaced world xz). */
   x: number;
   z: number;
-  /** The wave's curl front at the trace's time, m down the left (curlFront.curlFrontAlong; fillTimes): the stand-up eases off by
-   * distance from it (wombSection.standAhead). */
-  frontAlong?: number;
   /** Arc length along this wave's crest from its seed (m; negative on the second side). */
   arc: number;
   /** Unit normal to the crest line, in the wave's travel direction: the profile's u axis. */
@@ -265,16 +261,13 @@ function traceWave(field: ReefField, w: ActiveWave, wave: number, t: number, ctx
 /** Fills each station's time since onset and ψ, each exactly from the onset record (a lookup). Interpolating between key
  * stations 3 m apart (from when this was a march up the ray per station) put the lip up to 0.31 s off the sheet where the
  * onset creeps unevenly along the crest (the softened ramp, plan 2026-09-30-barrel-from-maths Task 5). */
-function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveContext, input: TraceInput, t: number): void {
-  const front = curlFrontAlong(field, w, t, input.params);
+function fillTimes(field: ReefField, w: ActiveWave, line: Station[], _ctx: WaveContext, input: TraceInput, _t: number): void {
   for (const s of line) {
-    s.frontAlong = front;
     stationOnset(field, w, s, input.params);
     // The crest's height by the record (setWaveModel.wallHeight, womb-realism Task 2c): before its break it grows into the
     // height it breaks at, so the section's A (sectionScale of H, then of Hb) runs on across the onset.
     const f = sampleField(field, s.x, s.z), rec = sampleOnset(field, s.x, s.z, onsetScratch);
-    s.H = wallHeight({ hAmp: w.heightM * f.amp, depthM: f.depth, hminM: f.hmin, tb: s.tb, until: s.until, sizeM: rec ? onsetSizeAhead(rec, 0, w.heightM, input.params) : null, periodS: field.periodS, region: shoulderRegion(s.x, s.z) })
-      * shoulderFactor(s.x, s.z, shoulderU(rec ? s.tb : undefined, s.until), front); // the shoulder tapers (Task 3d)
+    s.H = wallHeight({ hAmp: w.heightM * f.amp, depthM: f.depth, hminM: f.hmin, tb: s.tb, until: s.until, sizeM: rec ? onsetSizeAhead(rec, 0, w.heightM, input.params) : null, periodS: field.periodS });
     s.psi = stationPsi(field, w, s.x, s.z, input);
     s.lipH = stationLipH(field, w, s.x, s.z, input.params);
     s.Hb = stationSize(field, w, s, input.params);
@@ -309,7 +302,7 @@ export const LIP_FRONT_TAPER_M = 4;
 export function fillSections(line: Station[], periodS: number, p: Pick<BreakParams, 'ribbonOnset'> & Partial<Pick<BreakParams, 'surge'>>, insideSigmaM = INSIDE_LINE_SMOOTHING_M): void {
   const normals = line.map((s) => [s.nx, s.nz]);
   const raw = line.map((s) => {
-    const q = sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS, x: s.x, z: s.z, frontAlong: s.frontAlong }, { ribbonOnset: p.ribbonOnset, surge: p.surge });
+    const q = sectionNumbers({ H: s.H, Hb: s.Hb, r: s.r, tb: s.tb, until: s.until, psi: s.psi, periodS, x: s.x, z: s.z }, { ribbonOnset: p.ribbonOnset, surge: p.surge });
     // The surge is × hollow (surgeWeight): it closes out with it.
     const open = 1 - closeoutWeight(s.z);
     q.hollow *= open; q.surge = (q.surge ?? 0) * open;

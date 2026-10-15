@@ -66,71 +66,20 @@ export const wallLeadS = (periodS: number): number => WALL.leadT * periodS;
  * catch could bring him to speed (rideOnSections: Solid and Huge not caught).
  */
 export const FRONT_LEAD_S = 8;
-/** `region` (shoulderRegion at the crest; absent 1): where the shoulder's taper holds. The take-off and the right keep the
- * wall's whole lead (the taper there cut the wave standing up into the peak to its last 2.3 s: its crest stood below the
- * water behind it). */
-export const frontWeight = (until: number | null | undefined, region = 1, ahead = 0): number => {
+// (The shoulder's taper, its floor and the stand-up ahead of the curl, dials shoulderTaperM / shoulderFloor / standAheadM,
+// and the drawn face on the sea, faceOnSheet, were retired by the one-surface law and deleted: womb-story Task 11, Fable's
+// STOP 3 ruling 4, 2026-10-15. Their defaults were 0 / 1 / 0 / 0, inert.)
+export const frontWeight = (until: number | null | undefined): number => {
   if (until === null || until === undefined || !Number.isFinite(until)) return 0;
   const left = 1 - Math.min(1, Math.max(0, until) / FRONT_LEAD_S);
-  const byTime = SHOULDER.taperM > 0 ? left * left * (1 - region * (1 - shoulderStand(until))) : left * left;
-  // `ahead` (standAhead): at least by the distance from the curl's front (0 with the dial off: today, bit-equal).
-  return ahead > byTime ? ahead : byTime;
+  return left * left;
 };
-export const wallWeight = (until: number | null | undefined, periodS: number, region = 1): number => {
+export const wallWeight = (until: number | null | undefined, periodS: number): number => {
   if (until === null || until === undefined || !Number.isFinite(until)) return 0;
-  const w = 1 - smoothstep(0, wallLeadS(periodS), Math.max(0, until));
-  return SHOULDER.taperM > 0 ? w * (1 - region * (1 - shoulderStand(until))) : w;
+  return 1 - smoothstep(0, wallLeadS(periodS), Math.max(0, until));
 };
-/**
- * The shoulder tapers (womb-story Task 3d, STOP 1b ruling 1; Andrew 2026-10-14: "there should not be the wall in front of
- * the wave face"): ahead of the curl the stand-up fraction falls from 1 to 0 over shoulderTaperM along the line, the
- * distance ahead read as the time until the section breaks (or its turn) x the curl's top speed (BreakParams.curlMaxMs),
- * so it rides with the curl and a closeout still stands up as it comes. 0 = today (STOP 0 ruling 4's wall, retired).
- * The dial shoulderTaperM (BreakParams.shoulderTaperM); the GPU mirrors it (breakingNodes.shoulderStandNode).
- */
-// 0 by default (womb-story Task 7 ruling, STOP 2): Fable's 30 (STOP 1b ruling 1) cut the ride bot's held line on the
-// Womb from 9.3-9.7 s to 5.4-6.9 s (rideOnSections, 4 of 4; green at 0); until Andrew picks from task3d/shoulder-ab.jpg and
-// Fable rules the ride, the dial is live and the default is today.
-export const SHOULDER_TAPER_M = 0;
-/**
- * …and the shoulder's height falls to this share of its own there (shoulderFactor): the unstood swell on the drop stood
- * 5.0-5.1 m at 7 ft, taller than the curl's own 4.8 m crest (the wall Andrew marked; the stand-up never held it up).
- * 1 = the swell's own height (the ruling's law as written). The dial shoulderFloor (BreakParams.shoulderFloor).
- */
-export const SHOULDER_FLOOR = 1;
-const SHOULDER = { taperM: SHOULDER_TAPER_M, floor: SHOULDER_FLOOR, curlMs: 13, aheadM: 0 }; // aheadM: STAND_AHEAD_M (retired to 0, Task 10)
-/**
- * The stand-up eases off by distance from the curl's front (Andrew 2026-10-14, moment 1791986608: "the almost cube-like
- * lump of wave face in front of the breaking lip"): where the curl stalls (the left's end at 7 ft: the station 1.3 m ahead
- * waits 3.45 s) the stand-up read by the time alone fell from the curl's to the swell's in 5 m along the crest, the lump's
- * side. Down the left (shoulderRegion), a station waiting its turn stands at least 1 − smoothstep(0, standAheadM, d), d m
- * ahead of the front (curlFront.curlFrontAlong). 0 = off. The dial standAheadM (BreakParams.standAheadM). The drawn
- * section only (sectionPhase; the ribbon is built from the CPU trace): on the sheet's front lean too, the distance is not
- * carried along the rays as the time is, so points of one face read different stand-ups and the sheet folded at the face's
- * foot (a stepped fin ahead of the lip, andrew-moment/stand-ahead-ab.jpg); the sheet keeps the time's stand-up.
- */
-// 20 m by Andrew's pick (2026-10-14, andrew-moment/one-surface-ab.jpg row 3, with faceOnSheet on).
-// 0: retired by the one-surface law (Task 10; the A/B sheet's 'before' sets 20).
-export const STAND_AHEAD_M = 0;
-export const setStandAhead = (m: number): void => { SHOULDER.aheadM = m; };
-export function standAhead(x: number, z: number, frontAlong: number | undefined): number {
-  if (!(SHOULDER.aheadM > 0) || frontAlong === undefined || !Number.isFinite(frontAlong)) return 0;
-  const d = shoulderAlong(x, z) - frontAlong;
-  if (d < 0) return 0;
-  return shoulderRegion(x, z) * (1 - smoothstep(0, SHOULDER.aheadM, d));
-}
-/** Sets the shoulder's taper (m), floor (share) and the curl's top speed (m/s) the distance is read with. */
-export const setShoulder = (taperM: number, floor: number, curlMs: number): void => { SHOULDER.taperM = taperM; SHOULDER.floor = floor; SHOULDER.curlMs = curlMs; };
-export const shoulderTaperM = (): number => SHOULDER.taperM;
-/** The stand-up fraction `u` s before the section's break (or turn): 1 − smoothstep(0, shoulderTaperM, u × curl speed);
- * 1 with the dial at 0, 0 where it never breaks. */
-export const shoulderStand = (u: number): number => {
-  if (!(SHOULDER.taperM > 0)) return 1;
-  if (!Number.isFinite(u)) return 0;
-  return 1 - smoothstep(0, SHOULDER.taperM, Math.max(0, u) * SHOULDER.curlMs);
-};
-/** Where the floor holds: down the left past the take-off (along 10 -> 30 m from the tip), from 80 -> 40 m seaward of the
- * ledge to 150 -> 200 m inshore of it (the right, the take-off and the open sea keep their own height). */
+/** Down the left past the take-off (along 10 -> 30 m from the tip), from 80 -> 40 m seaward of the ledge to 150 -> 200 m
+ * inshore of it (where the retired shoulder dials held; kept as the left's region for readers). */
 export const SHOULDER_ALONG_M: readonly [number, number] = [10, 30];
 export const SHOULDER_SEAWARD_M: readonly [number, number] = [-80, -40];
 export const SHOULDER_INSHORE_M: readonly [number, number] = [150, 200];
@@ -140,30 +89,8 @@ export function shoulderRegion(x: number, z: number): number {
   return smoothstep(SHOULDER_ALONG_M[0], SHOULDER_ALONG_M[1], along) * smoothstep(SHOULDER_SEAWARD_M[0], SHOULDER_SEAWARD_M[1], cross)
     * (1 - smoothstep(SHOULDER_INSHORE_M[0], SHOULDER_INSHORE_M[1], cross));
 }
-/** The time (s) a crest has before its break or its turn, for the shoulder (shoulderFactor): null once broken or without
- * a record (tb ≥ 0, or undefined), −tb while held for its turn, else until. */
-export const shoulderU = (tb: number | null | undefined, until: number | null | undefined): number | null =>
-  tb === undefined ? null : tb !== null ? (tb >= 0 ? null : -tb) : (until ?? null);
-/** The stand-up fraction `d` m ahead of the curl's front along the line (curlFront.curlFrontAlong): 1 − smoothstep(0,
- * shoulderTaperM, d); 1 at or behind the front, and with the dial at 0. */
-export const shoulderStandAt = (d: number): number => (SHOULDER.taperM > 0 ? 1 - smoothstep(0, SHOULDER.taperM, Math.max(0, d)) : 1);
 /** wombReef.ledgeAlongM (m down the left from the tip), here so the GPU mirror reads the same frame. */
 export const shoulderAlong = (x: number, z: number): number => (x - TIP[0]) * SIN_B - (z - TIP[1]) * COS_B;
-/**
- * The shoulder's height share at a crest at (x, z) `u` s before its break or turn (null: broken, its own height), with the
- * curl's front `frontAlong` m down the left (curlFront; absent: the time alone): 1 − region × (1 − floor) × (1 − stand),
- * stand the larger of the time's (shoulderStand: a closeout stands up as it comes) and the distance's (shoulderStandAt: past
- * the fizzle the time jumps to the shore's break, 5-11 s, and the taper fell to the floor between two stations). 1 with
- * either dial off.
- */
-export function shoulderFactor(x: number, z: number, u: number | null | undefined, frontAlong?: number): number {
-  // A crest that never breaks keeps its own (a wave too small to break anywhere skips the GPU's breaking: Phase 1 both sides).
-  if (u === null || u === undefined || !(u < UNTIL_NEVER) || !(SHOULDER.floor < 1) || !(SHOULDER.taperM > 0)) return 1;
-  const g = shoulderRegion(x, z);
-  if (!(g > 0)) return 1;
-  const stand = frontAlong === undefined ? shoulderStand(u) : Math.max(shoulderStand(u), shoulderStandAt(shoulderAlong(x, z) - frontAlong));
-  return 1 - g * (1 - SHOULDER.floor) * (1 - stand);
-}
 /**
  * The lip's flight (onset to the round barrel) is the free fall from this many A. 0.8, not 1.3 (womb-realism spec 3.2,
  * Task 3): the airborne lip spans flight x peel along the line, at most 2.5 A. The dial flightDropA (setFlightDropA); the
@@ -206,12 +133,9 @@ export interface SectionInput {
   psi: number;
   /** The swell's period (s). */
   periodS: number;
-  /** Where the station stands (world xz): the shoulder's taper holds down the left past the take-off (shoulderRegion).
-   * Absent: everywhere. */
+  /** Where the station stands (world xz). */
   x?: number;
   z?: number;
-  /** The curl's front, m down the left (curlFront.curlFrontAlong): the stand-up eases off by distance from it (standAhead). */
-  frontAlong?: number;
 }
 
 export interface SectionParams {
@@ -242,8 +166,7 @@ export function sectionPhase(s: SectionInput, p: SectionParams): number {
   // (or its turn, held); off it (off the grid, or a ray that never breaks) with its ratio from the ribbon's onset. (The ratio
   // beside the clock stood a section up at full height ahead of the curl: the pocket one curl holds. One-curl spec §3b.)
   if (s.tb === null) {
-    const placed = s.x !== undefined && s.z !== undefined;
-    return s.until !== undefined && s.until !== null && Number.isFinite(s.until) ? STOOD_PHASE * frontWeight(s.until, placed ? shoulderRegion(s.x!, s.z!) : 1, placed ? standAhead(s.x!, s.z!, s.frontAlong) : 0) : STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r);
+    return s.until !== undefined && s.until !== null && Number.isFinite(s.until) ? STOOD_PHASE * frontWeight(s.until) : STOOD_PHASE * smoothstep(p.ribbonOnset, 1, s.r);
   }
 
   if (!Number.isFinite(s.tb)) return 2;
@@ -753,24 +676,6 @@ export function sectionSamples(numbers: SectionNumbers, sheet: SheetAlong): { kn
   return { knots, curve, marks };
 }
 
-/**
- * The drawn face of a section waiting its turn never stands below the sheet in front of its crest (Andrew 2026-10-14, moment
- * 1791986608: "there is seemingly still 2 waves going on! there should not be this crest between the lip and the drain"):
- * the stood face is drawn near vertical (2.2 m to -1.0 m in 1 m) and the sheet under it can lean its front over ~4 m, so
- * the sheet stood up to 3.3 m above the drawn face in front of the crest and showed through as a second crest (and, at the
- * curl's end, as the cube-like lump). On (1): each sample in front of the crest is lifted to the sheet at its home where it
- * is under it, by 1 at phase <= STOOD_PHASE fading to 0 by FACE_ON_SHEET_PHASE (the broken lip pitching keeps its own).
- * The dial faceOnSheet (BreakParams.faceOnSheet); the ribbon mirrors it (BreakingRibbon's vertex pass).
- */
-export const FACE_ON_SHEET_PHASE = STOOD_PHASE + 0.15;
-/** On by Andrew's pick (2026-10-14, one-surface-ab.jpg row 3, with standAheadM 20). */
-// 0: retired by the one-surface law (Task 10; the A/B sheet's 'before' sets 1).
-export const FACE_ON_SHEET = 0;
-const FACE = { on: FACE_ON_SHEET };
-export const setFaceOnSheet = (on: number): void => { FACE.on = on; };
-export const faceOnSheetOn = (): number => FACE.on;
-export const faceOnSheetWeight = (phase: number): number => FACE.on * (1 - smoothstep(STOOD_PHASE, FACE_ON_SHEET_PHASE, phase));
-
 /** A sample's point (m): its sheet weight × the sheet at its home, plus A × its a (SectionSample). */
 export const sectionPoint = (q: SectionSample, A: number, sheet: SheetAlong): P2 => {
   const S = sheet(A * q[2]), w = q[5];
@@ -783,16 +688,6 @@ export function sectionOf(numbers: SectionNumbers, sheet: SheetAlong): Section {
   const { A } = numbers, { knots, curve } = sectionSamples(numbers, sheet);
   const points: P2[] = [], homes: number[] = [];
   for (let j = curve.length - 1; j >= 0; j--) { points.push(sectionPoint(curve[j], A, sheet)); homes.push(A * curve[j][2]); }
-  // faceOnSheet: in front of a waiting section's crest the drawn surface stands at least at the sheet at its home.
-  const k = faceOnSheetWeight(numbers.phase);
-  if (k > 0) {
-    const crestU = A * knots[SECTION_CREST][0];
-    for (let j = 0; j < points.length; j++) {
-      if (!(points[j][0] > crestU)) continue;
-      const under = sheet(homes[j])[1] - points[j][1];
-      if (under > 0) points[j] = [points[j][0], points[j][1] + k * under];
-    }
-  }
   const place = (q: SectionKnot): P2 => [A * q[0], A * q[1]];
   return { numbers, points, homes, crest: place(knots[SECTION_CREST]), tip: place(knots[SECTION_TIP]) };
 }

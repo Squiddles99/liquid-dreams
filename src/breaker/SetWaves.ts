@@ -1,4 +1,3 @@
-import { curlFrontAlong } from './curlFront';
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, Loop, abs, clamp, cos, dot, exp, float, floor, int, ivec2, length, max, min, mix, select, sin, smoothstep, sqrt, storage, tanh,
@@ -10,13 +9,13 @@ import { type BreakParams, DEFAULT_BREAK_PARAMS, MIN_BREAKING_HEIGHT_M, ONSET_LE
 import { PSI_NORMAL, sheetShape } from './overturn';
 import { effectivePsiNode, plungeNode, sheetShapeNode } from './overturnNodes';
 import { churnHeightNode } from '../whitewater/pileChurn';
-import { BORE_SHARE, CLOSEOUT_FADE_M, CLOSEOUT_FROM_TURN_M, COLLAPSE_BASE_S, COLLAPSE_PER_M, FRONT_LEAD_S, GRAVITY_MS2, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, STOOD_PHASE, setFaceOnSheet, setHandDownT, setShoulder, setStandAhead, setWallLeadT } from './wombSection';
+import { BORE_SHARE, CLOSEOUT_FADE_M, CLOSEOUT_FROM_TURN_M, COLLAPSE_BASE_S, COLLAPSE_PER_M, FRONT_LEAD_S, GRAVITY_MS2, HOLD_BASE_S, HOLD_PER_M, ONSET_HEIGHT_UNITS, STOOD_PHASE, setHandDownT, setWallLeadT } from './wombSection';
 import { applyFaceDrawn, faceDrawnUniform, faceLengthsNode, faceShapeInNode } from './faceNodes';
 import { applyFlightDropA, applyOneSurface, applySeatShares, flightTimeNodeA } from './wombSectionNodes';
 import { HOLLOW_PSI } from './reefReport';
 import { MIST_LAND_WINDOW_S, landingMistNode } from '../whitewater/mistSlab';
 import { boreWeightNode } from './wombSectionNodes';
-import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, shoulderFactorNode, shoulderRegionNode, shoulderTakeNode, updateBreakUniforms, wallHeightNode } from './breakingNodes';
+import { breakPointNode, breakingRatioNode, createBreakUniforms, lifecycleNode, onsetLevelNode, onsetPsiNode, onsetTimeNode, updateBreakUniforms, wallHeightNode } from './breakingNodes';
 import { FAR_DX, FAR_X0, FAR_X1 } from './coastFarField';
 import { MIN_DEPTH_M } from './dispersion';
 import { PSI_EDGE_FADE_M, REEF_BLEND_M, type ReefField } from './reefField';
@@ -135,7 +134,6 @@ export class SetWaves {
   private steepeningHeight = Infinity;
   private events: readonly WaveEvent[] = [];
   /** The time the wave slots' curl fronts were last read at (setEvents). */
-  private frontT = NaN;
 
   /**
    * false: the sheet without the whitewater pile anywhere (setWaveModel.BreakOptions.pile), as the game draws it: the
@@ -165,9 +163,6 @@ export class SetWaves {
     applySeatShares(this.breakParams.crestShare, this.breakParams.troughShare);
     setWallLeadT(this.breakParams.wallLeadT);
     setHandDownT(this.breakParams.handDownT);
-    setShoulder(this.breakParams.shoulderTaperM, this.breakParams.shoulderFloor, this.breakParams.curlMaxMs);
-    setStandAhead(this.breakParams.standAheadM);
-    setFaceOnSheet(this.breakParams.faceOnSheet);
     applyOneSurface(this.breakParams.oneSurface);
     applyFaceDrawn(this.breakParams.faceDrawn);
     applyFlightDropA(this.breakParams.flightDropA);
@@ -246,11 +241,8 @@ export class SetWaves {
    * so it may steepen or break somewhere. The GPU skips the crest search and breaking for a flagged-0 wave; the model
    * gives such a wave no sharpening and stage 0 everywhere, so the result is Phase 1 either way.
    */
-  setEvents(events: readonly WaveEvent[], t?: number): void {
+  setEvents(events: readonly WaveEvent[], _t?: number): void {
     this.events = events;
-    // The curl's front down the left at t, per wave (curlFront.curlFrontAlong; the shoulder's taper by distance): absent t,
-    // the last frame's time; no field or time yet, the taper reads the time until its break alone.
-    if (t !== undefined) this.frontT = t;
     const d = this.wavesAttr.array as Float32Array;
     for (let i = 0; i < MAX_ACTIVE_WAVES; i++) {
       const e = events[i];
@@ -259,8 +251,7 @@ export class SetWaves {
       d.set(w ? [w.arrivalS, w.heightM, w.omega, w.crestLengthM] : [0, 0, 1, 1], i * 12);
       d.set(w ? [w.travelX, w.travelZ, w.crestOffsetM, canBreak] : [1, 0, 0, 0], i * 12 + 4);
       // The game rules on its ψ (overturn.effectivePsi): its drain factor and its draw for the dial.
-      const front = w && this.field && Number.isFinite(this.frontT) ? curlFrontAlong(this.field, w, this.frontT, this.breakParams) : NaN;
-      d.set(w ? [w.drainFactor ?? 1, w.throwDraw ?? 0, Number.isFinite(front) ? front : 0, Number.isFinite(front) ? 1 : 0] : [1, 0, 0, 0], i * 12 + 8);
+      d.set(w ? [w.drainFactor ?? 1, w.throwDraw ?? 0, 0, 0] : [1, 0, 0, 0], i * 12 + 8);
     }
     this.activeCount.value = Math.min(events.length, MAX_ACTIVE_WAVES);
     this.wavesAttr.needsUpdate = true;
@@ -292,7 +283,7 @@ export class SetWaves {
   wallHeightAt(xz: N, heightM: N, omega: N): N {
     const level = onsetLevelNode(heightM, this.brk), rec = this.sampleOnset(xz, level.k);
     const o = onsetTimeNode(rec, level, heightM, this.brk), f = this.sample(xz, true);
-    return wallHeightNode(float(heightM).mul(f.amp), f.depth, f.hmin, rec.inside, o, float(2 * Math.PI).div(omega), this.brk.wallLeadT, this.brk.handDownT, this.brk, shoulderRegionNode(xz));
+    return wallHeightNode(float(heightM).mul(f.amp), f.depth, f.hmin, rec.inside, o, float(2 * Math.PI).div(omega), this.brk.wallLeadT, this.brk.handDownT);
   }
 
   /**
@@ -498,8 +489,6 @@ export class SetWaves {
           const Hcrest = min(a.y.mul(f.amp), f.hmin.mul(BREAKING_RATIO)).toVar();
           // The front's lean (setWaveModel.leanWeight): 0 without a crest.
           const lean = float(0.0).toVar();
-          // The shoulder's height share (wombSection.shoulderFactor): 1 off the record, broken, or without breaking.
-          const taper = float(1.0).toVar();
           // setWaveModel.frontStanding: 0 off the record; unbroken, the wall standing up over the last wall lead (wombSection.wallLeadS) before
           // its break (wombSection.wallWeight on the record's time until onset: the clock alone), or, where the ray never
           // breaks, with the ratio from the ribbon's onset; held, over the last wall lead (wombSection.wallLeadS) before its turn; 1 once broken.
@@ -549,9 +538,7 @@ export class SetWaves {
             const shape = sheetShapeNode(psi);
             shTrough.assign(shape.troughDrain); shSurge.assign(shape.pileSurge);
             const onset = onsetTimeNode(rec, level, a.y, brk);
-            Hcrest.assign(wallHeightNode(a.y.mul(fc.amp), fc.depth, fc.hmin, rec.inside, onset, float(2 * Math.PI).div(a.z), brk.wallLeadT, brk.handDownT, brk, shoulderRegionNode(cPos)));
-            // The shoulder tapers ahead of the curl (setWaveModel.waveAtCrest: wombSection.shoulderFactor at the crest, Task 3d).
-            taper.assign(shoulderFactorNode(cPos, select(onset.broken, onset.tb.negate(), onset.until), rec.inside.and(onset.broken.and(onset.tb.greaterThanEqual(0.0)).not()), brk, cW.z, cW.w.greaterThan(0.5)));
+            Hcrest.assign(wallHeightNode(a.y.mul(fc.amp), fc.depth, fc.hmin, rec.inside, onset, float(2 * Math.PI).div(a.z), brk.wallLeadT, brk.handDownT));
             const rSlurp = breakingRatioNode(a.y.mul(fc.amp), fc.hminSlurp, brk);
             // × (1 − release: the collapse without the tube's hold), assigned with the lifecycle below.
             lean.assign(smoothstep(LEAN_RATIO[0], LEAN_RATIO[1], breakingRatioNode(a.y.mul(fc.amp), fc.hminLean, brk)).mul(confidence));
@@ -561,7 +548,7 @@ export class SetWaves {
             if (this.shape === 'lean') {
               // wombSection.frontWeight: the front's squeeze keeps the old (1 − until/FRONT_LEAD_S)² ramp (the wall's lead is the
               // section's and the height's, not the front's: womb-realism Task 2).
-              const wall = (untilS: N): N => { const left = float(1.0).sub(clamp(untilS.div(FRONT_LEAD_S), 0.0, 1.0)); return left.mul(left).mul(shoulderTakeNode(untilS, brk, shoulderRegionNode(cPos))); };
+              const wall = (untilS: N): N => { const left = float(1.0).sub(clamp(untilS.div(FRONT_LEAD_S), 0.0, 1.0)); return left.mul(left); };
               const byRatio = smoothstep(brk.ribbonOnset, 1.0, rC);
               // Unbroken on the record's clock (until finite): the clock alone, as the drawn section's phase; the ratio only
               // where the ray never breaks (UNTIL_NEVER). The further of the two stood a cliff ahead of the wall (frontStanding).
@@ -620,7 +607,7 @@ export class SetWaves {
           // nearness to the crest in phase (CREST_HEIGHT_REACH periods, T = 2π/ω). mix(a, b, 0) is a exactly, so without
           // breaking this is the Phase 1 height.
           const near = float(1.0).sub(smoothstep(float(CREST_HEIGHT_REACH[0] * 2 * Math.PI).div(a.z), float(CREST_HEIGHT_REACH[1] * 2 * Math.PI).div(a.z), abs(xi)));
-          const H0: N = mix(Hown, Hcrest, lc.steep.mul(confidence).mul(near)).mul(taper).toVar();
+          const H0: N = mix(Hown, Hcrest, lc.steep.mul(confidence).mul(near)).toVar();
           const H: N = H0.mul(float(1.0).sub(bore.mul(1 - BORE_SHARE))).toVar();
           const A = H.mul(0.5);
           const B = min(float(STOKES_CAP), stokesPerA.mul(A));

@@ -70,16 +70,6 @@ export interface BreakParams {
   flightDropA: number;
   /** From the break the crest hands down over max(the flight, this many periods) (wombSection.HAND_DOWN_T; Task 8). */
   handDownT: number;
-  /** Ahead of the curl the stand-up fraction falls 1 -> 0 over this many m (wombSection.SHOULDER_TAPER_M; Task 3d; 0 = off). */
-  shoulderTaperM: number;
-  /** …and the shoulder's height to this share of its own (wombSection.SHOULDER_FLOOR; 1 = its own). */
-  shoulderFloor: number;
-  /** Down the left a waiting station stands up at least by its distance from the curl's front, easing off over this many m
-   * (wombSection.standAhead; Andrew 2026-10-14, the lump in front of the lip; 0 = off). */
-  standAheadM: number;
-  /** In front of a waiting section's crest the drawn face never stands below the sheet (wombSection.faceOnSheet; Andrew
-   * 2026-10-14, the second crest between the lip and the drain; 0 = off, 1 = on). */
-  faceOnSheet: number;
   /** One surface by construction (wombSection.ONE_SURFACE; Task 10): the ribbon draws only the overhang, waiting sections
    * draw nothing, the sheet's waiting crest grows into its breaking size (1 = the law, 0 = the section of 2026-10-14). */
   oneSurface: number;
@@ -116,11 +106,7 @@ export const DEFAULT_BREAK_PARAMS: BreakParams = {
   wallLeadT: 0.75,
   flightDropA: 0.8,
   handDownT: 0.3,
-  shoulderTaperM: 0,
-  shoulderFloor: 1,
   // 0 (retired by the one-surface law, womb-story Task 10: Fable's ruling on the handover §7; deleted after the A/B sheet).
-  standAheadM: 0,
-  faceOnSheet: 0,
   oneSurface: 1,
   faceDrawn: 1,
 };
@@ -183,10 +169,6 @@ export function normalizeBreakParams(p: BreakParams): void {
   p.wallLeadT = clampTo(p.wallLeadT, 0.5, 2, d.wallLeadT);
   p.flightDropA = clampTo(p.flightDropA, 0.4, 1.5, d.flightDropA);
   p.handDownT = clampTo(p.handDownT, 0.05, 0.3, d.handDownT);
-  p.shoulderTaperM = clampTo(p.shoulderTaperM, 0, 80, d.shoulderTaperM);
-  p.shoulderFloor = clampTo(p.shoulderFloor, 0.3, 1, d.shoulderFloor);
-  p.standAheadM = clampTo(p.standAheadM, 0, 60, d.standAheadM);
-  p.faceOnSheet = clampTo(p.faceOnSheet, 0, 1, d.faceOnSheet);
   p.oneSurface = clampTo(p.oneSurface, 0, 1, d.oneSurface);
   p.faceDrawn = clampTo(p.faceDrawn, 0, 1, d.faceDrawn);
   p.churnSpeed = clampTo(p.churnSpeed, 0, 3, d.churnSpeed);
