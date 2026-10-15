@@ -62,6 +62,7 @@ describe('the first break is the tip at 270/14 (womb-story spec 3.1, by onset)',
     }
     expect(right.length, 'the right breaks').toBeGreaterThan(0);
     const early = right.reduce((m, r) => (r.onset < m.onset ? r : m));
+    console.log(`${ft} ft: first onset ${Math.hypot(first.x - TIP[0], first.z - TIP[1]).toFixed(1)} m from the tip; the right's earliest onset ${(early.onset - tip!.onset).toFixed(2)} s after the tip's (at ${early.s} m); turns spread ${(Math.max(...right.map((r) => r.turn)) - Math.min(...right.map((r) => r.turn))).toFixed(2)} s`);
     expect(early.onset - tip!.onset, `right's earliest onset ${early.onset.toFixed(2)} s at ${early.s} m, tip ${tip!.onset.toFixed(2)} s`).toBeGreaterThan(0);
     const turns = right.map((r) => r.turn);
     expect(Math.max(...turns) - Math.min(...turns), 'the right\'s turns spread').toBeLessThanOrEqual(3.5);
