@@ -24,3 +24,6 @@ public/surfer/clips/
 
 # Build output (local only)
 /build/
+
+# Claude Code local config
+.claude/
