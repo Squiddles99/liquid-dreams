@@ -25,6 +25,8 @@ const YAW_MAX = 60 * DEG;
 /** The chest opened toward the nose on top of a clip, as the code trim's is (Andrew, Gate C): a skater's shoulders face
  * the rail more squarely than a surfer trimming, and the neck then did all the turning. */
 export const CLIP_CHEST_OPEN = 20 * DEG;
+/** How far a contact pull turns the shoulder blade toward a spot out of the arm's reach (the hero rig's CLAVICLE_REACH). */
+export const PULL_CLAVICLE_REACH = 0.45;
 
 export interface ClipPoseContext {
   spec: BoardSpec;
@@ -36,6 +38,14 @@ export interface ClipPoseContext {
   /** The surfer pose's hand targets (Andrew, Gate C: a skater's arms hang; a surfer holds them out): when given, the
    * arms are solved to them as solvePose does, the clip keeping everything below the shoulders. */
   hands?: Record<Limb, HandTarget>;
+  /** An authored pose (the ride pose blend, part C): the motion-capture corrections (the base crouch, the chest opened
+   * toward the nose) are skipped, the pose carries its own. */
+  authored?: boolean;
+  /** The compression dial's share (the blend's layers carry the crouch they show): 1 when unset. */
+  compressionScale?: number;
+  /** One hand to a contact (the rail grip, a hand in the wall): the wrist from the same side's ankle in the clip's
+   * character frame, pulled to by `weight` (0 the pose's own hand, 1 on the spot). */
+  pull?: { side: Limb; wrist: Vector3; weight: number };
 }
 export interface ClipSolved extends SolvedPose {
   /** The clip's finger bones' world rotations from rest; absent ones take the relaxed curl (Surfer.applyPose). */
@@ -84,10 +94,12 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
   };
 
   // Feet along the board: turn about the vertical so the trail→lead ankle line runs to the nose (±60° at most).
+  let yawQ = new Quaternion();
   fkAll();
   const line = J[`foot_${lead}`].clone().sub(J[`foot_${trail}`]).setY(0);
   if (line.lengthSq() > 1e-8) {
     const yaw = new Quaternion().setFromAxisAngle(Y, clamp(Math.atan2(line.z, line.x), -YAW_MAX, YAW_MAX));
+    yawQ = yaw;
     turn(yaw, whole);
     P.applyQuaternion(yaw);
   }
@@ -100,14 +112,14 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
   P.add(pivot.clone().sub(J.foot_l.clone().add(J.foot_r).multiplyScalar(0.5)));
 
   // The dials and the balance, as corrections on top of the clip.
-  P.y -= CLIP_COMPRESSION_DROP * m.legLen * clamp(CLIP_BASE_COMPRESSION + ctx.dials.compression, -1, 1.3);
+  P.y -= CLIP_COMPRESSION_DROP * m.legLen * clamp((ctx.authored ? 0 : CLIP_BASE_COMPRESSION) + ctx.dials.compression * (ctx.compressionScale ?? 1), -1, 1.3);
   const lean = clamp(ctx.dials.lean, -1, 1) * CLIP_LEAN_MAX;
   if (lean !== 0) {
     const q = new Quaternion().setFromAxisAngle(leanAxis, lean);
     turn(q, whole);
     P = P.sub(pivot).applyQuaternion(q).add(pivot);
   }
-  const twist = (regular ? 1 : -1) * (CLIP_CHEST_OPEN + clamp(ctx.dials.twist, -1, 1) * CLIP_TWIST_DIAL);
+  const twist = (regular ? 1 : -1) * ((ctx.authored ? 0 : CLIP_CHEST_OPEN) + clamp(ctx.dials.twist, -1, 1) * CLIP_TWIST_DIAL);
   if (twist !== 0) turn(new Quaternion().setFromAxisAngle(Y.clone().applyQuaternion(D.pelvis), twist), chestShare);
   if (ctx.balance) {
     const { lead: bl, trail: bt } = ctx.balance;
@@ -150,6 +162,34 @@ export function clipPose(rest: SkeletonRest, sample: ClipSample, ctx: ClipPoseCo
     D[ft] = aimRotation(restDir(ft, to), Y, toe.sub(J[ft]), Y);
     J[to] = fk(to);
     D[to] = D[ft].clone();
+  }
+
+  // The contact hand (part C): its wrist pulled toward the spot by the weight, two-bone IK from the shoulder, the elbow
+  // keeping the pose's side; the hand's own rotation (the grip's angle, its curled fingers) stays the pose's.
+  if (ctx.pull && ctx.pull.weight > 0) {
+    fkAll();
+    const s = ctx.pull.side, cl: BoneName = `clavicle_${s}`, ua: BoneName = `upperarm_${s}`, fa: BoneName = `forearm_${s}`, h: BoneName = `hand_${s}`;
+    const spot = ankleAt[s].clone().add(ctx.pull.wrist.clone().applyQuaternion(S).applyQuaternion(yawQ));
+    const target = J[h].clone().lerp(spot, clamp(ctx.pull.weight, 0, 1));
+    // Out of the arm's reach (another body's proportions), the shoulder blade turns toward the spot first, as a person
+    // reaching low does (the hero rig's own reach: rigging CLAVICLE_REACH).
+    const armLen = len(ua, fa) + len(fa, h);
+    if (J[ua].distanceTo(target) > 0.98 * armLen) {
+      const cur = J[ua].clone().sub(J[cl]).normalize(), want = target.clone().sub(J[cl]).normalize();
+      D[cl] = new Quaternion().slerp(new Quaternion().setFromUnitVectors(cur, want), PULL_CLAVICLE_REACH).multiply(D[cl]);
+      J[ua] = fk(ua);
+      J[fa] = fk(fa);
+      J[h] = fk(h);
+    }
+    const p = J[fa].clone().sub(J[ua].clone().add(J[h]).multiplyScalar(0.5));
+    const pole = p.lengthSq() > 1e-8 ? p.normalize() : NEG_Z.clone();
+    const keep = D[h].clone().multiply(D[fa].clone().invert());
+    const ik = twoBoneIK(J[ua], target, len(ua, fa), len(fa, h), pole, LIMITS.elbowMaxDeg);
+    D[ua] = aimRotation(restDir(ua, fa), NEG_Z, ik.mid.clone().sub(J[ua]), pole);
+    J[fa] = fk(fa);
+    D[fa] = aimRotation(restDir(fa, h), NEG_Z, ik.end.clone().sub(J[fa]), pole);
+    J[h] = fk(h);
+    D[h] = keep.multiply(D[fa]);
   }
 
   // The arms from the surfer pose's targets, when given: the clavicles ride the chest, two-bone IK to each hand (elbow
