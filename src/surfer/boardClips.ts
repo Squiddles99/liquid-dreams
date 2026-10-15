@@ -27,6 +27,9 @@ export interface BoardClips {
 }
 export type BoardClipName = 'sitIdle' | 'sitTurn' | 'sitToProne' | 'paddleCycle' | 'proneTurn' | 'duckDive' | 'bail';
 
+/** The hips' soft floor over the deck (m): eased below HIP_SOFT, never under HIP_FLOOR. */
+export const HIP_SOFT = 0.13, HIP_FLOOR = 0.1;
+
 const KNOWN = new Set<string>([...BONES, ...FINGER_BONES]);
 const finite = (a: unknown, n: number): boolean => Array.isArray(a) && a.length === n && a.every((v) => typeof v === 'number' && Number.isFinite(v));
 
@@ -39,6 +42,7 @@ export function boardClipsProblems(j: unknown): string[] {
   if (!(typeof o.boardLengthM === 'number' && o.boardLengthM > 0)) out.push('boardLengthM');
   if (typeof o.clips !== 'object' || o.clips === null) return [...out, 'clips'];
   for (const [name, c] of Object.entries(o.clips)) {
+    if (typeof c !== 'object' || c === null) { out.push(`${name}: not a clip`); continue; }
     if (!(Number.isInteger(c.frames) && c.frames >= 2)) { out.push(`${name}: frames`); continue; }
     if (!finite(c.pelvis, 3 * c.frames)) out.push(`${name}: pelvis`);
     for (const b of BONES) if (b !== 'root' && !c.rot?.[b]) out.push(`${name}: no ${b}`);
@@ -81,7 +85,10 @@ export function blendBoardSamples(a: ClipSample, b: ClipSample, k: number): Clip
  * rotation from the clip in the board's frame, the joints by the game body's own bones; the clip's own head and hands. */
 export function boardClipPose(rest: SkeletonRest, s: ClipSample, spec: BoardSpec, board: BoardFrame): ClipSolved {
   const half = spec.lengthM / 2, x = Math.min(half, Math.max(-half, s.pelvis.x * spec.lengthM));
-  const P = new Vector3(x, deckYAt(spec, x, 0) + s.pelvis.y, s.pelvis.z);
+  // A soft floor (final review): the hero's sit-to-paddle sinks the hips to ~7 cm over its deck mid-move, into the deck
+  // on the game's board; under HIP_SOFT the height eases toward HIP_FLOOR, never below (lying 13 cm, sitting 17: kept).
+  const h = s.pelvis.y < HIP_SOFT ? HIP_SOFT - (HIP_SOFT - HIP_FLOOR) * Math.tanh((HIP_SOFT - s.pelvis.y) / (HIP_SOFT - HIP_FLOOR)) : s.pelvis.y;
+  const P = new Vector3(x, deckYAt(spec, x, 0) + h, s.pelvis.z);
   const D = {} as Record<BoneName, Quaternion>;
   for (const b of BONES) D[b] = b === 'root' ? new Quaternion() : (s.rot[b]?.clone() ?? new Quaternion());
   const J = {} as Record<BoneName, Vector3>;

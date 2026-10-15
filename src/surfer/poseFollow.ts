@@ -4,7 +4,7 @@ import type { ClipSample } from './clipPlayer';
 import { type BlendWeights, blendWeights, toeRailDown } from './poseBlend';
 import type { PoseDials } from './poses';
 import type { Stance } from './presets';
-import { BONES } from './rig';
+import { BONES, FINGER_BONES, type FingerBone, PARENT } from './rig';
 import { type BoardFrame, type SolvedPose, boardQuaternion } from './solvePose';
 
 /**
@@ -132,6 +132,38 @@ export function fadeSolved(from: SolvedPose, to: SolvedPose, k: number): SolvedP
     local[b] = q(from.local[b], to.local[b]);
   }
   return { pelvisWorld: to.pelvisWorld.clone().lerp(from.pelvisWorld, k), joint, world, local };
+}
+/** A pose shown on the board at `from`, carried to where the board is now (`to`): every joint and rotation turned and
+ * moved with the board (hero swap final review C1: a fade in world space left the rider behind a board doing 6–9 m/s at
+ * the pop-up). The root stays the skeleton's origin, as every solver leaves it. */
+export function rebaseSolved<P extends SolvedPose & { fingers?: Partial<Record<FingerBone, Quaternion>> }>(p: P, from: BoardFrame, to: BoardFrame): P {
+  const R = boardQuaternion(to).multiply(boardQuaternion(from).invert());
+  const move = (v: Vector3): Vector3 => v.clone().sub(from.position).applyQuaternion(R).add(to.position);
+  const joint = {} as SolvedPose['joint'], world = {} as SolvedPose['world'], local = {} as SolvedPose['local'];
+  for (const b of BONES) {
+    joint[b] = b === 'root' ? p.joint.root.clone() : move(p.joint[b]);
+    world[b] = b === 'root' ? p.world.root.clone() : R.clone().multiply(p.world[b]);
+  }
+  for (const b of BONES) { const pa = PARENT[b]; local[b] = pa ? world[pa].clone().invert().multiply(world[b]) : world[b].clone(); }
+  const fingers = p.fingers ? Object.fromEntries(Object.entries(p.fingers).map(([g, q]) => [g, R.clone().multiply(q!)])) : undefined;
+  return { ...p, pelvisWorld: move(p.pelvisWorld), joint, world, local, ...(fingers ? { fingers } : {}) };
+}
+/** Whether a fade can join the last pose to this one: not across a jump of the board (next wave, a respawn) or of the
+ * clock (final review C2: the rider streaked in from the old spot). A board at 25 m/s still fades. */
+export function fadeApplies(from: BoardFrame, to: BoardFrame, dtSim: number): boolean {
+  return dtSim >= 0 && dtSim < 0.25 && from.position.distanceTo(to.position) < 0.5 + 25 * Math.max(dtSim, 1 / 60);
+}
+/** The fingers through a fade (final review I1): each slerped where both sides set it; where only one side sets a bone
+ * (the other's relaxed curl lives in the body), the side that sets it holds until halfway. */
+export function fadeFingers(from: Partial<Record<FingerBone, Quaternion>> | undefined, to: Partial<Record<FingerBone, Quaternion>> | undefined, k: number): Partial<Record<FingerBone, Quaternion>> {
+  const out: Partial<Record<FingerBone, Quaternion>> = {};
+  for (const g of FINGER_BONES) {
+    const a = from?.[g], b = to?.[g];
+    if (a && b) out[g] = b.clone().slerp(a, k);
+    else if (a && k >= 0.5) out[g] = a.clone();
+    else if (b && k < 0.5) out[g] = b.clone();
+  }
+  return out;
 }
 /** How long leaving the blend fades over: quicker than a move (a fall is quick), never a cut. */
 export const EXIT_FADE_S = 0.35;

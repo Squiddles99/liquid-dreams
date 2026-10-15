@@ -34,6 +34,13 @@ describe('tuck and drive (ride-speed spec §4.2)', () => {
     run(t, { ...NO_CONTROLS, crouch: 1 }, face(0.3), 1.5);
     expect(t.tuck).toBeGreaterThan(0.8);
   });
+  it('a margin either side of the ridden line (final review I2): full tuck 5 deg shoreward of it; none 12 deg off straight in', () => {
+    const near = riding(face(0.3), 90 - (LINE_OFF_DEG - 5), 12), steep = riding(face(0.3), 90 - 12, 12);
+    run(near, { ...NO_CONTROLS, crouch: 1 }, face(0.3), 1.5);
+    run(steep, { ...NO_CONTROLS, crouch: 1 }, face(0.3), 1.5);
+    expect(near.tuck).toBeGreaterThan(0.8);
+    expect(steep.tuck).toBeLessThan(0.05);
+  });
   it('straightened out (heading down the face, off the line), it is no tuck and the rider still slows on the flats', () => {
     const flat: WaterFn = () => ({ y: 0, slopeX: 0, slopeZ: 0, foam: 0, ux: 0, uz: 0, c: 7, dirX: 1, dirZ: 0 });
     const t = riding(flat, 90, 10);

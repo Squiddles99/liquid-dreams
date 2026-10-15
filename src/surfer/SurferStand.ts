@@ -22,7 +22,7 @@ import { clipPose } from './clipPose';
 import { type BoardClips, boardClipPose, loadBoardClips } from './boardClips';
 import { type BoardClipState, boardClipFor, stepBoardClip } from './boardClipState';
 import { blendOnBoard } from './poseBlend';
-import { EXIT_FADE_S, type Follow, fadeSolved, newFollow, sampleFromSolved, smootherStep, stepFollow } from './poseFollow';
+import { EXIT_FADE_S, type Follow, fadeApplies, fadeFingers, fadeSolved, newFollow, rebaseSolved, sampleFromSolved, smootherStep, stepFollow } from './poseFollow';
 import { loadPoseLib, type PoseLib } from './poseLib';
 import { chooseMotion, clipTime } from './motion';
 import type { FingerBone } from './rig';
@@ -53,9 +53,9 @@ export class SurferStand {
   private follow: Follow | null = null;
   /** The last pose shown, the board it stood on, the rider and the update it was shown in: the blend fades in from it
    * (the drop's cut, the first ride's pop) only when it was the update just before, on the same rider. */
-  private lastShown: { pose: SolvedPose; frame: BoardFrame; preset: PresetName; tick: number } | null = null;
+  private lastShown: { pose: SolvedPose; frame: BoardFrame; preset: PresetName; tick: number; fingers?: Partial<Record<FingerBone, THREE.Quaternion>> } | null = null;
   /** Leaving the blend (a wipeout, the ride's end): the blend's last pose, faded out of over EXIT_FADE_S. */
-  private exitFade: { pose: SolvedPose; t: number } | null = null;
+  private exitFade: { pose: SolvedPose; frame: BoardFrame; fingers?: Partial<Record<FingerBone, THREE.Quaternion>>; t: number } | null = null;
   /** Andrew's approved lying and sitting clips, riding the board (hero swap 2026-10-16); null when not there. */
   private readonly boardClipLoader = new KeyedLoader<'all', BoardClips | null>(
     () => loadBoardClips(`${import.meta.env.BASE_URL}surfer/poses/board-clips.json`),
@@ -167,6 +167,7 @@ export class SurferStand {
     }
     // Idle life (closeup spec §5.2): ticked by the sim's clock (a paused capture holds the face still), turning the
     // head's look by its idle offsets about the head (last frame's), squinting as the sun meets the eyes.
+    const rawDt = this.lastSim === null ? Infinity : simTime - this.lastSim;
     const dt = this.lastSim === null ? 0 : Math.min(0.1, Math.max(0, simTime - this.lastSim));
     this.lastSim = simTime;
     const lookAt = stableLookAt(frame, t.look);
@@ -203,7 +204,9 @@ export class SurferStand {
     }
     const lib = p.drive && p.pose === 'trim' && p.board !== 'bodyboard' ? this.poseLoader.get('all') : null;
     if (p.drive && p.pose === 'trim' && p.board !== 'bodyboard' && !lib && this.poseLoader.settled('all')) this.status.motion = 'blend: no poses file';
-    const shownJustNow = this.lastShown && this.lastShown.tick === this.tick - 1 && this.lastShown.preset === p.preset ? this.lastShown : null;
+    // The pose shown on the update just before, same rider, and no jump of the board or the clock since (a next wave, a
+    // respawn: final review C2): the only pose a fade may start from.
+    const shownJustNow = this.lastShown && this.lastShown.tick === this.tick - 1 && this.lastShown.preset === p.preset && fadeApplies(this.lastShown.frame, frame, rawDt) ? this.lastShown : null;
     const blending = !!(lib && p.drive);
     // Sitting and paddling on a standing board: Andrew's approved clips, riding the board (hero swap 2026-10-16).
     const bc = boardClipFor(p.pose), blib = bc && !p.onLand && p.board !== 'bodyboard' && !blending ? this.boardClipLoader.get('all') : null;
@@ -211,7 +214,7 @@ export class SurferStand {
     const source = blending ? 'blend' : boardStep ? 'board' : choice.use === 'clip' && choice.clip && choice.rc ? 'clip' : 'code';
     // Any change of what draws the body fades out of the last pose shown (Andrew 2026-10-15: no snap); into the blend
     // it fades its own way, the feet planted.
-    if (this.lastSource !== null && source !== this.lastSource && source !== 'blend') this.exitFade = shownJustNow ? { pose: shownJustNow.pose, t: 0 } : null;
+    if (this.lastSource !== null && source !== this.lastSource && source !== 'blend') this.exitFade = shownJustNow ? { pose: shownJustNow.pose, frame: shownJustNow.frame, fingers: shownJustNow.fingers, t: 0 } : null;
     this.lastSource = source;
     this.boardClip = boardStep ? boardStep.state : null;
     if (!blending) this.follow = null;
@@ -243,12 +246,15 @@ export class SurferStand {
       solved = solvePose(s.rest, t, state.board, state.lookAt);
     }
     if (this.exitFade) {
-      solved = fadeSolved(this.exitFade.pose, solved, 1 - smootherStep(this.exitFade.t / EXIT_FADE_S));
+      // Faded on the board, not in the world (final review C1): the old pose carried to where the board is now.
+      const k = 1 - smootherStep(this.exitFade.t / EXIT_FADE_S), from = rebaseSolved({ ...this.exitFade.pose, fingers: this.exitFade.fingers }, this.exitFade.frame, frame);
+      solved = fadeSolved(from, solved, k);
+      fingers = fadeFingers(from.fingers, fingers, k);
       this.exitFade.t += dt;
       if (this.exitFade.t >= EXIT_FADE_S) this.exitFade = null;
     }
     s.applyPose(solved, fingers);
-    this.lastShown = { pose: solved, frame, preset: p.preset, tick: this.tick };
+    this.lastShown = { pose: solved, frame, preset: p.preset, tick: this.tick, fingers };
     if (carrying && t.carry) {
       // The board under the arm (walking spec §4): placed from the solved hand, not the feet; no deck contacts, no leash.
       const held = carriedBoard(t.carry, frame, solved);

@@ -64,6 +64,13 @@ describe('the exported clips on the game riders (public/surfer/poses/board-clips
         }
       }
     });
+    it(`${name}: lying down from sitting (sitToProne), the hips never sink into the deck (final review: the clip dips 4 cm)`, () => {
+      const c = real.clips.sitToProne;
+      for (let f = 0; f < c.frames; f++) {
+        const J = boardClipPose(r, sampleBoardClip(real, 'sitToProne', f / real.fps)!, sp, FLAT).joint;
+        expect(J.pelvis.y - deckYAt(sp, Math.max(-sp.lengthM / 2, Math.min(sp.lengthM / 2, J.pelvis.x)), 0), `frame ${f}`).toBeGreaterThan(0.08);
+      }
+    });
     it(`${name}: sitting, the pelvis is on the deck (not floating, not sunk) every frame`, () => {
       const c = real.clips.sitIdle;
       for (let f = 0; f < c.frames; f += 4) {
