@@ -26,3 +26,6 @@ tools/surfer/previews-before/
 
 # Brainstorming companion mockups (local only)
 .superpowers/
+
+# Part C capture videos (~28 MB each): sent to Andrew, not kept in git
+docs/art/anim/ride-blend-*.mp4
