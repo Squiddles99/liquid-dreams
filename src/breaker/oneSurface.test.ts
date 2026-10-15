@@ -137,6 +137,8 @@ describe('one surface by construction: the ribbon draws only the overhang (womb-
         if (step > 3) bad.push(`along ${q.along.toFixed(1)} ph ${q.phase.toFixed(2)} ${name}: ${step.toFixed(1)} deg`);
       }
     }
+    // Carried red, dated 2026-10-15 (Fable's STOP 4 ruling 5): under Task 11's drawn face, the crest join at 7 ft t0+3 along
+    // 7.5, phase 0.59, 4.2 deg (the shoulder-to-root ease of faceTable.faceEnvelope as the lip pitches); every other join <= 3 deg.
     expect(bad).toEqual([]);
   });
 
@@ -156,6 +158,9 @@ describe('one surface by construction: the ribbon draws only the overhang (womb-
       }
       if (rise > (own ? sheetRise + 0.02 : 0.05)) bad.push(`along ${q.along.toFixed(1)} ph ${q.phase.toFixed(2)}: rise ${rise.toFixed(2)} m (the sheet's own ${sheetRise.toFixed(2)})`);
     }
+    // Carried red, dated 2026-10-15 (Fable's STOP 4 ruling 4): the sheet's own rise behind a broken crest, 7 ft t0+6 up to
+    // 0.39 m and Andrew's 1791986608 up to 0.47 m: the bore's settling weight read on each point's own ray (points behind the
+    // crest read an earlier time since onset; tools/_backDebug.ts), not CREST_HEIGHT_REACH. Its own task after the look.
     expect(bad).toEqual([]);
   });
 
