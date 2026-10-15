@@ -175,8 +175,11 @@ const DEG = Math.PI / 180;
 /** Held under this comH, the rider is tucking; the tuck builds over TUCK_HOLD_S of holding it (spec §4.2: LT held deep). */
 export const TUCK_LOW = 0.25;
 export const TUCK_HOLD_S: readonly [number, number] = [0.2, 0.4];
-/** The tuck counts heading along the line within these angles (full inside the second, none past the first). */
-export const TUCK_LINE_DEG: readonly [number, number] = [50, 25];
+/** The tuck counts heading along the line within these angles of it (full inside the second, none past the first).
+ * The line that keeps a rider with the wave runs LINE_OFF_DEG (35°) off the wave's travel, 55° off the line: full from
+ * 58° (hero swap 2026-10-16: at [50, 25] the tuck could never build on the line ridden; Andrew's S did nothing), none
+ * within 12° of straight in. */
+export const TUCK_LINE_DEG: readonly [number, number] = [78, 58];
 
 /** How much the heading runs along the line (across the wave's travel), 0 … 1. */
 export function lineFactor(headingDeg: number, dirX: number, dirZ: number): number {

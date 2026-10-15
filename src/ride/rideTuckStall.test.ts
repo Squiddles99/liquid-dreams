@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type RideBody, type RideControls, NO_CONTROLS, TUNING, speedOf, startBody, stepRide } from './ridePhysics';
+import { LINE_OFF_DEG } from './rideLine';
 import type { WaterFn } from './water';
 import { OPEN_FACE, type RideContext, headHeight } from './riderBody';
 
@@ -26,6 +27,12 @@ describe('tuck and drive (ride-speed spec §4.2)', () => {
     run(s, NO_CONTROLS, face(0.3), 3);
     expect(t.tuck).toBeGreaterThan(0.8);
     expect(speedOf(t)).toBeGreaterThan(speedOf(s));
+  });
+  it('on the ride\'s own line (LINE_OFF_DEG off the wave\'s travel, what keeps a rider with the wave), S builds the tuck', () => {
+    // Andrew's real-key captures (2026-10-15): S held 2.5 s on the line, tuck 0.00 throughout.
+    const t = riding(face(0.3), 90 - LINE_OFF_DEG, 12);
+    run(t, { ...NO_CONTROLS, crouch: 1 }, face(0.3), 1.5);
+    expect(t.tuck).toBeGreaterThan(0.8);
   });
   it('straightened out (heading down the face, off the line), it is no tuck and the rider still slows on the flats', () => {
     const flat: WaterFn = () => ({ y: 0, slopeX: 0, slopeZ: 0, foam: 0, ux: 0, uz: 0, c: 7, dirX: 1, dirZ: 0 });
