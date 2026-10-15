@@ -19,6 +19,8 @@ import { type BoardFrame, type SolvedPose, boardQuaternion, solvePose } from './
 import { clipDuration, loadRiderClips, type RiderClips } from './clips';
 import { sampleClip } from './clipPlayer';
 import { clipPose } from './clipPose';
+import { blendSample, toeRailDown } from './poseBlend';
+import { contactFor, loadPoseLib, type PoseLib } from './poseLib';
 import { chooseMotion, clipTime } from './motion';
 import type { FingerBone } from './rig';
 import { Surfer } from './Surfer';
@@ -38,6 +40,11 @@ export class SurferStand {
   private readonly clipLoader = new KeyedLoader<PresetName, { clips: RiderClips | null }>(
     (name) => loadRiderClips(`${import.meta.env.BASE_URL}surfer/clips/${name}.clips.json`).then((clips) => ({ clips })),
     (name, e) => console.warn(`The ${name} motion clips failed to load; the stand uses the code poses.`, e),
+  );
+  /** The approved ride poses (ride pose blend, part C), one file for every standing rider; null when not there. */
+  private readonly poseLoader = new KeyedLoader<'all', PoseLib | null>(
+    () => loadPoseLib(`${import.meta.env.BASE_URL}surfer/poses/poses.json`),
+    (_k, e) => console.warn('The ride poses file failed to load; riding uses the trim clip or the code poses.', e),
   );
   private askedPreset: PresetName | null = null;
   private readonly board: BoardMesh;
@@ -167,7 +174,21 @@ export class SurferStand {
     const choice = chooseMotion(p.motion, p.pose, this.clipLoader.get(p.preset), p.stance);
     this.status.motion = choice.status;
     let solved: SolvedPose, fingers: Partial<Record<FingerBone, THREE.Quaternion>> | undefined;
-    if (choice.use === 'clip' && choice.clip && choice.rc) {
+    // Riding a standing board (part C): the approved poses, blended by the ride's dials, placed by the clip path with
+    // the contact hand pulled to its spot. No poses file: the trim clip or the code poses, as before.
+    const lib = p.drive && p.pose === 'trim' && p.board !== 'bodyboard' ? this.poseLoader.get('all') : null;
+    if (p.drive && p.pose === 'trim' && p.board !== 'bodyboard' && !lib && this.poseLoader.settled('all')) this.status.motion = 'blend: no poses file';
+    if (lib && p.drive) {
+      const { sample, w } = blendSample(lib, p.stance, simTime, p.drive, toeRailDown(p.drive.carve, p.stance));
+      const above = w.pump + w.tuck + w.stallTall + w.stallHand + w.stallLowBarrel + w.stallStandBarrel + w.driveOut;
+      const hold = (['tuck', 'stallHand', 'stallStandBarrel'] as const).reduce((a, k) => (w[k] > w[a] ? k : a), 'tuck' as 'tuck' | 'stallHand' | 'stallStandBarrel');
+      const c = w[hold] > 0 ? contactFor(lib, hold, p.stance) : null;
+      const pull = c ? { side: c.side, wrist: new THREE.Vector3(...c.wrist), weight: w[hold] } : undefined;
+      const cp = clipPose(s.rest, sample, { spec, layout, stance: p.stance, dials, balance: bal, authored: true, compressionScale: 1 - above, pull }, state.board, state.lookAt);
+      solved = cp;
+      fingers = cp.fingers;
+      this.status.motion = 'blend';
+    } else if (choice.use === 'clip' && choice.clip && choice.rc) {
       const sample = sampleClip(choice.clip, choice.rc.fps, clipTime(p.play, simTime, p.phaseT, clipDuration(choice.rc, choice.clip)));
       // The clip moves the body; the arms take the surfer pose's hands, balance drift included (Andrew, Gate C).
       const c = clipPose(s.rest, sample, { spec, layout, stance: p.stance, dials, balance: bal, hands: t.hands }, state.board, state.lookAt);

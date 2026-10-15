@@ -5,6 +5,10 @@ import { clipFor, clipDuration } from './clips';
 import type { PoseLib } from './poseLib';
 import type { Stance } from './presets';
 
+/** Which rail the carve has the board on (ridePose.rideBoardFrame rolls the deck toward the rider's right of the nose,
+ * the toes' side for a regular rider, as the carve goes positive): the pump clip's toe or heel half. */
+export const toeRailDown = (carve: number, stance: Stance): boolean => (stance === 'regular' ? carve >= 0 : carve < 0);
+
 /** The pump layer fades out this long after the last pump (spec §3: ~0.5 s). */
 export const PUMP_EASE_S = 0.5;
 export interface BlendWeights { pump: number; tuck: number; stallTall: number; stallHand: number; stallLowBarrel: number; stallStandBarrel: number; driveOut: number }

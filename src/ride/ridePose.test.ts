@@ -191,11 +191,17 @@ describe('stand-in poses for the stall (ride-speed Task 8, until part C)', () =>
     b.vz = -8;
     return b;
   };
-  it('a hand-drag or low barrel stall shows the barrel pose (trailing hand in the face)', () => {
+  it('part C: a hand-drag stall rides as trim, the dials carrying the stall to the pose blend (the barrel stand-in gone)', () => {
     const b = riding();
     b.stall = 1;
     b.stallW = { tall: 0, hand: 1, lowBarrel: 0, standBarrel: 0 };
-    expect(rideSurferParams(b, 0.4).pose).toBe('barrel');
+    const p = rideSurferParams(b, 0.4);
+    expect(p.pose).toBe('trim');
+    expect(p.drive?.stall).toBe(1);
+    expect(p.drive?.stallW.hand).toBe(1);
+  });
+  it('part C: the bodyboard (prone) gets no dials: no pose blend for him', () => {
+    expect(rideSurferParams(riding(), 0.4, true).drive).toBeNull();
   });
   it('the tall stall and plain riding stay in trim, crouched by comH', () => {
     const b = riding();

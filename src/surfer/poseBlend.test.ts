@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { newRiderState, riderDrive } from '../ride/riderBody';
 import type { PoseLib } from './poseLib';
-import { PUMP_EASE_S, blendSample, blendWeights, pumpTime } from './poseBlend';
+import { PUMP_EASE_S, blendSample, blendWeights, pumpTime, toeRailDown } from './poseBlend';
 
 const lib = JSON.parse(readFileSync('public/surfer/poses/poses.json', 'utf8')) as PoseLib;
 const drive = (over: Partial<ReturnType<typeof riderDrive>> = {}) => ({ ...riderDrive({ ...newRiderState(1.65, 55), carve: 0 }), pumpIdleT: 9, ...over });
@@ -41,5 +41,11 @@ describe('pose blend weights (spec §3)', () => {
       for (const b of ['spine_03', 'thigh_r', 'upperarm_r']) expect(Math.abs(s.rot[b]!.dot(prev.rot[b]!))).toBeGreaterThan(Math.cos(0.25));
       prev = s;
     }
+  });
+  it('the toe rail is down when the carve rolls the board toward the toes: regular +carve, goofy -carve', () => {
+    expect(toeRailDown(0.5, 'regular')).toBe(true);
+    expect(toeRailDown(-0.5, 'regular')).toBe(false);
+    expect(toeRailDown(0.5, 'goofy')).toBe(false);
+    expect(toeRailDown(-0.5, 'goofy')).toBe(true);
   });
 });
