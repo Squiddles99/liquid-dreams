@@ -19,8 +19,8 @@ import { type BoardFrame, type SolvedPose, boardQuaternion, solvePose } from './
 import { clipDuration, loadRiderClips, type RiderClips } from './clips';
 import { sampleClip } from './clipPlayer';
 import { clipPose } from './clipPose';
-import { blendSample, toeRailDown } from './poseBlend';
-import { contactFor, loadPoseLib, type PoseLib } from './poseLib';
+import { blendOnBoard } from './poseBlend';
+import { loadPoseLib, type PoseLib } from './poseLib';
 import { chooseMotion, clipTime } from './motion';
 import type { FingerBone } from './rig';
 import { Surfer } from './Surfer';
@@ -179,12 +179,7 @@ export class SurferStand {
     const lib = p.drive && p.pose === 'trim' && p.board !== 'bodyboard' ? this.poseLoader.get('all') : null;
     if (p.drive && p.pose === 'trim' && p.board !== 'bodyboard' && !lib && this.poseLoader.settled('all')) this.status.motion = 'blend: no poses file';
     if (lib && p.drive) {
-      const { sample, w } = blendSample(lib, p.stance, simTime, p.drive, toeRailDown(p.drive.carve, p.stance));
-      const above = w.pump + w.tuck + w.stallTall + w.stallHand + w.stallLowBarrel + w.stallStandBarrel + w.driveOut;
-      const hold = (['tuck', 'stallHand', 'stallStandBarrel'] as const).reduce((a, k) => (w[k] > w[a] ? k : a), 'tuck' as 'tuck' | 'stallHand' | 'stallStandBarrel');
-      const c = w[hold] > 0 ? contactFor(lib, hold, p.stance) : null;
-      const pull = c ? { side: c.side, wrist: new THREE.Vector3(...c.wrist), weight: w[hold] } : undefined;
-      const cp = clipPose(s.rest, sample, { spec, layout, stance: p.stance, dials, balance: bal, authored: true, compressionScale: 1 - above, pull }, state.board, state.lookAt);
+      const cp = blendOnBoard(lib, s.rest, { spec, layout, stance: p.stance, dials, balance: bal }, p.drive, simTime, state.board, state.lookAt);
       solved = cp;
       fingers = cp.fingers;
       this.status.motion = 'blend';

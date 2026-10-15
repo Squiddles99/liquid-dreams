@@ -1,8 +1,11 @@
-import { Quaternion } from 'three/webgpu';
+import { Quaternion, Vector3 } from 'three/webgpu';
 import type { RiderDrive } from '../ride/riderBody';
 import { type ClipSample, sampleClip } from './clipPlayer';
 import { clipFor, clipDuration } from './clips';
-import type { PoseLib } from './poseLib';
+import { type ClipPoseContext, type ClipSolved, clipPose } from './clipPose';
+import { contactFor, type PoseLib } from './poseLib';
+import type { SkeletonRest } from './rig';
+import type { BoardFrame } from './solvePose';
 import type { Stance } from './presets';
 
 /** Which rail the carve has the board on (ridePose.rideBoardFrame rolls the deck toward the rider's right of the nose,
@@ -58,4 +61,16 @@ export function blendSample(lib: PoseLib, stance: Stance, simTime: number, d: Ri
   add(at('stallStandBarrel', 0), w.stallStandBarrel);
   add(at('driveOut', 0), w.driveOut);
   return { sample: out, w, own: 1 };
+}
+
+/** The blend on the board (spec §3): the blended sample placed by the clip path as an authored pose, the compression
+ * dial's share what the layers leave, the strongest contact pose's hand pulled to its spot by that pose's weight. */
+export function blendOnBoard(lib: PoseLib, rest: SkeletonRest, ctx: Pick<ClipPoseContext, 'spec' | 'layout' | 'stance' | 'dials' | 'balance'>,
+  d: RiderDrive & { pumpIdleT: number }, simTime: number, board: BoardFrame, lookAt: Vector3 | null): ClipSolved & { w: BlendWeights } {
+  const { sample, w } = blendSample(lib, ctx.stance, simTime, d, toeRailDown(d.carve, ctx.stance));
+  const above = w.pump + w.tuck + w.stallTall + w.stallHand + w.stallLowBarrel + w.stallStandBarrel + w.driveOut;
+  const hold = (['tuck', 'stallHand', 'stallStandBarrel'] as const).reduce((a, k) => (w[k] > w[a] ? k : a), 'tuck' as 'tuck' | 'stallHand' | 'stallStandBarrel');
+  const c = w[hold] > 0 ? contactFor(lib, hold, ctx.stance) : null;
+  const pull = c ? { side: c.side, wrist: new Vector3(...c.wrist), weight: w[hold] } : undefined;
+  return { ...clipPose(rest, sample, { ...ctx, authored: true, compressionScale: 1 - above, pull }, board, lookAt), w };
 }
