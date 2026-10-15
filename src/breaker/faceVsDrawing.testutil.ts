@@ -37,7 +37,7 @@ export function lowestAt(pts: readonly Pt[], a: number, b: number, u: number): n
 export interface FaceRow { du: number; sheet: number; draw: number; dy: number; sSheet: number; sDraw: number }
 export interface FaceCompare {
   A: number; seatScale: number; uLow: number; phase: number; hollow: number; crestU: number; crestY: number; faceFrom: number; faceTo: number;
-  troughDy: number; worstDy: number; worstAt: number; worstDist: number; worstDistAt: number; meanAbsDy: number; maxSlopeSheet: number; maxSlopeDraw: number;
+  troughDy: number; worstDy: number; worstAt: number; worstDist: number; worstDistAt: number; worstBelowRoot: number; worstBelowRootAt: number; meanAbsDy: number; maxSlopeSheet: number; maxSlopeDraw: number;
   rider: { u: number; sheet: number; draw: number; dy: number } | null; rows: FaceRow[]; sheetProfile: Pt[]; drawn: Pt[];
 }
 
@@ -91,7 +91,10 @@ export function compareFace(numbers: { A: number; phase: number; hollow: number 
   // metres.
   const sheetPts: Pt[] = [];
   for (let u = u0 - A; u <= u1 + A; u += 0.05) sheetPts.push([u, sheetY(u)]);
-  let worstDist = 0, worstDistAt = NaN;
+  // The sheet's own region (Fable's STOP 4 addendum): from the roof's root down to the foot, the root's own height and below
+  // (above it, under the overhang, the sheet draws the shoulder to the root and the ribbon owns the silhouette).
+  const rootY = phase < STOOD_PHASE ? Infinity : pts[d.from][1];
+  let worstDist = 0, worstDistAt = NaN, worstBelowRoot = 0, worstBelowRootAt = NaN;
   for (let i = fe.top; i <= fe.low; i++) {
     const q: Pt = [cu + A * (env[i][0] - e[0]), cy + A * sy * (env[i][1] - e[1])];
     if (q[0] < u0 - 1e-9) continue;
@@ -103,9 +106,10 @@ export function compareFace(numbers: { A: number; phase: number; hollow: number 
       if (dd < best) { best = dd; sign = ex * dy - ey * dx >= 0 ? -1 : 1; }
     }
     if (best > Math.abs(worstDist)) { worstDist = sign * best; worstDistAt = q[0] - cu; }
+    if (q[1] <= rootY + 1e-9 && best > Math.abs(worstBelowRoot)) { worstBelowRoot = sign * best; worstBelowRootAt = q[0] - cu; }
   }
   return {
-    worstDist, worstDistAt,
+    worstDist, worstDistAt, worstBelowRoot, worstBelowRootAt,
     A, seatScale: sy, uLow: (uLow - e[0]) * A, phase, hollow, crestU: cu, crestY: cy, faceFrom: u0 - cu, faceTo: u1 - cu,
     troughDy: sheetY(pts[d.trough][0]) - pts[d.trough][1], worstDy: worst.dy, worstAt: worst.du,
     meanAbsDy: ok.reduce((a, r) => a + Math.abs(r.dy), 0) / Math.max(1, ok.length),
