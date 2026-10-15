@@ -30,3 +30,7 @@ tools/surfer/previews-before/
 # Part C capture videos (~28 MB each): sent to Andrew, not kept in git
 docs/art/anim/ride-blend-*.mp4
 docs/art/anim/ride-smooth-*.mp4
+
+# Blender hero build output and its Python cache (local only)
+/build/
+tools/hero/__pycache__/
