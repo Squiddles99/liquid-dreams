@@ -33,13 +33,16 @@ export interface KindLook {
   liftA: number;
   backDriftShare: number;
 }
-export const KIND_LOOK: Readonly<Record<'spray' | 'plume' | 'impact' | 'spit' | 'feather', Readonly<KindLook>>> = {
+export const KIND_LOOK: Readonly<Record<'spray' | 'plume' | 'impact' | 'spit' | 'feather' | 'spitCloud', Readonly<KindLook>>> = {
   spray: { sizeM: [0.3, 2], alpha: 0.08, lifeS: [1.2, 2.4], drag: 1 / 0.45, liftA: Infinity, backDriftShare: 1 },
   plume: { sizeM: [1.0, 2.5], alpha: 0.8, lifeS: [3, 5], drag: 0.8, liftA: 2.0, backDriftShare: 0.7 },
   impact: { sizeM: [0.8, 3.5], alpha: 0.32, lifeS: [1.3, 2.4], drag: 1 / 1.1, liftA: 1.5, backDriftShare: 1 },
   spit: { sizeM: [0.4, 1.0], alpha: 0.7, lifeS: [0.5, 0.9], drag: 1.5, liftA: 0.2, backDriftShare: 0.0 },
   // womb-story Task 5 (spec 3.5): a mist on the lip: small, faint, short-lived (was [0.3, 0.8] m, 0.35, [0.6, 1.2] s).
   feather: { sizeM: [0.15, 0.4], alpha: 0.25, lifeS: [0.4, 0.9], drag: 2.0, liftA: 1.0, backDriftShare: 1.0 },
+  // breaking-look item 5d: the spit's second stage, the cloud that hangs at the mouth after the jet: 2-4 m puffs, alpha 0.3,
+  // hanging as mist 2-3 s (Andrew's amendment), high drag, barely settling.
+  spitCloud: { sizeM: [2.0, 4.0], alpha: 0.3, lifeS: [2.0, 3.0], drag: 3.0, liftA: 0.4, backDriftShare: 0.3 },
 };
 /** The most a puff of `look` may climb at launch (m/s) for a section of size A (m). */
 export const liftSpeed = (look: Readonly<KindLook>, A: number): number => look.liftA * A * look.drag;
@@ -59,10 +62,12 @@ export const SPIT_KIND: Readonly<ParticleKind> = fromLook(KIND_LOOK.spit, 0, 0.6
 /** Crest feathering (whitewater §4.2; KIND_LOOK.feather since womb-realism Task 5): thin wisps off a standing crest, blown
  * straight back, slower to settle than the veil. */
 export const FEATHER_KIND: Readonly<ParticleKind> = fromLook(KIND_LOOK.feather, 0.5, 0.6);
+/** The spit's cloud (breaking-look item 5d): hangs at the mouth, dissolving (an eroding kind). */
+export const SPIT_CLOUD_KIND: Readonly<ParticleKind> = fromLook(KIND_LOOK.spitCloud, 0.1, 0.7);
 /** A particle's kind (meta.y): one pool draws every kind; a pool's constructor kind is its births' default. */
-export const KIND_INDEX = { spray: 0, plume: 1, impact: 2, spit: 3, feather: 4 } as const;
-export const PARTICLE_KINDS: readonly Readonly<ParticleKind>[] = [SPRAY_KIND, PLUME_KIND, IMPACT_KIND, SPIT_KIND, FEATHER_KIND];
+export const KIND_INDEX = { spray: 0, plume: 1, impact: 2, spit: 3, feather: 4, spitCloud: 5 } as const;
+export const PARTICLE_KINDS: readonly Readonly<ParticleKind>[] = [SPRAY_KIND, PLUME_KIND, IMPACT_KIND, SPIT_KIND, FEATHER_KIND, SPIT_CLOUD_KIND];
 /** Plume and spit puffs dissolve by an animated noise threshold with age (whitewater §4.1), not a uniform fade. */
-export const ERODING_KINDS: readonly number[] = [KIND_INDEX.plume, KIND_INDEX.spit];
+export const ERODING_KINDS: readonly number[] = [KIND_INDEX.plume, KIND_INDEX.spit, KIND_INDEX.spitCloud];
 /** The kind's index in PARTICLE_KINDS (by identity; an unknown kind is the spray). */
 export const kindIndexOf = (k: Readonly<ParticleKind>): number => Math.max(0, PARTICLE_KINDS.indexOf(k));

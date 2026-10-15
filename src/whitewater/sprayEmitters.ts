@@ -135,7 +135,7 @@ export const FEATHER_LIFT_A = 0.2;
 /** A feather puff is born at most this × A over the crest it smokes off (womb-story Task 5: on the lip, never above it). */
 export const FEATHER_BIRTH_OVER_A = 0.02;
 /** …this many puffs per m of crest per s at strength 1, each living U(0.6, 1.2) s. */
-export const FEATHER_RATE = 12;
+export const FEATHER_RATE = 3.6;
 export const FEATHER_LIFE_S: readonly [number, number] = KIND_LOOK.feather.lifeS;
 /** A feather puff's soft fade (§6.2) counts from this far under the crest it smokes off: the crest is a thin edge with the
  * water falling away behind it, so the puffs show from birth. */
@@ -240,6 +240,8 @@ export const SURGE_RISE = 1.0;
 export const impactKick = (H: number, hollow: number): number => Math.sqrt(2 * IMPACT_G * IMPACT_RISE_H * (1 + SURGE_RISE * hollow) * Math.max(H, 0.5));
 /** An impact puff lives U(1.3, 2.4) s: long enough to fall back below its launch after the tuned throw (final review I1). */
 export const IMPACT_MAX_LIFE_S = 2.4;
+/** The impact pool's replay covers its longest-lived puff: the spit's cloud (KIND_LOOK.spitCloud, up to 3 s). */
+export const IMPACT_POOL_MAX_LIFE_S = 3;
 
 /** Whether the spray can emit at all: a spray amount and more than a calm wind (a replay skips its ticks otherwise). */
 export function sprayCanEmit(amount: number, windSpeedMs: number): boolean {
@@ -331,15 +333,15 @@ export const SPIT_RATE = 120;
  * station feed the spray (the lip tip mid-throw, off an offshore wind), the impact explosion (the landing point, for
  * IMPACT_WINDOW_S from IMPACT_DELAY_S after the lip lands, with or without wind) and the barrel's spit (SpitEmitter).
  */
-export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[] } {
+export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact: ImpactEmitter[]; spit: SpitEmitter[]; feather: FeatherEmitter[]; mouths: MouthSummary[] } {
   const { field, ctx, params } = i;
-  const spray: SprayEmitter[] = [], impact: ImpactEmitter[] = [], spit: SpitEmitter[] = [], feather: FeatherEmitter[] = [];
-  if (!field || !ctx || !params.enabled || i.events.length === 0) return { spray, impact, spit, feather };
+  const spray: SprayEmitter[] = [], impact: ImpactEmitter[] = [], spit: SpitEmitter[] = [], feather: FeatherEmitter[] = [], mouths: MouthSummary[] = [];
+  if (!field || !ctx || !params.enabled || i.events.length === 0) return { spray, impact, spit, feather, mouths };
   // A calm wind makes no spray anywhere (final review I2); the explosion doesn't care about the wind.
   const wantSpray = sprayCanEmit(i.amount, i.wind.speedMs);
   const impactAmount = i.impactAmount ?? 0;
   const wantImpact = impactAmount > 0;
-  if (!wantSpray && !wantImpact) return { spray, impact, spit, feather };
+  if (!wantSpray && !wantImpact) return { spray, impact, spit, feather, mouths };
   const waves = i.events.map(toActiveWave);
   const offshoreMs = offshoreSpeed(i.wind.speedMs, i.wind.fromDeg, ctx.travelX, ctx.travelZ);
   // With the stood stations waiting their turn (crestTrace.TraceInput.stood): under the one-surface law they draw nothing but
@@ -420,9 +422,10 @@ export function breakEmitters(i: EmitterInput): { spray: SprayEmitter[]; impact:
       });
     }
   }
-  if (wantImpact) spitEmitters(stations, frameOf, i, impactAmount, spit);
+  // Andrew's amendment (2026-10-15): the spit is an event (spitEvents over the ticks' mouth summaries), not a per-station pulse.
+  if (wantImpact) mouthSummaries(stations, i, mouths);
   drawnCrests(nearCurl, feather, (s) => sectionCrestY(s.section, sheetOf(s)) + i.tideM);
-  return { spray, impact, spit, feather };
+  return { spray, impact, spit, feather, mouths };
 }
 
 /**
@@ -457,32 +460,68 @@ export function spitMouths(phases: readonly number[]): { at: number; toward: num
 
 /** The stations' spit (SpitEmitter): per run of drawn stations (one wave, no gap), its mouths (spitMouths), framed by
  * `frameOf`, into `out`. */
-function spitEmitters(stations: readonly StationEntry[], frameOf: (s: Station) => SectionFrame, i: EmitterInput, amount: number, out: SpitEmitter[]): void {
-  const periodS = i.field!.periodS;
+/**
+ * The spit as an event (Andrew's amendment 2026-10-15, spec item 5): while the barrel runs nothing exits the mouth; when the
+ * mouth closes over (the open tube collapses: its open length falls by >= CLOSURE_DROP, to 0 included, against its most
+ * over the CLOSURE_WINDOW_TICKS before), the trapped air blasts out of the open end once: one dense pulse (SPIT_BURST_TICKS,
+ * 0.6 s), its strength ∝ the trapped volume (radius² × the open length before the closure, capped at SPIT_TRAPPED_CAP_M3),
+ * fast, then the cloud hangs (spitCloudBirths). The per-station pulse (SPIT_PULSE_S) is retired.
+ *
+ * A tick's mouth summary (per wave): the open tube's length now (stations from the round barrel to cavingIn,
+ * OPEN_TUBE_PHASES) and the open end's geometry (the open station next to the unbroken side), or, with none open, the
+ * caving station nearest the front (so a closure has a place). The detector reads the summaries of the ticks before (App
+ * caches them per tick, as it caches the emitters), so a tick's spit is a pure function of the ticks.
+ */
+export interface MouthSummary {
+  waveId: number;
+  /** The open tube's length (m) at this tick. */
+  openM: number;
+  x: number;
+  y: number;
+  z: number;
+  /** Out of the open end (unit, horizontal). */
+  dx: number;
+  dz: number;
+  nx: number;
+  nz: number;
+  A: number;
+  /** The tube's radius (m). */
+  radius: number;
+  /** The jet's speed (m/s). */
+  speed: number;
+}
+export const OPEN_TUBE_PHASES: readonly [number, number] = [1.0, SPIT_PHASES[0]];
+export const CLOSURE_DROP = 0.5, CLOSURE_WINDOW_TICKS = 10, SPIT_BURST_TICKS = 12, SPIT_TRAPPED_CAP_M3 = 60;
+/** A barrel worth a blast: its median open run over the window (m, 3 stations); and the span after a burst in which no other
+ * starts (ticks: 2 s). */
+export const SPIT_MIN_OPEN_M = 9, SPIT_REFRACTORY_TICKS = 40;
+
+function mouthSummaries(stations: readonly StationEntry[], i: EmitterInput, out: MouthSummary[]): void {
   let run: Station[] = [];
   const flush = (): void => {
-    for (const { at, toward } of spitMouths(run.map((s) => s.section.phase))) {
-      const s = run[at], q = run[toward];
-      if (s.tb === null || !Number.isFinite(s.tb)) continue;
-      // How long since it started caving in (wombSection.sectionPhase: phase 1.25 at flight + hold + a quarter of the collapse).
-      const Hb = s.Hb ?? s.H, age = s.tb - (flightTime(Hb) + tubeHold(Hb, periodS) + (SPIT_PHASES[0] - 1) * collapseSpan(Hb, periodS));
-      const pulse = 1 - smoothstep(SPIT_PULSE_S[0], SPIT_PULSE_S[1], age);
-      if (!(pulse > 0)) continue;
-      const ddx = q.x - s.x, ddz = q.z - s.z, dl = Math.hypot(ddx, ddz);
-      if (!(dl > 1e-6)) continue;
-      // The local curl speed: the arc to the neighbour over the difference in their times since onset (the neighbour
-      // unbroken: the curl's top speed).
-      const curl = q.tb !== null && Number.isFinite(q.tb) && s.tb - q.tb > 0.05 ? Math.abs(s.arc - q.arc) / (s.tb - q.tb) : i.params.curlMaxMs;
-      const f = frameOf(s), tubeH = Math.max(f.crest[1] - f.floor[1], 0.1);
-      // Inside the tube: 0.4 of the reach in from the crest, 0.3 of its height over the floor.
-      const u = f.crest[0] + 0.4 * f.reach, y = f.floor[1] + 0.3 * tubeH;
-      out.push({
-        x: s.x + s.nx * u, y: y + i.tideM, z: s.z + s.nz * u, dx: ddx / dl, dz: ddz / dl,
-        speed: Math.min(SPIT_MAX_SPEED_MS, SPIT_THROW_SHARE * curl), nx: s.nx, nz: s.nz, radius: 0.3 * tubeH, A: s.section.A,
-        strength: pulse * f.rho * Math.min(1, s.H / 2) * amount, lip: Math.min(1, f.rho),
-        waveId: i.events[s.wave].id, arc: Math.round(s.arc / SPRAY_SPACING_M),
+    if (!run.length) return;
+    const open = (s: Station) => s.tb !== null && Number.isFinite(s.tb) && s.section.phase >= OPEN_TUBE_PHASES[0] && s.section.phase < OPEN_TUBE_PHASES[1];
+    const openIdx = run.map((s, j) => (open(s) ? j : -1)).filter((j) => j >= 0);
+    // The open end: an open station whose neighbour has not reached the round barrel yet.
+    let at = -1, toward = -1;
+    for (const j of openIdx) for (const q of [j - 1, j + 1]) if (at < 0 && q >= 0 && q < run.length && run[q].section.phase < OPEN_TUBE_PHASES[0]) { at = j; toward = q; }
+    if (at < 0) {
+      // None open: the caving station next to a neighbour still short of caving marks where the mouth closed.
+      run.forEach((s, j) => {
+        if (at >= 0 || !(s.section.phase >= OPEN_TUBE_PHASES[1] && s.section.phase <= SPIT_PHASES[1])) return;
+        for (const q of [j - 1, j + 1]) if (at < 0 && q >= 0 && q < run.length && run[q].section.phase < OPEN_TUBE_PHASES[1]) { at = j; toward = q; }
       });
     }
+    if (at < 0) { run = []; return; }
+    const s = run[at], q = run[toward];
+    const ddx = q.x - s.x, ddz = q.z - s.z, dl = Math.hypot(ddx, ddz) || 1;
+    const curl = q.tb !== null && Number.isFinite(q.tb) && s.tb !== null && s.tb - q.tb > 0.05 ? Math.abs(s.arc - q.arc) / (s.tb - q.tb) : i.params.curlMaxMs;
+    const A = s.section.A;
+    out.push({
+      waveId: i.events[s.wave].id, openM: openIdx.length * SPRAY_SPACING_M,
+      x: s.x + s.nx * 0.3 * A, y: i.tideM + 0.35 * A, z: s.z + s.nz * 0.3 * A, dx: ddx / dl, dz: ddz / dl, nx: s.nx, nz: s.nz, A,
+      radius: 0.3 * 0.8 * A, speed: Math.min(SPIT_MAX_SPEED_MS, SPIT_THROW_SHARE * curl),
+    });
     run = [];
   };
   for (const e of stations) {
@@ -490,6 +529,56 @@ function spitEmitters(stations: readonly StationEntry[], frameOf: (s: Station) =
     if (!e.gap) run.push(e);
   }
   flush();
+}
+
+/** Whether wave `id`'s mouth closes at tick j: its open length now at most (1 − CLOSURE_DROP) × its median over the
+ * CLOSURE_WINDOW_TICKS before (a median: the open run flickers by a station as stations cross the phase bounds), that median
+ * a real barrel (>= SPIT_MIN_OPEN_M); and the summary the closure blasts from (the longest of those ticks). */
+export function closedAt(summaryAt: (tick: number) => readonly MouthSummary[], id: number, j: number): { closed: boolean; before: MouthSummary | null } {
+  const now = summaryAt(j).find((m) => m.waveId === id)?.openM ?? 0;
+  const prev: number[] = [];
+  let before: MouthSummary | null = null;
+  for (let b = j - CLOSURE_WINDOW_TICKS; b < j; b++) {
+    const m = summaryAt(b).find((x) => x.waveId === id);
+    prev.push(m?.openM ?? 0);
+    if (m && m.openM > 0 && (!before || m.openM >= before.openM)) before = m;
+  }
+  const med = prev.sort((x, y) => x - y)[prev.length >> 1];
+  return { closed: med >= SPIT_MIN_OPEN_M && now <= (1 - CLOSURE_DROP) * med, before };
+}
+
+/** The tick a burst of wave `id` starts at or before j within the refractory span, or null: a burst starts where the mouth
+ * first closes, and none starts within SPIT_REFRACTORY_TICKS of the last (one blast per closure; the run's flicker after a
+ * collapse is not another). */
+function burstStart(summaryAt: (tick: number) => readonly MouthSummary[], id: number, j: number): number | null {
+  let last: number | null = null;
+  for (let b = j - SPIT_REFRACTORY_TICKS - SPIT_BURST_TICKS; b <= j; b++) {
+    if (closedAt(summaryAt, id, b).closed && !closedAt(summaryAt, id, b - 1).closed && (last === null || b - last > SPIT_REFRACTORY_TICKS)) last = b;
+  }
+  return last;
+}
+
+/**
+ * Tick k's spit emitters: one per closure whose burst (SPIT_BURST_TICKS from the tick it closed) covers k, with the mouth's
+ * geometry before it closed and the strength min(1, radius² × open length / SPIT_TRAPPED_CAP_M3) × amount.
+ */
+export function spitEvents(k: number, summaryAt: (tick: number) => readonly MouthSummary[], amount: number): SpitEmitter[] {
+  const out: SpitEmitter[] = [];
+  if (!(amount > 0)) return out;
+  const ids = new Set<number>();
+  for (let j = k - SPIT_BURST_TICKS - CLOSURE_WINDOW_TICKS; j <= k; j++) for (const m of summaryAt(j)) ids.add(m.waveId);
+  for (const id of ids) {
+    const start = burstStart(summaryAt, id, k);
+    if (start === null || k - start >= SPIT_BURST_TICKS) continue;
+    const m = closedAt(summaryAt, id, start).before;
+    if (!m) continue;
+    const trapped = m.radius * m.radius * m.openM;
+    out.push({
+      x: m.x, y: m.y, z: m.z, dx: m.dx, dz: m.dz, speed: m.speed, nx: m.nx, nz: m.nz, A: m.A, radius: m.radius,
+      strength: Math.min(1, trapped / SPIT_TRAPPED_CAP_M3) * amount, lip: 1, waveId: id, arc: start,
+    });
+  }
+  return out;
 }
 
 /** The spray's emitters at sim time t (breakEmitters' spray). */
@@ -655,6 +744,29 @@ export function spitBirths(emitters: readonly SpitEmitter[], tick: number, wind:
         x: e.x + e.nx * across, y: e.y + up, z: e.z + e.nz * across,
         vx: e.dx * v + e.nx * side + wx, vy: Math.max(-cap, Math.min(cap, r(4) * 2 - 1)), vz: e.dz * v + e.nz * side + wz,
         life: l0 + (l1 - l0) * r(5), strength: Math.min(1, e.lip), kind: KIND_INDEX.spit,
+      });
+    }
+  }
+  return out;
+}
+
+/** breaking-look item 5d: the spit's cloud, SPIT_CLOUD_PUFFS puffs per mouth over its pulse (SPIT_PULSE_S[1] s) at strength
+ * 1, at SPIT_CLOUD_SPEED_SHARE of the jet's speed, hanging at the mouth (its kind's high drag). */
+export const SPIT_CLOUD_PUFFS = 8, SPIT_CLOUD_SPEED_SHARE = 0.25;
+export function spitCloudBirths(emitters: readonly SpitEmitter[], tick: number, wind: readonly [number, number] = [0, 0]): SprayBirth[] {
+  const wx = wind[0] * SPIT_WIND_SHARE, wz = wind[1] * SPIT_WIND_SHARE;
+  const out: SprayBirth[] = [];
+  const perTick = SPIT_CLOUD_PUFFS / SPIT_BURST_TICKS;
+  for (const e of emitters) {
+    const n = Math.floor(Math.min(1, e.strength) * perTick + rand01(tick, e.waveId, e.arc, 0x3c6ef372));
+    for (let j = 0; j < n; j++) {
+      if (out.length >= SPRAY_BIRTH_CAP) return out;
+      const r = (q: number): number => rand01(tick, e.waveId, e.arc, 0x30000000 + j * 8 + q);
+      const v = SPIT_CLOUD_SPEED_SHARE * e.speed * (0.6 + 0.8 * r(0)), cap = liftSpeed(KIND_LOOK.spitCloud, e.A);
+      const [l0, l1] = KIND_LOOK.spitCloud.lifeS;
+      out.push({
+        x: e.x + e.nx * (r(1) * 2 - 1) * 0.5 * e.radius, y: e.y + (r(2) * 2 - 1) * 0.3 * e.radius, z: e.z + e.nz * (r(1) * 2 - 1) * 0.5 * e.radius,
+        vx: e.dx * v + wx, vy: Math.min(cap, r(3) * cap), vz: e.dz * v + wz, life: l0 + (l1 - l0) * r(4), strength: Math.min(1, e.lip), kind: KIND_INDEX.spitCloud,
       });
     }
   }
