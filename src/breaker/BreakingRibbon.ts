@@ -2,7 +2,7 @@ import { billowLiftNode, billowNode } from '../whitewater/billow';
 import { boreFromStations, boreLook, heightFracNode, wallShadeNode } from '../whitewater/whitewaterLook';
 import { BARREL_INSIDE, WALL_LOOK } from '../whitewater/lookSwitches';
 import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, freshFoamWeightNode, solidBoilNode } from '../whitewater/pileChurn';
-import { CURTAIN_EROSION_S, FRINGE_DROPLET_SHARE, NOT_LANDED, curlFoamNode, curtainErosionNode, landedWhiteNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
+import { CURTAIN_EROSION_S, FRINGE_DROPLET_SHARE, NOT_LANDED, SHEET_FOAM_LAG_S, curlFoamNode, curtainErosionNode, landedWhiteNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
 import * as THREE from 'three/webgpu';
 import {
   Break, Fn, If, Loop, abs, atan, attribute, cameraViewMatrix, exp, floor, fwidth, screenSize, screenUV, viewportMipTexture, exp2, ivec2, cameraPosition, clamp, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
@@ -248,7 +248,9 @@ export const CURTAIN_ERODES_AT_PHASE = STAGES.barrel;
 export function sinceLand(s: Station, periodS = 15): number {
   if (s.tb === null || !Number.isFinite(s.tb)) return NOT_LANDED;
   const Hb = s.Hb ?? s.H, from = flightTime(Hb) + tubeHold(Hb, periodS) + (CURTAIN_ERODES_AT_PHASE - STAGES.barrel) * collapseSpan(Hb, periodS);
-  return s.tb >= from ? s.tb - from : NOT_LANDED;
+  // Piece 1: the lane's zero SHEET_FOAM_LAG_S after the hold (the erosion only over the sheet's white water); negative from
+  // the hold's end, for the landed white (curlFoam.landedWhite).
+  return s.tb >= from ? s.tb - from - SHEET_FOAM_LAG_S : NOT_LANDED;
 }
 
 export function packStations(entries: readonly StationEntry[], out: Float32Array, periodS = 15): number {

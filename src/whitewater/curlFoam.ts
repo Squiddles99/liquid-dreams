@@ -82,8 +82,15 @@ export const FRINGE_DROPLET_SHARE = 0.4;
  * and curtain (the hold, NOT_LANDED) keep the water. The white is the broken section's (the material's solid foam).
  */
 export const LANDED_WHITE_S = 0.25;
-export function landedWhite(sinceLandS: number, constructed: number): number {
-  return Math.min(1, Math.max(0, sinceLandS / LANDED_WHITE_S)) * constructed;
+/**
+ * Piece 1: the station lane (BreakingRibbon.sinceLand) runs from SHEET_FOAM_LAG_S after the tube's hold ends, so the
+ * erosion (curtainErosion of the lane) opens holes only over a white sheet: the sheet holds its own tube
+ * (breaking.lifecycle) and its foam reaches 0.9 0.89-2.0 s after the ribbon's hold ends (T 10-18 s, H 1-8 m;
+ * curlFoam.test). The lane is NOT_LANDED in the hold, from -SHEET_FOAM_LAG_S at its end; the white reads it back.
+ */
+export const SHEET_FOAM_LAG_S = 1.8;
+export function landedWhite(laneS: number, constructed: number): number {
+  return Math.min(1, Math.max(0, (laneS + SHEET_FOAM_LAG_S) / LANDED_WHITE_S)) * constructed;
 }
 /** The ribbon sample's foam weight and clean-tube share: the curl's own (curlFoamAt × ρ, the clean tube by ρ) with the landed
  *  curtain's white over it (the white fills the tube, so the clean share goes as it rises). */
@@ -92,5 +99,5 @@ export function curtainFoamAt(curlFoam: number, rho: number, sinceLandS: number,
   return { foam: Math.max(Math.min(1, Math.max(0, curlFoam)) * rho, white), clean: Math.min(1, Math.max(0, -curlFoam)) * rho * (1 - white) };
 }
 export function landedWhiteNode(sinceLandS: N, constructed: N): N {
-  return float(sinceLandS).div(LANDED_WHITE_S).clamp(0.0, 1.0).mul(constructed);
+  return float(sinceLandS).add(SHEET_FOAM_LAG_S).div(LANDED_WHITE_S).clamp(0.0, 1.0).mul(constructed);
 }
