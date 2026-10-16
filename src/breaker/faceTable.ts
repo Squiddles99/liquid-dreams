@@ -1,4 +1,4 @@
-import { CREST_KNOT, FRONT_KNOT, SPAN_SAMPLES, TIP_KNOT, densePoint, roundedKnots } from './wombProfile';
+import { CREST_KNOT, FRONT_KNOT, SPAN_SAMPLES, TIP_KNOT, densePoint, faceKnots } from './wombProfile';
 
 /**
  * The drawn face as the sheet takes it (womb-story Task 11, Fable's STOP 3 ruling 1: "the sheet's stand-up below the root
@@ -23,7 +23,7 @@ export const FACE_SAMPLES = 33;
 /** The drawing's face at (phase, hollow) as a polyline (units of A, the profile's own frame), u rising: the curve's points that
  * stand behind every point ahead of them, from its crest knot to its front knot; `top` its highest, `low` its lowest after. */
 export function faceEnvelope(phase: number, hollow: number): { pts: [number, number][]; top: number; low: number } {
-  const k = roundedKnots(phase, hollow), r = (j: number): number => (j > TIP_KNOT ? j + 2 : j === TIP_KNOT ? j + 1 : j);
+  const k = faceKnots(phase, hollow), r = (j: number): number => (j > TIP_KNOT ? j + 2 : j === TIP_KNOT ? j + 1 : j);
   const from = CREST_KNOT * SPAN_SAMPLES, to = r(FRONT_KNOT) * SPAN_SAMPLES;
   // Back from the front knot: a point is on the face if it stands behind every point ahead of it.
   const env: [number, number][] = [];

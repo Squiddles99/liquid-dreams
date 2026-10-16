@@ -62,27 +62,64 @@ function closed(before: readonly P2[], from: readonly P2[], at: P2, after: reado
   return [...before, ...cavity.map((p): P2 => [at[0] + (p[0] - cu) * c - (p[1] - cy) * s, at[1] + (p[0] - cu) * s + (p[1] - cy) * c]), ...after];
 }
 
-/** The lip on a leash (womb-realism spec 3.2, Task 3): the tip reaches at most TIP_REACH_MAX ahead of the crest and stands
- * at most TIP_RISE_MAX above it (units of H). */
-export const TIP_REACH_MAX = 1.0;
-/** The keys are leashed this much inside TIP_REACH_MAX: the Hermite between them overshoots a key by up to ~0.025 (in the collapse). */
+/** The lip on a leash (womb-realism spec 3.2, Task 3): the tip reaches at most LEASH_REACH ahead of the crest and stands
+ * at most TIP_RISE_MAX above it (units of H). Since step 4 (2026-10-16) the leash holds only the collapse's keys: the
+ * throw's keys land the lip LANDING_FACES ahead of the foot (throwShape), and TIP_REACH_MAX is the furthest that reaches. */
+const LEASH_REACH = 1.0;
+/** The keys are leashed this much inside LEASH_REACH: the Hermite between them overshoots a key by up to ~0.025 (in the collapse). */
 const TIP_REACH_KEY = 0.97;
 export const TIP_RISE_MAX = 0.1;
 /**
- * A drawing on the leash: where its tip reaches further than TIP_REACH_MAX, the lip and the cavity (knots crest + 1 …
+ * A drawing on the leash: where its tip reaches further than LEASH_REACH, the lip and the cavity (knots crest + 1 …
  * floor) are pulled in along u toward the crest by one factor (an affine map of a run of knots, so the curl keeps its
  * order and a closed pocket its shape); a tip above TIP_RISE_MAX is lowered to it. Applied to the keys themselves, so the
  * GPU's key table is the same data and the Hermite between keys carries it.
  */
 function leashShape(shape: readonly P2[]): P2[] {
-  const [cu, cy] = shape[CREST_KNOT], reach = shape[TIP_KNOT][0] - cu, f = reach > TIP_REACH_KEY ? TIP_REACH_KEY / reach : 1;
+  const [cu, cy] = shape[CREST_KNOT], reach = shape[TIP_KNOT][0] - cu, f = reach > TIP_REACH_KEY * LEASH_REACH ? (TIP_REACH_KEY * LEASH_REACH) / reach : 1;
   return shape.map((p, k): P2 => {
     const u = k > CREST_KNOT && k <= FLOOR_KNOT ? cu + (p[0] - cu) * f : p[0];
     return [u, k === TIP_KNOT ? Math.min(p[1], cy + TIP_RISE_MAX) : p[1]];
   });
 }
-function leashKeys(keys: readonly Omit<ProfileKey, 'spill'>[]): ProfileKey[] {
-  return keys.map((k) => {
+/**
+ * The throw (step 4, Andrew's ruling 2026-10-16: in perfect conditions the lip throws top to bottom and lands about one face
+ * height ahead of the foot, the tube about as wide as it is tall): at the barrel and hollow LANDING_HOLLOW the tip lands
+ * LANDING_FACES face heights (crest to trough) ahead of the floor, the face's foot. The approved drawings landed it 0.71
+ * face heights out and the leash pulled that in to 0.42 (live 0.10-0.19 of the face ahead of the sheet's foot at
+ * 1792137769's conditions: a 1.3 m tube under a 3.8 m face, the curtain hugging the face). The throw's keys (THROW_PHASES:
+ * throwing, barrel, filling) have the lip's knots past its root (crest + 2 … the roof's front, tip + 1; the lip's first knot stays, so its top falls from the crest and never stands as a second crest) stretched along u about the crest
+ * by one factor, THROW_STRETCH (from the drawings at phase 1), and the tip set on the drawing's water in front (it lands on
+ * it, never through it). The cavity's back and the floor stay as drawn, and the sheet's drawn face is read from the drawings
+ * without the throw (FACE_KEYS): the face under the roof is the tube's back wall, where it stood.
+ */
+export const LANDING_FACES = 1.0;
+export const LANDING_HOLLOW = 0.8;
+const THROW_PHASES: readonly number[] = [1, 1.25];
+/** The landed tip stands this far (units of A) above the water in front: on it, never through it. */
+const LANDED_ABOVE = 0.02;
+function throwStretch(keys: readonly Omit<ProfileKey, 'spill'>[]): number {
+  const k = keys.find((q) => q.phase === 1)!, b = (m: number, j: 0 | 1): number => k.open[m][j] + (k.hollow[m][j] - k.open[m][j]) * LANDING_HOLLOW;
+  const face = b(CREST_KNOT, 1) - b(TROUGH_KNOT, 1);
+  return (b(FLOOR_KNOT, 0) + LANDING_FACES * face - b(CREST_KNOT, 0)) / (b(TIP_KNOT, 0) - b(CREST_KNOT, 0));
+}
+function throwShape(shape: readonly P2[], f: number): P2[] {
+  const [cu, cy] = shape[CREST_KNOT];
+  const water = (u: number): number => {
+    const a = shape[TROUGH_KNOT], b = shape[FRONT_KNOT];
+    return u <= a[0] ? a[1] : a[1] + ((Math.min(u, b[0]) - a[0]) / (b[0] - a[0])) * (b[1] - a[1]);
+  };
+  return shape.map((p, k): P2 => {
+    const u = k > CREST_KNOT + 1 && k <= TIP_KNOT + 1 ? cu + (p[0] - cu) * f : p[0];
+    return [u, k === TIP_KNOT ? Math.min(Math.max(p[1], water(u) + LANDED_ABOVE), cy + TIP_RISE_MAX) : p[1]];
+  });
+}
+function leashKeys(keys: readonly Omit<ProfileKey, 'spill'>[], throwing: boolean): ProfileKey[] {
+  const f = throwStretch(keys);
+  return keys.map((k0) => {
+    const thrown = throwing && THROW_PHASES.includes(k0.phase), k = thrown ? { phase: k0.phase, hollow: throwShape(k0.hollow, f), open: throwShape(k0.open, f) } : k0;
+    // The spill (hollow <= SPILL_FULL) crumbles; it never throws: it keeps the leashed drawing's spill.
+    if (thrown) return { phase: k.phase, hollow: k.hollow, open: k.open, spill: spillShape(leashShape(k0.open)) };
     const open = leashShape(k.open);
     // Before the lip pitches nothing curls; once the tube has closed (caving in, the white water) the approved open
     // drawing is already a hump with no room inside: the spill is that drawing at both ends.
@@ -129,7 +166,7 @@ function spillShape(open: readonly P2[]): P2[] {
  * reef's step has not shaped the wave yet (open = hollow). The collapse (phase > 1), approved the same day:
  * a weaker wave's tube is smaller and caves into a lower hump.
  */
-export const PROFILE_KEYS: readonly ProfileKey[] = leashKeys([
+const RAW_KEYS: readonly Omit<ProfileKey, 'spill'>[] = [
   {
     phase: 0,
     hollow: [[-7, 0], [-3.5, 0.1], [-1.5, 0.38], [0, 0.55], [0.35, 0.53], [0.6, 0.49], [0.85, 0.43], [1.05, 0.37], [1.25, 0.3], [1.5, 0.21], [1.8, 0.09], [2.7, -0.1], [4.2, -0.04], [7, 0]],
@@ -169,7 +206,15 @@ export const PROFILE_KEYS: readonly ProfileKey[] = leashKeys([
     hollow: closed([[-7, 0], [-3.5, 0.08], [-1.4, 0.25], [0.8, 0.45], [1.4, 0.47], [1.75, 0.4]], FILLING_HOLLOW, [1.85, 0.2], [[2.1, -0.1], [3.6, -0.03], [7, 0]]),
     open: closed([[-7, 0], [-3.5, 0.06], [-1.4, 0.18], [0.8, 0.32], [1.3, 0.34], [1.6, 0.28]], FILLING_OPEN, [1.68, 0.12], [[1.85, -0.06], [3.4, -0.02], [7, 0]]),
   },
-]);
+];
+export const PROFILE_KEYS: readonly ProfileKey[] = leashKeys(RAW_KEYS, true);
+/** The keys the sheet's drawn face is read from (faceTable): the leashed drawings, no throw. The tube's back wall and the
+ * face below it stand where they stood; only the lip throws further (step 4). */
+const FACE_KEYS: readonly ProfileKey[] = leashKeys(RAW_KEYS, false);
+/** The furthest any key's tip reaches ahead of its crest (units of A; the throw's hollow barrel), with the Hermite's overshoot
+ * between keys (up to 5.3 %: a 7 % margin). */
+export const TIP_REACH_MAX = Math.max(...PROFILE_KEYS.flatMap((k) => [k.hollow, k.open].map((sh) => sh[TIP_KNOT][0] - sh[CREST_KNOT][0]))) / 0.93;
+
 
 const clamp = (x: number, a: number, b: number): number => Math.min(b, Math.max(a, x));
 const smooth = (t: number): number => t * t * (3 - 2 * t);
@@ -181,8 +226,7 @@ const smooth = (t: number): number => t * t * (3 - 2 * t);
  * inside out.
  */
 export type ProfileFamily = 'hollow' | 'open' | 'spill';
-function keyVelocity(i: number, k: number, j: 0 | 1, family: ProfileFamily): number {
-  const K = PROFILE_KEYS;
+function keyVelocity(i: number, k: number, j: 0 | 1, family: ProfileFamily, K: readonly ProfileKey[] = PROFILE_KEYS): number {
   if (i === 0 || i === K.length - 1) return 0;
   if (k >= TIP_KNOT && k <= FLOOR_KNOT && K[i].phase > 1.25) return 0;
   return (K[i + 1][family][k][j] - K[i - 1][family][k][j]) / (K[i + 1].phase - K[i - 1].phase);
@@ -190,25 +234,25 @@ function keyVelocity(i: number, k: number, j: 0 | 1, family: ProfileFamily): num
 
 /** A family's knots at `phase`: through its keyframes by a cubic Hermite in phase. At a keyframe's phase the knots are
  * that keyframe's exactly. */
-export function familyKnots(phase: number, family: ProfileFamily): P2[] {
+export function familyKnots(phase: number, family: ProfileFamily, K: readonly ProfileKey[] = PROFILE_KEYS): P2[] {
   const ph = clamp(phase, 0, 2);
   let i = 0;
-  while (i < PROFILE_KEYS.length - 2 && ph > PROFILE_KEYS[i + 1].phase) i++;
-  const a = PROFILE_KEYS[i], b = PROFILE_KEYS[i + 1], span = b.phase - a.phase;
+  while (i < K.length - 2 && ph > K[i + 1].phase) i++;
+  const a = K[i], b = K[i + 1], span = b.phase - a.phase;
   const t = (ph - a.phase) / span, t2 = t * t, t3 = t2 * t;
   const h00 = 2 * t3 - 3 * t2 + 1, h10 = t3 - 2 * t2 + t, h01 = -2 * t3 + 3 * t2, h11 = t3 - t2;
   const at = (k: number, j: 0 | 1): number =>
-    h00 * a[family][k][j] + h10 * span * keyVelocity(i, k, j, family) + h01 * b[family][k][j] + h11 * span * keyVelocity(i + 1, k, j, family);
+    h00 * a[family][k][j] + h10 * span * keyVelocity(i, k, j, family, K) + h01 * b[family][k][j] + h11 * span * keyVelocity(i + 1, k, j, family, K);
   return Array.from({ length: KNOTS }, (_, k): P2 => [at(k, 0), at(k, 1)]);
 }
 
 /** The knots at (phase, hollow): from SPILL_TO up the approved families blended linearly by hollowness (as signed); below it
  * the approved blend at SPILL_TO eased (smoothstep) into the spill, which is the drawing from SPILL_FULL down (womb-story
  * Task 3b). At a keyframe's phase the knots are that keyframe's exactly. */
-export function profileKnots(phase: number, hollow: number): P2[] {
-  const hv = clamp(hollow, 0, 1), o = familyKnots(phase, 'open'), h = familyKnots(phase, 'hollow');
+export function profileKnots(phase: number, hollow: number, K: readonly ProfileKey[] = PROFILE_KEYS): P2[] {
+  const hv = clamp(hollow, 0, 1), o = familyKnots(phase, 'open', K), h = familyKnots(phase, 'hollow', K);
   if (hv >= SPILL_TO) return o.map((p, k): P2 => [p[0] + (h[k][0] - p[0]) * hv, p[1] + (h[k][1] - p[1]) * hv]);
-  const sp = familyKnots(phase, 'spill'), w = smooth(clamp((hv - SPILL_FULL) / (SPILL_TO - SPILL_FULL), 0, 1));
+  const sp = familyKnots(phase, 'spill', K), w = smooth(clamp((hv - SPILL_FULL) / (SPILL_TO - SPILL_FULL), 0, 1));
   return o.map((p, k): P2 => {
     const mx = p[0] + (h[k][0] - p[0]) * SPILL_TO, my = p[1] + (h[k][1] - p[1]) * SPILL_TO;
     return [sp[k][0] + (mx - sp[k][0]) * w, sp[k][1] + (my - sp[k][1]) * w];
@@ -248,7 +292,9 @@ export function roundedTip<K extends readonly number[]>(k: readonly K[], life: n
 }
 
 /** The rounded knots at (phase, hollow). */
-export const roundedKnots = (phase: number, hollow: number): P2[] => roundedTip(profileKnots(phase, hollow), tipLife(clamp(phase, 0, 2)));
+export const roundedKnots = (phase: number, hollow: number, K: readonly ProfileKey[] = PROFILE_KEYS): P2[] => roundedTip(profileKnots(phase, hollow, K), tipLife(clamp(phase, 0, 2)));
+/** The rounded knots of the drawing the sheet's face is read from (FACE_KEYS: no throw). */
+export const faceKnots = (phase: number, hollow: number): P2[] => roundedKnots(phase, hollow, FACE_KEYS);
 
 /**
  * Dense point d (0 … (k.length − 1) × SPAN_SAMPLES) of the centripetal Catmull–Rom through the knots `k` (the rounded knots:

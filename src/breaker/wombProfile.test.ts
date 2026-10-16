@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import approved from './wombProfile.approved.json';
-import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, KNOTS, type P2, PROFILE_KEYS, SPAN_SAMPLES, SPILL_FULL, SPILL_TO, TIP_KNOT, TROUGH_KNOT, densePoint, familyKnots, profileCurve, profileKnots, profileSamples, roundedTip, tipLife } from './wombProfile';
+import { CREST_KNOT, CURVE_SAMPLES, FLOOR_KNOT, KNOTS, type P2, PROFILE_KEYS, SPAN_SAMPLES, SPILL_FULL, SPILL_TO, TIP_KNOT, TIP_REACH_MAX, TROUGH_KNOT, densePoint, familyKnots, profileCurve, profileKnots, profileSamples, roundedTip, tipLife } from './wombProfile';
 import { surgeLift } from './wombSection';
 import { smoothstep } from '../math/smoothstep';
 
@@ -105,7 +105,9 @@ describe('wombProfile', () => {
     const us = cavity.map((p) => p[0]), ys = cavity.map((p) => p[1]);
     const aspect = (Math.max(...us) - Math.min(...us)) / (Math.max(...ys) - Math.min(...ys));
     expect(aspect).toBeGreaterThan(0.7);
-    expect(aspect).toBeLessThan(1.4);
+    // Step 4 (Andrew 2026-10-16): the lip lands one face height ahead of the foot, so the hollow tube is wider than tall
+    // (1.90 at hollow 1; the approved drawing's 1.4 bar was the leashed throw's).
+    expect(aspect).toBeLessThan(2.0);
   });
 
   it("spreads its samples so the lip's end is round on the mesh and nothing is starved", () => {
@@ -159,11 +161,11 @@ describe('the lip lands one face height ahead of the foot (step 4, Andrew 2026-1
 });
 
 describe('the lip on a leash (womb-realism Task 3, spec 3.2)', () => {
-  it('over phases 0–2 and every hollowness the tip stands at most 0.1 above the crest and reaches at most 1.0 ahead of it', () => {
+  it('over phases 0–2 and every hollowness the tip stands at most 0.1 above the crest and reaches at most TIP_REACH_MAX ahead of it (step 4: the throw lands one face height out)', () => {
     for (let i = 0; i <= 40; i++) for (const hollow of [0, 0.5, 1]) {
       const phase = i * 0.05, k = profileKnots(phase, hollow), tag = `phase ${phase.toFixed(2)} hollow ${hollow}`;
       expect(k[TIP_KNOT][1] - k[CREST_KNOT][1], tag).toBeLessThanOrEqual(0.1 + 1e-9);
-      expect(k[TIP_KNOT][0] - k[CREST_KNOT][0], tag).toBeLessThanOrEqual(1.0 + 1e-9);
+      expect(k[TIP_KNOT][0] - k[CREST_KNOT][0], tag).toBeLessThanOrEqual(TIP_REACH_MAX + 1e-9);
     }
   });
 });
