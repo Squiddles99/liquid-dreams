@@ -103,3 +103,28 @@ describe('the landed curtain reads as white water (piece 1)', () => {
     expect(curtainFoamAt(0.6, 0.5, NOT_LANDED, 1).foam).toBeCloseTo(0.3, 9);
   });
 });
+
+// Piece 1 (2026-10-16): the erosion's holes showed the sheet before its foam had risen (Andrew's 1792126619, after the
+// landed curtain turned white: teal holes in a white roof). The sheet holds its own tube (breaking.lifecycle, TUBE_HOLD_S)
+// and its foam reaches 0.9 0.89-2.0 s after the ribbon's hold ends (T 10-18 s, H 1-8 m; today the erosion starts 0.2 s
+// after the hold, over a sheet foam of 0.00 at H 2-5 m, T 15). The curtain erodes only over a white sheet.
+describe('the landed curtain erodes only over the sheet\'s white water (piece 1)', () => {
+  it('at the erosion\'s start the sheet\'s foam under the station is >= 0.9 (T 10-18 s, H 1-8 m); the curtain is white by 0.3 s after its hold', async () => {
+    const { curtainErosion, CURTAIN_EROSION_S, landedWhite } = await import('./curlFoam');
+    const { sinceLand } = await import('../breaker/BreakingRibbon');
+    const { DEFAULT_BREAK_PARAMS: P, lifecycle, FOAM_ONSET_COLLAPSE } = await import('../breaker/breaking');
+    const { flightTime, tubeHold } = await import('../breaker/wombSection');
+    const { smoothstep } = await import('../math/smoothstep');
+    const bad: string[] = [];
+    for (const T of [10, 12, 15, 18]) for (const H of [1, 1.5, 2, 3, 3.8, 5, 6, 8]) {
+      const holdEnd = flightTime(H) + tubeHold(H, T);
+      // The first tb at which the curtain erodes at all, by the station lane.
+      let tb = holdEnd; while (curtainErosion(sinceLand({ H, Hb: H, tb } as never, T)) <= 0 && tb < holdEnd + 10) tb += 0.005;
+      const sheetFoam = smoothstep(FOAM_ONSET_COLLAPSE, 1, lifecycle(1.2, tb, H, P, 1.2, 1.2, 1, 1).collapse);
+      if (sheetFoam < 0.9) bad.push(`T ${T} H ${H}: erodes ${(tb - holdEnd).toFixed(2)} s after the hold, sheet foam ${sheetFoam.toFixed(2)}`);
+      expect(landedWhite(sinceLand({ H, Hb: H, tb: holdEnd + 0.3 } as never, T), 1)).toBeGreaterThanOrEqual(0.9);
+    }
+    expect(CURTAIN_EROSION_S[0]).toBeGreaterThan(0);
+    expect(bad).toEqual([]);
+  });
+});
