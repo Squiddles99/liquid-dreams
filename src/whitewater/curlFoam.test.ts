@@ -58,13 +58,18 @@ describe('the landed curtain erodes (breaking-look item 4, L5)', () => {
     expect(W).toBeLessThanOrEqual(0.02);
   });
 
-  it('the station lane: the time since its lip landed, NOT_LANDED before', async () => {
-    const { sinceLand } = await import('../breaker/BreakingRibbon');
-    const { flightTime } = await import('../breaker/wombSection');
+  // Overnight fix 2026-10-16 T6: the lane's clock starts at the tube caving in (CURTAIN_ERODES_AT_PHASE), not the lip's
+  // landing: the erosion discards the whole row, and from the landing it took the lip and the tube through their hold.
+  it('the station lane: the time since its tube caves in (CURTAIN_ERODES_AT_PHASE on its own clock), NOT_LANDED before', async () => {
+    const { sinceLand, CURTAIN_ERODES_AT_PHASE } = await import('../breaker/BreakingRibbon');
+    const { collapseSpan, flightTime, sectionPhase, tubeHold } = await import('../breaker/wombSection');
     const { NOT_LANDED } = await import('./curlFoam');
-    const st = (tb: number | null) => ({ H: 3, tb } as never);
-    expect(sinceLand(st(null))).toBe(NOT_LANDED);
-    expect(sinceLand(st(flightTime(3) - 0.1))).toBe(NOT_LANDED);
-    expect(sinceLand(st(flightTime(3) + 0.4))).toBeCloseTo(0.4, 9);
+    const st = (tb: number | null) => ({ H: 3, Hb: 3, tb } as never);
+    const from = flightTime(3) + tubeHold(3, 15) + 0.5 * collapseSpan(3, 15);
+    expect(sinceLand(st(null), 15)).toBe(NOT_LANDED);
+    expect(sinceLand(st(flightTime(3) + 0.4), 15)).toBe(NOT_LANDED);
+    expect(sinceLand(st(from - 0.01), 15)).toBe(NOT_LANDED);
+    expect(sinceLand(st(from + 0.4), 15)).toBeCloseTo(0.4, 9);
+    expect(sectionPhase({ H: 3, Hb: 3, r: 1, tb: from, until: 0, psi: 0.06, periodS: 15, x: 0, z: 0 }, { ribbonOnset: 0.6 })).toBeCloseTo(CURTAIN_ERODES_AT_PHASE, 6);
   });
 });

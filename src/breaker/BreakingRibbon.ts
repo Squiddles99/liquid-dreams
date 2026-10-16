@@ -23,9 +23,9 @@ import type { BreakParams } from './breaking';
 import { MAX_STATIONS, type Station, type StationEntry } from './crestTrace';
 import { TUBE_TIP_CLEAR_M } from './lipProfile';
 import { encodeTb, tubeLightAtNode } from './lipProfileNodes';
-import { CURVE_SAMPLES } from './wombProfile';
+import { CURVE_SAMPLES, STAGES } from './wombProfile';
 import { CURTAIN_IN_SHADER, CURTAIN_MAX_THICK_M, CURTAIN_OWN_GLOW, RIBBON_RENDER_ORDER, curtainBlurMipNode, curtainRefractShiftNode, curtainSeeThroughNode } from './curtain';
-import { EDGE_OUTER_UNITS, flightTime } from './wombSection';
+import { EDGE_OUTER_UNITS, collapseSpan, flightTime, tubeHold } from './wombSection';
 import { SHEET_READS, SHEET_READS_FIRST, SHEET_READS_SECOND, WOMB_FRAME_VEC4S, WOMB_KNOT_VEC4S, createKeyTable, curlReadHomeNode, sheetReadHomeNode, thirdReadHomeNode, wombFrameNode } from './wombSectionNodes';
 
 type N = any;
@@ -233,11 +233,21 @@ export interface RibbonShading {
  * first live one. With no live station at all, nothing is in use (0). runEnd is 1 on a live station near its run's
  * end (runEndFlags), 0 otherwise (gap rows too: they are dead anyway).
  */
-/** breaking-look item 4 (the station lane audit: vec4 #4's w was the one spare): the time since the station's lip landed (s:
- * tb − its flight time), NOT_LANDED before. The curtain erodes by it (curlFoam.curtainErosion). */
-export function sinceLand(s: Station): number {
-  const fly = flightTime(s.H);
-  return s.tb !== null && Number.isFinite(s.tb) && s.tb >= fly ? s.tb - fly : NOT_LANDED;
+/**
+ * The section's phase from which its landed curtain erodes (overnight fix 2026-10-16 T6): the tube caving in. The erosion
+ * discards the station's whole row (lip, roof and curtain), so it waits for the tube's end; from the lip's landing (L5 as
+ * built) it took 17 of 18 drawn stations at Andrew's 1791986608 camera through the tube's hold (phase 0.81-1.5), and the
+ * ribbon changed his frame by 0.02/255.
+ */
+export const CURTAIN_ERODES_AT_PHASE = STAGES.cavingIn;
+/** breaking-look item 4 (the station lane audit: vec4 #4's w was the one spare): the time (s) since the station's curtain may
+ * erode: since its section reaches CURTAIN_ERODES_AT_PHASE on its own clock (wombSection.sectionPhase: the lip's flight, the
+ * tube's hold, then the collapse, at the height it broke at), NOT_LANDED before. The curtain erodes by it
+ * (curlFoam.curtainErosion). */
+export function sinceLand(s: Station, periodS = 15): number {
+  if (s.tb === null || !Number.isFinite(s.tb)) return NOT_LANDED;
+  const Hb = s.Hb ?? s.H, from = flightTime(Hb) + tubeHold(Hb, periodS) + (CURTAIN_ERODES_AT_PHASE - STAGES.barrel) * collapseSpan(Hb, periodS);
+  return s.tb >= from ? s.tb - from : NOT_LANDED;
 }
 
 export function packStations(entries: readonly StationEntry[], out: Float32Array, periodS = 15): number {
@@ -250,7 +260,7 @@ export function packStations(entries: readonly StationEntry[], out: Float32Array
     if (!e.gap) prev = e;
     const s: Station = prev;
     const q = s.section;
-    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0, q.A, q.phase, q.hollow, q.rho, q.surge ?? 0, boilWeight(s.tb, s.Hb ?? s.H, periodS, 1), boilFreshness(s.tb, s.Hb ?? s.H, periodS), sinceLand(s)], i * STATION_VEC4S * 4);
+    out.set([s.x, s.z, s.nx, s.nz, s.H, s.c, s.r, encodeTb(s.tb), e.gap ? 1 : 0, ends[i] ? 1 : 0, s.psi, s.lipH ?? 0, q.A, q.phase, q.hollow, q.rho, q.surge ?? 0, boilWeight(s.tb, s.Hb ?? s.H, periodS, 1), boilFreshness(s.tb, s.Hb ?? s.H, periodS), sinceLand(s, periodS)], i * STATION_VEC4S * 4);
   }
   return n;
 }
