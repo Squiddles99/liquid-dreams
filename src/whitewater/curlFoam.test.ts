@@ -60,7 +60,7 @@ describe('the landed curtain erodes (breaking-look item 4, L5)', () => {
 
   // Overnight fix 2026-10-16 T6: the lane's clock starts at the end of the tube's hold (CURTAIN_ERODES_AT_PHASE), not the lip's
   // landing: the erosion discards the whole row, and from the landing it took the lip and the tube through their hold.
-  it('the station lane: the time since its tube's hold ends (CURTAIN_ERODES_AT_PHASE on its own clock), NOT_LANDED before', async () => {
+  it("the station lane: the time since its tube's hold ends (CURTAIN_ERODES_AT_PHASE on its own clock), NOT_LANDED before", async () => {
     const { sinceLand, CURTAIN_ERODES_AT_PHASE } = await import('../breaker/BreakingRibbon');
     const { collapseSpan, flightTime, sectionPhase, tubeHold } = await import('../breaker/wombSection');
     const { NOT_LANDED } = await import('./curlFoam');
@@ -72,5 +72,34 @@ describe('the landed curtain erodes (breaking-look item 4, L5)', () => {
     expect(sinceLand(st(from + 0.4), 15)).toBeCloseTo(0.4, 9);
     expect(sectionPhase({ H: 3, Hb: 3, r: 1, tb: from, until: 0, psi: 0.06, periodS: 15, x: 0, z: 0 }, { ribbonOnset: 0.6 })).toBeCloseTo(CURTAIN_ERODES_AT_PHASE, 6);
     expect(sectionPhase({ H: 3, Hb: 3, r: 1, tb: from + 0.3, until: 0, psi: 0.06, periodS: 15, x: 0, z: 0 }, { ribbonOnset: 0.6 })).toBeGreaterThan(CURTAIN_ERODES_AT_PHASE);
+  });
+});
+
+// Piece 1 (2026-10-16, Andrew's 1792126619: a dark glassy roof with white blotches over his white bore): once a station's
+// tube hold has ended (sinceLand >= 0) its curtain (the samples departing from the sheet) hands over to the foam white within
+// 0.3 s and stays white until the erosion removes the row; the standing lip and curtain (in the hold) keep the water.
+describe('the landed curtain reads as white water (piece 1)', () => {
+  it('a landed station\'s curtain foam weight >= 0.9 by 0.3 s after its hold ends; 0 added in the hold or on the sheet', async () => {
+    const { curtainFoamAt, NOT_LANDED } = await import('./curlFoam');
+    const { sinceLand, CURTAIN_ERODES_AT_PHASE } = await import('../breaker/BreakingRibbon');
+    const { collapseSpan, flightTime, tubeHold } = await import('../breaker/wombSection');
+    const st = (tb: number) => ({ H: 3, Hb: 3, tb } as never);
+    const from = flightTime(3) + tubeHold(3, 15) + (CURTAIN_ERODES_AT_PHASE - 1) * collapseSpan(3, 15);
+    const clean = -CLEAN_TUBE;  // the open tube's inside (curlFoamAt before the caving)
+    // Landed + 0.3 s, on the curtain (constructed 1): white, and the clean tube no longer hides the sheet's foam.
+    const landed = curtainFoamAt(clean, 1, sinceLand(st(from + 0.3), 15), 1);
+    expect(landed.foam).toBeGreaterThanOrEqual(0.9);
+    expect(landed.clean).toBeLessThanOrEqual(0.1 * CLEAN_TUBE);
+    // ...and it stays white later (until the erosion removes the row).
+    expect(curtainFoamAt(0, 1, sinceLand(st(from + 0.8), 15), 1).foam).toBeGreaterThanOrEqual(0.9);
+    // In the hold (the standing curtain): the water, as before.
+    const held = curtainFoamAt(clean, 1, sinceLand(st(from - 0.05), 15), 1);
+    expect(sinceLand(st(from - 0.05), 15)).toBe(NOT_LANDED);
+    expect(held.foam).toBe(0);
+    expect(held.clean).toBeCloseTo(CLEAN_TUBE, 9);
+    // On the sheet (constructed 0) the ribbon adds nothing: the sheet's own foam field shows.
+    expect(curtainFoamAt(0, 1, sinceLand(st(from + 0.3), 15), 0).foam).toBe(0);
+    // The caving lip's own foam is kept as it was.
+    expect(curtainFoamAt(0.6, 0.5, NOT_LANDED, 1).foam).toBeCloseTo(0.3, 9);
   });
 });
