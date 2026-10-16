@@ -27,6 +27,16 @@ describe('encode/decode', () => {
     const b64 = btoa(JSON.stringify({ v: 1, ...sample, conditions: old })).replace(/=+$/, '');
     expect(decodeMoment(`#m=${b64}`)?.conditions.weather).toEqual(WEATHER_PRESETS.clear);
   });
+  it('round-trips non-default set settings, and a link without them decodes with none (current defaults)', () => {
+    const sets = { ...DEFAULT_SET_PARAMS, meanIntervalS: 300, minWaves: 2, maxWaves: 3, heightFactorMax: 2.2 };
+    expect(decodeMoment(encodeMoment({ ...sample, sets }))?.sets).toEqual(sets);
+    expect(encodeMoment({ ...sample, sets: { ...DEFAULT_SET_PARAMS } })).toBe(encodeMoment(sample));
+    expect(decodeMoment(encodeMoment(sample))?.sets).toBeUndefined();
+  });
+  it('fills a partial or bad sets field from the defaults', () => {
+    const b64 = btoa(JSON.stringify({ v: 1, ...sample, sets: { meanIntervalS: 400, minWaves: 'x' } })).replace(/=+$/, '');
+    expect(decodeMoment(`#m=${b64}`)?.sets).toEqual({ ...DEFAULT_SET_PARAMS, meanIntervalS: 400 });
+  });
   it('round-trips the select screen sets (duneSets) when on, and leaves the field out when off or absent', () => {
     expect(decodeMoment(encodeMoment({ ...sample, duneSets: true }))?.duneSets).toBe(true);
     expect(decodeMoment(encodeMoment({ ...sample, duneSets: false }))?.duneSets).toBeUndefined();

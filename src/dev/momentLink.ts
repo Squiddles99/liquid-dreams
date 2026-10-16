@@ -1,6 +1,7 @@
 import { sanitizeConditions, wrapDegrees } from '../conditions/sanitize';
 import type { Conditions } from '../conditions/types';
 import { type SurferParams, sanitizeSurferParams } from '../surfer/surferParams';
+import { DEFAULT_SET_PARAMS, type SetParams, normalizeSetParams } from '../swell/sets';
 import { findReferenceMoment } from './referenceMoments';
 
 export type CameraMode = 'lineup' | 'free' | 'walk';
@@ -28,6 +29,28 @@ export interface Moment {
    * copied with them on replays a different wave without them. Written only when true; absent reads as off.
    */
   duneSets?: boolean;
+  /**
+   * The set timeline settings (interval, jitter, wave count, height factors, strays, crest length) when they differ from
+   * the defaults. They are a saved dev setting, so without them a link replays a different sea (no crest at its simTime).
+   * Absent reads as the current defaults, so older links still open.
+   */
+  sets?: SetParams;
+}
+
+/** A SetParams from untrusted input: each field a finite number or the default's, then made consistent. */
+export function sanitizeSetParams(v: unknown): SetParams {
+  const o = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
+  const out = { ...DEFAULT_SET_PARAMS };
+  for (const k of Object.keys(out) as (keyof SetParams)[]) if (finite(o[k])) out[k] = o[k] as number;
+  normalizeSetParams(out);
+  return out;
+}
+
+const setsDiffer = (s: SetParams): boolean => (Object.keys(DEFAULT_SET_PARAMS) as (keyof SetParams)[]).some((k) => s[k] !== DEFAULT_SET_PARAMS[k]);
+
+/** The set settings in plain words, for the top of the report .txt. */
+export function describeSets(s: SetParams): string {
+  return `Set settings${setsDiffer(s) ? '' : ' (defaults)'}: ${Object.entries(s).map(([k, v]) => `${k} ${v}`).join(', ')}`;
 }
 
 export const MOMENT_VERSION = 1;
@@ -67,8 +90,8 @@ export function parseCameraPose(v: unknown): CameraPose | null {
 }
 
 export function encodeMoment(m: Moment): string {
-  const { duneSets, ...rest } = m;
-  return `#m=${toBase64Url(JSON.stringify({ v: MOMENT_VERSION, ...rest, ...(duneSets ? { duneSets: true } : {}) }))}`;
+  const { duneSets, sets, ...rest } = m;
+  return `#m=${toBase64Url(JSON.stringify({ v: MOMENT_VERSION, ...rest, ...(duneSets ? { duneSets: true } : {}), ...(sets && setsDiffer(sets) ? { sets } : {}) }))}`;
 }
 
 /** A `#m=` link's moment, or why it was rejected. */
@@ -93,6 +116,7 @@ function parseMomentLink(hash: string): Moment | string {
     paused: o.paused === true,
     ...(o.surfer !== undefined ? { surfer: sanitizeSurferParams(o.surfer) } : {}),
     ...(o.duneSets === true ? { duneSets: true } : {}),
+    ...(o.sets !== undefined ? { sets: sanitizeSetParams(o.sets) } : {}),
   };
 }
 

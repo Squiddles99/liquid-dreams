@@ -62,7 +62,7 @@ import { FRONT_SETTINGS_KEY, readFrontSettings, sanitizeFrontSettings } from '..
 import { type MenuPick, PadStartWatch } from '../frontend/sessionMenu';
 import { PauseMenu } from '../frontend/ui/pauseMenu';
 import { frontEndCheck } from '../dev/frontEndCheck';
-import { type CameraPose, type Moment, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
+import { type CameraPose, type Moment, describeSets, encodeMoment, momentFromHash, momentHashProblem } from '../dev/momentLink';
 import { type CrestLineRow, crestLineRows, leanFrontEffect, traceEnds } from '../dev/crestLineProbe';
 import { FrameLog } from '../dev/frameLog';
 import { MOMENT_PNG_KEY, insertPngText } from '../dev/pngText';
@@ -821,6 +821,8 @@ export class App {
     this.seabed.setTide(this.conditions.tideM);
     // The select screen's sets swap the set schedule: a link copied with them on replays its wave only with them on.
     this.setDuneSets(m.duneSets ?? false);
+    // The set timeline settings are part of the moment (a link without them means the defaults).
+    assignParams(this.setParams, m.sets ?? DEFAULT_SET_PARAMS);
     this.clock.setTime(m.simTime);
     this.setPaused(m.paused);
     // The probe still holds the old spot's water: seed the lineup at the still-water level, forget the old readings, and
@@ -853,6 +855,7 @@ export class App {
       conditions: cloneConditions(this.conditions), camera: this.rig.getPose(), simTime: this.clock.simTime, paused: this.clock.paused,
       ...(this.surferParams.enabled ? { surfer: { ...this.surferParams } } : {}),
       ...(this.duneSets ? { duneSets: true } : {}),
+      sets: { ...this.setParams },
     };
   }
 
@@ -2082,7 +2085,8 @@ export class App {
     const link = `${location.origin}${location.pathname}${location.search}${encodeMoment(this.currentMoment())}`;
     const names = reportMomentFilenames(Date.now());
     const png = await this.captureFrame();
-    const where = [await downloadBlob(new Blob([`${link}
+    const where = [await downloadBlob(new Blob([`${describeSets(this.setParams)}
+${link}
 `], { type: 'text/plain' }), names.txt)];
     if (png) {
       const tagged = new Blob([insertPngText(new Uint8Array(await png.arrayBuffer()), MOMENT_PNG_KEY, link)], { type: 'image/png' });
