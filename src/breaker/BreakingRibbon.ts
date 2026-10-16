@@ -234,12 +234,13 @@ export interface RibbonShading {
  * end (runEndFlags), 0 otherwise (gap rows too: they are dead anyway).
  */
 /**
- * The section's phase from which its landed curtain erodes (overnight fix 2026-10-16 T6): the tube caving in. The erosion
- * discards the station's whole row (lip, roof and curtain), so it waits for the tube's end; from the lip's landing (L5 as
- * built) it took 17 of 18 drawn stations at Andrew's 1791986608 camera through the tube's hold (phase 0.81-1.5), and the
- * ribbon changed his frame by 0.02/255.
+ * The section's phase from which its landed curtain erodes (overnight fix 2026-10-16 T6): the end of the tube's hold (phase 1
+ * held through the hold, sectionPhase). The erosion discards the station's whole row (lip, roof and curtain), so it waits
+ * for the tube's end; from the lip's landing (L5 as built) it took 17 of 18 drawn stations at Andrew's 1791986608 camera
+ * through the hold (phase 0.81-1.5), and the ribbon changed his frame by 0.02/255. From STAGES.cavingIn (tried first) the
+ * glassy roof stood over the white bore at his 1792126619 (t6-tint.jpg): the white water must take over as the tube caves.
  */
-export const CURTAIN_ERODES_AT_PHASE = STAGES.cavingIn;
+export const CURTAIN_ERODES_AT_PHASE = STAGES.barrel;
 /** breaking-look item 4 (the station lane audit: vec4 #4's w was the one spare): the time (s) since the station's curtain may
  * erode: since its section reaches CURTAIN_ERODES_AT_PHASE on its own clock (wombSection.sectionPhase: the lip's flight, the
  * tube's hold, then the collapse, at the height it broke at), NOT_LANDED before. The curtain erodes by it
