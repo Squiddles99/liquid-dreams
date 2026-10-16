@@ -293,6 +293,16 @@ export const LINE_END_FADE_M = 6;
  * ahead of the front at 0.04-0.1 of its weight.
  */
 export const LIP_FRONT_TAPER_M = 4;
+/**
+ * The throw's clock (a station's phase and ρ) is smoothed along the line over this much arc (m), not SECTION_SMOOTHING_M
+ * (step 2, overnight 2026-10-16, Andrew's 1792137769): at 4 m (0.57 s of a 7 m/s peel) the smoothing rounded the clock's
+ * knee at the round barrel and averaged the waiting stations' phase 0.45 and ρ 0 into the broken ones across the curl front,
+ * holding a 7 ft segment-A station from full throw (ρ and phase >= 0.95) until 1.14 s after the front passed (8 m of peel;
+ * the clock alone throws it in 0.63 s): half-thrown wall between the rider and the tube. 2 m is the trace's station spacing,
+ * neighbours still averaged. Under the law (wombSection.ONE_SURFACE) only: the section of 2026-10-14 (the dial off) keeps
+ * SECTION_SMOOTHING_M. A, hollow, surge and the normal keep SECTION_SMOOTHING_M.
+ */
+export const THROW_SMOOTHING_M = 2;
 
 /**
  * Each station's section numbers (wombSection.sectionNumbers), then smoothed along the line by arc (SECTION_SMOOTHING_M);
@@ -309,20 +319,22 @@ export function fillSections(line: Station[], periodS: number, p: Pick<BreakPara
     return q;
   });
   const reach = 3 * SECTION_SMOOTHING_M, inv = 1 / (2 * SECTION_SMOOTHING_M * SECTION_SMOOTHING_M);
+  const throwM = oneSurfaceOn() > 0.5 ? THROW_SMOOTHING_M : SECTION_SMOOTHING_M, invThrow = 1 / (2 * throwM * throwM);
   // The arcs of the waiting stations (one surface: the lip tapers to 0 at them).
   const waiting = oneSurfaceOn() > 0.5 ? line.filter((s) => s.tb === null).map((s) => s.arc) : [];
   const toWaiting = (arc: number): number => waiting.reduce((m, a) => Math.min(m, Math.abs(a - arc)), Infinity);
   let lo = 0;
   line.forEach((s, i) => {
     while (line[lo].arc < s.arc - reach) lo++;
-    let w = 0, A = 0, phase = 0, hollow = 0, rho = 0, surge = 0, nx = 0, nz = 0;
+    let w = 0, A = 0, phase = 0, hollow = 0, rho = 0, surge = 0, nx = 0, nz = 0, wc = 0;
     for (let k = lo; k < line.length && line[k].arc <= s.arc + reach; k++) {
-      const g = Math.exp(-((line[k].arc - s.arc) ** 2) * inv);
-      w += g; A += g * raw[k].A; phase += g * raw[k].phase; hollow += g * raw[k].hollow; rho += g * raw[k].rho; surge += g * (raw[k].surge ?? 0);
+      const d2 = (line[k].arc - s.arc) ** 2, g = Math.exp(-d2 * inv), gc = Math.exp(-d2 * invThrow);
+      w += g; A += g * raw[k].A; hollow += g * raw[k].hollow; surge += g * (raw[k].surge ?? 0);
+      wc += gc; phase += gc * raw[k].phase; rho += gc * raw[k].rho;
       nx += g * normals[k][0]; nz += g * normals[k][1];
     }
     const end = Math.min(s.arc - line[0].arc, line[line.length - 1].arc - s.arc);
-    s.section = { A: A / w, phase: phase / w, hollow: hollow / w, rho: (rho / w) * smoothstep(0, LINE_END_FADE_M, end) * (waiting.length ? smoothstep(0, LIP_FRONT_TAPER_M, toWaiting(s.arc)) : 1), surge: surge / w };
+    s.section = { A: A / w, phase: phase / wc, hollow: hollow / w, rho: (rho / wc) * smoothstep(0, LINE_END_FADE_M, end) * (waiting.length ? smoothstep(0, LIP_FRONT_TAPER_M, toWaiting(s.arc)) : 1), surge: surge / w };
     const l = Math.hypot(nx, nz);
     if (l > 1e-9) { s.nx = nx / l; s.nz = nz / l; }
   });
