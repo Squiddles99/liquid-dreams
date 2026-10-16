@@ -8,6 +8,8 @@ import { breakOptions, fieldBreakingHeight, sumWaves, toActiveWave } from './set
 import { reefBeds } from './testField';
 import { offshoreSpeed } from './overturn';
 import * as WS from './wombSection';
+import { sinceLand } from './BreakingRibbon';
+import { curtainErosion } from '../whitewater/curlFoam';
 
 /**
  * Overnight fix 2026-10-16 T6 (evidence/overnight-2026-10-16/t6-measured.md): at Andrew's camera the ribbon drew a sliver.
@@ -70,6 +72,25 @@ describe("the thrown lip at Andrew's camera (overnight T6)", () => {
       const q = lip(s);
       if (!(q.reach >= THROWN_REACH_A && q.drop >= CURTAIN_DROP_A && q.clear >= LIP_CLEAR_A)) bad.push(fmt(q));
     }
+    expect(bad).toEqual([]);
+  });
+  // T6 measured on the GPU (t6-measured.md): with the lip thrown (wallHollow 0.4) the frame at his camera still changed by
+  // 0.23/255 with the ribbon off. The landed curtain's erosion (breaking-look L5) discards the station's WHOLE row, lip and
+  // roof included, from 0.2 to 0.85 s after the lip lands (sinceLand), while the record's tube holds 1.4 s more: 17 of 18
+  // drawn stations within 60 m of his camera were discarded (phase 0.81-2.0). The bar: through the tube's hold (phase
+  // < STAGES.tubeFilling 1.25) no drawn station is eroding.
+  it("Andrew's 1791986608: no station within 60 m of his camera erodes before its tube fills (phase < 1.25)", { timeout: 300_000 }, () => {
+    const c = cloneConditions(DEFAULT_CONDITIONS);
+    c.swell.sizeFt = M.ft; c.swell.periodS = M.T; c.swell.directionDeg = M.dir; c.tideM = M.tide; c.seed = 2002; c.wind = { speedMs: M.windMs, directionDeg: 90 };
+    const { bed, coast } = reefBeds(2);
+    const field = computeReefField({ bed, coast, periodS: M.T, fromDeg: M.dir, tideM: M.tide, smooth: true, refractFloorM: REFRACT_FLOOR_M, peel: P.peel, curlMaxMs: P.curlMaxMs });
+    const ctx = { omega: field.omega, travelX: field.far.dirX, travelZ: field.far.dirZ };
+    const offshoreMs = offshoreSpeed(c.wind.speedMs, c.wind.directionDeg, field.far.dirX, field.far.dirZ);
+    const waves = wavesNear(M.t, c, DEFAULT_SET_PARAMS).map(toActiveWave);
+    const st = traceLines(field, waves, M.t, ctx, { cameraX: M.cam[0], cameraZ: M.cam[1], params: P, minHeightM: minRibbonHeight(fieldBreakingHeight(field, P), P), spacingM: 2, offshoreMs, drawSurge: true }).flat()
+      .filter((s) => s.tb !== null && s.tb >= 0 && s.section.rho > 0.05 && s.section.phase < 1.25 && Math.hypot(s.x - M.cam[0], s.z - M.cam[1]) < 60);
+    expect(st.length).toBeGreaterThan(3);
+    const bad = st.filter((s) => curtainErosion(sinceLand(s, M.T)) > 0).map((s) => `along ${WS.shoulderAlong(s.x, s.z).toFixed(1)} phase ${s.section.phase.toFixed(2)}: erosion ${curtainErosion(sinceLand(s, M.T)).toFixed(2)}`);
     expect(bad).toEqual([]);
   });
 });
