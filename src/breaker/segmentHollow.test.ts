@@ -25,7 +25,7 @@ describe('a target hollow per segment (womb-story Task 3b)', () => {
   it('psiOfHollow inverts reefReport.hollowFromPsi', () => {
     for (const h of [0, 0.1, 0.45, 0.8, 1]) expect(hollowFromPsi(psiOfHollow(h))).toBeCloseTo(h, 9);
   });
-  it.each([4, 7, 12])('%i ft at 270/14: A barrels (hollow >= 0.7 from 10 m), B is a wall (hollow <= 0.2, steady within 0.1)', (ft) => {
+  it.each([4, 7, 12])('%i ft at 270/14: A barrels (hollow >= 0.7 from 10 m), B is a wall that throws (hollow within 0.1 of wallHollow, steady within 0.1)', (ft) => {
     const H = setWaveHeight(ft), A: number[] = [], B: number[] = [];
     for (let a = 0; a <= RP.ledgeWallM; a += 2) {
       const h = hollowOnRay(a, H);
@@ -36,7 +36,10 @@ describe('a target hollow per segment (womb-story Task 3b)', () => {
     expect(A.length, 'A breaks').toBeGreaterThan(5);
     expect(B.length, 'B breaks').toBeGreaterThan(10);
     expect(Math.min(...A), 'A hollow').toBeGreaterThanOrEqual(0.7);
-    expect(Math.max(...B), 'B hollow').toBeLessThanOrEqual(0.2);
+    // Overnight fix 2026-10-16 T6: wallHollow 0.1 -> 0.4 (a wall that throws a lip; at 0.1 the lip was a sliver under one
+    // surface): B's hollow is the target's, not <= 0.2 (measured 0.400-0.401 at 4/7/12 ft).
+    expect(Math.max(...B), 'B hollow').toBeLessThanOrEqual(RP.wallHollow + 0.1);
+    expect(Math.min(...B), 'B hollow').toBeGreaterThanOrEqual(RP.wallHollow - 0.1);
     expect(Math.max(...B) - Math.min(...B), 'B steady').toBeLessThanOrEqual(0.1);
   }, 600_000);
 });

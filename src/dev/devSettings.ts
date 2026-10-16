@@ -45,9 +45,10 @@ export const DEV_SETTINGS_KEY = 'liquid-dreams.dev-settings.v1';
  * 2026-10-14): Andrew's pick, the face ahead of the lip stands up over 20 m and is drawn on the sea (standAheadM,
  * faceOnSheet), so the breaking resets to it; model 14 (womb-story Task 10, 2026-10-15): one surface by construction
  * (oneSurface 1, standAheadM and faceOnSheet retired to 0), so the breaking resets to it; model 15 (womb-story Task 11,
- * 2026-10-15): the sheet's stood face is the drawing's (faceDrawn 1), so the breaking resets to it).
+ * 2026-10-15): the sheet's stood face is the drawing's (faceDrawn 1), so the breaking resets to it; model 16 (overnight fix
+ * 2026-10-16 T6): the reef's wall hollow 0.1 → 0.4 (wombReef.wallHollow), so the reef resets to it too).
  */
-export const BREAKING_MODEL = 15;
+export const BREAKING_MODEL = 16;
 
 export interface SettingsStorage {
   getItem(k: string): string | null;
@@ -156,7 +157,8 @@ export function loadDevSettings(storage: SettingsStorage, defaults: DevSettings)
   // the old one. Model 9: the reef is Andrew's satellite line, moved in toward the beach: a saved reef is round 2's.
   // Model 10: the basin in front of it is 20 m: a saved reef's 30 m spreads the swell. Model 11: the coast around it is 20 m
   // too (a saved reef predates the cap that follows the coast's own depth).
-  if (typeof raw.breakingModel !== 'number' || raw.breakingModel < 12) look.reef = deepClone(defaults.reef);
+  // Model 16: B's and C's wall hollow 0.4 (a saved reef keeps 0.1: the lip a sliver at the rider's sections).
+  if (typeof raw.breakingModel !== 'number' || raw.breakingModel < 16) look.reef = deepClone(defaults.reef);
   return {
     ...(look as unknown as DevLookParams),
     mode: raw.mode === 'default' || raw.mode === 'custom' ? raw.mode : 'custom',

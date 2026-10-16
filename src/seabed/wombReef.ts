@@ -72,7 +72,12 @@ export interface ReefParams {
   /** womb-story Task 3b (STOP 1 ruling 2, replacing the hollow share): A's target hollow (0–1): on A the reef raises ψ₀ to
    * at least its (reefField's psiHere). */
   barrelHollow: number;
-  /** B's and C's target hollow (0–1): there the reef pulls ψ₀ down to its, a wall (the spilling lip, wombProfile). */
+  /** B's and C's target hollow (0–1): there the reef pulls ψ₀ down to its, a wall that throws a lip (wombProfile).
+   * Overnight fix 2026-10-16 T6 (evidence/overnight-2026-10-16/t6-measured.md): 0.1 → 0.4. At 0.1 the drawing is a
+   * crumbling lip (tip 0.25 A ahead of its crest, 0.07 A down), and under one surface (Task 10) that sliver is all the ribbon
+   * draws: 0.05-0.35 m off the sheet at Andrew's cameras (110-135 m down the left), no lip, no curtain. At 0.4 the drawing
+   * throws (tip 0.71 A ahead, 0.91 A down at phase 1), still under A's barrel (0.8). The reef's own step can hold ψ₀ lower
+   * (the target only pulls down on B and C). */
   wallHollow: number;
   /** womb-story Task 2 (spec 3.1, STOP 0 ruling 3): the right's ledge depth (m below mean sea level), and the shelf's along a
    * RIGHT_STRIP_M strip inshore of it: deeper than the tip's, so the right breaks after the take-off and all at once. Its
@@ -110,7 +115,7 @@ export const DEFAULT_REEF_PARAMS: ReefParams = {
   ledgeBlendM: 15,
   dropDepthM: 8.5,
   barrelHollow: 0.8,
-  wallHollow: 0.1,
+  wallHollow: 0.4,
   rightLedgeDepthM: 8,
 };
 

@@ -206,6 +206,7 @@ describe("the sheet's stood face is the drawing's face (womb-story Task 11)", ()
     expect(bad).toEqual([]);
   });
 
+  // 7 ft t0+6 along 96.2 re-pinned 2026-10-16 T6 (wallHollow 0.4: the face's length reads the hollow): 6.1 deg.
   const FOOT_PIN: Record<string, number> = {
     '7 ft 270/14 tide 0.5 t0+3|45.2': 6.3,
     '7 ft 270/14 tide 0.5 t0+3|38.6': 8.0,
@@ -215,7 +216,7 @@ describe("the sheet's stood face is the drawing's face (womb-story Task 11)", ()
     '7 ft 270/14 tide 0.5 t0+3|13.5': 11.6,
     '7 ft 270/14 tide 0.5 t0+3|7.5': 18.7,
     '7 ft 270/14 tide 0.5 t0+3|1.4': 7.3,
-    '7 ft 270/14 tide 0.5 t0+6|96.2': 4.8,
+    '7 ft 270/14 tide 0.5 t0+6|96.2': 6.6,
     '7 ft 270/14 tide 0.5 t0+6|89.2': 7.4,
     '7 ft 270/14 tide 0.5 t0+6|82.5': 9.6,
     '7 ft 270/14 tide 0.5 t0+6|75.7': 12.5,
