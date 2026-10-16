@@ -73,3 +73,24 @@ export function curtainErosionNode(sinceLandS: N): N {
 export const NOT_LANDED = -1e3;
 /** The fringe's droplets: where the 0.25 m grain (∈ [0, 1]) is under FRINGE_DROPLET_SHARE the edge is torn open (~40 %). */
 export const FRINGE_DROPLET_SHARE = 0.4;
+
+/**
+ * Piece 1 (2026-10-16, Andrew's 1792126619: a dark glassy roof with white blotches over his white bore): once a station's
+ * tube hold has ended (its lane sinceLand >= 0, BreakingRibbon.sinceLand) its curtain hands over to the foam white over
+ * LANDED_WHITE_S and stays white until the erosion removes the row. Only on the samples departing from the sheet
+ * (constructed: the curtain, the roof); where the ribbon lies on the sheet the sheet's own foam field shows. The standing lip
+ * and curtain (the hold, NOT_LANDED) keep the water. The white is the broken section's (the material's solid foam).
+ */
+export const LANDED_WHITE_S = 0.25;
+export function landedWhite(sinceLandS: number, constructed: number): number {
+  return Math.min(1, Math.max(0, sinceLandS / LANDED_WHITE_S)) * constructed;
+}
+/** The ribbon sample's foam weight and clean-tube share: the curl's own (curlFoamAt × ρ, the clean tube by ρ) with the landed
+ *  curtain's white over it (the white fills the tube, so the clean share goes as it rises). */
+export function curtainFoamAt(curlFoam: number, rho: number, sinceLandS: number, constructed: number): { foam: number; clean: number } {
+  const white = landedWhite(sinceLandS, constructed);
+  return { foam: Math.max(Math.min(1, Math.max(0, curlFoam)) * rho, white), clean: Math.min(1, Math.max(0, -curlFoam)) * rho * (1 - white) };
+}
+export function landedWhiteNode(sinceLandS: N, constructed: N): N {
+  return float(sinceLandS).div(LANDED_WHITE_S).clamp(0.0, 1.0).mul(constructed);
+}

@@ -2,7 +2,7 @@ import { billowLiftNode, billowNode } from '../whitewater/billow';
 import { boreFromStations, boreLook, heightFracNode, wallShadeNode } from '../whitewater/whitewaterLook';
 import { BARREL_INSIDE, WALL_LOOK } from '../whitewater/lookSwitches';
 import { boilFreshness, boilWeight, churnHeightNode, churnSlopeNode, freshFoamWeightNode, solidBoilNode } from '../whitewater/pileChurn';
-import { CURTAIN_EROSION_S, FRINGE_DROPLET_SHARE, NOT_LANDED, curlFoamNode, curtainErosionNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
+import { CURTAIN_EROSION_S, FRINGE_DROPLET_SHARE, NOT_LANDED, curlFoamNode, curtainErosionNode, landedWhiteNode, packInnerFringeNode, tipFringeNode, unpackFringeNode } from '../whitewater/curlFoam';
 import * as THREE from 'three/webgpu';
 import {
   Break, Fn, If, Loop, abs, atan, attribute, cameraViewMatrix, exp, floor, fwidth, screenSize, screenUV, viewportMipTexture, exp2, ivec2, cameraPosition, clamp, cross, dot, float, instanceIndex, int, length, max, min, mix, normalize, positionWorld, saturate, select, smoothstep,
@@ -639,6 +639,9 @@ export class BreakingRibbon {
     const stationsRO = this.stationsNode();
     // item 4 (L5): the landed curtain's erosion, per station (its lane: the time since its lip landed).
     const vErosion: N = varying(curtainErosionNode(stationsRO.element(row.mul(STATION_VEC4S).add(4)).w));
+    // Piece 1: the landed curtain's white (curlFoam.landedWhite), its clock per vertex (clamped before it is interpolated, as the
+    // erosion is), × the departure from the sheet in the fragment.
+    const vLandedWhite: N = varying(landedWhiteNode(stationsRO.element(row.mul(STATION_VEC4S).add(4)).w, float(1.0)));
     const vFrame: N = varyingProperty('vec2', 'vRibbonFrame');
     const churn = Fn(() => {
       const b = model.sets.breakSampleNode(home.xy);
@@ -684,8 +687,11 @@ export class BreakingRibbon {
     // The curl's foam is signed (lipProfile.ProfilePoint.curlFoam): its own foam by max, and the clean tube (< 0) hiding the
     // sheet's foam by that share; both fade with ρ, so by the hand-back the foam is the sheet's.
     // The solid boil (7b S3): no clean tube once the boil is fresh (it has caved in), and the lace's holes filled below.
-    const solid = solidBoilNode(vBoil, max(vSetFoam, saturate(curlFoam).mul(rho))).toVar();
-    const curlOwn = saturate(curlFoam).mul(rho), clean = saturate(curlFoam.negate()).mul(rho).mul(float(1.0).sub(solid));
+    // Piece 1 (curlFoam.curtainFoamAt): once the tube's hold has ended the curtain (departing from the sheet) hands over to the
+    // solid foam white over LANDED_WHITE_S, filling the clean tube, until the erosion removes the row.
+    const landedWhite = vLandedWhite.mul(saturate(vConstructed));
+    const solid = max(solidBoilNode(vBoil, max(vSetFoam, saturate(curlFoam).mul(rho))), landedWhite).toVar();
+    const curlOwn = max(saturate(curlFoam).mul(rho), landedWhite), clean = saturate(curlFoam.negate()).mul(rho).mul(float(1.0).sub(solid));
     // Read at the developed coordinate (as the chop is): at the home the whole thrown lip maps onto a strip of the sheet a
     // few metres wide, and the pattern smeared into bands down the lip. At the edges the two are the same point.
     // The tip's fringe (F2): a solid thin band with its own fine (~0.25 m) breakup, not the sheet's 2–3 m lace.
