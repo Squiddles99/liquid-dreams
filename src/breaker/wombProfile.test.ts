@@ -145,6 +145,19 @@ describe('wombProfile', () => {
   });
 });
 
+/** Step 4 (2026-10-16, Andrew's ruling): in perfect conditions the lip throws top to bottom and lands about one face height
+ * ahead of the face's foot (the tube about as wide as it is tall). Measured live at 1792137769's conditions, t 4906.0, the
+ * lip landed 0.10-0.19 face heights ahead of the sheet's foot (a tube 1.2-1.6 m wide under a 3.5-3.8 m face). */
+const LANDING_BAR: readonly [number, number] = [0.9, 1.1];
+describe('the lip lands one face height ahead of the foot (step 4, Andrew 2026-10-16)', () => {
+  it('at the barrel (phase 1) and hollow 0.8 the tip lands 0.9-1.1 face heights (crest to trough) ahead of the floor', () => {
+    const k = profileKnots(1, 0.8), landing = k[TIP_KNOT][0] - k[FLOOR_KNOT][0], face = k[CREST_KNOT][1] - k[TROUGH_KNOT][1];
+    const r = landing / face;
+    expect(r, `landing ${landing.toFixed(3)} / face ${face.toFixed(3)}`).toBeGreaterThanOrEqual(LANDING_BAR[0]);
+    expect(r, `landing ${landing.toFixed(3)} / face ${face.toFixed(3)}`).toBeLessThanOrEqual(LANDING_BAR[1]);
+  });
+});
+
 describe('the lip on a leash (womb-realism Task 3, spec 3.2)', () => {
   it('over phases 0–2 and every hollowness the tip stands at most 0.1 above the crest and reaches at most 1.0 ahead of it', () => {
     for (let i = 0; i <= 40; i++) for (const hollow of [0, 0.5, 1]) {
